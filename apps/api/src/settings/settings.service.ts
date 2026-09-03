@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { methodsForSalon } from '../pos/payment-methods';
+import { knownTrades } from '../content/trends/trend-feed';
 import { signingSecret } from '../common/secret.util';
 import {
   BOOKING_RULES_KEY,
@@ -213,6 +214,14 @@ export class SettingsService {
       serviceArea: take(dto.serviceArea, cur.serviceArea, 200),
       edge: take(dto.edge, cur.edge),
       avoid: take(dto.avoid, cur.avoid),
+      // Validated against the engine's own table rather than trimmed like the
+      // prose fields: this one is a lookup key, and an unrecognised value
+      // would send the trends board to a trade that does not exist — which
+      // reads on screen as an empty board with nothing explaining why.
+      // Anything unknown resolves to '', i.e. "use the general category".
+      trade: knownTrades().includes(String(dto.trade ?? '').toUpperCase())
+        ? String(dto.trade).toUpperCase()
+        : (dto.trade === '' ? '' : cur.trade),
     };
     await this.writeKey(tenantId, BUSINESS_PROFILE_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.business_profile_updated', resourceType: 'tenant', resourceId: tenantId });

@@ -133,6 +133,16 @@ export interface TradeQueries {
   /** Google Trends seed terms. Related rising queries come back for each. */
   google: string[];
   /**
+   * Per-market overrides, merged over the base by queriesFor().
+   *
+   * A Vietnamese salon's customers do not search in English, and a feed asked
+   * in the wrong language returns nothing useful — or worse, returns American
+   * results and looks like it is working. Only the fields a market actually
+   * changes appear here; everything else falls through to the base entry, so
+   * a new trade does not have to be written twice.
+   */
+  byMarket?: Record<string, Partial<Omit<TradeQueries, 'byMarket'>>>;
+  /**
    * Pinterest Trends interest facets, narrowing "growing keywords" to the
    * trade's corner of Pinterest. Values Pinterest does not recognise cost
    * nothing: the pull retries once without them.
@@ -160,7 +170,141 @@ const QUERIES: Record<string, TradeQueries> = {
     // rising around the WORK, which is what the content plan needs.
     google: ['nails', 'nail salon', 'nail designs', 'gel nails'],
     pinterestInterests: ['beauty'],
+    // SALON is the enum value every existing tenant carries, VN ones included,
+    // so it needs Vietnamese as much as the split-out trades do — a shop that
+    // never picks a finer trade must not be served an American feed.
+    byMarket: {
+      VN: {
+        mustMatch: /\b(nail|móng|tóc|toc|mi|spa|làm đẹp|thẩm mỹ|chân mày|massage)\b/i,
+        youtube: ['mẫu nail đẹp', 'kiểu tóc đẹp', 'nối mi đẹp', 'xu hướng làm đẹp'],
+        hashtags: ['naildep', 'tocdep', 'noimi', 'spavietnam', 'lamdep'],
+        google: ['tiệm nail', 'salon tóc', 'spa làm đẹp'],
+      },
+    },
   },
+  // ---- the beauty trades, split out of SALON -----------------------------
+  //
+  // SALON stays as the catch-all for a shop that does a bit of everything and
+  // for every tenant already carrying that enum value. These entries are for
+  // a shop that IS one thing: asking a lash studio's feed about "nail art"
+  // returns a screen full of work it does not sell.
+  //
+  // Each new trade gets FOUR YouTube terms rather than six. One search.list is
+  // 100 of the project's 10,000 daily units, and every trade with a live
+  // tenant pulls every morning: eleven trades across two markets at six terms
+  // would be 13,000 units and the day would end in quota errors. Four keeps
+  // the whole table inside budget with room to add markets — the arithmetic
+  // is pinned by a test rather than left to memory.
+
+  NAIL: {
+    // English only. The Vietnamese vocabulary belongs in byMarket.VN — putting
+    // "móng" here made a Vietnamese title pass the US filter, which is how a
+    // Texas shop ends up with a feed it cannot read.
+    mustMatch: /\b(nails?|manicure|pedicure|gel[- ]?x|acrylics?|nail ?art|chrome|french tips?|press[- ]ons?|dip powder|ombr[eé]|biab|builder gel|shellac)\b/i,
+    youtube: ['nail art', 'nail design ideas', 'nail trends', 'french tip nails'],
+    hashtags: ['nailart', 'nailsofinstagram', 'naildesign', 'nailinspo', 'chromenails'],
+    google: ['nails', 'nail salon', 'nail designs'],
+    pinterestInterests: ['beauty'],
+    byMarket: {
+      VN: {
+        mustMatch: /\b(nail|móng|mong tay|sơn gel|đắp bột|vẽ móng|làm nail|tiệm nail)\b/i,
+        youtube: ['mẫu nail đẹp', 'nail xu hướng', 'vẽ móng nghệ thuật', 'sơn gel tại tiệm'],
+        hashtags: ['nailvietnam', 'naildep', 'maunaildep', 'nailhanoi', 'nailsaigon'],
+        google: ['tiệm nail', 'mẫu nail đẹp', 'làm nail'],
+      },
+    },
+  },
+  HAIR: {
+    mustMatch: /\b(hair|haircut|balayage|highlights?|blow ?out|keratin|perm|bob|layers?|extensions?|updo|bangs|fringe)\b/i,
+    youtube: ['hair transformation', 'balayage tutorial', 'haircut trends', 'hair color ideas'],
+    hashtags: ['hairstylist', 'balayage', 'haircolor', 'hairtransformation', 'hairinspo'],
+    google: ['hair salon', 'haircut', 'hair color'],
+    pinterestInterests: ['beauty'],
+    byMarket: {
+      VN: {
+        mustMatch: /\b(tóc|toc|uốn|nhuộm|cắt tóc|duỗi|salon tóc|ép tóc|highlight)\b/i,
+        youtube: ['kiểu tóc đẹp', 'nhuộm tóc xu hướng', 'uốn tóc salon', 'cắt tóc nữ'],
+        hashtags: ['tocdep', 'salontoc', 'nhuomtoc', 'uontoc', 'kieutocdep'],
+        google: ['salon tóc', 'cắt tóc', 'nhuộm tóc'],
+      },
+    },
+  },
+  LASH: {
+    mustMatch: /\b(lash(es)?|eyelash(es)?|volume|classic set|lash lift|mega volume|wispy|lash map|extensions?)\b/i,
+    youtube: ['lash extensions', 'lash mapping', 'volume lashes', 'lash lift'],
+    hashtags: ['lashextensions', 'lashartist', 'volumelashes', 'lashtech', 'lashinspo'],
+    google: ['eyelash extensions', 'lash lift', 'lash salon'],
+    pinterestInterests: ['beauty'],
+    byMarket: {
+      VN: {
+        mustMatch: /\b(mi|nối mi|noi mi|uốn mi|mi volume|mi classic|nâng mi|mi hàn)\b/i,
+        youtube: ['nối mi đẹp', 'nối mi volume', 'uốn mi hàn quốc', 'nâng mi'],
+        hashtags: ['noimi', 'noimidep', 'noimivolume', 'mihanquoc', 'nangmi'],
+        google: ['nối mi', 'nối mi đẹp', 'uốn mi'],
+      },
+    },
+  },
+  BROW: {
+    mustMatch: /\b(brows?|eyebrows?|microblading|lamination|threading|henna brows?|tint(ing)?|brow shap|brow map)\b/i,
+    youtube: ['brow lamination', 'microblading', 'eyebrow shaping', 'brow mapping'],
+    hashtags: ['browsonfleek', 'microblading', 'browlamination', 'browartist', 'browgoals'],
+    google: ['eyebrow threading', 'microblading', 'brow salon'],
+    pinterestInterests: ['beauty'],
+    byMarket: {
+      VN: {
+        mustMatch: /\b(chân mày|chan may|lông mày|phun mày|điêu khắc|dáng mày|tỉa mày)\b/i,
+        youtube: ['phun mày đẹp', 'điêu khắc chân mày', 'dáng mày chuẩn', 'tỉa chân mày'],
+        hashtags: ['chanmay', 'phunmay', 'dieukhacchanmay', 'maydep', 'chanmaydep'],
+        google: ['phun mày', 'điêu khắc chân mày', 'chân mày đẹp'],
+      },
+    },
+  },
+  SPA: {
+    mustMatch: /\b(facial|skin ?care|esthetician|hydra ?facial|peel|derma ?plan|acne|glow|treatment|pores?|extraction)\b/i,
+    youtube: ['facial treatment', 'hydrafacial', 'esthetician day in the life', 'skincare routine'],
+    hashtags: ['esthetician', 'facials', 'skincare', 'hydrafacial', 'glowingskin'],
+    google: ['facial near me', 'day spa', 'skin care'],
+    pinterestInterests: ['beauty'],
+    byMarket: {
+      VN: {
+        mustMatch: /\b(spa|chăm sóc da|cham soc da|trị mụn|peel da|dưỡng da|nặn mụn|da mặt)\b/i,
+        youtube: ['chăm sóc da mặt', 'trị mụn tại spa', 'peel da', 'quy trình chăm sóc da'],
+        hashtags: ['chamsocda', 'trimun', 'spavietnam', 'duongda', 'dadep'],
+        google: ['spa chăm sóc da', 'trị mụn', 'chăm sóc da mặt'],
+      },
+    },
+  },
+  MASSAGE: {
+    mustMatch: /\b(massage|deep tissue|swedish|hot stone|reflexolog|therap(y|ist)|bodywork|shiatsu|cupping|stretch)\b/i,
+    youtube: ['massage therapy', 'deep tissue massage', 'relaxing massage', 'reflexology'],
+    hashtags: ['massagetherapy', 'massagetherapist', 'deeptissuemassage', 'bodywork', 'relaxation'],
+    google: ['massage near me', 'deep tissue massage', 'massage spa'],
+    pinterestInterests: [],
+    byMarket: {
+      VN: {
+        mustMatch: /\b(massage|mát xa|gội đầu|dưỡng sinh|thư giãn|bấm huyệt|xông hơi|body)\b/i,
+        youtube: ['gội đầu dưỡng sinh', 'massage body thư giãn', 'bấm huyệt cổ vai gáy', 'massage chân'],
+        hashtags: ['goidauduongsinh', 'massagebody', 'duongsinh', 'thugian', 'bamhuyet'],
+        google: ['gội đầu dưỡng sinh', 'massage body', 'massage thư giãn'],
+      },
+    },
+  },
+  PMU: {
+    mustMatch: /\b(permanent makeup|pmu|microblading|micropigment|lip blush|ombre (brows?|powder)|powder brows?|eyeliner tattoo|healed)\b/i,
+    youtube: ['permanent makeup', 'lip blush tutorial', 'ombre powder brows', 'pmu healing process'],
+    hashtags: ['permanentmakeup', 'pmuartist', 'lipblush', 'ombrebrows', 'powderbrows'],
+    google: ['permanent makeup', 'lip blush', 'powder brows'],
+    pinterestInterests: ['beauty'],
+    byMarket: {
+      VN: {
+        mustMatch: /\b(phun xăm|phun môi|phun mày|điêu khắc|xăm thẩm mỹ|phun mí|collagen|thẩm mỹ)\b/i,
+        youtube: ['phun môi collagen', 'phun xăm thẩm mỹ', 'phun mày ombre', 'phun mí mắt'],
+        hashtags: ['phunxam', 'phunmoi', 'phunxamthammy', 'phunmoicollagen', 'phunmayombre'],
+        google: ['phun môi', 'phun xăm thẩm mỹ', 'phun mày'],
+      },
+    },
+  },
+
   RESTAURANT: {
     mustMatch: /\b(food|restaurant|recipe|dish|cook|chef|menu|eat|kitchen|pho|bbq|taco|sushi|noodle)\b/i,
     youtube: ['restaurant food', 'viral food recipe', 'street food'],
@@ -184,12 +328,25 @@ const QUERIES: Record<string, TradeQueries> = {
   },
 };
 
-export function queriesFor(industry: string | null | undefined): TradeQueries {
-  return QUERIES[String(industry ?? '').toUpperCase()] ?? QUERIES.SALON;
+export function queriesFor(
+  industry: string | null | undefined,
+  market?: string | null,
+): TradeQueries {
+  const base = QUERIES[String(industry ?? '').toUpperCase()] ?? QUERIES.SALON;
+  const over = base.byMarket?.[String(market ?? '').toUpperCase()];
+  return over ? { ...base, ...over } : base;
+}
+
+/** Every trade this engine knows, for validation and for the picker. */
+export function knownTrades(): string[] {
+  return Object.keys(QUERIES);
 }
 
 /** The shared-snapshot key: one row per trade per market. */
 export function scopeOf(industry: string | null | undefined, market: string | null | undefined): string {
+  // Reading the table rather than a second hard-coded list: adding a trade in
+  // one place used to leave scopeOf silently bucketing it into SALON, which
+  // looks like the feed working and is the wrong shop's data.
   const ind = QUERIES[String(industry ?? '').toUpperCase()] ? String(industry).toUpperCase() : 'SALON';
   const mk = ['US', 'CA', 'VN'].includes(String(market ?? '').toUpperCase()) ? String(market).toUpperCase() : 'US';
   return `${ind}:${mk}`;
@@ -244,8 +401,10 @@ export function latinShare(text: string): number {
  * that does not can switch it off without touching the callers.
  */
 export function relevant(items: TrendItem[], industry: string | null | undefined, market?: string | null): TrendItem[] {
-  const q = queriesFor(industry);
-  void market;
+  // The market decides the vocabulary a title is checked against: a Vietnamese
+  // salon's results are Vietnamese, and an English-only pattern would throw
+  // every one of them away as off-topic.
+  const q = queriesFor(industry, market);
   return items.filter((it) => {
     // The TITLE has to say it. `via` is our own search term, and testing it
     // would pass everything the search returned — which is the whole problem.

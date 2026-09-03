@@ -192,10 +192,28 @@ export interface BusinessProfileSettings {
   serviceArea: string;
   edge: string;
   avoid: string;
+  /**
+   * The trade, one level finer than the businessType enum.
+   *
+   * NAIL | HAIR | LASH | BROW | SPA | MASSAGE | PMU, or '' for "whatever the
+   * enum says". A lash studio and a nail bar are both SALON to the database
+   * and want completely different feeds: asking a lash studio's trends board
+   * about nail art fills it with work the shop does not sell.
+   *
+   * Declared, not inferred — the same rule as every other field here. Nothing
+   * guesses a trade from a shop's name or its service list, because a shop
+   * that does lashes AND nails is the one that most needs to say which it
+   * wants the board pointed at. Empty is a valid, honest answer: the trends
+   * engine falls back to the enum exactly as it did before this field existed.
+   *
+   * Stored as JSON, so adding a trade needs no migration and no enum change —
+   * which is why this lives here and not on the tenants table.
+   */
+  trade: string;
 }
 export const BUSINESS_PROFILE_KEY = 'business_profile';
 export const DEFAULT_BUSINESS_PROFILE: BusinessProfileSettings = {
-  whatWeDo: '', whoWeServe: '', languages: '', serviceArea: '', edge: '', avoid: '',
+  whatWeDo: '', whoWeServe: '', languages: '', serviceArea: '', edge: '', avoid: '', trade: '',
 };
 export const REBOOKING_SETTINGS_KEY = 'rebooking_settings';
 

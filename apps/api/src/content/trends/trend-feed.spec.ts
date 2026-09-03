@@ -1,7 +1,7 @@
 import {
-  parseYouTube, parseInstagram, parseGoogleTrends, parsePinterest, perDayOf, isoDurationSec, latinShare, relevant, withGrowth,
+  parseYouTube, parseInstagram, parseGoogleTrends, parsePinterest, perDayOf, isoDurationSec, latinShare, withGrowth,
   matchService, serviceKeywords, shortCount, rankItems, diversify, overlay, overlayQueries,
-  scopeOf, queriesFor, needsRefresh, minePhrases, type TrendItem,
+  scopeOf, queriesFor, knownTrades, needsRefresh, minePhrases, relevant, type TrendItem,
 } from './trend-feed';
 import { bi, enOf, viOf } from '../i18n';
 
@@ -307,6 +307,30 @@ describe('sharing one pull across every salon in a trade', () => {
     expect(scopeOf('BOGUS', 'MX')).toBe('SALON:US');
   });
 
+  it('keeps the whole trade table inside YouTube\'s daily quota', () => {
+    // The arithmetic that decides how many trades this product can carry.
+    // One search.list costs 100 units of the project's 10,000 per day, plus a
+    // 1-unit videos.list, and EVERY trade with a live tenant pulls every
+    // morning — in every market it has a tenant in. Splitting SALON into
+    // seven beauty trades multiplied that overnight, and the failure mode is
+    // the whole platform's trends going dark at whatever hour the quota runs
+    // out, for everyone at once.
+    const PER_SEARCH = 101;   // search.list 100 + videos.list 1
+    const DAILY_QUOTA = 10_000;
+
+    // Only a scope with a live tenant pulls (refreshAll groups by tenant), so
+    // the number that matters is not "every trade times every market" — it is
+    // how many trade+market combinations the quota can afford in a day. The
+    // dearest trade sets that ceiling.
+    const dearest = Math.max(...knownTrades().map((t) => queriesFor(t).youtube.length)) * PER_SEARCH;
+    const scopesAffordable = Math.floor((DAILY_QUOTA * 0.8) / dearest);
+
+    // Twelve is the headroom this product needs: the beauty trades in two
+    // markets, plus the three non-beauty ones. Below that, onboarding a
+    // customer is what takes the platform's trends board down.
+    expect(scopesAffordable).toBeGreaterThanOrEqual(12);
+  });
+
   it('keeps every trade inside the budget its feed actually spends', () => {
     // Each feed is metered differently, so one shared number was hiding three
     // different risks. The real ones:
@@ -318,7 +342,7 @@ describe('sharing one pull across every salon in a trade', () => {
     //             breaks is someone adding a seasonal batch, and it breaks
     //             invisibly, mid-week, for every salon at once.
     //  Google   — one DataForSEO task per seed, billed per task.
-    for (const ind of ['SALON', 'RESTAURANT', 'REAL_ESTATE', 'SERVICE']) {
+    for (const ind of knownTrades()) {
       const q = queriesFor(ind);
       expect(q.youtube.length).toBeLessThanOrEqual(8);
       expect(q.hashtags.length).toBeLessThanOrEqual(10);
@@ -423,5 +447,67 @@ describe('the keyword list that costs nothing', () => {
       expect(q.startsWith('how ')).toBe(false);
       expect(q.endsWith(' the')).toBe(false);
     }
+  });
+});
+
+describe('one trade per shop, in the language its customers search', () => {
+  it('gives a Vietnamese salon Vietnamese search terms', () => {
+    const vn = queriesFor('NAIL', 'VN');
+    const us = queriesFor('NAIL', 'US');
+    expect(vn.google).toContain('tiệm nail');
+    expect(us.google).toContain('nail salon');
+    // An English-only pattern would throw away every Vietnamese result as
+    // off-topic, which reads on screen as "nothing is trending".
+    expect(vn.mustMatch.test('Mẫu móng đẹp cho mùa thu')).toBe(true);
+    expect(us.mustMatch.test('Mẫu móng đẹp cho mùa thu')).toBe(false);
+  });
+
+  it('falls through to the base entry for a market with no overrides', () => {
+    expect(queriesFor('NAIL', 'CA').google).toEqual(queriesFor('NAIL').google);
+    expect(queriesFor('NAIL', 'MX').youtube).toEqual(queriesFor('NAIL').youtube);
+  });
+
+  it('asks a lash studio about lashes, not about nails', () => {
+    const lash = queriesFor('LASH');
+    expect(lash.youtube.join(' ')).toContain('lash');
+    expect(lash.youtube.join(' ')).not.toContain('nail');
+    // And the filter agrees, so a nail video cannot ride into a lash feed.
+    expect(lash.mustMatch.test('Volume lash mapping for hooded eyes')).toBe(true);
+    expect(lash.mustMatch.test('Chrome nails, but make it burgundy')).toBe(false);
+  });
+
+  it('keys a snapshot per trade so two trades never share one feed', () => {
+    expect(scopeOf('LASH', 'US')).toBe('LASH:US');
+    expect(scopeOf('PMU', 'VN')).toBe('PMU:VN');
+    // A trade the table does not know still lands somewhere safe.
+    expect(scopeOf('CAR_WASH', 'US')).toBe('SALON:US');
+  });
+
+  it('every trade in the table is reachable and complete', () => {
+    for (const t of knownTrades()) {
+      const q = queriesFor(t);
+      expect(q.youtube.length).toBeGreaterThan(0);
+      expect(q.hashtags.length).toBeGreaterThan(0);
+      expect(q.google.length).toBeGreaterThan(0);
+      expect(scopeOf(t, 'US')).toBe(`${t}:US`);
+      // Every VN override that exists must be complete enough to be usable —
+      // a half-filled override silently serves English on three of four axes.
+      const vn = queriesFor(t, 'VN');
+      if (vn !== q) {
+        expect(vn.youtube.length).toBeGreaterThan(0);
+        expect(vn.google.length).toBeGreaterThan(0);
+        expect(vn.hashtags.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('filters a market\'s results with that market\'s vocabulary', () => {
+    const vnVideo: TrendItem = {
+      id: 'v', source: 'youtube', title: 'Mẫu móng đẹp mùa thu 2026', url: 'u',
+      thumbUrl: null, count: null, perDay: null, growthPct: null, breakout: false,
+      publishedAt: null, durationSec: null, via: null,
+    };
+    expect(relevant([vnVideo], 'NAIL', 'VN')).toHaveLength(1);
+    expect(relevant([vnVideo], 'NAIL', 'US')).toHaveLength(0);
   });
 });

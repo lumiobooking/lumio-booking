@@ -146,7 +146,7 @@ interface Plan {
   industry: { code: string; trade: string };
   identity: {
     label: string; declared: boolean; filled: number;
-    profile: { whatWeDo: string; whoWeServe: string; languages: string; serviceArea: string; edge: string; avoid: string };
+    profile: { whatWeDo: string; whoWeServe: string; languages: string; serviceArea: string; edge: string; avoid: string; trade?: string };
     provenance: string[];
     gaps: { field: string; label: string; cost: string }[];
   };
@@ -420,7 +420,7 @@ function Inner() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
   const [editProfile, setEditProfile] = useState(false);
-  const [pf, setPf] = useState({ whatWeDo: '', whoWeServe: '', languages: '', serviceArea: '', edge: '', avoid: '' });
+  const [pf, setPf] = useState({ whatWeDo: '', whoWeServe: '', languages: '', serviceArea: '', edge: '', avoid: '', trade: '' });
   const [savingPf, setSavingPf] = useState(false);
   const [scanningPf, setScanningPf] = useState(false);
   const [pfScan, setPfScan] = useState<{ sources: string[]; warnings: string[]; saved?: boolean; locationSaved?: string | null } | null>(null);
@@ -513,7 +513,7 @@ function Inner() {
     ).then((r) => setPast(vi ? r : (r.en ?? r))).catch(() => setPast(null));
   }, [token, viewWeek, vi]);
   useEffect(() => {
-    if (plan?.identity?.profile) setPf({ ...plan.identity.profile });
+    if (plan?.identity?.profile) setPf({ ...plan.identity.profile, trade: plan.identity.profile.trade ?? '' });
   }, [plan?.identity?.profile]);
 
   const loadQueue = useCallback(async () => {
@@ -1185,6 +1185,33 @@ function Inner() {
                       ))}
                     </div>
                   )}
+
+                  {/* The one structured field on this form. Everything else here
+                      is prose for the AI to read; this is a key the trends
+                      engine looks up, which is why it is a list and not a box. */}
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 3 }}>
+                      {T('Nghề chính của tiệm', 'Your main trade')}
+                    </div>
+                    <select
+                      value={pf.trade}
+                      onChange={(e) => setPf({ ...pf, trade: e.target.value })}
+                      style={{ ...ui.input, fontFamily: 'inherit' }}
+                    >
+                      <option value="">{T('— Theo phân loại chung —', '— Use the general category —')}</option>
+                      <option value="NAIL">{T('Nail / móng', 'Nails')}</option>
+                      <option value="HAIR">{T('Tóc', 'Hair')}</option>
+                      <option value="LASH">{T('Nối mi', 'Lashes')}</option>
+                      <option value="BROW">{T('Chân mày', 'Brows')}</option>
+                      <option value="SPA">{T('Spa / chăm sóc da', 'Spa / skincare')}</option>
+                      <option value="MASSAGE">{T('Massage / gội đầu dưỡng sinh', 'Massage')}</option>
+                      <option value="PMU">{T('Phun xăm thẩm mỹ', 'Permanent makeup')}</option>
+                    </select>
+                    <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 4, lineHeight: 1.5 }}>
+                      {T('Quyết định bảng Xu hướng kéo về nội dung nghề nào. Tiệm làm nhiều nghề thì chọn nghề muốn đẩy mạnh — để trống thì dùng phân loại chung.',
+                         'Decides which trade the Trends board pulls for. A shop doing several picks the one it wants to grow — leave it blank to use the general category.')}
+                    </div>
+                  </div>
 
                   {([
                     ['whatWeDo', T('Doanh nghiệp làm gì', 'What you do'), T('VD: Dịch vụ marketing cho doanh nghiệp của người Việt tại Mỹ', 'e.g. Marketing services for Vietnamese-owned businesses in the US')],

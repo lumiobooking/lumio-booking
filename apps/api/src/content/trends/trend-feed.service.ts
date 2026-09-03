@@ -137,7 +137,7 @@ export class TrendFeedService {
     const key = this.youtubeKey;
     if (!key) throw new Error('not_configured');
     const [industry, market] = scope.split(':');
-    const q = queriesFor(industry);
+    const q = queriesFor(industry, market);
     const codes = marketCodes(market);
     const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const all: TrendItem[] = [];
@@ -165,7 +165,7 @@ export class TrendFeedService {
     const auth = this.dfsAuth;
     if (!auth) throw new Error('not_configured');
     const [industry, market] = scope.split(':');
-    const q = queriesFor(industry);
+    const q = queriesFor(industry, market);
     const codes = marketCodes(market);
     const to = new Date();
     const from = new Date(to.getTime() - 30 * 86_400_000);
@@ -201,7 +201,7 @@ export class TrendFeedService {
     const region = marketCodes(market).pinterestRegion;
     if (!region) throw new Error('not_configured'); // market Pinterest Trends does not cover
     const token = await this.pinterestToken();
-    const q = queriesFor(industry);
+    const q = queriesFor(industry, market);
     const url = (withInterests: boolean) =>
       `${PIN}/trends/keywords/${region}/top/growing?limit=50`
       + (withInterests && q.pinterestInterests.length ? `&interests=${encodeURIComponent(q.pinterestInterests.join(','))}` : '');
@@ -233,8 +233,8 @@ export class TrendFeedService {
       select: { igId: true, pageToken: true },
     }).catch(() => null);
     if (!pg?.igId || !pg.pageToken) throw new Error('not_connected');
-    const [industry] = scope.split(':');
-    const q = queriesFor(industry);
+    const [industry, market] = scope.split(':');
+    const q = queriesFor(industry, market);
     const all: TrendItem[] = [];
     for (const tag of q.hashtags) {
       const s = await this.getJson(
@@ -429,7 +429,7 @@ export class TrendFeedService {
     // key, so it is the one keyword list every salon has from day one —
     // Google Trends and Pinterest add to it, they do not replace it. Our own
     // search terms are excluded, or the list would just read them back.
-    const q = queriesFor(ctx.industry);
+    const q = queriesFor(ctx.industry, ctx.region.market);
     const mined = overlayQueries(
       minePhrases([...items(yt), ...items(ig)], { seeds: [...q.youtube, ...q.hashtags] }),
       services,

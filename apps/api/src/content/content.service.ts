@@ -17,7 +17,7 @@ import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
-import { scopeOf } from './trends/trend-feed';
+import { scopeOf, knownTrades } from './trends/trend-feed';
 import { addDaysToKey, wallTimeToUtcTz as wallTimeToUtc } from '../common/salon-time';
 import { buildWeekOutcome, describeOutcome, describeDelta, type WeekOutcome } from './week-outcome';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
@@ -148,6 +148,15 @@ export class ContentService {
     const conn = await looseP.messengerConnection?.findFirst({
       where: { tenantId }, select: { bizIntro: true, aiInstruction: true },
     }).catch(() => null) as { bizIntro?: string | null; aiInstruction?: string | null } | null;
+    // The trade the business DECLARED, one level finer than the enum, and the
+    // same order of authority as every other field on that profile: declared
+    // first, enum last. An unknown or empty value falls back to the enum, so
+    // this can never make the industry worse than it was — only sharper.
+    const declaredTrade = String((profileRow?.value as { trade?: string } | null)?.trade ?? '').toUpperCase();
+    const industry = knownTrades().includes(declaredTrade)
+      ? declaredTrade
+      : String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON');
+
     const ex = (extra?.value ?? {}) as { address?: string; country?: string };
     const locale = localeForCountry(ex.country ?? '', tz);
     // The salon's own currency, not USD.
@@ -357,7 +366,7 @@ export class ContentService {
       serviceNames: services.map((s2) => s2.name),
       city: loc.city,
       region: loc.region,
-      industry: String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON'),
+      industry,
     });
 
     const { region, events } = regionEvents(now, {
@@ -379,7 +388,7 @@ export class ContentService {
 
     const revenue = buildRevenueProfile({ bookings: bookingRows, customers, services });
     const promo = promoAdvice({
-      industry: String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON'),
+      industry,
       commissionPct: (tenant as { commissionPct?: number | null } | null)?.commissionPct ?? null,
       staffAvgPct,
       // Falling back to a trade default rather than refusing. The objection to
@@ -414,7 +423,7 @@ export class ContentService {
     return {
       tenantName: tenant?.name || 'Tiệm',
       contentLang: (tenant as { contentLang?: string | null } | null)?.contentLang ?? null,
-      industry: String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON'),
+      industry,
       city: region.label,
       tz,
       region,
@@ -1252,6 +1261,19 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     return { tenants: tenants.length, created };
   }
 
+  /**
+   * The trade this tenant's content engine works in: what the business
+   * declared, falling back to the businessType enum. Kept in one place so the
+   * two readers can never disagree about which industry a salon is in.
+   */
+  private async industryOf(tenantId: string, businessType: string | null): Promise<string> {
+    const row = await this.prisma.setting
+      .findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } })
+      .catch(() => null);
+    const declared = String((row?.value as { trade?: string } | null)?.trade ?? '').toUpperCase();
+    return knownTrades().includes(declared) ? declared : String(businessType ?? 'SALON');
+  }
+
   // ---- reading ------------------------------------------------------------
 
   /** What a salon sees. Published only — drafts belong to the Lumio team. */
@@ -1259,6 +1281,11 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     const tenantId = this.tenantId(user);
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true, businessType: true } });
     const tz = tenant?.timezone || 'America/Los_Angeles';
+    // The same declared-trade-then-enum order gather() uses. Reading the enum
+    // here alone would file this salon's trend notes under a different
+    // industry than every other part of the engine — the notes would simply
+    // never appear, with nothing on screen to say why.
+    const industry = await this.industryOf(tenantId, (tenant as { businessType?: string } | null)?.businessType ?? null);
     const forDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : this.localDay(tz);
     const [ideas, notes] = await Promise.all([
       this.prisma.contentIdea.findMany({
@@ -1266,7 +1293,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         orderBy: { rank: 'asc' },
       }).catch(() => []),
       this.prisma.trendNote.findMany({
-        where: { industry: String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON'), active: true, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+        where: { industry: industry, active: true, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
         orderBy: { createdAt: 'desc' }, take: 2,
       }).catch(() => []),
     ]);

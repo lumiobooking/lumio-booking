@@ -127,6 +127,24 @@ describe('the keyword and website track', () => {
     expect(JSON.stringify(WEB_TASKS)).toMatch(words);
   });
 
+  it('teaches a free way to find keywords, not just an instruction to find them', () => {
+    // "Lập danh sách từ khoá" with no method is where every one of these plans
+    // stalls, and the paid tools are out of reach for a salon. The row has to
+    // carry the actual free sources or it carries nothing.
+    const t = WEB_TASKS.find((x) => x.id === 'w-keyword-free-research');
+    expect(t).toBeTruthy();
+    const how = JSON.stringify(t!.how);
+    for (const source of ['gợi ý tự động', 'Mọi người cũng hỏi', 'Trends']) {
+      expect(how).toContain(source);
+    }
+  });
+
+  it('joins the two tracks rather than leaving them to drift', () => {
+    // The map profile and the site borrow authority from each other, and a
+    // board that never says so lets a salon run both halves as strangers.
+    expect(WEB_TASKS.map((t) => t.id)).toContain('w-link-gbp-web');
+  });
+
   it('quotes a longer road than the map, because it is one', () => {
     // Ranking a page for a keyword takes longer than tidying a map listing,
     // and a board that implied otherwise would lose the client in month three.

@@ -966,7 +966,7 @@ function Inner() {
     { id: 'calendar', label: T('Lịch lễ', 'Calendar'), icon: '📆' },
     { id: 'audience', label: T('Khách & ưu đãi', 'Customers & offers'), icon: '🎯' },
     { id: 'ads', label: T('Quảng cáo & SEO', 'Ads & SEO'), icon: '📣' },
-    { id: 'map', label: T('Lộ trình Map', 'Map roadmap'), icon: '📍' },
+    { id: 'map', label: T('Lộ trình SEO', 'SEO roadmap'), icon: '🚀' },
     { id: 'queue', label: T('Lịch đăng bài', 'Post schedule'), icon: '🚀' },
   ];
 

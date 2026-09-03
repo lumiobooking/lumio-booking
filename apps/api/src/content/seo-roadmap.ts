@@ -614,6 +614,15 @@ export const WEB_TASKS: RoadmapTask[] = [
 
   // ---- W1: keyword map -----------------------------------------------------
   {
+    id: 'w-keyword-free-research', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 120,
+    title: bi('Đào từ khóa bằng công cụ miễn phí — 6 nguồn, không tốn đồng nào',
+              'Mine keywords with free tools — six sources, no budget'),
+    how: bi('Làm đủ 6 nguồn, ghi hết vào một bảng: (1) gõ từ khóa chính vào Google, chép sạch ô gợi ý tự động, gõ thêm từng chữ cái a→z sau từ khóa để ra thêm; (2) cuộn xuống mục "Mọi người cũng hỏi" — bấm mở từng câu, mở xong nó đẻ thêm câu mới; (3) cuối trang, mục "Tìm kiếm có liên quan"; (4) mở 3 trang đang top 1–3, chép tiêu đề, H1 và toàn bộ H2 của họ; (5) Google Trends, so 2–3 từ với nhau để biết từ nào đang lên; (6) câu hỏi thật của khách trong tin nhắn Zalo/Facebook và bình luận của tiệm — đây là nguồn không đối thủ nào có.',
+            'Work all six and write everything into one table: (1) type the main term into Google and copy the whole autocomplete list, then add each letter a-z after it for more; (2) scroll to "People also ask" and expand each one — expanding breeds new ones; (3) the "Related searches" block at the foot of the page; (4) open the three pages ranking 1-3 and copy their title, H1 and every H2; (5) Google Trends, comparing two or three terms to see which is rising; (6) the real questions customers ask in Zalo, Messenger and comments — the one source no competitor has.'),
+    why: bi('Đây là chỗ hay bị bỏ qua nhất và cũng là chỗ rẻ nhất. Không cần Ahrefs hay Semrush: 6 nguồn trên là dữ liệu do chính Google phát ra, miễn phí, và đủ để dựng bản đồ từ khóa cho một tiệm địa phương. Bỏ qua bước này thì cả lộ trình sau đó nhắm vào từ khóa do mình tưởng tượng.',
+            'The most skipped step and also the cheapest. No Ahrefs, no Semrush needed: those six are data Google itself emits, free, and enough to map keywords for one local shop. Skip it and everything downstream aims at terms you imagined.'),
+  },
+  {
     id: 'w-keyword-list', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 90,
     title: bi('Chốt danh sách từ khóa mục tiêu cho tiệm này', 'Settle this shop\'s target keyword list'),
     how: bi('Lấy từ tab Quảng cáo & SEO — hệ thống đã dựng sẵn nhóm từ khóa theo nghề và thành phố của tiệm. Đối chiếu thêm với Search Console (nếu đã có dữ liệu) và ô gợi ý của Google khi gõ.',
@@ -636,6 +645,16 @@ export const WEB_TASKS: RoadmapTask[] = [
             'Three to five words, hyphens, no accents, no numeric ids, in the right folder per the topical map. Any URL change needs a 301 from the old one.'),
     why: bi('Sửa URL sau khi trang đã lên hạng là việc đau đớn — làm ngay từ đầu, một lần.',
             'Changing a URL after a page ranks is painful. Do it once, at the start.'),
+  },
+
+  {
+    id: 'w-competitor-gap', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 90,
+    title: bi('Đọc 3 trang đang top và liệt kê thứ họ có mà mình thiếu',
+              'Read the top three and list what they cover that you do not'),
+    how: bi('Với mỗi từ khóa tiền: mở 3 kết quả đầu (ẩn danh, không đăng nhập), liệt kê mọi chủ đề con, bảng giá, câu hỏi, ảnh, và thực thể họ nhắc tới. Đối chiếu với trang của mình, đánh dấu phần thiếu. Bảng này là đầu vào của P8 ở giai đoạn sau.',
+            'For each money keyword: open the top three results in a private window, list every sub-topic, price table, question, image and entity they mention. Compare with your page and mark the gaps. This table is the input to P8 in the next phase.'),
+    why: bi('P8 — độ phủ chủ đề đạt ≥70% so với top 10 — là yếu tố onpage mạnh nhất đo được (ρ≈0,28). Nhưng "phủ 70%" chỉ đo được khi đã biết 100% là gì, và biết được điều đó chỉ có một cách: đọc trang của họ.',
+            'P8 — topical coverage at 70% or more of the top ten — is the strongest measurable on-page factor (rho about 0.28). But "70% covered" can only be measured once you know what 100% is, and there is exactly one way to know: read their pages.'),
   },
 
   // ---- W2: on-page, P-series ----------------------------------------------
@@ -770,6 +789,15 @@ export const WEB_TASKS: RoadmapTask[] = [
             'Something useful, not an advert: winter nail care, how to spot a hygienic shop.'),
     why: bi('Link báo địa phương vừa mạnh vừa liên quan, và gần như không tiệm nail nào làm.',
             'Strong and relevant, and almost no nail shop does it.'),
+  },
+  {
+    id: 'w-link-gbp-web', track: 'web', phase: 4, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 45,
+    title: bi('Nối hai nhánh: hồ sơ bản đồ và website trỏ vào nhau',
+              'Wire the two tracks together: map profile and website point at each other'),
+    how: bi('Trong Google Business Profile, mỗi dịch vụ trỏ đúng về trang dịch vụ tương ứng chứ không trỏ hết về trang chủ. Trên website, nhúng bản đồ và để tên–địa chỉ–điện thoại giống hệt hồ sơ, từng dấu chấm phẩy.',
+            'In the Google Business Profile, point each service at its own service page rather than everything at the home page. On the site, embed the map and repeat the name, address and phone exactly as the profile has them, punctuation included.'),
+    why: bi('Hai nhánh này không tách rời trong mắt Google: hồ sơ bản đồ mượn uy tín từ website, website mượn tín hiệu địa phương từ hồ sơ. Tên–địa chỉ–điện thoại lệch nhau một chữ là hai thực thể khác nhau, và uy tín bị chia đôi.',
+            'Google does not see these as two separate things: the map profile borrows authority from the site, and the site borrows local signal from the profile. A name, address or phone that differs by one character is two entities, and the authority splits between them.'),
   },
   {
     id: 'w-traffic-owned', track: 'web', phase: 4, kind: 'manual', cadence: 'weekly', tiers: ALL, minutes: 30,

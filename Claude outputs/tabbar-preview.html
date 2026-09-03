@@ -1,0 +1,144 @@
+<title>Thanh tab — trước và sau</title>
+<style>
+  :root{
+    --bg:#0f172a; --card:#1e293b; --line:#334155; --line2:#1e293b;
+    --text:#e2e8f0; --dim:#94a3b8; --dim2:#64748b; --dim3:#475569; --indigo:#6366f1;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:28px 20px 48px}
+  .wrap{max-width:1060px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 6px}
+  .sub{color:var(--dim2);font-size:13px;margin:0 0 28px;line-height:1.6}
+  h2{font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim2);
+    margin:0 0 10px;font-weight:700}
+  .stage{background:var(--bg);border:1px solid var(--line2);border-radius:14px;
+    padding:18px;margin-bottom:10px;overflow:hidden}
+  .note{font-size:12.5px;color:var(--dim2);line-height:1.65;margin:0 0 30px}
+  .note b{color:var(--dim)}
+
+  /* ---- old bar ---- */
+  .oldbar{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+  .oldbar::-webkit-scrollbar{height:6px}
+  .oldbar::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+
+  .tab{flex:0 0 auto;padding:8px 14px;border-radius:9px;white-space:nowrap;
+    font-size:13.5px;font-weight:500;border:1px solid var(--line);
+    background:var(--card);color:var(--dim);cursor:default}
+  .tab .ic{margin-right:5px}
+  .tab.on{font-weight:700;border-color:var(--indigo);background:var(--indigo);
+    color:#fff;box-shadow:0 2px 10px rgba(99,102,241,.35)}
+  .badge{margin-left:6px;min-width:19px;height:19px;padding:0 5px;border-radius:20px;
+    background:#ef4444;color:#fff;font-size:11px;font-weight:800;
+    display:inline-flex;align-items:center;justify-content:center;vertical-align:middle}
+
+  /* ---- new bar ---- */
+  .newbar{border-bottom:1px solid var(--line2);padding-bottom:10px}
+  .rows{display:flex;flex-direction:column;gap:8px}
+  .row{display:flex;gap:8px;align-items:center}
+  .glabel{flex-shrink:0;width:104px;padding-right:6px;line-height:1.25}
+  .glabel .t{font-size:10.5px;font-weight:700;letter-spacing:.6px;
+    text-transform:uppercase;color:var(--dim2)}
+  .glabel .h{font-size:10px;color:var(--dim3);margin-top:1px}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:0}
+
+  .fade{position:relative}
+  .fade::after{content:"";position:absolute;top:0;right:0;bottom:6px;width:56px;
+    background:linear-gradient(90deg,rgba(15,23,42,0),var(--bg));pointer-events:none}
+
+  .cut{color:#ef4444;font-size:12px;margin-top:8px}
+  .ok{color:#22c55e;font-size:12px;margin-top:8px}
+
+  @media (max-width:720px){
+    .row{flex-wrap:wrap}
+    .glabel{width:100%}
+    .glabel .h{display:none}
+  }
+</style>
+
+<div class="wrap">
+  <h1>Thanh tab màn hình Nội dung</h1>
+  <p class="sub">Cùng màu, cùng cỡ chữ, cùng khoảng cách với app thật. Trang này chỉ để nhìn — không bấm được.</p>
+
+  <h2>Trước — 9 tab một hàng</h2>
+  <div class="stage fade">
+    <div class="oldbar">
+      <div class="tab on"><span class="ic">✍️</span>Hôm nay</div>
+      <div class="tab"><span class="ic">🗓️</span>Tuần này</div>
+      <div class="tab"><span class="ic">📈</span>Xu hướng</div>
+      <div class="tab"><span class="ic">📆</span>Lịch lễ</div>
+      <div class="tab"><span class="ic">🎯</span>Khách &amp; ưu đãi</div>
+      <div class="tab"><span class="ic">📣</span>Quảng cáo &amp; SEO</div>
+      <div class="tab"><span class="ic">🧭</span>Đánh giá khởi đầu</div>
+      <div class="tab"><span class="ic">🚀</span>Lộ trình SEO</div>
+      <div class="tab"><span class="ic">🚀</span>Lịch đăng bài<span class="badge">3</span></div>
+    </div>
+  </div>
+  <p class="note">
+    <span class="cut">Vấn đề:</span> chạy quá mép màn hình nên phải cuộn ngang mới thấy hết — mà không có gì
+    báo là còn tab phía sau. Bốn tab quyết định đường dài nằm đúng chỗ bị cắt.
+    <b>Lịch đăng bài</b> và <b>Lộ trình SEO</b> dùng chung icon 🚀, nhìn như một tab lặp hai lần.
+    Và chín cái đứng ngang nhau không nói cho ai biết cái nào dùng khi nào.
+  </p>
+
+  <h2>Sau — hai nhóm có tên</h2>
+  <div class="stage">
+    <div class="newbar">
+      <div class="rows">
+        <div class="row">
+          <div class="glabel">
+            <div class="t">Việc tuần này</div>
+            <div class="h">nội dung, lịch, bài chờ đăng</div>
+          </div>
+          <div class="tabs">
+            <div class="tab on"><span class="ic">✍️</span>Hôm nay</div>
+            <div class="tab"><span class="ic">🗓️</span>Tuần này</div>
+            <div class="tab"><span class="ic">📈</span>Xu hướng</div>
+            <div class="tab"><span class="ic">📆</span>Lịch lễ</div>
+            <div class="tab"><span class="ic">🚀</span>Lịch đăng bài<span class="badge">3</span></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="glabel">
+            <div class="t">Đường dài</div>
+            <div class="h">khách, quảng cáo, SEO</div>
+          </div>
+          <div class="tabs">
+            <div class="tab"><span class="ic">🎯</span>Khách &amp; ưu đãi</div>
+            <div class="tab"><span class="ic">📣</span>Quảng cáo &amp; SEO</div>
+            <div class="tab"><span class="ic">🧭</span>Đánh giá khởi đầu</div>
+            <div class="tab"><span class="ic">🛣️</span>Lộ trình SEO</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">
+    <span class="ok">Đổi gì:</span> hai nhóm có tên, thấy hết trong một màn hình, không cuộn ngang.
+    Tên nhóm trả lời câu mà thanh tab cũ không trả lời được — <b>tab nào dùng khi nào</b>:
+    bên trên là việc tuần này phải làm, bên dưới là việc quyết định sáu tháng nữa tiệm đứng ở đâu.
+    <b>Lộ trình SEO</b> đổi icon sang 🛣️ để không trùng với Lịch đăng bài.
+    Trên điện thoại, tên nhóm nhảy lên một dòng riêng và các tab tự xuống hàng.
+  </p>
+
+  <h2>Chỗ trùng nội dung — nay có nhãn</h2>
+  <div class="stage">
+    <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;max-width:560px">
+      <div style="font-size:15px;font-weight:700;line-height:1.35">
+        <span style="margin-right:7px">🔑</span>Từ khóa theo nghề — viết gì, chạy gì
+      </div>
+      <div style="font-size:12.5px;color:var(--dim2);line-height:1.6;margin-top:4px">
+        Theo nghề tiệm đã khai và thị trường của tiệm. Xếp theo Ý ĐỊNH của người tìm, không theo lượng tìm.
+      </div>
+      <div style="display:inline-flex;align-items:center;gap:5px;margin-top:7px;font-size:11px;
+        color:var(--dim);background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:2px 9px">
+        <span style="opacity:.7">↔</span> Cùng dữ liệu với tab 🛣️ Lộ trình SEO
+      </div>
+    </div>
+  </div>
+  <p class="note" style="margin-bottom:0">
+    Nội dung giữ nguyên như anh chọn — nhưng chỗ nào lặp thì nay nói thẳng là lặp.
+    Người đọc thấy nhãn này sẽ biết <b>một danh sách hiện ở hai chỗ</b>, thay vì tự hỏi
+    bản nào mới là bản đúng. Nhãn xuất hiện ở 5 thẻ: từ khoá (2 chỗ), bảng chấm SEO (2 chỗ), tháng đầu tiên.
+  </p>
+</div>

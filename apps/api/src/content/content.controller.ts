@@ -35,6 +35,25 @@ export class ContentController {
   // The client-safe shape: scheduled + recently-posted posts only, one-tap
   // approve. Comments ride the existing /content/chat routes (subject post:x).
 
+  // ---- Google Maps roadmap ----
+  // Salon-side and read-mostly: the owner (or the Lumio team on their behalf)
+  // walks the list. Ticking is deliberately per-task rather than a bulk save,
+  // so two people working the same board cannot overwrite each other.
+
+  @Get('seo-roadmap')
+  seoRoadmap(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.seoRoadmap(user);
+  }
+
+  @Post('seo-roadmap/:taskId')
+  setSeoTask(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('taskId') taskId: string,
+    @Body() dto?: { done?: boolean },
+  ) {
+    return this.svc.setSeoTask(user, taskId, dto?.done !== false);
+  }
+
   @Get('review')
   reviewFeed(@CurrentUser() user: AuthenticatedUser) {
     return this.review.feedFor(user);

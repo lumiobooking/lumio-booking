@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
+import { SeoRoadmap } from '../../../components/SeoRoadmap';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
@@ -196,7 +197,7 @@ interface Plan {
  */
 type PlanEnvelope = Plan & { en?: Plan };
 
-type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience' | 'ads' | 'queue';
+type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience' | 'ads' | 'map' | 'queue';
 
 /** One post waiting to go out on the salon's own Page / Instagram. */
 interface QueuedPost {
@@ -965,6 +966,7 @@ function Inner() {
     { id: 'calendar', label: T('Lịch lễ', 'Calendar'), icon: '📆' },
     { id: 'audience', label: T('Khách & ưu đãi', 'Customers & offers'), icon: '🎯' },
     { id: 'ads', label: T('Quảng cáo & SEO', 'Ads & SEO'), icon: '📣' },
+    { id: 'map', label: T('Lộ trình Map', 'Map roadmap'), icon: '📍' },
     { id: 'queue', label: T('Lịch đăng bài', 'Post schedule'), icon: '🚀' },
   ];
 
@@ -3005,6 +3007,8 @@ function Inner() {
               })}
             </>
           )}
+          {tab === 'map' && <SeoRoadmap token={token} />}
+
           {tab === 'ads' && (
             <>
               {/* ---- the market, first ----

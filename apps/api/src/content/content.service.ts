@@ -19,6 +19,11 @@ import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
 import { scopeOf, knownTrades } from './trends/trend-feed';
 import { tradeKeywordsFor, fillKeyword } from './trends/trade-keywords';
+import { buildRoadmap, manualTaskIds } from './seo-roadmap';
+
+/** Where one salon's roadmap ticks live. JSON per tenant — adding a task needs
+ *  no migration, and an id that disappears simply stops being read. */
+const SEO_ROADMAP_KEY = 'seo_roadmap';
 import { addDaysToKey, wallTimeToUtcTz as wallTimeToUtc } from '../common/salon-time';
 import { buildWeekOutcome, describeOutcome, describeDelta, type WeekOutcome } from './week-outcome';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
@@ -1801,6 +1806,56 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       city: ctx.region.city,
       region: ctx.region.region,
     });
+  }
+
+  // ---- the Google Maps roadmap -------------------------------------------
+
+  /**
+   * The roadmap for one salon: the catalog, plus what the system measured,
+   * plus what a person ticked.
+   *
+   * The SEO report is rebuilt here rather than cached, because a task's state
+   * has to be true at the moment it is read. A checklist showing yesterday's
+   * answer is the one failure mode that makes people stop trusting it.
+   */
+  async seoRoadmap(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const ctx = await this.gather(tenantId);
+    const report = await this.seoFor(tenantId, ctx).catch(() => null);
+    const checks: Record<string, string> = {};
+    for (const c of report?.checks ?? []) checks[c.key] = c.state;
+
+    const row = await this.prisma.setting
+      .findFirst({ where: { tenantId, key: SEO_ROADMAP_KEY }, select: { value: true } })
+      .catch(() => null);
+    const ticks = (row?.value ?? {}) as Record<string, { done?: boolean; at?: string; by?: string }>;
+
+    return localizeDeep(buildRoadmap(checks, ticks), 'vi');
+  }
+
+  /** Tick or untick one manual task. Measured tasks refuse: their answer comes
+   *  from the numbers, and an override would make the whole board a guess. */
+  async setSeoTask(user: AuthenticatedUser, taskId: string, done: boolean) {
+    const tenantId = this.tenantId(user);
+    if (!manualTaskIds().includes(taskId)) {
+      throw new BadRequestException('Mục này do hệ thống tự xác nhận, không tích tay được.');
+    }
+    const row = await this.prisma.setting
+      .findFirst({ where: { tenantId, key: SEO_ROADMAP_KEY }, select: { id: true, value: true } })
+      .catch(() => null);
+    const cur = (row?.value ?? {}) as Record<string, unknown>;
+    const next = {
+      ...cur,
+      [taskId]: done
+        ? { done: true, at: new Date().toISOString(), by: user.email ?? user.userId ?? null }
+        : { done: false },
+    };
+    if (row?.id) {
+      await this.prisma.setting.update({ where: { id: row.id }, data: { value: next as never } });
+    } else {
+      await this.prisma.setting.create({ data: { tenantId, key: SEO_ROADMAP_KEY, value: next as never } });
+    }
+    return this.seoRoadmap(user);
   }
 
   /**

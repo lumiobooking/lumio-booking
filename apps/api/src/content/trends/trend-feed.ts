@@ -110,9 +110,25 @@ export interface TradeQueries {
    * so the title has to carry one of these before the item is kept.
    */
   mustMatch: RegExp;
-  /** YouTube search terms — each is one search.list call, so keep it to two or three. */
+  /**
+   * YouTube search terms. Each one costs a search.list call — 100 quota units
+   * of the project's 10,000/day — plus a 1-unit videos.list. Six terms is
+   * ~606 units per trade per market per day, which leaves the day's budget
+   * mostly untouched even with every trade pulling. Well past a dozen and a
+   * busy morning starts eating the quota that everything else shares.
+   */
   youtube: string[];
-  /** Instagram hashtags, without '#'. Three at most: the cap is 30 a week per account. */
+  /**
+   * Instagram hashtags, without '#'.
+   *
+   * THE LIMIT THAT MATTERS: an Instagram account may query 30 UNIQUE hashtags
+   * in a rolling 7 days. These are fixed, so a week costs exactly as many
+   * unique tags as there are entries here — seven leaves comfortable headroom.
+   * What must never happen is rotating the list by day or by season: thirty
+   * unique tags burn through in a few days and every remaining pull that week
+   * fails for every salon at once. Grow this list slowly; never make it
+   * dynamic.
+   */
   hashtags: string[];
   /** Google Trends seed terms. Related rising queries come back for each. */
   google: string[];
@@ -126,10 +142,23 @@ export interface TradeQueries {
 
 const QUERIES: Record<string, TradeQueries> = {
   SALON: {
-    mustMatch: /\b(nails?|manicure|pedicure|gel[- ]?x|acrylics?|nail ?art|chrome|french tips?|press[- ]ons?)\b/i,
-    youtube: ['nail art', 'nail design ideas', 'nail trends'],
-    hashtags: ['nailart', 'nailsofinstagram', 'naildesign'],
-    google: ['nails', 'nail salon'],
+    // Widened to the vocabulary customers actually search in: dip powder,
+    // ombre, BIAB, builder gel and shellac name services on their own, without
+    // the word "nail" anywhere in the title, and were being filtered out of
+    // YouTube results as off-topic. Terms that already contain "nail" —
+    // coffin nails, french tip nails, russian manicure — need no entry: the
+    // first alternative catches them.
+    mustMatch: /\b(nails?|manicure|pedicure|gel[- ]?x|acrylics?|nail ?art|chrome|french tips?|press[- ]ons?|dip powder|ombr[eé]|biab|builder gel|shellac)\b/i,
+    // Three evergreen terms plus the three design shapes with the largest
+    // search volume behind them (coffin ~110k, french ~74k, chrome carrying
+    // the icy-blue trend). Six searches, ~606 quota units a day.
+    youtube: ['nail art', 'nail design ideas', 'nail trends', 'french tip nails', 'chrome nails', 'coffin nails'],
+    // Seven fixed tags — see the limit note on the field. The four added ones
+    // are where customers browse for a design to bring to the appointment.
+    hashtags: ['nailart', 'nailsofinstagram', 'naildesign', 'nailinspo', 'frenchtipnails', 'chromenails', 'gelxnails'],
+    // Two seeds asked what was rising around the shop; two more ask what is
+    // rising around the WORK, which is what the content plan needs.
+    google: ['nails', 'nail salon', 'nail designs', 'gel nails'],
     pinterestInterests: ['beauty'],
   },
   RESTAURANT: {

@@ -242,6 +242,26 @@ describe('ranking and the overlay', () => {
     expect(out.filter((x) => x.source === 'youtube')).toHaveLength(11);
   });
 
+  it('does not filter out the services whose names never say "nail"', () => {
+    // Each of these is a real service a customer searches by name. Before the
+    // pattern was widened, a YouTube title like "dip powder at home" failed
+    // mustMatch and the trade lost the whole category.
+    const q = queriesFor('SALON');
+    for (const title of [
+      'Dip powder over natural nails',        // also matches via "nails"
+      'How to do a dip powder set at home',
+      'Ombre fade tutorial for beginners',
+      'BIAB removal without damage',
+      'Builder gel overlay, step by step',
+      'Shellac vs regular polish',
+      'French tip freehand, no guides',
+    ]) {
+      expect(q.mustMatch.test(title)).toBe(true);
+    }
+    // And it still refuses what has nothing to do with the trade.
+    expect(q.mustMatch.test('I bought a new light ring and cried')).toBe(false);
+  });
+
   it('is unchanged when only one source is present', () => {
     const only = Array.from({ length: 5 }, (_, i) => item({
       id: `y${i}`, source: 'youtube', title: `video ${i}`, via: `term ${i}`, perDay: 100 - i,
@@ -287,12 +307,24 @@ describe('sharing one pull across every salon in a trade', () => {
     expect(scopeOf('BOGUS', 'MX')).toBe('SALON:US');
   });
 
-  it('asks each feed at most three things per trade, because every one is a paid call', () => {
+  it('keeps every trade inside the budget its feed actually spends', () => {
+    // Each feed is metered differently, so one shared number was hiding three
+    // different risks. The real ones:
+    //
+    //  YouTube  — a search.list is 100 of the project's 10,000 daily units,
+    //             and every trade draws on the same key.
+    //  Instagram— 30 UNIQUE hashtags per account per rolling 7 days. The
+    //             lists are fixed, so a week costs their length; the way this
+    //             breaks is someone adding a seasonal batch, and it breaks
+    //             invisibly, mid-week, for every salon at once.
+    //  Google   — one DataForSEO task per seed, billed per task.
     for (const ind of ['SALON', 'RESTAURANT', 'REAL_ESTATE', 'SERVICE']) {
       const q = queriesFor(ind);
-      expect(q.youtube.length).toBeLessThanOrEqual(3);
-      expect(q.hashtags.length).toBeLessThanOrEqual(3);
-      expect(q.google.length).toBeLessThanOrEqual(3);
+      expect(q.youtube.length).toBeLessThanOrEqual(8);
+      expect(q.hashtags.length).toBeLessThanOrEqual(10);
+      expect(q.google.length).toBeLessThanOrEqual(6);
+      // A repeated tag spends the weekly allowance twice for one topic.
+      expect(new Set(q.hashtags).size).toBe(q.hashtags.length);
     }
   });
 

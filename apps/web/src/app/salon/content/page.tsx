@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { SeoRoadmap } from '../../../components/SeoRoadmap';
 import { OnboardingReport } from '../../../components/OnboardingReport';
+import { Panel } from '../../../components/Panel';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
@@ -3009,8 +3010,11 @@ function Inner() {
               })}
             </>
           )}
-          {tab === 'start' && <OnboardingReport token={token} />}
-          {tab === 'map' && <SeoRoadmap token={token} />}
+          {/* Fenced: a panel that cannot render is a broken panel, not a broken
+              page. Without this, one field the API has not shipped yet replaces
+              the ideas, the calendar and the queue with a stack trace. */}
+          {tab === 'start' && <Panel name="Đánh giá khởi đầu"><OnboardingReport token={token} /></Panel>}
+          {tab === 'map' && <Panel name="Lộ trình SEO"><SeoRoadmap token={token} /></Panel>}
 
           {tab === 'ads' && (
             <>

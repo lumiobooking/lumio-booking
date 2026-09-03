@@ -894,6 +894,28 @@ export interface RoadmapView {
    * between a plan and a wall.
    */
   dueNow: RoadmapTaskView[];
+
+  /**
+   * The map track, repeated at the top level in the shape this response had
+   * before it grew a second track.
+   *
+   * These are not for new code. They exist because the API and the web app
+   * deploy as two separate services, so for a few minutes on every release one
+   * of them is a version behind the other — and on the release that introduced
+   * `tracks`, a web bundle still on the old build called `monthsText` with a
+   * `weeksToGoal` that had moved inside `tracks`. `undefined is not iterable`,
+   * and the whole content screen was replaced by a stack trace: the ideas, the
+   * calendar, the queue, all of it, for a live salon.
+   *
+   * A response that drops a field its own client still reads is a breaking
+   * change, and "both sides deploy together" is not a thing anyone can promise.
+   * So the old fields stay, mirroring the map track, until nothing reads them.
+   */
+  phases: TrackView['phases'];
+  done: number;
+  total: number;
+  next: RoadmapTaskView | null;
+  weeksToGoal: [number, number];
 }
 
 export function buildRoadmap(
@@ -974,7 +996,20 @@ export function buildRoadmap(
       .filter((t): t is RoadmapTaskView => Boolean(t)),
   ];
 
-  return { tier, tracks, dueNow };
+  // Mirrored from the map track — see the note on RoadmapView. Dropping these
+  // is what turned one release into a broken screen for a live salon.
+  const map = tracks.find((t) => t.track === 'map') ?? tracks[0];
+
+  return {
+    tier,
+    tracks,
+    dueNow,
+    phases: map?.phases ?? [],
+    done: map?.done ?? 0,
+    total: map?.total ?? 0,
+    next: map?.next ?? null,
+    weeksToGoal: map?.weeksToGoal ?? [0, 0],
+  };
 }
 
 /** Ids a person is allowed to tick. A `check` task is decided by measurement,

@@ -153,6 +153,36 @@ describe('the keyword and website track', () => {
   });
 });
 
+describe('an older screen must not be broken by a newer server', () => {
+  // This is not tidiness. The API and the web app deploy as two services, so on
+  // every release one of them is a version behind the other for a few minutes.
+  // The release that introduced `tracks` moved `weeksToGoal` inside it, and a
+  // web bundle still on the old build called monthsText(undefined) — "e is not
+  // iterable", and a live salon's whole content screen became a stack trace:
+  // the ideas, the calendar and the post queue with it.
+  const OLD_FIELDS = ['phases', 'done', 'total', 'next', 'weeksToGoal'] as const;
+
+  it('still answers in the shape the previous screen reads', () => {
+    const r = buildRoadmap({}, {}) as unknown as Record<string, unknown>;
+    for (const f of OLD_FIELDS) expect(r[f]).toBeDefined();
+    expect(Array.isArray(r.weeksToGoal)).toBe(true);
+    expect((r.weeksToGoal as number[]).length).toBe(2);
+    expect(Array.isArray(r.phases)).toBe(true);
+  });
+
+  it('mirrors the map track exactly, so the old screen shows the truth', () => {
+    // Answering with the right shape and the wrong numbers would be worse than
+    // crashing: nobody would notice.
+    const r = buildRoadmap({ 'review-count': 'pass' }, { 'verify-gbp': { done: true } }, 'high');
+    const map = trackOf(r, 'map');
+    expect(r.phases).toBe(map.phases);
+    expect(r.done).toBe(map.done);
+    expect(r.total).toBe(map.total);
+    expect(r.next?.id).toBe(map.next?.id);
+    expect(r.weeksToGoal).toEqual(map.weeksToGoal);
+  });
+});
+
 describe('what is due right now', () => {
   const NOW = new Date('2026-09-03T12:00:00Z'); // a Thursday
 

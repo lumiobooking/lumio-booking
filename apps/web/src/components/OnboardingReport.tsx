@@ -54,18 +54,19 @@ function asText(r: Report): string {
   L.push(`${r.trade} · ${r.where}`);
   L.push('');
   L.push('NHỮNG GÌ ĐÃ ĐỌC ĐƯỢC');
-  if (r.known.length) for (const k of r.known) L.push(`• ${k.label}: ${k.value}  (${k.source})`);
+  const known = Array.isArray(r.known) ? r.known : [];
+  if (known.length) for (const k of known) L.push(`• ${k.label}: ${k.value}  (${k.source})`);
   else L.push('• Chưa đọc được gì về tiệm này.');
   L.push('');
   L.push('NHỮNG GÌ CHƯA NHÌN THẤY ĐƯỢC');
-  for (const u of r.unknowns) L.push(`• ${u.label}\n  Hệ quả: ${u.cost}\n  Cách mở: ${u.unlock}`);
+  for (const u of r.unknowns ?? []) L.push(`• ${u.label}\n  Hệ quả: ${u.cost}\n  Cách mở: ${u.unlock}`);
   L.push('');
-  L.push(`ĐIỂM KHỞI ĐẦU: ${r.start.verdict}`);
+  L.push(`ĐIỂM KHỞI ĐẦU: ${r.start?.verdict ?? '—'}`);
   L.push('');
   L.push('THÁNG ĐẦU TIÊN');
-  for (const w of r.firstMonth) {
+  for (const w of r.firstMonth ?? []) {
     L.push(`Tuần ${w.week} — ${w.focus} (${w.minutes} phút)`);
-    for (const t of w.tasks) L.push(`  ${t.track === 'map' ? '📍' : '🔍'} ${t.title} (${t.minutes}p)`);
+    for (const t of w.tasks ?? []) L.push(`  ${t.track === 'map' ? '📍' : '🔍'} ${t.title} (${t.minutes}p)`);
   }
   L.push('');
   L.push(`THỜI GIAN: ${r.promise}`);
@@ -103,7 +104,14 @@ export function OnboardingReport({ token }: { token: string | null }) {
   if (err) return <div style={{ ...ui.card, padding: 16, color: '#ef4444', fontSize: 13.5 }}>{err}</div>;
   if (!r) return <div style={{ fontSize: 13, color: 'var(--c64748b)', padding: '18px 0' }}>Đang dựng bản đánh giá…</div>;
 
-  const band = BAND[r.confidence];
+  // Every list below is iterated. A server on an older shape must produce a
+  // sentence rather than a stack trace, and the sentence has to name the cause
+  // — a spinner that never resolves is the version of this nobody reports.
+  const known = Array.isArray(r.known) ? r.known : [];
+  const gaps = Array.isArray(r.unknowns) ? r.unknowns : [];
+  const weeks = Array.isArray(r.firstMonth) ? r.firstMonth : [];
+  const terms = Array.isArray(r.keywords?.primary) ? r.keywords.primary : [];
+  const band = BAND[r.confidence] ?? BAND.thin;
 
   return (
     <>
@@ -140,16 +148,16 @@ export function OnboardingReport({ token }: { token: string | null }) {
 
       {/* ---- what we could see ---- */}
       <Section
-        title={`✓ Đã đọc được — ${r.known.length} mục`}
+        title={`✓ Đã đọc được — ${known.length} mục`}
         note="Mỗi dòng kèm nguồn. Dòng nào không có nguồn thì không phải sự thật, nó là phỏng đoán, và ở đây không có phỏng đoán."
       >
-        {r.known.length === 0 ? (
+        {known.length === 0 ? (
           <div style={{ fontSize: 13, color: '#ef4444', lineHeight: 1.6 }}>
             Chưa đọc được gì về tiệm này. Toàn bộ phần dưới là khung chuẩn của ngành, không phải phân tích riêng.
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-            {r.known.map((k, i) => (
+            {known.map((k, i) => (
               <div key={i} style={{ padding: '10px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
                 <div style={{ fontSize: 11, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{k.label}</div>
                 <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.55, marginTop: 3 }}>{k.value}</div>
@@ -162,11 +170,11 @@ export function OnboardingReport({ token }: { token: string | null }) {
 
       {/* ---- what we could not ---- */}
       <Section
-        title={`✕ Chưa nhìn thấy được — ${r.unknowns.length} mục`}
+        title={`✕ Chưa nhìn thấy được — ${gaps.length} mục`}
         note="Đây là danh sách việc bán hàng thật sự: mỗi dòng là một thứ đang che mắt hệ thống, và mỗi dòng có đúng một cách mở."
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-          {r.unknowns.map((u, i) => (
+          {gaps.map((u, i) => (
             <div key={i} style={{ padding: '11px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }}>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: '#f59e0b', lineHeight: 1.4 }}>{u.label}</div>
               <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 5 }}>{u.cost}</div>
@@ -182,9 +190,9 @@ export function OnboardingReport({ token }: { token: string | null }) {
       <Section title="Điểm khởi đầu">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
           {[
-            { n: r.start.measured, l: 'đo được', c: '#22c55e' },
-            { n: r.start.failing, l: 'đang hỏng', c: '#ef4444' },
-            { n: r.start.unknown, l: 'chưa thấy', c: '#f59e0b' },
+            { n: r.start?.measured ?? 0, l: 'đo được', c: '#22c55e' },
+            { n: r.start?.failing ?? 0, l: 'đang hỏng', c: '#ef4444' },
+            { n: r.start?.unknown ?? 0, l: 'chưa thấy', c: '#f59e0b' },
           ].map((x) => (
             <div key={x.l} style={{ flex: '1 1 100px', padding: '10px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
               <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: x.c }}>{x.n}</div>
@@ -192,13 +200,13 @@ export function OnboardingReport({ token }: { token: string | null }) {
             </div>
           ))}
         </div>
-        <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>{r.start.verdict}</div>
+        <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>{r.start?.verdict}</div>
       </Section>
 
       {/* ---- keywords ---- */}
-      <Section title={`Từ khoá mục tiêu — ${r.keywords.pages} trang cần dựng`}>
+      <Section title={`Từ khoá mục tiêu — ${r.keywords?.pages ?? 0} trang cần dựng`}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {r.keywords.primary.map((k, i) => (
+          {terms.map((k, i) => (
             <span key={i} style={{
               fontFamily: mono, fontSize: 11.5, color: 'var(--ce2e8f0)',
               background: 'rgba(56,189,248,.12)', border: '1px solid #38bdf8',
@@ -211,7 +219,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
       {/* ---- the first month ---- */}
       <Section title="Tháng đầu tiên" note="Chia theo tuần, mỗi tuần dưới khoảng 3 tiếng — vừa đủ để một chủ tiệm làm thật chứ không phải đọc rồi bỏ.">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {r.firstMonth.map((w) => (
+          {weeks.map((w) => (
             <div key={w.week} style={{ padding: '11px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ca5b4fc)' }}>Tuần {w.week} — {w.focus}</span>

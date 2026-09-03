@@ -98,11 +98,35 @@ const KIND_LABEL: Record<string, string> = {
   guide: 'Bài hướng dẫn — kéo khách chưa sẵn sàng đặt',
 };
 
-/** Weeks → a sentence an owner can hold you to. */
-function monthsText([lo, hi]: [number, number]): string {
+/**
+ * Weeks → a sentence an owner can hold you to.
+ *
+ * Takes `unknown` on purpose. This reads a field off a JSON response, and
+ * destructuring the parameter directly turned a server that had not shipped
+ * that field yet into `undefined is not iterable` — a stack trace where the
+ * whole screen used to be. A missing timeline is a missing sentence, not an
+ * outage.
+ */
+function monthsText(weeks: unknown): string {
+  if (!Array.isArray(weeks) || weeks.length < 2) return '';
+  const [lo, hi] = weeks as [number, number];
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return '';
   if (hi === 0) return 'Đã hết việc — từ đây là giữ hạng';
   const m = (w: number) => Math.round((w / 4.35) * 10) / 10;
   return `còn khoảng ${m(lo)}–${m(hi)} tháng nữa`;
+}
+
+/** What to show when the server is still on an older shape than this screen. */
+function Mismatch({ what }: { what: string }) {
+  return (
+    <div style={{ ...ui.card, padding: 16, borderColor: '#f59e0b' }}>
+      <div style={{ fontSize: 14.5, fontWeight: 700, color: '#f59e0b' }}>Chưa hiển thị được {what}</div>
+      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.65, marginTop: 6 }}>
+        Máy chủ đang trả về dữ liệu theo phiên bản cũ hơn màn hình này — thường là vì bản cập nhật
+        vừa lên và phần máy chủ còn đang chạy. Đợi vài phút rồi tải lại trang.
+      </div>
+    </div>
+  );
 }
 
 const TONE: Record<TaskState, { fg: string; bg: string }> = {
@@ -334,26 +358,32 @@ export function SeoRoadmap({ token }: { token: string | null }) {
   if (err) return <div style={{ ...ui.card, padding: 16, color: '#ef4444', fontSize: 13.5 }}>{err}</div>;
   if (!data) return <div style={{ fontSize: 13, color: 'var(--c64748b)', padding: '18px 0' }}>Đang tải…</div>;
 
+  // The one shape check on this screen. Everything below indexes into
+  // `tracks`, so a server that predates it must produce a sentence rather than
+  // a crash — and the sentence has to say what is actually wrong, because
+  // "đang tải…" for ever is the version of this bug nobody reports.
+  if (!Array.isArray(data.tracks) || data.tracks.length === 0) return <Mismatch what="lộ trình SEO" />;
   const cur = data.tracks.find((t) => t.track === tab) ?? data.tracks[0];
-  if (!cur) return null;
+  if (!cur || !Array.isArray(cur.phases)) return <Mismatch what="lộ trình SEO" />;
   const meta = TRACK_META[cur.track];
+  const due = Array.isArray(data.dueNow) ? data.dueNow : [];
   const pct = cur.total ? Math.round((cur.done / cur.total) * 100) : 0;
 
   return (
     <>
       {/* ---- what is due right now, across both tracks ---- */}
-      <div style={{ ...ui.card, padding: 16, marginBottom: 14, borderColor: data.dueNow.length ? '#f59e0b' : '#22c55e' }}>
+      <div style={{ ...ui.card, padding: 16, marginBottom: 14, borderColor: due.length ? '#f59e0b' : '#22c55e' }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
-          {data.dueNow.length ? `⚡ Việc đến hạn — ${data.dueNow.length} việc` : '✓ Không còn việc đến hạn'}
+          {due.length ? `⚡ Việc đến hạn — ${due.length} việc` : '✓ Không còn việc đến hạn'}
         </div>
         <div style={{ fontSize: 12.5, color: 'var(--c64748b)', lineHeight: 1.6, marginTop: 5 }}>
-          {data.dueNow.length
+          {due.length
             ? 'Việc lặp lại của kỳ này xếp trước, rồi tới việc mới của từng nhánh. Làm hết chỗ này là hôm nay xong — phần còn lại chưa tới hạn.'
             : 'Cả hai nhánh đều không có việc quá hạn. Tuần sau các việc lặp lại sẽ tự bật lại.'}
         </div>
-        {data.dueNow.length > 0 && (
+        {due.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 12 }}>
-            {data.dueNow.map((t) => (
+            {due.map((t) => (
               <TaskRow key={t.id} t={t} busy={busy} onToggle={toggle} showTrack />
             ))}
           </div>

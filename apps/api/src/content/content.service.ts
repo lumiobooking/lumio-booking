@@ -19,7 +19,7 @@ import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
 import { scopeOf, knownTrades } from './trends/trend-feed';
 import { tradeKeywordsFor, fillKeyword } from './trends/trade-keywords';
-import { buildRoadmap, manualTaskIds } from './seo-roadmap';
+import { buildRoadmap, manualTaskIds, asTier, type Tier } from './seo-roadmap';
 
 /** Where one salon's roadmap ticks live. JSON per tenant — adding a task needs
  *  no migration, and an id that disappears simply stops being read. */
@@ -1828,9 +1828,38 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     const row = await this.prisma.setting
       .findFirst({ where: { tenantId, key: SEO_ROADMAP_KEY }, select: { value: true } })
       .catch(() => null);
-    const ticks = (row?.value ?? {}) as Record<string, { done?: boolean; at?: string; by?: string }>;
+    const stored = (row?.value ?? {}) as { tier?: string; ticks?: Record<string, { done?: boolean; at?: string; by?: string }> };
+    // Older rows stored the ticks at the top level, before the tier existed.
+    // Read both shapes rather than migrating: a salon that ticked ten boxes
+    // last week must not open the board to find them gone.
+    const ticks = stored.ticks ?? (stored as Record<string, { done?: boolean; at?: string; by?: string }>);
 
-    return localizeDeep(buildRoadmap(checks, ticks), 'vi');
+    return localizeDeep(buildRoadmap(checks, ticks, asTier(stored.tier)), 'vi');
+  }
+
+  /** The market this salon competes in. Declared by whoever looked at the map —
+   *  nothing here can count the shops in a five-mile radius. */
+  async setSeoTier(user: AuthenticatedUser, tier: unknown) {
+    const tenantId = this.tenantId(user);
+    await this.writeRoadmap(tenantId, (cur) => ({ ...cur, tier: asTier(tier) as Tier }));
+    return this.seoRoadmap(user);
+  }
+
+  /** Read-modify-write of the roadmap row, in the one shape everything uses. */
+  private async writeRoadmap(
+    tenantId: string,
+    change: (cur: { tier?: string; ticks?: Record<string, unknown> }) => Record<string, unknown>,
+  ) {
+    const row = await this.prisma.setting
+      .findFirst({ where: { tenantId, key: SEO_ROADMAP_KEY }, select: { id: true, value: true } })
+      .catch(() => null);
+    const raw = (row?.value ?? {}) as Record<string, unknown>;
+    const cur = raw.ticks || raw.tier
+      ? (raw as { tier?: string; ticks?: Record<string, unknown> })
+      : { ticks: raw as Record<string, unknown> };
+    const next = change(cur);
+    if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: next as never } });
+    else await this.prisma.setting.create({ data: { tenantId, key: SEO_ROADMAP_KEY, value: next as never } });
   }
 
   /** Tick or untick one manual task. Measured tasks refuse: their answer comes
@@ -1840,21 +1869,18 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     if (!manualTaskIds().includes(taskId)) {
       throw new BadRequestException('Mục này do hệ thống tự xác nhận, không tích tay được.');
     }
-    const row = await this.prisma.setting
-      .findFirst({ where: { tenantId, key: SEO_ROADMAP_KEY }, select: { id: true, value: true } })
-      .catch(() => null);
-    const cur = (row?.value ?? {}) as Record<string, unknown>;
-    const next = {
+    await this.writeRoadmap(tenantId, (cur) => ({
       ...cur,
-      [taskId]: done
-        ? { done: true, at: new Date().toISOString(), by: user.email ?? user.userId ?? null }
-        : { done: false },
-    };
-    if (row?.id) {
-      await this.prisma.setting.update({ where: { id: row.id }, data: { value: next as never } });
-    } else {
-      await this.prisma.setting.create({ data: { tenantId, key: SEO_ROADMAP_KEY, value: next as never } });
-    }
+      ticks: {
+        ...(cur.ticks ?? {}),
+        // The timestamp is what makes a recurring job expire with its period,
+        // so it is written even when unticking — a tick with no date would be
+        // permanently "done" for weekly work.
+        [taskId]: done
+          ? { done: true, at: new Date().toISOString(), by: user.email ?? user.userId ?? null }
+          : { done: false, at: new Date().toISOString() },
+      },
+    }));
     return this.seoRoadmap(user);
   }
 

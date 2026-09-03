@@ -1,4 +1,4 @@
-import { buildRoadmap, manualTaskIds, TASKS, PHASES } from './seo-roadmap';
+import { buildRoadmap, manualTaskIds, periodKey, asTier, TASKS, PHASES, TIERS } from './seo-roadmap';
 
 describe('the Maps roadmap board', () => {
   it('lets the numbers decide a measured task, both ways', () => {
@@ -65,7 +65,7 @@ describe('the Maps roadmap board', () => {
   it('counts progress per phase and overall', () => {
     const r = buildRoadmap({ 'review-count': 'pass', 'review-velocity': 'pass' }, { 'verify-gbp': { done: true } });
     expect(r.done).toBe(3);
-    expect(r.total).toBe(TASKS.length);
+    expect(r.total).toBe(TASKS.filter((t) => t.tiers.includes('medium')).length);
     const p2 = r.phases.find((p) => p.n === 2);
     expect(p2?.done).toBe(2);
   });
@@ -80,8 +80,82 @@ describe('the Maps roadmap board', () => {
       if (t.kind === 'check') expect(t.from?.key).toBeTruthy();
       // A manual task with no time estimate cannot be scheduled into a week.
       if (t.kind === 'manual') expect(t.minutes).toBeGreaterThan(0);
+      // A task belonging to no tier renders for nobody.
+      expect(t.tiers.length).toBeGreaterThan(0);
     }
     // Every phase has work in it.
     for (const p of PHASES) expect(TASKS.some((t) => t.phase === p.n)).toBe(true);
+  });
+
+  it('gives a crowded market more work than a small town', () => {
+    const low = buildRoadmap({}, {}, 'low');
+    const high = buildRoadmap({}, {}, 'high');
+    expect(high.total).toBeGreaterThan(low.total);
+
+    // And the small town is not sent to buy backlinks it does not need.
+    const lowIds = low.phases.flatMap((p) => p.tasks).map((t) => t.id);
+    expect(lowIds).not.toContain('link-chamber');
+    expect(lowIds).not.toContain('citation-core');
+    expect(low.phases.find((p) => p.n === 4)?.weeksLeft).toBeNull();
+  });
+
+  it('quotes a longer timeline where it is more crowded', () => {
+    const low = buildRoadmap({}, {}, 'low').weeksToGoal;
+    const high = buildRoadmap({}, {}, 'high').weeksToGoal;
+    expect(high[1]).toBeGreaterThan(low[1]);
+    expect(low[0]).toBeGreaterThan(0);
+  });
+
+  it('stops counting weeks for a phase that is finished', () => {
+    const ticks: Record<string, { done: boolean; at: string }> = {};
+    const at = new Date().toISOString();
+    for (const t of TASKS.filter((x) => x.phase === 0 && x.kind === 'manual')) ticks[t.id] = { done: true, at };
+    const r = buildRoadmap({ 'keyword-match': 'pass', 'search-share': 'pass' }, ticks, 'medium');
+    expect(r.phases.find((p) => p.n === 0)?.weeksLeft).toBeNull();
+  });
+});
+
+describe('recurring work expires with its period', () => {
+  const WEEKLY = TASKS.find((t) => t.cadence === 'weekly')!;
+  const NOW = new Date('2026-09-03T12:00:00Z'); // a Thursday
+
+  it('counts a weekly job as done only inside the week it was ticked', () => {
+    const thisWeek = buildRoadmap({}, { [WEEKLY.id]: { done: true, at: '2026-09-01T09:00:00Z' } }, 'medium', NOW);
+    const lastWeek = buildRoadmap({}, { [WEEKLY.id]: { done: true, at: '2026-08-25T09:00:00Z' } }, 'medium', NOW);
+    const pick = (r: ReturnType<typeof buildRoadmap>) =>
+      r.phases.flatMap((p) => p.tasks).find((t) => t.id === WEEKLY.id);
+
+    expect(pick(thisWeek)?.state).toBe('done');
+    // The failure this prevents: "post 2-3x a week", ticked in March, still
+    // green in June, while nobody has posted since.
+    expect(pick(lastWeek)?.state).toBe('todo');
+    expect(pick(lastWeek)?.recurring).toBe(true);
+  });
+
+  it('keys periods the way a shop experiences them', () => {
+    // Sunday and Monday are different weeks to a salon, and to ISO.
+    expect(periodKey('weekly', new Date('2026-09-06T12:00:00Z')))
+      .not.toBe(periodKey('weekly', new Date('2026-09-07T12:00:00Z')));
+    // Month and quarter roll over on the real boundary.
+    expect(periodKey('monthly', new Date('2026-09-30T23:00:00Z'))).toBe('2026-09');
+    expect(periodKey('monthly', new Date('2026-10-01T01:00:00Z'))).toBe('2026-10');
+    expect(periodKey('quarterly', new Date('2026-09-30T12:00:00Z'))).toBe('2026-Q3');
+    expect(periodKey('quarterly', new Date('2026-10-01T12:00:00Z'))).toBe('2026-Q4');
+    // A one-off never expires.
+    expect(periodKey('once', new Date('2020-01-01T00:00:00Z'))).toBe(periodKey('once', NOW));
+  });
+
+  it('a one-off ticked long ago stays done', () => {
+    const r = buildRoadmap({}, { 'verify-gbp': { done: true, at: '2024-01-01T00:00:00Z' } }, 'medium', NOW);
+    expect(r.phases.flatMap((p) => p.tasks).find((t) => t.id === 'verify-gbp')?.state).toBe('done');
+  });
+});
+
+describe('the competition tier', () => {
+  it('falls back to medium for anything unrecognised', () => {
+    // Being told to do slightly too much is a smaller failure than being told
+    // to do too little and wondering for six months why nothing moved.
+    for (const bad of [null, undefined, '', 'HIGH ', 'enormous', 7]) expect(asTier(bad)).toBe('medium');
+    for (const t of TIERS) expect(asTier(t)).toBe(t);
   });
 });

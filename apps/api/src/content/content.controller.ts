@@ -45,6 +45,11 @@ export class ContentController {
     return this.svc.seoRoadmap(user);
   }
 
+  @Post('seo-tier')
+  setSeoTier(@CurrentUser() user: AuthenticatedUser, @Body() dto?: { tier?: string }) {
+    return this.svc.setSeoTier(user, dto?.tier);
+  }
+
   @Post('seo-roadmap/:taskId')
   setSeoTask(
     @CurrentUser() user: AuthenticatedUser,

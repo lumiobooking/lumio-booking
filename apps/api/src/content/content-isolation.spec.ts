@@ -73,6 +73,26 @@ describe('every read the content engine makes is fenced to one tenant', () => {
     }
   });
 
+  it('fences the opening assessment too, which reads more tables than the plan', async () => {
+    // The onboarding report goes looking for connections, settings and the
+    // service list all at once, and it is read by the agency rather than by
+    // the salon — exactly the shape of screen where a missing tenantId shows
+    // one client's shop to another and nobody notices for months.
+    const q: Query[] = [];
+    await svc(q).onboardingReport(userOf(TENANT));
+
+    const OWNED = ['appointment', 'customer', 'service', 'socialInsight', 'contentIdea', 'setting',
+      'googleReview', 'messengerConnection', 'messengerPage', 'marketingChannelConnection', 'staffMember'];
+    const touched = q.filter((x) => OWNED.includes(x.model));
+    expect(touched.length).toBeGreaterThan(0);
+    for (const call of touched) {
+      const w = wheres(call.args);
+      if (!w.some((x) => x.tenantId === TENANT)) {
+        throw new Error(`${call.model}.${call.op} ran without tenantId: ${JSON.stringify(call.args)}`);
+      }
+    }
+  });
+
   it('reads the tenant row by its own id and no other', async () => {
     const q: Query[] = [];
     await svc(q).planFor(userOf(TENANT));

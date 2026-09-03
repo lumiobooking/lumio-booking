@@ -123,6 +123,12 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
       // human has to remember to press anything.
       const a = await this.content.warmAreas().catch(() => ({ warmed: 0 }));
       if (a.warmed) this.logger.log(`Area figures refreshed for ${a.warmed} salon(s).`);
+      // Read the shops nobody has read yet. Until this ran, a salon nobody
+      // opened the screen for kept the enum default trade for ever, and every
+      // keyword set built for it was built for a generic salon. A few per tick,
+      // never the whole table — each one is an AI call and two network reads.
+      const sc = await this.content.scanNewProfiles().catch(() => ({ scanned: 0, saved: 0 }));
+      if (sc.scanned) this.logger.log(`Profile scan: read ${sc.scanned} salon(s), filled ${sc.saved}.`);
       // Freeze each salon's week, so the archive exists whether or not anybody
       // opened the screen. A plan nobody looked at is still the plan that was
       // in force, and next Monday it is the only record of it.

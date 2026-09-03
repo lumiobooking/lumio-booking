@@ -35,6 +35,18 @@ export class ContentController {
   // The client-safe shape: scheduled + recently-posted posts only, one-tap
   // approve. Comments ride the existing /content/chat routes (subject post:x).
 
+  /**
+   * The opening assessment for one salon.
+   *
+   * Read-only and computed on every request rather than cached: a report that
+   * shows yesterday's coverage while someone is in the middle of connecting the
+   * Google profile is a report that tells them their work did nothing.
+   */
+  @Get('onboarding')
+  onboarding(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.onboardingReport(user);
+  }
+
   // ---- Google Maps roadmap ----
   // Salon-side and read-mostly: the owner (or the Lumio team on their behalf)
   // walks the list. Ticking is deliberately per-task rather than a bulk save,

@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { SeoRoadmap } from '../../../components/SeoRoadmap';
+import { OnboardingReport } from '../../../components/OnboardingReport';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
@@ -129,7 +130,7 @@ interface BriefStep { key: string; order: number; title: string; finding: string
 interface MissingLink { key: string; what: string; unlocks: string; how: string }
 interface Brief { headline: string; steps: BriefStep[]; missing: MissingLink[]; complete: boolean; limits: string[] }
 interface SeoCheck { key: string; title: string; state: 'pass' | 'warn' | 'fail' | 'unknown'; finding: string; action: string; why: string }
-interface Seo { checks: SeoCheck[]; failing: number; headline: string; blindSpots: string[] }
+interface Seo { checks: SeoCheck[]; failing: number; unknown: number; measured: number; headline: string; blindSpots: string[] }
 interface PromoPlay { key: string; name: string; offer: string; why: string; useWhen: string; avoidWhen: string; cost: 'low' | 'medium' | 'high' }
 interface Promo {
   margin: { commissionPct: number | null; grossMarginPct: number | null; source: string; note?: string };
@@ -197,7 +198,7 @@ interface Plan {
  */
 type PlanEnvelope = Plan & { en?: Plan };
 
-type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience' | 'ads' | 'map' | 'queue';
+type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience' | 'ads' | 'start' | 'map' | 'queue';
 
 /** One post waiting to go out on the salon's own Page / Instagram. */
 interface QueuedPost {
@@ -966,6 +967,7 @@ function Inner() {
     { id: 'calendar', label: T('Lịch lễ', 'Calendar'), icon: '📆' },
     { id: 'audience', label: T('Khách & ưu đãi', 'Customers & offers'), icon: '🎯' },
     { id: 'ads', label: T('Quảng cáo & SEO', 'Ads & SEO'), icon: '📣' },
+    { id: 'start', label: T('Đánh giá khởi đầu', 'Opening assessment'), icon: '🧭' },
     { id: 'map', label: T('Lộ trình SEO', 'SEO roadmap'), icon: '🚀' },
     { id: 'queue', label: T('Lịch đăng bài', 'Post schedule'), icon: '🚀' },
   ];
@@ -3007,6 +3009,7 @@ function Inner() {
               })}
             </>
           )}
+          {tab === 'start' && <OnboardingReport token={token} />}
           {tab === 'map' && <SeoRoadmap token={token} />}
 
           {tab === 'ads' && (
@@ -3603,7 +3606,15 @@ function Inner() {
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
                     🔍 {T('SEO địa phương', 'Local SEO')}
                   </div>
-                  <div style={{ fontSize: 13, color: plan.seo.failing ? 'var(--cfca5a5)' : '#22c55e', marginBottom: 10 }}>{plan.seo.headline}</div>
+                  {/* Green is a claim. It is only earned when something was
+                      actually measured and came back clean — a report that
+                      graded nothing gets amber, not a pat on the back. */}
+                  <div style={{
+                    fontSize: 13, marginBottom: 10,
+                    color: plan.seo.failing ? 'var(--cfca5a5)'
+                      : plan.seo.unknown ? '#f59e0b'
+                        : '#22c55e',
+                  }}>{plan.seo.headline}</div>
 
                   {plan.seo.checks.map((c) => {
                     const st = STATE_STYLE[c.state];

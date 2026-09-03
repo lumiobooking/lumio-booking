@@ -20,10 +20,15 @@ import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, t
 import { scopeOf, knownTrades } from './trends/trend-feed';
 import { tradeKeywordsFor, fillKeyword } from './trends/trade-keywords';
 import { buildRoadmap, manualTaskIds, asTier, type Tier } from './seo-roadmap';
+import { buildOnboardingReport } from './onboarding-report';
 
 /** Where one salon's roadmap ticks live. JSON per tenant — adding a task needs
  *  no migration, and an id that disappears simply stops being read. */
 const SEO_ROADMAP_KEY = 'seo_roadmap';
+const PROFILE_SCAN_KEY = 'profile_scan';
+/** Attempts before a shop nothing can be read about is left alone. */
+const SCAN_TRIES = 3;
+const SCAN_RETRY_DAYS = 7;
 import { addDaysToKey, wallTimeToUtcTz as wallTimeToUtc } from '../common/salon-time';
 import { buildWeekOutcome, describeOutcome, describeDelta, type WeekOutcome } from './week-outcome';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
@@ -1233,6 +1238,77 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
   }
 
   /**
+   * Read the shops nobody has read yet — the scheduler's entry point.
+   *
+   * The profile scan was good and ran exactly never on its own. It fires only
+   * when a person opens the content screen and presses a button, and that
+   * person is Lumio, and Lumio does not open every salon. So a shop sat on
+   * `businessType: SALON` — the enum default, not a decision anyone made — and
+   * every keyword set, playbook and calendar built downstream was built for a
+   * generic salon rather than for the nail bar, spa or barber it actually was.
+   *
+   * Rate: a few tenants per hourly tick, not the whole table. Each scan is an
+   * AI call and two network reads; doing five hundred at once would be a
+   * self-inflicted outage on the hour the feature ships.
+   *
+   * Retry policy, which is the part worth getting right: a shop with no website
+   * and no Facebook page has nothing to read, and retrying it hourly for ever
+   * would burn calls to learn the same nothing. A shop whose scan failed
+   * because the model was briefly down deserves another go. So the marker
+   * records the attempt count and the outcome: a failure is retried after a
+   * week, three times, and then left alone. Pressing the button always works.
+   */
+  async scanNewProfiles(limit = 5): Promise<{ scanned: number; saved: number }> {
+    // No key, no scan — and no error line per tenant per hour to bury the logs.
+    // The Vietnam deployment runs without one by design.
+    if (!process.env.ANTHROPIC_API_KEY) return { scanned: 0, saved: 0 };
+
+    const tenants = await this.prisma.tenant.findMany({
+      where: { status: 'ACTIVE', deletedAt: null } as never,
+      select: { id: true },
+      take: 500,
+    }).catch(() => []) as { id: string }[];
+    if (!tenants.length) return { scanned: 0, saved: 0 };
+
+    const ids = tenants.map((t) => t.id);
+    const marks = await this.prisma.setting.findMany({
+      where: { tenantId: { in: ids }, key: PROFILE_SCAN_KEY },
+      select: { tenantId: true, value: true },
+    }).catch(() => []) as { tenantId: string; value: unknown }[];
+
+    const now = Date.now();
+    const skip = new Set<string>();
+    for (const m of marks) {
+      const v = (m.value ?? {}) as { ok?: boolean; tries?: number; at?: string };
+      const tries = Number(v.tries ?? 1);
+      const age = now - Date.parse(String(v.at ?? '')) || 0;
+      // Done, out of attempts, or not yet due for another try.
+      if (v.ok || tries >= SCAN_TRIES || age < SCAN_RETRY_DAYS * 86_400_000) skip.add(m.tenantId);
+    }
+
+    const todo = ids.filter((id) => !skip.has(id)).slice(0, Math.max(1, limit));
+    let saved = 0;
+    for (const tenantId of todo) {
+      // One salon's bad website must not stop the sweep for the rest.
+      const r = await this.scanProfileFor(tenantId).catch(() => null);
+      if (r?.saved) saved += 1;
+      const prev = marks.find((m) => m.tenantId === tenantId)?.value as { tries?: number } | undefined;
+      await this.markScan(tenantId, Boolean(r?.saved), Number(prev?.tries ?? 0) + 1);
+    }
+    return { scanned: todo.length, saved };
+  }
+
+  /** Remember that we tried, so nothing is scanned in a loop for ever. */
+  private async markScan(tenantId: string, ok: boolean, tries: number) {
+    const value = { ok, tries, at: new Date().toISOString() };
+    const row = await this.prisma.setting
+      .findFirst({ where: { tenantId, key: PROFILE_SCAN_KEY }, select: { id: true } })
+      .catch(() => null);
+    if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: value as never } }).catch(() => undefined);
+    else await this.prisma.setting.create({ data: { tenantId, key: PROFILE_SCAN_KEY, value: value as never } }).catch(() => undefined);
+  }
+
+  /**
    * Draft for every active tenant — the scheduler's entry point.
    *
    * `industry` is now a FILTER, not a requirement, and it defaults to nothing.
@@ -1822,6 +1898,85 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     };
   }
 
+  /**
+   * The first thing anyone can say about a new salon, with the confidence
+   * attached.
+   *
+   * This exists because the platform could already produce a complete plan for
+   * a shop it had never looked at, and that plan was indistinguishable from one
+   * built on real data. The report below states which it is — every fact filed
+   * with its source, every gap filed with what it costs — so nobody quotes a
+   * catalog back to a client as an audit.
+   */
+  async onboardingReport(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const ctx = await this.gather(tenantId);
+    const seo = await this.seoFor(tenantId, ctx).catch(() => null);
+
+    const loose = this.prisma as unknown as Record<string, { findFirst?: (a: unknown) => Promise<unknown>; findUnique?: (a: unknown) => Promise<unknown> }>;
+    const [extraRow, scanRow, roadmapRow, services, msgConn, msgPage, gbpConn] = await Promise.all([
+      this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }).catch(() => null),
+      this.prisma.setting.findFirst({ where: { tenantId, key: PROFILE_SCAN_KEY }, select: { value: true } }).catch(() => null),
+      this.prisma.setting.findFirst({ where: { tenantId, key: SEO_ROADMAP_KEY }, select: { value: true } }).catch(() => null),
+      this.prisma.service.findMany({ where: { tenantId, isActive: true }, select: { name: true }, take: 40 }).catch(() => []),
+      loose.messengerConnection?.findUnique?.({ where: { tenantId }, select: { pageId: true } }).catch(() => null) ?? null,
+      loose.messengerPage?.findFirst?.({ where: { tenantId }, select: { pageId: true } }).catch(() => null) ?? null,
+      loose.marketingChannelConnection?.findFirst?.({ where: { tenantId, platform: 'gbp' }, select: { id: true } }).catch(() => null) ?? null,
+    ]);
+
+    const checks: Record<string, string> = {};
+    for (const c of seo?.checks ?? []) checks[c.key] = c.state;
+    const stored = (roadmapRow?.value ?? {}) as { tier?: string; ticks?: Record<string, { done?: boolean; at?: string; by?: string }> };
+    const ticks = stored.ticks ?? (stored as Record<string, { done?: boolean; at?: string; by?: string }>);
+    const tier = asTier(stored.tier);
+    const roadmap = buildRoadmap(checks, ticks, tier);
+
+    // One-off manual jobs only. A measured row cannot be "done" by a person,
+    // and a recurring row is not a first-month milestone — it is the rhythm
+    // that starts afterwards and never stops.
+    const todo = roadmap.tracks
+      .flatMap((t) => t.phases.flatMap((p) => p.tasks))
+      .filter((t) => t.state === 'todo' && !t.recurring && t.kind === 'manual')
+      .map((t) => ({ id: t.id, title: t.title, minutes: t.minutes ?? 30, track: t.track }));
+
+    const plan = this.keywordPlanFor(ctx);
+    const scan = scanRow?.value as { at?: string; ok?: boolean } | null;
+    const website = String(((extraRow?.value ?? {}) as { website?: string }).website ?? '').trim() || null;
+
+    const out = buildOnboardingReport({
+      shopName: ctx.tenantName,
+      tradeLabel: ctx.identity.label,
+      region: { label: ctx.region.label, city: ctx.region.city, regionKnown: ctx.region.regionKnown },
+      identity: { declared: ctx.identity.declared, filled: ctx.identity.filled, profile: ctx.identity.profile },
+      services: (services as { name: string }[]).map((x) => ({ name: x.name })),
+      website,
+      facebookConnected: Boolean((msgConn as { pageId?: string } | null)?.pageId || (msgPage as { pageId?: string } | null)?.pageId),
+      gbpConnected: Boolean((gbpConn as { id?: string } | null)?.id),
+      scan: scan ? { at: scan.at ?? null, ok: Boolean(scan.ok) } : null,
+      seo: {
+        measured: seo?.measured ?? 0,
+        unknown: seo?.unknown ?? 0,
+        failing: seo?.failing ?? 0,
+      },
+      tier,
+      weeksToGoal: {
+        map: roadmap.tracks.find((t) => t.track === 'map')?.weeksToGoal ?? [0, 0],
+        web: roadmap.tracks.find((t) => t.track === 'web')?.weeksToGoal ?? [0, 0],
+      },
+      todo,
+      keywords: {
+        // The primary term of each page to build: the first target is the one
+        // that goes in the title and the H1, so it is the one worth showing.
+        primary: plan.seoTopics.map((t) => t.targets[0]).filter(Boolean).slice(0, 8),
+        pages: plan.seoTopics.length,
+      },
+    });
+
+    // Both languages: the agency reads this in Vietnamese and some of them
+    // forward it to an English-speaking owner without rewriting a word.
+    return { ...localizeDeep(out, 'vi'), en: localizeDeep(out, 'en') };
+  }
+
   // ---- the Google Maps roadmap -------------------------------------------
 
   /**
@@ -1945,7 +2100,20 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     return { ...localizeDeep(out, 'vi'), en: localizeDeep(out, 'en') };
   }
 
-  private async scanProfileRaw(user: AuthenticatedUser, opts: { note?: string } = {}): Promise<{
+  private async scanProfileRaw(user: AuthenticatedUser, opts: { note?: string } = {}) {
+    return this.scanProfileFor(this.tenantId(user), opts);
+  }
+
+  /**
+   * The scan, keyed by tenant rather than by whoever pressed the button.
+   *
+   * Split out so the scheduler can run it. The scan was excellent and ran
+   * exactly never on its own: a salon that nobody opened the screen for kept
+   * `businessType: SALON` — the enum default — for ever, and every keyword,
+   * playbook and calendar downstream was built for a generic salon rather than
+   * for the nail bar, spa or barber it actually was.
+   */
+  async scanProfileFor(tenantId: string, opts: { note?: string } = {}): Promise<{
     draft: Record<string, string>; sources: Txt[]; warnings: Txt[];
     saved: boolean; locationSaved: string | null;
   }> {
@@ -1953,7 +2121,6 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     // in whichever language they set. `draft` is the AI's Vietnamese prose about
     // the business itself and is NOT translated here — which language the model
     // writes in is its own setting, one toggle further down that screen.
-    const tenantId = this.tenantId(user);
     const note = String(opts.note ?? '').trim().slice(0, 1000);
     const warnings: Txt[] = [];
     const sources: Txt[] = [];

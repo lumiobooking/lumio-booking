@@ -44,6 +44,18 @@ export interface SeoReport {
   checks: SeoCheck[];
   /** How many of the things that matter are failing. */
   failing: number;
+  /**
+   * How many checks could not be graded at all, and how many could.
+   *
+   * These two numbers exist because of a real bug this file shipped with: a
+   * brand-new salon has connected nothing, so every check returns 'unknown',
+   * so `failing` is 0 and `warning` is 0 — and the verdict read "local SEO is
+   * in good shape". Every new salon was told its SEO was fine, by a report
+   * that had measured precisely nothing. Absence of evidence was being
+   * rendered as evidence of health, in the first sentence they read.
+   */
+  unknown: number;
+  measured: number;
   headline: Txt;
   /** Said out loud: what this report cannot see. */
   blindSpots: Txt[];
@@ -238,21 +250,37 @@ export function buildSeoReport(input: SeoInput): SeoReport {
 
   const failing = checks.filter((c) => c.state === 'fail').length;
   const warning = checks.filter((c) => c.state === 'warn').length;
+  const unknown = checks.filter((c) => c.state === 'unknown').length;
+  const measured = checks.length - unknown;
+
+  // Order matters, and "nothing measured" has to outrank "nothing wrong".
+  // A real fault is still the loudest thing; but with no faults and no data,
+  // the honest verdict is that there is no verdict yet.
   const headline: Txt = failing
     ? bi(
       `${failing} việc đang chặn tiệm xuất hiện trên bản đồ.`,
       `${failing} things are keeping you off the map.`)
-    : warning
+    : measured === 0
       ? bi(
-        `Không có lỗi nặng, còn ${warning} chỗ nên siết lại.`,
-        `Nothing badly broken, but ${warning} things are worth tightening up.`)
-      : bi(
-        'Phần SEO địa phương đang ổn — tập trung vào nội dung và quảng cáo.',
-        'Local SEO is in good shape — put the effort into content and ads instead.');
+        'Chưa chấm được mục nào — hệ thống chưa nhìn thấy dữ liệu của tiệm. Nối Google Business Profile để bắt đầu đo.',
+        'Nothing could be graded yet — this cannot see the shop\'s data. Connect the Google Business Profile to start measuring.')
+      : warning
+        ? bi(
+          `Không có lỗi nặng, còn ${warning} chỗ nên siết lại.`,
+          `Nothing badly broken, but ${warning} things are worth tightening up.`)
+        : unknown
+          ? bi(
+            `${measured} mục đo được đang ổn, nhưng còn ${unknown} mục chưa đo được — chưa đủ cơ sở để kết luận SEO địa phương đang ổn.`,
+            `The ${measured} checks that could be graded look fine, but ${unknown} could not be graded — not yet enough to call local SEO healthy.`)
+          : bi(
+            'Phần SEO địa phương đang ổn — tập trung vào nội dung và quảng cáo.',
+            'Local SEO is in good shape — put the effort into content and ads instead.');
 
   return {
     checks,
     failing,
+    unknown,
+    measured,
     headline,
     blindSpots: [
       bi(

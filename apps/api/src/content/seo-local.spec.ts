@@ -131,6 +131,30 @@ describe('the verdict is blunt on purpose', () => {
     expect(viOf(r.headline)).toMatch(/đang ổn/);
   });
 
+  it('refuses to call a shop healthy when it has measured nothing', () => {
+    // The bug this pins: a brand-new salon has connected nothing, so every
+    // check is 'unknown', so failing and warning are both 0 — and the verdict
+    // read "SEO địa phương đang ổn". Every new salon was congratulated by a
+    // report that had measured precisely nothing, in the first sentence it
+    // showed them.
+    const bare = run({});
+    expect(bare.measured).toBe(0);
+    expect(bare.unknown).toBe(bare.checks.length);
+    expect(viOf(bare.headline)).not.toMatch(/đang ổn/);
+    expect(viOf(bare.headline)).toMatch(/chưa/i);
+    expect(enOf(bare.headline)).not.toMatch(/good shape/);
+  });
+
+  it('will not generalise from the half it could see', () => {
+    // Some data, none of it bad, is still not a clean bill of health — and a
+    // green line here is what stops someone connecting the rest.
+    const partial = run({ reviews: Array.from({ length: 60 }, () => review(5, 5, true)) });
+    expect(partial.unknown).toBeGreaterThan(0);
+    expect(partial.measured).toBeGreaterThan(0);
+    expect(partial.failing).toBe(0);
+    expect(viOf(partial.headline)).toMatch(/chưa đo được/);
+  });
+
   it('gives every failing check exactly one next action', () => {
     const r = run({ reviews: Array.from({ length: 3 }, () => review(300, 2, false)) });
     for (const c of r.checks.filter((x) => x.state === 'fail')) {

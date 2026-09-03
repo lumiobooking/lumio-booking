@@ -2,7 +2,15 @@ import { playbookFor, videoFeeds, productWatch } from './industry-playbook';
 import { viOf, enOf } from './i18n';
 import { regionEvents } from './region-events';
 
-const TRADES = ['SALON', 'RESTAURANT', 'REAL_ESTATE', 'SERVICE'] as const;
+const TRADES = [
+  'SALON', 'RESTAURANT', 'REAL_ESTATE', 'SERVICE',
+  // The beauty trades, split out of SALON once a shop could declare which one
+  // it is. Added to THIS list on purpose: every bar the original four had to
+  // clear — a time attached to each source, five distinct angles, shots in
+  // order, in both languages — now applies to them too, rather than the new
+  // trades getting a gentler test of their own.
+  'NAIL', 'HAIR', 'LASH', 'BROW', 'SPA', 'MASSAGE', 'PMU',
+] as const;
 
 describe('every trade has its own playbook, not a relabelled nail one', () => {
   it.each(TRADES)('%s names real filming sources with a time attached', (t) => {

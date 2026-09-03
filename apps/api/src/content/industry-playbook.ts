@@ -161,7 +161,152 @@ const SERVICE: Playbook = {
   ],
 };
 
-const PLAYBOOKS: Record<string, Playbook> = { SALON, RESTAURANT, REAL_ESTATE, SERVICE };
+// ---- the beauty trades ------------------------------------------------------
+//
+// Split out of SALON once a shop could declare which one it is. Before this,
+// a lash studio that told us it was a lash studio was still handed the nail
+// playbook — "film the set you just finished, before she puts her coat on" —
+// which is worse than the generic advice it replaced, because the shop had
+// answered the question and watched the answer get ignored.
+//
+// Each is written the same way SALON was: a source you can POINT AT, at a
+// moment in the day when it exists and shortly afterwards does not. That
+// moment is the whole difference between a plan and a wish, and it is
+// different in every one of these trades — a lash set is only photogenic with
+// the eyes closed, and a facial has no finished object at all.
+
+const HAIR: Playbook = {
+  trade: bi('ngành tóc', 'hair salons'),
+  dailySources: [
+    { label: bi('Cú xoay đầu cuối cùng trước gương', 'The last turn in the mirror'), when: bi('ngay sau khi tháo áo choàng', 'the second the cape comes off'), why: bi('Tóc chỉ đẹp nhất đúng lúc đó — hôm sau khách gội là mất', 'Hair is never better than in that moment — she washes it tomorrow and it is gone') },
+    { label: bi('Màu đang ngấm trên giấy bạc', 'Colour developing in the foils'), when: bi('giữa ca nhuộm', 'mid-way through the colour'), why: bi('Đây là phần khách không bao giờ thấy, và là phần chứng minh đây là nghề chứ không phải tự làm ở nhà', 'This is the part a customer never sees, and the part that proves this is a trade and not something you do at home') },
+    { label: bi('Tóc hỏng lúc khách vừa ngồi xuống', 'The damaged hair as she sits down'), when: bi('trước khi bắt đầu', 'before you start'), why: bi('Không có "trước" thì "sau" chỉ là một mái tóc đẹp như mọi mái khác', 'With no "before", the "after" is just one more nice head of hair') },
+    { label: bi('Khách tự chải sau khi về', 'Her styling it herself a week later'), when: bi('nhắn xin sau 5–7 ngày', 'ask for it five to seven days later'), why: bi('Bằng chứng mạnh nhất là kiểu tóc vẫn đẹp khi không có thợ đứng cạnh', 'The strongest proof is the cut still working with no stylist standing next to it') },
+  ],
+  postTypes: [
+    { label: bi('Lột xác — trước và sau', 'The transformation'), job: bi('Bài kéo người lạ dừng lại. Không có bài nào trong ngành tóc thay thế được nó', 'The post that stops a stranger. Nothing else in this trade does its job'), shots: bi('Tóc cũ cận cảnh · lướt nhanh quá trình · cú xoay đầu cuối', 'The old hair close up · a fast run through the work · the final turn') },
+    { label: bi('Giải thích một kỹ thuật', 'Explain one technique'), job: bi('Bài thuyết phục người đang phân vân giữa salon mình và chỗ rẻ hơn', 'The post that wins someone choosing between you and somewhere cheaper'), shots: bi('Tay chia lọn · giấy bạc · màu lên dần · kết quả', 'Sectioning · foils · the colour coming up · the result') },
+    { label: bi('Kiểu tóc hợp với dáng mặt nào', 'Which cut suits which face'), job: bi('Bài trả lời câu khách tự hỏi trước khi dám đổi kiểu', 'The post that answers what someone asks themselves before daring to change'), shots: bi('Khách mặt tròn · khách mặt dài · cùng kiểu đã biến tấu cho từng người', 'A round face · a long face · the same cut adapted for each') },
+    { label: bi('Người thợ và tay nghề riêng', 'The stylist and what she is known for'), job: bi('Khách quay lại vì thợ, không vì salon', 'Customers come back for a person, not for a shop'), shots: bi('Thợ đang chia màu · dụng cụ riêng · một câu về nghề', 'Mixing colour · her own tools · one line about the work') },
+    { label: bi('Chăm tóc nhuộm tại nhà', 'Keeping colour alive at home'), job: bi('Bài giữ màu bền hơn, giảm hẳn ca khách quay lại phàn nàn bạc màu', 'Keeps the colour alive longer and cuts the come-back-and-complain visits'), shots: bi('Dầu gội không sulfate · nhiệt độ nước · điều tuyệt đối tránh', 'Sulfate-free shampoo · water temperature · the one thing never to do') },
+  ],
+  habits: [
+    { kind: 'engage', text: bi('Trả lời hết tin nhắn hỏi giá nhuộm', 'Clear every message asking what colour costs'), why: bi('Giá nhuộm là câu hỏi số một và là câu khách bỏ đi nếu không được trả lời', 'Colour price is the number one question and the one people leave over'), when: bi('trước khi mở cửa', 'before you open') },
+    { kind: 'story', text: bi('Đăng story mái tóc đẹp nhất trong ngày', 'Story the best head of hair today'), why: bi('Không cần dựng, chỉ cần đều — và là kho ảnh cho tuần sau', 'No editing needed, only regularity — and it is next week\'s photo bank'), when: bi('lúc tháo áo choàng', 'as the cape comes off') },
+    { kind: 'engage', text: bi('Hẹn ngày dặm chân tóc ngay tại quầy', 'Book the root touch-up at the counter'), why: bi('Ngành tóc sống bằng lịch quay lại, và lúc khách còn đứng đó là lúc dễ hẹn nhất', 'This trade lives on rebookings, and the easiest moment is while she is still standing there'), when: bi('lúc thanh toán', 'at checkout') },
+  ],
+};
+
+const LASH: Playbook = {
+  trade: bi('ngành nối mi', 'lash studios'),
+  dailySources: [
+    { label: bi('Mắt nhắm ngay khi làm xong', 'The closed eye, right as you finish'), when: bi('trước khi khách mở mắt', 'before she opens her eyes'), why: bi('Bộ mi chỉ nhìn rõ được khi mắt nhắm — khách mở mắt là không quay được nữa', 'A lash set only reads with the eye closed — once she opens it, the shot is gone') },
+    { label: bi('Khoảnh khắc khách soi gương lần đầu', 'The first look in the mirror'), when: bi('3 giây đầu', 'the first three seconds'), why: bi('Không diễn được, và đó là lý do người xem tin', 'It cannot be acted, which is exactly why people believe it') },
+    { label: bi('Mi cũ trước khi tháo', 'The old set before removal'), when: bi('lúc khách vừa nằm xuống', 'as she lies down'), why: bi('Khách mới sợ nhất là "mi hỏng" — cho họ thấy mình xử lý được', 'What a new customer fears most is a ruined set — show them you handle it'), },
+    { label: bi('Khay mi và bản đồ mi vẽ tay', 'The lash tray and the hand-drawn map'), when: bi('trước ca làm', 'before the appointment'), why: bi('Bản đồ mi là thứ chứng minh đây là thiết kế riêng chứ không phải dán đại', 'The map is what proves this was designed for one face and not stuck on at random') },
+  ],
+  postTypes: [
+    { label: bi('Mắt nhắm — bộ mi rõ từng sợi', 'The closed eye, fibre by fibre'), job: bi('Bài chứng minh tay nghề. Người trong ngành nhìn là biết, khách nhìn là tin', 'The craft post. The trade can read it, and the customer believes it'), shots: bi('Cận sát chân mi · nhìn nghiêng độ cong · hai mắt đối xứng', 'Tight on the lash line · side-on for the curl · both eyes for symmetry') },
+    { label: bi('Classic, hybrid, volume khác nhau ra sao', 'Classic, hybrid, volume — side by side'), job: bi('Gỡ đúng câu hỏi làm khách mới chần chừ không đặt lịch', 'Clears the exact question that keeps a new customer from booking'), shots: bi('Bộ classic · bộ hybrid · bộ volume · cùng một góc cho cả ba', 'A classic set · a hybrid · a volume · the same angle for all three') },
+    { label: bi('Bản đồ mi theo dáng mắt', 'Mapping for the eye shape'), job: bi('Bài nói với khách rằng mi được thiết kế cho mắt của họ', 'The post that says the set was designed for her eyes'), shots: bi('Vẽ bản đồ trên miếng dán · giải thích 1 câu · kết quả', 'Drawing the map on the pad · one line of explanation · the result') },
+    { label: bi('Cách chăm mi cho bền', 'Aftercare that keeps them on'), job: bi('Mi rụng sớm là lý do khách bỏ tiệm mà không nói', 'Lashes falling early is why customers leave without saying so'), shots: bi('Chải mi · rửa mặt đúng cách · điều tuyệt đối tránh', 'Brushing · washing properly · the one thing never to do') },
+    { label: bi('Một ca dặm mi, từ đầu đến cuối', 'A fill, start to finish'), job: bi('Khách mới không biết dặm mi là gì và vì sao phải quay lại — bài này bán cả chu kỳ', 'New customers do not know what a fill is or why they must return — this post sells the whole cycle'), shots: bi('Mi đã thưa · gỡ sợi rụng · gắn bù · hai mắt đều lại', 'The gappy set · removing what fell · filling in · both eyes even again') },
+  ],
+  habits: [
+    { kind: 'engage', text: bi('Nhắn khách tới hạn dặm mi', 'Message everyone due for a fill'), why: bi('Ngành mi sống bằng lịch dặm 2–3 tuần. Quên nhắn một tuần là mất nguyên chu kỳ', 'This trade lives on the two-to-three-week fill. Miss a week of reminders and you lose a whole cycle'), when: bi('đầu ngày', 'first thing') },
+    { kind: 'story', text: bi('Đăng story một bộ mi mỗi ngày', 'Story one set a day'), why: bi('Mi khó chụp đẹp bằng điện thoại — đăng đều thì tay nghề chụp cũng lên theo', 'Lashes are hard to shoot on a phone — posting daily is how the shooting gets better too'), when: bi('lúc làm xong', 'as you finish') },
+    { kind: 'engage', text: bi('Hẹn ngày dặm ngay khi khách còn ngồi', 'Book the fill before she stands up'), why: bi('Hẹn sau khi khách về là hẹn không bao giờ đặt', 'A fill booked after she leaves is a fill never booked'), when: bi('lúc thanh toán', 'at checkout') },
+  ],
+};
+
+const BROW: Playbook = {
+  trade: bi('ngành chân mày', 'brow studios'),
+  dailySources: [
+    { label: bi('Hai bên mày đối xứng sau khi xong', 'Both brows, symmetrical, finished'), when: bi('ngay khi lau sạch lần cuối', 'right after the final wipe'), why: bi('Đối xứng là cả nghề này. Chụp thẳng mặt mới thấy', 'Symmetry is the entire trade. Only a straight-on shot shows it') },
+    { label: bi('Nét vẽ dáng mày trước khi làm', 'The shape drawn on before you start'), when: bi('lúc đo và vẽ', 'while measuring and drawing'), why: bi('Khách sợ nhất là bị làm hỏng dáng — cho họ thấy mọi thứ được đo trước', 'What people fear is a ruined shape — show them everything is measured first') },
+    { label: bi('Mày thưa/lộn xộn lúc mới ngồi xuống', 'The sparse or unruly brow as she sits'), when: bi('trước khi chạm vào', 'before you touch it'), why: bi('Ngành này không có "trước" thì "sau" không nói lên điều gì', 'In this trade, without the "before" the "after" says nothing') },
+  ],
+  postTypes: [
+    { label: bi('Trước và sau, chụp thẳng mặt', 'Before and after, straight on'), job: bi('Bài chủ lực. Dáng mày đổi là đổi cả gương mặt, và ảnh cho thấy điều đó ngay', 'The workhorse. A brow shape changes a face, and the photo shows it instantly'), shots: bi('Ảnh trước chụp thẳng · ảnh sau cùng góc cùng đèn · cận một bên mày', 'The before, straight on · the after at the same angle and light · one brow close up') },
+    { label: bi('Threading, wax hay lamination', 'Threading, wax or lamination'), job: bi('Khách chọn phương pháp trước khi chọn tiệm', 'People choose the method before they choose the shop'), shots: bi('Threading trên khách mày dày · wax trên khách da nhạy · lamination trên mày thưa', 'Threading on a thick brow · wax on sensitive skin · lamination on a sparse one') },
+    { label: bi('Dáng mày theo khuôn mặt', 'Shape for the face'), job: bi('Bài chứng minh mình đo chứ không làm theo mẫu có sẵn', 'The post that proves you measure rather than copy a template'), shots: bi('Đo bằng chỉ · đánh dấu 3 điểm · kết quả', 'Measuring with thread · marking the three points · the result') },
+    { label: bi('Sửa dáng mày bị làm hỏng', 'Fixing a brow somebody else ruined'), job: bi('Nhóm khách gấp gáp nhất và trung thành nhất — họ vừa mất niềm tin ở chỗ khác', 'The most urgent and most loyal customers there are — they just lost their trust somewhere else'), shots: bi('Dáng lệch cận cảnh · cách xử lý · hai bên cân lại', 'The uneven shape close up · how it is corrected · both sides matched') },
+    { label: bi('Người thợ và cách đo của họ', 'The artist and how she measures'), job: bi('Ngành này khách chọn người, không chọn tiệm', 'In this trade people choose a person, not a shop'), shots: bi('Thợ đang đo · dụng cụ riêng · một câu về nghề', 'Measuring · her own tools · one line about the work') },
+  ],
+  habits: [
+    { kind: 'story', text: bi('Đăng story một cặp mày trước–sau mỗi ngày', 'Story one before-and-after brow a day'), why: bi('Đây là ngành mà một tấm ảnh so sánh bán hàng giỏi hơn mọi lời quảng cáo', 'This is a trade where one comparison photo sells better than any copy'), when: bi('lúc làm xong', 'as you finish') },
+    { kind: 'engage', text: bi('Nhắc khách lịch tỉa lại sau 4–6 tuần', 'Remind customers of the four-to-six week reshape'), why: bi('Mày mọc lại là đồng hồ đếm ngược có sẵn — chỉ cần nhắc đúng lúc', 'Regrowth is a built-in clock — it only needs a reminder at the right moment'), when: bi('đầu tuần', 'start of the week') },
+  ],
+};
+
+const SPA: Playbook = {
+  trade: bi('ngành chăm sóc da', 'skincare and facials'),
+  dailySources: [
+    { label: bi('Làn da ngay sau liệu trình', 'The skin right after the treatment'), when: bi('trước khi khách trang điểm lại', 'before she puts makeup back on'), why: bi('Da căng bóng chỉ giữ được khoảng một giờ. Sau đó không còn gì để chụp', 'That glow holds for about an hour. After that there is nothing to photograph') },
+    { label: bi('Bàn máy, khăn ấm, khay dụng cụ', 'The bed, the warm towels, the tray'), when: bi('trước khi khách vào', 'before the customer comes in'), why: bi('Ngành này bán cảm giác được chăm sóc — quang cảnh phòng nói điều đó nhanh hơn lời', 'This trade sells the feeling of being looked after — the room says it faster than words'), },
+    { label: bi('So sánh da sau một liệu trình nhiều buổi', 'The same skin across a course of sessions'), when: bi('cùng góc, cùng ánh sáng, mỗi buổi một tấm', 'same angle, same light, one shot per session'), why: bi('Da không đổi sau một buổi. Chỉ chuỗi ảnh mới nói được sự thật, và sự thật đó bán liệu trình', 'Skin does not change in one session. Only a series tells the truth, and that truth sells the course') },
+  ],
+  postTypes: [
+    { label: bi('Hành trình một liệu trình', 'One course, start to finish'), job: bi('Bài biến một lần tới thành liệu trình — thay đổi hẳn doanh thu trên mỗi khách', 'Turns a single visit into a course, which changes revenue per customer outright'), shots: bi('Buổi 1 · buổi 3 · buổi 6, cùng góc cùng đèn', 'Session one · session three · session six, same angle and light') },
+    { label: bi('Giải thích một bước trong quy trình', 'Explain one step of the protocol'), job: bi('Khách trả tiền cho thứ họ hiểu, và bỏ qua thứ nghe như phép màu', 'People pay for what they understand and skip what sounds like magic'), shots: bi('Cận thao tác · một câu vì sao bước này cần thiết', 'Close on the hands · one line on why this step exists') },
+    { label: bi('Trả lời một hiểu lầm phổ biến', 'Correct one common myth'), job: bi('Ngành da đầy lời đồn — ai nói thật là ai được tin', 'This trade is full of folklore — whoever tells the truth is who gets trusted'), shots: bi('Câu đồn hiện trên màn hình · vừa làm vừa nói lại cho đúng', 'The myth on screen · correct it while you work') },
+    { label: bi('Nên chăm da tại nhà thế nào giữa hai buổi', 'What to do at home between sessions'), job: bi('Kết quả hỏng ở nhà thì khách đổ cho spa. Dạy trước là bảo vệ chính mình', 'A result ruined at home gets blamed on the spa. Teaching first is self-defence'), shots: bi('3 bước tối thiểu · thứ tự thoa · sản phẩm nên tránh', 'The three minimum steps · the order · what to avoid') },
+    { label: bi('Người làm và tay nghề của họ', 'The esthetician and her hands'), job: bi('Khách giao mặt mình cho một người, không phải cho một phòng', 'A customer hands her face to a person, not to a room'), shots: bi('Thao tác tay cận cảnh · dụng cụ riêng · một câu về nghề', 'Close on the hands · her own tools · one line about the work') },
+  ],
+  habits: [
+    { kind: 'engage', text: bi('Nhắn khách đang giữa liệu trình mà chưa đặt buổi tiếp', 'Message anyone mid-course with no next session booked'), why: bi('Liệu trình đứt giữa chừng là mất cả kết quả lẫn doanh thu — và khách thường chỉ quên', 'A course that stops halfway loses the result and the revenue — and usually she just forgot'), when: bi('đầu ngày', 'first thing') },
+    { kind: 'story', text: bi('Đăng story một khuôn mặt sau liệu trình', 'Story one face after a treatment'), why: bi('Ánh sáng phòng spa vốn đã đẹp — chỉ cần bấm máy đều', 'Treatment-room light is already flattering — it only needs the shutter pressed regularly'), when: bi('ngay sau buổi làm', 'right after the session') },
+  ],
+};
+
+const MASSAGE: Playbook = {
+  trade: bi('ngành massage', 'massage and bodywork'),
+  dailySources: [
+    { label: bi('Căn phòng trước khi khách bước vào', 'The room before anyone walks in'), when: bi('lúc vừa dọn xong', 'once it is set'), why: bi('Ngành này không có "thành phẩm" để chụp. Thứ bán được là cảm giác, và căn phòng là thứ duy nhất cho thấy nó', 'This trade has no finished object to photograph. What sells is a feeling, and the room is the only thing that shows it') },
+    { label: bi('Bàn tay đang làm việc, không thấy mặt khách', 'Hands working, no face in frame'), when: bi('giữa ca', 'mid-session'), why: bi('Riêng tư là điều kiện bắt buộc ở đây — quay tay là cách duy nhất vừa cho thấy nghề vừa giữ đúng ranh giới', 'Privacy is non-negotiable here — hands are the only way to show the craft without crossing it') },
+    { label: bi('Khách nói một câu sau khi xong', 'One sentence from a customer afterwards'), when: bi('lúc khách ngồi dậy uống nước', 'while she sits up with a glass of water'), why: bi('Không chụp được sự thư giãn. Nhưng nghe được', 'Relaxation cannot be photographed. It can be heard') },
+  ],
+  postTypes: [
+    { label: bi('Kiểu massage này hợp với ai', 'Who each style is for'), job: bi('Khách đặt nhầm loại rồi thất vọng — bài này vừa kéo khách vừa chặn review xấu', 'People book the wrong style and leave disappointed — this brings customers and prevents bad reviews'), shots: bi('Tay thao tác từng kiểu · một câu mô tả cảm giác thật', 'The hands for each style · one honest line on how it feels') },
+    { label: bi('Đau ở đâu thì làm gì', 'Where it hurts, and what helps'), job: bi('Nhóm khách có vấn đề cụ thể đặt lịch nhanh hơn nhóm tìm để thư giãn', 'Customers with a specific problem book faster than customers seeking relaxation'), shots: bi('Chỉ vào vùng đau trên hình · thao tác tương ứng · một câu nên đi mấy buổi', 'Point to the area on a diagram · the corresponding work · one line on how many sessions') },
+    { label: bi('Không gian và sự riêng tư', 'The space and the privacy'), job: bi('Khách mới lo nhất là "chỗ đó có đàng hoàng không" — trả lời trước khi họ phải hỏi', 'A new customer\'s first worry is whether the place is respectable — answer it before they have to ask'), shots: bi('Phòng riêng · khăn sạch · quy trình đón khách', 'The private room · clean linen · how a customer is received') },
+    { label: bi('Lần đầu đi massage thì diễn ra thế nào', 'What happens on a first visit'), job: bi('Người chưa đi bao giờ ngại vì không biết phải làm gì — gỡ đúng chỗ ngại đó', 'People who have never been are put off by not knowing what to do — this removes exactly that'), shots: bi('Đón khách · thay đồ ra sao · nằm thế nào · lúc kết thúc', 'Arriving · how to change · how to lie down · how it ends') },
+    { label: bi('Một động tác tự làm được ở nhà', 'One thing you can do yourself at home'), job: bi('Cho đi một chút là cách rẻ nhất để người lạ tin mình biết nghề', 'Giving something away is the cheapest way for a stranger to believe you know the work'), shots: bi('Chỉ vị trí · làm mẫu chậm · nói rõ khi nào cần tới thợ', 'Point to the spot · demonstrate slowly · say plainly when it needs a professional') },
+  ],
+  habits: [
+    { kind: 'engage', text: bi('Nhắn khách quen quá 4 tuần chưa quay lại', 'Message regulars four weeks overdue'), why: bi('Massage là thói quen, và thói quen đứt là đứt luôn nếu không ai nhắc', 'Massage is a habit, and a broken habit stays broken unless somebody mentions it'), when: bi('đầu tuần', 'start of the week') },
+    { kind: 'story', text: bi('Đăng story căn phòng đã dọn sẵn', 'Story the room, ready'), why: bi('Rẻ nhất, nhanh nhất, và là thứ khách mới muốn thấy nhất', 'The cheapest, fastest shot there is, and the one a new customer most wants to see'), when: bi('trước giờ mở cửa', 'before opening') },
+  ],
+};
+
+const PMU: Playbook = {
+  trade: bi('ngành phun xăm thẩm mỹ', 'permanent makeup'),
+  dailySources: [
+    { label: bi('Ảnh ngay sau khi làm — và ảnh sau khi lành', 'The fresh result, and the healed one'), when: bi('hôm làm, rồi xin lại sau 4–6 tuần', 'on the day, then ask again after four to six weeks'), why: bi('Ảnh mới làm luôn đậm hơn thật. Chỉ ảnh đã lành mới là thứ khách sẽ nhận được, và đăng thiếu nó là hứa quá lời', 'A fresh result always looks darker than the truth. Only the healed photo shows what she will actually get, and posting without it over-promises') },
+    { label: bi('Nét vẽ dáng trước khi chạm kim', 'The shape drawn before any needle'), when: bi('lúc đo và vẽ tay', 'while measuring and drawing'), why: bi('Nỗi sợ lớn nhất của ngành này là "xăm rồi không sửa được". Cho thấy mọi thứ được duyệt trước khi làm', 'The fear in this trade is permanence. Show that everything is agreed before anything is permanent') },
+    { label: bi('Khách xem gương và gật đầu trước khi bắt đầu', 'She looks in the mirror and says yes, before you start'), when: bi('ngay trước ca làm', 'right before the session'), why: bi('Đây là bằng chứng về quy trình, và là thứ khách mới cần thấy nhất', 'This is proof of process, and it is what a nervous new customer most needs to see') },
+  ],
+  postTypes: [
+    { label: bi('Đã lành, chụp sau 4–6 tuần', 'Healed, at four to six weeks'), job: bi('Bài trung thực nhất trong ngành. Đăng đều là tự tách mình khỏi chỗ chỉ khoe ảnh mới làm', 'The most honest post in this trade. Posting it regularly separates you from shops that only show fresh work'), shots: bi('Cùng góc với ảnh ngày làm · ánh sáng tự nhiên · không lọc', 'Same angle as the day-one shot · natural light · no filter') },
+    { label: bi('Quy trình lành da theo ngày', 'The healing timeline, day by day'), job: bi('Gỡ nỗi sợ lớn nhất và giảm hẳn số tin nhắn hoảng loạn ngày thứ 5', 'Clears the biggest fear and cuts the panicked day-five messages'), shots: bi('Ngày 1 · ngày 3 · ngày 7 · ngày 30 · một câu mỗi mốc', 'Day one · three · seven · thirty · one line each') },
+    { label: bi('Kỹ thuật nào hợp loại da nào', 'Which technique suits which skin'), job: bi('Chọn sai kỹ thuật theo loại da là nguyên nhân số một của kết quả xấu', 'The wrong technique for a skin type is the number one cause of a bad result'), shots: bi('Da dầu · da khô · kết quả tương ứng của từng kỹ thuật', 'Oily · dry · the matching result for each technique') },
+    { label: bi('Có đau không, và giảm đau ra sao', 'Does it hurt, and what is done about it'), job: bi('Sợ đau là lý do khách hoãn lịch cả năm trời. Nói thẳng là chốt được', 'Fear of pain is why people put this off for a year. Saying it plainly closes the booking'), shots: bi('Thuốc tê · phản ứng thật của khách · một câu khách tự nói', 'The numbing · a real reaction · one sentence in her own words') },
+    { label: bi('Sửa lại nét phun cũ của chỗ khác', 'Correcting somebody else\'s old work'), job: bi('Nhóm khách sẵn sàng trả cao nhất, vì họ đang mang một lỗi trên mặt mỗi ngày', 'The customers who will pay the most, because they wear the mistake on their face every day'), shots: bi('Nét cũ ám xanh · quy trình xử lý · kết quả đã lành', 'The old blue-grey shape · the correction process · the healed result') },
+  ],
+  habits: [
+    { kind: 'engage', text: bi('Nhắn khách tới hạn dặm lại sau 1–2 năm', 'Message customers due for a top-up after a year or two'), why: bi('Màu phai là hẹn quay lại có sẵn, nhưng cách nhau quá lâu nên không ai tự nhớ', 'Fading is a built-in rebooking, but the gap is long enough that nobody remembers on their own'), when: bi('mỗi tháng một lần rà danh sách', 'once a month, work the list') },
+    { kind: 'story', text: bi('Đăng story ảnh đã lành, ghi rõ mốc tuần', 'Story a healed result and say how many weeks'), why: bi('Ghi rõ mốc tuần là điều làm khách tin — và gần như không ai trong ngành chịu ghi', 'Stating the week is what earns belief, and almost nobody in this trade states it'), when: bi('khi khách quay lại kiểm tra', 'when a customer comes back for a check') },
+  ],
+};
+
+const NAIL: Playbook = { ...SALON, trade: bi('ngành nail', 'nail salons') };
+
+const PLAYBOOKS: Record<string, Playbook> = {
+  SALON, RESTAURANT, REAL_ESTATE, SERVICE,
+  // NAIL is SALON under its own name: the original playbook was written for
+  // a nail salon, so aliasing is honest where copying would drift.
+  NAIL, HAIR, LASH, BROW, SPA, MASSAGE, PMU,
+};
 
 export function playbookFor(industry?: string | null): Playbook {
   return PLAYBOOKS[(industry || 'SALON').toUpperCase()] ?? SALON;
@@ -179,6 +324,13 @@ export function playbookFor(industry?: string | null): Playbook {
  */
 const VIDEO_TAGS: Record<string, string[]> = {
   SALON: ['nailsoftiktok', 'nailart', 'nailtech'],
+  NAIL: ['nailsoftiktok', 'nailart', 'nailtech'],
+  HAIR: ['hairtok', 'hairtransformation', 'balayage'],
+  LASH: ['lashtech', 'lashextensions', 'lashesoftiktok'],
+  BROW: ['browsoftiktok', 'browlamination', 'microblading'],
+  SPA: ['estheticiansoftiktok', 'skincaretok', 'facials'],
+  MASSAGE: ['massagetherapy', 'massagetok', 'bodywork'],
+  PMU: ['pmuartist', 'permanentmakeup', 'lipblush'],
   RESTAURANT: ['foodtiktok', 'restaurant', 'chefsoftiktok'],
   REAL_ESTATE: ['realestate', 'housetour', 'realtorlife'],
   SERVICE: ['smallbusinesscheck', 'beforeandafter'],
@@ -207,6 +359,15 @@ const PRODUCT_PAGES: Record<string, { title: Txt; url: string; what: Txt; how: T
       url: 'https://www.amazon.com/Best-Sellers-Beauty-Foot-Hand-Nail-Care/zgbs/beauty/11060451',
       what: bi('Bảng bán chạy ngành chăm sóc tay chân móng, cập nhật hằng giờ.', 'The best-seller board for hand, foot and nail care, updated every hour.'),
       how: bi('Đối chiếu với kệ của tiệm: cái gì bán chạy ngoài kia mà tiệm chưa có là một câu hỏi đáng đặt cho nhà cung cấp.', 'Hold it against your own shelf: something selling well out there that you do not carry is a question worth asking your supplier.'),
+      source: 'Amazon',
+    },
+  ],
+  HAIR: [
+    {
+      title: bi('Sản phẩm chăm sóc tóc tăng doanh số mạnh nhất 24 giờ', 'Hair care products rising fastest in the last 24 hours'),
+      url: 'https://www.amazon.com/gp/movers-and-shakers/beauty/11057241',
+      what: bi('Bảng "Movers & Shakers" riêng ngành tóc — xếp theo mức tăng doanh số 24 giờ.', 'The hair-care "Movers & Shakers" board — ranked by how much sales moved in 24 hours.'),
+      how: bi('Sản phẩm nhảy lên bảng này nghĩa là khách đang tự mua về dùng. Đó là thứ đáng bán tại quầy và đáng nhắc trong bài tư vấn.', 'A product jumping onto this board means customers are buying it themselves. That is worth stocking at the counter and worth mentioning when you advise.'),
       source: 'Amazon',
     },
   ],
@@ -265,6 +426,11 @@ export function videoFeeds(industry?: string | null, market = 'US'): FeedLink[] 
 
 export function productWatch(industry?: string | null): FeedLink[] {
   const key = (industry || 'SALON').toUpperCase();
+  // The SALON fallback is CORRECT for the beauty trades, not a gap waiting to
+  // be filled: Amazon's Beauty movers board covers lashes, brows, skincare and
+  // PMU aftercare in one place, and splitting it per trade would produce six
+  // links to the same page. HAIR is the exception — hair care is its own
+  // category over there, with its own movers.
   const rows = PRODUCT_PAGES[key] ?? PRODUCT_PAGES.SALON;
   return rows.map((r, i) => ({ key: `prod-${key.toLowerCase()}-${i}`, ...r }));
 }

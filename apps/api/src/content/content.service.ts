@@ -1462,20 +1462,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       // the salon's own city and name are the whole point of a local keyword,
       // and a template shown raw is a template that gets copied raw into an
       // ad account.
-      keywordPlan: ((): unknown => {
-        const tk = tradeKeywordsFor(ctx.industry, ctx.region.market);
-        const vals = { city: ctx.region.city || ctx.region.label, brand: ctx.tenantName, year: new Date().getFullYear() };
-        return {
-          adGroups: tk.adGroups.map((g) => ({
-            name: viOf(g.name), intent: g.intent, note: viOf(g.note),
-            keywords: g.keywords.map((k) => fillKeyword(k, vals)),
-          })),
-          seoTopics: tk.seoTopics.map((t2) => ({
-            title: fillKeyword(viOf(t2.title), vals), kind: t2.kind, why: viOf(t2.why),
-            targets: t2.targets.map((k) => fillKeyword(k, vals)),
-          })),
-        };
-      })(),
+      keywordPlan: this.keywordPlanFor(ctx),
       lapsed: ctx.revenue.lapsed,
       quietSlots: ctx.revenue.loads.slice(0, 3),
       busySlots: [...ctx.revenue.loads].reverse().slice(0, 3),
@@ -1808,6 +1795,33 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     });
   }
 
+  /**
+   * The keyword map for this trade in this market: what to write about and what
+   * to bid on.
+   *
+   * Placeholders are filled here rather than on the screen. The salon's own city
+   * and name are the whole point of a local keyword, and a template shown raw is
+   * a template that gets copied raw into an ad account or an H1.
+   */
+  private keywordPlanFor(ctx: {
+    industry?: string | null;
+    region: { market?: string | null; city?: string | null; label: string };
+    tenantName: string;
+  }) {
+    const tk = tradeKeywordsFor(ctx.industry, ctx.region.market);
+    const vals = { city: ctx.region.city || ctx.region.label, brand: ctx.tenantName, year: new Date().getFullYear() };
+    return {
+      adGroups: tk.adGroups.map((g) => ({
+        name: viOf(g.name), intent: g.intent, note: viOf(g.note),
+        keywords: g.keywords.map((k) => fillKeyword(k, vals)),
+      })),
+      seoTopics: tk.seoTopics.map((t2) => ({
+        title: fillKeyword(viOf(t2.title), vals), kind: t2.kind, why: viOf(t2.why),
+        targets: t2.targets.map((k) => fillKeyword(k, vals)),
+      })),
+    };
+  }
+
   // ---- the Google Maps roadmap -------------------------------------------
 
   /**
@@ -1834,7 +1848,14 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     // last week must not open the board to find them gone.
     const ticks = stored.ticks ?? (stored as Record<string, { done?: boolean; at?: string; by?: string }>);
 
-    return localizeDeep(buildRoadmap(checks, ticks, asTier(stored.tier)), 'vi');
+    // The keyword map rides with the board. "Build a keyword list" as a bare
+    // instruction is where every one of these plans stalls; the list itself,
+    // already filled with this salon's city and name, is the difference between
+    // a task someone reads and a task someone does.
+    return localizeDeep(
+      { ...buildRoadmap(checks, ticks, asTier(stored.tier)), keywords: this.keywordPlanFor(ctx) },
+      'vi',
+    );
   }
 
   /** The market this salon competes in. Declared by whoever looked at the map —

@@ -47,6 +47,36 @@ export function marketTag(code: string | null | undefined): string {
 }
 
 /**
+ * Is this salon in Vietnam?
+ *
+ * WHY THIS EXISTS, AND WHY IT TAKES THE MARKET AS AN ARGUMENT
+ *
+ * Screens were deciding "is this Vietnamese?" by reading the COUNTRY field out
+ * of the company settings — a value the salon owner picks from a dropdown to
+ * set their currency format. The tenant's real market lives in a different
+ * place, drives SMS routing and feature policy, and the two are only ever
+ * synced when the salon is created. So a shop moved to Vietnam by support had
+ * its SMS switched to the Vietnamese carrier while the screen that configures
+ * that carrier stayed hidden, and a US shop whose owner idly picked "Việt Nam"
+ * in the country dropdown was shown the whole Vietnamese setup, which then did
+ * nothing at all.
+ *
+ * One answer to "what market is this", and it comes from the server. The
+ * argument is the market, never the country, so a caller that reaches for the
+ * wrong field is a type error rather than a silent misread.
+ */
+export function isVN(market: string | null | undefined): boolean {
+  return String(market ?? '').trim().toUpperCase() === 'VN';
+}
+
+/** True when the salon trades in North America — the market that Twilio, the
+ *  US card gateways and the Census figures were all built for. */
+export function isNorthAmerica(market: string | null | undefined): boolean {
+  const m = String(market ?? '').trim().toUpperCase();
+  return m === 'US' || m === 'CA' || m === '';
+}
+
+/**
  * The language a salon should open in when its owner has never chosen one.
  *
  * A Vietnamese owner signing in for the first time should not have to find a

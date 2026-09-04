@@ -328,6 +328,32 @@ export class TenantsService {
       }
     }
 
+    // Moving a salon to another market moves its COUNTRY with it.
+    //
+    // These are two fields for one fact, and until now only one of them moved.
+    // `market` decides SMS routing, feature availability and money; `country`
+    // sits in the company settings and decides the dial code, address parsing —
+    // and, until this release, which market-specific panels the settings screen
+    // showed. So a shop moved to Vietnam had its messages switched to the
+    // Vietnamese carrier while the screen that configures that carrier stayed
+    // hidden, and nothing said why.
+    //
+    // Currency is deliberately NOT moved, for the reason stated above the
+    // update: prices already quoted to real customers must not change meaning
+    // because someone corrected a label.
+    if (dto.market !== undefined) {
+      const country = presetFor(dto.market).companyExtra.country;
+      const row = await this.prisma.setting
+        .findFirst({ where: { tenantId: id, key: 'company_extra' }, select: { id: true, value: true } })
+        .catch(() => null);
+      const cur = (row?.value ?? {}) as Record<string, unknown>;
+      if (String(cur.country ?? '') !== country) {
+        const next = { ...cur, country };
+        if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: next as never } }).catch(() => undefined);
+        else await this.prisma.setting.create({ data: { tenantId: id, key: 'company_extra', value: next as never } }).catch(() => undefined);
+      }
+    }
+
     await this.audit.log({
       tenantId: id,
       userId: actor.userId,

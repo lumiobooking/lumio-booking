@@ -5,6 +5,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { isVN as marketIsVN } from '../../../lib/markets';
 import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { TimezonePicker } from '../../../components/TimezonePicker';
@@ -21,6 +22,15 @@ interface Booking {
 }
 interface GatewayView { enabled: boolean; connected: boolean; apiKey: string }
 interface SettingsData {
+  /**
+   * The salon's real market, from the tenant row — NOT `company.country`.
+   *
+   * `country` is a formatting choice an owner makes in a dropdown; `market` is
+   * what routes their SMS and decides which features exist. Branching on the
+   * wrong one is how a shop moved to Vietnam ended up sending through the
+   * Vietnamese carrier with the screen that configures it hidden.
+   */
+  market?: string;
   company: { name: string; slug: string; contactEmail: string | null; contactPhone: string | null; timezone: string; address: string; website: string; country?: string };
   booking: Booking;
   branding: { accentColor: string; logoUrl: string; logoScale?: number; welcomeImageUrl?: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number };
@@ -469,7 +479,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
   const { lang } = useLang();
   // The salon's own country, not the browser's language: an owner reading the
   // English labels in Hanoi still runs a Vietnamese salon.
-  const isVN = (data.company?.country ?? '').toUpperCase() === 'VN';
+  const isVN = marketIsVN(data.market);
   const t = (k: string) => tr(k, lang);
   const b = data.booking;
   const [currency, setCurrency] = useState(b.currency);
@@ -968,7 +978,7 @@ function RebookingCard({ data, onSave }: { data: SettingsData; onSave: SaveFn })
 function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   // Same source the payments panel uses, so the two panels can never disagree
   // about whether this is a Vietnamese salon.
-  const isVN = (data.company?.country ?? '').toUpperCase() === 'VN';
+  const isVN = marketIsVN(data.market);
   const n = data.notifications;
   const [f, setF] = useState({
     mailService: n.mailService, replyTo: n.replyTo,

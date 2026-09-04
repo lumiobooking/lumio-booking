@@ -902,6 +902,19 @@ export class SettingsService {
     if (!tenant) throw new NotFoundException('Tenant not found');
     const extra = await this.readKey<CompanyExtra>(tenantId, COMPANY_EXTRA_KEY, DEFAULT_COMPANY_EXTRA);
     return {
+      // The salon's real market, straight from the tenant row.
+      //
+      // It is served here because the screen had no other way to ask. Every
+      // market decision on the settings page was being made from
+      // `company.country` — the dropdown an owner uses to set their currency
+      // format — while SMS routing, feature policy and money all read
+      // `tenant.market`. The two are synced when a salon is created and never
+      // again, so a shop moved to Vietnam by support had its messages switched
+      // to the Vietnamese carrier while the screen that configures that carrier
+      // stayed hidden; and a US shop whose owner idly picked "Việt Nam" in the
+      // country dropdown was shown the whole Vietnamese setup, which then did
+      // nothing. One answer, from the side that owns it.
+      market: tenant.market ?? 'US',
       company: {
         name: tenant.name,
         slug: tenant.slug,

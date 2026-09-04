@@ -1,0 +1,292 @@
+<title>Mô tả dịch vụ — 2 dòng</title>
+<style>
+  :root{
+    --ink:#0f2a52; --line:#e9edf4; --meta:#7d8ba4; --desc:#8b99b3;
+    --accent:#137a6d; --accent-soft:#e8f4f2; --page:#f4f7fb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--page);color:var(--ink);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:26px 18px 60px}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:21px;margin:0 0 6px}
+  .lede{color:var(--meta);font-size:13.5px;margin:0 0 26px;line-height:1.65;max-width:760px}
+
+  .grid{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}
+  .col{min-width:0}
+  .tag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.6px;
+    text-transform:uppercase;padding:3px 9px;border-radius:999px;margin-bottom:9px}
+  .t-now{background:#fee2e2;color:#b91c1c}
+  .t-pick{background:#dcfce7;color:#166534}
+  .t-alt{background:#e2e8f0;color:#475569}
+  h2{font-size:15.5px;margin:0 0 4px}
+  .why{font-size:12.5px;color:var(--meta);line-height:1.65;margin:0 0 12px}
+
+  /* ---- the phone ---- */
+  .phone{background:#fff;border:1px solid var(--line);border-radius:20px;padding:12px;
+    box-shadow:0 10px 30px -22px rgba(15,42,82,.5)}
+  .row{display:flex;align-items:flex-start;gap:12px;width:100%;padding:14px 15px;
+    border-radius:16px;border:1px solid var(--line);background:#fff;
+    box-shadow:0 2px 6px -3px rgba(15,42,82,.10);margin-bottom:10px;text-align:left}
+  .row:last-child{margin-bottom:0}
+  .body{flex:1;min-width:0}
+  .name{font-size:14.5px;font-weight:800;letter-spacing:.2px;line-height:1.35}
+  .desc{font-size:12.5px;color:var(--desc);line-height:1.45;margin-top:3px}
+  .clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .meta{font-size:12.5px;color:var(--meta);margin-top:5px}
+  .meta b{color:var(--accent)}
+  .plus{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--accent);
+    color:var(--accent);flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    font-size:17px;font-weight:600;margin-top:2px}
+
+  .more{display:inline;background:none;border:none;padding:0;margin-left:4px;
+    font:inherit;font-size:12.5px;font-weight:700;color:var(--accent);cursor:pointer}
+  .fade{position:relative}
+  .fade.clamp2::after{content:"";position:absolute;right:0;bottom:0;width:78px;height:18px;
+    background:linear-gradient(90deg,rgba(255,255,255,0),#fff 62%)}
+
+  /* bullets */
+  .steps{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:5px}
+  .steps li{font-size:11.5px;color:#5b6b85;background:#f4f7fb;border:1px solid var(--line);
+    border-radius:7px;padding:3px 8px;line-height:1.35}
+  .steps li.rest{background:var(--accent-soft);border-color:#bfe0da;color:var(--accent);font-weight:700;cursor:pointer}
+  .stepsfull{margin:8px 0 0;padding:0 0 0 2px;list-style:none}
+  .stepsfull li{font-size:12.5px;color:#5b6b85;line-height:1.55;padding-left:16px;position:relative;margin-bottom:3px}
+  .stepsfull li::before{content:"";position:absolute;left:3px;top:8px;width:5px;height:5px;
+    border-radius:50%;background:#bfe0da}
+
+  .info{width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:#fff;
+    color:var(--meta);font-size:11.5px;font-weight:800;cursor:pointer;flex-shrink:0;
+    display:inline-flex;align-items:center;justify-content:center;vertical-align:-4px;margin-left:6px}
+
+  /* sheet */
+  .sheetwrap{position:relative;margin-top:10px;border-radius:16px;overflow:hidden;
+    border:1px dashed #cbd5e1;background:#fbfdff}
+  .sheet{padding:16px 15px 14px}
+  .sheet .grab{width:36px;height:4px;border-radius:2px;background:#dbe2ee;margin:0 auto 12px}
+  .sheet h3{margin:0;font-size:16px}
+  .sheet .sub{font-size:12.5px;color:var(--meta);margin-top:4px}
+  .cta{width:100%;margin-top:14px;padding:13px;border-radius:999px;border:none;
+    background:var(--accent);color:#fff;font-weight:800;font-size:14.5px;cursor:pointer}
+  .sheetlabel{font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+    color:var(--meta);padding:8px 15px 0}
+
+  .note{font-size:12px;color:var(--meta);line-height:1.7;margin-top:12px}
+  .note b{color:var(--ink)}
+  .hr{height:1px;background:var(--line);margin:34px 0 26px;border:0}
+  .verdict{background:#fff;border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:12px;padding:16px 18px;margin-top:8px}
+  .verdict h2{margin-bottom:8px}
+  .verdict p{font-size:13px;line-height:1.7;color:#42536e;margin:0 0 10px}
+  .verdict p:last-child{margin-bottom:0}
+  code{font:11.5px ui-monospace,Menlo,monospace;background:#eef2f8;padding:1px 5px;border-radius:4px}
+</style>
+
+<div class="wrap">
+  <h1>Mô tả dịch vụ: giữ 2 dòng, vẫn cho xem hết</h1>
+  <p class="lede">
+    Đúng màu, cỡ chữ và khoảng cách của trang đặt lịch thật. Ba phương án dưới đây
+    <b>bấm được</b> — thử ngay trên trang này trước khi quyết.
+  </p>
+
+  <div class="grid">
+
+    <!-- ============ HIỆN TẠI ============ -->
+    <div class="col">
+      <span class="tag t-now">Hiện tại</span>
+      <h2>Cắt cụt, không xem tiếp được</h2>
+      <p class="why">Đã kẹp 2 dòng rồi, nhưng chữ đứt giữa từ và không có đường nào xem phần còn lại.</p>
+      <div class="phone">
+        <div class="row">
+          <div class="body">
+            <div class="name">Essential Head Spa – Package 1</div>
+            <div class="desc clamp2">Open the meridian Shoulder massage Chest, shoulder, neck extension Face wash Mask serum</div>
+            <div class="meta">⏳ 55 min <span style="color:#cbd5e1">|</span> <b>$63.00</b></div>
+          </div>
+          <div class="plus">+</div>
+        </div>
+        <div class="row">
+          <div class="body">
+            <div class="name">Deluxe Head Spa – Package 2</div>
+            <div class="desc clamp2">Open the meridian Shoulder massage Chest, shoulder, neck extension Face wash Mini facial</div>
+            <div class="meta">⏳ 70 min <span style="color:#cbd5e1">|</span> <b>$72.00</b></div>
+          </div>
+          <div class="plus">+</div>
+        </div>
+      </div>
+      <p class="note">
+        Vấn đề thật không chỉ là dài. Mô tả này vốn là <b>một chuỗi các bước</b> —
+        "khai thông kinh lạc / massage vai / gội đầu / đắp mask" — bị viết dính liền thành một câu.
+        Nên dù có cho xem hết thì đọc vẫn mệt.
+      </p>
+    </div>
+
+    <!-- ============ A ============ -->
+    <div class="col">
+      <span class="tag t-pick">Phương án A · khuyến nghị</span>
+      <h2>2 dòng + “Xem thêm” mở tại chỗ</h2>
+      <p class="why">Mặc định gọn đúng 2 dòng. Bấm “Xem thêm” là bung ra ngay trong thẻ, không rời trang, không chọn nhầm dịch vụ.</p>
+      <div class="phone">
+        <div class="row">
+          <div class="body">
+            <div class="name">Essential Head Spa – Package 1</div>
+            <div class="desc clamp2 fade" id="dA1">Open the meridian · Shoulder massage · Chest, shoulder, neck extension · Face wash · Mask · Serum · Scalp treatment · Blow dry</div>
+            <button class="more" onclick="tog('dA1',this)">Xem thêm</button>
+            <div class="meta">⏳ 55 min <span style="color:#cbd5e1">|</span> <b>$63.00</b></div>
+          </div>
+          <div class="plus">+</div>
+        </div>
+        <div class="row">
+          <div class="body">
+            <div class="name">Luxury Head Spa – Package 3</div>
+            <div class="desc clamp2 fade" id="dA2">Open the meridian · Shoulder massage · Chest, shoulder, neck extension · Face wash · Extension mask · Hot stone · Aroma oil · Head massage 20 min · Blow dry &amp; style</div>
+            <button class="more" onclick="tog('dA2',this)">Xem thêm</button>
+            <div class="meta">⏳ 110 min <span style="color:#cbd5e1">|</span> <b>$110.00</b></div>
+          </div>
+          <div class="plus">+</div>
+        </div>
+      </div>
+      <p class="note">
+        Rẻ nhất để làm, ít rủi ro nhất. Chữ <b>không đứt giữa từ</b> nữa — thay dấu “…”
+        bằng một vệt mờ ở cuối dòng 2, mắt hiểu ngay là còn nữa.
+      </p>
+    </div>
+
+    <!-- ============ B ============ -->
+    <div class="col">
+      <span class="tag t-alt">Phương án B</span>
+      <h2>2 dòng + ⓘ mở bảng chi tiết</h2>
+      <p class="why">Thẻ luôn cao bằng nhau, danh sách không bao giờ xô lệch. Bấm ⓘ mở bảng trượt từ dưới lên, có chỗ cho ảnh và nút đặt.</p>
+      <div class="phone">
+        <div class="row">
+          <div class="body">
+            <div class="name">Luxury Head Spa – Package 3</div>
+            <div class="desc clamp2 fade">Open the meridian · Shoulder massage · Chest, shoulder, neck extension · Face wash · Extension mask · Hot stone · Aroma oil</div>
+            <div class="meta">⏳ 110 min <span style="color:#cbd5e1">|</span> <b>$110.00</b>
+              <button class="info" onclick="sheet()">i</button>
+            </div>
+          </div>
+          <div class="plus">+</div>
+        </div>
+
+        <div class="sheetwrap" id="sh" hidden>
+          <div class="sheetlabel">Bảng trượt lên từ đáy màn hình</div>
+          <div class="sheet">
+            <div class="grab"></div>
+            <h3>Luxury Head Spa – Package 3</h3>
+            <div class="sub">⏳ 110 phút · <b style="color:var(--accent)">$110.00</b></div>
+            <ul class="stepsfull">
+              <li>Khai thông kinh lạc</li>
+              <li>Massage vai</li>
+              <li>Kéo giãn ngực, vai, cổ</li>
+              <li>Rửa mặt</li>
+              <li>Đắp mask dưỡng sâu</li>
+              <li>Đá nóng</li>
+              <li>Tinh dầu thư giãn</li>
+              <li>Massage đầu 20 phút</li>
+              <li>Sấy tạo kiểu</li>
+            </ul>
+            <button class="cta" onclick="sheet()">Chọn dịch vụ này</button>
+          </div>
+        </div>
+      </div>
+      <p class="note">
+        Hợp khi mô tả rất dài hoặc tiệm muốn kèm ảnh từng gói.
+        Đổi lại khách phải bấm thêm một lần mới đọc được.
+      </p>
+    </div>
+
+    <!-- ============ C ============ -->
+    <div class="col">
+      <span class="tag t-alt">Phương án C</span>
+      <h2>Tách thành từng bước, hiện 2 hàng</h2>
+      <p class="why">Cắt mô tả theo dấu phân cách thành từng bước rời, hiện vừa 2 hàng, phần dư gộp vào “+4”.</p>
+      <div class="phone">
+        <div class="row">
+          <div class="body">
+            <div class="name">Essential Head Spa – Package 1</div>
+            <ul class="steps" id="cA">
+              <li>Khai thông kinh lạc</li><li>Massage vai</li><li>Kéo giãn cổ vai</li>
+              <li class="rest" onclick="chips('cA',this)">+4 bước</li>
+            </ul>
+            <div class="meta" style="margin-top:7px">⏳ 55 min <span style="color:#cbd5e1">|</span> <b>$63.00</b></div>
+          </div>
+          <div class="plus">+</div>
+        </div>
+        <div class="row">
+          <div class="body">
+            <div class="name">Deluxe Head Spa – Package 2</div>
+            <ul class="steps" id="cB">
+              <li>Khai thông kinh lạc</li><li>Massage vai</li><li>Rửa mặt</li>
+              <li class="rest" onclick="chips('cB',this)">+3 bước</li>
+            </ul>
+            <div class="meta" style="margin-top:7px">⏳ 70 min <span style="color:#cbd5e1">|</span> <b>$72.00</b></div>
+          </div>
+          <div class="plus">+</div>
+        </div>
+      </div>
+      <p class="note">
+        Dễ đọc nhất, và <b>thấy ngay gói 3 hơn gói 1 ở chỗ nào</b> — thứ mà đoạn văn dính liền
+        giấu mất. Nhưng chỉ chạy được nếu tiệm viết mô tả có dấu phân cách
+        (<code>·</code>, <code>,</code> hay xuống dòng). Mô tả viết thành câu văn xuôi thì phương án này vô dụng.
+      </p>
+    </div>
+
+  </div>
+
+  <hr class="hr">
+
+  <div class="verdict">
+    <h2>Tôi đề xuất: làm A trước, mở đường cho C</h2>
+    <p>
+      <b>A giải quyết đúng mâu thuẫn anh đang gặp</b> — danh sách gọn đúng 2 dòng như anh muốn,
+      mà tiệm vẫn show được hết mô tả như họ muốn. Không ai phải nhường ai.
+      Sửa nhỏ, nằm gọn trong một thẻ, không đụng gì tới luồng đặt lịch.
+    </p>
+    <p>
+      <b>C thì đẹp hơn nhưng phụ thuộc vào tiệm.</b> Nó chỉ hoạt động khi mô tả có dấu phân cách.
+      Nếu ép chạy trên mô tả viết văn xuôi, nó sẽ cắt bừa giữa câu — hỏng hơn cả hiện tại.
+      Nên làm sau, và chỉ bật khi phát hiện mô tả thật sự là một danh sách.
+    </p>
+    <p>
+      <b>B để dành.</b> Nó là câu trả lời đúng cho ngày tiệm muốn mỗi gói có ảnh riêng và mô tả dài,
+      chưa phải hôm nay.
+    </p>
+    <p style="color:#b45309">
+      <b>Một chỗ kỹ thuật phải xử lý trước:</b> hiện cả thẻ dịch vụ là một
+      <code>&lt;button&gt;</code>, mà HTML không cho lồng nút trong nút. Nút “Xem thêm” đặt thẳng vào
+      sẽ hỏng trên một số trình duyệt. Phải đổi thẻ thành <code>&lt;div&gt;</code> có vai trò nút,
+      hoặc cho “Xem thêm” chặn sự kiện lan ra ngoài — nếu không, bấm “Xem thêm” sẽ
+      <b>chọn luôn dịch vụ đó vào giỏ</b>, và đó là lỗi khách sẽ gặp chứ không phải mình.
+    </p>
+  </div>
+</div>
+
+<script>
+  function tog(id, btn){
+    var el = document.getElementById(id);
+    var open = !el.classList.contains('clamp2');
+    el.classList.toggle('clamp2', open);
+    el.classList.toggle('fade', open);
+    btn.textContent = open ? 'Xem thêm' : 'Thu gọn';
+  }
+  function sheet(){
+    var s = document.getElementById('sh');
+    s.hidden = !s.hidden;
+  }
+  var FULL = {
+    cA: ['Khai thông kinh lạc','Massage vai','Kéo giãn cổ vai','Rửa mặt','Đắp mask','Serum','Dưỡng da đầu','Sấy khô'],
+    cB: ['Khai thông kinh lạc','Massage vai','Rửa mặt','Mini facial','Đắp mask','Serum','Sấy tạo kiểu']
+  };
+  function chips(id, li){
+    var ul = document.getElementById(id);
+    var opened = ul.dataset.open === '1';
+    ul.dataset.open = opened ? '0' : '1';
+    var items = FULL[id];
+    var show = opened ? items.slice(0,3) : items;
+    var restN = items.length - 3;
+    ul.innerHTML = show.map(function(t){ return '<li>'+t+'</li>'; }).join('')
+      + '<li class="rest" onclick="chips(\''+id+'\',this)">'
+      + (opened ? '+'+restN+' bước' : 'Thu gọn') + '</li>';
+  }
+</script>

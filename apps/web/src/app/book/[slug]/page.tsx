@@ -1713,7 +1713,15 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
               const on = selectedIds.includes(s.id);
               const disc = svcDiscount(s);
               return (
-                <button key={s.id} type="button" className="lumio-row" onClick={() => onToggle(s.id)}
+                // A div rather than a button, because "Show more" lives inside it
+                // and HTML does not allow a button inside a button — Firefox
+                // drops the inner one's clicks outright. Role, tabIndex and the
+                // key handler keep it exactly as operable as the button it was.
+                <div key={s.id} role="button" tabIndex={0} className="lumio-row"
+                  onClick={() => onToggle(s.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(s.id); }
+                  }}
                   style={{ ...rowCard, borderColor: on ? accent : '#e9edf4', background: on ? tint(accent, 0.06) : '#fff',
                     boxShadow: on ? `0 10px 26px -16px ${tint(accent, 0.9)}, 0 0 0 3px ${tint(accent, 0.12)}` : rowCard.boxShadow }}>
                   <ServiceThumb url={s.imageUrl} />
@@ -1726,7 +1734,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                     {/* The salon's own words about the service. Two clamped
                         lines: enough to say what's included ("massage, hot
                         towel and polish"), never enough to bury the price. */}
-                    {s.description?.trim() ? <span style={rowDesc}>{s.description.trim()}</span> : null}
+                    {s.description?.trim() ? <ServiceDescription text={s.description.trim()} /> : null}
                     <span style={rowMeta}>
                       {s.durationMinutes > 0 && <>⏳ {s.durationMinutes} min <span style={{ color: 'var(--ccbd5e1)' }}>|</span>{' '}</>}
                       {disc > 0 && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', marginRight: 6 }}>{fmt(s.priceCents)}</span>}
@@ -1741,7 +1749,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                     </span>
                   </span>
                   <PlusCheck on={on} accent={accent} />
-                </button>
+                </div>
               );
             })}
             {g.items.length === 0 && <div style={{ color: 'var(--c94a3b8)', fontSize: 13.5, padding: '8px 2px' }}>{bt("Nothing found.")}</div>}
@@ -2315,6 +2323,81 @@ function CartThumb({ url }: { url?: string | null }) {
   );
 }
 
+/**
+ * The salon's own words about a service: two lines, or all of it on request.
+ *
+ * THE CONFLICT THIS SETTLES
+ *
+ * The shop writes a full description because the full description is what sells
+ * a $110 package over a $63 one — it is the only place the difference between
+ * them is written down. The list needs two lines or it stops being a list. Both
+ * are right, so neither is asked to give way: two lines by default, the whole
+ * thing one tap away.
+ *
+ * THREE THINGS THAT MAKE IT BEHAVE
+ *
+ * 1. "Show more" appears ONLY when there is more. A control that reveals
+ *    nothing teaches people not to press the one that does, so the element is
+ *    measured and the button is rendered only when the text actually overflows.
+ *    Measuring is skipped while open — an unclamped element never overflows, so
+ *    measuring then would read zero and delete the button mid-use.
+ * 2. An expanded card tidies itself away once it scrolls off screen. Collapsing
+ *    on ANY scroll was the request, and it is the wrong rule: a person reading
+ *    nine steps scrolls a little to read them, and the text would snap shut
+ *    under their eyes. Leaving the viewport is the honest signal that they are
+ *    done with it.
+ * 3. Pressing it must not add the service to the basket. The row is one big
+ *    control, so both the click and the Enter key are stopped here — otherwise
+ *    "Show more" quietly books a $110 package, and the person who finds that
+ *    bug is a customer.
+ */
+function ServiceDescription({ text }: { text: string }) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+
+  useEffect(() => {
+    if (open) return; // see note 1
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setOverflows(el.scrollHeight - el.clientHeight > 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    // Rotating a phone re-wraps the text, and a description that fitted in
+    // landscape may not fit in portrait.
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text, open]);
+
+  useEffect(() => {
+    if (!open || typeof IntersectionObserver === 'undefined') return;
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => { if (entries.some((e) => !e.isIntersecting)) setOpen(false); },
+      { threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [open]);
+
+  return (
+    <>
+      <span ref={ref} style={open ? rowDescOpen : rowDesc}>{text}</span>
+      {overflows && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+          onKeyDown={(e) => e.stopPropagation()}
+          aria-expanded={open}
+          style={moreBtn}
+        >{open ? bt('Show less') : bt('Show more')}</button>
+      )}
+    </>
+  );
+}
+
 function ServiceThumb({ url }: { url?: string | null }) {
   const clean = (url ?? '').trim();
   const [ok, setOk] = useState(clean.startsWith('https://') || clean.startsWith('data:image/'));
@@ -2885,6 +2968,20 @@ const rowMeta: React.CSSProperties = { display: 'block', fontSize: 12.5, color: 
 const rowDesc: React.CSSProperties = {
   display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
   overflow: 'hidden', fontSize: 12.5, color: '#8b99b3', lineHeight: 1.45, marginTop: 3,
+};
+// Opened. `pre-line` honours the line breaks the shop typed: a package written
+// as one step per line was being flattened into a paragraph, which is how a
+// nine-step treatment came to read as a run-on sentence.
+const rowDescOpen: React.CSSProperties = {
+  display: 'block', fontSize: 12.5, color: '#8b99b3', lineHeight: 1.45,
+  marginTop: 3, whiteSpace: 'pre-line',
+};
+// Quiet on purpose. It sits between the description and the price, and it is
+// not competing with either — it is a door, not a call to action.
+const moreBtn: React.CSSProperties = {
+  display: 'inline-block', marginTop: 4, padding: 0, border: 'none', background: 'none',
+  font: 'inherit', fontSize: 12.5, fontWeight: 700, color: 'var(--accent, #6366f1)',
+  cursor: 'pointer', textAlign: 'left',
 };
 const inputStyle: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #dbe2ee', background: '#fff', color: INK, fontSize: 14 };
 const ctaBtn: React.CSSProperties = {

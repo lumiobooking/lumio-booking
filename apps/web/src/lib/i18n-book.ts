@@ -34,6 +34,11 @@ const VI: Record<string, string> = {
   'Search a service…': 'Tìm dịch vụ…',
   'Select a service': 'Chọn dịch vụ',
   'Nothing found.': 'Không tìm thấy dịch vụ nào.',
+  // The service description opens and closes in place. English is the source
+  // string because the page follows the SALON's country, not the reader's —
+  // a Texas shop must keep showing exactly the English page it shows today.
+  'Show more': 'Xem thêm',
+  'Show less': 'Thu gọn',
   'Bringing friends?': 'Đi cùng bạn bè?',
   'Add guest': 'Thêm người',
   'Popular': 'Phổ biến',

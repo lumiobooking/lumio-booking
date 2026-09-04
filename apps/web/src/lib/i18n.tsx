@@ -196,6 +196,25 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'nav.billing': { en: 'Billing & plan', vi: 'Gói & thanh toán' },
   'nav.usageCosts': { en: 'Usage & costs', vi: 'Chi phí sử dụng' },
   'nav.settings': { en: 'Settings', vi: 'Cài đặt' },
+  // Menu items that had no key at all, so `tr` fell through to the raw label
+  // typed in the sidebar. Most of those labels are English, which left a
+  // Vietnamese salon with an English menu; one of them — "Duyệt bài đăng" —
+  // was typed in Vietnamese, which put a Vietnamese item in an English menu.
+  // Both are the same missing entry.
+  'nav.approvePosts': { en: 'Post approval', vi: 'Duyệt bài đăng' },
+  'nav.marketingReport': { en: 'Marketing report', vi: 'Báo cáo marketing' },
+  'nav.emailMarketing': { en: 'Email marketing', vi: 'Email marketing' },
+  'nav.googleReviews': { en: 'Google reviews', vi: 'Đánh giá Google' },
+  'nav.inbox': { en: 'Inbox', vi: 'Hộp thư' },
+  'nav.messengerAi': { en: 'Messenger bot', vi: 'Bot trả lời tin nhắn' },
+  'nav.voiceAi': { en: 'AI Hotline', vi: 'Tổng đài AI' },
+  'nav.terminals': { en: 'Card terminals', vi: 'Máy quẹt thẻ' },
+  'nav.cardTransactions': { en: 'Card transactions', vi: 'Giao dịch thẻ' },
+  'nav.reports': { en: 'Business report', vi: 'Báo cáo kinh doanh' },
+  'nav.connections': { en: 'Connections', vi: 'Kết nối' },
+  'nav.activity': { en: 'Activity', vi: 'Hoạt động' },
+  'nav.chairs': { en: 'Chairs', vi: 'Ghế' },
+  'nav.chain': { en: 'Multi-location', vi: 'Chuỗi chi nhánh' },
   // sidebar group headers (folder tree)
   'navg.ops': { en: 'Operations', vi: 'Vận hành' },
   'navg.clients': { en: 'Clients & Catalog', vi: 'Khách & Dịch vụ' },
@@ -1818,4 +1837,18 @@ export const NAV_KEY: Record<string, string> = {
   '/salon/billing': 'nav.billing',
   '/salon/usage-costs': 'nav.usageCosts',
   '/salon/settings': 'nav.settings',
+  '/salon/approve-posts': 'nav.approvePosts',
+  '/salon/marketing/monthly': 'nav.marketingReport',
+  '/salon/email': 'nav.emailMarketing',
+  '/salon/reviews-replies': 'nav.googleReviews',
+  '/salon/inbox': 'nav.inbox',
+  '/salon/messenger': 'nav.messengerAi',
+  '/salon/voice': 'nav.voiceAi',
+  '/salon/payment-terminals': 'nav.terminals',
+  '/salon/card-transactions': 'nav.cardTransactions',
+  '/salon/reports': 'nav.reports',
+  '/salon/connections': 'nav.connections',
+  '/salon/activity': 'nav.activity',
+  '/salon/chairs': 'nav.chairs',
+  '/salon/chain': 'nav.chain',
 };

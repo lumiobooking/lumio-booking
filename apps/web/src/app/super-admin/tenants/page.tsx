@@ -560,14 +560,22 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
           <Field label="City"><input style={inp} value={form.city} placeholder="Garden Grove" onChange={(e) => setForm({ ...form, city: e.target.value })} /></Field>
           <Field label="State / province code"><input style={inp} value={form.region} placeholder="CA" maxLength={8} onChange={(e) => setForm({ ...form, region: e.target.value.toUpperCase() })} /></Field>
           <Field label="ZIP / postal code"><input style={inp} value={form.postalCode} placeholder="92840" onChange={(e) => setForm({ ...form, postalCode: e.target.value })} /></Field>
-          <Field label="Nearby ZIPs (comma separated)"><input style={inp} value={form.nearbyZips} placeholder="92841, 92843, 92683" onChange={(e) => setForm({ ...form, nearbyZips: e.target.value })} /></Field>
+          {/* The nearby-ZIP list feeds one thing: US Census demographics. There
+              are none for Vietnam, so on a VN tenant this field asks for work
+              that produces nothing. The ZIP itself stays — a Vietnamese salon
+              still has a postal code, and the address is worth having. */}
+          {form.market !== 'VN' && (
+            <Field label="Nearby ZIPs (comma separated)"><input style={inp} value={form.nearbyZips} placeholder="92841, 92843, 92683" onChange={(e) => setForm({ ...form, nearbyZips: e.target.value })} /></Field>
+          )}
         </div>
+        {form.market !== 'VN' && (
         <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '8px 0 0', maxWidth: 560, lineHeight: 1.5 }}>
           Area demographics are fetched per ZIP from the US Census. Nothing here draws a
           five-mile circle &mdash; ZIP boundaries follow postal routes, not radii &mdash; so add the
           neighbouring ZIPs by hand and the screen will say &quot;các ZIP quanh tiệm&quot; rather than
           claim a radius it did not measure.
         </p>
+        )}
       </div>
 
       <div style={{ borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>

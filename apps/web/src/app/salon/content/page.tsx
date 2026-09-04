@@ -19,6 +19,8 @@ import { SeoRoadmap } from '../../../components/SeoRoadmap';
 import { OnboardingReport } from '../../../components/OnboardingReport';
 import { Panel } from '../../../components/Panel';
 import { CardHead } from '../../../components/CardHead';
+import { isNorthAmerica } from '../../../lib/markets';
+import { uiMarket } from '../../../lib/ui-market';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
@@ -2222,7 +2224,16 @@ function Inner() {
               {/* ---- the neighbourhood ----
                   Census figures per ZIP. Labelled as ZIPs, never as a radius:
                   ZIP boundaries follow postal routes, and calling them a
-                  five-mile circle would be a claim nothing here measured. */}
+                  five-mile circle would be a claim nothing here measured.
+
+                  North America only. The source is the US Census, which has no
+                  Vietnamese figures at all — so a Hanoi salon read "no area
+                  data yet, the system pulls it from the shop's ZIP hourly", a
+                  promise that could never come true. Worse, feed it digits and
+                  it reported a median household income in US DOLLARS and
+                  compared it to the Vietnamese average. A card that cannot be
+                  right here does not belong here. */}
+              {isNorthAmerica(uiMarket()) && (
               <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
                   🗺️ {T('Khu vực quanh tiệm', 'Around the shop')}
@@ -2247,6 +2258,7 @@ function Inner() {
                   </div>
                 )}
               </div>
+              )}
             </>
           )}
 
@@ -3078,7 +3090,11 @@ function Inner() {
                   who have never been in the book — and a shop with twenty-two
                   bookings has almost no history to reason from anyway. Sizes
                   here come from the US Census, not from this shop. */}
-              {plan?.market && (
+              {/* Sized from the US Census too — same reason, same gate. It
+                  renders empty for a Vietnamese salon today only because the
+                  ZIP field happens to be blank, which is an accident of data
+                  rather than a decision. */}
+              {plan?.market && isNorthAmerica(uiMarket()) && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#6366f1' }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
                     🎯 {T('Tệp khách mục tiêu trong khu vực', 'Who to target in this area')}

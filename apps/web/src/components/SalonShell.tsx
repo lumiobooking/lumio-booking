@@ -13,6 +13,8 @@ import { apiFetch } from '../lib/api';
 import { useIsMobile } from '../lib/responsive';
 import { useLang, tr, NAV_KEY, defaultLangForMarket, setUiCurrencySymbol } from '../lib/i18n';
 import { setUiCurrency } from '../lib/ui-currency';
+import { setUiMarket, initUiMarket, uiMarket } from '../lib/ui-market';
+import { isNorthAmerica } from '../lib/markets';
 import { currencySymbolFor } from '../lib/money';
 import { InstallAppButton } from './InstallAppButton';
 import { ShareBookingLink } from './ShareBookingLink';
@@ -20,7 +22,13 @@ import { MobileTabBar } from './MobileTabBar';
 import { NotificationBell } from './NotificationBell';
 
 // `feature: 'pos'` items only show when the salon's plan unlocks the POS suite.
-type NavItem = { href: string; label: string; icon: string; feature?: 'pos'; biz?: 'restaurant' };
+//
+// `market: 'na'` means the screen only makes sense in North America. It is a
+// nav-level condition rather than a feature-policy key on purpose: every key in
+// FEATURE_DEFS ships OFF — "nothing opens by accident" — so giving one of these
+// screens a key would take it away from every US salon that has it today, to
+// solve a problem only Vietnam has.
+type NavItem = { href: string; label: string; icon: string; feature?: 'pos'; biz?: 'restaurant'; market?: 'na' };
 type NavGroup = { id: string; label: string; items: NavItem[] };
 
 // Dashboard sits on its own above the collapsible groups.
@@ -55,7 +63,7 @@ const GROUPS: NavGroup[] = [
     // The client's own door: preview + approve what is about to publish.
     // Deliberately its own route, NOT the content page — that page is the
     // agency's kitchen and has its own switch; this one is the dining room.
-    { href: '/salon/approve-posts', label: 'Duyệt bài đăng', icon: 'check' },
+    { href: '/salon/approve-posts', label: 'Post approval', icon: 'check' },
     { href: '/salon/marketing', label: 'Marketing', icon: 'megaphone' },
     { href: '/salon/marketing/monthly', label: 'Marketing report', icon: 'chart' },
     { href: '/salon/email', label: 'Email marketing', icon: 'mail' },
@@ -71,7 +79,12 @@ const GROUPS: NavGroup[] = [
   { id: 'finance', label: 'Finance', items: [
     { href: '/salon/payments', label: 'Payments', icon: 'dollar' },
     { href: '/salon/payment-terminals', label: 'Card terminals', icon: 'card', feature: 'pos' },
-    { href: '/salon/card-transactions', label: 'Card transactions', icon: 'fileText', feature: 'pos' },
+    // North America only. The whole screen is the card terminal's receipt book —
+    // void, refund, approval code, batch number, card brand, all of it Dejavoo —
+    // and the terminal itself is already vetoed for Vietnam by the market.
+    // Blocking the machine and leaving its receipt book in the menu was half a
+    // veto: a row a Vietnamese salon can never have, on a screen it can never act on.
+    { href: '/salon/card-transactions', label: 'Card transactions', icon: 'fileText', feature: 'pos', market: 'na' },
     { href: '/salon/reports', label: 'Business report', icon: 'trendUp' },
     { href: '/salon/pos/report', label: 'Sales report', icon: 'pie', feature: 'pos' },
     { href: '/salon/payroll', label: 'Staff & pay', icon: 'banknote', feature: 'pos' },
@@ -189,6 +202,11 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // Routes hidden because Super Admin set the feature to platform-managed.
   const [hiddenHrefs, setHiddenHrefs] = useState<string[]>(() => readCachedHidden());
   const [isRestaurant, setIsRestaurant] = useState<boolean>(() => readCachedRestaurant());
+  // React state as well as the module-level store, because a module variable
+  // changing does not re-render anything: the menu would keep the wrong
+  // country's items until some unrelated state happened to update it. Seeded
+  // from the same cache so the first paint is already right.
+  const [market, setMarket] = useState<string>(() => { initUiMarket(); return uiMarket(); });
   // Sidebar collapsed? Remembered, so a cashier who works on the POS all day
   // keeps the wide screen instead of re-collapsing it on every page.
   const [navHidden, setNavHidden] = useState(false);
@@ -232,7 +250,13 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   const posOk = posEnabled === true || (hasSalonAccess && user?.role === 'STAFF');
   // `can` already consults hiddenHrefs, so the per-tenant switch is applied
   // once, in one place, for the menu and the page guard alike.
-  const itemVisible = (item: NavItem) => (item.feature !== 'pos' || posOk) && (item.biz !== 'restaurant' || isRestaurant) && can(item.href);
+  const itemVisible = (item: NavItem) => (item.feature !== 'pos' || posOk)
+    && (item.biz !== 'restaurant' || isRestaurant)
+    // An unknown market counts as North America: every salon here before
+    // Vietnam is in it, and a request still in flight must never blank out a
+    // screen someone uses every day.
+    && (item.market !== 'na' || isNorthAmerica(market))
+    && can(item.href);
   const visibleGroups = GROUPS
     .map((g) => ({ ...g, items: g.items.filter(itemVisible) }))
     .filter((g) => g.items.length > 0);
@@ -269,6 +293,13 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     apiFetch<{ businessType?: string; timezone?: string; market?: string; currency?: string }>('/me/tenant', { token })
       .then((r) => {
         const on = r?.businessType === 'RESTAURANT'; setIsRestaurant(on); writeCachedRestaurant(on);
+        // The market, for the screens that must show different things in
+        // different countries — the Vietnamese carrier panel, the American
+        // card gateways, the US Census figures. Cached so the next load
+        // paints the right country immediately instead of flashing the wrong
+        // one while this request is in flight.
+        setUiMarket(r?.market);
+        if (r?.market) setMarket(String(r.market).toUpperCase());
         if (r?.timezone) { try { window.localStorage.setItem('lumio_tz', r.timezone); } catch { /* ignore */ } }
         // A Vietnamese salon opens in Vietnamese. Its owner should not have to
         // find a language menu written in English on their first sign-in. Only

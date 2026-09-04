@@ -98,9 +98,22 @@ export function methodsForSalon(
   chosen: unknown,
 ): PaymentMethodCode[] {
   if (!Array.isArray(chosen)) return defaultMethodsForMarket(market);
+  const code = String(market ?? '').trim().toUpperCase() || 'US';
   const clean = chosen
     .map((c) => String(c ?? '').trim().toUpperCase())
-    .filter((c): c is PaymentMethodCode => isPaymentMethod(c));
+    .filter((c): c is PaymentMethodCode => isPaymentMethod(c))
+    // Available HERE, not merely a method that exists somewhere.
+    //
+    // The stored list was checked against the global catalogue only, so a US
+    // salon could be handed MoMo, VietQR and ZaloPay — three Vietnamese wallets
+    // — and a cashier in Garden Grove would find them under their thumb next to
+    // Cash. Nothing prevented it: the market's own `defaultFor` list, which is
+    // the record of where a method actually works, was never consulted.
+    //
+    // CASH, CARD and TRANSFER pass everywhere because they are listed for every
+    // market. OTHER passes for nobody by list, and is kept deliberately: it is
+    // how historical rows still resolve.
+    .filter((c) => c === 'OTHER' || paymentMethod(c).defaultFor.includes(code));
   const unique = [...new Set(clean)];
   return unique.length ? unique : defaultMethodsForMarket(market);
 }

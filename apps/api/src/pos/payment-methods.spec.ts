@@ -133,3 +133,38 @@ describe('values that should not be trusted', () => {
     }
   });
 });
+
+describe('a market cannot be handed another market\'s wallets', () => {
+  // The stored choice was checked against the global catalogue only — "is MOMO
+  // a real method?" — and never against the market's own list, which is the
+  // record of where a method actually works. So a US salon could be given MoMo,
+  // VietQR and ZaloPay, and a cashier in Garden Grove would find three
+  // Vietnamese wallets under their thumb next to Cash.
+  it('drops Vietnamese wallets from a US till', () => {
+    const m = methodsForSalon('US', ['CASH', 'CARD', 'MOMO', 'VIETQR', 'ZALOPAY']);
+    expect(m).toEqual(['CASH', 'CARD']);
+  });
+
+  it('keeps them on a Vietnamese till', () => {
+    const m = methodsForSalon('VN', ['CASH', 'VIETQR', 'MOMO']);
+    expect(m).toEqual(['CASH', 'VIETQR', 'MOMO']);
+  });
+
+  it('keeps the methods that work everywhere, in every market', () => {
+    for (const mk of ['US', 'CA', 'VN']) {
+      expect(methodsForSalon(mk, ['CASH', 'CARD', 'TRANSFER'])).toEqual(['CASH', 'CARD', 'TRANSFER']);
+    }
+  });
+
+  it('still resolves OTHER, because historical rows carry it', () => {
+    // Not a default button in any market by list, and deliberately kept: a
+    // ticket written years ago must still name what it was paid with.
+    expect(methodsForSalon('US', ['CASH', 'OTHER'])).toEqual(['CASH', 'OTHER']);
+  });
+
+  it('falls back rather than leaving a cashier with no buttons', () => {
+    // A US salon whose stored list is ONLY Vietnamese wallets now filters to
+    // nothing — and nothing is the one answer a till cannot render.
+    expect(methodsForSalon('US', ['MOMO', 'ZALOPAY'])).toEqual(defaultMethodsForMarket('US'));
+  });
+});

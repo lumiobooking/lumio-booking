@@ -504,6 +504,21 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
 
   const enabledGw = GATEWAYS.filter((g) => gw[g.id]?.enabled);
   const connectedGw = GATEWAYS.filter((g) => data.gateways?.[g.id]?.connected);
+  /**
+   * Which card gateways this salon is offered.
+   *
+   * All seven are American acquirers — Helcim, Stripe, Square, Clover,
+   * Authorize.Net, PayPal, SumUp. None of them settles to a Vietnamese bank, so
+   * a Hanoi salon was being offered seven ways to take cards that it cannot
+   * take cards with, on the same screen as the VietQR panel that actually works.
+   *
+   * One already switched on stays on the list, whatever the market. Hiding a
+   * gateway a salon is using would strand a live configuration behind a screen
+   * it can no longer reach — a worse failure than the clutter this removes.
+   */
+  const shownGw = isVN
+    ? GATEWAYS.filter((g) => gw[g.id]?.enabled || data.gateways?.[g.id]?.connected)
+    : GATEWAYS;
   const cardChannelName = GATEWAYS.find((g) => g.id === data.pos?.primaryCardGateway)?.name;
 
   return (
@@ -556,8 +571,13 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           row sat directly above the section that IS their payment setup —
           reading, reasonably, as "the real payment settings are not for you".
           Hidden rather than disabled: an unavailable gateway is not a choice
-          being withheld, it is a thing that does not exist here. */}
-      {!isVN && (
+          being withheld, it is a thing that does not exist here.
+
+          The exception is a salon that already has one switched on. Hiding a
+          gateway in use strands a live configuration behind a screen nobody can
+          reach any more — a worse failure than the clutter this removes — so
+          `shownGw` keeps it, and this condition keeps the panel that holds it. */}
+      {(!isVN || shownGw.length > 0) && (
       <Panel
         title={t('se.pay.gwTitle')}
         badge={connectedGw.length ? { text: t('se.pay.connectedN').replace('{n}', String(connectedGw.length)), color: '#22c55e' } : { text: t('se.pay.none'), color: 'var(--c64748b)' }}
@@ -567,7 +587,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           {t('se.pay.gwIntro')}
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {GATEWAYS.map((g) => {
+          {shownGw.map((g) => {
             const e = gw[g.id];
             const connected = data.gateways?.[g.id]?.connected;
             return (
@@ -1224,18 +1244,26 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       {test.kind === 'ok' && <div style={{ marginTop: 8, color: '#22c55e', fontSize: 13 }}>✓ {test.msg}</div>}
       {test.kind === 'err' && <div style={{ marginTop: 8, color: '#ef4444', fontSize: 13, wordBreak: 'break-word' }}>✕ {test.msg}</div>}
 
-      <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
-        {t('se.no.smsGateway')}{' '}
-        {n.twilio.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('se.pay.connected')}</span>}
-      </div>
-      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>
-        {t('se.no.twilioHelp')}
-      </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-        <Field label={t('se.no.accountSid')}><input style={ui.input} value={tw.accountSid} onChange={(e) => setTw({ ...tw, accountSid: e.target.value })} placeholder="AC…" /></Field>
-        <Field label={t('se.no.authToken')}><input style={ui.input} type="password" value={tw.authToken} onChange={(e) => setTw({ ...tw, authToken: e.target.value })} placeholder={n.twilio.connected ? t('se.no.saved') : t('se.no.authToken')} /></Field>
-        <Field label={t('se.no.fromNumber')}><input style={ui.input} value={tw.fromNumber} onChange={(e) => setTw({ ...tw, fromNumber: e.target.value })} placeholder="+1…" /></Field>
-      </div>
+      {/* Twilio, for everyone except Vietnam.
+          It used to render here unconditionally, ABOVE the Vietnamese
+          aggregator — so the first SMS gateway a Hanoi salon saw was the one
+          that cannot reach its customers. Twilio to a Vietnamese number is a
+          silent failure: accepted with a message id, dropped by the carrier.
+          The panel that cannot work was the prominent one. */}
+      {!isVN && (<>
+        <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
+          {t('se.no.smsGateway')}{' '}
+          {n.twilio.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('se.pay.connected')}</span>}
+        </div>
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>
+          {t('se.no.twilioHelp')}
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+          <Field label={t('se.no.accountSid')}><input style={ui.input} value={tw.accountSid} onChange={(e) => setTw({ ...tw, accountSid: e.target.value })} placeholder="AC…" /></Field>
+          <Field label={t('se.no.authToken')}><input style={ui.input} type="password" value={tw.authToken} onChange={(e) => setTw({ ...tw, authToken: e.target.value })} placeholder={n.twilio.connected ? t('se.no.saved') : t('se.no.authToken')} /></Field>
+          <Field label={t('se.no.fromNumber')}><input style={ui.input} value={tw.fromNumber} onChange={(e) => setTw({ ...tw, fromNumber: e.target.value })} placeholder="+1…" /></Field>
+        </div>
+      </>)}
 
       {/* Vietnam sends through a domestic aggregator, never Twilio. Twilio to a
           Vietnamese number is a silent failure — accepted with an id, dropped by

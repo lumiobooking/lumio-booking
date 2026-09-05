@@ -1,4 +1,7 @@
-import { regionEvents, resolveRegion, parseAddress, nthWeekday, lastWeekday, easter, lunarNewYear, eventsToPrompt } from './region-events';
+import {
+  regionEvents, resolveRegion, parseAddress, nthWeekday, lastWeekday, easter,
+  lunarNewYear, hungKings, mondayBefore, eventsToPrompt,
+} from './region-events';
 import { enOf, viOf } from './i18n';
 
 const d = (s: string) => new Date(`${s}T12:00:00Z`);
@@ -7,6 +10,10 @@ const names = (today: string, input: Parameters<typeof regionEvents>[1], horizon
   regionEvents(d(today), input, { horizonDays: horizon }).events.map((e) => viOf(e.name));
 const find = (today: string, input: Parameters<typeof regionEvents>[1], name: string, horizon = 400) =>
   regionEvents(d(today), input, { horizonDays: horizon }).events.find((e) => viOf(e.name) === name);
+/** The same lookup, for a caller that has asked for the optional cultural days. */
+const findCultural = (today: string, input: Parameters<typeof regionEvents>[1], name: string, horizon = 400) =>
+  regionEvents(d(today), input, { horizonDays: horizon, includeCultural: true })
+    .events.find((e) => viOf(e.name) === name);
 
 describe('date arithmetic is right, not roughly right', () => {
   it('finds the nth weekday of a month', () => {
@@ -132,15 +139,74 @@ describe('two salons in different states get different calendars', () => {
     expect(e?.spanDays).toBeGreaterThan(0);
   });
 
-  it('offers Cinco de Mayo in California but not in Maine', () => {
-    expect(find('2026-04-20', ca, 'Cinco de Mayo')).toBeTruthy();
-    expect(find('2026-04-20', { market: 'US', region: 'ME' }, 'Cinco de Mayo')).toBeUndefined();
+  it('OFFERS ONLY THIS COUNTRY’S OWN HOLIDAYS', () => {
+    // Tết on a Texas salon's calendar is real for a shop with Vietnamese
+    // customers and noise for the shop next door — and once it is in the list
+    // it looks exactly like a national holiday. The salon's calendar shows the
+    // calendar of the country the salon is standing in.
+    expect(find('2026-02-01', ca, 'Tết Nguyên đán')).toBeUndefined();
+    expect(find('2026-04-20', ca, 'Cinco de Mayo')).toBeUndefined();
   });
 
-  it('flags cultural events as optional rather than assuming the customer base', () => {
-    const tet = find('2026-02-01', ca, 'Tết Nguyên đán');
+  it('keeps the cultural days for a caller that knows the customer base', () => {
+    // Not deleted — asked for. The caveats still say who they are for.
+    const tet = findCultural('2026-02-01', ca, 'Tết Nguyên đán');
     expect(tet?.scope).toBe('cultural');
     expect(viOf(tet?.caveat)).toMatch(/nếu tiệm/);
+    expect(findCultural('2026-04-20', ca, 'Cinco de Mayo')).toBeTruthy();
+    expect(findCultural('2026-04-20', { market: 'US', region: 'ME' }, 'Cinco de Mayo')).toBeUndefined();
+  });
+
+  it('now carries the federal days it used to leave out', () => {
+    // Every one of these is a paid Monday off for the customers, which for a
+    // salon is the point: an empty Monday is the day to run the offer.
+    expect(find('2026-05-01', ca, 'Lễ Chiến sĩ trận vong')?.date).toBe('2026-05-25');
+    expect(find('2026-01-02', ca, 'Ngày Martin Luther King')?.date).toBe('2026-01-19');
+    expect(find('2026-02-01', ca, 'Ngày Tổng thống')?.date).toBe('2026-02-16');
+    expect(find('2026-06-01', ca, 'Juneteenth 19/6')?.date).toBe('2026-06-19');
+    expect(find('2026-10-20', ca, 'Ngày Cựu chiến binh 11/11')?.date).toBe('2026-11-11');
+    expect(find('2026-03-01', ca, 'Lễ Thánh Patrick 17/3')?.date).toBe('2026-03-17');
+  });
+});
+
+describe('Canada gets Canada’s calendar, not the American one', () => {
+  const on = { market: 'CA', city: 'Toronto', region: 'ON' };
+
+  it('THE FOURTH OF JULY IS NOT A CANADIAN HOLIDAY', () => {
+    // The sharpest version of the bug: a Toronto shop was handed the American
+    // list — Independence Day, an American Thanksgiving six weeks late, and no
+    // Canada Day at all.
+    expect(find('2026-06-01', on, 'Quốc khánh Mỹ 4/7')).toBeUndefined();
+    expect(find('2026-06-01', on, 'Quốc khánh Canada 1/7')?.date).toBe('2026-07-01');
+  });
+
+  it('puts Thanksgiving on the Canadian date, six weeks before the American one', () => {
+    const t = find('2026-09-01', on, 'Lễ Tạ ơn Canada');
+    expect(t?.date).toBe('2026-10-12'); // second Monday of October
+    expect(find('2026-09-01', on, 'Lễ Tạ ơn')).toBeUndefined();
+  });
+
+  it('has the rest of the federal list, on the dates the federal list gives', () => {
+    expect(find('2026-05-01', on, 'Ngày Victoria')?.date).toBe('2026-05-18');
+    expect(find('2026-07-01', on, 'Ngày nghỉ tháng 8')?.date).toBe('2026-08-03');
+    expect(find('2026-08-01', on, 'Lễ Lao động')?.date).toBe('2026-09-07');
+    expect(find('2026-09-01', on, 'Ngày Sự thật và Hoà giải 30/9')?.date).toBe('2026-09-30');
+    expect(find('2026-10-01', on, 'Ngày Tưởng niệm 11/11')?.date).toBe('2026-11-11');
+    expect(find('2026-12-01', on, 'Boxing Day 26/12')?.date).toBe('2026-12-26');
+  });
+
+  it('gives a province its own February Monday, under its own name', () => {
+    expect(viOf(find('2026-02-01', on, 'Family Day')?.name)).toBe('Family Day');
+    expect(find('2026-02-01', { market: 'CA', region: 'MB' }, 'Louis Riel Day')?.date).toBe('2026-02-16');
+    expect(find('2026-02-01', { market: 'CA', region: 'NS' }, 'Heritage Day')).toBeTruthy();
+    // Québec's own national day, and only Québec's.
+    expect(find('2026-06-01', { market: 'CA', region: 'QC' }, 'Quốc khánh Québec 24/6')?.date).toBe('2026-06-24');
+    expect(find('2026-06-01', on, 'Quốc khánh Québec 24/6')).toBeUndefined();
+  });
+
+  it('reads Victoria Day’s rule, not a guessed date', () => {
+    expect(mondayBefore(2026, 5, 24)).toBe(Date.UTC(2026, 4, 18));
+    expect(mondayBefore(2027, 5, 24)).toBe(Date.UTC(2027, 4, 24)); // 24 May IS a Monday
   });
 });
 
@@ -195,6 +261,30 @@ describe('Vietnam gets its own calendar, not a translated American one', () => {
     expect(all).not.toContain('Black Friday');
   });
 
+  it('GIVES THE HÙNG KINGS THEIR OWN DAY, NOT 30 APRIL', () => {
+    // It used to be glued into one 'Giỗ Tổ · 30/4 · 1/5' entry dated 30 April,
+    // which puts a lunar holiday on a fixed Gregorian date it never falls on.
+    // It moves with the 3rd lunar month and usually lands in mid-April.
+    expect(find('2026-03-01', vn, 'Giỗ Tổ Hùng Vương 10/3 âm lịch')?.date).toBe('2026-04-26');
+    expect(find('2027-03-01', vn, 'Giỗ Tổ Hùng Vương 10/3 âm lịch')?.date).toBe('2027-04-16');
+    expect(find('2026-03-01', vn, 'Giỗ Tổ · 30/4 · 1/5')).toBeUndefined();
+  });
+
+  it('and gives Reunification Day and May Day their own, correct names', () => {
+    const e = find('2026-04-01', vn, 'Thống nhất 30/4 · Quốc tế Lao động 1/5');
+    expect(e?.date).toBe('2026-04-30');
+    expect(e?.spanDays).toBe(2);
+    expect(enOf(e?.name)).toMatch(/Reunification Day/);
+  });
+
+  it('stops naming a Hùng Kings date once the table runs out', () => {
+    // Same rule as Tết: a missing day is a small problem, a confidently wrong
+    // one is not. Counting 68 days from Tết would be wrong by a whole month in
+    // a year with an intercalary month.
+    expect(hungKings(2026)).toBe(Date.UTC(2026, 3, 26));
+    expect(hungKings(2035)).toBeNull();
+  });
+
   it('warns about the rush two weeks before Tết, not only about Tết itself', () => {
     const e = find('2027-01-10', vn, 'Cao điểm trước Tết');
     expect(e?.date).toBe('2027-01-23'); // Tết 2027 is 6 Feb
@@ -216,7 +306,7 @@ describe('the same calendar reads in English', () => {
   });
 
   it('keeps Tết in the English name, because that IS its English name', () => {
-    const tet = find('2026-02-01', ca, 'Tết Nguyên đán');
+    const tet = findCultural('2026-02-01', ca, 'Tết Nguyên đán');
     expect(enOf(tet?.name)).toContain('Tết');
     expect(enOf(tet?.name)).toMatch(/Lunar New Year/);
   });

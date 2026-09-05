@@ -58,7 +58,29 @@ interface TrendNote { id: string; title: string; body: string }
 interface Payload { forDate: string; ideas: Idea[]; trendNotes: TrendNote[] }
 interface SeasonEvent {
   name: string; daysAway: number; note: string;
+  /** The calendar date itself, ISO. Sent all along; the screen never printed it. */
+  date?: string;
   spanDays?: number; precision?: 'exact' | 'approximate'; scope?: string; caveat?: string;
+}
+
+/**
+ * A holiday's own date, read off the digits.
+ *
+ * Deliberately not put through a timezone: these are calendar dates, not
+ * instants. `2026-04-26` parsed as UTC midnight and rendered in Austin is the
+ * 25th — which is how a shop ends up posting its Labor Day content on Sunday.
+ * The weekday comes from a UTC date built from the same three numbers, so it
+ * cannot drift either.
+ */
+function holidayDate(iso: string | undefined, vi: boolean, now = new Date()): string {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  const W = vi ? ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'] : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dm = `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+  // The year only when it is not this one — otherwise every row carries a
+  // number that never changes and stops being read.
+  return `${W[dow]} ${dm}${y === now.getFullYear() ? '' : `/${y}`}`;
 }
 interface Offer { kind: string; headline: string; detail: string; discountPct: number; protect: string[]; basis: string }
 interface Job { kind: string; text: string; why: string; when?: string }
@@ -3838,7 +3860,16 @@ function Inner() {
                         {e.daysAway >= 0 && <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('ngày nữa', 'days')}</div>}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{e.name}</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
+                          {e.name}
+                          {/* The day it lands on. "2 ngày nữa" is a countdown;
+                              a person schedules against a date. */}
+                          {holidayDate(e.date, vi) && (
+                            <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--c64748b)', marginLeft: 8 }}>
+                              {holidayDate(e.date, vi)}
+                            </span>
+                          )}
+                        </div>
                         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{e.note}</div>
                         {e.daysAway <= 21 && e.daysAway >= 0 && (
                           <div style={{ fontSize: 12, color: '#f59e0b', marginTop: 2 }}>
@@ -3875,8 +3906,16 @@ function Inner() {
                       display: 'flex', gap: 10, alignItems: 'baseline', padding: '6px 0',
                       borderTop: '1px solid var(--c1e293b)',
                     }}>
-                      <div style={{ flex: '0 0 92px', fontSize: 12, color: e.daysAway <= 30 ? '#f59e0b' : 'var(--c64748b)' }}>
-                        {e.daysAway < 0 ? T('đang diễn ra', 'on now') : `${e.daysAway} ${T('ngày', 'days')}`}
+                      {/* The date is what a person plans around; the countdown
+                          is only how far off it is. So the date leads. */}
+                      <div style={{ flex: '0 0 104px' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: e.daysAway <= 30 ? '#f59e0b' : 'var(--ccbd5e1)' }}>
+                          {holidayDate(e.date, vi) || (e.daysAway < 0 ? T('đang diễn ra', 'on now') : '')}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>
+                          {e.daysAway < 0 ? T('đang diễn ra', 'on now') : `${T('còn', 'in')} ${e.daysAway} ${T('ngày', 'days')}`}
+                          {!!e.spanDays && e.spanDays > 0 && ` · ${e.spanDays} ${T('ngày', 'days')}`}
+                        </div>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)' }}>

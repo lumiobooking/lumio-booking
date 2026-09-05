@@ -123,6 +123,35 @@ export function lunarNewYear(year: number): number | null {
   return md ? utc(year, md[0], md[1]) : null;
 }
 
+/**
+ * Giỗ Tổ Hùng Vương — the 10th day of the 3rd lunar month, a Vietnamese public
+ * holiday, from real dates rather than arithmetic.
+ *
+ * It is tempting to count 68 days from Tết and be done: two lunar months plus
+ * nine days. That is right in most years and wrong by a day whenever a month
+ * runs 29 instead of 30, and wrong by a MONTH in a year with an intercalary
+ * month before the third. Same rule as the table above, for the same reason.
+ *
+ * The table is deliberately short — it holds only the years that could be
+ * checked against a published calendar. When it runs out the day stops
+ * appearing, which is the honest failure.
+ */
+const HUNG_KINGS: Record<number, [number, number]> = {
+  2026: [4, 26], 2027: [4, 16], 2028: [4, 4],
+};
+
+export function hungKings(year: number): number | null {
+  const md = HUNG_KINGS[year];
+  return md ? utc(year, md[0], md[1]) : null;
+}
+
+/** The Monday on or before 24 May — Victoria Day's rule, and only its rule. */
+export function mondayBefore(year: number, month: number, day: number): number {
+  const t = utc(year, month, day);
+  const dow = new Date(t).getUTCDay();
+  return t - ((dow + 6) % 7) * DAY;
+}
+
 // ---- 2. Where the salon is -------------------------------------------------
 
 export interface ResolvedRegion {
@@ -387,6 +416,15 @@ function usSeeds(y: number, r: ResolvedRegion): Seed[] {
     { name: 'Black Friday', ts: nthWeekday(y, 11, 4, 4) + DAY, note: bi('Ngày bán gift card mạnh nhất năm — chuẩn bị nội dung từ đầu tháng 11', 'The biggest gift card day of the year — have the posts ready by the first week of November'), scope: 'national' },
     { name: bi('Giáng sinh', 'Christmas'), ts: utc(y, 12, 25), note: bi('Mùa cao điểm nhất năm — mở đặt lịch sớm, gift card, thợ làm thêm giờ', 'The busiest stretch of the year — open the book early, sell gift cards, plan overtime for the techs'), scope: 'national' },
     { name: bi('Phục sinh', 'Easter'), ts: easter(y), note: bi('Tông pastel, ảnh gia đình, brunch — mùa xuân bắt đầu ở đây', 'Pastels, family photos, brunch — spring starts here'), scope: 'national' },
+    // The federal days the first version left out. Every one of them is a paid
+    // Monday off for the customers, which for a salon is the whole point: an
+    // empty Monday is the day to run the offer, not the day to be surprised.
+    { name: bi('Ngày Martin Luther King', 'Martin Luther King Jr. Day'), ts: nthWeekday(y, 1, 1, 3), note: bi('Nghỉ liên bang — thứ 2 rảnh, học sinh nghỉ học. Ngày tốt để chạy ưu đãi đầu năm', 'A federal Monday off with the schools closed — a good day to run the first offer of the year'), scope: 'national' },
+    { name: bi("Ngày Tổng thống", "Presidents' Day"), ts: nthWeekday(y, 2, 1, 3), note: bi('Nghỉ liên bang, cuối tuần dài giữa mùa thấp điểm — đẩy gói đôi', 'A federal long weekend in the quiet season — push the two-person package'), scope: 'national' },
+    { name: bi('Lễ Thánh Patrick 17/3', "St. Patrick's Day"), ts: utc(y, 3, 17), note: bi('Móng xanh lá, cỏ bốn lá — nail art dễ lan, và là dịp đi chơi tối', 'Green nails and shamrocks — easy nail art to get shared, and a night out'), scope: 'national' },
+    { name: bi('Lễ Chiến sĩ trận vong', 'Memorial Day'), ts: lastWeekday(y, 5, 1), note: bi('Cuối tuần dài mở màn mùa hè — pedicure trước khi đi biển, tuần trước đó rất bận', 'The long weekend that opens summer — pedicures before the beach, and the week before is packed'), scope: 'national' },
+    { name: bi('Juneteenth 19/6', 'Juneteenth'), ts: utc(y, 6, 19), note: bi('Nghỉ liên bang từ 2021 — tụ họp, chụp ảnh, nhiều nơi có diễu hành', 'A federal holiday since 2021 — gatherings, photos, parades in a lot of places'), scope: 'national' },
+    { name: bi('Ngày Cựu chiến binh 11/11', 'Veterans Day'), ts: utc(y, 11, 11), note: bi('Nghỉ liên bang, nhiều tiệm giảm giá cho cựu binh — nói rõ trên bài đăng', 'A federal holiday; a lot of shops offer a veterans discount — say so in the post'), scope: 'national' },
   ];
 
   const lny = lunarNewYear(y);
@@ -504,6 +542,75 @@ function usSeeds(y: number, r: ResolvedRegion): Seed[] {
   return S;
 }
 
+/**
+ * Canada, which until now was handed the American calendar.
+ *
+ * That was the sharpest version of the bug this file was rewritten for: a shop
+ * in Toronto was told about the Fourth of July, given Thanksgiving on the
+ * fourth Thursday of November — six weeks after the Canadian one — and never
+ * told about Canada Day at all. Two of those are wrong dates and the third is
+ * a missing national holiday, all three shown with the same confidence as a
+ * fact.
+ *
+ * Dates checked against the federal list for 2026: Victoria Day 18 May, Civic
+ * Holiday 3 Aug, Labour Day 7 Sep, Truth and Reconciliation 30 Sep,
+ * Thanksgiving 12 Oct.
+ */
+const CA_FEB_HOLIDAY: Record<string, Txt> = {
+  AB: bi('Family Day', 'Family Day'),
+  BC: bi('Family Day', 'Family Day'),
+  ON: bi('Family Day', 'Family Day'),
+  SK: bi('Family Day', 'Family Day'),
+  NB: bi('Family Day', 'Family Day'),
+  MB: bi('Louis Riel Day', 'Louis Riel Day'),
+  PE: bi('Islander Day', 'Islander Day'),
+  NS: bi('Heritage Day', 'Nova Scotia Heritage Day'),
+};
+
+function caSeeds(y: number, r: ResolvedRegion): Seed[] {
+  const S: Seed[] = [
+    { name: bi('Năm mới', "New Year's Day"), ts: utc(y, 1, 1), note: bi('Móng lấp lánh, tiệc tùng — khách đặt từ 26-30/12', 'Glitter nails and parties — customers book from 26-30 December'), scope: 'national' },
+    { name: bi('Valentine', "Valentine's Day"), ts: utc(y, 2, 14), note: bi('Tông hồng đỏ, nail art trái tim, khách đi đôi', 'Pinks and reds, heart nail art, couples come in together'), scope: 'national' },
+    { name: bi('Thứ Sáu Tuần Thánh', 'Good Friday'), ts: easter(y) - 2 * DAY, note: bi('Nghỉ toàn quốc — cuối tuần dài bốn ngày ở phần lớn các tỉnh', 'A national day off — a four-day weekend in most provinces'), scope: 'national' },
+    { name: bi('Phục sinh', 'Easter'), ts: easter(y), note: bi('Tông pastel, ảnh gia đình, brunch', 'Pastels, family photos, brunch'), scope: 'national' },
+    { name: bi('Ngày của Mẹ', "Mother's Day"), ts: nthWeekday(y, 5, 0, 2), note: bi('Cao điểm gift card. Mẹ và con gái đi cùng — đẩy gói đôi', 'Peak gift card week. Moms and daughters come in together — push the two-person package'), scope: 'national' },
+    { name: bi('Ngày Victoria', 'Victoria Day'), ts: mondayBefore(y, 5, 24), note: bi('Cuối tuần dài mở màn mùa hè ở Canada — pedicure trước kỳ nghỉ', 'The long weekend that opens the Canadian summer — pedicures before the trip'), scope: 'national' },
+    { name: bi('Ngày của Cha', "Father's Day"), ts: nthWeekday(y, 6, 0, 3), note: bi('Nhỏ hơn nhiều, nhưng là dịp bán pedicure cho nam', 'Much smaller, but it is the day men will book a pedicure'), scope: 'national' },
+    { name: bi('Quốc khánh Canada 1/7', 'Canada Day'), ts: utc(y, 7, 1), note: bi('Đỏ trắng, diễu hành, đi chơi — làm móng trước ngày 1/7', 'Red and white, parades, days out — nails get done before 1 July'), scope: 'national' },
+    { name: bi('Ngày nghỉ tháng 8', 'Civic Holiday'), ts: nthWeekday(y, 8, 1, 1), note: bi('Thứ 2 nghỉ giữa hè — cuối tuần dài, khách đi xa', 'A midsummer Monday off — a long weekend and customers travel'), scope: 'national' },
+    { name: bi('Lễ Lao động', 'Labour Day'), ts: nthWeekday(y, 9, 1, 1), note: bi('Cuối kỳ nghỉ hè và mốc tựu trường — tuần bận', 'End of the summer break and the school start date — a busy week'), scope: 'national' },
+    { name: bi('Ngày Sự thật và Hoà giải 30/9', 'National Day for Truth and Reconciliation'), ts: utc(y, 9, 30), note: bi('Ngày tưởng niệm — giữ nội dung trang trọng, không chạy khuyến mãi', 'A day of remembrance — keep the posts respectful and do not run a promotion'), scope: 'national' },
+    { name: bi('Lễ Tạ ơn Canada', 'Thanksgiving (Canada)'), ts: nthWeekday(y, 10, 1, 2), note: bi('Thứ 2 tuần thứ hai của tháng 10 — sớm hơn Lễ Tạ ơn Mỹ sáu tuần. Gia đình tụ họp và chụp ảnh', 'The second Monday of October — six weeks earlier than the American one. Families gather and take photos'), scope: 'national' },
+    { name: 'Halloween', ts: utc(y, 10, 31), note: bi('Nail art chủ đề, màu tối — nội dung dễ lan nhất trong năm', 'Themed nail art, dark colors — the easiest content of the year to get shared'), scope: 'national' },
+    { name: bi('Ngày Tưởng niệm 11/11', 'Remembrance Day'), ts: utc(y, 11, 11), note: bi('Buổi sáng là lễ tưởng niệm — không đăng bài bán hàng trước 12 giờ trưa', 'The morning is a memorial — nothing promotional before noon'), scope: 'national' },
+    { name: 'Black Friday', ts: nthWeekday(y, 11, 4, 4) + DAY, note: bi('Ngày bán gift card mạnh nhất năm — chuẩn bị nội dung từ đầu tháng 11', 'The biggest gift card day of the year — have the posts ready by the first week of November'), scope: 'national' },
+    { name: bi('Giáng sinh', 'Christmas'), ts: utc(y, 12, 25), note: bi('Mùa cao điểm nhất năm — mở đặt lịch sớm, gift card, thợ làm thêm giờ', 'The busiest stretch of the year — open the book early, sell gift cards, plan overtime'), scope: 'national' },
+    { name: bi('Boxing Day 26/12', 'Boxing Day'), ts: utc(y, 12, 26), note: bi('Ngày mua sắm lớn — bán gift card và gói trả trước cho tháng 1', 'A big shopping day — sell gift cards and prepaid packages for January'), scope: 'national' },
+  ];
+
+  if (r.regionKnown) {
+    const pr = r.region as string;
+    const feb = CA_FEB_HOLIDAY[pr];
+    if (feb) {
+      S.push({
+        name: feb,
+        ts: nthWeekday(y, 2, 1, 3),
+        scope: 'regional',
+        note: bi('Thứ 2 nghỉ của tỉnh — cuối tuần dài giữa mùa thấp điểm', 'The province’s Monday off — a long weekend in the quiet season'),
+      });
+    }
+    if (pr === 'QC') {
+      S.push({
+        name: bi('Quốc khánh Québec 24/6', 'Fête nationale du Québec'),
+        ts: utc(y, 6, 24),
+        scope: 'regional',
+        note: bi('Ngày lễ lớn nhất của Québec — nghỉ toàn tỉnh, tiệc ngoài trời', 'Québec’s biggest holiday — the whole province is off and the parties are outdoors'),
+      });
+    }
+  }
+  return S;
+}
+
 function vnSeeds(y: number): Seed[] {
   // A Vietnamese public holiday has a settled English name in the English-language
   // press — 'Quốc khánh 2/9' is National Day — and the date is kept in the name
@@ -511,12 +618,32 @@ function vnSeeds(y: number): Seed[] {
   const S: Seed[] = [
     { name: bi('Tết Dương lịch', "New Year's Day"), ts: utc(y, 1, 1), note: bi('Làm móng đón năm mới, khách trẻ đi chơi', 'Nails for the new year, younger customers heading out'), scope: 'national' },
     { name: bi('Quốc tế Phụ nữ 8/3', "International Women's Day (8 Mar)"), ts: utc(y, 3, 8), note: bi('Cao điểm — nam giới mua voucher tặng, tiệm nên bán gói đôi mẹ-con', 'Peak day — men buy vouchers as gifts, so sell the mother-and-daughter package'), scope: 'national' },
-    { name: bi('Giỗ Tổ · 30/4 · 1/5', "Hùng Kings' Day · Reunification Day · May Day"), ts: utc(y, 4, 30), spanDays: 3, note: bi('Kỳ nghỉ dài, khách đi du lịch — làm móng trước khi đi', 'A long break and customers travel — they get their nails done before they leave'), scope: 'national' },
+    // Giỗ Tổ used to be glued into this one 30/4 entry, which put the Hùng
+    // Kings on a date that is not theirs — it moves with the lunar calendar and
+    // usually lands in mid-April, weeks before Reunification Day. Two holidays,
+    // two dates, their own names.
+    { name: bi('Thống nhất 30/4 · Quốc tế Lao động 1/5', "Reunification Day · International Workers' Day"), ts: utc(y, 4, 30), spanDays: 2, note: bi('Kỳ nghỉ dài, khách đi du lịch — làm móng trước khi đi', 'A long break and customers travel — they get their nails done before they leave'), scope: 'national' },
+    { name: bi('Valentine 14/2', "Valentine's Day"), ts: utc(y, 2, 14), note: bi('Tông hồng đỏ, nail art trái tim — khách trẻ đặt kín buổi tối', 'Pinks and reds, heart nail art — younger customers fill the evening'), scope: 'national' },
+    { name: bi('Quốc tế Thiếu nhi 1/6', "Children's Day (1 Jun)"), ts: utc(y, 6, 1), note: bi('Mẹ dẫn con đi chơi — gói mẹ và bé, làm nhanh', 'Mothers take the children out — a quick mother-and-child package'), scope: 'national' },
+    { name: bi('Ngày Gia đình Việt Nam 28/6', 'Vietnamese Family Day (28 Jun)'), ts: utc(y, 6, 28), note: bi('Ảnh gia đình, tụ họp — đẩy gói đôi mẹ-con', 'Family photos and gatherings — push the mother-and-daughter package'), scope: 'national' },
+    { name: 'Halloween', ts: utc(y, 10, 31), note: bi('Nail art chủ đề ở các thành phố lớn — nội dung dễ lan', 'Themed nail art in the big cities — content that gets shared'), scope: 'national' },
     { name: bi('Quốc khánh 2/9', 'National Day (2 Sep)'), ts: utc(y, 9, 2), note: bi('Nghỉ lễ, tụ họp, chụp ảnh', 'Day off, family gatherings, photos'), scope: 'national' },
     { name: bi('Phụ nữ Việt Nam 20/10', "Vietnamese Women's Day (20 Oct)"), ts: utc(y, 10, 20), note: bi('Dịp tặng quà lớn thứ hai trong năm sau 8/3', 'The second biggest gift day of the year after 8 March'), scope: 'national' },
     { name: bi('Nhà giáo 20/11', "Teachers' Day (20 Nov)"), ts: utc(y, 11, 20), note: bi('Tệp khách giáo viên — gói làm nhanh sau giờ dạy', 'Teachers are the customers — a quick package after class'), scope: 'national' },
     { name: bi('Giáng sinh', 'Christmas'), ts: utc(y, 12, 25), note: bi('Giới trẻ đi chơi, chụp ảnh — nail art theo chủ đề', 'Young customers go out and take photos — themed nail art'), scope: 'national' },
   ];
+  // The 10th day of the 3rd lunar month, from the table — not counted from Tết,
+  // because a leap month would put it a month out.
+  const hk = hungKings(y);
+  if (hk !== null) {
+    S.push({
+      name: bi('Giỗ Tổ Hùng Vương 10/3 âm lịch', "Hùng Kings' Commemoration Day"),
+      ts: hk,
+      note: bi('Nghỉ lễ giữa tuần, khách rảnh — ngày tốt để chạy ưu đãi', 'A midweek day off and customers are free — a good day to run an offer'),
+      scope: 'national',
+    });
+  }
+
   const lny = lunarNewYear(y);
   if (lny !== null) {
     S.push({ name: bi('Tết Nguyên đán', 'Lunar New Year (Tết)'), ts: lny, spanDays: 5, note: bi('Mùa lớn nhất năm. Nhận khách kín từ 23 tháng Chạp — mở sổ đặt trước 3 tuần', 'The biggest season of the year. Booked solid from the 23rd of the last lunar month — open the book three weeks ahead'), scope: 'national' });
@@ -535,16 +662,25 @@ function vnSeeds(y: number): Seed[] {
 export function regionEvents(
   today: Date,
   input: RegionInput = {},
-  opts: { horizonDays?: number } = {},
+  opts: { horizonDays?: number; includeCultural?: boolean } = {},
 ): { region: ResolvedRegion; events: DatedEvent[] } {
   const r = resolveRegion(input);
   const horizon = opts.horizonDays ?? 45;
   const y = today.getUTCFullYear();
   const now = utc(today.getUTCFullYear(), today.getUTCMonth() + 1, today.getUTCDate());
 
+  /**
+   * One country's own calendar, and only that one.
+   *
+   * Canada used to be handed the American list: the Fourth of July, an
+   * American Thanksgiving six weeks late, and no Canada Day. Each market now
+   * seeds from its own function.
+   */
   const seeds = r.market === 'VN'
     ? [...vnSeeds(y), ...vnSeeds(y + 1)]
-    : [...usSeeds(y, r), ...usSeeds(y + 1, r)];
+    : r.market === 'CA'
+      ? [...caSeeds(y, r), ...caSeeds(y + 1, r)]
+      : [...usSeeds(y, r), ...usSeeds(y + 1, r)];
 
   const seen = new Set<string>();
   const events: DatedEvent[] = [];
@@ -557,6 +693,17 @@ export function regionEvents(
     if (endsAway < 0 || daysAway > horizon) continue;
     // The name is bilingual now, so the Vietnamese side is the dedupe key —
     // one stable string per event, whatever language the screen ends up in.
+    /**
+     * A day that belongs to somebody else's country stays out by default.
+     *
+     * Tết on a Texas salon's calendar is the example: real for a shop with
+     * Vietnamese customers, noise for the shop next door, and indistinguishable
+     * from a national holiday once it is in the list. The seeds and their
+     * caveats are kept — a caller that knows the customer base can ask for them
+     * — but the salon's calendar shows the calendar of the country the salon is
+     * standing in.
+     */
+    if (s.scope === 'cultural' && opts.includeCultural !== true) continue;
     const key = viOf(s.name);
     if (seen.has(key)) continue;
     seen.add(key);

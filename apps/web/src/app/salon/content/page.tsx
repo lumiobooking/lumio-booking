@@ -30,6 +30,7 @@ import { useIsMobile } from '../../../lib/responsive';
 import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz } from '../../../lib/datetime';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
 import { MonthCalendar, IgGrid, PostPreview, MediaList, type MediaItem } from '../../../components/PostStudio';
+import { WeekPlanBoard } from '../../../components/WeekPlanBoard';
 import { TrendsTab, type TrendCard } from '../../../components/TrendsTab';
 import { fitForSocial } from '../../../lib/image';
 
@@ -475,11 +476,10 @@ function Inner() {
     [weeksRaw, vi],
   );
   const [viewWeek, setViewWeek] = useState<string | null>(null);
-  const [past, setPast] = useState<{ label: string; week: Plan['week']; editedByName: string | null } | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [draftFocus, setDraftFocus] = useState('');
-  const [draftNote, setDraftNote] = useState('');
-  const [savingWeek, setSavingWeek] = useState(false);
+  const [past, setPast] = useState<{
+    label: string; week: Plan['week']; editedByName: string | null;
+    startDate?: string | null; edited?: boolean;
+  } | null>(null);
   const [approving, setApproving] = useState(false);
   // The publishing queue. Loaded on demand: most visits never open this tab,
   // and it is one more round trip on a phone that is already waiting.
@@ -553,7 +553,10 @@ function Inner() {
   // Opening an older week fetches it as the team left it.
   useEffect(() => {
     if (!token || !viewWeek) { setPast(null); return; }
-    type PastWeek = { label: string; week: Plan['week']; editedByName: string | null };
+    type PastWeek = {
+      label: string; week: Plan['week']; editedByName: string | null;
+      startDate?: string | null; edited?: boolean;
+    };
     apiFetch<PastWeek & { en?: PastWeek }>(
       `/content/weeks/${encodeURIComponent(viewWeek)}`, { token },
     ).then((r) => setPast(vi ? r : (r.en ?? r))).catch(() => setPast(null));
@@ -1716,11 +1719,11 @@ function Inner() {
                    team can point at what was actually agreed. */}
               {weeks.length > 1 && (
                 <div style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 4, marginBottom: 10 }}>
-                  <WeekChip active={!viewWeek} onClick={() => { setViewWeek(null); setEditing(false); }}>
+                  <WeekChip active={!viewWeek} onClick={() => setViewWeek(null)}>
                     {T('Tuần này', 'This week')}
                   </WeekChip>
                   {weeks.filter((w) => w.weekKey !== plan?.weekMeta?.weekKey).map((w) => (
-                    <WeekChip key={w.weekKey} active={viewWeek === w.weekKey} onClick={() => { setViewWeek(w.weekKey); setEditing(false); }}>
+                    <WeekChip key={w.weekKey} active={viewWeek === w.weekKey} onClick={() => setViewWeek(w.weekKey)}>
                       {w.label}{w.edited ? ' ✎' : ''}
                     </WeekChip>
                   ))}
@@ -1750,7 +1753,7 @@ function Inner() {
                       background: 'var(--c1e293b)', border: '1px solid var(--c334155)',
                     }}>
                       <button
-                        onClick={() => { setViewWeek(w.weekKey); setEditing(false); }}
+                        onClick={() => setViewWeek(w.weekKey)}
                         style={{
                           fontSize: 12.5, fontWeight: 700, color: 'var(--ca5b4fc)', cursor: 'pointer',
                           background: 'transparent', border: 'none', padding: 0, flex: '0 0 92px', textAlign: 'left',
@@ -1792,308 +1795,66 @@ function Inner() {
                 </div>
               )}
 
+              {/* ---- the week, as a document somebody hands over ----
+                   Layout and the editor both live in WeekPlanBoard: the row you
+                   read is the row you change, because a separate edit form means
+                   writing the plan in one shape and checking it in another. */}
               {(() => {
                 const shown = viewWeek ? past?.week : plan?.week;
                 const isPast = Boolean(viewWeek);
                 if (!shown?.days?.length) return null;
+                const meta = isPast
+                  ? { weekKey: viewWeek!, label: past?.label ?? '', startDate: past?.startDate ?? null,
+                      edited: Boolean(past?.edited), editedByName: past?.editedByName ?? null,
+                      canEdit: false, approvedAt: null, approvedByName: null }
+                  : plan?.weekMeta ?? null;
+                const go = shown.stage ? STAGE_TAB[shown.stage.key] : null;
                 return (
-                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 2 }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
-                      🗓️ {viewWeek ? past?.label : T('Tuần này làm gì', 'This week')}
-                    </div>
-                    {/* Editing is the team's, not the salon's. The salon reads
-                        the plan and marks work done; one plan two people can
-                        rewrite from opposite ends is a plan neither trusts. */}
-                    {!isPast && plan?.weekMeta?.canEdit && (
-                      <button
-                        onClick={() => {
-                          setDraftFocus(shown.focus);
-                          setDraftNote(shown.teamNote ?? '');
-                          setEditing((e) => !e);
-                        }}
-                        style={{
-                          fontSize: 12.5, padding: '5px 12px', borderRadius: 8, cursor: 'pointer',
-                          border: '1px solid #6366f1', background: editing ? '#6366f1' : 'transparent',
-                          color: editing ? 'var(--cf8fafc)' : 'var(--ca5b4fc)', fontWeight: 600,
-                        }}
-                      >
-                        {editing ? T('Đóng', 'Close') : T('✎ Sửa kế hoạch', '✎ Edit plan')}
-                      </button>
-                    )}
-                    {/* The salon's half of the same bar: it cannot rewrite the
-                        plan, but it can say yes to it. Approval written on the
-                        week row, not into the chat — an approval buried in a
-                        thread is one nobody can find on the Friday somebody
-                        asks whether the budget was agreed. */}
-                    {!isPast && plan?.weekMeta && !plan.weekMeta.canEdit && !plan.weekMeta.approvedAt && (
-                      <button
-                        onClick={approveWeek}
-                        disabled={approving}
-                        style={{
-                          fontSize: 12.5, padding: '6px 14px', borderRadius: 8, cursor: 'pointer',
-                          border: 'none', background: '#22c55e', color: '#052e16', fontWeight: 700,
-                        }}
-                      >
-                        {approving ? T('Đang lưu…', 'Saving…') : T('✓ Duyệt kế hoạch tuần', '✓ Approve this week')}
-                      </button>
-                    )}
-                    {!isPast && plan?.weekMeta?.approvedAt && (
-                      <span style={{ fontSize: 12, color: '#22c55e', fontWeight: 600 }}>
-                        ✓ {T('Tiệm đã duyệt', 'Approved by the salon')}
-                        {plan.weekMeta.approvedByName ? ` — ${plan.weekMeta.approvedByName}` : ''}
-                      </span>
-                    )}
-                  </div>
-                  {plan?.weekMeta?.edited && !isPast && (
-                    <div style={{ fontSize: 11.5, color: 'var(--ca5b4fc)', marginBottom: 4 }}>
-                      ✎ {T('Đã được team chỉnh', 'Edited by the team')}
-                      {plan.weekMeta.editedByName ? ` — ${plan.weekMeta.editedByName}` : ''}
-                    </div>
-                  )}
-                  <div style={{ fontSize: 13, color: 'var(--ca5b4fc)', marginBottom: 4 }}>{shown.focus}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, fontStyle: 'italic' }}>{shown.basis}</div>
-
-                  {/* Last week, in one sentence — the plan showing it reads its
-                      own scorecard before asking for this week's work. */}
-                  {shown.report && (
-                    <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
-                      📊 {shown.report}
-                    </div>
-                  )}
-
-                  {/* A note from the team to the salon, above everything else —
-                      the human sentence the numbers cannot write. */}
-                  {shown.teamNote && !editing && (
-                    <div style={{
-                      fontSize: 13, lineHeight: 1.6, marginBottom: 12, padding: '10px 12px',
-                      borderRadius: 9, background: 'var(--c1e1b4b)', color: 'var(--ce2e8f0)',
-                      border: '1px solid #6366f1',
-                    }}>
-                      <b style={{ color: 'var(--ca5b4fc)' }}>{T('Lumio nhắn', 'From Lumio')}:</b> {shown.teamNote}
-                    </div>
-                  )}
-
-                  {editing && !isPast && (
-                    <div style={{
-                      padding: 12, marginBottom: 12, borderRadius: 10,
-                      background: 'var(--c1e293b)', border: '1px solid #6366f1',
-                    }}>
-                      <label style={{ fontSize: 12, color: 'var(--c94a3b8)', display: 'block', marginBottom: 4 }}>
-                        {T('Trọng tâm tuần này', 'This week’s focus')}
-                      </label>
-                      <input
-                        value={draftFocus}
-                        onChange={(e) => setDraftFocus(e.target.value)}
-                        style={{ ...ui.input, width: '100%', marginBottom: 10, boxSizing: 'border-box' }}
-                      />
-                      <label style={{ fontSize: 12, color: 'var(--c94a3b8)', display: 'block', marginBottom: 4 }}>
-                        {T('Lời nhắn cho tiệm (hiện phía trên kế hoạch)', 'Note to the salon')}
-                      </label>
-                      <textarea
-                        value={draftNote}
-                        onChange={(e) => setDraftNote(e.target.value)}
-                        rows={3}
-                        style={{ ...ui.input, width: '100%', resize: 'vertical', marginBottom: 10, boxSizing: 'border-box' }}
-                      />
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button
-                          disabled={savingWeek}
-                          onClick={async () => {
-                            if (!plan?.weekMeta) return;
-                            setSavingWeek(true);
-                            try {
-                              await apiFetch(`/content/weeks/${encodeURIComponent(plan.weekMeta.weekKey)}`, {
-                                method: 'PATCH', token, body: { focus: draftFocus, note: draftNote },
-                              });
-                              setEditing(false);
-                              await load();
-                              apiFetch<(WeekRow & { en?: WeekRow })[]>('/content/weeks', { token }).then(setWeeksRaw).catch(() => undefined);
-                            } catch (e) {
-                              setError(e instanceof Error ? e.message : 'Không lưu được');
-                            } finally { setSavingWeek(false); }
-                          }}
-                          style={{ ...ui.primaryBtn, opacity: savingWeek ? 0.6 : 1 }}
-                        >
-                          {savingWeek ? T('Đang lưu…', 'Saving…') : T('Lưu cho tiệm', 'Save for the salon')}
-                        </button>
-                        <button
-                          onClick={() => setEditing(false)}
-                          style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}
-                        >
-                          {T('Huỷ', 'Cancel')}
-                        </button>
-                      </div>
-                      <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 8, lineHeight: 1.5 }}>
-                        {T('Bản hệ thống tự viết vẫn được giữ nguyên bên dưới — để sau này so được sửa gì và có tốt hơn không.',
-                           'The system’s own version is kept underneath, so what changed stays answerable.')}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* The path, and where this shop stands on it.
-                      The stage moves when its exit condition is MET, never
-                      because a week went by — telling a shop to buy ads because
-                      three weeks passed is how money goes into a Google profile
-                      with two photos on it. */}
-                  {shown.stage && (
-                    <div style={{
-                      padding: '11px 13px', marginBottom: 12, borderRadius: 10,
-                      background: 'var(--c1e293b)', border: '1px solid #6366f1',
-                    }}>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
-                        <span style={{
-                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                          background: 'var(--c0f172a)', color: 'var(--ca5b4fc)',
-                        }}>
-                          {T('Giai đoạn', 'Stage')} {shown.stage.step}/5
-                        </span>
-                        <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{shown.stage.title}</span>
-                        <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginLeft: 'auto' }}>
-                          {T('Tuần', 'Week')} {shown.week + 1}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>{shown.stage.goal}</div>
-                      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 4 }}>{shown.stage.why}</div>
-
-                      {shown.stage.progress && shown.stage.progress.need > 0 && (
-                        <div style={{ marginTop: 8 }}>
-                          <div style={{ height: 7, borderRadius: 20, background: 'var(--c0f172a)', overflow: 'hidden' }}>
-                            <div style={{
-                              width: `${Math.min(100, Math.round((shown.stage.progress.done / shown.stage.progress.need) * 100))}%`,
-                              height: '100%', background: '#6366f1',
-                            }} />
-                          </div>
-                          <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 4 }}>
-                            {shown.stage.progress.done}/{shown.stage.progress.need} {shown.stage.progress.label}
-                          </div>
-                        </div>
-                      )}
-
-                      <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5, marginTop: 7 }}>
-                        <b>{T('Xong giai đoạn này khi', 'Done when')}:</b> {shown.stage.exitWhen}
-                      </div>
-
-                      {/* The stage said what to do and then left the reader to
-                          find the screen that does it. Every stage now carries
-                          the door: one press, no hunting through six tabs. */}
-                      {(() => {
-                        const go = STAGE_TAB[shown.stage.key];
-                        if (!go) return null;
-                        return (
-                          <button
-                            onClick={() => setTab(go.tab)}
-                            style={{
-                              marginTop: 9, width: '100%', minHeight: 40, borderRadius: 9, cursor: 'pointer',
-                              border: '1px solid #6366f1', background: 'transparent',
-                              color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 600,
-                            }}
-                          >
-                            {go.label} →
-                          </button>
-                        );
-                      })()}
-                    </div>
-                  )}
-
-                  {shown.days.map((d, i) => {
-                    const empty = d.jobs.every((j) => j.kind === 'rest');
-                    return (
-                      <div key={d.weekday} style={{
-                        padding: '9px 0', borderTop: '1px solid var(--c1e293b)',
-                        opacity: empty ? 0.55 : 1,
-                      }}>
-                        <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
-                          <div style={{ flex: '0 0 76px', fontSize: 13, fontWeight: 700, color: i === 0 ? '#f59e0b' : 'var(--c94a3b8)' }}>
-                            {i === 0 ? T('Hôm nay', 'Today') : d.label}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            {d.jobs.map((j, k) => (
-                              <div key={k} style={{ marginBottom: k < d.jobs.length - 1 ? 8 : 0 }}>
-                                <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>
-                                  <span style={{ marginRight: 6 }}>{JOB_ICON[j.kind] ?? '•'}</span>{j.text}
-                                  {j.when && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}> · {j.when}</span>}
-                                </div>
-                                {j.kind !== 'rest' && (
-                                  <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 1 }}>{j.why}</div>
-                                )}
-                              </div>
-                            ))}
-                            {/* Today's row is the one the salon is standing in
-                                front of. It links to the actual drafted post,
-                                so the week stops being a list of instructions
-                                with no way to act on them. */}
-                            {i === 0 && !empty && !isPast && !!data?.ideas?.length && (
-                              <button
-                                onClick={() => setTab('today')}
-                                style={{
-                                  marginTop: 7, padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
-                                  border: '1px solid var(--c475569)', background: 'transparent',
-                                  color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600,
-                                }}
-                              >
-                                {T('Mở bài viết đã soạn cho hôm nay', 'Open today’s drafted post')} →
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Where today's clip comes FROM. The most common reason a content
-                      plan dies is not laziness — it is standing in the salon at 6pm
-                      with nothing filmed and no idea what to point the phone at. */}
-                  {!!shown.sources?.length && (
-                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
-                        {T('Quay từ đâu', 'What to film')}
-                      </div>
-                      <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 6 }}>
-                        {T(`Nguồn có sẵn của ${shown.trade} — không cần dựng cảnh`, 'Already in front of you — nothing to stage')}
-                      </div>
-                      {shown.sources.map((s, k) => (
-                        <div key={k} style={{ padding: '5px 0' }}>
-                          <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
-                            • {s.label} <span style={{ color: '#f59e0b', fontSize: 12 }}>· {s.when}</span>
-                          </div>
-                          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45, paddingLeft: 11 }}>{s.why}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {!!shown.daily?.length && (
-                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
-                        {T('Mỗi ngày, dù bận cỡ nào', 'Every day, however busy')}
-                      </div>
-                      {shown.daily.map((j, k) => (
-                        <div key={k} style={{ display: 'flex', gap: 8, padding: '4px 0' }}>
-                          <span style={{ flex: '0 0 auto' }}>{JOB_ICON[j.kind] ?? '•'}</span>
-                          <div>
-                            <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
-                              {j.text}{j.when && <span style={{ color: 'var(--c64748b)' }}> · {j.when}</span>}
-                            </div>
-                            <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45 }}>{j.why}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {/* Trao đổi về đúng tuần này. The address carries the week,
-                      so a comment written in September is still attached to
-                      September when it is read in October. */}
-                  {plan?.weekMeta?.weekKey && (
-                    <ItemComments
-                      token={token}
-                      subject={`week:${viewWeek ?? plan.weekMeta.weekKey}`}
-                      unread={unread.bySubject[`week:${viewWeek ?? plan.weekMeta.weekKey}`] ?? 0}
-                      labelVi={vi ? 'Trao đổi về tuần này' : 'Discuss this week'}
+                  <>
+                    <WeekPlanBoard
+                      week={shown}
+                      meta={meta}
+                      isPast={isPast}
                       vi={vi}
+                      salonCity={plan?.region?.label ?? null}
+                      approving={approving}
+                      // The salon's half of the bar: it cannot rewrite the plan,
+                      // but it can say yes to it — and an approval written on the
+                      // week row is one somebody can still find on the Friday the
+                      // budget is questioned.
+                      onApprove={!isPast && plan?.weekMeta && !plan.weekMeta.canEdit && !plan.weekMeta.approvedAt ? approveWeek : null}
+                      onOpenToday={() => setTab('today')}
+                      hasTodayDraft={!!data?.ideas?.length}
+                      stageAction={go ? { label: go.label, onGo: () => setTab(go.tab) } : null}
+                      onSave={async (patch) => {
+                        if (!plan?.weekMeta) return;
+                        try {
+                          await apiFetch(`/content/weeks/${encodeURIComponent(plan.weekMeta.weekKey)}`, {
+                            method: 'PATCH', token, body: patch,
+                          });
+                          await load();
+                          apiFetch<(WeekRow & { en?: WeekRow })[]>('/content/weeks', { token }).then(setWeeksRaw).catch(() => undefined);
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : 'Không lưu được');
+                          throw e;
+                        }
+                      }}
                     />
-                  )}
-                </div>
+                    {/* Trao đổi về đúng tuần này. The address carries the week,
+                        so a comment written in September is still attached to
+                        September when it is read in October. */}
+                    {plan?.weekMeta?.weekKey && (
+                      <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                        <ItemComments
+                          token={token}
+                          subject={`week:${viewWeek ?? plan.weekMeta.weekKey}`}
+                          unread={unread.bySubject[`week:${viewWeek ?? plan.weekMeta.weekKey}`] ?? 0}
+                          labelVi={vi ? 'Trao đổi về tuần này' : 'Discuss this week'}
+                          vi={vi}
+                        />
+                      </div>
+                    )}
+                  </>
                 );
               })()}
 

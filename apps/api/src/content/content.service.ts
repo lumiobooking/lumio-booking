@@ -43,6 +43,7 @@ import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './busi
 import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
 import { buildStrategyBrief } from './strategy-brief';
 import { bi, localizeDeep, viOf, enOf, type Txt } from './i18n';
+import { sanitizeDays } from './week-edit';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
 /**
@@ -594,7 +595,7 @@ export class ContentService {
     tz: string,
     plan: Awaited<ReturnType<ContentService['weekPlanFor']>>,
   ): Promise<{
-    weekKey: string; edited: boolean; editedByName: string | null; editedAt: Date | null;
+    weekKey: string; startDate: string; edited: boolean; editedByName: string | null; editedAt: Date | null;
     approvedAt: Date | null; approvedByName: string | null;
   }> {
     const key = weekKey(new Date(), tz);
@@ -620,12 +621,15 @@ export class ContentService {
 
     if (!row) {
       await loose.contentWeek?.create({ data: { tenantId, weekKey: key, ...data } }).catch(() => undefined);
-      return { weekKey: key, edited: false, editedByName: null, editedAt: null, approvedAt: null, approvedByName: null };
+      return { weekKey: key, startDate: start, edited: false, editedByName: null, editedAt: null, approvedAt: null, approvedByName: null };
     }
     // Current week: keep the generated side fresh. The edit is untouched.
     await loose.contentWeek?.update({ where: { id: row.id }, data }).catch(() => undefined);
     return {
       weekKey: key,
+      // The Monday this week actually starts on, so the screen can print real
+      // dates instead of asking the reader to work out which week is meant.
+      startDate: start,
       edited: Boolean(row.edited),
       editedByName: row.editedByName ?? null,
       editedAt: row.editedAt ?? null,
@@ -735,7 +739,11 @@ export class ContentService {
    * can answer "what did the system suggest, and did our change do better" —
    * which is the only way this feature ever improves.
    */
-  async editWeek(user: AuthenticatedUser, key: string, patch: { focus?: string; days?: unknown; note?: string }) {
+  async editWeek(
+    user: AuthenticatedUser,
+    key: string,
+    patch: { focus?: string; days?: unknown; note?: string; lang?: string; reset?: boolean },
+  ) {
     const tenantId = this.tenantId(user);
     if (user.role !== UserRole.SUPER_ADMIN && !user.supportSession) {
       throw new ForbiddenException('Chỉ team Lumio sửa được kế hoạch. Tiệm xem và đánh dấu đã làm.');
@@ -748,12 +756,47 @@ export class ContentService {
       .catch(() => null) as { id: string; generated: Record<string, unknown>; edited: Record<string, unknown> | null } | null;
     if (!row) throw new NotFoundException('Chưa có kế hoạch nào được lưu cho tuần này.');
 
+    /**
+     * Back to the system's own week.
+     *
+     * Dropping the edit rather than copying the generated plan over it: the
+     * generated side is rewritten every hour with fresh numbers, so a copy
+     * would freeze this salon on whatever the figures said the moment somebody
+     * pressed the button.
+     */
+    if (patch.reset === true) {
+      await loose.contentWeek?.update({
+        where: { id: row.id },
+        data: { edited: null, editedById: null, editedByName: null, editedAt: null },
+      }).catch(() => undefined);
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId, userId: user.userId ?? null,
+          action: 'content.week_edit_reset',
+          resourceType: 'content_week', resourceId: key,
+        } as never,
+      }).catch(() => undefined);
+      return { ok: true, weekKey: key, edited: false };
+    }
+
     // Edits build on the last edit, or on the generated plan the first time.
     const base = (row.edited ?? row.generated ?? {}) as Record<string, unknown>;
     const next: Record<string, unknown> = { ...base };
     if (typeof patch.focus === 'string') next.focus = patch.focus.slice(0, 300);
-    if (Array.isArray(patch.days)) next.days = patch.days;
     if (typeof patch.note === 'string') next.teamNote = patch.note.slice(0, 2000);
+    /**
+     * The week's own work, rewritten by a person.
+     *
+     * Never stored as sent. The days that come back are rebuilt on the
+     * skeleton that went out — see ./week-edit — because this JSON is read by
+     * the screen, the archive, the nightly drafter, the prompts and the
+     * bilingual walk, and a blob shaped by the browser would break all of them
+     * a week later, somewhere with no visible connection to the edit.
+     */
+    if (patch.days !== undefined) {
+      const lang = patch.lang === 'en' ? 'en' : 'vi';
+      next.days = sanitizeDays(patch.days, (base.days ?? []) as never, lang);
+    }
 
     await loose.contentWeek?.update({
       where: { id: row.id },

@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
-import { clientSuggestion, mediaOf, needsTeam, suggestionStatus, type SuggestionRow } from './client-view';
+import { clientSuggestion, mediaOf, needsTeam, safeLink, suggestionStatus, type SuggestionRow } from './client-view';
 
 /**
  * One trend, picked by a person, handed to one salon.
@@ -54,7 +54,11 @@ export class SuggestionsService {
    * writing into the queue its own staff are measured by, and the point of the
    * card is that somebody at Lumio chose it.
    */
-  async create(user: AuthenticatedUser, dto: { title?: string; note?: string; sourceUrl?: string; sourceLabel?: string }) {
+  async create(user: AuthenticatedUser, dto: {
+    title?: string; note?: string;
+    refUrl?: string; refThumbUrl?: string;
+    sourceUrl?: string; sourceLabel?: string;
+  }) {
     if (!this.isTeam(user)) throw new ForbiddenException('Chỉ team Lumio gửi đề xuất cho tiệm.');
     const tenantId = this.tenantId(user);
     const title = String(dto?.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
@@ -64,6 +68,11 @@ export class SuggestionsService {
         tenantId,
         title,
         note: String(dto?.note ?? '').trim().slice(0, 1000) || null,
+        // The brief: one clip the staff member wants the shop to look at. Sent
+        // only when they ticked the box, because whether a reference is safe to
+        // hand over is a judgement per card, not a blanket rule.
+        refUrl: safeLink(dto?.refUrl),
+        refThumbUrl: safeLink(dto?.refThumbUrl),
         // Kept for the team's own reading, never rendered on the salon's side.
         sourceUrl: String(dto?.sourceUrl ?? '').trim().slice(0, 500) || null,
         sourceLabel: String(dto?.sourceLabel ?? '').trim().slice(0, 120) || null,
@@ -92,6 +101,8 @@ export class SuggestionsService {
       title: r.title,
       note: r.note,
       // The team DOES see where it came from — this is their own working note.
+      refUrl: safeLink(r.refUrl),
+      refThumbUrl: safeLink(r.refThumbUrl),
       sourceUrl: r.sourceUrl,
       sourceLabel: r.sourceLabel,
       createdByName: r.createdByName,

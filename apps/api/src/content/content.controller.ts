@@ -140,7 +140,11 @@ export class ContentController {
   @HttpCode(200)
   sendSuggestion(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { title?: string; note?: string; sourceUrl?: string; sourceLabel?: string },
+    @Body() dto: {
+      title?: string; note?: string;
+      refUrl?: string; refThumbUrl?: string;
+      sourceUrl?: string; sourceLabel?: string;
+    },
   ) {
     return this.suggestions.create(user, dto ?? {});
   }

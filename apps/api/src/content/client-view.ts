@@ -1,4 +1,4 @@
-import { viOf, enOf, type Txt } from './i18n';
+import { bi, viOf, enOf, type Txt } from './i18n';
 import type { DayPlan, Job, JobKind, WeekPlan } from './weekly-plan';
 
 /**
@@ -40,9 +40,59 @@ export interface ClientJob {
   /** The weekday name the shop reads. */
   day: Txt;
   kind: JobKind;
-  /** The instruction, including what to shoot. No reasoning attached. */
+  /** The instruction, including what to shoot. */
   text: Txt;
+  /**
+   * How to do it well — framing, light, the sentence to say at the counter.
+   *
+   * Craft, not method, and the difference is what makes it safe to send. The
+   * week's own `why` says things like "Saturday is your quietest day", which is
+   * the agency reading the shop's booking book. This says "shoot it vertical,
+   * window light, the first three seconds are the close-up" — true of the trade
+   * everywhere, useful to anybody holding a phone, and worth nothing to a
+   * competitor.
+   *
+   * It exists because the first version shipped without it and the answer came
+   * back immediately: a shop that is told to film and not told how films
+   * something nobody can use, once, and then stops.
+   */
+  how: Txt | null;
 }
+
+/**
+ * The craft note for one kind of work.
+ *
+ * Deliberately short and physically specific. "Make it engaging" is not
+ * guidance; "the first three seconds are the close-up, hold the shot still,
+ * shoot it three times and keep the best" is something a person can follow with
+ * a phone in one hand.
+ */
+const HOW: Partial<Record<JobKind, Txt>> = {
+  film: bi(
+    'Quay dọc (9:16), lau ống kính trước. Ánh sáng cửa sổ hoặc đèn bàn chiếu vào tay, đừng để đèn sau lưng. '
+    + '3 giây đầu là cận cảnh — người xem quyết định ở đó. Giữ máy đứng yên, quay mỗi cảnh 2-3 lần rồi lấy bản đẹp nhất. '
+    + 'Không cần nói, bên em lồng chữ và nhạc sau.',
+    'Shoot vertical (9:16) and wipe the lens first. Window light or a lamp onto the hands, never a light behind you. '
+    + 'The first 3 seconds are the close-up — that is where a viewer decides. Hold the phone still, shoot each shot '
+    + '2-3 times and keep the best. No need to talk; the team adds text and music.',
+  ),
+  photo: bi(
+    'Chụp dọc, đủ sáng, nền gọn — che bớt đồ lộn xộn phía sau. Mỗi kiểu chụp 2-3 tấm cho chắc. '
+    + 'Có "trước" thì mới có "sau": nhớ chụp bộ móng cũ lúc khách vừa ngồi xuống, trước khi tháo. '
+    + 'Đừng dùng filter, bên em chỉnh màu cho đồng bộ cả trang.',
+    'Vertical, plenty of light, tidy background — move the clutter out of frame. Two or three frames of each shot. '
+    + 'There is no "after" without a "before": photograph the old set as she sits down, before you take it off. '
+    + 'No filters — the team colour-matches everything so the profile looks like one shop.',
+  ),
+  engage: bi(
+    'Xin lúc thanh toán, ngay sau khi khách vừa ngắm tay xong — đó là lúc duy nhất khách còn đang vui vì bộ móng. '
+    + 'Nói đúng một câu: "Chị thấy ưng thì cho tiệm em xin 5 sao trên Google nha, em gửi link liền." '
+    + 'Rồi đưa mã QR hoặc nhắn link ngay tại chỗ. Nhắn sau khi khách về là mất.',
+    'Ask at checkout, right after she has looked at her hands — the one moment she is still pleased with the set. '
+    + 'One sentence: "If you are happy with it, would you leave us five stars on Google? I will send the link now." '
+    + 'Then hand over the QR or text the link on the spot. Asking after she leaves converts far worse.',
+  ),
+};
 
 export interface ClientWeek {
   /** One line: what this week is about. The stage's own words, never its number. */
@@ -65,7 +115,10 @@ export function clientWeek(plan: WeekPlan | null | undefined): ClientWeek | null
   plan.days.forEach((d: DayPlan, dayIndex) => {
     for (const j of d.jobs ?? []) {
       if (!SHOP_JOB_KINDS.includes(j.kind)) continue;
-      jobs.push({ dayIndex, day: d.label, kind: j.kind, text: (j as Job).text });
+      jobs.push({
+        dayIndex, day: d.label, kind: j.kind, text: (j as Job).text,
+        how: HOW[j.kind] ?? null,
+      });
     }
   });
   return {
@@ -82,11 +135,32 @@ export function clientWeek(plan: WeekPlan | null | undefined): ClientWeek | null
 
 // ---- suggestions -----------------------------------------------------------
 
-/** A suggestion as the team stores it. `source*` is method, and stays here. */
+/**
+ * A suggestion as the team stores it.
+ *
+ * TWO KINDS OF LINK, AND THE DIFFERENCE IS THE WHOLE RULE
+ *
+ * `refUrl` is ONE clip a staff member picked and wants the shop to look at.
+ * That is a brief, and briefs are meant to be seen: an instruction with no
+ * reference is a shop guessing at a style from a sentence, which is what the
+ * first version of this shipped and what made it useless.
+ *
+ * `sourceUrl`/`sourceLabel` are the FEED it came off — the hashtag page, the
+ * ranking, the search read every morning. That is method: it survives any one
+ * trend, and handing it over hands over the reading list. It never leaves the
+ * team's side.
+ *
+ * The distinction is the staff member's to make per card, not a blanket rule:
+ * they tick whether to attach the reference when they send it.
+ */
 export interface SuggestionRow {
   id: string;
   title: string;
   note: string | null;
+  /** The one reference the shop is meant to look at. Shown when set. */
+  refUrl?: string | null;
+  /** Its thumbnail, so the card shows something without opening anything. */
+  refThumbUrl?: string | null;
   /** Where the staff member found it. NEVER sent to the salon. */
   sourceUrl: string | null;
   /** Which feed it came off. NEVER sent to the salon. */
@@ -106,7 +180,16 @@ export interface ClientSuggestion {
   createdAt: string;
   /** `used` is collapsed into `done`: the shop sent it either way. */
   status: 'sent' | 'done' | 'skipped';
+  /** The reference to look at, when the staff member attached one. */
+  refUrl: string | null;
+  refThumbUrl: string | null;
   media: { url: string; kind: 'image' | 'video' }[];
+}
+
+/** Only a real http(s) address survives into anything the browser will render. */
+export function safeLink(raw: unknown): string | null {
+  const u = String(raw ?? '').trim();
+  return /^https?:\/\/[^\s]+$/i.test(u) ? u.slice(0, 800) : null;
 }
 
 /**
@@ -161,6 +244,10 @@ export function clientSuggestion(row: SuggestionRow): ClientSuggestion {
     // should have to interpret.
     status: suggestionStatus(row.status) === 'skipped' ? 'skipped'
       : suggestionStatus(row.status) === 'sent' ? 'sent' : 'done',
+    // The brief travels; the reading list does not. Both are run through
+    // `safeLink` because these end up in an href and a src on a phone.
+    refUrl: safeLink(row.refUrl),
+    refThumbUrl: safeLink(row.refThumbUrl),
     media: mediaOf(row.media),
   };
 }

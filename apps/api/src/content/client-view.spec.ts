@@ -3,7 +3,7 @@ import {
   flattenForClient, needsTeam, SHOP_JOB_KINDS, NEVER_TO_CLIENT,
 } from './client-view';
 import { buildWeekPlan } from './weekly-plan';
-import { viOf } from './i18n';
+import { viOf, enOf } from './i18n';
 
 const plan = buildWeekPlan({
   today: new Date('2026-09-05T12:00:00Z'), todayWeekday: 6, industry: 'SALON', week: 0,
@@ -43,8 +43,30 @@ describe('what a salon sees of its own week', () => {
   it('says which day, because a shoot has to be scheduled — and nothing about publishing', () => {
     for (const j of cw.jobs) {
       expect(typeof j.dayIndex).toBe('number');
-      expect(Object.keys(j).sort()).toEqual(['day', 'dayIndex', 'kind', 'text']);
+      expect(Object.keys(j).sort()).toEqual(['day', 'dayIndex', 'how', 'kind', 'text']);
     }
+  });
+
+  it('TELLS THE SHOP HOW, NOT ONLY WHAT', () => {
+    // The first version shipped without this and the answer came back at once:
+    // a shop told to film and not told how films something nobody can use,
+    // once, and then stops.
+    const film = cw.jobs.find((j) => j.kind === 'film')!;
+    expect(viOf(film.how)).toMatch(/9:16/);
+    expect(viOf(film.how)).toMatch(/3 giây đầu/);
+    const photo = cw.jobs.find((j) => j.kind === 'photo')!;
+    expect(viOf(photo.how)).toMatch(/trước.*sau|sau.*trước/i);
+  });
+
+  it('and the how is craft, never method', () => {
+    // "Shoot it vertical, window light" is true of the trade everywhere and
+    // worth nothing to a competitor. "Saturday is your quietest day" is the
+    // agency reading this shop's booking book, and stays out.
+    for (const j of cw.jobs) {
+      const both = `${viOf(j.how)} ${enOf(j.how)}`;
+      expect(both).not.toMatch(/vắng nhất|quietest|sổ đặt lịch|booking book|giai đoạn|stage/i);
+    }
+    expect(leaksAnything(cw)).toBeNull();
   });
 
   it('is rebuilt, not filtered — a new field on the plan does not appear here', () => {
@@ -85,7 +107,33 @@ describe('what a salon sees of a suggestion', () => {
 
   it('carries what the shop needs and nothing else', () => {
     expect(Object.keys(clientSuggestion(row)).sort())
-      .toEqual(['createdAt', 'id', 'media', 'note', 'status', 'title']);
+      .toEqual(['createdAt', 'id', 'media', 'note', 'refThumbUrl', 'refUrl', 'status', 'title']);
+  });
+
+  it('SHOWS THE ONE REFERENCE, AND STILL NOT THE FEED', () => {
+    // The distinction the first version got wrong by collapsing both into
+    // "source": one clip a person picked is the brief and is meant to be seen;
+    // the hashtag page it came off is the reading list.
+    const c = clientSuggestion({
+      ...row,
+      refUrl: 'https://www.tiktok.com/@shop/video/123',
+      refThumbUrl: 'https://cdn.lumio.app/thumb/123.jpg',
+    });
+    expect(c.refUrl).toBe('https://www.tiktok.com/@shop/video/123');
+    expect(c.refThumbUrl).toBe('https://cdn.lumio.app/thumb/123.jpg');
+    expect(JSON.stringify(c)).not.toMatch(/cateyenails/); // the feed, still gone
+  });
+
+  it('sends no reference at all when the staff member did not attach one', () => {
+    const c = clientSuggestion(row);
+    expect(c.refUrl).toBeNull();
+    expect(c.refThumbUrl).toBeNull();
+  });
+
+  it('refuses anything that is not a real link, because these become href and src', () => {
+    const c = clientSuggestion({ ...row, refUrl: 'javascript:alert(1)', refThumbUrl: 'data:text/html,x' });
+    expect(c.refUrl).toBeNull();
+    expect(c.refThumbUrl).toBeNull();
   });
 
   it('reads a status it does not recognise as "still waiting"', () => {

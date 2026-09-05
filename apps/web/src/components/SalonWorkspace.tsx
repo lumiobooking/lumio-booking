@@ -38,10 +38,13 @@ interface Suggestion {
   note: string | null;
   createdAt: string;
   status: 'sent' | 'done' | 'skipped';
+  /** The one clip Lumio wants the shop to look at, when one was attached. */
+  refUrl: string | null;
+  refThumbUrl: string | null;
   media: { url: string; kind: 'image' | 'video' }[];
 }
 interface SuggestionFeed { open: Suggestion[]; past: Suggestion[]; waiting: number }
-interface ClientJob { dayIndex: number; day: string; kind: string; text: string }
+interface ClientJob { dayIndex: number; day: string; kind: string; text: string; how: string | null }
 interface ClientWeek { focus: string; jobs: ClientJob[]; prep: { label: string; detail: string }[] }
 
 const ICON: Record<string, string> = { film: '🎬', photo: '📷', engage: '💚' };
@@ -135,6 +138,25 @@ export function SalonWorkspace({ token, vi, onCount }: {
                     {j.dayIndex === 0 ? T('HÔM NAY', 'TODAY') : j.day.toUpperCase()}
                   </div>
                   <div style={{ fontSize: 14, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 1 }}>{j.text}</div>
+                  {/* How to do it well. Folded away by default so the list still
+                      reads as a list, open with one tap when somebody is
+                      standing there about to do it. */}
+                  {j.how && (
+                    <details style={{ marginTop: 5 }}>
+                      <summary style={{
+                        cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+                        color: 'var(--ca5b4fc)', listStyle: 'none',
+                      }}>
+                        {T('Làm thế nào cho đẹp →', 'How to do it well →')}
+                      </summary>
+                      <div style={{
+                        fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.65, marginTop: 5,
+                        paddingLeft: 10, borderLeft: '2px solid var(--c334155)',
+                      }}>
+                        {j.how}
+                      </div>
+                    </details>
+                  )}
                 </div>
               </div>
             ))}
@@ -247,10 +269,49 @@ function SuggestionCard({
 
   return (
     <div style={{ ...card, borderColor: '#6366f1', marginBottom: 10 }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.4 }}>{s.title}</div>
-      {s.note && (
-        <div style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 4 }}>{s.note}</div>
-      )}
+      <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start' }}>
+        {/* The reference, right there. An instruction with nothing to look at
+            is a shop guessing at a style from a sentence — which is what the
+            first version of this card asked people to do. */}
+        {s.refThumbUrl && (
+          <a
+            href={s.refUrl ?? s.refThumbUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              width: 74, height: 74, borderRadius: 10, overflow: 'hidden', flex: '0 0 auto',
+              border: '1px solid var(--c475569)', display: 'block', position: 'relative',
+              background: 'var(--c0f172a)',
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={s.refThumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <span style={{
+              position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 22, textShadow: '0 1px 6px rgba(0,0,0,.8)',
+            }}>▶</span>
+          </a>
+        )}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.4 }}>{s.title}</div>
+          {s.note && (
+            <div style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 4 }}>{s.note}</div>
+          )}
+          {s.refUrl && (
+            <a
+              href={s.refUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-block', marginTop: 7, fontSize: 13, fontWeight: 600,
+                color: 'var(--ca5b4fc)', textDecoration: 'none',
+              }}
+            >
+              ▶ {T('Xem mẫu Lumio gửi', 'Watch the reference')}
+            </a>
+          )}
+        </div>
+      </div>
 
       {busy && pct !== null && (
         <div style={{ marginTop: 11 }}>

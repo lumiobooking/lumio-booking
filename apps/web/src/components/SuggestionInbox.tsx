@@ -34,6 +34,8 @@ export interface TeamSuggestion {
   id: string;
   title: string;
   note: string | null;
+  refUrl: string | null;
+  refThumbUrl: string | null;
   sourceUrl: string | null;
   sourceLabel: string | null;
   createdByName: string | null;
@@ -111,7 +113,20 @@ export function SuggestionInbox({
           padding: '11px 12px', borderRadius: 10, marginBottom: 8,
           background: 'var(--c0f172a)', border: '1px solid #166534',
         }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>{s.title}</div>
+          <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+            {s.refThumbUrl && (
+              <a href={s.refUrl ?? s.refThumbUrl} target="_blank" rel="noopener noreferrer"
+                title={T('Mẫu đã gửi tiệm', 'The reference the shop got')}
+                style={{
+                  width: 46, height: 46, borderRadius: 7, overflow: 'hidden', flex: '0 0 auto',
+                  border: '1px solid var(--c334155)', display: 'block',
+                }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={s.refThumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </a>
+            )}
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>{s.title}</div>
+          </div>
           {s.sourceLabel && (
             // The team's own note about where it came from. This never reaches
             // the salon's payload — see the API's client-view.

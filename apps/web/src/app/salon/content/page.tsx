@@ -33,6 +33,7 @@ import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/
 import { MonthCalendar, IgGrid, PostPreview, MediaList, type MediaItem } from '../../../components/PostStudio';
 import { WeekPlanBoard } from '../../../components/WeekPlanBoard';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
+import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
 import { TrendsTab, type TrendCard } from '../../../components/TrendsTab';
 import { fitForSocial } from '../../../lib/image';
 
@@ -516,6 +517,9 @@ function Inner() {
   const [queueBusy, setQueueBusy] = useState(false);
   /** Suggestions the shop has answered and nobody has turned into a post yet. */
   const [readyFiles, setReadyFiles] = useState(0);
+  /** The trend card being written up for the shop, if any. */
+  const [sending, setSending] = useState<TrendCard | null>(null);
+  const [sendBusy, setSendBusy] = useState(false);
   const [postDraft, setPostDraft] = useState<{
     id?: string; channels: ('facebook' | 'instagram')[]; message: string; media: MediaItem[]; at: string;
   } | null>(null);
@@ -873,31 +877,18 @@ function Inner() {
    * rebuilt without it (see the API's client-view). The shop gets an
    * instruction; nobody gets the method.
    */
-  async function sendTrendToSalon(card: TrendCard) {
+  async function sendSuggestion(d: SuggestionDraft) {
     if (!token) return;
-    const title = window.prompt(
-      T('Gửi cho tiệm quay gì? (sửa lại cho gọn, tiệm sẽ đọc đúng câu này)',
-        'What should the shop film? (tidy it up — the shop reads this exact line)'),
-      card.title.slice(0, 120),
-    );
-    if (title === null) return;
-    const clean = title.trim();
-    if (!clean) return;
+    setSendBusy(true);
     try {
-      await apiFetch('/content/suggestions', {
-        method: 'POST', token,
-        body: {
-          title: clean,
-          note: card.via ? `${T('Đang chạy tốt', 'Running well')}: ${card.via}` : undefined,
-          sourceUrl: card.url,
-          sourceLabel: card.source,
-        },
-      });
+      await apiFetch('/content/suggestions', { method: 'POST', token, body: d });
       setError(null);
-      notify('success', T('Đã gửi cho tiệm. Tiệm thấy ở màn hình Duyệt bài.', 'Sent. The shop sees it on its review screen.'));
+      setSending(null);
+      notify('success', T('Đã gửi cho tiệm. Tiệm thấy ngay ở tab "Việc của tiệm".',
+                          'Sent. The shop sees it on its own screen.'));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'error');
-    }
+    } finally { setSendBusy(false); }
   }
 
   async function mark(id: string, status: string, postedUrl?: string) {
@@ -2014,7 +2005,24 @@ function Inner() {
               extraLinks={[...(plan?.videoFeeds ?? []), ...(plan?.productWatch ?? [])]}
               canRefresh={Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN'}
               onMakePost={postFromTrend}
-              onSendToSalon={(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') ? sendTrendToSalon : null}
+              onSendToSalon={(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') ? setSending : null}
+            />
+          )}
+
+          {/* Writing the line the shop will read, with the reference on screen.
+              A one-line browser prompt made rewriting feel optional, and what
+              reached the salon was the original creator's caption. */}
+          {sending && (
+            <SendSuggestion
+              vi={vi}
+              seedTitle={sending.title}
+              refUrl={sending.url}
+              refThumbUrl={sending.thumbUrl}
+              sourceUrl={sending.url}
+              sourceLabel={sending.via ?? sending.source}
+              busy={sendBusy}
+              onSend={sendSuggestion}
+              onClose={() => setSending(null)}
             />
           )}
           {tab === 'audience' && (

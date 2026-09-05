@@ -2869,7 +2869,15 @@ model ContentSuggestion {
   title String
   note  String?
 
-  /// Team only. Never sent to the salon.
+  /// The one clip or photo the shop should look at. This IS the brief, so it
+  /// is shown to the salon — an instruction with no reference is a shop
+  /// guessing. Set only when the staff member chooses to attach it.
+  refUrl      String?
+  /// Its thumbnail, so the card shows something without opening anything.
+  refThumbUrl String?
+
+  /// WHICH FEED it came off — the hashtag page, the ranking, the search the
+  /// team reads every morning. Method, not brief. Never sent to the salon.
   sourceUrl   String?
   /// Team only. Never sent to the salon.
   sourceLabel String?

@@ -1,0 +1,298 @@
+<title>Chống lộn tiệm khi đăng bài</title>
+<style>
+  :root{
+    --bg:#0f172a; --card:#1e293b; --sunk:#111827; --line:#334155; --line2:#1e293b;
+    --ink:#e2e8f0; --dim:#94a3b8; --dim2:#64748b; --indigo:#6366f1;
+    --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+    --shop:#0ea5e9; /* màu thương hiệu của tiệm đang mở */
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:26px 18px 56px}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:21px;margin:0 0 6px}
+  .lede{color:var(--dim);font-size:13.5px;margin:0 0 8px;line-height:1.7;max-width:78ch}
+  .lede b{color:var(--ink)}
+  .cause{background:rgba(239,68,68,.08);border:1px solid #7f1d1d;border-left:3px solid var(--bad);
+    border-radius:10px;padding:12px 14px;margin:14px 0 26px;font-size:13px;line-height:1.7;max-width:78ch}
+  .cause b{color:#fca5a5}
+
+  h2{font-size:15.5px;margin:0 0 3px}
+  .num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
+    border-radius:6px;background:var(--indigo);color:#fff;font-size:12px;font-weight:800;margin-right:8px}
+  .why{color:var(--dim);font-size:12.5px;line-height:1.65;margin:0 0 12px;max-width:70ch}
+  section{margin-bottom:30px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .composer{max-width:640px}
+
+  /* 1 — thanh nhận diện tiệm */
+  .shopbar{display:flex;align-items:center;gap:11px;padding:11px 14px;border-radius:11px;
+    background:linear-gradient(90deg,rgba(14,165,233,.20),rgba(14,165,233,.05));
+    border:1px solid var(--shop);border-left:5px solid var(--shop);margin-bottom:14px}
+  .avatar{width:34px;height:34px;border-radius:9px;background:var(--shop);color:#04212e;
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0}
+  .shopname{font-size:15.5px;font-weight:800;line-height:1.25}
+  .shopmeta{font-size:11.5px;color:var(--dim);font-family:ui-monospace,Menlo,monospace;margin-top:1px}
+  .old{font-size:12.5px;color:var(--dim);border:1px dashed var(--line);border-radius:9px;
+    padding:9px 12px;margin-bottom:10px}
+
+  label.lbl{display:block;font-size:12px;color:var(--dim);margin:0 0 5px}
+  textarea{width:100%;min-height:132px;background:var(--sunk);color:var(--ink);
+    border:1px solid var(--line);border-radius:10px;padding:11px 12px;font:inherit;font-size:13.5px;
+    line-height:1.6;resize:vertical}
+  textarea:focus{outline:2px solid var(--indigo);outline-offset:1px}
+
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+  .btn{padding:8px 13px;border-radius:9px;border:1px solid var(--line);background:var(--sunk);
+    color:var(--ink);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .btn.primary{background:var(--indigo);border-color:var(--indigo);color:#fff}
+  .btn.ghost{background:transparent;color:var(--dim)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.insert{border-color:var(--shop);color:#7dd3fc}
+
+  /* 3 — kết quả quét */
+  .scan{margin-top:12px;border-radius:11px;padding:12px 13px;font-size:13px;line-height:1.65}
+  .scan.bad{background:rgba(239,68,68,.10);border:1px solid var(--bad)}
+  .scan.good{background:rgba(34,197,94,.10);border:1px solid var(--ok);color:#bbf7d0}
+  .scan h4{margin:0 0 7px;font-size:13.5px;color:#fca5a5}
+  .hit{display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-top:1px solid rgba(239,68,68,.25)}
+  .hit:first-of-type{border-top:none}
+  .hit code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:rgba(239,68,68,.16);
+    border-radius:5px;padding:1px 6px;color:#fecaca;white-space:nowrap}
+  .hit .txt{flex:1;min-width:0;color:var(--dim);font-size:12.5px}
+  .hit .txt b{color:#fecaca}
+  .fixbtn{background:transparent;border:1px solid var(--bad);color:#fca5a5;border-radius:7px;
+    padding:3px 9px;font:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap}
+
+  .facts{margin-top:11px;padding-top:10px;border-top:1px solid var(--line2);
+    font-size:11.5px;color:var(--dim2);font-family:ui-monospace,Menlo,monospace;line-height:1.8}
+  .facts b{color:var(--dim);font-weight:600}
+
+  .verdict{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--ok);
+    border-radius:12px;padding:16px 18px;max-width:860px}
+  .verdict p{font-size:13px;line-height:1.75;color:var(--dim);margin:0 0 10px}
+  .verdict p:last-child{margin:0}
+  .verdict b{color:var(--ink)}
+  .tag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+    padding:2px 8px;border-radius:999px;margin-left:8px;vertical-align:2px}
+  .t1{background:rgba(34,197,94,.16);color:#86efac}
+  .t2{background:rgba(148,163,184,.16);color:#cbd5e1}
+</style>
+
+<div class="wrap">
+  <h1>Chống đăng lộn thông tin giữa các tiệm</h1>
+  <p class="lede">
+    Nhân viên quản nhiều tiệm, mở nhiều tab, và <b>chép bài cũ của tiệm này sửa thành bài tiệm kia</b> —
+    sửa phần nội dung, quên sửa phần liên hệ. Ba lớp dưới đây bấm thử được.
+  </p>
+  <div class="cause">
+    <b>Vì sao cảnh báo suông không giải quyết được:</b> lỗi này không phải do không biết, mà do
+    <i>không nhìn</i>. Người ta đang tập trung vào caption, phần địa chỉ ở cuối bài là thứ họ tin là
+    đã đúng vì nó vốn có sẵn ở đó. Muốn hết lỗi thì phải làm cho việc gõ tay <b>không còn cần thiết</b>,
+    và cái sai <b>tự lên tiếng</b> chứ không chờ người đọc lại.
+  </div>
+
+  <!-- ============ 1 ============ -->
+  <section>
+    <h2><span class="num">1</span>Thanh nhận diện tiệm — mang màu thương hiệu của chính tiệm đó</h2>
+    <p class="why">
+      Hiện tại dòng “Publishing to Lux Nail Spa” là chữ xám nhỏ, nằm lẫn trong nội dung.
+      Với người đang mở tám tab thì nó không tồn tại. Hệ thống đã lưu sẵn màu thương hiệu từng tiệm —
+      dùng luôn: mỗi tiệm một màu, sai tab là <b>nhận ra bằng mắt trước khi kịp đọc chữ</b>.
+    </p>
+    <div class="card composer">
+      <div class="old">Trước: <span style="color:var(--dim2)">Publishing to <b style="color:var(--ink)">Lux Nail Spa</b> and Instagram @luxnailspa_tx</span></div>
+      <div class="shopbar">
+        <div class="avatar">LN</div>
+        <div style="flex:1;min-width:0">
+          <div class="shopname">Lux Nail Spa</div>
+          <div class="shopmeta">Kerrville, TX · @luxnailspa_tx · (830) 257-8888</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2 + 3 ============ -->
+  <section>
+    <h2><span class="num">2</span>Nút chèn thông tin tiệm — bỏ hẳn việc gõ tay</h2>
+    <p class="why">
+      Địa chỉ, số điện thoại, link đặt lịch, hashtag của tiệm đều đã nằm trong hệ thống.
+      Một nút chèn khối liên hệ <b>đọc thẳng từ hồ sơ tiệm đang mở</b>. Không ai gõ thì không ai gõ sai.
+    </p>
+
+    <h2 style="margin-top:20px"><span class="num">3</span>Quét trước khi lên lịch — bắt đúng cái bẫy chép bài</h2>
+    <p class="why">
+      Đây là lớp thật sự chặn được lỗi. Bài chép từ tiệm khác luôn mang theo số điện thoại, @handle
+      hoặc địa chỉ của tiệm kia. Hệ thống so từng thứ đó với hồ sơ tiệm đang mở — <b>lệch là chặn</b>.
+      Không cần biết gì về tiệm khác, chỉ cần biết cái nào <i>không phải</i> của tiệm này.
+    </p>
+
+    <div class="card composer">
+      <div class="shopbar">
+        <div class="avatar">LN</div>
+        <div style="flex:1;min-width:0">
+          <div class="shopname">Lux Nail Spa</div>
+          <div class="shopmeta">Kerrville, TX · @luxnailspa_tx · (830) 257-8888</div>
+        </div>
+      </div>
+
+      <label class="lbl">Nội dung bài</label>
+      <textarea id="ta" oninput="scan()">Dip powder mới về 12 màu mùa thu 💅 Đặt lịch cuối tuần này còn chỗ nha cả nhà!
+
+📍 2451 Beach Blvd, Huntington Beach, CA
+📞 (714) 892-3355
+📷 @rosenails_hb
+#rosenails #huntingtonbeachnails</textarea>
+
+      <div class="row">
+        <button class="btn insert" onclick="insertBlock()">＋ Chèn thông tin Lux Nail Spa</button>
+        <button class="btn ghost" onclick="reset()">Đặt lại ví dụ</button>
+      </div>
+
+      <div id="scan"></div>
+
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="go" disabled>✓ Lên lịch</button>
+        <button class="btn">Lưu nháp</button>
+      </div>
+
+      <div class="facts">
+        <b>Hồ sơ tiệm đang mở</b> — thứ hệ thống đối chiếu:<br>
+        điện thoại (830) 257-8888 · @luxnailspa_tx · 1204 Sidney Baker St, Kerrville TX 78028 · lumiobooking.com/book/lux-nail-spa
+      </div>
+    </div>
+  </section>
+
+  <div class="verdict">
+    <h2 style="margin-bottom:9px">Đề xuất</h2>
+    <p>
+      <b>Làm 3 trước, rồi 2, rồi 1.</b><span class="tag t1">theo thứ tự này</span>
+      Lớp 3 là lớp duy nhất bắt được lỗi <i>đã xảy ra rồi</i> — bài chép từ tiệm khác.
+      Lớp 2 làm lỗi ít xảy ra hơn. Lớp 1 rẻ nhất nhưng chỉ giúp người còn đang nhìn.
+    </p>
+    <p>
+      <b>Quét thì chặn hay chỉ cảnh báo?</b> Tôi đề nghị <b>chặn nút Lên lịch</b>, mở khoá bằng một
+      nút “tôi biết, vẫn đăng”. Cảnh báo không chặn sẽ bị lướt qua trong đúng hai tuần —
+      đó là quy luật của mọi banner vàng.
+    </p>
+    <p>
+      <b>Một chỗ phải cẩn thận:</b> tiệm hợp tác với tiệm khác, hoặc bài giới thiệu chi nhánh mới,
+      sẽ có số lạ một cách chính đáng. Nên nút mở khoá là bắt buộc — và nên
+      <b>ghi lại ai đã mở khoá</b>, để lần sau lộn thật thì còn truy được.
+    </p>
+    <p style="color:#fbbf24">
+      <b>Việc anh phải làm trước:</b> hồ sơ từng tiệm phải điền đủ số điện thoại, địa chỉ và Instagram
+      trong Cài đặt. Hệ thống chỉ đối chiếu được với thứ nó biết — tiệm bỏ trống số điện thoại thì
+      không có gì để so, và lớp 3 im lặng. Đó là lý do tôi sẽ cho nó
+      <b>nói rõ “chưa đối chiếu được vì hồ sơ thiếu số điện thoại”</b> thay vì lặng lẽ cho qua.
+    </p>
+  </div>
+</div>
+
+<script>
+  var SHOP = {
+    name: 'Lux Nail Spa',
+    phone: '(830) 257-8888',
+    phoneDigits: '8302578888',
+    ig: 'luxnailspa_tx',
+    addr: '1204 Sidney Baker St, Kerrville TX 78028',
+    city: 'kerrville',
+    link: 'lumiobooking.com/book/lux-nail-spa',
+    tags: '#luxnailspa #kerrvillenails #nailskerrvilletx'
+  };
+  var SAMPLE = document.getElementById('ta').value;
+
+  function digits(s){ return s.replace(/\D/g,''); }
+
+  function scan(){
+    var t = document.getElementById('ta').value;
+    var hits = [];
+
+    // số điện thoại
+    var phones = t.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g) || [];
+    phones.forEach(function(p){
+      if (digits(p).slice(-10) !== SHOP.phoneDigits) {
+        hits.push({ what: p, why: 'Số này <b>không phải số của ' + SHOP.name + '</b>', fix: SHOP.phone });
+      }
+    });
+
+    // @handle
+    var ats = t.match(/@[A-Za-z0-9._]+/g) || [];
+    ats.forEach(function(a){
+      if (a.slice(1).toLowerCase() !== SHOP.ig.toLowerCase()) {
+        hits.push({ what: a, why: 'Instagram này <b>thuộc tài khoản khác</b>', fix: '@' + SHOP.ig });
+      }
+    });
+
+    // địa chỉ — bắt theo tên thành phố / bang không khớp
+    var addrLine = (t.match(/^.*\d{3,5}\s+[A-Za-z].*(?:Blvd|St|Ave|Rd|Dr|Way|Ln|Hwy).*$/mi) || [])[0];
+    if (addrLine && addrLine.toLowerCase().indexOf(SHOP.city) === -1) {
+      hits.push({ what: addrLine.trim().slice(0, 42) + (addrLine.length > 42 ? '…' : ''),
+                  why: 'Địa chỉ này <b>không thuộc ' + SHOP.name + '</b>', fix: SHOP.addr });
+    }
+
+    // hashtag mang tên tiệm khác
+    var tags = t.match(/#[A-Za-z0-9_]+/g) || [];
+    tags.forEach(function(h){
+      var low = h.toLowerCase();
+      var mine = SHOP.tags.toLowerCase();
+      if (mine.indexOf(low) === -1 && /nails?$|spa$|nails[a-z]+$/.test(low) && low.indexOf('kerrville') === -1) {
+        hits.push({ what: h, why: 'Hashtag mang tên <b>tiệm khác</b>', fix: SHOP.tags.split(' ')[0] });
+      }
+    });
+
+    var box = document.getElementById('scan');
+    var go = document.getElementById('go');
+
+    if (!t.trim()) { box.innerHTML = ''; go.disabled = true; return; }
+
+    if (!hits.length) {
+      box.className = 'scan good';
+      box.innerHTML = '✓ Mọi thông tin liên hệ trong bài đều khớp hồ sơ <b>' + SHOP.name + '</b>.';
+      go.disabled = false;
+      go.textContent = '✓ Lên lịch';
+      return;
+    }
+
+    box.className = 'scan bad';
+    box.innerHTML = '<h4>⚠ ' + hits.length + ' thông tin không thuộc về ' + SHOP.name + '</h4>'
+      + hits.map(function(h, i){
+          return '<div class="hit"><code>' + h.what + '</code>'
+            + '<span class="txt">' + h.why + ' → nên là <b>' + h.fix + '</b></span>'
+            + '<button class="fixbtn" onclick="fixOne(' + i + ')">Sửa</button></div>';
+        }).join('')
+      + '<div style="margin-top:10px"><button class="fixbtn" style="border-color:var(--warn);color:#fcd34d" onclick="override()">Tôi biết, vẫn đăng</button>'
+      + '<span style="font-size:11.5px;color:var(--dim2);margin-left:9px">việc mở khoá được ghi lại kèm tên người bấm</span></div>';
+
+    window._hits = hits;
+    go.disabled = true;
+    go.textContent = 'Lên lịch — đang bị chặn';
+  }
+
+  function fixOne(i){
+    var h = window._hits[i];
+    var ta = document.getElementById('ta');
+    ta.value = ta.value.replace(h.what.replace('…',''), h.fix);
+    scan();
+  }
+
+  function override(){
+    var go = document.getElementById('go');
+    go.disabled = false;
+    go.textContent = '✓ Lên lịch (đã mở khoá)';
+  }
+
+  function insertBlock(){
+    var ta = document.getElementById('ta');
+    // Bỏ khối liên hệ cũ rồi gắn khối đúng — không chồng thêm một khối nữa.
+    var body = ta.value.split(/\n(?=📍|📞|📷|#)/)[0].trimEnd();
+    ta.value = body + '\n\n📍 ' + SHOP.addr + '\n📞 ' + SHOP.phone
+      + '\n📷 @' + SHOP.ig + '\n🔗 ' + SHOP.link + '\n' + SHOP.tags;
+    scan();
+  }
+
+  function reset(){ document.getElementById('ta').value = SAMPLE; scan(); }
+
+  scan();
+</script>

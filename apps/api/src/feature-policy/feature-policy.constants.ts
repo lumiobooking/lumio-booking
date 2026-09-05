@@ -40,9 +40,26 @@ export const FEATURE_DEFS: FeatureDef[] = [
   // switch ON is a decision someone makes per salon, never a side effect of a
   // deploy.
   { key: 'contentPlan', label: 'Marketing plan & posts', hrefs: ['/salon/content'], default: 'platform' },
-  // Follows the content-plan switch unless set on its own: a salon whose plan
-  // the agency runs gets the approval screen with it, in one flip.
-  { key: 'postApproval', label: 'Post approval (client review)', hrefs: ['/salon/approve-posts'], default: 'platform', fallbackKey: 'contentPlan' },
+  /**
+   * The ONE screen that ships open, and the reason it is allowed to.
+   *
+   * It used to follow the content-plan switch, which meant a salon had to be
+   * given the agency's own kitchen before it could see its own dining room —
+   * and nobody was going to do that, so in practice the client screen was off
+   * everywhere. It is also the screen a client is told about when the contract
+   * is signed, which makes "somebody remembered to flip it" the wrong thing for
+   * it to depend on.
+   *
+   * Opening it by default is safe for a specific reason, not a general one:
+   * every part of it is EMPTY until the agency itself puts something there — a
+   * suggestion a staff member sent, a post the team scheduled. A salon nobody
+   * runs marketing for opens it and sees the empty state. No data is revealed
+   * by the default; only a door.
+   *
+   * No `fallbackKey`, deliberately. A fallback would let the content-plan
+   * switch decide this one again, which is the behaviour being removed.
+   */
+  { key: 'postApproval', label: 'Client screen (suggestions + approval)', hrefs: ['/salon/approve-posts'], default: 'salon' },
   { key: 'marketing', label: 'Marketing & campaigns', hrefs: ['/salon/marketing'], default: 'platform' },
   // Split out of 'marketing' — inherits it until someone sets it on its own.
   { key: 'marketingReport', label: 'Marketing report (monthly)', hrefs: ['/salon/marketing/monthly'], default: 'platform', fallbackKey: 'marketing' },
@@ -89,6 +106,16 @@ export function resolvePolicy(
   }
   return out;
 }
+
+/**
+ * The switches allowed to ship ON, and nothing else.
+ *
+ * Pinned as a list rather than left to each entry's own `default`, so opening a
+ * second screen by accident is a test failure rather than a one-word diff
+ * nobody reviews. Anything added here has to clear the same bar as the first
+ * entry: the screen must be empty until the agency itself puts something on it.
+ */
+export const OPEN_BY_DEFAULT: string[] = ['postApproval'];
 
 /** Every salon nav route that has a switch, whatever that switch currently says. */
 export const GOVERNED_HREFS: string[] = FEATURE_DEFS.flatMap((f) => f.hrefs);

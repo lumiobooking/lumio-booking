@@ -99,6 +99,31 @@ export class SuggestionsService {
     };
   }
 
+  /**
+   * Is anybody actually running this salon's marketing?
+   *
+   * The client screen ships open for every salon (see feature-policy), which is
+   * only defensible because it is empty until the agency puts something on it.
+   * The week plan is the exception: it is generated for every tenant whether or
+   * not anyone is working on it, so showing it unconditionally would hand
+   * marketing homework to a shop that bought a booking system and nothing else.
+   *
+   * Evidence, not a setting: one suggestion sent, or one post scheduled. Both
+   * are things only the team creates, so the answer is true exactly when
+   * somebody is doing the work.
+   */
+  async hasAgencyWork(user: AuthenticatedUser): Promise<boolean> {
+    const tenantId = this.tenantId(user);
+    const loose = this.prisma as unknown as Record<string, {
+      findFirst: (a: unknown) => Promise<unknown>;
+    }>;
+    const [sug, post] = await Promise.all([
+      loose.contentSuggestion?.findFirst({ where: { tenantId }, select: { id: true } }).catch(() => null),
+      loose.scheduledPost?.findFirst({ where: { tenantId }, select: { id: true } }).catch(() => null),
+    ]);
+    return Boolean(sug || post);
+  }
+
   private async rows(tenantId: string): Promise<SuggestionRow[]> {
     return (await this.table?.findMany({
       where: { tenantId },

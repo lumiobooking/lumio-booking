@@ -1,4 +1,4 @@
-import { FEATURE_DEFS, GOVERNED_HREFS, resolvePolicy } from './feature-policy.constants';
+import { FEATURE_DEFS, GOVERNED_HREFS, OPEN_BY_DEFAULT, resolvePolicy } from './feature-policy.constants';
 
 /** The nine menu rows under "Marketing & AI", each of which needs its own switch. */
 const MARKETING_HREFS = [
@@ -30,13 +30,37 @@ describe('every menu row a salon can be sold has a switch', () => {
 });
 
 describe('nothing opens by accident', () => {
-  it('ships every switch OFF, so a deploy reveals nothing to anyone', () => {
-    for (const f of FEATURE_DEFS) expect(f.default).toBe('platform');
+  it('ships every switch OFF except the one screen allowed to be open', () => {
+    // The rule has not been relaxed, it has been made explicit: a second
+    // screen shipping open is now a test failure rather than a one-word diff.
+    for (const f of FEATURE_DEFS) {
+      expect(f.default).toBe(OPEN_BY_DEFAULT.includes(f.key) ? 'salon' : 'platform');
+    }
   });
 
-  it('a salon with no stored policy gets platform for everything', () => {
+  it('the open list is exactly what it is meant to be', () => {
+    // Every entry here must clear the same bar: the screen is EMPTY until the
+    // agency itself puts something on it, so the default reveals a door and
+    // never any data.
+    expect(OPEN_BY_DEFAULT).toEqual(['postApproval']);
+  });
+
+  it('an open-by-default switch inherits from nothing, or the default is a lie', () => {
+    for (const f of FEATURE_DEFS) {
+      if (OPEN_BY_DEFAULT.includes(f.key)) expect(f.fallbackKey).toBeUndefined();
+    }
+  });
+
+  it('a salon with no stored policy gets platform for everything else', () => {
     const p = resolvePolicy({});
-    for (const f of FEATURE_DEFS) expect(p[f.key]).toBe('platform');
+    for (const f of FEATURE_DEFS) {
+      expect(p[f.key]).toBe(OPEN_BY_DEFAULT.includes(f.key) ? 'salon' : 'platform');
+    }
+  });
+
+  it('an explicit decision still wins over the default, in both directions', () => {
+    expect(resolvePolicy({ postApproval: 'platform' }).postApproval).toBe('platform');
+    expect(resolvePolicy({ marketing: 'salon' }).marketing).toBe('salon');
   });
 
   it('ignores junk in the stored policy rather than trusting it', () => {

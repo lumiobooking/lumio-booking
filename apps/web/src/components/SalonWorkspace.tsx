@@ -46,7 +46,12 @@ interface ClientWeek { focus: string; jobs: ClientJob[]; prep: { label: string; 
 
 const ICON: Record<string, string> = { film: '🎬', photo: '📷', engage: '💚' };
 
-export function SalonWorkspace({ token, vi }: { token: string | null; vi: boolean }) {
+export function SalonWorkspace({ token, vi, onCount }: {
+  token: string | null;
+  vi: boolean;
+  /** How many suggestions are still waiting on the shop, for the tab badge. */
+  onCount?: (waiting: number) => void;
+}) {
   const T = (v: string, e: string) => (vi ? v : e);
   const [sugg, setSugg] = useState<SuggestionFeed | null>(null);
   const [week, setWeek] = useState<ClientWeek | null>(null);
@@ -58,16 +63,31 @@ export function SalonWorkspace({ token, vi }: { token: string | null; vi: boolea
       apiFetch<SuggestionFeed>('/content/suggestions', { token }).catch(() => null),
       apiFetch<{ week: ClientWeek | null }>(`/content/my-week?lang=${vi ? 'vi' : 'en'}`, { token }).catch(() => null),
     ]);
-    if (s) setSugg(s);
+    if (s) { setSugg(s); onCount?.(s.waiting ?? s.open.length); }
     if (w) setWeek(w.week);
-  }, [token, vi]);
+  }, [token, vi, onCount]);
 
   useEffect(() => { load(); }, [load]);
 
-  if (!sugg && !week) return null;
+  // An empty tab is a broken-looking tab. A salon nobody is running marketing
+  // for opens this and gets a sentence, not a blank rectangle.
+  const nothing = !sugg?.open.length && !sugg?.past.length && !week?.jobs.length;
+  if (nothing) {
+    return (
+      <div style={{
+        maxWidth: 760, margin: '0 auto', padding: '36px 18px', textAlign: 'center',
+        background: 'var(--c151f38)', border: '1px solid var(--c334155)', borderRadius: 14,
+        color: 'var(--c64748b)', fontSize: 14, lineHeight: 1.65,
+      }}>
+        <div style={{ fontSize: 30, marginBottom: 8 }}>🎬</div>
+        {T('Chưa có việc nào cho tiệm. Khi bên em gửi đề xuất quay chụp, nó sẽ hiện ở đây.',
+           'Nothing to do yet. When the team sends something to film, it shows up here.')}
+      </div>
+    );
+  }
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: '0 0 22px' }}>
+    <div style={{ maxWidth: 760, margin: '0 auto', padding: '0 0 22px' }}>
       {err && (
         <div style={{
           background: 'var(--c450a0a)', border: '1px solid #ef4444', color: 'var(--cfecaca)',
@@ -86,17 +106,23 @@ export function SalonWorkspace({ token, vi }: { token: string | null; vi: boolea
             {T('Quay hoặc chụp giúp bên em, rồi bấm nút gửi ngay dưới đây. Team sẽ dựng và đăng, tiệm chỉ cần duyệt.',
                'Film or photograph these, then send them with the button below. The team edits and posts; you just approve.')}
           </p>
-          {sugg.open.map((s) => (
-            <SuggestionCard key={s.id} s={s} token={token} vi={vi} onDone={load} onError={setErr} />
-          ))}
+          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', alignItems: 'start' }}>
+            {sugg.open.map((s) => (
+              <SuggestionCard key={s.id} s={s} token={token} vi={vi} onDone={load} onError={setErr} />
+            ))}
+          </div>
         </section>
       )}
 
-      {/* ---- 2. the shop's own week ---- */}
+      {/* ---- 2. the shop's own week ----
+             Two cards in an auto-fit grid: side by side on a laptop, stacked on
+             a phone, with no breakpoint to keep in sync and nothing that
+             depends on measuring the window. */}
       {!!week?.jobs.length && (
         <section style={{ marginBottom: 18 }}>
           <h2 style={h2}>{T('Việc của tiệm tuần này', 'Your shop this week')}</h2>
           <p style={lede}>{week.focus}</p>
+          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', alignItems: 'start' }}>
           <div style={card}>
             {week.jobs.map((j, i) => (
               <div key={i} style={{
@@ -114,7 +140,7 @@ export function SalonWorkspace({ token, vi }: { token: string | null; vi: boolea
             ))}
           </div>
           {!!week.prep.length && (
-            <div style={{ ...card, marginTop: 10, background: 'var(--c0f172a)' }}>
+            <div style={{ ...card, background: 'var(--c0f172a)' }}>
               <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 7 }}>
                 {T('CẦN CHUẨN BỊ', 'WHAT TO HAVE READY')}
               </div>
@@ -129,6 +155,7 @@ export function SalonWorkspace({ token, vi }: { token: string | null; vi: boolea
               ))}
             </div>
           )}
+          </div>
         </section>
       )}
 
@@ -288,7 +315,7 @@ function SuggestionCard({
 
 const card: React.CSSProperties = {
   background: 'var(--c1e293b)', border: '1px solid var(--c334155)',
-  borderRadius: 14, padding: 15,
+  borderRadius: 14, padding: 15, marginBottom: 0,
 };
 const h2: React.CSSProperties = {
   fontSize: 17, margin: '0 0 3px', color: 'var(--cf1f5f9)',

@@ -96,6 +96,11 @@ export class ContentController {
    */
   @Get('my-week')
   async myWeek(@CurrentUser() user: AuthenticatedUser, @Query('lang') lang?: string) {
+    // A week is generated for every tenant on the platform whether or not
+    // anybody is running its marketing. Handing homework to a shop that bought
+    // a booking system and nothing else is worse than showing it nothing, so
+    // the plan appears only once there is evidence the team is on this salon.
+    if (!(await this.suggestions.hasAgencyWork(user))) return { week: null };
     const plan = await this.svc.weekForSalon(user);
     return { week: flattenForClient(clientWeek(plan), lang === 'en' ? 'en' : 'vi') };
   }

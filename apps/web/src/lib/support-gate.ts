@@ -40,14 +40,16 @@ export const SUPPORT_ONLY: string[] = [
  * The agency-run screens, and what the salon sees before the server answers.
  *
  * Each of these has a switch in Super Admin → the salon → Feature access, and
- * every switch ships OFF. This list is what the shell assumes until
+ * every switch here ships OFF. `/salon/approve-posts` is deliberately absent:
+ * it is the one screen that ships ON (see the API's feature-policy), so listing
+ * it here would hide it for the half-second before the server answers — a flash
+ * of nothing on the screen every client account opens most often. This list is what the shell assumes until
  * `/feature-policy` replies — pessimistic on purpose: a menu that renders
  * everything for half a second and then takes most of it away is worse than one
  * that never showed it, and a failed request must never open a screen.
  */
 export const DEFAULT_HIDDEN: string[] = [
   '/salon/content',            // daily content plan — an agency deliverable
-  '/salon/approve-posts',      // the client's approval screen — turned on per salon
   '/salon/marketing',
   '/salon/marketing/monthly',
   '/salon/email',

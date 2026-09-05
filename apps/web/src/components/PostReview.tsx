@@ -61,16 +61,30 @@ const STATUS: Record<ReviewPost['clientStatus'], { dot: string; vi: string; en: 
   held: { dot: '⏸', vi: 'Đang sửa theo góp ý', en: 'Being revised', bg: '#341505', bd: '#9a3412', fg: '#fdba74' },
 };
 
-export function PostReview({ api, vi }: { api: ReviewApi; vi: boolean }) {
+export function PostReview({ api, vi, onCount }: {
+  api: ReviewApi;
+  vi: boolean;
+  /**
+   * How many posts are waiting on the owner, reported up as soon as it is
+   * known. The tab bar above needs the number and this component is the only
+   * thing that fetches it — the alternative is a second request for a figure
+   * already on the page.
+   */
+  onCount?: (waiting: number) => void;
+}) {
   const T = (v: string, e: string) => (vi ? v : e);
   const [feed, setFeed] = useState<ReviewFeed | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    try { setFeed(await api.feed()); setErr(null); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'error'); }
-  }, [api]);
+    try {
+      const f = await api.feed();
+      setFeed(f);
+      onCount?.(f?.waiting ?? 0);
+      setErr(null);
+    } catch (e) { setErr(e instanceof Error ? e.message : 'error'); }
+  }, [api, onCount]);
   useEffect(() => { load(); }, [load]);
 
   const tz = feed?.timezone;

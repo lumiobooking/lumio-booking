@@ -114,23 +114,32 @@ export class SocialPublishService {
     const [t, extraRow, profileRow] = await Promise.all([
       this.prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { name: true, slug: true, city: true, market: true, businessType: true } as never,
+        // `contactPhone` lives on the tenant row, not in company_extra. Reading
+        // it from the wrong place is why the first version of this block went
+        // out with no phone line at all — silently, because a missing fact is
+        // omitted rather than faked.
+        select: { name: true, slug: true, city: true, market: true, businessType: true, contactPhone: true } as never,
       }).catch(() => null),
       this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }).catch(() => null),
       this.prisma.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } }).catch(() => null),
     ]);
-    const tenant = (t ?? {}) as { name?: string; slug?: string; city?: string | null; market?: string; businessType?: string };
-    const extra = (extraRow?.value ?? {}) as { address?: string; contactPhone?: string };
+    const tenant = (t ?? {}) as {
+      name?: string; slug?: string; city?: string | null; market?: string;
+      businessType?: string; contactPhone?: string | null;
+    };
+    const extra = (extraRow?.value ?? {}) as { address?: string; website?: string };
     const profile = (profileRow?.value ?? {}) as { trade?: string };
 
     const shop: ShopFacts = {
       name: tenant.name ?? '',
-      // The number a customer rings is the one on the shop record, not the one
-      // Lumio bills to.
-      phone: (extra as { contactPhone?: string }).contactPhone ?? null,
+      phone: tenant.contactPhone ?? null,
       address: extra.address ?? null,
       city: tenant.city ?? null,
       instagram: igUsername,
+      // Printed. Some shops take no bookings through Lumio at all.
+      website: extra.website ?? null,
+      // Checked, never printed — a writer who pastes a booking CTA by hand can
+      // paste another salon's, and that is unambiguous when it is wrong.
       bookingUrl: tenant.slug ? `${publicWebBase()}/book/${tenant.slug}` : null,
     };
     // The declared trade wins over the enum default: `businessType` is SALON

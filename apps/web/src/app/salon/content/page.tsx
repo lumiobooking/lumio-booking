@@ -206,7 +206,7 @@ type PlanEnvelope = Plan & { en?: Plan };
 /** What a blank profile field is called on screen, so "cannot check" names the
  *  thing somebody has to go and fill in. */
 const MISSING_LABEL: Record<string, string> = {
-  phone: 'số điện thoại', address: 'địa chỉ', instagram: 'Instagram', bookingUrl: 'link đặt lịch',
+  phone: 'số điện thoại', address: 'địa chỉ', instagram: 'Instagram', website: 'website',
 };
 
 type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience' | 'ads' | 'start' | 'map' | 'queue';
@@ -253,13 +253,14 @@ interface QueuePayload {
 
 interface ShopFacts {
   name: string; phone?: string | null; address?: string | null;
-  city?: string | null; instagram?: string | null; bookingUrl?: string | null;
+  city?: string | null; instagram?: string | null;
+  website?: string | null; bookingUrl?: string | null;
 }
 interface PostKit {
   contactBlock: string;
   hashtags: string[];
   starter: string;
-  missing: ('phone' | 'address' | 'instagram' | 'bookingUrl')[];
+  missing: ('phone' | 'address' | 'instagram' | 'website')[];
   shop: ShopFacts;
 }
 
@@ -2408,24 +2409,58 @@ function Inner() {
               const blocked = check.findings.length > 0 && !contactOverride;
               return (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#6366f1' }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
-                    {postDraft.id ? T('Sửa bài', 'Edit post') : T('Bài mới', 'New post')}
+                  {/* Which salon this post is for, in that salon's own colour.
+                      The line used to be small grey text among other small grey
+                      text, which is nothing to somebody with eight tabs open —
+                      and eight tabs open is exactly the situation that puts one
+                      shop's phone number on another shop's post. */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
+                    padding: '9px 12px', borderRadius: 10,
+                    background: 'var(--c0f172a)', border: '1px solid #6366f1', borderLeft: '4px solid #6366f1',
+                  }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--ce2e8f0)', minWidth: 0, flex: 1 }}>
+                      {postDraft.id ? T('Sửa bài · ', 'Edit post · ') : T('Bài mới · ', 'New post · ')}
+                      <span style={{ color: 'var(--ca5b4fc)' }}>{kit?.shop.name ?? queue?.connected?.pageName ?? '—'}</span>
+                    </span>
+                    {kit?.shop.city && (
+                      <span style={{ fontSize: 11.5, color: 'var(--c64748b)', fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap' }}>
+                        {kit.shop.city}{kit.shop.instagram ? ` · @${kit.shop.instagram}` : ''}
+                      </span>
+                    )}
                   </div>
 
                   <textarea
                     value={postDraft.message}
                     onChange={(e) => setPostDraft({ ...postDraft, message: e.target.value })}
-                    rows={6}
+                    rows={9}
                     placeholder={T('Nội dung bài đăng…', 'What the post says…')}
                     style={{
-                      width: '100%', padding: '11px 12px', borderRadius: 9, fontSize: 14, lineHeight: 1.6,
+                      width: '100%', padding: '12px 13px', borderRadius: 9, fontSize: 14, lineHeight: 1.7,
+                      // The salon's own text, in the salon's own typeface. The
+                      // browser default for a textarea is monospace, which made
+                      // a caption look like a config file.
+                      fontFamily: 'inherit',
                       border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
                       resize: 'vertical', boxSizing: 'border-box',
                     }}
                   />
-                  <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 3 }}>
-                    {postDraft.message.length} {T('ký tự', 'characters')}
-                    {postDraft.channels.includes('instagram') && ` · ${T('Instagram tối đa 2.200', 'Instagram max 2,200')}`}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 5, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>
+                      {postDraft.message.length} {T('ký tự', 'characters')}
+                      {postDraft.channels.includes('instagram') && ` · ${T('Instagram tối đa 2.200', 'Instagram max 2,200')}`}
+                    </span>
+                    {/* Deleting the block by accident is one keystroke; putting
+                        it back by hand is where the wrong address comes from. */}
+                    {kit?.starter && !postDraft.message.includes(kit.contactBlock) && kit.contactBlock && (
+                      <button
+                        onClick={() => setPostDraft({ ...postDraft, message: postDraft.message.trimEnd() + kit.starter })}
+                        style={{
+                          background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--ca5b4fc)',
+                          borderRadius: 7, padding: '3px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >＋ {T('Chèn lại thông tin tiệm', 'Re-insert shop details')}</button>
+                    )}
                   </div>
 
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 11 }}>

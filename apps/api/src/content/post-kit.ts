@@ -47,7 +47,17 @@ export interface ShopFacts {
   city?: string | null;
   /** Instagram handle without the '@'. */
   instagram?: string | null;
-  /** The salon's own booking page. */
+  /** The shop's own site. This is what the contact block prints. */
+  website?: string | null;
+  /**
+   * The salon's Lumio booking page. NOT printed — checked.
+   *
+   * Not every shop takes bookings through Lumio, and the ones that do would
+   * rather write their own call to action than have a bare link stapled to
+   * every post. But a writer who pastes a booking link by hand can paste the
+   * WRONG salon's, and that link is unambiguous when it is wrong — so it stays
+   * here for the check even though nothing prints it.
+   */
   bookingUrl?: string | null;
 }
 
@@ -62,7 +72,7 @@ export interface PostKit {
   missing: ShopFactKey[];
 }
 
-export type ShopFactKey = 'phone' | 'address' | 'instagram' | 'bookingUrl';
+export type ShopFactKey = 'phone' | 'address' | 'instagram' | 'website';
 
 const clean = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
 
@@ -92,11 +102,24 @@ export function contactBlock(shop: ShopFacts): { text: string; missing: ShopFact
   const ig = clean(shop.instagram, 60).replace(/^@+/, '');
   if (ig) lines.push(`📷 @${ig}`); else missing.push('instagram');
 
-  const url = clean(shop.bookingUrl, 300);
-  if (url) lines.push(`🔗 ${url}`); else missing.push('bookingUrl');
+  // The site, not the booking link. A shop that does not take bookings through
+  // Lumio should not carry a Lumio link on every post, and a shop that does
+  // would rather write its own call to action than have one stapled on.
+  const site = clean(shop.website, 300).replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  if (site) lines.push(`🌐 ${site}`); else missing.push('website');
 
   return { text: lines.join('\n'), missing };
 }
+
+/**
+ * The rule above the contact block.
+ *
+ * Box-drawing characters rather than dashes: a row of hyphens is read by
+ * Facebook's composer as an attempt at markdown in some clients, and by a
+ * person as a typo in all of them. Short enough to sit inside a phone's line
+ * width, which is where nearly every one of these posts is read.
+ */
+export const DIVIDER = '─────────────';
 
 /**
  * The trade's hashtags, in the order they earn their place.
@@ -141,9 +164,16 @@ export function hashtagsFor(
 
   for (const h of queriesFor(industry, market).hashtags) push(h);
   // The short-video tags, which are a different crowd from the photo tags.
+  //
+  // Only the /tag/ feeds. The same list carries a YouTube SEARCH url whose
+  // query is percent-encoded, and taking its tail produced "#20tutorial" — the
+  // %20 of a space, published on a real salon's post.
   for (const f of videoFeeds(industry, String(market ?? 'US'))) {
-    const m = /#?([A-Za-z0-9_]+)$/.exec(f.url ?? '');
-    if (m) push(m[1]);
+    const m = /\/tag\/([A-Za-z0-9_%]+)\/?$/.exec(f.url ?? '');
+    if (m) {
+      const tag = decodeURIComponent(m[1]).replace(/[^A-Za-z0-9_]/g, '');
+      if (tag) push(tag);
+    }
   }
 
   return out.slice(0, Math.max(1, limit));
@@ -157,13 +187,21 @@ export function buildPostKit(
 ): PostKit {
   const block = contactBlock(shop);
   const tags = hashtagsFor(industry, market, shop);
-  const parts = [block.text, tags.join(' ')].filter(Boolean);
+
+  // Caption · rule · contact · blank line · hashtags.
+  //
+  // The rule is what stops the address reading as the last sentence of the
+  // post, and the blank line is what stops the hashtags reading as part of the
+  // address. Both matter more than they sound: this block sits under every post
+  // the shop publishes, and a wall with no seams is where a writer's eye slides
+  // past the one line that is wrong.
+  const tail = [block.text, tags.join(' ')].filter(Boolean).join('\n\n');
   return {
     contactBlock: block.text,
     hashtags: tags,
     // Two blank lines below wherever the caption ends: the writer's cursor sits
     // at the top and the block stays visually separate from their words.
-    starter: parts.length ? `\n\n${parts.join('\n')}` : '',
+    starter: tail ? `\n\n${DIVIDER}\n${tail}` : '',
     missing: block.missing,
   };
 }
@@ -257,9 +295,12 @@ export function checkPost(text: string, shop: ShopFacts): PostCheck {
   }
 
   // ---- booking link ----
+  // The booking link is never absent — it is derived from the salon's own slug
+  // — so it is not reported as unchecked. A pasted link belonging to another
+  // salon is unambiguous, which is why this check survives the block no longer
+  // printing one.
   const url = clean(shop.bookingUrl, 300).toLowerCase();
-  if (!url) unchecked.push('bookingUrl');
-  else {
+  if (url) {
     const slug = url.split('/').filter(Boolean).pop() ?? '';
     for (const m of body.match(/\blumiobooking\.com\/[^\s)]+/gi) ?? []) {
       if (slug && !m.toLowerCase().includes(slug)) {
@@ -267,6 +308,10 @@ export function checkPost(text: string, shop: ShopFacts): PostCheck {
       }
     }
   }
+
+  // The site is what the contact block prints, so a blank one is a gap worth
+  // naming even though nothing in a draft is compared against it.
+  if (!clean(shop.website, 300)) unchecked.push('website');
 
   return { findings, unchecked };
 }

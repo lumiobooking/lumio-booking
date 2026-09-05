@@ -1,4 +1,4 @@
-import { buildPostKit, contactBlock, hashtagsFor, checkPost, phoneKey, type ShopFacts } from './post-kit';
+import { buildPostKit, contactBlock, hashtagsFor, checkPost, phoneKey, DIVIDER, type ShopFacts } from './post-kit';
 
 /**
  * One person writes posts for eight salons with eight tabs open. They copy last
@@ -16,6 +16,7 @@ const LUX: ShopFacts = {
   address: '1204 Sidney Baker St, Kerrville TX 78028',
   city: 'Kerrville',
   instagram: 'luxnailspa_tx',
+  website: 'https://luxnailspa.com',
   bookingUrl: 'https://lumiobooking.com/book/lux-nail-spa',
 };
 
@@ -32,7 +33,11 @@ describe('the contact block is built, never typed', () => {
     expect(text).toContain('(830) 257-8888');
     expect(text).toContain('1204 Sidney Baker St');
     expect(text).toContain('@luxnailspa_tx');
-    expect(text).toContain('lumiobooking.com/book/lux-nail-spa');
+    // The SITE, not the booking link: some shops take no bookings through
+    // Lumio, and the ones that do would rather write their own call to action
+    // than have a link stapled to every post.
+    expect(text).toContain('luxnailspa.com');
+    expect(text).not.toContain('lumiobooking.com');
     expect(missing).toEqual([]);
   });
 
@@ -43,7 +48,7 @@ describe('the contact block is built, never typed', () => {
     expect(text).not.toMatch(/📞/);
     expect(text).not.toMatch(/📷/);
     expect(text).toContain('📍 1 Main St');
-    expect(missing).toEqual(expect.arrayContaining(['phone', 'instagram', 'bookingUrl']));
+    expect(missing).toEqual(expect.arrayContaining(['phone', 'instagram', 'website']));
   });
 
   it('produces nothing at all for a salon with nothing on file', () => {
@@ -54,6 +59,32 @@ describe('the contact block is built, never typed', () => {
   it('leaves the writer\'s cursor above its own words', () => {
     const kit = buildPostKit('NAIL', 'US', LUX);
     expect(kit.starter.startsWith('\n\n')).toBe(true);
+  });
+
+  it('rules a line between the caption and the contact block', () => {
+    // Without it the address reads as the last sentence of the post. This block
+    // sits under every post the shop publishes, and a wall with no seams is
+    // where a writer's eye slides past the one line that is wrong.
+    const kit = buildPostKit('NAIL', 'US', LUX);
+    expect(kit.starter).toContain(DIVIDER);
+    expect(kit.starter.indexOf(DIVIDER)).toBeLessThan(kit.starter.indexOf('📍'));
+  });
+
+  it('puts a blank line between the contact block and the hashtags', () => {
+    // Otherwise the tags read as part of the address.
+    const kit = buildPostKit('NAIL', 'US', LUX);
+    expect(kit.starter).toMatch(/🌐[^\n]*\n\n#/);
+  });
+
+  it('never emits a hashtag made of url escaping', () => {
+    // "#20tutorial" — the %20 of a space in a YouTube search url — was
+    // published on a real salon's post.
+    for (const mk of ['US', 'VN']) {
+      for (const t of hashtagsFor('NAIL', mk, LUX)) {
+        expect(t).not.toMatch(/^#\d/);
+        expect(t).not.toMatch(/%/);
+      }
+    }
   });
 });
 
@@ -143,7 +174,7 @@ describe('what does not belong to this salon', () => {
     const bare: ShopFacts = { name: 'A' };
     const r = checkPost(COPIED, bare);
     expect(r.findings).toEqual([]);
-    expect(r.unchecked).toEqual(expect.arrayContaining(['phone', 'instagram', 'address', 'bookingUrl']));
+    expect(r.unchecked).toEqual(expect.arrayContaining(['phone', 'instagram', 'address', 'website']));
   });
 
   it('names each wrong thing once, however often it appears', () => {

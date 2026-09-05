@@ -18,11 +18,15 @@ export interface ShopFacts {
   address?: string | null;
   city?: string | null;
   instagram?: string | null;
+  /** The shop's own site — what the contact block prints. */
+  website?: string | null;
+  /** The Lumio booking page. Checked, never printed: a writer who pastes a
+   *  booking CTA by hand can paste another salon's. */
   bookingUrl?: string | null;
 }
 
 export type FindingKind = 'phone' | 'instagram' | 'address' | 'link';
-export type FactKey = 'phone' | 'address' | 'instagram' | 'bookingUrl';
+export type FactKey = 'phone' | 'address' | 'instagram' | 'website';
 
 export interface PostFinding {
   kind: FindingKind;
@@ -95,9 +99,10 @@ export function checkPost(text: string, shop: ShopFacts): PostCheck {
     }
   }
 
+  // Derived from the salon's own slug, so never absent and never reported as
+  // unchecked.
   const url = clean(shop.bookingUrl, 300).toLowerCase();
-  if (!url) unchecked.push('bookingUrl');
-  else {
+  if (url) {
     const slug = url.split('/').filter(Boolean).pop() ?? '';
     for (const m of body.match(/\blumiobooking\.com\/[^\s)]+/gi) ?? []) {
       if (slug && !m.toLowerCase().includes(slug)) {
@@ -105,6 +110,8 @@ export function checkPost(text: string, shop: ShopFacts): PostCheck {
       }
     }
   }
+
+  if (!clean(shop.website, 300)) unchecked.push('website');
 
   return { findings, unchecked };
 }

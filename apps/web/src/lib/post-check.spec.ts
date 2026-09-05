@@ -13,6 +13,7 @@ const LUX: ShopFacts = {
   address: '1204 Sidney Baker St, Kerrville TX 78028',
   city: 'Kerrville',
   instagram: 'luxnailspa_tx',
+  website: 'https://luxnailspa.com',
   bookingUrl: 'https://lumiobooking.com/book/lux-nail-spa',
 };
 
@@ -60,7 +61,7 @@ describe('what does not belong to this salon', () => {
     // rival's number for a year and nobody notices.
     const r = checkPost(COPIED, { name: 'A' });
     expect(r.findings).toEqual([]);
-    expect(r.unchecked).toEqual(expect.arrayContaining(['phone', 'instagram', 'address', 'bookingUrl']));
+    expect(r.unchecked).toEqual(expect.arrayContaining(['phone', 'instagram', 'address', 'website']));
   });
 
   it('adds no information the draft did not already contain', () => {

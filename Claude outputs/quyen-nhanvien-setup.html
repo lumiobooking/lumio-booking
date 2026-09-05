@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quyền của tài khoản setup</title>
+<style>
+  :root{ --bg:#0f172a; --card:#1e293b; --line:#334155; --line2:#1e293b;
+    --text:#e2e8f0; --dim:#94a3b8; --dim2:#64748b; --dim3:#475569;
+    --green:#22c55e; --indigo:#6366f1; --amber:#f59e0b; --red:#ef4444; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:26px 18px 56px}
+  .wrap{max-width:980px;margin:0 auto}
+  h1{font-size:21px;margin:0 0 6px}
+  .sub{color:var(--dim2);font-size:13px;margin:0 0 24px;line-height:1.7}
+  .sub b{color:var(--dim)}
+  h2{font-size:12.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim2);
+    margin:30px 0 10px;font-weight:700}
+  .note{font-size:12.5px;color:var(--dim2);line-height:1.7;margin:12px 0 0}
+  .note b{color:var(--dim)}
+
+  .cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));margin-bottom:6px}
+  .lv{border:1px solid var(--line);border-radius:12px;padding:13px;background:#0f172a}
+  .lv .h{font-size:14px;font-weight:700;margin-bottom:5px}
+  .lv .r{font-size:11.5px;color:var(--dim);line-height:1.55;margin-top:5px}
+  .lv .r i{font-style:normal;color:var(--dim3)}
+  .lv.c{border-color:var(--green)} .lv.c .h{color:var(--green)}
+  .lv.s{border-color:var(--indigo)} .lv.s .h{color:var(--indigo)}
+  .lv.f{border-color:var(--amber)} .lv.f .h{color:var(--amber)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:7px 10px;border-bottom:1px solid var(--line2);text-align:left}
+  thead th{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim2);
+    border-bottom:1px solid var(--line);white-space:nowrap}
+  th.n,td.n{text-align:center;width:112px}
+  tbody tr:hover{background:#131f38}
+  .grp td{background:#131c30;font-size:11px;letter-spacing:.6px;text-transform:uppercase;
+    color:var(--dim2);font-weight:700;border-bottom:1px solid var(--line)}
+  .y{color:var(--green);font-weight:700}
+  .n0{color:var(--dim3)}
+  .scroll{overflow-x:auto;border:1px solid var(--line2);border-radius:12px}
+</style></head><body>
+<div class="wrap">
+
+  <h1>Nhân viên setup thấy gì trong tiệm của khách</h1>
+  <p class="sub">
+    Mỗi tài khoản setup nay có <b>một mức quyền</b>, chọn khi tạo và đổi được sau.
+    Mức được đọc từ hồ sơ nhân viên <b>ngay lúc bấm “Vào setup”</b> rồi khoá vào phiên đó —
+    nên đổi mức sẽ có hiệu lực từ lần vào tiệm kế tiếp, và nhật ký ghi lại mức của từng phiên.
+  </p>
+
+  <div class="cards">
+    <div class="lv c">
+      <div class="h">● Nội dung &amp; marketing</div>
+      <div class="r"><i>Thấy:</i> lịch đăng bài, kế hoạch marketing, duyệt bài, đánh giá, Inbox/Messenger, AI Hotline</div>
+      <div class="r"><i>Ẩn:</i> tiền, khách hàng, dịch vụ, nhân viên, cài đặt, kết nối</div>
+    </div>
+    <div class="lv s">
+      <div class="h">● Setup toàn diện <span style="font-weight:500;color:var(--dim2)">— mặc định</span></div>
+      <div class="r"><i>Thấy:</i> mọi thứ ở trên, cộng dịch vụ, sản phẩm, thợ, ghế, cài đặt tiệm, kết nối kênh, thông báo</div>
+      <div class="r"><i>Ẩn:</i> doanh thu, POS, hoá đơn, lương, giao dịch thẻ, danh sách khách, lịch hẹn</div>
+    </div>
+    <div class="lv f">
+      <div class="h">● Toàn quyền</div>
+      <div class="r"><i>Thấy:</i> mọi thứ trong tiệm, kể cả doanh thu và dữ liệu khách</div>
+      <div class="r"><i>Ẩn:</i> không ẩn gì. Chỉ nên cấp cho người quản lý — ví dụ Phong Trần.</div>
+    </div>
+  </div>
+
+  <h2>Bảng chi tiết từng mục trong menu tiệm</h2>
+  <div class="scroll">
+  <table>
+    <thead><tr>
+      <th>Mục</th><th class="n">Nội dung</th><th class="n">Setup</th><th class="n">Toàn quyền</th>
+    </tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="4">Vận hành</td></tr>
+      <tr><td>Dashboard <span style="color:var(--dim3)">— doanh thu hôm nay, biểu đồ</span></td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Lịch hẹn</td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Đặt lịch</td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Khách vãng lai · Lượt</td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Danh sách chờ</td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Hoạt động <span style="color:var(--dim3)">— có tên khách</span></td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Bàn · Thực đơn <span style="color:var(--dim3)">(nhà hàng)</span></td><td class="n n0">—</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+      <tr><td>POS / Thanh toán · Đơn hàng</td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+
+      <tr class="grp"><td colspan="4">Khách hàng &amp; danh mục</td></tr>
+      <tr><td>Khách hàng <span style="color:var(--dim3)">— tên, sđt, email, sinh nhật</span></td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Dịch vụ</td><td class="n n0">—</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+      <tr><td>Sản phẩm</td><td class="n n0">—</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+      <tr><td>Thẻ quà tặng</td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Nhân viên · Ghế</td><td class="n n0">—</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+
+      <tr class="grp"><td colspan="4">Marketing &amp; AI</td></tr>
+      <tr><td>Lịch đăng bài · Duyệt bài</td><td class="n y">✓</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+      <tr><td>Kế hoạch marketing · Báo cáo tháng</td><td class="n y">✓</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+      <tr><td>Email marketing</td><td class="n y">✓</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+      <tr><td>Đánh giá &amp; thưởng · Google reviews</td><td class="n y">✓</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+      <tr><td>Inbox · Messenger bot · AI Hotline</td><td class="n y">✓</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+
+      <tr class="grp"><td colspan="4">Tài chính</td></tr>
+      <tr><td>Thanh toán · Máy cà thẻ · Giao dịch thẻ</td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Báo cáo kinh doanh · Báo cáo bán hàng</td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Lương thợ <span style="color:var(--dim3)">— kể cả doanh số từng thợ</span></td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Tồn kho</td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Báo cáo chuỗi <span style="color:var(--dim3)">(nhiều chi nhánh)</span></td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+
+      <tr class="grp"><td colspan="4">Tài khoản</td></tr>
+      <tr><td>Hoá đơn &amp; gói cước</td><td class="n n0">—</td><td class="n n0">—</td><td class="n y">✓</td></tr>
+      <tr><td>Thông báo</td><td class="n n0">—</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+      <tr><td>Tích hợp · Kết nối <span style="color:var(--dim3)">— Facebook, Google, Zalo…</span></td><td class="n n0">—</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+      <tr><td>Cài đặt tiệm · Thùng rác</td><td class="n n0">—</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+      <tr><td>Tài khoản của tôi</td><td class="n y">✓</td><td class="n y">✓</td><td class="n y">✓</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Hai chỗ đáng để anh ngó qua</h2>
+  <p class="note" style="margin-top:0">
+    <b>Inbox và Messenger nằm trong nhóm marketing</b>, nên cả mức Nội dung lẫn Setup đều mở.
+    Đó là hội thoại với khách của tiệm — em để mở vì trả lời tin nhắn là việc agency làm,
+    nhưng nếu anh muốn coi đó là “dữ liệu khách” và ẩn luôn thì nói em một câu, sửa một dòng.
+  </p>
+  <p class="note">
+    <b>Báo cáo marketing tháng có số doanh thu</b> quy về marketing. Em để mở cho cả ba mức
+    vì đó chính là bản báo cáo nhân viên làm để gửi khách. Nếu anh muốn chỉ mức Toàn quyền mới xem được,
+    cũng là sửa một dòng.
+  </p>
+
+  <h2>Ẩn menu không phải là khoá — máy chủ chặn thật</h2>
+  <p class="note" style="margin-top:0">
+    Ẩn menu chỉ để nhân viên đỡ rối. Phần khoá thật nằm ở máy chủ, và luật gồm đúng hai vế:
+  </p>
+  <p class="note">
+    <b>Tiền và dữ liệu khách:</b> chặn hẳn — không đọc, không sửa. Gõ thẳng địa chỉ trang cũng nhận 403.<br>
+    <b>Còn lại ngoài mức quyền:</b> đọc được, không sửa được. Nửa số màn hình phải đọc
+    <span style="color:var(--dim)">/settings</span> để lấy đơn vị tiền tệ — chặn cả phần đọc thì nhân viên
+    gặp <i>trang lỗi</i> chứ không phải <i>cửa đóng</i>, và người sửa tiếp theo sẽ nới toàn bộ luật ra để trang chạy lại.
+  </p>
+  <p class="note">
+    Luật này chỉ áp cho phiên đăng nhập của nhân viên Lumio. Thợ, lễ tân và chủ tiệm đang dùng thật
+    <b>không đổi một chút nào</b> — đó là lý do em làm một cửa riêng thay vì gắn thêm quyền vào các trang sẵn có.
+  </p>
+</div>
+</body></html>

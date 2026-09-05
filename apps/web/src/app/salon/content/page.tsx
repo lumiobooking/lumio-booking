@@ -187,6 +187,10 @@ interface Plan {
   week: {
     days: DayPlan[]; focus: string; basis: string; report?: string | null; daily: Job[]; sources: ContentSource[];
     trade: string; dataThin: boolean; week: number;
+    /** What to walk in carrying, summed from the week's own jobs. */
+    prep?: { label: string; detail: string }[];
+    /** What the week is supposed to move, in numbers next week can check. */
+    targets?: { label: string; target: number; unit: string }[];
     stage: { key: string; step: number; title: string; goal: string; why: string; exitWhen: string; progress: { done: number; need: number; label: string } | null } | null;
     teamNote?: string;
   };
@@ -299,7 +303,8 @@ interface PostKit {
 
 /** One icon per kind of job, so the week reads at a glance on a phone. */
 const JOB_ICON: Record<string, string> = {
-  film: '🎬', post: '📤', story: '📸', offer: '🏷️', winback: '💬', engage: '💚', rest: '·',
+  film: '🎬', photo: '📷', post: '📤', story: '📸', offer: '🏷️',
+  winback: '💬', engage: '💚', gbp: '📍', event: '🎪', rest: '·',
 };
 
 

@@ -38,6 +38,8 @@ export interface Stage {
   progress: { done: number; need: number; label: string } | null;
 }
 export interface ContentSourceRow { label: string; when: string; why: string }
+export interface PrepLine { label: string; detail: string }
+export interface WeekTargetRow { label: string; target: number; unit: string }
 
 export interface WeekView {
   days: DayPlan[];
@@ -50,6 +52,10 @@ export interface WeekView {
   week: number;
   stage: Stage | null;
   teamNote?: string;
+  /** What to carry in, summed from the week's own jobs. */
+  prep?: PrepLine[];
+  /** What the week is supposed to move, in numbers next week can check. */
+  targets?: WeekTargetRow[];
 }
 
 export interface WeekMeta {
@@ -72,12 +78,15 @@ export interface WeekSavePatch {
 }
 
 const KINDS: { id: string; icon: string; vi: string; en: string }[] = [
-  { id: 'film', icon: '🎬', vi: 'Quay', en: 'Film' },
+  { id: 'film', icon: '🎬', vi: 'Quay clip', en: 'Film' },
+  { id: 'photo', icon: '📷', vi: 'Chụp ảnh', en: 'Photos' },
   { id: 'post', icon: '📤', vi: 'Đăng', en: 'Post' },
   { id: 'story', icon: '📸', vi: 'Story', en: 'Story' },
   { id: 'offer', icon: '🏷️', vi: 'Ưu đãi', en: 'Offer' },
   { id: 'winback', icon: '💬', vi: 'Kéo khách cũ', en: 'Win back' },
   { id: 'engage', icon: '💚', vi: 'Tương tác', en: 'Engage' },
+  { id: 'gbp', icon: '📍', vi: 'Google Maps', en: 'Google profile' },
+  { id: 'event', icon: '🎪', vi: 'Sự kiện · hợp tác', en: 'Event · partner' },
   { id: 'rest', icon: '·', vi: 'Nghỉ', en: 'Rest' },
 ];
 const ICON = (k: string) => KINDS.find((x) => x.id === k)?.icon ?? '•';
@@ -274,6 +283,55 @@ export function WeekPlanBoard({
           </Field>
         )}
       </div>
+
+      {/* ---- what to carry in, and what it is for ----
+             Above the seven days on purpose. Somebody covering eight salons
+             reads the week, closes the tab and walks into the shop; the two
+             questions they have left are "how many clips, of what" and "how do
+             I know Friday went well". Both were answerable from the plan all
+             along and neither was ever said in one place. */}
+      {(!!week.prep?.length || !!week.targets?.length) && !editing && (
+        <div style={{
+          marginTop: 16, borderTop: '1px solid var(--c334155)', paddingTop: 12,
+          display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+        }}>
+          {!!week.prep?.length && (
+            <div>
+              <div style={label}>{T('TUẦN NÀY CẦN CHUẨN BỊ', 'WHAT THIS WEEK NEEDS')}</div>
+              <div style={{ marginTop: 6 }}>
+                {week.prep.map((l, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 9, padding: '4px 0' }}>
+                    <span style={{ flex: '0 0 auto', color: 'var(--c475569)', paddingTop: 1 }}>▢</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>{l.label}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{l.detail}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {!!week.targets?.length && (
+            <div>
+              <div style={label}>{T('MỤC TIÊU TUẦN NÀY', 'THIS WEEK’S TARGETS')}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', margin: '2px 0 7px', lineHeight: 1.5 }}>
+                {T('Chỉ những con số đếm được — tuần sau đối chiếu lại ở phần "Các tuần đã qua".',
+                   'Countable only — next week’s archive checks them against what happened.')}
+              </div>
+              {week.targets.map((t, i) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'baseline', gap: 9, padding: '6px 0',
+                  borderTop: i === 0 ? 'none' : '1px solid var(--c1e293b)',
+                }}>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--ca5b4fc)', lineHeight: 1, minWidth: 26 }}>{t.target}</span>
+                  <span style={{ fontSize: 11.5, color: 'var(--c64748b)', minWidth: 44 }}>{t.unit}</span>
+                  <span style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.4 }}>{t.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ---- the week itself ---- */}
       <div style={{ marginTop: 16, borderTop: '1px solid var(--c334155)', paddingTop: 12 }}>

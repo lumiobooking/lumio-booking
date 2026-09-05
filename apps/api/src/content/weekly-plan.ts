@@ -26,8 +26,21 @@ import type { DatedEvent } from './region-events';
 import { playbookFor, type ContentSource } from './industry-playbook';
 import { rotate, type RoadmapStage } from './roadmap';
 import { bi, join, viOf, enOf, type Txt } from './i18n';
+import {
+  trimToBudget, photoJob, mapJob, longGameJob, longGameWeek, storyJobs,
+  buildPrep, buildTargets, WEEK_BUDGET, type Budgeted, type PrepLine, type WeekTarget,
+} from './content-mix';
 
-export type JobKind = 'film' | 'post' | 'story' | 'offer' | 'winback' | 'engage' | 'rest';
+/**
+ * The kinds of work a week can ask for.
+ *
+ * `photo`, `gbp` and `event` were added when the plan stopped being a shooting
+ * schedule: a shop needs stills as well as clips, one job a week on the Google
+ * profile that decides where it sits on the map, and — every other week —
+ * something that happens in the room rather than on a feed. See content-mix.ts.
+ */
+export type JobKind =
+  | 'film' | 'photo' | 'post' | 'story' | 'offer' | 'winback' | 'engage' | 'gbp' | 'event' | 'rest';
 
 export interface Job {
   kind: JobKind;
@@ -64,6 +77,15 @@ export interface WeekPlan {
   week: number;
   /** Every-day habits, separate from the dated work. */
   daily: Job[];
+  /**
+   * What to walk into the shop carrying, summed from the week's own jobs.
+   *
+   * Derived, never a second copy: a prep list that can disagree with the plan
+   * is worse than none, because the person packs from the list.
+   */
+  prep: PrepLine[];
+  /** What this week is supposed to move, in numbers next week can check. */
+  targets: WeekTarget[];
   /** Where today's raw material comes from — the part usually left vague. */
   sources: ContentSource[];
   /** The trade's own name, bilingual since the playbook it comes from is. */
@@ -145,19 +167,46 @@ export function buildWeekPlan(input: {
   const offerDay = quietest ? leadDay(quietest.weekday) : (film.weekday + 2) % 7;
   const dataThin = !loads.length;
 
-  const jobs = new Map<number, Job[]>();
-  const add = (wd: number, j: Job) => {
-    const list = jobs.get(wd) ?? [];
-    list.push(j);
-    jobs.set(wd, list);
+  /**
+   * Every job the week could ask for, before it is decided which ones fit.
+   *
+   * They used to go straight into a per-day map, which meant the week was
+   * whatever the generators happened to produce — fine at six jobs, a wish list
+   * at fourteen. Now they are collected flat with a priority and trimmed to a
+   * budget (see content-mix), so adding a kind of work cannot quietly make
+   * every week unfinishable.
+   */
+  const seeded: Budgeted[] = [];
+  /**
+   * One day a week is kept clear on purpose, and nothing may be scheduled onto
+   * it. The day before the next shoot, so the week ends with a gap rather than
+   * starting with one.
+   *
+   * This is not spare capacity waiting to be used. A plan with something on all
+   * seven days is a plan the shop abandons in the third week — and the week now
+   * carries ten jobs instead of six, which is exactly when a rule like this
+   * stops being decoration and starts doing work.
+   */
+  const restWeekday = (film.weekday + 6) % 7;
+  const add = (wd: number, j: Job, keep?: number) => {
+    let day = ((wd % 7) + 7) % 7;
+    if (day === restWeekday) day = (day + 6) % 7; // back a day, never onto the shoot
+    seeded.push({ ...j, day, ...(keep === undefined ? {} : { keep }) });
   };
 
-  // -- the filming block: one session, three clips, done for the week --------
+  // -- the filming block: one session, done for the week --------------------
+  // The clip count is DERIVED from how many posts want a clip, plus one spare
+  // for the stories. It used to be the literal word "3" whatever the week
+  // asked for, which is how a plan starts lying about its own arithmetic.
+  const lwEarly = input.lastWeek ?? null;
+  const struggledEarly = Boolean(lwEarly && lwEarly.planned >= 3 && lwEarly.done / lwEarly.planned < 0.5);
+  const postsThisWeek = struggledEarly ? 3 : 4;
+  const clipsNeeded = Math.ceil(postsThisWeek / 2) + 1;
   add(film.weekday, {
     kind: 'film',
     text: bi(
-      'Quay gộp 3 clip trong một buổi (mỗi clip 15-30 giây)',
-      'Film all 3 clips in one session (15-30 seconds each)'),
+      `Quay gộp ${clipsNeeded} clip trong một buổi (mỗi clip 15-30 giây)`,
+      `Film all ${clipsNeeded} clips in one session (15-30 seconds each)`),
     why: film.fromData
       ? bi(
         `${WEEKDAY_VI[film.weekday]} là ngày vắng nhất của tiệm — thợ rảnh tay và phòng sạch, lên hình đẹp hơn ngày đông`,
@@ -167,6 +216,10 @@ export function buildWeekPlan(input: {
         'Not enough booking data yet to tell which day is quiet, so this is Tuesday for now — change it once the shop has run a few weeks'),
     when: bi('giờ vắng nhất trong ngày', 'the quietest hour of the day'),
   });
+
+  // -- the stills, in the same session --------------------------------------
+  const shoot = photoJob(book, week);
+  add(film.weekday, { kind: shoot.kind, text: shoot.text, why: shoot.why, ...(shoot.when ? { when: shoot.when } : {}) });
 
   // -- three posts, spaced, each with a job to do ---------------------------
   // Three posts, each doing a different job — taken from the trade's playbook,
@@ -183,8 +236,8 @@ export function buildWeekPlan(input: {
   // posts instead of three — a rhythm kept at two beats a week is worth more
   // than one abandoned at three — and the report line says so out loud.
   const lw = input.lastWeek ?? null;
-  const struggled = Boolean(lw && lw.planned >= 3 && lw.done / lw.planned < 0.5);
-  const postCount = struggled ? 2 : 3;
+  const struggled = struggledEarly;
+  const postCount = postsThisWeek;
   const report: Txt | null = lw
     ? (struggled
       ? bi(
@@ -206,17 +259,36 @@ export function buildWeekPlan(input: {
     return top.block === 'afternoon' ? '11:30-13:00' : '18:30-20:00';
   };
 
-  const postDays = [(film.weekday + 1) % 7, (film.weekday + 3) % 7, (film.weekday + 5) % 7].slice(0, postCount);
+  const postDays = [
+    (film.weekday + 1) % 7, (film.weekday + 2) % 7,
+    (film.weekday + 4) % 7, (film.weekday + 5) % 7,
+  ].slice(0, postCount);
+  /**
+   * Clip, photo set, clip, photo set.
+   *
+   * Every post used to be a clip, which made the week a shooting schedule with
+   * captions. Stills do work video cannot — a before-and-after understood at a
+   * glance, a price somebody screenshots — and alternating also halves how much
+   * has to be filmed for the same number of posts.
+   */
+  let clipNo = 0;
+  let photoNo = 0;
   rotate(book.postTypes, week, postCount).forEach((pt, i) => {
     const last = i === postCount - 1;
+    const asPhoto = i % 2 === 1;
+    if (asPhoto) photoNo += 1; else clipNo += 1;
     add(postDays[i], {
       kind: 'post',
       // The playbook now carries both languages, so each side of this sentence
       // takes its own: the English screen gets an English post title inside an
       // English sentence, instead of a Vietnamese one wearing English around it.
-      text: bi(
-        `Đăng clip ${i + 1} — ${viOf(pt.label)}`,
-        `Post clip ${i + 1} — ${enOf(pt.label)}`),
+      text: asPhoto
+        ? bi(
+          `Đăng bộ ảnh ${photoNo} — ${viOf(pt.label)}`,
+          `Post photo set ${photoNo} — ${enOf(pt.label)}`)
+        : bi(
+          `Đăng clip ${clipNo} — ${viOf(pt.label)}`,
+          `Post clip ${clipNo} — ${enOf(pt.label)}`),
       why: last && busiest
         ? bi(
           `${viOf(pt.job)}. Đăng trước ${WEEKDAY_VI[busiest.weekday]} — khung đông nhất của tiệm — để bài chạy đúng lúc khách đang quyết định`,
@@ -298,6 +370,36 @@ export function buildWeekPlan(input: {
     });
   }
 
+  // -- the profile that decides where the shop sits on the map --------------
+  // One job a week, rotating: a post, three photos, replies to reviews, or the
+  // best review of the month reposted. Same profile, different job each time —
+  // "post on Google" repeated for a year is a line nobody reads by week three.
+  const gmap = mapJob(week);
+  add((film.weekday + 3) % 7, { kind: gmap.kind, text: gmap.text, why: gmap.why });
+
+  // -- two stories attached to work that is actually happening --------------
+  const stories = storyJobs(Boolean(advice && advice.kind === 'fill-slot' && quietest));
+  stories.forEach((st, i) => add((film.weekday + (i === 0 ? 0 : 4)) % 7, { kind: st.kind, text: st.text, why: st.why }));
+
+  // -- every other week, something that is not a post -----------------------
+  // A conversation, a date, or another business saying yes. Alternate weeks
+  // because asking for one every week is how the ninth line of a plan becomes
+  // the line that is never finished.
+  if (longGameWeek(week)) {
+    const lg = longGameJob(book, week);
+    add((film.weekday + 6) % 7, { kind: lg.kind, text: lg.text, why: lg.why });
+  }
+
+  // -- cut the week down to something a shop finishes -----------------------
+  const kept = trimToBudget(seeded, WEEK_BUDGET);
+  const jobs = new Map<number, Job[]>();
+  for (const j of kept) {
+    const list = jobs.get(j.day) ?? [];
+    const { day: _d, keep: _k, ...job } = j;
+    list.push(job);
+    jobs.set(j.day, list);
+  }
+
   // -- assemble seven days from today ---------------------------------------
   const days: DayPlan[] = [];
   for (let i = 0; i < 7; i++) {
@@ -352,7 +454,34 @@ export function buildWeekPlan(input: {
       `Ngày quay và ngày đăng chọn theo sổ đặt lịch thật của tiệm (${loads.length} khung giờ có dữ liệu)`,
       `The filming day and the posting days come from the shop's own book (${loads.length} time blocks with data)`);
 
-  return { days, focus, basis, report, stage, week, daily: book.habits, sources: book.dailySources, trade: book.trade, dataThin };
+  /**
+   * Google reviews still owed on the current stage, if that is what the stage
+   * counts. Read off the stage's own progress rather than restated here, so the
+   * target on the plan and the bar on the stage card cannot disagree.
+   */
+  const reviewsNeeded = stage?.progress && /đánh giá|review/i.test(viOf(stage.progress.label))
+    ? Math.max(0, stage.progress.need - stage.progress.done)
+    : null;
+
+  const prep = buildPrep({
+    clips: kept.filter((j) => j.kind === 'film').length ? clipsNeeded + Math.max(0, kept.filter((j) => j.kind === 'film').length - 1) : 0,
+    photos: kept.some((j) => j.kind === 'photo'),
+    posts: kept.filter((j) => j.kind === 'post').length,
+    book,
+    week,
+    reviewsNeeded,
+  });
+  const targets = buildTargets({
+    jobs: kept,
+    reviewsNeeded,
+    quietSlot: advice && advice.kind === 'fill-slot' && quietest ? quietest.label : null,
+  });
+
+  return {
+    days, focus, basis, report, stage, week,
+    daily: book.habits, sources: book.dailySources, trade: book.trade, dataThin,
+    prep, targets,
+  };
 }
 
 /** The week as prompt text, so the day's ideas match the week's plan. */

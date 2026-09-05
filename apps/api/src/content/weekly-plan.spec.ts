@@ -61,11 +61,11 @@ describe('the week is built from the salon’s own book', () => {
     expect(viOf(offer.why)).toContain('Thứ 6 buổi sáng');
   });
 
-  it('spaces the three posts instead of stacking them', () => {
+  it('spaces the posts instead of stacking them', () => {
     const p = plan();
     const postDays = p.days.filter((d) => d.jobs.some((j) => j.kind === 'post')).map((d) => d.weekday);
-    expect(postDays.length).toBe(3);
-    expect(new Set(postDays).size).toBe(3);
+    expect(postDays.length).toBe(4);
+    expect(new Set(postDays).size).toBe(4);
   });
 
   it('leaves at least one day genuinely empty', () => {
@@ -103,7 +103,7 @@ describe('an empty book is admitted, not papered over', () => {
 
   it('still gives a usable week rather than an empty screen', () => {
     expect(bare.days).toHaveLength(7);
-    expect(allJobs(bare).filter((j) => j.kind === 'post').length).toBe(3);
+    expect(allJobs(bare).filter((j) => j.kind === 'post').length).toBe(4);
   });
 
   it('never claims a quiet slot it cannot see', () => {
@@ -198,10 +198,10 @@ describe('each trade gets its own week, not a translated nail one', () => {
     expect(posts).not.toMatch(/móng/i);
   });
 
-  it('gives the three posts three different jobs', () => {
+  it('gives every post a different job', () => {
     const posts = allJobs(plan()).filter((j) => j.kind === 'post');
-    expect(posts).toHaveLength(3);
-    expect(new Set(posts.map((p) => viOf(p.why))).size).toBe(3);
+    expect(posts).toHaveLength(4);
+    expect(new Set(posts.map((p) => viOf(p.why))).size).toBe(4);
   });
 
   it('names where each day’s raw material comes from, with a time to catch it', () => {
@@ -229,7 +229,7 @@ describe('each trade gets its own week, not a translated nail one', () => {
   it('falls back to the salon playbook for a trade it does not know', () => {
     const p = plan({ industry: 'SOMETHING_NEW' });
     expect(p.sources.length).toBeGreaterThan(0);
-    expect(allJobs(p).filter((j) => j.kind === 'post')).toHaveLength(3);
+    expect(allJobs(p).filter((j) => j.kind === 'post')).toHaveLength(4);
   });
 });
 
@@ -357,21 +357,21 @@ describe('the plan reads its own scorecard', () => {
     expect(plan().report).toBeNull();
   });
 
-  it('keeps three posts and says so when last week held the rhythm', () => {
+  it('keeps the full four posts and says so when last week held the rhythm', () => {
     const p = plan({ lastWeek: { planned: 5, done: 4, posted: 3 } });
-    expect(postJobs(p)).toHaveLength(3);
+    expect(postJobs(p)).toHaveLength(4);
     expect(viOf(p.report!)).toContain('4/5');
   });
 
-  it('trims to two posts when last week collapsed, and admits why', () => {
+  it('trims a post when last week collapsed, and admits why', () => {
     const p = plan({ lastWeek: { planned: 6, done: 1, posted: 0 } });
-    expect(postJobs(p)).toHaveLength(2);
-    expect(viOf(p.report!)).toContain('rút còn 2');
-    expect(enOf(p.report!)).toContain('trimmed to 2');
+    expect(postJobs(p)).toHaveLength(3);
+    expect(viOf(p.report!)).toContain('rút còn 3');
+    expect(enOf(p.report!)).toContain('trimmed to 3');
   });
 
   it('never punishes a tiny plan — one missed job out of two is not a collapse', () => {
     const p = plan({ lastWeek: { planned: 2, done: 1, posted: 1 } });
-    expect(postJobs(p)).toHaveLength(3);
+    expect(postJobs(p)).toHaveLength(4);
   });
 });

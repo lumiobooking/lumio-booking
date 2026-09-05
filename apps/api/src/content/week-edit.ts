@@ -28,7 +28,7 @@ import type { DayPlan, Job, JobKind } from './weekly-plan';
  * both renderings show identically. The screen says so next to the field.
  */
 
-export const JOB_KINDS: JobKind[] = ['film', 'post', 'story', 'offer', 'winback', 'engage', 'rest'];
+export const JOB_KINDS: JobKind[] = ['film', 'photo', 'post', 'story', 'offer', 'winback', 'engage', 'gbp', 'event', 'rest'];
 
 /** Limits. Generous enough for a real instruction, small enough to bound the row. */
 export const MAX_JOB_TEXT = 200;

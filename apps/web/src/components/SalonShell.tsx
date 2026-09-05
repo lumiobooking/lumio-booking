@@ -5,6 +5,7 @@ import { InboxAlerts } from './InboxAlerts';
 import { ThemeToggle } from './ThemeToggle';
 import { NavIcon } from './NavIcon';
 import { canSee, gateText, DEFAULT_HIDDEN } from '../lib/support-gate';
+import { supportMaySee, SUPPORT_LEVEL_LABEL } from '../lib/support-scope';
 import MarketBadge from './MarketBadge';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -243,7 +244,14 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // The menu shows only what passes both.
   const can = (href: string) => {
     if (!canSee(href, isSupport, hiddenHrefs)) return false;
-    const c = HREF_CAP[href]; return !c || caps.includes(c);
+    const c = HREF_CAP[href];
+    if (c && !caps.includes(c)) return false;
+    // A third gate, and only for Lumio's own setup staff: HREF_CAP leaves
+    // several screens uncapped on purpose — a receptionist has to be able to
+    // open the inbox — and those are exactly the screens a content account
+    // must not be handed. The tighter map lives in support-scope so narrowing
+    // Lumio's employees cannot narrow a paying salon's staff by accident.
+    return !isSupport || supportMaySee(href, caps);
   };
   // Staff with salon access are assumed POS-entitled (the owner's plan applies);
   // only the owner's own view is gated by the cached plan flag.
@@ -395,6 +403,18 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c312e81)', border: '1px solid #6366f1', color: 'var(--ce0e7ff)', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13.5 }}>
       <span style={{ fontWeight: 700 }}>🛠 Lumio Support</span>
       <span style={{ opacity: 0.9 }}>— {tr('shell.supportIn', lang)} <b>{user.tenantName || '…'}</b></span>
+      {/* The level, on the banner rather than buried in a profile page: an
+          employee who cannot find the reports should know in one glance
+          whether the screen is broken or their account simply does not open
+          it — those two look identical from the outside. */}
+      {user.supportLevel && user.supportLevel !== 'full' && (
+        <span style={{
+          fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 20,
+          background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.25)',
+        }}>
+          {SUPPORT_LEVEL_LABEL[user.supportLevel] ?? user.supportLevel}
+        </span>
+      )}
       <button
         onClick={() => {
           try {

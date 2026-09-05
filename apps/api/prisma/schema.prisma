@@ -391,6 +391,9 @@ model User {
   phone        String?
   isActive     Boolean  @default(true)
   lastLoginAt  DateTime?
+  // SUPPORT accounts only: how much of a salon this employee may see once they
+  // step into one — 'content' | 'setup' | 'full'. Null reads as 'setup'.
+  supportLevel String?
 
   // If this user is a technician, this links to their StaffMember profile.
   staffMember StaffMember?

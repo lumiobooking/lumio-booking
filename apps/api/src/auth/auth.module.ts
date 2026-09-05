@@ -8,6 +8,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { CapabilitiesGuard } from './guards/capabilities.guard';
+import { SupportScopeGuard } from '../support/support-scope.guard';
 
 @Module({
   imports: [
@@ -20,10 +21,12 @@ import { CapabilitiesGuard } from './guards/capabilities.guard';
   providers: [
     AuthService,
     JwtStrategy,
-    // Global guards: authenticate, enforce roles, then feature capabilities.
+    // Global guards: authenticate, enforce roles, then feature capabilities,
+    // then — for Lumio setup sessions only — the employee's own level.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: CapabilitiesGuard },
+    { provide: APP_GUARD, useClass: SupportScopeGuard },
   ],
 })
 export class AuthModule {}

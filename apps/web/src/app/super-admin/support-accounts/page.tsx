@@ -19,7 +19,45 @@ interface Account {
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  /** How much of a salon this employee sees once inside it. */
+  supportLevel: SupportLevel;
 }
+
+type SupportLevel = 'content' | 'setup' | 'full';
+
+/**
+ * The three levels, in the words the person choosing has to weigh.
+ *
+ * Written as what the employee WILL and WILL NOT see rather than as a rank,
+ * because "level 2" tells the reader nothing and "cannot see the takings" is
+ * the entire decision. The order is narrowest first: the safe pick is the one
+ * the eye lands on.
+ */
+const LEVELS: { id: SupportLevel; label: string; sees: string; hides: string; tone: string }[] = [
+  {
+    id: 'content',
+    label: 'Nội dung & marketing',
+    sees: 'Lịch đăng bài, kế hoạch marketing, duyệt bài, đánh giá, Inbox/Messenger, AI Hotline',
+    hides: 'Tiền, khách hàng, dịch vụ, nhân viên, cài đặt, kết nối',
+    tone: '#22c55e',
+  },
+  {
+    id: 'setup',
+    label: 'Setup toàn diện',
+    sees: 'Mọi thứ ở trên, cộng dịch vụ, thợ, ghế, cài đặt tiệm, kết nối kênh, thông báo',
+    hides: 'Doanh thu, POS, hoá đơn, lương, giao dịch thẻ, danh sách khách, lịch hẹn',
+    tone: '#6366f1',
+  },
+  {
+    id: 'full',
+    label: 'Toàn quyền như chủ tiệm',
+    sees: 'Mọi thứ trong tiệm, kể cả doanh thu và dữ liệu khách',
+    hides: 'Không ẩn gì. Chỉ cấp cho người quản lý.',
+    tone: '#f59e0b',
+  },
+];
+
+const LEVEL = (id: string) => LEVELS.find((l) => l.id === id) ?? LEVELS[1];
 
 export default function SupportAccountsPage() {
   const { token, user, ready } = useAuth();
@@ -29,7 +67,9 @@ export default function SupportAccountsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '' });
+  // The default is the middle level, not the widest: an account created in a
+  // hurry should not be the one that can read the salon's takings.
+  const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', supportLevel: 'setup' as SupportLevel });
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -51,9 +91,20 @@ export default function SupportAccountsPage() {
     try {
       await apiFetch('/support/accounts', { method: 'POST', token, body: form });
       setMsg(`Created ${form.email}. Send them the password yourself — it is not shown again.`);
-      setForm({ email: '', password: '', firstName: '', lastName: '' });
+      setForm({ email: '', password: '', firstName: '', lastName: '', supportLevel: form.supportLevel });
       await load();
     } catch (e2) { setError(e2 instanceof Error ? e2.message : 'Create failed'); }
+    finally { setBusy(null); }
+  }
+
+  async function setLevel(a: Account, supportLevel: SupportLevel) {
+    if (!token || supportLevel === a.supportLevel) return;
+    setBusy(a.id); setError(null); setMsg(null);
+    try {
+      await apiFetch(`/support/accounts/${a.id}/level`, { method: 'POST', token, body: { supportLevel } });
+      setMsg(`${a.email}: ${LEVEL(supportLevel).label}. Có hiệu lực từ lần vào tiệm tiếp theo của bạn ấy.`);
+      await load();
+    } catch (e2) { setError(e2 instanceof Error ? e2.message : 'Update failed'); }
     finally { setBusy(null); }
   }
 
@@ -79,6 +130,10 @@ export default function SupportAccountsPage() {
         <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: '0 0 18px' }}>
           Setup staff log in with these and enter salons from the <b>/agency</b> page. They cannot touch plans, billing or tenant management.
         </p>
+        <p style={{ color: 'var(--c64748b)', fontSize: 13, margin: '-10px 0 18px', lineHeight: 1.6 }}>
+          Mức quyền quyết định bạn ấy thấy gì <i>bên trong</i> tiệm. Đổi mức có hiệu lực từ lần vào tiệm kế tiếp —
+          phiên đang mở giữ nguyên mức đã cấp, và nhật ký ghi lại mức của từng phiên.
+        </p>
 
         {error && <div style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 12 }}>{error}</div>}
         {msg && <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 12 }}>{msg}</div>}
@@ -91,6 +146,43 @@ export default function SupportAccountsPage() {
           <button type="submit" disabled={busy === 'new'} style={{ background: '#6366f1', border: 'none', color: 'white', borderRadius: 8, padding: '10px 16px', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: busy === 'new' ? 0.5 : 1 }}>
             {busy === 'new' ? '…' : '+ Create'}
           </button>
+
+          {/* The level, chosen before the account exists rather than after.
+              An account created wide and narrowed later is an account that
+              was wide for as long as nobody got round to it. */}
+          <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginBottom: 7 }}>
+              Bạn này được xem gì trong tiệm của khách?
+            </div>
+            <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
+              {LEVELS.map((l) => {
+                const on = form.supportLevel === l.id;
+                return (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => setForm({ ...form, supportLevel: l.id })}
+                    style={{
+                      textAlign: 'left', cursor: 'pointer', borderRadius: 10, padding: '10px 12px',
+                      background: on ? 'var(--c0f172a)' : 'transparent',
+                      border: `1px solid ${on ? l.tone : 'var(--c334155)'}`,
+                      boxShadow: on ? `0 0 0 2px ${l.tone}33` : 'none',
+                    }}
+                  >
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: on ? l.tone : 'var(--ce2e8f0)' }}>
+                      {on ? '● ' : '○ '}{l.label}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 4 }}>
+                      Thấy: {l.sees}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5, marginTop: 2 }}>
+                      Ẩn: {l.hides}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </form>
 
         <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden' }}>
@@ -103,6 +195,19 @@ export default function SupportAccountsPage() {
                   {a.email}{a.lastLoginAt ? ` · last login ${new Date(a.lastLoginAt).toLocaleDateString(uiLocale())}` : ' · never logged in'}
                 </div>
               </div>
+              <select
+                value={a.supportLevel}
+                disabled={busy === a.id}
+                onChange={(e) => setLevel(a, e.target.value as SupportLevel)}
+                title={`Thấy: ${LEVEL(a.supportLevel).sees}\nẨn: ${LEVEL(a.supportLevel).hides}`}
+                style={{
+                  background: 'var(--c0f172a)', color: LEVEL(a.supportLevel).tone,
+                  border: `1px solid ${LEVEL(a.supportLevel).tone}`, borderRadius: 8,
+                  padding: '6px 9px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                {LEVELS.map((l) => <option key={l.id} value={l.id} style={{ color: 'var(--ce2e8f0)' }}>{l.label}</option>)}
+              </select>
               <span style={{ fontSize: 11.5, fontWeight: 700, color: a.isActive ? '#22c55e' : '#ef4444' }}>
                 {a.isActive ? 'ACTIVE' : 'DISABLED'}
               </span>

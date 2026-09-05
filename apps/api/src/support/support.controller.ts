@@ -40,8 +40,16 @@ export class SupportController {
 
   @Roles(UserRole.SUPER_ADMIN)
   @Post('accounts')
-  create(@Body() dto: { email?: string; password?: string; firstName?: string; lastName?: string }) {
+  create(@Body() dto: { email?: string; password?: string; firstName?: string; lastName?: string; supportLevel?: string }) {
     return this.svc.createAccount(dto || {});
+  }
+
+  /** What this employee may see inside a salon. Applies from their next entry. */
+  @Roles(UserRole.SUPER_ADMIN)
+  @Post('accounts/:id/level')
+  @HttpCode(200)
+  setLevel(@Param('id') id: string, @Body() dto: { supportLevel?: string }) {
+    return this.svc.setAccountLevel(id, dto?.supportLevel);
   }
 
   @Roles(UserRole.SUPER_ADMIN)

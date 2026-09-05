@@ -23,6 +23,10 @@ export interface AuthenticatedUser {
   // unchanged); this flag only unlocks platform-managed setup screens and lets
   // the UI show the "working as Lumio Support" banner.
   supportSession?: boolean;
+  // SUPPORT sessions only: how much of this salon the employee may see —
+  // 'content' | 'setup' | 'full'. Absent on every other kind of token, and the
+  // guards treat absent as "not a support session", never as "no limits".
+  supportLevel?: string | null;
 }
 
 /**

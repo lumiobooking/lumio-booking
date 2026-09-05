@@ -62,12 +62,23 @@ export default function AgencyPage() {
     if (!token || busy) return;
     setBusy(t.id); setError(null);
     try {
-      const r = await apiFetch<{ accessToken: string; tenant: { id: string; name: string; slug: string } }>(
+      const r = await apiFetch<{
+        accessToken: string;
+        tenant: { id: string; name: string; slug: string };
+        level?: string;
+        capabilities?: string[];
+      }>(
         `/support/enter/${t.id}`, { method: 'POST', token, body: {} },
       );
       // Park the support login, activate the salon session. The session user
       // borrows SALON_ADMIN so the salon dashboard works untouched; the
       // supportSession flag drives the banner and unlocks hidden screens.
+      //
+      // The capability list is the employee's LEVEL, resolved by the server.
+      // It goes on the session because the menu has to draw the right shape on
+      // the first paint — but it is only a drawing instruction: the same level
+      // is inside the token, and every request is checked against that copy,
+      // so editing this one in a browser console buys nothing.
       const session = {
         accessToken: r.accessToken,
         user: {
@@ -79,6 +90,8 @@ export default function AgencyPage() {
           lastName: 'Support',
           supportSession: true,
           tenantName: r.tenant.name,
+          supportLevel: r.level,
+          capabilities: r.capabilities,
         },
       };
       try {

@@ -19,6 +19,8 @@ export interface AuthUser {
   // Lumio SUPPORT staff working inside one salon on a short-lived session.
   supportSession?: boolean;
   tenantName?: string; // shown in the support banner
+  /** SUPPORT sessions: how much of the salon this employee may see. */
+  supportLevel?: string;
 }
 
 interface LoginResponse {

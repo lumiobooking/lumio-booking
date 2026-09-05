@@ -5,6 +5,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { StaffRole, UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
+import { refusalMessage, sessionRefusal, type UserLookup } from '../session-check';
 
 /** Shape of the signed JWT payload (iat/exp added by passport-jwt on verify). */
 export interface JwtPayload {
@@ -21,10 +22,12 @@ export interface JwtPayload {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  // userId -> { changedAt(ms, 0 = never), cachedAt(ms) }. A short cache keeps the
-  // per-request DB cost near zero while still forcing re-login within ~10s of a
-  // password change (the user's own change also logs them out instantly client-side).
-  private readonly pwCache = new Map<string, { changedAt: number; cachedAt: number }>();
+  // userId -> the last answer about that account, and when we got it. A short
+  // cache keeps the per-request DB cost near zero while still ending a session
+  // within ~10s of the account being deleted, switched off, or having its
+  // password changed. A failed lookup is never cached: the next request asks
+  // again rather than living for ten seconds on a non-answer.
+  private readonly userCache = new Map<string, { look: UserLookup; cachedAt: number }>();
 
   constructor(config: ConfigService, private readonly prisma: PrismaService) {
     super({
@@ -44,13 +47,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!payload?.sub || !payload?.role) {
       throw new UnauthorizedException('Invalid token');
     }
-    if (payload.iat) {
-      const changedAt = await this.passwordChangedAt(payload.sub);
-      // 2s grace for clock skew between the token issuer and the DB timestamp.
-      if (changedAt && payload.iat * 1000 < changedAt - 2000) {
-        throw new UnauthorizedException('Password changed — please sign in again');
-      }
-    }
+    // Does this token still stand for a real, allowed person? A signature only
+    // proves the token was issued; everything that happened since — the account
+    // deleted, switched off, its password changed — lives in the row.
+    const refusal = sessionRefusal(await this.lookup(payload.sub), payload.iat);
+    if (refusal) throw new UnauthorizedException(refusalMessage(refusal));
     return {
       userId: payload.sub,
       email: payload.email,
@@ -66,18 +67,38 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     };
   }
 
-  /** Cached lookup of the user's passwordChangedAt (ms since epoch; 0 = never). */
-  private async passwordChangedAt(userId: string): Promise<number> {
+  /**
+   * The account behind a token, cached for ten seconds.
+   *
+   * `failed` and `found` are kept apart all the way down to the decision: a
+   * query that threw is not evidence that the row is gone, and conflating the
+   * two would sign every salon out on a database blip. See session-check.ts.
+   */
+  private async lookup(userId: string): Promise<UserLookup> {
     const now = Date.now();
-    const hit = this.pwCache.get(userId);
-    if (hit && now - hit.cachedAt < 10_000) return hit.changedAt;
-    const u = await this.prisma.user
-      .findUnique({ where: { id: userId }, select: { passwordChangedAt: true } })
-      .catch(() => null);
-    const changedAt = u?.passwordChangedAt ? u.passwordChangedAt.getTime() : 0;
-    this.pwCache.set(userId, { changedAt, cachedAt: now });
+    const hit = this.userCache.get(userId);
+    if (hit && now - hit.cachedAt < 10_000) return hit.look;
+
+    let look: UserLookup;
+    try {
+      const u = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { isActive: true, passwordChangedAt: true },
+      });
+      look = {
+        failed: false,
+        found: Boolean(u),
+        isActive: u?.isActive !== false,
+        changedAt: u?.passwordChangedAt ? u.passwordChangedAt.getTime() : 0,
+      };
+    } catch {
+      // Not an answer. Not cached either — the next request asks again.
+      return { failed: true, found: false, isActive: true, changedAt: 0 };
+    }
+
+    this.userCache.set(userId, { look, cachedAt: now });
     // Bound memory on a long-lived process.
-    if (this.pwCache.size > 5000) this.pwCache.clear();
-    return changedAt;
+    if (this.userCache.size > 5000) this.userCache.clear();
+    return look;
   }
 }

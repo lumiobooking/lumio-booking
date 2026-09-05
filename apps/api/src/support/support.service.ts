@@ -186,6 +186,56 @@ export class SupportService {
   }
 
   /**
+   * Remove an employee's account for good.
+   *
+   * Restricted to role SUPPORT rows for the same reason as everything else on
+   * this controller: it must never become a way to delete a salon owner.
+   *
+   * WHAT SURVIVES, AND WHY THAT IS ENOUGH
+   *
+   * The row goes; the history does not. Audit entries keep their text and the
+   * employee's email in `metadata.by`, and their messages to salons keep the
+   * name they were signed with — every one of those columns is denormalised
+   * already, and the foreign keys are SetNull, so nothing is orphaned and
+   * nothing silently changes author. What is lost is the LINK from an old
+   * audit row to a user id that no longer exists, which is why one last row is
+   * written here naming who was removed and by whom.
+   *
+   * Their open salon sessions die with the row — the JWT strategy re-checks the
+   * account on every request (see session-check.ts). Before that check existed,
+   * deleting somebody at nine in the morning left them working until dinner.
+   */
+  async deleteAccount(actor: AuthenticatedUser, id: string) {
+    const row = await this.prisma.user.findFirst({
+      where: { id, role: SUPPORT_ROLE },
+      select: { id: true, email: true, firstName: true, lastName: true, supportLevel: true } as never,
+    }) as { id: string; email: string; firstName: string | null; lastName: string | null; supportLevel?: string | null } | null;
+    if (!row) throw new NotFoundException('Support account not found');
+
+    // Written BEFORE the delete, so a failure leaves a record of the attempt
+    // rather than a silent gap.
+    await this.audit.log({
+      tenantId: null,
+      userId: actor.userId,
+      action: 'support.account_deleted',
+      resourceType: 'user',
+      resourceId: row.id,
+      metadata: {
+        email: row.email,
+        name: `${row.firstName ?? ''} ${row.lastName ?? ''}`.trim(),
+        level: levelOf(row.supportLevel),
+        by: actor.email,
+      },
+    });
+
+    // Scoped to the role a second time: between the read and the write is the
+    // only window in which this could be pointed at somebody else.
+    const r = await this.prisma.user.deleteMany({ where: { id, role: SUPPORT_ROLE } });
+    if (r.count === 0) throw new NotFoundException('Support account not found');
+    return { id, deleted: true, email: row.email };
+  }
+
+  /**
    * Turn an account on/off. Restricted to role SUPPORT rows so this endpoint
    * can never be used to disable an owner or another platform admin.
    */

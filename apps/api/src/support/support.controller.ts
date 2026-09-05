@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { SupportService, SUPPORT_ROLE } from './support.service';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -50,6 +50,16 @@ export class SupportController {
   @HttpCode(200)
   setLevel(@Param('id') id: string, @Body() dto: { supportLevel?: string }) {
     return this.svc.setAccountLevel(id, dto?.supportLevel);
+  }
+
+  /**
+   * Remove an employee for good. Audited, and it ends their open salon
+   * sessions — see SupportService.deleteAccount.
+   */
+  @Roles(UserRole.SUPER_ADMIN)
+  @Delete('accounts/:id')
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.deleteAccount(user, id);
   }
 
   @Roles(UserRole.SUPER_ADMIN)

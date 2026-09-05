@@ -67,6 +67,10 @@ export default function SupportAccountsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  // Which row is asking "really?". Deleting a colleague's account is one click
+  // away from deleting the wrong colleague's account, and the two rows look
+  // alike at a glance — so the second click has to name the person.
+  const [confirming, setConfirming] = useState<string | null>(null);
   // The default is the middle level, not the widest: an account created in a
   // hurry should not be the one that can read the salon's takings.
   const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', supportLevel: 'setup' as SupportLevel });
@@ -105,6 +109,18 @@ export default function SupportAccountsPage() {
       setMsg(`${a.email}: ${LEVEL(supportLevel).label}. Có hiệu lực từ lần vào tiệm tiếp theo của bạn ấy.`);
       await load();
     } catch (e2) { setError(e2 instanceof Error ? e2.message : 'Update failed'); }
+    finally { setBusy(null); }
+  }
+
+  async function remove(a: Account) {
+    if (!token) return;
+    setBusy(a.id); setError(null); setMsg(null);
+    try {
+      await apiFetch(`/support/accounts/${a.id}`, { method: 'DELETE', token });
+      setMsg(`Đã xoá ${a.email}. Phiên đang mở của bạn ấy cũng đứt trong vòng 10 giây.`);
+      setConfirming(null);
+      await load();
+    } catch (e2) { setError(e2 instanceof Error ? e2.message : 'Delete failed'); }
     finally { setBusy(null); }
   }
 
@@ -187,7 +203,27 @@ export default function SupportAccountsPage() {
 
         <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden' }}>
           {rows.length === 0 && <div style={{ padding: 18, color: 'var(--c64748b)', fontSize: 14 }}>No support accounts yet.</div>}
-          {rows.map((a) => (
+          {rows.map((a) => (confirming === a.id ? (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--c1f2937)', background: 'var(--c450a0a)' }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--cfecaca)' }}>
+                  Xoá hẳn {`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}?
+                </div>
+                <div style={{ fontSize: 12.5, color: 'var(--cfca5a5)', lineHeight: 1.55 }}>
+                  {a.email} — không khôi phục được. Lịch sử làm việc và nhật ký vẫn giữ nguyên tên bạn ấy;
+                  phiên đang mở trong tiệm sẽ đứt trong vòng 10 giây. Chỉ muốn tạm ngưng thì bấm <b>Disable</b>.
+                </div>
+              </div>
+              <button onClick={() => setConfirming(null)} disabled={busy === a.id}
+                style={{ background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer' }}>
+                Huỷ
+              </button>
+              <button onClick={() => remove(a)} disabled={busy === a.id}
+                style={{ background: '#ef4444', border: 'none', color: '#fff', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: busy === a.id ? 0.5 : 1 }}>
+                {busy === a.id ? '…' : 'Xoá hẳn'}
+              </button>
+            </div>
+          ) : (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14.5 }}>{`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}</div>
@@ -215,8 +251,15 @@ export default function SupportAccountsPage() {
                 style={{ background: 'transparent', border: '1px solid var(--c334155)', color: a.isActive ? 'var(--cf87171)' : 'var(--c4ade80)', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer', opacity: busy === a.id ? 0.5 : 1 }}>
                 {busy === a.id ? '…' : a.isActive ? 'Disable' : 'Enable'}
               </button>
+              {/* Quiet by default: Disable is the everyday answer, and the
+                  destructive one should not compete with it for the eye. */}
+              <button onClick={() => { setConfirming(a.id); setMsg(null); setError(null); }} disabled={busy === a.id}
+                title="Xoá hẳn tài khoản này"
+                style={{ background: 'transparent', border: 'none', color: 'var(--c64748b)', borderRadius: 8, padding: '7px 8px', fontSize: 14, cursor: 'pointer' }}>
+                🗑
+              </button>
             </div>
-          ))}
+          )))}
         </div>
       </div>
     </main>

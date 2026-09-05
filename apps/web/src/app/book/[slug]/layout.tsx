@@ -155,13 +155,16 @@ export default async function BookSlugLayout({ children, params }: { children: R
           stay silent: the parent site's own GTM/GA4 measures the session, and
           the booking conversion reaches it via postMessage — one session, one
           source, zero double-counting. */}
-      {/* /gbp short-link stamp: MUST be the first script — it canonicalises the
-          URL with the GBP campaign params synchronously, so the page_view that
-          GA4/GTM send right after already carries source=google/organic/
-          gbp_booking, and the booking flow stores the same attribution. Only
-          the /gbp path is stamped; the plain /{slug} link never is. */}
-      {/* eslint-disable-next-line react/no-danger */}
-      <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(window.self!==window.top)return;if(/\/gbp\/?$/.test(location.pathname)&&location.search.indexOf('utm_campaign=')<0){var q=(location.search?location.search+'&':'?')+'utm_source=google&utm_medium=organic&utm_campaign=gbp_booking&utm_content=booking_button';history.replaceState(null,'',location.pathname+q+location.hash);}}catch(e){}})();` }} />
+      {/* The /gbp campaign stamp used to live here as an inline <script>. It was
+          in the page — you could find it in the DOM — and it never once ran:
+          this is a nested layout, so React INSERTS its markup rather than the
+          browser parsing it, and an inserted <script> element does not execute.
+          Every Google Maps booking arrived with no campaign and was filed as an
+          untagged hosted link for months.
+
+          It now lives in the booking page's own effect, which is guaranteed to
+          run — and the booking's attribution no longer depends on it at all:
+          see gbp-source.ts, where the PATH is the evidence. */}
       {/* Consent Mode v2 defaults are pushed BEFORE any Google tag loads (US/CA
           market default = granted; an EU salon needs a CMP that calls
           window.lumioConsentUpdate). The __lumioTag guard hard-reloads if a

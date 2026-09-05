@@ -24,6 +24,7 @@ import { uiLocale } from '../../../lib/datetime';
 import { todayInZone } from '../../../lib/salon-clock';
 import { planOpeningBar } from '../../../lib/opening-bar';
 import { bookLangForCountry, setBookLang, bt, btf, bookLocale } from '../../../lib/i18n-book';
+import { gbpAttribution, gbpSearch, isGbpPath } from '../../../lib/gbp-source';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const INK = '#0f2a52';        // ink for text (headings, rows)
@@ -290,6 +291,24 @@ export default function PublicBookingPage() {
    * with the params trimmed. Losing the code there would quietly cost the
    * customer their offer and cost us the attribution.
    */
+  /**
+   * Put the campaign on the URL of a /gbp visit.
+   *
+   * This is for the analytics tags, not for the booking — the booking now reads
+   * the path directly and cannot be broken by a URL that fails to change. The
+   * layout used to do this with an inline <script> that never executed, so a
+   * page_view from Google Maps was reported with no campaign for months.
+   *
+   * An effect runs late, after hydration, so a tag that already fired keeps its
+   * uncredited page_view. That is strictly better than today, where nothing
+   * fires it at all, and it is the earliest point that is guaranteed to run.
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isGbpPath(window.location.pathname)) return;
+    const next = gbpSearch(window.location.search);
+    if (next) window.history.replaceState(null, '', window.location.pathname + next + window.location.hash);
+  }, []);
+
   const [offerCode] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     const KEY = 'lumio_offer';
@@ -626,7 +645,19 @@ export default function PublicBookingPage() {
               // till applies it without the customer reciting anything. Falls back
               // to the remembered code when the PWA re-launched without params.
               offerCode: offerCode || undefined,
-              utmSource: g('utm_source'), utmMedium: g('utm_medium'), utmCampaign: g('utm_campaign'), utmContent: g('utm_content'),
+              // The /gbp route names its own campaign, from the PATH.
+              //
+              // It used to name it from the URL, stamped by an inline script in
+              // the layout that was in the page and never executed — React
+              // inserts nested-layout markup, and an inserted <script> does not
+              // run. So every customer arriving from Google Maps carried no utm
+              // and was filed as an untagged hosted link. A path cannot be
+              // stripped by a redirect or lost in a PWA relaunch; a query string
+              // can, and was.
+              ...gbpAttribution(window.location.pathname, {
+                utmSource: g('utm_source'), utmMedium: g('utm_medium'),
+                utmCampaign: g('utm_campaign'), utmContent: g('utm_content'),
+              }),
               utmTerm: g('utm_term'), gclid: g('gclid'), gbraid: g('gbraid'), wbraid: g('wbraid'),
               attrLandingUrl: (g('lumio_lu') || window.location.href).slice(0, 900),
               attrReferrer: (g('lumio_rf') || document.referrer || '').slice(0, 900) || undefined,

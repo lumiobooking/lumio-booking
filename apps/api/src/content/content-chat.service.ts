@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { releasesHold, type HoldEvent } from './social-publish';
 
 /**
  * The conversation between the Lumio team and the salon, about the work.
@@ -181,7 +182,7 @@ export class ContentChatService {
       update: { lastMessageAt: new Date(), lastSide: side, resolvedAt: null, resolvedByName: null },
     }).catch(() => undefined);
 
-    await this.applyHold(tenantId, key, side);
+    await this.applyHold(tenantId, key, side === 'salon' ? 'client-comment' : 'team-reply');
 
     return row;
   }
@@ -189,20 +190,25 @@ export class ContentChatService {
   /**
    * The comment-hold, wired to the conversation itself.
    *
-   * A SALON message on a scheduled post holds it: publishing over an open
-   * comment is how the wrong price goes out with the client watching. A LUMIO
-   * message releases it — answering is the act the hold was waiting for. Both
-   * are no-ops on anything that is not a scheduled post.
+   * A CLIENT message on a scheduled post holds it: publishing over an open
+   * request is how the wrong price goes out with the client watching. What
+   * releases it is decided by `releasesHold`, in one place, because the
+   * tempting wrong answer — "the team replied, carry on" — is the one that
+   * quietly publishes an unfixed post. Replying is not fixing; somebody has to
+   * say the request is done.
+   *
+   * Every branch is a no-op on anything that is not a scheduled post.
    */
-  private async applyHold(tenantId: string, subject: string, side: 'lumio' | 'salon') {
+  private async applyHold(tenantId: string, subject: string, ev: HoldEvent) {
     if (!subject.startsWith('post:')) return;
+    if (ev === 'team-reply') return; // acknowledged, not settled — leave it red
     const postId = subject.slice('post:'.length);
     const posts = (this.prisma as unknown as Record<string, {
       updateMany: (a: unknown) => Promise<unknown>;
     }>).scheduledPost;
     await posts?.updateMany({
       where: { id: postId, tenantId, status: 'scheduled' },
-      data: side === 'salon' ? { heldAt: new Date() } : { heldAt: null },
+      data: releasesHold(ev) ? { heldAt: null } : { heldAt: new Date() },
     }).catch(() => undefined);
   }
 
@@ -236,6 +242,14 @@ export class ContentChatService {
       create: { tenantId, subject: key, lastMessageAt: new Date(), ...data },
       update: data,
     }).catch(() => undefined);
+
+    // Closing the thread is what takes the post out of the red and hands it
+    // back to the clock; reopening puts it back. The two states cannot be
+    // allowed to drift, or the calendar and the inbox disagree about whether
+    // anybody still owes this client an answer.
+    if (patch.resolved === true) await this.applyHold(tenantId, key, 'team-resolved');
+    if (patch.resolved === false) await this.applyHold(tenantId, key, 'team-reopened');
+
     return { ok: true, subject: key, ...data };
   }
 

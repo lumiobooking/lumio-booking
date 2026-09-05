@@ -1,5 +1,6 @@
 import {
   planPublish, dueNow, usableMediaUrl, sharePageProblem, guessKind, shapeOf, crowding, igGrid, explainMetaError,
+  releasesHold,
   IG_CAPTION_MAX, IG_HASHTAG_MAX, IG_CAROUSEL_MAX, MAX_ATTEMPTS, LATE_GRACE_MS, CROWDING_MS,
   type ConnectedPage, type PostDraft, type QueuedPost, type MediaItem, type Channel,
 } from './social-publish';
@@ -193,6 +194,35 @@ describe('the scheduler sends what is due and nothing else', () => {
     const r = dueNow([q({ heldAt: new Date('2026-09-01T13:50:00Z') })], NOW);
     expect(r.send).toHaveLength(0);
     expect(r.expired).toHaveLength(0);
+  });
+
+  describe('what closes a client request, and what only acknowledges it', () => {
+    it('a reply does not release the hold — answering is not fixing', () => {
+      // The one that matters. If this ever flips back to true, a post goes out
+      // with the client's correction still unmade and a green tick beside it.
+      expect(releasesHold('team-reply')).toBe(false);
+    });
+
+    it('a second client comment leaves it held', () => {
+      expect(releasesHold('client-comment')).toBe(false);
+    });
+
+    it('releases only on an act that changed something', () => {
+      expect(releasesHold('team-resolved')).toBe(true);
+      expect(releasesHold('post-edited')).toBe(true);
+      expect(releasesHold('client-approved')).toBe(true);
+    });
+
+    it('reopening a settled request holds the post again', () => {
+      expect(releasesHold('team-reopened')).toBe(false);
+    });
+
+    it('a released post is back in the queue on the clock alone', () => {
+      // The other half of the promise: red goes away and the post publishes
+      // normally, with nothing else to press.
+      const r = dueNow([q({ heldAt: null })], NOW);
+      expect(r.send).toHaveLength(1);
+    });
   });
 
   it('expires rather than publishes a post from two days ago', () => {

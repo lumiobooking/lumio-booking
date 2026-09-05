@@ -294,8 +294,34 @@ export interface QueuedPost {
   status: string;
   scheduledAt: Date;
   attempts: number;
-  /** A salon comment the team has not answered. A held post does not publish. */
+  /** An open client request nobody has closed out. A held post does not publish. */
   heldAt?: Date | null;
+}
+
+/** What can happen to a post while a client request is sitting open on it. */
+export type HoldEvent =
+  | 'client-comment'
+  | 'team-reply'
+  | 'team-resolved'
+  | 'team-reopened'
+  | 'post-edited'
+  | 'client-approved';
+
+/**
+ * Whether an event SETTLES the client's request, and so releases the hold.
+ *
+ * The whole point of this function is the line between answering and fixing.
+ * "Vâng em sửa ngay" is an answer. It is not the fix, and a queue that turns
+ * green on it has handed the post back to the clock with the wrong price still
+ * in the caption. So a reply leaves the post red; only an act that changed
+ * something — the post edited, the request marked done, the client signing it
+ * off — releases it.
+ *
+ * This was not the original rule. Replying used to release, which is how a
+ * second request went out behind a first one that had only been acknowledged.
+ */
+export function releasesHold(ev: HoldEvent): boolean {
+  return ev === 'team-resolved' || ev === 'post-edited' || ev === 'client-approved';
 }
 
 /** Give up after this many tries rather than retrying a bad post forever. */
@@ -316,9 +342,9 @@ export function dueNow(posts: QueuedPost[], now: Date): { send: QueuedPost[]; ex
   for (const p of posts ?? []) {
     if (p.status !== 'scheduled') continue;
     if (p.attempts >= MAX_ATTEMPTS) continue;
-    // The one case the calendar waits: the salon said something and nobody
-    // answered. Publishing over an open comment is how the wrong price goes
-    // out with the client watching.
+    // The one case the calendar waits: the client asked for something and
+    // nobody has marked it done. Publishing over an open request is how the
+    // wrong price goes out with the client watching.
     if (p.heldAt) continue;
     const at = p.scheduledAt.getTime();
     if (at > now.getTime()) continue;

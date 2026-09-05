@@ -235,6 +235,16 @@ interface QueuedPost {
   createdByName: string | null;
   /** Why it cannot go out as it stands. Empty when it is fine. */
   blockers: string[];
+  /**
+   * The client wrote on this post and nobody has said the request is done.
+   *
+   * Set means red, everywhere, and the post does not publish. Replying does
+   * not clear it — only marking it handled, editing the post, or the client
+   * signing it off. The colour and the publish-hold are the same field on
+   * purpose: a red card that quietly published anyway would be worse than no
+   * colour at all.
+   */
+  held?: { at: string; by: string | null; note: string | null } | null;
 }
 interface QueuePayload {
   connected: {
@@ -566,7 +576,9 @@ function Inner() {
     if (!token) return;
     apiFetch<QueuePayload>('/content/posts', { token })
       .then((q) => setPostAlerts(q.posts.filter(
-        (p) => p.status === 'failed' || p.status === 'expired' || p.blockers.length > 0,
+        // A client waiting on an answer counts the same as a failed post: both
+        // are things somebody has to touch before the week moves on.
+        (p) => p.status === 'failed' || p.status === 'expired' || p.blockers.length > 0 || Boolean(p.held),
       ).length))
       .catch(() => setPostAlerts(0));
   }, [token, queue]);
@@ -673,6 +685,25 @@ function Inner() {
     setQueueBusy(true); setPostErr(null);
     try {
       await apiFetch(`/content/posts/${id}/when`, { method: 'PATCH', token, body: { scheduledAt: wallToInstantISO(`${dayStr}T${hm}`) } });
+      await loadQueue();
+    } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
+    finally { setQueueBusy(false); }
+  }
+
+  /**
+   * Mark a client's request handled, which is what takes the post out of the red.
+   *
+   * Deliberately its own button rather than a side effect of replying: the
+   * team writing "vâng em sửa ngay" is an answer, not the fix, and a queue
+   * that went green on it would hand the post back to the clock with the
+   * client's correction still unmade. Pressing this says the work is done.
+   */
+  async function clearHold(id: string) {
+    setQueueBusy(true); setPostErr(null);
+    try {
+      await apiFetch('/content/chat/state', {
+        method: 'PATCH', token, body: { subject: `post:${id}`, resolved: true },
+      });
       await loadQueue();
     } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
     finally { setQueueBusy(false); }
@@ -2402,6 +2433,78 @@ function Inner() {
                 }}>{postErr}</div>
               )}
 
+              {/* ---- what the client is waiting on ----
+                   Above the composer and above the calendar, because it is the
+                   only thing on this screen with a person on the other end of
+                   it. A red square somewhere in a month grid is easy to scroll
+                   past; a list at the top with the words they typed is not. */}
+              {(() => {
+                const held = (queue?.posts ?? []).filter((p) => p.held);
+                if (!held.length) return null;
+                const isTeam = Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN';
+                return (
+                  <div style={{
+                    ...ui.card, marginBottom: 14, padding: 14,
+                    borderColor: '#ef4444', background: 'var(--c450a0a)',
+                  }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cfecaca)', marginBottom: 3 }}>
+                      🔴 {held.length} {T('bài khách đang yêu cầu sửa', held.length === 1 ? 'post the client asked to change' : 'posts the client asked to change')}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--cfca5a5)', lineHeight: 1.55, marginBottom: 9 }}>
+                      {T('Những bài này DỪNG lại, không tự đăng, cho tới khi bấm "Đã xử lý xong". Trả lời khách thôi thì bài vẫn đỏ — trả lời không phải là đã sửa.',
+                         'These posts are STOPPED — they will not publish until somebody presses “Handled”. Replying alone leaves them red: a reply is not a fix.')}
+                    </div>
+                    {held.map((p) => (
+                      <div key={p.id} style={{
+                        padding: '9px 11px', borderRadius: 9, marginBottom: 7,
+                        background: 'var(--c0f172a)', border: '1px solid #7f1d1d',
+                      }}>
+                        <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', marginBottom: 3 }}>
+                          {fmtInTz(new Date(p.scheduledAt), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          {p.held?.by ? ` · ${p.held.by}` : ''}
+                        </div>
+                        <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                          {p.held?.note
+                            ? `“${p.held.note}”`
+                            : T('Khách có yêu cầu trên bài này — mở phần trao đổi để xem.',
+                                'The client wrote on this post — open the conversation to read it.')}
+                        </div>
+                        <div style={{ display: 'flex', gap: 7, marginTop: 8, flexWrap: 'wrap' }}>
+                          <button
+                            onClick={() => editPost(p.id)}
+                            style={{
+                              minHeight: 34, padding: '7px 12px', borderRadius: 8, cursor: 'pointer',
+                              border: '1px solid var(--c475569)', background: 'transparent',
+                              color: 'var(--ce2e8f0)', fontSize: 12.5, fontWeight: 600,
+                            }}
+                          >
+                            ✎ {T('Mở bài để sửa', 'Open the post')}
+                          </button>
+                          {isTeam && (
+                            <button
+                              onClick={() => clearHold(p.id)}
+                              disabled={queueBusy}
+                              style={{
+                                minHeight: 34, padding: '7px 12px', borderRadius: 8,
+                                cursor: queueBusy ? 'not-allowed' : 'pointer', border: 'none',
+                                background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 700,
+                              }}
+                            >
+                              ✓ {T('Đã xử lý xong', 'Handled')}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {!(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
+                      <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', lineHeight: 1.5 }}>
+                        {T('Đội Lumio sẽ xử lý và đóng yêu cầu này.', 'The Lumio team closes these off.')}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* ---- the composer ---- */}
               {postDraft && (() => {
               const kit = queue?.postKit;
@@ -2817,13 +2920,15 @@ function Inner() {
                       expired: { fg: '#f59e0b', text: T('Quá hạn', 'Missed') },
                       cancelled: { fg: 'var(--c64748b)', text: T('Đã huỷ', 'Cancelled') },
                     };
-                    const st = S[live.status] ?? S.draft;
+                    const st = live.held
+                      ? { fg: '#ef4444', text: T('Khách yêu cầu sửa', 'Change requested') }
+                      : S[live.status] ?? S.draft;
                     return (
                       <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--c334155)' }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
                           <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{T('Trạng thái', 'Status')}</span>
                           <span style={{ fontSize: 11.5, padding: '2px 9px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg, fontWeight: 600 }}>
-                            {st.text}
+                            {live.held ? '🔴 ' : ''}{st.text}
                           </span>
                           {live.attempts > 0 && (
                             <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
@@ -2831,6 +2936,39 @@ function Inner() {
                             </span>
                           )}
                         </div>
+
+                        {/* What the client actually asked for, sitting next to
+                            the box where the fix gets typed. Saving the post
+                            clears the red on its own — an edit IS the answer —
+                            so the button below is for the requests that were
+                            handled somewhere else: a phone call, a new photo,
+                            or a question that turned out to need no change. */}
+                        {live.held && (
+                          <div style={{ padding: '10px 12px', borderRadius: 8, marginBottom: 9, background: 'var(--c450a0a)', border: '1px solid #ef4444' }}>
+                            <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', marginBottom: 3 }}>
+                              {live.held.by ? `${live.held.by} · ` : ''}
+                              {T('bài này đang dừng, không tự đăng', 'this post is stopped and will not publish')}
+                            </div>
+                            {live.held.note && (
+                              <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                                “{live.held.note}”
+                              </div>
+                            )}
+                            {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
+                              <button
+                                onClick={() => clearHold(live.id)}
+                                disabled={queueBusy}
+                                style={{
+                                  marginTop: 8, minHeight: 34, padding: '7px 12px', borderRadius: 8,
+                                  cursor: queueBusy ? 'not-allowed' : 'pointer', border: 'none',
+                                  background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 700,
+                                }}
+                              >
+                                ✓ {T('Đã xử lý xong — cho bài chạy lại', 'Handled — let it publish')}
+                              </button>
+                            )}
+                          </div>
+                        )}
 
                         {/* The reason, verbatim from Meta. Paraphrasing it would
                             hide the one string that says what to fix. */}
@@ -3093,22 +3231,58 @@ function Inner() {
                   expired: { fg: '#f59e0b', text: T('Quá hạn', 'Missed') },
                   cancelled: { fg: 'var(--c64748b)', text: T('Đã huỷ', 'Cancelled') },
                 };
-                const st = S[p.status] ?? S.draft;
+                // The client's open request replaces the status word rather
+                // than sitting beside it. "Đã đặt lịch · khách yêu cầu sửa"
+                // reads as scheduled-and-fine at a glance, which is the exact
+                // misreading this whole feature exists to stop.
+                const st = p.held
+                  ? { fg: '#ef4444', text: T('Khách yêu cầu sửa', 'Change requested') }
+                  : S[p.status] ?? S.draft;
                 const when = new Date(p.scheduledAt);
                 const open = p.status === 'draft' || p.status === 'scheduled' || p.status === 'failed' || p.status === 'expired';
                 return (
-                  <div key={p.id} style={{ ...ui.card, marginBottom: 10, padding: 14, borderColor: p.blockers.length ? '#f59e0b' : 'var(--c334155)' }}>
+                  <div key={p.id} style={{ ...ui.card, marginBottom: 10, padding: 14, borderColor: p.held ? '#ef4444' : p.blockers.length ? '#f59e0b' : 'var(--c334155)' }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
                         {fmtInTz(when, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                       </span>
-                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg }}>{st.text}</span>
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg }}>{p.held ? '🔴 ' : ''}{st.text}</span>
                       <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
                         {p.channels.map((c) => (c === 'facebook' ? 'Facebook' : 'Instagram')).join(' + ')}
                         {p.shape === 'carousel' && ` · ${p.media.length} ${T('ảnh/video', 'items')}`}
                         {p.shape === 'video' && ' · video'}
                       </span>
                     </div>
+
+                    {p.held && (
+                      <div style={{
+                        marginBottom: 8, padding: '9px 11px', borderRadius: 9,
+                        background: 'var(--c450a0a)', border: '1px solid #7f1d1d',
+                      }}>
+                        <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', marginBottom: 3 }}>
+                          {p.held.by ? `${p.held.by} · ` : ''}
+                          {T('yêu cầu sửa — bài đang dừng, chưa đăng', 'asked for a change — this post is stopped')}
+                        </div>
+                        {p.held.note && (
+                          <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                            “{p.held.note}”
+                          </div>
+                        )}
+                        {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
+                          <button
+                            onClick={() => clearHold(p.id)}
+                            disabled={queueBusy}
+                            style={{
+                              marginTop: 8, minHeight: 34, padding: '7px 12px', borderRadius: 8,
+                              cursor: queueBusy ? 'not-allowed' : 'pointer', border: 'none',
+                              background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 700,
+                            }}
+                          >
+                            ✓ {T('Đã xử lý xong', 'Handled')}
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     <div style={{ display: 'flex', gap: 10 }}>
                       {/* The files were cleaned up after the post had been live

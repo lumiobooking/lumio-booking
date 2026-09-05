@@ -47,6 +47,7 @@ const SUBJECT_LABEL = (s: string): string => {
   const w = /^week:(\d{4})-W(\d{2})$/.exec(s);
   if (w) return `Kế hoạch tuần ${Number(w[2])}/${w[1]}`;
   if (s.startsWith('idea:')) return 'Một ý tưởng nội dung';
+  if (s.startsWith('post:')) return 'Một bài đã lên lịch';
   return s;
 };
 
@@ -244,8 +245,24 @@ export function ContentInbox({ token }: { token: string | null }) {
                   fontSize: 12.5, fontWeight: 600,
                   border: '1px solid #22c55e', background: 'transparent', color: '#22c55e',
                 }}
-              >{open.resolvedAt ? 'Mở lại' : '✓ Đóng'}</button>
+              >{open.resolvedAt
+                ? 'Mở lại'
+                : open.subject.startsWith('post:') ? '✓ Đã xử lý — cho bài chạy' : '✓ Đóng'}</button>
             </div>
+
+            {/* On a post thread, closing is not filing paperwork: the post is
+                sitting still until somebody presses it. Saying so here is the
+                difference between a queue that drains and one that silently
+                stops publishing. */}
+            {open.subject.startsWith('post:') && !open.resolvedAt && (
+              <div style={{
+                padding: '7px 12px', fontSize: 11.5, lineHeight: 1.5,
+                color: 'var(--cfca5a5)', background: 'var(--c450a0a)',
+                borderBottom: '1px solid var(--c334155)',
+              }}>
+                Bài này đang DỪNG, không tự đăng. Trả lời thôi thì bài vẫn dừng — bấm nút trên khi đã sửa xong.
+              </div>
+            )}
 
             <div style={{ maxHeight: 380, overflowY: 'auto', padding: '12px 14px' }}>
               {msgs.length === 0 && (

@@ -41,6 +41,28 @@ export interface StudioPost {
   scheduledAt: string;
   status: string;
   blockers: string[];
+  /**
+   * The client asked for something on this post and nobody has said it is done.
+   *
+   * Red on every view, and the post does not publish while it is set. There is
+   * no separate "urgent" flag: the colour and the hold are the same field, so
+   * the calendar cannot show a colour the scheduler does not honour.
+   */
+  held?: { at: string; by: string | null; note: string | null } | null;
+}
+
+/**
+ * The three colours a card can be, in the order they win.
+ *
+ * Red first, because it is the only one that means a person is waiting. Amber
+ * — the post cannot go out as it stands — is the team's own problem and can
+ * wait behind the client's. Green is history.
+ */
+export function postTone(p: { held?: unknown; blockers: string[]; status: string }): 'held' | 'blocked' | 'posted' | 'plain' {
+  if (p.held) return 'held';
+  if (p.blockers.length) return 'blocked';
+  if (p.status === 'posted') return 'posted';
+  return 'plain';
 }
 
 /** Where Facebook and Instagram cut a caption before "… See more". */
@@ -161,7 +183,9 @@ export function MonthCalendar({
               <div style={{ fontSize: 11, color: k === today ? 'var(--ca5b4fc)' : 'var(--c64748b)', fontWeight: k === today ? 700 : 500 }}>
                 {d.getDate()}
               </div>
-              {mine.map((p) => (
+              {mine.map((p) => {
+                const tone = postTone(p);
+                return (
                 <div
                   key={p.id}
                   draggable
@@ -184,20 +208,32 @@ export function MonthCalendar({
                   }}
                   onTouchEnd={() => { if (press.current) clearTimeout(press.current); }}
                   onTouchMove={() => { if (press.current) clearTimeout(press.current); }}
-                  title={p.status === 'posted'
-                    ? `${T('Đã đăng', 'Published')} — ${p.message.slice(0, 100)}`
-                    : `${p.message.slice(0, 100)}\n${T('Chuột phải để xoá', 'Right-click to delete')}`}
+                  title={p.held
+                    ? `${T('Khách yêu cầu sửa', 'Client asked for a change')}${p.held.by ? ` — ${p.held.by}` : ''}\n${(p.held.note ?? '').slice(0, 200)}\n${T('Bấm vào bài để xử lý', 'Open the post to deal with it')}`
+                    : p.status === 'posted'
+                      ? `${T('Đã đăng', 'Published')} — ${p.message.slice(0, 100)}`
+                      : `${p.message.slice(0, 100)}\n${T('Chuột phải để xoá', 'Right-click to delete')}`}
                   style={{
                     marginTop: 3, padding: '3px 5px', borderRadius: 5, cursor: 'grab',
-                    background: p.blockers.length ? 'var(--c451a03)' : p.status === 'posted' ? 'var(--c14532d)' : 'var(--c1e293b)',
-                    border: `1px solid ${p.blockers.length ? '#f59e0b' : p.status === 'posted' ? '#22c55e' : 'var(--c334155)'}`,
-                    fontSize: 10.5, lineHeight: 1.3, color: 'var(--ce2e8f0)',
+                    // Red wins over every other colour: it is the only one with
+                    // a person on the other end of it.
+                    background: tone === 'held' ? 'var(--c450a0a)'
+                      : tone === 'blocked' ? 'var(--c451a03)'
+                        : tone === 'posted' ? 'var(--c14532d)' : 'var(--c1e293b)',
+                    border: `1px solid ${tone === 'held' ? '#ef4444'
+                      : tone === 'blocked' ? '#f59e0b'
+                        : tone === 'posted' ? '#22c55e' : 'var(--c334155)'}`,
+                    fontSize: 10.5, lineHeight: 1.3,
+                    color: tone === 'held' ? 'var(--cfecaca)' : 'var(--ce2e8f0)',
+                    fontWeight: tone === 'held' ? 700 : 400,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}
                 >
+                  {tone === 'held' && '🔴 '}
                   {p.channels.includes('instagram') ? '◈' : '▣'} {hourInTz(p.scheduledAt)}h {p.message.slice(0, 18) || T('(ảnh)', '(media)')}
                 </div>
-              ))}
+                );
+              })}
             </div>
           );
         })}
@@ -274,10 +310,12 @@ export function IgGrid({ posts, onPick, vi }: { posts: StudioPost[]; onPick: (id
             <button
               key={p.id}
               onClick={() => onPick(p.id)}
-              title={`${fmtInTz(p.scheduledAt, { day: 'numeric', month: 'short', year: 'numeric' })} · ${p.message.slice(0, 80)}`}
+              title={`${fmtInTz(p.scheduledAt, { day: 'numeric', month: 'short', year: 'numeric' })} · ${p.message.slice(0, 80)}`
+                + (p.held ? `\n🔴 ${T('Khách yêu cầu sửa', 'Client asked for a change')}: ${(p.held.note ?? '').slice(0, 160)}` : '')}
               style={{
                 position: 'relative', aspectRatio: '1 / 1', padding: 0, cursor: 'pointer',
-                border: p.blockers.length ? '2px solid #f59e0b' : '1px solid var(--c1e293b)',
+                border: p.held ? '2px solid #ef4444'
+                  : p.blockers.length ? '2px solid #f59e0b' : '1px solid var(--c1e293b)',
                 borderRadius: 2, overflow: 'hidden', background: 'var(--c1e293b)',
               }}
             >
@@ -294,6 +332,13 @@ export function IgGrid({ posts, onPick, vi }: { posts: StudioPost[]; onPick: (id
               )}
               {p.media.length === 1 && first?.kind === 'video' && (
                 <span style={corner}>▶</span>
+              )}
+              {/* The ring alone is easy to miss at 150px; the dot is not. */}
+              {p.held && (
+                <span style={{
+                  position: 'absolute', right: 4, bottom: 4, width: 10, height: 10, borderRadius: 10,
+                  background: '#ef4444', boxShadow: '0 0 0 2px rgba(0,0,0,.45)',
+                }} />
               )}
               {p.status !== 'posted' && (
                 <span style={{

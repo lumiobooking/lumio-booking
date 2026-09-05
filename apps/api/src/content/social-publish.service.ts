@@ -20,6 +20,17 @@ interface PostRow {
   scheduledAt: Date; status: string; attempts: number; lastError: string | null;
   results: unknown; postedAt: Date | null; createdByName: string | null; ideaId: string | null;
   mediaPurgedAt?: Date | null;
+  /** An open client request nobody has closed out. Red on the calendar. */
+  heldAt?: Date | null;
+}
+
+/** The client's own words, carried to the screen that has to act on them. */
+export interface HoldInfo {
+  at: Date;
+  /** Who asked. Null when the row predates the name being stored. */
+  by: string | null;
+  /** What they asked for, trimmed to what fits on a card. */
+  note: string | null;
 }
 
 /**
@@ -96,6 +107,62 @@ export class SocialPublishService {
       updateMany: (a: unknown) => Promise<unknown>;
       deleteMany: (a: unknown) => Promise<unknown>;
     }>).scheduledPost;
+  }
+
+  /** Loose access: the conversation models, present on deploy only. */
+  private get messages() {
+    return (this.prisma as unknown as Record<string, {
+      findMany: (a: unknown) => Promise<unknown>;
+    }>).contentMessage;
+  }
+
+  private get threads() {
+    return (this.prisma as unknown as Record<string, {
+      updateMany: (a: unknown) => Promise<unknown>;
+    }>).contentThread;
+  }
+
+  /**
+   * The open requests behind the held posts, in the client's own words.
+   *
+   * One query for the whole month rather than one per post. A red card that
+   * cannot say WHAT was asked sends the reader hunting through the inbox for
+   * it, which is how the red gets ignored.
+   */
+  private async holdsFor(tenantId: string, postIds: string[]): Promise<Map<string, HoldInfo>> {
+    const out = new Map<string, HoldInfo>();
+    if (!postIds.length) return out;
+    const rows = await this.messages?.findMany({
+      where: { tenantId, side: 'salon', subject: { in: postIds.map((id) => `post:${id}`) } },
+      orderBy: { createdAt: 'desc' },
+      take: 400,
+      select: { subject: true, authorName: true, body: true, createdAt: true },
+    }).catch(() => []) as { subject: string; authorName: string | null; body: string | null; createdAt: Date }[];
+    // Newest first, so the first row seen for a post is the latest thing asked.
+    for (const r of rows ?? []) {
+      const id = String(r.subject ?? '').slice('post:'.length);
+      if (!id || out.has(id)) continue;
+      out.set(id, {
+        at: r.createdAt,
+        by: r.authorName ?? null,
+        note: (r.body ?? '').trim().slice(0, 400) || null,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Close the conversation attached to a post.
+   *
+   * Called wherever the post itself leaves the red, so the calendar and the
+   * team inbox cannot end up saying different things about the same request.
+   * A no-op when there was never a thread.
+   */
+  private async closeThread(tenantId: string, subject: string, byName: string | null) {
+    await this.threads?.updateMany({
+      where: { tenantId, subject, resolvedAt: null },
+      data: { resolvedAt: new Date(), resolvedByName: byName ?? 'Lumio' },
+    }).catch(() => undefined);
   }
 
   /** The one page this tenant publishes to, with its live token. */
@@ -291,6 +358,10 @@ export class SocialPublishService {
      */
     const permissionFixed = missingScopes !== null && missingScopes.length === 0;
 
+    // Only the held ones are looked up: a month of green posts must not cost a
+    // second query over every conversation the salon ever had.
+    const holds = await this.holdsFor(tenantId, (rows ?? []).filter((r) => r.heldAt).map((r) => r.id));
+
     const posts = (rows ?? []).map((r) => {
       const media = this.mediaOf(r);
       const channels = this.channelsOf(r);
@@ -323,6 +394,18 @@ export class SocialPublishService {
         // Only meaningful while it is still waiting; a posted row's page state
         // says nothing about what already went out.
         blockers: r.status === 'draft' || r.status === 'scheduled' ? plan.problems : [],
+        /**
+         * The client asked for something and nobody has said it is done.
+         *
+         * This is the red on the calendar, and it is also the reason the post
+         * is not publishing — one field for both, so the colour can never
+         * promise something the scheduler does not honour.
+         */
+        held: r.heldAt ? {
+          at: r.heldAt,
+          by: holds.get(r.id)?.by ?? null,
+          note: holds.get(r.id)?.note ?? null,
+        } : null,
       };
     });
 
@@ -387,6 +470,10 @@ export class SocialPublishService {
       // what they approved is not what will publish now, and the team acting
       // on the post IS the answer the hold was waiting for.
       await this.posts?.update({ where: { id: owned.id }, data: { ...data, attempts: 0, lastError: null, approvedAt: null, approvedByName: null, heldAt: null } });
+      // Out of the red, so the conversation that put it there is closed with
+      // it. Leaving the thread open would keep the team inbox nagging about a
+      // request that has already been carried out.
+      await this.closeThread(tenantId, `post:${owned.id}`, user.email ?? null);
       return { ok: true, id: owned.id };
     }
 

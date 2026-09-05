@@ -20,6 +20,7 @@ import { OnboardingReport } from '../../../components/OnboardingReport';
 import { Panel } from '../../../components/Panel';
 import { CardHead } from '../../../components/CardHead';
 import { isNorthAmerica } from '../../../lib/markets';
+import { checkPost, applyFix } from '../../../lib/post-check';
 import { uiMarket } from '../../../lib/ui-market';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -202,6 +203,12 @@ interface Plan {
  */
 type PlanEnvelope = Plan & { en?: Plan };
 
+/** What a blank profile field is called on screen, so "cannot check" names the
+ *  thing somebody has to go and fill in. */
+const MISSING_LABEL: Record<string, string> = {
+  phone: 'số điện thoại', address: 'địa chỉ', instagram: 'Instagram', bookingUrl: 'link đặt lịch',
+};
+
 type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience' | 'ads' | 'start' | 'map' | 'queue';
 
 /** One post waiting to go out on the salon's own Page / Instagram. */
@@ -240,6 +247,20 @@ interface QueuePayload {
   crowding: { id: string; minutesApart: number; message: string }[];
   /** Lumio support session: may delete published rows too. */
   canDeletePosted?: boolean;
+  /** What a new post opens with, and the facts a draft is checked against. */
+  postKit?: PostKit;
+}
+
+interface ShopFacts {
+  name: string; phone?: string | null; address?: string | null;
+  city?: string | null; instagram?: string | null; bookingUrl?: string | null;
+}
+interface PostKit {
+  contactBlock: string;
+  hashtags: string[];
+  starter: string;
+  missing: ('phone' | 'address' | 'instagram' | 'bookingUrl')[];
+  shop: ShopFacts;
 }
 
 /** One icon per kind of job, so the week reads at a glance on a phone. */
@@ -473,6 +494,10 @@ function Inner() {
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [showPosted, setShowPosted] = useState(true);
   const [postErr, setPostErr] = useState<string | null>(null);
+  // Set only when a person has looked at the warnings and said "post it anyway"
+  // — a shop really can mention a partner's number. Cleared whenever the draft
+  // closes, so the next post starts guarded again.
+  const [contactOverride, setContactOverride] = useState(false);
   /**
    * How many queued posts need a human.
    *
@@ -2297,7 +2322,13 @@ function Inner() {
                   <button
                     onClick={() => {
                       const local = wallTomorrowAt('10:00');
-                      setPostDraft({ channels: ['facebook'], message: '', media: [], at: local });
+                      // The post opens already carrying this salon's contact
+                      // block and hashtags. Nobody types an address, so nobody
+                      // types the wrong salon's address — which is how the
+                      // Kerrville shop's post came to give a Huntington Beach
+                      // phone number.
+                      setContactOverride(false);
+                      setPostDraft({ channels: ['facebook'], message: queue?.postKit?.starter ?? '', media: [], at: local });
                     }}
                     style={{
                       marginLeft: (Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') ? undefined : 'auto', minHeight: 38, padding: '8px 14px', borderRadius: 9,
@@ -2371,7 +2402,11 @@ function Inner() {
               )}
 
               {/* ---- the composer ---- */}
-              {postDraft && (
+              {postDraft && (() => {
+              const kit = queue?.postKit;
+              const check = kit ? checkPost(postDraft.message, kit.shop) : { findings: [], unchecked: [] };
+              const blocked = check.findings.length > 0 && !contactOverride;
+              return (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#6366f1' }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
                     {postDraft.id ? T('Sửa bài', 'Edit post') : T('Bài mới', 'New post')}
@@ -2608,23 +2643,106 @@ function Inner() {
                   {/* Hidden once it has published: the server refuses the save,
                       and a button whose only outcome is an error message is a
                       button that should not be there. */}
+                  {/* ---- what in this draft is not this salon's ----
+                      One writer, eight salons, eight tabs. Last week's post
+                      from another shop gets copied, the caption rewritten, and
+                      the contact block left behind — so the post goes out on
+                      this Page telling these customers to ring a shop two
+                      hundred miles away. This is the gate that catches it.
+
+                      It blocks rather than warns. A yellow banner that lets the
+                      button work is read for two weeks and then never again,
+                      and this is a public, permanent mistake. The override
+                      exists because a shop really can name a partner's number —
+                      but somebody has to say so on purpose. */}
+                  {kit && check.findings.length > 0 && (
+                    <div style={{
+                      marginTop: 12, padding: '12px 13px', borderRadius: 10,
+                      background: 'rgba(239,68,68,.10)', border: '1px solid #ef4444',
+                    }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: '#fca5a5' }}>
+                        ⚠ {check.findings.length} {T('thông tin không thuộc về', 'details that do not belong to')} {kit.shop.name}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 8 }}>
+                        {check.findings.map((f, i) => (
+                          <div key={i} style={{
+                            display: 'flex', gap: 9, alignItems: 'flex-start', padding: '7px 0',
+                            borderTop: i ? '1px solid rgba(239,68,68,.25)' : 'none',
+                          }}>
+                            <code style={{
+                              fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12,
+                              background: 'rgba(239,68,68,.16)', color: '#fecaca',
+                              borderRadius: 5, padding: '1px 6px', flexShrink: 0, maxWidth: 220,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>{f.found}</code>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+                              {f.expected
+                                ? <>{T('nên là', 'should be')} <b style={{ color: '#fecaca' }}>{f.expected}</b></>
+                                : T('không khớp hồ sơ tiệm này', 'does not match this salon')}
+                            </span>
+                            {f.expected && (
+                              <button
+                                onClick={() => setPostDraft({ ...postDraft, message: applyFix(postDraft.message, f) })}
+                                style={{
+                                  background: 'transparent', border: '1px solid #ef4444', color: '#fca5a5',
+                                  borderRadius: 7, padding: '3px 9px', fontSize: 11.5, cursor: 'pointer',
+                                  whiteSpace: 'nowrap', fontFamily: 'inherit',
+                                }}
+                              >{T('Sửa', 'Fix')}</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {!contactOverride && (
+                        <div style={{ marginTop: 10, display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button
+                            onClick={() => setContactOverride(true)}
+                            style={{
+                              background: 'transparent', border: '1px solid #f59e0b', color: '#fcd34d',
+                              borderRadius: 7, padding: '4px 10px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit',
+                            }}
+                          >{T('Tôi biết, vẫn đăng', 'I know — post anyway')}</button>
+                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
+                            {T('bài sẽ ghi tên người mở khoá', 'the post records who unlocked it')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* A check that cannot run must say so. Silence here reads
+                      exactly like "nothing wrong", and that is how a salon with
+                      no phone number on file publishes a rival's for a year. */}
+                  {kit && kit.missing.length > 0 && (
+                    <div style={{
+                      marginTop: 10, padding: '10px 12px', borderRadius: 10,
+                      background: 'rgba(245,158,11,.08)', border: '1px solid #f59e0b',
+                      fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6,
+                    }}>
+                      {T('Chưa đối chiếu được', 'Cannot check')}: <b style={{ color: '#fcd34d' }}>{kit.missing.map((m) => MISSING_LABEL[m]).join(', ')}</b>
+                      {' — '}{T('hồ sơ tiệm còn trống mục này, nên phần đó không được kiểm.',
+                                'the salon profile is blank there, so that part is not checked.')}
+                    </div>
+                  )}
+
                   <div style={{
                     display: postDraft.id && queue?.posts.find((x) => x.id === postDraft.id)?.status === 'posted' ? 'none' : 'flex',
                     gap: 9, flexWrap: 'wrap', marginTop: 14,
                   }}>
                     <button
                       onClick={() => savePost('scheduled', postWhen === 'now')}
-                      disabled={queueBusy || (!postDraft.message.trim() && !postDraft.media.length)}
+                      disabled={queueBusy || blocked || (!postDraft.message.trim() && !postDraft.media.length)}
                       style={{
                         flex: '1 1 160px', minHeight: 44, borderRadius: 9, border: 'none', cursor: 'pointer',
-                        background: (postDraft.message.trim() || postDraft.media.length) ? '#22c55e' : 'var(--c334155)',
-                        color: (postDraft.message.trim() || postDraft.media.length) ? '#052e16' : 'var(--c64748b)',
+                        background: blocked ? 'var(--c334155)' : (postDraft.message.trim() || postDraft.media.length) ? '#22c55e' : 'var(--c334155)',
+                        color: blocked ? 'var(--c64748b)' : (postDraft.message.trim() || postDraft.media.length) ? '#052e16' : 'var(--c64748b)',
                         fontSize: 14, fontWeight: 700,
                       }}
                     >
                       {queueBusy
                         ? (postWhen === 'now' ? T('Đang đăng…', 'Publishing…') : T('Đang lưu…', 'Saving…'))
-                        : postWhen === 'now' ? T('🚀 Đăng lên ngay', '🚀 Publish now') : T('✓ Đặt lịch đăng', '✓ Schedule it')}
+                        : blocked ? T('Đang bị chặn — xem cảnh báo ở trên', 'Blocked — see the warnings above')
+                          : postWhen === 'now' ? T('🚀 Đăng lên ngay', '🚀 Publish now') : T('✓ Đặt lịch đăng', '✓ Schedule it')}
                     </button>
                     <button
                       onClick={() => savePost('draft')}
@@ -2637,7 +2755,7 @@ function Inner() {
                       {T('Lưu nháp', 'Save draft')}
                     </button>
                     <button
-                      onClick={() => { setPostDraft(null); setPostErr(null); }}
+                      onClick={() => { setPostDraft(null); setPostErr(null); setContactOverride(false); }}
                       style={{
                         minHeight: 44, padding: '0 16px', borderRadius: 9, cursor: 'pointer',
                         border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)', fontSize: 13.5,
@@ -2827,7 +2945,8 @@ function Inner() {
                     );
                   })()}
                 </div>
-              )}
+              );
+              })()}
 
               {/* ---- three views over one queue ----
                    A list is fine for three posts and useless for thirty.

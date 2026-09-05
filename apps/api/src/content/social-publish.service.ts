@@ -9,6 +9,8 @@ import {
 } from './social-publish';
 import { planPurge, storagePathOf, DEFAULT_RETENTION_DAYS, type RetentionPost } from './media-retention';
 import { MEDIA_STORE, type MediaStore } from './media-store';
+import { buildPostKit, type ShopFacts } from './post-kit';
+import { publicWebBase } from '../common/public-url.util';
 
 const GRAPH = 'https://graph.facebook.com/' + (process.env.META_GRAPH_VERSION || 'v21.0');
 
@@ -97,6 +99,47 @@ export class SocialPublishService {
   }
 
   /** The one page this tenant publishes to, with its live token. */
+  /**
+   * The facts a post about THIS salon may contain, and the block it opens with.
+   *
+   * Gathered here so a new post starts already carrying the right address,
+   * phone, handle and link — the writer types the caption and nothing else. One
+   * person writes for eight salons with eight tabs open; the way this goes
+   * wrong is copying last week's post from another shop and rewriting only the
+   * words above the contact block. Building that block removes the chance to
+   * get it wrong, and shipping the facts alongside lets the screen name
+   * anything typed that is not ours.
+   */
+  private async postKitFor(tenantId: string, igUsername: string | null) {
+    const [t, extraRow, profileRow] = await Promise.all([
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { name: true, slug: true, city: true, market: true, businessType: true } as never,
+      }).catch(() => null),
+      this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }).catch(() => null),
+      this.prisma.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } }).catch(() => null),
+    ]);
+    const tenant = (t ?? {}) as { name?: string; slug?: string; city?: string | null; market?: string; businessType?: string };
+    const extra = (extraRow?.value ?? {}) as { address?: string; contactPhone?: string };
+    const profile = (profileRow?.value ?? {}) as { trade?: string };
+
+    const shop: ShopFacts = {
+      name: tenant.name ?? '',
+      // The number a customer rings is the one on the shop record, not the one
+      // Lumio bills to.
+      phone: (extra as { contactPhone?: string }).contactPhone ?? null,
+      address: extra.address ?? null,
+      city: tenant.city ?? null,
+      instagram: igUsername,
+      bookingUrl: tenant.slug ? `${publicWebBase()}/book/${tenant.slug}` : null,
+    };
+    // The declared trade wins over the enum default: `businessType` is SALON
+    // for every shop that never said otherwise, and generic salon hashtags on a
+    // lash studio's post reach the wrong crowd.
+    const industry = profile.trade || tenant.businessType || 'SALON';
+    return { shop, kit: buildPostKit(industry, tenant.market, shop) };
+  }
+
   private async pageFor(tenantId: string): Promise<{ page: ConnectedPage; token: string } | null> {
     // Named `pg`, not `row`, deliberately: everywhere else in this file `row`
     // means a queued POST, and the one thing that must never happen is a page
@@ -278,7 +321,13 @@ export class SocialPublishService {
     // crowding never stops a post, and mixing the two would train the salon to
     // ignore the ones that do.
     const live = posts.filter((p) => p.status === 'draft' || p.status === 'scheduled');
+    const { shop, kit } = await this.postKitFor(tenantId, conn?.page.igUsername ?? null);
     return {
+      // What a new post opens with, and the facts the screen checks a draft
+      // against. `shop` names only THIS salon: the question a draft has to
+      // answer is "is this ours?", never "whose is it?", and the second one
+      // would put another client's details on this client's screen.
+      postKit: { ...kit, shop },
       connected: conn ? {
         pageName: conn.page.pageName, igUsername: conn.page.igUsername,
         hasInstagram: Boolean(conn.page.igId), enabled: conn.page.enabled,

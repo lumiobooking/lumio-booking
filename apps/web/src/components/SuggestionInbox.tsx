@@ -42,9 +42,11 @@ export interface TeamSuggestion {
   createdAt: string;
   status: 'sent' | 'done' | 'skipped' | 'used';
   doneAt: string | null;
-  media: { url: string; kind: 'image' | 'video' }[];
+  media: { url: string; kind: 'image' | 'video'; driveUrl?: string }[];
 }
 export interface TeamFeed {
+  /** The salon's folder in the Drive archive, when the archive is on. */
+  driveFolderUrl?: string | null;
   ready: TeamSuggestion[];
   waitingOnShop: TeamSuggestion[];
   recent: TeamSuggestion[];
@@ -102,6 +104,13 @@ export function SuggestionInbox({
             {feed.ready.length} {T('tiệm đã gửi file — chờ mình dựng', 'with files, waiting on us')}
           </span>
         )}
+        {feed.driveFolderUrl && (
+          <a href={feed.driveFolderUrl} target="_blank" rel="noopener noreferrer" style={{
+            marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: 'var(--ca5b4fc)', textDecoration: 'none',
+          }}>
+            📁 {T('Folder Drive của tiệm', 'Shop’s Drive folder')} →
+          </a>
+        )}
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.55, marginBottom: 10 }}>
         {T('Tiệm quay xong và bấm gửi ngay trên thẻ đề xuất, nên file nằm cạnh đúng việc đã hỏi.',
@@ -145,7 +154,7 @@ export function SuggestionInbox({
                   key={i} href={m.url} target="_blank" rel="noopener noreferrer"
                   title={T('Mở file gốc', 'Open the original')}
                   style={{
-                    width: 62, height: 62, borderRadius: 8, overflow: 'hidden',
+                    width: 62, height: 62, borderRadius: 8, overflow: 'hidden', position: 'relative',
                     border: '1px solid var(--c334155)', display: 'block', flex: '0 0 auto',
                     background: 'var(--c1e293b)',
                   }}
@@ -155,6 +164,15 @@ export function SuggestionInbox({
                     ? <video src={m.url} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     // eslint-disable-next-line @next/next/no-img-element
                     : <img src={m.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                  {/* A small corner mark once the archive copy exists. Its
+                      absence is information too: the copy has not happened yet
+                      and the sweep will get to it. */}
+                  {m.driveUrl && (
+                    <span title="Đã lưu lên Google Drive" style={{
+                      position: 'absolute', right: 3, bottom: 3, fontSize: 10, lineHeight: 1,
+                      background: 'rgba(0,0,0,.6)', color: '#fff', borderRadius: 4, padding: '2px 3px',
+                    }}>📁</span>
+                  )}
                 </a>
               ))}
             </div>

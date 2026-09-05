@@ -183,7 +183,7 @@ export interface ClientSuggestion {
   /** The reference to look at, when the staff member attached one. */
   refUrl: string | null;
   refThumbUrl: string | null;
-  media: { url: string; kind: 'image' | 'video' }[];
+  media: MediaRef[];
 }
 
 /** Only a real http(s) address survives into anything the browser will render. */
@@ -210,17 +210,27 @@ export function suggestionStatus(raw: unknown): SuggestionState {
   return s === 'done' || s === 'skipped' || s === 'used' ? s : 'sent';
 }
 
-/** Files the shop sent back, read defensively out of a JSON column. */
-export function mediaOf(raw: unknown): { url: string; kind: 'image' | 'video' }[] {
+export interface MediaRef { url: string; kind: 'image' | 'video'; driveUrl?: string }
+
+/**
+ * Files the shop sent back, read defensively out of a JSON column.
+ *
+ * `driveUrl` is the archive copy, written later by the server (see the
+ * Drive mirror) and kept here so a re-save of the row never drops it.
+ */
+export function mediaOf(raw: unknown): MediaRef[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .map((m) => {
       const url = String((m as { url?: unknown })?.url ?? '').trim();
       if (!/^https?:\/\//i.test(url)) return null;
       const kind = String((m as { kind?: unknown })?.kind ?? '') === 'video' ? 'video' : 'image';
-      return { url, kind } as const;
+      const drive = String((m as { driveUrl?: unknown })?.driveUrl ?? '').trim();
+      const out: MediaRef = { url, kind };
+      if (/^https:\/\/drive\.google\.com\//i.test(drive)) out.driveUrl = drive;
+      return out;
     })
-    .filter((m): m is { url: string; kind: 'image' | 'video' } => m !== null)
+    .filter((m): m is MediaRef => m !== null)
     .slice(0, 12);
 }
 

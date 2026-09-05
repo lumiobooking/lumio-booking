@@ -43,6 +43,14 @@ export class PlatformConfigService {
     storage_ftp_secure: 'STORAGE_FTP_SECURE',      // 'true' = FTPS (explicit TLS)
     storage_ftp_base_path: 'STORAGE_FTP_BASE_PATH', // e.g. /public_html/uploads
     storage_public_base: 'STORAGE_PUBLIC_BASE',     // e.g. https://lumioagency.com/uploads
+    // Google Drive, as an ARCHIVE of what salons send in — one folder per
+    // salon, under Lumio's own Google account. The OAuth client is the same
+    // Google Cloud project the Business Profile connection already uses.
+    google_client_id: 'GOOGLE_CLIENT_ID',
+    google_client_secret: 'GOOGLE_CLIENT_SECRET',
+    gdrive_refresh_token: 'GDRIVE_REFRESH_TOKEN',
+    gdrive_email: 'GDRIVE_EMAIL',
+    gdrive_root_folder_id: 'GDRIVE_ROOT_FOLDER_ID',
   };
 
   constructor(private readonly prisma: PrismaService, private readonly config: ConfigService) {}

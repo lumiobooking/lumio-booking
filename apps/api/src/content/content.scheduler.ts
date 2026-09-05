@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ContentService } from './content.service';
 import { SocialPublishService } from './social-publish.service';
 import { TrendFeedService } from './trends/trend-feed.service';
+import { SuggestionsService } from './suggestions.service';
 
 /**
  * Drafts tomorrow's ideas while the salons sleep.
@@ -38,7 +39,10 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly content: ContentService,
     private readonly publisher: SocialPublishService,
     private readonly trends: TrendFeedService,
+    private readonly suggestions: SuggestionsService,
   ) {}
+  private driveTimer: NodeJS.Timeout | null = null;
+  private driveRunning = false;
 
   onModuleInit() {
     // ---- publishing starts FIRST, and unconditionally ----
@@ -66,6 +70,13 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
     this.trendTimer.unref?.();
     this.logger.log('Trend feeds: refreshing daily (checked hourly).');
 
+    // The Drive archive catches up on copies that failed at send time. Cheap
+    // when there is nothing to do (one indexed read), and never behind the
+    // drafting flag — a file the shop sent is a file the agency promised to
+    // keep, whatever else is switched off.
+    this.driveTimer = setInterval(() => this.sweepDrive(), 10 * 60 * 1000);
+    this.driveTimer.unref?.();
+
     const enabled = process.env.CONTENT_PLANNER_ENABLED ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false');
     if (enabled !== 'true') {
       this.logger.log('Content planner disabled (set CONTENT_PLANNER_ENABLED=true to enable). Scheduled posts still publish.');
@@ -81,6 +92,7 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
     if (this.timer) clearInterval(this.timer);
     if (this.postTimer) clearInterval(this.postTimer);
     if (this.trendTimer) clearInterval(this.trendTimer);
+    if (this.driveTimer) clearInterval(this.driveTimer);
   }
 
   /** Send whatever is due. Never publishes anything the salon did not schedule. */
@@ -97,6 +109,17 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
   }
 
   /** What is trending in each trade, once a day per trade and market. */
+  private async sweepDrive() {
+    if (this.driveRunning) return;
+    this.driveRunning = true;
+    try {
+      const n = await this.suggestions.sweep();
+      if (n) this.logger.log(`Drive archive: copied ${n} file(s) that had been left behind.`);
+    } catch (e) {
+      this.logger.warn(`Drive archive sweep failed: ${e instanceof Error ? e.message : e}`);
+    } finally { this.driveRunning = false; }
+  }
+
   private async sweepTrends() {
     if (this.trendRunning) return;
     this.trendRunning = true;

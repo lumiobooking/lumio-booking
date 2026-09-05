@@ -231,6 +231,11 @@ export class BillingService {
       storage_ftp_secure: dto.storageFtpSecure,
       storage_ftp_base_path: dto.storageFtpBasePath,
       storage_public_base: dto.storagePublicBase,
+      // The Google OAuth client the Drive archive signs in with. Optional here:
+      // when blank, the service falls back to the GOOGLE_/GBP_ env vars the
+      // Business Profile connection already uses.
+      google_client_id: dto.googleClientId,
+      google_client_secret: dto.googleClientSecret,
       inbound_domain: dto.inboundDomain,
       inbound_forward_to: dto.inboundForwardTo,
       // Generated once, never shown again in full — it is the only thing guarding

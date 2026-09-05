@@ -1,7 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
+import { GoogleDriveService } from '../uploads/google-drive.service';
 import { clientSuggestion, mediaOf, needsTeam, safeLink, suggestionStatus, type SuggestionRow } from './client-view';
 
 /**
@@ -25,7 +27,11 @@ import { clientSuggestion, mediaOf, needsTeam, safeLink, suggestionStatus, type 
  */
 @Injectable()
 export class SuggestionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly log = new Logger(SuggestionsService.name);
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly drive: GoogleDriveService,
+  ) {}
 
   /** Loose access: the model exists on the deploy, not in the local client. */
   private get table() {
@@ -113,6 +119,8 @@ export class SuggestionsService {
     });
     const ready = rows.filter((r) => needsTeam(r.status));
     return {
+      /** This salon's folder in the Drive archive, once anything has landed there. */
+      driveFolderUrl: await this.drive.folderLink(this.tenantId(user)).catch(() => null),
       /** The shop sent files and nobody has made a post from them yet. */
       ready: ready.map(shape),
       /** Sent, still waiting on the shop. */
@@ -212,7 +220,69 @@ export class SuggestionsService {
       where: { id: row.id },
       data: { status: 'done', doneAt: new Date(), media: merged as never, skipReason: null },
     }).catch(() => undefined);
+    // The archive copy happens AFTER the shop has its answer. A person on phone
+    // data has already waited for one upload; they do not wait for Google too.
+    void this.mirror(row.id).catch((e) => this.log.warn(`drive mirror ${row.id}: ${e instanceof Error ? e.message : e}`));
     return { ok: true, id: row.id, media: merged };
+  }
+
+  // ---- the Drive archive -------------------------------------------------------
+
+  /**
+   * Copy this suggestion's files into the salon's Drive folder.
+   *
+   * Idempotent: only entries without a `driveUrl` are copied, and the row is
+   * re-read first so two overlapping runs cannot both copy the same clip.
+   * Anything that fails stays without a link and is picked up by `sweep`.
+   */
+  async mirror(id: string): Promise<number> {
+    if (!(await this.drive.configured())) return 0;
+    const row = await this.table?.findFirst({
+      where: { id },
+      select: { id: true, tenantId: true, title: true, doneAt: true, createdAt: true, media: true },
+    }).catch(() => null) as { id: string; tenantId: string; title: string; doneAt: Date | null; createdAt: Date; media: unknown } | null;
+    if (!row) return 0;
+    const media = mediaOf(row.media);
+    const todo = media.filter((m) => !m.driveUrl);
+    if (!todo.length) return 0;
+
+    const day = new Date(row.doneAt ?? row.createdAt).toISOString().slice(0, 10);
+    const slug = row.title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'clip';
+    let copied = 0;
+    for (const m of todo) {
+      const ext = (/\.([a-z0-9]{2,4})(?:\?|#|$)/i.exec(m.url)?.[1] ?? (m.kind === 'video' ? 'mp4' : 'jpg')).toLowerCase();
+      const n = media.indexOf(m) + 1;
+      try {
+        const out = await this.drive.mirrorFromUrl(row.tenantId, m.url, `${day}_${slug}_${n}.${ext}`);
+        if (out) { m.driveUrl = out.url; copied += 1; }
+      } catch (e) {
+        this.log.warn(`drive copy failed for ${row.id} #${n}: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    if (copied) {
+      await this.table?.update({ where: { id: row.id }, data: { media: media as never } }).catch(() => undefined);
+    }
+    return copied;
+  }
+
+  /**
+   * Retry the copies that did not happen — Drive was down, the token was stale,
+   * the process restarted mid-upload. Recent rows only, a few at a time; a
+   * sweep that tries to catch up on a year in one go is a sweep that times out.
+   */
+  async sweep(limit = 5): Promise<number> {
+    if (!(await this.drive.configured())) return 0;
+    const since = new Date(Date.now() - 30 * 86_400_000);
+    const rows = await this.table?.findMany({
+      where: { status: { in: ['done', 'used'] }, doneAt: { gte: since } },
+      orderBy: { doneAt: 'desc' },
+      take: 60,
+      select: { id: true, media: true },
+    }).catch(() => []) as { id: string; media: unknown }[];
+    const pending = rows.filter((r) => mediaOf(r.media).some((m) => !m.driveUrl)).slice(0, limit);
+    let total = 0;
+    for (const r of pending) total += await this.mirror(r.id).catch(() => 0);
+    return total;
   }
 
   /** The salon says it does not fit. The reason is the useful half. */

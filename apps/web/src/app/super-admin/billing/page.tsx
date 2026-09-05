@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { GoogleDriveCard } from '../../../components/GoogleDriveCard';
 import MarketBadge from '../../../components/MarketBadge';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
@@ -141,6 +142,8 @@ export default function GatewaysPage() {
           <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14, lineHeight: 1.6 }}>
             Thanh toán (Stripe · PayPal) · Email hệ thống · Nhận diện thư trả lời ·{' '}
             <a href="#image-storage" style={{ color: 'var(--ca5b4fc)' }}>Kho lưu ảnh (Hostinger / FTP)</a>
+            {' · '}
+            <a href="#google-drive" style={{ color: 'var(--ca5b4fc)' }}>Google Drive</a>
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -375,6 +378,14 @@ export default function GatewaysPage() {
           </div>
         </div>
       </section>
+
+      {/* -------- Google Drive archive -------- */}
+      <GoogleDriveCard
+        token={token}
+        onSaveClient={async (googleClientId, googleClientSecret) => {
+          await apiFetch('/billing/config', { method: 'POST', token, body: { googleClientId, googleClientSecret } });
+        }}
+      />
 
       <p style={{ color: 'var(--c64748b)', fontSize: 12 }}>Tip: start with Stripe TEST keys + the test card 4242 4242 4242 4242 to verify, then switch to LIVE keys to receive real money. Renewals are automatic.</p>
     </main>

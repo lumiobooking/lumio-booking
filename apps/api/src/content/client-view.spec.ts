@@ -159,6 +159,17 @@ describe('what a salon sees of a suggestion', () => {
     expect(needsTeam('skipped')).toBe(false);
   });
 
+  it('keeps the Drive link on a file, and only a real Drive link', () => {
+    // Written later by the server; a re-save of the row must not drop it, and
+    // nothing that is not drive.google.com may ride along in that field.
+    const m = mediaOf([
+      { url: 'https://x/a.jpg', kind: 'image', driveUrl: 'https://drive.google.com/file/d/abc/view' },
+      { url: 'https://x/b.jpg', kind: 'image', driveUrl: 'https://evil.example/steal' },
+    ]);
+    expect(m[0].driveUrl).toBe('https://drive.google.com/file/d/abc/view');
+    expect(m[1].driveUrl).toBeUndefined();
+  });
+
   it('refuses anything that is not a real link in the media column', () => {
     expect(mediaOf([{ url: 'javascript:alert(1)', kind: 'image' }])).toEqual([]);
     expect(mediaOf('nope')).toEqual([]);

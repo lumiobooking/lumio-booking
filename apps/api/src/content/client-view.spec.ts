@@ -1,6 +1,6 @@
 import {
   clientWeek, clientSuggestion, mediaOf, suggestionStatus, leaksAnything,
-  flattenForClient, SHOP_JOB_KINDS, NEVER_TO_CLIENT,
+  flattenForClient, needsTeam, SHOP_JOB_KINDS, NEVER_TO_CLIENT,
 } from './client-view';
 import { buildWeekPlan } from './weekly-plan';
 import { viOf } from './i18n';
@@ -91,8 +91,24 @@ describe('what a salon sees of a suggestion', () => {
   it('reads a status it does not recognise as "still waiting"', () => {
     expect(suggestionStatus('done')).toBe('done');
     expect(suggestionStatus('DONE')).toBe('done');
+    expect(suggestionStatus('used')).toBe('used');
     expect(suggestionStatus('rubbish')).toBe('sent');
     expect(suggestionStatus(null)).toBe('sent');
+  });
+
+  it('does not make the shop care whether the team has got round to it', () => {
+    // `used` is the team's bookkeeping. From the shop's side it filmed the
+    // thing and sent it — one answer, not two.
+    expect(clientSuggestion({ ...row, status: 'used' }).status).toBe('done');
+    expect(clientSuggestion({ ...row, status: 'done' }).status).toBe('done');
+    expect(clientSuggestion({ ...row, status: 'skipped' }).status).toBe('skipped');
+  });
+
+  it('says who a card is waiting on, which is what makes the inbox drain', () => {
+    expect(needsTeam('done')).toBe(true);   // files in, no post yet
+    expect(needsTeam('used')).toBe(false);  // post made
+    expect(needsTeam('sent')).toBe(false);  // still on the shop
+    expect(needsTeam('skipped')).toBe(false);
   });
 
   it('refuses anything that is not a real link in the media column', () => {

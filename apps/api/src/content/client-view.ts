@@ -104,13 +104,27 @@ export interface ClientSuggestion {
   title: string;
   note: string | null;
   createdAt: string;
+  /** `used` is collapsed into `done`: the shop sent it either way. */
   status: 'sent' | 'done' | 'skipped';
   media: { url: string; kind: 'image' | 'video' }[];
 }
 
-export function suggestionStatus(raw: unknown): 'sent' | 'done' | 'skipped' {
+/**
+ * The four states a suggestion passes through.
+ *
+ * `used` is the team's, not the shop's: the files arrived and somebody has
+ * turned them into a post. Without it the team's inbox only grows — every card
+ * the shop ever answered stays in it, and an inbox that never empties is one
+ * nobody reads by the third week.
+ *
+ * The shop is never shown the difference between `done` and `used`; from its
+ * side both mean "sent, Lumio has it".
+ */
+export type SuggestionState = 'sent' | 'done' | 'skipped' | 'used';
+
+export function suggestionStatus(raw: unknown): SuggestionState {
   const s = String(raw ?? '').trim().toLowerCase();
-  return s === 'done' || s === 'skipped' ? s : 'sent';
+  return s === 'done' || s === 'skipped' || s === 'used' ? s : 'sent';
 }
 
 /** Files the shop sent back, read defensively out of a JSON column. */
@@ -142,7 +156,11 @@ export function clientSuggestion(row: SuggestionRow): ClientSuggestion {
     title: row.title,
     note: row.note ?? null,
     createdAt: new Date(row.createdAt).toISOString(),
-    status: suggestionStatus(row.status),
+    // A shop that filmed the thing has done its half. Whether the team has got
+    // round to editing it is the team's business and not a state the shop
+    // should have to interpret.
+    status: suggestionStatus(row.status) === 'skipped' ? 'skipped'
+      : suggestionStatus(row.status) === 'sent' ? 'sent' : 'done',
     media: mediaOf(row.media),
   };
 }
@@ -208,5 +226,10 @@ export const CLIENT_STATUS_VI: Record<ClientSuggestion['status'], string> = {
   done: 'Tiệm đã gửi',
   skipped: 'Tiệm bỏ qua',
 };
+
+/** Waiting on the TEAM: the shop sent files and nobody has made a post yet. */
+export function needsTeam(status: unknown): boolean {
+  return suggestionStatus(status) === 'done';
+}
 
 export { viOf, enOf };

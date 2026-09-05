@@ -157,6 +157,13 @@ export class ContentController {
     return this.suggestions.reopen(user, id);
   }
 
+  /** The footage became a post — take the card out of the team's inbox. */
+  @Post('suggestions/:id/used')
+  @HttpCode(200)
+  suggestionUsed(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.suggestions.markUsed(user, id);
+  }
+
   @Post('review/:postId/approve')
   reviewApprove(@CurrentUser() user: AuthenticatedUser, @Param('postId') postId: string) {
     return this.review.approveFor(user, postId);

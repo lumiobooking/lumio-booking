@@ -32,6 +32,7 @@ import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz } from '../../
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
 import { MonthCalendar, IgGrid, PostPreview, MediaList, type MediaItem } from '../../../components/PostStudio';
 import { WeekPlanBoard } from '../../../components/WeekPlanBoard';
+import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { TrendsTab, type TrendCard } from '../../../components/TrendsTab';
 import { fitForSocial } from '../../../lib/image';
 
@@ -513,6 +514,8 @@ function Inner() {
   // and it is one more round trip on a phone that is already waiting.
   const [queue, setQueue] = useState<QueuePayload | null>(null);
   const [queueBusy, setQueueBusy] = useState(false);
+  /** Suggestions the shop has answered and nobody has turned into a post yet. */
+  const [readyFiles, setReadyFiles] = useState(0);
   const [postDraft, setPostDraft] = useState<{
     id?: string; channels: ('facebook' | 'instagram')[]; message: string; media: MediaItem[]; at: string;
   } | null>(null);
@@ -833,6 +836,32 @@ function Inner() {
       at: local,
     });
     setTab('queue');
+  }
+
+  /**
+   * The shop sent footage; build the post from it.
+   *
+   * The files go straight into the composer's media list — the point of the
+   * whole loop is that nobody has to go and find them. The card is marked used
+   * on the way, so the inbox above drains as the work is done rather than
+   * waiting for somebody to tidy it.
+   */
+  function postFromSuggestion(s: TeamSuggestion) {
+    setPostWhen('later');
+    setFitNote(null);
+    setContactOverride(false);
+    setPostDraft({
+      channels: ['facebook'],
+      message: [queue?.postKit?.starter ?? ''].filter(Boolean).join(''),
+      media: s.media.map((m) => ({ url: m.url, kind: m.kind })),
+      at: wallTomorrowAt('10:00'),
+    });
+    setTab('queue');
+    if (token) {
+      apiFetch(`/content/suggestions/${s.id}/used`, { method: 'POST', token })
+        .then(() => setReadyFiles((n) => Math.max(0, n - 1)))
+        .catch(() => undefined);
+    }
   }
 
   /**
@@ -1244,13 +1273,19 @@ function Inner() {
                       {/* The red count is the whole reason the queue can stay a
                           tab rather than a menu item: a broken post finds the
                           person instead of waiting to be found. */}
-                      {t.id === 'queue' && postAlerts > 0 && (
+                      {t.id === 'queue' && (postAlerts + readyFiles) > 0 && (
                         <span style={{
                           marginLeft: 6, minWidth: 19, height: 19, padding: '0 5px',
-                          borderRadius: 20, background: '#ef4444', color: '#fff',
+                          borderRadius: 20,
+                          // Green when the only thing waiting is footage the
+                          // shop sent: that is work arriving, not a fault. Red
+                          // stays red — a failed post is not good news wearing
+                          // the same colour as a delivery.
+                          background: postAlerts > 0 ? '#ef4444' : '#22c55e',
+                          color: postAlerts > 0 ? '#fff' : '#052e16',
                           fontSize: 11, fontWeight: 800, display: 'inline-flex',
                           alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle',
-                        }}>{postAlerts > 9 ? '9+' : postAlerts}</span>
+                        }}>{(postAlerts + readyFiles) > 9 ? '9+' : (postAlerts + readyFiles)}</span>
                       )}
                     </button>
                   );
@@ -2152,6 +2187,19 @@ function Inner() {
                that goes out on a Tuesday morning while she is doing a fill. */}
           {tab === 'queue' && (
             <>
+              {/* What the shop sent back, first — a staff member opening this
+                  tab is here to build a post, and the footage for it arrived
+                  while they were asleep. Team only: a salon account has no
+                  suggestions of its own to read. */}
+              {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
+                <SuggestionInbox
+                  token={token}
+                  vi={vi}
+                  onCount={setReadyFiles}
+                  onMakePost={postFromSuggestion}
+                />
+              )}
+
               <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>

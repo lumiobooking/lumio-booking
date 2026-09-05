@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
-import { clientSuggestion, mediaOf, suggestionStatus, type SuggestionRow } from './client-view';
+import { clientSuggestion, mediaOf, needsTeam, suggestionStatus, type SuggestionRow } from './client-view';
 
 /**
  * One trend, picked by a person, handed to one salon.
@@ -75,11 +75,60 @@ export class SuggestionsService {
     return { ok: true, id: row.id };
   }
 
-  /** The team's view: everything, including where it came from. */
+  /**
+   * The team's view — and the half of the loop that was missing.
+   *
+   * A staff member sent a suggestion, the shop filmed it and pressed send, and
+   * the files landed in a column nobody looked at. So this leads with the cards
+   * WAITING ON THE TEAM: the shop has done its part and somebody has to turn
+   * the footage into a post. Everything else is history, and history is
+   * capped — an inbox that only grows is one nobody reads by the third week.
+   */
   async listForTeam(user: AuthenticatedUser) {
     if (!this.isTeam(user)) throw new ForbiddenException('Chỉ team Lumio xem được mục này.');
     const rows = await this.rows(this.tenantId(user));
-    return { suggestions: rows };
+    const shape = (r: SuggestionRow) => ({
+      id: r.id,
+      title: r.title,
+      note: r.note,
+      // The team DOES see where it came from — this is their own working note.
+      sourceUrl: r.sourceUrl,
+      sourceLabel: r.sourceLabel,
+      createdByName: r.createdByName,
+      createdAt: r.createdAt,
+      status: suggestionStatus(r.status),
+      doneAt: r.doneAt,
+      media: mediaOf(r.media),
+    });
+    const ready = rows.filter((r) => needsTeam(r.status));
+    return {
+      /** The shop sent files and nobody has made a post from them yet. */
+      ready: ready.map(shape),
+      /** Sent, still waiting on the shop. */
+      waitingOnShop: rows.filter((r) => suggestionStatus(r.status) === 'sent').map(shape),
+      recent: rows.filter((r) => !needsTeam(r.status) && suggestionStatus(r.status) !== 'sent').slice(0, 10).map(shape),
+      readyCount: ready.length,
+    };
+  }
+
+  /**
+   * The footage became a post; take the card out of the team's inbox.
+   *
+   * Team side only, and separate from the shop's `done`: the shop pressing send
+   * and the team getting round to it are two different events, and collapsing
+   * them is how an inbox stops meaning anything.
+   */
+  async markUsed(user: AuthenticatedUser, id: string) {
+    if (!this.isTeam(user)) throw new ForbiddenException('Chỉ team Lumio đánh dấu được.');
+    const tenantId = this.tenantId(user);
+    const r = await (this.prisma as unknown as Record<string, {
+      updateMany: (a: unknown) => Promise<{ count: number }>;
+    }>).contentSuggestion?.updateMany({
+      where: { id, tenantId },
+      data: { status: 'used' },
+    }).catch(() => ({ count: 0 }));
+    if (!r || r.count === 0) throw new NotFoundException('Không tìm thấy đề xuất này.');
+    return { ok: true, id };
   }
 
   /**

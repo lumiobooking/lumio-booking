@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bài đỏ khi khách yêu cầu sửa</title>
+<style>
+  :root{ --bg:#0f172a; --card:#1e293b; --line:#334155; --line2:#1e293b;
+    --text:#e2e8f0; --dim:#94a3b8; --dim2:#64748b; --indigo:#6366f1;
+    --red-bg:#450a0a; --red-line:#7f1d1d; --red:#ef4444; --red-text:#fecaca; --red-dim:#fca5a5; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:26px 18px 52px}
+  .wrap{max-width:1060px;margin:0 auto}
+  h1{font-size:21px;margin:0 0 6px}
+  .sub{color:var(--dim2);font-size:13px;margin:0 0 26px;line-height:1.65}
+  h2{font-size:12.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim2);
+    margin:30px 0 10px;font-weight:700}
+  .note{font-size:12.5px;color:var(--dim2);line-height:1.7;margin:10px 0 0}
+  .note b{color:var(--dim)}
+  .cols{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));align-items:start}
+
+  /* calendar */
+  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .dow{font-size:11px;color:var(--dim2);text-align:center;padding:2px 0}
+  .cell{min-height:76px;padding:5px;border-radius:8px;background:#0f172a;border:1px solid var(--line2)}
+  .cell .n{font-size:11px;color:var(--dim2)}
+  .chip{margin-top:3px;padding:3px 5px;border-radius:5px;font-size:10.5px;line-height:1.3;
+    color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    background:var(--card);border:1px solid var(--line)}
+  .chip.posted{background:#14532d;border-color:#22c55e}
+  .chip.warn{background:#451a03;border-color:#f59e0b}
+  .chip.held{background:var(--red-bg);border-color:var(--red);color:var(--red-text);font-weight:700}
+
+  /* cards */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .card.red{border-color:var(--red);background:var(--red-bg)}
+  .ttl{font-size:13.5px;font-weight:700;color:var(--red-text);margin-bottom:3px}
+  .lede{font-size:12px;color:var(--red-dim);line-height:1.6;margin-bottom:9px}
+  .req{padding:9px 11px;border-radius:9px;background:#0f172a;border:1px solid var(--red-line);margin-bottom:7px}
+  .who{font-size:11.5px;color:var(--red-dim);margin-bottom:3px}
+  .said{font-size:13px;color:var(--text);line-height:1.55}
+  .btns{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}
+  .b{min-height:34px;padding:7px 12px;border-radius:8px;font-size:12.5px;font-weight:600;
+     border:1px solid #475569;background:transparent;color:var(--text)}
+  .b.ok{border:none;background:#22c55e;color:#052e16;font-weight:700}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid;vertical-align:middle}
+  .pill.red{border-color:var(--red);color:var(--red)}
+  .pill.blue{border-color:var(--indigo);color:var(--indigo)}
+
+  /* flow */
+  .flow{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .step{border:1px solid var(--line);border-radius:11px;padding:12px;background:#0f172a}
+  .step.red{border-color:var(--red);background:var(--red-bg)}
+  .step.green{border-color:#22c55e;background:#14532d}
+  .step .k{font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim2);font-weight:700}
+  .step.red .k{color:var(--red-dim)} .step.green .k{color:#86efac}
+  .step .h{font-size:13.5px;font-weight:700;margin:5px 0 4px}
+  .step .p{font-size:12px;color:var(--dim);line-height:1.6}
+  .step.red .p{color:var(--red-text)} .step.green .p{color:#bbf7d0}
+</style></head><body>
+<div class="wrap">
+
+  <h1>Khách bình luận trên bài → bài chuyển đỏ</h1>
+  <p class="sub">Đúng màu, đúng cỡ chữ, đúng khoảng cách với app thật. Trang này chỉ để nhìn — không bấm được.</p>
+
+  <h2>Lịch tháng</h2>
+  <div class="cols">
+    <div>
+      <div class="cal">
+        <div class="dow">T2</div><div class="dow">T3</div><div class="dow">T4</div><div class="dow">T5</div>
+        <div class="dow">T6</div><div class="dow">T7</div><div class="dow">CN</div>
+
+        <div class="cell"><div class="n">8</div><div class="chip posted">◈ 10h Bộ móng thu…</div></div>
+        <div class="cell"><div class="n">9</div></div>
+        <div class="cell"><div class="n">10</div><div class="chip posted">▣ 18h Giờ trống ch…</div></div>
+        <div class="cell"><div class="n">11</div></div>
+        <div class="cell"><div class="n">12</div><div class="chip held">🔴 ◈ 10h Ưu đãi cuố…</div></div>
+        <div class="cell"><div class="n">13</div><div class="chip">▣ 19h Khách quen t…</div></div>
+        <div class="cell"><div class="n">14</div></div>
+
+        <div class="cell"><div class="n">15</div><div class="chip">◈ 10h Mẫu móng mớ…</div></div>
+        <div class="cell"><div class="n">16</div></div>
+        <div class="cell"><div class="n">17</div><div class="chip warn">▣ 11h Thiếu ảnh</div></div>
+        <div class="cell"><div class="n">18</div><div class="chip">◈ 17h Chăm sóc da…</div></div>
+        <div class="cell"><div class="n">19</div></div>
+        <div class="cell"><div class="n">20</div><div class="chip">▣ 10h Lịch cuối tu…</div></div>
+        <div class="cell"><div class="n">21</div></div>
+      </div>
+      <p class="note">
+        <b>Đỏ</b> = khách có yêu cầu chưa xử lý — bài này <b>dừng lại, không tự đăng</b>.
+        <b>Cam</b> = bài thiếu gì đó (ảnh, kết nối) — lỗi của mình, không phải khách đang chờ.
+        <b>Xanh</b> = đã đăng rồi. Đỏ luôn thắng: nó là màu duy nhất có người đang chờ ở đầu bên kia.
+      </p>
+    </div>
+
+    <div>
+      <div class="card red">
+        <div class="ttl">🔴 1 bài khách đang yêu cầu sửa</div>
+        <div class="lede">
+          Những bài này DỪNG lại, không tự đăng, cho tới khi bấm “Đã xử lý xong”.
+          Trả lời khách thôi thì bài vẫn đỏ — trả lời không phải là đã sửa.
+        </div>
+        <div class="req">
+          <div class="who">T6, 12 thg 9, 10:00 · Chị Hằng (chủ tiệm)</div>
+          <div class="said">“Giá gel bây giờ 45 rồi em, bài ghi 39 là giá cũ. Sửa giúp chị nha.”</div>
+          <div class="btns">
+            <div class="b">✎ Mở bài để sửa</div>
+            <div class="b ok">✓ Đã xử lý xong</div>
+          </div>
+        </div>
+      </div>
+      <p class="note">
+        Khối này nằm <b>trên cùng</b> tab Lịch đăng bài, trên cả ô soạn bài và lịch tháng —
+        một ô đỏ nằm đâu đó giữa lưới 30 ngày thì rất dễ lướt qua, còn một danh sách
+        đặt ngay đầu màn hình kèm <b>đúng câu khách viết</b> thì không.
+      </p>
+    </div>
+  </div>
+
+  <h2>Danh sách — thẻ của bài đỏ</h2>
+  <div class="card" style="border-color:var(--red);max-width:620px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+      <span style="font-size:13;font-weight:700">T6, 12 thg 9, 10:00</span>
+      <span class="pill red">🔴 Khách yêu cầu sửa</span>
+      <span style="font-size:11.5px;color:var(--dim2)">Facebook + Instagram</span>
+    </div>
+    <div style="padding:9px 11px;border-radius:9px;background:var(--red-bg);border:1px solid var(--red-line)">
+      <div class="who">Chị Hằng (chủ tiệm) · yêu cầu sửa — bài đang dừng, chưa đăng</div>
+      <div class="said">“Giá gel bây giờ 45 rồi em, bài ghi 39 là giá cũ. Sửa giúp chị nha.”</div>
+      <div class="btns"><div class="b ok">✓ Đã xử lý xong</div></div>
+    </div>
+    <p class="note" style="margin-top:10px">
+      Chữ “Khách yêu cầu sửa” <b>thay chỗ</b> chữ “Đã đặt lịch”, không đứng cạnh nó.
+      “Đã đặt lịch · khách yêu cầu sửa” liếc qua vẫn đọc thành <i>đã xong, ổn cả</i> —
+      đúng cái hiểu nhầm mà toàn bộ phần này sinh ra để chặn.
+    </p>
+  </div>
+
+  <h2>Vòng đời một yêu cầu</h2>
+  <div class="flow">
+    <div class="step"><div class="k">1 · bình thường</div><div class="h">Chờ đăng</div>
+      <div class="p">Bài nằm im chờ tới giờ. Xám như mọi bài khác.</div></div>
+    <div class="step red"><div class="k">2 · khách viết</div><div class="h">🔴 Đỏ ngay</div>
+      <div class="p">Khách bình luận qua link duyệt bài hoặc trong tài khoản tiệm. Bài dừng lại, không tự đăng nữa.</div></div>
+    <div class="step red"><div class="k">3 · mình trả lời</div><div class="h">Vẫn đỏ</div>
+      <div class="p">“Vâng em sửa ngay” là <b>lời hứa</b>, chưa phải là đã sửa. Trả lời không gỡ được màu đỏ.</div></div>
+    <div class="step green"><div class="k">4 · đã xử lý</div><div class="h">Về chờ đăng</div>
+      <div class="p">Sửa bài rồi lưu · hoặc bấm “Đã xử lý xong” · hoặc khách tự duyệt. Bài trở lại bình thường và chạy đúng giờ.</div></div>
+  </div>
+  <p class="note">
+    Ba đường về trạng thái bình thường, đều là <b>hành động có thay đổi thứ gì đó</b>.
+    Yêu cầu nào khách nêu mà chưa ai đóng lại thì bài cứ đỏ — đúng như anh cần.
+    Màu đỏ và việc “không tự đăng” <b>là cùng một dữ liệu</b>, nên lịch không bao giờ
+    hiện xanh cho một bài mà máy chủ đang giữ lại, và ngược lại.
+  </p>
+
+  <h2>Chỗ khác cũng đổi theo</h2>
+  <p class="note" style="margin-top:0">
+    <b>Lưới Instagram:</b> ô có yêu cầu được viền đỏ và một chấm đỏ ở góc.
+    <b>Ô soạn bài:</b> mở bài đỏ ra là thấy ngay câu khách viết, nằm cạnh chỗ gõ nội dung.
+    <b>Số đỏ trên tab “Lịch đăng bài”:</b> nay đếm cả bài khách đang chờ, không chỉ bài lỗi.
+    <b>Hộp thư trao đổi (super-admin):</b> mở một cuộc trao đổi về bài đã lên lịch sẽ có dòng nhắc
+    “Bài này đang DỪNG, không tự đăng” — nút đóng đổi chữ thành “✓ Đã xử lý — cho bài chạy”.
+  </p>
+</div>
+</body></html>

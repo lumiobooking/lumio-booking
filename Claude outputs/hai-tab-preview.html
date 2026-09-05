@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hai tab — điện thoại và máy tính</title>
+<style>
+  :root{ --bg:#0f172a; --card:#1e293b; --line:#334155; --line2:#1e293b;
+    --text:#e2e8f0; --f1:#f1f5f9; --dim:#94a3b8; --dim2:#64748b; --dim3:#475569;
+    --indigo:#6366f1; --green:#22c55e; --red:#ef4444; }
+  *{box-sizing:border-box}
+  body{margin:0;background:#0b1120;color:var(--text);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:26px 18px 56px}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:21px;margin:0 0 6px}
+  .sub{color:var(--dim2);font-size:13px;margin:0 0 26px;line-height:1.7}
+  .sub b{color:var(--dim)}
+  h2{font-size:12.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim2);
+    margin:0 0 10px;font-weight:700}
+  .note{font-size:12.5px;color:var(--dim2);line-height:1.7;margin:12px 0 0}
+  .note b{color:var(--dim)}
+  .good{color:var(--green);font-weight:700}
+  .cols{display:grid;gap:26px;grid-template-columns:1fr 1.35fr;align-items:start}
+  @media (max-width:900px){ .cols{grid-template-columns:1fr} }
+
+  .phone{background:var(--bg);border:1px solid var(--line);border-radius:22px;padding:14px 12px;max-width:376px}
+  .desk{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:18px}
+
+  .tabs{display:flex;gap:8px;margin-bottom:16px}
+  .tb{flex:1 1 0;min-height:48px;padding:10px 12px;border-radius:12px;display:flex;
+      align-items:center;justify-content:center;gap:8px;font-size:14.5px;font-weight:600;
+      border:1px solid var(--line);color:var(--dim)}
+  .tb.on{border-color:var(--indigo);background:var(--indigo);color:#fff;font-weight:700}
+  .bdg{min-width:21px;height:21px;border-radius:20px;padding:0 6px;display:inline-flex;
+       align-items:center;justify-content:center;font-size:11.5px;font-weight:800;background:var(--red);color:#fff}
+  .tb.on .bdg{background:rgba(255,255,255,.22)}
+
+  .sec{font-size:17px;margin:0 0 3px;color:var(--f1);display:flex;align-items:center;gap:8px}
+  .pill{font-size:12px;font-weight:800;min-width:22px;height:22px;border-radius:20px;
+    background:var(--indigo);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0 7px}
+  .lede{font-size:13px;color:var(--dim);line-height:1.6;margin:0 0 11px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px}
+  .card.hi{border-color:var(--indigo)}
+  .grid2{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));align-items:start}
+  .ttl{font-size:15px;font-weight:700;color:var(--f1);line-height:1.4}
+  .nt{font-size:13px;color:var(--dim);line-height:1.55;margin-top:4px}
+  .btns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .b{min-height:46px;padding:12px 14px;border-radius:11px;font-size:14px;font-weight:700;
+     background:var(--indigo);color:#fff;display:flex;align-items:center;justify-content:center;flex:1 1 180px}
+  .b.g{border:1px solid var(--dim3);background:transparent;color:var(--dim);font-weight:600;flex:0 0 auto}
+  .job{display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--line2)}
+  .job:first-child{border-top:none}
+  .job .d{font-size:11.5px;color:var(--dim2);font-weight:700;letter-spacing:.3px}
+  .job .x{font-size:14px;color:var(--text);line-height:1.5;margin-top:1px}
+  .prep{display:flex;gap:9px;padding:4px 0}
+  .prep .l{font-size:13.5px;font-weight:600;color:var(--text);line-height:1.45}
+  .prep .dd{font-size:12px;color:var(--dim);line-height:1.5}
+  .lab{font-size:11.5px;font-weight:700;letter-spacing:.6px;color:var(--dim2);margin-bottom:7px}
+  .empty{padding:34px 18px;text-align:center;background:#151f38;border:1px solid var(--line);
+         border-radius:14px;color:var(--dim2);font-size:14px;line-height:1.65}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--line2);text-align:left;vertical-align:top}
+  thead th{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim2);border-bottom:1px solid var(--line)}
+</style></head><body>
+<div class="wrap">
+
+  <h1>Chia hai tab — và mặc định bật cho mọi tiệm</h1>
+  <p class="sub">
+    Cùng một trang, hai khổ. Bên trái 376px đúng bằng điện thoại; bên phải 760px là máy tính.
+    Không có điểm gãy nào phải canh tay: các thẻ tự xuống hàng khi hẹp.
+  </p>
+
+  <div class="cols">
+    <!-- ---------- PHONE ---------- -->
+    <div>
+      <h2>Điện thoại — tab 1</h2>
+      <div class="phone">
+        <div class="tabs">
+          <div class="tb on">🎬 Việc của tiệm <span class="bdg">2</span></div>
+          <div class="tb">✅ Duyệt bài <span class="bdg">3</span></div>
+        </div>
+
+        <div class="sec">Lumio đề xuất <span class="pill">2</span></div>
+        <p class="lede">Quay hoặc chụp giúp bên em, rồi bấm nút gửi ngay dưới đây.</p>
+        <div class="card hi" style="margin-bottom:10px">
+          <div class="ttl">Quay 1 clip mẫu móng mắt mèo</div>
+          <div class="nt">Đang chạy tốt tuần này</div>
+          <div class="btns">
+            <div class="b">📤 Đã quay xong — gửi</div>
+            <div class="b g">Không hợp</div>
+          </div>
+        </div>
+
+        <div class="sec" style="margin-top:18px">Việc của tiệm tuần này</div>
+        <p class="lede">Nền móng — Làm cho hồ sơ tiệm đủ dày trước khi bỏ tiền kéo người tới xem.</p>
+        <div class="card" style="margin-bottom:10px">
+          <div class="job"><span style="font-size:18px">🎬</span><div>
+            <div class="d">HÔM NAY</div><div class="x">Quay gộp 3 clip trong một buổi</div></div></div>
+          <div class="job"><span style="font-size:18px">📷</span><div>
+            <div class="d">HÔM NAY</div><div class="x">Chụp 6 ảnh trong cùng buổi quay</div></div></div>
+        </div>
+        <div class="card" style="background:var(--bg)">
+          <div class="lab">CẦN CHUẨN BỊ</div>
+          <div class="prep"><span style="color:var(--dim3)">▢</span><div>
+            <div class="l">Quay 4 clip</div><div class="dd">Mỗi clip 15-30 giây</div></div></div>
+          <div class="prep"><span style="color:var(--dim3)">▢</span><div>
+            <div class="l">Chụp 6 ảnh</div><div class="dd">Bộ móng vừa làm xong · Phản ứng thật của khách</div></div></div>
+        </div>
+      </div>
+
+      <h2 style="margin-top:22px">Điện thoại — tab 2</h2>
+      <div class="phone">
+        <div class="tabs">
+          <div class="tb">🎬 Việc của tiệm <span class="bdg">2</span></div>
+          <div class="tb on">✅ Duyệt bài <span class="bdg">3</span></div>
+        </div>
+        <div style="font-size:19px;font-weight:700;color:var(--f1)">📋 Bài sắp đăng</div>
+        <div style="display:inline-block;background:#451a03;border:1px solid #92400e;color:#fcd34d;
+                    font-size:12.5px;font-weight:700;padding:3px 10px;border-radius:20px;margin-top:8px">3 bài chờ bạn duyệt</div>
+        <p class="lede" style="margin-top:8px">Bấm vào bài để xem trước đúng như khi lên Facebook / Instagram.</p>
+        <div class="card" style="margin-bottom:8px"><div class="ttl">🟡 Thứ 7 · 18:30 — Mẫu đang được đặt nhiều nhất</div></div>
+        <div class="card" style="margin-bottom:8px"><div class="ttl">🟡 Chủ nhật · 18:30 — Quy trình cận cảnh</div></div>
+        <div class="card"><div class="ttl">🟢 Thứ 3 · 19:00 — Đã duyệt</div></div>
+      </div>
+    </div>
+
+    <!-- ---------- DESKTOP ---------- -->
+    <div>
+      <h2>Máy tính — cùng tab 1, thẻ tự dàn hai cột</h2>
+      <div class="desk">
+        <div class="tabs" style="max-width:420px">
+          <div class="tb on">🎬 Việc của tiệm <span class="bdg">2</span></div>
+          <div class="tb">✅ Duyệt bài <span class="bdg">3</span></div>
+        </div>
+
+        <div class="sec">Lumio đề xuất <span class="pill">2</span></div>
+        <p class="lede">Quay hoặc chụp giúp bên em, rồi bấm nút gửi ngay dưới đây. Team sẽ dựng và đăng, tiệm chỉ cần duyệt.</p>
+        <div class="grid2" style="margin-bottom:18px">
+          <div class="card hi">
+            <div class="ttl">Quay 1 clip mẫu móng mắt mèo — xoay tay dưới đèn</div>
+            <div class="nt">Đang chạy tốt tuần này, khách hay hỏi mẫu này</div>
+            <div class="btns"><div class="b">📤 Đã quay xong — gửi</div><div class="b g">Không hợp</div></div>
+          </div>
+          <div class="card hi">
+            <div class="ttl">Chụp 3 ảnh kệ màu mới về</div>
+            <div class="nt">Sáng trước khi mở cửa, ánh sáng tự nhiên</div>
+            <div class="btns"><div class="b">📤 Đã quay xong — gửi</div><div class="b g">Không hợp</div></div>
+          </div>
+        </div>
+
+        <div class="sec">Việc của tiệm tuần này</div>
+        <p class="lede">Nền móng — Làm cho hồ sơ tiệm đủ dày trước khi bỏ tiền kéo người tới xem nó.</p>
+        <div class="grid2">
+          <div class="card">
+            <div class="job"><span style="font-size:18px">💚</span><div>
+              <div class="d">CHỦ NHẬT</div><div class="x">Xin đánh giá Google — còn thiếu 17 cái nữa</div></div></div>
+            <div class="job"><span style="font-size:18px">🎬</span><div>
+              <div class="d">THỨ 6</div><div class="x">Quay gộp 3 clip trong một buổi (mỗi clip 15-30 giây)</div></div></div>
+            <div class="job"><span style="font-size:18px">📷</span><div>
+              <div class="d">THỨ 6</div><div class="x">Chụp 6 ảnh trong cùng buổi quay — Bộ móng vừa làm xong · Phản ứng thật của khách khi nhìn tay</div></div></div>
+          </div>
+          <div class="card" style="background:var(--bg)">
+            <div class="lab">CẦN CHUẨN BỊ</div>
+            <div class="prep"><span style="color:var(--dim3)">▢</span><div>
+              <div class="l">Quay 4 clip</div><div class="dd">Mỗi clip 15-30 giây. Quay hết trong một buổi</div></div></div>
+            <div class="prep"><span style="color:var(--dim3)">▢</span><div>
+              <div class="l">Chụp 6 ảnh</div><div class="dd">Bộ móng vừa làm xong · Phản ứng thật của khách</div></div></div>
+            <div class="prep"><span style="color:var(--dim3)">▢</span><div>
+              <div class="l">Xin 7 đánh giá Google</div><div class="dd">Xin lúc thanh toán, khi khách vừa nhìn tay xong</div></div></div>
+            <div class="prep"><span style="color:var(--dim3)">▢</span><div>
+              <div class="l">Xin phép trước khi đăng mặt khách</div><div class="dd">Một câu lúc đang làm là đủ</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <h2 style="margin-top:22px">Tiệm chưa có việc gì — không để trống</h2>
+      <div class="desk">
+        <div class="tabs" style="max-width:420px">
+          <div class="tb on">🎬 Việc của tiệm</div>
+          <div class="tb">✅ Duyệt bài</div>
+        </div>
+        <div class="empty">
+          <div style="font-size:30px;margin-bottom:8px">🎬</div>
+          Chưa có việc nào cho tiệm. Khi bên em gửi đề xuất quay chụp, nó sẽ hiện ở đây.
+        </div>
+      </div>
+      <p class="note">
+        Một tab trống nhìn như trang hỏng. Tiệm chưa được team chạy marketing mở ra sẽ thấy một câu, không thấy ô trắng.
+      </p>
+    </div>
+  </div>
+
+  <h2 style="margin-top:34px">Mặc định bật — và vì sao lần này được phép</h2>
+  <p class="note" style="margin-top:0">
+    Trong hệ thống có một luật cứng, có test canh: <b>mọi công tắc tính năng đều xuất xưởng ở trạng thái TẮT</b>,
+    để một lần deploy không mở ra màn hình nào cho ai. Em từng phải hoàn tác một thay đổi vì đụng đúng luật này.
+  </p>
+  <p class="note">
+    Lần này em không nới luật, em <b>viết nó ra rõ hơn</b>: có một danh sách tên là <i>được phép bật sẵn</i>,
+    hiện chứa đúng một mục — màn hình của tiệm. Test kiểm tra: mọi công tắc ngoài danh sách phải TẮT,
+    danh sách phải đúng bằng một mục đó, và mục nào nằm trong danh sách thì <b>không được kế thừa công tắc khác</b>
+    (không thì "mặc định" chỉ là nói suông). Mở nhầm màn hình thứ hai giờ là test đỏ, không phải một dòng diff không ai soi.
+  </p>
+  <p class="note">
+    Nó được phép vì một lý do <b>cụ thể</b>, không phải lý do chung: mọi thứ trên màn hình này đều <b>rỗng cho tới khi
+    chính team đặt gì đó vào</b> — một đề xuất nhân viên gửi, một bài team lên lịch. Tiệm không ai chạy marketing mở ra
+    chỉ thấy câu trống. Mặc định mở ra <i>một cánh cửa</i>, không mở ra dữ liệu của ai.
+  </p>
+  <p class="note">
+    Riêng phần <b>kế hoạch tuần</b> thì khác: hệ thống sinh kế hoạch cho <i>mọi</i> tenant dù có ai làm hay không.
+    Nên nó chỉ hiện khi có <b>bằng chứng team đang làm</b> — ít nhất một đề xuất đã gửi, hoặc một bài đã lên lịch.
+    Cả hai đều là thứ chỉ team tạo ra. Tiệm chỉ mua phần mềm đặt lịch sẽ không bị giao bài tập marketing sau khi deploy.
+  </p>
+
+  <table>
+    <thead><tr><th>Trước</th><th>Sau</th></tr></thead>
+    <tbody>
+      <tr><td>Công tắc màn hình khách <b>kế thừa</b> công tắc "kế hoạch marketing"</td>
+          <td>Đứng riêng, không kế thừa ai</td></tr>
+      <tr><td>Muốn khách thấy màn hình duyệt bài thì phải bật cả <b>bếp</b> của agency</td>
+          <td>Bật sẵn cho mọi tài khoản khách</td></tr>
+      <tr><td>Trên thực tế: tắt ở gần như mọi tiệm vì không ai nhớ bật</td>
+          <td>Không còn phụ thuộc vào việc ai đó nhớ</td></tr>
+      <tr><td>Ba khối xếp dọc, cuộn hết mới thấy nút</td>
+          <td>Hai tab, mỗi tab một loại việc</td></tr>
+    </tbody>
+  </table>
+</div>
+</body></html>

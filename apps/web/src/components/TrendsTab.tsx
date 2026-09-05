@@ -57,6 +57,14 @@ interface Props {
   extraLinks: FeedLink[];
   /** Open the composer with a caption started from this card. */
   onMakePost: (card: TrendCard) => void;
+  /**
+   * Hand this one to the salon as something to film.
+   *
+   * Team-side only, and the reason the board itself stays here: the salon gets
+   * ONE instruction it can act on, never the feed it came off. Absent for a
+   * salon account, which is how the button disappears.
+   */
+  onSendToSalon?: ((card: TrendCard) => void) | null;
   /** The Lumio support session may pull again; a salon account may not. */
   canRefresh: boolean;
 }
@@ -84,7 +92,7 @@ function timeAgo(iso: string | null, vi: boolean): string | null {
   return vi ? `${d} ngày trước` : `${d}d ago`;
 }
 
-export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefresh }: Props) {
+export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendToSalon, canRefresh }: Props) {
   const T = (v: string, e: string) => (vi ? v : e);
   const [raw, setRaw] = useState<Envelope | null>(null);
   const [loading, setLoading] = useState(true);
@@ -241,7 +249,19 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, canRefr
                   {/* Both controls are one row of equal height. The link was
                       wrapping to a vertical "O p e n" and stretching the
                       button beside it; a fixed height and nowrap end that. */}
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'stretch', flexWrap: 'wrap' }}>
+                    {/* The daily job this tab exists for: read the feeds, pick
+                        one or two, hand them over. The salon receives the
+                        instruction and never the source. */}
+                    {onSendToSalon && (
+                      <button onClick={() => onSendToSalon(c)} style={{
+                        ...ui.primaryBtn, flex: '1 1 100%', minWidth: 0, height: 36, padding: '0 10px', fontSize: 12,
+                        background: '#22c55e', color: '#052e16', whiteSpace: 'nowrap',
+                        overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>
+                        📨 {T('Gửi cho tiệm quay', 'Send to the shop to film')}
+                      </button>
+                    )}
                     <button onClick={() => onMakePost(c)} style={{
                       ...ui.primaryBtn, flex: '1 1 auto', minWidth: 0, height: 36, padding: '0 10px', fontSize: 12,
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',

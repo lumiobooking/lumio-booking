@@ -140,6 +140,50 @@ const getCache = new GetCache();
 let toastVi = true;
 export function setFeedbackLang(vi: boolean) { toastVi = vi; }
 
+/**
+ * Send one real file — a photo or a clip off a phone.
+ *
+ * Deliberately not routed through `apiFetch`: that one sets a JSON content type
+ * and stringifies the body, and a multipart upload needs the browser to write
+ * its own boundary header. It also skips the GET cache and the slow-request
+ * notice, because an upload is neither.
+ *
+ * `onProgress` exists because this is the one request in the app where a
+ * wordless wait is measured in tens of seconds on a shop's phone data, and a
+ * spinner with no number reads as broken.
+ */
+export function apiUpload(
+  path: string,
+  file: File,
+  token: string | null,
+  onProgress?: (pct: number) => void,
+): Promise<{ url: string; kind: 'image' | 'video' }> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append('file', file);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_URL}${path}`);
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    const branch = activeBranchId();
+    if (branch) xhr.setRequestHeader('X-Branch-Id', branch);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      let body: unknown = null;
+      try { body = JSON.parse(xhr.responseText); } catch { /* server sent no JSON */ }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body as { url: string; kind: 'image' | 'video' });
+      } else {
+        const msg = (body as { message?: string })?.message;
+        reject(new ApiError(msg || 'Không tải lên được', xhr.status, body));
+      }
+    };
+    xhr.onerror = () => reject(new ApiError('Mất kết nối khi đang tải lên', 0, null));
+    xhr.send(form);
+  });
+}
+
 export async function apiFetch<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', token, body } = options;
 

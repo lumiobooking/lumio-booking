@@ -24,6 +24,7 @@ import { checkPost, applyFix } from '../../../lib/post-check';
 import { uiMarket } from '../../../lib/ui-market';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
+import { notify } from '../../../lib/feedback';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
@@ -832,6 +833,42 @@ function Inner() {
       at: local,
     });
     setTab('queue');
+  }
+
+  /**
+   * Hand one trend to the salon as something to film.
+   *
+   * The card the staff member is looking at carries where it came from — which
+   * feed, which hashtag. That travels to the server so the team's own list can
+   * say where a suggestion came from, and stops there: the salon's payload is
+   * rebuilt without it (see the API's client-view). The shop gets an
+   * instruction; nobody gets the method.
+   */
+  async function sendTrendToSalon(card: TrendCard) {
+    if (!token) return;
+    const title = window.prompt(
+      T('Gửi cho tiệm quay gì? (sửa lại cho gọn, tiệm sẽ đọc đúng câu này)',
+        'What should the shop film? (tidy it up — the shop reads this exact line)'),
+      card.title.slice(0, 120),
+    );
+    if (title === null) return;
+    const clean = title.trim();
+    if (!clean) return;
+    try {
+      await apiFetch('/content/suggestions', {
+        method: 'POST', token,
+        body: {
+          title: clean,
+          note: card.via ? `${T('Đang chạy tốt', 'Running well')}: ${card.via}` : undefined,
+          sourceUrl: card.url,
+          sourceLabel: card.source,
+        },
+      });
+      setError(null);
+      notify('success', T('Đã gửi cho tiệm. Tiệm thấy ở màn hình Duyệt bài.', 'Sent. The shop sees it on its review screen.'));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'error');
+    }
   }
 
   async function mark(id: string, status: string, postedUrl?: string) {
@@ -1942,6 +1979,7 @@ function Inner() {
               extraLinks={[...(plan?.videoFeeds ?? []), ...(plan?.productWatch ?? [])]}
               canRefresh={Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN'}
               onMakePost={postFromTrend}
+              onSendToSalon={(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') ? sendTrendToSalon : null}
             />
           )}
           {tab === 'audience' && (

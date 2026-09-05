@@ -12,6 +12,7 @@
 import { useMemo } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { PostReview, type ReviewApi, type ReviewFeed, type ReviewMsg } from '../../../components/PostReview';
+import { SalonWorkspace } from '../../../components/SalonWorkspace';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { useLang } from '../../../lib/i18n';
@@ -39,5 +40,16 @@ function Inner() {
     comment: (postId, body) => apiFetch('/content/chat', { method: 'POST', token, body: { subject: `post:${postId}`, body } }),
   }), [token]);
 
-  return <PostReview api={api} vi={lang === 'vi'} />;
+  /**
+   * Three things in the order somebody standing in a shop cares about them:
+   * what Lumio asked for today, what the shop has to do this week, and what is
+   * written and waiting for a yes. One page — the owner has one link, not
+   * three, and finds the button without reading a menu.
+   */
+  return (
+    <>
+      <SalonWorkspace token={token} vi={lang === 'vi'} />
+      <PostReview api={api} vi={lang === 'vi'} />
+    </>
+  );
 }

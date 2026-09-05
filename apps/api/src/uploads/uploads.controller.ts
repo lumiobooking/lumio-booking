@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { IsString, MaxLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
 import { UploadsService } from './uploads.service';
@@ -22,6 +23,28 @@ export class UploadsController {
     if (!tenantId) throw new BadRequestException('No salon in scope.');
     const url = await this.uploads.uploadDataUrl(tenantId, dto.dataUrl);
     return { url };
+  }
+
+  /**
+   * A photo or a clip straight off a phone.
+   *
+   * SALON_ADMIN, deliberately: the shop that just filmed the thing the team
+   * asked for is the one uploading it, and the alternative is a file in a group
+   * chat at eleven at night with nothing saying which suggestion it answers.
+   * Multipart rather than a data URL because a thirty-second clip is thirty to
+   * eighty megabytes and base64 makes it a third bigger again.
+   */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('media')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 130_000_000 } }))
+  async media(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: { buffer: Buffer; mimetype?: string; originalname?: string } | undefined,
+  ) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon in scope.');
+    if (!file) throw new BadRequestException('Chưa chọn được file.');
+    return this.uploads.uploadFile(tenantId, file);
   }
 
   /** Frontend asks whether storage exists — if not, it keeps the inline fallback. */

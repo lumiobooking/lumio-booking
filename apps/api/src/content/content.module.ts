@@ -12,12 +12,14 @@ import { UploadsService } from '../uploads/uploads.service';
 import { ContentController, ContentAdminController } from './content.controller';
 import { ContentScheduler } from './content.scheduler';
 import { TrendFeedService } from './trends/trend-feed.service';
+import { SuggestionsService } from './suggestions.service';
 
 @Module({
   imports: [SettingsModule, UploadsModule],
   controllers: [ContentController, ContentAdminController, PublicReviewController],
   providers: [
     ContentService, ContentAdminService, ContentChatService, SocialPublishService, ContentScheduler, TrendFeedService, PostReviewService,
+    SuggestionsService,
     // The compiler checks here that UploadsService really satisfies the port,
     // so the two-line stub used in tests cannot drift away from the real thing.
     { provide: MEDIA_STORE, useExisting: UploadsService },

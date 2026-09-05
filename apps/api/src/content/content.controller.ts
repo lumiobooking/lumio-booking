@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { ContentService } from './content.service';
 import { ContentChatService } from './content-chat.service';
@@ -10,6 +10,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { EditWeekDto } from './dto/edit-week.dto';
+import { SuggestionsService } from './suggestions.service';
+import { clientWeek, flattenForClient } from './client-view';
 import { SendChatDto } from './dto/chat.dto';
 import { SavePostDto } from './dto/save-post.dto';
 
@@ -29,6 +31,7 @@ export class ContentController {
     private readonly publisher: SocialPublishService,
     private readonly trends: TrendFeedService,
     private readonly review: PostReviewService,
+    private readonly suggestions: SuggestionsService,
   ) {}
 
   // ---- the salon's approval screen (the logged-in door) --------------------
@@ -74,6 +77,79 @@ export class ContentController {
   @Get('review')
   reviewFeed(@CurrentUser() user: AuthenticatedUser) {
     return this.review.feedFor(user);
+  }
+
+  // ---- the salon's own screen ---------------------------------------------
+  //
+  // Everything under here is built for the shop, not filtered for it. The
+  // difference matters: the team's payload carries the method — which feeds get
+  // read, why the filming day is the filming day, the five-stage path — and a
+  // salon's login is one shared password away from a competitor. See
+  // client-view.ts, which rebuilds these shapes from scratch.
+
+  /**
+   * This week, as the shop's own to-do list.
+   *
+   * The shop's physical work only: what to film, what to photograph, what to
+   * ask for at the counter. No posting days, no posting times, no reasoning,
+   * no stage, no numbers the week was decided from.
+   */
+  @Get('my-week')
+  async myWeek(@CurrentUser() user: AuthenticatedUser, @Query('lang') lang?: string) {
+    const plan = await this.svc.weekForSalon(user);
+    return { week: flattenForClient(clientWeek(plan), lang === 'en' ? 'en' : 'vi') };
+  }
+
+  /** What the team has asked this shop to film, and what it has sent back. */
+  @Get('suggestions')
+  mySuggestions(@CurrentUser() user: AuthenticatedUser) {
+    return this.suggestions.listForSalon(user);
+  }
+
+  /** The shop filmed it and is sending the files. Either side may close a card. */
+  @Post('suggestions/:id/done')
+  @HttpCode(200)
+  suggestionDone(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: { media?: unknown },
+  ) {
+    return this.suggestions.markDone(user, id, dto?.media);
+  }
+
+  /** It does not fit this shop. The reason is the half worth having. */
+  @Post('suggestions/:id/skip')
+  @HttpCode(200)
+  suggestionSkip(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: { reason?: string },
+  ) {
+    return this.suggestions.skip(user, id, dto?.reason);
+  }
+
+  // ---- the team's side of the same thing ----------------------------------
+
+  /** Hand one trend to this salon. Team only (checked in the service). */
+  @Post('suggestions')
+  @HttpCode(200)
+  sendSuggestion(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { title?: string; note?: string; sourceUrl?: string; sourceLabel?: string },
+  ) {
+    return this.suggestions.create(user, dto ?? {});
+  }
+
+  /** The full rows, source links included. Team only. */
+  @Get('suggestions/team')
+  teamSuggestions(@CurrentUser() user: AuthenticatedUser) {
+    return this.suggestions.listForTeam(user);
+  }
+
+  @Post('suggestions/:id/reopen')
+  @HttpCode(200)
+  suggestionReopen(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.suggestions.reopen(user, id);
   }
 
   @Post('review/:postId/approve')

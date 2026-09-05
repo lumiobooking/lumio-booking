@@ -37,6 +37,17 @@ function accessOpts(c: FtpConfig) {
   };
 }
 
+/**
+ * What a MIME type is called on disk. Not read from the uploaded filename,
+ * which is attacker-controlled and ends up inside a public URL.
+ */
+const EXT_BY_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
+  'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic',
+  'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm',
+  'video/x-m4v': 'm4v', 'video/3gpp': '3gp',
+};
+
 @Injectable()
 export class UploadsService {
   private readonly log = new Logger(UploadsService.name);
@@ -75,6 +86,75 @@ export class UploadsService {
     return c
       ? { configured: true, publicBase: c.publicBase, host: c.host, secure: c.secure, basePath: c.basePath }
       : { configured: false, publicBase: '', host: '', secure: false, basePath: '' };
+  }
+
+  /**
+   * A real file from a phone — a photo or a clip — straight to the same store.
+   *
+   * WHY THIS EXISTS ALONGSIDE `uploadDataUrl`
+   *
+   * That one takes a base64 data URL, capped at 3MB, because it was written for
+   * a compressed service photo. A thirty-second clip off a phone is thirty to
+   * eighty megabytes; base64 makes it a third bigger again and it never
+   * arrives. So the salon that has just filmed the thing the team asked for
+   * either pastes a URL from somewhere else — which it does not have — or sends
+   * the file in a group chat at eleven at night, unlabelled, which is the exact
+   * step this whole feature exists to remove.
+   *
+   * The bytes take the same road as everything else: same FTP config, same
+   * per-tenant folder, and the same check that the public URL actually serves
+   * the file back. That check is not ceremony. An upload succeeding says the
+   * bytes reached the server and nothing about whether the address serves them,
+   * and the difference surfaces hours later as a Meta error nobody can act on.
+   */
+  async uploadFile(
+    tenantId: string,
+    file: { buffer: Buffer; mimetype?: string; originalname?: string },
+  ): Promise<{ url: string; kind: 'image' | 'video' }> {
+    const c = await this.config();
+    if (!c) throw new BadRequestException('STORAGE_NOT_CONFIGURED');
+
+    const buf = file?.buffer;
+    if (!buf?.length) throw new BadRequestException('Chưa chọn được file.');
+
+    const mime = String(file.mimetype ?? '').toLowerCase();
+    const isVideo = mime.startsWith('video/');
+    const isImage = mime.startsWith('image/');
+    if (!isVideo && !isImage) {
+      throw new BadRequestException('Chỉ nhận ảnh hoặc video.');
+    }
+    // Generous for a clip, and still a bound. A phone that produces something
+    // bigger than this produced a file nobody is going to post anyway.
+    const cap = isVideo ? 120_000_000 : 12_000_000;
+    if (buf.length > cap) {
+      throw new BadRequestException(
+        isVideo ? 'Clip nặng quá (tối đa 120MB). Quay ngắn lại hoặc gửi bản nén.'
+          : 'Ảnh nặng quá (tối đa 12MB).');
+    }
+
+    // The extension comes from the MIME type, never from the uploaded name: a
+    // filename is attacker-controlled and ends up inside a public URL.
+    const ext = EXT_BY_MIME[mime] ?? (isVideo ? 'mp4' : 'jpg');
+    const safeTenant = tenantId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const name = `${randomUUID()}.${ext}`;
+    const remoteDir = `${c.basePath}/${safeTenant}`;
+
+    const client = new FtpClient(60_000);
+    try {
+      await client.access(accessOpts(c));
+      await client.ensureDir(remoteDir);
+      await client.uploadFrom(Readable.from(buf), name);
+    } catch (e) {
+      this.log.error(`FTP upload failed: ${e instanceof Error ? e.message : e}`);
+      throw new BadRequestException('Không tải lên được. Thử lại giúp em.');
+    } finally {
+      client.close();
+    }
+
+    const url = `${c.publicBase}/${safeTenant}/${name}`;
+    const reachable = await this.verifyPublic(url);
+    if (reachable) throw new BadRequestException(reachable);
+    return { url, kind: isVideo ? 'video' : 'image' };
   }
 
   /** Decode a small data: image URL and push it to FTP, return its public https URL. */

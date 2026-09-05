@@ -305,6 +305,7 @@ model Tenant {
   tipLogs              TipLog[]
   voiceLine            VoiceLine?
   contentIdeas         ContentIdea[]
+  contentSuggestions   ContentSuggestion[]
   contentWeeks         ContentWeek[]
   scheduledPosts       ScheduledPost[]
   trendSnapshots       TrendSnapshot[]
@@ -2853,6 +2854,43 @@ model TrendNote {
 /// Always tenant-scoped: a salon must never see another salon's plan. Status
 /// walks draft -> published -> filmed/posted (or skipped); the Lumio team owns
 /// the first hop, the salon owns the rest.
+/// One trend a staff member picked out of the daily reading and handed to a
+/// salon, plus whatever the salon filmed in response.
+///
+/// `sourceUrl` and `sourceLabel` say WHICH feed it came off. They are the
+/// agency's working method, not the salon's data, and never appear in the
+/// salon's payload — see content/client-view.ts, which rebuilds the client
+/// shape rather than deleting keys from this one.
+model ContentSuggestion {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  title String
+  note  String?
+
+  /// Team only. Never sent to the salon.
+  sourceUrl   String?
+  /// Team only. Never sent to the salon.
+  sourceLabel String?
+  /// Team only: who picked it, so the inbox can say who to ask.
+  createdByName String?
+
+  /// sent | done | skipped
+  status     String    @default("sent")
+  doneAt     DateTime?
+  skipReason String?
+  /// What the salon sent back: [{ url, kind }]
+  media      Json      @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("content_suggestions")
+}
+
 model ContentIdea {
   id        String @id @default(uuid())
   tenantId  String

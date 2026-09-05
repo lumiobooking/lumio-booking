@@ -739,6 +739,28 @@ export class ContentService {
    * can answer "what did the system suggest, and did our change do better" —
    * which is the only way this feature ever improves.
    */
+  /**
+   * This week's plan for the signed-in salon, and nothing else.
+   *
+   * The full `plan()` payload builds twenty other things — trends, keywords,
+   * the ads model, the roadmap — none of which the salon's own screen may see.
+   * Rather than build all of it and throw most away, this walks the same three
+   * steps `plan()` uses for the week and stops: gather, generate, and prefer
+   * the team's edit when there is one.
+   *
+   * It returns the FULL week. Narrowing it to what a shop may see is the job of
+   * client-view.ts, in one place, tested there.
+   */
+  async weekForSalon(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const ctx = await this.gather(tenantId);
+    const generated = await this.weekPlanFor(tenantId, ctx);
+    const kept = await this.keepWeek(tenantId, ctx.tz, generated).catch(() => null);
+    if (!kept?.edited) return generated;
+    const row = await this.weekAtRaw(user, kept.weekKey).catch(() => null);
+    return (row?.week as typeof generated) ?? generated;
+  }
+
   async editWeek(
     user: AuthenticatedUser,
     key: string,

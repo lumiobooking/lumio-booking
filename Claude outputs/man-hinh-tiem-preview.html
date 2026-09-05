@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Màn hình của tiệm — trên điện thoại</title>
+<style>
+  :root{ --bg:#0f172a; --card:#1e293b; --line:#334155; --line2:#1e293b;
+    --text:#e2e8f0; --f1:#f1f5f9; --dim:#94a3b8; --dim2:#64748b; --dim3:#475569;
+    --indigo:#6366f1; --violet:#a5b4fc; --green:#22c55e; }
+  *{box-sizing:border-box}
+  body{margin:0;background:#0b1120;color:var(--text);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:26px 18px 56px}
+  .wrap{max-width:1100px;margin:0 auto}
+  h1{font-size:21px;margin:0 0 6px}
+  .sub{color:var(--dim2);font-size:13px;margin:0 0 26px;line-height:1.7}
+  .sub b{color:var(--dim)}
+  h2{font-size:12.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim2);
+    margin:0 0 10px;font-weight:700}
+  .cols{display:grid;gap:24px;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));align-items:start}
+  .note{font-size:12.5px;color:var(--dim2);line-height:1.7;margin:12px 0 0}
+  .note b{color:var(--dim)}
+  .bad{color:#ef4444;font-weight:700}
+  .good{color:var(--green);font-weight:700}
+
+  /* phone frame */
+  .phone{background:var(--bg);border:1px solid var(--line);border-radius:22px;padding:14px 12px;max-width:390px;margin:0 auto}
+  .bar{display:flex;align-items:center;gap:8px;padding:0 4px 12px;border-bottom:1px solid var(--line2);margin-bottom:14px}
+  .bar .t{font-size:15px;font-weight:700;color:var(--f1)}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px;margin-bottom:10px}
+  .card.hi{border-color:var(--indigo)}
+  .sec{font-size:17px;margin:0 0 3px;color:var(--f1);display:flex;align-items:center;gap:8px}
+  .pill{font-size:12px;font-weight:800;min-width:22px;height:22px;border-radius:20px;
+    background:var(--indigo);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0 7px}
+  .lede{font-size:13px;color:var(--dim);line-height:1.6;margin:0 0 11px}
+  .ttl{font-size:15px;font-weight:700;color:var(--f1);line-height:1.4}
+  .nt{font-size:13px;color:var(--dim);line-height:1.55;margin-top:4px}
+  .btns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .b{min-height:46px;padding:12px 16px;border-radius:11px;font-size:14.5px;font-weight:700;
+     border:none;background:var(--indigo);color:#fff;display:flex;align-items:center;justify-content:center;flex:1 1 200px}
+  .b.g{border:1px solid var(--dim3);background:transparent;color:var(--dim);font-size:14;font-weight:600;flex:0 0 auto}
+  .job{display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--line2)}
+  .job:first-child{border-top:none}
+  .job .ic{font-size:18px;line-height:1.3}
+  .job .d{font-size:11.5px;color:var(--dim2);font-weight:700;letter-spacing:.3px}
+  .job .x{font-size:14px;color:var(--text);line-height:1.5;margin-top:1px}
+  .prep{display:flex;gap:9px;padding:4px 0}
+  .prep .l{font-size:13.5px;font-weight:600;color:var(--text);line-height:1.45}
+  .prep .dd{font-size:12px;color:var(--dim);line-height:1.5}
+  .lab{font-size:11.5px;font-weight:700;letter-spacing:.6px;color:var(--dim2);margin-bottom:7px}
+
+  .team{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px;max-width:330px}
+  .tb{height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+      font-size:12px;font-weight:700;margin-top:6px}
+  .tb.send{background:var(--green);color:#052e16}
+  .tb.make{background:var(--indigo);color:#fff}
+
+  .flow{display:grid;gap:9px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-top:8px}
+  .st{border:1px solid var(--line);border-radius:11px;padding:11px;background:var(--bg)}
+  .st .k{font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim2);font-weight:700}
+  .st .h{font-size:13.5px;font-weight:700;margin:5px 0 3px}
+  .st .p{font-size:12px;color:var(--dim);line-height:1.55}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--line2);text-align:left;vertical-align:top}
+  thead th{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim2);border-bottom:1px solid var(--line)}
+  .y{color:var(--green);font-weight:700} .n0{color:var(--dim3)}
+</style></head><body>
+<div class="wrap">
+
+  <h1>Màn hình của tiệm — và thứ tiệm không thấy</h1>
+  <p class="sub">
+    Một trang, một cột, khung 390px đúng bằng điện thoại. Nút bấm cao 46px cho ngón tay.
+    Mỗi việc <b>một thao tác</b>: bấm gửi file, hoặc bấm không hợp. Không có bước hai.
+  </p>
+
+  <div class="cols">
+    <div>
+      <h2>Tiệm mở link → thấy đúng ba khối này</h2>
+      <div class="phone">
+        <div class="bar"><span>🗓️</span><span class="t">Duyệt bài</span></div>
+
+        <div class="sec">Lumio đề xuất <span class="pill">2</span></div>
+        <p class="lede">Quay hoặc chụp giúp bên em, rồi bấm nút gửi ngay dưới đây. Team sẽ dựng và đăng, tiệm chỉ cần duyệt.</p>
+
+        <div class="card hi">
+          <div class="ttl">Quay 1 clip mẫu móng mắt mèo — xoay tay dưới đèn</div>
+          <div class="nt">Đang chạy tốt tuần này, khách hay hỏi mẫu này</div>
+          <div class="btns">
+            <div class="b">📤 Đã quay xong — gửi cho Lumio</div>
+            <div class="b g">Không hợp tiệm</div>
+          </div>
+        </div>
+
+        <div class="card hi">
+          <div class="ttl">Chụp 3 ảnh kệ màu mới về</div>
+          <div class="nt">Sáng trước khi mở cửa, ánh sáng tự nhiên</div>
+          <div class="btns">
+            <div class="b">📤 Đã quay xong — gửi cho Lumio</div>
+            <div class="b g">Không hợp tiệm</div>
+          </div>
+        </div>
+
+        <div class="sec" style="margin-top:20px">Việc của tiệm tuần này</div>
+        <p class="lede">Giữ nhịp đăng đều, gom kho nội dung</p>
+        <div class="card">
+          <div class="job"><span class="ic">🎬</span><div>
+            <div class="d">HÔM NAY</div>
+            <div class="x">Quay gộp 3 clip trong một buổi (mỗi clip 15-30 giây)</div></div></div>
+          <div class="job"><span class="ic">📷</span><div>
+            <div class="d">HÔM NAY</div>
+            <div class="x">Chụp 6 ảnh trong cùng buổi quay — Bộ móng vừa làm xong · Phản ứng thật của khách khi nhìn tay · Bộ móng cũ hỏng lúc khách vừa ngồi xuống</div></div></div>
+        </div>
+        <div class="card" style="background:var(--bg)">
+          <div class="lab">CẦN CHUẨN BỊ</div>
+          <div class="prep"><span style="color:var(--dim3)">▢</span><div>
+            <div class="l">Quay 3 clip</div><div class="dd">Mỗi clip 15-30 giây. Quay hết trong một buổi</div></div></div>
+          <div class="prep"><span style="color:var(--dim3)">▢</span><div>
+            <div class="l">Chụp 6 ảnh</div><div class="dd">Bộ móng vừa làm xong · Phản ứng thật của khách · Bộ móng cũ hỏng</div></div></div>
+          <div class="prep"><span style="color:var(--dim3)">▢</span><div>
+            <div class="l">Xin phép trước khi đăng mặt khách</div><div class="dd">Một câu lúc đang làm là đủ</div></div></div>
+        </div>
+
+        <div class="sec" style="margin-top:20px">Bài chờ tiệm duyệt <span class="pill">3</span></div>
+        <p class="lede" style="margin-bottom:0">Màn hình duyệt bài đang có, giữ nguyên — vuốt xem bài, bấm một nút là xong.</p>
+      </div>
+    </div>
+
+    <div>
+      <h2>Nhân viên: mỗi ngày mở tab Xu hướng, chọn 1-2 cái, bấm gửi</h2>
+      <div class="team">
+        <div style="height:92px;border-radius:8px;background:#0b1120;border:1px solid var(--line2);
+                    display:flex;align-items:center;justify-content:center;color:var(--dim3);font-size:12px">ảnh thumbnail</div>
+        <div style="font-size:13px;font-weight:600;margin-top:8px;line-height:1.4">Cat eye nails trend — xoay tay dưới đèn</div>
+        <div style="font-size:11.5px;color:var(--dim2);margin-top:3px">#cateyenails · 2,4 triệu lượt · +180%</div>
+        <div class="tb send">📨 Gửi cho tiệm quay</div>
+        <div style="display:flex;gap:6px">
+          <div class="tb make" style="flex:1">Làm bài theo mẫu này</div>
+          <div class="tb" style="flex:0 0 56px;border:1px solid var(--dim3);color:var(--dim)">Mở</div>
+        </div>
+      </div>
+      <p class="note">
+        Nút xanh lá là nút mới, và <b>chỉ nhân viên Lumio thấy</b> — tài khoản tiệm không có nó.
+        Bấm vào, sửa lại câu chữ cho gọn (tiệm đọc đúng câu đó), gửi. Xong.
+      </p>
+
+      <h2 style="margin-top:26px">Vòng khép kín</h2>
+      <div class="flow">
+        <div class="st"><div class="k">1 · nhân viên</div><div class="h">Chọn 1-2 xu hướng</div>
+          <div class="p">Từ bảng trend mà chỉ team thấy</div></div>
+        <div class="st"><div class="k">2 · tiệm</div><div class="h">Quay / chụp</div>
+          <div class="p">Đọc đúng một câu, không phải đọc cả bảng</div></div>
+        <div class="st"><div class="k">3 · tiệm</div><div class="h">Bấm gửi file</div>
+          <div class="p">Ngay trên thẻ đó. Không mở Zalo, không kể lại là file nào của việc nào</div></div>
+        <div class="st"><div class="k">4 · team</div><div class="h">Dựng và lên lịch</div>
+          <div class="p">File nằm sẵn cạnh đúng đề xuất đã hỏi</div></div>
+        <div class="st"><div class="k">5 · tiệm</div><div class="h">Duyệt</div>
+          <div class="p">Màn hình duyệt bài đang có</div></div>
+      </div>
+    </div>
+  </div>
+
+  <h2 style="margin-top:34px">Tiệm thấy gì — và không thấy gì</h2>
+  <table>
+    <thead><tr><th>Thứ</th><th style="width:96px">Tiệm</th><th style="width:96px">Nhân viên</th><th>Vì sao</th></tr></thead>
+    <tbody>
+      <tr><td>Việc tiệm phải tự làm (quay, chụp)</td><td class="y">✓</td><td class="y">✓</td><td>Tiệm không làm thì không có nguyên liệu</td></tr>
+      <tr><td>Câu trọng tâm của tuần</td><td class="y">✓</td><td class="y">✓</td><td>Danh sách việc không có mục đích thì bị bỏ</td></tr>
+      <tr><td>Bảng "cần chuẩn bị"</td><td class="y">✓</td><td class="y">✓</td><td>Xách gì đi thì phải biết</td></tr>
+      <tr><td>Đề xuất từ Lumio</td><td class="y">✓</td><td class="y">✓</td><td>Một câu, không phải cả bảng</td></tr>
+      <tr><td>Bảng xu hướng, feed hashtag đang theo dõi</td><td class="n0">—</td><td class="y">✓</td><td><b>Đây là cách làm.</b> Mở ra là đối thủ chép được</td></tr>
+      <tr><td>Link nguồn của đề xuất</td><td class="n0">—</td><td class="y">✓</td><td>Biết nguồn là biết mình đọc gì mỗi sáng</td></tr>
+      <tr><td>Lý do chọn ngày quay</td><td class="n0">—</td><td class="y">✓</td><td>Lộ việc mình đọc sổ đặt lịch để chọn ngày vắng</td></tr>
+      <tr><td>Ngày đăng · giờ đăng</td><td class="n0">—</td><td class="y">✓</td><td>Giờ đăng lấy từ lúc khách của <i>chính tiệm đó</i> quyết định</td></tr>
+      <tr><td>Giai đoạn 1-5 và điều kiện qua giai đoạn</td><td class="n0">—</td><td class="y">✓</td><td>Là toàn bộ lộ trình sáu tháng</td></tr>
+      <tr><td>Căn cứ dữ liệu, báo cáo tuần trước, từ khoá, lộ trình SEO</td><td class="n0">—</td><td class="y">✓</td><td>Không có thứ nào tiệm cần để cầm máy lên quay</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <b>Ẩn trên màn hình là chưa đủ.</b> Phần dữ liệu gửi cho tiệm được <b>dựng lại từ đầu</b> ở máy chủ,
+    không phải lấy bản của team rồi xoá bớt khoá — vì xoá bớt thì trường mới thêm vào tháng sau sẽ tự lọt ra.
+    Rò rỉ đến từ giá trị mặc định, không đến từ quyết định. Có test dò sâu toàn bộ dữ liệu trả cho tiệm,
+    hễ thấy một trong các khoá cấm là đỏ.
+  </p>
+  <p class="note">
+    <b>Tên nhân viên cũng không gửi sang.</b> Tiệm nghe từ "Lumio", không nghe từ bạn Trâm Anh —
+    một cái tên là một thứ nữa mà nhân viên nghỉ việc mang theo được.
+  </p>
+</div>
+</body></html>

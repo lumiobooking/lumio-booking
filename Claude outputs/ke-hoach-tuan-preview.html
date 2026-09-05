@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kế hoạch tuần — trước và sau</title>
+<style>
+  :root{ --bg:#0f172a; --card:#1e293b; --line:#334155; --line2:#1e293b;
+    --text:#e2e8f0; --f1:#f1f5f9; --dim:#94a3b8; --dim2:#64748b; --dim3:#475569;
+    --indigo:#6366f1; --violet:#a5b4fc; --amber:#f59e0b; --amber2:#fbbf24; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:26px 18px 56px}
+  .wrap{max-width:1120px;margin:0 auto}
+  h1{font-size:21px;margin:0 0 6px}
+  .sub{color:var(--dim2);font-size:13px;margin:0 0 26px;line-height:1.7}
+  h2{font-size:12.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim2);
+    margin:0 0 10px;font-weight:700}
+  .cols{display:grid;gap:22px;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));align-items:start}
+  .note{font-size:12.5px;color:var(--dim2);line-height:1.7;margin:12px 0 0}
+  .note b{color:var(--dim)}
+  .bad{color:#ef4444;font-weight:700}
+  .good{color:#22c55e;font-weight:700}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .lab{font-size:10.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--dim2)}
+  .rule{border-top:1px solid var(--line);margin-top:16px;padding-top:12px}
+
+  /* ---- OLD ---- */
+  .o-h{font-size:15px;font-weight:700;color:var(--text)}
+  .o-focus{font-size:13px;color:var(--violet);margin-top:4px}
+  .o-basis{font-size:11.5px;color:var(--dim2);font-style:italic;margin:4px 0 10px}
+  .o-stage{padding:11px 13px;margin-bottom:12px;border-radius:10;border-radius:10px;
+    background:var(--card);border:1px solid var(--indigo)}
+  .o-day{padding:9px 0;border-top:1px solid var(--line2);display:flex;gap:10px}
+  .o-dl{flex:0 0 76px;font-size:13px;font-weight:700;color:var(--dim)}
+  .o-job{font-size:13.5px;color:var(--text);line-height:1.5}
+  .o-why{font-size:12px;color:var(--dim);line-height:1.5;margin-top:1px}
+
+  /* ---- NEW ---- */
+  .n-week{font-size:19px;font-weight:700;color:var(--f1);line-height:1.3}
+  .n-week span{font-weight:500;color:var(--dim2);font-size:15px}
+  .n-who{font-size:12.5px;color:var(--dim);margin-top:2px}
+  .fld{display:flex;gap:12px;align-items:flex-start;margin-bottom:8px}
+  .fld .k{flex:0 0 84px;padding-top:2px}
+  .fld .v{flex:1;min-width:0;font-size:13px;line-height:1.55}
+  .bar{height:6px;border-radius:20px;background:#0f172a;overflow:hidden;max-width:260px;flex:1}
+  .bar i{display:block;height:100%;background:var(--indigo)}
+  .n-day{display:flex;gap:12px;padding:10px 0 10px 11px;margin-left:-11px;
+    border-top:1px solid var(--line2);border-left:2px solid transparent}
+  .n-day.today{border-left-color:var(--amber)}
+  .n-day:first-of-type{border-top:none}
+  .n-dc{flex:0 0 74px}
+  .n-dc .d{font-size:13px;font-weight:700;color:var(--text)}
+  .n-day.today .n-dc .d{color:var(--amber2)}
+  .n-dc .dt{font-size:11.5px;color:var(--dim2)}
+  .n-dc .now{font-size:10.5px;font-weight:700;color:var(--amber);letter-spacing:.4px}
+  .n-job{display:flex;gap:9px;margin-bottom:9px}
+  .n-job .no{flex:0 0 16px;font-size:11.5px;color:var(--dim3);padding-top:2px;text-align:right}
+  .n-job .t{font-size:13.5px;color:var(--text);line-height:1.5;font-weight:500}
+  .n-job .t em{font-style:normal;color:var(--dim2);font-size:12px;font-weight:400}
+  .n-job .w{font-size:12px;color:var(--dim);line-height:1.5;margin-top:1px}
+  .n-job .w b{color:var(--dim3);font-weight:400;margin-right:5px}
+  .rest{font-size:12.5px;color:var(--dim3);padding-top:2px}
+  .pill{font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:20px;border:1px solid;white-space:nowrap}
+  .btn{padding:7px 13px;border-radius:8px;font-size:12.5px;font-weight:600;
+    border:1px solid var(--line);background:transparent;color:var(--text);display:inline-block}
+
+  /* editor */
+  .ed{border:1px solid var(--line);border-radius:9px;padding:9px;margin-bottom:8px;background:#0f172a}
+  .edrow{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+  .inp{background:var(--card);border:1px solid var(--dim3);color:var(--text);
+    border-radius:7px;padding:7px 9px;font-size:13px;width:100%}
+  .inp.sm{width:auto;padding:5px 8px}
+  .mini{width:28px;height:28px;border-radius:7px;border:1px solid var(--line);
+    background:transparent;color:var(--dim);font-size:13px;display:inline-flex;
+    align-items:center;justify-content:center}
+</style></head><body>
+<div class="wrap">
+
+  <h1>Kế hoạch tuần — dựng lại</h1>
+  <p class="sub">Cùng dữ liệu, cùng màu, cùng cỡ chữ với app thật. Trang này chỉ để nhìn — không bấm được.</p>
+
+  <div class="cols">
+    <!-- ================= TRƯỚC ================= -->
+    <div>
+      <h2>Trước</h2>
+      <div class="card">
+        <div class="o-h">🗓️ Tuần này làm gì</div>
+        <div class="o-focus">Nền móng — Làm cho hồ sơ tiệm đủ dày trước khi bỏ tiền kéo người tới xem nó.</div>
+        <div class="o-basis">Ngày quay và ngày đăng chọn theo số đặt lịch thật của tiệm (8 khung giờ có dữ liệu)</div>
+
+        <div class="o-stage">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">
+            <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:#0f172a;color:var(--violet)">Giai đoạn 1/5</span>
+            <span style="font-size:14.5px;font-weight:700">Nền móng</span>
+            <span style="font-size:11.5px;color:var(--dim2);margin-left:auto">Tuần 1</span>
+          </div>
+          <div style="font-size:13px;color:#cbd5e1;line-height:1.55">Làm cho hồ sơ tiệm đủ dày trước khi bỏ tiền kéo người tới xem nó.</div>
+          <div style="font-size:12.5px;color:var(--dim);line-height:1.55;margin-top:4px">Quảng cáo chỉ đưa người lạ tới hồ sơ của tiệm. Đổ tiền vào một hồ sơ mỏng là đổ qua lỗ thủng.</div>
+          <div style="margin-top:8px"><div style="height:7px;border-radius:20px;background:#0f172a;overflow:hidden"><div style="width:15%;height:100%;background:var(--indigo)"></div></div>
+          <div style="font-size:11.5px;color:var(--dim);margin-top:4px">3/20 đánh giá Google</div></div>
+          <div style="font-size:12px;color:var(--dim2);line-height:1.5;margin-top:7px"><b>Xong giai đoạn này khi:</b> 20 đánh giá Google và 8 bài đã đăng trong 30 ngày.</div>
+          <div class="btn" style="margin-top:9px;width:100%;text-align:center;border-color:var(--indigo);color:var(--violet)">Làm nội dung hôm nay →</div>
+        </div>
+
+        <div class="o-day">
+          <div class="o-dl" style="color:var(--amber)">Hôm nay</div>
+          <div>
+            <div class="o-job">🎬 Quay gộp 3 clip trong một buổi (mỗi clip 15-30 giây) <span style="color:var(--dim2);font-size:12px">· giờ vắng nhất trong ngày</span></div>
+            <div class="o-why">Thứ 7 là ngày vắng nhất của tiệm — thợ rảnh tay và phòng sạch, lên hình đẹp hơn ngày đông</div>
+            <div class="o-job" style="margin-top:8px">🎬 Quay thêm 1 clip cho Lễ Lao động (còn 2 ngày)</div>
+            <div class="o-why">Cuối kỳ nghỉ hè — tuần bận, và là mốc tựu trường của nhiều bang. Quay sớm để đăng trước 5-7 ngày</div>
+          </div>
+        </div>
+        <div class="o-day">
+          <div class="o-dl">Chủ nhật</div>
+          <div>
+            <div class="o-job">📤 Đăng clip 1 — Mẫu đang được đặt nhiều nhất <span style="color:var(--dim2);font-size:12px">· 18:30-20:00</span></div>
+            <div class="o-why">Bài chắc ăn — bán cái khách đang thật sự chọn, không phải cái tiệm thích nhất</div>
+          </div>
+        </div>
+        <div class="o-day" style="opacity:.55">
+          <div class="o-dl">Thứ 4</div>
+          <div><div class="o-job">· Nghỉ</div></div>
+        </div>
+      </div>
+      <p class="note">
+        <span class="bad">Vấn đề:</span> năm kiểu chữ xếp chồng, không có thứ bậc.
+        Phần <b>phải làm</b> lại là thứ mờ nhất trang — gạch mảnh 1px, nhãn ngày 76px chữ nhỏ,
+        ngày nghỉ để 55% độ mờ. Không có ngày tháng thật, không đếm việc, không đánh số.
+        Ô giai đoạn màu xanh to hơn cả tuần làm việc. Đọc ra <i>một luồng lời khuyên</i>, không ra một bản kế hoạch.
+      </p>
+    </div>
+
+    <!-- ================= SAU ================= -->
+    <div>
+      <h2>Sau</h2>
+      <div class="card">
+        <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+          <div style="flex:1;min-width:0">
+            <div class="lab">Kế hoạch tuần</div>
+            <div class="n-week">Tuần 36 <span>· 06/09 – 12/09</span></div>
+            <div class="n-who">Austin, TX · tiệm nail</div>
+          </div>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+            <span class="pill" style="border-color:var(--dim3);color:var(--violet)">✎ Team đã chỉnh — Trâm Anh</span>
+            <span class="btn" style="border-color:var(--indigo);color:var(--violet)">✎ Sửa kế hoạch</span>
+          </div>
+        </div>
+
+        <div class="rule">
+          <div class="fld"><div class="k lab">Trọng tâm</div><div class="v" style="color:var(--text);font-weight:600">Nền móng — Làm cho hồ sơ tiệm đủ dày trước khi bỏ tiền kéo người tới xem nó.</div></div>
+          <div class="fld"><div class="k lab">Cơ sở</div><div class="v" style="color:var(--dim)">Ngày quay và ngày đăng chọn theo số đặt lịch thật của tiệm (8 khung giờ có dữ liệu)</div></div>
+          <div class="fld"><div class="k lab">Giai đoạn 1/5</div><div class="v">
+            <div style="color:var(--text);font-weight:600">Nền móng <span style="color:var(--dim2);font-weight:500">&nbsp;·&nbsp; Tuần 1</span></div>
+            <div style="color:var(--dim);margin-top:2px">Làm cho hồ sơ tiệm đủ dày trước khi bỏ tiền kéo người tới xem nó.</div>
+            <div style="display:flex;align-items:center;gap:9px;margin-top:6px">
+              <div class="bar"><i style="width:15%"></i></div>
+              <span style="font-size:11.5px;color:var(--dim)">3/20 đánh giá Google</span>
+            </div>
+            <div style="color:var(--dim2);margin-top:5px;font-size:12px"><b style="color:var(--dim)">Xong khi:</b> 20 đánh giá Google và 8 bài đã đăng trong 30 ngày.</div>
+            <div class="btn" style="margin-top:8px;border-color:var(--indigo);color:var(--violet)">Làm nội dung hôm nay →</div>
+          </div></div>
+        </div>
+
+        <div class="rule">
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">
+            <div class="lab">Lịch tuần</div>
+            <div style="margin-left:auto;font-size:11.5px;color:var(--dim2)">9 việc</div>
+          </div>
+
+          <div class="n-day today">
+            <div class="n-dc"><div class="d">Thứ 7</div><div class="dt">06/09</div><div class="now">HÔM NAY</div></div>
+            <div style="flex:1;min-width:0">
+              <div class="n-job"><span class="no">1</span><div>
+                <div class="t">🎬 Quay gộp 3 clip trong một buổi <em>· giờ vắng nhất</em></div>
+                <div class="w"><b>↳</b>Thứ 7 là ngày vắng nhất của tiệm — thợ rảnh tay và phòng sạch, lên hình đẹp hơn ngày đông</div>
+              </div></div>
+              <div class="n-job"><span class="no">2</span><div>
+                <div class="t">🎬 Quay thêm 1 clip cho Lễ Lao động <em>· còn 2 ngày</em></div>
+                <div class="w"><b>↳</b>Cuối kỳ nghỉ hè — tuần bận, và là mốc tựu trường của nhiều bang. Quay sớm để đăng trước 5-7 ngày</div>
+              </div></div>
+              <div class="btn" style="margin-top:2px;border-color:var(--dim3);color:var(--violet)">Mở bài viết đã soạn cho hôm nay →</div>
+            </div>
+          </div>
+
+          <div class="n-day">
+            <div class="n-dc"><div class="d">Chủ nhật</div><div class="dt">07/09</div></div>
+            <div style="flex:1;min-width:0">
+              <div class="n-job" style="margin-bottom:0"><span class="no">1</span><div>
+                <div class="t">📤 Đăng clip 1 — Mẫu đang được đặt nhiều nhất <em>· 18:30–20:00</em></div>
+                <div class="w"><b>↳</b>Bài chắc ăn — bán cái khách đang thật sự chọn, không phải cái tiệm thích nhất</div>
+              </div></div>
+            </div>
+          </div>
+
+          <div class="n-day">
+            <div class="n-dc"><div class="d">Thứ 2</div><div class="dt">08/09</div></div>
+            <div style="flex:1;min-width:0">
+              <div class="n-job" style="margin-bottom:0"><span class="no">1</span><div>
+                <div class="t">💚 Xin đánh giá Google — còn thiếu 17 cái nữa <em>· lúc thanh toán</em></div>
+                <div class="w"><b>↳</b>Mỗi ngày xin một khách vui nhất. Đây là thứ đưa tiệm lên trước đối thủ trên bản đồ nhanh hơn mọi thứ khác</div>
+              </div></div>
+            </div>
+          </div>
+
+          <div class="n-day">
+            <div class="n-dc"><div class="d">Thứ 4</div><div class="dt">10/09</div></div>
+            <div style="flex:1"><div class="rest">Nghỉ — không có việc nào</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="note">
+        <span class="good">Đổi gì:</span> có đầu trang nói <b>tuần nào, ngày nào, tiệm nào</b>.
+        Phần lý do gom thành khối có nhãn thay vì năm kiểu chữ. Giai đoạn thu còn một dòng kèm thanh tiến độ.
+        Tuần trở thành <b>lịch thật</b> — ngày tháng, số thứ tự việc, tổng số việc, hôm nay đánh dấu bằng vạch vàng
+        bên trái thay vì đổi màu chữ, ngày nghỉ còn đúng một dòng thay vì cả đoạn mờ.
+      </p>
+    </div>
+  </div>
+
+  <div class="rule" style="border-top:none;margin-top:34px">
+    <h2>Sửa — ngay trên đúng layout đang đọc</h2>
+    <div class="card" style="max-width:640px">
+      <div class="n-day">
+        <div class="n-dc"><div class="d">Thứ 7</div><div class="dt">06/09</div><div class="now">HÔM NAY</div></div>
+        <div style="flex:1;min-width:0">
+          <div class="ed">
+            <div class="edrow">
+              <span class="inp sm">🎬 Quay ▾</span>
+              <span class="inp sm" style="color:var(--dim2)">giờ (không bắt buộc)</span>
+              <span style="margin-left:auto;display:flex;gap:4px;align-items:center">
+                <span class="mini">↑</span><span class="mini">↓</span>
+                <span class="inp sm" style="font-size:12px">Thứ 7 ▾</span>
+                <span class="mini" style="color:#f87171">✕</span>
+              </span>
+            </div>
+            <div class="inp" style="font-weight:600;margin-bottom:6px">Quay gộp 3 clip trong một buổi</div>
+            <div class="inp" style="font-size:12.5px;color:var(--dim)">Thứ 7 là ngày vắng nhất của tiệm — thợ rảnh tay và phòng sạch</div>
+          </div>
+          <div class="btn" style="font-size:12px;padding:5px 10px;color:var(--dim)">+ Thêm việc</div>
+        </div>
+      </div>
+      <div class="rule" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="btn" style="background:var(--indigo);border:none;color:#fff;font-weight:700">Lưu cho tiệm</span>
+        <span class="btn">Huỷ</span>
+        <span class="btn" style="margin-left:auto;border-color:var(--dim3);color:#f87171">↺ Bỏ bản sửa, dùng lại bản hệ thống</span>
+      </div>
+    </div>
+    <p class="note">
+      Mỗi việc sửa được <b>loại · giờ · nội dung · lý do</b>; <b>↑ ↓</b> đổi thứ tự trong ngày;
+      ô chọn ngày <b>chuyển việc sang ngày khác</b>; <b>✕</b> xoá; <b>+ Thêm việc</b> cho từng ngày.
+      Bản hệ thống tự viết vẫn nằm nguyên bên dưới nên lúc nào cũng quay về được.
+    </p>
+    <p class="note">
+      <b>Hai điều em xử lý ngầm.</b> Máy chủ không lưu y nguyên thứ trình duyệt gửi lên: bảy ngày và tên ngày
+      là khung của máy chủ, người sửa chỉ được điền vào — vì cục JSON này còn được đọc bởi màn hình, kho lưu,
+      con bot soạn bài đêm và các prompt AI, sai khung là tuần sau vỡ ở chỗ chẳng liên quan gì.
+      Và câu nào không đụng tới thì <b>giữ nguyên cả tiếng Việt lẫn tiếng Anh</b> — mở bản tiếng Việt rồi bấm lưu
+      không được phép xoá sạch phần tiếng Anh của cả tuần. Câu tự gõ thì lưu một thứ tiếng, hiện y như vậy ở cả hai bản.
+    </p>
+  </div>
+</div>
+</body></html>

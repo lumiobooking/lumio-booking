@@ -153,7 +153,7 @@ export class UploadsService {
     }
 
     const url = `${c.publicBase}/${safeTenant}/${name}`;
-    const reachable = await this.verifyPublic(url);
+    const reachable = await this.verifyPublic(url, isVideo ? 'video' : 'image');
     if (reachable) throw new BadRequestException(reachable);
     return { url, kind: isVideo ? 'video' : 'image' };
   }
@@ -197,8 +197,11 @@ export class UploadsService {
   async finishChunks(tenantId: string, dto: { uploadId: string; total: number; mime: string; name?: string }): Promise<{ pending: true } | FinishResult> {
     const total = Math.round(Number(dto.total));
     if (!Number.isInteger(total) || total < 1 || total > PIECES_MAX) throw new BadRequestException('Số mảnh không hợp lệ.');
+    // A stored SUCCESS is the answer for good. A stored failure is not: the
+    // phone re-sends the pieces and asks again, and must get a fresh attempt,
+    // not yesterday's error handed back before anything was tried.
     const done = await getResult(tenantId, dto.uploadId);
-    if (done) return done;
+    if (done?.url) return done;
     const key = `${tenantId}/${dto.uploadId}`;
     if (!this.finishing.has(key)) {
       const have = await haveChunks(tenantId, dto.uploadId);
@@ -287,21 +290,29 @@ export class UploadsService {
    * URL of the upload folder" setting and the person reading it needs to see
    * what the two halves produced together.
    */
-  private async verifyPublic(url: string): Promise<string | null> {
+  private async verifyPublic(url: string, expect: 'image' | 'video' = 'image'): Promise<string | null> {
     try {
       // GET, not HEAD: some shared hosts answer HEAD differently or not at all,
-      // and a false alarm here would block a working upload.
-      const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+      // and a false alarm here would block a working upload. A RANGE request
+      // for a clip: the point is the headers, not eighty megabytes coming back.
+      const res = await fetch(url, { signal: AbortSignal.timeout(12_000), headers: expect === 'video' ? { range: 'bytes=0-0' } : {} });
       if (!res.ok) {
         return `Ảnh đã tải lên máy chủ nhưng địa chỉ công khai không mở được (HTTP ${res.status}): ${url} — `
           + 'kiểm tra ô "Public URL of the upload folder" có khớp với "Folder path on the server" không, '
           + 'và tên miền đã trỏ về hosting này chưa.';
       }
       const type = res.headers.get('content-type') || '';
-      if (!/^image\//i.test(type)) {
-        // A WordPress 404 page answers 200 with text/html. Checking the status
-        // alone would call that a success and hand Meta a web page.
-        return `Địa chỉ ảnh trả về "${type || 'không rõ loại'}" chứ không phải file ảnh: ${url} — `
+      // What kind of file the address serves back. A clip answers video/mp4
+      // (or, on a host that never learnt the extension, application/octet-stream
+      // — which is a file, not a page). A WordPress 404 answers 200 with
+      // text/html; checking the status alone would call that a success and
+      // hand Meta a web page. The first version only knew about images and
+      // refused every clip that had, in fact, arrived.
+      const ok = expect === 'video'
+        ? /^(video\/|application\/octet-stream)/i.test(type)
+        : /^image\//i.test(type);
+      if (!ok) {
+        return `Địa chỉ file trả về "${type || 'không rõ loại'}" chứ không phải ${expect === 'video' ? 'file video' : 'file ảnh'}: ${url} — `
           + 'nhiều khả năng website đang nuốt đường dẫn này (WordPress trả về trang 404) '
           + 'hoặc ô "Public URL" trỏ sai chỗ.';
       }

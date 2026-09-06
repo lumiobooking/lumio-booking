@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, apiUpload } from '../lib/api';
-import { shrinkForUpload } from '../lib/image';
 
 /**
  * The salon's whole screen: what to film, what Lumio asked for, what is waiting
@@ -235,18 +234,28 @@ export function SalonWorkspace({ token, vi, onCount }: {
 }
 
 /**
- * Photos are shrunk on the phone first, then sent two at a time. Two, not
- * one: a single stream rarely fills a mobile connection, and a clip next to
- * a photo lets the photo finish while the clip is still going. Not four: on
- * a weak connection they starve each other and nothing visibly moves. The
- * bar reports bytes across the whole batch, so it never jumps backwards.
+ * Files go up AS THEY ARE, two at a time.
+ *
+ * Originals on purpose. A first version shrank photos to 2048px before
+ * sending — fine for a straight post, since Facebook and Instagram deliver
+ * at 2048 and 1080 — but the team crops a single nail out of a hand and
+ * grades the colour, and a shrunk original has no room left for that. The
+ * bytes are the raw material of the work; the slower upload is the price.
+ * (shrinkForUpload in lib/image stays for the places that only need a
+ * thumbnail.)
+ *
+ * Two at a time, not one: a single stream rarely fills a mobile connection,
+ * and a clip next to a photo lets the photo finish while the clip is still
+ * going. Not four: on a weak connection they starve each other and nothing
+ * visibly moves. The bar reports bytes across the whole batch, so it never
+ * jumps backwards.
  */
 async function sendFiles(
   files: File[],
   token: string,
   setPct: (n: number) => void,
 ): Promise<{ url: string; kind: 'image' | 'video' }[]> {
-  const prepared = await Promise.all(files.map((f) => shrinkForUpload(f)));
+  const prepared = files;
   const total = prepared.reduce((n, f) => n + f.size, 0) || 1;
   const done = prepared.map(() => 0);
   const report = () => setPct(Math.min(99, Math.round((done.reduce((a, b) => a + b, 0) / total) * 100)));

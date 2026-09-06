@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IsString, MaxLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
@@ -45,6 +45,45 @@ export class UploadsController {
     if (!tenantId) throw new BadRequestException('No salon in scope.');
     if (!file) throw new BadRequestException('Chưa chọn được file.');
     return this.uploads.uploadFile(tenantId, file);
+  }
+
+  /**
+   * The same file, in pieces — see ./chunk-store for why.
+   *
+   * `uploadId` is minted by the phone (a UUID) so a resume after the app was
+   * closed can name the upload it is continuing. It is scoped under the tenant
+   * on disk, so one salon's id can never touch another's pieces.
+   */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('media/chunk')
+  @UseInterceptors(FileInterceptor('chunk', { limits: { fileSize: 9_000_000 } }))
+  async mediaChunk(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() chunk: { buffer: Buffer } | undefined,
+    @Body() body: { uploadId?: string; index?: string },
+  ) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon in scope.');
+    if (!chunk?.buffer) throw new BadRequestException('Mảnh rỗng.');
+    return this.uploads.receiveChunk(tenantId, { uploadId: String(body?.uploadId ?? ''), index: Number(body?.index), buf: chunk.buffer });
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('media/chunk/:uploadId')
+  mediaChunkStatus(@CurrentUser() user: AuthenticatedUser, @Param('uploadId') uploadId: string) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon in scope.');
+    return this.uploads.chunkStatus(tenantId, uploadId);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('media/finish')
+  mediaFinish(@CurrentUser() user: AuthenticatedUser, @Body() body: { uploadId?: string; total?: number; mime?: string; name?: string }) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon in scope.');
+    return this.uploads.finishChunks(tenantId, {
+      uploadId: String(body?.uploadId ?? ''), total: Number(body?.total), mime: String(body?.mime ?? ''), name: body?.name,
+    });
   }
 
   /** Frontend asks whether storage exists — if not, it keeps the inline fallback. */

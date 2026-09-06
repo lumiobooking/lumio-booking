@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { apiFetch, apiUpload } from '../lib/api';
+import { apiFetch } from '../lib/api';
+import { enqueue, installOutbox, useOutbox, retryFailed, discardBatch, takeLastDone, type BatchView } from '../lib/upload-queue';
 
 /**
  * The salon's whole screen: what to film, what Lumio asked for, what is waiting
@@ -74,6 +75,12 @@ export function SalonWorkspace({ token, vi, onCount }: {
 
   useEffect(() => { load(); }, [load]);
 
+  // The outbox runs whenever this page is open; a batch that finishes on the
+  // server is what turns a card from "sending" into "sent", so reload then.
+  useEffect(() => { installOutbox(() => token); }, [token]);
+  const outbox = useOutbox();
+  useEffect(() => { if (takeLastDone()) void load(); }, [outbox.lastDone, load]);
+
   // An empty tab is a broken-looking tab. A salon nobody is running marketing
   // for opens this and gets a sentence, not a blank rectangle.
   const nothing = !sugg?.open.length && !sugg?.past.length && !week?.jobs.length;
@@ -99,6 +106,8 @@ export function SalonWorkspace({ token, vi, onCount }: {
           borderRadius: 12, padding: '11px 14px', fontSize: 13.5, lineHeight: 1.55, marginBottom: 14,
         }}>{err}</div>
       )}
+
+      <OutboxBar vi={vi} pending={outbox.pending} running={outbox.running} online={outbox.online} pct={outbox.pct} />
 
       {/* ---- 1. what Lumio asked for ---- */}
       {!!sugg?.open.length && (
@@ -234,45 +243,6 @@ export function SalonWorkspace({ token, vi, onCount }: {
 }
 
 /**
- * Files go up AS THEY ARE, two at a time.
- *
- * Originals on purpose. A first version shrank photos to 2048px before
- * sending — fine for a straight post, since Facebook and Instagram deliver
- * at 2048 and 1080 — but the team crops a single nail out of a hand and
- * grades the colour, and a shrunk original has no room left for that. The
- * bytes are the raw material of the work; the slower upload is the price.
- * (shrinkForUpload in lib/image stays for the places that only need a
- * thumbnail.)
- *
- * Two at a time, not one: a single stream rarely fills a mobile connection,
- * and a clip next to a photo lets the photo finish while the clip is still
- * going. Not four: on a weak connection they starve each other and nothing
- * visibly moves. The bar reports bytes across the whole batch, so it never
- * jumps backwards.
- */
-async function sendFiles(
-  files: File[],
-  token: string,
-  setPct: (n: number) => void,
-): Promise<{ url: string; kind: 'image' | 'video' }[]> {
-  const prepared = files;
-  const total = prepared.reduce((n, f) => n + f.size, 0) || 1;
-  const done = prepared.map(() => 0);
-  const report = () => setPct(Math.min(99, Math.round((done.reduce((a, b) => a + b, 0) / total) * 100)));
-  const out: ({ url: string; kind: 'image' | 'video' } | null)[] = prepared.map(() => null);
-  let next = 0;
-  const worker = async () => {
-    while (next < prepared.length) {
-      const i = next; next += 1;
-      out[i] = await apiUpload('/uploads/media', prepared[i], token, (p) => { done[i] = (p / 100) * prepared[i].size; report(); });
-      done[i] = prepared[i].size; report();
-    }
-  };
-  await Promise.all([worker(), worker()]);
-  return out.filter((x): x is { url: string; kind: 'image' | 'video' } => x !== null);
-}
-
-/**
  * One suggestion, with the only two answers a shop has: here it is, or it does
  * not fit us.
  *
@@ -290,21 +260,24 @@ function SuggestionCard({
 }) {
   const T = (v: string, e: string) => (vi ? v : e);
   const [busy, setBusy] = useState(false);
-  const [pct, setPct] = useState<number | null>(null);
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState('');
   const pick = useRef<HTMLInputElement | null>(null);
+  // This card's own batch in the outbox, if one is on its way.
+  const outbox = useOutbox();
+  const mine = outbox.pending.find((b) => 'suggestionId' in b.target && b.target.suggestionId === s.id) ?? null;
+  const pct = mine ? mine.pct : null;
 
   async function send(files: File[]) {
     if (!files.length || !token) return;
-    setBusy(true); onError(null);
+    onError(null);
     try {
-      const out = await sendFiles(files, token, setPct);
-      await apiFetch(`/content/suggestions/${s.id}/done`, { method: 'POST', token, body: { media: out } });
-      onDone();
+      // Into the outbox and back at once. The runner sends the pieces, then
+      // marks the card done on the server; `onDone` fires from the bar.
+      await enqueue(files, { suggestionId: s.id });
     } catch (e) {
       onError(e instanceof Error ? e.message : T('Không gửi được, thử lại giúp em', 'Could not send — please try again'));
-    } finally { setBusy(false); setPct(null); }
+    }
   }
 
   async function skip() {
@@ -364,13 +337,13 @@ function SuggestionCard({
         </div>
       </div>
 
-      {busy && pct !== null && (
+      {pct !== null && (
         <div style={{ marginTop: 11 }}>
           <div style={{ height: 6, borderRadius: 20, background: 'var(--c0f172a)', overflow: 'hidden' }}>
             <div style={{ width: `${pct}%`, height: '100%', background: '#6366f1', transition: 'width .2s' }} />
           </div>
           <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 5 }}>
-            {T('Đang gửi', 'Sending')} {pct}% — {T('đừng đóng trang', 'keep this page open')}
+            {T('Đang gửi', 'Sending')} {pct}% — {T('cứ để điện thoại đó, màn hình sẽ không tự tắt', 'you can put the phone down — the screen stays on')}
           </div>
         </div>
       )}
@@ -388,8 +361,8 @@ function SuggestionCard({
             // ÷ 0 = "Infinity%", and a send that never finished.
             onChange={(e) => { void send(Array.from(e.target.files ?? [])); e.target.value = ''; }}
           />
-          <button onClick={() => pick.current?.click()} disabled={busy} style={{ ...primary, flex: '1 1 200px' }}>
-            {busy ? T('Đang gửi…', 'Sending…') : `📤 ${T('Đã quay xong — gửi cho Lumio', 'Filmed it — send to Lumio')}`}
+          <button onClick={() => pick.current?.click()} disabled={busy || pct !== null} style={{ ...primary, flex: '1 1 200px' }}>
+            {pct !== null ? T('Đang gửi…', 'Sending…') : `📤 ${T('Đã quay xong — gửi cho Lumio', 'Filmed it — send to Lumio')}`}
           </button>
           <button onClick={() => setAsking(true)} disabled={busy} style={ghost}>
             {T('Không hợp tiệm', 'Not for us')}
@@ -429,6 +402,67 @@ function SuggestionCard({
 }
 
 /**
+ * The outbox, in one line at the top of the tab.
+ *
+ * Says the only three things a person needs: it is going, how far, and that
+ * they can put the phone down. If the road drops, it says so and offers to try
+ * again; a batch that cannot be delivered can be dropped so it stops nagging.
+ */
+function OutboxBar({ vi, pending, running, online, pct }: {
+  vi: boolean; pending: BatchView[]; running: boolean; online: boolean; pct: number;
+}) {
+  const T = (v: string, e: string) => (vi ? v : e);
+  if (!pending.length) return null;
+  const files = pending.reduce((n, b) => n + b.files.length, 0);
+  const failed = pending.filter((b) => b.status === 'failed' || b.files.some((f) => f.status === 'failed'));
+  const stuck = failed.length > 0 || !online;
+  return (
+    <div style={{
+      ...card, marginBottom: 14, borderColor: stuck ? '#f59e0b' : '#6366f1',
+      background: stuck ? 'rgba(245,158,11,.08)' : 'rgba(99,102,241,.10)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 18 }}>{stuck ? '⏸' : '📤'}</span>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+            {!online
+              ? T('Mất mạng — sẽ gửi tiếp khi có mạng lại', 'Offline — will continue when the connection is back')
+              : failed.length
+                ? T('Gửi bị gián đoạn', 'Sending was interrupted')
+                : running
+                  ? T(`Đang gửi ${files} file cho Lumio — ${pct}%`, `Sending ${files} file(s) to Lumio — ${pct}%`)
+                  : T(`${files} file đang chờ gửi`, `${files} file(s) waiting to send`)}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>
+            {stuck
+              ? T('Những mảnh đã gửi được giữ lại — bấm "Gửi tiếp" là đi tiếp từ chỗ dở, không phải chọn lại file.',
+                  'What already went is kept — press "Resume" and it carries on from where it stopped, no need to pick the files again.')
+              : T('Cứ để điện thoại đó, màn hình sẽ không tự tắt. Nếu đóng app, lần mở sau tự gửi tiếp từ chỗ dở — không phải chọn lại file.',
+                  'You can put the phone down — the screen stays on. If you close the app, it resumes where it left off next time, no need to pick the files again.')}
+          </div>
+          <div style={{ height: 5, borderRadius: 20, background: 'var(--c0f172a)', overflow: 'hidden', marginTop: 8 }}>
+            <div style={{ width: `${pct}%`, height: '100%', background: stuck ? '#f59e0b' : '#6366f1', transition: 'width .3s' }} />
+          </div>
+        </div>
+        {stuck && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => { void retryFailed(); }} style={{ ...primary, minHeight: 38, padding: '8px 14px', fontSize: 13 }}>
+              {T('Gửi tiếp', 'Resume')}
+            </button>
+            {failed.length > 0 && (
+              <button
+                onClick={() => { if (window.confirm(T('Bỏ những file chưa gửi được?', 'Drop the files that did not go?'))) failed.forEach((b) => { void discardBatch(b.id); }); }}
+                style={{ ...ghost, minHeight: 38, padding: '8px 12px', fontSize: 13 }}
+              >{T('Bỏ', 'Drop')}</button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * "Send us anything." One line of what it is, pick the files, done.
  *
  * Collapsed to a single row until tapped: it sits under the cards Lumio
@@ -441,22 +475,23 @@ function SendAnything({ token, vi, onDone, onError }: {
   const T = (v: string, e: string) => (vi ? v : e);
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [pct, setPct] = useState<number | null>(null);
+  const busy = false;
   const [sent, setSent] = useState<number | null>(null);
   const pick = useRef<HTMLInputElement | null>(null);
+  const outbox = useOutbox();
+  const mine = outbox.pending.filter((b) => 'shop' in b.target);
+  const pct = mine.length ? Math.round(mine.reduce((n, b) => n + b.pct, 0) / mine.length) : null;
+  void onDone;
 
   async function send(files: File[]) {
     if (!files.length || !token) return;
-    setBusy(true); onError(null); setSent(null);
+    onError(null); setSent(null);
     try {
-      const media = await sendFiles(files, token, setPct);
-      await apiFetch('/content/suggestions/shop-send', { method: 'POST', token, body: { note, media } });
-      setSent(media.length); setNote(''); setOpen(false);
-      onDone();
+      await enqueue(files, { shop: true, note });
+      setSent(files.length); setNote(''); setOpen(false);
     } catch (e) {
       onError(e instanceof Error ? e.message : T('Không gửi được, thử lại giúp em', 'Could not send — please try again'));
-    } finally { setBusy(false); setPct(null); }
+    }
   }
 
   return (
@@ -476,10 +511,12 @@ function SendAnything({ token, vi, onDone, onError }: {
               {T('Gửi ảnh/clip cho Lumio', 'Send photos or clips to Lumio')}
             </span>
             <span style={{ display: 'block', fontSize: 12.5, color: 'var(--c94a3b8)', fontWeight: 500 }}>
-              {sent
-                ? T(`Đã nhận ${sent} file — bên em sẽ dựng bài từ đó.`, `Got ${sent} file(s) — we will make posts from them.`)
-                : T('Bộ móng đẹp, khoảnh khắc hay — gửi lúc nào cũng được, không cần chờ đề xuất.',
-                    'A great set, a good moment — send any time, no need to wait for a request.')}
+              {pct !== null
+                ? T(`Đang gửi ${pct}% — cứ để điện thoại đó.`, `Sending ${pct}% — you can put the phone down.`)
+                : sent
+                  ? T(`Đã nhận ${sent} file — bên em sẽ dựng bài từ đó.`, `Got ${sent} file(s) — we will make posts from them.`)
+                  : T('Bộ móng đẹp, khoảnh khắc hay — gửi lúc nào cũng được, không cần chờ đề xuất.',
+                      'A great set, a good moment — send any time, no need to wait for a request.')}
             </span>
           </span>
         </button>
@@ -496,19 +533,10 @@ function SendAnything({ token, vi, onDone, onError }: {
               border: '1px solid var(--c475569)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14, marginBottom: 10,
             }}
           />
-          {busy && pct !== null && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ height: 6, borderRadius: 4, background: 'var(--c334155)', overflow: 'hidden' }}>
-                <div style={{ width: `${pct}%`, height: '100%', background: '#6366f1', transition: 'width .2s' }} />
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 4 }}>
-                {T('Đang gửi', 'Sending')} {pct}% — {T('đừng đóng trang', 'keep this page open')}
-              </div>
-            </div>
-          )}
+
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={() => pick.current?.click()} disabled={busy} style={{ ...primary, flex: '1 1 auto' }}>
-              {busy ? T('Đang gửi…', 'Sending…') : T('Chọn ảnh/clip và gửi', 'Pick files and send')}
+              {T('Chọn ảnh/clip và gửi', 'Pick files and send')}
             </button>
             <button onClick={() => setOpen(false)} disabled={busy} style={ghost}>{T('Đóng', 'Close')}</button>
           </div>

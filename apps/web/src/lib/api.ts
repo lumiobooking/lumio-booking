@@ -184,6 +184,33 @@ export function apiUpload(
   });
 }
 
+/** Any multipart form, with upload progress. `apiUpload` above is the one-file case of this. */
+export function apiUploadForm<T = unknown>(
+  path: string,
+  form: FormData,
+  token: string | null,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_URL}${path}`);
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    const branch = activeBranchId();
+    if (branch) xhr.setRequestHeader('X-Branch-Id', branch);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total); };
+    xhr.onload = () => {
+      let body: unknown = null;
+      try { body = JSON.parse(xhr.responseText); } catch { /* no JSON */ }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body as T);
+      else reject(new ApiError((body as { message?: string })?.message || 'Không tải lên được', xhr.status, body));
+    };
+    xhr.onerror = () => reject(new ApiError('Mất kết nối khi đang tải lên', 0, null));
+    xhr.ontimeout = () => reject(new ApiError('Mạng chậm quá, thử lại', 0, null));
+    xhr.timeout = 120_000;
+    xhr.send(form);
+  });
+}
+
 export async function apiFetch<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', token, body } = options;
 

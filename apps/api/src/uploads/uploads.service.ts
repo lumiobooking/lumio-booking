@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { Client as FtpClient } from 'basic-ftp';
 import { Readable } from 'stream';
 import { PlatformConfigService } from '../billing/platform-config.service';
+import { assemble, dropChunks, haveChunks, putChunk, CHUNK_MAX, PIECES_MAX } from './chunk-store';
 
 interface FtpConfig {
   host: string; port: number; user: string; password: string; secure: boolean;
@@ -155,6 +156,47 @@ export class UploadsService {
     const reachable = await this.verifyPublic(url);
     if (reachable) throw new BadRequestException(reachable);
     return { url, kind: isVideo ? 'video' : 'image' };
+  }
+
+  // ---- in pieces ------------------------------------------------------------------
+
+  /** One piece of a file. Idempotent: the same piece twice is the same piece. */
+  async receiveChunk(tenantId: string, dto: { uploadId: string; index: number; buf: Buffer }): Promise<{ have: number[] }> {
+    const index = Math.round(Number(dto.index));
+    if (!Number.isInteger(index) || index < 0 || index >= PIECES_MAX) throw new BadRequestException('Mảnh không hợp lệ.');
+    if (!dto.buf?.length || dto.buf.length > CHUNK_MAX) throw new BadRequestException('Mảnh rỗng hoặc quá lớn.');
+    try {
+      await putChunk(tenantId, dto.uploadId, index, dto.buf);
+    } catch (e) {
+      this.log.error(`chunk write failed: ${e instanceof Error ? e.message : e}`);
+      throw new BadRequestException('Không nhận được mảnh này. Thử lại giúp em.');
+    }
+    return { have: await haveChunks(tenantId, dto.uploadId) };
+  }
+
+  /** Which pieces are already here — the phone asks this before resuming. */
+  async chunkStatus(tenantId: string, uploadId: string): Promise<{ have: number[] }> {
+    return { have: await haveChunks(tenantId, uploadId) };
+  }
+
+  /**
+   * Every piece is in: make the file and push it to storage the usual way.
+   * The pieces are dropped whether or not storage accepted it — a failed
+   * finish is retried by re-sending, not by keeping a day-old half-file.
+   */
+  async finishChunks(tenantId: string, dto: { uploadId: string; total: number; mime: string; name?: string }): Promise<{ url: string; kind: 'image' | 'video' }> {
+    const total = Math.round(Number(dto.total));
+    if (!Number.isInteger(total) || total < 1 || total > PIECES_MAX) throw new BadRequestException('Số mảnh không hợp lệ.');
+    const buf = await assemble(tenantId, dto.uploadId, total);
+    if (!buf) {
+      const have = await haveChunks(tenantId, dto.uploadId);
+      throw new BadRequestException(`MISSING_CHUNKS:${have.join(',')}`);
+    }
+    try {
+      return await this.uploadFile(tenantId, { buffer: buf, mimetype: dto.mime, originalname: dto.name });
+    } finally {
+      await dropChunks(tenantId, dto.uploadId);
+    }
   }
 
   /** Decode a small data: image URL and push it to FTP, return its public https URL. */

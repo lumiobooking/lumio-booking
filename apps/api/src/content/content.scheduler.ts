@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { sweepChunks } from '../uploads/chunk-store';
 import { ContentService } from './content.service';
 import { SocialPublishService } from './social-publish.service';
 import { TrendFeedService } from './trends/trend-feed.service';
@@ -74,7 +75,7 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
     // when there is nothing to do (one indexed read), and never behind the
     // drafting flag — a file the shop sent is a file the agency promised to
     // keep, whatever else is switched off.
-    this.driveTimer = setInterval(() => this.sweepDrive(), 10 * 60 * 1000);
+    this.driveTimer = setInterval(() => { void this.sweepDrive(); void sweepChunks().catch(() => undefined); }, 10 * 60 * 1000);
     this.driveTimer.unref?.();
 
     const enabled = process.env.CONTENT_PLANNER_ENABLED ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false');

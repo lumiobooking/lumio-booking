@@ -109,6 +109,11 @@ export function SalonWorkspace({ token, vi, onCount }: {
 
       <OutboxBar vi={vi} pending={outbox.pending} running={outbox.running} online={outbox.online} pct={outbox.pct} />
 
+      {/* ---- 0. the open door, first and loud ----
+             The thing a shop does most often is send what it just made. That
+             is the top of the tab, one tap, no card to wait for. */}
+      <SendAnything token={token} vi={vi} onDone={load} onError={setErr} />
+
       {/* ---- 1. what Lumio asked for ---- */}
       {!!sugg?.open.length && (
         <section style={{ marginBottom: 18 }}>
@@ -127,11 +132,6 @@ export function SalonWorkspace({ token, vi, onCount }: {
           </div>
         </section>
       )}
-
-      {/* ---- 1b. the open door: send anything, any time ----
-             A set of nails worth showing does not wait for a card. Without
-             this the photo goes to a group chat at night, unlabelled. */}
-      <SendAnything token={token} vi={vi} onDone={load} onError={setErr} />
 
       {/* ---- 2. the shop's own week ----
              Two cards in an auto-fit grid: side by side on a laptop, stacked on
@@ -473,7 +473,6 @@ function SendAnything({ token, vi, onDone, onError }: {
   token: string | null; vi: boolean; onDone: () => void; onError: (m: string | null) => void;
 }) {
   const T = (v: string, e: string) => (vi ? v : e);
-  const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
   const busy = false;
   const [sent, setSent] = useState<number | null>(null);
@@ -488,60 +487,51 @@ function SendAnything({ token, vi, onDone, onError }: {
     onError(null); setSent(null);
     try {
       await enqueue(files, { shop: true, note });
-      setSent(files.length); setNote(''); setOpen(false);
+      setSent(files.length); setNote('');
     } catch (e) {
       onError(e instanceof Error ? e.message : T('Không gửi được, thử lại giúp em', 'Could not send — please try again'));
     }
   }
 
   return (
-    <section style={{ ...card, marginBottom: 18, borderStyle: open ? 'solid' : 'dashed' }}>
+    <section style={{
+      ...card, marginBottom: 18, padding: '16px 16px 14px',
+      border: '1.5px solid #6366f1', background: 'linear-gradient(135deg, rgba(99,102,241,.18), rgba(99,102,241,.06))',
+      boxShadow: '0 6px 24px rgba(99,102,241,.18)',
+    }}>
       <input
         ref={pick} type="file" accept="image/*,video/*" multiple style={{ display: 'none' }}
         onChange={(e) => { void send(Array.from(e.target.files ?? [])); e.target.value = ''; }}
       />
-      {!open ? (
-        <button
-          onClick={() => setOpen(true)}
-          style={{ ...ghost, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, border: 'none', padding: '4px 2px', minHeight: 40 }}
-        >
-          <span style={{ fontSize: 20 }}>📤</span>
-          <span style={{ minWidth: 0 }}>
-            <span style={{ display: 'block', color: 'var(--ce2e8f0)', fontWeight: 700, fontSize: 14.5 }}>
-              {T('Gửi ảnh/clip cho Lumio', 'Send photos or clips to Lumio')}
-            </span>
-            <span style={{ display: 'block', fontSize: 12.5, color: 'var(--c94a3b8)', fontWeight: 500 }}>
-              {pct !== null
-                ? T(`Đang gửi ${pct}% — cứ để điện thoại đó.`, `Sending ${pct}% — you can put the phone down.`)
-                : sent
-                  ? T(`Đã nhận ${sent} file — bên em sẽ dựng bài từ đó.`, `Got ${sent} file(s) — we will make posts from them.`)
-                  : T('Bộ móng đẹp, khoảnh khắc hay — gửi lúc nào cũng được, không cần chờ đề xuất.',
-                      'A great set, a good moment — send any time, no need to wait for a request.')}
-            </span>
-          </span>
-        </button>
-      ) : (
-        <div>
-          <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 8 }}>
-            📤 {T('Gửi ảnh/clip cho Lumio', 'Send photos or clips to Lumio')}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <span style={{ fontSize: 30, lineHeight: 1, flex: '0 0 auto' }}>📤</span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ color: 'var(--cf1f5f9)', fontWeight: 800, fontSize: 17, lineHeight: 1.3 }}>
+            {T('Gửi ảnh/clip cho Lumio', 'Send photos or clips to Lumio')}
           </div>
-          <input
-            value={note} onChange={(e) => setNote(e.target.value)} disabled={busy}
-            placeholder={T('Đây là gì? — ví dụ: bộ móng cô dâu hôm nay, khách rất thích', 'What is it? — e.g. today\'s bridal set, client loved it')}
-            style={{
-              width: '100%', boxSizing: 'border-box', minHeight: 44, padding: '10px 12px', borderRadius: 10,
-              border: '1px solid var(--c475569)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14, marginBottom: 10,
-            }}
-          />
-
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => pick.current?.click()} disabled={busy} style={{ ...primary, flex: '1 1 auto' }}>
-              {T('Chọn ảnh/clip và gửi', 'Pick files and send')}
-            </button>
-            <button onClick={() => setOpen(false)} disabled={busy} style={ghost}>{T('Đóng', 'Close')}</button>
+          <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.55, marginTop: 3 }}>
+            {pct !== null
+              ? T(`Đang gửi ${pct}% — cứ để điện thoại đó, không cần nhìn.`, `Sending ${pct}% — you can put the phone down.`)
+              : sent
+                ? T(`✓ Đã nhận ${sent} file — bên em sẽ dựng bài từ đó. Gửi tiếp bất cứ lúc nào.`, `✓ Got ${sent} file(s) — we will make posts from them. Send more any time.`)
+                : T('Vừa làm xong bộ móng đẹp? Chụp/quay rồi gửi ngay — bên em dựng bài, tiệm chỉ cần duyệt.',
+                    'Just finished a great set? Shoot it and send — we make the post, you just approve.')}
           </div>
         </div>
-      )}
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+        <input
+          value={note} onChange={(e) => setNote(e.target.value)} disabled={busy}
+          placeholder={T('Ghi chú (không bắt buộc): bộ móng cô dâu, khách rất thích…', 'Note (optional): bridal set, client loved it…')}
+          style={{
+            flex: '1 1 220px', minWidth: 0, boxSizing: 'border-box', minHeight: 46, padding: '10px 12px', borderRadius: 11,
+            border: '1px solid var(--c475569)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14,
+          }}
+        />
+        <button onClick={() => pick.current?.click()} disabled={busy} style={{ ...primary, flex: '1 1 200px', fontSize: 15.5, minHeight: 48 }}>
+          📷 {T('Chọn ảnh/clip và gửi', 'Pick photos/clips and send')}
+        </button>
+      </div>
     </section>
   );
 }

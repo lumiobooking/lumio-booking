@@ -31,7 +31,7 @@ import { useIsMobile } from '../../../lib/responsive';
 import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz } from '../../../lib/datetime';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
 import { MonthCalendar, IgGrid, PostPreview, MediaList, type MediaItem } from '../../../components/PostStudio';
-import { WeekPlanBoard } from '../../../components/WeekPlanBoard';
+import { WeekPlanBoard, type OfferForm } from '../../../components/WeekPlanBoard';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
 import { TrendsTab, type TrendCard } from '../../../components/TrendsTab';
@@ -202,7 +202,11 @@ interface Plan {
   weekMeta: {
     weekKey: string; label: string; edited: boolean; editedByName: string | null; editedAt: string | null;
     canEdit: boolean; approvedAt: string | null; approvedByName: string | null;
+    ticks?: Record<string, number[]>;
   } | null;
+  /** The offer form as the team set it (the plan is built from it). */
+  offerForm?: OfferForm | null;
+  currencySign?: string;
   calendar: SeasonEvent[];
   videoFeeds: FeedLink[];
   productWatch: FeedLink[];
@@ -1906,7 +1910,25 @@ function Inner() {
                       meta={meta}
                       isPast={isPast}
                       vi={vi}
+                      salonName={plan?.identity?.label ?? null}
                       salonCity={plan?.region?.label ?? null}
+                      currencySign={plan?.currencySign}
+                      offer={isPast ? null : plan?.offerForm ?? null}
+                      onSaveOffer={async (o) => {
+                        try {
+                          await apiFetch('/content/offer', { method: 'POST', token, body: o });
+                          await load();
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : 'Không lưu được ưu đãi');
+                          throw e;
+                        }
+                      }}
+                      onTick={async (jobId, step, done) => {
+                        if (!plan?.weekMeta) return;
+                        await apiFetch(`/content/weeks/${encodeURIComponent(plan.weekMeta.weekKey)}/tick`, {
+                          method: 'POST', token, body: { jobId, step, done },
+                        });
+                      }}
                       approving={approving}
                       // The salon's half of the bar: it cannot rewrite the plan,
                       // but it can say yes to it — and an approval written on the

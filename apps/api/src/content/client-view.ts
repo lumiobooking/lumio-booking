@@ -43,6 +43,11 @@ export interface ClientJob {
   /** The instruction, including what to shoot. */
   text: Txt;
   /**
+   * The shot list, in order — the sheet's steps for THIS job (job-brief).
+   * Craft only: which shots, what light, how long. Nothing about why.
+   */
+  steps: Txt[];
+  /**
    * How to do it well — framing, light, the sentence to say at the counter.
    *
    * Craft, not method, and the difference is what makes it safe to send. The
@@ -117,6 +122,9 @@ export function clientWeek(plan: WeekPlan | null | undefined): ClientWeek | null
       if (!SHOP_JOB_KINDS.includes(j.kind)) continue;
       jobs.push({
         dayIndex, day: d.label, kind: j.kind, text: (j as Job).text,
+        // Only the steps travel. The caption, the tags and the channel are the
+        // team's publishing work, and the shop's jobs do not publish anything.
+        steps: ((j as Job).brief?.steps ?? []).slice(0, 12),
         how: HOW[j.kind] ?? null,
       });
     }

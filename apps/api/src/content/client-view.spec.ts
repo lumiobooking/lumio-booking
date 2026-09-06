@@ -43,7 +43,7 @@ describe('what a salon sees of its own week', () => {
   it('says which day, because a shoot has to be scheduled — and nothing about publishing', () => {
     for (const j of cw.jobs) {
       expect(typeof j.dayIndex).toBe('number');
-      expect(Object.keys(j).sort()).toEqual(['day', 'dayIndex', 'how', 'kind', 'text']);
+      expect(Object.keys(j).sort()).toEqual(['day', 'dayIndex', 'how', 'kind', 'steps', 'text']);
     }
   });
 

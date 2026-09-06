@@ -26,6 +26,8 @@ import type { DatedEvent } from './region-events';
 import { playbookFor, type ContentSource } from './industry-playbook';
 import { rotate, type RoadmapStage } from './roadmap';
 import { bi, join, viOf, enOf, type Txt } from './i18n';
+import { attachBriefs, offerSheet, type JobBrief } from './job-brief';
+import { customOfferJob, offerPostDay, type WeekOffer } from './week-offer';
 import {
   trimToBudget, photoJob, mapJob, longGameJob, longGameWeek, storyJobs,
   buildPrep, buildTargets, WEEK_BUDGET, type Budgeted, type PrepLine, type WeekTarget,
@@ -51,6 +53,10 @@ export interface Job {
   /** Suggested clock time, when the timing is the point. A bare clock time
    *  ('19:00') reads the same in both languages and stays a plain string. */
   when?: Txt;
+  /** Stable per week — what a tick on the sheet points at. See job-brief. */
+  id?: string;
+  /** The working sheet: shots/steps, caption, hashtags, channel. */
+  brief?: JobBrief;
 }
 
 export interface DayPlan {
@@ -151,6 +157,12 @@ export function buildWeekPlan(input: {
   week?: number;
   /** The archived outcome of the previous week, if one exists. */
   lastWeek?: { planned: number; done: number; posted: number } | null;
+  /** The offer as a person set it. Null/auto = the system's proposal. */
+  offer?: WeekOffer | null;
+  /** For the sheets: the caption names the shop, the tags name the city. */
+  salonName?: string | null;
+  city?: string | null;
+  currency?: string;
 }): WeekPlan {
   const industry = (input.industry || 'SALON').toUpperCase();
   const book = playbookFor(industry);
@@ -299,9 +311,29 @@ export function buildWeekPlan(input: {
   });
 
   // -- the offer, aimed at a real gap ---------------------------------------
-  if (advice && advice.kind === 'fill-slot' && quietest) {
+  // A person's decision outranks the book: a custom offer replaces the
+  // proposal, 'off' removes it and says so, 'auto' is the proposal below.
+  const offer = input.offer ?? null;
+  const sheetCtx = { salonName: input.salonName, city: input.city, trade: book.trade };
+  if (offer?.mode === 'custom') {
+    const o = customOfferJob(offer, { ...sheetCtx, currency: input.currency });
+    add(offerPostDay(offer, offerDay), { kind: 'offer', text: o.text, why: o.why, when: o.when, brief: o.brief });
+  } else if (offer?.mode === 'off') {
+    add(offerDay, {
+      kind: 'post',
+      text: bi('Tuần này không chạy ưu đãi — đăng bài giá trị thay vào chỗ này',
+        'No offer this week — post something that builds value in this slot'),
+      why: bi('Team đã tắt ưu đãi tuần này. Bật lại hoặc đặt ưu đãi mới ở ô Ưu đãi phía trên',
+        'The team switched the offer off for this week. Turn it back on, or set a new one, in the Offer box above'),
+      when: '19:00',
+    });
+  } else if (advice && advice.kind === 'fill-slot' && quietest) {
     add(offerDay, {
       kind: 'offer',
+      brief: offerSheet({
+        headline: bi(`Giảm ${advice.discountPct}% — CHỈ ${viOf(quietest.label)}`, `${advice.discountPct}% off — ${enOf(quietest.label)} ONLY`),
+        rules: bi(`Áp dụng ${viOf(quietest.label)} · không gộp với ưu đãi khác`, `Valid ${enOf(quietest.label)} · not combined with other offers`),
+      }, sheetCtx),
       // The slot label ('Thứ 7 buổi sáng' / 'Sat morning') and the protected
       // blocks come from revenue-signals bilingual, so each side takes its own.
       text: bi(
@@ -378,7 +410,7 @@ export function buildWeekPlan(input: {
   add((film.weekday + 3) % 7, { kind: gmap.kind, text: gmap.text, why: gmap.why });
 
   // -- two stories attached to work that is actually happening --------------
-  const stories = storyJobs(Boolean(advice && advice.kind === 'fill-slot' && quietest));
+  const stories = storyJobs(offer?.mode === 'custom' || (offer?.mode !== 'off' && Boolean(advice && advice.kind === 'fill-slot' && quietest)));
   stories.forEach((st, i) => add((film.weekday + (i === 0 ? 0 : 4)) % 7, { kind: st.kind, text: st.text, why: st.why }));
 
   // -- every other week, something that is not a post -----------------------
@@ -478,7 +510,7 @@ export function buildWeekPlan(input: {
   });
 
   return {
-    days, focus, basis, report, stage, week,
+    days: attachBriefs(days, sheetCtx), focus, basis, report, stage, week,
     daily: book.habits, sources: book.dailySources, trade: book.trade, dataThin,
     prep, targets,
   };

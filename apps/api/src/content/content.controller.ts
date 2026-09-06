@@ -307,6 +307,30 @@ export class ContentController {
     return this.svc.editWeek(user, key, dto);
   }
 
+  /** One step of one job on the sheet, ticked or unticked. Either side may tick. */
+  @Post('weeks/:key/tick')
+  @HttpCode(200)
+  tickStep(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('key') key: string,
+    @Body() dto: { jobId?: unknown; step?: unknown; done?: unknown },
+  ) {
+    return this.svc.tickStep(user, key, dto ?? {});
+  }
+
+  /** The offer form — what the plan, the caption and the story all quote. */
+  @Get('offer')
+  getOffer(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.getOffer(user);
+  }
+
+  /** Team only (checked in the service, same reason as editWeek). */
+  @Post('offer')
+  @HttpCode(200)
+  setOffer(@CurrentUser() user: AuthenticatedUser, @Body() dto: unknown) {
+    return this.svc.setOffer(user, dto);
+  }
+
   // ---- team ↔ salon, about the work --------------------------------------
   //
   // Both sides reach the same routes. Which side WROTE a message is decided at

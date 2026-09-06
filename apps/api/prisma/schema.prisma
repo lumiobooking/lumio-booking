@@ -2725,6 +2725,11 @@ model ContentWeek {
   outcome      Json?
   outcomeAt    DateTime?
 
+  /// Ticks on the working sheets: { [jobId]: [stepIndex, ...] }. Either side
+  /// may tick; keyed by the job's stable id so the hourly regeneration of
+  /// `generated` cannot lose them.
+  ticks        Json?
+
   /// The SALON accepting the plan. The team proposes, the client agrees; a
   /// plan nobody agreed to is a document, not a commitment.
   approvedAt     DateTime?

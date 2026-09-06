@@ -44,6 +44,7 @@ import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-rea
 import { buildStrategyBrief } from './strategy-brief';
 import { bi, localizeDeep, viOf, enOf, type Txt } from './i18n';
 import { sanitizeDays } from './week-edit';
+import { parseOffer, DEFAULT_OFFER, type WeekOffer } from './week-offer';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
 /**
@@ -119,6 +120,10 @@ export class ContentService {
     contentLang: string | null;
     industry: string;
     city: string;
+    /** ISO code the salon bills in ('USD', 'VND'). */
+    currency: string;
+    /** The offer form for this salon. */
+    offer: WeekOffer;
     tz: string;
     region: ResolvedRegion;
     /** Where the region came from, so the screen can name its own source. */
@@ -432,11 +437,18 @@ export class ContentService {
     const capped = capAdvice(capView, promo);
     applyCapToOffer(revenue.advice, { ...capView, appended: capped.appended }, promo.margin.grossMarginPct);
 
+    // The offer the team set for this salon, if any. Read here so the week
+    // and the screen are built from one read.
+    const offerRow = await this.prisma.setting.findFirst({ where: { tenantId, key: 'content_offer' }, select: { value: true } }).catch(() => null);
+    const offer: WeekOffer = offerRow?.value ? { ...parseOffer(offerRow.value), ...pickMeta(offerRow.value) } : { ...DEFAULT_OFFER };
+
     return {
       tenantName: tenant?.name || 'Tiệm',
       contentLang: (tenant as { contentLang?: string | null } | null)?.contentLang ?? null,
       industry,
       city: region.label,
+      currency,
+      offer,
       tz,
       region,
       loc,
@@ -545,7 +557,75 @@ export class ContentService {
       lastWeek: lastOutcome && typeof lastOutcome.plannedJobs === 'number'
         ? { planned: lastOutcome.plannedJobs, done: lastOutcome.doneJobs ?? 0, posted: lastOutcome.posted ?? 0 }
         : null,
+      offer: ctx.offer,
+      salonName: ctx.tenantName,
+      city: ctx.city,
+      currency: currencySign(ctx.currency),
     });
+  }
+
+  // ---- the offer, as the team sets it ------------------------------------------
+
+  /** Read the offer form. Anyone on the salon may read; the plan is built from it. */
+  async getOffer(user: AuthenticatedUser): Promise<WeekOffer> {
+    const tenantId = this.tenantId(user);
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: 'content_offer' }, select: { value: true } }).catch(() => null);
+    return row?.value ? { ...parseOffer(row.value), ...pickMeta(row.value) } : { ...DEFAULT_OFFER };
+  }
+
+  /** Write the offer form. Team only — it changes what the salon is told to promise. */
+  async setOffer(user: AuthenticatedUser, raw: unknown): Promise<WeekOffer> {
+    const tenantId = this.tenantId(user);
+    if (user.role !== UserRole.SUPER_ADMIN && !user.supportSession) {
+      throw new ForbiddenException('Chỉ team Lumio đặt ưu đãi cho tiệm.');
+    }
+    const offer: WeekOffer = { ...parseOffer(raw), updatedAt: new Date().toISOString(), updatedBy: user.email ?? 'Lumio' };
+    if (offer.mode === 'custom' && offer.kind !== 'gift' && offer.value <= 0) {
+      throw new BadRequestException('Ưu đãi cần một con số — % hoặc số tiền giảm.');
+    }
+    if (offer.mode === 'custom' && offer.kind === 'gift' && !offer.gift) {
+      throw new BadRequestException('Ghi rõ tặng gì.');
+    }
+    const existing = await this.prisma.setting.findFirst({ where: { tenantId, key: 'content_offer' }, select: { id: true } }).catch(() => null);
+    if (existing) {
+      await this.prisma.setting.update({ where: { id: existing.id }, data: { value: offer as never } });
+    } else {
+      await this.prisma.setting.create({ data: { tenantId, key: 'content_offer', value: offer as never } });
+    }
+    await this.prisma.auditLog.create({
+      data: { tenantId, userId: user.userId ?? null, action: 'content.offer_set', resourceType: 'setting', resourceId: 'content_offer', metadata: { mode: offer.mode, kind: offer.kind, value: offer.value } } as never,
+    }).catch(() => undefined);
+    return offer;
+  }
+
+  // ---- ticks on the sheet ----------------------------------------------------------
+
+  /**
+   * One step of one job, ticked or unticked, on this week.
+   *
+   * Stored on the week row and keyed by the job's stable id (see job-brief),
+   * so a tick survives the hourly regeneration of the generated side. Either
+   * side may tick: the shop ticking "photo 3 done" is exactly the signal the
+   * team wants, and there is nothing here worth protecting from it.
+   */
+  async tickStep(user: AuthenticatedUser, key: string, dto: { jobId?: unknown; step?: unknown; done?: unknown }) {
+    const tenantId = this.tenantId(user);
+    const jobId = String(dto?.jobId ?? '').replace(/[^a-z0-9-]/g, '').slice(0, 24);
+    const step = Math.max(0, Math.min(31, Math.round(Number(dto?.step))));
+    if (!jobId || !Number.isFinite(step)) throw new BadRequestException('Thiếu việc hoặc bước.');
+    const loose = this.prisma as unknown as Record<string, {
+      findFirst: (a: unknown) => Promise<unknown>;
+      update: (a: unknown) => Promise<unknown>;
+    }>;
+    const row = await loose.contentWeek?.findFirst({ where: { tenantId, weekKey: key }, select: { id: true, ticks: true } })
+      .catch(() => null) as { id: string; ticks: Record<string, number[]> | null } | null;
+    if (!row) throw new NotFoundException('Chưa có kế hoạch nào được lưu cho tuần này.');
+    const ticks: Record<string, number[]> = { ...(row.ticks ?? {}) };
+    const set = new Set(ticks[jobId] ?? []);
+    if (dto?.done === false) set.delete(step); else set.add(step);
+    if (set.size) ticks[jobId] = Array.from(set).sort((a, b) => a - b); else delete ticks[jobId];
+    await loose.contentWeek?.update({ where: { id: row.id }, data: { ticks: ticks as never } }).catch(() => undefined);
+    return { ok: true, weekKey: key, ticks };
   }
 
 
@@ -596,7 +676,7 @@ export class ContentService {
     plan: Awaited<ReturnType<ContentService['weekPlanFor']>>,
   ): Promise<{
     weekKey: string; startDate: string; edited: boolean; editedByName: string | null; editedAt: Date | null;
-    approvedAt: Date | null; approvedByName: string | null;
+    approvedAt: Date | null; approvedByName: string | null; ticks: Record<string, number[]>;
   }> {
     const key = weekKey(new Date(), tz);
     const start = weekStart(new Date(), tz);
@@ -609,7 +689,7 @@ export class ContentService {
       where: { tenantId, weekKey: key },
     }).catch(() => null) as {
       id: string; edited?: unknown; editedByName?: string | null; editedAt?: Date | null;
-      approvedAt?: Date | null; approvedByName?: string | null;
+      approvedAt?: Date | null; approvedByName?: string | null; ticks?: Record<string, number[]> | null;
     } | null;
 
     const data = {
@@ -621,7 +701,7 @@ export class ContentService {
 
     if (!row) {
       await loose.contentWeek?.create({ data: { tenantId, weekKey: key, ...data } }).catch(() => undefined);
-      return { weekKey: key, startDate: start, edited: false, editedByName: null, editedAt: null, approvedAt: null, approvedByName: null };
+      return { weekKey: key, startDate: start, edited: false, editedByName: null, editedAt: null, approvedAt: null, approvedByName: null, ticks: {} };
     }
     // Current week: keep the generated side fresh. The edit is untouched.
     await loose.contentWeek?.update({ where: { id: row.id }, data }).catch(() => undefined);
@@ -638,6 +718,7 @@ export class ContentService {
       // say it other than a chat message nobody re-reads.
       approvedAt: row.approvedAt ?? null,
       approvedByName: row.approvedByName ?? null,
+      ticks: row.ticks ?? {},
     };
   }
 
@@ -817,7 +898,9 @@ export class ContentService {
      */
     if (patch.days !== undefined) {
       const lang = patch.lang === 'en' ? 'en' : 'vi';
-      next.days = sanitizeDays(patch.days, (base.days ?? []) as never, lang);
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, city: true } as never })
+        .catch(() => null) as { name?: string | null; city?: string | null } | null;
+      next.days = sanitizeDays(patch.days, (base.days ?? []) as never, lang, { salonName: tenant?.name, city: tenant?.city });
     }
 
     await loose.contentWeek?.update({
@@ -1534,6 +1617,10 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         label: weekLabel(kept.weekKey),
         canEdit: user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession),
       } : null,
+      // The offer form's current values — the team edits them on the plan.
+      // (`offer` below is the system's advice; this is the person's decision.)
+      offerForm: ctx.offer,
+      currencySign: currencySign(ctx.currency),
       videoFeeds: videoFeeds(ctx.industry, ctx.region.market),
       productWatch: productWatch(ctx.industry),
       // The salon's own numbers steer the trend queries: it is shown Google
@@ -2398,4 +2485,19 @@ TRẢ VỀ JSON THUẦN:
     if (!r.count) throw new NotFoundException('Không tìm thấy ý tưởng');
     return { ok: true, status };
   }
+}
+
+/** The audit trail on the stored offer: who set it, when. Not user input. */
+function pickMeta(v: unknown): { updatedAt?: string; updatedBy?: string | null } {
+  const r = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+  return {
+    ...(typeof r.updatedAt === 'string' ? { updatedAt: r.updatedAt } : {}),
+    ...(typeof r.updatedBy === 'string' ? { updatedBy: r.updatedBy } : {}),
+  };
+}
+
+/** '$' / '₫' / 'C$' — what the caption prints in front of an amount. */
+function currencySign(code: string | null | undefined): string {
+  const c = String(code ?? 'USD').toUpperCase();
+  return c === 'VND' ? '₫' : c === 'CAD' ? 'C$' : c === 'AUD' ? 'A$' : c === 'EUR' ? '€' : c === 'GBP' ? '£' : '$';
 }

@@ -1,11 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { dayKeyInTz } from '../lib/datetime';
 
 /**
  * One week of a salon's marketing work, as a document a person can hand over
- * and a person can rewrite.
+ * and a person can rewrite — in place.
  *
  * WHAT WAS WRONG WITH THE OLD SCREEN
  *
@@ -23,15 +23,35 @@ import { dayKeyInTz } from '../lib/datetime';
  * marked by an accent rather than by orange text, and rest days collapsed to a
  * single muted line instead of a paragraph at half opacity.
  *
- * WHY THE EDITOR IS THE SAME LAYOUT
+ * WHY EDITING IS CLICK-ON-THE-LINE
  *
- * Editing happens in place. A separate edit form would mean writing a plan in
- * one shape and reading it in another, and the version that gets checked is
- * always the one being read. Here the row you are looking at is the row you
- * change.
+ * The first editor was a mode: press "Edit plan", the week turns into a form,
+ * press "Save". Nobody found the button, and the person who did had to rewrite
+ * a whole week to fix one word. Now the line you are reading is the line you
+ * change — click it, type, click away, saved. Move a job with the arrows, send
+ * it to another day from the little day picker, add or delete with one press.
+ * The old form is gone; there is nothing to enter and nothing to leave.
+ *
+ * WHY EACH JOB HAS A SHEET
+ *
+ * "Film 3 clips" is a line on a plan, not a thing somebody can do with a phone
+ * in one hand. Under each job sits its working sheet — the shots in order, a
+ * caption to paste, the tags, where it goes — with a tick per line. The sheet
+ * is generated with the job (see the API's job-brief) and editable the same
+ * way the job is.
  */
 
-export interface Job { kind: string; text: string; why: string; when?: string; from?: string }
+export interface JobBrief {
+  steps: string[];
+  caption?: string;
+  hashtags?: string[];
+  channel?: string;
+}
+export interface Job {
+  kind: string; text: string; why: string; when?: string; from?: string;
+  id?: string;
+  brief?: JobBrief | null;
+}
 export interface DayPlan { weekday: number; label: string; jobs: Job[] }
 export interface Stage {
   key: string; step: number; title: string; goal: string; why: string; exitWhen: string;
@@ -52,9 +72,7 @@ export interface WeekView {
   week: number;
   stage: Stage | null;
   teamNote?: string;
-  /** What to carry in, summed from the week's own jobs. */
   prep?: PrepLine[];
-  /** What the week is supposed to move, in numbers next week can check. */
   targets?: WeekTargetRow[];
 }
 
@@ -67,6 +85,8 @@ export interface WeekMeta {
   canEdit: boolean;
   approvedAt: string | null;
   approvedByName: string | null;
+  /** { [jobId]: [stepIndex, …] } — what has been ticked on the sheets. */
+  ticks?: Record<string, number[]>;
 }
 
 export interface WeekSavePatch {
@@ -75,6 +95,23 @@ export interface WeekSavePatch {
   days?: DayPlan[];
   lang?: 'vi' | 'en';
   reset?: boolean;
+}
+
+/** The offer form — mirrors the API's WeekOffer. */
+export interface OfferForm {
+  mode: 'auto' | 'custom' | 'off';
+  kind: 'percent' | 'amount' | 'gift';
+  value: number;
+  services: string;
+  gift: string;
+  days: number[];
+  slot: 'morning' | 'afternoon' | 'evening' | 'all';
+  expires: string;
+  terms: string;
+  postDay: number | null;
+  postAt: string;
+  updatedAt?: string;
+  updatedBy?: string | null;
 }
 
 const KINDS: { id: string; icon: string; vi: string; en: string }[] = [
@@ -90,6 +127,8 @@ const KINDS: { id: string; icon: string; vi: string; en: string }[] = [
   { id: 'rest', icon: '·', vi: 'Nghỉ', en: 'Rest' },
 ];
 const ICON = (k: string) => KINDS.find((x) => x.id === k)?.icon ?? '•';
+const WD_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+const WD_EN = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 /** 'YYYY-MM-DD' plus n days, done on the digits so no timezone can shift it. */
 function addDays(key: string, n: number): string {
@@ -100,9 +139,14 @@ function addDays(key: string, n: number): string {
 }
 const dm = (key: string) => `${key.slice(8, 10)}/${key.slice(5, 7)}`;
 
+/** Every job remembers where it was — that is how a move keeps its other language. */
+function withAddresses(days: DayPlan[]): DayPlan[] {
+  return days.map((d, di) => ({ ...d, jobs: d.jobs.map((j, ji) => ({ ...j, from: j.from ?? `${di}:${ji}` })) }));
+}
+
 export function WeekPlanBoard({
   week, meta, isPast, vi, salonName, salonCity, onSave, onApprove, approving,
-  onOpenToday, hasTodayDraft, stageAction,
+  onOpenToday, hasTodayDraft, stageAction, onTick, offer, onSaveOffer, currencySign,
 }: {
   week: WeekView;
   meta: WeekMeta | null;
@@ -116,47 +160,40 @@ export function WeekPlanBoard({
   onOpenToday?: () => void;
   hasTodayDraft?: boolean;
   stageAction?: { label: string; onGo: () => void } | null;
+  onTick?: (jobId: string, step: number, done: boolean) => Promise<void>;
+  offer?: OfferForm | null;
+  onSaveOffer?: (o: OfferForm) => Promise<void>;
+  currencySign?: string;
 }) {
   const T = (v: string, e: string) => (vi ? v : e);
-  const [editing, setEditing] = useState(false);
+  const canEdit = Boolean(meta?.canEdit) && !isPast;
+  const lang: 'vi' | 'en' = vi ? 'vi' : 'en';
   const [saving, setSaving] = useState(false);
-  const [focus, setFocus] = useState(week.focus);
-  const [note, setNote] = useState(week.teamNote ?? '');
-  const [days, setDays] = useState<DayPlan[]>(week.days);
+  const [days, setDays] = useState<DayPlan[]>(() => withAddresses(week.days));
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  // Local ticks so a tap answers before the server does.
+  const [ticks, setTicks] = useState<Record<string, number[]>>(meta?.ticks ?? {});
+  useEffect(() => { setDays(withAddresses(week.days)); }, [week.days]);
+  useEffect(() => { setTicks(meta?.ticks ?? {}); }, [meta?.ticks]);
 
-  // Dates for the seven rows. The plan starts at TODAY, not Monday, so the
-  // dates are counted from today's salon date rather than from the week's
-  // Monday — and counted on the digits, so a viewer in another timezone reads
-  // the same dates as the salon does.
   const dates = useMemo(() => {
     const start = dayKeyInTz(new Date());
     return week.days.map((_, i) => addDays(start, i));
   }, [week.days]);
 
-  const jobCount = week.days.reduce(
-    (n, d) => n + d.jobs.filter((j) => j.kind !== 'rest').length, 0,
-  );
+  const jobCount = days.reduce((n, d) => n + d.jobs.filter((j) => j.kind !== 'rest').length, 0);
 
-  function open() {
-    setFocus(week.focus);
-    setNote(week.teamNote ?? '');
-    // Each job remembers where it came from, so moving it to another day
-    // carries its English phrasing with it instead of flattening the week to
-    // one language on the first save.
-    setDays(week.days.map((d, di) => ({
-      ...d,
-      jobs: d.jobs.map((j, ji) => ({ ...j, from: `${di}:${ji}` })),
-    })));
-    setEditing(true);
-  }
-
-  async function save(patch: WeekSavePatch) {
+  /** Every change to the week goes out at once. Small, frequent, reversible. */
+  async function commit(next: DayPlan[]) {
+    setDays(next);
     setSaving(true);
-    try { await onSave(patch); setEditing(false); } finally { setSaving(false); }
+    try { await onSave({ days: next, lang }); } finally { setSaving(false); }
   }
-
   const mutate = (di: number, fn: (jobs: Job[]) => Job[]) =>
-    setDays((prev) => prev.map((d, i) => (i === di ? { ...d, jobs: fn(d.jobs) } : d)));
+    commit(days.map((d, i) => (i === di ? { ...d, jobs: fn(d.jobs) } : d)));
+
+  const patchJob = (di: number, ji: number, patch: Partial<Job>) =>
+    mutate(di, (jobs) => jobs.map((x, k) => (k === ji ? { ...x, ...patch } : x)));
 
   const moveWithin = (di: number, ji: number, by: number) => mutate(di, (jobs) => {
     const to = ji + by;
@@ -166,17 +203,35 @@ export function WeekPlanBoard({
     return next;
   });
 
-  const moveToDay = (di: number, ji: number, target: number) => setDays((prev) => {
-    if (target === di) return prev;
-    const job = prev[di].jobs[ji];
-    return prev.map((d, i) => {
+  const moveToDay = (di: number, ji: number, target: number) => {
+    if (target === di) return;
+    const job = days[di].jobs[ji];
+    commit(days.map((d, i) => {
       if (i === di) return { ...d, jobs: d.jobs.filter((_, k) => k !== ji) };
       if (i === target) return { ...d, jobs: [...d.jobs.filter((j) => j.kind !== 'rest'), job] };
       return d;
-    });
-  });
+    }));
+  };
 
-  const rows = editing ? days : week.days;
+  const addJob = (di: number) => {
+    const key = `new-${di}-${Date.now()}`;
+    setOpen((o) => ({ ...o, [key]: true }));
+    // Not committed until it has words: a job with no instruction is not a job
+    // and the server drops it. Kept local under a temporary id.
+    setDays((prev) => prev.map((d, i) => (i === di
+      ? { ...d, jobs: [...d.jobs.filter((j) => j.kind !== 'rest'), { kind: 'post', text: '', why: '', id: key }] }
+      : d)));
+  };
+
+  async function tick(job: Job, step: number, done: boolean) {
+    if (!job.id || !onTick) return;
+    setTicks((t) => {
+      const set = new Set(t[job.id!] ?? []);
+      if (done) set.add(step); else set.delete(step);
+      return { ...t, [job.id!]: Array.from(set).sort((a, b) => a - b) };
+    });
+    try { await onTick(job.id, step, done); } catch { /* the next load corrects it */ }
+  }
 
   return (
     <div style={card}>
@@ -198,12 +253,13 @@ export function WeekPlanBoard({
           </div>
         </div>
         <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+          {saving && <span style={{ ...pill, borderColor: 'var(--c475569)', color: 'var(--c94a3b8)' }}>{T('Đang lưu…', 'Saving…')}</span>}
           {meta?.approvedAt && (
             <span style={{ ...pill, borderColor: '#22c55e', color: '#22c55e' }}>
               ✓ {T('Tiệm đã duyệt', 'Approved')}{meta.approvedByName ? ` — ${meta.approvedByName}` : ''}
             </span>
           )}
-          {meta?.edited && !editing && (
+          {meta?.edited && (
             <span style={{ ...pill, borderColor: 'var(--c475569)', color: 'var(--ca5b4fc)' }}>
               ✎ {T('Team đã chỉnh', 'Edited')}{meta.editedByName ? ` — ${meta.editedByName}` : ''}
             </span>
@@ -213,23 +269,28 @@ export function WeekPlanBoard({
               {approving ? T('Đang lưu…', 'Saving…') : T('✓ Duyệt kế hoạch', '✓ Approve')}
             </button>
           )}
-          {!isPast && meta?.canEdit && !editing && (
-            <button onClick={open} style={{ ...btn, borderColor: '#6366f1', color: 'var(--ca5b4fc)' }}>
-              ✎ {T('Sửa kế hoạch', 'Edit plan')}
-            </button>
-          )}
         </div>
       </div>
 
-      {/* ---- the reasoning, as a short labelled block rather than four
-              different type treatments stacked on top of each other ---- */}
+      {canEdit ? (
+        <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 8, lineHeight: 1.5 }}>
+          ✎ {T('Bấm vào chữ để sửa ngay tại chỗ — tự lưu khi bấm ra ngoài. Mở "Bản làm việc" dưới mỗi việc để xem cảnh quay, caption, hashtag và tích từng bước.',
+               'Click any line to edit it in place — saved when you click away. Open "Working sheet" under a job for the shots, caption, tags, and the tick list.')}
+        </div>
+      ) : !isPast && (
+        <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 8, lineHeight: 1.5 }}>
+          {T('Kế hoạch do team Lumio soạn. Chỉ nhân viên Lumio (vào tiệm qua "Vào setup") mới sửa được; tiệm xem, duyệt và tích việc đã làm.',
+             'Written by the Lumio team. Only Lumio staff (entering through "Enter setup") can edit; the salon reads, approves and ticks what is done.')}
+        </div>
+      )}
+
+      {/* ---- the reasoning ---- */}
       <div style={{ marginTop: 14, borderTop: '1px solid var(--c334155)', paddingTop: 12 }}>
         <Field label={T('TRỌNG TÂM', 'FOCUS')}>
-          {editing ? (
-            <input value={focus} onChange={(e) => setFocus(e.target.value)} style={input} />
-          ) : (
-            <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{week.focus}</span>
-          )}
+          <Inline
+            value={week.focus} canEdit={canEdit} strong
+            onCommit={(v) => onSave({ focus: v })}
+          />
         </Field>
         <Field label={T('CƠ SỞ', 'BASIS')}>
           <span style={{ color: 'var(--c94a3b8)' }}>{week.basis}</span>
@@ -265,7 +326,7 @@ export function WeekPlanBoard({
               <div style={{ color: 'var(--c64748b)', marginTop: 5, fontSize: 12 }}>
                 <b style={{ color: 'var(--c94a3b8)' }}>{T('Xong khi', 'Done when')}:</b> {week.stage.exitWhen}
               </div>
-              {stageAction && !editing && (
+              {stageAction && (
                 <button onClick={stageAction.onGo} style={{ ...btn, marginTop: 8, borderColor: '#6366f1', color: 'var(--ca5b4fc)' }}>
                   {stageAction.label} →
                 </button>
@@ -273,24 +334,24 @@ export function WeekPlanBoard({
             </div>
           </Field>
         )}
-        {(week.teamNote || editing) && (
+        {(week.teamNote || canEdit) && (
           <Field label={T('LUMIO NHẮN', 'FROM LUMIO')}>
-            {editing ? (
-              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} style={{ ...input, resize: 'vertical' }} />
-            ) : (
-              <span style={{ color: 'var(--ce2e8f0)' }}>{week.teamNote}</span>
-            )}
+            <Inline
+              value={week.teamNote ?? ''} canEdit={canEdit} multiline
+              placeholder={T('Lời nhắn cho tiệm tuần này (không bắt buộc)', 'A note to the salon this week (optional)')}
+              onCommit={(v) => onSave({ note: v })}
+            />
           </Field>
         )}
       </div>
 
-      {/* ---- what to carry in, and what it is for ----
-             Above the seven days on purpose. Somebody covering eight salons
-             reads the week, closes the tab and walks into the shop; the two
-             questions they have left are "how many clips, of what" and "how do
-             I know Friday went well". Both were answerable from the plan all
-             along and neither was ever said in one place. */}
-      {(!!week.prep?.length || !!week.targets?.length) && !editing && (
+      {/* ---- the offer, as a form ---- */}
+      {canEdit && offer && onSaveOffer && (
+        <OfferCard offer={offer} vi={vi} currencySign={currencySign ?? '$'} onSave={onSaveOffer} />
+      )}
+
+      {/* ---- what to carry in, and what it is for ---- */}
+      {(!!week.prep?.length || !!week.targets?.length) && (
         <div style={{
           marginTop: 16, borderTop: '1px solid var(--c334155)', paddingTop: 12,
           display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
@@ -342,7 +403,7 @@ export function WeekPlanBoard({
           </div>
         </div>
 
-        {rows.map((d, di) => {
+        {days.map((d, di) => {
           const real = d.jobs.filter((j) => j.kind !== 'rest');
           const isToday = di === 0 && !isPast;
           const resting = real.length === 0;
@@ -356,68 +417,65 @@ export function WeekPlanBoard({
                 marginLeft: -11,
               }}
             >
-              {/* the date column — a plan says which day, not "in three days" */}
               <div style={{ flex: '0 0 74px' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: isToday ? '#fbbf24' : 'var(--ce2e8f0)' }}>
-                  {d.label}
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: isToday ? '#fbbf24' : 'var(--ce2e8f0)' }}>{d.label}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{dates[di] ? dm(dates[di]) : ''}</div>
                 {isToday && <div style={{ fontSize: 10.5, fontWeight: 700, color: '#f59e0b', letterSpacing: '.4px' }}>{T('HÔM NAY', 'TODAY')}</div>}
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
-                {resting && !editing && (
+                {resting && (
                   <div style={{ fontSize: 12.5, color: 'var(--c475569)', paddingTop: 2 }}>
                     {T('Nghỉ — không có việc nào', 'Rest — nothing scheduled')}
                   </div>
                 )}
 
-                {(editing ? d.jobs.filter((j) => j.kind !== 'rest') : real).map((j, ji) => (
-                  editing ? (
-                    <JobEditor
-                      key={ji}
+                {real.map((j, ji) => {
+                  const key = j.id ?? `${di}:${ji}`;
+                  const isNew = !j.text && j.id?.startsWith('new-');
+                  return (
+                    <JobRow
+                      key={key}
                       job={j}
                       index={ji}
                       total={real.length}
                       days={days}
                       dayIndex={di}
                       vi={vi}
-                      onChange={(patch) => mutate(di, (jobs) => jobs.map((x, k) => (k === ji ? { ...x, ...patch } : x)))}
-                      onRemove={() => mutate(di, (jobs) => jobs.filter((_, k) => k !== ji))}
-                      onMove={(by) => moveWithin(di, ji, by)}
-                      onMoveDay={(t) => moveToDay(di, ji, t)}
+                      canEdit={canEdit}
+                      open={Boolean(open[key])}
+                      onToggle={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
+                      ticked={ticks[j.id ?? ''] ?? []}
+                      onTick={onTick && j.id && !isNew ? (s, done) => tick(j, s, done) : undefined}
+                      onPatch={(patch) => {
+                        const jobIndex = d.jobs.indexOf(j);
+                        if (isNew) {
+                          // First words: now it is a job. Commit the whole day.
+                          if (!String(patch.text ?? '').trim()) return;
+                          const { id: _tmp, ...rest } = j;
+                          mutate(di, (jobs) => jobs.map((x, k) => (k === jobIndex ? { ...rest, ...patch } : x)));
+                          return;
+                        }
+                        patchJob(di, jobIndex, patch);
+                      }}
+                      onRemove={() => {
+                        const jobIndex = d.jobs.indexOf(j);
+                        if (isNew) { setDays((prev) => prev.map((x, i) => (i === di ? { ...x, jobs: x.jobs.filter((_, k) => k !== jobIndex) } : x))); return; }
+                        mutate(di, (jobs) => jobs.filter((_, k) => k !== jobIndex));
+                      }}
+                      onMove={(by) => moveWithin(di, d.jobs.indexOf(j), by)}
+                      onMoveDay={(t) => moveToDay(di, d.jobs.indexOf(j), t)}
                     />
-                  ) : (
-                    <div key={ji} style={{ display: 'flex', gap: 9, marginBottom: ji < real.length - 1 ? 9 : 0 }}>
-                      <span style={{ flex: '0 0 16px', fontSize: 11.5, color: 'var(--c475569)', paddingTop: 2, textAlign: 'right' }}>{ji + 1}</span>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.5, fontWeight: 500 }}>
-                          <span style={{ marginRight: 6 }}>{ICON(j.kind)}</span>{j.text}
-                          {j.when && <span style={{ color: 'var(--c64748b)', fontSize: 12, fontWeight: 400 }}> · {j.when}</span>}
-                        </div>
-                        {j.why && (
-                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 1 }}>
-                            <span style={{ color: 'var(--c475569)', marginRight: 5 }}>↳</span>{j.why}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                ))}
+                  );
+                })}
 
-                {editing && (
-                  <button
-                    onClick={() => mutate(di, (jobs) => [
-                      ...jobs.filter((j) => j.kind !== 'rest'),
-                      { kind: 'post', text: '', why: '' },
-                    ])}
-                    style={{ ...btn, marginTop: 7, fontSize: 12, padding: '5px 10px', color: 'var(--c94a3b8)' }}
-                  >
+                {canEdit && (
+                  <button onClick={() => addJob(di)} style={{ ...btn, marginTop: 7, fontSize: 12, padding: '5px 10px', color: 'var(--c94a3b8)' }}>
                     + {T('Thêm việc', 'Add a job')}
                   </button>
                 )}
 
-                {isToday && !resting && !editing && hasTodayDraft && onOpenToday && (
+                {isToday && !resting && hasTodayDraft && onOpenToday && (
                   <button onClick={onOpenToday} style={{ ...btn, marginTop: 9, borderColor: 'var(--c475569)', color: 'var(--ca5b4fc)' }}>
                     {T('Mở bài viết đã soạn cho hôm nay', 'Open today’s drafted post')} →
                   </button>
@@ -428,39 +486,24 @@ export function WeekPlanBoard({
         })}
       </div>
 
-      {editing && (
-        <div style={{
-          marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--c334155)',
-          display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
-        }}>
+      {canEdit && meta?.edited && (
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <button
             disabled={saving}
-            onClick={() => save({ focus, note, days, lang: vi ? 'vi' : 'en' })}
-            style={{ ...btn, background: '#6366f1', border: 'none', color: '#fff', fontWeight: 700, opacity: saving ? 0.6 : 1 }}
+            onClick={() => { if (window.confirm(T('Bỏ mọi chỉnh sửa của team, dùng lại bản hệ thống tự viết?', 'Discard the team’s edits and use the system’s week?'))) onSave({ reset: true }); }}
+            style={{ ...btn, borderColor: 'var(--c475569)', color: 'var(--cf87171)' }}
           >
-            {saving ? T('Đang lưu…', 'Saving…') : T('Lưu cho tiệm', 'Save for the salon')}
+            ↺ {T('Bỏ bản sửa, dùng lại bản hệ thống', 'Discard edits, use the system’s week')}
           </button>
-          <button onClick={() => setEditing(false)} disabled={saving} style={btn}>
-            {T('Huỷ', 'Cancel')}
-          </button>
-          {meta?.edited && (
-            <button
-              disabled={saving}
-              onClick={() => save({ reset: true })}
-              style={{ ...btn, marginLeft: 'auto', borderColor: 'var(--c475569)', color: 'var(--cf87171)' }}
-            >
-              ↺ {T('Bỏ bản sửa, dùng lại bản hệ thống', 'Discard edits, use the system’s week')}
-            </button>
-          )}
-          <div style={{ flexBasis: '100%', fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.55 }}>
-            {T('Bản hệ thống tự viết vẫn được giữ nguyên bên dưới — sau này còn so được sửa gì và có tốt hơn không. Chữ bạn tự gõ sẽ hiện y như vậy ở cả bản tiếng Anh; những câu bạn không đụng tới thì giữ nguyên cả hai thứ tiếng.',
-               'The system’s own week is kept underneath, so what changed stays answerable. Text you type is stored in one language and reads the same on both sides; phrases you leave alone keep both.')}
-          </div>
+          <span style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5 }}>
+            {T('Chữ bạn gõ hiện y như vậy ở cả bản tiếng Anh; câu bạn không đụng tới giữ nguyên cả hai thứ tiếng.',
+               'Text you type reads the same on both sides; lines you leave alone keep both languages.')}
+          </span>
         </div>
       )}
 
       {/* ---- the two supporting sections ---- */}
-      {!!week.sources?.length && !editing && (
+      {!!week.sources?.length && (
         <Section title={T('QUAY TỪ ĐÂU', 'WHAT TO FILM')}
           hint={T(`Nguồn có sẵn của ${week.trade} — không cần dựng cảnh`, 'Already in front of you — nothing to stage')}>
           {week.sources.map((s, k) => (
@@ -468,14 +511,14 @@ export function WeekPlanBoard({
               <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
                 • {s.label} <span style={{ color: '#f59e0b', fontSize: 12 }}>· {s.when}</span>
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45, paddingLeft: 11 }}>{s.why}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45 }}>{s.why}</div>
             </div>
           ))}
         </Section>
       )}
-
-      {!!week.daily?.length && !editing && (
-        <Section title={T('MỖI NGÀY, DÙ BẬN CỠ NÀO', 'EVERY DAY, HOWEVER BUSY')}>
+      {!!week.daily?.length && (
+        <Section title={T('3 THÓI QUEN HẰNG NGÀY', 'THE 3 DAILY HABITS')}
+          hint={T('Không nằm trong lịch vì ngày nào cũng làm', 'Not on the schedule because they happen every day')}>
           {week.daily.map((j, k) => (
             <div key={k} style={{ display: 'flex', gap: 8, padding: '4px 0' }}>
               <span style={{ flex: '0 0 auto' }}>{ICON(j.kind)}</span>
@@ -493,59 +536,382 @@ export function WeekPlanBoard({
   );
 }
 
-/** One job, open for rewriting. Same row, same order, now with handles. */
-function JobEditor({
-  job, index, total, days, dayIndex, vi, onChange, onRemove, onMove, onMoveDay,
+// ---- one job -------------------------------------------------------------------
+
+function JobRow({
+  job, index, total, days, dayIndex, vi, canEdit, open, onToggle, ticked, onTick, onPatch, onRemove, onMove, onMoveDay,
 }: {
-  job: Job; index: number; total: number; days: DayPlan[]; dayIndex: number; vi: boolean;
-  onChange: (patch: Partial<Job>) => void;
+  job: Job; index: number; total: number; days: DayPlan[]; dayIndex: number; vi: boolean; canEdit: boolean;
+  open: boolean; onToggle: () => void;
+  ticked: number[];
+  onTick?: (step: number, done: boolean) => void;
+  onPatch: (patch: Partial<Job>) => void;
   onRemove: () => void;
   onMove: (by: number) => void;
   onMoveDay: (target: number) => void;
 }) {
   const T = (v: string, e: string) => (vi ? v : e);
+  const brief = job.brief ?? null;
+  const steps = brief?.steps ?? [];
+  const done = steps.length ? steps.filter((_, i) => ticked.includes(i)).length : 0;
+  const isNew = !job.text && job.id?.startsWith('new-');
+
+  const patchBrief = (b: Partial<JobBrief>) => onPatch({ brief: { steps: [], ...(brief ?? {}), ...b } });
+
   return (
-    <div style={{
-      border: '1px solid var(--c334155)', borderRadius: 9, padding: 9, marginBottom: 8,
-      background: 'var(--c0f172a)',
-    }}>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
-        <select value={job.kind} onChange={(e) => onChange({ kind: e.target.value })} style={{ ...input, width: 'auto', padding: '5px 8px' }}>
-          {KINDS.map((k) => <option key={k.id} value={k.id}>{k.icon} {vi ? k.vi : k.en}</option>)}
-        </select>
-        <input
-          value={job.when ?? ''}
-          onChange={(e) => onChange({ when: e.target.value })}
-          placeholder={T('giờ (không bắt buộc)', 'time (optional)')}
-          style={{ ...input, width: 150, padding: '5px 8px' }}
-        />
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>
-          <button onClick={() => onMove(-1)} disabled={index === 0} title={T('Lên trên', 'Move up')} style={mini}>↑</button>
-          <button onClick={() => onMove(1)} disabled={index === total - 1} title={T('Xuống dưới', 'Move down')} style={mini}>↓</button>
-          <select
-            value={dayIndex}
-            onChange={(e) => onMoveDay(Number(e.target.value))}
-            title={T('Chuyển sang ngày khác', 'Move to another day')}
-            style={{ ...input, width: 'auto', padding: '5px 8px', fontSize: 12 }}
-          >
-            {days.map((d, i) => <option key={i} value={i}>{i === 0 ? T('Hôm nay', 'Today') : d.label}</option>)}
-          </select>
-          <button onClick={onRemove} title={T('Xoá việc này', 'Delete')} style={{ ...mini, color: 'var(--cf87171)' }}>✕</button>
+    <div style={{ display: 'flex', gap: 9, marginBottom: index < total - 1 ? 9 : 0 }}>
+      <span style={{ flex: '0 0 16px', fontSize: 11.5, color: 'var(--c475569)', paddingTop: 3, textAlign: 'right' }}>{index + 1}</span>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        {/* the line */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+          {canEdit ? (
+            <select
+              value={job.kind} onChange={(e) => onPatch({ kind: e.target.value })}
+              title={T('Loại việc', 'Kind')}
+              style={{ ...kindSelect }}
+            >
+              {KINDS.filter((k) => k.id !== 'rest').map((k) => <option key={k.id} value={k.id}>{k.icon} {vi ? k.vi : k.en}</option>)}
+            </select>
+          ) : (
+            <span style={{ flex: '0 0 auto', paddingTop: 1 }}>{ICON(job.kind)}</span>
+          )}
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.5, fontWeight: 500, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
+              <Inline
+                value={job.text} canEdit={canEdit} strong autoFocus={isNew}
+                placeholder={T('Việc cần làm — ngắn, đọc được trên điện thoại lúc 7 giờ sáng', 'The job — short, readable on a phone at 7am')}
+                onCommit={(v) => onPatch({ text: v })}
+              />
+              {(job.when || canEdit) && (
+                <span style={{ color: 'var(--c64748b)', fontSize: 12, fontWeight: 400 }}>
+                  ·{' '}
+                  <Inline
+                    value={job.when ?? ''} canEdit={canEdit} small
+                    placeholder={T('giờ', 'time')}
+                    onCommit={(v) => onPatch({ when: v })}
+                  />
+                </span>
+              )}
+            </div>
+            {(job.why || canEdit) && (
+              <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 1, display: 'flex', gap: 5 }}>
+                <span style={{ color: 'var(--c475569)' }}>↳</span>
+                <Inline
+                  value={job.why} canEdit={canEdit} multiline muted
+                  placeholder={T('Vì sao việc này nằm ở ngày này', 'Why it sits on this day')}
+                  onCommit={(v) => onPatch({ why: v })}
+                />
+              </div>
+            )}
+          </div>
+          {canEdit && (
+            <div style={{ display: 'flex', gap: 3, alignItems: 'center', flex: '0 0 auto' }}>
+              <button onClick={() => onMove(-1)} disabled={index === 0} title={T('Lên trên', 'Move up')} style={mini}>↑</button>
+              <button onClick={() => onMove(1)} disabled={index === total - 1} title={T('Xuống dưới', 'Move down')} style={mini}>↓</button>
+              <select
+                value={dayIndex} onChange={(e) => onMoveDay(Number(e.target.value))}
+                title={T('Chuyển sang ngày khác', 'Move to another day')} style={{ ...mini, width: 'auto', padding: '0 4px', fontSize: 11 }}
+              >
+                {days.map((d, i) => <option key={i} value={i}>{i === 0 ? T('Hôm nay', 'Today') : d.label}</option>)}
+              </select>
+              <button onClick={onRemove} title={T('Xoá việc này', 'Delete')} style={{ ...mini, color: 'var(--cf87171)' }}>✕</button>
+            </div>
+          )}
         </div>
+
+        {/* the sheet */}
+        {!isNew && (brief || canEdit) && (
+          <div style={{ marginTop: 5 }}>
+            <button onClick={onToggle} style={{ ...sheetToggle, color: open ? 'var(--ca5b4fc)' : 'var(--c94a3b8)' }}>
+              {open ? '▾' : '▸'} {T('Bản làm việc', 'Working sheet')}
+              {steps.length > 0 && (
+                <span style={{ marginLeft: 6, fontSize: 11, color: done === steps.length ? '#22c55e' : 'var(--c64748b)' }}>
+                  {done}/{steps.length}
+                </span>
+              )}
+            </button>
+            {open && (
+              <div style={sheet}>
+                {/* steps */}
+                {steps.map((st, i) => {
+                  const on = ticked.includes(i);
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '3px 0' }}>
+                      <button
+                        onClick={() => onTick?.(i, !on)} disabled={!onTick}
+                        title={on ? T('Bỏ tích', 'Untick') : T('Đã làm', 'Done')}
+                        style={{ ...tickBox, background: on ? '#22c55e' : 'transparent', borderColor: on ? '#22c55e' : 'var(--c475569)', color: on ? '#052e16' : 'transparent' }}
+                      >✓</button>
+                      <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.5, color: on ? 'var(--c64748b)' : 'var(--ce2e8f0)', textDecoration: on ? 'line-through' : 'none' }}>
+                        <Inline
+                          value={st} canEdit={canEdit} multiline
+                          onCommit={(v) => patchBrief({ steps: steps.map((x, k) => (k === i ? v : x)).filter((x) => x.trim()) })}
+                        />
+                      </div>
+                      {canEdit && (
+                        <button onClick={() => patchBrief({ steps: steps.filter((_, k) => k !== i) })} title={T('Xoá bước', 'Remove step')} style={{ ...mini, width: 22, height: 22, fontSize: 11, color: 'var(--c64748b)' }}>✕</button>
+                      )}
+                    </div>
+                  );
+                })}
+                {canEdit && (
+                  <button
+                    onClick={() => patchBrief({ steps: [...steps, T('Bước mới — bấm để sửa', 'New step — click to edit')] })}
+                    style={{ ...btn, fontSize: 11.5, padding: '3px 8px', color: 'var(--c94a3b8)', marginTop: 3 }}
+                  >+ {T('Thêm bước', 'Add a step')}</button>
+                )}
+
+                {/* caption */}
+                {(brief?.caption || canEdit) && (
+                  <SheetBlock label={T('CAPTION', 'CAPTION')} copy={brief?.caption} vi={vi}>
+                    <Inline
+                      value={brief?.caption ?? ''} canEdit={canEdit} multiline
+                      placeholder={T('Caption soạn sẵn (không bắt buộc)', 'A ready caption (optional)')}
+                      onCommit={(v) => patchBrief({ caption: v })}
+                    />
+                  </SheetBlock>
+                )}
+                {/* hashtags */}
+                {(brief?.hashtags?.length || canEdit) ? (
+                  <SheetBlock label="HASHTAG" copy={brief?.hashtags?.length ? brief.hashtags.map((h) => `#${h}`).join(' ') : undefined} vi={vi}>
+                    <Inline
+                      value={(brief?.hashtags ?? []).map((h) => `#${h}`).join(' ')} canEdit={canEdit} small
+                      placeholder={T('#nails #gelnails …', '#nails #gelnails …')}
+                      onCommit={(v) => patchBrief({ hashtags: v.split(/[\s,]+/).map((h) => h.replace(/^#/, '')).filter(Boolean) })}
+                    />
+                  </SheetBlock>
+                ) : null}
+                {/* channel */}
+                {(brief?.channel || canEdit) && (
+                  <SheetBlock label={T('ĐĂNG Ở', 'WHERE')} vi={vi}>
+                    <Inline
+                      value={brief?.channel ?? ''} canEdit={canEdit} small
+                      placeholder={T('Instagram Reels · TikTok · Facebook', 'Instagram Reels · TikTok · Facebook')}
+                      onCommit={(v) => patchBrief({ channel: v })}
+                    />
+                  </SheetBlock>
+                )}
+                {canEdit && (
+                  <button
+                    onClick={() => { if (window.confirm(T('Viết lại bản làm việc theo việc này?', 'Regenerate the sheet for this job?'))) onPatch({ brief: null }); }}
+                    style={{ ...btn, fontSize: 11, padding: '3px 8px', color: 'var(--c64748b)', marginTop: 8 }}
+                  >↺ {T('Viết lại bản làm việc', 'Regenerate the sheet')}</button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      <input
-        value={job.text}
-        onChange={(e) => onChange({ text: e.target.value })}
-        placeholder={T('Việc cần làm — ngắn, đọc được trên điện thoại lúc 7 giờ sáng', 'The job itself — short')}
-        style={{ ...input, marginBottom: 6, fontWeight: 600 }}
-      />
-      <textarea
-        value={job.why}
-        onChange={(e) => onChange({ why: e.target.value })}
-        rows={2}
-        placeholder={T('Vì sao việc này nằm ở ngày này — phần khiến tiệm tin và làm theo', 'Why it sits on this day')}
-        style={{ ...input, resize: 'vertical', fontSize: 12.5 }}
-      />
+    </div>
+  );
+}
+
+function SheetBlock({ label: l, copy, vi, children }: { label: string; copy?: string; vi: boolean; children: React.ReactNode }) {
+  const [ok, setOk] = useState(false);
+  return (
+    <div style={{ marginTop: 9 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ ...label, fontSize: 10 }}>{l}</div>
+        {copy && (
+          <button
+            onClick={() => { navigator.clipboard?.writeText(copy).then(() => { setOk(true); setTimeout(() => setOk(false), 1500); }).catch(() => undefined); }}
+            style={{ ...btn, fontSize: 10.5, padding: '1px 7px', color: ok ? '#22c55e' : 'var(--c94a3b8)' }}
+          >{ok ? (vi ? '✓ Đã chép' : '✓ Copied') : (vi ? 'Sao chép' : 'Copy')}</button>
+        )}
+      </div>
+      <div style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.55, whiteSpace: 'pre-wrap', marginTop: 2 }}>{children}</div>
+    </div>
+  );
+}
+
+// ---- click-to-edit --------------------------------------------------------------
+
+/**
+ * A line that is text until you click it. Commits on blur or Enter (Escape
+ * cancels); a multiline field commits on blur or Ctrl/Cmd+Enter. Only calls
+ * back when the value actually changed, so a stray click costs no request.
+ */
+function Inline({
+  value, canEdit, onCommit, placeholder, multiline, strong, small, muted, autoFocus,
+}: {
+  value: string; canEdit: boolean; onCommit: (v: string) => void;
+  placeholder?: string; multiline?: boolean; strong?: boolean; small?: boolean; muted?: boolean; autoFocus?: boolean;
+}) {
+  const [editing, setEditing] = useState(Boolean(autoFocus));
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
+  useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
+
+  const finish = (save: boolean) => {
+    setEditing(false);
+    const v = draft.replace(/\s+$/, '');
+    if (save && v !== value) onCommit(v); else setDraft(value);
+  };
+
+  if (!canEdit) {
+    if (!value) return null;
+    return <span style={{ fontWeight: strong ? 600 : undefined, whiteSpace: multiline ? 'pre-wrap' : undefined }}>{value}</span>;
+  }
+  if (!editing) {
+    return (
+      <span
+        role="button" tabIndex={0}
+        onClick={() => setEditing(true)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true); } }}
+        title="✎"
+        style={{
+          cursor: 'text', borderBottom: '1px dashed var(--c475569)', whiteSpace: multiline ? 'pre-wrap' : undefined,
+          fontWeight: strong ? 600 : undefined, fontSize: small ? 12 : undefined,
+          color: value ? (muted ? 'var(--c94a3b8)' : undefined) : 'var(--c64748b)', fontStyle: value ? undefined : 'italic',
+        }}
+      >{value || placeholder || '…'}</span>
+    );
+  }
+  const common = {
+    value: draft,
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setDraft(e.target.value),
+    onBlur: () => finish(true),
+    placeholder,
+    style: { ...input, fontSize: small ? 12 : 13, fontWeight: strong ? 600 : undefined, padding: '4px 7px' },
+  };
+  return multiline ? (
+    <textarea
+      {...common} rows={Math.min(8, Math.max(2, draft.split('\n').length))}
+      ref={(el) => { ref.current = el; }}
+      onKeyDown={(e) => { if (e.key === 'Escape') finish(false); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) finish(true); }}
+      style={{ ...common.style, resize: 'vertical' }}
+    />
+  ) : (
+    <input
+      {...common}
+      ref={(el) => { ref.current = el; }}
+      onKeyDown={(e) => { if (e.key === 'Escape') finish(false); if (e.key === 'Enter') finish(true); }}
+      style={{ ...common.style, width: small ? 120 : '100%' }}
+    />
+  );
+}
+
+// ---- the offer form ---------------------------------------------------------------
+
+function OfferCard({ offer, vi, currencySign, onSave }: {
+  offer: OfferForm; vi: boolean; currencySign: string; onSave: (o: OfferForm) => Promise<void>;
+}) {
+  const T = (v: string, e: string) => (vi ? v : e);
+  const [o, setO] = useState<OfferForm>(offer);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [openForm, setOpenForm] = useState(offer.mode === 'custom');
+  useEffect(() => { setO(offer); }, [offer]);
+  const dirty = JSON.stringify(o) !== JSON.stringify(offer);
+
+  async function save(next: OfferForm) {
+    setBusy(true);
+    try { await onSave(next); setSaved(true); setTimeout(() => setSaved(false), 1500); } finally { setBusy(false); }
+  }
+  const setMode = (mode: OfferForm['mode']) => {
+    const next = { ...o, mode };
+    setO(next);
+    if (mode !== 'custom') { void save(next); setOpenForm(false); } else setOpenForm(true);
+  };
+  const toggleDay = (d: number) => setO({ ...o, days: o.days.includes(d) ? o.days.filter((x) => x !== d) : [...o.days, d].sort() });
+
+  const modeBtn = (m: OfferForm['mode'], text: string) => (
+    <button onClick={() => setMode(m)} disabled={busy} style={{ ...btn, fontSize: 12, padding: '5px 11px', ...(o.mode === m ? { background: '#6366f1', borderColor: '#6366f1', color: '#fff' } : {}) }}>{text}</button>
+  );
+
+  return (
+    <div style={{ marginTop: 14, borderTop: '1px solid var(--c334155)', paddingTop: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={label}>🏷️ {T('ƯU ĐÃI TUẦN NÀY', 'THIS WEEK’S OFFER')}</div>
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+          {modeBtn('auto', T('Hệ thống đề xuất', 'System’s proposal'))}
+          {modeBtn('custom', T('Team tự đặt', 'Set by the team'))}
+          {modeBtn('off', T('Không chạy ưu đãi', 'No offer'))}
+        </div>
+        {saved && <span style={{ fontSize: 11.5, color: '#22c55e' }}>✓ {T('Đã lưu', 'Saved')}</span>}
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 5, lineHeight: 1.5 }}>
+        {o.mode === 'auto' && T('Con số và khung giờ lấy từ sổ đặt lịch của tiệm — khung trống nhất, giảm vừa đủ theo biên lợi nhuận.',
+          'Number and slot come from the salon’s book — the emptiest block, discounted only as far as the margin allows.')}
+        {o.mode === 'off' && T('Tuần này không có việc ưu đãi trong lịch; story đếm ngược cũng bỏ.',
+          'No offer job on this week’s plan; the countdown story goes with it.')}
+        {o.mode === 'custom' && T('Việc trong lịch, caption và story đếm ngược đều lấy từ form này. Đổi một chỗ, cả tuần đổi theo.',
+          'The job on the plan, the caption and the countdown story all read this form. Change it once and the week follows.')}
+      </div>
+
+      {o.mode === 'custom' && openForm && (
+        <div style={{ marginTop: 10, display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+          <FormField label={T('Giảm gì', 'What')}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select value={o.kind} onChange={(e) => setO({ ...o, kind: e.target.value as OfferForm['kind'] })} style={{ ...input, width: 'auto' }}>
+                <option value="percent">%</option>
+                <option value="amount">{currencySign}</option>
+                <option value="gift">{T('Tặng', 'Gift')}</option>
+              </select>
+              {o.kind === 'gift' ? (
+                <input value={o.gift} onChange={(e) => setO({ ...o, gift: e.target.value })} placeholder={T('vẽ 2 ngón / dưỡng tay', 'nail art on 2 nails')} style={input} />
+              ) : (
+                <input type="number" min={0} value={o.value || ''} onChange={(e) => setO({ ...o, value: Number(e.target.value) || 0 })} placeholder={o.kind === 'percent' ? '12' : '10'} style={{ ...input, width: 90 }} />
+              )}
+            </div>
+          </FormField>
+          <FormField label={T('Áp cho dịch vụ', 'Services')}>
+            <input value={o.services} onChange={(e) => setO({ ...o, services: e.target.value })} placeholder={T('để trống = mọi dịch vụ', 'blank = everything')} style={input} />
+          </FormField>
+          <FormField label={T('Ngày áp dụng', 'Valid days')}>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+                <button key={d} onClick={() => toggleDay(d)} style={{ ...mini, width: 34, fontSize: 11, ...(o.days.includes(d) ? { background: '#6366f1', borderColor: '#6366f1', color: '#fff' } : {}) }}>
+                  {vi ? WD_VI[d] : WD_EN[d]}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 3 }}>{o.days.length ? '' : T('Không chọn = mọi ngày', 'None picked = every day')}</div>
+          </FormField>
+          <FormField label={T('Khung giờ', 'Time of day')}>
+            <select value={o.slot} onChange={(e) => setO({ ...o, slot: e.target.value as OfferForm['slot'] })} style={input}>
+              <option value="all">{T('Cả ngày', 'All day')}</option>
+              <option value="morning">{T('Buổi sáng', 'Morning')}</option>
+              <option value="afternoon">{T('Buổi chiều', 'Afternoon')}</option>
+              <option value="evening">{T('Buổi tối', 'Evening')}</option>
+            </select>
+          </FormField>
+          <FormField label={T('Hết hạn', 'Ends')}>
+            <input type="date" value={o.expires} onChange={(e) => setO({ ...o, expires: e.target.value })} style={input} />
+          </FormField>
+          <FormField label={T('Đăng lúc', 'Post on')}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select value={o.postDay ?? ''} onChange={(e) => setO({ ...o, postDay: e.target.value === '' ? null : Number(e.target.value) })} style={{ ...input, width: 'auto' }}>
+                <option value="">{T('Tự chọn (trước 2 ngày)', 'Auto (2 days ahead)')}</option>
+                {[1, 2, 3, 4, 5, 6, 0].map((d) => <option key={d} value={d}>{vi ? ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'][d] : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d]}</option>)}
+              </select>
+              <input value={o.postAt} onChange={(e) => setO({ ...o, postAt: e.target.value })} placeholder="19:00" style={{ ...input, width: 80 }} />
+            </div>
+          </FormField>
+          <FormField label={T('Điều kiện', 'Small print')}>
+            <input value={o.terms} onChange={(e) => setO({ ...o, terms: e.target.value })} placeholder={T('khách mới / đặt trước / không gộp', 'new clients / booked ahead')} style={input} />
+          </FormField>
+          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => save(o)} disabled={busy || !dirty} style={{ ...btn, background: '#6366f1', border: 'none', color: '#fff', fontWeight: 700, opacity: busy || !dirty ? 0.6 : 1 }}>
+              {busy ? T('Đang lưu…', 'Saving…') : T('Lưu ưu đãi — cập nhật lịch', 'Save the offer — update the plan')}
+            </button>
+            {offer.updatedBy && <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('Lần cuối', 'Last')}: {offer.updatedBy}{offer.updatedAt ? ` · ${offer.updatedAt.slice(0, 10)}` : ''}</span>}
+          </div>
+        </div>
+      )}
+      {o.mode === 'custom' && !openForm && (
+        <button onClick={() => setOpenForm(true)} style={{ ...btn, marginTop: 8, fontSize: 12 }}>{T('Sửa ưu đãi', 'Edit the offer')}</button>
+      )}
+    </div>
+  );
+}
+
+function FormField({ label: l, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ ...label, fontSize: 10, marginBottom: 4 }}>{l}</div>
+      {children}
     </div>
   );
 }
@@ -586,11 +952,24 @@ const btn: React.CSSProperties = {
   border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)',
 };
 const mini: React.CSSProperties = {
-  width: 28, height: 28, borderRadius: 7, cursor: 'pointer', fontSize: 13,
+  width: 26, height: 26, borderRadius: 7, cursor: 'pointer', fontSize: 12,
   border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)',
 };
 const input: React.CSSProperties = {
-  width: '100%', boxSizing: 'border-box', background: 'var(--c1e293b)',
+  width: '100%', boxSizing: 'border-box', background: 'var(--c0f172a)',
   border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)',
   borderRadius: 7, padding: '7px 9px', fontSize: 13, fontFamily: 'inherit',
+};
+const kindSelect: React.CSSProperties = {
+  ...input, width: 'auto', padding: '2px 4px', fontSize: 12, flex: '0 0 auto', maxWidth: 130,
+};
+const sheetToggle: React.CSSProperties = {
+  background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
+};
+const sheet: React.CSSProperties = {
+  marginTop: 6, padding: '8px 10px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)',
+};
+const tickBox: React.CSSProperties = {
+  width: 18, height: 18, borderRadius: 5, border: '1.5px solid', cursor: 'pointer', flex: '0 0 auto', marginTop: 1,
+  fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0,
 };

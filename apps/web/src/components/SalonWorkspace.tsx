@@ -47,7 +47,7 @@ interface Suggestion {
   fromShop?: boolean;
 }
 interface SuggestionFeed { open: Suggestion[]; past: Suggestion[]; waiting: number }
-interface ClientJob { dayIndex: number; day: string; kind: string; text: string; how: string | null }
+interface ClientJob { dayIndex: number; day: string; kind: string; text: string; steps?: string[]; how: string | null }
 interface ClientWeek { focus: string; jobs: ClientJob[]; prep: { label: string; detail: string }[] }
 
 const ICON: Record<string, string> = { film: '🎬', photo: '📷', engage: '💚' };
@@ -149,18 +149,28 @@ export function SalonWorkspace({ token, vi, onCount }: {
                   {/* How to do it well. Folded away by default so the list still
                       reads as a list, open with one tap when somebody is
                       standing there about to do it. */}
-                  {j.how && (
+                  {(j.how || !!j.steps?.length) && (
                     <details style={{ marginTop: 5 }}>
                       <summary style={{
                         cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
                         color: 'var(--ca5b4fc)', listStyle: 'none',
                       }}>
-                        {T('Làm thế nào cho đẹp →', 'How to do it well →')}
+                        {j.steps?.length
+                          ? T(`Từng cảnh một (${j.steps.length}) →`, `Shot by shot (${j.steps.length}) →`)
+                          : T('Làm thế nào cho đẹp →', 'How to do it well →')}
                       </summary>
                       <div style={{
                         fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.65, marginTop: 5,
                         paddingLeft: 10, borderLeft: '2px solid var(--c334155)',
                       }}>
+                        {/* The shot list, numbered, one per line — the sheet's
+                            steps for this job. A shop films from this, not
+                            from the paragraph. */}
+                        {!!j.steps?.length && (
+                          <ol style={{ margin: '0 0 6px', paddingLeft: 18, color: 'var(--ce2e8f0)' }}>
+                            {j.steps.map((st, k) => <li key={k} style={{ marginBottom: 3 }}>{st}</li>)}
+                          </ol>
+                        )}
                         {j.how}
                       </div>
                     </details>

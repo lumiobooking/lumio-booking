@@ -1,5 +1,6 @@
 import { isBi, type Txt } from './i18n';
 import type { DayPlan, Job, JobKind } from './weekly-plan';
+import { briefFor, jobId, type BriefContext, type JobBrief } from './job-brief';
 
 /**
  * What a person is allowed to hand back after rewriting a week.
@@ -36,6 +37,12 @@ export const MAX_JOB_WHY = 300;
 export const MAX_JOB_WHEN = 40;
 /** Per day. A day with more than this is not a plan, it is a list nobody does. */
 export const MAX_JOBS_PER_DAY = 12;
+/** The sheet. Twelve steps is a shot list; more is a manual. */
+export const MAX_STEPS = 12;
+export const MAX_STEP_TEXT = 200;
+export const MAX_CAPTION = 800;
+export const MAX_HASHTAGS = 15;
+export const MAX_CHANNEL = 80;
 
 function clean(raw: unknown, cap: number): string {
   return String(raw ?? '').replace(/\s+/g, ' ').trim().slice(0, cap);
@@ -50,6 +57,13 @@ function clean(raw: unknown, cap: number): string {
  * pressing save would quietly delete every English phrase in the week.
  */
 export function keepOrReplace(next: unknown, before: Txt | undefined, lang: 'vi' | 'en', cap: number): Txt | undefined {
+  // A bilingual pair sent back whole (a screen that never unwrapped it):
+  // clean both sides rather than printing "[object Object]" into the plan.
+  if (isBi(next)) {
+    const vi = clean(next.vi, cap); const en = clean(next.en, cap);
+    if (!vi && !en) return undefined;
+    return { vi: vi || en, en: en || vi };
+  }
   const typed = clean(next, cap);
   if (!typed) return undefined;
   if (isBi(before)) {
@@ -64,7 +78,46 @@ function jobKind(raw: unknown): JobKind {
   return JOB_KINDS.includes(k) ? k : 'post';
 }
 
-interface RawJob { kind?: unknown; text?: unknown; why?: unknown; when?: unknown; from?: unknown }
+interface RawBrief { steps?: unknown; caption?: unknown; hashtags?: unknown; channel?: unknown }
+interface RawJob { kind?: unknown; text?: unknown; why?: unknown; when?: unknown; from?: unknown; brief?: RawBrief | null }
+
+/**
+ * The sheet, rebuilt. Steps are matched to the previous sheet by position so
+ * an untouched step keeps both languages; a step typed in is one language.
+ * `null` from the browser means "drop my edits, regenerate" — handled by the
+ * caller, which passes no brief and lets `briefFor` write a fresh one.
+ */
+function sanitizeBrief(raw: RawBrief | undefined, before: JobBrief | undefined, lang: 'vi' | 'en'): JobBrief | undefined {
+  if (!raw || typeof raw !== 'object') return before;
+  const stepsIn = Array.isArray(raw.steps) ? raw.steps.slice(0, MAX_STEPS) : null;
+  const steps = stepsIn
+    ? stepsIn.map((st, i) => keepOrReplace(st, before?.steps?.[i], lang, MAX_STEP_TEXT)).filter((x): x is Txt => x !== undefined)
+    : before?.steps ?? [];
+  const caption = raw.caption === undefined ? before?.caption : keepOrReplace(raw.caption, before?.caption, lang, MAX_CAPTION);
+  const channel = raw.channel === undefined ? before?.channel : keepOrReplace(raw.channel, before?.channel, lang, MAX_CHANNEL);
+  const hashtags = Array.isArray(raw.hashtags)
+    ? Array.from(new Set(raw.hashtags.map((h) => String(h ?? '').replace(/^#/, '').replace(/[^\p{L}\p{N}_]/gu, '').toLowerCase()).filter(Boolean))).slice(0, MAX_HASHTAGS)
+    : before?.hashtags;
+  const out: JobBrief = { steps };
+  if (caption) out.caption = caption;
+  if (channel) out.channel = channel;
+  if (hashtags?.length) out.hashtags = hashtags;
+  return out;
+}
+
+/** Did the sheet come back exactly as it was shown? (Nothing sent counts as untouched.) */
+function briefUntouched(raw: RawBrief | null | undefined, before: JobBrief | undefined, lang: 'vi' | 'en'): boolean {
+  if (!raw || typeof raw !== 'object') return true;
+  if (!before) return false;
+  const side = (t: Txt | undefined) => (t === undefined ? '' : isBi(t) ? t[lang] : String(t));
+  const same = (a: unknown, b: Txt | undefined) => (isBi(a) ? a[lang] === side(b) : clean(a, 10_000) === side(b));
+  const steps = Array.isArray(raw.steps) ? raw.steps : null;
+  if (steps && (steps.length !== before.steps.length || steps.some((st, i) => !same(st, before.steps[i])))) return false;
+  if (raw.caption !== undefined && !same(raw.caption, before.caption)) return false;
+  if (raw.channel !== undefined && !same(raw.channel, before.channel)) return false;
+  if (Array.isArray(raw.hashtags) && raw.hashtags.map(String).join(',') !== (before.hashtags ?? []).join(',')) return false;
+  return true;
+}
 
 /**
  * One job, rebuilt.
@@ -73,7 +126,7 @@ interface RawJob { kind?: unknown; text?: unknown; why?: unknown; when?: unknown
  * "day 3, job 2" — and it is the only way an edit can keep the bilingual
  * phrases of a job that was moved to another day rather than rewritten.
  */
-function sanitizeJob(raw: RawJob, lang: 'vi' | 'en', find: (from: unknown) => Job | null): Job | null {
+function sanitizeJob(raw: RawJob, lang: 'vi' | 'en', find: (from: unknown) => Job | null, ctx: BriefContext): Job | null {
   const before = find(raw?.from);
   const text = keepOrReplace(raw?.text, before?.text, lang, MAX_JOB_TEXT);
   if (!text) return null; // a job with no instruction is not a job
@@ -81,6 +134,18 @@ function sanitizeJob(raw: RawJob, lang: 'vi' | 'en', find: (from: unknown) => Jo
   const when = keepOrReplace(raw?.when, before?.when, lang, MAX_JOB_WHEN);
   const job: Job = { kind: jobKind(raw?.kind ?? before?.kind), text, why };
   if (when) job.when = when;
+  // Identity survives a move or a reword of `why`; a new instruction is a new
+  // job and gets a fresh id, so old ticks do not carry onto it.
+  const sameText = before && (isBi(before.text) ? before.text[lang] : String(before.text)) === (isBi(text) ? text[lang] : String(text));
+  job.id = before?.id && sameText ? before.id : jobId(job);
+  // The sheet: edited in place, kept as it was, or regenerated for a new line.
+  // A reworded job whose sheet came back UNTOUCHED gets a fresh sheet — the
+  // old caption was written for the old instruction.
+  const regenerate = raw?.brief === null || (!sameText && briefUntouched(raw?.brief, before?.brief, lang));
+  const brief = regenerate
+    ? briefFor(job, ctx) ?? undefined
+    : sanitizeBrief(raw?.brief ?? undefined, sameText ? before?.brief : undefined, lang) ?? briefFor(job, ctx) ?? undefined;
+  if (brief) job.brief = brief;
   return job;
 }
 
@@ -90,7 +155,7 @@ function sanitizeJob(raw: RawJob, lang: 'vi' | 'en', find: (from: unknown) => Jo
  * `base` is the version the editor was working from. Its weekday numbers and
  * labels are authoritative; everything else can be replaced.
  */
-export function sanitizeDays(raw: unknown, base: DayPlan[], lang: 'vi' | 'en' = 'vi'): DayPlan[] {
+export function sanitizeDays(raw: unknown, base: DayPlan[], lang: 'vi' | 'en' = 'vi', ctx: BriefContext = {}): DayPlan[] {
   const sent = Array.isArray(raw) ? raw : [];
   // Every job the browser was given, addressable by where it was.
   const byAddress = new Map<string, Job>();
@@ -104,7 +169,7 @@ export function sanitizeDays(raw: unknown, base: DayPlan[], lang: 'vi' | 'en' = 
     if (!incoming || !Array.isArray(incoming.jobs)) return day;
     const jobs = (incoming.jobs as RawJob[])
       .slice(0, MAX_JOBS_PER_DAY)
-      .map((j) => sanitizeJob(j ?? {}, lang, find))
+      .map((j) => sanitizeJob(j ?? {}, lang, find, ctx))
       .filter((j): j is Job => j !== null);
     // An empty day is a real answer — "nothing on Wednesday" — and is stored
     // as the rest marker the renderer already understands, so a blank day and

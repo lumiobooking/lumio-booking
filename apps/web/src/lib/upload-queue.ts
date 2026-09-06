@@ -66,6 +66,8 @@ export interface Batch {
   error?: string;
   createdAt: number;
   doneAt?: number;
+  /** How many times the runner has gone again on its own after a failure. */
+  autoRetries?: number;
 }
 
 export interface BatchView extends Batch {
@@ -373,6 +375,23 @@ export async function runQueue(): Promise<void> {
       }
       // Done batches older than a day: gone.
       for (const b of (await allBatches())) if (b.status === 'done' && Date.now() - (b.doneAt ?? 0) > 86_400_000) await delBatch(b.id);
+      // Something failed this pass? Go again once, on our own, after a
+      // breath — the host taking a moment to serve a file, a proxy blinking.
+      // The person was told to put the phone down; they should not have to
+      // pick it up to press "resume" for a failure that fixes itself.
+      const again = (await allFiles()).filter((f) => f.status === 'failed');
+      if (again.length) {
+        const bs = await allBatches();
+        let retried = false;
+        for (const f of again) {
+          const b = bs.find((x) => x.id === f.batchId);
+          if (!b || (b.autoRetries ?? 0) >= 2) continue;
+          await putFile({ ...f, status: 'queued', error: undefined });
+          await putBatch({ ...b, status: 'pending', error: undefined, autoRetries: (b.autoRetries ?? 0) + 1 });
+          retried = true;
+        }
+        if (retried) { await sleep(6000); wanted = true; }
+      }
     } while (wanted && pass < 5);
   } finally {
     running = false;

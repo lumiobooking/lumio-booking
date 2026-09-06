@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useLive, fresh } from '../lib/live';
 import { apiFetch } from '../lib/api';
 
 /**
@@ -71,10 +72,12 @@ export function SuggestionInbox({
 
   const load = useCallback(async () => {
     if (!token) return;
-    const r = await apiFetch<TeamFeed>('/content/suggestions/team', { token }).catch(() => null);
+    const r = await apiFetch<TeamFeed>(fresh('/content/suggestions/team'), { token }).catch(() => null);
     if (r) { setFeed(r); onCount?.(r.readyCount ?? 0); }
   }, [token, onCount]);
   useEffect(() => { load(); }, [load]);
+  // The shop sends at 11pm; the card is here at 11pm, not after a reload.
+  useLive(load, 45_000, Boolean(token));
 
   async function markUsed(id: string) {
     if (!token) return;

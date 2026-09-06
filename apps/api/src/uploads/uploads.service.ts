@@ -153,7 +153,17 @@ export class UploadsService {
     }
 
     const url = `${c.publicBase}/${safeTenant}/${name}`;
-    const reachable = await this.verifyPublic(url, isVideo ? 'video' : 'image');
+    // A shared host can take a breath between the FTP write landing and the
+    // web server serving it — a cache, a sync between two disks. Asking once,
+    // the instant after the write, called a working upload broken and made
+    // the shop send the whole clip again. Ask three times over a few seconds
+    // before believing the address is really dead.
+    let reachable: string | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt) await new Promise((r) => setTimeout(r, 2500 * attempt));
+      reachable = await this.verifyPublic(url, isVideo ? 'video' : 'image');
+      if (!reachable) break;
+    }
     if (reachable) throw new BadRequestException(reachable);
     return { url, kind: isVideo ? 'video' : 'image' };
   }

@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
+import { fresh } from '../../lib/live';
 
 interface TenantRow {
   id: string;
@@ -71,7 +72,7 @@ export default function AgencyPage() {
     // What is waiting, across every salon. Refreshed each minute while the
     // picker is open — this is the screen somebody leaves up on a second
     // monitor, and it has to be right when they glance at it.
-    const pull = () => apiFetch<InboxRow[]>('/support/inbox', { token }).then(setInbox).catch(() => undefined);
+    const pull = () => apiFetch<InboxRow[]>(fresh('/support/inbox'), { token }).then(setInbox).catch(() => undefined);
     pull();
     const t = setInterval(pull, 60_000);
     return () => clearInterval(t);

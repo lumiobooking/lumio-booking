@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { compactCount, ageOf } from '../lib/counts';
+import { useLive, fresh } from '../lib/live';
 import { enqueue, installOutbox, useOutbox, retryFailed, discardBatch, takeLastDone, type BatchView } from '../lib/upload-queue';
 
 /**
@@ -71,14 +72,17 @@ export function SalonWorkspace({ token, vi, onCount }: {
   const load = useCallback(async () => {
     if (!token) return;
     const [s, w] = await Promise.all([
-      apiFetch<SuggestionFeed>('/content/suggestions', { token }).catch(() => null),
-      apiFetch<{ week: ClientWeek | null }>(`/content/my-week?lang=${vi ? 'vi' : 'en'}`, { token }).catch(() => null),
+      apiFetch<SuggestionFeed>(fresh('/content/suggestions'), { token }).catch(() => null),
+      apiFetch<{ week: ClientWeek | null }>(fresh(`/content/my-week?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
     ]);
     if (s) { setSugg(s); onCount?.(s.waiting ?? s.open.length); }
     if (w) setWeek(w.week);
   }, [token, vi, onCount]);
 
   useEffect(() => { load(); }, [load]);
+  // A suggestion the team sends at ten shows up at ten, not when the shop
+  // next reloads: every 30s while visible, and the moment the app comes back.
+  useLive(load, 30_000, Boolean(token));
 
   // The outbox runs whenever this page is open; a batch that finishes on the
   // server is what turns a card from "sending" into "sent", so reload then.

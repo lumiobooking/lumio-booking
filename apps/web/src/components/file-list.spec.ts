@@ -14,8 +14,11 @@ import * as path from 'path';
  */
 
 const ROOTS = [path.join(__dirname), path.join(__dirname, '..', 'app')];
+// Only the DOM's: `e.target.files`, `input.files`, `ev.dataTransfer.files`.
+// A plain `.files` property on our own records is a normal array.
+const DOM_FILES = /(?:target|current|dataTransfer|input|el)\??\.files\b/;
 const OK = /\.files\s*(\?\.\[0\]|\[0\]|\?\.length|\.length)/;
-const COPY = /Array\.from\(\s*[\w.]*\.files/;
+const COPY = /Array\.from\(\s*[\w.?]*\.files/;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const n of fs.readdirSync(dir)) {
@@ -33,7 +36,7 @@ describe('a live FileList is never passed on as-is', () => {
   for (const f of files) {
     const lines = fs.readFileSync(f, 'utf8').split('\n');
     lines.forEach((line, i) => {
-      if (!/\.files\b/.test(line)) return;
+      if (!DOM_FILES.test(line)) return;
       it(`${path.relative(ROOTS[0], f)}:${i + 1}`, () => {
         expect(OK.test(line) || COPY.test(line)).toBe(true);
       });

@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { Client as FtpClient } from 'basic-ftp';
 import { Readable } from 'stream';
 import { PlatformConfigService } from '../billing/platform-config.service';
-import { assemble, dropChunks, haveChunks, putChunk, CHUNK_MAX, PIECES_MAX } from './chunk-store';
+import { assemble, dropPieces, getResult, haveChunks, putChunk, putResult, CHUNK_MAX, PIECES_MAX, type FinishResult } from './chunk-store';
 
 interface FtpConfig {
   host: string; port: number; user: string; password: string; secure: boolean;
@@ -174,29 +174,61 @@ export class UploadsService {
     return { have: await haveChunks(tenantId, dto.uploadId) };
   }
 
-  /** Which pieces are already here — the phone asks this before resuming. */
-  async chunkStatus(tenantId: string, uploadId: string): Promise<{ have: number[] }> {
-    return { have: await haveChunks(tenantId, uploadId) };
+  /** Which pieces are already here, and the answer if `finish` has already run. */
+  async chunkStatus(tenantId: string, uploadId: string): Promise<{ have: number[]; result: FinishResult | null }> {
+    return { have: await haveChunks(tenantId, uploadId), result: await getResult(tenantId, uploadId) };
   }
 
+  /** Finishes in flight, so two "finish" calls for one upload do one job. */
+  private finishing = new Map<string, Promise<FinishResult>>();
+
   /**
-   * Every piece is in: make the file and push it to storage the usual way.
-   * The pieces are dropped whether or not storage accepted it — a failed
-   * finish is retried by re-sending, not by keeping a day-old half-file.
+   * Every piece is in: make the file and push it to storage — IN THE
+   * BACKGROUND. The request answers at once with "working on it", and the
+   * phone asks `chunkStatus` until the answer is there.
+   *
+   * Why not just do it inline: a 60MB clip takes a while to reach Hostinger,
+   * and the proxy in front of the API drops any request that waits too long
+   * for its response. That is exactly how the single-request upload died —
+   * the bytes had arrived, and the phone was told "lost connection". The
+   * answer is written next to the pieces, so even a phone whose own request
+   * timed out gets it on the next ask.
    */
-  async finishChunks(tenantId: string, dto: { uploadId: string; total: number; mime: string; name?: string }): Promise<{ url: string; kind: 'image' | 'video' }> {
+  async finishChunks(tenantId: string, dto: { uploadId: string; total: number; mime: string; name?: string }): Promise<{ pending: true } | FinishResult> {
     const total = Math.round(Number(dto.total));
     if (!Number.isInteger(total) || total < 1 || total > PIECES_MAX) throw new BadRequestException('Số mảnh không hợp lệ.');
-    const buf = await assemble(tenantId, dto.uploadId, total);
-    if (!buf) {
+    const done = await getResult(tenantId, dto.uploadId);
+    if (done) return done;
+    const key = `${tenantId}/${dto.uploadId}`;
+    if (!this.finishing.has(key)) {
       const have = await haveChunks(tenantId, dto.uploadId);
-      throw new BadRequestException(`MISSING_CHUNKS:${have.join(',')}`);
+      if (have.length < total || have.some((i, k) => i !== k)) {
+        throw new BadRequestException(`MISSING_CHUNKS:${have.join(',')}`);
+      }
+      const job = (async (): Promise<FinishResult> => {
+        let r: FinishResult;
+        try {
+          const buf = await assemble(tenantId, dto.uploadId, total);
+          if (!buf) throw new Error('MISSING_CHUNKS:');
+          const out = await this.uploadFile(tenantId, { buffer: buf, mimetype: dto.mime, originalname: dto.name });
+          r = { ...out, at: Date.now() };
+        } catch (e) {
+          r = { error: e instanceof Error ? e.message : 'failed', at: Date.now() };
+        }
+        await putResult(tenantId, dto.uploadId, r).catch(() => undefined);
+        await dropPieces(tenantId, dto.uploadId).catch(() => undefined);
+        this.finishing.delete(key);
+        return r;
+      })();
+      this.finishing.set(key, job);
     }
-    try {
-      return await this.uploadFile(tenantId, { buffer: buf, mimetype: dto.mime, originalname: dto.name });
-    } finally {
-      await dropChunks(tenantId, dto.uploadId);
-    }
+    // Give a fast finish (a photo) its answer in this same request; a slow
+    // one (a clip) gets "pending" and the phone polls.
+    const r = await Promise.race<FinishResult | null>([
+      this.finishing.get(key)!,
+      new Promise<null>((res) => setTimeout(() => res(null), 8_000)),
+    ]);
+    return r ?? { pending: true };
   }
 
   /** Decode a small data: image URL and push it to FTP, return its public https URL. */

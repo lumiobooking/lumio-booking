@@ -64,6 +64,33 @@ export async function assemble(tenantId: string, uploadId: string, total: number
   return Buffer.concat(parts);
 }
 
+/**
+ * The outcome of `finish`, kept next to the pieces so a phone that asks
+ * again after its own request timed out gets the same answer.
+ */
+export interface FinishResult { url?: string; kind?: 'image' | 'video'; error?: string; at: number }
+
+export async function putResult(tenantId: string, uploadId: string, r: FinishResult): Promise<void> {
+  const dir = dirOf(tenantId, uploadId);
+  if (!dir) return;
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'result.json'), JSON.stringify(r));
+}
+
+export async function getResult(tenantId: string, uploadId: string): Promise<FinishResult | null> {
+  const dir = dirOf(tenantId, uploadId);
+  if (!dir) return null;
+  try { return JSON.parse(await fs.readFile(path.join(dir, 'result.json'), 'utf8')) as FinishResult; } catch { return null; }
+}
+
+/** Drop the pieces but keep the answer. */
+export async function dropPieces(tenantId: string, uploadId: string): Promise<void> {
+  const dir = dirOf(tenantId, uploadId);
+  if (!dir) return;
+  const names = await fs.readdir(dir).catch(() => [] as string[]);
+  for (const n of names) if (/^\d+(\.part)?$/.test(n)) await fs.rm(path.join(dir, n), { force: true }).catch(() => undefined);
+}
+
 export async function dropChunks(tenantId: string, uploadId: string): Promise<void> {
   const dir = dirOf(tenantId, uploadId);
   if (!dir) return;

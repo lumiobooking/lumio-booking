@@ -236,7 +236,13 @@ async function uploadFile(f: QueuedFile, token: string, askServer = true): Promi
   // than anything a cached GET could say.
   if (askServer) {
     try {
-      const st = await apiFetch<{ have: number[] }>(`/uploads/media/chunk/${encodeURIComponent(file.id)}?t=${Date.now()}`, { token });
+      const st = await apiFetch<{ have: number[]; result: { url?: string; kind?: 'image' | 'video'; error?: string } | null }>(`/uploads/media/chunk/${encodeURIComponent(file.id)}?t=${Date.now()}`, { token });
+      // Already made on a previous run whose answer never reached us.
+      if (st.result?.url && st.result.kind) {
+        file = { ...file, status: 'done', url: st.result.url, kind: st.result.kind };
+        await putFile(file);
+        return file;
+      }
       file = { ...file, sent: Array.from(new Set([...file.sent, ...(st.have ?? [])])).sort((a, b) => a - b) };
     } catch { /* fine — we send what we think is missing and the server tells us */ }
   }
@@ -268,11 +274,22 @@ async function uploadFile(f: QueuedFile, token: string, askServer = true): Promi
       i -= 1; // same piece again
     }
   }
-  // Every piece is in: make the file.
+  // Every piece is in: ask for the file to be made. A photo comes back made;
+  // a clip comes back "pending" while the server pushes it to storage, and we
+  // ask every few seconds until the answer is written. Nothing here waits on
+  // one long request — that is the wait the proxy used to cut.
   try {
-    const r = await apiFetch<{ url: string; kind: 'image' | 'video' }>('/uploads/media/finish', {
+    type Fin = { pending?: true; url?: string; kind?: 'image' | 'video'; error?: string };
+    let r = await apiFetch<Fin>('/uploads/media/finish', {
       method: 'POST', token, body: { uploadId: file.id, total: file.total, mime: file.type, name: file.name },
     });
+    for (let waited = 0; r.pending && waited < 10 * 60_000; waited += 4000) {
+      await sleep(4000);
+      const st = await apiFetch<{ have: number[]; result: Fin | null }>(`/uploads/media/chunk/${encodeURIComponent(file.id)}?t=${Date.now()}`, { token });
+      if (st.result) r = st.result;
+    }
+    if (r.pending) throw new ApiError('Máy chủ chưa xử lý xong, thử lại sau', 0, null);
+    if (r.error || !r.url || !r.kind) throw new ApiError(r.error || 'Không tải lên được', 400, r);
     file = { ...file, status: 'done', url: r.url, kind: r.kind };
   } catch (e) {
     const msg = e instanceof Error ? e.message : '';

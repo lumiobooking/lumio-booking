@@ -1,4 +1,4 @@
-import { putChunk, haveChunks, assemble, dropChunks, sweepChunks } from './chunk-store';
+import { putChunk, haveChunks, assemble, dropChunks, sweepChunks, putResult, getResult, dropPieces } from './chunk-store';
 
 const T = 'tenant-spec-' + process.pid;
 const U = 'upload-' + Date.now().toString(36) + 'abcdef';
@@ -30,6 +30,16 @@ describe('a file arrives in pieces', () => {
     expect(await sweepChunks()).toBe(0);
     await dropChunks(T, U);
     expect(await haveChunks(T, U)).toEqual([]);
+  });
+
+  it('keeps the answer after the pieces are gone, so a second ask gets the same file', async () => {
+    await putChunk(T, U, 0, Buffer.from('x'));
+    await putResult(T, U, { url: 'https://cdn/x.mp4', kind: 'video', at: 1 });
+    await dropPieces(T, U);
+    expect(await haveChunks(T, U)).toEqual([]);
+    expect(await getResult(T, U)).toMatchObject({ url: 'https://cdn/x.mp4', kind: 'video' });
+    await dropChunks(T, U);
+    expect(await getResult(T, U)).toBeNull();
   });
 
   it('a sweep a day later removes what was abandoned', async () => {

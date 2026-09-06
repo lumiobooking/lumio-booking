@@ -173,10 +173,17 @@ export class ContentController {
   }
 
   /** The footage became a post — take the card out of the team's inbox. */
+  /** Copies onto the hosting so a post can fetch them; returns the media with public addresses. */
+  @Post('suggestions/:id/stage')
+  @HttpCode(200)
+  suggestionStage(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.suggestions.stage(user, id);
+  }
+
   @Post('suggestions/:id/used')
   @HttpCode(200)
-  suggestionUsed(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.suggestions.markUsed(user, id);
+  suggestionUsed(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { note?: unknown }) {
+    return this.suggestions.markUsed(user, id, dto?.note);
   }
 
   @Post('review/:postId/approve')

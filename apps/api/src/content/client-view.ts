@@ -181,6 +181,9 @@ export interface SuggestionRow {
   status: string;
   doneAt: Date | string | null;
   media: unknown;
+  usedNote?: string | null;
+  usedAt?: Date | string | null;
+  usedByName?: string | null;
 }
 
 /** A suggestion as the salon sees it. */
@@ -226,7 +229,19 @@ export function suggestionStatus(raw: unknown): SuggestionState {
   return s === 'done' || s === 'skipped' || s === 'used' ? s : 'sent';
 }
 
-export interface MediaRef { url: string; kind: 'image' | 'video'; driveUrl?: string }
+export interface MediaRef {
+  /** Where to open it: the Drive page for a stored file, or the public FTP address for a legacy one. */
+  url: string;
+  kind: 'image' | 'video';
+  /** The archive copy (legacy FTP uploads) or the file itself (Drive-first uploads). */
+  driveUrl?: string;
+  driveFileId?: string;
+  /** A picture for the card. */
+  thumbUrl?: string;
+  /** A copy on the hosting, staged so a post can fetch it. Swept after a month. */
+  publicUrl?: string;
+  stagedAt?: string;
+}
 
 /**
  * Files the shop sent back, read defensively out of a JSON column.
@@ -241,9 +256,18 @@ export function mediaOf(raw: unknown): MediaRef[] {
       const url = String((m as { url?: unknown })?.url ?? '').trim();
       if (!/^https?:\/\//i.test(url)) return null;
       const kind = String((m as { kind?: unknown })?.kind ?? '') === 'video' ? 'video' : 'image';
-      const drive = String((m as { driveUrl?: unknown })?.driveUrl ?? '').trim();
+      const r = m as Record<string, unknown>;
+      const drive = String(r?.driveUrl ?? '').trim();
       const out: MediaRef = { url, kind };
       if (/^https:\/\/drive\.google\.com\//i.test(drive)) out.driveUrl = drive;
+      const fid = String(r?.driveFileId ?? '').replace(/[^A-Za-z0-9_-]/g, '');
+      if (fid) out.driveFileId = fid;
+      const thumb = String(r?.thumbUrl ?? '').trim();
+      if (/^https:\/\/(drive\.google\.com|lh3\.googleusercontent\.com)\//i.test(thumb)) out.thumbUrl = thumb;
+      const pub = String(r?.publicUrl ?? '').trim();
+      if (/^https?:\/\//i.test(pub)) out.publicUrl = pub;
+      const staged = String(r?.stagedAt ?? '').trim();
+      if (staged && !Number.isNaN(Date.parse(staged))) out.stagedAt = staged;
       return out;
     })
     .filter((m): m is MediaRef => m !== null)
@@ -282,7 +306,8 @@ export function clientSuggestion(row: SuggestionRow): ClientSuggestion {
     refCount: safeLink(row.refUrl) && typeof row.refCount === 'number' ? row.refCount : null,
     refCountKind: safeLink(row.refUrl) && (row.refCountKind === 'views' || row.refCountKind === 'likes') ? row.refCountKind : null,
     refPublishedAt: safeLink(row.refUrl) && row.refPublishedAt ? new Date(row.refPublishedAt).toISOString() : null,
-    media: mediaOf(row.media),
+    // The shop's own files, as things to open — not where the team staged them.
+    media: mediaOf(row.media).map((m) => ({ url: m.url, kind: m.kind, ...(m.thumbUrl ? { thumbUrl: m.thumbUrl } : {}) })),
     // "You sent this" versus "we asked for this" — the one fact about origin
     // the shop needs, and a boolean, not the name behind it.
     fromShop: row.createdByName === SHOP,

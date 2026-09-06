@@ -43,6 +43,23 @@ import { PlatformConfigService } from '../billing/platform-config.service';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
+
+/** What a stored file is known by, everywhere downstream. */
+export interface DriveFile {
+  id: string;
+  /** The Drive page for the file — opens in a tab, plays a clip. */
+  url: string;
+  /** A picture of it (Drive renders one for videos too), sized for a card. */
+  thumbUrl: string;
+}
+
+export function driveLinks(id: string, webViewLink?: string | null): DriveFile {
+  return {
+    id,
+    url: webViewLink ?? `https://drive.google.com/file/d/${id}/view`,
+    thumbUrl: `https://drive.google.com/thumbnail?id=${id}&sz=w800`,
+  };
+}
 const SCOPE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
 const FOLDER = 'application/vnd.google-apps.folder';
 const ROOT_NAME = 'Lumio Booking';
@@ -316,6 +333,58 @@ export class GoogleDriveService {
     if (!res.ok) throw new Error(`Drive upload ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
     const data = (await res.json()) as { id: string; webViewLink?: string };
     return { id: data.id, url: data.webViewLink ?? `https://drive.google.com/file/d/${data.id}/view` };
+  }
+
+  /**
+   * Put one file in the salon's folder as the file OF RECORD, and hand back
+   * the links the screens need.
+   *
+   * Resumable rather than multipart: Google caps multipart at 5MB and a clip
+   * off a phone is ten times that. Two requests — start the session, PUT the
+   * bytes — and the file is there. Then one permission: anyone with the link
+   * may read. That is what lets the team's inbox draw a thumbnail with a
+   * plain <img> and open the clip in a tab without signing into the storage
+   * account; the link itself is a 33-character id nobody guesses. The FTP
+   * store this replaces was public in exactly the same way.
+   */
+  async store(tenantId: string, name: string, mime: string, bytes: Buffer): Promise<DriveFile> {
+    const { folderId } = await this.folderForTenant(tenantId);
+    const token = await this.accessToken();
+    const start = await fetch(`${UPLOAD}/files?uploadType=resumable&fields=id,webViewLink`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json; charset=UTF-8',
+        'x-upload-content-type': mime,
+        'x-upload-content-length': String(bytes.length),
+      },
+      body: JSON.stringify({ name, parents: [folderId] }),
+    });
+    if (!start.ok) throw new Error(`Drive upload start ${start.status}: ${(await start.text().catch(() => '')).slice(0, 200)}`);
+    const session = start.headers.get('location');
+    if (!session) throw new Error('Drive upload: no session');
+    const put = await fetch(session, {
+      method: 'PUT',
+      headers: { 'content-type': mime, 'content-length': String(bytes.length) },
+      body: new Uint8Array(bytes),
+    });
+    if (!put.ok) throw new Error(`Drive upload ${put.status}: ${(await put.text().catch(() => '')).slice(0, 200)}`);
+    const data = (await put.json()) as { id: string; webViewLink?: string };
+    // Readable by link. Failing this is not failing the upload — the file is
+    // in — so it is logged and the thumbnail shows a folder icon instead.
+    await this.api(`/files/${data.id}/permissions`, { method: 'POST', json: { role: 'reader', type: 'anyone' } })
+      .catch((e) => this.log.warn(`drive permission ${data.id}: ${e instanceof Error ? e.message : e}`));
+    return driveLinks(data.id, data.webViewLink);
+  }
+
+  /** The bytes of a file we stored — to stage a copy where a post can fetch it. */
+  async download(fileId: string): Promise<{ bytes: Buffer; mime: string }> {
+    const id = String(fileId).replace(/[^A-Za-z0-9_-]/g, '');
+    if (!id) throw new BadRequestException('File không hợp lệ.');
+    const token = await this.accessToken();
+    const res = await fetch(`${DRIVE}/files/${id}?alt=media`, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`Drive download ${res.status}`);
+    return { bytes: Buffer.from(await res.arrayBuffer()), mime: (res.headers.get('content-type') || 'application/octet-stream').split(';')[0] };
   }
 
   /**

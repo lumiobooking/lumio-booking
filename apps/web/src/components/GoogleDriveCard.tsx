@@ -102,8 +102,9 @@ export function GoogleDriveCard({ token, onSaveClient }: {
         )}
       </div>
       <p style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.6, margin: '0 0 12px' }}>
-        Ảnh và clip tiệm gửi qua thẻ đề xuất vẫn lên kho FTP để đăng bài; bản sao đi vào Drive của Lumio,
-        mỗi tiệm một folder đặt theo tên tiệm, file đặt tên theo ngày và việc. Anh và nhân viên mở Drive là thấy.
+        Ảnh và clip tiệm gửi được lưu <b>thẳng vào Drive</b> — mỗi tiệm một folder đặt theo tên tiệm, file đặt tên theo ngày.
+        Kho FTP (hosting) chỉ giữ một bản sao lúc nhân viên bấm "Dựng bài", và tự dọn sau 1 tháng, nên hosting không bao giờ đầy.
+        Chưa kết nối Drive thì file tạm lên FTP như trước.
       </p>
 
       {msg && (

@@ -2886,6 +2886,10 @@ model ContentSuggestion {
   refCount       Int?
   refCountKind   String?
   refPublishedAt DateTime?
+  /// What the team did with it, written when the card is put away.
+  usedNote   String?
+  usedAt     DateTime?
+  usedByName String?
 
   /// WHICH FEED it came off — the hashtag page, the ranking, the search the
   /// team reads every morning. Method, not brief. Never sent to the salon.

@@ -86,7 +86,7 @@ export class SupportService {
       doneAt: Date | null; media: unknown; tenant: { name: string; slug: string } | null;
     }[];
     return rows.map((r) => {
-      const media = Array.isArray(r.media) ? (r.media as { kind?: string; driveUrl?: string }[]) : [];
+      const media = Array.isArray(r.media) ? (r.media as { kind?: string; driveUrl?: string; driveFileId?: string }[]) : [];
       return {
         id: r.id,
         tenantId: r.tenantId,
@@ -98,7 +98,7 @@ export class SupportService {
         doneAt: r.doneAt,
         files: media.length,
         clips: media.filter((m) => m.kind === 'video').length,
-        archived: media.filter((m) => Boolean(m.driveUrl)).length,
+        archived: media.filter((m) => Boolean(m.driveUrl || m.driveFileId)).length,
       };
     });
   }

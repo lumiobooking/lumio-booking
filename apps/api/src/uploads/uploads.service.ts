@@ -4,6 +4,7 @@ import { Client as FtpClient } from 'basic-ftp';
 import { Readable } from 'stream';
 import { PlatformConfigService } from '../billing/platform-config.service';
 import { assemble, dropPieces, getResult, haveChunks, putChunk, putResult, CHUNK_MAX, PIECES_MAX, type FinishResult } from './chunk-store';
+import { GoogleDriveService } from './google-drive.service';
 
 interface FtpConfig {
   host: string; port: number; user: string; password: string; secure: boolean;
@@ -52,7 +53,10 @@ const EXT_BY_MIME: Record<string, string> = {
 @Injectable()
 export class UploadsService {
   private readonly log = new Logger(UploadsService.name);
-  constructor(private readonly platform: PlatformConfigService) {}
+  constructor(
+    private readonly platform: PlatformConfigService,
+    private readonly drive: GoogleDriveService,
+  ) {}
 
   private async config(): Promise<FtpConfig | null> {
     const [host, port, user, password, secure, basePath, publicBase] = await Promise.all([
@@ -223,7 +227,7 @@ export class UploadsService {
         try {
           const buf = await assemble(tenantId, dto.uploadId, total);
           if (!buf) throw new Error('MISSING_CHUNKS:');
-          const out = await this.uploadFile(tenantId, { buffer: buf, mimetype: dto.mime, originalname: dto.name });
+          const out = await this.storeMedia(tenantId, { buffer: buf, mimetype: dto.mime, originalname: dto.name });
           r = { ...out, at: Date.now() };
         } catch (e) {
           r = { error: e instanceof Error ? e.message : 'failed', at: Date.now() };
@@ -242,6 +246,45 @@ export class UploadsService {
       new Promise<null>((res) => setTimeout(() => res(null), 8_000)),
     ]);
     return r ?? { pending: true };
+  }
+
+  /**
+   * Where a shop's photo or clip LIVES.
+   *
+   * Drive, when it is connected. The hosting was the wrong place for the
+   * archive: a hundred salons sending originals fills a shared host in a
+   * season and slows every booking page on it, while the Drive account was
+   * bought for exactly this. So the file of record goes to the salon's
+   * Drive folder; the hosting gets a copy only when a post needs a public
+   * address to fetch from (see SuggestionsService.stage), and that copy is
+   * swept once the post has gone out. No Drive: the old FTP path, unchanged.
+   */
+  async storeMedia(
+    tenantId: string,
+    file: { buffer: Buffer; mimetype?: string; originalname?: string },
+  ): Promise<{ url: string; kind: 'image' | 'video'; driveFileId?: string; driveUrl?: string; thumbUrl?: string }> {
+    const mime = String(file.mimetype ?? '').toLowerCase();
+    const isVideo = mime.startsWith('video/');
+    const isImage = mime.startsWith('image/');
+    if (!isVideo && !isImage) throw new BadRequestException('Chỉ nhận ảnh hoặc video.');
+    if (!(await this.drive.configured())) return this.uploadFile(tenantId, file);
+
+    const cap = isVideo ? 120_000_000 : 12_000_000;
+    if (file.buffer.length > cap) {
+      throw new BadRequestException(isVideo ? 'Clip nặng quá (tối đa 120MB). Quay ngắn lại hoặc gửi bản nén.' : 'Ảnh nặng quá (tối đa 12MB).');
+    }
+    const ext = EXT_BY_MIME[mime] ?? (isVideo ? 'mp4' : 'jpg');
+    const day = new Date().toISOString().slice(0, 10);
+    const base = String(file.originalname ?? '').replace(/\.[^.]+$/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || (isVideo ? 'clip' : 'photo');
+    const name = `${day}_${base}_${randomUUID().slice(0, 6)}.${ext}`;
+    try {
+      const f = await this.drive.store(tenantId, name, mime, file.buffer);
+      return { url: f.url, kind: isVideo ? 'video' : 'image', driveFileId: f.id, driveUrl: f.url, thumbUrl: f.thumbUrl };
+    } catch (e) {
+      this.log.error(`Drive store failed: ${e instanceof Error ? e.message : e}`);
+      throw new BadRequestException('Không lưu được vào Google Drive. Thử lại giúp em.');
+    }
   }
 
   /** Decode a small data: image URL and push it to FTP, return its public https URL. */

@@ -4,7 +4,9 @@ import { Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { GoogleDriveService } from '../uploads/google-drive.service';
-import { SHOP, clientSuggestion, mediaOf, needsTeam, safeLink, suggestionStatus, type SuggestionRow } from './client-view';
+import { UploadsService } from '../uploads/uploads.service';
+import { storagePathOf } from './media-retention';
+import { SHOP, clientSuggestion, mediaOf, needsTeam, safeLink, suggestionStatus, type MediaRef, type SuggestionRow } from './client-view';
 
 /**
  * One trend, picked by a person, handed to one salon.
@@ -31,6 +33,7 @@ export class SuggestionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly drive: GoogleDriveService,
+    private readonly uploads: UploadsService,
   ) {}
 
   /** Loose access: the model exists on the deploy, not in the local client. */
@@ -126,6 +129,9 @@ export class SuggestionsService {
       status: suggestionStatus(r.status),
       doneAt: r.doneAt,
       media: mediaOf(r.media),
+      usedNote: r.usedNote ?? null,
+      usedAt: r.usedAt ?? null,
+      usedByName: r.usedByName ?? null,
     });
     const ready = rows.filter((r) => needsTeam(r.status));
     return {
@@ -135,7 +141,7 @@ export class SuggestionsService {
       ready: ready.map(shape),
       /** Sent, still waiting on the shop. */
       waitingOnShop: rows.filter((r) => suggestionStatus(r.status) === 'sent').map(shape),
-      recent: rows.filter((r) => !needsTeam(r.status) && suggestionStatus(r.status) !== 'sent').slice(0, 10).map(shape),
+      recent: rows.filter((r) => !needsTeam(r.status) && suggestionStatus(r.status) !== 'sent').slice(0, 60).map(shape),
       readyCount: ready.length,
     };
   }
@@ -147,14 +153,15 @@ export class SuggestionsService {
    * and the team getting round to it are two different events, and collapsing
    * them is how an inbox stops meaning anything.
    */
-  async markUsed(user: AuthenticatedUser, id: string) {
+  async markUsed(user: AuthenticatedUser, id: string, note?: unknown) {
     if (!this.isTeam(user)) throw new ForbiddenException('Chỉ team Lumio đánh dấu được.');
     const tenantId = this.tenantId(user);
+    const usedNote = String(note ?? '').replace(/\s+/g, ' ').trim().slice(0, 300) || null;
     const r = await (this.prisma as unknown as Record<string, {
       updateMany: (a: unknown) => Promise<{ count: number }>;
     }>).contentSuggestion?.updateMany({
       where: { id, tenantId },
-      data: { status: 'used' },
+      data: { status: 'used', usedNote, usedAt: new Date(), usedByName: user.email ?? 'Lumio' },
     }).catch(() => ({ count: 0 }));
     if (!r || r.count === 0) throw new NotFoundException('Không tìm thấy đề xuất này.');
     return { ok: true, id };
@@ -206,7 +213,7 @@ export class SuggestionsService {
     return (await this.table?.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'desc' },
-      take: 40,
+      take: 300,
     }).catch(() => [])) as SuggestionRow[] ?? [];
   }
 
@@ -286,7 +293,8 @@ export class SuggestionsService {
     }).catch(() => null) as { id: string; tenantId: string; title: string; doneAt: Date | null; createdAt: Date; media: unknown } | null;
     if (!row) return 0;
     const media = mediaOf(row.media);
-    const todo = media.filter((m) => !m.driveUrl);
+    // Drive-first uploads are already there; only legacy FTP entries need a copy.
+    const todo = media.filter((m) => !m.driveUrl && !m.driveFileId);
     if (!todo.length) return 0;
 
     const day = new Date(row.doneAt ?? row.createdAt).toISOString().slice(0, 10);
@@ -322,10 +330,76 @@ export class SuggestionsService {
       take: 60,
       select: { id: true, media: true },
     }).catch(() => []) as { id: string; media: unknown }[];
-    const pending = rows.filter((r) => mediaOf(r.media).some((m) => !m.driveUrl)).slice(0, limit);
+    const pending = rows.filter((r) => mediaOf(r.media).some((m) => !m.driveUrl && !m.driveFileId)).slice(0, limit);
     let total = 0;
     for (const r of pending) total += await this.mirror(r.id).catch(() => 0);
+    await this.sweepStaged().catch((e) => this.log.warn(`staged sweep: ${e instanceof Error ? e.message : e}`));
     return total;
+  }
+
+  // ---- the hosting holds only what a post is about to fetch --------------------
+
+  /**
+   * Put a copy of this card's files on the hosting, so a post can be built
+   * from public addresses. Drive is the file of record; the hosting is a
+   * loading dock, and the copies are swept a month later (`sweepStaged`).
+   * Idempotent: a file already staged keeps its address.
+   */
+  async stage(user: AuthenticatedUser, id: string): Promise<{ media: MediaRef[] }> {
+    if (!this.isTeam(user)) throw new ForbiddenException('Chỉ team Lumio dựng bài.');
+    const tenantId = this.tenantId(user);
+    const row = await this.table?.findFirst({ where: { id, tenantId }, select: { id: true, media: true } })
+      .catch(() => null) as { id: string; media: unknown } | null;
+    if (!row) throw new NotFoundException('Không tìm thấy đề xuất này.');
+    const media = mediaOf(row.media);
+    let changed = false;
+    for (const m of media) {
+      if (m.publicUrl) continue;
+      if (!m.driveFileId) { m.publicUrl = m.url; continue; } // legacy: the FTP address is the public one
+      try {
+        const { bytes, mime } = await this.drive.download(m.driveFileId);
+        const out = await this.uploads.uploadFile(tenantId, { buffer: bytes, mimetype: mime || (m.kind === 'video' ? 'video/mp4' : 'image/jpeg') });
+        m.publicUrl = out.url;
+        m.stagedAt = new Date().toISOString();
+        changed = true;
+      } catch (e) {
+        this.log.warn(`stage ${row.id}: ${e instanceof Error ? e.message : e}`);
+        throw new BadRequestException(`Chưa chép được file sang kho đăng bài: ${e instanceof Error ? e.message : 'lỗi'}`);
+      }
+    }
+    if (changed) await this.table?.update({ where: { id: row.id }, data: { media: media as never } }).catch(() => undefined);
+    return { media };
+  }
+
+  /**
+   * Remove staged copies older than a month from the hosting. The posts made
+   * from them fetched the file on the day; the archive is on Drive. Legacy
+   * entries (FTP was the file of record) are left alone — deleting those
+   * would delete the only copy.
+   */
+  async sweepStaged(limit = 20): Promise<number> {
+    const publicBase = await this.uploads.publicBase();
+    if (!publicBase) return 0;
+    const cutoff = Date.now() - 30 * 86_400_000;
+    const rows = await this.table?.findMany({
+      where: { status: { in: ['done', 'used', 'skipped'] } },
+      orderBy: { doneAt: 'desc' },
+      take: 200,
+      select: { id: true, media: true },
+    }).catch(() => []) as { id: string; media: unknown }[];
+    let removed = 0;
+    for (const r of rows) {
+      const media = mediaOf(r.media);
+      const stale = media.filter((m) => m.driveFileId && m.publicUrl && m.stagedAt && Date.parse(m.stagedAt) < cutoff);
+      if (!stale.length) continue;
+      const paths = stale.map((m) => storagePathOf(m.publicUrl!, publicBase)).filter((p): p is string => Boolean(p));
+      if (paths.length) await this.uploads.deletePaths(paths).catch(() => undefined);
+      for (const m of stale) { delete m.publicUrl; delete m.stagedAt; }
+      await this.table?.update({ where: { id: r.id }, data: { media: media as never } }).catch(() => undefined);
+      removed += stale.length;
+      if (removed >= limit) break;
+    }
+    return removed;
   }
 
   /** The salon says it does not fit. The reason is the useful half. */

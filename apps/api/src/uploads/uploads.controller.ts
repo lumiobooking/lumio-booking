@@ -44,7 +44,7 @@ export class UploadsController {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) throw new BadRequestException('No salon in scope.');
     if (!file) throw new BadRequestException('Chưa chọn được file.');
-    return this.uploads.uploadFile(tenantId, file);
+    return this.uploads.storeMedia(tenantId, file);
   }
 
   /**

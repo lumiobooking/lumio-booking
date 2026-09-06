@@ -430,6 +430,9 @@ function OutboxBar({ vi, pending, running, online, pct }: {
   const files = pending.reduce((n, b) => n + b.files.length, 0);
   const failed = pending.filter((b) => b.status === 'failed' || b.files.some((f) => f.status === 'failed'));
   const stuck = failed.length > 0 || !online;
+  // The reason, verbatim. A bar that says "interrupted" and nothing else is a
+  // bar nobody can act on — and nobody can report.
+  const reason = failed.flatMap((b) => [b.error, ...b.files.map((f) => f.error)]).find(Boolean) ?? null;
   return (
     <div style={{
       ...card, marginBottom: 14, borderColor: stuck ? '#f59e0b' : '#6366f1',
@@ -454,6 +457,11 @@ function OutboxBar({ vi, pending, running, online, pct }: {
               : T('Cứ để điện thoại đó, màn hình sẽ không tự tắt. Nếu đóng app, lần mở sau tự gửi tiếp từ chỗ dở — không phải chọn lại file.',
                   'You can put the phone down — the screen stays on. If you close the app, it resumes where it left off next time, no need to pick the files again.')}
           </div>
+          {reason && (
+            <div style={{ fontSize: 11.5, color: '#fca5a5', marginTop: 4, fontFamily: 'ui-monospace, monospace', wordBreak: 'break-word' }}>
+              {T('Lỗi', 'Error')}: {reason}
+            </div>
+          )}
           <div style={{ height: 5, borderRadius: 20, background: 'var(--c0f172a)', overflow: 'hidden', marginTop: 8 }}>
             <div style={{ width: `${pct}%`, height: '100%', background: stuck ? '#f59e0b' : '#6366f1', transition: 'width .3s' }} />
           </div>

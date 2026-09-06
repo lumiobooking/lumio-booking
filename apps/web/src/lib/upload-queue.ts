@@ -349,7 +349,8 @@ export async function runQueue(): Promise<void> {
             cache.files = cache.files.map((x) => (x.id === done.id ? done : x));
           } catch (e) {
             ok = false;
-            const failed: QueuedFile = { ...f, status: 'failed', error: e instanceof Error ? e.message : 'failed' };
+            const status = e instanceof ApiError ? e.status : 0;
+            const failed: QueuedFile = { ...f, status: 'failed', error: `${e instanceof Error ? e.message : 'failed'}${status ? ` (HTTP ${status})` : ''}` };
             await putFile(failed);
             cache.files = cache.files.map((x) => (x.id === failed.id ? failed : x));
             emit();

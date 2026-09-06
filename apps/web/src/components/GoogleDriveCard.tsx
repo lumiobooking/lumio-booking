@@ -155,7 +155,10 @@ export function GoogleDriveCard({ token, onSaveClient }: {
           )}
           3. OAuth consent screen → Publishing status = <b>In production</b>. Quyền xin là <code style={code}>drive.file</code> — loại không nhạy cảm,
           Google không bắt xét duyệt; nếu để "Testing" thì phiên hết hạn sau 7 ngày và phải kết nối lại.
-          <br />4. Bấm <b>Kết nối Google Drive</b>, đăng nhập bằng tài khoản Google của Lumio (tài khoản sẽ là chủ của mọi file).
+          <br />4. Bấm <b>Kết nối Google Drive</b> → Google hỏi chọn tài khoản → chọn <b>tài khoản Google riêng dành làm kho lưu trữ</b>
+          (không cần là tài khoản đang đăng nhập Chrome, cũng không cần cùng tài khoản với Google Cloud).
+          Tài khoản đó sẽ là chủ của folder "Lumio Booking" và mọi file bên trong — dung lượng 15GB tính vào Drive của nó.
+          Kết nối xong, email hiện ở góc trên thẻ này: kiểm tra đúng tài khoản kho rồi mới thôi.
         </div>
       </div>
     </section>

@@ -135,8 +135,11 @@ export class GoogleDriveService {
       scope: SCOPE,
       access_type: 'offline',
       // `consent` every time, or Google hands back no refresh token on the
-      // second connection and the archive silently stops.
-      prompt: 'consent',
+      // second connection and the archive silently stops. `select_account`
+      // forces the chooser: the archive is meant to live in a dedicated
+      // storage account, and without it Google silently picks whichever
+      // account the browser is already signed into.
+      prompt: 'select_account consent',
       state: this.signState(),
     });
     return { url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` };

@@ -865,13 +865,9 @@ function Inner() {
       at: wallTomorrowAt('10:00'),
     });
     setTab('queue');
-    // The card is put away with a note that says what became of it — the
-    // media list has already been staged by the inbox (see SuggestionInbox).
-    if (token) {
-      apiFetch(`/content/suggestions/${s.id}/used`, { method: 'POST', token, body: { note: T('Đã dựng bài từ file này', 'Post made from these files') } })
-        .then(() => setReadyFiles((n) => Math.max(0, n - 1)))
-        .catch(() => undefined);
-    }
+    // The card stays IN PROGRESS (the inbox claimed it). It is put away when
+    // the person says the post exists — raw footage and the post made from it
+    // are two different things, and only they know when the second is real.
   }
 
   /**

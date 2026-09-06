@@ -132,18 +132,73 @@ export class SuggestionsService {
       usedNote: r.usedNote ?? null,
       usedAt: r.usedAt ?? null,
       usedByName: r.usedByName ?? null,
+      workingAt: r.workingAt ?? null,
+      workingByName: r.workingByName ?? null,
     });
-    const ready = rows.filter((r) => needsTeam(r.status));
+    const ready = rows.filter((r) => suggestionStatus(r.status) === 'done');
+    const working = rows.filter((r) => suggestionStatus(r.status) === 'working');
     return {
       /** This salon's folder in the Drive archive, once anything has landed there. */
       driveFolderUrl: await this.drive.folderLink(this.tenantId(user)).catch(() => null),
-      /** The shop sent files and nobody has made a post from them yet. */
+      /** RECEIVED: the shop sent files and nobody has picked them up. */
       ready: ready.map(shape),
+      /** IN PROGRESS: somebody is editing the raw material. */
+      working: working.map(shape),
       /** Sent, still waiting on the shop. */
       waitingOnShop: rows.filter((r) => suggestionStatus(r.status) === 'sent').map(shape),
       recent: rows.filter((r) => !needsTeam(r.status) && suggestionStatus(r.status) !== 'sent').slice(0, 60).map(shape),
-      readyCount: ready.length,
+      readyCount: ready.length + working.length,
+      newCount: ready.length,
     };
+  }
+
+  /**
+   * "I'll take this one." Moves a received card to WORKING under this staff
+   * member's name, so the next person to open the inbox sees it is claimed.
+   * Reversible with `release`.
+   */
+  async claim(user: AuthenticatedUser, id: string) {
+    if (!this.isTeam(user)) throw new ForbiddenException('Chỉ team Lumio nhận việc.');
+    const tenantId = this.tenantId(user);
+    const r = await (this.prisma as unknown as Record<string, { updateMany: (a: unknown) => Promise<{ count: number }> }>)
+      .contentSuggestion?.updateMany({
+        where: { id, tenantId, status: { in: ['done', 'working'] } },
+        data: { status: 'working', workingAt: new Date(), workingByName: user.email ?? 'Lumio' },
+      }).catch(() => ({ count: 0 }));
+    if (!r || r.count === 0) throw new NotFoundException('Không tìm thấy hoặc thẻ này đã xong.');
+    return { ok: true, id };
+  }
+
+  /** Back to RECEIVED — picked up by mistake, or handing it to somebody else. */
+  async release(user: AuthenticatedUser, id: string) {
+    if (!this.isTeam(user)) throw new ForbiddenException('Chỉ team Lumio.');
+    const tenantId = this.tenantId(user);
+    const r = await (this.prisma as unknown as Record<string, { updateMany: (a: unknown) => Promise<{ count: number }> }>)
+      .contentSuggestion?.updateMany({
+        where: { id, tenantId, status: 'working' },
+        data: { status: 'done', workingAt: null, workingByName: null },
+      }).catch(() => ({ count: 0 }));
+    if (!r || r.count === 0) throw new NotFoundException('Thẻ này không ở trạng thái đang làm.');
+    return { ok: true, id };
+  }
+
+  /**
+   * Take back something the team sent and the shop has not answered — the
+   * idea was wrong, or it was sent to the wrong salon. Only a card the shop
+   * has NOT acted on: once files have arrived the card is the shop's work,
+   * and it is put away with a note, never deleted.
+   */
+  async withdraw(user: AuthenticatedUser, id: string) {
+    if (!this.isTeam(user)) throw new ForbiddenException('Chỉ team Lumio thu hồi được.');
+    const tenantId = this.tenantId(user);
+    const r = await (this.prisma as unknown as Record<string, { deleteMany: (a: unknown) => Promise<{ count: number }> }>)
+      .contentSuggestion?.deleteMany({ where: { id, tenantId, status: { in: ['sent', 'skipped'] } } })
+      .catch(() => ({ count: 0 }));
+    if (!r || r.count === 0) throw new NotFoundException('Chỉ thu hồi được đề xuất tiệm chưa trả lời.');
+    await this.prisma.auditLog.create({
+      data: { tenantId, userId: user.userId ?? null, action: 'content.suggestion_withdrawn', resourceType: 'content_suggestion', resourceId: id } as never,
+    }).catch(() => undefined);
+    return { ok: true, id };
   }
 
   /**
@@ -160,7 +215,7 @@ export class SuggestionsService {
     const r = await (this.prisma as unknown as Record<string, {
       updateMany: (a: unknown) => Promise<{ count: number }>;
     }>).contentSuggestion?.updateMany({
-      where: { id, tenantId },
+      where: { id, tenantId, status: { in: ['done', 'working'] } },
       data: { status: 'used', usedNote, usedAt: new Date(), usedByName: user.email ?? 'Lumio' },
     }).catch(() => ({ count: 0 }));
     if (!r || r.count === 0) throw new NotFoundException('Không tìm thấy đề xuất này.');
@@ -325,7 +380,7 @@ export class SuggestionsService {
     if (!(await this.drive.configured())) return 0;
     const since = new Date(Date.now() - 30 * 86_400_000);
     const rows = await this.table?.findMany({
-      where: { status: { in: ['done', 'used'] }, doneAt: { gte: since } },
+      where: { status: { in: ['done', 'working', 'used'] }, doneAt: { gte: since } },
       orderBy: { doneAt: 'desc' },
       take: 60,
       select: { id: true, media: true },
@@ -382,7 +437,7 @@ export class SuggestionsService {
     if (!publicBase) return 0;
     const cutoff = Date.now() - 30 * 86_400_000;
     const rows = await this.table?.findMany({
-      where: { status: { in: ['done', 'used', 'skipped'] } },
+      where: { status: { in: ['done', 'working', 'used', 'skipped'] } },
       orderBy: { doneAt: 'desc' },
       take: 200,
       select: { id: true, media: true },

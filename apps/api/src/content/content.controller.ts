@@ -173,6 +173,26 @@ export class ContentController {
   }
 
   /** The footage became a post — take the card out of the team's inbox. */
+  /** "I'll take this one." */
+  @Post('suggestions/:id/claim')
+  @HttpCode(200)
+  suggestionClaim(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.suggestions.claim(user, id);
+  }
+
+  /** Back to received. */
+  @Post('suggestions/:id/release')
+  @HttpCode(200)
+  suggestionRelease(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.suggestions.release(user, id);
+  }
+
+  /** Take back a request the shop has not answered. */
+  @Delete('suggestions/:id')
+  suggestionWithdraw(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.suggestions.withdraw(user, id);
+  }
+
   /** Copies onto the hosting so a post can fetch them; returns the media with public addresses. */
   @Post('suggestions/:id/stage')
   @HttpCode(200)

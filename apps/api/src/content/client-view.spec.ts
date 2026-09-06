@@ -122,6 +122,13 @@ describe('what a salon sees of a suggestion', () => {
     expect(odd.refCountKind).toBeNull();
   });
 
+  it('the team’s own stages never reach the shop — working and used are just "done"', () => {
+    expect(clientSuggestion({ ...row, status: 'working' }).status).toBe('done');
+    expect(clientSuggestion({ ...row, status: 'used' }).status).toBe('done');
+    expect(JSON.stringify(clientSuggestion({ ...row, status: 'working', workingByName: 'tramanh@lumioagency.com', usedNote: 'made the reel' })))
+      .not.toMatch(/working|tramanh|made the reel/);
+  });
+
   it('a card the shop opened itself says so — as a boolean, not a name', () => {
     expect(clientSuggestion(row).fromShop).toBe(false);
     const mine = clientSuggestion({ ...row, createdByName: SHOP, status: 'done' });

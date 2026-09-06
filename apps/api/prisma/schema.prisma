@@ -2886,6 +2886,9 @@ model ContentSuggestion {
   refCount       Int?
   refCountKind   String?
   refPublishedAt DateTime?
+  /// Who picked it up (status 'working'), and when.
+  workingAt     DateTime?
+  workingByName String?
   /// What the team did with it, written when the card is put away.
   usedNote   String?
   usedAt     DateTime?

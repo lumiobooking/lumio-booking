@@ -28,6 +28,7 @@ interface TenantRow {
 interface InboxRow {
   id: string; tenantId: string; salon: string; slug: string; title: string; note: string | null;
   fromShop: boolean; doneAt: string | null; files: number; clips: number; archived: number;
+  working?: boolean; workingByName?: string | null;
 }
 
 /** "3 phút trước" — the freshness is the point of the list. */
@@ -175,7 +176,7 @@ export default function AgencyPage() {
               )}
             </div>
             <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c64748b)' }}>
-              {inbox.length ? 'chưa dựng bài' : 'Không có gì đang chờ — mọi thứ tiệm gửi đã được xử lý.'}
+              {inbox.length ? `${inbox.filter((r) => !r.working).length} mới · ${inbox.filter((r) => r.working).length} đang làm` : 'Không có gì đang chờ — mọi thứ tiệm gửi đã được xử lý.'}
             </span>
           </div>
           {inbox.map((r) => (
@@ -189,6 +190,9 @@ export default function AgencyPage() {
                   <span style={{ color: 'var(--c64748b)', fontWeight: 500, letterSpacing: 0 }}> · {ago(r.doneAt)}</span>
                 </div>
                 <div style={{ fontSize: 14.5, color: 'var(--ce2e8f0)', fontWeight: 600, lineHeight: 1.4, marginTop: 2 }}>
+                  {r.working
+                    ? <span style={{ color: '#a5b4fc', fontSize: 11, fontWeight: 800, marginRight: 6 }}>🙋 {(r.workingByName ?? 'LUMIO').split('@')[0].toUpperCase()} ĐANG LÀM</span>
+                    : <span style={{ color: '#86efac', fontSize: 11, fontWeight: 800, marginRight: 6 }}>● MỚI</span>}
                   {r.fromShop && <span style={{ color: '#fde68a', fontSize: 11, fontWeight: 800, marginRight: 6 }}>📤 TIỆM TỰ GỬI</span>}
                   {r.title}
                 </div>

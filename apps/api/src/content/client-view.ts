@@ -184,6 +184,8 @@ export interface SuggestionRow {
   usedNote?: string | null;
   usedAt?: Date | string | null;
   usedByName?: string | null;
+  workingAt?: Date | string | null;
+  workingByName?: string | null;
 }
 
 /** A suggestion as the salon sees it. */
@@ -222,11 +224,23 @@ export function safeLink(raw: unknown): string | null {
  * The shop is never shown the difference between `done` and `used`; from its
  * side both mean "sent, Lumio has it".
  */
-export type SuggestionState = 'sent' | 'done' | 'skipped' | 'used';
+/**
+ * The life of a card.
+ *
+ *   sent     — the team asked; the shop has not answered
+ *   done     — the shop sent files (or sent them unasked); RECEIVED, nobody's yet
+ *   working  — a staff member picked it up; the raw material is being edited
+ *   used     — finished, with a note on what was made; hidden under "handled"
+ *   skipped  — the shop said it does not fit
+ *
+ * The shop sees three of these: sent, done, skipped. `working` and `used`
+ * are the team's business and collapse to `done` on the shop's side.
+ */
+export type SuggestionState = 'sent' | 'done' | 'working' | 'skipped' | 'used';
 
 export function suggestionStatus(raw: unknown): SuggestionState {
   const s = String(raw ?? '').trim().toLowerCase();
-  return s === 'done' || s === 'skipped' || s === 'used' ? s : 'sent';
+  return s === 'done' || s === 'skipped' || s === 'used' || s === 'working' ? s : 'sent';
 }
 
 export interface MediaRef {
@@ -377,8 +391,10 @@ export const CLIENT_STATUS_VI: Record<ClientSuggestion['status'], string> = {
 };
 
 /** Waiting on the TEAM: the shop sent files and nobody has made a post yet. */
+/** Received or being worked on — either way, not finished. */
 export function needsTeam(status: unknown): boolean {
-  return suggestionStatus(status) === 'done';
+  const s = suggestionStatus(status);
+  return s === 'done' || s === 'working';
 }
 
 export { viOf, enOf };

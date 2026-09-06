@@ -74,16 +74,16 @@ export class SupportService {
       findMany: (a: unknown) => Promise<unknown>;
     }>;
     const rows = await loose.contentSuggestion?.findMany({
-      where: { status: 'done' },
+      where: { status: { in: ['done', 'working'] } },
       orderBy: { doneAt: 'desc' },
       take: 60,
       select: {
-        id: true, tenantId: true, title: true, note: true, createdByName: true, doneAt: true, media: true,
+        id: true, tenantId: true, title: true, note: true, createdByName: true, doneAt: true, media: true, status: true, workingByName: true,
         tenant: { select: { name: true, slug: true } },
       },
     }).catch(() => []) as {
       id: string; tenantId: string; title: string; note: string | null; createdByName: string | null;
-      doneAt: Date | null; media: unknown; tenant: { name: string; slug: string } | null;
+      doneAt: Date | null; media: unknown; status: string; workingByName: string | null; tenant: { name: string; slug: string } | null;
     }[];
     return rows.map((r) => {
       const media = Array.isArray(r.media) ? (r.media as { kind?: string; driveUrl?: string; driveFileId?: string }[]) : [];
@@ -95,6 +95,8 @@ export class SupportService {
         title: r.title,
         note: r.note,
         fromShop: r.createdByName === 'shop',
+        working: r.status === 'working',
+        workingByName: r.workingByName ?? null,
         doneAt: r.doneAt,
         files: media.length,
         clips: media.filter((m) => m.kind === 'video').length,

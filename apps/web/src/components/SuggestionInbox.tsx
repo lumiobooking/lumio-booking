@@ -39,6 +39,8 @@ export interface TeamSuggestion {
   sourceUrl: string | null;
   sourceLabel: string | null;
   createdByName: string | null;
+  /** The shop opened this card itself — sent files nobody asked for. */
+  fromShop?: boolean;
   createdAt: string;
   status: 'sent' | 'done' | 'skipped' | 'used';
   doneAt: string | null;
@@ -134,7 +136,19 @@ export function SuggestionInbox({
                 <img src={s.refThumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </a>
             )}
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>{s.title}</div>
+            <div style={{ minWidth: 0 }}>
+              {s.fromShop && (
+                <span style={{
+                  display: 'inline-block', fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase',
+                  color: '#fde68a', background: 'rgba(245,158,11,.14)', border: '1px solid rgba(245,158,11,.5)',
+                  borderRadius: 6, padding: '1px 7px', marginBottom: 3,
+                }}>📤 {T('Tiệm tự gửi', 'Sent by the shop')}</span>
+              )}
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>{s.title}</div>
+              {s.fromShop && s.note && (
+                <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 2 }}>{s.note}</div>
+              )}
+            </div>
           </div>
           {s.sourceLabel && (
             // The team's own note about where it came from. This never reaches

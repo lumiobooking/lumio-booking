@@ -1,5 +1,5 @@
 import {
-  clientWeek, clientSuggestion, mediaOf, suggestionStatus, leaksAnything,
+  clientWeek, clientSuggestion, mediaOf, suggestionStatus, leaksAnything, SHOP,
   flattenForClient, needsTeam, SHOP_JOB_KINDS, NEVER_TO_CLIENT,
 } from './client-view';
 import { buildWeekPlan } from './weekly-plan';
@@ -107,7 +107,15 @@ describe('what a salon sees of a suggestion', () => {
 
   it('carries what the shop needs and nothing else', () => {
     expect(Object.keys(clientSuggestion(row)).sort())
-      .toEqual(['createdAt', 'id', 'media', 'note', 'refThumbUrl', 'refUrl', 'status', 'title']);
+      .toEqual(['createdAt', 'fromShop', 'id', 'media', 'note', 'refThumbUrl', 'refUrl', 'status', 'title']);
+  });
+
+  it('a card the shop opened itself says so — as a boolean, not a name', () => {
+    expect(clientSuggestion(row).fromShop).toBe(false);
+    const mine = clientSuggestion({ ...row, createdByName: SHOP, status: 'done' });
+    expect(mine.fromShop).toBe(true);
+    expect(mine.status).toBe('done');
+    expect(JSON.stringify(mine)).not.toMatch(/createdByName/);
   });
 
   it('SHOWS THE ONE REFERENCE, AND STILL NOT THE FEED', () => {

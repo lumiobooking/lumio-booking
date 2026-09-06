@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, apiUpload } from '../lib/api';
+import { shrinkForUpload } from '../lib/image';
 
 /**
  * The salon's whole screen: what to film, what Lumio asked for, what is waiting
@@ -42,6 +43,8 @@ interface Suggestion {
   refUrl: string | null;
   refThumbUrl: string | null;
   media: { url: string; kind: 'image' | 'video' }[];
+  /** The shop sent this on its own, nobody asked. */
+  fromShop?: boolean;
 }
 interface SuggestionFeed { open: Suggestion[]; past: Suggestion[]; waiting: number }
 interface ClientJob { dayIndex: number; day: string; kind: string; text: string; how: string | null }
@@ -116,6 +119,11 @@ export function SalonWorkspace({ token, vi, onCount }: {
           </div>
         </section>
       )}
+
+      {/* ---- 1b. the open door: send anything, any time ----
+             A set of nails worth showing does not wait for a card. Without
+             this the photo goes to a group chat at night, unlabelled. */}
+      <SendAnything token={token} vi={vi} onDone={load} onError={setErr} />
 
       {/* ---- 2. the shop's own week ----
              Two cards in an auto-fit grid: side by side on a laptop, stacked on
@@ -196,9 +204,11 @@ export function SalonWorkspace({ token, vi, onCount }: {
                 padding: '9px 0', borderTop: i === 0 ? 'none' : '1px solid var(--c1e293b)',
                 display: 'flex', gap: 9, alignItems: 'baseline',
               }}>
-                <span style={{ flex: '0 0 auto' }}>{s.status === 'done' ? '✅' : '—'}</span>
+                <span style={{ flex: '0 0 auto' }}>{s.fromShop ? '📤' : s.status === 'done' ? '✅' : '—'}</span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>{s.title}</div>
+                  <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>
+                    {s.fromShop && <span style={{ color: 'var(--c94a3b8)' }}>{T('Tiệm gửi: ', 'You sent: ')}</span>}{s.title}
+                  </div>
                   {!!s.media.length && (
                     <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
                       {s.media.length} {T('file đã gửi', 'files sent')}
@@ -212,6 +222,35 @@ export function SalonWorkspace({ token, vi, onCount }: {
       )}
     </div>
   );
+}
+
+/**
+ * Photos are shrunk on the phone first, then sent two at a time. Two, not
+ * one: a single stream rarely fills a mobile connection, and a clip next to
+ * a photo lets the photo finish while the clip is still going. Not four: on
+ * a weak connection they starve each other and nothing visibly moves. The
+ * bar reports bytes across the whole batch, so it never jumps backwards.
+ */
+async function sendFiles(
+  files: File[],
+  token: string,
+  setPct: (n: number) => void,
+): Promise<{ url: string; kind: 'image' | 'video' }[]> {
+  const prepared = await Promise.all(files.map((f) => shrinkForUpload(f)));
+  const total = prepared.reduce((n, f) => n + f.size, 0) || 1;
+  const done = prepared.map(() => 0);
+  const report = () => setPct(Math.min(99, Math.round((done.reduce((a, b) => a + b, 0) / total) * 100)));
+  const out: ({ url: string; kind: 'image' | 'video' } | null)[] = prepared.map(() => null);
+  let next = 0;
+  const worker = async () => {
+    while (next < prepared.length) {
+      const i = next; next += 1;
+      out[i] = await apiUpload('/uploads/media', prepared[i], token, (p) => { done[i] = (p / 100) * prepared[i].size; report(); });
+      done[i] = prepared[i].size; report();
+    }
+  };
+  await Promise.all([worker(), worker()]);
+  return out.filter((x): x is { url: string; kind: 'image' | 'video' } => x !== null);
 }
 
 /**
@@ -241,14 +280,7 @@ function SuggestionCard({
     if (!files.length || !token) return;
     setBusy(true); onError(null);
     try {
-      const out: { url: string; kind: 'image' | 'video' }[] = [];
-      // One at a time on purpose: a shop's upload is on phone data, and four
-      // parallel uploads on a weak connection finish slower than four in a row
-      // and give the person no idea which one is moving.
-      for (let i = 0; i < files.length; i += 1) {
-        const each = (p: number) => setPct(Math.round(((i + p / 100) / files.length) * 100));
-        out.push(await apiUpload('/uploads/media', files[i], token, each));
-      }
+      const out = await sendFiles(files, token, setPct);
       await apiFetch(`/content/suggestions/${s.id}/done`, { method: 'POST', token, body: { media: out } });
       onDone();
     } catch (e) {
@@ -374,6 +406,96 @@ function SuggestionCard({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * "Send us anything." One line of what it is, pick the files, done.
+ *
+ * Collapsed to a single row until tapped: it sits under the cards Lumio
+ * asked for, and must not compete with them for the thumb. Once open it
+ * is the same send as a card — same shrink, same two-at-a-time, same bar.
+ */
+function SendAnything({ token, vi, onDone, onError }: {
+  token: string | null; vi: boolean; onDone: () => void; onError: (m: string | null) => void;
+}) {
+  const T = (v: string, e: string) => (vi ? v : e);
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [pct, setPct] = useState<number | null>(null);
+  const [sent, setSent] = useState<number | null>(null);
+  const pick = useRef<HTMLInputElement | null>(null);
+
+  async function send(files: File[]) {
+    if (!files.length || !token) return;
+    setBusy(true); onError(null); setSent(null);
+    try {
+      const media = await sendFiles(files, token, setPct);
+      await apiFetch('/content/suggestions/shop-send', { method: 'POST', token, body: { note, media } });
+      setSent(media.length); setNote(''); setOpen(false);
+      onDone();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : T('Không gửi được, thử lại giúp em', 'Could not send — please try again'));
+    } finally { setBusy(false); setPct(null); }
+  }
+
+  return (
+    <section style={{ ...card, marginBottom: 18, borderStyle: open ? 'solid' : 'dashed' }}>
+      <input
+        ref={pick} type="file" accept="image/*,video/*" multiple style={{ display: 'none' }}
+        onChange={(e) => { void send(Array.from(e.target.files ?? [])); e.target.value = ''; }}
+      />
+      {!open ? (
+        <button
+          onClick={() => setOpen(true)}
+          style={{ ...ghost, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, border: 'none', padding: '4px 2px', minHeight: 40 }}
+        >
+          <span style={{ fontSize: 20 }}>📤</span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: 'block', color: 'var(--ce2e8f0)', fontWeight: 700, fontSize: 14.5 }}>
+              {T('Gửi ảnh/clip cho Lumio', 'Send photos or clips to Lumio')}
+            </span>
+            <span style={{ display: 'block', fontSize: 12.5, color: 'var(--c94a3b8)', fontWeight: 500 }}>
+              {sent
+                ? T(`Đã nhận ${sent} file — bên em sẽ dựng bài từ đó.`, `Got ${sent} file(s) — we will make posts from them.`)
+                : T('Bộ móng đẹp, khoảnh khắc hay — gửi lúc nào cũng được, không cần chờ đề xuất.',
+                    'A great set, a good moment — send any time, no need to wait for a request.')}
+            </span>
+          </span>
+        </button>
+      ) : (
+        <div>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 8 }}>
+            📤 {T('Gửi ảnh/clip cho Lumio', 'Send photos or clips to Lumio')}
+          </div>
+          <input
+            value={note} onChange={(e) => setNote(e.target.value)} disabled={busy}
+            placeholder={T('Đây là gì? — ví dụ: bộ móng cô dâu hôm nay, khách rất thích', 'What is it? — e.g. today\'s bridal set, client loved it')}
+            style={{
+              width: '100%', boxSizing: 'border-box', minHeight: 44, padding: '10px 12px', borderRadius: 10,
+              border: '1px solid var(--c475569)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14, marginBottom: 10,
+            }}
+          />
+          {busy && pct !== null && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ height: 6, borderRadius: 4, background: 'var(--c334155)', overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: '#6366f1', transition: 'width .2s' }} />
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 4 }}>
+                {T('Đang gửi', 'Sending')} {pct}% — {T('đừng đóng trang', 'keep this page open')}
+              </div>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => pick.current?.click()} disabled={busy} style={{ ...primary, flex: '1 1 auto' }}>
+              {busy ? T('Đang gửi…', 'Sending…') : T('Chọn ảnh/clip và gửi', 'Pick files and send')}
+            </button>
+            <button onClick={() => setOpen(false)} disabled={busy} style={ghost}>{T('Đóng', 'Close')}</button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -4,7 +4,7 @@ import { Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { GoogleDriveService } from '../uploads/google-drive.service';
-import { clientSuggestion, mediaOf, needsTeam, safeLink, suggestionStatus, type SuggestionRow } from './client-view';
+import { SHOP, clientSuggestion, mediaOf, needsTeam, safeLink, suggestionStatus, type SuggestionRow } from './client-view';
 
 /**
  * One trend, picked by a person, handed to one salon.
@@ -112,6 +112,8 @@ export class SuggestionsService {
       sourceUrl: r.sourceUrl,
       sourceLabel: r.sourceLabel,
       createdByName: r.createdByName,
+      /** The shop opened this card itself — nobody at Lumio asked for it. */
+      fromShop: r.createdByName === SHOP,
       createdAt: r.createdAt,
       status: suggestionStatus(r.status),
       doneAt: r.doneAt,
@@ -186,7 +188,7 @@ export class SuggestionsService {
       findFirst: (a: unknown) => Promise<unknown>;
     }>;
     const [sug, post] = await Promise.all([
-      loose.contentSuggestion?.findFirst({ where: { tenantId }, select: { id: true } }).catch(() => null),
+      loose.contentSuggestion?.findFirst({ where: { tenantId, NOT: { createdByName: SHOP } }, select: { id: true } }).catch(() => null),
       loose.scheduledPost?.findFirst({ where: { tenantId }, select: { id: true } }).catch(() => null),
     ]);
     return Boolean(sug || post);
@@ -224,6 +226,39 @@ export class SuggestionsService {
     // data has already waited for one upload; they do not wait for Google too.
     void this.mirror(row.id).catch((e) => this.log.warn(`drive mirror ${row.id}: ${e instanceof Error ? e.message : e}`));
     return { ok: true, id: row.id, media: merged };
+  }
+
+  /**
+   * The shop sends something nobody asked for.
+   *
+   * A set of nails worth showing gets done at 4pm on a Tuesday with no card
+   * waiting for it. Without this door the photo goes to a group chat, or
+   * nowhere. So the shop can send files any time, with a line saying what they
+   * are; it lands in the same inbox, the same Drive folder, the same way — a
+   * card the shop itself opened and closed in one move.
+   *
+   * Marked `createdByName: SHOP` so it never counts as the agency having
+   * started work on this salon (see `hasAgencyWork`).
+   */
+  async sendFromShop(user: AuthenticatedUser, dto: { note?: unknown; media?: unknown }) {
+    const tenantId = this.tenantId(user);
+    const media = mediaOf(dto?.media).slice(0, 12);
+    if (!media.length) throw new BadRequestException('Chưa có ảnh hay clip nào.');
+    const note = String(dto?.note ?? '').replace(/\s+/g, ' ').trim().slice(0, 1000);
+    const row = await this.table?.create({
+      data: {
+        tenantId,
+        title: note.slice(0, 120) || 'Tiệm gửi ảnh/clip',
+        note: note.length > 120 ? note : null,
+        createdByName: SHOP,
+        status: 'done',
+        doneAt: new Date(),
+        media: media as never,
+      },
+    }).catch(() => null) as SuggestionRow | null;
+    if (!row) throw new BadRequestException('Chưa gửi được, thử lại giúp em.');
+    void this.mirror(row.id).catch((e) => this.log.warn(`drive mirror ${row.id}: ${e instanceof Error ? e.message : e}`));
+    return { ok: true, id: row.id };
   }
 
   // ---- the Drive archive -------------------------------------------------------

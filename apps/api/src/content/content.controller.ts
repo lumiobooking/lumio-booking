@@ -122,6 +122,16 @@ export class ContentController {
     return this.suggestions.markDone(user, id, dto?.media);
   }
 
+  /** The shop sends files nobody asked for — a card it opens and closes itself. */
+  @Post('suggestions/shop-send')
+  @HttpCode(200)
+  suggestionFromShop(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { note?: unknown; media?: unknown },
+  ) {
+    return this.suggestions.sendFromShop(user, dto ?? {});
+  }
+
   /** It does not fit this shop. The reason is the half worth having. */
   @Post('suggestions/:id/skip')
   @HttpCode(200)

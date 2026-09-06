@@ -126,3 +126,37 @@ export async function compressImageToFit(file: File, opts: CompressOpts = {}): P
   }
   return out;
 }
+
+/**
+ * Shrink a photo before it leaves the phone, as a File the upload can send.
+ *
+ * A phone camera hands over 4–8MB per picture; a post needs a fraction of it.
+ * Sent as-is, the bytes crawl up a mobile connection, then the API buffers
+ * them and pushes them to storage a second time — that hop is where "upload
+ * is slow" comes from. 2048px on the long edge keeps every platform's full
+ * resolution and is usually a tenth of the size.
+ *
+ * Anything that is not a still image (a clip, a format this browser cannot
+ * decode such as HEIC on some desktops) goes back untouched — the server
+ * accepts it, it just takes longer. Never fail the send over the shrink.
+ */
+export async function shrinkForUpload(file: File, maxSide = 2048): Promise<File> {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
+  if (file.size < 400_000) return file; // already small: re-encoding only loses quality
+  try {
+    const img = await loadImage(file);
+    const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', 0.86));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+  } catch {
+    return file;
+  }
+}

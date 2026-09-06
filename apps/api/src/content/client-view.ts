@@ -184,6 +184,7 @@ export interface ClientSuggestion {
   refUrl: string | null;
   refThumbUrl: string | null;
   media: MediaRef[];
+  fromShop: boolean;
 }
 
 /** Only a real http(s) address survives into anything the browser will render. */
@@ -243,6 +244,9 @@ export function mediaOf(raw: unknown): MediaRef[] {
  * from Lumio, not from whichever employee was on shift, and a name is one more
  * thing a departing staff member takes with them.
  */
+/** `createdByName` of a card the shop opened itself by sending files unasked. */
+export const SHOP = 'shop';
+
 export function clientSuggestion(row: SuggestionRow): ClientSuggestion {
   return {
     id: row.id,
@@ -259,6 +263,9 @@ export function clientSuggestion(row: SuggestionRow): ClientSuggestion {
     refUrl: safeLink(row.refUrl),
     refThumbUrl: safeLink(row.refThumbUrl),
     media: mediaOf(row.media),
+    // "You sent this" versus "we asked for this" — the one fact about origin
+    // the shop needs, and a boolean, not the name behind it.
+    fromShop: row.createdByName === SHOP,
   };
 }
 

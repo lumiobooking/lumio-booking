@@ -237,8 +237,8 @@ function SuggestionCard({
   const [reason, setReason] = useState('');
   const pick = useRef<HTMLInputElement | null>(null);
 
-  async function send(files: FileList | null) {
-    if (!files?.length || !token) return;
+  async function send(files: File[]) {
+    if (!files.length || !token) return;
     setBusy(true); onError(null);
     try {
       const out: { url: string; kind: 'image' | 'video' }[] = [];
@@ -332,7 +332,10 @@ function SuggestionCard({
             accept="image/*,video/*"
             multiple
             style={{ display: 'none' }}
-            onChange={(e) => { void send(e.target.files); e.target.value = ''; }}
+            // Copy the list BEFORE clearing the input: a FileList is live, so
+            // clearing first emptied it under the upload — 0 files, progress
+            // ÷ 0 = "Infinity%", and a send that never finished.
+            onChange={(e) => { void send(Array.from(e.target.files ?? [])); e.target.value = ''; }}
           />
           <button onClick={() => pick.current?.click()} disabled={busy} style={{ ...primary, flex: '1 1 200px' }}>
             {busy ? T('Đang gửi…', 'Sending…') : `📤 ${T('Đã quay xong — gửi cho Lumio', 'Filmed it — send to Lumio')}`}

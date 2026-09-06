@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { compactCount, ageOf } from '../lib/counts';
 
 /**
  * Writing the one line a shop will read, before it is sent.
@@ -32,18 +33,24 @@ export interface SuggestionDraft {
   note: string;
   refUrl?: string;
   refThumbUrl?: string;
+  refCount?: number;
+  refCountKind?: 'views' | 'likes';
+  refPublishedAt?: string;
   sourceUrl?: string;
   sourceLabel?: string;
 }
 
 export function SendSuggestion({
-  vi, seedTitle, refUrl, refThumbUrl, sourceUrl, sourceLabel, busy, onSend, onClose,
+  vi, seedTitle, refUrl, refThumbUrl, refCount, refCountKind, refPublishedAt, sourceUrl, sourceLabel, busy, onSend, onClose,
 }: {
   vi: boolean;
   /** The trend's own title, offered as raw material — never as the answer. */
   seedTitle: string;
   refUrl?: string | null;
   refThumbUrl?: string | null;
+  refCount?: number | null;
+  refCountKind?: 'views' | 'likes' | null;
+  refPublishedAt?: string | null;
   sourceUrl?: string | null;
   sourceLabel?: string | null;
   busy?: boolean;
@@ -116,6 +123,13 @@ export function SendSuggestion({
                   <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
                     {T('Gửi kèm mẫu này cho tiệm xem', 'Send this reference to the shop')}
                   </span>
+                  {typeof refCount === 'number' && refCountKind && (
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--ccbd5e1)', marginTop: 2 }}>
+                      {refCountKind === 'views' ? '👁' : '❤️'} {compactCount(refCount, vi)} {refCountKind === 'views' ? T('lượt xem', 'views') : T('lượt thích', 'likes')}
+                      {refPublishedAt ? ` · ${ageOf(refPublishedAt, vi)}` : ''}
+                      {' '}— {T('tiệm sẽ thấy con số này', 'the shop sees this number')}
+                    </span>
+                  )}
                   <span style={{ display: 'block', fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5, marginTop: 2 }}>
                     {T('Tiệm thấy đúng một clip này. Feed hashtag mình đang theo dõi thì không bao giờ gửi.',
                        'The shop sees this one clip. The hashtag feed it came off never travels.')}
@@ -167,7 +181,12 @@ export function SendSuggestion({
             onClick={() => onSend({
               title: title.trim(),
               note: note.trim(),
-              ...(attach ? { refUrl: refUrl ?? undefined, refThumbUrl: refThumbUrl ?? undefined } : {}),
+              ...(attach ? {
+                refUrl: refUrl ?? undefined, refThumbUrl: refThumbUrl ?? undefined,
+                refCount: typeof refCount === 'number' ? refCount : undefined,
+                refCountKind: refCountKind ?? undefined,
+                refPublishedAt: refPublishedAt ?? undefined,
+              } : {}),
               // Always stored, never sent onward — the team's own note of where
               // this came from (see the API's client-view).
               sourceUrl: sourceUrl ?? undefined,

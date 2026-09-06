@@ -107,7 +107,19 @@ describe('what a salon sees of a suggestion', () => {
 
   it('carries what the shop needs and nothing else', () => {
     expect(Object.keys(clientSuggestion(row)).sort())
-      .toEqual(['createdAt', 'fromShop', 'id', 'media', 'note', 'refThumbUrl', 'refUrl', 'status', 'title']);
+      .toEqual(['createdAt', 'fromShop', 'id', 'media', 'note', 'refCount', 'refCountKind', 'refPublishedAt', 'refThumbUrl', 'refUrl', 'status', 'title']);
+  });
+
+  it('the reference’s numbers travel with the reference, and only with it', () => {
+    const withRef = clientSuggestion({ ...row, refUrl: 'https://youtube.com/shorts/x', refCount: 1234567, refCountKind: 'views', refPublishedAt: '2026-09-01T00:00:00Z' });
+    expect(withRef.refCount).toBe(1234567);
+    expect(withRef.refCountKind).toBe('views');
+    expect(withRef.refPublishedAt).toBe('2026-09-01T00:00:00.000Z');
+    const noRef = clientSuggestion({ ...row, refCount: 1234567, refCountKind: 'views' });
+    expect(noRef.refCount).toBeNull();
+    expect(noRef.refCountKind).toBeNull();
+    const odd = clientSuggestion({ ...row, refUrl: 'https://youtube.com/shorts/x', refCount: 5, refCountKind: 'shares' });
+    expect(odd.refCountKind).toBeNull();
   });
 
   it('a card the shop opened itself says so — as a boolean, not a name', () => {

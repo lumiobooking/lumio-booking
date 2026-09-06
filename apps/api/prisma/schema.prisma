@@ -2880,6 +2880,12 @@ model ContentSuggestion {
   refUrl      String?
   /// Its thumbnail, so the card shows something without opening anything.
   refThumbUrl String?
+  /// The reference's public numbers: views (YouTube) or likes (Instagram), and
+  /// when it went up. Shown to the shop next to the clip — a brief with a
+  /// number on it is one the shop takes seriously.
+  refCount       Int?
+  refCountKind   String?
+  refPublishedAt DateTime?
 
   /// WHICH FEED it came off — the hashtag page, the ranking, the search the
   /// team reads every morning. Method, not brief. Never sent to the salon.

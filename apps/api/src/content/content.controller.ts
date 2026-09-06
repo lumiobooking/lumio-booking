@@ -153,6 +153,7 @@ export class ContentController {
     @Body() dto: {
       title?: string; note?: string;
       refUrl?: string; refThumbUrl?: string;
+      refCount?: unknown; refCountKind?: unknown; refPublishedAt?: unknown;
       sourceUrl?: string; sourceLabel?: string;
     },
   ) {

@@ -63,6 +63,7 @@ export class SuggestionsService {
   async create(user: AuthenticatedUser, dto: {
     title?: string; note?: string;
     refUrl?: string; refThumbUrl?: string;
+    refCount?: unknown; refCountKind?: unknown; refPublishedAt?: unknown;
     sourceUrl?: string; sourceLabel?: string;
   }) {
     if (!this.isTeam(user)) throw new ForbiddenException('Chỉ team Lumio gửi đề xuất cho tiệm.');
@@ -79,6 +80,11 @@ export class SuggestionsService {
         // hand over is a judgement per card, not a blanket rule.
         refUrl: safeLink(dto?.refUrl),
         refThumbUrl: safeLink(dto?.refThumbUrl),
+        // The reference's public numbers, so the shop can weigh the brief.
+        // Only with a reference: a number without the clip is a rumour.
+        refCount: safeLink(dto?.refUrl) && Number.isFinite(Number(dto?.refCount)) && Number(dto?.refCount) >= 0 ? Math.round(Number(dto?.refCount)) : null,
+        refCountKind: safeLink(dto?.refUrl) && (dto?.refCountKind === 'views' || dto?.refCountKind === 'likes') ? dto.refCountKind : null,
+        refPublishedAt: safeLink(dto?.refUrl) && dto?.refPublishedAt && !Number.isNaN(Date.parse(String(dto.refPublishedAt))) ? new Date(String(dto.refPublishedAt)) : null,
         // Kept for the team's own reading, never rendered on the salon's side.
         sourceUrl: String(dto?.sourceUrl ?? '').trim().slice(0, 500) || null,
         sourceLabel: String(dto?.sourceLabel ?? '').trim().slice(0, 120) || null,
@@ -109,6 +115,8 @@ export class SuggestionsService {
       // The team DOES see where it came from — this is their own working note.
       refUrl: safeLink(r.refUrl),
       refThumbUrl: safeLink(r.refThumbUrl),
+      refCount: r.refCount ?? null,
+      refCountKind: r.refCountKind ?? null,
       sourceUrl: r.sourceUrl,
       sourceLabel: r.sourceLabel,
       createdByName: r.createdByName,

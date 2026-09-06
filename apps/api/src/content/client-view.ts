@@ -169,6 +169,9 @@ export interface SuggestionRow {
   refUrl?: string | null;
   /** Its thumbnail, so the card shows something without opening anything. */
   refThumbUrl?: string | null;
+  refCount?: number | null;
+  refCountKind?: string | null;
+  refPublishedAt?: Date | string | null;
   /** Where the staff member found it. NEVER sent to the salon. */
   sourceUrl: string | null;
   /** Which feed it came off. NEVER sent to the salon. */
@@ -191,6 +194,10 @@ export interface ClientSuggestion {
   /** The reference to look at, when the staff member attached one. */
   refUrl: string | null;
   refThumbUrl: string | null;
+  /** The reference's public numbers, only when a reference travels. */
+  refCount: number | null;
+  refCountKind: 'views' | 'likes' | null;
+  refPublishedAt: string | null;
   media: MediaRef[];
   fromShop: boolean;
 }
@@ -270,6 +277,11 @@ export function clientSuggestion(row: SuggestionRow): ClientSuggestion {
     // `safeLink` because these end up in an href and a src on a phone.
     refUrl: safeLink(row.refUrl),
     refThumbUrl: safeLink(row.refThumbUrl),
+    // Public numbers on a public clip: nothing about how it was found, only
+    // how it did — and only when the clip itself is shown.
+    refCount: safeLink(row.refUrl) && typeof row.refCount === 'number' ? row.refCount : null,
+    refCountKind: safeLink(row.refUrl) && (row.refCountKind === 'views' || row.refCountKind === 'likes') ? row.refCountKind : null,
+    refPublishedAt: safeLink(row.refUrl) && row.refPublishedAt ? new Date(row.refPublishedAt).toISOString() : null,
     media: mediaOf(row.media),
     // "You sent this" versus "we asked for this" — the one fact about origin
     // the shop needs, and a boolean, not the name behind it.

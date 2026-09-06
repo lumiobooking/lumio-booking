@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
+import { compactCount, ageOf } from '../lib/counts';
 import { enqueue, installOutbox, useOutbox, retryFailed, discardBatch, takeLastDone, type BatchView } from '../lib/upload-queue';
 
 /**
@@ -42,6 +43,10 @@ interface Suggestion {
   /** The one clip Lumio wants the shop to look at, when one was attached. */
   refUrl: string | null;
   refThumbUrl: string | null;
+  /** The reference's public numbers, when it has them. */
+  refCount?: number | null;
+  refCountKind?: 'views' | 'likes' | null;
+  refPublishedAt?: string | null;
   media: { url: string; kind: 'image' | 'video' }[];
   /** The shop sent this on its own, nobody asked. */
   fromShop?: boolean;
@@ -333,6 +338,15 @@ function SuggestionCard({
             >
               ▶ {T('Xem mẫu Lumio gửi', 'Watch the reference')}
             </a>
+          )}
+          {s.refUrl && typeof s.refCount === 'number' && s.refCountKind && (
+            // The number is the argument: a shop that sees 1.2M views on the
+            // reference does not need convincing that the style is worth an hour.
+            <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', marginTop: 3 }}>
+              {s.refCountKind === 'views' ? '👁' : '❤️'} <b style={{ color: 'var(--cf1f5f9)' }}>{compactCount(s.refCount, vi)}</b>{' '}
+              {s.refCountKind === 'views' ? T('lượt xem', 'views') : T('lượt thích', 'likes')}
+              {s.refPublishedAt ? <span style={{ color: 'var(--c94a3b8)' }}> · {T('đăng', 'posted')} {ageOf(s.refPublishedAt, vi)}</span> : null}
+            </div>
           )}
         </div>
       </div>

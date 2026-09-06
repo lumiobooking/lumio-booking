@@ -2040,6 +2040,9 @@ function Inner() {
               seedTitle={sending.title}
               refUrl={sending.url}
               refThumbUrl={sending.thumbUrl}
+              refCount={sending.count}
+              refCountKind={sending.source === 'youtube' ? 'views' : sending.source === 'instagram' ? 'likes' : null}
+              refPublishedAt={sending.publishedAt}
               sourceUrl={sending.url}
               sourceLabel={sending.via ?? sending.source}
               busy={sendBusy}

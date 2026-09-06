@@ -183,20 +183,47 @@ export class SuggestionsService {
   }
 
   /**
-   * Take back something the team sent and the shop has not answered — the
-   * idea was wrong, or it was sent to the wrong salon. Only a card the shop
-   * has NOT acted on: once files have arrived the card is the shop's work,
-   * and it is put away with a note, never deleted.
+   * Remove a card.
+   *
+   * Two very different deletions share the button. A request the shop has
+   * NOT answered (`sent`, or `skipped`) is the team's own note and any staff
+   * member may take it back. A card the shop has done work on — files sent,
+   * a post made — is a record: who sent what, what became of it. Only the
+   * owner (SUPER_ADMIN) or a full-level support account may remove those,
+   * and the deletion is audited with the title so it can be answered for.
+   *
+   * The files themselves are NOT touched on Drive — that is the archive, and
+   * it is the owner's to tidy by hand. Staged copies on the hosting are
+   * removed, since nothing will fetch them now.
    */
   async withdraw(user: AuthenticatedUser, id: string) {
-    if (!this.isTeam(user)) throw new ForbiddenException('Chỉ team Lumio thu hồi được.');
+    if (!this.isTeam(user)) throw new ForbiddenException('Chỉ team Lumio xoá được.');
     const tenantId = this.tenantId(user);
+    const row = await this.table?.findFirst({ where: { id, tenantId }, select: { id: true, title: true, status: true, media: true } })
+      .catch(() => null) as { id: string; title: string; status: string; media: unknown } | null;
+    if (!row) throw new NotFoundException('Không tìm thấy đề xuất này.');
+    const answered = !['sent', 'skipped'].includes(suggestionStatus(row.status));
+    const senior = user.role === UserRole.SUPER_ADMIN || user.supportLevel === 'full';
+    if (answered && !senior) {
+      throw new ForbiddenException('Thẻ này tiệm đã gửi file — chỉ tài khoản Toàn quyền hoặc chủ hệ thống mới xoá được. Nhân viên dùng "Cất đi".');
+    }
+    // Staged copies on the hosting go; the Drive originals stay.
+    const publicBase = await this.uploads.publicBase();
+    const paths = mediaOf(row.media)
+      .filter((m) => m.driveFileId && m.publicUrl)
+      .map((m) => storagePathOf(m.publicUrl!, publicBase))
+      .filter((p): p is string => Boolean(p));
+    if (paths.length) await this.uploads.deletePaths(paths).catch(() => undefined);
     const r = await (this.prisma as unknown as Record<string, { deleteMany: (a: unknown) => Promise<{ count: number }> }>)
-      .contentSuggestion?.deleteMany({ where: { id, tenantId, status: { in: ['sent', 'skipped'] } } })
-      .catch(() => ({ count: 0 }));
-    if (!r || r.count === 0) throw new NotFoundException('Chỉ thu hồi được đề xuất tiệm chưa trả lời.');
+      .contentSuggestion?.deleteMany({ where: { id, tenantId } }).catch(() => ({ count: 0 }));
+    if (!r || r.count === 0) throw new NotFoundException('Không tìm thấy đề xuất này.');
     await this.prisma.auditLog.create({
-      data: { tenantId, userId: user.userId ?? null, action: 'content.suggestion_withdrawn', resourceType: 'content_suggestion', resourceId: id } as never,
+      data: {
+        tenantId, userId: user.userId ?? null,
+        action: answered ? 'content.suggestion_deleted' : 'content.suggestion_withdrawn',
+        resourceType: 'content_suggestion', resourceId: id,
+        metadata: { title: row.title, status: row.status, files: mediaOf(row.media).length },
+      } as never,
     }).catch(() => undefined);
     return { ok: true, id };
   }

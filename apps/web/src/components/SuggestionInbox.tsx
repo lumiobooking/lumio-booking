@@ -91,11 +91,13 @@ export interface TeamFeed {
 const PAGE = 12;
 
 export function SuggestionInbox({
-  token, vi, onCount, onMakePost,
+  token, vi, onCount, onMakePost, canDelete,
 }: {
   token: string | null;
   vi: boolean;
   onCount?: (n: number) => void;
+  /** Owner or full-level support: may delete handled cards, not just withdraw unanswered ones. */
+  canDelete?: boolean;
   /** Open the composer with these files already attached (public addresses). */
   onMakePost: (s: TeamSuggestion) => void;
 }) {
@@ -290,9 +292,16 @@ export function SuggestionInbox({
             <>
               <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', marginTop: 8 }}>
                 {doneL.slice.map((s) => (
-                  <div key={s.id} style={{ display: 'flex', gap: 8, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 9, padding: 8, opacity: 0.85 }}>
+                  <div key={s.id} style={{ display: 'flex', gap: 8, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 9, padding: 8, opacity: 0.85, position: 'relative' }}>
+                    {canDelete && (
+                      <button
+                        onClick={() => { if (window.confirm(T(`Xoá hẳn "${s.title}"? Ghi chú và lịch sử mất; file gốc trên Drive vẫn còn.`, `Delete "${s.title}" for good? The note and history go; the Drive originals stay.`))) void act(s.id, '', 'DELETE'); }}
+                        disabled={busy === s.id} title={T('Xoá (chỉ tài khoản quyền cao)', 'Delete (senior accounts only)')}
+                        style={{ ...btn, position: 'absolute', top: 4, right: 4, padding: '0 6px', fontSize: 11, lineHeight: '18px', color: 'var(--cf87171)', borderColor: 'transparent' }}
+                      >✕</button>
+                    )}
                     <Thumb media={s.media} vi={vi} small />
-                    <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ minWidth: 0, flex: 1, paddingRight: canDelete ? 14 : 0 }}>
                       <div style={{ fontSize: 12, color: 'var(--ce2e8f0)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.title}</div>
                       <div style={{ fontSize: 11.5, color: s.status === 'skipped' ? '#fca5a5' : '#86efac', marginTop: 3, lineHeight: 1.4 }}>
                         {s.status === 'skipped' ? `✕ ${T('Tiệm từ chối', 'Shop declined')}` : `✓ ${s.usedNote || T('Đã dùng', 'Used')}`}

@@ -2228,6 +2228,7 @@ function Inner() {
                   vi={vi}
                   onCount={setReadyFiles}
                   onMakePost={postFromSuggestion}
+                  canDelete={user?.role === 'SUPER_ADMIN' || user?.supportLevel === 'full'}
                 />
               )}
 

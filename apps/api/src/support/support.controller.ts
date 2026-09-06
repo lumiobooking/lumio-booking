@@ -22,6 +22,13 @@ export class SupportController {
     return this.svc.listTenants();
   }
 
+  /** What every shop has sent and nobody has made a post from yet. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Get('inbox')
+  inbox() {
+    return this.svc.inbox();
+  }
+
   /** Mint an 8h salon-scoped session token. Audited. */
   @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
   @Post('enter/:tenantId')

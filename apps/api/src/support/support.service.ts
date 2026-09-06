@@ -54,6 +54,56 @@ export class SupportService {
   }
 
   /**
+   * Everything the shops have sent that nobody has turned into a post yet —
+   * across EVERY salon, newest first.
+   *
+   * WHY IT LIVES HERE
+   *
+   * Each salon's own content page has an inbox, and it is the right place to
+   * work from. It is the wrong place to NOTICE from: a staff member covering
+   * eight salons would have to open eight pages every morning to learn that
+   * one shop sent a clip at 11pm. So the first screen they see — the salon
+   * picker — carries one list of what is waiting, with the salon's name on
+   * each line and a button that opens that salon on its inbox.
+   *
+   * Read-only, and it says nothing about method: title, the shop's note,
+   * how many files, how long ago. The working detail is inside the salon.
+   */
+  async inbox() {
+    const loose = this.prisma as unknown as Record<string, {
+      findMany: (a: unknown) => Promise<unknown>;
+    }>;
+    const rows = await loose.contentSuggestion?.findMany({
+      where: { status: 'done' },
+      orderBy: { doneAt: 'desc' },
+      take: 60,
+      select: {
+        id: true, tenantId: true, title: true, note: true, createdByName: true, doneAt: true, media: true,
+        tenant: { select: { name: true, slug: true } },
+      },
+    }).catch(() => []) as {
+      id: string; tenantId: string; title: string; note: string | null; createdByName: string | null;
+      doneAt: Date | null; media: unknown; tenant: { name: string; slug: string } | null;
+    }[];
+    return rows.map((r) => {
+      const media = Array.isArray(r.media) ? (r.media as { kind?: string; driveUrl?: string }[]) : [];
+      return {
+        id: r.id,
+        tenantId: r.tenantId,
+        salon: r.tenant?.name ?? '—',
+        slug: r.tenant?.slug ?? '',
+        title: r.title,
+        note: r.note,
+        fromShop: r.createdByName === 'shop',
+        doneAt: r.doneAt,
+        files: media.length,
+        clips: media.filter((m) => m.kind === 'video').length,
+        archived: media.filter((m) => Boolean(m.driveUrl)).length,
+      };
+    });
+  }
+
+  /**
    * Step into one salon: mint an 8-hour token scoped to that tenant with the
    * powers of its salon admin. Tenant isolation is untouched — inside the
    * session, cross-tenant requests fail exactly as they do for a real admin.

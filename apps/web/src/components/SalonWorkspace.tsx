@@ -91,21 +91,10 @@ export function SalonWorkspace({ token, vi, onCount }: {
   useEffect(() => { if (takeLastDone()) void load(); }, [outbox.lastDone, load]);
 
   // An empty tab is a broken-looking tab. A salon nobody is running marketing
-  // for opens this and gets a sentence, not a blank rectangle.
+  // for opens this and gets a sentence, not a blank rectangle — but the send
+  // box stays: a shop with no card from Lumio yet is exactly the shop whose
+  // first clip has to have somewhere to go.
   const nothing = !sugg?.open.length && !sugg?.past.length && !week?.jobs.length;
-  if (nothing) {
-    return (
-      <div style={{
-        maxWidth: 760, margin: '0 auto', padding: '36px 18px', textAlign: 'center',
-        background: 'var(--c151f38)', border: '1px solid var(--c334155)', borderRadius: 14,
-        color: 'var(--c64748b)', fontSize: 14, lineHeight: 1.65,
-      }}>
-        <div style={{ fontSize: 30, marginBottom: 8 }}>🎬</div>
-        {T('Chưa có việc nào cho tiệm. Khi bên em gửi đề xuất quay chụp, nó sẽ hiện ở đây.',
-           'Nothing to do yet. When the team sends something to film, it shows up here.')}
-      </div>
-    );
-  }
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '0 0 22px' }}>
@@ -122,6 +111,18 @@ export function SalonWorkspace({ token, vi, onCount }: {
              The thing a shop does most often is send what it just made. That
              is the top of the tab, one tap, no card to wait for. */}
       <SendAnything token={token} vi={vi} onDone={load} onError={setErr} />
+
+      {nothing && (
+        <div style={{
+          padding: '28px 18px', textAlign: 'center',
+          background: 'var(--c151f38)', border: '1px solid var(--c334155)', borderRadius: 14,
+          color: 'var(--c64748b)', fontSize: 14, lineHeight: 1.65,
+        }}>
+          <div style={{ fontSize: 30, marginBottom: 8 }}>🎬</div>
+          {T('Chưa có việc nào cho tiệm. Khi bên em gửi đề xuất quay chụp, nó sẽ hiện ở đây — còn ảnh/clip tiệm có sẵn thì gửi ở khung trên bất cứ lúc nào.',
+             'Nothing to do yet. When the team sends something to film, it shows up here — and anything you already have can go in the box above, any time.')}
+        </div>
+      )}
 
       {/* ---- 1. what Lumio asked for ---- */}
       {!!sugg?.open.length && (

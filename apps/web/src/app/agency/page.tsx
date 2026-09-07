@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
 import { fresh } from '../../lib/live';
+import { groupInbox, groupSummary, type InboxItem } from '../../lib/inbox-groups';
 
 interface TenantRow {
   id: string;
@@ -25,11 +26,7 @@ interface TenantRow {
   createdAt: string;
 }
 /** One thing a shop sent that nobody has made a post from yet. */
-interface InboxRow {
-  id: string; tenantId: string; salon: string; slug: string; title: string; note: string | null;
-  fromShop: boolean; doneAt: string | null; files: number; clips: number; archived: number;
-  working?: boolean; workingByName?: string | null;
-}
+type InboxRow = InboxItem;
 
 /** "3 phút trước" — the freshness is the point of the list. */
 function ago(iso: string | null): string {
@@ -54,6 +51,8 @@ export default function AgencyPage() {
   const router = useRouter();
   const [rows, setRows] = useState<TenantRow[]>([]);
   const [inbox, setInbox] = useState<InboxRow[]>([]);
+  const [allSalons, setAllSalons] = useState(false);
+  const groups = useMemo(() => groupInbox(inbox), [inbox]);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -161,53 +160,77 @@ export default function AgencyPage() {
 
         {/* ---- what the shops sent, across every salon ----
              The one list that stops a clip sent at 11pm from being found on
-             Thursday. Newest first, salon name on every line, one button to
-             open that salon on its inbox. */}
+             Thursday. One LINE per salon, not a card per thing: with a few
+             hundred salons the list has to stay a glance — which salons, how
+             much, how fresh — and the things themselves are handled on that
+             salon's own inbox, one tap away. Newest first; a handful shown,
+             the rest behind one tap. */}
         <section style={{
-          border: `1.5px solid ${inbox.length ? '#f59e0b' : 'var(--c1f2937)'}`, borderRadius: 14, padding: '14px 16px', marginBottom: 18,
-          background: inbox.length ? 'rgba(245,158,11,.07)' : 'var(--c111827)',
+          border: `1.5px solid ${inbox.length ? '#f59e0b' : 'var(--c1f2937)'}`, borderRadius: 14, padding: '12px 14px', marginBottom: 18,
+          background: inbox.length ? 'rgba(245,158,11,.06)' : 'var(--c111827)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: inbox.length ? 10 : 0 }}>
-            <span style={{ fontSize: 20 }}>📥</span>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: inbox.length ? 8 : 0 }}>
+            <span style={{ fontSize: 18 }}>📥</span>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>
               Tiệm vừa gửi
               {inbox.length > 0 && (
-                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 800, background: '#f59e0b', color: '#1c1917', borderRadius: 999, padding: '2px 9px' }}>{inbox.length}</span>
+                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 800, background: '#f59e0b', color: '#1c1917', borderRadius: 999, padding: '1px 8px' }}>{inbox.length}</span>
               )}
             </div>
-            <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c64748b)' }}>
-              {inbox.length ? `${inbox.filter((r) => !r.working).length} mới · ${inbox.filter((r) => r.working).length} đang làm` : 'Không có gì đang chờ — mọi thứ tiệm gửi đã được xử lý.'}
+            <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c64748b)', textAlign: 'right' }}>
+              {inbox.length
+                ? `${groups.length} tiệm · ${inbox.filter((r) => !r.working).length} mới · ${inbox.filter((r) => r.working).length} đang làm`
+                : 'Không có gì đang chờ — mọi thứ tiệm gửi đã được xử lý.'}
             </span>
           </div>
-          {inbox.map((r) => (
-            <div key={r.id} style={{
-              display: 'flex', gap: 12, alignItems: 'center', padding: '10px 12px', marginTop: 6,
-              background: 'var(--c0f172a)', border: '1px solid var(--c1f2937)', borderRadius: 10,
-            }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 12, color: '#fbbf24', fontWeight: 800, letterSpacing: '.3px' }}>
-                  {r.salon.toUpperCase()}
-                  <span style={{ color: 'var(--c64748b)', fontWeight: 500, letterSpacing: 0 }}> · {ago(r.doneAt)}</span>
-                </div>
-                <div style={{ fontSize: 14.5, color: 'var(--ce2e8f0)', fontWeight: 600, lineHeight: 1.4, marginTop: 2 }}>
-                  {r.working
-                    ? <span style={{ color: '#a5b4fc', fontSize: 11, fontWeight: 800, marginRight: 6 }}>🙋 {(r.workingByName ?? 'LUMIO').split('@')[0].toUpperCase()} ĐANG LÀM</span>
-                    : <span style={{ color: '#86efac', fontSize: 11, fontWeight: 800, marginRight: 6 }}>● MỚI</span>}
-                  {r.fromShop && <span style={{ color: '#fde68a', fontSize: 11, fontWeight: 800, marginRight: 6 }}>📤 TIỆM TỰ GỬI</span>}
-                  {r.title}
-                </div>
-                {r.note && <div style={{ fontSize: 13, color: 'var(--c94a3b8)', marginTop: 2, lineHeight: 1.45 }}>{r.note}</div>}
-                <div style={{ fontSize: 12, color: 'var(--c64748b)', marginTop: 3 }}>
-                  {r.files} file{r.clips ? ` · ${r.clips} clip` : ''}{r.archived ? ` · 📁 ${r.archived} đã vào Drive` : ''}
-                </div>
-              </div>
-              <button
-                onClick={() => { const t = rows.find((x) => x.id === r.tenantId); if (t) enter(t, '/salon/content?tab=queue'); }}
-                disabled={busy === r.tenantId}
-                style={{ background: '#f59e0b', border: 'none', color: '#1c1917', borderRadius: 8, padding: '9px 14px', fontSize: 13.5, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap', opacity: busy === r.tenantId ? 0.5 : 1 }}
-              >{busy === r.tenantId ? '…' : 'Mở & dựng bài →'}</button>
+          {inbox.length > 0 && (
+            <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 10, overflow: 'hidden', background: 'var(--c0f172a)' }}>
+              {(allSalons ? groups : groups.slice(0, 6)).map((g, i) => {
+                const opening = busy === g.tenantId;
+                return (
+                  <div
+                    key={g.tenantId}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => { const t = rows.find((x) => x.id === g.tenantId); if (t && !opening) enter(t, '/salon/content?tab=queue'); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { const t = rows.find((x) => x.id === g.tenantId); if (t && !opening) enter(t, '/salon/content?tab=queue'); } }}
+                    style={{
+                      display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr) auto', gap: 10, alignItems: 'center',
+                      padding: '8px 12px', borderTop: i ? '1px solid var(--c1f2937)' : 'none', cursor: 'pointer',
+                      opacity: opening ? 0.5 : 1,
+                    }}
+                  >
+                    {/* The one glyph: a dot that says "untouched" or "someone is on it". */}
+                    <span title={g.fresh ? 'Chưa ai mở' : 'Đang có người làm'} style={{
+                      width: 9, height: 9, borderRadius: 999, background: g.fresh ? '#22c55e' : '#a5b4fc',
+                      boxShadow: g.fresh ? '0 0 0 3px rgba(34,197,94,.18)' : 'none',
+                    }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.salon}</span>
+                        <span style={{ fontSize: 12, color: '#fbbf24', fontWeight: 700, whiteSpace: 'nowrap' }}>{groupSummary(g)}</span>
+                      </div>
+                      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>
+                        {g.fromShop ? '📤 ' : ''}{g.headline}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{ago(g.latest)}</span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: '#f59e0b' }}>{opening ? '…' : 'Mở →'}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {groups.length > 6 && (
+                <button
+                  onClick={() => setAllSalons((v) => !v)}
+                  style={{ width: '100%', background: 'transparent', border: 'none', borderTop: '1px solid var(--c1f2937)', color: '#fbbf24', padding: '8px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  {allSalons ? 'Thu gọn ↑' : `Xem thêm ${groups.length - 6} tiệm ↓`}
+                </button>
+              )}
             </div>
-          ))}
+          )}
         </section>
 
         <input

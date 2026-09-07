@@ -7,6 +7,7 @@ import { GoogleDriveService } from '../uploads/google-drive.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { extOf } from '../uploads/media-mime';
 import { storagePathOf } from './media-retention';
+import { hasAgencyWork } from './agency-work';
 import { SHOP, clientSuggestion, mediaOf, needsTeam, safeLink, suggestionStatus, type MediaRef, type SuggestionRow } from './client-view';
 
 /**
@@ -285,26 +286,31 @@ export class SuggestionsService {
   /**
    * Is anybody actually running this salon's marketing?
    *
-   * The client screen ships open for every salon (see feature-policy), which is
-   * only defensible because it is empty until the agency puts something on it.
-   * The week plan is the exception: it is generated for every tenant whether or
-   * not anyone is working on it, so showing it unconditionally would hand
-   * marketing homework to a shop that bought a booking system and nothing else.
-   *
-   * Evidence, not a setting: one suggestion sent, or one post scheduled. Both
-   * are things only the team creates, so the answer is true exactly when
-   * somebody is doing the work.
+   * The reasoning, and every signal that counts, lives in ./agency-work — it
+   * is a decision worth reading in one place, and worth testing without a
+   * database. This method only gathers the evidence.
    */
   async hasAgencyWork(user: AuthenticatedUser): Promise<boolean> {
     const tenantId = this.tenantId(user);
     const loose = this.prisma as unknown as Record<string, {
       findFirst: (a: unknown) => Promise<unknown>;
+      findMany: (a: unknown) => Promise<unknown>;
     }>;
-    const [sug, post] = await Promise.all([
+    const [sug, post, weeks, offer] = await Promise.all([
       loose.contentSuggestion?.findFirst({ where: { tenantId, NOT: { createdByName: SHOP } }, select: { id: true } }).catch(() => null),
       loose.scheduledPost?.findFirst({ where: { tenantId }, select: { id: true } }).catch(() => null),
+      loose.contentWeek?.findMany({
+        where: { tenantId }, orderBy: { startDate: 'desc' }, take: 8,
+        select: { edited: true, approvedAt: true, ticks: true },
+      }).catch(() => []) as Promise<{ edited?: unknown; approvedAt?: unknown; ticks?: unknown }[]>,
+      this.prisma.setting.findFirst({ where: { tenantId, key: 'content_offer' }, select: { id: true } }).catch(() => null),
     ]);
-    return Boolean(sug || post);
+    return hasAgencyWork({
+      teamSuggestion: Boolean(sug),
+      scheduledPost: Boolean(post),
+      weeks: Array.isArray(weeks) ? weeks : [],
+      offerSet: Boolean(offer),
+    });
   }
 
   private async rows(tenantId: string): Promise<SuggestionRow[]> {

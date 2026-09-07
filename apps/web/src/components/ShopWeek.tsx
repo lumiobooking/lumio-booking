@@ -23,10 +23,16 @@ import { ItemComments } from './ContentChat';
  */
 
 export interface ShopJob {
-  id: string; dayIndex: number; day: string; kind: string; by: 'shop' | 'lumio';
+  id?: string; dayIndex: number; day: string; kind: string; by?: 'shop' | 'lumio';
   text: string; steps?: string[]; done?: number[]; how: string | null;
 }
-export interface ShopWeekData { focus: string; jobs: ShopJob[]; prep: { label: string; detail: string }[]; days: string[] }
+/**
+ * `days`, and every job's `id` and `by`, arrive from an API that knows about
+ * shop-side editing. Both are optional here on purpose: the web deploys before
+ * the API does, and a browser that got the new page against yesterday's server
+ * must show a readable week, not a blank screen. Missing them means read-only.
+ */
+export interface ShopWeekData { focus: string; jobs: ShopJob[]; prep: { label: string; detail: string }[]; days?: string[] }
 export interface HolidayIdea {
   key: string; name: string; date: string; daysAway: number; spanDays: number; idea: string; window: string;
   offer: { kind: 'percent' | 'amount' | 'gift'; value: number; gift: string; slot: string; expires: string; terms: string };
@@ -38,6 +44,16 @@ const ICON: Record<string, string> = {
 
 const SHOP_KINDS = ['film', 'photo', 'engage'] as const;
 
+/** Day labels rebuilt from the jobs themselves, for an API that sends no `days`. */
+function dayLabelsFrom(jobs: ShopJob[]): string[] {
+  const out: string[] = [];
+  for (const j of jobs) {
+    const i = Number(j.dayIndex);
+    if (Number.isInteger(i) && i >= 0 && i < 14 && !out[i]) out[i] = j.day;
+  }
+  return Array.from({ length: out.length }, (_, i) => out[i] ?? '');
+}
+
 export function ShopWeek({ token, vi, week, weekKey, unread, onChanged, onError }: {
   token: string | null; vi: boolean; week: ShopWeekData; weekKey: string | null; unread?: number;
   onChanged: () => Promise<void> | void; onError: (m: string | null) => void;
@@ -45,7 +61,9 @@ export function ShopWeek({ token, vi, week, weekKey, unread, onChanged, onError 
   const T = (v: string, e: string) => (vi ? v : e);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState<{ dayIndex: number; kind: typeof SHOP_KINDS[number]; text: string } | null>(null);
-  const canEdit = Boolean(token && weekKey);
+  // Editing needs a week to address and an id per job. An older API sends
+  // neither, and the week still reads perfectly without them.
+  const canEdit = Boolean(token && weekKey && week.jobs.every((j) => j.id));
 
   async function patch(body: { jobs?: unknown[]; add?: unknown[] }) {
     if (!token) return;
@@ -68,7 +86,9 @@ export function ShopWeek({ token, vi, week, weekKey, unread, onChanged, onError 
     }
   }
 
-  const byDay = week.days.map((label, di) => ({ label, di, jobs: week.jobs.filter((j) => j.dayIndex === di) }));
+  // The seven labels, or — against an older API — the labels the jobs carry.
+  const labels = week.days?.length ? week.days : dayLabelsFrom(week.jobs);
+  const byDay = labels.map((label, di) => ({ label, di, jobs: week.jobs.filter((j) => j.dayIndex === di) }));
 
   return (
     <section style={{ marginBottom: 18 }}>
@@ -99,7 +119,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, onChanged, onError 
               <div style={{ fontSize: 12.5, color: 'var(--c475569)', padding: '4px 0' }}>{T('Nghỉ', 'Rest')}</div>
             )}
             {jobs.map((j) => (
-              <JobLine key={j.id} j={j} vi={vi} canEdit={canEdit} busy={busy} days={week.days}
+              <JobLine key={j.id ?? `${di}:${j.text}`} j={j} vi={vi} canEdit={canEdit} busy={busy} days={labels}
                 onText={(text) => patch({ jobs: [{ id: j.id, text }] })}
                 onSteps={(steps) => patch({ jobs: [{ id: j.id, steps }] })}
                 onMove={(dayIndex) => patch({ jobs: [{ id: j.id, dayIndex }] })}
@@ -166,6 +186,7 @@ function JobLine({ j, vi, canEdit, busy, days, onText, onSteps, onMove, onRemove
   const T = (v: string, e: string) => (vi ? v : e);
   const steps = j.steps ?? [];
   const done = new Set(j.done ?? []);
+  const by = j.by ?? (SHOP_KINDS.includes(j.kind as typeof SHOP_KINDS[number]) ? 'shop' : 'lumio');
   const [open, setOpen] = useState(false);
   const allDone = steps.length > 0 && steps.every((_, i) => done.has(i));
   return (
@@ -175,8 +196,8 @@ function JobLine({ j, vi, canEdit, busy, days, onText, onSteps, onMove, onRemove
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
           <span style={{
             fontSize: 10.5, fontWeight: 800, letterSpacing: '.4px', padding: '1px 6px', borderRadius: 6,
-            background: j.by === 'shop' ? 'rgba(34,197,94,.15)' : 'rgba(99,102,241,.15)', color: j.by === 'shop' ? '#86efac' : '#a5b4fc',
-          }}>{j.by === 'shop' ? T('TIỆM LÀM', 'YOU') : 'LUMIO'}</span>
+            background: by === 'shop' ? 'rgba(34,197,94,.15)' : 'rgba(99,102,241,.15)', color: by === 'shop' ? '#86efac' : '#a5b4fc',
+          }}>{by === 'shop' ? T('TIỆM LÀM', 'YOU') : 'LUMIO'}</span>
           {allDone && <span style={{ fontSize: 11, color: '#86efac', fontWeight: 700 }}>✓ {T('xong', 'done')}</span>}
         </div>
         <div style={{ fontSize: 14, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 2, textDecoration: allDone ? 'line-through' : undefined }}>

@@ -15,7 +15,8 @@ import { apiFetch, apiUploadForm, ApiError } from './api';
  *
  * So the files go into a queue first — in the browser's own database, as the
  * File objects themselves — and a runner works through it: each file in 4MB
- * pieces, each piece a request of its own, each piece ticked off as it lands.
+ * pieces, three pieces in the air at a time, each a request of its own, each
+ * ticked off as it lands.
  * Whatever interrupts it (screen off, app closed, a tunnel) costs at most one
  * piece; the next time the page is open the runner asks the server which
  * pieces it has and carries on from there. The person never picks the files
@@ -36,6 +37,14 @@ import { apiFetch, apiUploadForm, ApiError } from './api';
  * One number for the whole outbox — bytes landed over bytes queued — so the
  * bar never jumps backwards when a second batch is added, plus per-batch
  * state for the card that started it.
+ *
+ * WHAT IT WRITES
+ *
+ * The bytes go into the database once, at enqueue, in a store of their own.
+ * Progress is a separate small record. The first version kept the File
+ * inside the progress record and rewrote it after every piece — a 100MB clip
+ * written to disk twenty-five times over — which on a phone is most of what
+ * "slow" was.
  */
 
 export type Target = { suggestionId: string } | { shop: true; note: string };
@@ -46,7 +55,8 @@ export interface QueuedFile {
   name: string;
   type: string;
   size: number;
-  blob: Blob;
+  /** The bytes — in memory while the runner is on this file; stored separately (see `putBlob`). */
+  blob?: Blob;
   /** Number of 4MB pieces. */
   total: number;
   /** Pieces the server has confirmed. */
@@ -91,6 +101,9 @@ export interface QueueSnapshot {
 }
 
 export const CHUNK = 4 * 1024 * 1024;
+/** Pieces in the air at once. Three fills a phone's upstream without three
+ * times the failures when the road is bad. */
+export const PARALLEL = 3;
 const DB = 'lumio-outbox';
 const MAX_RETRY = 6;
 
@@ -99,19 +112,35 @@ const MAX_RETRY = 6;
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') { reject(new Error('no idb')); return; }
-    const req = indexedDB.open(DB, 1);
-    req.onupgradeneeded = () => {
+    const req = indexedDB.open(DB, 2);
+    req.onupgradeneeded = (ev) => {
       const db = req.result;
-      const files = db.createObjectStore('files', { keyPath: 'id' });
-      files.createIndex('batchId', 'batchId');
-      db.createObjectStore('batches', { keyPath: 'id' });
+      if (ev.oldVersion < 1) {
+        const files = db.createObjectStore('files', { keyPath: 'id' });
+        files.createIndex('batchId', 'batchId');
+        db.createObjectStore('batches', { keyPath: 'id' });
+      }
+      if (ev.oldVersion < 2) {
+        // Bytes move out of the progress record into a store of their own.
+        // Whatever was queued under the old layout carries on under the new.
+        const blobs = db.createObjectStore('blobs', { keyPath: 'id' });
+        const files = req.transaction!.objectStore('files');
+        files.openCursor().onsuccess = (e) => {
+          const cur = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+          if (!cur) return;
+          const f = cur.value as QueuedFile & { blob?: Blob };
+          if (f.blob) { blobs.put({ id: f.id, blob: f.blob }); cur.update({ ...f, blob: undefined }); }
+          cur.continue();
+        };
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
 
-function tx<T>(store: 'files' | 'batches', mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T> | void): Promise<T> {
+type Store = 'files' | 'batches' | 'blobs';
+function tx<T>(store: Store, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T> | void): Promise<T> {
   return openDb().then((db) => new Promise<T>((resolve, reject) => {
     const t = db.transaction(store, mode);
     const s = t.objectStore(store);
@@ -122,12 +151,18 @@ function tx<T>(store: 'files' | 'batches', mode: IDBTransactionMode, fn: (s: IDB
   }));
 }
 
+/** Progress records only — no bytes. The runner fetches a file's bytes when it gets to it. */
 const allFiles = () => tx<QueuedFile[]>('files', 'readonly', (s) => s.getAll()).catch(() => [] as QueuedFile[]);
 const allBatches = () => tx<Batch[]>('batches', 'readonly', (s) => s.getAll()).catch(() => [] as Batch[]);
-const putFile = (f: QueuedFile) => tx<IDBValidKey>('files', 'readwrite', (s) => s.put(f));
+const putFile = (f: QueuedFile) => tx<IDBValidKey>('files', 'readwrite', (s) => s.put({ ...f, blob: undefined }));
 const putBatch = (b: Batch) => tx<IDBValidKey>('batches', 'readwrite', (s) => s.put(b));
-const delFile = (id: string) => tx<undefined>('files', 'readwrite', (s) => s.delete(id));
+const putBlob = (id: string, blob: Blob) => tx<IDBValidKey>('blobs', 'readwrite', (s) => s.put({ id, blob }));
+const getBlob = (id: string) => tx<{ id: string; blob: Blob } | undefined>('blobs', 'readonly', (s) => s.get(id)).then((r) => r?.blob ?? null).catch(() => null);
 const delBatch = (id: string) => tx<undefined>('batches', 'readwrite', (s) => s.delete(id));
+async function delFile(id: string): Promise<void> {
+  await tx<undefined>('files', 'readwrite', (s) => s.delete(id));
+  await tx<undefined>('blobs', 'readwrite', (s) => s.delete(id)).catch(() => undefined);
+}
 
 const uid = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto
   ? crypto.randomUUID()
@@ -141,13 +176,16 @@ let wanted = false;          // a run was asked for while one was going
 let tokenGetter: (() => string | null) | null = null;
 let lastDone: Batch | null = null;
 let cache: { files: QueuedFile[]; batches: Batch[] } = { files: [], batches: [] };
-let liveBytes: Record<string, number> = {}; // bytes of the piece in flight, per file
+let liveBytes: Record<string, Record<number, number>> = {}; // bytes of each piece in flight, per file
+const cancelled = new Set<string>();   // batches the person withdrew mid-flight
+let aborter: AbortController | null = null; // the pieces in the air right now
 let wakeLock: { release: () => Promise<void> } | null = null;
 
 function view(files: QueuedFile[], batches: Batch[]): QueueSnapshot {
   const byBatch = new Map<string, QueuedFile[]>();
   for (const f of files) byBatch.set(f.batchId, [...(byBatch.get(f.batchId) ?? []), f]);
-  const sentBytes = (f: QueuedFile) => (f.status === 'done' ? f.size : Math.min(f.size, f.sent.length * CHUNK + (liveBytes[f.id] ?? 0)));
+  const inAir = (id: string) => Object.values(liveBytes[id] ?? {}).reduce((n, v) => n + v, 0);
+  const sentBytes = (f: QueuedFile) => (f.status === 'done' ? f.size : Math.min(f.size, f.sent.length * CHUNK + inAir(f.id)));
   const views: BatchView[] = batches
     .sort((a, b) => a.createdAt - b.createdAt)
     .map((b) => {
@@ -185,9 +223,10 @@ export async function enqueue(files: File[], target: Target): Promise<Batch> {
   const batch: Batch = { id: uid(), target, fileIds: [], status: 'pending', createdAt: Date.now() };
   for (const f of files) {
     const q: QueuedFile = {
-      id: uid(), batchId: batch.id, name: f.name, type: f.type || 'application/octet-stream', size: f.size, blob: f,
+      id: uid(), batchId: batch.id, name: f.name, type: f.type || 'application/octet-stream', size: f.size,
       total: Math.max(1, Math.ceil(f.size / CHUNK)), sent: [], status: 'queued', createdAt: Date.now(),
     };
+    await putBlob(q.id, f);
     await putFile(q);
     batch.fileIds.push(q.id);
   }
@@ -203,6 +242,25 @@ export async function discardBatch(batchId: string): Promise<void> {
   for (const f of files) if (f.batchId === batchId) await delFile(f.id);
   await delBatch(batchId);
   await refresh();
+}
+
+/**
+ * Take a batch back — the wrong clip, the wrong card. Whatever piece is in
+ * the air is cut off, the record goes, and the server is asked to drop what
+ * it holds (best effort; it sweeps on its own within a day anyway).
+ */
+export async function cancelBatch(batchId: string): Promise<void> {
+  cancelled.add(batchId);
+  const files = (await allFiles()).filter((f) => f.batchId === batchId);
+  const inFlight = files.some((f) => f.status === 'uploading');
+  if (inFlight) aborter?.abort();
+  await discardBatch(batchId);
+  const token = tokenGetter?.() ?? null;
+  for (const f of files) {
+    if (token && f.status !== 'done') {
+      apiFetch(`/uploads/media/chunk/${encodeURIComponent(f.id)}`, { method: 'DELETE', token }).catch(() => undefined);
+    }
+  }
 }
 
 /** Try the failed ones again — the person pressed the button, or the network came back. */
@@ -233,6 +291,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function uploadFile(f: QueuedFile, token: string, askServer = true): Promise<QueuedFile> {
   let file: QueuedFile = { ...f, status: 'uploading' };
   await putFile(file);
+  const blob = file.blob ?? (await getBlob(file.id));
+  if (!blob) throw new ApiError('File không còn trong máy — chọn lại giúp em', 400, null);
+  file = { ...file, blob };
   // Ask what already landed: a previous run may have got further than we wrote
   // down. Not after a MISSING_CHUNKS retry — the server's own list is fresher
   // than anything a cached GET could say.
@@ -249,33 +310,52 @@ async function uploadFile(f: QueuedFile, token: string, askServer = true): Promi
     } catch { /* fine — we send what we think is missing and the server tells us */ }
   }
 
+  // The pieces still to go, a few in the air at once. Each worker takes the
+  // next index off the shared list; a piece that fails goes back on it after
+  // a breath, and a 4xx or too many failures stops the lot.
+  const todo = Array.from({ length: file.total }, (_, i) => i).filter((i) => !file.sent.includes(i));
+  const ac = new AbortController();
+  aborter = ac;
+  liveBytes[file.id] = {};
   let failures = 0;
-  for (let i = 0; i < file.total; i += 1) {
-    if (file.sent.includes(i)) continue;
-    if (typeof navigator !== 'undefined' && !navigator.onLine) throw new ApiError('offline', 0, null);
-    const part = file.blob.slice(i * CHUNK, Math.min(file.size, (i + 1) * CHUNK));
-    const form = new FormData();
-    form.append('uploadId', file.id);
-    form.append('index', String(i));
-    form.append('chunk', part, `${i}.part`);
-    try {
-      const r = await apiUploadForm<{ have: number[] }>('/uploads/media/chunk', form, token, (loaded) => { liveBytes[file.id] = loaded; emit(); });
-      liveBytes[file.id] = 0;
-      file = { ...file, sent: Array.from(new Set([...file.sent, i, ...(r.have ?? [])])).sort((a, b) => a - b) };
-      await putFile(file);
-      cache.files = cache.files.map((x) => (x.id === file.id ? file : x));
-      emit();
-      failures = 0;
-    } catch (e) {
-      liveBytes[file.id] = 0;
-      failures += 1;
-      const status = e instanceof ApiError ? e.status : 0;
-      // A 4xx is our mistake and will not fix itself; a 0/5xx is the road.
-      if ((status >= 400 && status < 500) || failures > MAX_RETRY) throw e;
-      await sleep(Math.min(30_000, 1000 * 2 ** failures));
-      i -= 1; // same piece again
+  let fatal: unknown = null;
+  const isCancelled = () => cancelled.has(file.batchId);
+  const worker = async () => {
+    while (todo.length && !fatal) {
+      if (isCancelled()) { fatal = new ApiError('cancelled', 0, null); return; }
+      if (typeof navigator !== 'undefined' && !navigator.onLine) { fatal = new ApiError('offline', 0, null); return; }
+      const i = todo.shift()!;
+      const part = blob.slice(i * CHUNK, Math.min(file.size, (i + 1) * CHUNK));
+      const form = new FormData();
+      form.append('uploadId', file.id);
+      form.append('index', String(i));
+      form.append('chunk', part, `${i}.part`);
+      try {
+        const r = await apiUploadForm<{ have: number[] }>('/uploads/media/chunk', form, token,
+          (loaded) => { liveBytes[file.id][i] = loaded; emit(); }, ac.signal);
+        delete liveBytes[file.id][i];
+        if (isCancelled()) { fatal = new ApiError('cancelled', 0, null); return; } // do not write a record back after it was dropped
+        file = { ...file, sent: Array.from(new Set([...file.sent, i, ...(r.have ?? [])])).sort((a, b) => a - b) };
+        await putFile(file);
+        cache.files = cache.files.map((x) => (x.id === file.id ? file : x));
+        emit();
+        failures = 0;
+      } catch (e) {
+        delete liveBytes[file.id][i];
+        if (isCancelled()) { fatal = new ApiError('cancelled', 0, null); return; }
+        failures += 1;
+        const status = e instanceof ApiError ? e.status : 0;
+        // A 4xx is our mistake and will not fix itself; a 0/5xx is the road.
+        if ((status >= 400 && status < 500) || failures > MAX_RETRY) { fatal = e; return; }
+        todo.unshift(i); // same piece again, after a breath
+        await sleep(Math.min(30_000, 1000 * 2 ** failures));
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(PARALLEL, Math.max(1, todo.length)) }, worker));
+  if (aborter === ac) aborter = null;
+  delete liveBytes[file.id];
+  if (fatal) throw fatal;
   // Every piece is in: ask for the file to be made. A photo comes back made;
   // a clip comes back "pending" while the server pushes it to storage, and we
   // ask every few seconds until the answer is written. Nothing here waits on
@@ -344,6 +424,7 @@ export async function runQueue(): Promise<void> {
         const files = b.files;
         let ok = true;
         for (const f of files) {
+          if (cancelled.has(b.id)) { ok = false; break; }
           if (f.status === 'done') continue;
           if (f.status === 'failed') { ok = false; continue; }
           try {
@@ -351,6 +432,7 @@ export async function runQueue(): Promise<void> {
             cache.files = cache.files.map((x) => (x.id === done.id ? done : x));
           } catch (e) {
             ok = false;
+            if (cancelled.has(b.id)) break; // withdrawn: the record is already gone
             const status = e instanceof ApiError ? e.status : 0;
             const failed: QueuedFile = { ...f, status: 'failed', error: `${e instanceof Error ? e.message : 'failed'}${status ? ` (HTTP ${status})` : ''}` };
             await putFile(failed);
@@ -359,7 +441,7 @@ export async function runQueue(): Promise<void> {
             if (typeof navigator !== 'undefined' && !navigator.onLine) break;
           }
         }
-        if (!ok) continue;
+        if (!ok || cancelled.has(b.id)) continue;
         try {
           await deliver(b, await allFiles(), token);
           const done: Batch = { ...b, status: 'done', doneAt: Date.now() };

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IsString, MaxLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
@@ -74,6 +74,14 @@ export class UploadsController {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) throw new BadRequestException('No salon in scope.');
     return this.uploads.chunkStatus(tenantId, uploadId);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Delete('media/chunk/:uploadId')
+  mediaChunkDrop(@CurrentUser() user: AuthenticatedUser, @Param('uploadId') uploadId: string) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon in scope.');
+    return this.uploads.dropChunks(tenantId, uploadId);
   }
 
   @Roles(UserRole.SALON_ADMIN)

@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { Client as FtpClient } from 'basic-ftp';
 import { Readable } from 'stream';
 import { PlatformConfigService } from '../billing/platform-config.service';
-import { assemble, dropPieces, getResult, haveChunks, putChunk, putResult, CHUNK_MAX, PIECES_MAX, type FinishResult } from './chunk-store';
+import { assemble, dropChunks, dropPieces, getResult, haveChunks, putChunk, putResult, CHUNK_MAX, PIECES_MAX, type FinishResult } from './chunk-store';
 import { GoogleDriveService } from './google-drive.service';
 import { EXT_BY_MIME, resolveMime } from './media-mime';
 
@@ -185,8 +185,25 @@ export class UploadsService {
     return { have: await haveChunks(tenantId, uploadId), result: await getResult(tenantId, uploadId) };
   }
 
+  /**
+   * The shop took an upload back (wrong clip). Pieces go now rather than at
+   * the day's sweep; a finish already running is left to complete and its
+   * result is simply never delivered.
+   */
+  async dropChunks(tenantId: string, uploadId: string): Promise<{ ok: true }> {
+    if (!this.finishing.has(`${tenantId}/${uploadId}`)) await dropChunks(tenantId, uploadId).catch(() => undefined);
+    return { ok: true };
+  }
+
   /** Finishes in flight, so two "finish" calls for one upload do one job. */
   private finishing = new Map<string, Promise<FinishResult>>();
+  /**
+   * Finishes run ONE AT A TIME. Each holds a whole clip in memory (assembled,
+   * then handed to Drive), and two shops — or one shop sending two things —
+   * finishing together is two clips in memory on a small instance. A queue
+   * costs the second clip a minute; running out of memory costs both.
+   */
+  private finishChain: Promise<unknown> = Promise.resolve();
 
   /**
    * Every piece is in: make the file and push it to storage — IN THE
@@ -214,7 +231,9 @@ export class UploadsService {
       if (have.length < total || have.some((i, k) => i !== k)) {
         throw new BadRequestException(`MISSING_CHUNKS:${have.join(',')}`);
       }
+      const turn = this.finishChain;
       const job = (async (): Promise<FinishResult> => {
+        await turn.catch(() => undefined);
         let r: FinishResult;
         try {
           const buf = await assemble(tenantId, dto.uploadId, total);
@@ -230,6 +249,7 @@ export class UploadsService {
         return r;
       })();
       this.finishing.set(key, job);
+      this.finishChain = job;
     }
     // Give a fast finish (a photo) its answer in this same request; a slow
     // one (a clip) gets "pending" and the phone polls.

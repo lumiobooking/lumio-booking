@@ -190,10 +190,14 @@ export function apiUploadForm<T = unknown>(
   form: FormData,
   token: string | null,
   onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new ApiError('cancelled', 0, null)); return; }
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${API_URL}${path}`);
+    signal?.addEventListener('abort', () => xhr.abort());
+    xhr.onabort = () => reject(new ApiError('cancelled', 0, null));
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     const branch = activeBranchId();
     if (branch) xhr.setRequestHeader('X-Branch-Id', branch);

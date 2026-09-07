@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { compactCount, ageOf } from '../lib/counts';
 import { useLive, fresh } from '../lib/live';
-import { enqueue, installOutbox, useOutbox, retryFailed, discardBatch, takeLastDone, type BatchView } from '../lib/upload-queue';
+import { enqueue, installOutbox, useOutbox, retryFailed, discardBatch, cancelBatch, takeLastDone, type BatchView } from '../lib/upload-queue';
 
 /**
  * The salon's whole screen: what to film, what Lumio asked for, what is waiting
@@ -468,6 +468,24 @@ function OutboxBar({ vi, pending, running, online, pct }: {
           )}
           <div style={{ height: 5, borderRadius: 20, background: 'var(--c0f172a)', overflow: 'hidden', marginTop: 8 }}>
             <div style={{ width: `${pct}%`, height: '100%', background: stuck ? '#f59e0b' : '#6366f1', transition: 'width .3s' }} />
+          </div>
+          {/* Each batch on its own line with a way out. Picked the wrong clip?
+              Cancel it here and pick again — the pieces already sent are
+              dropped on the server, nothing is delivered. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+            {pending.map((b) => (
+              <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--ccbd5e1)' }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {'suggestionId' in b.target ? '🎬 ' : '📤 '}
+                  {b.files.map((f) => f.name).join(', ') || T('file', 'file')} · {b.pct}%
+                </span>
+                <button
+                  onClick={() => { if (window.confirm(T('Huỷ gửi đợt này? File đã gửi dở sẽ bị bỏ.', 'Cancel this send? What went so far is dropped.'))) void cancelBatch(b.id); }}
+                  style={{ ...ghost, minHeight: 28, padding: '3px 10px', fontSize: 12, flex: '0 0 auto' }}
+                  aria-label={T('Huỷ gửi', 'Cancel send')}
+                >✕ {T('Huỷ', 'Cancel')}</button>
+              </div>
+            ))}
           </div>
         </div>
         {stuck && (

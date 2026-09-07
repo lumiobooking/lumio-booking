@@ -46,6 +46,7 @@ import { bi, localizeDeep, viOf, enOf, type Txt } from './i18n';
 import { sanitizeDays } from './week-edit';
 import { shopPatchToDays, type ShopWeekPatch } from './shop-week-edit';
 import { holidayIdeas, ideaAsRequest, type HolidayIdea } from './holiday-offers';
+import { hasAgencyWork } from './agency-work';
 import { parseOffer, DEFAULT_OFFER, type WeekOffer } from './week-offer';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
@@ -1610,6 +1611,36 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
   }
 
   /**
+   * Does the SALON see its plan yet?
+   *
+   * The same question, and the same evidence, as SuggestionsService.hasAgencyWork
+   * — asked here so the team's own screen can say which side of the line this
+   * salon is on. Duplicated as a query, not as a rule: the rule itself lives in
+   * one place (./agency-work) and both callers read it from there.
+   */
+  private async shopSeesPlan(tenantId: string): Promise<boolean> {
+    const loose = this.prisma as unknown as Record<string, {
+      findFirst: (a: unknown) => Promise<unknown>;
+      findMany: (a: unknown) => Promise<unknown>;
+    }>;
+    const [sug, post, weeks, offer] = await Promise.all([
+      loose.contentSuggestion?.findFirst({ where: { tenantId, NOT: { createdByName: 'shop' } }, select: { id: true } }).catch(() => null),
+      loose.scheduledPost?.findFirst({ where: { tenantId }, select: { id: true } }).catch(() => null),
+      loose.contentWeek?.findMany({
+        where: { tenantId }, orderBy: { startDate: 'desc' }, take: 8,
+        select: { edited: true, approvedAt: true, ticks: true },
+      }).catch(() => []) as Promise<{ edited?: unknown; approvedAt?: unknown; ticks?: unknown }[]>,
+      this.prisma.setting.findFirst({ where: { tenantId, key: 'content_offer' }, select: { id: true } }).catch(() => null),
+    ]);
+    return hasAgencyWork({
+      teamSuggestion: Boolean(sug),
+      scheduledPost: Boolean(post),
+      weeks: Array.isArray(weeks) ? weeks : [],
+      offerSet: Boolean(offer),
+    });
+  }
+
+  /**
    * The half of the playbook that is computed, not written: what is coming and
    * what to do about the quiet hours. Shown to the salon as its own sections
    * because "sắp tới có sự kiện gì" and "nên giảm giá thế nào" are questions an
@@ -1623,6 +1654,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     // show, and fetching them twice is how two numbers on one screen drift.
     const area = await this.areaFor(tenantId, ctx.nearbyZips, { allowFetch: false }).catch(() => null);
     const ads = await this.adsFor(tenantId, ctx).catch(() => null);
+    const shopSees = await this.shopSeesPlan(tenantId).catch(() => false);
     // The demand side. Deliberately built from the Census and the shop's own
     // description — NOT from its booking history. "Who should I target?" is a
     // question about the people who have never been in the book, and a shop
@@ -1695,6 +1727,10 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         ...kept,
         label: weekLabel(kept.weekKey),
         canEdit: user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession),
+        // Is the SHOP seeing this plan on its own screen yet? The rule (see
+        // agency-work) is invisible from here otherwise, and a team that
+        // cannot tell has to go and log in as the salon to find out.
+        shopSees,
       } : null,
       // The offer form's current values — the team edits them on the plan.
       // (`offer` below is the system's advice; this is the person's decision.)

@@ -203,6 +203,8 @@ interface Plan {
     weekKey: string; label: string; edited: boolean; editedByName: string | null; editedAt: string | null;
     canEdit: boolean; approvedAt: string | null; approvedByName: string | null;
     ticks?: Record<string, number[]>;
+    /** Is the salon seeing this plan on its own screen yet? (See agency-work.) */
+    shopSees?: boolean;
   } | null;
   /** The offer form as the team set it (the plan is built from it). */
   offerForm?: OfferForm | null;
@@ -1903,6 +1905,32 @@ function Inner() {
                 const go = shown.stage ? STAGE_TAB[shown.stage.key] : null;
                 return (
                   <>
+                    {/* Whether the SALON is seeing this plan, said out loud.
+                        The rule is deliberate — a plan is generated for every
+                        tenant, and a shop that bought a booking system must not
+                        be handed marketing homework — but it was invisible from
+                        this screen, so "why can't my client see it" could only
+                        be answered by logging in as the client. */}
+                    {!isPast && plan?.weekMeta?.canEdit && (
+                      <div style={{
+                        ...ui.card, marginBottom: 12, padding: '11px 14px',
+                        borderColor: plan.weekMeta.shopSees ? '#22c55e' : '#f59e0b',
+                        background: plan.weekMeta.shopSees ? 'rgba(34,197,94,.07)' : 'rgba(245,158,11,.07)',
+                      }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                          {plan.weekMeta.shopSees
+                            ? T('👁 Tiệm đang thấy kế hoạch này', '👁 The salon can see this plan')
+                            : T('🔒 Tiệm chưa thấy kế hoạch này', '🔒 The salon cannot see this plan yet')}
+                        </div>
+                        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 3 }}>
+                          {plan.weekMeta.shopSees
+                            ? T('Tiệm mở "Duyệt bài → Việc của tiệm" là thấy đủ kế hoạch tuần, sửa được từng dòng, tích từng bước, và trao đổi ngay dưới kế hoạch.',
+                                'The salon opens "Approve → Your jobs" and sees the whole week — editable line by line, tickable step by step, with the thread underneath.')
+                            : T('Kế hoạch được sinh cho mọi tiệm, kể cả tiệm chỉ mua phần đặt lịch — nên màn hình của tiệm chỉ mở khi bên em thật sự bắt đầu làm. Mở nó bằng bất kỳ việc nào: sửa một dòng trong kế hoạch, đặt ưu đãi tuần, gửi một đề xuất quay chụp, hoặc lên lịch một bài.',
+                                'A plan is generated for every salon, including ones that only bought booking — so the salon\u2019s screen opens once the team actually starts work. Any of these opens it: edit a line of the plan, set the week\u2019s offer, send a filming suggestion, or schedule a post.')}
+                        </div>
+                      </div>
+                    )}
                     <WeekPlanBoard
                       week={shown}
                       meta={meta}

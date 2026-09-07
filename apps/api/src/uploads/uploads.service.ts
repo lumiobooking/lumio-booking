@@ -5,6 +5,7 @@ import { Readable } from 'stream';
 import { PlatformConfigService } from '../billing/platform-config.service';
 import { assemble, dropPieces, getResult, haveChunks, putChunk, putResult, CHUNK_MAX, PIECES_MAX, type FinishResult } from './chunk-store';
 import { GoogleDriveService } from './google-drive.service';
+import { EXT_BY_MIME, resolveMime } from './media-mime';
 
 interface FtpConfig {
   host: string; port: number; user: string; password: string; secure: boolean;
@@ -39,16 +40,6 @@ function accessOpts(c: FtpConfig) {
   };
 }
 
-/**
- * What a MIME type is called on disk. Not read from the uploaded filename,
- * which is attacker-controlled and ends up inside a public URL.
- */
-const EXT_BY_MIME: Record<string, string> = {
-  'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
-  'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic',
-  'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm',
-  'video/x-m4v': 'm4v', 'video/3gpp': '3gp',
-};
 
 @Injectable()
 export class UploadsService {
@@ -122,7 +113,8 @@ export class UploadsService {
     const buf = file?.buffer;
     if (!buf?.length) throw new BadRequestException('Chưa chọn được file.');
 
-    const mime = String(file.mimetype ?? '').toLowerCase();
+    // A phone can hand over a clip with an empty type; the filename still says .mov.
+    const mime = resolveMime({ declared: file.mimetype, name: file.originalname });
     const isVideo = mime.startsWith('video/');
     const isImage = mime.startsWith('image/');
     if (!isVideo && !isImage) {
@@ -263,7 +255,7 @@ export class UploadsService {
     tenantId: string,
     file: { buffer: Buffer; mimetype?: string; originalname?: string },
   ): Promise<{ url: string; kind: 'image' | 'video'; driveFileId?: string; driveUrl?: string; thumbUrl?: string }> {
-    const mime = String(file.mimetype ?? '').toLowerCase();
+    const mime = resolveMime({ declared: file.mimetype, name: file.originalname });
     const isVideo = mime.startsWith('video/');
     const isImage = mime.startsWith('image/');
     if (!isVideo && !isImage) throw new BadRequestException('Chỉ nhận ảnh hoặc video.');

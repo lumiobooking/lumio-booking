@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlatformConfigService } from '../billing/platform-config.service';
+import { resolveMime } from './media-mime';
 
 /**
  * Google Drive as the archive of what salons send in.
@@ -393,15 +394,30 @@ export class GoogleDriveService {
    * From the URL rather than from the request: the shop's upload has already
    * finished and returned by the time this runs, so nothing here can make a
    * person on phone data wait. Failures are logged and left for the sweep.
+   *
+   * The type is NOT taken from the hosting's Content-Type on trust: a shared
+   * host serves an .mp4 it does not recognise as text/plain, and a clip
+   * stored under that type is a "document" in Drive that will not play. The
+   * header counts only when it says image or video; the URL's extension and
+   * the caller's `kind` decide otherwise.
    */
-  async mirrorFromUrl(tenantId: string, url: string, name: string): Promise<{ url: string } | null> {
+  async mirrorFromUrl(tenantId: string, url: string, name: string, kind?: 'image' | 'video'): Promise<DriveFile | null> {
     if (!(await this.configured())) return null;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`fetch ${res.status} for ${url}`);
-    const mime = res.headers.get('content-type') || (/\.(mp4|mov|webm|m4v)$/i.test(url) ? 'video/mp4' : 'image/jpeg');
+    const mime = resolveMime({ declared: res.headers.get('content-type'), name: url, kind: kind ?? null })
+      || (kind === 'video' ? 'video/mp4' : 'image/jpeg');
     const bytes = Buffer.from(await res.arrayBuffer());
     if (!bytes.length) throw new Error('empty body');
-    const out = await this.upload(tenantId, name, mime.split(';')[0], bytes);
-    return { url: out.url };
+    return this.store(tenantId, name, mime, bytes);
+  }
+
+  /** Delete a file we put in Drive. Missing already counts as done. */
+  async remove(fileId: string): Promise<void> {
+    const id = String(fileId).replace(/[^A-Za-z0-9_-]/g, '');
+    if (!id) return;
+    const token = await this.accessToken();
+    const res = await fetch(`${DRIVE}/files/${id}`, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok && res.status !== 404) throw new Error(`Drive delete ${res.status}`);
   }
 }

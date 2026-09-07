@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { GoogleDriveService } from '../uploads/google-drive.service';
 import { UploadsService } from '../uploads/uploads.service';
+import { extOf } from '../uploads/media-mime';
 import { storagePathOf } from './media-retention';
 import { SHOP, clientSuggestion, mediaOf, needsTeam, safeLink, suggestionStatus, type MediaRef, type SuggestionRow } from './client-view';
 
@@ -27,6 +28,21 @@ import { SHOP, clientSuggestion, mediaOf, needsTeam, safeLink, suggestionStatus,
  * whole point — the material arrives attached to the thing that asked for it,
  * rather than as an unlabelled video in a group chat at eleven at night.
  */
+/** A file whose only copy is on the hosting, or whose Drive copy predates file ids (see `mirror`). */
+function needsMirror(m: MediaRef): boolean {
+  return !m.driveFileId && !isDriveUrl(m.url);
+}
+
+function isDriveUrl(url: string | undefined): boolean {
+  return /^https:\/\/drive\.google\.com\//i.test(url ?? '');
+}
+
+/** The id inside a `drive.google.com/file/d/ID/view` link, or null. */
+function driveIdOf(url: string | undefined): string | null {
+  const m = /\/file\/d\/([A-Za-z0-9_-]+)/.exec(url ?? '');
+  return m ? m[1] : null;
+}
+
 @Injectable()
 export class SuggestionsService {
   private readonly log = new Logger(SuggestionsService.name);
@@ -361,11 +377,15 @@ export class SuggestionsService {
   // ---- the Drive archive -------------------------------------------------------
 
   /**
-   * Copy this suggestion's files into the salon's Drive folder.
+   * Copy this card's legacy (FTP) files to the salon's Drive folder.
    *
-   * Idempotent: only entries without a `driveUrl` are copied, and the row is
-   * re-read first so two overlapping runs cannot both copy the same clip.
-   * Anything that fails stays without a link and is picked up by `sweep`.
+   * Idempotent: only entries without a Drive file id are copied, and the row
+   * is re-read first so two overlapping runs cannot both copy the same clip.
+   * Entries copied by the first version of this — which kept only a link and
+   * trusted the hosting's Content-Type, so a clip could land in Drive as a
+   * "document" — are copied again under the right type, and the old copy is
+   * removed once the new one is in. Anything that fails stays as it was and
+   * is picked up by `sweep`.
    */
   async mirror(id: string): Promise<number> {
     if (!(await this.drive.configured())) return 0;
@@ -375,19 +395,26 @@ export class SuggestionsService {
     }).catch(() => null) as { id: string; tenantId: string; title: string; doneAt: Date | null; createdAt: Date; media: unknown } | null;
     if (!row) return 0;
     const media = mediaOf(row.media);
-    // Drive-first uploads are already there; only legacy FTP entries need a copy.
-    const todo = media.filter((m) => !m.driveUrl && !m.driveFileId);
+    const todo = media.filter(needsMirror);
     if (!todo.length) return 0;
 
     const day = new Date(row.doneAt ?? row.createdAt).toISOString().slice(0, 10);
     const slug = row.title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'clip';
     let copied = 0;
     for (const m of todo) {
-      const ext = (/\.([a-z0-9]{2,4})(?:\?|#|$)/i.exec(m.url)?.[1] ?? (m.kind === 'video' ? 'mp4' : 'jpg')).toLowerCase();
+      const ext = extOf(m.url) ?? (m.kind === 'video' ? 'mp4' : 'jpg');
       const n = media.indexOf(m) + 1;
+      const previous = driveIdOf(m.driveUrl);
       try {
-        const out = await this.drive.mirrorFromUrl(row.tenantId, m.url, `${day}_${slug}_${n}.${ext}`);
-        if (out) { m.driveUrl = out.url; copied += 1; }
+        const out = await this.drive.mirrorFromUrl(row.tenantId, m.url, `${day}_${slug}_${n}.${ext}`, m.kind);
+        if (!out) continue;
+        m.driveUrl = out.url;
+        m.driveFileId = out.id;
+        m.thumbUrl = out.thumbUrl;
+        copied += 1;
+        if (previous && previous !== out.id) {
+          await this.drive.remove(previous).catch((e) => this.log.warn(`old drive copy ${previous}: ${e instanceof Error ? e.message : e}`));
+        }
       } catch (e) {
         this.log.warn(`drive copy failed for ${row.id} #${n}: ${e instanceof Error ? e.message : e}`);
       }
@@ -412,7 +439,7 @@ export class SuggestionsService {
       take: 60,
       select: { id: true, media: true },
     }).catch(() => []) as { id: string; media: unknown }[];
-    const pending = rows.filter((r) => mediaOf(r.media).some((m) => !m.driveUrl && !m.driveFileId)).slice(0, limit);
+    const pending = rows.filter((r) => mediaOf(r.media).some(needsMirror)).slice(0, limit);
     let total = 0;
     for (const r of pending) total += await this.mirror(r.id).catch(() => 0);
     await this.sweepStaged().catch((e) => this.log.warn(`staged sweep: ${e instanceof Error ? e.message : e}`));
@@ -437,7 +464,7 @@ export class SuggestionsService {
     let changed = false;
     for (const m of media) {
       if (m.publicUrl) continue;
-      if (!m.driveFileId) { m.publicUrl = m.url; continue; } // legacy: the FTP address is the public one
+      if (!isDriveUrl(m.url) || !m.driveFileId) { m.publicUrl = m.url; continue; } // legacy: the FTP address is the public one
       try {
         const { bytes, mime } = await this.drive.download(m.driveFileId);
         const out = await this.uploads.uploadFile(tenantId, { buffer: bytes, mimetype: mime || (m.kind === 'video' ? 'video/mp4' : 'image/jpeg') });

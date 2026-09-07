@@ -29,7 +29,7 @@ import { NotificationBell } from './NotificationBell';
 // FEATURE_DEFS ships OFF — "nothing opens by accident" — so giving one of these
 // screens a key would take it away from every US salon that has it today, to
 // solve a problem only Vietnam has.
-type NavItem = { href: string; label: string; icon: string; feature?: 'pos'; biz?: 'restaurant'; market?: 'na' };
+type NavItem = { href: string; label: string; icon: string; feature?: 'pos'; biz?: 'restaurant'; market?: 'na'; team?: true };
 type NavGroup = { id: string; label: string; items: NavItem[] };
 
 // Dashboard sits on its own above the collapsible groups.
@@ -95,12 +95,19 @@ const GROUPS: NavGroup[] = [
     { href: '/salon/billing', label: 'Billing & plan', icon: 'card' },
     { href: '/salon/notifications', label: 'Notifications', icon: 'bell' },
     { href: '/salon/integrations', label: 'Integrations', icon: 'puzzle' },
-    { href: '/salon/connections', label: 'Connections', icon: 'plug' },
+    // Lumio's wiring board — every OAuth, token and webhook behind the salon,
+    // with test buttons. The team reads it while setting a salon up; an owner
+    // reading it sees a wall of red "not connected" for things Lumio runs on
+    // its behalf, and rings to ask. Team only.
+    { href: '/salon/connections', label: 'Connections', icon: 'plug', team: true },
     { href: '/salon/settings', label: 'Settings', icon: 'gear' },
     // Deleted items live here for a week before they are gone for good.
     { href: '/salon/trash', label: 'Recycle bin', icon: 'trash' },
   ] },
 ];
+
+/** Routes a paying salon's own accounts never open, whatever their capabilities. */
+const TEAM_ONLY = new Set(GROUPS.flatMap((g) => g.items.filter((i) => i.team).map((i) => i.href)));
 
 const GROUP_KEY: Record<string, string> = {
   ops: 'navg.ops', clients: 'navg.clients', growth: 'navg.growth', finance: 'navg.finance', account: 'navg.account',
@@ -244,6 +251,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // The menu shows only what passes both.
   const can = (href: string) => {
     if (!canSee(href, isSupport, hiddenHrefs)) return false;
+    if (TEAM_ONLY.has(href) && !(isSupport || user?.role === 'SUPER_ADMIN')) return false;
     const c = HREF_CAP[href];
     if (c && !caps.includes(c)) return false;
     // A third gate, and only for Lumio's own setup staff: HREF_CAP leaves
@@ -258,7 +266,9 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   const posOk = posEnabled === true || (hasSalonAccess && user?.role === 'STAFF');
   // `can` already consults hiddenHrefs, so the per-tenant switch is applied
   // once, in one place, for the menu and the page guard alike.
+  const isTeam = isSupport || user?.role === 'SUPER_ADMIN';
   const itemVisible = (item: NavItem) => (item.feature !== 'pos' || posOk)
+    && (!item.team || isTeam)
     && (item.biz !== 'restaurant' || isRestaurant)
     // An unknown market counts as North America: every salon here before
     // Vietnam is in it, and a request still in flight must never blank out a

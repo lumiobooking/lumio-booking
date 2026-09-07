@@ -7,10 +7,6 @@ import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useLang } from '../lib/i18n';
 
-interface ActivityItem { id: string; type: string; at: string }
-
-const ACT_SEEN_KEY = 'lumio_activity_seen';
-
 // Icon paths (stroke, 24x24). Kept inline so the tab bar has no extra deps.
 const IC: Record<string, string> = {
   home: 'M3 10l9-7 9 7v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z',
@@ -20,6 +16,7 @@ const IC: Record<string, string> = {
   card: 'M2 5h20v14H2zM2 10h20',
   users: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  check: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
 };
 
 function Icon({ d, active }: { d: string; active: boolean }) {
@@ -33,8 +30,13 @@ function Icon({ d, active }: { d: string; active: boolean }) {
 /**
  * Bottom tab bar for the salon admin on phones. Shows the 5 things owners need
  * on the go — everything else (settings, staff, integrations…) stays in the top
- * hamburger and on desktop. The "Thông báo" tab carries an unread badge that
- * polls the activity feed, so a new booking pings the owner without opening email.
+ * hamburger and on desktop.
+ *
+ * Alerts are not one of the five: the bell at the top of every screen already
+ * is the alerts button, and a second one at the bottom was a tab spent on a
+ * thing the owner could already reach. Its slot went to "Duyệt bài" — the one
+ * thing Lumio needs the owner to do on the phone, most days — and the unread
+ * count moved onto that tab: how many posts are waiting for a yes.
  */
 export function MobileTabBar() {
   const { token } = useAuth();
@@ -48,35 +50,29 @@ export function MobileTabBar() {
   const tabs = [
     { href: '/salon', label: L('Tổng quan', 'Home'), icon: IC.home, exact: true },
     { href: '/salon/calendar', label: L('Lịch', 'Calendar'), icon: IC.cal },
-    { href: '/salon/activity', label: L('Thông báo', 'Alerts'), icon: IC.bell, badge: true },
-    pos
-      ? { href: '/salon/pos/report', label: L('Báo cáo', 'Reports'), icon: IC.chart }
-      : { href: '/salon/customers', label: L('Khách', 'Clients'), icon: IC.users },
     pos
       ? { href: '/salon/pos', label: L('Tính tiền', 'Checkout'), icon: IC.card }
       : { href: '/salon/bookings', label: L('Lịch hẹn', 'Bookings'), icon: IC.list },
+    { href: '/salon/approve-posts', label: L('Duyệt bài', 'Approve'), icon: IC.check, badge: true },
+    pos
+      ? { href: '/salon/pos/report', label: L('Báo cáo', 'Reports'), icon: IC.chart }
+      : { href: '/salon/customers', label: L('Khách', 'Clients'), icon: IC.users },
   ];
 
+  // Posts waiting for the owner's yes — the same count the tab header shows.
   useEffect(() => {
     if (!token) return;
     let alive = true;
-    const compute = (items: ActivityItem[]) => {
-      let seen = 0;
-      try { seen = new Date(window.localStorage.getItem(ACT_SEEN_KEY) || 0).getTime(); } catch { seen = 0; }
-      setUnread(items.filter((i) => new Date(i.at).getTime() > seen).length);
-    };
-    const load = () => apiFetch<ActivityItem[]>('/activity', { token })
-      .then((items) => { if (alive && Array.isArray(items)) compute(items); })
+    const load = () => apiFetch<{ waiting?: number }>('/content/review', { token })
+      .then((r) => { if (alive && r && typeof r.waiting === 'number') setUnread(r.waiting); })
       .catch(() => undefined);
     load();
-    const iv = window.setInterval(load, 45000);
-    const onSeen = () => setUnread(0);
-    window.addEventListener('lumio-activity-seen', onSeen);
+    const iv = window.setInterval(load, 60000);
     window.addEventListener('focus', load);
-    return () => { alive = false; window.clearInterval(iv); window.removeEventListener('lumio-activity-seen', onSeen); window.removeEventListener('focus', load); };
-  }, [token]);
+    return () => { alive = false; window.clearInterval(iv); window.removeEventListener('focus', load); };
+  }, [token, pathname]);
 
-  const onAlerts = pathname === '/salon/activity';
+  const onAlerts = pathname === '/salon/approve-posts';
 
   return (
     <nav style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60, display: 'flex', background: 'var(--c111827)', borderTop: '1px solid var(--c1f2937)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>

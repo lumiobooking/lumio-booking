@@ -48,8 +48,10 @@ export class SupportService {
   async listTenants() {
     // A deleted salon is soft-deleted (kept for its records) and is not a
     // place anyone sets up any more; it stays out of this list.
+    // Likewise a cancelled one: it is reactivated from Super Admin, not set
+    // up from here, and three hundred live salons do not need it in the way.
     return this.prisma.tenant.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, status: { not: TenantStatus.CANCELLED } },
       select: { id: true, name: true, slug: true, status: true, createdAt: true },
       orderBy: { name: 'asc' },
       take: 2000,
@@ -77,7 +79,7 @@ export class SupportService {
       findMany: (a: unknown) => Promise<unknown>;
     }>;
     const rows = await loose.contentSuggestion?.findMany({
-      where: { status: { in: ['done', 'working'] }, tenant: { deletedAt: null } },
+      where: { status: { in: ['done', 'working'] }, tenant: { deletedAt: null, status: { not: 'CANCELLED' } } },
       orderBy: { doneAt: 'desc' },
       take: 60,
       select: {
@@ -121,6 +123,9 @@ export class SupportService {
     if (!tenant) throw new NotFoundException('Salon not found');
     if (tenant.status === TenantStatus.SUSPENDED) {
       throw new ForbiddenException('This salon is suspended — reactivate it first.');
+    }
+    if (tenant.status === TenantStatus.CANCELLED) {
+      throw new ForbiddenException('This salon is cancelled — reactivate it in Super Admin first.');
     }
 
     /**

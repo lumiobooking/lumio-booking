@@ -100,9 +100,46 @@ export class ContentController {
     // anybody is running its marketing. Handing homework to a shop that bought
     // a booking system and nothing else is worse than showing it nothing, so
     // the plan appears only once there is evidence the team is on this salon.
-    if (!(await this.suggestions.hasAgencyWork(user))) return { week: null };
-    const plan = await this.svc.weekForSalon(user);
-    return { week: flattenForClient(clientWeek(plan), lang === 'en' ? 'en' : 'vi') };
+    if (!(await this.suggestions.hasAgencyWork(user))) return { week: null, weekKey: null };
+    const { plan, weekKey, ticks } = await this.svc.weekForSalonKept(user);
+    return { week: flattenForClient(clientWeek(plan, { weekKey: weekKey ?? '', ticks }), lang === 'en' ? 'en' : 'vi'), weekKey };
+  }
+
+  /**
+   * The shop rewriting its own week — reword a job, move it, drop it, add
+   * one of its own. Same sanitiser as the team's edit; see shop-week-edit
+   * for what the shop can and cannot reach.
+   */
+  @Patch('my-week')
+  editMyWeek(@CurrentUser() user: AuthenticatedUser, @Body() dto: { lang?: string; jobs?: unknown; add?: unknown }) {
+    return this.svc.editWeekAsShop(user, {
+      lang: dto?.lang,
+      jobs: Array.isArray(dto?.jobs) ? (dto.jobs as never[]) : [],
+      add: Array.isArray(dto?.add) ? (dto.add as never[]) : [],
+    });
+  }
+
+  /** The holidays ahead, each with one programme the shop can say yes to. */
+  @Get('my-holidays')
+  async myHolidays(@CurrentUser() user: AuthenticatedUser, @Query('lang') lang?: string) {
+    if (!(await this.suggestions.hasAgencyWork(user))) return { ideas: [] };
+    const ideas = await this.svc.holidayIdeasFor(user);
+    // Rebuilt field by field, the same discipline as the week: the shop gets
+    // the date, the programme and the window, and nothing about the calendar
+    // the team keeps or the margin arithmetic behind the number.
+    const safe = ideas.map((i) => ({
+      key: i.key, name: i.name, date: i.date, daysAway: i.daysAway, spanDays: i.spanDays, idea: i.idea, window: i.window,
+      offer: { kind: i.offer.kind, value: i.offer.value, gift: i.offer.gift, slot: i.offer.slot, expires: i.offer.expires, terms: i.offer.terms },
+    }));
+    return { ideas: flattenForClient(safe, lang === 'en' ? 'en' : 'vi') };
+  }
+
+  /** "Run this one": a holiday programme by key, or one in the shop's own words. Lands in the team's inbox. */
+  @Post('my-holidays/request')
+  @HttpCode(200)
+  async requestOffer(@CurrentUser() user: AuthenticatedUser, @Body() dto: { key?: unknown; text?: unknown }) {
+    const line = await this.svc.offerRequestLine(user, dto ?? {});
+    return this.suggestions.requestFromShop(user, line);
   }
 
   /** What the team has asked this shop to film, and what it has sent back. */

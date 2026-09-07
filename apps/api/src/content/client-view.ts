@@ -31,17 +31,26 @@ import type { DayPlan, Job, JobKind, WeekPlan } from './weekly-plan';
  * reason attached and no publishing schedule at all.
  */
 
-/** The only job kinds a salon is asked to do with its own hands. */
+/** The job kinds a salon does with its own hands. Everything else is Lumio's. */
 export const SHOP_JOB_KINDS: JobKind[] = ['film', 'photo', 'engage'];
 
 export interface ClientJob {
+  /**
+   * Stable per week — what a tick and an edit point at (see job-brief). An
+   * id is a hash of the instruction, not a fact about how it was chosen.
+   */
+  id: string;
   /** Which of the seven days, 0 = today. Enough to plan a shoot around. */
   dayIndex: number;
   /** The weekday name the shop reads. */
   day: Txt;
   kind: JobKind;
+  /** Whose hands: the shop films and asks; Lumio posts, replies, runs the offer. */
+  by: 'shop' | 'lumio';
   /** The instruction, including what to shoot. */
   text: Txt;
+  /** Steps already ticked on this job, by index into `steps`. */
+  done: number[];
   /**
    * The shot list, in order — the sheet's steps for THIS job (job-brief).
    * Craft only: which shots, what light, how long. Nothing about why.
@@ -105,6 +114,14 @@ export interface ClientWeek {
   jobs: ClientJob[];
   /** What the shop should come home with, from the plan's own prep list. */
   prep: { label: Txt; detail: Txt }[];
+  /** The seven day labels, in order, so the shop can move a job to another day. */
+  days: Txt[];
+}
+
+/** What the week row knows that the plan does not: which week, and what is ticked. */
+export interface ClientWeekMeta {
+  weekKey: string;
+  ticks: Record<string, number[]>;
 }
 
 /**
@@ -114,14 +131,23 @@ export interface ClientWeek {
  * tempting version — take the week and delete the sensitive keys — is the
  * version that leaks the next field somebody adds.
  */
-export function clientWeek(plan: WeekPlan | null | undefined): ClientWeek | null {
+export function clientWeek(plan: WeekPlan | null | undefined, meta?: ClientWeekMeta | null): ClientWeek | null {
   if (!plan?.days?.length) return null;
   const jobs: ClientJob[] = [];
   plan.days.forEach((d: DayPlan, dayIndex) => {
     for (const j of d.jobs ?? []) {
-      if (!SHOP_JOB_KINDS.includes(j.kind)) continue;
+      // The whole week, both sides of it: the shop asked to see the plan it
+      // is paying for, and a plan that shows only its own chores reads as
+      // "we do three things and Lumio does nothing". What still does not
+      // travel is WHY a job sits on its day and WHEN it goes out — the two
+      // fields that are the agency reading this shop's book.
+      if (j.kind === 'rest') continue;
+      const id = (j as Job).id ?? '';
       jobs.push({
-        dayIndex, day: d.label, kind: j.kind, text: (j as Job).text,
+        id, dayIndex, day: d.label, kind: j.kind,
+        by: SHOP_JOB_KINDS.includes(j.kind) ? 'shop' : 'lumio',
+        text: (j as Job).text,
+        done: (id && meta?.ticks?.[id]) ? meta.ticks[id].slice(0, 32) : [],
         // Only the steps travel. The caption, the tags and the channel are the
         // team's publishing work, and the shop's jobs do not publish anything.
         steps: ((j as Job).brief?.steps ?? []).slice(0, 12),
@@ -130,6 +156,7 @@ export function clientWeek(plan: WeekPlan | null | undefined): ClientWeek | null
     }
   });
   return {
+    days: plan.days.map((d) => d.label),
     // The focus line is the one piece of reasoning the shop does get, because
     // without it the week is a list of chores. It says WHAT this week is for,
     // never how the week was decided.

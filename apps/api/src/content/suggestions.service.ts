@@ -374,6 +374,30 @@ export class SuggestionsService {
     return { ok: true, id: row.id };
   }
 
+  /**
+   * A request from the shop with no files — "run this offer for Thanksgiving".
+   * Filed as a card in the same inbox as its clips, so the team sees it where
+   * it already looks and nobody has to check a second place.
+   */
+  async requestFromShop(user: AuthenticatedUser, line: string) {
+    const tenantId = this.tenantId(user);
+    const text = String(line ?? '').replace(/\s+/g, ' ').trim().slice(0, 1000);
+    if (!text) throw new BadRequestException('Chưa có nội dung.');
+    const row = await this.table?.create({
+      data: {
+        tenantId,
+        title: `🎁 ${text}`.slice(0, 120),
+        note: text.length > 118 ? text : null,
+        createdByName: SHOP,
+        status: 'done',
+        doneAt: new Date(),
+        media: [] as never,
+      },
+    }).catch(() => null) as SuggestionRow | null;
+    if (!row) throw new BadRequestException('Chưa gửi được, thử lại giúp em.');
+    return { ok: true, id: row.id };
+  }
+
   // ---- the Drive archive -------------------------------------------------------
 
   /**

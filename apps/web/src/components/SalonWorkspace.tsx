@@ -5,6 +5,7 @@ import { apiFetch } from '../lib/api';
 import { compactCount, ageOf } from '../lib/counts';
 import { useLive, fresh } from '../lib/live';
 import { enqueue, installOutbox, useOutbox, retryFailed, discardBatch, cancelBatch, takeLastDone, type BatchView } from '../lib/upload-queue';
+import { ShopWeek, HolidayOffers, type ShopWeekData, type HolidayIdea } from './ShopWeek';
 
 /**
  * The salon's whole screen: what to film, what Lumio asked for, what is waiting
@@ -53,10 +54,7 @@ interface Suggestion {
   fromShop?: boolean;
 }
 interface SuggestionFeed { open: Suggestion[]; past: Suggestion[]; waiting: number }
-interface ClientJob { dayIndex: number; day: string; kind: string; text: string; steps?: string[]; how: string | null }
-interface ClientWeek { focus: string; jobs: ClientJob[]; prep: { label: string; detail: string }[] }
-
-const ICON: Record<string, string> = { film: '🎬', photo: '📷', engage: '💚' };
+type ClientWeek = ShopWeekData;
 
 export function SalonWorkspace({ token, vi, onCount }: {
   token: string | null;
@@ -67,16 +65,23 @@ export function SalonWorkspace({ token, vi, onCount }: {
   const T = (v: string, e: string) => (vi ? v : e);
   const [sugg, setSugg] = useState<SuggestionFeed | null>(null);
   const [week, setWeek] = useState<ClientWeek | null>(null);
+  const [weekKey, setWeekKey] = useState<string | null>(null);
+  const [holidays, setHolidays] = useState<HolidayIdea[]>([]);
+  const [weekUnread, setWeekUnread] = useState(0);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
-    const [s, w] = await Promise.all([
+    const [s, w, h, u] = await Promise.all([
       apiFetch<SuggestionFeed>(fresh('/content/suggestions'), { token }).catch(() => null),
-      apiFetch<{ week: ClientWeek | null }>(fresh(`/content/my-week?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
+      apiFetch<{ week: ClientWeek | null; weekKey: string | null }>(fresh(`/content/my-week?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
+      apiFetch<{ ideas: HolidayIdea[] }>(fresh(`/content/my-holidays?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
+      apiFetch<{ bySubject?: Record<string, number> }>(fresh('/content/chat/unread'), { token }).catch(() => null),
     ]);
     if (s) { setSugg(s); onCount?.(s.waiting ?? s.open.length); }
-    if (w) setWeek(w.week);
+    if (w) { setWeek(w.week); setWeekKey(w.weekKey ?? null); }
+    if (h) setHolidays(h.ideas ?? []);
+    if (u && w?.weekKey) setWeekUnread(u.bySubject?.[`week:${w.weekKey}`] ?? 0);
   }, [token, vi, onCount]);
 
   useEffect(() => { load(); }, [load]);
@@ -143,78 +148,14 @@ export function SalonWorkspace({ token, vi, onCount }: {
         </section>
       )}
 
-      {/* ---- 2. the shop's own week ----
-             Two cards in an auto-fit grid: side by side on a laptop, stacked on
-             a phone, with no breakpoint to keep in sync and nothing that
-             depends on measuring the window. */}
+      {/* ---- 2. the week, as a thing the shop works on ----
+             The whole plan, editable in place, with the thread under it —
+             see ShopWeek. Then the holidays ahead with a programme each. */}
       {!!week?.jobs.length && (
-        <section style={{ marginBottom: 18 }}>
-          <h2 style={h2}>{T('Việc của tiệm tuần này', 'Your shop this week')}</h2>
-          <p style={lede}>{week.focus}</p>
-          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', alignItems: 'start' }}>
-          <div style={card}>
-            {week.jobs.map((j, i) => (
-              <div key={i} style={{
-                display: 'flex', gap: 11, padding: '11px 0',
-                borderTop: i === 0 ? 'none' : '1px solid var(--c1e293b)',
-              }}>
-                <span style={{ fontSize: 18, lineHeight: 1.3, flex: '0 0 auto' }}>{ICON[j.kind] ?? '•'}</span>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', fontWeight: 700, letterSpacing: '.3px' }}>
-                    {j.dayIndex === 0 ? T('HÔM NAY', 'TODAY') : j.day.toUpperCase()}
-                  </div>
-                  <div style={{ fontSize: 14, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 1 }}>{j.text}</div>
-                  {/* How to do it well. Folded away by default so the list still
-                      reads as a list, open with one tap when somebody is
-                      standing there about to do it. */}
-                  {(j.how || !!j.steps?.length) && (
-                    <details style={{ marginTop: 5 }}>
-                      <summary style={{
-                        cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
-                        color: 'var(--ca5b4fc)', listStyle: 'none',
-                      }}>
-                        {j.steps?.length
-                          ? T(`Từng cảnh một (${j.steps.length}) →`, `Shot by shot (${j.steps.length}) →`)
-                          : T('Làm thế nào cho đẹp →', 'How to do it well →')}
-                      </summary>
-                      <div style={{
-                        fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.65, marginTop: 5,
-                        paddingLeft: 10, borderLeft: '2px solid var(--c334155)',
-                      }}>
-                        {/* The shot list, numbered, one per line — the sheet's
-                            steps for this job. A shop films from this, not
-                            from the paragraph. */}
-                        {!!j.steps?.length && (
-                          <ol style={{ margin: '0 0 6px', paddingLeft: 18, color: 'var(--ce2e8f0)' }}>
-                            {j.steps.map((st, k) => <li key={k} style={{ marginBottom: 3 }}>{st}</li>)}
-                          </ol>
-                        )}
-                        {j.how}
-                      </div>
-                    </details>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          {!!week.prep.length && (
-            <div style={{ ...card, background: 'var(--c0f172a)' }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 7 }}>
-                {T('CẦN CHUẨN BỊ', 'WHAT TO HAVE READY')}
-              </div>
-              {week.prep.map((l, i) => (
-                <div key={i} style={{ display: 'flex', gap: 9, padding: '4px 0' }}>
-                  <span style={{ color: 'var(--c475569)', flex: '0 0 auto' }}>▢</span>
-                  <div>
-                    <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>{l.label}</div>
-                    <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{l.detail}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          </div>
-        </section>
+        <ShopWeek token={token} vi={vi} week={week} weekKey={weekKey} unread={weekUnread} onChanged={load} onError={setErr} />
+      )}
+      {!!holidays.length && (
+        <HolidayOffers token={token} vi={vi} ideas={holidays} onError={setErr} />
       )}
 
       {/* ---- what the shop already sent ---- */}

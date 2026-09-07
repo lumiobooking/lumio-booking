@@ -163,12 +163,16 @@ describe('editing keeps the sheet honest', () => {
 });
 
 describe('what the shop sees of the sheet', () => {
-  it('gets the shot list for its own jobs, never the caption, tags or channel', () => {
+  it('gets the steps of every job, never the caption, tags or channel', () => {
+    // The whole week travels now (the shop asked to work on the plan), with
+    // each job's steps — but the caption, the tags and the channel are the
+    // team's publishing work and stay on the sheet. The job id is deliberate:
+    // it is what a tick and an edit point at, and it is a hash of the text.
     const cw = clientWeek(plan())!;
     expect(cw.jobs.length).toBeGreaterThan(0);
     for (const j of cw.jobs) expect(j.steps.length).toBeGreaterThanOrEqual(3);
     const s = JSON.stringify(cw.jobs);
-    expect(s).not.toMatch(/"hashtags"|"caption"|"channel"|austinnails|Instagram Reels|"brief"|"id"/);
+    expect(s).not.toMatch(/"hashtags"|"caption"|"channel"|austinnails|"brief"|"why"|"when"/);
     expect(leaksAnything(cw)).toBeNull();
   });
 

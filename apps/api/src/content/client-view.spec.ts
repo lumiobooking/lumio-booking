@@ -12,14 +12,23 @@ const plan = buildWeekPlan({
 describe('what a salon sees of its own week', () => {
   const cw = clientWeek(plan)!;
 
-  it('GIVES THE SHOP ONLY THE WORK IT DOES WITH ITS OWN HANDS', () => {
-    // Filming, photographing, asking at the counter. Publishing is the team's
-    // job and the team's method.
+  it('SHOWS THE WHOLE WEEK, MARKED BY WHOSE HANDS DO EACH JOB', () => {
+    // The owner asked to see the plan the shop is paying for, not only its
+    // chores. Filming, photographing, asking at the counter are the shop's;
+    // posting, replying, the offer are Lumio's — and the week says which.
     expect(cw.jobs.length).toBeGreaterThan(0);
-    for (const j of cw.jobs) expect(SHOP_JOB_KINDS).toContain(j.kind);
-    expect(cw.jobs.some((j) => j.kind === 'post')).toBe(false);
-    expect(cw.jobs.some((j) => j.kind === 'story')).toBe(false);
-    expect(cw.jobs.some((j) => j.kind === 'gbp')).toBe(false);
+    for (const j of cw.jobs) expect(j.by).toBe(SHOP_JOB_KINDS.includes(j.kind) ? 'shop' : 'lumio');
+    expect(cw.jobs.some((j) => j.by === 'shop')).toBe(true);
+    expect(cw.jobs.some((j) => j.kind === 'rest')).toBe(false);
+    expect(cw.days).toHaveLength(plan.days.length);
+  });
+
+  it('carries the ticks from the week row, by job id, and nothing else from it', () => {
+    const id = cw.jobs[0].id;
+    expect(id).toMatch(/^[a-z0-9-]{4,}$/);
+    const ticked = clientWeek(plan, { weekKey: '2026-W36', ticks: { [id]: [0, 2], stage: [1] } as never })!;
+    expect(ticked.jobs[0].done).toEqual([0, 2]);
+    expect(leaksAnything(ticked)).toBeNull();
   });
 
   it('LEAKS NOTHING ABOUT HOW THE WEEK WAS DECIDED', () => {
@@ -43,7 +52,7 @@ describe('what a salon sees of its own week', () => {
   it('says which day, because a shoot has to be scheduled — and nothing about publishing', () => {
     for (const j of cw.jobs) {
       expect(typeof j.dayIndex).toBe('number');
-      expect(Object.keys(j).sort()).toEqual(['day', 'dayIndex', 'how', 'kind', 'steps', 'text']);
+      expect(Object.keys(j).sort()).toEqual(['by', 'day', 'dayIndex', 'done', 'how', 'id', 'kind', 'steps', 'text']);
     }
   });
 

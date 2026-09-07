@@ -731,7 +731,7 @@ function SheetBlock({ label: l, copy, vi, children }: { label: string; copy?: st
  * cancels); a multiline field commits on blur or Ctrl/Cmd+Enter. Only calls
  * back when the value actually changed, so a stray click costs no request.
  */
-function Inline({
+export function Inline({
   value, canEdit, onCommit, placeholder, multiline, strong, small, muted, autoFocus,
 }: {
   value: string; canEdit: boolean; onCommit: (v: string) => void;

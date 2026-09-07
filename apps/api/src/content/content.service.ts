@@ -44,6 +44,8 @@ import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-rea
 import { buildStrategyBrief } from './strategy-brief';
 import { bi, localizeDeep, viOf, enOf, type Txt } from './i18n';
 import { sanitizeDays } from './week-edit';
+import { shopPatchToDays, type ShopWeekPatch } from './shop-week-edit';
+import { holidayIdeas, ideaAsRequest, type HolidayIdea } from './holiday-offers';
 import { parseOffer, DEFAULT_OFFER, type WeekOffer } from './week-offer';
 import { isTransientStatus } from '../messenger/agent-fallback';
 
@@ -833,13 +835,90 @@ export class ContentService {
    * client-view.ts, in one place, tested there.
    */
   async weekForSalon(user: AuthenticatedUser) {
+    return (await this.weekForSalonKept(user)).plan;
+  }
+
+  /** The salon's week plus the two things only the week row knows: its key and its ticks. */
+  async weekForSalonKept(user: AuthenticatedUser): Promise<{
+    plan: Awaited<ReturnType<ContentService['weekPlanFor']>>; weekKey: string | null; ticks: Record<string, number[]>;
+  }> {
     const tenantId = this.tenantId(user);
     const ctx = await this.gather(tenantId);
     const generated = await this.weekPlanFor(tenantId, ctx);
     const kept = await this.keepWeek(tenantId, ctx.tz, generated).catch(() => null);
-    if (!kept?.edited) return generated;
+    const base = { weekKey: kept?.weekKey ?? null, ticks: kept?.ticks ?? {} };
+    if (!kept?.edited) return { plan: generated, ...base };
     const row = await this.weekAtRaw(user, kept.weekKey).catch(() => null);
-    return (row?.week as typeof generated) ?? generated;
+    return { plan: (row?.week as typeof generated) ?? generated, ...base };
+  }
+
+  /**
+   * The SHOP rewriting its own week.
+   *
+   * The owner asked to work on the plan with the team, not only read it, so
+   * the shop's screen edits in place the way the team's does. The edit comes
+   * in the shop's own shape (jobs by id — see shop-week-edit) and is rebuilt
+   * on the same skeleton and through the same sanitiser as the team's; the
+   * fields the shop never saw (why, when, caption, hashtags) are carried
+   * over untouched, because there is no field in its patch to put them in.
+   * Stored under the shop's name so the team's board says who changed what.
+   */
+  async editWeekAsShop(user: AuthenticatedUser, patch: ShopWeekPatch & { lang?: string }) {
+    const tenantId = this.tenantId(user);
+    const loose = this.prisma as unknown as Record<string, {
+      findFirst: (a: unknown) => Promise<unknown>;
+      update: (a: unknown) => Promise<unknown>;
+    }>;
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, city: true, timezone: true } as never })
+      .catch(() => null) as { name?: string | null; city?: string | null; timezone?: string | null } | null;
+    const key = weekKey(new Date(), tenant?.timezone || 'America/New_York');
+    const row = await loose.contentWeek?.findFirst({ where: { tenantId, weekKey: key } })
+      .catch(() => null) as { id: string; generated: Record<string, unknown>; edited: Record<string, unknown> | null } | null;
+    if (!row) throw new NotFoundException('Chưa có kế hoạch nào được lưu cho tuần này.');
+    const base = (row.edited ?? row.generated ?? {}) as Record<string, unknown>;
+    const days = Array.isArray(base.days) ? (base.days as never[]) : [];
+    const raw = shopPatchToDays(days, patch);
+    if (!raw) return { ok: true, weekKey: key, changed: false };
+    const lang = patch.lang === 'en' ? 'en' : 'vi';
+    const next = { ...base, days: sanitizeDays(raw, days, lang, { salonName: tenant?.name, city: tenant?.city }) };
+    await loose.contentWeek?.update({
+      where: { id: row.id },
+      data: { edited: next as never, editedById: user.userId ?? null, editedByName: `Tiệm · ${user.email ?? tenant?.name ?? 'salon'}`, editedAt: new Date() },
+    }).catch(() => undefined);
+    await this.prisma.auditLog.create({
+      data: { tenantId, userId: user.userId ?? null, action: 'content.week_edited_by_shop', resourceType: 'content_week', resourceId: key } as never,
+    }).catch(() => undefined);
+    return { ok: true, weekKey: key, changed: true };
+  }
+
+  /**
+   * The holidays ahead, each with one programme the shop can say yes to.
+   * Sixty days: far enough to prepare stock and staff, near enough to act.
+   */
+  async holidayIdeasFor(user: AuthenticatedUser): Promise<HolidayIdea[]> {
+    const tenantId = this.tenantId(user);
+    const ctx = await this.gather(tenantId);
+    const { events } = regionEvents(new Date(), {
+      market: ctx.region.market, city: ctx.region.city, region: ctx.region.region,
+    }, { horizonDays: 60 });
+    return holidayIdeas(events, { industry: ctx.industry, ceilingPct: ctx.promo?.ceiling ?? null, horizonDays: 60 });
+  }
+
+  /**
+   * The shop saying "run this one" — a holiday programme by key, or a
+   * programme in its own words. Returned as the line the team reads; the
+   * caller files it where the team looks (the shop's own inbox).
+   */
+  async offerRequestLine(user: AuthenticatedUser, dto: { key?: unknown; text?: unknown }): Promise<string> {
+    const key = String(dto?.key ?? '').trim().slice(0, 60);
+    const text = String(dto?.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 500);
+    if (key) {
+      const idea = (await this.holidayIdeasFor(user)).find((i) => i.key === key);
+      if (!idea) throw new NotFoundException('Ngày lễ này không còn trong danh sách.');
+      return text ? `${ideaAsRequest(idea)} · Tiệm ghi thêm: ${text}` : ideaAsRequest(idea);
+    }
+    if (!text) throw new BadRequestException('Ghi vài chữ tiệm muốn chạy chương trình gì.');
+    return `Tiệm muốn chạy ưu đãi: ${text}`;
   }
 
   async editWeek(

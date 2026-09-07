@@ -46,10 +46,13 @@ export class SupportService {
    * requires entering the salon (which is audited).
    */
   async listTenants() {
+    // A deleted salon is soft-deleted (kept for its records) and is not a
+    // place anyone sets up any more; it stays out of this list.
     return this.prisma.tenant.findMany({
+      where: { deletedAt: null },
       select: { id: true, name: true, slug: true, status: true, createdAt: true },
       orderBy: { name: 'asc' },
-      take: 500,
+      take: 2000,
     });
   }
 
@@ -74,7 +77,7 @@ export class SupportService {
       findMany: (a: unknown) => Promise<unknown>;
     }>;
     const rows = await loose.contentSuggestion?.findMany({
-      where: { status: { in: ['done', 'working'] } },
+      where: { status: { in: ['done', 'working'] }, tenant: { deletedAt: null } },
       orderBy: { doneAt: 'desc' },
       take: 60,
       select: {
@@ -111,8 +114,8 @@ export class SupportService {
    * session, cross-tenant requests fail exactly as they do for a real admin.
    */
   async enterSalon(user: AuthenticatedUser, tenantId: string) {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null },
       select: { id: true, name: true, slug: true, status: true },
     });
     if (!tenant) throw new NotFoundException('Salon not found');

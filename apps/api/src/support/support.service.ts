@@ -8,6 +8,7 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { hashSecret } from '../auth/password.util';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { capsForLevel, levelOf, type SupportLevel } from './support-scope';
+import { crewJobs, groupByKind, crewCounts, type WeekRowLike, type CrewHold } from '../content/crew-board';
 
 /**
  * Lumio SUPPORT staff: one login that can set up ANY salon — without being a
@@ -74,6 +75,110 @@ export class SupportService {
    * Read-only, and it says nothing about method: title, the shop's note,
    * how many files, how long ago. The working detail is inside the salon.
    */
+  /**
+   * Today's production queue, across every salon at once.
+   *
+   * ONE QUERY, NOT THIRTY. The naive shape of this screen — walk the salons,
+   * read each one's week — is thirty round trips for a page two people open
+   * every hour of the working day. Current week rows are fetched in a single
+   * read and expanded in memory (see ../content/crew-board), which also means
+   * adding the thirty-first salon costs nothing.
+   *
+   * The plan read is the EDITED one when a person has been through it, and
+   * the generated one otherwise — the same precedence the salon's own screen
+   * uses, so the queue can never show a job the team already rewrote away.
+   */
+  async today(user: AuthenticatedUser, lang?: string) {
+    const loose = this.prisma as unknown as Record<string, { findMany: (a: unknown) => Promise<unknown> }>;
+    // A fortnight back: last week's row still holds jobs that ran late, and a
+    // job that slipped is exactly what this screen exists to surface.
+    const since = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
+    const rows = await loose.contentWeek?.findMany({
+      where: { startDate: { gte: since }, tenant: { deletedAt: null, status: { not: 'CANCELLED' } } },
+      orderBy: { startDate: 'desc' },
+      take: 400,
+      select: {
+        tenantId: true, weekKey: true, startDate: true, generated: true, edited: true, crew: true,
+        tenant: { select: { name: true, slug: true } },
+      },
+    }).catch(() => []) as {
+      tenantId: string; weekKey: string; startDate: string;
+      generated: unknown; edited: unknown; crew: unknown;
+      tenant: { name: string; slug: string } | null;
+    }[];
+
+    // Newest week per salon that has actually started. A row for next week
+    // exists the moment the scheduler runs, and showing it beside today's is
+    // how a queue starts lying about what is due.
+    const today = new Date().toISOString().slice(0, 10);
+    const latest = new Map<string, typeof rows[number]>();
+    for (const r of rows) {
+      if (r.startDate > today) continue;
+      if (!latest.has(r.tenantId)) latest.set(r.tenantId, r);
+    }
+
+    const weeks: WeekRowLike[] = [...latest.values()].map((r) => {
+      const plan = (r.edited ?? r.generated ?? {}) as { days?: unknown };
+      return {
+        tenantId: r.tenantId,
+        weekKey: r.weekKey,
+        startDate: r.startDate,
+        salon: r.tenant?.name ?? '—',
+        slug: r.tenant?.slug ?? '',
+        days: Array.isArray(plan.days) ? (plan.days as never[]) : [],
+        crew: (r.crew ?? null) as Record<string, CrewHold> | null,
+      };
+    });
+
+    const jobs = crewJobs(weeks, { today, lang: lang === 'en' ? 'en' : 'vi' });
+    const me = user.email ?? null;
+    return { me, today, counts: crewCounts(jobs, me), groups: groupByKind(jobs.filter((j) => !j.done)), done: jobs.filter((j) => j.done).length };
+  }
+
+  /**
+   * Take a job, put it back, or mark it finished.
+   *
+   * Anybody on the team may do any of the three to any job, including one
+   * somebody else holds. That is not an oversight: the failure this screen
+   * exists to prevent is a job sitting under the name of a person who is off
+   * sick, and a permission check there would turn a two-second fix into a
+   * phone call. Every change is stamped with a name, which is the real
+   * control — people do not quietly steal work in a team of two.
+   */
+  async setJobState(user: AuthenticatedUser, dto: { tenantId?: unknown; weekKey?: unknown; jobId?: unknown; state?: unknown }) {
+    const tenantId = String(dto?.tenantId ?? '').trim();
+    const weekKey = String(dto?.weekKey ?? '').trim();
+    const jobId = String(dto?.jobId ?? '').replace(/[^a-z0-9-]/g, '').slice(0, 24);
+    const state = String(dto?.state ?? '');
+    if (!tenantId || !/^\d{4}-W\d{2}$/.test(weekKey) || !jobId) throw new BadRequestException('Thiếu việc cần cập nhật.');
+    if (!['claim', 'release', 'done', 'undone'].includes(state)) throw new BadRequestException('Trạng thái không hợp lệ.');
+
+    const loose = this.prisma as unknown as Record<string, {
+      findFirst: (a: unknown) => Promise<unknown>;
+      update: (a: unknown) => Promise<unknown>;
+    }>;
+    const row = await loose.contentWeek?.findFirst({ where: { tenantId, weekKey }, select: { id: true, crew: true } })
+      .catch(() => null) as { id: string; crew: Record<string, CrewHold> | null } | null;
+    if (!row) throw new NotFoundException('Không tìm thấy tuần này.');
+
+    const crew: Record<string, CrewHold> = { ...(row.crew ?? {}) };
+    const who = user.email ?? 'Lumio';
+    if (state === 'release') delete crew[jobId];
+    else if (state === 'claim') crew[jobId] = { by: who, at: new Date().toISOString() };
+    else if (state === 'done') crew[jobId] = { by: crew[jobId]?.by ?? who, at: crew[jobId]?.at ?? new Date().toISOString(), done: true };
+    else crew[jobId] = { by: who, at: new Date().toISOString() };
+
+    await loose.contentWeek?.update({ where: { id: row.id }, data: { crew: crew as never } }).catch(() => undefined);
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId, userId: user.userId ?? null,
+        action: `content.job_${state}`,
+        resourceType: 'content_week', resourceId: `${weekKey}:${jobId}`,
+      } as never,
+    }).catch(() => undefined);
+    return { ok: true, jobId, state };
+  }
+
   async inbox() {
     const loose = this.prisma as unknown as Record<string, {
       findMany: (a: unknown) => Promise<unknown>;

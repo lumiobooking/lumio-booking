@@ -152,9 +152,29 @@ export default function AgencyPage() {
             Sign out
           </button>
         </div>
-        <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: '0 0 18px' }}>
+        <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: '0 0 12px' }}>
           Pick a salon to set it up. Each visit opens an 8-hour working session and is logged.
         </p>
+
+        {/* The bench comes before the salon list: two people running thirty
+            clients answer "what now" far more often than "open which salon". */}
+        <a
+          href="/agency/today"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',
+            border: '1.5px solid #6366f1', background: 'rgba(99,102,241,.10)', borderRadius: 14,
+            padding: '13px 16px', marginBottom: 14, color: 'var(--ce2e8f0)',
+          }}
+        >
+          <span style={{ fontSize: 20 }}>🛠</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>Việc hôm nay — mọi tiệm, gộp theo loại</div>
+            <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 1 }}>
+              Đăng bài, story, ưu đãi, hồ sơ Google… của tất cả khách trong một hàng đợi. Nhận việc, thấy ai đang làm gì.
+            </div>
+          </div>
+          <span style={{ marginLeft: 'auto', color: '#a5b4fc', fontWeight: 800, fontSize: 14 }}>Mở →</span>
+        </a>
 
         {error && <div style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{error}</div>}
 

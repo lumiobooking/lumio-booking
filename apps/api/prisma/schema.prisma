@@ -2730,6 +2730,13 @@ model ContentWeek {
   /// `generated` cannot lose them.
   ticks        Json?
 
+  /// Who on the LUMIO team has each job of this week, and which are finished:
+  /// { [jobId]: { by, at, done } }. Two people covering thirty salons cannot
+  /// hold "who is doing what" in their heads, and the cost of guessing wrong
+  /// is two people editing the same post or nobody editing it at all. Keyed by
+  /// the job's stable id for the same reason `ticks` is.
+  crew         Json?
+
   /// The SALON accepting the plan. The team proposes, the client agrees; a
   /// plan nobody agreed to is a document, not a commitment.
   approvedAt     DateTime?

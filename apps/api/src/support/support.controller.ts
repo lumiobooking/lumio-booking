@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { SupportService, SUPPORT_ROLE } from './support.service';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -27,6 +27,27 @@ export class SupportController {
   @Get('inbox')
   inbox() {
     return this.svc.inbox();
+  }
+
+  /**
+   * Today's production queue across every salon — the screen two people run
+   * thirty clients from. See SupportService.today.
+   */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Get('today')
+  today(@CurrentUser() user: AuthenticatedUser, @Query('lang') lang?: string) {
+    return this.svc.today(user, lang);
+  }
+
+  /** Take a job, put it back, or mark it done. Anyone on the team, any job. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Post('today/state')
+  @HttpCode(200)
+  setJobState(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { tenantId?: string; weekKey?: string; jobId?: string; state?: string },
+  ) {
+    return this.svc.setJobState(user, dto ?? {});
   }
 
   /** Mint an 8h salon-scoped session token. Audited. */

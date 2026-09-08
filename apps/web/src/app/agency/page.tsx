@@ -30,7 +30,7 @@ type InboxRow = InboxItem;
 
 /** The salon list as one employee reads it: their team open, the rest folded. */
 interface BoardGroup { team: string; label: string; mine: boolean; open: boolean; newCount?: number; salons: { id: string; name: string; supportTeam?: string | null; isNew?: boolean }[] }
-interface Board { myTeam: string | null; groups: BoardGroup[]; teams: { team: string; label: string; salons: number; members: string[] }[] }
+interface Board { myTeam: string | null; canAssign?: boolean; groups: BoardGroup[]; teams: { team: string; label: string; salons: number; members: string[] }[] }
 
 /** "3 phút trước" — the freshness is the point of the list. */
 function ago(iso: string | null): string {
@@ -407,7 +407,14 @@ function Row({ t, fresh, board, busy, onEnter, editing, setEditing, onTeam }: {
         </div>
         <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>/{t.slug}</div>
       </div>
-      {isEditing ? (
+      {/* Only an account that may actually reassign gets the control. Everyone
+          else still SEES whose salon this is — that is the point of the
+          grouping — but is not offered a button that answers with a refusal. */}
+      {!board?.canAssign ? (
+        mine?.team ? (
+          <span style={{ color: 'var(--c94a3b8)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, whiteSpace: 'nowrap' }}>{mine.team}</span>
+        ) : null
+      ) : isEditing ? (
         <select
           autoFocus
           defaultValue={mine?.team ?? ''}

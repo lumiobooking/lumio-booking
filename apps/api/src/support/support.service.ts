@@ -74,8 +74,8 @@ export class SupportService {
         take: 200,
       }).catch(() => []) as Promise<{ email?: string | null; firstName?: string | null; supportTeam?: string | null }[]>,
       user.userId
-        ? this.prisma.user.findUnique({ where: { id: user.userId }, select: { supportTeam: true } as never })
-          .catch(() => null) as Promise<{ supportTeam?: string | null } | null>
+        ? this.prisma.user.findUnique({ where: { id: user.userId }, select: { supportTeam: true, supportLevel: true } as never })
+          .catch(() => null) as Promise<{ supportTeam?: string | null; supportLevel?: string | null } | null>
         : Promise.resolve(null),
     ]);
     const myTeam = cleanTeam(me?.supportTeam) || null;
@@ -83,7 +83,12 @@ export class SupportService {
     // and the screen only has to read the flag. See ./support-teams.
     const now = Date.now();
     const marked = salons.map((s) => ({ ...s, isNew: isNewSalon(s.createdAt, now) }));
-    return { myTeam, groups: groupSalons(marked, myTeam), teams: teamSummaries(salons, staff) };
+    // Whether THIS viewer may move a salon between teams — the same bar the
+    // write enforces, sent down so the screen can leave the control out
+    // instead of offering a button that always answers with a refusal.
+    const canAssign = user.role === UserRole.SUPER_ADMIN
+      || levelOf(user.supportLevel ?? me?.supportLevel) === 'full';
+    return { myTeam, canAssign, groups: groupSalons(marked, myTeam), teams: teamSummaries(salons, staff) };
   }
 
   /**
@@ -95,7 +100,7 @@ export class SupportService {
    * list is whose.
    */
   async setTenantTeam(user: AuthenticatedUser, tenantId: string, raw: unknown) {
-    this.mustBeSenior(user);
+    await this.mustBeSenior(user);
     const team = cleanTeam(raw);
     const tenant = await this.prisma.tenant.findFirst({ where: { id: tenantId, deletedAt: null }, select: { id: true } })
       .catch(() => null);
@@ -114,7 +119,7 @@ export class SupportService {
 
   /** Put an employee on a team, or take them off one. Same bar as moving a salon. */
   async setAccountTeam(user: AuthenticatedUser, id: string, raw: unknown) {
-    this.mustBeSenior(user);
+    await this.mustBeSenior(user);
     const team = cleanTeam(raw);
     const row = await this.prisma.user.findFirst({ where: { id, role: SUPPORT_ROLE }, select: { id: true } })
       .catch(() => null);
@@ -124,12 +129,30 @@ export class SupportService {
   }
 
   /**
-   * Who may reshuffle the lists. A support account's own level decides it, so
-   * the check is the same one the rest of this file uses rather than a new idea.
+   * Who may reshuffle the lists.
+   *
+   * WHY THIS READS THE ROW AND NOT THE TOKEN
+   *
+   * `supportLevel` rides on the SHORT-LIVED token minted when an employee
+   * steps into one salon — deliberately frozen there, so the session that did
+   * the work carries the answer to what it was allowed to do. The token an
+   * employee holds on the salon-picker screen is their ordinary login, and it
+   * has no such field. Reading it through `levelOf` turned "absent" into
+   * "setup", which locked full-level employees out of a screen that is theirs:
+   * the owner would have had to assign every team himself, which is the exact
+   * bottleneck the teams were built to remove.
+   *
+   * So: trust the token when it carries a level (inside a salon, where the
+   * freeze is the point), and otherwise ask the employee's own row.
    */
-  private mustBeSenior(user: AuthenticatedUser) {
-    const senior = user.role === UserRole.SUPER_ADMIN || levelOf(user.supportLevel) === 'full';
-    if (!senior) throw new ForbiddenException('Chỉ chủ hệ thống hoặc tài khoản quyền cao mới đổi nhóm được.');
+  private async mustBeSenior(user: AuthenticatedUser) {
+    if (user.role === UserRole.SUPER_ADMIN) return;
+    const level = user.supportLevel
+      ? levelOf(user.supportLevel)
+      : levelOf(await this.levelOfAccount(user.userId));
+    if (level !== 'full') {
+      throw new ForbiddenException('Chỉ chủ hệ thống hoặc tài khoản quyền cao mới đổi nhóm được.');
+    }
   }
 
   /**

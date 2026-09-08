@@ -1,4 +1,4 @@
-import { groupSalons, teamSummaries, cleanTeam, UNASSIGNED } from './support-teams';
+import { groupSalons, teamSummaries, cleanTeam, isNewSalon, NEW_SALON_DAYS, UNASSIGNED } from './support-teams';
 
 const s = (id: string, name: string, supportTeam: string | null = null) => ({ id, name, supportTeam });
 
@@ -61,5 +61,54 @@ describe('teamSummaries', () => {
       ['Nhóm 3', 1, []],         // salons, nobody on it — the one worth seeing
       ['Chưa phân nhóm', 1, []],
     ]);
+  });
+});
+
+describe('a salon created just now', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const now = Date.parse('2026-09-08T12:00:00Z');
+  const at = (daysAgo: number) => new Date(now - daysAgo * DAY);
+  const mark = <T extends { createdAt?: Date | string | null }>(r: T) => ({ ...r, isNew: isNewSalon(r.createdAt, now) });
+
+  const rows = [
+    mark({ id: '1', name: '5 Points Nails & Spa', supportTeam: null, createdAt: at(400) }),
+    mark({ id: '2', name: '501 Nails & Spa', supportTeam: null, createdAt: at(300) }),
+    mark({ id: '3', name: 'Zen Nails', supportTeam: null, createdAt: at(0.2) }),
+    mark({ id: '4', name: 'Moon Spa', supportTeam: null, createdAt: at(3) }),
+  ];
+
+  it('SITS ON TOP OF ITS GROUP, above the alphabet', () => {
+    // Alphabetical is what makes a known name findable. A salon signed up this
+    // morning is the one whose name nobody knows yet — under "5 Points" it is
+    // invisible, and it is the only row on the screen that needs doing.
+    const g = groupSalons(rows, null);
+    expect(g[0].salons.map((x) => x.name)).toEqual([
+      'Zen Nails', 'Moon Spa', '5 Points Nails & Spa', '501 Nails & Spa',
+    ]);
+    expect(g[0].newCount).toBe(2);
+  });
+
+  it('settles back into the alphabet once the week is up', () => {
+    const old = groupSalons([...rows.slice(0, 2), mark({ id: '5', name: 'Zen Nails', supportTeam: null, createdAt: at(NEW_SALON_DAYS + 1) })], null);
+    expect(old[0].salons.map((x) => x.name)).toEqual(['5 Points Nails & Spa', '501 Nails & Spa', 'Zen Nails']);
+    expect(old[0].newCount).toBe(0);
+  });
+
+  it('does not call a salon new because its date is missing or unreadable', () => {
+    expect(isNewSalon(null, now)).toBe(false);
+    expect(isNewSalon('not a date', now)).toBe(false);
+    expect(isNewSalon(undefined, now)).toBe(false);
+    // Nor one dated into next month, which is a clock problem, not an arrival.
+    expect(isNewSalon(new Date(now + 30 * DAY), now)).toBe(false);
+  });
+
+  it('counts new arrivals per group, not across the whole screen', () => {
+    const g = groupSalons([
+      mark({ id: 'a', name: 'Aura', supportTeam: 'Nhóm 1', createdAt: at(1) }),
+      mark({ id: 'b', name: 'Bee', supportTeam: 'Nhóm 1', createdAt: at(90) }),
+      mark({ id: 'c', name: 'Cee', supportTeam: null, createdAt: at(90) }),
+    ], 'Nhóm 1');
+    expect(g[0].newCount).toBe(1);
+    expect(g[1].newCount).toBe(0);
   });
 });

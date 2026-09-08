@@ -9,7 +9,7 @@ import { hashSecret } from '../auth/password.util';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { capsForLevel, levelOf, type SupportLevel } from './support-scope';
 import { crewJobs, groupByKind, crewCounts, type WeekRowLike, type CrewHold } from '../content/crew-board';
-import { cleanTeam, groupSalons, teamSummaries } from './support-teams';
+import { cleanTeam, groupSalons, teamSummaries, isNewSalon } from './support-teams';
 
 /**
  * Lumio SUPPORT staff: one login that can set up ANY salon — without being a
@@ -67,7 +67,7 @@ export class SupportService {
    */
   async board(user: AuthenticatedUser) {
     const [salons, staff, me] = await Promise.all([
-      this.listTenants() as Promise<{ id: string; name: string; supportTeam?: string | null }[]>,
+      this.listTenants() as Promise<{ id: string; name: string; createdAt?: Date | null; supportTeam?: string | null }[]>,
       this.prisma.user.findMany({
         where: { role: SUPPORT_ROLE, isActive: true },
         select: { email: true, firstName: true, supportTeam: true } as never,
@@ -79,7 +79,11 @@ export class SupportService {
         : Promise.resolve(null),
     ]);
     const myTeam = cleanTeam(me?.supportTeam) || null;
-    return { myTeam, groups: groupSalons(salons, myTeam), teams: teamSummaries(salons, staff) };
+    // Marked here, not in the grouping, so "how new is new" is decided once
+    // and the screen only has to read the flag. See ./support-teams.
+    const now = Date.now();
+    const marked = salons.map((s) => ({ ...s, isNew: isNewSalon(s.createdAt, now) }));
+    return { myTeam, groups: groupSalons(marked, myTeam), teams: teamSummaries(salons, staff) };
   }
 
   /**

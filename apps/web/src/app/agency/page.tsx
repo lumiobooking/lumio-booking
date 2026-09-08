@@ -29,7 +29,7 @@ interface TenantRow {
 type InboxRow = InboxItem;
 
 /** The salon list as one employee reads it: their team open, the rest folded. */
-interface BoardGroup { team: string; label: string; mine: boolean; open: boolean; salons: { id: string; name: string; supportTeam?: string | null }[] }
+interface BoardGroup { team: string; label: string; mine: boolean; open: boolean; newCount?: number; salons: { id: string; name: string; supportTeam?: string | null; isNew?: boolean }[] }
 interface Board { myTeam: string | null; groups: BoardGroup[]; teams: { team: string; label: string; salons: number; members: string[] }[] }
 
 /** "3 phút trước" — the freshness is the point of the list. */
@@ -60,6 +60,12 @@ export default function AgencyPage() {
   const [openTeams, setOpenTeams] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<string | null>(null);
   const groups = useMemo(() => groupInbox(inbox), [inbox]);
+  // Which salons arrived this week, as the API judged it. Searching cuts
+  // across the groups, so the badge has to survive the search too.
+  const newIds = useMemo(
+    () => new Set((board?.groups ?? []).flatMap((g) => g.salons.filter((x) => x.isNew).map((x) => x.id))),
+    [board],
+  );
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -311,6 +317,11 @@ export default function AgencyPage() {
                 <span style={{ fontWeight: 800, fontSize: 14 }}>{g.label}</span>
                 {g.mine && <span style={{ fontSize: 10.5, fontWeight: 800, background: '#6366f1', color: '#fff', borderRadius: 999, padding: '1px 7px' }}>NHÓM TÔI</span>}
                 {!g.team && <span style={{ fontSize: 11.5, color: '#fbbf24' }}>chưa ai phụ trách</span>}
+                {!!g.newCount && (
+                  <span style={{ fontSize: 10.5, fontWeight: 800, background: '#22c55e', color: '#052e16', borderRadius: 999, padding: '1px 7px' }}>
+                    {g.newCount} MỚI
+                  </span>
+                )}
                 <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--c94a3b8)' }}>{g.salons.length} tiệm</span>
               </button>
               {isOpen && (
@@ -318,7 +329,7 @@ export default function AgencyPage() {
                   {!g.salons.length && <div style={{ padding: 14, color: 'var(--c64748b)', fontSize: 13 }}>Nhóm này chưa có tiệm nào.</div>}
                   {g.salons.map((sg) => {
                     const t = rows.find((r) => r.id === sg.id);
-                    return t ? <Row key={t.id} t={t} board={board} busy={busy} onEnter={enter} editing={editing} setEditing={setEditing} onTeam={setTeam} /> : null;
+                    return t ? <Row key={t.id} t={t} fresh={sg.isNew} board={board} busy={busy} onEnter={enter} editing={editing} setEditing={setEditing} onTeam={setTeam} /> : null;
                   })}
                 </div>
               )}
@@ -333,7 +344,9 @@ export default function AgencyPage() {
           {shown.map((t) => (
             <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+                <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {newIds.has(t.id) && <NewTag />}{t.name}
+                </div>
                 <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>/{t.slug}</div>
               </div>
               <span style={{ fontSize: 11.5, fontWeight: 700, color: STATUS_COLOR[t.status] || 'var(--c94a3b8)', border: `1px solid ${STATUS_COLOR[t.status] || 'var(--c334155)'}`, borderRadius: 999, padding: '3px 10px' }}>
@@ -362,8 +375,24 @@ const screen: React.CSSProperties = { minHeight: '100vh', display: 'grid', place
  * moment somebody notices a salon is in the wrong list is the moment they are
  * looking at the list, and a fix that needs a second screen does not happen.
  */
-function Row({ t, board, busy, onEnter, editing, setEditing, onTeam }: {
-  t: TenantRow; board: Board | null; busy: string | null;
+/**
+ * A salon that arrived this week.
+ *
+ * The API decides what "this week" means (see support-teams) and sends the
+ * flag; the screen only draws it. One place to change the window, and search
+ * results and the grouped list can never disagree about which salons are new.
+ */
+function NewTag() {
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 800, background: '#22c55e', color: '#052e16',
+      borderRadius: 999, padding: '2px 7px', marginRight: 7, verticalAlign: 2,
+    }}>MỚI</span>
+  );
+}
+
+function Row({ t, fresh, board, busy, onEnter, editing, setEditing, onTeam }: {
+  t: TenantRow; fresh?: boolean; board: Board | null; busy: string | null;
   onEnter: (t: TenantRow, landing?: string) => void;
   editing: string | null; setEditing: (id: string | null) => void;
   onTeam: (tenantId: string, team: string) => void;
@@ -373,7 +402,9 @@ function Row({ t, board, busy, onEnter, editing, setEditing, onTeam }: {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+        <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {fresh && <NewTag />}{t.name}
+        </div>
         <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>/{t.slug}</div>
       </div>
       {isEditing ? (

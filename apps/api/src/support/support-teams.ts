@@ -27,11 +27,50 @@
 
 export const UNASSIGNED = '';
 
+/**
+ * How long a salon stays at the top of its group.
+ *
+ * A week is about one setup cycle: long enough that a salon created on Friday
+ * is still on top when someone gets to it on Monday, short enough that the
+ * top of the list does not slowly become a list of its own.
+ */
+export const NEW_SALON_DAYS = 7;
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** Was this salon created inside the window? Anything unparseable is not new. */
+export function isNewSalon(createdAt: unknown, now: number = Date.now()): boolean {
+  const at = createdAt instanceof Date ? createdAt.getTime()
+    : typeof createdAt === 'number' ? createdAt
+      : typeof createdAt === 'string' ? Date.parse(createdAt) : NaN;
+  if (!Number.isFinite(at)) return false;
+  return now - at < NEW_SALON_DAYS * DAY && at <= now + DAY;
+}
+
+/** Newest arrivals first, then the alphabet. Used inside every group. */
+export function sortSalons<T extends TeamRow>(list: T[]): T[] {
+  const at = (r: TeamRow) => {
+    const v = r.createdAt instanceof Date ? r.createdAt.getTime()
+      : typeof r.createdAt === 'string' ? Date.parse(r.createdAt) : NaN;
+    return Number.isFinite(v) ? v : 0;
+  };
+  return [...list].sort((a, b) => {
+    const an = a.isNew ? 1 : 0;
+    const bn = b.isNew ? 1 : 0;
+    if (an !== bn) return bn - an;
+    if (an && bn) return at(b) - at(a);
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export interface TeamRow {
   /** The salon's own fields, whatever the caller selected. */
   id: string;
   name: string;
   supportTeam?: string | null;
+  createdAt?: Date | string | null;
+  /** Set by the caller from isNewSalon, so the window is decided in one place. */
+  isNew?: boolean;
 }
 
 export interface TeamGroup<T extends TeamRow> {
@@ -40,6 +79,8 @@ export interface TeamGroup<T extends TeamRow> {
   /** The heading, already decided — the screen never invents a label. */
   label: string;
   salons: T[];
+  /** How many of them arrived this week — the number the heading shows. */
+  newCount: number;
   /** Is this the viewer's own team? */
   mine: boolean;
   /** Open on arrival, or folded to one line. */
@@ -57,6 +98,9 @@ export function cleanTeam(raw: unknown): string {
  *   1. my team, open
  *   2. salons with no team, open
  *   3. everyone else's, folded, alphabetical
+ *
+ * Inside every group, this week's arrivals first (newest at the very top),
+ * then the alphabet. Mark them with isNewSalon before calling.
  *
  * A viewer with no team of their own gets the unassigned group first and
  * every team folded — which is the right screen for the owner, who is looking
@@ -80,7 +124,8 @@ export function groupSalons<T extends TeamRow>(
   const groups: TeamGroup<T>[] = [...by.entries()].map(([team, list]) => ({
     team,
     label: team || labels.unassigned,
-    salons: [...list].sort((a, b) => a.name.localeCompare(b.name)),
+    salons: sortSalons(list),
+    newCount: list.filter((s) => s.isNew).length,
     mine: Boolean(mine) && team === mine,
     open: (Boolean(mine) && team === mine) || team === UNASSIGNED,
   }));

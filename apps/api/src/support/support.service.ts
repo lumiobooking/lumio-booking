@@ -377,10 +377,12 @@ export class SupportService {
         isActive: true, lastLoginAt: true, createdAt: true, supportLevel: true, supportTeam: true,
       } as never,
       orderBy: { createdAt: 'desc' },
-    }) as unknown as { supportLevel?: string | null }[];
+    }) as unknown as { supportLevel?: string | null; supportTeam?: string | null }[];
     // Normalised on the way out, so the screen never has to decide what a null
-    // means — and shows the same word the guard will act on.
-    return rows.map((r) => ({ ...r, supportLevel: levelOf(r.supportLevel) }));
+    // means — and shows the same word the guard will act on. The team is
+    // normalised for the same reason: '' and null both mean "no team", and a
+    // screen that has to know the difference will one day get it wrong.
+    return rows.map((r) => ({ ...r, supportLevel: levelOf(r.supportLevel), supportTeam: cleanTeam(r.supportTeam) || null }));
   }
 
   async createAccount(dto: { email?: string; password?: string; firstName?: string; lastName?: string; supportLevel?: string }) {

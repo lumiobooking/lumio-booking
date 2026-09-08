@@ -21,6 +21,11 @@ interface Account {
   createdAt: string;
   /** How much of a salon this employee sees once inside it. */
   supportLevel: SupportLevel;
+  /**
+   * Which pair of people this employee works with. A plain name, shared with
+   * the salons they look after — never a permission. See support-teams.ts.
+   */
+  supportTeam?: string | null;
 }
 
 type SupportLevel = 'content' | 'setup' | 'full';
@@ -99,6 +104,28 @@ export default function SupportAccountsPage() {
       await load();
     } catch (e2) { setError(e2 instanceof Error ? e2.message : 'Create failed'); }
     finally { setBusy(null); }
+  }
+
+  /**
+   * Put somebody on a team, or take them off one.
+   *
+   * A free text box with the teams that already exist offered underneath, not
+   * a fixed list: teams are created by typing a new name here, and a dropdown
+   * with no "new…" option would mean the first team could never be made. The
+   * suggestions are what stop "Nhóm 1" and "nhóm 1 " becoming two teams.
+   */
+  async function setTeam(a: Account, supportTeam: string) {
+    if (!token) return;
+    const next = supportTeam.replace(/\s+/g, ' ').trim();
+    if (next === (a.supportTeam ?? '')) return;
+    setBusy(a.id); setMsg(null); setError(null);
+    try {
+      await apiFetch(`/support/accounts/${a.id}/team`, { method: 'POST', token, body: { team: next } });
+      setMsg(next ? `${a.email}: nhóm ${next}.` : `${a.email}: đã bỏ khỏi nhóm.`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Không đổi được nhóm');
+    } finally { setBusy(null); }
   }
 
   async function setLevel(a: Account, supportLevel: SupportLevel) {
@@ -203,6 +230,13 @@ export default function SupportAccountsPage() {
 
         <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden' }}>
           {rows.length === 0 && <div style={{ padding: 18, color: 'var(--c64748b)', fontSize: 14 }}>No support accounts yet.</div>}
+          {/* Every team that already has somebody on it, offered as you type.
+              This is what keeps "Nhóm 1" from becoming three teams. */}
+          <datalist id="lumio-teams">
+            {[...new Set(rows.map((r) => (r.supportTeam ?? '').trim()).filter(Boolean))].sort().map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
           {rows.map((a) => (confirming === a.id ? (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--c1f2937)', background: 'var(--c450a0a)' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
@@ -231,6 +265,23 @@ export default function SupportAccountsPage() {
                   {a.email}{a.lastLoginAt ? ` · last login ${new Date(a.lastLoginAt).toLocaleDateString(uiLocale())}` : ' · never logged in'}
                 </div>
               </div>
+              {/* The team, edited where the person is. Naming a team IS
+                  creating it — there is nowhere else to make one, on purpose:
+                  a team is a name two screens agree on, not a record. */}
+              <input
+                list="lumio-teams"
+                defaultValue={a.supportTeam ?? ''}
+                disabled={busy === a.id}
+                placeholder="Nhóm…"
+                onBlur={(e) => setTeam(a, e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                title="Nhóm phụ trách — gõ tên mới để tạo nhóm"
+                style={{
+                  width: 104, background: 'var(--c0f172a)', color: a.supportTeam ? '#a5b4fc' : 'var(--c64748b)',
+                  border: `1px solid ${a.supportTeam ? '#6366f1' : 'var(--c334155)'}`, borderRadius: 8,
+                  padding: '6px 9px', fontSize: 12.5, fontWeight: 700,
+                }}
+              />
               <select
                 value={a.supportLevel}
                 disabled={busy === a.id}

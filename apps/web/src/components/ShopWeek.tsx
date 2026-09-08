@@ -6,20 +6,29 @@ import { Inline } from './WeekPlanBoard';
 import { ItemComments } from './ContentChat';
 
 /**
- * The shop's week — the plan it is paying for, as a thing it works on.
+ * The shop's week, in the order the owner actually asks her questions.
  *
- * WHAT CHANGED FROM THE FIRST VERSION
+ * WHAT WAS WRONG WITH THE FIRST VERSION
  *
- * The first version handed the shop its three chores and nothing else. The
- * owner's answer: "I want to see the plan, talk about it, and change it with
- * your staff." So this is the same board the team works on, from the shop's
- * side: every job of the week, by day, marked whose hands do it; click any
- * line to reword it; tick the steps as they get done; move a job to another
- * day; drop one; add one; and a thread under the week that both sides read.
+ * It opened on a list of chores — four or five rows marked TIỆM LÀM, each
+ * with a six-step technical shot list — and the agency's own work sat in the
+ * same list at the same weight. A salon that hires an agency is buying the
+ * right not to think about marketing; what it got was homework, and no sign
+ * of what it was paying for.
  *
- * What is NOT here is the part that is Lumio's method — why this day, when
- * it goes out, the caption and the tags. The server never sends those to
- * this screen (client-view), and this screen has no field to send them back.
+ * THE ORDER, AND WHY IT IS THIS ORDER
+ *
+ *   1. WHAT YOU GOT. Last week's real numbers — posts published, new
+ *      reviews, new customers — with the change against the week before.
+ *      This is the answer to the only question an owner opens the app to
+ *      ask, so it goes first, not last.
+ *   2. WHAT WE ARE DOING. The week's work with Lumio's name on it, in full,
+ *      so the service is visible rather than implied. Editable, because the
+ *      shop may still move or reword anything on its own plan.
+ *   3. WHAT WE NEED FROM YOU. Exactly one ask (see weekly-ask on the server),
+ *      one deadline, one button. Everything technical is folded away behind
+ *      "mẹo quay đẹp" and framed as optional, because a shop that cannot
+ *      shoot is not a shop that is failing — it is a shop that hired us.
  */
 
 export interface ShopJob {
@@ -32,7 +41,17 @@ export interface ShopJob {
  * the API does, and a browser that got the new page against yesterday's server
  * must show a readable week, not a blank screen. Missing them means read-only.
  */
-export interface ShopWeekData { focus: string; jobs: ShopJob[]; prep: { label: string; detail: string }[]; days?: string[] }
+export interface ShopWeekData {
+  focus: string; jobs: ShopJob[]; prep: { label: string; detail: string }[]; days?: string[];
+  /** The one thing asked of the shop this week. Absent on an older API. */
+  ask?: { jobIds: string[]; what: string; by: string; byDayIndex: number } | null;
+  /** Counter habits — shown as a soft line, never as a task. */
+  counterIds?: string[];
+}
+export interface LastWeek {
+  label: string; posted: number; reviews: number; newCustomers: number; bookings: number;
+  delta: { reviews: number | null; newCustomers: number | null; bookings: number | null };
+}
 export interface HolidayIdea {
   key: string; name: string; date: string; daysAway: number; spanDays: number; idea: string; window: string;
   offer: { kind: 'percent' | 'amount' | 'gift'; value: number; gift: string; slot: string; expires: string; terms: string };
@@ -54,8 +73,11 @@ function dayLabelsFrom(jobs: ShopJob[]): string[] {
   return Array.from({ length: out.length }, (_, i) => out[i] ?? '');
 }
 
-export function ShopWeek({ token, vi, week, weekKey, unread, onChanged, onError }: {
+export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, onSend, onChanged, onError }: {
   token: string | null; vi: boolean; week: ShopWeekData; weekKey: string | null; unread?: number;
+  lastWeek?: LastWeek | null;
+  /** Open the file picker on the send box above — the ask's one button. */
+  onSend?: () => void;
   onChanged: () => Promise<void> | void; onError: (m: string | null) => void;
 }) {
   const T = (v: string, e: string) => (vi ? v : e);
@@ -88,18 +110,40 @@ export function ShopWeek({ token, vi, week, weekKey, unread, onChanged, onError 
 
   // The seven labels, or — against an older API — the labels the jobs carry.
   const labels = week.days?.length ? week.days : dayLabelsFrom(week.jobs);
-  const byDay = labels.map((label, di) => ({ label, di, jobs: week.jobs.filter((j) => j.dayIndex === di) }));
+  // The three groups the screen is built from. An older API sends no `ask`,
+  // in which case the shop's own jobs stay in the list where they used to be.
+  const askIds = new Set(week.ask?.jobIds ?? []);
+  const counterIds = new Set(week.counterIds ?? []);
+  const askJobs = week.jobs.filter((j) => j.id && askIds.has(j.id));
+  const counterJobs = week.jobs.filter((j) => j.id && counterIds.has(j.id));
+  const lumioJobs = week.jobs.filter((j) => !(j.id && (askIds.has(j.id) || counterIds.has(j.id))));
+  const byDay = labels.map((label, di) => ({ label, di, jobs: lumioJobs.filter((j) => j.dayIndex === di) }));
 
   return (
     <section style={{ marginBottom: 18 }}>
-      <h2 style={h2}>{T('Kế hoạch tuần này', 'This week\'s plan')}</h2>
-      <p style={lede}>{week.focus}</p>
-      {canEdit && (
-        <p style={{ ...lede, fontSize: 12, color: 'var(--c64748b)' }}>
-          {T('Bấm vào chữ để sửa — tự lưu khi bấm ra ngoài. Tích từng bước khi làm xong; đổi ngày hoặc bỏ việc ngay trên dòng. Nhân viên Lumio thấy mọi thay đổi.',
-             'Click any line to edit — it saves when you click away. Tick steps as you finish them; move or drop a job on its line. Lumio\'s staff see every change.')}
-        </p>
+      {/* ---- 1. what the shop GOT ----
+             First, because it is the question the owner opened the app to ask.
+             Every figure is her own row count; nothing here claims a booking
+             came from a post. */}
+      {lastWeek && (
+        <div style={{ ...card, marginBottom: 12, background: 'var(--c0f172a)', borderColor: 'var(--c334155)' }}>
+          <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 9 }}>
+            {T(`TUẦN RỒI TIỆM NHẬN ĐƯỢC · ${lastWeek.label}`, `WHAT YOU GOT LAST WEEK · ${lastWeek.label}`)}
+          </div>
+          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
+            <Stat n={lastWeek.posted} label={T('bài đã đăng', 'posts published')} />
+            <Stat n={lastWeek.reviews} label={T('đánh giá mới', 'new reviews')} delta={lastWeek.delta.reviews} />
+            <Stat n={lastWeek.newCustomers} label={T('khách mới', 'new customers')} delta={lastWeek.delta.newCustomers} />
+            <Stat n={lastWeek.bookings} label={T('lượt đặt lịch', 'bookings')} delta={lastWeek.delta.bookings} />
+          </div>
+        </div>
       )}
+
+      {/* ---- 2. what LUMIO is doing ----
+             The service, visible. Named, dated and in full — a client who
+             cannot see the work assumes there is none. */}
+      <h2 style={h2}>{T('Tuần này bên em làm cho tiệm', 'What we are doing for you this week')}</h2>
+      <p style={lede}>{week.focus}</p>
 
       <div style={card}>
         {byDay.map(({ label, di, jobs }) => (
@@ -148,10 +192,71 @@ export function ShopWeek({ token, vi, week, weekKey, unread, onChanged, onError 
         ))}
       </div>
 
+      {/* ---- 3. the ONE thing asked of the shop ----
+             One ask, one deadline, one button. The shot list is folded away
+             and called a tip, not a step: a shop that cannot shoot well is
+             not failing its plan, it is the reason it hired us. */}
+      {week.ask && askJobs.length > 0 && (
+        <div style={{
+          ...card, marginTop: 14, borderColor: '#22c55e',
+          background: 'linear-gradient(135deg, rgba(34,197,94,.14), rgba(34,197,94,.04))',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--cf1f5f9)' }}>
+              {T('Bên em cần tiệm giúp 1 việc', 'One thing we need from you')}
+            </span>
+            <span style={{
+              fontSize: 12, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
+              background: week.ask.byDayIndex <= 1 ? 'rgba(245,158,11,.18)' : 'rgba(148,163,184,.14)',
+              color: week.ask.byDayIndex <= 1 ? '#fbbf24' : 'var(--c94a3b8)',
+            }}>{week.ask.by}</span>
+          </div>
+          <div style={{ fontSize: 14, color: 'var(--ce2e8f0)', lineHeight: 1.6, marginTop: 5 }}>{week.ask.what}</div>
+
+          {onSend && (
+            <button onClick={onSend} style={{ ...smallPrimary, minHeight: 46, fontSize: 15, marginTop: 11, width: '100%' }}>
+              📷 {T('Chụp/quay xong rồi — gửi cho Lumio', 'Shot it — send to Lumio')}
+            </button>
+          )}
+
+          {/* The habit at the counter. One line, no steps, nothing to tick —
+              it is worth money and it is not a chore. */}
+          {counterJobs.map((j) => (
+            <div key={j.id} style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 9, display: 'flex', gap: 7 }}>
+              <span style={{ flex: '0 0 auto' }}>🌟</span>
+              <span><b style={{ color: 'var(--ccbd5e1)' }}>{T('Tiện thì:', 'When it is easy:')}</b> {j.text}</span>
+            </div>
+          ))}
+
+          <details style={{ marginTop: 10 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#86efac', listStyle: 'none' }}>
+              {T('Mẹo quay cho đẹp (không bắt buộc) →', 'Tips for a good shot (optional) →')}
+            </summary>
+            <div style={{ marginTop: 7, paddingLeft: 10, borderLeft: '2px solid rgba(34,197,94,.35)' }}>
+              <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.55, marginBottom: 7 }}>
+                {T('Quay được bao nhiêu gửi bấy nhiêu — thiếu hay xấu bên em vẫn dựng được. Đây chỉ là mẹo cho nhanh và đẹp hơn.',
+                   'Send whatever you get — we can work with less, and with rough. These are only tips to make it quicker and better.')}
+              </div>
+              {askJobs.map((j) => (
+                <AskDetail key={j.id} j={j} vi={vi} canEdit={canEdit} days={labels}
+                  onText={(text) => patch({ jobs: [{ id: j.id, text }] })}
+                  onSteps={(steps) => patch({ jobs: [{ id: j.id, steps }] })}
+                  onMove={(dayIndex) => patch({ jobs: [{ id: j.id, dayIndex }] })}
+                />
+              ))}
+            </div>
+          </details>
+        </div>
+      )}
+
+      {/* An older API sends no `ask`; the shop's own jobs then stay where they
+          have always been rather than vanishing from the screen. */}
+      {!week.ask && (askJobs.length > 0 || counterJobs.length > 0) && null}
+
       {!!week.prep.length && (
         <div style={{ ...card, background: 'var(--c0f172a)', marginTop: 10 }}>
           <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 7 }}>
-            {T('CẦN CHUẨN BỊ', 'WHAT TO HAVE READY')}
+            {T('BÊN EM CHUẨN BỊ SẴN CHO TIỆM', 'WHAT WE HAVE READY FOR YOU')}
           </div>
           {week.prep.map((l, i) => (
             <div key={i} style={{ display: 'flex', gap: 9, padding: '4px 0' }}>
@@ -175,6 +280,64 @@ export function ShopWeek({ token, vi, week, weekKey, unread, onChanged, onError 
         />
       )}
     </section>
+  );
+}
+
+/** One number from last week, with the change against the week before. */
+function Stat({ n, label, delta }: { n: number; label: string; delta?: number | null }) {
+  const up = typeof delta === 'number' && delta > 0;
+  const down = typeof delta === 'number' && delta < 0;
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+        <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--cf1f5f9)', lineHeight: 1.1 }}>{n}</span>
+        {(up || down) && (
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: up ? '#86efac' : '#fca5a5' }}>
+            {up ? '▲' : '▼'}{Math.abs(delta as number)}
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 2, lineHeight: 1.35 }}>{label}</div>
+    </div>
+  );
+}
+
+/**
+ * One of the shop's own jobs, inside the tips fold: the instruction, the shot
+ * list, and the day — all editable, because the shop may still rewrite its own
+ * plan. Deliberately without checkboxes: ticking six shots is bookkeeping the
+ * shop is not being paid to do, and an untouched 0/6 reads as a failure that
+ * never happened.
+ */
+function AskDetail({ j, vi, canEdit, days, onText, onSteps, onMove }: {
+  j: ShopJob; vi: boolean; canEdit: boolean; days: string[];
+  onText: (t: string) => void; onSteps: (s: string[]) => void; onMove: (d: number) => void;
+}) {
+  const T = (v: string, e: string) => (vi ? v : e);
+  const steps = j.steps ?? [];
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.5, fontWeight: 600 }}>
+        <Inline value={j.text} canEdit={canEdit} onCommit={onText} multiline />
+      </div>
+      {!!steps.length && (
+        <ul style={{ margin: '5px 0 0', paddingLeft: 17, color: 'var(--c94a3b8)', fontSize: 12.5, lineHeight: 1.6 }}>
+          {steps.map((st, k) => (
+            <li key={k} style={{ marginBottom: 2 }}>
+              <Inline value={st} canEdit={canEdit} onCommit={(v) => { const next = [...steps]; next[k] = v; onSteps(next.filter(Boolean)); }} multiline />
+            </li>
+          ))}
+        </ul>
+      )}
+      {j.how && <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.55, marginTop: 5 }}>{j.how}</div>}
+      {canEdit && (
+        <div style={{ marginTop: 5 }}>
+          <select value={j.dayIndex} onChange={(e) => onMove(Number(e.target.value))} style={{ ...select, fontSize: 11.5, padding: '2px 6px' }}>
+            {days.map((d, i) => <option key={i} value={i}>{i === 0 ? T('Hôm nay', 'Today') : d}</option>)}
+          </select>
+        </div>
+      )}
+    </div>
   );
 }
 

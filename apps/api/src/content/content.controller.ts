@@ -100,9 +100,18 @@ export class ContentController {
     // anybody is running its marketing. Handing homework to a shop that bought
     // a booking system and nothing else is worse than showing it nothing, so
     // the plan appears only once there is evidence the team is on this salon.
-    if (!(await this.suggestions.hasAgencyWork(user))) return { week: null, weekKey: null };
-    const { plan, weekKey, ticks } = await this.svc.weekForSalonKept(user);
-    return { week: flattenForClient(clientWeek(plan, { weekKey: weekKey ?? '', ticks }), lang === 'en' ? 'en' : 'vi'), weekKey };
+    if (!(await this.suggestions.hasAgencyWork(user))) return { week: null, weekKey: null, lastWeek: null };
+    const [{ plan, weekKey, ticks }, lastWeek] = await Promise.all([
+      this.svc.weekForSalonKept(user),
+      this.svc.lastWeekForSalon(user).catch(() => null),
+    ]);
+    return {
+      week: flattenForClient(clientWeek(plan, { weekKey: weekKey ?? '', ticks }), lang === 'en' ? 'en' : 'vi'),
+      weekKey,
+      // What the salon GOT last week — its own numbers, and the first thing
+      // its screen shows. See ContentService.lastWeekForSalon.
+      lastWeek: lastWeek ? flattenForClient(lastWeek, lang === 'en' ? 'en' : 'vi') : null,
+    };
   }
 
   /**

@@ -854,6 +854,51 @@ export class ContentService {
   }
 
   /**
+   * What the salon actually GOT last week — its own numbers, nothing inferred.
+   *
+   * The client screen used to open on a list of chores. It now opens on this,
+   * because it is the only part of the screen that answers the question the
+   * owner is actually asking when she opens the app: what am I paying for.
+   *
+   * Every figure is the salon's own row count, and the change against the week
+   * before travels with it. Nothing here attributes a booking to a post — see
+   * week-outcome for why that line is not crossed.
+   */
+  async lastWeekForSalon(user: AuthenticatedUser): Promise<{
+    label: Txt; posted: number; reviews: number; newCustomers: number; bookings: number;
+    delta: { reviews: number | null; newCustomers: number | null; bookings: number | null };
+  } | null> {
+    const tenantId = this.tenantId(user);
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } })
+      .catch(() => null);
+    const thisWeek = weekKey(new Date(), tenant?.timezone || 'America/New_York');
+    const loose = this.prisma as unknown as Record<string, { findFirst: (a: unknown) => Promise<unknown> }>;
+    const row = await loose.contentWeek?.findFirst({
+      where: { tenantId, weekKey: { not: thisWeek }, outcome: { not: null } },
+      orderBy: { startDate: 'desc' },
+      select: { weekKey: true, outcome: true },
+    }).catch(() => null) as { weekKey: string; outcome: WeekOutcome | null } | null;
+    const o = row?.outcome;
+    if (!o) return null;
+    return {
+      label: weekLabel(row!.weekKey),
+      posted: o.posted ?? 0,
+      reviews: o.reviews ?? 0,
+      newCustomers: o.newCustomers ?? 0,
+      bookings: o.bookings ?? 0,
+      // Money is deliberately left out. It is the salon's own figure and it
+      // already has a screen; on a marketing card beside a post count it reads
+      // as a claim about what the posts earned, which is exactly the line
+      // week-outcome refuses to cross.
+      delta: {
+        reviews: o.delta?.reviews ?? null,
+        newCustomers: o.delta?.newCustomers ?? null,
+        bookings: o.delta?.bookings ?? null,
+      },
+    };
+  }
+
+  /**
    * The SHOP rewriting its own week.
    *
    * The owner asked to work on the plan with the team, not only read it, so

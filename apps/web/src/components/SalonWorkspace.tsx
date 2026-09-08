@@ -5,7 +5,7 @@ import { apiFetch } from '../lib/api';
 import { compactCount, ageOf } from '../lib/counts';
 import { useLive, fresh } from '../lib/live';
 import { enqueue, installOutbox, useOutbox, retryFailed, discardBatch, cancelBatch, takeLastDone, type BatchView } from '../lib/upload-queue';
-import { ShopWeek, HolidayOffers, type ShopWeekData, type HolidayIdea } from './ShopWeek';
+import { ShopWeek, HolidayOffers, type ShopWeekData, type HolidayIdea, type LastWeek } from './ShopWeek';
 
 /**
  * The salon's whole screen: what to film, what Lumio asked for, what is waiting
@@ -67,6 +67,9 @@ export function SalonWorkspace({ token, vi, onCount }: {
   const [week, setWeek] = useState<ClientWeek | null>(null);
   const [weekKey, setWeekKey] = useState<string | null>(null);
   const [holidays, setHolidays] = useState<HolidayIdea[]>([]);
+  const [lastWeek, setLastWeek] = useState<LastWeek | null>(null);
+  // The ask's one button opens the picker on the send box at the top of the tab.
+  const askSend = useRef<(() => void) | null>(null);
   const [weekUnread, setWeekUnread] = useState(0);
   const [err, setErr] = useState<string | null>(null);
 
@@ -74,12 +77,12 @@ export function SalonWorkspace({ token, vi, onCount }: {
     if (!token) return;
     const [s, w, h, u] = await Promise.all([
       apiFetch<SuggestionFeed>(fresh('/content/suggestions'), { token }).catch(() => null),
-      apiFetch<{ week: ClientWeek | null; weekKey: string | null }>(fresh(`/content/my-week?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
+      apiFetch<{ week: ClientWeek | null; weekKey: string | null; lastWeek: LastWeek | null }>(fresh(`/content/my-week?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
       apiFetch<{ ideas: HolidayIdea[] }>(fresh(`/content/my-holidays?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
       apiFetch<{ bySubject?: Record<string, number> }>(fresh('/content/chat/unread'), { token }).catch(() => null),
     ]);
     if (s) { setSugg(s); onCount?.(s.waiting ?? s.open.length); }
-    if (w) { setWeek(w.week); setWeekKey(w.weekKey ?? null); }
+    if (w) { setWeek(w.week); setWeekKey(w.weekKey ?? null); setLastWeek(w.lastWeek ?? null); }
     if (h) setHolidays(h.ideas ?? []);
     if (u && w?.weekKey) setWeekUnread(u.bySubject?.[`week:${w.weekKey}`] ?? 0);
   }, [token, vi, onCount]);
@@ -115,7 +118,7 @@ export function SalonWorkspace({ token, vi, onCount }: {
       {/* ---- 0. the open door, first and loud ----
              The thing a shop does most often is send what it just made. That
              is the top of the tab, one tap, no card to wait for. */}
-      <SendAnything token={token} vi={vi} onDone={load} onError={setErr} />
+      <SendAnything token={token} vi={vi} onDone={load} onError={setErr} openRef={askSend} />
 
       {nothing && (
         <div style={{
@@ -152,7 +155,11 @@ export function SalonWorkspace({ token, vi, onCount }: {
              The whole plan, editable in place, with the thread under it —
              see ShopWeek. Then the holidays ahead with a programme each. */}
       {!!week?.jobs.length && (
-        <ShopWeek token={token} vi={vi} week={week} weekKey={weekKey} unread={weekUnread} onChanged={load} onError={setErr} />
+        <ShopWeek
+          token={token} vi={vi} week={week} weekKey={weekKey} unread={weekUnread}
+          lastWeek={lastWeek} onSend={() => askSend.current?.()}
+          onChanged={load} onError={setErr}
+        />
       )}
       {!!holidays.length && (
         <HolidayOffers token={token} vi={vi} ideas={holidays} onError={setErr} />
@@ -455,8 +462,10 @@ function OutboxBar({ vi, pending, running, online, pct }: {
  * asked for, and must not compete with them for the thumb. Once open it
  * is the same send as a card — same shrink, same two-at-a-time, same bar.
  */
-function SendAnything({ token, vi, onDone, onError }: {
+function SendAnything({ token, vi, onDone, onError, openRef }: {
   token: string | null; vi: boolean; onDone: () => void; onError: (m: string | null) => void;
+  /** Handed up so the week's one ask can open this picker with its own button. */
+  openRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const T = (v: string, e: string) => (vi ? v : e);
   const [note, setNote] = useState('');
@@ -464,6 +473,11 @@ function SendAnything({ token, vi, onDone, onError }: {
   const [sent, setSent] = useState<number | null>(null);
   const pick = useRef<HTMLInputElement | null>(null);
   const outbox = useOutbox();
+  useEffect(() => {
+    if (!openRef) return;
+    openRef.current = () => pick.current?.click();
+    return () => { openRef.current = null; };
+  }, [openRef]);
   const mine = outbox.pending.filter((b) => 'shop' in b.target);
   const pct = mine.length ? Math.round(mine.reduce((n, b) => n + b.pct, 0) / mine.length) : null;
   void onDone;

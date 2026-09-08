@@ -1,5 +1,6 @@
 import { bi, viOf, enOf, type Txt } from './i18n';
 import type { DayPlan, Job, JobKind, WeekPlan } from './weekly-plan';
+import { weeklyAsk, COUNTER_KINDS, type WeeklyAsk } from './weekly-ask';
 
 /**
  * What the SALON is allowed to see, as opposed to what the team works from.
@@ -116,6 +117,14 @@ export interface ClientWeek {
   prep: { label: Txt; detail: Txt }[];
   /** The seven day labels, in order, so the shop can move a job to another day. */
   days: Txt[];
+  /**
+   * The one thing the shop is asked for this week — see ./weekly-ask for why
+   * there is exactly one. Null when the week needs nothing from the salon,
+   * which is a real and welcome answer.
+   */
+  ask: WeeklyAsk | null;
+  /** Habits at the counter: the shop's, but never a task with steps. */
+  counterIds: string[];
 }
 
 /** What the week row knows that the plan does not: which week, and what is ticked. */
@@ -155,8 +164,11 @@ export function clientWeek(plan: WeekPlan | null | undefined, meta?: ClientWeekM
       });
     }
   });
+  const dayLabels = plan.days.map((d) => d.label);
   return {
-    days: plan.days.map((d) => d.label),
+    days: dayLabels,
+    ask: weeklyAsk(jobs, dayLabels),
+    counterIds: jobs.filter((j) => COUNTER_KINDS.includes(j.kind)).map((j) => j.id).filter(Boolean),
     // The focus line is the one piece of reasoning the shop does get, because
     // without it the week is a list of chores. It says WHAT this week is for,
     // never how the week was decided.

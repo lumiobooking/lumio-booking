@@ -117,6 +117,51 @@ export class SupportService {
     return { ok: true, tenantId, team: team || null };
   }
 
+  /**
+   * Move MANY salons onto a team in one call.
+   *
+   * WHY THIS EXISTS AND THE SINGLE MOVE IS NOT ENOUGH
+   *
+   * Filing fifty salons one dropdown at a time is not a slower way of doing
+   * this job; it is a job nobody finishes. And an unfiled salon is precisely
+   * the one that goes a fortnight without a post, so the cost of not
+   * finishing lands on the client rather than on the person who gave up.
+   *
+   * Same bar as the single move, and one audit row per salon — the trail does
+   * not get thinner for the work getting faster.
+   */
+  async setTeamForMany(user: AuthenticatedUser, rawIds: unknown, rawTeam: unknown) {
+    await this.mustBeSenior(user);
+    const ids = [...new Set(
+      (Array.isArray(rawIds) ? rawIds : []).map((x) => String(x ?? '').trim()).filter(Boolean),
+    )].slice(0, 500);
+    if (!ids.length) throw new BadRequestException('Chưa chọn tiệm nào.');
+    const team = cleanTeam(rawTeam);
+
+    // Filtered through the DB rather than trusted: a deleted salon must not be
+    // quietly resurrected onto a team by an id left over in a stale tab.
+    const found = await this.prisma.tenant.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true },
+    }).catch(() => [] as { id: string }[]);
+    const okIds = found.map((t) => t.id);
+    if (!okIds.length) throw new NotFoundException('Không tìm thấy tiệm nào trong danh sách này.');
+
+    await this.prisma.tenant.updateMany({
+      where: { id: { in: okIds } },
+      data: { supportTeam: team || null } as never,
+    });
+    await this.prisma.auditLog.createMany({
+      data: okIds.map((tenantId) => ({
+        tenantId, userId: user.userId ?? null,
+        action: 'support.tenant_team_set',
+        resourceType: 'tenant', resourceId: tenantId,
+        metadata: { team: team || null, bulk: okIds.length },
+      })) as never,
+    }).catch(() => undefined);
+    return { ok: true, count: okIds.length, team: team || null };
+  }
+
   /** Put an employee on a team, or take them off one. Same bar as moving a salon. */
   async setAccountTeam(user: AuthenticatedUser, id: string, raw: unknown) {
     await this.mustBeSenior(user);

@@ -48,6 +48,14 @@ export class SupportController {
     return this.svc.setTenantTeam(user, tenantId, dto?.team);
   }
 
+  /** Move a whole batch at once — the only way fifty unfiled salons ever get filed. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Post('tenants/team')
+  @HttpCode(200)
+  setTeamForMany(@CurrentUser() user: AuthenticatedUser, @Body() dto: { ids?: string[]; team?: string }) {
+    return this.svc.setTeamForMany(user, dto?.ids, dto?.team);
+  }
+
   /** Put an employee on a team. Same bar. */
   @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
   @Post('accounts/:id/team')

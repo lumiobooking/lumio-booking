@@ -44,11 +44,36 @@ function ago(iso: string | null): string {
   return d === 1 ? 'hôm qua' : `${d} ngày trước`;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  ACTIVE: '#22c55e',
-  PENDING: '#eab308',
-  SUSPENDED: '#ef4444',
-};
+/**
+ * Above this many new salons in one view, the MỚI tag stops being a signal.
+ *
+ * A badge on half the rows is not a badge, it is a texture — the eye stops
+ * seeing it exactly when there is most to see. Past the threshold the tags
+ * come off the rows and become one line at the top that filters the list,
+ * which is both quieter and more useful: you can act on it.
+ */
+const NEW_TAGS_MAX = 8;
+
+/** '*' is every salon; '' is the ones nobody has claimed; anything else is a team. */
+const ALL = '*';
+
+const cssFor = `
+.ag-cols { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 16px; align-items: start; }
+.ag-side { display: flex; flex-direction: column; gap: 6px; position: sticky; top: 16px; }
+.ag-side-lbl { font-size: 10.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: var(--c64748b); padding: 0 4px 4px; }
+.ag-row:hover { background: var(--c162032) !important; }
+@media (max-width: 880px) {
+  .ag-cols { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .ag-side { flex-direction: row; overflow-x: auto; position: static; padding-bottom: 4px; scrollbar-width: none; }
+  .ag-side::-webkit-scrollbar { display: none; }
+  /* The items carry width:100% for the column; on a phone they have to shrink
+     to their own content or the first chip eats the row and the other teams
+     are off-screen with nothing to say they exist. */
+  .ag-side > * { flex: 0 0 auto; width: auto !important; }
+  .ag-side-lbl { display: none; }
+  .ag-side-members { display: none; }
+}
+`;
 
 export default function AgencyPage() {
   const { token, user, ready, logout } = useAuth();
@@ -57,7 +82,6 @@ export default function AgencyPage() {
   const [inbox, setInbox] = useState<InboxRow[]>([]);
   const [allSalons, setAllSalons] = useState(false);
   const [board, setBoard] = useState<Board | null>(null);
-  const [openTeams, setOpenTeams] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<string | null>(null);
   const groups = useMemo(() => groupInbox(inbox), [inbox]);
   // Which salons arrived this week, as the API judged it. Searching cuts
@@ -66,10 +90,18 @@ export default function AgencyPage() {
     () => new Set((board?.groups ?? []).flatMap((g) => g.salons.filter((x) => x.isNew).map((x) => x.id))),
     [board],
   );
+  /** Which team's list is on screen. Null until the board says which is mine. */
+  const [pick, setPick] = useState<string | null>(null);
+  const [newOnly, setNewOnly] = useState(false);
+  /** Bulk mode: the tick boxes are showing, and these are the salons ticked. */
+  const [picking, setPicking] = useState(false);
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [assigning, setAssigning] = useState(false);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ready) return;
@@ -94,16 +126,72 @@ export default function AgencyPage() {
     return () => clearInterval(t);
   }, [ready, user, token, router]);
 
+  // An employee lands on their own list; the owner, who has no team, lands on
+  // all of them. Only ever set once — after that the choice is the viewer's.
+  useEffect(() => {
+    if (!board || pick !== null) return;
+    setPick(board.myTeam && board.groups.some((g) => g.team === board.myTeam) ? board.myTeam : ALL);
+  }, [board, pick]);
+
   // The browser tab says it too, so a staff member on another page notices.
   useEffect(() => {
     document.title = inbox.length ? `(${inbox.length}) Tiệm vừa gửi · Lumio Support` : 'Lumio Support';
   }, [inbox.length]);
 
-  const shown = useMemo(() => {
+  /**
+   * The salons actually on screen.
+   *
+   * A search cuts across every team, because somebody looking for a name does
+   * not care whose list it is on. Otherwise it is the chosen team's list, in
+   * the order the server put it in — this week's arrivals, then the alphabet.
+   */
+  const listed = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return rows;
-    return rows.filter((r) => `${r.name} ${r.slug}`.toLowerCase().includes(needle));
-  }, [rows, q]);
+    if (needle) return rows.filter((r) => `${r.name} ${r.slug}`.toLowerCase().includes(needle));
+    let out: TenantRow[];
+    if (!board || pick === null || pick === ALL) {
+      out = [...rows].sort((a, b) =>
+        (newIds.has(b.id) ? 1 : 0) - (newIds.has(a.id) ? 1 : 0) || a.name.localeCompare(b.name));
+    } else {
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      out = (board.groups.find((g) => g.team === pick)?.salons ?? [])
+        .map((sg) => byId.get(sg.id))
+        .filter((t): t is TenantRow => Boolean(t));
+    }
+    return newOnly ? out.filter((t) => newIds.has(t.id)) : out;
+  }, [rows, board, pick, q, newOnly, newIds]);
+
+  /** How many of the salons on screen arrived this week. Decides the tags. */
+  const newHere = useMemo(() => listed.filter((t) => newIds.has(t.id)).length, [listed, newIds]);
+  const tagRows = newHere > 0 && newHere <= NEW_TAGS_MAX;
+
+  /** Which team each salon is on, for the chip at the end of a row. */
+  const teamOf = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const g of board?.groups ?? []) for (const sg of g.salons) m.set(sg.id, g.team);
+    return m;
+  }, [board]);
+
+  /** The sidebar: every team plus the two views that are not teams. */
+  const sideItems = useMemo(() => {
+    const gs = board?.groups ?? [];
+    const teams = gs.filter((g) => g.team).map((g) => ({
+      key: g.team, label: g.label, count: g.salons.length, fresh: g.newCount ?? 0,
+      mine: g.mine, members: board?.teams.find((t) => t.team === g.team)?.members ?? [],
+    }));
+    const none = gs.find((g) => !g.team);
+    return {
+      teams,
+      unassigned: { key: '', label: 'Chưa giao', count: none?.salons.length ?? 0, fresh: none?.newCount ?? 0 },
+      all: { key: ALL, label: 'Tất cả', count: rows.length, fresh: newIds.size },
+    };
+  }, [board, rows.length, newIds]);
+
+  const toggleChosen = (id: string) => setChosen((c) => {
+    const n = new Set(c);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
 
   /**
    * Move a salon onto a team. Refused by the server for anyone but the owner
@@ -120,6 +208,32 @@ export default function AgencyPage() {
       setEditing(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Không đổi được nhóm');
+    }
+  }
+
+  /**
+   * File everything ticked, in one call.
+   *
+   * The confirmation matters more here than on a single move: twelve salons
+   * just left the list you were looking at, and without a count you cannot
+   * tell that from a page that silently lost them.
+   */
+  async function assignMany(team: string) {
+    if (!token || !chosen.size || assigning) return;
+    setAssigning(true); setError(null); setNote(null);
+    try {
+      const r = await apiFetch<{ count: number }>('/support/tenants/team', {
+        method: 'POST', token, body: { ids: [...chosen], team },
+      });
+      const b = await apiFetch<Board>('/support/board', { token });
+      setBoard(b);
+      setChosen(new Set());
+      setPicking(false);
+      setNote(`Đã giao ${r.count} tiệm cho ${team || '“chưa phân nhóm”'}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Không giao được nhóm');
+    } finally {
+      setAssigning(false);
     }
   }
 
@@ -178,7 +292,7 @@ export default function AgencyPage() {
 
   return (
     <main style={{ minHeight: '100vh', background: 'var(--c0b1120)', color: 'var(--ce2e8f0)', padding: '28px 16px' }}>
-      <div style={{ maxWidth: 780, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1060, margin: '0 auto', paddingBottom: 72 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
           <h1 style={{ fontSize: 22, margin: 0 }}>🛠 Lumio Support</h1>
           <button onClick={() => { logout(); router.replace('/login'); }}
@@ -211,6 +325,12 @@ export default function AgencyPage() {
         </a>
 
         {error && <div style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{error}</div>}
+        {note && (
+          <div style={{ background: 'rgba(34,197,94,.12)', border: '1px solid #22c55e', color: '#bbf7d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14, display: 'flex', gap: 10 }}>
+            <span>{note}</span>
+            <button onClick={() => setNote(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: '#86efac', cursor: 'pointer', fontSize: 14 }}>✕</button>
+          </div>
+        )}
 
         {/* ---- what the shops sent, across every salon ----
              The one list that stops a clip sent at 11pm from being found on
@@ -287,80 +407,143 @@ export default function AgencyPage() {
           )}
         </section>
 
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search salon by name…"
-          autoFocus
-          style={{ width: '100%', boxSizing: 'border-box', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 10, padding: '12px 14px', fontSize: 15, marginBottom: 14 }}
-        />
+        <style dangerouslySetInnerHTML={{ __html: cssFor }} />
 
-        {/* Grouped by team, but the GROUPING is not what shortens the list —
-            the default is. This employee's own team is open, the salons
-            nobody owns are open under it, and every other team is one folded
-            line. Searching cuts across all of them, because somebody looking
-            for a name does not care whose list it is on. */}
-        {board && !q.trim() && board.groups.map((g) => {
-          const isOpen = openTeams[g.team] ?? g.open;
-          return (
-            <div key={g.team || '_none'} style={{ marginBottom: 10 }}>
-              <button
-                onClick={() => setOpenTeams((o) => ({ ...o, [g.team]: !isOpen }))}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', textAlign: 'left',
-                  border: `1px solid ${g.mine ? '#6366f1' : g.team ? 'var(--c1f2937)' : '#f59e0b'}`,
-                  background: g.mine ? 'rgba(99,102,241,.10)' : g.team ? 'var(--c111827)' : 'rgba(245,158,11,.07)',
-                  borderRadius: 10, padding: '9px 13px', color: 'var(--ce2e8f0)',
-                }}
-              >
-                <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{isOpen ? '▾' : '▸'}</span>
-                <span style={{ fontWeight: 800, fontSize: 14 }}>{g.label}</span>
-                {g.mine && <span style={{ fontSize: 10.5, fontWeight: 800, background: '#6366f1', color: '#fff', borderRadius: 999, padding: '1px 7px' }}>NHÓM TÔI</span>}
-                {!g.team && <span style={{ fontSize: 11.5, color: '#fbbf24' }}>chưa ai phụ trách</span>}
-                {!!g.newCount && (
-                  <span style={{ fontSize: 10.5, fontWeight: 800, background: '#22c55e', color: '#052e16', borderRadius: 999, padding: '1px 7px' }}>
-                    {g.newCount} MỚI
-                  </span>
-                )}
-                <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--c94a3b8)' }}>{g.salons.length} tiệm</span>
-              </button>
-              {isOpen && (
-                <div style={{ border: '1px solid var(--c1f2937)', borderTop: 'none', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
-                  {!g.salons.length && <div style={{ padding: 14, color: 'var(--c64748b)', fontSize: 13 }}>Nhóm này chưa có tiệm nào.</div>}
-                  {g.salons.map((sg) => {
-                    const t = rows.find((r) => r.id === sg.id);
-                    return t ? <Row key={t.id} t={t} fresh={sg.isNew} board={board} busy={busy} onEnter={enter} editing={editing} setEditing={setEditing} onTeam={setTeam} /> : null;
-                  })}
-                </div>
+        {/* ---- the groups, and then the salons ----
+             The teams live in their own column so they can never be pushed
+             off the screen by the pile of salons nobody has claimed yet. That
+             pile IS the longest list on this page, and it was burying the two
+             lists people came here to read. On a phone the column lies down
+             into a row of chips that scrolls sideways — same idea, one line. */}
+        <div className="ag-cols">
+          <aside className="ag-side">
+            <div className="ag-side-lbl">Nhóm phụ trách</div>
+            <SideItem item={sideItems.all} active={pick === ALL} onClick={() => { setPick(ALL); setNewOnly(false); }} />
+            {sideItems.teams.map((it) => (
+              <SideItem key={it.key} item={it} active={pick === it.key} onClick={() => { setPick(it.key); setNewOnly(false); }} />
+            ))}
+            <SideItem
+              item={sideItems.unassigned}
+              tone="warn"
+              active={pick === ''}
+              onClick={() => { setPick(''); setNewOnly(false); }}
+            />
+          </aside>
+
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Tìm tiệm theo tên…"
+                autoFocus
+                style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 10, padding: '11px 14px', fontSize: 15 }}
+              />
+              {board?.canAssign && (
+                <button
+                  onClick={() => { setPicking((v) => !v); setChosen(new Set()); }}
+                  style={{
+                    background: picking ? '#6366f1' : 'transparent', color: picking ? '#fff' : 'var(--c94a3b8)',
+                    border: `1px solid ${picking ? '#6366f1' : 'var(--c334155)'}`, borderRadius: 10,
+                    padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >{picking ? '✕ Thoát' : '☑ Chọn nhiều'}</button>
               )}
             </div>
-          );
-        })}
 
-        <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden', display: board && !q.trim() ? 'none' : undefined }}>
-          {shown.length === 0 && (
-            <div style={{ padding: 18, color: 'var(--c64748b)', fontSize: 14 }}>No salons match.</div>
-          )}
-          {shown.map((t) => (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {newIds.has(t.id) && <NewTag />}{t.name}
-                </div>
-                <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>/{t.slug}</div>
-              </div>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: STATUS_COLOR[t.status] || 'var(--c94a3b8)', border: `1px solid ${STATUS_COLOR[t.status] || 'var(--c334155)'}`, borderRadius: 999, padding: '3px 10px' }}>
-                {t.status}
-              </span>
+            {/* Too many arrivals to tag one by one: one line that filters. */}
+            {!q.trim() && newHere > NEW_TAGS_MAX && (
               <button
-                onClick={() => enter(t)}
-                disabled={busy === t.id || t.status === 'SUSPENDED'}
-                title={t.status === 'SUSPENDED' ? 'Suspended — reactivate first (Super Admin)' : 'Open an 8-hour setup session'}
-                style={{ background: '#6366f1', border: 'none', color: 'white', borderRadius: 8, padding: '8px 16px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', opacity: busy === t.id || t.status === 'SUSPENDED' ? 0.5 : 1, whiteSpace: 'nowrap' }}
-              >{busy === t.id ? '…' : 'Vào setup'}</button>
+                onClick={() => setNewOnly((v) => !v)}
+                style={{
+                  width: '100%', textAlign: 'left', cursor: 'pointer', marginBottom: 10,
+                  background: newOnly ? 'rgba(34,197,94,.14)' : 'var(--c111827)',
+                  border: `1px solid ${newOnly ? '#22c55e' : 'var(--c1f2937)'}`, borderRadius: 10,
+                  padding: '9px 13px', color: 'var(--ce2e8f0)', fontSize: 13,
+                }}
+              >
+                <span style={{ color: '#4ade80', fontWeight: 800 }}>{newHere} tiệm mới</span> trong tuần này
+                <span style={{ float: 'right', color: newOnly ? '#4ade80' : 'var(--c64748b)', fontWeight: 700 }}>
+                  {newOnly ? 'Bỏ lọc ✕' : 'Chỉ xem các tiệm mới →'}
+                </span>
+              </button>
+            )}
+
+            {q.trim() && (
+              <div style={{ fontSize: 12.5, color: 'var(--c64748b)', marginBottom: 8 }}>
+                Đang tìm trong tất cả các nhóm — {listed.length} tiệm khớp.
+              </div>
+            )}
+
+            <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden' }}>
+              {listed.length === 0 && (
+                <div style={{ padding: 18, color: 'var(--c64748b)', fontSize: 14 }}>
+                  {q.trim() ? 'Không có tiệm nào khớp.' : 'Nhóm này chưa có tiệm nào.'}
+                </div>
+              )}
+              {listed.map((t) => (
+                <Row
+                  key={t.id}
+                  t={t}
+                  fresh={tagRows && newIds.has(t.id)}
+                  team={teamOf.get(t.id) ?? ''}
+                  showTeam={pick === ALL || Boolean(q.trim())}
+                  canAssign={Boolean(board?.canAssign)}
+                  teams={board?.teams ?? []}
+                  picking={picking}
+                  checked={chosen.has(t.id)}
+                  onCheck={() => toggleChosen(t.id)}
+                  busy={busy}
+                  onEnter={enter}
+                  editing={editing}
+                  setEditing={setEditing}
+                  onTeam={setTeam}
+                />
+              ))}
             </div>
-          ))}
+
+            {picking && listed.length > 0 && (
+              <button
+                onClick={() => setChosen((c) => c.size === listed.length ? new Set() : new Set(listed.map((t) => t.id)))}
+                style={{ background: 'transparent', border: 'none', color: '#a5b4fc', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '10px 2px' }}
+              >
+                {chosen.size === listed.length ? 'Bỏ chọn tất cả' : `Chọn cả ${listed.length} tiệm đang hiện`}
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* ---- what happens to everything ticked ----
+             Anchored to the bottom of the window, because the list it acts on
+             is longer than the screen: a bar that scrolls away is a bar you
+             have to scroll back to before you can finish. */}
+        {picking && chosen.size > 0 && (
+          <div style={{
+            position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40,
+            background: 'var(--c111827)', borderTop: '1.5px solid #6366f1',
+            boxShadow: '0 -8px 24px rgba(0,0,0,.45)', padding: '11px 16px',
+          }}>
+            <div style={{ maxWidth: 1060, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 800, fontSize: 14 }}>Đã chọn {chosen.size} tiệm</span>
+              <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>Giao cho:</span>
+              <select
+                value=""
+                disabled={assigning}
+                onChange={(e) => { if (e.target.value) assignMany(e.target.value === '_none' ? '' : e.target.value); }}
+                style={{ background: 'var(--c0f172a)', border: '1px solid #6366f1', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '8px 10px', fontSize: 13.5, fontWeight: 700 }}
+              >
+                <option value="">— chọn nhóm —</option>
+                {(board?.teams ?? []).filter((x) => x.team).map((x) => <option key={x.team} value={x.team}>{x.team}</option>)}
+                <option value="_none">Bỏ khỏi nhóm</option>
+              </select>
+              {assigning && <span style={{ fontSize: 13, color: '#a5b4fc' }}>Đang giao…</span>}
+              <button
+                onClick={() => setChosen(new Set())}
+                style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '7px 13px', fontSize: 13, cursor: 'pointer' }}
+              >Bỏ chọn</button>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
@@ -368,13 +551,6 @@ export default function AgencyPage() {
 
 const screen: React.CSSProperties = { minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--c0b1120)' };
 
-/**
- * One salon, wherever it is shown — inside a team or in a search result.
- *
- * The team it belongs to is edited here rather than on a settings page: the
- * moment somebody notices a salon is in the wrong list is the moment they are
- * looking at the list, and a fix that needs a second screen does not happen.
- */
 /**
  * A salon that arrived this week.
  *
@@ -391,56 +567,148 @@ function NewTag() {
   );
 }
 
-function Row({ t, fresh, board, busy, onEnter, editing, setEditing, onTeam }: {
-  t: TenantRow; fresh?: boolean; board: Board | null; busy: string | null;
+/**
+ * One line in the left column: a team, or one of the two views that is not a
+ * team. The count is what makes it a decision — "Team 2 · 1" says more about
+ * where the work is than any label could.
+ */
+function SideItem({ item, active, onClick, tone }: {
+  item: { key: string; label: string; count: number; fresh: number; mine?: boolean; members?: string[] };
+  active: boolean;
+  onClick: () => void;
+  tone?: 'warn';
+}) {
+  const accent = tone === 'warn' ? '#f59e0b' : '#6366f1';
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
+        background: active ? (tone === 'warn' ? 'rgba(245,158,11,.14)' : 'rgba(99,102,241,.16)') : 'var(--c111827)',
+        border: `1px solid ${active ? accent : 'var(--c1f2937)'}`,
+        borderLeft: `3px solid ${active ? accent : 'transparent'}`,
+        borderRadius: 10, padding: '8px 11px', color: 'var(--ce2e8f0)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <span style={{ fontWeight: 800, fontSize: 13.5, whiteSpace: 'nowrap' }}>{item.label}</span>
+        {item.mine && <span style={{ fontSize: 9.5, fontWeight: 800, background: '#6366f1', color: '#fff', borderRadius: 999, padding: '1px 6px' }}>TÔI</span>}
+        {item.fresh > 0 && <span style={{ fontSize: 9.5, fontWeight: 800, background: '#22c55e', color: '#052e16', borderRadius: 999, padding: '1px 6px' }}>{item.fresh}&nbsp;MỚI</span>}
+        <span style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 700, color: active ? 'var(--ce2e8f0)' : 'var(--c64748b)', paddingLeft: 8 }}>{item.count}</span>
+      </div>
+      {!!item.members?.length && (
+        <div className="ag-side-members" style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {item.members.join(', ')}
+        </div>
+      )}
+    </button>
+  );
+}
+
+/**
+ * One salon.
+ *
+ * WHAT CAME OFF THIS ROW AND WHY
+ *
+ * An ACTIVE badge on fifty-four of fifty-six rows is not information, it is
+ * texture — so the status only appears when it is NOT active, which is the
+ * only time anybody needs to read it. The purple "Vào setup" button is gone
+ * too: it was the loudest thing on a screen where every row had one, and the
+ * whole row does the same job. Both together take the row from about 80px to
+ * about 52px, which is eighteen salons on a screen instead of ten.
+ *
+ * The team it belongs to is edited here rather than on a settings page: the
+ * moment somebody notices a salon is in the wrong list is the moment they are
+ * looking at the list, and a fix that needs a second screen does not happen.
+ */
+function Row({
+  t, fresh, team, showTeam, canAssign, teams, picking, checked, onCheck,
+  busy, onEnter, editing, setEditing, onTeam,
+}: {
+  t: TenantRow;
+  fresh?: boolean;
+  team: string;
+  showTeam: boolean;
+  canAssign: boolean;
+  teams: { team: string; label: string }[];
+  picking: boolean;
+  checked: boolean;
+  onCheck: () => void;
+  busy: string | null;
   onEnter: (t: TenantRow, landing?: string) => void;
-  editing: string | null; setEditing: (id: string | null) => void;
+  editing: string | null;
+  setEditing: (id: string | null) => void;
   onTeam: (tenantId: string, team: string) => void;
 }) {
-  const mine = board?.groups.find((g) => g.salons.some((s) => s.id === t.id));
   const isEditing = editing === t.id;
+  const suspended = t.status === 'SUSPENDED';
+  const opening = busy === t.id;
+  const open = () => { if (!suspended && !opening && !picking) onEnter(t); };
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
+    <div
+      className="ag-row"
+      role="button"
+      tabIndex={suspended ? -1 : 0}
+      onClick={() => (picking ? onCheck() : open())}
+      onKeyDown={(e) => { if (e.key === 'Enter') (picking ? onCheck() : open()); }}
+      title={suspended ? 'Tiệm đang bị khoá — mở lại ở Super Admin' : 'Mở phiên setup 8 tiếng'}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
+        borderBottom: '1px solid var(--c1f2937)', background: 'var(--c111827)',
+        cursor: suspended && !picking ? 'default' : 'pointer', opacity: opening ? 0.5 : 1,
+      }}
+    >
+      {picking && (
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onCheck}
+          onClick={(e) => e.stopPropagation()}
+          style={{ width: 17, height: 17, accentColor: '#6366f1', cursor: 'pointer', flex: '0 0 auto' }}
+        />
+      )}
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontWeight: 700, fontSize: 14.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {fresh && <NewTag />}{t.name}
         </div>
-        <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>/{t.slug}</div>
+        <div style={{ fontSize: 12, color: 'var(--c64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>/{t.slug}</div>
       </div>
-      {/* Only an account that may actually reassign gets the control. Everyone
-          else still SEES whose salon this is — that is the point of the
-          grouping — but is not offered a button that answers with a refusal. */}
-      {!board?.canAssign ? (
-        mine?.team ? (
-          <span style={{ color: 'var(--c94a3b8)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, whiteSpace: 'nowrap' }}>{mine.team}</span>
-        ) : null
-      ) : isEditing ? (
-        <select
-          autoFocus
-          defaultValue={mine?.team ?? ''}
-          onChange={(e) => onTeam(t.id, e.target.value)}
-          onBlur={() => setEditing(null)}
-          style={{ background: 'var(--c0f172a)', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '5px 8px', fontSize: 12.5 }}
-        >
-          <option value="">— chưa phân nhóm —</option>
-          {(board?.teams ?? []).filter((x) => x.team).map((x) => <option key={x.team} value={x.team}>{x.team}</option>)}
-        </select>
-      ) : (
-        <button
-          onClick={() => setEditing(t.id)}
-          title="Đổi nhóm phụ trách"
-          style={{ background: 'transparent', border: '1px dashed var(--c334155)', color: mine?.team ? 'var(--c94a3b8)' : '#fbbf24', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}
-        >{mine?.team || '+ nhóm'}</button>
+
+      {/* Only the abnormal status is worth a badge. */}
+      {suspended && (
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: '#ef4444', border: '1px solid #ef4444', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>KHOÁ</span>
       )}
-      <span style={{ fontSize: 11.5, fontWeight: 700, color: STATUS_COLOR[t.status] || 'var(--c94a3b8)', border: `1px solid ${STATUS_COLOR[t.status] || 'var(--c334155)'}`, borderRadius: 999, padding: '3px 10px' }}>
-        {t.status}
-      </span>
-      <button
-        onClick={() => onEnter(t)}
-        disabled={busy === t.id || t.status === 'SUSPENDED'}
-        title={t.status === 'SUSPENDED' ? 'Suspended — reactivate first (Super Admin)' : 'Open an 8-hour setup session'}
-        style={{ background: '#6366f1', border: 'none', color: 'white', borderRadius: 8, padding: '8px 16px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', opacity: busy === t.id || t.status === 'SUSPENDED' ? 0.5 : 1, whiteSpace: 'nowrap' }}
-      >{busy === t.id ? '…' : 'Vào setup'}</button>
+
+      {showTeam && !picking && (
+        <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex' }}>
+          {!canAssign ? (
+            team ? <span style={{ color: 'var(--c94a3b8)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, whiteSpace: 'nowrap' }}>{team}</span> : null
+          ) : isEditing ? (
+            <select
+              autoFocus
+              defaultValue={team}
+              onChange={(e) => onTeam(t.id, e.target.value)}
+              onBlur={() => setEditing(null)}
+              style={{ background: 'var(--c0f172a)', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '4px 7px', fontSize: 12.5 }}
+            >
+              <option value="">— chưa phân nhóm —</option>
+              {teams.filter((x) => x.team).map((x) => <option key={x.team} value={x.team}>{x.team}</option>)}
+            </select>
+          ) : (
+            <button
+              onClick={() => setEditing(t.id)}
+              title="Đổi nhóm phụ trách"
+              style={{ background: 'transparent', border: '1px dashed var(--c334155)', color: team ? 'var(--c94a3b8)' : '#fbbf24', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >{team || '+ nhóm'}</button>
+          )}
+        </span>
+      )}
+
+      {!picking && (
+        <span style={{ color: suspended ? 'var(--c475569)' : '#a5b4fc', fontWeight: 800, fontSize: 15, flex: '0 0 auto' }}>
+          {opening ? '…' : '→'}
+        </span>
+      )}
     </div>
   );
 }

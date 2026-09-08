@@ -2,7 +2,7 @@
 // touches it, and the native binding is not worth loading to find that out.
 jest.mock('bcrypt', () => ({ hash: async () => 'hashed', compare: async () => true }));
 
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { SupportService, SUPPORT_ROLE } from './support.service';
 import type { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -27,8 +27,12 @@ describe('who may reassign a salon', () => {
       tenant: {
         findFirst: async () => ({ id: 't1' }),
         update: async () => ({}),
+        // Only t1 and t2 still exist; t3 was deleted.
+        findMany: async ({ where }: { where: { id: { in: string[] } } }) =>
+          where.id.in.filter((id) => id === 't1' || id === 't2').map((id) => ({ id })),
+        updateMany: async () => ({ count: 2 }),
       },
-      auditLog: { create: async () => ({}) },
+      auditLog: { create: async () => ({}), createMany: async () => ({ count: 2 }) },
     };
     return new SupportService(prisma as never, {} as never, {} as never, {} as never);
   };
@@ -64,5 +68,48 @@ describe('who may reassign a salon', () => {
     const svc = svcFor(null);
     const owner = { userId: 'o1', email: 'o@x.com', role: UserRole.SUPER_ADMIN, tenantId: null } as AuthenticatedUser;
     await expect(svc.setTenantTeam(owner, 't1', '')).resolves.toMatchObject({ ok: true, team: null });
+  });
+});
+
+describe('filing a whole batch at once', () => {
+  const prisma = {
+    user: { findFirst: async () => ({ supportLevel: 'full' }) },
+    tenant: {
+      findMany: async ({ where }: { where: { id: { in: string[] } } }) =>
+        where.id.in.filter((id) => id !== 'deleted').map((id) => ({ id })),
+      updateMany: async () => ({ count: 0 }),
+    },
+    auditLog: { createMany: async () => ({ count: 0 }) },
+  };
+  const svc = () => new SupportService(prisma as never, {} as never, {} as never, {} as never);
+  const owner = { userId: 'o1', email: 'o@x.com', role: UserRole.SUPER_ADMIN, tenantId: null } as AuthenticatedUser;
+
+  it('files everything that still exists, and says how many', async () => {
+    await expect(svc().setTeamForMany(owner, ['a', 'b', 'c'], ' Nhóm 1 '))
+      .resolves.toEqual({ ok: true, count: 3, team: 'Nhóm 1' });
+  });
+
+  it('DOES NOT resurrect a deleted salon onto a team from a stale tab', async () => {
+    const r = await svc().setTeamForMany(owner, ['a', 'deleted', 'b'], 'Nhóm 1');
+    expect(r.count).toBe(2);
+  });
+
+  it('ignores blanks and duplicates rather than counting them', async () => {
+    const r = await svc().setTeamForMany(owner, ['a', 'a', '', '  ', 'b'], 'Nhóm 1');
+    expect(r.count).toBe(2);
+  });
+
+  it('refuses an empty selection instead of silently clearing every team', async () => {
+    await expect(svc().setTeamForMany(owner, [], 'Nhóm 1')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(svc().setTeamForMany(owner, 'not an array', 'Nhóm 1')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('holds the same bar as the single move', async () => {
+    const junior = new SupportService(
+      { ...prisma, user: { findFirst: async () => ({ supportLevel: 'setup' }) } } as never,
+      {} as never, {} as never, {} as never,
+    );
+    const staff = { userId: 'u1', email: 'a@b.com', role: SUPPORT_ROLE, tenantId: null } as AuthenticatedUser;
+    await expect(junior.setTeamForMany(staff, ['a'], 'Nhóm 1')).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

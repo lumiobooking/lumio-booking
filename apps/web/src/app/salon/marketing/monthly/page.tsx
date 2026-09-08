@@ -91,6 +91,9 @@ function Inner() {
   const [currency, setCurrency] = useState('USD');
   const [spendDraft, setSpendDraft] = useState<Record<string, SpendRow>>({});
   const [budget, setBudget] = useState<AdsBudget | null>(null);
+  // Why the recommendation is not on screen, when it is not. A card that
+  // simply fails to appear is indistinguishable from a card nobody built.
+  const [budgetErr, setBudgetErr] = useState<string | null>(null);
   const [showMetrics, setShowMetrics] = useState(false);
   const [wTitle, setWTitle] = useState(''); const [wCat, setWCat] = useState('post');
   const [busy, setBusy] = useState<string | null>(null);
@@ -144,7 +147,10 @@ function Inner() {
   // never hold up the page somebody came here to type into.
   useEffect(() => {
     if (!token) return;
-    apiFetch<AdsBudget>('/content/ads/budget', { token }).then(setBudget).catch(() => undefined);
+    setBudgetErr(null);
+    apiFetch<AdsBudget>('/content/ads/budget', { token })
+      .then((b) => { setBudget(b); setBudgetErr(null); })
+      .catch((e) => setBudgetErr(e instanceof Error ? e.message : 'error'));
   }, [token]);
 
   // Auto-generate the AI analysis the first time a month is opened with no report yet.
@@ -334,6 +340,15 @@ function Inner() {
             written into a receipt is a receipt for money nobody spent, and
             every number downstream — cost per customer, the line on the
             client's own screen — would then be computed from a wish. */}
+        {!budget && budgetErr && (
+          <div style={{
+            border: '1px solid #f59e0b', background: 'rgba(245,158,11,.08)', borderRadius: 11,
+            padding: '10px 13px', marginBottom: 12, fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6,
+          }}>
+            {T('Chưa lấy được đề xuất ngân sách', 'Could not load the budget suggestion')} —{' '}
+            <span style={{ fontFamily: 'ui-monospace, monospace', color: '#fbbf24' }}>{budgetErr}</span>
+          </div>
+        )}
         {budget && (
           <div style={{
             border: `1px solid ${budget.feasible === 'no' ? '#ef4444' : budget.ceilingCents ? '#6366f1' : 'var(--c334155)'}`,

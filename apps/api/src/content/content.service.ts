@@ -927,15 +927,22 @@ export class ContentService {
       medianGapDays: regulars?.medianGapDays ?? null,
     });
     const budget = budgetPlan({ ceiling });
-    const calendar = adsCalendar({
-      baseDailyCents: budget.dailyCents,
-      events: regionEvents(new Date(), {
-        market: ctx.region.market, city: ctx.region.city, region: ctx.region.region,
-      }, { horizonDays: 90 }).events,
-      leadDays: ctx.lead.medianDays,
-    });
+    // The calendar is the only part that can be done without: a month total is
+    // nice, the daily figure and the ceiling are the answer. A salon whose
+    // region cannot be resolved must still be told what a customer may cost.
+    const calendar = (() => {
+      try {
+        return adsCalendar({
+          baseDailyCents: budget.dailyCents,
+          events: regionEvents(new Date(), {
+            market: ctx.region.market, city: ctx.region.city, region: ctx.region.region,
+          }, { horizonDays: 90 }).events,
+          leadDays: ctx.lead.medianDays,
+        });
+      } catch { return null; }
+    })();
     const month = new Date().toISOString().slice(0, 7);
-    const thisMonth = calendar.months.find((m) => m.month === month) ?? null;
+    const thisMonth = calendar?.months.find((m) => m.month === month) ?? null;
     return {
       month,
       // Null when the salon has no ticket or no margin on file. The screen then

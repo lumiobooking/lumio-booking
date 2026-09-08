@@ -130,9 +130,15 @@ export class SupportService {
       };
     });
 
-    const jobs = crewJobs(weeks, { today, lang: lang === 'en' ? 'en' : 'vi' });
+    const tongue = lang === 'en' ? 'en' : 'vi';
+    const jobs = crewJobs(weeks, { today, lang: tongue });
     const me = user.email ?? null;
-    return { me, today, counts: crewCounts(jobs, me), groups: groupByKind(jobs.filter((j) => !j.done)), done: jobs.filter((j) => j.done).length };
+    return {
+      me, today,
+      counts: crewCounts(jobs, me),
+      groups: groupByKind(jobs.filter((j) => !j.done), tongue),
+      done: jobs.filter((j) => j.done).length,
+    };
   }
 
   /**

@@ -86,7 +86,14 @@ export interface CrewJob {
 
 export interface CrewGroup {
   kind: JobKind;
-  label: Txt;
+  /**
+   * Already in ONE language, like every other field that crosses to the
+   * browser. The first version handed the screen a `{vi, en}` pair here while
+   * flattening the job text beside it, and React refused to render the object
+   * — the whole page died on a heading. Everything leaving this module is a
+   * string, without exception, so the mistake cannot be made a second time.
+   */
+  label: string;
   jobs: CrewJob[];
 }
 
@@ -179,11 +186,12 @@ export function sortCrew(jobs: CrewJob[]): CrewJob[] {
 }
 
 /** Grouped by kind, biggest batch first — the batch IS the saving. */
-export function groupByKind(jobs: CrewJob[]): CrewGroup[] {
+export function groupByKind(jobs: CrewJob[], lang: 'vi' | 'en' = 'vi'): CrewGroup[] {
+  const say = (t: Txt) => (lang === 'en' ? enOf(t) : viOf(t));
   const by = new Map<JobKind, CrewJob[]>();
   for (const j of jobs) by.set(j.kind, [...(by.get(j.kind) ?? []), j]);
   return [...by.entries()]
-    .map(([kind, list]) => ({ kind, label: KIND_LABEL[kind] ?? bi(kind, kind), jobs: sortCrew(list) }))
+    .map(([kind, list]) => ({ kind, label: say(KIND_LABEL[kind] ?? bi(kind, kind)), jobs: sortCrew(list) }))
     .sort((a, b) => b.jobs.length - a.jobs.length);
 }
 

@@ -75,6 +75,27 @@ describe('the order and the grouping', () => {
     expect(jobs[1]).toMatchObject({ salon: 'Alpha', kind: 'post', by: 'linh@lumio.vn' });
   });
 
+  it('EVERY field that reaches the browser is a string, headings included', () => {
+    // React refuses to render a { vi, en } pair and takes the whole page down
+    // with it. The job text was flattened and the group heading was not, so
+    // the screen died on its own title. Nothing bilingual leaves this module.
+    for (const lang of ['vi', 'en'] as const) {
+      const g = groupByKind(crewJobs([row('t1', 'A')], { today: '2026-09-09', lang }), lang);
+      for (const grp of g) {
+        expect(typeof grp.label).toBe('string');
+        for (const j of grp.jobs) {
+          expect(typeof j.text).toBe('string');
+          for (const st of j.steps) expect(typeof st).toBe('string');
+        }
+      }
+      // The strongest form of the check: no object anywhere under a key the
+      // screen prints, whatever gets added to CrewJob later.
+      expect(JSON.stringify(g)).not.toMatch(/"(vi|en)":/);
+    }
+    expect(groupByKind(crewJobs([row('t1', 'A')], { today: '2026-09-09' }), 'vi')[0].label).toBe('Đăng bài');
+    expect(groupByKind(crewJobs([row('t1', 'A')], { today: '2026-09-09', lang: 'en' }), 'en')[0].label).toBe('Posts');
+  });
+
   it('groups by kind with the biggest batch first — the batch IS the saving', () => {
     const rows = Array.from({ length: 4 }, (_, i) => row(`t${i}`, `S${i}`));
     const g = groupByKind(crewJobs(rows, { today: '2026-09-09' }));

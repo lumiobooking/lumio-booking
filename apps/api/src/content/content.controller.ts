@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { ContentService } from './content.service';
 import { ContentChatService } from './content-chat.service';
@@ -106,6 +106,10 @@ export class ContentController {
       this.svc.lastWeekForSalon(user).catch(() => null),
       this.svc.adsReceiptForSalon(user).catch(() => null),
     ]);
+    // One slot, two states: the receipt when money is going out, the offer
+    // when it is not. Never both — a busy owner skims a screen that argues
+    // with itself.
+    const adsPlan = ads ? null : await this.svc.adsPitchForSalon(user).catch(() => null);
     return {
       week: flattenForClient(clientWeek(plan, { weekKey: weekKey ?? '', ticks }), lang === 'en' ? 'en' : 'vi'),
       weekKey,
@@ -115,6 +119,7 @@ export class ContentController {
       // Where the ad money went and what came back. Rebuilt field by field in
       // ads-receipt; null in a month with no spend, which is not a result.
       ads: ads ? flattenForClient(ads, lang === 'en' ? 'en' : 'vi') : null,
+      adsPlan: adsPlan ? flattenForClient(adsPlan, lang === 'en' ? 'en' : 'vi') : null,
     };
   }
 
@@ -145,6 +150,18 @@ export class ContentController {
       offer: { kind: i.offer.kind, value: i.offer.value, gift: i.offer.gift, slot: i.offer.slot, expires: i.offer.expires, terms: i.offer.terms },
     }));
     return { ideas: flattenForClient(safe, lang === 'en' ? 'en' : 'vi') };
+  }
+
+  /**
+   * The shop saying yes to the suggested ad budget. Files the exact line the
+   * pitch quoted, so what the team reads is what the owner agreed to.
+   */
+  @Post('my-ads/approve')
+  @HttpCode(200)
+  async approveAds(@CurrentUser() user: AuthenticatedUser) {
+    const pitch = await this.svc.adsPitchForSalon(user);
+    if (!pitch?.request) throw new BadRequestException('Chưa có đề xuất ngân sách nào để duyệt.');
+    return this.suggestions.requestFromShop(user, pitch.request);
   }
 
   /** "Run this one": a holiday programme by key, or one in the shop's own words. Lands in the team's inbox. */

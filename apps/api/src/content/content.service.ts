@@ -40,6 +40,7 @@ import { buildMarketPlan } from './market-target';
 import { leadTime, cpaCeiling, budgetPlan, runWindow, adAudiences } from './ads-plan';
 import { adsCalendar } from './ads-calendar';
 import { adsReceipt, type AdsReceipt } from './ads-receipt';
+import { adsPitch, type AdsPitch } from './ads-pitch';
 import { PlacesService } from './places.service';
 import { buildSeoReport } from './seo-local';
 import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './business-profile';
@@ -962,6 +963,47 @@ export class ContentService {
       note: viOf(budget.plain),
       noteEn: enOf(budget.plain),
     };
+  }
+
+  /**
+   * The ad budget offered to the SALON, in the salon's own words.
+   *
+   * Shown only when there is no spend this month: a shop already advertising
+   * gets the receipt instead (adsReceiptForSalon), and one card in one place
+   * is the difference between a screen a busy owner reads and one she skims.
+   * The wording, and the state that declines to offer anything, live in
+   * ./ads-pitch.
+   */
+  async adsPitchForSalon(user: AuthenticatedUser): Promise<AdsPitch | null> {
+    const tenantId = this.tenantId(user);
+    const ctx = await this.gather(tenantId);
+    const regulars = ctx.audience.segments.find((sg) => sg.key === 'regular');
+    const ticket = ctx.firstVisitTicketCents ?? ctx.audience.segments[0]?.avgTicketCents ?? null;
+    const margin = ctx.promo.margin.grossMarginPct;
+    const ceiling = cpaCeiling({ avgTicketCents: ticket, grossMarginPct: margin, medianGapDays: regulars?.medianGapDays ?? null });
+
+    // The same free-capacity figure the team's plan is checked against, so the
+    // two screens cannot disagree about whether there are chairs to fill.
+    const LOAD_WINDOW_DAYS = 28;
+    const quiet = ctx.revenue.loads.slice(0, 3);
+    const peakMinutes = Math.max(...ctx.revenue.loads.map((l) => l.minutes), 0);
+    const slotMinutes = ctx.avgServiceMinutes ?? 60;
+    const idleMinutes = quiet.reduce((sum, q) => sum + Math.max(0, peakMinutes - q.minutes), 0);
+    const openSlots = peakMinutes > 0
+      ? Math.max(0, Math.floor((idleMinutes / slotMinutes) * (CAMPAIGN_DAYS / LOAD_WINDOW_DAYS)))
+      : null;
+
+    const budget = budgetPlan({ ceiling, openSlots });
+    return adsPitch({
+      ceilingCents: ceiling.strictCents,
+      dailyCents: budget.dailyCents,
+      days: budget.days,
+      totalCents: budget.totalCents,
+      bookingsToBreakEven: budget.bookingsToBreakEven,
+      openSlots: budget.openSlots,
+      feasible: budget.feasible,
+      missing: ticket === null ? 'ticket' : margin === null ? 'margin' : null,
+    });
   }
 
   /**

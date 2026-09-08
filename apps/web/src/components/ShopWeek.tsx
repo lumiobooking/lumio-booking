@@ -54,6 +54,11 @@ export interface AdsReceipt {
   verdict: 'good' | 'tight' | 'over' | 'early' | 'no-ceiling';
   headline: string; caveat: string;
 }
+export interface AdsPlan {
+  state: 'offer' | 'not-yet' | 'unknown';
+  figures: { value: string; label: string }[];
+  headline: string; why: string; cta: string | null;
+}
 export interface LastWeek {
   label: string; posted: number; reviews: number; newCustomers: number; bookings: number;
   delta: { reviews: number | null; newCustomers: number | null; bookings: number | null };
@@ -79,11 +84,13 @@ function dayLabelsFrom(jobs: ShopJob[]): string[] {
   return Array.from({ length: out.length }, (_, i) => out[i] ?? '');
 }
 
-export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, onSend, onChanged, onError }: {
+export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsPlan, onSend, onChanged, onError }: {
   token: string | null; vi: boolean; week: ShopWeekData; weekKey: string | null; unread?: number;
   lastWeek?: LastWeek | null;
   /** This month's ad money and what came back. Null in a month with no spend. */
   ads?: AdsReceipt | null;
+  /** The budget offered when nothing is running yet. Never shown beside the receipt. */
+  adsPlan?: AdsPlan | null;
   /** Open the file picker on the send box above — the ask's one button. */
   onSend?: () => void;
   onChanged: () => Promise<void> | void; onError: (m: string | null) => void;
@@ -176,6 +183,34 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, onSe
           </div>
           <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.6, marginTop: 10 }}>{ads.headline}</div>
           <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.55, marginTop: 6 }}>{ads.caveat}</div>
+        </div>
+      )}
+
+      {/* ---- 1c. the budget, offered ----
+             Same slot as the receipt and never beside it: money going out is
+             a receipt, money not going out yet is a question. A screen that
+             shows both argues with itself. */}
+      {!ads && adsPlan && (
+        <div style={{
+          ...card, marginBottom: 12,
+          borderColor: adsPlan.state === 'offer' ? '#6366f1' : 'var(--c334155)',
+          background: adsPlan.state === 'offer' ? 'linear-gradient(135deg, rgba(99,102,241,.16), rgba(99,102,241,.05))' : 'var(--c0f172a)',
+        }}>
+          <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}>
+            {adsPlan.state === 'offer' ? '📣 ' : adsPlan.state === 'not-yet' ? '✋ ' : '⏳ '}{adsPlan.headline}
+          </div>
+          {!!adsPlan.figures.length && (
+            <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', margin: '11px 0 9px' }}>
+              {adsPlan.figures.map((f, i) => (
+                <div key={i}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: i === 2 ? '#86efac' : 'var(--cf1f5f9)', lineHeight: 1.1 }}>{f.value}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{f.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.65, marginTop: adsPlan.figures.length ? 0 : 7 }}>{adsPlan.why}</div>
+          {adsPlan.cta && <AdsYes token={token} vi={vi} label={adsPlan.cta} onError={onError} />}
         </div>
       )}
 
@@ -320,6 +355,45 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, onSe
         />
       )}
     </section>
+  );
+}
+
+/**
+ * The yes.
+ *
+ * One press files the exact line the pitch quoted into the team's inbox, so
+ * what a staff member reads is word for word what the owner agreed to — not
+ * a number somebody re-typed from memory in a phone call.
+ */
+function AdsYes({ token, vi, label, onError }: {
+  token: string | null; vi: boolean; label: string; onError: (m: string | null) => void;
+}) {
+  const T = (v: string, e: string) => (vi ? v : e);
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  if (sent) {
+    return (
+      <div style={{ marginTop: 11, fontSize: 13, fontWeight: 700, color: '#86efac' }}>
+        {T('✓ Đã gửi cho Lumio — bên em dựng chiến dịch và báo lại tiệm trước khi chạy.',
+           '✓ Sent to Lumio — we will build the campaign and come back to you before it goes live.')}
+      </div>
+    );
+  }
+  return (
+    <button
+      disabled={busy || !token}
+      onClick={async () => {
+        if (!token) return;
+        setBusy(true); onError(null);
+        try {
+          await apiFetch('/content/my-ads/approve', { method: 'POST', token, body: {} });
+          setSent(true);
+        } catch (e) {
+          onError(e instanceof Error ? e.message : T('Chưa gửi được, thử lại giúp em', 'Could not send — please try again'));
+        } finally { setBusy(false); }
+      }}
+      style={{ ...smallPrimary, minHeight: 46, fontSize: 15, marginTop: 12, width: '100%' }}
+    >{busy ? '…' : label}</button>
   );
 }
 

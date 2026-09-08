@@ -28,6 +28,10 @@ interface TenantRow {
 /** One thing a shop sent that nobody has made a post from yet. */
 type InboxRow = InboxItem;
 
+/** The salon list as one employee reads it: their team open, the rest folded. */
+interface BoardGroup { team: string; label: string; mine: boolean; open: boolean; salons: { id: string; name: string; supportTeam?: string | null }[] }
+interface Board { myTeam: string | null; groups: BoardGroup[]; teams: { team: string; label: string; salons: number; members: string[] }[] }
+
 /** "3 phút trước" — the freshness is the point of the list. */
 function ago(iso: string | null): string {
   if (!iso) return '';
@@ -52,6 +56,9 @@ export default function AgencyPage() {
   const [rows, setRows] = useState<TenantRow[]>([]);
   const [inbox, setInbox] = useState<InboxRow[]>([]);
   const [allSalons, setAllSalons] = useState(false);
+  const [board, setBoard] = useState<Board | null>(null);
+  const [openTeams, setOpenTeams] = useState<Record<string, boolean>>({});
+  const [editing, setEditing] = useState<string | null>(null);
   const groups = useMemo(() => groupInbox(inbox), [inbox]);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
@@ -69,6 +76,9 @@ export default function AgencyPage() {
       .then((r) => setRows(r))
       .catch((e) => setError(e instanceof Error ? e.message : 'Could not load salons'))
       .finally(() => setLoading(false));
+    // How this employee's list is grouped. Separate from the salon rows so a
+    // slow group read never delays the list itself.
+    apiFetch<Board>('/support/board', { token }).then(setBoard).catch(() => undefined);
     // What is waiting, across every salon. Refreshed each minute while the
     // picker is open — this is the screen somebody leaves up on a second
     // monitor, and it has to be right when they glance at it.
@@ -88,6 +98,24 @@ export default function AgencyPage() {
     if (!needle) return rows;
     return rows.filter((r) => `${r.name} ${r.slug}`.toLowerCase().includes(needle));
   }, [rows, q]);
+
+  /**
+   * Move a salon onto a team. Refused by the server for anyone but the owner
+   * and full-level accounts, so the button is offered to everyone and the
+   * rule is stated once, where it is enforced.
+   */
+  async function setTeam(tenantId: string, team: string) {
+    if (!token) return;
+    setError(null);
+    try {
+      await apiFetch(`/support/tenants/${encodeURIComponent(tenantId)}/team`, { method: 'POST', token, body: { team } });
+      const b = await apiFetch<Board>('/support/board', { token });
+      setBoard(b);
+      setEditing(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Không đổi được nhóm');
+    }
+  }
 
   async function enter(t: TenantRow, landing = '/salon') {
     if (!token || busy) return;
@@ -261,7 +289,44 @@ export default function AgencyPage() {
           style={{ width: '100%', boxSizing: 'border-box', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 10, padding: '12px 14px', fontSize: 15, marginBottom: 14 }}
         />
 
-        <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden' }}>
+        {/* Grouped by team, but the GROUPING is not what shortens the list —
+            the default is. This employee's own team is open, the salons
+            nobody owns are open under it, and every other team is one folded
+            line. Searching cuts across all of them, because somebody looking
+            for a name does not care whose list it is on. */}
+        {board && !q.trim() && board.groups.map((g) => {
+          const isOpen = openTeams[g.team] ?? g.open;
+          return (
+            <div key={g.team || '_none'} style={{ marginBottom: 10 }}>
+              <button
+                onClick={() => setOpenTeams((o) => ({ ...o, [g.team]: !isOpen }))}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', textAlign: 'left',
+                  border: `1px solid ${g.mine ? '#6366f1' : g.team ? 'var(--c1f2937)' : '#f59e0b'}`,
+                  background: g.mine ? 'rgba(99,102,241,.10)' : g.team ? 'var(--c111827)' : 'rgba(245,158,11,.07)',
+                  borderRadius: 10, padding: '9px 13px', color: 'var(--ce2e8f0)',
+                }}
+              >
+                <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{isOpen ? '▾' : '▸'}</span>
+                <span style={{ fontWeight: 800, fontSize: 14 }}>{g.label}</span>
+                {g.mine && <span style={{ fontSize: 10.5, fontWeight: 800, background: '#6366f1', color: '#fff', borderRadius: 999, padding: '1px 7px' }}>NHÓM TÔI</span>}
+                {!g.team && <span style={{ fontSize: 11.5, color: '#fbbf24' }}>chưa ai phụ trách</span>}
+                <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--c94a3b8)' }}>{g.salons.length} tiệm</span>
+              </button>
+              {isOpen && (
+                <div style={{ border: '1px solid var(--c1f2937)', borderTop: 'none', borderRadius: '0 0 12px 12px', overflow: 'hidden' }}>
+                  {!g.salons.length && <div style={{ padding: 14, color: 'var(--c64748b)', fontSize: 13 }}>Nhóm này chưa có tiệm nào.</div>}
+                  {g.salons.map((sg) => {
+                    const t = rows.find((r) => r.id === sg.id);
+                    return t ? <Row key={t.id} t={t} board={board} busy={busy} onEnter={enter} editing={editing} setEditing={setEditing} onTeam={setTeam} /> : null;
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden', display: board && !q.trim() ? 'none' : undefined }}>
           {shown.length === 0 && (
             <div style={{ padding: 18, color: 'var(--c64748b)', fontSize: 14 }}>No salons match.</div>
           )}
@@ -289,3 +354,55 @@ export default function AgencyPage() {
 }
 
 const screen: React.CSSProperties = { minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--c0b1120)' };
+
+/**
+ * One salon, wherever it is shown — inside a team or in a search result.
+ *
+ * The team it belongs to is edited here rather than on a settings page: the
+ * moment somebody notices a salon is in the wrong list is the moment they are
+ * looking at the list, and a fix that needs a second screen does not happen.
+ */
+function Row({ t, board, busy, onEnter, editing, setEditing, onTeam }: {
+  t: TenantRow; board: Board | null; busy: string | null;
+  onEnter: (t: TenantRow, landing?: string) => void;
+  editing: string | null; setEditing: (id: string | null) => void;
+  onTeam: (tenantId: string, team: string) => void;
+}) {
+  const mine = board?.groups.find((g) => g.salons.some((s) => s.id === t.id));
+  const isEditing = editing === t.id;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>/{t.slug}</div>
+      </div>
+      {isEditing ? (
+        <select
+          autoFocus
+          defaultValue={mine?.team ?? ''}
+          onChange={(e) => onTeam(t.id, e.target.value)}
+          onBlur={() => setEditing(null)}
+          style={{ background: 'var(--c0f172a)', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '5px 8px', fontSize: 12.5 }}
+        >
+          <option value="">— chưa phân nhóm —</option>
+          {(board?.teams ?? []).filter((x) => x.team).map((x) => <option key={x.team} value={x.team}>{x.team}</option>)}
+        </select>
+      ) : (
+        <button
+          onClick={() => setEditing(t.id)}
+          title="Đổi nhóm phụ trách"
+          style={{ background: 'transparent', border: '1px dashed var(--c334155)', color: mine?.team ? 'var(--c94a3b8)' : '#fbbf24', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}
+        >{mine?.team || '+ nhóm'}</button>
+      )}
+      <span style={{ fontSize: 11.5, fontWeight: 700, color: STATUS_COLOR[t.status] || 'var(--c94a3b8)', border: `1px solid ${STATUS_COLOR[t.status] || 'var(--c334155)'}`, borderRadius: 999, padding: '3px 10px' }}>
+        {t.status}
+      </span>
+      <button
+        onClick={() => onEnter(t)}
+        disabled={busy === t.id || t.status === 'SUSPENDED'}
+        title={t.status === 'SUSPENDED' ? 'Suspended — reactivate first (Super Admin)' : 'Open an 8-hour setup session'}
+        style={{ background: '#6366f1', border: 'none', color: 'white', borderRadius: 8, padding: '8px 16px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', opacity: busy === t.id || t.status === 'SUSPENDED' ? 0.5 : 1, whiteSpace: 'nowrap' }}
+      >{busy === t.id ? '…' : 'Vào setup'}</button>
+    </div>
+  );
+}

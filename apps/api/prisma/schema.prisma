@@ -182,6 +182,11 @@ model Tenant {
   // Defaulting to "US" is what makes the migration safe: every salon that
   // exists today keeps behaving precisely as it does.
   market   String       @default("US")
+  /// Which pair of Lumio people looks after this salon. A plain name, shared
+  /// with the employees who carry it (see User.supportTeam). Never a
+  /// permission: anyone on the team may open any salon, because covering for
+  /// a colleague who is off must not need an admin.
+  supportTeam String?
   /// Language the AI writes this salon's plan and ideas in: 'vi' | 'en'.
   ///
   /// Null means "decide from the market", which is the behaviour that existed
@@ -329,6 +334,7 @@ model Tenant {
   messengerNotes    MessengerNote[]
   messengerLabels   MessengerLabel[]
 
+  @@index([supportTeam])
   @@index([status])
   @@index([accountGroupId])
   @@map("tenants")
@@ -395,6 +401,9 @@ model User {
   // SUPPORT accounts only: how much of a salon this employee may see once they
   // step into one — 'content' | 'setup' | 'full'. Null reads as 'setup'.
   supportLevel String?
+  /// Which pair of people this employee works with. A plain name, shared with
+  /// the salons they look after — see Tenant.supportTeam.
+  supportTeam String?
 
   // If this user is a technician, this links to their StaffMember profile.
   staffMember StaffMember?

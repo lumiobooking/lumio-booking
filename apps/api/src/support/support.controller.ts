@@ -29,6 +29,33 @@ export class SupportController {
     return this.svc.inbox();
   }
 
+  /** The salon list grouped for THIS employee: their team open, the rest folded. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Get('board')
+  board(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.board(user);
+  }
+
+  /** Move a salon to a team. Owner and full-level accounts only. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Post('tenants/:tenantId/team')
+  @HttpCode(200)
+  setTenantTeam(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Body() dto: { team?: string },
+  ) {
+    return this.svc.setTenantTeam(user, tenantId, dto?.team);
+  }
+
+  /** Put an employee on a team. Same bar. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Post('accounts/:id/team')
+  @HttpCode(200)
+  setAccountTeam(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { team?: string }) {
+    return this.svc.setAccountTeam(user, id, dto?.team);
+  }
+
   /**
    * Today's production queue across every salon — the screen two people run
    * thirty clients from. See SupportService.today.

@@ -9,6 +9,7 @@ import { hashSecret } from '../auth/password.util';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { capsForLevel, levelOf, type SupportLevel } from './support-scope';
 import { crewJobs, groupByKind, crewCounts, type WeekRowLike, type CrewHold } from '../content/crew-board';
+import { cleanTeam, groupSalons, teamSummaries } from './support-teams';
 
 /**
  * Lumio SUPPORT staff: one login that can set up ANY salon — without being a
@@ -53,10 +54,78 @@ export class SupportService {
     // up from here, and three hundred live salons do not need it in the way.
     return this.prisma.tenant.findMany({
       where: { deletedAt: null, status: { not: TenantStatus.CANCELLED } },
-      select: { id: true, name: true, slug: true, status: true, createdAt: true },
+      select: { id: true, name: true, slug: true, status: true, createdAt: true, supportTeam: true } as never,
       orderBy: { name: 'asc' },
       take: 2000,
     });
+  }
+
+  /**
+   * The salon list a support employee actually reads: their own team's open,
+   * the unowned ones open under them, everyone else's folded to a line.
+   * See ./support-teams for why the default matters more than the grouping.
+   */
+  async board(user: AuthenticatedUser) {
+    const [salons, staff, me] = await Promise.all([
+      this.listTenants() as Promise<{ id: string; name: string; supportTeam?: string | null }[]>,
+      this.prisma.user.findMany({
+        where: { role: SUPPORT_ROLE, isActive: true },
+        select: { email: true, firstName: true, supportTeam: true } as never,
+        take: 200,
+      }).catch(() => []) as Promise<{ email?: string | null; firstName?: string | null; supportTeam?: string | null }[]>,
+      user.userId
+        ? this.prisma.user.findUnique({ where: { id: user.userId }, select: { supportTeam: true } as never })
+          .catch(() => null) as Promise<{ supportTeam?: string | null } | null>
+        : Promise.resolve(null),
+    ]);
+    const myTeam = cleanTeam(me?.supportTeam) || null;
+    return { myTeam, groups: groupSalons(salons, myTeam), teams: teamSummaries(salons, staff) };
+  }
+
+  /**
+   * Move a salon to a team, or take it off one.
+   *
+   * The owner and full-level accounts only — the same bar as deleting a
+   * handled card. With thirty salons the owner must not be the bottleneck,
+   * and an ordinary employee must not be able to quietly reshuffle whose
+   * list is whose.
+   */
+  async setTenantTeam(user: AuthenticatedUser, tenantId: string, raw: unknown) {
+    this.mustBeSenior(user);
+    const team = cleanTeam(raw);
+    const tenant = await this.prisma.tenant.findFirst({ where: { id: tenantId, deletedAt: null }, select: { id: true } })
+      .catch(() => null);
+    if (!tenant) throw new NotFoundException('Salon not found');
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { supportTeam: team || null } as never });
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId, userId: user.userId ?? null,
+        action: 'support.tenant_team_set',
+        resourceType: 'tenant', resourceId: tenantId,
+        metadata: { team: team || null },
+      } as never,
+    }).catch(() => undefined);
+    return { ok: true, tenantId, team: team || null };
+  }
+
+  /** Put an employee on a team, or take them off one. Same bar as moving a salon. */
+  async setAccountTeam(user: AuthenticatedUser, id: string, raw: unknown) {
+    this.mustBeSenior(user);
+    const team = cleanTeam(raw);
+    const row = await this.prisma.user.findFirst({ where: { id, role: SUPPORT_ROLE }, select: { id: true } })
+      .catch(() => null);
+    if (!row) throw new NotFoundException('Account not found');
+    await this.prisma.user.update({ where: { id }, data: { supportTeam: team || null } as never });
+    return { ok: true, id, team: team || null };
+  }
+
+  /**
+   * Who may reshuffle the lists. A support account's own level decides it, so
+   * the check is the same one the rest of this file uses rather than a new idea.
+   */
+  private mustBeSenior(user: AuthenticatedUser) {
+    const senior = user.role === UserRole.SUPER_ADMIN || levelOf(user.supportLevel) === 'full';
+    if (!senior) throw new ForbiddenException('Chỉ chủ hệ thống hoặc tài khoản quyền cao mới đổi nhóm được.');
   }
 
   /**
@@ -305,7 +374,7 @@ export class SupportService {
       where: { role: SUPPORT_ROLE },
       select: {
         id: true, email: true, firstName: true, lastName: true,
-        isActive: true, lastLoginAt: true, createdAt: true, supportLevel: true,
+        isActive: true, lastLoginAt: true, createdAt: true, supportLevel: true, supportTeam: true,
       } as never,
       orderBy: { createdAt: 'desc' },
     }) as unknown as { supportLevel?: string | null }[];

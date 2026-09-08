@@ -1,5 +1,5 @@
 import { adsPitch } from './ads-pitch';
-import { viOf, enOf } from './i18n';
+import { viOf, enOf, bi } from './i18n';
 
 const base = { ceilingCents: 3800, dailyCents: 1400, days: 14, totalCents: 19600, bookingsToBreakEven: 6, openSlots: 14, feasible: 'yes' as const };
 
@@ -48,5 +48,73 @@ describe('adsPitch', () => {
 
   it('writes the line the team reads when the shop says yes', () => {
     expect(adsPitch(base).request).toBe('Tiệm đồng ý chạy quảng cáo thử: $14/ngày × 14 ngày (~$196) · ngưỡng $38/khách mới');
+  });
+
+  // ---- the plan itself: where, what, when, and then what -------------------
+
+  const planned = {
+    ...base,
+    platform: { label: bi('Google (Tìm kiếm + Maps)', 'Google (Search + Maps)'), key: 'google' },
+    secondPlatform: bi('Meta (Facebook + Instagram)', 'Meta (Facebook + Instagram)'),
+    platformFromData: false,
+    services: ['Gel manicure', 'Dip powder'],
+    offerLine: bi('Giảm 15% khung trưa thứ Ba', '15% off Tuesday middays'),
+    runDays: [bi('Thứ Hai', 'Monday'), bi('Thứ Ba', 'Tuesday')],
+    pauseDays: [bi('Thứ Bảy', 'Saturday')],
+    leadDays: 3,
+    quietBlocks: [bi('Thứ Ba trưa', 'Tuesday midday')],
+    returnDays: 35,
+  };
+
+  it('answers where the money goes, and why that channel first', () => {
+    const s = adsPitch(planned).steps;
+    expect(viOf(s[0].head)).toBe('Google (Tìm kiếm + Maps) trước, Meta (Facebook + Instagram) sau');
+    expect(viOf(s[0].body)).toMatch(/nail salon near me/);
+  });
+
+  it('follows the salon\'s OWN bookings over the default order when it can', () => {
+    const s = adsPitch({ ...planned, platformFromData: true }).steps;
+    expect(viOf(s[0].body)).toMatch(/Khách của tiệm đang đến từ Google/);
+    expect(viOf(s[0].body)).not.toMatch(/nail salon near me/);
+  });
+
+  it('sells the services that earn most per chair-hour, with the week\'s offer', () => {
+    const s = adsPitch(planned).steps;
+    expect(viOf(s[1].head)).toBe('Gel manicure và Dip powder — kèm Giảm 15% khung trưa thứ Ba');
+    expect(viOf(s[1].body)).toMatch(/nhiều tiền nhất trên mỗi giờ ghế/);
+  });
+
+  it('names the days to run, the days to stop, and the hours to aim at', () => {
+    const s = adsPitch(planned).steps;
+    expect(viOf(s[2].head)).toBe('Bật Thứ Hai và Thứ Ba · tắt Thứ Bảy · nhắm vào khung Thứ Ba trưa');
+    expect(viOf(s[2].body)).toMatch(/đặt trước khoảng 3 ngày/);
+    expect(viOf(s[2].body)).toMatch(/Ngày đông thì tắt/);
+  });
+
+  it('says what happens after the run, in both directions, before the yes', () => {
+    // "And then what" is the question an owner asks a week in. Answering it at
+    // the moment of the yes is what separates a plan from a pitch.
+    const s = adsPitch(planned).steps;
+    const last = s[s.length - 1];
+    expect(viOf(last.title)).toBe('Hết 14 ngày thì sao');
+    expect(viOf(last.body)).toMatch(/Dưới \$38 thì đáng tăng tiền/);
+    expect(viOf(last.body)).toMatch(/vượt \$38 thì bên em tắt/);
+    expect(viOf(last.body)).toMatch(/nhắn lại sau khoảng 35 ngày/);
+  });
+
+  it('drops the steps it has no facts for rather than inventing reasons', () => {
+    const s = adsPitch(base).steps;
+    expect(s).toHaveLength(1);
+    expect(viOf(s[0].title)).toBe('Hết 14 ngày thì sao');
+  });
+
+  it('keeps the plan off the screen entirely when there is no offer', () => {
+    expect(adsPitch({ ...planned, feasible: 'no' }).steps).toEqual([]);
+    expect(adsPitch({ ...planned, ceilingCents: null }).steps).toEqual([]);
+  });
+
+  it('carries no team vocabulary into the plan either', () => {
+    const s = JSON.stringify(adsPitch(planned).steps);
+    expect(s).not.toMatch(/CPA|feasib|fillIndex|perHour|unproven|rank|status|verdict/i);
   });
 });

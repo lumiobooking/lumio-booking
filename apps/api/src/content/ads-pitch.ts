@@ -1,4 +1,4 @@
-import { bi, type Txt } from './i18n';
+import { bi, enOf, viOf, type Txt } from './i18n';
 
 /**
  * The ad budget, offered to the SALON in the salon's own words.
@@ -31,12 +31,28 @@ import { bi, type Txt } from './i18n';
 
 export type PitchState = 'offer' | 'not-yet' | 'unknown';
 
+/**
+ * One numbered step of the plan. Four of them, and each answers a question the
+ * owner would otherwise have to ask: where does the money go, what does the ad
+ * sell, when does it run, and what happens when the fortnight is over.
+ */
+export interface PitchStep {
+  /** The question, in three or four words. */
+  title: Txt;
+  /** The answer, in one line — this is what a skimmer reads. */
+  head: Txt;
+  /** Why that answer and not another. This is what makes it a plan. */
+  body: Txt;
+}
+
 export interface AdsPitch {
   state: PitchState;
   /** The three numbers, already in money. Empty for the states with no offer. */
   figures: { value: string; label: Txt }[];
   headline: Txt;
   why: Txt;
+  /** The plan itself. Empty for the states that offer nothing. */
+  steps: PitchStep[];
   /** The text of the button, when there is something to say yes to. */
   cta: Txt | null;
   /** What the team reads when the shop says yes. */
@@ -44,6 +60,147 @@ export interface AdsPitch {
 }
 
 const fmt = (c: number) => `$${Math.round(c / 100)}`;
+
+export interface PitchPlanInput {
+  /** Where to start, and what comes after it. Both already named for a person. */
+  platform?: { label: Txt; key: string } | null;
+  secondPlatform?: Txt | null;
+  /** True when the choice came from this salon's OWN bookings, not the default order. */
+  platformFromData?: boolean;
+  /** What to advertise: the services that earn most per chair-hour, best first. */
+  services?: string[];
+  /** The week's offer, when there is one to put in the ad. */
+  offerLine?: Txt | null;
+  /** Weekday names to run on, and to stay off. */
+  runDays?: Txt[];
+  pauseDays?: Txt[];
+  /** How far ahead this salon's customers book. */
+  leadDays?: number | null;
+  /** The blocks with room in them — where the customers will be seated. */
+  quietBlocks?: Txt[];
+  /** Median days between visits, for the "come back" step. */
+  returnDays?: number | null;
+}
+
+const listOf = (xs: string[]) => {
+  const clean = xs.map((x) => x.trim()).filter(Boolean);
+  if (clean.length <= 1) return clean[0] ?? '';
+  return `${clean.slice(0, -1).join(', ')} ${clean.length === 2 ? 'và' : 'và'} ${clean[clean.length - 1]}`;
+};
+const listEn = (xs: string[]) => {
+  const clean = xs.map((x) => x.trim()).filter(Boolean);
+  if (clean.length <= 1) return clean[0] ?? '';
+  return `${clean.slice(0, -1).join(', ')} and ${clean[clean.length - 1]}`;
+};
+
+/**
+ * The plan, in four questions the owner would ask if she knew to ask them.
+ *
+ * Each step is skipped when the salon has not given us the fact it rests on —
+ * a plan that invents its own reasons is worse than a short one. The last step
+ * is always there, because "and then what" is answerable from the budget alone.
+ */
+function planSteps(input: PitchPlanInput, days: number, ceilingText: string): PitchStep[] {
+  const steps: PitchStep[] = [];
+
+  const first = input.platform ?? null;
+  if (first) {
+    const firstVi = viOf(first.label);
+    const firstEn = enOf(first.label);
+    const secondVi = input.secondPlatform ? viOf(input.secondPlatform).trim() : '';
+    const secondEn = input.secondPlatform ? enOf(input.secondPlatform).trim() : '';
+    const headVi = secondVi ? `${firstVi} trước, ${secondVi} sau` : firstVi;
+    const headEn = secondEn ? `${firstEn} first, ${secondEn} after` : firstEn;
+    const bodyVi = input.platformFromData
+      ? `Khách của tiệm đang đến từ ${firstVi} nhiều hơn hẳn các kênh khác — bên em dồn tiền vào chỗ đã có người tìm tiệm, không rải đều cho đẹp báo cáo.`
+      : first.key === 'google'
+        ? 'Người gõ "nail salon near me" là người đang định đi hôm nay — họ cần một chỗ, không cần được thuyết phục. Tiền bỏ vào đây trả về khách nhanh nhất. Facebook và Instagram để sau, việc của chúng là làm người quanh đây nhớ mặt tiệm.'
+        : `Người quanh khu tiệm ở trên ${firstVi} nhiều hơn là đi tìm kiếm — bên em đưa hình ảnh thật của tiệm tới trước mặt họ trước, rồi mới tính tới tìm kiếm.`;
+    const bodyEn = input.platformFromData
+      ? `Your own bookings come from ${firstEn} more than anywhere else, so that is where the money goes first — we back the channel already bringing you people.`
+      : first.key === 'google'
+        ? 'Someone typing "nail salon near me" has already decided to go today; they need an address, not persuasion. That is the fastest dollar. Facebook and Instagram come after — their job is to keep the shop in mind locally.'
+        : `Around your block people sit on ${firstEn} rather than search for a salon, so we put real photos of your work in front of them first, then look at search.`;
+    steps.push({
+      title: bi('Chạy ở kênh nào', 'Where it runs'),
+      head: bi(headVi, headEn),
+      body: bi(bodyVi, bodyEn),
+    });
+  }
+
+  const services = (input.services ?? []).map((s) => s.trim()).filter(Boolean).slice(0, 3);
+  const offerVi = input.offerLine ? viOf(input.offerLine).trim() : '';
+  const offerEn = input.offerLine ? enOf(input.offerLine).trim() : '';
+  if (services.length || offerVi) {
+    const headVi = [services.length ? listOf(services) : '', offerVi ? `kèm ${offerVi}` : ''].filter(Boolean).join(' — ');
+    const headEn = [services.length ? listEn(services) : '', offerEn ? `with ${offerEn}` : ''].filter(Boolean).join(' — ');
+    steps.push({
+      title: bi('Quảng cáo dịch vụ gì', 'What the ad sells'),
+      head: bi(headVi, headEn),
+      body: bi(
+        'Đây là những dịch vụ mang về nhiều tiền nhất trên mỗi giờ ghế của tiệm — không phải dịch vụ ghi giá cao nhất trên bảng. Quảng cáo một dịch vụ cụ thể luôn rẻ hơn quảng cáo cả tiệm, vì người bấm vào là người đã muốn đúng thứ đó.',
+        'These earn you the most per chair-hour — not the highest price on the board, which is a different thing. Advertising one named service always costs less than advertising the salon, because the person who clicks already wants that exact thing.'),
+    });
+  }
+
+  const run = (input.runDays ?? []).map((d) => viOf(d));
+  const runE = (input.runDays ?? []).map((d) => enOf(d));
+  const pause = (input.pauseDays ?? []).map((d) => viOf(d));
+  const pauseE = (input.pauseDays ?? []).map((d) => enOf(d));
+  const quiet = (input.quietBlocks ?? []).map((b) => viOf(b));
+  const quietE = (input.quietBlocks ?? []).map((b) => enOf(b));
+  if (run.length || quiet.length) {
+    const headVi = [
+      run.length ? `Bật ${listOf(run)}` : '',
+      pause.length ? `tắt ${listOf(pause)}` : '',
+      quiet.length ? `nhắm vào khung ${listOf(quiet)}` : '',
+    ].filter(Boolean).join(' · ');
+    const headEn = [
+      runE.length ? `On ${listEn(runE)}` : '',
+      pauseE.length ? `off ${listEn(pauseE)}` : '',
+      quietE.length ? `aimed at ${listEn(quietE)}` : '',
+    ].filter(Boolean).join(' · ');
+    const lead = input.leadDays ?? null;
+    const bodyVi = (lead
+      ? `Khách của tiệm thường đặt trước khoảng ${lead} ngày, nên quảng cáo phải chạy sớm hơn ngày cần khách chừng đó. `
+      : '')
+      + (pause.length
+        ? 'Ngày đông thì tắt — ngày đó tự đầy, trả tiền để lấp một chỗ đã có người là ném tiền đi. '
+        : '')
+      + (quiet.length
+        ? 'Tiền dồn vào những khung còn ghế trống, để khách mới tới đúng lúc thợ đang rảnh chứ không phải lúc phải chờ.'
+        : '');
+    const bodyEn = (lead
+      ? `Your customers book about ${lead} days ahead, so the ad has to run that far before the day you want filled. `
+      : '')
+      + (pauseE.length
+        ? 'We switch it off on the busy days — those fill themselves, and paying for a seat that was already taken is money thrown away. '
+        : '')
+      + (quietE.length
+        ? 'The spend goes to the blocks that still have chairs free, so a new customer arrives when someone can take her, not when she has to wait.'
+        : '');
+    steps.push({
+      title: bi('Chạy ngày nào, giờ nào', 'When it runs'),
+      head: bi(headVi, headEn),
+      body: bi(bodyVi.trim(), bodyEn.trim()),
+    });
+  }
+
+  const back = input.returnDays ?? null;
+  steps.push({
+    title: bi(`Hết ${days} ngày thì sao`, `After the ${days} days`),
+    head: bi(
+      `Dưới ${ceilingText}/khách thì tăng ngân sách, vượt thì tắt`,
+      `Under ${ceilingText} a customer we raise it, over it we stop`),
+    body: bi(
+      `Hết đợt bên em đưa tiệm con số thật: chi bao nhiêu, được bao nhiêu khách mới, mỗi khách bao nhiêu. Dưới ${ceilingText} thì đáng tăng tiền trước mùa cao điểm; vượt ${ceilingText} thì bên em tắt và chuyển tiền đó sang nhắc khách cũ — rẻ hơn nhiều.`
+        + (back ? ` Và mọi khách mới của đợt này đều được nhắn lại sau khoảng ${back} ngày, vì lãi thật nằm ở lần thứ hai họ quay lại chứ không phải lần đầu.` : ' Và mọi khách mới của đợt này đều được nhắn lại sau đó, vì lãi thật nằm ở lần thứ hai họ quay lại chứ không phải lần đầu.'),
+      `At the end you get the real numbers: what was spent, how many new customers came, what each one cost. Under ${ceilingText} it is worth raising before the busy season; over ${ceilingText} we switch it off and move the money to reminding your past customers, which is far cheaper.`
+        + (back ? ` Either way every new customer from this run is messaged again after about ${back} days, because the profit is in the second visit, not the first.` : ' Either way every new customer from this run is messaged again later, because the profit is in the second visit, not the first.')),
+  });
+
+  return steps;
+}
 
 export function adsPitch(input: {
   ceilingCents: number | null;
@@ -55,13 +212,14 @@ export function adsPitch(input: {
   feasible: 'yes' | 'tight' | 'no' | 'unknown';
   /** Which of the two figures is missing, so "unknown" can name it. */
   missing?: 'ticket' | 'margin' | null;
-}): AdsPitch {
+} & PitchPlanInput): AdsPitch {
   const { ceilingCents: ceiling, dailyCents: daily, days, totalCents: total } = input;
 
   if (!ceiling) {
     return {
       state: 'unknown',
       figures: [],
+      steps: [],
       headline: bi('Chưa tính được ngân sách quảng cáo cho tiệm', 'We cannot size an ad budget for you yet'),
       why: input.missing === 'margin'
         ? bi(
@@ -81,6 +239,7 @@ export function adsPitch(input: {
     return {
       state: 'not-yet',
       figures: [],
+      steps: [],
       headline: bi('Lúc này chưa nên chạy quảng cáo', 'Now is not the moment to advertise'),
       why: bi(
         `Đợt nhỏ nhất mà còn đo được cần ${need} khách mới hoà vốn, trong khi khung giờ trống của tiệm chỉ còn chỗ cho ${room}. Bỏ tiền lúc này là mua khách không có ghế ngồi. Bên em lấp chỗ trống bằng khách cũ trước — không tốn tiền quảng cáo — rồi mở lại sau.`,
@@ -94,6 +253,7 @@ export function adsPitch(input: {
   const room = input.openSlots;
   return {
     state: 'offer',
+    steps: planSteps(input, days, fmt(ceiling)),
     figures: [
       { value: fmt(daily), label: bi('mỗi ngày', 'per day') },
       { value: fmt(total), label: bi(`cả đợt ${days} ngày`, `for ${days} days`) },

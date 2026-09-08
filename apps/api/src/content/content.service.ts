@@ -994,6 +994,43 @@ export class ContentService {
       : null;
 
     const budget = budgetPlan({ ceiling, openSlots });
+
+    // The four questions the owner asks after "how much": where, what, when,
+    // and then what. Every answer below is a fact this salon already produced —
+    // its own channel history, its own per-chair-hour earners, its own booking
+    // lead time, its own quiet blocks. None of the reasoning behind them
+    // crosses over; only the conclusion in her words. See ./ads-pitch.
+    const window = runWindow({
+      quietWeekdays: quiet.map((q) => q.weekday),
+      busyWeekdays: [...ctx.revenue.loads].reverse().slice(0, 2).map((l) => l.weekday),
+      leadDays: ctx.lead.medianDays,
+    });
+    const { reports } = channelReports(ctx.channelBookings, Date.now());
+    const plans = platformPlans(reports, {
+      grossMarginPct: margin,
+      firstVisitTicketCents: ticket,
+      openSlots,
+      runDayLabels: window.labels.run,
+      pauseDayLabels: window.labels.pause,
+      quietLabels: quiet.map((q) => q.label),
+      leadDays: ctx.lead.medianDays,
+      topServiceName: ctx.revenue.yields[0]?.name ?? ctx.signals.services[0]?.name ?? null,
+      city: ctx.region.city,
+      region: ctx.region.region,
+      lapsedCount: ctx.revenue.lapsed.count,
+      customerCount: ctx.audience.totalCustomers,
+      market: ctx.region.market,
+      money: ctx.money,
+    });
+    const first = plans[0] ?? null;
+    const second = plans[1] ?? null;
+
+    // The week's offer only goes into the ad when the advice was actually to
+    // discount. 'raise-price' and 'hold' mean the opposite, and pasting a
+    // headline from them into an ad would sell something we advised against.
+    const advice = ctx.revenue.advice;
+    const offerLine = advice && advice.discountPct > 0 ? advice.headline : null;
+
     return adsPitch({
       ceilingCents: ceiling.strictCents,
       dailyCents: budget.dailyCents,
@@ -1003,6 +1040,17 @@ export class ContentService {
       openSlots: budget.openSlots,
       feasible: budget.feasible,
       missing: ticket === null ? 'ticket' : margin === null ? 'margin' : null,
+      platform: first ? { label: first.label, key: first.platform } : null,
+      secondPlatform: second?.label ?? null,
+      // 'unproven' is the default order speaking, not this salon's book.
+      platformFromData: first ? first.status !== 'unproven' : false,
+      services: ctx.revenue.yields.slice(0, 2).map((y) => y.name),
+      offerLine,
+      runDays: window.labels.run,
+      pauseDays: window.labels.pause,
+      leadDays: ctx.lead.medianDays,
+      quietBlocks: quiet.slice(0, 2).map((q) => q.label),
+      returnDays: regulars?.medianGapDays ?? null,
     });
   }
 

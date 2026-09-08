@@ -58,6 +58,7 @@ export interface AdsPlan {
   state: 'offer' | 'not-yet' | 'unknown';
   figures: { value: string; label: string }[];
   headline: string; why: string; cta: string | null;
+  steps: { title: string; head: string; body: string }[];
 }
 export interface LastWeek {
   label: string; posted: number; reviews: number; newCustomers: number; bookings: number;
@@ -210,6 +211,32 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
             </div>
           )}
           <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.65, marginTop: adsPlan.figures.length ? 0 : 7 }}>{adsPlan.why}</div>
+
+          {/* The plan, numbered. An owner who cannot follow marketing can still
+              follow four steps, and four steps she can read before she says yes
+              are what make the yes hers rather than ours. */}
+          {!!adsPlan.steps?.length && (
+            <div style={{ marginTop: 13, borderTop: '1px solid var(--c334155)', paddingTop: 11 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .8, color: 'var(--c94a3b8)', textTransform: 'uppercase', marginBottom: 9 }}>
+                {T('Bên em sẽ chạy như thế nào', 'How we will run it')}
+              </div>
+              {adsPlan.steps.map((st, i) => (
+                <div key={i} style={{ display: 'flex', gap: 10, marginBottom: i === adsPlan.steps.length - 1 ? 0 : 11 }}>
+                  <div style={{
+                    flex: '0 0 22px', height: 22, borderRadius: 999, background: 'rgba(99,102,241,.22)',
+                    border: '1px solid rgba(99,102,241,.55)', color: '#c7d2fe', fontSize: 11.5, fontWeight: 800,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1,
+                  }}>{i + 1}</div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{st.title}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.4, marginTop: 2 }}>{st.head}</div>
+                    <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 3 }}>{st.body}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {adsPlan.cta && <AdsYes token={token} vi={vi} label={adsPlan.cta} onError={onError} />}
         </div>
       )}

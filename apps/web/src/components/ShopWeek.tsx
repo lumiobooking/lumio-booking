@@ -48,6 +48,12 @@ export interface ShopWeekData {
   /** Counter habits — shown as a soft line, never as a task. */
   counterIds?: string[];
 }
+export interface AdsReceipt {
+  spendCents: number; fromAds: number; newTotal: number;
+  perCustomerCents: number | null; ceilingCents: number | null;
+  verdict: 'good' | 'tight' | 'over' | 'early' | 'no-ceiling';
+  headline: string; caveat: string;
+}
 export interface LastWeek {
   label: string; posted: number; reviews: number; newCustomers: number; bookings: number;
   delta: { reviews: number | null; newCustomers: number | null; bookings: number | null };
@@ -73,9 +79,11 @@ function dayLabelsFrom(jobs: ShopJob[]): string[] {
   return Array.from({ length: out.length }, (_, i) => out[i] ?? '');
 }
 
-export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, onSend, onChanged, onError }: {
+export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, onSend, onChanged, onError }: {
   token: string | null; vi: boolean; week: ShopWeekData; weekKey: string | null; unread?: number;
   lastWeek?: LastWeek | null;
+  /** This month's ad money and what came back. Null in a month with no spend. */
+  ads?: AdsReceipt | null;
   /** Open the file picker on the send box above — the ask's one button. */
   onSend?: () => void;
   onChanged: () => Promise<void> | void; onError: (m: string | null) => void;
@@ -136,6 +144,38 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, onSend, o
             <Stat n={lastWeek.newCustomers} label={T('khách mới', 'new customers')} delta={lastWeek.delta.newCustomers} />
             <Stat n={lastWeek.bookings} label={T('lượt đặt lịch', 'bookings')} delta={lastWeek.delta.bookings} />
           </div>
+        </div>
+      )}
+
+      {/* ---- 1b. where the ad money went ----
+             The card that ends the "is this working" conversation by handing
+             the owner the arithmetic: what went out, what came back, and the
+             line under which it makes sense. Shown only in a month that
+             actually had spend — an empty receipt reads as a bad result. */}
+      {ads && (
+        <div style={{
+          ...card, marginBottom: 12,
+          borderColor: ads.verdict === 'over' ? '#ef4444' : ads.verdict === 'tight' ? '#f59e0b' : ads.verdict === 'good' ? '#22c55e' : 'var(--c334155)',
+          background: ads.verdict === 'over' ? 'rgba(239,68,68,.06)' : ads.verdict === 'good' ? 'rgba(34,197,94,.06)' : 'var(--c0f172a)',
+        }}>
+          <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 9 }}>
+            {T('TIỀN QUẢNG CÁO THÁNG NÀY', 'AD MONEY THIS MONTH')}
+          </div>
+          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))' }}>
+            <Stat n={`$${Math.round(ads.spendCents / 100)}`} label={T('đã chi', 'spent')} />
+            <Stat n={ads.fromAds} label={T('khách mới từ quảng cáo', 'new from ads')} />
+            <Stat
+              n={ads.perCustomerCents !== null ? `$${Math.round(ads.perCustomerCents / 100)}` : '—'}
+              label={T('mỗi khách', 'each')}
+              tone={ads.verdict === 'over' ? 'bad' : ads.verdict === 'good' ? 'good' : undefined}
+            />
+            <Stat
+              n={ads.ceilingCents !== null ? `$${Math.round(ads.ceilingCents / 100)}` : '—'}
+              label={T('ngưỡng hoà vốn', 'break-even')}
+            />
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.6, marginTop: 10 }}>{ads.headline}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.55, marginTop: 6 }}>{ads.caveat}</div>
         </div>
       )}
 
@@ -283,14 +323,15 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, onSend, o
   );
 }
 
-/** One number from last week, with the change against the week before. */
-function Stat({ n, label, delta }: { n: number; label: string; delta?: number | null }) {
+/** One number, with the change against the period before when there is one. */
+function Stat({ n, label, delta, tone }: { n: number | string; label: string; delta?: number | null; tone?: 'good' | 'bad' }) {
   const up = typeof delta === 'number' && delta > 0;
   const down = typeof delta === 'number' && delta < 0;
+  const col = tone === 'bad' ? '#fca5a5' : tone === 'good' ? '#86efac' : 'var(--cf1f5f9)';
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-        <span style={{ fontSize: 22, fontWeight: 800, color: 'var(--cf1f5f9)', lineHeight: 1.1 }}>{n}</span>
+        <span style={{ fontSize: 22, fontWeight: 800, color: col, lineHeight: 1.1 }}>{n}</span>
         {(up || down) && (
           <span style={{ fontSize: 11.5, fontWeight: 800, color: up ? '#86efac' : '#fca5a5' }}>
             {up ? '▲' : '▼'}{Math.abs(delta as number)}

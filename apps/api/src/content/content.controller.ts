@@ -101,9 +101,10 @@ export class ContentController {
     // a booking system and nothing else is worse than showing it nothing, so
     // the plan appears only once there is evidence the team is on this salon.
     if (!(await this.suggestions.hasAgencyWork(user))) return { week: null, weekKey: null, lastWeek: null };
-    const [{ plan, weekKey, ticks }, lastWeek] = await Promise.all([
+    const [{ plan, weekKey, ticks }, lastWeek, ads] = await Promise.all([
       this.svc.weekForSalonKept(user),
       this.svc.lastWeekForSalon(user).catch(() => null),
+      this.svc.adsReceiptForSalon(user).catch(() => null),
     ]);
     return {
       week: flattenForClient(clientWeek(plan, { weekKey: weekKey ?? '', ticks }), lang === 'en' ? 'en' : 'vi'),
@@ -111,6 +112,9 @@ export class ContentController {
       // What the salon GOT last week — its own numbers, and the first thing
       // its screen shows. See ContentService.lastWeekForSalon.
       lastWeek: lastWeek ? flattenForClient(lastWeek, lang === 'en' ? 'en' : 'vi') : null,
+      // Where the ad money went and what came back. Rebuilt field by field in
+      // ads-receipt; null in a month with no spend, which is not a result.
+      ads: ads ? flattenForClient(ads, lang === 'en' ? 'en' : 'vi') : null,
     };
   }
 

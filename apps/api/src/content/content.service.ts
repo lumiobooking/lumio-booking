@@ -5,7 +5,7 @@ import { UserRole } from '@prisma/client';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import { marketOf } from '../common/markets';
-import { bookingChannel } from '../common/booking-channel';
+import { bookingChannel, PLATFORM_OF } from '../common/booking-channel';
 import { channelReports, platformPlans, CAMPAIGN_DAYS, type ChannelBooking } from './channel-plan';
 import { buildCampaignSpec } from './campaign-spec';
 import { buildSignalProfile, signalsToPrompt, SignalProfile } from './content-signals';
@@ -39,6 +39,7 @@ import { fetchAreaAudience, type AreaAudience } from './census-audience';
 import { buildMarketPlan } from './market-target';
 import { leadTime, cpaCeiling, budgetPlan, runWindow, adAudiences } from './ads-plan';
 import { adsCalendar } from './ads-calendar';
+import { adsReceipt, type AdsReceipt } from './ads-receipt';
 import { PlacesService } from './places.service';
 import { buildSeoReport } from './seo-local';
 import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './business-profile';
@@ -899,6 +900,70 @@ export class ContentService {
         bookings: o.delta?.bookings ?? null,
       },
     };
+  }
+
+  /**
+   * This month's ad money and what came back — for the SALON's own screen.
+   *
+   * Spend is what a person typed into MarketingSpend for the paid channels;
+   * nothing is estimated. The customers are the ones whose FIRST appointment
+   * this month was booked through a paid channel, which is the only divisor
+   * that does not quietly credit the ads with the sign outside. See
+   * ./ads-receipt for the arithmetic and for what it refuses to claim.
+   */
+  async adsReceiptForSalon(user: AuthenticatedUser): Promise<AdsReceipt | null> {
+    const tenantId = this.tenantId(user);
+    const now = new Date();
+    const month = now.toISOString().slice(0, 7);
+    const from = new Date(`${month}-01T00:00:00Z`);
+
+    const [spendRows, appts] = await Promise.all([
+      this.prisma.marketingSpend.findMany({
+        where: { tenantId, periodMonth: month },
+        select: { channel: true, amountCents: true },
+      }).catch(() => []) as Promise<{ channel: string; amountCents: number }[]>,
+      this.prisma.appointment.findMany({
+        where: { tenantId, startTime: { gte: from }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } as never },
+        select: { customerId: true, startTime: true, source: true, utmSource: true, attrReferrer: true } as never,
+        take: 5000,
+      }).catch(() => []) as Promise<{ customerId: string | null; startTime: Date; source?: string | null; utmSource?: string | null; attrReferrer?: string | null }[]>,
+    ]);
+
+    // Only money that bought clicks. SEO, email and SMS are billed work, not
+    // ad spend, and folding them in would inflate the cost of an ad customer.
+    const PAID = new Set(['facebook', 'instagram', 'google_ads', 'tiktok', 'zalo']);
+    const spendCents = spendRows.filter((r) => PAID.has(String(r.channel))).reduce((n, r) => n + (r.amountCents ?? 0), 0);
+    if (spendCents <= 0) return null;
+
+    // Which of this month's customers had never been in before.
+    const ids = Array.from(new Set(appts.map((a) => a.customerId).filter(Boolean))) as string[];
+    const earliest = new Map<string, number>();
+    if (ids.length) {
+      const hist = await this.prisma.appointment.findMany({
+        where: { tenantId, customerId: { in: ids }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } as never },
+        select: { customerId: true, startTime: true },
+        take: 20000,
+      }).catch(() => []) as { customerId: string | null; startTime: Date }[];
+      for (const h of hist) {
+        if (!h.customerId) continue;
+        const t = h.startTime.getTime();
+        earliest.set(h.customerId, Math.min(earliest.get(h.customerId) ?? t, t));
+      }
+    }
+    const firsts = appts.filter((a) => a.customerId && earliest.get(a.customerId) === a.startTime.getTime());
+    const fromAds = firsts.filter((a) => {
+      const p = PLATFORM_OF[bookingChannel({ source: a.source, utmSource: a.utmSource, attrReferrer: a.attrReferrer })];
+      return p === 'google' || p === 'meta' || p === 'zalo';
+    }).length;
+
+    const ctx = await this.gather(tenantId);
+    const regulars = ctx.audience.segments.find((sg) => sg.key === 'regular');
+    const ceiling = cpaCeiling({
+      avgTicketCents: ctx.firstVisitTicketCents ?? ctx.audience.segments[0]?.avgTicketCents ?? null,
+      grossMarginPct: ctx.promo.margin.grossMarginPct,
+      medianGapDays: regulars?.medianGapDays ?? null,
+    });
+    return adsReceipt({ spendCents, fromAds, newTotal: firsts.length, ceilingCents: ceiling.strictCents });
   }
 
   /**

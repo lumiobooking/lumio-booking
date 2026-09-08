@@ -81,6 +81,15 @@ services:
         value: mock
       # Brevo (HTTPS email API) — recommended for reliable sending from the cloud.
       # Sign up free at brevo.com, verify a sender, paste the API key here.
+      # Google Places API (New) — reads who else is in the salon's town, so
+      # "how competitive is this area" is answered from Google's own index
+      # rather than invented. One Text Search per salon per MONTH (the answer
+      # is cached), so a few cents a year. Leave blank and the competition
+      # cards simply do not appear — nothing falls back to a guess.
+      # Enable "Places API (New)" in the same Google Cloud project, create an
+      # API key, and restrict the key to that one API.
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
       - key: BREVO_API_KEY
         sync: false
       - key: BREVO_SENDER_EMAIL
@@ -319,6 +328,15 @@ services:
       - key: BOOTSTRAP_TOKEN
         generateValue: true
       # Left blank on purpose until they are actually needed here.
+      # Google Places API (New) — reads who else is in the salon's town, so
+      # "how competitive is this area" is answered from Google's own index
+      # rather than invented. One Text Search per salon per MONTH (the answer
+      # is cached), so a few cents a year. Leave blank and the competition
+      # cards simply do not appear — nothing falls back to a guess.
+      # Enable "Places API (New)" in the same Google Cloud project, create an
+      # API key, and restrict the key to that one API.
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
       - key: BREVO_API_KEY
         sync: false
       - key: TWILIO_ACCOUNT_SID

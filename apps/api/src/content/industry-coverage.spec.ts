@@ -9,6 +9,16 @@ import { profileFor } from './trend-sources';
 import { viOf } from './i18n';
 
 /**
+ * The neighbourhood scanner, stubbed off.
+ *
+ * These tests are about what the service reads from the DATABASE, and a live
+ * Places lookup is neither available nor relevant here. `configured: false`
+ * is the same state a deployment without the key is in, so the stub exercises
+ * the path most salons are on rather than a special test-only one.
+ */
+const noPlaces = { configured: () => false, scan: async () => null } as never;
+
+/**
  * Every trade on the platform must actually be served.
  *
  * The bug this file exists to prevent was invisible from the code and obvious
@@ -67,7 +77,7 @@ function prismaSpy(queries: Query[], rows: unknown[] = []) {
 describe('the nightly run covers every trade, not just nail', () => {
   it('asks for ALL active tenants when no industry is named', async () => {
     const q: Query[] = [];
-    const svc = new ContentService(prismaSpy(q), { get: async () => null } as never);
+    const svc = new ContentService(prismaSpy(q), { get: async () => null } as never, noPlaces);
     await svc.generateAll();
     const call = q.find((x) => x.model === 'tenant' && x.op === 'findMany')!;
     const where = (call.args as { where: Record<string, unknown> }).where;
@@ -78,7 +88,7 @@ describe('the nightly run covers every trade, not just nail', () => {
 
   it('still filters when an industry IS named', async () => {
     const q: Query[] = [];
-    const svc = new ContentService(prismaSpy(q), { get: async () => null } as never);
+    const svc = new ContentService(prismaSpy(q), { get: async () => null } as never, noPlaces);
     await svc.generateAll('RESTAURANT');
     const where = (q.find((x) => x.model === 'tenant')!.args as { where: Record<string, unknown> }).where;
     expect(where.businessType).toBe('RESTAURANT');

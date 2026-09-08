@@ -1,6 +1,16 @@
 import { ContentService } from './content.service';
 
 /**
+ * The neighbourhood scanner, stubbed off.
+ *
+ * These tests are about what the service reads from the DATABASE, and a live
+ * Places lookup is neither available nor relevant here. `configured: false`
+ * is the same state a deployment without the key is in, so the stub exercises
+ * the path most salons are on rather than a special test-only one.
+ */
+const noPlaces = { configured: () => false, scan: async () => null } as never;
+
+/**
  * The profile scan, running without anyone pressing anything.
  *
  * The scan itself was always good. It ran exactly never on its own — only when
@@ -47,7 +57,7 @@ function stub(opts: { tenants: string[]; marks?: Row[] }) {
       get: (_m, op: string) => handlers[model]?.[op] ?? (async () => (op === 'findMany' ? [] : null)),
     }),
   }) as never;
-  return { svc: new ContentService(prisma, { get: async () => null } as never), writes };
+  return { svc: new ContentService(prisma, { get: async () => null } as never, noPlaces), writes };
 }
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();

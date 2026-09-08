@@ -104,6 +104,24 @@ interface Ads {
   plans: PlatformPlan[];
   audiences: AdAudience[];
   money: { ceilingStrict: string | null; ceilingRepeat: string | null; daily: string; total: string };
+  /** The year's rhythm: the same money placed against the dates people book for. */
+  calendar?: AdsCalendar | null;
+  /** Who else the customer sees. Absent when no Places key is configured. */
+  competition?: Competition | null;
+}
+interface AdsCalendar {
+  baseDaily: string;
+  plain: string;
+  periods: { from: string; to: string; kind: 'push' | 'base' | 'cut'; days: number; daily: string; total: string; label: string | null; why: string }[];
+  months: { month: string; total: string; flat: string; days: number }[];
+  diary: { on: string; label: string; line: string }[];
+}
+interface Competition {
+  rivals: number; myReviews: number | null; myRating: number | null;
+  top: { name: string; rating: number | null; reviews: number }[];
+  gapToTop3: number | null; medianRivalReviews: number | null;
+  density: 'quiet' | 'busy' | 'crowded'; weeksAtTwoADay: number | null;
+  headline: string; soWhat: string;
 }
 interface ChannelReport {
   channel: string; label: string; platform: string;
@@ -3628,6 +3646,104 @@ function Inner() {
                     )}
                   </div>
                   <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>{plan.ads.budget.plain}</div>
+                </div>
+              )}
+
+              {/* ---- where this salon stands among the shops beside it ----
+                   Read from Google's own index once a month. Absent entirely
+                   when no key is configured, because "the area is competitive"
+                   with an invented number attached is worse than silence. */}
+              {plan?.ads?.competition && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#a5b4fc' }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                    🏁 {T('Đối thủ quanh tiệm', 'The shops beside this one')}
+                    <span style={{
+                      marginLeft: 8, fontSize: 11.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999,
+                      background: plan.ads.competition.density === 'crowded' ? 'rgba(239,68,68,.16)' : plan.ads.competition.density === 'busy' ? 'rgba(245,158,11,.16)' : 'rgba(34,197,94,.16)',
+                      color: plan.ads.competition.density === 'crowded' ? '#fca5a5' : plan.ads.competition.density === 'busy' ? '#fbbf24' : '#86efac',
+                    }}>
+                      {plan.ads.competition.density === 'crowded' ? T('ĐÔNG ĐỐI THỦ', 'CROWDED')
+                        : plan.ads.competition.density === 'busy' ? T('CẠNH TRANH', 'BUSY') : T('ÍT ĐỐI THỦ', 'QUIET')}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.6 }}>{plan.ads.competition.headline}</div>
+                  <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
+                    {plan.ads.competition.top.map((t, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13 }}>
+                        <span style={{ width: 18, color: 'var(--c64748b)', fontWeight: 800 }}>{i + 1}</span>
+                        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ccbd5e1)' }}>{t.name}</span>
+                        {t.rating !== null && <span style={{ color: '#fbbf24', fontSize: 12 }}>★ {t.rating.toFixed(1)}</span>}
+                        <span style={{ fontWeight: 800, color: 'var(--ce2e8f0)', minWidth: 46, textAlign: 'right' }}>{t.reviews}</span>
+                      </div>
+                    ))}
+                    {plan.ads.competition.myReviews !== null && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, borderTop: '1px solid var(--c1f2937)', paddingTop: 7, marginTop: 2 }}>
+                        <span style={{ width: 18 }}>👉</span>
+                        <span style={{ flex: 1, color: '#a5b4fc', fontWeight: 700 }}>{T('Tiệm mình', 'This salon')}</span>
+                        {plan.ads.competition.myRating !== null && <span style={{ color: '#fbbf24', fontSize: 12 }}>★ {plan.ads.competition.myRating.toFixed(1)}</span>}
+                        <span style={{ fontWeight: 800, color: '#a5b4fc', minWidth: 46, textAlign: 'right' }}>{plan.ads.competition.myReviews}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 10 }}>{plan.ads.competition.soWhat}</div>
+                </div>
+              )}
+
+              {/* ---- the year's rhythm ----
+                   The same money placed against the dates people book for.
+                   Every month still costs what a flat budget cost, which is
+                   what makes this advice something a client can check. */}
+              {plan?.ads?.calendar && plan.ads.calendar.periods.length > 0 && (
+                <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                    🗓 {T('Lịch ngân sách 90 ngày', 'The next 90 days of budget')}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 10 }}>{plan.ads.calendar.plain}</div>
+
+                  {/* Month totals beside what flat would have cost — the proof
+                      that this is a reallocation and not an upsell. */}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                    {plan.ads.calendar.months.map((m) => (
+                      <div key={m.month} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1f2937)', borderRadius: 9, padding: '7px 11px' }}>
+                        <div style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 700 }}>{m.month}</div>
+                        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{m.total}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--c475569)' }}>{T('chia đều', 'flat')} {m.flat}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* The diary: the days somebody actually changes a number. */}
+                  {!!plan.ads.calendar.diary.length && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 11.5, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 5 }}>{T('NGÀY CẦN CHỈNH', 'DAYS TO CHANGE A NUMBER')}</div>
+                      {plan.ads.calendar.diary.map((d, i) => (
+                        <div key={i} style={{ display: 'flex', gap: 9, fontSize: 13, padding: '3px 0', color: 'var(--ccbd5e1)' }}>
+                          <span style={{ fontWeight: 800, color: '#fbbf24', flex: '0 0 auto', fontFamily: 'ui-monospace, monospace' }}>{d.on}</span>
+                          <span>{d.line}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* The shape itself, one row per stretch. */}
+                  <div style={{ display: 'grid', gap: 4 }}>
+                    {plan.ads.calendar.periods.filter((p) => p.kind !== 'base' || p.days >= 5).map((p, i) => (
+                      <div key={i} style={{
+                        display: 'flex', gap: 10, alignItems: 'baseline', fontSize: 12.5, padding: '5px 9px', borderRadius: 8,
+                        background: p.kind === 'push' ? 'rgba(34,197,94,.09)' : p.kind === 'cut' ? 'rgba(239,68,68,.07)' : 'var(--c0f172a)',
+                      }}>
+                        <span style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--c64748b)', flex: '0 0 auto', fontSize: 11.5 }}>
+                          {p.from.slice(5)}→{p.to.slice(5)}
+                        </span>
+                        <span style={{ fontWeight: 800, color: p.kind === 'push' ? '#86efac' : p.kind === 'cut' ? '#fca5a5' : 'var(--c94a3b8)', flex: '0 0 auto', minWidth: 64 }}>
+                          {p.daily}/{T('ngày', 'day')}
+                        </span>
+                        <span style={{ color: 'var(--ccbd5e1)', minWidth: 0 }}>
+                          {p.label ? <b>{p.label} · </b> : null}{p.why}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

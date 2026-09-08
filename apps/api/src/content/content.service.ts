@@ -38,6 +38,8 @@ import { fetchCensus, describeArea, normaliseZips, type CensusResult } from './c
 import { fetchAreaAudience, type AreaAudience } from './census-audience';
 import { buildMarketPlan } from './market-target';
 import { leadTime, cpaCeiling, budgetPlan, runWindow, adAudiences } from './ads-plan';
+import { adsCalendar } from './ads-calendar';
+import { PlacesService } from './places.service';
 import { buildSeoReport } from './seo-local';
 import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './business-profile';
 import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
@@ -71,6 +73,7 @@ export class ContentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
+    private readonly places: PlacesService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -2088,10 +2091,37 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       money: ctx.money,
     });
 
+    // The year's rhythm on top of the fortnight's: the same money placed
+    // against the dates people book for. See ./ads-calendar.
+    const calendar = adsCalendar({
+      baseDailyCents: budget.dailyCents,
+      events: regionEvents(new Date(), {
+        market: ctx.region.market, city: ctx.region.city, region: ctx.region.region,
+      }, { horizonDays: 90 }).events,
+      leadDays: ctx.lead.medianDays,
+    });
+
+    // Who else the customer sees. Read from Google's own index once a month,
+    // and simply absent when no key is configured — see ./places.service.
+    const competition = await this.places.scan(tenantId, {
+      trade: viOf(playbookFor(ctx.industry).trade),
+      city: ctx.region.city,
+      region: ctx.region.region,
+      postalCode: ctx.loc?.postalCode ?? null,
+      salonName: viOf(ctx.identity.label) || ctx.tenantName || null,
+    }).catch(() => null);
+
     return {
       ceiling,
       budget,
       window,
+      competition,
+      calendar: {
+        ...calendar,
+        baseDaily: ctx.money(calendar.baseDailyCents),
+        periods: calendar.periods.map((p) => ({ ...p, daily: ctx.money(p.dailyCents), total: ctx.money(p.totalCents) })),
+        months: calendar.months.map((m) => ({ ...m, total: ctx.money(m.totalCents), flat: ctx.money(m.flatCents) })),
+      },
       lead: ctx.lead,
       channels: {
         reports: reports.map((r) => ({

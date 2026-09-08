@@ -2,6 +2,16 @@ import { ContentService } from './content.service';
 import type { AuthenticatedUser } from '../common/tenant/tenant-context';
 
 /**
+ * The neighbourhood scanner, stubbed off.
+ *
+ * These tests are about what the service reads from the DATABASE, and a live
+ * Places lookup is neither available nor relevant here. `configured: false`
+ * is the same state a deployment without the key is in, so the stub exercises
+ * the path most salons are on rather than a special test-only one.
+ */
+const noPlaces = { configured: () => false, scan: async () => null } as never;
+
+/**
  * One salon must never see another salon's plan.
  *
  * The content engine reaches across more tables than anything else in the
@@ -34,7 +44,7 @@ function recordingPrisma(queries: Query[]) {
 }
 
 const svc = (queries: Query[]) =>
-  new ContentService(recordingPrisma(queries), { get: async () => null } as never);
+  new ContentService(recordingPrisma(queries), { get: async () => null } as never, noPlaces);
 
 const userOf = (tenantId: string): AuthenticatedUser =>
   ({ userId: 'u1', tenantId, role: 'SALON_ADMIN', email: 'a@b.c' } as unknown as AuthenticatedUser);
@@ -209,7 +219,7 @@ describe('refresh is capped, counted, and scoped', () => {
     return new Proxy({}, { get: (_t, name: string) => model(name) }) as never;
   }
   const svcWith = (setting: unknown, q: Query[] = []) =>
-    new ContentService(prismaWith(setting, q), { get: async () => null } as never);
+    new ContentService(prismaWith(setting, q), { get: async () => null } as never, noPlaces);
 
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 

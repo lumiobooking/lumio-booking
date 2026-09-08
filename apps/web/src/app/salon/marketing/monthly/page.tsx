@@ -58,6 +58,17 @@ interface SocialInsight {
   vsPrev?: { followers: SocialDelta | null; reach: SocialDelta | null; views: SocialDelta | null; engagement: SocialDelta | null; newFollowers: SocialDelta | null };
 }
 
+/** What the system says this salon should spend. Never written into the spend record. */
+interface AdsBudget {
+  month: string;
+  ceilingCents: number | null; ceiling: string | null;
+  dailyCents: number; daily: string; days: number;
+  testCents: number; test: string;
+  monthCents: number | null; monthTotal: string | null;
+  feasible: 'yes' | 'tight' | 'no' | 'unknown';
+  why: string; whyEn: string; note: string; noteEn: string;
+}
+
 const CHANNELS = ['facebook', 'instagram', 'tiktok', 'google_ads', 'gbp', 'seo', 'email', 'sms', 'website', 'other'];
 const CH_LABEL: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: 'Khác / Other' };
 const thisMonth = () => dayKeyInTz(new Date()).slice(0, 7); // the SALON's month
@@ -79,6 +90,7 @@ function Inner() {
   const [auto, setAuto] = useState<AutoStatus | null>(null);
   const [currency, setCurrency] = useState('USD');
   const [spendDraft, setSpendDraft] = useState<Record<string, SpendRow>>({});
+  const [budget, setBudget] = useState<AdsBudget | null>(null);
   const [showMetrics, setShowMetrics] = useState(false);
   const [wTitle, setWTitle] = useState(''); const [wCat, setWCat] = useState('post');
   const [busy, setBusy] = useState<string | null>(null);
@@ -126,6 +138,14 @@ function Inner() {
     finally { setLoading(false); }
   }, [token, month]);
   useEffect(() => { load(); }, [load]);
+
+  // The recommendation, fetched on its own: it depends on the salon's own
+  // takings rather than on the month being edited, and a slow read of it must
+  // never hold up the page somebody came here to type into.
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<AdsBudget>('/content/ads/budget', { token }).then(setBudget).catch(() => undefined);
+  }, [token]);
 
   // Auto-generate the AI analysis the first time a month is opened with no report yet.
   const autoTried = useRef<Set<string>>(new Set());
@@ -308,6 +328,43 @@ function Inner() {
           </label>
         </div>
         <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '2px 0 10px' }}>{T('Chỉ cần nhập chi phí. Kênh nào không chạy thì để trống.', 'Just enter spend. Leave channels you did not run blank.')}</p>
+
+        {/* What the system says this salon SHOULD spend.
+            Sits beside the field and is never typed into it: a recommendation
+            written into a receipt is a receipt for money nobody spent, and
+            every number downstream — cost per customer, the line on the
+            client's own screen — would then be computed from a wish. */}
+        {budget && (
+          <div style={{
+            border: `1px solid ${budget.feasible === 'no' ? '#ef4444' : budget.ceilingCents ? '#6366f1' : 'var(--c334155)'}`,
+            background: budget.ceilingCents ? 'rgba(99,102,241,.08)' : 'var(--c0f172a)',
+            borderRadius: 11, padding: '11px 13px', marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.4px', color: '#a5b4fc', marginBottom: 7 }}>
+              💡 {T('BÊN EM ĐỀ XUẤT CHI BAO NHIÊU', 'WHAT WE SUGGEST SPENDING')}
+            </div>
+            {budget.ceilingCents ? (
+              <>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 7 }}>
+                  <Fig n={budget.daily} label={T('mỗi ngày', 'per day')} />
+                  <Fig n={budget.test} label={T(`chiến dịch đầu (${budget.days} ngày)`, `first campaign (${budget.days} days)`)} />
+                  {budget.monthTotal && <Fig n={budget.monthTotal} label={T('cả tháng này', 'this month')} />}
+                  <Fig n={budget.ceiling ?? '—'} label={T('tối đa / khách mới', 'max per new customer')} accent="#86efac" />
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>{T(budget.why, budget.whyEn)}</div>
+                <div style={{ fontSize: 12, color: budget.feasible === 'no' ? '#fca5a5' : 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 4 }}>
+                  {T(budget.note, budget.noteEn)}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>{T(budget.why, budget.whyEn)}</div>
+            )}
+            <div style={{ fontSize: 11, color: 'var(--c64748b)', lineHeight: 1.55, marginTop: 7, borderTop: '1px solid var(--c1f2937)', paddingTop: 6 }}>
+              {T('Đây là số NÊN chi. Ô bên dưới là số ĐÃ chi thật — lấy từ Google Ads / Meta Ads Manager, đừng chép con số đề xuất vào, vì màn hình của khách tính "mỗi khách tốn bao nhiêu" từ đúng ô đó.',
+                 'This is what to spend. The field below is what was actually spent — read it off Google Ads / Meta Ads Manager. Do not copy the suggestion in: the client\u2019s own screen divides by exactly that figure.')}
+            </div>
+          </div>
+        )}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: showMetrics ? 520 : 260 }}>
             <thead><tr style={{ color: 'var(--c94a3b8)', textAlign: 'left' }}>
@@ -1558,3 +1615,13 @@ const ta: CSSProperties = { width: '100%', boxSizing: 'border-box', background: 
 const ghost: CSSProperties = { padding: '8px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' };
 const miniBtn: CSSProperties = { padding: '5px 11px', borderRadius: 7, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12, cursor: 'pointer' };
 const inp: CSSProperties = { background: 'var(--c111827)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 7, padding: '7px 10px', fontSize: 13 };
+
+/** One figure from the recommendation, big enough to read at a glance. */
+function Fig({ n, label, accent }: { n: string; label: string; accent?: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 19, fontWeight: 800, color: accent ?? 'var(--cf1f5f9)', lineHeight: 1.15 }}>{n}</div>
+      <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 1 }}>{label}</div>
+    </div>
+  );
+}

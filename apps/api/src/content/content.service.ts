@@ -903,6 +903,61 @@ export class ContentService {
   }
 
   /**
+   * What this salon SHOULD spend — the number a person is otherwise inventing.
+   *
+   * The monthly report asks staff to type what was spent, and until now gave
+   * them nothing to decide it against, so the figure came out of somebody's
+   * head. It is not a matter of taste: the ceiling is the salon's own first
+   * visit ticket times its own margin, the daily budget is what it takes to
+   * buy enough conversions to measure anything, and the month's total is that
+   * daily figure placed against the dates people book for (ads-calendar).
+   *
+   * Deliberately SEPARATE from the spend field and never pre-filled into it.
+   * A recommendation written into a receipt is a receipt for money nobody
+   * spent, and every number downstream — cost per customer, the line on the
+   * client's own screen — would then be computed from a wish.
+   */
+  async adsBudgetFor(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const ctx = await this.gather(tenantId);
+    const regulars = ctx.audience.segments.find((sg) => sg.key === 'regular');
+    const ceiling = cpaCeiling({
+      avgTicketCents: ctx.firstVisitTicketCents ?? ctx.audience.segments[0]?.avgTicketCents ?? null,
+      grossMarginPct: ctx.promo.margin.grossMarginPct,
+      medianGapDays: regulars?.medianGapDays ?? null,
+    });
+    const budget = budgetPlan({ ceiling });
+    const calendar = adsCalendar({
+      baseDailyCents: budget.dailyCents,
+      events: regionEvents(new Date(), {
+        market: ctx.region.market, city: ctx.region.city, region: ctx.region.region,
+      }, { horizonDays: 90 }).events,
+      leadDays: ctx.lead.medianDays,
+    });
+    const month = new Date().toISOString().slice(0, 7);
+    const thisMonth = calendar.months.find((m) => m.month === month) ?? null;
+    return {
+      month,
+      // Null when the salon has no ticket or no margin on file. The screen then
+      // says which one is missing rather than printing a confident zero.
+      ceilingCents: ceiling.strictCents,
+      ceiling: ceiling.strictCents !== null ? ctx.money(ceiling.strictCents) : null,
+      dailyCents: budget.dailyCents,
+      daily: ctx.money(budget.dailyCents),
+      days: budget.days,
+      testCents: budget.totalCents,
+      test: ctx.money(budget.totalCents),
+      monthCents: thisMonth?.totalCents ?? null,
+      monthTotal: thisMonth ? ctx.money(thisMonth.totalCents) : null,
+      feasible: budget.feasible,
+      why: viOf(ceiling.plain),
+      whyEn: enOf(ceiling.plain),
+      note: viOf(budget.plain),
+      noteEn: enOf(budget.plain),
+    };
+  }
+
+  /**
    * This month's ad money and what came back — for the SALON's own screen.
    *
    * Spend is what a person typed into MarketingSpend for the paid channels;

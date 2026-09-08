@@ -396,6 +396,15 @@ export class ContentController {
     return this.svc.tickStep(user, key, dto ?? {});
   }
 
+  /**
+   * What this salon should spend on ads, so nobody has to invent it.
+   * Read-only and never written into the spend record — see the service.
+   */
+  @Get('ads/budget')
+  adsBudget(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.adsBudgetFor(user);
+  }
+
   /** The offer form — what the plan, the caption and the story all quote. */
   @Get('offer')
   getOffer(@CurrentUser() user: AuthenticatedUser) {

@@ -19,7 +19,7 @@ import { isVN } from '../lib/markets';
  * a panel asking it for one reads as a bug.
  */
 export function ZaloOaPanel({ token, embedded }: { token: string | null; embedded?: boolean }) {
-  type Status = { market?: string; oauthReady?: boolean; connected: boolean; oaid: string; oaName?: string; appId?: string; tokenExpiresAt?: string | null };
+  type Status = { market?: string; oauthReady?: boolean; oauthMissing?: string[]; apiHost?: string; connected: boolean; oaid: string; oaName?: string; appId?: string; tokenExpiresAt?: string | null };
   const [st, setSt] = useState<Status | null>(null);
   const [f, setF] = useState({ appId: '', appSecret: '', oaSecretKey: '', oaid: '', oaName: '', accessToken: '', refreshToken: '' });
   const [zMsg, setZMsg] = useState<{ kind: 'idle' | 'busy' | 'ok' | 'err'; text?: string }>({ kind: 'idle' });
@@ -148,8 +148,10 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
       {showForm && (!st.oauthReady || advanced) && (
         <>
           {!st.oauthReady && (
-            <div style={{ fontSize: 12.5, color: '#fbbf24', marginBottom: 10 }}>
-              Kết nối một nút chưa bật (Lumio chưa đặt ZALO_APP_ID / ZALO_APP_SECRET trên máy chủ). Tạm thời dùng cách nhập thủ công bên dưới.
+            <div style={{ fontSize: 12.5, color: '#fbbf24', marginBottom: 10, lineHeight: 1.6 }}>
+              Kết nối một nút chưa bật. Server <code>{st.apiHost || '?'}</code> chưa thấy biến:{' '}
+              <code>{(st.oauthMissing?.length ? st.oauthMissing : ['ZALO_APP_ID', 'ZALO_APP_SECRET']).join(', ')}</code>
+              {' '}— thêm vào Render → service có đúng tên miền đó → Environment → Save, rồi tải lại trang này. Tạm thời có thể nhập thủ công bên dưới.
             </div>
           )}
           <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '10px 12px', fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 12 }}>

@@ -94,6 +94,12 @@ export class ZaloOaService {
       // One-click connect needs Lumio's own Zalo app on the server. Without
       // it the screen falls back to the console path, and says so.
       oauthReady: Boolean(this.platformApp()),
+      // Which of the platform variables THIS process cannot see, and which
+      // host this process is — so "not configured" names the variable and
+      // the server instead of sending somebody to check four dashboards.
+      oauthMissing: (['ZALO_APP_ID', 'ZALO_APP_SECRET', 'ZALO_OA_SECRET_KEY'] as const)
+        .filter((k) => !(process.env[k] || '').trim()),
+      apiHost: (() => { try { return new URL(this.apiBase()).host; } catch { return this.apiBase(); } })(),
       connected: Boolean(cfg?.enabled && cfg?.accessToken),
       oaid: cfg?.oaid ?? '',
       oaName: cfg?.oaName ?? '',

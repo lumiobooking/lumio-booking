@@ -340,7 +340,7 @@ describe('the same week reads in English', () => {
     // here only because the playbook itself carries both languages — before it
     // did, this line put a Vietnamese post title inside an English sentence.
     const post = allJobs(p).find((j) => j.kind === 'post')!;
-    expect(enOf(post.text)).toMatch(/^Post clip \d — \w/);
+    expect(enOf(post.text)).toMatch(/^Post clip — \w/);
     expect(enOf(post.text)).not.toBe(viOf(post.text));
     expect(enOf(post.why)).not.toBe(viOf(post.why));
   });

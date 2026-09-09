@@ -26,6 +26,7 @@ import type { DatedEvent } from './region-events';
 import { playbookFor, type ContentSource } from './industry-playbook';
 import { rotate, type RoadmapStage } from './roadmap';
 import { bi, join, viOf, enOf, type Txt } from './i18n';
+import { topicFor, type TopicData } from './week-topics';
 import { attachBriefs, offerSheet, type JobBrief } from './job-brief';
 import { customOfferJob, offerPostDay, type WeekOffer } from './week-offer';
 import {
@@ -163,6 +164,8 @@ export function buildWeekPlan(input: {
   salonName?: string | null;
   city?: string | null;
   currency?: string;
+  /** The shop's own numbers, so every post gets a subject. See week-topics. */
+  topics?: TopicData | null;
 }): WeekPlan {
   const industry = (input.industry || 'SALON').toUpperCase();
   const book = playbookFor(industry);
@@ -283,24 +286,23 @@ export function buildWeekPlan(input: {
    * glance, a price somebody screenshots — and alternating also halves how much
    * has to be filmed for the same number of posts.
    */
-  let clipNo = 0;
-  let photoNo = 0;
   rotate(book.postTypes, week, postCount).forEach((pt, i) => {
     const last = i === postCount - 1;
     const asPhoto = i % 2 === 1;
-    if (asPhoto) photoNo += 1; else clipNo += 1;
+    // The subject, from the shop's own numbers. "Clip 1 — the question
+    // customers keep asking" is a slot; "Clip — 'Does dip ruin your nails?'"
+    // is a post somebody can make. The running number is gone: nobody refers
+    // to a post as "clip 2" once it has a subject.
+    const topic = topicFor(pt, input.topics ?? {});
     add(postDays[i], {
       kind: 'post',
-      // The playbook now carries both languages, so each side of this sentence
-      // takes its own: the English screen gets an English post title inside an
-      // English sentence, instead of a Vietnamese one wearing English around it.
       text: asPhoto
         ? bi(
-          `Đăng bộ ảnh ${photoNo} — ${viOf(pt.label)}`,
-          `Post photo set ${photoNo} — ${enOf(pt.label)}`)
+          `Đăng bộ ảnh — ${viOf(topic.subject)}`,
+          `Post photo set — ${enOf(topic.subject)}`)
         : bi(
-          `Đăng clip ${clipNo} — ${viOf(pt.label)}`,
-          `Post clip ${clipNo} — ${enOf(pt.label)}`),
+          `Đăng clip — ${viOf(topic.subject)}`,
+          `Post clip — ${enOf(topic.subject)}`),
       why: last && busiest
         ? bi(
           `${viOf(pt.job)}. Đăng trước ${WEEKDAY_VI[busiest.weekday]} — khung đông nhất của tiệm — để bài chạy đúng lúc khách đang quyết định`,

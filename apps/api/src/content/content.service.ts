@@ -7,6 +7,7 @@ import { formatMoneyShort, localeForCountry } from '../common/money';
 import { marketOf } from '../common/markets';
 import { bookingChannel, PLATFORM_OF } from '../common/booking-channel';
 import { channelReports, platformPlans, CAMPAIGN_DAYS, type ChannelBooking } from './channel-plan';
+import { topQuestions, type TopicData, type TurnLike } from './week-topics';
 import { buildCampaignSpec } from './campaign-spec';
 import { buildSignalProfile, signalsToPrompt, SignalProfile } from './content-signals';
 import { applyCapToOffer, buildRevenueProfile, revenueToPrompt, RevenueProfile } from './revenue-signals';
@@ -556,6 +557,7 @@ export class ContentService {
       today: new Date(),
       todayWeekday: this.localWeekday(ctx.tz),
       industry: ctx.industry,
+      topics: await this.topicsFor(tenantId, ctx),
       loads: ctx.revenue.loads,
       advice: ctx.revenue.advice,
       lapsed: ctx.revenue.lapsed,
@@ -570,6 +572,42 @@ export class ContentService {
       city: ctx.city,
       currency: currencySign(ctx.currency),
     });
+  }
+
+  /**
+   * The shop's own numbers, in the shape a post subject is made from.
+   *
+   * Three sources, all already on hand or one cheap read away: the bookings
+   * (most booked, fastest rising), the price list (best earner per hour), and
+   * the Messenger inbox — the only place customers' questions exist in their
+   * own words. Nothing here is estimated; a source that is empty stays empty
+   * and the subject says the shop chooses. See ./week-topics.
+   */
+  private async topicsFor(tenantId: string, ctx: Awaited<ReturnType<ContentService['gather']>>): Promise<TopicData> {
+    const services = ctx.signals.services ?? [];
+    const top = [...services].sort((a, b) => b.count - a.count)[0] ?? null;
+    const rising = services
+      .filter((sv) => sv.trend === 'up' && typeof sv.pct === 'number' && sv.count >= 3)
+      .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))[0] ?? null;
+    const yields = ctx.revenue.yields ?? [];
+    const best = yields.filter((y) => y.minutes > 0).sort((a, b) => b.perHourCents - a.perHourCents)[0] ?? null;
+
+    // Recent threads only, and only their turns: enough to hear what is being
+    // asked this season without reading a year of chat on every plan build.
+    const threads = await this.prisma.messengerThread.findMany({
+      where: { tenantId },
+      orderBy: { updatedAt: 'desc' },
+      take: 80,
+      select: { history: true },
+    }).catch(() => []) as { history: unknown }[];
+    const question = topQuestions(threads.map((t) => (Array.isArray(t.history) ? t.history : []) as TurnLike[]))[0] ?? null;
+
+    return {
+      mostBooked: top ? { name: top.name, count: top.count } : null,
+      rising: rising ? { name: rising.name, pct: Math.round(rising.pct ?? 0) } : null,
+      bestYield: best ? { name: best.name, minutes: best.minutes, perHourCents: best.perHourCents } : null,
+      question,
+    };
   }
 
   // ---- the offer, as the team sets it ------------------------------------------

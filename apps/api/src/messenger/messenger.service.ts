@@ -7,7 +7,7 @@ import {
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { mergeHistory } from './history-merge';
-import { fetchZaloProfileName, sendZaloText, ZALO_SEND_TRACE_KEY } from './zalo-oa';
+import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY } from './zalo-oa';
 import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
 import { withBookingLink } from './booking-link';
 import { isSameVisit, servicesAsked, type OpenVisit } from './one-visit';
@@ -768,9 +768,20 @@ export class MessengerService implements OnModuleInit {
     // fails the real build. That has already cost one deploy.
     type Nameless = { id: string; senderId: string | null; senderName: string | null; pageId: string; channel: string };
     const nameless = (rows as unknown as Nameless[]).filter((r) => !r.senderName && r.senderId);
-    if (nameless.length) {
+    // Zalo rows are named by their own profile API, one call each — Graph
+    // knows nothing about an OA's users, and asking it would only fail slowly.
+    for (const r of nameless.filter((x) => x.channel === 'zalo').slice(0, 10)) {
+      const pg = await this.prisma.messengerPage.findUnique({ where: { pageId: String(r.pageId) }, select: { pageToken: true } }).catch(() => null);
+      if (!pg?.pageToken) continue;
+      const found = await this.zaloNameFor(pg.pageToken, String(r.senderId));
+      if (!found) continue;
+      r.senderName = found;
+      await this.prisma.messengerThread.update({ where: { id: r.id }, data: { senderName: found } }).catch(() => undefined);
+    }
+    if (nameless.some((r) => r.channel !== 'zalo')) {
       const byPage = new Map<string, string>();
       for (const r of nameless) {
+        if (r.channel === 'zalo') continue;
         const pid = String(r.pageId ?? '');
         if (pid) byPage.set(pid, r.channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER');
       }
@@ -975,10 +986,13 @@ export class MessengerService implements OnModuleInit {
         // Conversations first — it is the one that actually returns a name.
         // The profile endpoint stays as a fallback because it is one small
         // request and occasionally answers when the other does not.
-        const viaConv = row.pageId
+        const isZaloRow = (row as { channel?: string }).channel === 'zalo';
+        const viaConv = row.pageId && !isZaloRow
           ? (await this.fetchNamesForPage(String(row.pageId), token, (row as { channel?: string }).channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER')).get(String(row.senderId)) ?? null
           : null;
-        const name = viaConv ?? await this.fetchSenderName(token, String(row.senderId)).catch(() => null);
+        const name = viaConv ?? (isZaloRow
+          ? await this.zaloNameFor(token, String(row.senderId))
+          : await this.fetchSenderName(token, String(row.senderId)).catch(() => null));
         if (name) {
           row.senderName = name;
           await this.prisma.messengerThread.update({ where: { id: String(row.id) }, data: { senderName: name } }).catch(() => undefined);
@@ -1112,8 +1126,8 @@ export class MessengerService implements OnModuleInit {
   async threadAvatar(user: AuthenticatedUser, id: string): Promise<{ body: Buffer; contentType: string } | null> {
     const tenantId = this.tenantId(user);
     const row = await this.prisma.messengerThread.findFirst({
-      where: { id, tenantId }, select: { senderId: true, pageId: true },
-    });
+      where: { id, tenantId }, select: { senderId: true, pageId: true, channel: true } as never,
+    }) as unknown as { senderId: string | null; pageId: string | null; channel?: string | null } | null;
     if (!row?.senderId) return null;
 
     const cacheKey = `${row.pageId}:${row.senderId}`;
@@ -1130,9 +1144,18 @@ export class MessengerService implements OnModuleInit {
     if (!token) return null;
 
     try {
-      const r = await fetch(
-        `${GRAPH}/${encodeURIComponent(String(row.senderId))}/picture?width=96&height=96&redirect=true&access_token=${encodeURIComponent(token)}`,
-      );
+      // Zalo has no picture endpoint: the User Detail call names the CDN URL
+      // and we fetch that. Same cache, same refusal memory as Graph.
+      let picUrl = `${GRAPH}/${encodeURIComponent(String(row.senderId))}/picture?width=96&height=96&redirect=true&access_token=${encodeURIComponent(token)}`;
+      if (row.channel === 'zalo') {
+        const prof = await fetchZaloProfile(token, String(row.senderId));
+        if (!prof.avatar) {
+          this.avatarCache.set(cacheKey, { at: Date.now(), body: null, contentType: '' });
+          return null;
+        }
+        picUrl = prof.avatar;
+      }
+      const r = await fetch(picUrl, { signal: AbortSignal.timeout(8_000) });
       const type = r.headers.get('content-type') || '';
       if (!r.ok || !type.startsWith('image/')) {
         // Remember the refusal too, or every render retries a request Meta has
@@ -1147,6 +1170,25 @@ export class MessengerService implements OnModuleInit {
       this.avatarCache.set(cacheKey, { at: Date.now(), body: null, contentType: '' });
       return null;
     }
+  }
+
+  /**
+   * Zalo users whose profile Zalo refused to give us, and when. On the free
+   * OA tiers every lookup is refused, and a refused lookup retried on every
+   * inbox load and every message is a slow inbox for nothing. One hour, in
+   * memory — an upgrade shows up on the next hour, or the next restart.
+   */
+  private readonly zaloProfileMiss = new Map<string, number>();
+  private async zaloNameFor(token: string, senderId: string): Promise<string | null> {
+    const missAt = this.zaloProfileMiss.get(senderId);
+    if (missAt && Date.now() - missAt < 3_600_000) return null;
+    const prof = await fetchZaloProfile(token, senderId).catch(() => ({ name: null, avatar: null, error: 'threw' }));
+    if (!prof.name) {
+      this.zaloProfileMiss.set(senderId, Date.now());
+      if (this.zaloProfileMiss.size > 2000) this.zaloProfileMiss.clear();
+      if (prof.error) this.logger.warn(`Zalo profile lookup refused for …${senderId.slice(-6)}: ${String(prof.error).slice(0, 120)}`);
+    }
+    return prof.name;
   }
 
   /** Small, bounded: a salon has tens of conversations, not thousands open. */
@@ -1951,7 +1993,7 @@ export class MessengerService implements OnModuleInit {
     // Best-effort: resolve the customer's display name once (User Profile API).
     if (!thread.senderName) {
       const name = channel === 'zalo'
-        ? await fetchZaloProfileName(page.pageToken, senderId)
+        ? await this.zaloNameFor(page.pageToken, senderId)
         : await this.fetchSenderName(page.pageToken, senderId);
       if (name) await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { senderName: name } }).catch(() => undefined);
     }

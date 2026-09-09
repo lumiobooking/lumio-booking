@@ -38,7 +38,7 @@ export function explainZaloSendError(error: string | null | undefined): string {
     [/-213\b|-214\b|interact|48h|window|quan tâm/i, 'Zalo chỉ cho OA trả lời trong 48 giờ sau khi khách nhắn; khách phải nhắn trước, OA không mở lời được.'],
     // -224 is Zalo's paywall: the free "Cơ bản" and "Tiêu chuẩn" tiers have
     // no Open API at all. Seen live on 2026-09-09 with a verified OA.
-    [/-224\b|tier package|upgrade/i, 'Gói OA hiện tại không có quyền gửi tin qua API. Zalo chỉ mở API cho gói Tăng trưởng hoặc Toàn diện — nâng gói tại oa.zalo.me → Quản lý → Quản lý gói & DV → Mua gói (tham khảo zalo.solutions/oa/pricing).'],
+    [/-224\b|tier package|upgrade/i, 'Gói OA hiện tại không có quyền gửi tin qua API. Zalo chỉ mở API (trả lời, tên và ảnh khách) cho gói Tăng trưởng hoặc Toàn diện — nâng gói tại oa.zalo.me → Quản lý → Quản lý gói & DV → Mua gói (tham khảo zalo.solutions/oa/pricing).'],
     [/-217\b|-218\b|quota|limit|package|gói/i, 'OA hết hạn mức hoặc chưa đăng ký gói API — vào oa.zalo.me → Quản lý → Quản lý gói & DV.'],
     [/-230\b|-232\b|-240\b|verif|permission|not allowed|xác thực|not support/i, 'OA hoặc ứng dụng chưa được phép dùng API tin nhắn — kiểm tra Xác thực OA và quyền "Official Account API" của ứng dụng trong developers.zalo.me.'],
     [/-201\b|-202\b|param/i, 'Zalo không hiểu nội dung gửi (lỗi tham số) — gửi nguyên dòng lỗi này cho Lumio.'],
@@ -143,21 +143,33 @@ export async function sendZaloText(accessToken: string, userId: string, text: st
   }
 }
 
-/** Best-effort display name, same contract as the Graph profile lookup:
- *  a failure is a null name, never a failed message. */
-export async function fetchZaloProfileName(accessToken: string, userId: string): Promise<string | null> {
+/** Name and picture of a Zalo user who wrote to the OA (User Detail API).
+ *  Same contract as the Graph profile lookup: a failure is nulls plus the
+ *  reason, never a failed message. Both fields sit behind Zalo's paywall
+ *  (-224 on the free tiers), which is why the reason is returned. */
+export async function fetchZaloProfile(accessToken: string, userId: string): Promise<{ name: string | null; avatar: string | null; error?: string }> {
   try {
     const q = encodeURIComponent(JSON.stringify({ user_id: userId }));
     const res = await fetch(`${OPENAPI}/user/detail?data=${q}`, {
       headers: { access_token: accessToken },
       signal: AbortSignal.timeout(8_000),
     });
-    const out = (await res.json().catch(() => ({}))) as { data?: { display_name?: string } };
-    const name = String(out?.data?.display_name ?? '').trim();
-    return name || null;
-  } catch {
-    return null;
+    const out = (await res.json().catch(() => ({}))) as {
+      error?: number; message?: string;
+      data?: { display_name?: string; avatar?: string; avatars?: { '240'?: string; '120'?: string } };
+    };
+    if (Number(out?.error ?? 0) !== 0) return { name: null, avatar: null, error: `Zalo ${out?.error}: ${out?.message ?? 'unknown'}` };
+    const name = String(out?.data?.display_name ?? '').trim() || null;
+    const avatar = String(out?.data?.avatars?.['240'] || out?.data?.avatars?.['120'] || out?.data?.avatar || '').trim() || null;
+    return { name, avatar: avatar && /^https?:\/\//.test(avatar) ? avatar : null };
+  } catch (e) {
+    return { name: null, avatar: null, error: String(e) };
   }
+}
+
+/** Display name only — the shape the brain has always used. */
+export async function fetchZaloProfileName(accessToken: string, userId: string): Promise<string | null> {
+  return (await fetchZaloProfile(accessToken, userId)).name;
 }
 
 /** Exchange the single-use refresh token for a new pair. The `secret_key`

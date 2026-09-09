@@ -102,3 +102,28 @@ describe('explainZaloSendError', () => {
     expect(explainZaloSendError(undefined)).toBe('');
   });
 });
+
+describe('fetchZaloProfile', () => {
+  const { fetchZaloProfile } = require('./zalo-oa');
+  const realFetch = global.fetch;
+  afterEach(() => { global.fetch = realFetch; });
+  const answer = (body: unknown) => { global.fetch = jest.fn(async () => ({ json: async () => body })) as unknown as typeof fetch; };
+
+  it('reads the name and the largest avatar Zalo offers', async () => {
+    answer({ error: 0, data: { display_name: 'Nguyễn Việt', avatar: 'https://s.zadn.vn/a.jpg', avatars: { '120': 'https://s.zadn.vn/120.jpg', '240': 'https://s.zadn.vn/240.jpg' } } });
+    expect(await fetchZaloProfile('tok', 'u1')).toEqual({ name: 'Nguyễn Việt', avatar: 'https://s.zadn.vn/240.jpg' });
+  });
+
+  it('hands back the refusal so the caller can stop asking — the paywall answers this call too', async () => {
+    answer({ error: -224, message: 'The OA needs to upgrade OA Tier Package to use this feature.' });
+    const r = await fetchZaloProfile('tok', 'u1');
+    expect(r.name).toBeNull();
+    expect(r.avatar).toBeNull();
+    expect(r.error).toMatch(/-224/);
+  });
+
+  it('never returns a non-http avatar', async () => {
+    answer({ error: 0, data: { display_name: 'A', avatar: 'javascript:alert(1)' } });
+    expect((await fetchZaloProfile('tok', 'u1')).avatar).toBeNull();
+  });
+});

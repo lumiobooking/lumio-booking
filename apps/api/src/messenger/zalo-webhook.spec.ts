@@ -75,7 +75,12 @@ describe('Zalo webhook → brain', () => {
   it('refreshes a dying token and persists the new single-use pair BEFORE replying', async () => {
     const order: string[] = [];
     const { svc, prisma, messenger } = makeSvc({ ...CFG, accessExpiresAtMs: Date.now() + 30 * 60 * 1000 });
-    prisma.setting.upsert.mockImplementation(async () => { order.push('persist'); return {}; });
+    // The webhook also writes its trace row through the same upsert; only the
+    // token row counts for the ordering this test is about.
+    prisma.setting.upsert.mockImplementation(async (a: { where: { tenantId_key: { key: string } } }) => {
+      if (a.where.tenantId_key.key === 'zalo_oa') order.push('persist');
+      return {};
+    });
     (messenger.inboundZalo as jest.Mock).mockImplementation(async () => { order.push('brain'); });
     (global as any).fetch = jest.fn(async () => ({
       json: async () => ({ access_token: 'tok-new', refresh_token: 'ref-new', expires_in: '90000' }),
@@ -85,9 +90,49 @@ describe('Zalo webhook → brain', () => {
     await svc.handleWebhook(body, sig);
 
     expect(order).toEqual(['persist', 'brain']);
-    const saved = (prisma.setting.upsert.mock.calls as unknown as [[{ update: { value: Record<string, unknown> } }]])[0][0].update.value;
+    const tokenWrite = (prisma.setting.upsert.mock.calls as unknown as [{ where: { tenantId_key: { key: string } }; update: { value: Record<string, unknown> } }][])
+      .map((c) => c[0]).find((c) => c.where.tenantId_key.key === 'zalo_oa')!;
+    const saved = tokenWrite.update.value;
     expect(saved.accessToken).toBe('tok-new');
     expect(saved.refreshToken).toBe('ref-new');
     expect(prisma.messengerPage.updateMany).toHaveBeenCalledWith({ where: { pageId: 'oa-7' }, data: { pageToken: 'tok-new' } });
+  });
+});
+
+describe('the trace the screen reads', () => {
+  const written = (prisma: { setting: { upsert: jest.Mock } }) =>
+    prisma.setting.upsert.mock.calls
+      .map((c) => c[0] as { where: { tenantId_key: { key: string } }; update: { value: { outcome?: string; event?: string } } })
+      .filter((c) => c.where.tenantId_key.key === 'zalo_webhook_trace')
+      .map((c) => c.update.value);
+
+  it('records "ok" when a signed text event went to the brain', async () => {
+    const { svc, prisma } = makeSvc();
+    const { body, sig } = signedEvent();
+    await svc.handleWebhook(body, sig);
+    expect(written(prisma).at(-1)).toMatchObject({ outcome: 'ok', event: 'user_send_text' });
+  });
+
+  it('NAMES THE GATE that stopped a forged event — the one fact that ends a support call', async () => {
+    const { svc, prisma, messenger } = makeSvc();
+    const { body } = signedEvent();
+    await svc.handleWebhook(body, 'mac=' + '0'.repeat(64));
+    expect(messenger.inboundZalo).not.toHaveBeenCalled();
+    expect(written(prisma).at(-1)).toMatchObject({ outcome: 'bad-signature' });
+  });
+
+  it('records a follow event as ignored rather than silence — Zalo IS delivering', async () => {
+    const { svc, prisma } = makeSvc();
+    const body = JSON.stringify({ app_id: '111', event_name: 'follow', timestamp: '1700000000123', follower: { id: 'u' }, oa_id: 'oa-7' });
+    const sig = 'mac=' + createHash('sha256').update(`111${body}1700000000123oa-secret`).digest('hex');
+    await svc.handleWebhook(body, sig);
+    expect(written(prisma).at(-1)).toMatchObject({ outcome: 'ignored', event: 'follow' });
+  });
+
+  it('never writes the customer\'s words into the trace', async () => {
+    const { svc, prisma } = makeSvc();
+    const { body, sig } = signedEvent('số điện thoại của tôi là 0909');
+    await svc.handleWebhook(body, sig);
+    expect(JSON.stringify(written(prisma))).not.toContain('0909');
   });
 });

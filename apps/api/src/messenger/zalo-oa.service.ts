@@ -51,6 +51,8 @@ const KEY = 'zalo_oa';
 const PENDING_KEY = 'zalo_oauth_pending';
 const REFRESH_MARGIN_MS = 2 * 60 * 60 * 1000;
 const PENDING_TTL_MS = 10 * 60 * 1000;
+/** What the last event from Zalo did — the answer to "is it even arriving?". */
+const TRACE_KEY = 'zalo_webhook_trace';
 
 @Injectable()
 export class ZaloOaService {
@@ -100,6 +102,13 @@ export class ZaloOaService {
       oauthMissing: (['ZALO_APP_ID', 'ZALO_APP_SECRET', 'ZALO_OA_SECRET_KEY'] as const)
         .filter((k) => !(process.env[k] || '').trim()),
       apiHost: (() => { try { return new URL(this.apiBase()).host; } catch { return this.apiBase(); } })(),
+      // The last event Zalo delivered for this salon and what became of it.
+      // "Connected" and "the bot answers" are two different facts, and this
+      // is the one that tells them apart.
+      lastWebhook: await this.lastTrace(tenantId),
+      // Events for an OA no salon holds, seen by this process. When the last
+      // one names THIS salon's OA, the connection rows are what is wrong.
+      unrouted: this.lastUnrouted && cfg?.oaid && this.lastUnrouted.oaId === cfg.oaid ? this.lastUnrouted : null,
       connected: Boolean(cfg?.enabled && cfg?.accessToken),
       oaid: cfg?.oaid ?? '',
       oaName: cfg?.oaName ?? '',
@@ -310,29 +319,62 @@ export class ZaloOaService {
   async handleWebhook(rawBody: string, signatureHeader: string | undefined): Promise<void> {
     let body: unknown = null;
     try { body = JSON.parse(rawBody || 'null'); } catch { return; }
-    const ev = parseZaloEvent(body);
-    if (!ev) return;
+    const b = body as { event_name?: unknown; recipient?: { id?: unknown }; oa_id?: unknown; timestamp?: unknown } | null;
+    const eventName = String(b?.event_name ?? '') || 'unknown';
+    // The OA, from wherever this event type carries it, so a follow or a
+    // sticker still leaves a trace — "Zalo is delivering" is worth knowing
+    // even when the event is not one the bot answers.
+    const oaId = String(b?.recipient?.id ?? b?.oa_id ?? '').trim();
 
     // Route by OA id → tenant, via the same pages table every mouth uses.
-    const page = await this.prisma.messengerPage.findFirst({ where: { pageId: ev.oaId } }).catch(() => null);
-    if (!page || !page.enabled) return;
+    const page = oaId ? await this.prisma.messengerPage.findFirst({ where: { pageId: oaId } }).catch(() => null) : null;
+    if (!page) { this.lastUnrouted = { at: new Date().toISOString(), oaId, event: eventName }; return; }
+    if (!page.enabled) { await this.trace(page.tenantId, { oaId, event: eventName, outcome: 'page-disabled' }); return; }
     let cfg = await this.configOf(page.tenantId);
-    if (!cfg || !cfg.enabled) return;
+    if (!cfg || !cfg.enabled) { await this.trace(page.tenantId, { oaId, event: eventName, outcome: 'no-config' }); return; }
 
     // Authenticate. No secret configured = nothing is accepted; a webhook that
     // skips verification "temporarily" is a webhook anyone on earth can call.
-    const ts = (body as { timestamp?: unknown } | null)?.timestamp ?? '';
+    const ts = b?.timestamp ?? '';
     // The webhook secret is per APP, not per OA: one for every salon that
     // connected through Lumio's app, kept in the environment. A pasted
     // (console-path) connection carries its own.
     const oaSecretKey = cfg.oaSecretKey || this.platformApp()?.oaSecretKey || '';
     if (!verifyZaloSignature({ appId: cfg.appId, rawBody, timestamp: String(ts), oaSecretKey, header: signatureHeader })) {
-      this.logger.warn(`Zalo webhook signature rejected for OA ${ev.oaId}`);
+      this.logger.warn(`Zalo webhook signature rejected for OA ${oaId}`);
+      await this.trace(page.tenantId, { oaId, event: eventName, outcome: oaSecretKey ? 'bad-signature' : 'no-secret' });
       return;
     }
+
+    const ev = parseZaloEvent(body);
+    if (!ev) { await this.trace(page.tenantId, { oaId, event: eventName, outcome: 'ignored' }); return; }
+    await this.trace(page.tenantId, { oaId, event: eventName, outcome: 'ok' });
 
     // Keep the reply token alive, then let the brain do everything else.
     cfg = await this.ensureFreshToken(page.tenantId, cfg);
     await this.messenger.inboundZalo(ev.oaId, ev.senderId, ev.text, ev.tsMs);
+  }
+
+  /** The last event this process saw for an OA nobody holds. Memory only. */
+  private lastUnrouted: { at: string; oaId: string; event: string } | null = null;
+
+  /**
+   * One row per salon, overwritten on every event. Not a log — the log is
+   * on Render — but the single fact the screen needs: did the last one make
+   * it through, and if not, which gate stopped it. Never the message text.
+   */
+  private async trace(tenantId: string, t: { oaId: string; event: string; outcome: string }): Promise<void> {
+    const value = { at: new Date().toISOString(), ...t } as unknown as Prisma.InputJsonValue;
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: TRACE_KEY } },
+      update: { value },
+      create: { tenantId, key: TRACE_KEY, value },
+    }).catch(() => undefined);
+  }
+
+  private async lastTrace(tenantId: string): Promise<{ at: string; oaId: string; event: string; outcome: string } | null> {
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: TRACE_KEY }, select: { value: true } }).catch(() => null);
+    const v = row?.value as { at?: string; oaId?: string; event?: string; outcome?: string } | null;
+    return v?.at ? { at: v.at, oaId: v.oaId ?? '', event: v.event ?? '', outcome: v.outcome ?? '' } : null;
   }
 }

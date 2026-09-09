@@ -766,8 +766,11 @@ function Inner() {
           itself stays silent for a salon outside Vietnam. */}
       <ZaloOaPanel token={token} />
 
-      {/* Connection details + live webhook subscription status (App Review evidence) */}
-      {c.connected && (
+      {/* Connection details + live webhook subscription status (App Review evidence).
+          Facebook's checks, for a Facebook Page. A Zalo-only connection borrows
+          the row (pageId "zalo:…") and every check here fails on it — "Page
+          chưa subscribe app" for an OA is noise that reads as a fault. */}
+      {c.connected && !String(c.pageId || '').startsWith('zalo:') && (
         <div style={{ ...ui.card, marginBottom: 16 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('connDetailsTitle')}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>

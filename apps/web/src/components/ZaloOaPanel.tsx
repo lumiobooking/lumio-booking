@@ -19,7 +19,10 @@ import { isVN } from '../lib/markets';
  * a panel asking it for one reads as a bug.
  */
 export function ZaloOaPanel({ token, embedded }: { token: string | null; embedded?: boolean }) {
-  type Status = { market?: string; oauthReady?: boolean; oauthMissing?: string[]; apiHost?: string; connected: boolean; oaid: string; oaName?: string; appId?: string; tokenExpiresAt?: string | null };
+  type Trace = { at: string; oaId: string; event: string; outcome: string };
+  type Status = {
+    market?: string; oauthReady?: boolean; oauthMissing?: string[]; apiHost?: string; connected: boolean;
+    lastWebhook?: Trace | null; unrouted?: { at: string; oaId: string; event: string } | null; oaid: string; oaName?: string; appId?: string; tokenExpiresAt?: string | null };
   const [st, setSt] = useState<Status | null>(null);
   const [f, setF] = useState({ appId: '', appSecret: '', oaSecretKey: '', oaid: '', oaName: '', accessToken: '', refreshToken: '' });
   const [zMsg, setZMsg] = useState<{ kind: 'idle' | 'busy' | 'ok' | 'err'; text?: string }>({ kind: 'idle' });
@@ -117,6 +120,34 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
         Cùng bộ não AI đang trả lời Messenger và Instagram — thêm cái miệng Zalo. Khách nhắn Zalo OA của tiệm, bot tư vấn và chốt lịch;
         tin hiện trong cùng Hộp thư, nhân viên nhận chat y như Messenger.
       </p>
+
+      {/* Connected and answering are two different facts. This line is the
+          second one: what the last event from Zalo did on its way in. */}
+      {st.connected && (
+        <div style={{ fontSize: 12.5, lineHeight: 1.6, marginBottom: 12, padding: '8px 11px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', color: 'var(--ccbd5e1)' }}>
+          <b style={{ color: 'var(--c94a3b8)' }}>Webhook gần nhất:</b>{' '}
+          {st.lastWebhook ? (
+            <>
+              {new Date(st.lastWebhook.at).toLocaleString('vi-VN')} · <code>{st.lastWebhook.event}</code> ·{' '}
+              {st.lastWebhook.outcome === 'ok' ? <span style={{ color: '#4ade80' }}>✓ đã chuyển cho bot</span>
+                : st.lastWebhook.outcome === 'ignored' ? <span style={{ color: '#a5b4fc' }}>bỏ qua (không phải tin nhắn chữ) — Zalo đang gửi tới bình thường</span>
+                : st.lastWebhook.outcome === 'bad-signature' ? <span style={{ color: '#f87171' }}>✗ sai chữ ký — ZALO_OA_SECRET_KEY trên server không khớp OA Secret Key ở trang Webhook của app Zalo</span>
+                : st.lastWebhook.outcome === 'no-secret' ? <span style={{ color: '#f87171' }}>✗ server chưa có ZALO_OA_SECRET_KEY</span>
+                : st.lastWebhook.outcome === 'page-disabled' ? <span style={{ color: '#fbbf24' }}>OA đang tắt trong Lumio</span>
+                : st.lastWebhook.outcome === 'no-config' ? <span style={{ color: '#fbbf24' }}>chưa có cấu hình OA cho tiệm</span>
+                : <span>{st.lastWebhook.outcome}</span>}
+            </>
+          ) : st.unrouted ? (
+            <span style={{ color: '#fbbf24' }}>
+              {new Date(st.unrouted.at).toLocaleString('vi-VN')} · Zalo gửi sự kiện cho OA {st.unrouted.oaId} nhưng không khớp tiệm nào — bấm "Kết nối lại Zalo OA".
+            </span>
+          ) : (
+            <span style={{ color: '#fbbf24' }}>
+              chưa nhận được sự kiện nào từ Zalo. Nếu đã nhắn thử mà vẫn trống: kiểm tra app Zalo → <b>Webhook</b> có đúng URL <code>{`${apiBase}/public/zalo/webhook`}</code> và đã tick <i>Sự kiện người dùng gửi tin nhắn đến OA</i> ở <b>Official Account → Thiết lập chung</b>.
+            </span>
+          )}
+        </div>
+      )}
 
       {result && (
         <div style={{ background: result.ok ? '#052e1e' : 'var(--c7f1d1d)', color: result.ok ? 'var(--cbbf7d0)' : 'var(--cfecaca)', border: `1px solid ${result.ok ? '#10b981' : '#ef4444'}`, borderRadius: 9, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>

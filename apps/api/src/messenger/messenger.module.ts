@@ -9,10 +9,11 @@ import { MessengerController } from './messenger.controller';
 import { MessengerWebhookController } from './messenger-webhook.controller';
 import { ZaloOaService } from './zalo-oa.service';
 import { ZaloController, ZaloWebhookController } from './zalo.controller';
+import { SiteVerificationController } from './site-verification.controller';
 
 @Module({
   imports: [BookingsModule, SettingsModule, NotificationsModule, PushModule],
-  controllers: [MessengerController, MessengerWebhookController, ZaloController, ZaloWebhookController],
+  controllers: [MessengerController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController],
   providers: [InboxEventsService, MessengerService, ZaloOaService],
   exports: [InboxEventsService, MessengerService],
 })

@@ -101,6 +101,10 @@ services:
         sync: false
       - key: ZALO_OA_SECRET_KEY
         sync: false
+      # The code from developers.zalo.me → Xác thực domain, for THIS host.
+      # Served as the meta tag on "/" and as zalo_verifier<code>.html.
+      - key: ZALO_SITE_VERIFICATION
+        sync: false
       - key: BREVO_API_KEY
         sync: false
       - key: BREVO_SENDER_EMAIL
@@ -358,6 +362,10 @@ services:
       - key: ZALO_APP_SECRET
         sync: false
       - key: ZALO_OA_SECRET_KEY
+        sync: false
+      # The code from developers.zalo.me → Xác thực domain, for THIS host.
+      # Served as the meta tag on "/" and as zalo_verifier<code>.html.
+      - key: ZALO_SITE_VERIFICATION
         sync: false
       - key: BREVO_API_KEY
         sync: false

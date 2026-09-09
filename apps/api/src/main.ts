@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe, Logger, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
@@ -16,8 +16,15 @@ async function bootstrap() {
   app.useBodyParser('json', { limit: '6mb' });
   app.useBodyParser('urlencoded', { limit: '6mb', extended: true });
 
-  // Global API prefix: all routes live under /api
-  app.setGlobalPrefix('api');
+  // Global API prefix: all routes live under /api — except the two that
+  // prove this host to Zalo, which have to sit at the root because that is
+  // where Zalo looks. See messenger/site-verification.controller.
+  app.setGlobalPrefix('api', {
+    exclude: [
+      { path: '/', method: RequestMethod.GET },
+      { path: 'zalo_verifier*', method: RequestMethod.GET },
+    ],
+  });
 
   // Fail fast in ANY non-development environment if the JWT signing secret is
   // missing — never silently fall back to the built-in dev secret (that would let

@@ -120,6 +120,12 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
         Cùng bộ não AI đang trả lời Messenger và Instagram — thêm cái miệng Zalo. Khách nhắn Zalo OA của tiệm, bot tư vấn và chốt lịch;
         tin hiện trong cùng Hộp thư, nhân viên nhận chat y như Messenger.
       </p>
+      {/* Zalo's paywall, said before anyone connects: the free tiers have no
+          Open API, so a bot on them hears every message and may answer none. */}
+      <p style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', margin: '0 0 12px', lineHeight: 1.55, padding: '7px 10px', borderRadius: 8, background: 'rgba(251,191,36,.08)', border: '1px solid rgba(251,191,36,.25)' }}>
+        <b>Điều kiện của Zalo:</b> OA phải <b>đã xác thực</b> và dùng gói <b>Tăng trưởng</b> hoặc <b>Toàn diện</b> — gói Cơ bản/Tiêu chuẩn không cho gửi tin qua API: bot nhận được tin nhưng Zalo chặn câu trả lời (lỗi -224).
+        Nâng gói tại oa.zalo.me → Quản lý → Quản lý gói &amp; DV.
+      </p>
 
       {/* Connected and answering are two different facts. This line is the
           second one: what the last event from Zalo did on its way in. */}

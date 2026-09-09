@@ -36,7 +36,10 @@ export function explainZaloSendError(error: string | null | undefined): string {
   const hints: [RegExp, string][] = [
     [/-216\b|token/i, 'Token OA không còn hiệu lực — bấm "Kết nối lại Zalo OA".'],
     [/-213\b|-214\b|interact|48h|window|quan tâm/i, 'Zalo chỉ cho OA trả lời trong 48 giờ sau khi khách nhắn; khách phải nhắn trước, OA không mở lời được.'],
-    [/-217\b|-218\b|-224\b|quota|limit|package|gói/i, 'OA hết hạn mức hoặc chưa đăng ký gói API — vào oa.zalo.me → Quản lý → Quản lý gói & DV.'],
+    // -224 is Zalo's paywall: the free "Cơ bản" and "Tiêu chuẩn" tiers have
+    // no Open API at all. Seen live on 2026-09-09 with a verified OA.
+    [/-224\b|tier package|upgrade/i, 'Gói OA hiện tại không có quyền gửi tin qua API. Zalo chỉ mở API cho gói Tăng trưởng hoặc Toàn diện — nâng gói tại oa.zalo.me → Quản lý → Quản lý gói & DV → Mua gói (tham khảo zalo.solutions/oa/pricing).'],
+    [/-217\b|-218\b|quota|limit|package|gói/i, 'OA hết hạn mức hoặc chưa đăng ký gói API — vào oa.zalo.me → Quản lý → Quản lý gói & DV.'],
     [/-230\b|-232\b|-240\b|verif|permission|not allowed|xác thực|not support/i, 'OA hoặc ứng dụng chưa được phép dùng API tin nhắn — kiểm tra Xác thực OA và quyền "Official Account API" của ứng dụng trong developers.zalo.me.'],
     [/-201\b|-202\b|param/i, 'Zalo không hiểu nội dung gửi (lỗi tham số) — gửi nguyên dòng lỗi này cho Lumio.'],
     [/timeout|fetch failed|ECONN|ENOTFOUND/i, 'Server không gọi tới Zalo được (mạng/timeout) — thử nhắn lại; nếu lặp lại, gửi dòng lỗi này cho Lumio.'],

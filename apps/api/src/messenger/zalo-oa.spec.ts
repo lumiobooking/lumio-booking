@@ -85,8 +85,13 @@ describe('explainZaloSendError', () => {
   it('names the 48-hour window when the customer has not written first', () => {
     expect(explainZaloSendError('Zalo -213: User has not interacted with OA')).toMatch(/48 giờ/);
   });
+  it('names the paywall tiers for -224, word for word what Zalo sent us live', () => {
+    const h = explainZaloSendError('Zalo -224: The OA needs to upgrade OA Tier Package to use this feature. See more on https://zalo.cloud/oa/pricing');
+    expect(h).toMatch(/Tăng trưởng/);
+    expect(h).toMatch(/Toàn diện/);
+  });
   it('points at the OA package for quota refusals', () => {
-    expect(explainZaloSendError('Zalo -224: OA has run out of quota')).toMatch(/gói/);
+    expect(explainZaloSendError('Zalo -218: OA has run out of quota')).toMatch(/gói/);
   });
   it('points at OA verification / app permission for policy refusals', () => {
     expect(explainZaloSendError('Zalo -230: OA is not verified')).toMatch(/Xác thực OA/);

@@ -96,14 +96,17 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
             </ol>
             <div style={{ marginTop: 6 }}>URL webhook: <code style={{ fontSize: 11.5, wordBreak: 'break-all', color: '#a5b4fc' }}>{`${apiBase}/public/zalo/webhook`}</code></div>
           </div>
+          {/* Chrome read this grid as a login form and filled App ID with the
+              person's email and the secret with their password. The names
+              and autocomplete values below are what stops it. */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
-            <Field label="App ID"><input style={ui.input} value={f.appId} onChange={(e) => setF({ ...f, appId: e.target.value })} /></Field>
-            <Field label="App Secret Key"><input style={ui.input} type="password" value={f.appSecret} onChange={(e) => setF({ ...f, appSecret: e.target.value })} placeholder={st.connected ? 'Đã lưu' : ''} /></Field>
-            <Field label="OA Secret Key (webhook)"><input style={ui.input} type="password" value={f.oaSecretKey} onChange={(e) => setF({ ...f, oaSecretKey: e.target.value })} placeholder={st.connected ? 'Đã lưu' : ''} /></Field>
-            <Field label="OA ID"><input style={ui.input} value={f.oaid} onChange={(e) => setF({ ...f, oaid: e.target.value })} /></Field>
-            <Field label="Tên OA (tùy chọn)"><input style={ui.input} value={f.oaName} onChange={(e) => setF({ ...f, oaName: e.target.value })} placeholder="Tiệm Nail ABC" /></Field>
-            <Field label="Access token"><input style={ui.input} type="password" value={f.accessToken} onChange={(e) => setF({ ...f, accessToken: e.target.value })} placeholder={st.connected ? 'Đã lưu' : ''} /></Field>
-            <Field label="Refresh token"><input style={ui.input} type="password" value={f.refreshToken} onChange={(e) => setF({ ...f, refreshToken: e.target.value })} placeholder={st.connected ? 'Đã lưu' : ''} /></Field>
+            <Field label="App ID"><input style={ui.input} name="zalo-app-id" autoComplete="off" inputMode="numeric" value={f.appId} onChange={(e) => setF({ ...f, appId: e.target.value })} /></Field>
+            <Field label="App Secret Key"><input style={ui.input} type="password" name="zalo-app-secret" autoComplete="new-password" value={f.appSecret} onChange={(e) => setF({ ...f, appSecret: e.target.value })} placeholder={st.connected ? 'Đã lưu' : ''} /></Field>
+            <Field label="OA Secret Key (webhook)"><input style={ui.input} type="password" name="zalo-oa-secret" autoComplete="new-password" value={f.oaSecretKey} onChange={(e) => setF({ ...f, oaSecretKey: e.target.value })} placeholder={st.connected ? 'Đã lưu' : ''} /></Field>
+            <Field label="OA ID"><input style={ui.input} name="zalo-oa-id" autoComplete="off" inputMode="numeric" value={f.oaid} onChange={(e) => setF({ ...f, oaid: e.target.value })} /></Field>
+            <Field label="Tên OA (tùy chọn)"><input style={ui.input} name="zalo-oa-name" autoComplete="off" value={f.oaName} onChange={(e) => setF({ ...f, oaName: e.target.value })} placeholder="Tiệm Nail ABC" /></Field>
+            <Field label="Access token"><input style={ui.input} type="password" name="zalo-access-token" autoComplete="new-password" value={f.accessToken} onChange={(e) => setF({ ...f, accessToken: e.target.value })} placeholder={st.connected ? 'Đã lưu' : ''} /></Field>
+            <Field label="Refresh token"><input style={ui.input} type="password" name="zalo-refresh-token" autoComplete="new-password" value={f.refreshToken} onChange={(e) => setF({ ...f, refreshToken: e.target.value })} placeholder={st.connected ? 'Đã lưu' : ''} /></Field>
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <button

@@ -9,6 +9,7 @@ import { bookingChannel, PLATFORM_OF } from '../common/booking-channel';
 import { channelReports, platformPlans, CAMPAIGN_DAYS, type ChannelBooking } from './channel-plan';
 import { topQuestions, type TopicData, type TurnLike } from './week-topics';
 import { CAPTION_RULES, REASON_RULES, SHOTLIST_RULES, captionIssues } from './caption-style';
+import { evidenceForDay, autoDone, type AutoKey, type PostEvidence } from './auto-ticks';
 import { buildCampaignSpec } from './campaign-spec';
 import { buildSignalProfile, signalsToPrompt, SignalProfile } from './content-signals';
 import { applyCapToOffer, buildRevenueProfile, revenueToPrompt, RevenueProfile } from './revenue-signals';
@@ -886,15 +887,66 @@ export class ContentService {
   /** The salon's week plus the two things only the week row knows: its key and its ticks. */
   async weekForSalonKept(user: AuthenticatedUser): Promise<{
     plan: Awaited<ReturnType<ContentService['weekPlanFor']>>; weekKey: string | null; ticks: Record<string, number[]>;
+    /** Steps the posting queue proved, per job — see auto-ticks. */
+    auto: Record<string, number[]>;
   }> {
     const tenantId = this.tenantId(user);
     const ctx = await this.gather(tenantId);
     const generated = await this.weekPlanFor(tenantId, ctx);
     const kept = await this.keepWeek(tenantId, ctx.tz, generated).catch(() => null);
-    const base = { weekKey: kept?.weekKey ?? null, ticks: kept?.ticks ?? {} };
-    if (!kept?.edited) return { plan: generated, ...base };
-    const row = await this.weekAtRaw(user, kept.weekKey).catch(() => null);
-    return { plan: (row?.week as typeof generated) ?? generated, ...base };
+    const row = kept?.edited ? await this.weekAtRaw(user, kept.weekKey).catch(() => null) : null;
+    const plan = (row?.week as typeof generated) ?? generated;
+    const auto = await this.autoTicksFor(tenantId, ctx.tz, plan).catch(() => ({}));
+    return { plan, weekKey: kept?.weekKey ?? null, ticks: kept?.ticks ?? {}, auto };
+  }
+
+  /**
+   * What the posting queue can prove about each job on the week.
+   *
+   * Day index 0 is today in the salon's own zone; a post scheduled on that
+   * local day is that day's evidence. The match is by DAY and not by a stored
+   * link, because the queue's posts come from the daily ideas and the week's
+   * jobs come from the plan — two lists that are meant to describe the same
+   * day, and the day is the thing they share. See ./auto-ticks.
+   */
+  private async autoTicksFor(
+    tenantId: string, tz: string, plan: { days: { jobs: { id?: string; brief?: { auto?: Record<number, AutoKey> } }[] }[] },
+  ): Promise<Record<string, number[]>> {
+    const today = this.localDay(tz);
+    const dayOf = (i: number) => {
+      const d = new Date(`${today}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + i);
+      return d.toISOString().slice(0, 10);
+    };
+    const from = new Date(`${today}T00:00:00Z`); from.setUTCDate(from.getUTCDate() - 1);
+    const to = new Date(`${today}T00:00:00Z`); to.setUTCDate(to.getUTCDate() + 9);
+    const loose = this.prisma as unknown as { scheduledPost?: { findMany: (a: unknown) => Promise<unknown> } };
+    const rows = await loose.scheduledPost?.findMany({
+      where: { tenantId, scheduledAt: { gte: from, lt: to } },
+      select: { scheduledAt: true, status: true, media: true, imageUrl: true, message: true },
+      take: 200,
+    }).catch(() => []) as { scheduledAt: Date; status: string; media: unknown; imageUrl: string | null; message: string }[] ?? [];
+    const posts: PostEvidence[] = rows.map((r) => {
+      const media = Array.isArray(r.media) ? r.media as { kind?: string }[] : [];
+      const count = media.length || (r.imageUrl ? 1 : 0);
+      return {
+        day: this.localDay(tz, new Date(r.scheduledAt)),
+        status: String(r.status ?? ''),
+        mediaCount: count,
+        hasVideo: media.some((m) => m?.kind === 'video'),
+        hasMessage: Boolean(String(r.message ?? '').trim()),
+      };
+    });
+    const out: Record<string, number[]> = {};
+    plan.days.forEach((d, i) => {
+      const ev = evidenceForDay(posts, dayOf(i));
+      for (const j of d.jobs) {
+        if (!j.id || !j.brief?.auto) continue;
+        const done = autoDone(j.brief.auto, ev);
+        if (done.length) out[j.id] = done;
+      }
+    });
+    return out;
   }
 
   /**

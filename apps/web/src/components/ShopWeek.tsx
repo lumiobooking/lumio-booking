@@ -34,6 +34,8 @@ import { ItemComments } from './ContentChat';
 export interface ShopJob {
   id?: string; dayIndex: number; day: string; kind: string; by?: 'shop' | 'lumio';
   text: string; steps?: string[]; done?: number[]; how: string | null;
+  /** Steps the posting queue ticked itself. Drawn locked — a person cannot untick a fact. */
+  auto?: number[];
 }
 /**
  * `days`, and every job's `id` and `by`, arrive from an API that knows about
@@ -491,6 +493,7 @@ function JobLine({ j, vi, canEdit, busy, days, onText, onSteps, onMove, onRemove
   const T = (v: string, e: string) => (vi ? v : e);
   const steps = j.steps ?? [];
   const done = new Set(j.done ?? []);
+  const auto = new Set(j.auto ?? []);
   const by = j.by ?? (SHOP_KINDS.includes(j.kind as typeof SHOP_KINDS[number]) ? 'shop' : 'lumio');
   const [open, setOpen] = useState(false);
   const allDone = steps.length > 0 && steps.every((_, i) => done.has(i));
@@ -519,9 +522,23 @@ function JobLine({ j, vi, canEdit, busy, days, onText, onSteps, onMove, onRemove
           <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 3, paddingLeft: 10, borderLeft: '2px solid var(--c334155)' }}>
             {steps.map((st, k) => (
               <label key={k} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '3px 0', color: 'var(--ce2e8f0)' }}>
-                <input type="checkbox" checked={done.has(k)} onChange={(e) => onTick(k, e.target.checked)} style={{ marginTop: 3 }} />
+                {/* A step the queue proved is a fact, not an opinion: it is
+                    shown ticked and cannot be unticked here. The label says
+                    who ticked it, so a locked box reads as help, not a bug. */}
+                <input
+                  type="checkbox"
+                  checked={done.has(k)}
+                  disabled={auto.has(k)}
+                  onChange={(e) => onTick(k, e.target.checked)}
+                  style={{ marginTop: 3, accentColor: auto.has(k) ? '#22c55e' : undefined }}
+                />
                 <span style={{ flex: 1, textDecoration: done.has(k) ? 'line-through' : undefined, opacity: done.has(k) ? 0.6 : 1 }}>
-                  <Inline value={st} canEdit={canEdit} onCommit={(v) => { const next = [...steps]; next[k] = v; onSteps(next.filter(Boolean)); }} multiline />
+                  <Inline value={st} canEdit={canEdit && !auto.has(k)} onCommit={(v) => { const next = [...steps]; next[k] = v; onSteps(next.filter(Boolean)); }} multiline />
+                  {auto.has(k) && (
+                    <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, letterSpacing: .4, color: '#86efac', background: 'rgba(34,197,94,.14)', borderRadius: 999, padding: '1px 6px', verticalAlign: 1 }}>
+                      {T('TỰ ĐỘNG', 'AUTO')}
+                    </span>
+                  )}
                 </span>
                 {canEdit && (
                   <button title={T('Bỏ bước', 'Remove step')} onClick={() => onSteps(steps.filter((_, i) => i !== k))} style={{ background: 'transparent', border: 'none', color: 'var(--c64748b)', cursor: 'pointer', padding: 0 }}>✕</button>

@@ -1,5 +1,6 @@
 import { bi, isBi, viOf, enOf, type Txt } from './i18n';
 import { composeCaption } from './caption-style';
+import type { AutoKey } from './auto-ticks';
 import type { Job, JobKind } from './weekly-plan';
 
 /**
@@ -38,6 +39,11 @@ export interface JobBrief {
   hashtags?: string[];
   /** Where it goes: "Instagram Reels · TikTok · Facebook". */
   channel?: Txt;
+  /**
+   * Which steps the posting queue can prove, by index — the queue ticks
+   * those itself (see auto-ticks). A step not listed is the person's.
+   */
+  auto?: Record<number, AutoKey>;
 }
 
 export interface BriefContext {
@@ -174,28 +180,36 @@ function postCaption(job: Job, ctx: BriefContext): Txt {
 function postSheet(job: Job, ctx: BriefContext): JobBrief {
   const isPhotoSet = /bộ ảnh|photo set|carousel/i.test(viOf(job.text) + enOf(job.text));
   return {
+    // The steps the queue can prove are marked in `auto` below, by index.
+    // Publishing is split in two on purpose: Facebook and Instagram go out
+    // from the queue and tick themselves; TikTok is posted by hand from the
+    // phone and stays a person's box, because nothing here can see it.
     steps: isPhotoSet
       ? [
-        bi('Chọn 4–6 ảnh từ buổi chụp — ảnh SAU đẹp nhất để đầu, ảnh TRƯỚC để thứ 2 (người xem sẽ vuốt)',
-          'Pick 4–6 photos from the shoot — best AFTER first, BEFORE second (people swipe to see)'),
+        bi('Chọn 4–6 ảnh — ảnh SAU đẹp nhất để đầu, ảnh TRƯỚC thứ hai (người xem sẽ vuốt)',
+          'Pick 4–6 photos — best AFTER first, BEFORE second (people swipe to see)'),
         bi('Cắt về 4:5, cùng tông màu cả bộ', 'Crop to 4:5, one colour tone across the set'),
-        bi('Dán caption bên dưới, đổi tên mẫu/giá cho đúng', 'Paste the caption below, fix the design name/price'),
-        bi('Đăng Instagram + Facebook cùng lúc, đúng khung giờ ghi trên việc', 'Post to Instagram + Facebook together, in the time window on the job'),
+        bi('Dán caption bên dưới vào bài, sửa tên mẫu/giá cho đúng', 'Put the caption below on the post, fix the design name/price'),
+        bi('Hẹn giờ đăng Instagram + Facebook — hệ thống tự đăng đúng khung giờ', 'Schedule Instagram + Facebook — the queue posts it in the time window'),
         bi('Ghim bình luận đầu tiên có link đặt lịch', 'Pin the first comment with the booking link'),
         bi('Trả lời mọi bình luận trong 30 phút đầu', 'Answer every comment in the first 30 minutes'),
       ]
       : [
-        bi('Chọn đúng clip số ghi trên việc. Cắt 15–30 giây; 2 giây đầu = cận bộ móng xoay',
-          'Pick the clip number on the job. Cut to 15–30 seconds; first 2 seconds = the set turning'),
+        bi('Chọn đúng clip ghi trên việc. Cắt 15–30 giây; 2 giây đầu = cận bộ móng xoay',
+          'Pick the clip on the job. Cut to 15–30 seconds; first 2 seconds = the set turning'),
         bi('Một dòng chữ nổi ở giây 1–3 (tên mẫu hoặc câu hỏi), nhạc trending không lời',
           'One text line at seconds 1–3 (design name or a question), trending instrumental audio'),
-        bi('Dán caption bên dưới, đổi tên mẫu/giá cho đúng', 'Paste the caption below, fix the design name/price'),
-        bi('Đăng Instagram Reels + TikTok + Facebook Reels cùng lúc, đúng khung giờ ghi trên việc',
-          'Post Instagram Reels + TikTok + Facebook Reels together, in the time window on the job'),
+        bi('Dán caption bên dưới vào bài, sửa tên mẫu/giá cho đúng', 'Put the caption below on the post, fix the design name/price'),
+        bi('Hẹn giờ đăng Instagram Reels + Facebook Reels — hệ thống tự đăng đúng khung giờ',
+          'Schedule Instagram Reels + Facebook Reels — the queue posts it in the time window'),
+        bi('Đăng TikTok từ điện thoại, cùng clip, cùng caption', 'Post to TikTok from the phone — same clip, same caption'),
         bi('Ghim bình luận đầu tiên có link đặt lịch', 'Pin the first comment with the booking link'),
         bi('Trả lời mọi bình luận trong 30 phút đầu — thuật toán đẩy bài có trả lời',
           'Answer every comment in the first 30 minutes — replies are what the algorithm pushes'),
       ],
+    auto: isPhotoSet
+      ? { 0: 'media', 2: 'caption', 3: 'posted' }
+      : { 0: 'video', 2: 'caption', 3: 'posted' },
     caption: postCaption(job, ctx),
     hashtags: tags(ctx, isPhotoSet ? ['nailinspo', 'beforeandafter'] : ['nailsreels', 'nailtok']),
     channel: isPhotoSet
@@ -312,8 +326,8 @@ export function offerSheet(o: {
     steps: [
       bi('Ảnh: 1 bộ móng đẹp nhất + chữ TO ghi đúng ưu đãi (con số, khung giờ). Không quá 8 chữ trên ảnh',
         'Image: one best set + BIG text with the exact offer (number, time slot). No more than 8 words on the image'),
-      bi('Dán caption bên dưới — điều kiện ghi rõ, có hạn chót', 'Paste the caption below — conditions spelled out, with a deadline'),
-      bi('Đăng Facebook + Instagram, đúng giờ ghi trên việc', 'Post Facebook + Instagram, at the time on the job'),
+      bi('Dán caption bên dưới vào bài — điều kiện ghi rõ, có hạn chót', 'Put the caption below on the post — conditions spelled out, with a deadline'),
+      bi('Hẹn giờ đăng Facebook + Instagram — hệ thống tự đăng đúng giờ', 'Schedule Facebook + Instagram — the queue posts it on time'),
       bi('Ghim bài lên đầu trang Facebook. Cài trả lời tự động Messenger nhắc đúng ưu đãi này',
         'Pin it to the top of the Facebook page. Set the Messenger auto-reply to mention this exact offer'),
       bi('Đăng cùng nội dung lên hồ sơ Google với nút "Đặt lịch"', 'Same content on the Google profile with a "Book" button'),
@@ -331,6 +345,7 @@ export function offerSheet(o: {
         ask: 'Book in 30 seconds — link in bio. This slot fills up, so book early for the good times 💅',
       })),
     hashtags: tags(ctx, ['nailsdeal', 'nailspecial']),
+    auto: { 0: 'media', 1: 'caption', 2: 'posted' },
     channel: bi('Facebook (ghim) · Instagram · Hồ sơ Google', 'Facebook (pinned) · Instagram · Google profile'),
   };
 }

@@ -101,7 +101,7 @@ export class ContentController {
     // a booking system and nothing else is worse than showing it nothing, so
     // the plan appears only once there is evidence the team is on this salon.
     if (!(await this.suggestions.hasAgencyWork(user))) return { week: null, weekKey: null, lastWeek: null };
-    const [{ plan, weekKey, ticks }, lastWeek, ads] = await Promise.all([
+    const [{ plan, weekKey, ticks, auto }, lastWeek, ads] = await Promise.all([
       this.svc.weekForSalonKept(user),
       this.svc.lastWeekForSalon(user).catch(() => null),
       this.svc.adsReceiptForSalon(user).catch(() => null),
@@ -111,7 +111,7 @@ export class ContentController {
     // with itself.
     const adsPlan = ads ? null : await this.svc.adsPitchForSalon(user).catch(() => null);
     return {
-      week: flattenForClient(clientWeek(plan, { weekKey: weekKey ?? '', ticks }), lang === 'en' ? 'en' : 'vi'),
+      week: flattenForClient(clientWeek(plan, { weekKey: weekKey ?? '', ticks, auto }), lang === 'en' ? 'en' : 'vi'),
       weekKey,
       // What the salon GOT last week — its own numbers, and the first thing
       // its screen shows. See ContentService.lastWeekForSalon.

@@ -52,7 +52,7 @@ describe('what a salon sees of its own week', () => {
   it('says which day, because a shoot has to be scheduled — and nothing about publishing', () => {
     for (const j of cw.jobs) {
       expect(typeof j.dayIndex).toBe('number');
-      expect(Object.keys(j).sort()).toEqual(['by', 'day', 'dayIndex', 'done', 'how', 'id', 'kind', 'steps', 'text']);
+      expect(Object.keys(j).sort()).toEqual(['auto', 'by', 'day', 'dayIndex', 'done', 'how', 'id', 'kind', 'steps', 'text']);
     }
   });
 
@@ -239,5 +239,23 @@ describe('the guard the other tests are made of', () => {
     const loop: Record<string, unknown> = { a: 1 };
     loop.self = loop;
     expect(leaksAnything(loop)).toBeNull();
+  });
+});
+
+describe('steps the queue proved', () => {
+  const plan = buildWeekPlan({ today: new Date('2026-09-09T12:00:00Z'), todayWeekday: 3, industry: 'SALON', salonName: 'S' });
+  const post = plan.days.flatMap((d: { jobs: { kind: string; id?: string }[] }) => d.jobs).find((j: { kind: string }) => j.kind === 'post');
+
+  it('are ticked on the shop\'s screen and marked as the machine\'s', () => {
+    const w = clientWeek(plan, { weekKey: 'w', ticks: { [post.id]: [5] }, auto: { [post.id]: [0, 2, 3] } });
+    const j = w!.jobs.find((x: { id: string }) => x.id === post.id)!;
+    expect(j.done).toEqual([0, 2, 3, 5]);
+    expect(j.auto).toEqual([0, 2, 3]);
+  });
+
+  it('carry nothing about the queue itself — a tick is a number, not a post', () => {
+    const w = clientWeek(plan, { weekKey: 'w', ticks: {}, auto: { [post.id]: [3] } });
+    expect(leaksAnything(w)).toBeNull();
+    expect(JSON.stringify(w)).not.toMatch(/scheduledAt|mediaCount|hasVideo|status/);
   });
 });

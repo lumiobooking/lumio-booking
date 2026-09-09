@@ -1,4 +1,5 @@
 import { bi, viOf, enOf, type Txt } from './i18n';
+import { mergeTicks } from './auto-ticks';
 import type { DayPlan, Job, JobKind, WeekPlan } from './weekly-plan';
 import { weeklyAsk, COUNTER_KINDS, type WeeklyAsk } from './weekly-ask';
 
@@ -50,8 +51,10 @@ export interface ClientJob {
   by: 'shop' | 'lumio';
   /** The instruction, including what to shoot. */
   text: Txt;
-  /** Steps already ticked on this job, by index into `steps`. */
+  /** Steps already ticked on this job, by index into `steps` — a person's and the queue's together. */
   done: number[];
+  /** The subset of `done` the posting queue proved itself. Drawn locked. */
+  auto: number[];
   /**
    * The shot list, in order — the sheet's steps for THIS job (job-brief).
    * Craft only: which shots, what light, how long. Nothing about why.
@@ -131,6 +134,8 @@ export interface ClientWeek {
 export interface ClientWeekMeta {
   weekKey: string;
   ticks: Record<string, number[]>;
+  /** Steps the posting queue proved, per job. See auto-ticks. */
+  auto?: Record<string, number[]>;
 }
 
 /**
@@ -156,7 +161,8 @@ export function clientWeek(plan: WeekPlan | null | undefined, meta?: ClientWeekM
         id, dayIndex, day: d.label, kind: j.kind,
         by: SHOP_JOB_KINDS.includes(j.kind) ? 'shop' : 'lumio',
         text: (j as Job).text,
-        done: (id && meta?.ticks?.[id]) ? meta.ticks[id].slice(0, 32) : [],
+        done: mergeTicks(id ? meta?.ticks?.[id]?.slice(0, 32) : [], id ? (meta?.auto?.[id] ?? []) : []),
+        auto: id ? (meta?.auto?.[id] ?? []) : [],
         // Only the steps travel. The caption, the tags and the channel are the
         // team's publishing work, and the shop's jobs do not publish anything.
         steps: ((j as Job).brief?.steps ?? []).slice(0, 12),

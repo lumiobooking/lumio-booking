@@ -26,6 +26,7 @@ import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { mergeBurst, alreadySaid, BURST_MS } from './burst';
+import { publishGrantFrom } from './publish-grant';
 
 // A blank/masked secret must never overwrite a stored Page token.
 function cleanSecret(v: unknown): string | null {
@@ -194,6 +195,10 @@ export class MessengerService implements OnModuleInit {
       connectTrace: (user.supportSession === true || user.role === UserRole.SUPER_ADMIN)
         ? await this.settings.getMessengerConnectTrace(tenantId)
         : null,
+      // What the last connect did with the PUBLISHING scopes — shown right
+      // here, where the person is standing after they reconnect, so they do
+      // not have to walk back to the posting queue to learn whether it worked.
+      publishGrant: await this.settings.getMessengerPublishGrant(tenantId),
     };
   }
 
@@ -234,7 +239,7 @@ export class MessengerService implements OnModuleInit {
     // Same off-switch as the scopes above, and for the same reason: requesting a
     // scope the app has not been granted kills the WHOLE dialog with "Invalid
     // Scopes", so an app that has not added them yet sets FB_SCOPE_PUBLISH=0.
-    const publishOn = process.env.FB_SCOPE_PUBLISH !== '0';
+    const { fb: publishOn } = this.publishScopesRequested();
     const scope = [
       'pages_show_list', 'pages_messaging', 'pages_manage_metadata',
       ...(readEng ? ['pages_read_engagement'] : []),
@@ -253,6 +258,18 @@ export class MessengerService implements OnModuleInit {
       auth_type: 'rerequest',
     });
     return { url: `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}` };
+  }
+
+  /**
+   * Which publishing scopes the dialog is built with. One place, because the
+   * callback has to know what was ASKED to classify what came back: a scope
+   * absent from /me/permissions is "we never asked" if it is off here, and
+   * "Meta would not offer it" if it is on. See ./publish-grant.
+   */
+  private publishScopesRequested(): { fb: boolean; ig: boolean } {
+    const publishOn = process.env.FB_SCOPE_PUBLISH !== '0';
+    const igOn = process.env.FB_ENABLE_INSTAGRAM === '1' || process.env.FB_ENABLE_INSTAGRAM === 'true';
+    return { fb: publishOn, ig: igOn && publishOn };
   }
 
   /** Facebook redirects here with ?code&state. Exchange it, grab the salon's Page
@@ -274,6 +291,23 @@ export class MessengerService implements OnModuleInit {
       const tok = (await tokRes.json()) as { access_token?: string; error?: { message?: string } };
       if (!tok.access_token) { trace.push(`token: FAILED — ${tok.error?.message || 'no_token'}`); return finish(`fb=error&msg=${encodeURIComponent(tok.error?.message || 'no_token')}`); }
       trace.push('token: ok');
+      // What Facebook did with the PUBLISHING scopes, recorded now while we
+      // hold the user token — the only moment the question can be answered.
+      // Without this, a token missing pages_manage_posts looks the same
+      // whether the person unticked it or Meta never offered it, and the
+      // queue screen tells both of them to reconnect.
+      try {
+        const permRes = await fetch(
+          `https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(tok.access_token)}`,
+          { signal: AbortSignal.timeout(8000) },
+        );
+        const perms = (await permRes.json().catch(() => ({}))) as { data?: { permission: string; status: string }[] };
+        const grant = publishGrantFrom(perms.data, this.publishScopesRequested());
+        await this.settings.setMessengerPublishGrant(tenantId, grant).catch(() => undefined);
+        trace.push(`publish scopes: ${Object.entries(grant.scopes).map(([k, v]) => `${k}=${v}`).join(', ')}`);
+      } catch (e) {
+        trace.push(`publish scopes: could not read — ${String(e).slice(0, 80)}`);
+      }
       const pagesRes = await fetch(
         `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(tok.access_token)}`,
       );

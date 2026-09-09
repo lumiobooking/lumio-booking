@@ -388,6 +388,17 @@ export class SettingsService {
     await this.writeKey(tenantId, 'messenger_connect_trace', { at: new Date().toISOString(), steps: steps.slice(0, 40) });
   }
 
+  /** What the last connect did with the publishing scopes. See messenger/publish-grant. */
+  async setMessengerPublishGrant(tenantId: string, grant: { at: string; scopes: Record<string, string> }): Promise<void> {
+    await this.writeKey(tenantId, 'messenger_publish_grant', grant);
+  }
+
+  async getMessengerPublishGrant(tenantId: string): Promise<{ at: string; scopes: Record<string, string> } | null> {
+    const raw = await this.readKey<{ at?: string; scopes?: Record<string, string> }>(tenantId, 'messenger_publish_grant', {});
+    if (!raw?.at || !raw.scopes || typeof raw.scopes !== 'object') return null;
+    return { at: raw.at, scopes: raw.scopes };
+  }
+
   async getMessengerConnectTrace(tenantId: string): Promise<{ at: string; steps: string[] } | null> {
     const raw = await this.readKey<{ at?: string; steps?: string[] }>(tenantId, 'messenger_connect_trace', {});
     if (!raw?.at || !Array.isArray(raw.steps)) return null;

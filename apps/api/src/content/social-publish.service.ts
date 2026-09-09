@@ -11,6 +11,7 @@ import { planPurge, storagePathOf, DEFAULT_RETENTION_DAYS, type RetentionPost } 
 import { MEDIA_STORE, type MediaStore } from './media-store';
 import { buildPostKit, type ShopFacts } from './post-kit';
 import { publicWebBase } from '../common/public-url.util';
+import { explainPublishGap, type GapCause, type PublishGrant } from '../messenger/publish-grant';
 
 const GRAPH = 'https://graph.facebook.com/' + (process.env.META_GRAPH_VERSION || 'v21.0');
 
@@ -255,11 +256,20 @@ export class SocialPublishService {
    *
    * Cached five minutes because the queue screen reloads on every edit and this
    * is a real network call whose answer changes about twice a year.
+   *
+   * KEYED BY THE TOKEN, NOT THE SALON
+   *
+   * It was keyed by tenant, which meant a salon that reconnected its Page and
+   * came straight back to this screen was shown the OLD token's answer for up
+   * to five minutes: "still missing — reconnect". They had just reconnected.
+   * That is the exact moment a fix message is tested, and it failed the test.
+   * A new token is a different key and gets a fresh answer.
    */
   private scopeCache = new Map<string, { at: number; scopes: string[] }>();
 
   private async grantedScopes(tenantId: string, token: string): Promise<string[] | null> {
-    const hit = this.scopeCache.get(tenantId);
+    const key = `${tenantId}:${token.slice(-24)}`;
+    const hit = this.scopeCache.get(key);
     if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.scopes;
 
     const appId = process.env.FB_APP_ID || '';
@@ -284,7 +294,10 @@ export class SocialPublishService {
         ...((j.data.granular_scopes ?? []).map((g) => g.scope)),
       ];
       const uniq = Array.from(new Set(scopes));
-      this.scopeCache.set(tenantId, { at: Date.now(), scopes: uniq });
+      // Old tokens' entries are never read again; keep the map from growing
+      // one entry per reconnect for the life of the process.
+      for (const k of this.scopeCache.keys()) if (k.startsWith(`${tenantId}:`)) this.scopeCache.delete(k);
+      this.scopeCache.set(key, { at: Date.now(), scopes: uniq });
       return uniq;
     } catch {
       return null;
@@ -341,11 +354,23 @@ export class SocialPublishService {
     // so the answer arrives on the screen rather than as a failed post — and so
     // a stale permission error can be recognised as stale.
     let missingScopes: string[] | null = null;
+    let publishGap: { cause: GapCause; reconnectHelps: boolean } | null = null;
     if (conn) {
       const granted = await this.grantedScopes(tenantId, conn.token);
       if (granted) {
         const need = ['pages_manage_posts', ...(conn.page.igId ? ['instagram_content_publish'] : [])];
         missingScopes = need.filter((n) => !granted.includes(n));
+        if (missingScopes.length) {
+          // WHY it is missing decides what the screen tells the person to do.
+          // "Reconnect" is only the fix when the person unticked the box; when
+          // Meta never offered it, reconnecting is a treadmill. See
+          // messenger/publish-grant.
+          const row = await this.prisma.setting.findUnique({
+            where: { tenantId_key: { tenantId, key: 'messenger_publish_grant' } },
+          }).catch(() => null);
+          const grant = (row?.value ?? null) as PublishGrant | null;
+          publishGap = explainPublishGap(missingScopes, grant && typeof grant === 'object' && grant.scopes ? grant : null);
+        }
       }
     }
     /**
@@ -426,6 +451,8 @@ export class SocialPublishService {
         // Null when we could not ask — which is not the same as "nothing is
         // missing", and the screen words it differently.
         missingScopes,
+        /** Why they are missing, and whether reconnecting is the fix. */
+        publishGap,
       } : null,
       posts,
       /** True for a Lumio support session: may delete published rows too. */

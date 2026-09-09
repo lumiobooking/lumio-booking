@@ -21,6 +21,8 @@ interface MConf {
   humanActiveMins: number; graceMins: number;
   chatAssignMode: 'off' | 'round-robin'; chatMaxOpenPerAgent: number; chatPreferUsualTech: boolean;
   connectTrace?: { at: string; steps: string[] } | null;
+  /** What the last connect did with the publishing scopes. */
+  publishGrant?: { at: string; scopes: Record<string, string> } | null;
 }
 interface SalesLead {
   id: string; threadId: string | null; name: string; phone: string; salonName: string | null; city: string | null;
@@ -602,6 +604,28 @@ function Inner() {
             </button>
           )}
           <button onClick={() => setFbResult(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+        </div>
+      )}
+      {/* ---- did the last connect get PUBLISHING rights? ----
+           Answered here, where the person is standing after they reconnect.
+           Walking back to the posting queue to find out is how "I reconnected
+           and it still says reconnect" happens. Only drawn when something is
+           short — a green line on every connected salon is noise. */}
+      {c?.connected && c.publishGrant && Object.values(c.publishGrant.scopes).some((v) => v !== 'granted') && (
+        <div style={{ background: 'var(--c451a03)', border: '1px solid #f59e0b', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, lineHeight: 1.6, color: 'var(--cfde68a)' }}>
+          <div style={{ fontWeight: 800, marginBottom: 3 }}>
+            {lang === 'vi' ? '📣 Quyền đăng bài sau lần kết nối gần nhất' : '📣 Publishing rights after the last connect'}
+            <span style={{ fontWeight: 400, color: 'var(--cfcd34d)', marginLeft: 8, fontSize: 12 }}>{fmtInTz(c.publishGrant.at, { dateStyle: 'short', timeStyle: 'short' })}</span>
+          </div>
+          {Object.entries(c.publishGrant.scopes).map(([scope, st]) => (
+            <div key={scope}>
+              <code style={{ fontSize: 12 }}>{scope}</code>{' — '}
+              {st === 'granted' ? (lang === 'vi' ? '✓ đã cấp' : '✓ granted')
+                : st === 'declined' ? (lang === 'vi' ? '✗ bị bỏ tick trong hộp thoại — kết nối lại và tick là được' : '✗ unticked in the dialog — reconnect and tick it')
+                : st === 'not-asked' ? (lang === 'vi' ? '✗ bên em có xin nhưng Facebook không hiện ô này — việc phía Lumio với Meta, kết nối lại không sửa được' : '✗ we asked, Facebook did not show the box — a Lumio↔Meta matter, reconnecting will not fix it')
+                : (lang === 'vi' ? '✗ ứng dụng chưa xin quyền này — Lumio cần bật trước' : '✗ the app is not requesting it yet — Lumio has to switch it on')}
+            </div>
+          ))}
         </div>
       )}
       {c?.connectTrace && fbResult && !fbResult.ok && (

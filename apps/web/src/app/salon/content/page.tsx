@@ -305,6 +305,8 @@ interface QueuePayload {
     pageName: string | null; igUsername: string | null; hasInstagram: boolean; enabled: boolean;
     /** Permissions the stored Page token does NOT carry. Null = we could not ask. */
     missingScopes: string[] | null;
+    /** Why, and whether reconnecting is the fix. See api messenger/publish-grant. */
+    publishGap?: { cause: 'declined' | 'not-offered' | 'not-requested' | 'stale' | 'unknown'; reconnectHelps: boolean } | null;
   } | null;
   posts: QueuedPost[];
   /** Advice, never a refusal: where a month of posts fights itself. */
@@ -2352,18 +2354,35 @@ function Inner() {
                           </div>
                           <div style={{ fontSize: 12.5, color: 'var(--cfde68a)', lineHeight: 1.6 }}>
                             {T('Thiếu', 'Missing')}: <code>{queue.connected.missingScopes.join(', ')}</code>.{' '}
-                            {T('Token của Trang chỉ mang những quyền được cấp đúng lúc kết nối. Kết nối lại Trang và tick tất cả các ô Facebook hỏi.',
-                               'A Page token only carries the permissions granted when it was issued. Reconnect the Page and tick every box Facebook asks about.')}
+                            {/* The cause decides the sentence. "Reconnect" is only
+                                said when reconnecting can work — a fix message that
+                                cannot work is how fix messages stop being believed. */}
+                            {queue.connected.publishGap?.cause === 'not-offered' ? T(
+                              'Lần kết nối gần nhất, bên em có xin quyền này nhưng Facebook KHÔNG hiện ô đó trong hộp thoại. Đây là chuyện phía ứng dụng Lumio với Meta (quyền chưa được Meta duyệt ở mức Advanced Access), không phải do tick thiếu — kết nối lại sẽ không sửa được. Bên em sẽ xử lý với Meta.',
+                              'On the last connect we asked for this permission and Facebook did NOT show it in the dialog. That is between the Lumio app and Meta (the permission lacks Advanced Access), not a missed tick — reconnecting will not fix it. Lumio will take it up with Meta.')
+                            : queue.connected.publishGap?.cause === 'not-requested' ? T(
+                              'Ứng dụng Lumio hiện chưa xin quyền đăng bài khi kết nối. Kết nối lại chưa sửa được — bên em cần bật quyền này phía Lumio trước.',
+                              'The Lumio app is not currently requesting the publishing permission at connect time. Reconnecting will not fix it yet — Lumio has to switch it on first.')
+                            : queue.connected.publishGap?.cause === 'declined' ? T(
+                              'Lần kết nối gần nhất ô này đã bị bỏ tick. Kết nối lại Trang và tick tất cả các ô Facebook hỏi — lần này sẽ được.',
+                              'This box was unticked on the last connect. Reconnect the Page and tick every box Facebook asks about — it will work this time.')
+                            : queue.connected.publishGap?.cause === 'stale' ? T(
+                              'Facebook đã cấp quyền này nhưng token đang lưu là bản cũ. Kết nối lại Trang một lần nữa để lấy token mới.',
+                              'Facebook granted this, but the stored token predates it. Reconnect the Page once more to pick up the new token.')
+                            : T('Token của Trang chỉ mang những quyền được cấp đúng lúc kết nối. Kết nối lại Trang và tick tất cả các ô Facebook hỏi.',
+                                'A Page token only carries the permissions granted when it was issued. Reconnect the Page and tick every box Facebook asks about.')}
                           </div>
-                          <a
-                            href="/salon/messenger"
-                            style={{
-                              display: 'inline-block', marginTop: 9, padding: '9px 15px', borderRadius: 9,
-                              background: '#f59e0b', color: '#451a03', fontSize: 13, fontWeight: 700, textDecoration: 'none',
-                            }}
-                          >
-                            {T('Kết nối lại Trang Facebook →', 'Reconnect the Page →')}
-                          </a>
+                          {queue.connected.publishGap?.reconnectHelps !== false && (
+                            <a
+                              href="/salon/messenger"
+                              style={{
+                                display: 'inline-block', marginTop: 9, padding: '9px 15px', borderRadius: 9,
+                                background: '#f59e0b', color: '#451a03', fontSize: 13, fontWeight: 700, textDecoration: 'none',
+                              }}
+                            >
+                              {T('Kết nối lại Trang Facebook →', 'Reconnect the Page →')}
+                            </a>
+                          )}
                         </div>
                       )}
                   </>

@@ -18,6 +18,32 @@ import { createHash, timingSafeEqual } from 'crypto';
  */
 
 const OPENAPI = 'https://openapi.zalo.me/v3.0/oa';
+
+/** Setting key holding the outcome of the last bot reply sent to Zalo for a
+ *  salon. "Webhook arrived" and "the reply went out" are two different facts;
+ *  this is the second one, and it names Zalo's refusal when there is one. */
+export const ZALO_SEND_TRACE_KEY = 'zalo_send_trace';
+
+/**
+ * Turn Zalo's refusal into the one sentence the salon can act on. The raw
+ * error stays on screen next to it — the hint is a first guess, not a
+ * diagnosis. Codes per Zalo's OA API error table; the text matches too, so
+ * a code we never listed still lands on the right family.
+ */
+export function explainZaloSendError(error: string | null | undefined): string {
+  const e = String(error ?? '');
+  if (!e) return '';
+  const hints: [RegExp, string][] = [
+    [/-216\b|token/i, 'Token OA không còn hiệu lực — bấm "Kết nối lại Zalo OA".'],
+    [/-213\b|-214\b|interact|48h|window|quan tâm/i, 'Zalo chỉ cho OA trả lời trong 48 giờ sau khi khách nhắn; khách phải nhắn trước, OA không mở lời được.'],
+    [/-217\b|-218\b|-224\b|quota|limit|package|gói/i, 'OA hết hạn mức hoặc chưa đăng ký gói API — vào oa.zalo.me → Quản lý → Quản lý gói & DV.'],
+    [/-230\b|-232\b|-240\b|verif|permission|not allowed|xác thực|not support/i, 'OA hoặc ứng dụng chưa được phép dùng API tin nhắn — kiểm tra Xác thực OA và quyền "Official Account API" của ứng dụng trong developers.zalo.me.'],
+    [/-201\b|-202\b|param/i, 'Zalo không hiểu nội dung gửi (lỗi tham số) — gửi nguyên dòng lỗi này cho Lumio.'],
+    [/timeout|fetch failed|ECONN|ENOTFOUND/i, 'Server không gọi tới Zalo được (mạng/timeout) — thử nhắn lại; nếu lặp lại, gửi dòng lỗi này cho Lumio.'],
+  ];
+  for (const [re, hint] of hints) if (re.test(e)) return hint;
+  return 'Gửi nguyên dòng lỗi này cho Lumio.';
+}
 const OAUTH = 'https://oauth.zaloapp.com/v4/oa/access_token';
 
 // ---------------------------------------------------------------------------

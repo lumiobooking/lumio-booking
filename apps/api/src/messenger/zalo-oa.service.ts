@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import {
   parseZaloEvent, refreshZaloToken, verifyZaloSignature,
   pkcePair, zaloPermissionUrl, exchangeZaloCode, fetchZaloOaInfo,
+  explainZaloSendError, ZALO_SEND_TRACE_KEY,
 } from './zalo-oa';
 
 /**
@@ -106,6 +107,9 @@ export class ZaloOaService {
       // "Connected" and "the bot answers" are two different facts, and this
       // is the one that tells them apart.
       lastWebhook: await this.lastTrace(tenantId),
+      // The last bot reply this salon tried to send through Zalo, and what
+      // Zalo said. Delivered-but-silent is this line, not the one above.
+      lastSend: await this.lastSendTrace(tenantId),
       // Events for an OA no salon holds, seen by this process. When the last
       // one names THIS salon's OA, the connection rows are what is wrong.
       unrouted: this.lastUnrouted && cfg?.oaid && this.lastUnrouted.oaId === cfg.oaid ? this.lastUnrouted : null,
@@ -370,6 +374,14 @@ export class ZaloOaService {
       update: { value },
       create: { tenantId, key: TRACE_KEY, value },
     }).catch(() => undefined);
+  }
+
+  private async lastSendTrace(tenantId: string): Promise<{ at: string; ok: boolean; error: string; hint: string } | null> {
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: ZALO_SEND_TRACE_KEY }, select: { value: true } }).catch(() => null);
+    const v = row?.value as { at?: string; ok?: boolean; error?: string } | null;
+    if (!v?.at) return null;
+    const error = v.ok ? '' : String(v.error ?? '');
+    return { at: v.at, ok: Boolean(v.ok), error, hint: v.ok ? '' : explainZaloSendError(error) };
   }
 
   private async lastTrace(tenantId: string): Promise<{ at: string; oaId: string; event: string; outcome: string } | null> {

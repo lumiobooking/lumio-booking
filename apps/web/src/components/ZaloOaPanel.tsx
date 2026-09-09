@@ -22,7 +22,7 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
   type Trace = { at: string; oaId: string; event: string; outcome: string };
   type Status = {
     market?: string; oauthReady?: boolean; oauthMissing?: string[]; apiHost?: string; connected: boolean;
-    lastWebhook?: Trace | null; unrouted?: { at: string; oaId: string; event: string } | null; oaid: string; oaName?: string; appId?: string; tokenExpiresAt?: string | null };
+    lastWebhook?: Trace | null; lastSend?: { at: string; ok: boolean; error: string; hint: string } | null; unrouted?: { at: string; oaId: string; event: string } | null; oaid: string; oaName?: string; appId?: string; tokenExpiresAt?: string | null };
   const [st, setSt] = useState<Status | null>(null);
   const [f, setF] = useState({ appId: '', appSecret: '', oaSecretKey: '', oaid: '', oaName: '', accessToken: '', refreshToken: '' });
   const [zMsg, setZMsg] = useState<{ kind: 'idle' | 'busy' | 'ok' | 'err'; text?: string }>({ kind: 'idle' });
@@ -145,6 +145,18 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
             <span style={{ color: '#fbbf24' }}>
               chưa nhận được sự kiện nào từ Zalo. Nếu đã nhắn thử mà vẫn trống: kiểm tra app Zalo → <b>Webhook</b> có đúng URL <code>{`${apiBase}/public/zalo/webhook`}</code> và đã tick <i>Sự kiện người dùng gửi tin nhắn đến OA</i> ở <b>Official Account → Thiết lập chung</b>.
             </span>
+          )}
+          {/* Third fact: the reply. Zalo can deliver every event and still
+              refuse every answer — this is the line that says so, in Zalo's
+              own words plus the one thing to do about it. */}
+          {st.lastSend && (
+            <div style={{ marginTop: 4 }}>
+              <b style={{ color: 'var(--c94a3b8)' }}>Trả lời gần nhất:</b>{' '}
+              {new Date(st.lastSend.at).toLocaleString('vi-VN')} ·{' '}
+              {st.lastSend.ok
+                ? <span style={{ color: '#4ade80' }}>✓ Zalo đã nhận tin trả lời của bot</span>
+                : <span style={{ color: '#f87171' }}>✗ Zalo từ chối: <code>{st.lastSend.error}</code>{st.lastSend.hint ? ` — ${st.lastSend.hint}` : ''}</span>}
+            </div>
           )}
         </div>
       )}

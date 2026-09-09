@@ -32,6 +32,13 @@ describe('alreadySaid', () => {
     expect(alreadySaid(h, line, now)).toBe(true);
   });
 
+  it('lets it through when the previous copy never reached the customer', () => {
+    // Zalo refused the last reply (token, window, quota — whatever). The
+    // customer saw nothing, so the same words now are not a stutter.
+    const h = [{ role: 'user', content: 'xin chào' }, { role: 'assistant', content: line, at: min(1), failed: true }];
+    expect(alreadySaid(h, line, now)).toBe(false);
+  });
+
   it('lets it through when we said something else in between', () => {
     // Repeating a sentence later in a conversation is normal talking. Only a
     // stutter — the very same thing twice in a row — carries nothing.

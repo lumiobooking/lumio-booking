@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { parseZaloEvent, verifyZaloSignature } from './zalo-oa';
+import { parseZaloEvent, verifyZaloSignature, explainZaloSendError } from './zalo-oa';
 
 describe('verifyZaloSignature', () => {
   const appId = '1234567890';
@@ -75,5 +75,25 @@ describe('one-click connect', () => {
 
   it('makes a different verifier every time — a reused one is a replayable one', () => {
     expect(pkcePair().verifier).not.toBe(pkcePair().verifier);
+  });
+});
+
+describe('explainZaloSendError', () => {
+  it('names the reconnect for a dead token', () => {
+    expect(explainZaloSendError('Zalo -216: Access token is invalid')).toMatch(/Kết nối lại/);
+  });
+  it('names the 48-hour window when the customer has not written first', () => {
+    expect(explainZaloSendError('Zalo -213: User has not interacted with OA')).toMatch(/48 giờ/);
+  });
+  it('points at the OA package for quota refusals', () => {
+    expect(explainZaloSendError('Zalo -224: OA has run out of quota')).toMatch(/gói/);
+  });
+  it('points at OA verification / app permission for policy refusals', () => {
+    expect(explainZaloSendError('Zalo -230: OA is not verified')).toMatch(/Xác thực OA/);
+  });
+  it('still gives one instruction for a code it has never seen, and nothing for no error', () => {
+    expect(explainZaloSendError('Zalo -999: something new')).toMatch(/Lumio/);
+    expect(explainZaloSendError('')).toBe('');
+    expect(explainZaloSendError(undefined)).toBe('');
   });
 });

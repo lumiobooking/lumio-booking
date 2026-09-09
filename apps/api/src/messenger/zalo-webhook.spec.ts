@@ -22,7 +22,7 @@ function makeSvc(cfg: Record<string, unknown> | null = CFG) {
     messengerConnection: { findUnique: jest.fn(async () => null), updateMany: jest.fn(async () => ({})), create: jest.fn() },
     setting: {
       findFirst: jest.fn(async () => (cfg ? { value: cfg } : null)),
-      upsert: jest.fn(async () => ({})),
+      upsert: jest.fn(async (_args?: unknown) => ({})),
       deleteMany: jest.fn(),
     },
   };

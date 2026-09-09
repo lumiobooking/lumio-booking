@@ -7,7 +7,7 @@ import {
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { mergeHistory } from './history-merge';
-import { fetchZaloProfileName, sendZaloText } from './zalo-oa';
+import { fetchZaloProfileName, sendZaloText, ZALO_SEND_TRACE_KEY } from './zalo-oa';
 import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
 import { withBookingLink } from './booking-link';
 import { isSameVisit, servicesAsked, type OpenVisit } from './one-visit';
@@ -58,7 +58,7 @@ function wallToUtcISO(local: string, tz: string): string {
   }
 }
 
-type Turn = { role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean };
+type Turn = { role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean };
 type Channel = 'messenger' | 'instagram' | 'zalo';
 export interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
@@ -2222,13 +2222,18 @@ export class MessengerService implements OnModuleInit {
       }
       return;
     }
-    await this.sendText(conn.pageToken, senderId, reply, ((fresh as unknown as { channel?: string }).channel === 'zalo') ? 'zalo' : undefined);
+    const isZalo = (fresh as unknown as { channel?: string }).channel === 'zalo';
+    const sent = await this.sendText(conn.pageToken, senderId, reply, isZalo ? 'zalo' : undefined, conn.tenantId);
     // Inbound = Meta's own webhook timestamp (ms epoch); outbound = when we actually sent.
     const inAt = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
     const outAt = new Date().toISOString();
+    // A reply the mouth refused is kept, flagged, so the activity log shows
+    // "Failed" instead of a "Sent" nobody received — and so the repeat guard
+    // lets the bot try again when the customer writes the same thing.
+    const outTurn: Turn = sent.ok ? { role: 'assistant', content: reply, at: outAt } : ({ role: 'assistant', content: reply, at: outAt, failed: true } as Turn);
     const newTurns: Turn[] = userAlready
-      ? [{ role: 'assistant', content: reply, at: outAt }]
-      : [{ role: 'user', content: text, at: inAt }, { role: 'assistant', content: reply, at: outAt }];
+      ? [outTurn]
+      : [{ role: 'user', content: text, at: inAt }, outTurn];
     await this.appendTurns(threadId, history, memory, newTurns);
 
     if (agentFailed) {
@@ -3768,13 +3773,19 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     });
   }
 
-  private async sendText(pageToken: string, recipientId: string, text: string, channel?: Channel): Promise<void> {
+  /**
+   * Returns whether the mouth accepted the message. Only Zalo reports a
+   * refusal (its API answers 200 with an error body); the Graph path keeps
+   * its long-standing fire-and-forget contract and always reports ok.
+   */
+  private async sendText(pageToken: string, recipientId: string, text: string, channel?: Channel, tenantId?: string): Promise<{ ok: boolean; error?: string }> {
     // Zalo is a different mouth entirely: its own endpoint, its own auth
     // header, no echo/mid machinery (Zalo webhooks do not echo our sends).
     if (channel === 'zalo') {
       const r = await sendZaloText(pageToken, recipientId, text);
       if (!r.ok) this.logger.warn(`Zalo send failed: ${String(r.error).slice(0, 120)}`);
-      return;
+      if (tenantId) await this.traceZaloSend(tenantId, r);
+      return r;
     }
     try {
       // metadata comes back on the Messenger echo; Instagram drops it, so we
@@ -3790,6 +3801,22 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     } catch (e) {
       this.logger.warn(`Send API failed: ${String(e).slice(0, 120)}`);
     }
+    return { ok: true };
+  }
+
+  /**
+   * One row per salon, overwritten on every bot reply to Zalo: did the last
+   * one go out, and if not, what Zalo said. The screen reads it next to the
+   * webhook trace, so "Zalo delivers but never answers" names its cause
+   * without anyone opening the server log. Never the message text.
+   */
+  private async traceZaloSend(tenantId: string, r: { ok: boolean; error?: string }): Promise<void> {
+    const value = { at: new Date().toISOString(), ok: r.ok, error: r.ok ? '' : String(r.error ?? '').slice(0, 300) } as unknown as Prisma.InputJsonValue;
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: ZALO_SEND_TRACE_KEY } },
+      update: { value },
+      create: { tenantId, key: ZALO_SEND_TRACE_KEY, value },
+    }).catch(() => undefined);
   }
 }
 

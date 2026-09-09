@@ -57,7 +57,7 @@ export function mergeBurst(texts: string[]): string {
  * does not already have on screen.
  */
 export function alreadySaid(
-  history: { role?: string; content?: unknown; at?: string }[],
+  history: { role?: string; content?: unknown; at?: string; failed?: boolean }[],
   reply: string,
   nowMs: number = Date.now(),
   withinMs: number = REPEAT_WINDOW_MS,
@@ -67,6 +67,9 @@ export function alreadySaid(
   for (let i = (history?.length ?? 0) - 1; i >= 0; i--) {
     const turn = history[i];
     if (turn?.role !== 'assistant') continue;
+    // A reply the platform refused never reached the customer, so it cannot
+    // be "already said" — saying it again is the whole point of retrying.
+    if (turn.failed) continue;
     if (norm(turn.content) !== want) return false;
     const at = turn.at ? Date.parse(turn.at) : NaN;
     // No timestamp on an old turn: treat it as recent rather than send a

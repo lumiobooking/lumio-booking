@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
+import { ZaloOaPanel } from '../../../components/ZaloOaPanel';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
@@ -759,6 +760,11 @@ function Inner() {
         )}
         <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '12px 0 0' }}>{t('pendingNote')}</p>
       </div>
+
+      {/* The bot's third mouth. Drawn right under the Facebook block, where a
+          person looking for "kết nối Zalo AI" actually looks; the component
+          itself stays silent for a salon outside Vietnam. */}
+      <ZaloOaPanel token={token} />
 
       {/* Connection details + live webhook subscription status (App Review evidence) */}
       {c.connected && (

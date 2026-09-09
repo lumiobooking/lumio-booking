@@ -78,7 +78,12 @@ export class ZaloOaService {
   async status(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     const cfg = await this.configOf(tenantId);
+    // The market rides along so the screen that draws the panel can decide
+    // for itself whether this salon is one Zalo is for, without a second call.
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } as never })
+      .catch(() => null) as { market?: string | null } | null;
     return {
+      market: tenant?.market ?? 'US',
       connected: Boolean(cfg?.enabled && cfg?.accessToken),
       oaid: cfg?.oaid ?? '',
       oaName: cfg?.oaName ?? '',

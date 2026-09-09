@@ -50,3 +50,30 @@ describe('parseZaloEvent', () => {
     expect(parseZaloEvent({ event_name: 'user_send_text', sender: {}, recipient: { id: 'oa' }, message: { text: 'hi' } })).toBeNull();
   });
 });
+
+describe('one-click connect', () => {
+  const { pkcePair, zaloPermissionUrl } = require('./zalo-oa');
+  const crypto = require('crypto');
+
+  it('builds a challenge that is the S256 of a verifier that never appears in the link', () => {
+    const { verifier, challenge } = pkcePair();
+    expect(verifier).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const expect256 = crypto.createHash('sha256').update(verifier).digest('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    expect(challenge).toBe(expect256);
+    const url = zaloPermissionUrl({ appId: '1', redirectUri: 'https://x/cb', challenge, state: 's' });
+    expect(url).toContain(`code_challenge=${challenge}`);
+    expect(url).not.toContain(verifier);
+  });
+
+  it('puts every field Zalo reads on the permission link', () => {
+    const url = new URL(zaloPermissionUrl({ appId: '4162', redirectUri: 'https://api/cb?x=1', challenge: 'c', state: 'st' }));
+    expect(url.origin + url.pathname).toBe('https://oauth.zaloapp.com/v4/oa/permission');
+    expect(url.searchParams.get('app_id')).toBe('4162');
+    expect(url.searchParams.get('redirect_uri')).toBe('https://api/cb?x=1');
+    expect(url.searchParams.get('state')).toBe('st');
+  });
+
+  it('makes a different verifier every time — a reused one is a replayable one', () => {
+    expect(pkcePair().verifier).not.toBe(pkcePair().verifier);
+  });
+});

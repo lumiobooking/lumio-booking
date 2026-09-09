@@ -164,3 +164,82 @@ export async function refreshZaloToken(args: {
     return null;
   }
 }
+
+// ---- one-click connect (OAuth v4 for OA, with PKCE) ---------------------------
+//
+// The console path above ("paste four values") is what an integrator does
+// ONCE for their own app. A salon is not an integrator. Zalo's OA OAuth is the
+// same shape as Facebook Login for Business: our app builds a permission link,
+// the OA admin opens it and taps Đồng ý, Zalo sends a code to our callback,
+// and the code becomes the token pair. The salon sees one button.
+//
+// PKCE (RFC 7636, S256): a random verifier is kept on our side for the ten
+// minutes the link is valid; only its SHA-256 goes into the link. A code
+// intercepted on the way back is useless without the verifier.
+
+const PERMISSION = 'https://oauth.zaloapp.com/v4/oa/permission';
+const OA_INFO = 'https://openapi.zalo.me/v2.0/oa/getoa';
+
+const b64url = (buf: Buffer) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+/** A fresh verifier and its challenge. The verifier never leaves the server. */
+export function pkcePair(random: () => Buffer = () => require('crypto').randomBytes(32)): { verifier: string; challenge: string } {
+  const verifier = b64url(random());
+  const challenge = b64url(require('crypto').createHash('sha256').update(verifier).digest());
+  return { verifier, challenge };
+}
+
+/** The link the OA admin opens. `state` is our signed tenant handle. */
+export function zaloPermissionUrl(args: { appId: string; redirectUri: string; challenge: string; state: string }): string {
+  const q = new URLSearchParams({
+    app_id: args.appId,
+    redirect_uri: args.redirectUri,
+    code_challenge: args.challenge,
+    state: args.state,
+  });
+  return `${PERMISSION}?${q.toString()}`;
+}
+
+/** The code Zalo sent back, traded for the token pair. Null on any refusal. */
+export async function exchangeZaloCode(args: {
+  appId: string; appSecret: string; code: string; verifier: string;
+}): Promise<{ accessToken: string; refreshToken: string; expiresAtMs: number } | null> {
+  try {
+    const form = new URLSearchParams({
+      app_id: args.appId,
+      code: args.code,
+      code_verifier: args.verifier,
+      grant_type: 'authorization_code',
+    });
+    const res = await fetch(OAUTH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', secret_key: args.appSecret },
+      body: form.toString(),
+      signal: AbortSignal.timeout(12_000),
+    });
+    const out = (await res.json().catch(() => ({}))) as {
+      access_token?: string; refresh_token?: string; expires_in?: string | number; error?: unknown; error_name?: string;
+    };
+    if (!out?.access_token || !out?.refresh_token) return null;
+    const ttlS = Number(out.expires_in);
+    return {
+      accessToken: out.access_token,
+      refreshToken: out.refresh_token,
+      expiresAtMs: Date.now() + (Number.isFinite(ttlS) && ttlS > 0 ? ttlS : 90_000) * 1000,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Which OA this token speaks for, and what it is called. */
+export async function fetchZaloOaInfo(accessToken: string): Promise<{ oaid: string; name: string } | null> {
+  try {
+    const res = await fetch(OA_INFO, { headers: { access_token: accessToken }, signal: AbortSignal.timeout(8_000) });
+    const out = (await res.json().catch(() => ({}))) as { error?: number; data?: { oa_id?: string | number; name?: string } };
+    if (out?.error !== 0 || !out.data?.oa_id) return null;
+    return { oaid: String(out.data.oa_id), name: String(out.data.name ?? '') };
+  } catch {
+    return null;
+  }
+}

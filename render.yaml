@@ -90,6 +90,17 @@ services:
       # API key, and restrict the key to that one API.
       - key: GOOGLE_PLACES_API_KEY
         sync: false
+      # Lumio's own Zalo app (developers.zalo.me), for one-click OA connect.
+      # App ID + App Secret from the app's Cài đặt page; OA Secret Key from
+      # its Webhook page (one per app — it signs events for EVERY OA that
+      # connected through this app). Callback Url on the app must be
+      # <PUBLIC_API_URL>/api/public/zalo/oauth/callback. Set by hand.
+      - key: ZALO_APP_ID
+        sync: false
+      - key: ZALO_APP_SECRET
+        sync: false
+      - key: ZALO_OA_SECRET_KEY
+        sync: false
       - key: BREVO_API_KEY
         sync: false
       - key: BREVO_SENDER_EMAIL
@@ -336,6 +347,17 @@ services:
       # Enable "Places API (New)" in the same Google Cloud project, create an
       # API key, and restrict the key to that one API.
       - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      # Lumio's own Zalo app (developers.zalo.me), for one-click OA connect.
+      # App ID + App Secret from the app's Cài đặt page; OA Secret Key from
+      # its Webhook page (one per app — it signs events for EVERY OA that
+      # connected through this app). Callback Url on the app must be
+      # <PUBLIC_API_URL>/api/public/zalo/oauth/callback. Set by hand.
+      - key: ZALO_APP_ID
+        sync: false
+      - key: ZALO_APP_SECRET
+        sync: false
+      - key: ZALO_OA_SECRET_KEY
         sync: false
       - key: BREVO_API_KEY
         sync: false

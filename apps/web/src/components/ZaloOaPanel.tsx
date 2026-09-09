@@ -19,12 +19,46 @@ import { isVN } from '../lib/markets';
  * a panel asking it for one reads as a bug.
  */
 export function ZaloOaPanel({ token, embedded }: { token: string | null; embedded?: boolean }) {
-  type Status = { market?: string; connected: boolean; oaid: string; oaName?: string; appId?: string; tokenExpiresAt?: string | null };
+  type Status = { market?: string; oauthReady?: boolean; connected: boolean; oaid: string; oaName?: string; appId?: string; tokenExpiresAt?: string | null };
   const [st, setSt] = useState<Status | null>(null);
   const [f, setF] = useState({ appId: '', appSecret: '', oaSecretKey: '', oaid: '', oaName: '', accessToken: '', refreshToken: '' });
   const [zMsg, setZMsg] = useState<{ kind: 'idle' | 'busy' | 'ok' | 'err'; text?: string }>({ kind: 'idle' });
   const [open, setOpen] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
+
+  // Back from Zalo's screen: ?zalo=connected&oa=… or ?zalo=error&msg=…
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const q = new URLSearchParams(window.location.search);
+    const z = q.get('zalo');
+    if (!z) return;
+    if (z === 'connected') setResult({ ok: true, text: `Đã kết nối Zalo OA${q.get('oa') ? ` · ${q.get('oa')}` : ''} — bot sẽ trả lời tin nhắn Zalo như Messenger.` });
+    else {
+      const m = q.get('msg') || '';
+      const why: Record<string, string> = {
+        invalid_state: 'Phiên kết nối không hợp lệ — bấm Kết nối lại từ đầu.',
+        expired: 'Quá 10 phút — bấm Kết nối lại.',
+        token_exchange: 'Zalo không cấp token. Kiểm tra app Lumio đã Kích hoạt và Callback Url đúng.',
+        not_configured: 'Zalo chưa được cấu hình phía Lumio.',
+        no_oa: 'Zalo không trả về OA nào — chọn đúng OA của tiệm khi Zalo hỏi.',
+      };
+      setResult({ ok: false, text: why[m] || `Kết nối thất bại (${m || 'unknown'}).` });
+    }
+    // Clear the query so a refresh does not replay the banner.
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
+  const startOauth = async () => {
+    setZMsg({ kind: 'busy' });
+    try {
+      const r = await apiFetch<{ url: string }>('/zalo/oauth/url', { token });
+      window.location.assign(r.url);
+    } catch (e) {
+      setZMsg({ kind: 'err', text: e instanceof Error ? e.message : 'Không mở được Zalo' });
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -84,8 +118,40 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
         tin hiện trong cùng Hộp thư, nhân viên nhận chat y như Messenger.
       </p>
 
-      {showForm && (
+      {result && (
+        <div style={{ background: result.ok ? '#052e1e' : 'var(--c7f1d1d)', color: result.ok ? 'var(--cbbf7d0)' : 'var(--cfecaca)', border: `1px solid ${result.ok ? '#10b981' : '#ef4444'}`, borderRadius: 9, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>
+          {result.ok ? '✅ ' : '⚠️ '}{result.text}
+        </div>
+      )}
+
+      {/* The path a salon takes: one button, Zalo's own screen, Đồng ý.
+          Everything below the fold is for an app that is not Lumio's. */}
+      {st.oauthReady && showForm && (
+        <div style={{ marginBottom: 12 }}>
+          <button
+            onClick={startOauth}
+            disabled={zMsg.kind === 'busy'}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 10, border: 'none', background: '#0068ff', color: '#fff', cursor: 'pointer', fontSize: 14.5, fontWeight: 800 }}
+          >
+            <span style={{ fontSize: 16 }}>Z</span>{zMsg.kind === 'busy' ? 'Đang mở Zalo…' : (st.connected ? 'Kết nối lại Zalo OA' : 'Kết nối Zalo OA')}
+          </button>
+          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 8, lineHeight: 1.55 }}>
+            Zalo sẽ hỏi đăng nhập bằng tài khoản <b>quản trị OA</b> của tiệm → chọn OA → bấm <b>Đồng ý</b>. Không cần dán mã hay token gì cả.
+          </div>
+          {zMsg.kind === 'err' && <p style={{ color: '#ef4444', fontSize: 13, margin: '6px 0 0' }}>{zMsg.text}</p>}
+          <button onClick={() => setAdvanced((a) => !a)} style={{ background: 'transparent', border: 'none', color: 'var(--c64748b)', fontSize: 12, cursor: 'pointer', padding: '8px 0 0' }}>
+            {advanced ? '▾' : '▸'} Nhập thủ công (nâng cao — dùng app Zalo riêng)
+          </button>
+        </div>
+      )}
+
+      {showForm && (!st.oauthReady || advanced) && (
         <>
+          {!st.oauthReady && (
+            <div style={{ fontSize: 12.5, color: '#fbbf24', marginBottom: 10 }}>
+              Kết nối một nút chưa bật (Lumio chưa đặt ZALO_APP_ID / ZALO_APP_SECRET trên máy chủ). Tạm thời dùng cách nhập thủ công bên dưới.
+            </div>
+          )}
           <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '10px 12px', fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 12 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Lấy 6 giá trị ở đâu — làm theo thứ tự:</div>
             <ol style={{ margin: 0, paddingLeft: 18 }}>
@@ -125,7 +191,7 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
         </>
       )}
       {zMsg.kind === 'ok' && <p style={{ color: '#22c55e', fontSize: 13, margin: '6px 0 0' }}>{zMsg.text}</p>}
-      {zMsg.kind === 'err' && <p style={{ color: '#ef4444', fontSize: 13, margin: '6px 0 0' }}>{zMsg.text}</p>}
+      {zMsg.kind === 'err' && (!st.oauthReady || advanced) && <p style={{ color: '#ef4444', fontSize: 13, margin: '6px 0 0' }}>{zMsg.text}</p>}
     </div>
   );
 }

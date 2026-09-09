@@ -3,7 +3,11 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { MessengerService } from './messenger.service';
-import { parseZaloEvent, refreshZaloToken, verifyZaloSignature } from './zalo-oa';
+import * as crypto from 'crypto';
+import {
+  parseZaloEvent, refreshZaloToken, verifyZaloSignature,
+  pkcePair, zaloPermissionUrl, exchangeZaloCode, fetchZaloOaInfo,
+} from './zalo-oa';
 
 /**
  * Zalo OA ↔ the Messenger brain.
@@ -43,7 +47,10 @@ export interface ZaloOaConfig {
 }
 
 const KEY = 'zalo_oa';
+/** The verifier parked while the OA admin is on Zalo's screen. Ten minutes. */
+const PENDING_KEY = 'zalo_oauth_pending';
 const REFRESH_MARGIN_MS = 2 * 60 * 60 * 1000;
+const PENDING_TTL_MS = 10 * 60 * 1000;
 
 @Injectable()
 export class ZaloOaService {
@@ -84,6 +91,9 @@ export class ZaloOaService {
       .catch(() => null) as { market?: string | null } | null;
     return {
       market: tenant?.market ?? 'US',
+      // One-click connect needs Lumio's own Zalo app on the server. Without
+      // it the screen falls back to the console path, and says so.
+      oauthReady: Boolean(this.platformApp()),
       connected: Boolean(cfg?.enabled && cfg?.accessToken),
       oaid: cfg?.oaid ?? '',
       oaName: cfg?.oaName ?? '',
@@ -124,6 +134,118 @@ export class ZaloOaService {
         'Cần đủ: App ID, OAID, Access token và Refresh token (lấy trong Zalo Developers → Công cụ khai thác API).',
       );
     }
+    await this.applyConfig(tenantId, cfg);
+    return this.status(user);
+  }
+
+  /**
+   * Lumio's own Zalo app, from the environment — set once by the platform
+   * owner, never typed by a salon. Absent means one-click is off and the
+   * console path is the only one.
+   */
+  private platformApp(): { appId: string; appSecret: string; oaSecretKey: string } | null {
+    const appId = (process.env.ZALO_APP_ID || '').trim();
+    const appSecret = (process.env.ZALO_APP_SECRET || '').trim();
+    const oaSecretKey = (process.env.ZALO_OA_SECRET_KEY || '').trim();
+    return appId && appSecret ? { appId, appSecret, oaSecretKey } : null;
+  }
+
+  private apiBase(): string {
+    return (process.env.PUBLIC_API_URL || process.env.RENDER_EXTERNAL_URL || 'https://lumio-api-uqm6.onrender.com').replace(/\/$/, '');
+  }
+  private webBase(): string {
+    const cors = (process.env.CORS_ORIGINS || '').split(',')[0].trim();
+    return (process.env.PUBLIC_WEB_URL || cors || 'https://lumiobooking.com').replace(/\/$/, '');
+  }
+  /** Where Zalo sends the OA admin back. Also what goes in the console's "Callback Url" box. */
+  oauthRedirect(): string { return `${this.apiBase()}/api/public/zalo/oauth/callback`; }
+
+  private signSecret(): string { return process.env.JWT_SECRET || process.env.APP_SECRET || 'lumio-zalo-signing'; }
+  private signState(tenantId: string): string {
+    const payload = Buffer.from(JSON.stringify({ t: tenantId, exp: Date.now() + PENDING_TTL_MS })).toString('base64url');
+    const sig = crypto.createHmac('sha256', this.signSecret()).update(payload).digest('base64url');
+    return `${payload}.${sig}`;
+  }
+  private verifyState(state: string): string | null {
+    const [payload, sig] = (state || '').split('.');
+    if (!payload || !sig) return null;
+    const expect = crypto.createHmac('sha256', this.signSecret()).update(payload).digest('base64url');
+    if (sig.length !== expect.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+    try {
+      const d = JSON.parse(Buffer.from(payload, 'base64url').toString()) as { t: string; exp: number };
+      if (!d.exp || Date.now() > d.exp) return null;
+      return d.t;
+    } catch { return null; }
+  }
+
+  /**
+   * The link the salon's button opens.
+   *
+   * A verifier is minted and parked on the tenant for ten minutes; only its
+   * hash rides in the link. The state is the tenant id, signed, so the
+   * callback can trust which salon this grant belongs to without a session.
+   */
+  async oauthUrl(user: AuthenticatedUser): Promise<{ url: string }> {
+    const tenantId = this.tenantId(user);
+    const app = this.platformApp();
+    if (!app) throw new BadRequestException('Zalo chưa được cấu hình phía Lumio (ZALO_APP_ID / ZALO_APP_SECRET).');
+    const { verifier, challenge } = pkcePair();
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: PENDING_KEY } },
+      update: { value: { verifier, at: Date.now() } as unknown as Prisma.InputJsonValue },
+      create: { tenantId, key: PENDING_KEY, value: { verifier, at: Date.now() } as unknown as Prisma.InputJsonValue },
+    });
+    return { url: zaloPermissionUrl({ appId: app.appId, redirectUri: this.oauthRedirect(), challenge, state: this.signState(tenantId) }) };
+  }
+
+  /**
+   * Zalo sends the OA admin back here with ?code&oa_id&state.
+   *
+   * The code becomes the token pair, the token names the OA, and the OA is
+   * wired exactly as a pasted connection would have been — same rows, same
+   * brain. Every exit is a redirect to the bot page with a word on what
+   * happened, because the person is standing on Zalo's screen and needs to
+   * be walked back to ours.
+   */
+  async oauthCallback(code: string, oaIdHint: string, state: string): Promise<string> {
+    const back = (q: string) => `${this.webBase()}/salon/messenger?${q}`;
+    const tenantId = this.verifyState(state);
+    if (!tenantId || !code) return back('zalo=error&msg=invalid_state');
+    const app = this.platformApp();
+    if (!app) return back('zalo=error&msg=not_configured');
+
+    const pending = await this.prisma.setting.findFirst({ where: { tenantId, key: PENDING_KEY }, select: { value: true } }).catch(() => null);
+    const pv = pending?.value as { verifier?: string; at?: number } | null;
+    if (!pv?.verifier || !pv.at || Date.now() - pv.at > PENDING_TTL_MS) return back('zalo=error&msg=expired');
+    // Single use: a verifier that stays behind can be replayed with a second code.
+    await this.prisma.setting.deleteMany({ where: { tenantId, key: PENDING_KEY } }).catch(() => undefined);
+
+    const tok = await exchangeZaloCode({ appId: app.appId, appSecret: app.appSecret, code, verifier: pv.verifier });
+    if (!tok) return back('zalo=error&msg=token_exchange');
+
+    // The token says which OA it is for; the query hint is only a fallback.
+    const info = await fetchZaloOaInfo(tok.accessToken);
+    const oaid = info?.oaid || String(oaIdHint || '').trim();
+    if (!oaid) return back('zalo=error&msg=no_oa');
+
+    const prev = await this.configOf(tenantId);
+    await this.applyConfig(tenantId, {
+      appId: app.appId,
+      appSecret: app.appSecret,
+      oaSecretKey: app.oaSecretKey || prev?.oaSecretKey || '',
+      oaid,
+      oaName: info?.name || prev?.oaName || '',
+      accessToken: tok.accessToken,
+      refreshToken: tok.refreshToken,
+      accessExpiresAtMs: tok.expiresAtMs,
+      enabled: true,
+    });
+    this.logger.log(`Zalo OA ${oaid} connected to tenant ${tenantId} via OAuth`);
+    return back(`zalo=connected&oa=${encodeURIComponent(info?.name || oaid)}`);
+  }
+
+  /** Persist a config and wire the rows that make the brain route this OA. */
+  private async applyConfig(tenantId: string, cfg: ZaloOaConfig): Promise<void> {
     await this.saveConfig(tenantId, cfg);
 
     // The mouth: route this OA id to this tenant.
@@ -142,7 +264,6 @@ export class ZaloOaService {
     } else if (!conn.enabled && conn.pageId.startsWith('zalo:')) {
       await this.prisma.messengerConnection.update({ where: { tenantId }, data: { enabled: true } });
     }
-    return this.status(user);
   }
 
   async disconnect(user: AuthenticatedUser) {
@@ -195,7 +316,11 @@ export class ZaloOaService {
     // Authenticate. No secret configured = nothing is accepted; a webhook that
     // skips verification "temporarily" is a webhook anyone on earth can call.
     const ts = (body as { timestamp?: unknown } | null)?.timestamp ?? '';
-    if (!verifyZaloSignature({ appId: cfg.appId, rawBody, timestamp: String(ts), oaSecretKey: cfg.oaSecretKey, header: signatureHeader })) {
+    // The webhook secret is per APP, not per OA: one for every salon that
+    // connected through Lumio's app, kept in the environment. A pasted
+    // (console-path) connection carries its own.
+    const oaSecretKey = cfg.oaSecretKey || this.platformApp()?.oaSecretKey || '';
+    if (!verifyZaloSignature({ appId: cfg.appId, rawBody, timestamp: String(ts), oaSecretKey, header: signatureHeader })) {
       this.logger.warn(`Zalo webhook signature rejected for OA ${ev.oaId}`);
       return;
     }

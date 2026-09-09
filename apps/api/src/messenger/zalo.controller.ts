@@ -1,6 +1,6 @@
-import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query, Req, Res } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -21,6 +21,13 @@ export class ZaloController {
     return this.svc.status(user);
   }
 
+  /** The one-click path: the link the "Kết nối Zalo OA" button opens. */
+  @Get('oauth/url')
+  oauthUrl(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.oauthUrl(user);
+  }
+
+  /** The console path, kept for an app that is not Lumio's. */
   @Post('connect')
   connect(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, string>) {
     return this.svc.connect(user, dto ?? {});
@@ -48,6 +55,23 @@ export class ZaloWebhookController {
   @Get('webhook')
   verify() {
     return 'OK';
+  }
+
+  /**
+   * Zalo sends the OA admin back here after Đồng ý. Public because Zalo
+   * calls it without our JWT — the signed `state` proves which salon
+   * started the flow, and the PKCE verifier proves it is the same browser.
+   */
+  @Public()
+  @Get('oauth/callback')
+  async oauthCallback(
+    @Query('code') code: string,
+    @Query('oa_id') oaId: string,
+    @Query('state') state: string,
+    @Res() res: Response,
+  ) {
+    const url = await this.svc.oauthCallback(code || '', oaId || '', state || '');
+    res.redirect(url);
   }
 
   @Public()

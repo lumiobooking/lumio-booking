@@ -8,6 +8,7 @@ import { marketOf } from '../common/markets';
 import { bookingChannel, PLATFORM_OF } from '../common/booking-channel';
 import { channelReports, platformPlans, CAMPAIGN_DAYS, type ChannelBooking } from './channel-plan';
 import { topQuestions, type TopicData, type TurnLike } from './week-topics';
+import { CAPTION_RULES, REASON_RULES, SHOTLIST_RULES, captionIssues } from './caption-style';
 import { buildCampaignSpec } from './campaign-spec';
 import { buildSignalProfile, signalsToPrompt, SignalProfile } from './content-signals';
 import { applyCapToOffer, buildRevenueProfile, revenueToPrompt, RevenueProfile } from './revenue-signals';
@@ -1577,7 +1578,11 @@ LUẬT BẮT BUỘC:
 ${langRule}
 5. Ngắn gọn, cụ thể, quay được ngay. Không sáo rỗng.
 6. Về khu vực: chỉ được nhắc tới địa phương nếu phần dữ liệu bên dưới nói rõ tiệm ở đâu. Nếu ghi "chưa rõ khu vực" thì viết trung lập, KHÔNG đoán tên thành phố, bang, trường học hay lễ hội địa phương nào.
-7. Ý tưởng hôm nay phải khớp với việc của hôm nay trong LỊCH TUẦN bên dưới — đừng bảo tiệm quay clip vào ngày lịch ghi là ngày đăng.
+7. Ý tưởng hôm nay phải khớp với việc của hôm nay trong LỊCH TUẦN bên dưới — đừng bảo tiệm quay clip vào ngày lịch ghi là ngày đăng. Nếu việc hôm nay ghi CHỦ ĐỀ (sau dấu "—"), ý 1 phải làm đúng chủ đề đó.
+8. "title": một dòng ≤ 10 từ, nêu đúng chủ đề, không dùng dấu hai chấm để nối hai vế.
+9. ${SHOTLIST_RULES}
+10. ${CAPTION_RULES}
+11. ${REASON_RULES}
 
 TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
 {"ideas":[{"rank":1,"formatName":"...","title":"...","hook":"...","shotList":"cảnh 1 · cảnh 2 · cảnh 3","caption":"...","hashtags":"#... #...","bestTime":"18:30","reason":"...","trendTitle":"chỉ điền khi phỏng theo một trend trong danh sách, sao chép đúng nguyên văn tiêu đề"}]}`;
@@ -1674,6 +1679,12 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       // treatment every other field below gets.
       const rawName = typeof idea.formatName === 'string' ? idea.formatName.trim() : '';
       const match = formats.find((f) => f.name.toLowerCase() === rawName.toLowerCase());
+      // Read back against the house standard. A caption that fails is still
+      // saved — the person can fix a sentence, and a blank card helps nobody —
+      // but it is named in the log, so the prompt gets tightened rather than
+      // the failure repeating quietly on every salon.
+      const issues = idea.caption ? captionIssues(String(idea.caption)) : [];
+      if (issues.length) this.logger.warn(`caption off-standard for ${tenantId} (${String(idea.title ?? '').slice(0, 40)}): ${issues.join(' | ')}`);
       await this.prisma.contentIdea.create({
         data: {
           tenantId, forDate, status: 'draft',

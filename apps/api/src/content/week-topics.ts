@@ -43,14 +43,19 @@ export interface TopicData {
 /** What a post is about, in each language — the part after the dash. */
 export interface Topic {
   subject: Txt;
+  /** Which of the playbook's angles this is. */
+  angle: Angle;
+  /** The thing itself — a service name or the customer's question — for a hook. */
+  name?: string | null;
   /** The one figure behind it, for the caption. Null when it rests on none. */
   figure?: { kind: 'bookings' | 'minutes' | 'asked' | 'rising'; value: number } | null;
 }
 
+/** Which of the playbook's post types this is — matched on the label's sense, not its index. */
+export type Angle = 'most-booked' | 'process' | 'before-after' | 'tech' | 'question' | 'other';
+
 const trim = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
-/** Which of the playbook's post types this is — matched on the label's sense, not its index. */
-type Angle = 'most-booked' | 'process' | 'before-after' | 'tech' | 'question' | 'other';
 
 export function angleOf(pt: Pick<PostType, 'label'>): Angle {
   const s = `${viOf(pt.label)} ${enOf(pt.label)}`.toLowerCase();
@@ -77,6 +82,7 @@ export function topicFor(pt: Pick<PostType, 'label'>, d: TopicData): Topic {
         return {
           subject: bi(`${d.rising.name} — đang tăng ${d.rising.pct}% so với tháng trước`,
             `${d.rising.name} — up ${d.rising.pct}% on last month`),
+          angle, name: d.rising.name,
           figure: { kind: 'rising', value: d.rising.pct },
         };
       }
@@ -84,20 +90,22 @@ export function topicFor(pt: Pick<PostType, 'label'>, d: TopicData): Topic {
         return {
           subject: bi(`${d.mostBooked.name} — mẫu được đặt nhiều nhất tháng này (${d.mostBooked.count} lượt)`,
             `${d.mostBooked.name} — this month's most-booked (${d.mostBooked.count} bookings)`),
+          angle, name: d.mostBooked.name,
           figure: { kind: 'bookings', value: d.mostBooked.count },
         };
       }
-      return { subject: bi('Mẫu khách đang chọn nhiều nhất — tiệm tự chọn', 'The design customers pick most — shop\'s choice'), figure: null };
+      return { subject: bi('Mẫu khách đang chọn nhiều nhất — tiệm tự chọn', 'The design customers pick most — shop\'s choice'), angle, figure: null };
     }
     case 'process': {
       if (d.bestYield && d.bestYield.minutes > 0) {
         return {
           subject: bi(`${d.bestYield.name} trong ${d.bestYield.minutes} phút — ${viOf(pt.label).toLowerCase()}`,
             `${d.bestYield.name} in ${d.bestYield.minutes} minutes — ${enOf(pt.label).toLowerCase()}`),
+          angle, name: d.bestYield.name,
           figure: { kind: 'minutes', value: d.bestYield.minutes },
         };
       }
-      return { subject: pt.label, figure: null };
+      return { subject: pt.label, angle, figure: null };
     }
     case 'question': {
       if (d.question && d.question.text.trim()) {
@@ -105,6 +113,7 @@ export function topicFor(pt: Pick<PostType, 'label'>, d: TopicData): Topic {
         return {
           subject: bi(`"${q}" — câu khách hỏi nhiều nhất trong inbox`,
             `"${q}" — the question customers ask most`),
+          angle, name: q,
           figure: { kind: 'asked', value: d.question.times },
         };
       }
@@ -113,6 +122,7 @@ export function topicFor(pt: Pick<PostType, 'label'>, d: TopicData): Topic {
         subject: svc
           ? bi(`"${svc} giữ được bao lâu?" — câu khách hay hỏi trước khi đặt`, `"How long does ${svc} last?" — what customers ask before booking`)
           : pt.label,
+        angle, name: svc ? `${svc} giữ được bao lâu?` : null,
         figure: null,
       };
     }
@@ -125,6 +135,7 @@ export function topicFor(pt: Pick<PostType, 'label'>, d: TopicData): Topic {
         subject: d.mostBooked
           ? bi(`${viOf(pt.label)} — ${d.mostBooked.name}`, `${enOf(pt.label)} — ${d.mostBooked.name}`)
           : pt.label,
+        angle, name: d.mostBooked?.name ?? null,
         figure: null,
       };
     case 'tech':
@@ -132,10 +143,11 @@ export function topicFor(pt: Pick<PostType, 'label'>, d: TopicData): Topic {
         subject: d.spotlight?.trim()
           ? bi(`${viOf(pt.label)} — ${trim(d.spotlight.trim())}`, `${enOf(pt.label)} — ${trim(d.spotlight.trim())}`)
           : pt.label,
+        angle, name: d.spotlight?.trim() || null,
         figure: null,
       };
     default:
-      return { subject: pt.label, figure: null };
+      return { subject: pt.label, angle, figure: null };
   }
 }
 

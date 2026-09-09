@@ -1,4 +1,5 @@
 import { bi, isBi, viOf, enOf, type Txt } from './i18n';
+import { composeCaption } from './caption-style';
 import type { Job, JobKind } from './weekly-plan';
 
 /**
@@ -62,12 +63,13 @@ function cityTag(city?: string | null): string | null {
   return c.length >= 3 ? c : null;
 }
 
-const BASE_TAGS = ['nails', 'nailart', 'gelnails', 'nailsofinstagram', 'naildesign', 'nailsalon'];
+const BASE_TAGS = ['nailsofinstagram', 'naildesign', 'nailsalon', 'nailinspo'];
 
+/** Five to eight: the city first, then the service, then the broad ones. */
 function tags(ctx: BriefContext, extra: string[] = []): string[] {
   const c = cityTag(ctx.city);
-  const out = [...extra, ...BASE_TAGS, ...(c ? [`${c}nails`, `${c}nailsalon`] : [])];
-  return Array.from(new Set(out)).slice(0, 12);
+  const out = [...(c ? [`${c}nails`, `${c}nailsalon`] : []), ...extra, ...BASE_TAGS];
+  return Array.from(new Set(out)).slice(0, 8);
 }
 
 const name = (ctx: BriefContext, lang: 'vi' | 'en') =>
@@ -114,11 +116,63 @@ function photoSheet(): JobBrief {
   };
 }
 
+/**
+ * The template caption, to the house shape (see caption-style).
+ *
+ * The hook is the subject the week gave the post — the design, the service,
+ * the customer's question — with the "— most booked this month" tail taken
+ * off, because a hook is a claim and not a footnote. The proof line is built
+ * from the ONE figure behind the subject, and only that: a subject that rests
+ * on no number gets a proof line that promises none.
+ */
+function postCaption(job: Job, ctx: BriefContext): Txt {
+  const nVi = name(ctx, 'vi'); const nEn = name(ctx, 'en');
+  const tp = job.topic ?? null;
+  const f = tp?.figure ?? null;
+  // The hook: the thing itself when the week named one (a service, the
+  // customer's question), shaped by the angle; otherwise the subject line up
+  // to its first dash. A label like "Before and after, or the real reaction"
+  // is a slot name and reads as one, so a name is always preferred.
+  const head = (lang: 'vi' | 'en') => {
+    const nm = tp?.name?.trim();
+    if (nm && tp?.angle === 'question') return nm.endsWith('?') ? nm : `${nm}?`;
+    if (nm && tp?.angle === 'before-after') return lang === 'vi' ? `${nm} — trước và sau.` : `${nm} — before and after.`;
+    if (nm && tp?.angle === 'tech') return lang === 'vi' ? `Người làm ra bộ móng của bạn: ${nm}.` : `The hands behind your set: ${nm}.`;
+    if (nm) return `${nm}.`;
+    if (tp?.angle === 'tech') return lang === 'vi' ? `Người đứng sau mỗi bộ móng ở ${nVi}.` : `The hands behind every set at ${nEn}.`;
+    const s = subjectOf(job.text, lang).split(/\s+—\s+/)[0].replace(/^"|"$/g, '').trim();
+    return s.endsWith('?') ? s : `${s}.`;
+  };
+  const proofVi = f?.kind === 'bookings' ? `${f.value} lượt đặt tháng này — bộ được chọn nhiều nhất tại ${nVi}.`
+    : f?.kind === 'minutes' ? `${f.value} phút từ lúc ngồi xuống đến lúc xong, tại ${nVi}.`
+      : f?.kind === 'asked' ? `Câu này ${f.value} khách đã hỏi bên em — trả lời một lần cho rõ.`
+        : f?.kind === 'rising' ? `Tháng này nhiều khách chọn hơn tháng trước ${f.value}% — có lý do cả.`
+          : tp?.angle === 'tech' ? 'Mỗi bộ một người làm từ đầu đến cuối — không đổi tay giữa chừng.'
+            : `Làm tại ${nVi}${ctx.city ? `, ${ctx.city.split(',')[0]}` : ''}.`;
+  const proofEn = f?.kind === 'bookings' ? `${f.value} bookings this month — the most-chosen set at ${nEn}.`
+    : f?.kind === 'minutes' ? `${f.value} minutes from sitting down to walking out, at ${nEn}.`
+      : f?.kind === 'asked' ? `${f.value} customers have asked us this — here is the answer, once and for all.`
+        : f?.kind === 'rising' ? `${f.value}% more of you chose this than last month — there is a reason.`
+          : tp?.angle === 'tech' ? 'One person on your set from start to finish — no switching hands halfway.'
+            : `Done at ${nEn}${ctx.city ? `, ${ctx.city.split(',')[0]}` : ''}.`;
+  return bi(
+    composeCaption({
+      hook: head('vi'),
+      proof: proofVi,
+      ask: 'Đặt lịch 30 giây — link trong bio. Chọn giờ, chọn thợ, xác nhận ngay.',
+      talk: 'Bạn thích dáng nào hơn? Bình luận bên dưới 👇',
+    }),
+    composeCaption({
+      hook: head('en'),
+      proof: proofEn,
+      ask: 'Book in 30 seconds — link in bio. Pick your time, pick your tech, confirmed instantly.',
+      talk: 'Which shape would you pick? Tell us below 👇',
+    }),
+  );
+}
+
 function postSheet(job: Job, ctx: BriefContext): JobBrief {
   const isPhotoSet = /bộ ảnh|photo set|carousel/i.test(viOf(job.text) + enOf(job.text));
-  const subjVi = subjectOf(job.text, 'vi');
-  const subjEn = subjectOf(job.text, 'en');
-  const nVi = name(ctx, 'vi'); const nEn = name(ctx, 'en');
   return {
     steps: isPhotoSet
       ? [
@@ -142,9 +196,7 @@ function postSheet(job: Job, ctx: BriefContext): JobBrief {
         bi('Trả lời mọi bình luận trong 30 phút đầu — thuật toán đẩy bài có trả lời',
           'Answer every comment in the first 30 minutes — replies are what the algorithm pushes'),
       ],
-    caption: bi(
-      `${subjVi} 💅 tại ${nVi}.\nNhìn kỹ giây thứ 3 nhé — chi tiết này làm tay 40 phút.\n\nĐặt lịch: link trong bio · chọn giờ, chọn thợ, 30 giây là xong.\nHỏi giá: nhắn "GIÁ" ở dưới, em trả lời liền.`,
-      `${subjEn} 💅 at ${nEn}.\nWatch second 3 — that detail is 40 minutes of handwork.\n\nBook: link in bio · pick a time, pick your tech, done in 30 seconds.\nPrice? Comment "PRICE" and we\'ll reply.`),
+    caption: postCaption(job, ctx),
     hashtags: tags(ctx, isPhotoSet ? ['nailinspo', 'beforeandafter'] : ['nailsreels', 'nailtok']),
     channel: isPhotoSet
       ? bi('Instagram (bộ ảnh) · Facebook', 'Instagram carousel · Facebook')
@@ -268,8 +320,16 @@ export function offerSheet(o: {
       bi('Sáng ngày cuối: story đếm ngược (đã có trong lịch)', 'Morning of the last day: countdown story (already on the plan)'),
     ],
     caption: bi(
-      `🎉 ${viOf(o.headline)} tại ${nVi}!\n${viOf(o.rules)}${exp}\n\nĐặt lịch: link trong bio — chọn giờ, chọn thợ, xác nhận ngay.\nSố chỗ có hạn, hết là hết 💅`,
-      `🎉 ${enOf(o.headline)} at ${nEn}!\n${enOf(o.rules)}${expEn}\n\nBook: link in bio — pick a time, pick your tech, confirmed instantly.\nLimited spots 💅`),
+      composeCaption({
+        hook: `${viOf(o.headline)} tại ${nVi}.`,
+        proof: `${viOf(o.rules)}${exp}`,
+        ask: 'Đặt lịch 30 giây — link trong bio. Khung này ít chỗ, đặt sớm giữ được giờ đẹp 💅',
+      }),
+      composeCaption({
+        hook: `${enOf(o.headline)} at ${nEn}.`,
+        proof: `${enOf(o.rules)}${expEn}`,
+        ask: 'Book in 30 seconds — link in bio. This slot fills up, so book early for the good times 💅',
+      })),
     hashtags: tags(ctx, ['nailsdeal', 'nailspecial']),
     channel: bi('Facebook (ghim) · Instagram · Hồ sơ Google', 'Facebook (pinned) · Instagram · Google profile'),
   };

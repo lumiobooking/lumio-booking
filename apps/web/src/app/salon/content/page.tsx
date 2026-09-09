@@ -1671,7 +1671,14 @@ function Inner() {
                         <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.6 }}>
                           {T('Cần quay', 'Shots')}
                         </div>
-                        <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.6 }}>{idea.shotList}</div>
+                        {/* One scene per line. A shot list is read with a
+                            phone in one hand between two customers; a
+                            paragraph of scenes joined by dots is not. */}
+                        <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.65 }}>
+                          {idea.shotList.split(/\s+·\s+|\s*\n+\s*/).map((sc) => sc.trim()).filter(Boolean).map((sc, k) => (
+                            <li key={k}>{sc}</li>
+                          ))}
+                        </ol>
                       </div>
                     )}
 

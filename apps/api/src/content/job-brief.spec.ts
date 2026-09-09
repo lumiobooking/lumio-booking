@@ -180,3 +180,65 @@ describe('what the shop sees of the sheet', () => {
     expect(briefFor({ kind: 'rest', text: 'x', why: '' }, {})).toBeNull();
   });
 });
+
+describe('the template caption meets the house standard', () => {
+  // The standard is only worth stating if the templates pass it themselves.
+  const { captionIssues } = require('./caption-style');
+  const { buildWeekPlan } = require('./weekly-plan');
+  const { enOf, viOf } = require('./i18n');
+
+  const week = buildWeekPlan({
+    today: new Date('2026-09-09T12:00:00Z'), todayWeekday: 3, industry: 'SALON',
+    salonName: 'Lux Nail Spa', city: 'Kerrville, TX',
+    topics: {
+      mostBooked: { name: 'Dip Powder', count: 41 },
+      bestYield: { name: 'Gel Polish Change', minutes: 20, perHourCents: 7500 },
+      question: { text: 'Does dip powder ruin your natural nails?', times: 7 },
+    },
+  });
+  const posts = week.days.flatMap((d: { jobs: { kind: string; brief?: { caption?: unknown; hashtags?: string[] } }[] }) => d.jobs)
+    .filter((j: { kind: string }) => j.kind === 'post');
+
+  it('passes captionIssues in both languages, with tags', () => {
+    expect(posts.length).toBeGreaterThan(0);
+    for (const j of posts) {
+      const tagLine = `\n\n${(j.brief?.hashtags ?? []).map((t: string) => `#${t}`).join(' ')}`;
+      expect(captionIssues(enOf(j.brief!.caption) + tagLine)).toEqual([]);
+      expect(captionIssues(viOf(j.brief!.caption) + tagLine)).toEqual([]);
+    }
+  });
+
+  it('puts the shop\'s own number in the proof line, and only that number', () => {
+    const all = posts.map((j: { brief?: { caption?: unknown } }) => enOf(j.brief!.caption)).join('\n---\n');
+    expect(all).toMatch(/41 bookings this month/);
+    expect(all).toMatch(/20 minutes from sitting down/);
+    expect(all).not.toMatch(/40 minutes of handwork/); // the old invented figure
+  });
+
+  it('answers the customer\'s question in their words, on the week that carries that slot', () => {
+    const w2 = buildWeekPlan({
+      today: new Date('2026-09-16T12:00:00Z'), todayWeekday: 3, industry: 'SALON', week: 1,
+      salonName: 'Lux Nail Spa', city: 'Kerrville, TX',
+      topics: { question: { text: 'Does dip powder ruin your natural nails?', times: 7 } },
+    });
+    const q = w2.days.flatMap((d: { jobs: { kind: string; text: unknown; brief?: { caption?: unknown } }[] }) => d.jobs)
+      .find((j: { kind: string; text: unknown }) => j.kind === 'post' && enOf(j.text).includes('ruin'));
+    expect(q).toBeTruthy();
+    expect(enOf(q!.brief!.caption)).toMatch(/^Does dip powder ruin your natural nails\?\n7 customers have asked us this/);
+    expect(captionIssues(enOf(q!.brief!.caption) + '\n\n#a #b #c #d #e')).toEqual([]);
+  });
+
+  it('opens with the subject as a claim, not the "— most booked" footnote', () => {
+    const dip = posts.find((j: { text: unknown }) => enOf(j.text).includes('Dip Powder'));
+    expect(enOf(dip!.brief!.caption)).toMatch(/^Dip Powder\.\n/);
+  });
+
+  it('keeps the tags to the standard: city first, eight at most', () => {
+    for (const j of posts) {
+      const tags = j.brief?.hashtags ?? [];
+      expect(tags.length).toBeLessThanOrEqual(8);
+      expect(tags.length).toBeGreaterThanOrEqual(5);
+      expect(tags[0]).toBe('kerrvillenails');
+    }
+  });
+});

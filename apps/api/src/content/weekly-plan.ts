@@ -26,7 +26,7 @@ import type { DatedEvent } from './region-events';
 import { playbookFor, type ContentSource } from './industry-playbook';
 import { rotate, type RoadmapStage } from './roadmap';
 import { bi, join, viOf, enOf, type Txt } from './i18n';
-import { topicFor, type TopicData } from './week-topics';
+import { topicFor, type TopicData, type Topic } from './week-topics';
 import { attachBriefs, offerSheet, type JobBrief } from './job-brief';
 import { customOfferJob, offerPostDay, type WeekOffer } from './week-offer';
 import {
@@ -58,6 +58,8 @@ export interface Job {
   id?: string;
   /** The working sheet: shots/steps, caption, hashtags, channel. */
   brief?: JobBrief;
+  /** What the post is about and the one figure behind it. See week-topics. */
+  topic?: Topic;
 }
 
 export interface DayPlan {
@@ -296,6 +298,7 @@ export function buildWeekPlan(input: {
     const topic = topicFor(pt, input.topics ?? {});
     add(postDays[i], {
       kind: 'post',
+      topic,
       text: asPhoto
         ? bi(
           `Đăng bộ ảnh — ${viOf(topic.subject)}`,

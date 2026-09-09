@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { dueForRelease, localHourIn } from './auto-release';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { UserRole } from '@prisma/client';
@@ -1935,6 +1936,42 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       created += r.created;
     }
     return { tenants: tenants.length, created };
+  }
+
+  /**
+   * Release every drafted day whose salon morning has begun (see auto-release).
+   *
+   * Runs on the planner's hourly tick right after drafting, so a day drafted
+   * at 10:00 local is on the salon's screen the same minute, and one drafted
+   * at 03:00 waits for the 07:00 tick — the hours a person may still sweep
+   * the queue. A salon held with Setting content_release {mode:'manual'} is
+   * left for the queue. Idempotent: published rows are not drafts.
+   */
+  async releaseDue(now = new Date()): Promise<{ released: number; tenants: number }> {
+    const drafts = await this.prisma.contentIdea.findMany({
+      where: { status: 'draft' },
+      select: { id: true, tenantId: true, forDate: true },
+      take: 2000,
+    }).catch(() => []) as { id: string; tenantId: string; forDate: string }[];
+    if (!drafts.length) return { released: 0, tenants: 0 };
+    const tenantIds = Array.from(new Set(drafts.map((d) => d.tenantId)));
+    const [tenants, holds] = await Promise.all([
+      this.prisma.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true, timezone: true } }).catch(() => []) as Promise<{ id: string; timezone: string | null }[]>,
+      this.prisma.setting.findMany({ where: { tenantId: { in: tenantIds }, key: 'content_release' }, select: { tenantId: true, value: true } }).catch(() => []) as Promise<{ tenantId: string; value: unknown }[]>,
+    ]);
+    const tzOf = new Map(tenants.map((t) => [t.id, t.timezone || 'America/Los_Angeles']));
+    const modeOf = new Map(holds.map((h) => [h.tenantId, String((h.value as { mode?: string } | null)?.mode ?? '')]));
+    const due = drafts.filter((d) => {
+      const tz = tzOf.get(d.tenantId);
+      if (!tz) return false; // a tenant that is gone keeps nothing on any screen
+      return dueForRelease({ forDate: d.forDate, localDay: this.localDay(tz, now), localHour: localHourIn(tz, now), mode: modeOf.get(d.tenantId) });
+    });
+    if (!due.length) return { released: 0, tenants: 0 };
+    const r = await this.prisma.contentIdea.updateMany({
+      where: { id: { in: due.map((d) => d.id) }, status: 'draft' },
+      data: { status: 'published', publishedAt: now },
+    }).catch(() => ({ count: 0 }));
+    return { released: r.count, tenants: new Set(due.map((d) => d.tenantId)).size };
   }
 
   /**

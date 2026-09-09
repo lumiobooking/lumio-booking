@@ -8,7 +8,9 @@ import { SuggestionsService } from './suggestions.service';
 /**
  * Drafts tomorrow's ideas while the salons sleep.
  *
- * Deliberately drafts, never publishes: the Lumio team presses the button.
+ * Drafts, then releases each day once the salon's local morning has begun
+ * (auto-release.ts); the Lumio team's queue is for the hours before that
+ * and for salons it chooses to hold.
  * Ticks hourly rather than firing once at a fixed hour, because Render's free
  * tier sleeps and a single daily alarm would be missed on exactly the mornings
  * nobody was using the app — the mornings a plan matters most. Generation is
@@ -142,6 +144,13 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
       // starved every non-salon client of content for as long as this ran.
       const r = await this.content.generateAll();
       if (r.created) this.logger.log(`Drafted ${r.created} ideas across ${r.tenants} salons.`);
+      // Then put the drafted day on the salon's screen once its morning has
+      // begun. "Drafts, never publishes" above was the rule while a person
+      // released every day by hand; the rule now is that a person may hold a
+      // salon (content_release mode 'manual') or sweep the queue before 07:00
+      // local — and otherwise the plan updates itself, as promised.
+      const rel = await this.content.releaseDue().catch(() => ({ released: 0, tenants: 0 }));
+      if (rel.released) this.logger.log(`Released ${rel.released} ideas to ${rel.tenants} salon(s).`);
       // Area demographics, filled here rather than on a page load. Cached for a
       // month, so almost every tick skips every tenant; the point is that no
       // human has to remember to press anything.

@@ -1600,8 +1600,8 @@ function Inner() {
                     {T('Hôm nay chưa có gợi ý', 'No plan for today yet')}
                   </div>
                   <div style={{ fontSize: 13.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
-                    {T('Đội Lumio đang chuẩn bị kế hoạch nội dung cho tiệm. Kiểm tra lại sau nhé.',
-                       'The Lumio team is preparing your plan. Check back shortly.')}
+                    {T('Gợi ý mỗi ngày tự lên sau 7:00 sáng giờ của tiệm. Nếu đã quá giờ mà vẫn trống, bấm "Cập nhật ngay" để soạn ngay bây giờ.',
+                       'Each day’s ideas appear on their own after 7:00 am your time. Past that and still empty? Press “Refresh now” to draft them right away.')}
                   </div>
                 </div>
               )}

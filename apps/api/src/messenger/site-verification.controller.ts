@@ -24,8 +24,19 @@ import { SkipRateLimit } from '../common/security/rate-limit.guard';
 @SkipRateLimit()
 @Controller()
 export class SiteVerificationController {
+  /**
+   * The code, whichever of Zalo's three forms it was copied in. The DNS
+   * method shows it as "zalo-platform-site-verification=CODE", the meta
+   * method as the tag, the file method as the bare code — and the first
+   * person to set this variable pasted the DNS form. All three are the same
+   * code; the tag and the file only ever want the bare part.
+   */
   private code(): string {
-    return (process.env.ZALO_SITE_VERIFICATION || '').trim();
+    let v = (process.env.ZALO_SITE_VERIFICATION || '').trim();
+    const tag = /content=["']([^"']+)["']/.exec(v);
+    if (tag) v = tag[1];
+    v = v.replace(/^zalo-platform-site-verification\s*=\s*/i, '').trim();
+    return /^[A-Za-z0-9_-]+$/.test(v) ? v : '';
   }
 
   /** The root page: a tag in the head, and a line that says what this host is. */

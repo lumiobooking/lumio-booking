@@ -25,6 +25,7 @@ import { BookingsService } from '../bookings/bookings.service';
 import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { mergeBurst, alreadySaid, BURST_MS } from './burst';
 
 // A blank/masked secret must never overwrite a stored Page token.
 function cleanSecret(v: unknown): string | null {
@@ -2000,7 +2001,65 @@ export class MessengerService implements OnModuleInit {
       await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { handoff: false, handoffAt: null } as never });
     }
 
-    await this.replyAndRecord({ ...conn, pageToken: page.pageToken }, thread.id, senderId, text, eventTs);
+    // NOT answered here. The customer may still be typing, or tapping the same
+    // button again because the first tap felt slow — so the reply is queued
+    // and a whole burst is answered once. See ./burst.
+    this.queueReply({ ...conn, pageToken: page.pageToken }, thread.id, senderId, text, eventTs);
+  }
+
+  /**
+   * One reply per burst, per thread.
+   *
+   * Held in memory, like the grace timers above: at worst a restart mid-burst
+   * loses a collecting window and the customer's message is answered by the
+   * next one they send. The alternative — a row per thread in the database,
+   * written twice a second while somebody types — costs more than the problem.
+   */
+  private readonly bursts = new Map<string, { texts: string[]; ts?: number; running: boolean }>();
+
+  private queueReply(
+    conn: { tenantId: string; pageToken: string; aiInstruction: string | null; botFacts: unknown },
+    threadId: string, senderId: string, text: string, eventTs?: number,
+  ): void {
+    const q = this.bursts.get(threadId) ?? { texts: [], ts: eventTs, running: false };
+    q.texts.push(text);
+    if (q.ts === undefined) q.ts = eventTs;
+    this.bursts.set(threadId, q);
+    // A run is already in flight; it will collect this on its way out rather
+    // than starting a second agent that cannot see the first one's answer.
+    if (q.running) return;
+    q.running = true;
+    void this.drainBurst(conn, threadId, senderId)
+      .catch((e) => this.logger.warn(`burst reply failed: ${String(e).slice(0, 160)}`));
+  }
+
+  private async drainBurst(
+    conn: { tenantId: string; pageToken: string; aiInstruction: string | null; botFacts: unknown },
+    threadId: string, senderId: string,
+  ): Promise<void> {
+    const beat = () => new Promise<void>((r) => { const t = setTimeout(r, BURST_MS); t.unref?.(); });
+    try {
+      await beat();
+      for (;;) {
+        const q = this.bursts.get(threadId);
+        // Nothing pending: no await between this check and the finally below,
+        // so nothing can be queued into a run that is already leaving.
+        if (!q || !q.texts.length) break;
+        const texts = q.texts.splice(0, q.texts.length);
+        const ts = q.ts;
+        q.ts = undefined;
+        const merged = mergeBurst(texts);
+        if (merged) await this.replyAndRecord(conn, threadId, senderId, merged, ts);
+        if (!this.bursts.get(threadId)?.texts.length) break;
+        await beat();
+      }
+    } finally {
+      const q = this.bursts.get(threadId);
+      if (q) {
+        q.running = false;
+        if (!q.texts.length) this.bursts.delete(threadId);
+      }
+    }
   }
 
   // Yield windows are per-tenant settings now (humanActiveMins / graceMins on
@@ -2114,6 +2173,18 @@ export class MessengerService implements OnModuleInit {
       if (!userAlready) {
         const inAtDrop = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
         await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtDrop }]);
+      }
+      return;
+    }
+    // Word for word what we said last time? Then it tells the customer nothing
+    // they cannot already see on their screen, and sending it makes the page
+    // look broken. The customer's turn is still recorded, so the thread — and
+    // the person who opens the inbox — has the whole story.
+    if (alreadySaid(history, reply)) {
+      this.logger.log(`suppressed a repeat reply on thread ${threadId}`);
+      if (!userAlready) {
+        const inAtDup = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+        await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtDup }]);
       }
       return;
     }

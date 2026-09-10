@@ -90,7 +90,7 @@ export function WebChatPanel({ token }: { token: string | null }) {
             <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
               <code
                 onClick={(e) => { const r = document.createRange(); r.selectNodeContents(e.currentTarget); window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(r); }}
-                style={{ flex: 1, display: 'block', padding: '9px 11px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: '#c4b5fd', fontSize: 12, lineHeight: 1.5, wordBreak: 'break-all', cursor: 'text' }}
+                style={{ flex: 1, display: 'block', padding: '9px 11px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ca5b4fc)', fontSize: 12, lineHeight: 1.5, wordBreak: 'break-all', cursor: 'text' }}
               >{st.snippet}</code>
               <button onClick={copy} style={{ ...ui.primaryBtn, whiteSpace: 'nowrap' }}>{copied ? '✓' : T('Chép', 'Copy')}</button>
             </div>

@@ -642,6 +642,9 @@ function Inner() {
     tiktok?: TikTokOpts;
   } | null>(null);
   /** The TikTok connection, as the connect/disconnect buttons need it. */
+  /** The composer folded down to its title bar. A month plan is the thing
+      being worked ON; an open editor covering it is the thing in the way. */
+  const [composerOpen, setComposerOpen] = useState(true);
   const [ttBusy, setTtBusy] = useState(false);
   /** Re-reading what the TikTok account allows, on demand. */
   const [ttCreatorBusy, setTtCreatorBusy] = useState(false);
@@ -1002,6 +1005,7 @@ function Inner() {
     // A guess from the extension, not a decision: a signed CDN path has no
     // extension, so the row carries a picker the salon can correct.
     const kind: MediaItem['kind'] = /\.(mp4|mov|m4v|avi|webm|mkv)(\?|#|$)/i.test(url) ? 'video' : 'image';
+    setComposerOpen(true);
     setPostDraft({ ...postDraft, media: [...postDraft.media, { url, kind }] });
     setMediaInput('');
   }
@@ -1091,6 +1095,7 @@ function Inner() {
     // refuses that — but the person clicking it wants to see where it went,
     // and a click that does nothing at all reads as a broken calendar.
     if (!p) return;
+    setComposerOpen(true);
     setPostDraft({
       id: p.id, channels: p.channels, message: p.message, media: p.media,
       at: instantToWall(p.scheduledAt),
@@ -1176,6 +1181,7 @@ function Inner() {
   function scheduleFromIdea(idea: Idea) {
     const local = wallTomorrowAt('10:00'); // tomorrow morning AT THE SALON
     setPostWhen('later');
+    setComposerOpen(true);
     setPostDraft({
       channels: ['facebook'],
       message: [idea.caption, idea.hashtags].filter(Boolean).join('\n\n'),
@@ -1198,6 +1204,7 @@ function Inner() {
     const local = wallTomorrowAt('10:00'); // tomorrow morning AT THE SALON
     const tag = card.via && card.via.startsWith('#') ? card.via : '';
     setPostWhen('later');
+    setComposerOpen(true);
     setPostDraft({
       channels: ['facebook'],
       message: [card.title, tag].filter(Boolean).join('\n\n'),
@@ -1219,6 +1226,7 @@ function Inner() {
     setPostWhen('later');
     setFitNote(null);
     setContactOverride(false);
+    setComposerOpen(true);
     setPostDraft({
       channels: ['facebook'],
       message: [queue?.postKit?.starter ?? ''].filter(Boolean).join(''),
@@ -2747,7 +2755,8 @@ function Inner() {
                       // Kerrville shop's post came to give a Huntington Beach
                       // phone number.
                       setContactOverride(false);
-                      setPostDraft({ channels: ['facebook'], message: queue?.postKit?.starter ?? '', media: [], at: local });
+                      setComposerOpen(true);
+    setPostDraft({ channels: ['facebook'], message: queue?.postKit?.starter ?? '', media: [], at: local });
                     }}
                     style={{
                       marginLeft: (Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') ? undefined : 'auto', minHeight: 38, padding: '8px 14px', borderRadius: 9,
@@ -2992,22 +3001,69 @@ function Inner() {
                       text, which is nothing to somebody with eight tabs open —
                       and eight tabs open is exactly the situation that puts one
                       shop's phone number on another shop's post. */}
+                  {/* Sticky, so the way out is never a scroll away. The editor
+                      is tall by nature — caption, four channels, ten media rows,
+                      the team's step — and somebody who opened it from the
+                      calendar wants the calendar back, not a trip to the bottom
+                      of a form to find the button that gives it back. */}
                   <div style={{
-                    display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
+                    display: 'flex', alignItems: 'center', gap: 8, marginBottom: composerOpen ? 12 : 0,
                     padding: '9px 12px', borderRadius: 10,
                     background: 'var(--c0f172a)', border: '1px solid #6366f1', borderLeft: '4px solid #6366f1',
+                    position: 'sticky', top: 4, zIndex: 5,
                   }}>
-                    <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--ce2e8f0)', minWidth: 0, flex: 1 }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--ce2e8f0)', minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {postDraft.id ? T('Sửa bài · ', 'Edit post · ') : T('Bài mới · ', 'New post · ')}
                       <span style={{ color: 'var(--ca5b4fc)' }}>{kit?.shop.name ?? queue?.connected?.pageName ?? '—'}</span>
                     </span>
-                    {kit?.shop.city && (
+                    {kit?.shop.city && !isMobile && (
                       <span style={{ fontSize: 11.5, color: 'var(--c64748b)', fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'nowrap' }}>
                         {kit.shop.city}{kit.shop.instagram ? ` · @${kit.shop.instagram}` : ''}
                       </span>
                     )}
+                    <button
+                      onClick={() => setComposerOpen((v) => !v)}
+                      title={composerOpen ? T('Thu gọn — vẫn giữ nguyên bài đang sửa', 'Collapse — keeps what you are editing') : T('Mở ra để sửa tiếp', 'Open it again')}
+                      style={{
+                        flexShrink: 0, minHeight: 30, padding: '0 11px', borderRadius: 8, cursor: 'pointer',
+                        border: '1px solid var(--c475569)', background: 'transparent',
+                        color: 'var(--c94a3b8)', fontSize: 12.5, fontFamily: 'inherit',
+                      }}
+                    >
+                      {composerOpen ? `▾ ${T('Thu gọn', 'Collapse')}` : `▸ ${T('Mở ra', 'Open')}`}
+                    </button>
+                    <button
+                      onClick={() => { setPostDraft(null); setPostErr(null); setContactOverride(false); }}
+                      title={T('Đóng — bỏ những thay đổi chưa lưu', 'Close — drops unsaved changes')}
+                      style={{
+                        flexShrink: 0, width: 30, height: 30, borderRadius: 8, cursor: 'pointer',
+                        border: '1px solid var(--c334155)', background: 'transparent',
+                        color: 'var(--c64748b)', fontSize: 14, lineHeight: 1, fontFamily: 'inherit',
+                      }}
+                    >✕</button>
                   </div>
 
+                  {/* Folded: one line saying what is still open, so nobody
+                      forgets a half-written post sitting under the calendar. */}
+                  {!composerOpen && (
+                    <div
+                      onClick={() => setComposerOpen(true)}
+                      style={{
+                        marginTop: 8, padding: '8px 11px', borderRadius: 9, cursor: 'pointer',
+                        background: 'var(--c0f172a)', border: '1px dashed var(--c334155)',
+                        fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {postDraft.channels.length > 0 && (
+                        <b style={{ color: 'var(--ce2e8f0)' }}>{postDraft.channels.map((c) => CHANNEL_NAME[c]).join(' + ')} · </b>
+                      )}
+                      {postDraft.media.length > 0 && `🖼 ${postDraft.media.length} · `}
+                      {postDraft.message.trim().slice(0, 90) || T('(chưa có caption)', '(no caption yet)')}
+                    </div>
+                  )}
+
+                  {composerOpen && (<>
                   <textarea
                     value={postDraft.message}
                     onChange={(e) => setPostDraft({ ...postDraft, message: e.target.value })}
@@ -4046,6 +4102,7 @@ function Inner() {
                       </div>
                     );
                   })()}
+                  </>)}
                 </div>
               );
               })()}

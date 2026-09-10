@@ -4,7 +4,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import {
-  TIKTOK_KEY, TIKTOK_DEFAULTS, TIKTOK_FILE_MAX_BYTES, type TikTokSettings, type TikTokPostOptions, type CreatorInfo,
+  TIKTOK_KEY, TIKTOK_DEFAULTS, TIKTOK_FILE_MAX_BYTES, TIKTOK_WHOLE_FETCH_MAX, type TikTokSettings, type TikTokPostOptions, type CreatorInfo,
   tiktokAuthorizeUrl, settingsFromToken, parseCreatorInfo, publicTikTok, accessStale, needsReconnect, targetOf,
   initBody, chunkPlan, explainTikTokError, tiktokPostUrl, readPublishStatus,
 } from './tiktok';
@@ -272,21 +272,24 @@ export class TikTokService {
     }
 
     if (!pulled) {
-      const file = await this.fetchVideo(input.videoUrl);
-      const plan = chunkPlan(file.length);
-      const { res, j } = await init(initBody(input.caption, input.opts, { kind: 'file', size: file.length, chunkSize: plan.chunkSize, chunks: plan.chunks }));
+      // The file's size first, then the pieces one at a time: a phone clip
+      // is fetched whole, a big export is read in 64 MB HTTP ranges from
+      // the host and handed on, so the process never holds the whole thing.
+      const src = await this.videoSource(input.videoUrl);
+      const plan = chunkPlan(src.size);
+      const { res, j } = await init(initBody(input.caption, input.opts, { kind: 'file', size: src.size, chunkSize: plan.chunkSize, chunks: plan.chunks }));
       if (!res.ok || !j.data?.publish_id || !j.data.upload_url || (j.error?.code && j.error.code !== 'ok')) {
         throw new BadRequestException(explainTikTokError(j.error?.code, j.error?.message));
       }
       publishId = j.data.publish_id;
       for (const [start, end] of plan.ranges) {
-        const part = file.subarray(start, end + 1);
+        const part = await src.read(start, end);
         const up = await fetch(j.data.upload_url, {
           method: 'PUT',
           headers: {
             'content-type': 'video/mp4',
             'content-length': String(part.length),
-            'content-range': `bytes ${start}-${end}/${file.length}`,
+            'content-range': `bytes ${start}-${end}/${src.size}`,
           },
           // A fresh Uint8Array over an ArrayBuffer: `Buffer` is typed over
           // ArrayBufferLike and fetch's BodyInit will not take it as-is.
@@ -317,16 +320,49 @@ export class TikTokService {
     return { publishId, postId: null, url: null, pending: true };
   }
 
-  /** The video, whole, for FILE_UPLOAD. Capped: a 1 GB export is not a TikTok clip. */
-  private async fetchVideo(url: string): Promise<Buffer> {
-    const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(120_000) });
-    if (!res.ok) throw new BadRequestException(`Không tải được video từ link (HTTP ${res.status}).`);
-    const len = Number(res.headers.get('content-length') || 0);
-    if (len > TIKTOK_FILE_MAX_BYTES) throw new BadRequestException(`Video nặng ${(len / 1048576).toFixed(0)} MB — Lumio gửi lên TikTok tối đa 128 MB. Xuất lại video nhẹ hơn (1080p, H.264).`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > TIKTOK_FILE_MAX_BYTES) throw new BadRequestException('Video nặng quá 128 MB — xuất lại video nhẹ hơn.');
-    if (!buf.length) throw new BadRequestException('File video rỗng.');
-    return buf;
+  /**
+   * The video on the public host, as something that can be read a piece at
+   * a time. Small files are fetched once and sliced; big ones are read by
+   * HTTP Range so the process holds one 64 MB piece, not a gigabyte.
+   */
+  private async videoSource(url: string): Promise<{ size: number; read: (start: number, end: number) => Promise<Buffer> }> {
+    const head = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(20_000) }).catch(() => null);
+    let size = Number(head?.headers.get('content-length') || 0);
+    let ranges = /bytes/i.test(head?.headers.get('accept-ranges') || '');
+    if (!head?.ok || !size) {
+      // Some hosts answer HEAD badly. A one-byte range GET tells us both things.
+      const probe = await fetch(url, { headers: { range: 'bytes=0-0' }, redirect: 'follow', signal: AbortSignal.timeout(20_000) }).catch(() => null);
+      if (!probe) throw new BadRequestException('Không tải được video từ link.');
+      void probe.body?.cancel().catch(() => undefined);
+      const cr = probe.headers.get('content-range') || '';
+      const total = Number(cr.split('/')[1] || 0);
+      if (probe.status === 206 && total) { size = total; ranges = true; }
+      else if (probe.ok) size = Number(probe.headers.get('content-length') || 0);
+      else throw new BadRequestException(`Không tải được video từ link (HTTP ${probe.status}).`);
+    }
+    if (!size) throw new BadRequestException('Không đọc được kích thước video từ link.');
+    if (size > TIKTOK_FILE_MAX_BYTES) throw new BadRequestException(`Video nặng ${(size / 1048576).toFixed(0)} MB — tối đa 1 GB. Xuất lại 1080p (H.264).`);
+
+    if (size <= TIKTOK_WHOLE_FETCH_MAX || !ranges) {
+      if (!ranges && size > TIKTOK_WHOLE_FETCH_MAX) {
+        throw new BadRequestException('Máy chủ chứa video không hỗ trợ tải từng phần; video quá 96 MB cần host khác hoặc xuất nhẹ hơn.');
+      }
+      const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(180_000) });
+      if (!res.ok) throw new BadRequestException(`Không tải được video từ link (HTTP ${res.status}).`);
+      const whole = Buffer.from(await res.arrayBuffer());
+      if (!whole.length) throw new BadRequestException('File video rỗng.');
+      return { size: whole.length, read: async (s, e) => whole.subarray(s, e + 1) };
+    }
+    return {
+      size,
+      read: async (start, end) => {
+        const res = await fetch(url, { headers: { range: `bytes=${start}-${end}` }, redirect: 'follow', signal: AbortSignal.timeout(180_000) });
+        if (res.status !== 206) throw new BadRequestException(`Máy chủ không trả về đoạn video ${start}-${end} (HTTP ${res.status}).`);
+        const part = Buffer.from(await res.arrayBuffer());
+        if (part.length !== end - start + 1) throw new BadRequestException('Đoạn video tải về không đủ dữ liệu — thử lại.');
+        return part;
+      },
+    };
   }
 
   private async audit(tenantId: string, userId: string | null, action: string) {

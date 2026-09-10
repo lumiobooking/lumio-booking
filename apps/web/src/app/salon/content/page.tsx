@@ -603,6 +603,8 @@ function Inner() {
   const [uploadStep, setUploadStep] = useState<{ done: number; total: number } | null>(null);
   /** A clip on its way up — percent, because a phone clip on shop wifi is a minute of nothing otherwise. */
   const [videoPct, setVideoPct] = useState<number | null>(null);
+  /** A Drive file being pulled onto the host by the server — what the poll last said. */
+  const [driveJob, setDriveJob] = useState<{ pct: number | null; loadedMb: number; sizeMb: number | null } | null>(null);
   /** What the fitter did to the last upload — crop, padding, or nothing. */
   const [fitNote, setFitNote] = useState<string | null>(null);
   /**
@@ -906,9 +908,46 @@ function Inner() {
     } finally { setVideoPct(null); }
   }
 
+  /**
+   * A Google Drive link, made into a file the platforms can fetch.
+   *
+   * The server pulls it — the agency's Drive first, then "anyone with the
+   * link" — and streams it to the public host, so a clip too big for the
+   * browser upload still gets in. The screen polls until the job is done
+   * and then adds the hosted address, never the Drive page.
+   */
+  async function importDrive(url: string) {
+    if (!postDraft || !token || driveJob) return;
+    setDriveJob({ pct: null, loadedMb: 0, sizeMb: null }); setPostErr(null);
+    try {
+      const { jobId } = await apiFetch<{ jobId: string }>('/uploads/import-drive', { method: 'POST', token, body: { url } });
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const j = await apiFetch<{ state: 'running' | 'done' | 'error'; pct: number | null; loadedMb: number; sizeMb: number | null; url: string | null; kind: 'image' | 'video' | null; error: string | null }>(`/uploads/import-drive/${jobId}`, { token });
+        setDriveJob({ pct: j.pct, loadedMb: j.loadedMb, sizeMb: j.sizeMb });
+        if (j.state === 'error') throw new Error(j.error || 'error');
+        if (j.state === 'done' && j.url) {
+          const kind = j.kind ?? 'video';
+          setPostDraft((d) => (d ? { ...d, media: [...d.media, { url: j.url as string, kind }] } : d));
+          setMediaInput('');
+          notify('success', T(`Đã lấy ${kind === 'video' ? 'video' : 'ảnh'} từ Google Drive (${j.sizeMb ?? j.loadedMb} MB).`, `Fetched the ${kind} from Google Drive (${j.sizeMb ?? j.loadedMb} MB).`));
+          return;
+        }
+      }
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : '';
+      setPostErr(/STORAGE_NOT_CONFIGURED/i.test(raw)
+        ? T('Chưa bật kho lưu file trên hệ thống. Báo Lumio bật giúp.', 'File storage is not switched on yet. Ask Lumio to enable it.')
+        : `${T('Không lấy được file từ Google Drive', 'Could not fetch the file from Google Drive')}${raw ? `: ${raw}` : ''}`);
+    } finally { setDriveJob(null); }
+  }
+
   function addMedia() {
     const url = mediaInput.trim();
     if (!postDraft || !url || postDraft.media.length >= 10) return;
+    // A Drive share link is a web page to Facebook and TikTok — but it is a
+    // file to our server. Import it instead of refusing it.
+    if (/drive\.google\.com|docs\.google\.com|drive\.usercontent\.google\.com/i.test(url)) { void importDrive(url); return; }
     // A guess from the extension, not a decision: a signed CDN path has no
     // extension, so the row carries a picker the salon can correct.
     const kind: MediaItem['kind'] = /\.(mp4|mov|m4v|avi|webm|mkv)(\?|#|$)/i.test(url) ? 'video' : 'image';
@@ -3179,14 +3218,16 @@ function Inner() {
                       />
                       <button
                         onClick={addMedia}
-                        disabled={postDraft.media.length >= 10}
+                        disabled={postDraft.media.length >= 10 || driveJob !== null}
                         style={{
                           minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
                           cursor: postDraft.media.length >= 10 ? 'not-allowed' : 'pointer', border: '1px solid var(--c475569)',
                           background: 'transparent', color: postDraft.media.length >= 10 ? 'var(--c64748b)' : 'var(--ca5b4fc)',
                         }}
                       >
-                        + {T('Thêm link', 'Add link')}
+                        {driveJob
+                          ? (driveJob.pct !== null ? T(`Đang lấy từ Drive ${driveJob.pct}%…`, `Fetching from Drive ${driveJob.pct}%…`) : T(`Đang lấy từ Drive… ${driveJob.loadedMb} MB`, `Fetching from Drive… ${driveJob.loadedMb} MB`))
+                          : `+ ${T('Thêm link', 'Add link')}`}
                       </button>
                       {/* The way out of the link problem entirely.
                           Asking a salon for a "public https link to the file"
@@ -3247,8 +3288,8 @@ function Inner() {
                         ? T(`Bài nhiều ảnh (${postDraft.media.length}/10) — vuốt ngang trên Instagram.`, `Carousel (${postDraft.media.length}/10) — swipeable on Instagram.`)
                         : postDraft.media.some((m) => m.kind === 'video')
                           ? T('Video — Instagram đăng dạng Reels, Facebook đăng video thường.', 'Video — published as a Reel on Instagram, a video post on Facebook.')
-                          : T('Ảnh: bấm "Tải ảnh lên" — chọn được nhiều ảnh một lần (giữ Ctrl/Shift), thứ tự chọn là thứ tự trong bài. Video: bấm "Tải video lên" (MP4/MOV, tối đa 120 MB) — Facebook đăng video, Instagram đăng Reels, TikTok đăng bài. Dán link chỉ khi file .mp4 đã nằm trên web công khai; link Google Drive/Photos không dùng được.',
-                              'Photos: use Upload — pick several at once (hold Ctrl/Shift); the order you pick is the order in the post. Video: press "Upload a video" (MP4/MOV, 120 MB max) — a video post on Facebook, a Reel on Instagram, the post itself on TikTok. Paste a link only for an .mp4 already on the public web; Google Drive/Photos links do not work.')}
+                          : T('Ảnh: bấm "Tải ảnh lên" — chọn được nhiều ảnh một lần (giữ Ctrl/Shift), thứ tự chọn là thứ tự trong bài. Video: bấm "Tải video lên" (MP4/MOV, tối đa 120 MB) — Facebook đăng video, Instagram đăng Reels, TikTok đăng bài. Video nặng hơn (tới 1 GB): tải lên Google Drive, chia sẻ "Bất kỳ ai có đường liên kết", dán link vào ô trên rồi bấm "Thêm link" — hệ thống tự kéo file về máy chủ.',
+                              'Photos: use Upload — pick several at once (hold Ctrl/Shift); the order you pick is the order in the post. Video: press "Upload a video" (MP4/MOV, 120 MB max) — a video post on Facebook, a Reel on Instagram, the post itself on TikTok. Bigger clips (up to 1 GB): put it on Google Drive, share as "Anyone with the link", paste the link above and press "Add link" — the server fetches it.')}
                     </div>
                   </div>
 

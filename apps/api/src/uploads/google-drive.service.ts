@@ -392,6 +392,39 @@ export class GoogleDriveService {
     return driveLinks(data.id, data.webViewLink);
   }
 
+  /**
+   * What a file is, by id — any file the agency account can see, not only
+   * ours. Null when Drive will not show it to us (not shared, or no Drive).
+   */
+  async fileMeta(fileId: string): Promise<{ name: string; mime: string; size: number | null } | null> {
+    const id = String(fileId).replace(/[^A-Za-z0-9_-]/g, '');
+    if (!id || !(await this.configured())) return null;
+    try {
+      const m = await this.api<{ name?: string; mimeType?: string; size?: string }>(`/files/${id}?fields=name,mimeType,size&supportsAllDrives=true`);
+      return { name: m.name ?? '', mime: m.mimeType ?? '', size: m.size ? Number(m.size) : null };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The bytes of any visible file, as a stream — the way a 600 MB clip has
+   * to move: never all at once through a 512 MB process.
+   */
+  async openStream(fileId: string): Promise<{ stream: NodeJS.ReadableStream; mime: string; size: number | null }> {
+    const id = String(fileId).replace(/[^A-Za-z0-9_-]/g, '');
+    if (!id) throw new BadRequestException('File không hợp lệ.');
+    const token = await this.accessToken();
+    const res = await fetch(`${DRIVE}/files/${id}?alt=media&supportsAllDrives=true`, { headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok || !res.body) throw new Error(`Drive download ${res.status}`);
+    const { Readable } = await import('stream');
+    return {
+      stream: Readable.fromWeb(res.body as never),
+      mime: (res.headers.get('content-type') || 'application/octet-stream').split(';')[0],
+      size: Number(res.headers.get('content-length') || 0) || null,
+    };
+  }
+
   /** The bytes of a file we stored — to stage a copy where a post can fetch it. */
   async download(fileId: string): Promise<{ bytes: Buffer; mime: string }> {
     const id = String(fileId).replace(/[^A-Za-z0-9_-]/g, '');

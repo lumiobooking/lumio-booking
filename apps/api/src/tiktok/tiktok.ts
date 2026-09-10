@@ -43,8 +43,14 @@
 export const TIKTOK_KEY = 'tiktok';
 export const TIKTOK_SCOPES = 'user.info.basic,video.publish';
 export const TIKTOK_CAPTION_MAX = 2200;
-/** The API's own ceiling on one video; Lumio's memory ceiling is lower (see service). */
-export const TIKTOK_FILE_MAX_BYTES = 128 * 1024 * 1024;
+/**
+ * The most Lumio will move to TikTok for one post. TikTok itself takes up
+ * to 4 GB; a gigabyte matches Instagram Reels' ceiling and no salon clip
+ * needs more. Moved in 64 MB pieces, never held whole (see service).
+ */
+export const TIKTOK_FILE_MAX_BYTES = 1024 * 1024 * 1024;
+/** A file up to this size is fetched whole; past it, in HTTP ranges. */
+export const TIKTOK_WHOLE_FETCH_MAX = 96 * 1024 * 1024;
 
 export type TikTokPrivacy = 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'FOLLOWER_OF_CREATOR' | 'SELF_ONLY';
 export const TIKTOK_PRIVACY: TikTokPrivacy[] = ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'];

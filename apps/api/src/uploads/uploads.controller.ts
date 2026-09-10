@@ -74,6 +74,27 @@ export class UploadsController {
   }
 
   /**
+   * A Google Drive link → a file on the public host, in the background.
+   * For the clip that is too big to upload from the browser: the server
+   * pulls it from Drive and streams it to hosting; the screen polls.
+   */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('import-drive')
+  importDrive(@CurrentUser() user: AuthenticatedUser, @Body() body: { url?: string }) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon in scope.');
+    return this.uploads.importFromDrive(tenantId, String(body?.url ?? ''));
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('import-drive/:jobId')
+  importDriveStatus(@CurrentUser() user: AuthenticatedUser, @Param('jobId') jobId: string) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon in scope.');
+    return this.uploads.importStatus(tenantId, jobId);
+  }
+
+  /**
    * The same file, in pieces — see ./chunk-store for why.
    *
    * `uploadId` is minted by the phone (a UUID) so a resume after the app was

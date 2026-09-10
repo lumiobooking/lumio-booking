@@ -6,6 +6,8 @@ import { PlatformConfigService } from '../billing/platform-config.service';
 import { assemble, dropChunks, dropPieces, getResult, haveChunks, putChunk, putResult, CHUNK_MAX, PIECES_MAX, type FinishResult } from './chunk-store';
 import { GoogleDriveService } from './google-drive.service';
 import { EXT_BY_MIME, resolveMime } from './media-mime';
+import { driveFileIdFrom, drivePublicDownloadUrl, importCheck, jobView, type ImportJob } from './drive-import';
+import { Transform } from 'stream';
 
 interface FtpConfig {
   host: string; port: number; user: string; password: string; secure: boolean;
@@ -162,6 +164,122 @@ export class UploadsService {
     }
     if (reachable) throw new BadRequestException(reachable);
     return { url, kind: isVideo ? 'video' : 'image' };
+  }
+
+  /**
+   * A file straight from a stream to the public host — the road for anything
+   * too big to hold. Same folder, same name rule, same public-address check
+   * as uploadFile; only the bytes never sit in memory together.
+   */
+  async uploadStream(
+    tenantId: string,
+    src: { stream: NodeJS.ReadableStream; mime: string; onProgress?: (loaded: number) => void },
+  ): Promise<{ url: string; kind: 'image' | 'video' }> {
+    const c = await this.config();
+    if (!c) throw new BadRequestException('STORAGE_NOT_CONFIGURED');
+    const mime = resolveMime({ declared: src.mime });
+    const isVideo = mime.startsWith('video/');
+    if (!isVideo && !mime.startsWith('image/')) throw new BadRequestException('Chỉ nhận ảnh hoặc video.');
+    const ext = EXT_BY_MIME[mime] ?? (isVideo ? 'mp4' : 'jpg');
+    const safeTenant = tenantId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const name = `${randomUUID()}.${ext}`;
+    const remoteDir = `${c.basePath}/${safeTenant}`;
+
+    let loaded = 0;
+    const counter = new Transform({
+      transform(chunk, _enc, cb) { loaded += chunk.length; src.onProgress?.(loaded); cb(null, chunk); },
+    });
+    const client = new FtpClient(10 * 60_000);
+    try {
+      await client.access(accessOpts(c));
+      await client.ensureDir(remoteDir);
+      await client.uploadFrom(src.stream.pipe(counter), name);
+    } catch (e) {
+      this.log.error(`FTP stream upload failed: ${e instanceof Error ? e.message : e}`);
+      throw new BadRequestException('Không tải lên được máy chủ. Thử lại giúp em.');
+    } finally {
+      client.close();
+    }
+    const url = `${c.publicBase}/${safeTenant}/${name}`;
+    let reachable: string | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt) await new Promise((r) => setTimeout(r, 2500 * attempt));
+      reachable = await this.verifyPublic(url, isVideo ? 'video' : 'image');
+      if (!reachable) break;
+    }
+    if (reachable) throw new BadRequestException(reachable);
+    return { url, kind: isVideo ? 'video' : 'image' };
+  }
+
+  // ---- from Google Drive ------------------------------------------------------------
+
+  /**
+   * Import jobs, in memory. One API instance, minutes-long jobs, a screen
+   * that polls: a map is the right size. Finished jobs are dropped after an
+   * hour; a job belongs to the tenant that started it and nobody else reads it.
+   */
+  private readonly imports = new Map<string, ImportJob>();
+
+  /**
+   * Pull a Drive file onto the public host, in the background.
+   *
+   * Returns at once with the job id; the screen polls importStatus. The
+   * agency's Drive is tried first (anything shared with it), then the public
+   * link. Size and type are checked before a byte moves, so a 3 GB export
+   * is refused in a second, not after ten minutes.
+   */
+  async importFromDrive(tenantId: string, url: string): Promise<{ jobId: string }> {
+    const id = driveFileIdFrom(url);
+    if (!id) throw new BadRequestException('Không nhận ra link Google Drive. Dùng link dạng drive.google.com/file/d/…/view.');
+    if (!(await this.config())) throw new BadRequestException('STORAGE_NOT_CONFIGURED');
+    // Sweep old jobs so the map stays small.
+    for (const [k, j] of this.imports) if (j.state !== 'running' && Date.now() - j.startedAt > 60 * 60 * 1000) this.imports.delete(k);
+
+    const job: ImportJob = { id: randomUUID(), tenantId, state: 'running', loaded: 0, size: null, url: null, kind: null, error: null, startedAt: Date.now() };
+    this.imports.set(job.id, job);
+    void this.runImport(job, id).catch((e) => {
+      job.state = 'error';
+      job.error = e instanceof Error ? e.message.replace(/^Bad Request Exception:?\s*/i, '') : 'lỗi không xác định';
+      this.log.warn(`drive import ${job.id} failed: ${job.error}`);
+    });
+    return { jobId: job.id };
+  }
+
+  importStatus(tenantId: string, jobId: string) {
+    const j = this.imports.get(jobId);
+    if (!j || j.tenantId !== tenantId) throw new BadRequestException('Không tìm thấy tiến trình này.');
+    return jobView(j);
+  }
+
+  private async runImport(job: ImportJob, fileId: string): Promise<void> {
+    // Door 1: the agency's Drive account.
+    let source: { stream: NodeJS.ReadableStream; mime: string; size: number | null; name: string } | null = null;
+    const meta = await this.drive.fileMeta(fileId);
+    if (meta) {
+      const check = importCheck({ mime: meta.mime, size: meta.size, name: meta.name });
+      if (check.problem) throw new BadRequestException(check.problem);
+      const s = await this.drive.openStream(fileId);
+      source = { stream: s.stream, mime: meta.mime || s.mime, size: meta.size ?? s.size, name: meta.name };
+    } else {
+      // Door 2: "anyone with the link".
+      const res = await fetch(drivePublicDownloadUrl(fileId), { redirect: 'follow', signal: AbortSignal.timeout(60_000) });
+      const type = res.headers.get('content-type') || '';
+      const disp = res.headers.get('content-disposition') || '';
+      const name = decodeURIComponent((disp.match(/filename\*=UTF-8''([^;]+)/i)?.[1] || disp.match(/filename="?([^";]+)"?/i)?.[1] || '').trim());
+      const size = Number(res.headers.get('content-length') || 0) || null;
+      const check = importCheck({ mime: res.ok ? type : 'text/html', size, name });
+      if (check.problem) { try { await res.body?.cancel(); } catch { /* already closed */ } throw new BadRequestException(check.problem); }
+      if (!res.body) throw new BadRequestException('Google không trả về nội dung file.');
+      const { Readable } = await import('stream');
+      const mime = type.startsWith('video/') || type.startsWith('image/') ? type.split(';')[0] : (check.kind === 'video' ? 'video/mp4' : 'image/jpeg');
+      source = { stream: Readable.fromWeb(res.body as never), mime, size, name };
+    }
+    job.size = source.size;
+    job.kind = source.mime.startsWith('video/') ? 'video' : 'image';
+    const out = await this.uploadStream(job.tenantId, { stream: source.stream, mime: source.mime, onProgress: (n) => { job.loaded = n; } });
+    job.url = out.url;
+    job.kind = out.kind;
+    job.state = 'done';
   }
 
   // ---- in pieces ------------------------------------------------------------------

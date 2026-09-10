@@ -1445,10 +1445,13 @@ function Inner() {
                       <option value="SPA">{T('Spa / chăm sóc da', 'Spa / skincare')}</option>
                       <option value="MASSAGE">{T('Massage / gội đầu dưỡng sinh', 'Massage')}</option>
                       <option value="PMU">{T('Phun xăm thẩm mỹ', 'Permanent makeup')}</option>
+                      <option value="RESTAURANT">{T('Nhà hàng / quán ăn / cà phê', 'Restaurant / café')}</option>
+                      <option value="REAL_ESTATE">{T('Bất động sản', 'Real estate')}</option>
+                      <option value="SERVICE">{T('Dịch vụ / sửa chữa / bán hàng khác', 'Services / repairs / other retail')}</option>
                     </select>
                     <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 4, lineHeight: 1.5 }}>
-                      {T('Quyết định bảng Xu hướng kéo về nội dung nghề nào. Tiệm làm nhiều nghề thì chọn nghề muốn đẩy mạnh — để trống thì dùng phân loại chung.',
-                         'Decides which trade the Trends board pulls for. A shop doing several picks the one it wants to grow — leave it blank to use the general category.')}
+                      {T('Quyết định bảng Xu hướng, kế hoạch tuần và caption viết cho nghề nào. "Quét lại" tự nhận nghề từ mô tả nếu chưa ai chọn; đã chọn tay thì hệ thống không đổi nữa. Tiệm làm nhiều nghề thì chọn nghề muốn đẩy mạnh.',
+                         'Decides which trade the Trends board, the weekly plan and the captions are written for. "Rescan" fills it from the description when nobody has chosen; a hand-picked trade is never moved. A shop doing several picks the one it wants to grow.')}
                     </div>
                   </div>
 

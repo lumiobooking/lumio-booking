@@ -193,3 +193,34 @@ describe('a written description outranks every heuristic here', () => {
     expect(d.confidence).toBe('high');
   });
 });
+
+describe('pickTrade — what the profile scan may write', () => {
+  const { pickTrade } = require('./industry-detect') as typeof import('./industry-detect');
+  const known = ['SALON', 'NAIL', 'HAIR', 'LASH', 'BROW', 'SPA', 'MASSAGE', 'PMU', 'RESTAURANT', 'REAL_ESTATE', 'SERVICE'];
+  const pho = detectIndustry({ declaredWhatWeDo: 'Nhà hàng phục vụ phở Việt Nam tươi sống, chế biến hàng ngày', tenantName: 'Enjoy Pho', currentIndustry: 'SALON' });
+
+  it('corrects a pho restaurant left on the salon default', () => {
+    expect(pickTrade({ modelTrade: 'RESTAURANT', detection: pho, manual: false, known })).toBe('RESTAURANT');
+    // Even with no usable answer from the model, the words are enough.
+    expect(pickTrade({ modelTrade: '', detection: pho, manual: false, known })).toBe('RESTAURANT');
+  });
+
+  it('never moves a trade a person chose', () => {
+    expect(pickTrade({ modelTrade: 'RESTAURANT', detection: pho, manual: true, known })).toBeNull();
+  });
+
+  it('takes a beauty sub-trade from the model, which the detector cannot tell apart', () => {
+    const lash = detectIndustry({ declaredWhatWeDo: 'Lash studio — nối mi, uốn mi', currentIndustry: 'SALON' });
+    expect(pickTrade({ modelTrade: 'LASH', detection: lash, manual: false, known })).toBe('LASH');
+  });
+
+  it('refuses a model answer the engine does not know, and a model answer the words contradict', () => {
+    expect(pickTrade({ modelTrade: 'FURNITURE', detection: pho, manual: false, known })).toBe('RESTAURANT');
+    expect(pickTrade({ modelTrade: 'NAIL', detection: pho, manual: false, known })).toBeNull();
+  });
+
+  it('leaves a shop alone when nothing is clear', () => {
+    const vague = detectIndustry({ declaredWhatWeDo: 'Chúng tôi phục vụ khách hàng tận tâm', currentIndustry: 'SALON' });
+    expect(pickTrade({ modelTrade: '', detection: vague, manual: false, known })).toBeNull();
+  });
+});

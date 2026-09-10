@@ -222,6 +222,9 @@ export class SettingsService {
       trade: knownTrades().includes(String(dto.trade ?? '').toUpperCase())
         ? String(dto.trade).toUpperCase()
         : (dto.trade === '' ? '' : cur.trade),
+      // A person touched the trade field (even to blank it) — that is a
+      // decision, and the profile scan keeps its hands off from now on.
+      tradeSource: dto.trade !== undefined ? 'manual' : (cur.tradeSource ?? ''),
     };
     await this.writeKey(tenantId, BUSINESS_PROFILE_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.business_profile_updated', resourceType: 'tenant', resourceId: tenantId });

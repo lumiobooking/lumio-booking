@@ -235,3 +235,48 @@ export function configGaps(input: {
   }
   return gaps;
 }
+
+// ---- filling the trade from the scan -----------------------------------------
+
+/**
+ * Which trade the profile scan may write, if any.
+ *
+ * Two witnesses: the model that read the business's own website (asked to
+ * name one trade from the engine's list) and the keyword detector above. A
+ * trade is written when the model names one the engine knows and the
+ * detector does not contradict it with high confidence — or, with no usable
+ * answer from the model, when the detector alone is highly confident about a
+ * non-salon trade. A person's own choice is never touched: that is what
+ * `manual` is for.
+ *
+ * Returns null for "leave it as it is". The beauty sub-trades (NAIL, HAIR…)
+ * are accepted from the model only; the detector cannot tell them apart and
+ * would collapse every one of them into SALON.
+ */
+export function pickTrade(args: {
+  modelTrade?: string | null;
+  detection: Detection;
+  manual: boolean;
+  known: string[];
+}): string | null {
+  if (args.manual) return null;
+  const model = String(args.modelTrade ?? '').trim().toUpperCase();
+  const d = args.detection;
+  const known = new Set(args.known.map((k) => k.toUpperCase()));
+  const beauty = new Set(['SALON', 'NAIL', 'HAIR', 'LASH', 'BROW', 'SPA', 'MASSAGE', 'PMU']);
+  // Strength read from the raw scores, not from `confidence`: detectIndustry
+  // demotes a clear result to 'low' when a declared description disagrees
+  // with the CURRENT setting — the right caution for a health check that
+  // proposes changing a person's choice, and the wrong one here, where the
+  // declared description is exactly the evidence being weighed.
+  const ranked = (Object.keys(d.scores) as Industry[]).map((k) => ({ k, v: d.scores[k] })).sort((a, b) => b.v - a.v);
+  const strong = ranked[0].v >= 20 && ranked[0].v >= ranked[1].v * 2 ? ranked[0].k : null;
+  if (model && known.has(model)) {
+    // The words may veto only when they point clearly at a different family.
+    const family = beauty.has(model) ? 'SALON' : model;
+    if (strong && strong !== family) return null;
+    return model;
+  }
+  if (strong && strong !== 'SALON' && known.has(strong)) return strong;
+  return null;
+}

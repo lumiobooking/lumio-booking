@@ -5,10 +5,11 @@ import { ContentService } from '../content.service';
 import { AuthenticatedUser, resolveTenantScope } from '../../common/tenant/tenant-context';
 import { localizeDeep, bi, type Txt } from '../i18n';
 import { trendLinks } from '../trend-sources';
+import { TRADE_PROFILE_KEY, cleanTradeProfile, customScope, customTenantOf, queriesOf } from '../trade-profile';
 import {
-  queriesFor, scopeOf, marketCodes, parseYouTube, parseInstagram, parseGoogleTrends, parsePinterest, minePhrases,
+  queriesFor, scopeOf, knownTrades, marketCodes, parseYouTube, parseInstagram, parseGoogleTrends, parsePinterest, minePhrases,
   rankItems, diversify, overlay, overlayQueries, needsRefresh, relevant, withGrowth, STALE_AFTER_HOURS,
-  type TrendItem, type RisingQuery, type TrendSource,
+  type TrendItem, type RisingQuery, type TrendSource, type TradeQueries,
 } from './trend-feed';
 
 const GRAPH = 'https://graph.facebook.com/' + (process.env.META_GRAPH_VERSION || 'v21.0');
@@ -106,6 +107,27 @@ export class TrendFeedService {
     return `${scope}:${source}:${tenantId ?? 'shared'}`;
   }
 
+  /**
+   * The search vocabulary for a scope. A trade scope reads the built-in
+   * table; a business's own scope (CUSTOM-<tenant>:<market>, see
+   * trade-profile) reads the profile written for it — falling back to the
+   * catch-all trade if that profile is gone, so a pull never throws for
+   * want of words.
+   */
+  private async queriesForScope(scope: string): Promise<TradeQueries> {
+    const [industry, market] = scope.split(':');
+    const tenantId = customTenantOf(scope);
+    if (!tenantId) return queriesFor(industry, market);
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: TRADE_PROFILE_KEY }, select: { value: true } }).catch(() => null);
+    const p = cleanTradeProfile(row?.value);
+    return p ? queriesOf(p) : queriesFor('SERVICE', market);
+  }
+
+  /** Where a business's trends live: its own scope when it has a profile, else its trade's. */
+  private scopeFor(tenantId: string, ctx: { industry: string; tradeProfile: unknown; region: { market?: string | null } }): string {
+    return ctx.tradeProfile ? customScope(tenantId, ctx.region.market) : scopeOf(ctx.industry, ctx.region.market);
+  }
+
   private async read(scope: string, source: TrendSource, tenantId: string | null): Promise<SnapshotRow | null> {
     return await this.rows?.findFirst({ where: { key: this.keyOf(scope, source, tenantId) } }).catch(() => null) as SnapshotRow | null;
   }
@@ -137,7 +159,7 @@ export class TrendFeedService {
     const key = this.youtubeKey;
     if (!key) throw new Error('not_configured');
     const [industry, market] = scope.split(':');
-    const q = queriesFor(industry, market);
+    const q = await this.queriesForScope(scope);
     const codes = marketCodes(market);
     const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const all: TrendItem[] = [];
@@ -157,15 +179,15 @@ export class TrendFeedService {
       if (!v.ok) throw new Error(`youtube videos ${v.status}`);
       all.push(...parseYouTube((v.body as { items?: unknown })?.items, term));
     }
-    return relevant(all, industry, market);
+    return relevant(all, industry, market, q);
   }
 
   /** Google Trends via DataForSEO: what is rising around the trade's seed terms. */
   async pullGoogle(scope: string): Promise<RisingQuery[]> {
     const auth = this.dfsAuth;
     if (!auth) throw new Error('not_configured');
-    const [industry, market] = scope.split(':');
-    const q = queriesFor(industry, market);
+    const [, market] = scope.split(':');
+    const q = await this.queriesForScope(scope);
     const codes = marketCodes(market);
     const to = new Date();
     const from = new Date(to.getTime() - 30 * 86_400_000);
@@ -201,7 +223,7 @@ export class TrendFeedService {
     const region = marketCodes(market).pinterestRegion;
     if (!region) throw new Error('not_configured'); // market Pinterest Trends does not cover
     const token = await this.pinterestToken();
-    const q = queriesFor(industry, market);
+    const q = await this.queriesForScope(scope);
     const url = (withInterests: boolean) =>
       `${PIN}/trends/keywords/${region}/top/growing?limit=50`
       + (withInterests && q.pinterestInterests.length ? `&interests=${encodeURIComponent(q.pinterestInterests.join(','))}` : '');
@@ -215,7 +237,7 @@ export class TrendFeedService {
       const msg = (r.body as { message?: string })?.message ?? JSON.stringify(r.body)?.slice(0, 160);
       throw new Error(`pinterest ${r.status}: ${msg}`);
     }
-    return parsePinterest(r.body, industry);
+    return parsePinterest(r.body, industry, 10, q);
   }
 
   /** Instagram: top media on the trade's hashtags, as THIS tenant's connected account. */
@@ -233,8 +255,7 @@ export class TrendFeedService {
       select: { igId: true, pageToken: true },
     }).catch(() => null);
     if (!pg?.igId || !pg.pageToken) throw new Error('not_connected');
-    const [industry, market] = scope.split(':');
-    const q = queriesFor(industry, market);
+    const q = await this.queriesForScope(scope);
     const all: TrendItem[] = [];
     for (const tag of q.hashtags) {
       const s = await this.getJson(
@@ -258,7 +279,7 @@ export class TrendFeedService {
     }
     // Hashtag media is on-topic by construction, so only the script check
     // does any work here — and a caption that is all emoji passes it.
-    return relevant(all, industry, null);
+    return relevant(all, scope.split(':')[0], null, q);
   }
 
   /**
@@ -367,9 +388,21 @@ export class TrendFeedService {
       select: { id: true, businessType: true, market: true } as never,
       take: 500,
     }).catch(() => []) as { id: string; businessType?: string | null; market?: string | null }[];
+    // The scope a business READS is decided by the trade it declared and by
+    // whether it has a profile of its own — the same answer feedFor gives.
+    // Grouping by the enum alone pulled nail feeds for a restaurant that had
+    // declared itself one, and pulled nothing at all for its real scope.
+    const [profiles, owned] = await Promise.all([
+      this.prisma.setting.findMany({ where: { key: 'business_profile' }, select: { tenantId: true, value: true }, take: 2000 }).catch(() => []) as Promise<{ tenantId: string; value: unknown }[]>,
+      this.prisma.setting.findMany({ where: { key: TRADE_PROFILE_KEY }, select: { tenantId: true, value: true }, take: 2000 }).catch(() => []) as Promise<{ tenantId: string; value: unknown }[]>,
+    ]);
+    const declared = new Map(profiles.map((p) => [p.tenantId, String(((p.value ?? {}) as { trade?: string }).trade ?? '').toUpperCase()]));
+    const hasOwn = new Set(owned.filter((o) => cleanTradeProfile(o.value)).map((o) => o.tenantId));
     const scopes = new Map<string, string[]>();
     for (const t of tenants) {
-      const s = scopeOf(t.businessType, t.market);
+      const trade = declared.get(t.id);
+      const industry = trade && knownTrades().includes(trade) ? trade : t.businessType;
+      const s = hasOwn.has(t.id) ? customScope(t.id, t.market) : scopeOf(industry, t.market);
       scopes.set(s, [...(scopes.get(s) ?? []), t.id]);
     }
     let pulls = 0; let instagram = 0;
@@ -395,7 +428,7 @@ export class TrendFeedService {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) return { ok: false };
     const ctx = await this.content.gather(tenantId);
-    const scope = scopeOf(ctx.industry, ctx.region.market);
+    const scope = this.scopeFor(tenantId, ctx);
     await this.refreshShared(scope, { force: true });
     await this.refreshInstagram(tenantId, scope, { force: true });
     return { ok: true };
@@ -405,7 +438,7 @@ export class TrendFeedService {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) return null;
     const ctx = await this.content.gather(tenantId);
-    const scope = scopeOf(ctx.industry, ctx.region.market);
+    const scope = this.scopeFor(tenantId, ctx);
 
     const [yt, g, ig, pn] = await Promise.all([
       this.read(scope, 'youtube', null),
@@ -429,7 +462,7 @@ export class TrendFeedService {
     // key, so it is the one keyword list every salon has from day one —
     // Google Trends and Pinterest add to it, they do not replace it. Our own
     // search terms are excluded, or the list would just read them back.
-    const q = queriesFor(ctx.industry, ctx.region.market);
+    const q = await this.queriesForScope(scope);
     const mined = overlayQueries(
       minePhrases([...items(yt), ...items(ig)], { seeds: [...q.youtube, ...q.hashtags] }),
       services,

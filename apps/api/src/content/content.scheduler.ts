@@ -162,6 +162,16 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
       // never the whole table — each one is an AI call and two network reads.
       const sc = await this.content.scanNewProfiles().catch(() => ({ scanned: 0, saved: 0 }));
       if (sc.scanned) this.logger.log(`Profile scan: read ${sc.scanned} salon(s), filled ${sc.saved}.`);
+      // Profiles that describe the business but still carry no trade — read
+      // the trade off the words. A restaurant on the salon default gets
+      // restaurant trends from the next tick, not from the next person who
+      // happens to open its screen.
+      const ft = await this.content.fillMissingTrades().catch(() => ({ checked: 0, filled: 0 }));
+      if (ft.filled) this.logger.log(`Trade filled from the description for ${ft.filled} of ${ft.checked} unlabelled business(es).`);
+      // And the businesses no built-in book fits: write them one. A few per
+      // tick — each is a model call — so a backlog clears over a morning.
+      const tpw = await this.content.writeMissingTradeProfiles().catch(() => ({ checked: 0, written: 0 }));
+      if (tpw.written) this.logger.log(`Trade profile written for ${tpw.written} business(es) outside the built-in trades.`);
       // Freeze each salon's week, so the archive exists whether or not anybody
       // opened the screen. A plan nobody looked at is still the plan that was
       // in force, and next Monday it is the only record of it.

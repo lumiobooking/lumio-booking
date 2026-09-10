@@ -23,7 +23,7 @@
 
 import { WEEKDAY_VI, type SlotLoad, type OfferAdvice, type LapsedSignal } from './revenue-signals';
 import type { DatedEvent } from './region-events';
-import { playbookFor, type ContentSource } from './industry-playbook';
+import { playbookFor, type ContentSource, type Playbook } from './industry-playbook';
 import { rotate, type RoadmapStage } from './roadmap';
 import { bi, join, viOf, enOf, type Txt } from './i18n';
 import { topicFor, type TopicData, type Topic } from './week-topics';
@@ -150,6 +150,8 @@ export function buildWeekPlan(input: {
   /** 0-6 local weekday; pass it in because the salon's timezone decides. */
   todayWeekday: number;
   industry?: string | null;
+  /** The book to plan from when the business has its own (trade-profile); else the trade's. */
+  playbook?: Playbook | null;
   loads?: SlotLoad[];
   advice?: OfferAdvice | null;
   lapsed?: LapsedSignal | null;
@@ -170,7 +172,7 @@ export function buildWeekPlan(input: {
   topics?: TopicData | null;
 }): WeekPlan {
   const industry = (input.industry || 'SALON').toUpperCase();
-  const book = playbookFor(industry);
+  const book = input.playbook ?? playbookFor(industry);
   const loads = input.loads ?? [];
   const events = input.events ?? [];
   const advice = input.advice ?? null;

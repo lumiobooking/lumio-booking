@@ -400,11 +400,12 @@ export function latinShare(text: string): number {
  * script check is unconditional for now; the parameter is here so a market
  * that does not can switch it off without touching the callers.
  */
-export function relevant(items: TrendItem[], industry: string | null | undefined, market?: string | null): TrendItem[] {
+export function relevant(items: TrendItem[], industry: string | null | undefined, market?: string | null, queries?: TradeQueries | null): TrendItem[] {
   // The market decides the vocabulary a title is checked against: a Vietnamese
   // salon's results are Vietnamese, and an English-only pattern would throw
-  // every one of them away as off-topic.
-  const q = queriesFor(industry, market);
+  // every one of them away as off-topic. A business with its own profile
+  // hands its own vocabulary in.
+  const q = queries ?? queriesFor(industry, market);
   return items.filter((it) => {
     // The TITLE has to say it. `via` is our own search term, and testing it
     // would pass everything the search returned — which is the whole problem.
@@ -714,10 +715,10 @@ interface PinTrend { keyword?: string; pct_growth_wow?: number | null }
  * still follow, because the adjacent aisle is exactly what a marketing board
  * is for — but capped, so it stays a garnish and not the meal.
  */
-export function parsePinterest(body: unknown, industry: string | null | undefined, cap = 10): RisingQuery[] {
+export function parsePinterest(body: unknown, industry: string | null | undefined, cap = 10, queries?: TradeQueries | null): RisingQuery[] {
   const list = (body as { trends?: PinTrend[] })?.trends;
   if (!Array.isArray(list)) return [];
-  const q = queriesFor(industry);
+  const q = queries ?? queriesFor(industry);
   const all: RisingQuery[] = list.flatMap((t) => {
     const kw = String(t?.keyword ?? '').trim();
     if (!kw) return [];

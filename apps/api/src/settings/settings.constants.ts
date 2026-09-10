@@ -210,10 +210,18 @@ export interface BusinessProfileSettings {
    * which is why this lives here and not on the tenants table.
    */
   trade: string;
+  /**
+   * Who set `trade`. 'manual' = a person chose it on the profile form and the
+   * profile scan must never move it; 'auto' = the scan filled it from what the
+   * business wrote about itself; '' = nobody yet. The scan only ever writes a
+   * trade into an empty or auto slot — a pho restaurant that was left on the
+   * salon default is corrected, a lash studio that chose NAIL on purpose is not.
+   */
+  tradeSource?: 'manual' | 'auto' | '';
 }
 export const BUSINESS_PROFILE_KEY = 'business_profile';
 export const DEFAULT_BUSINESS_PROFILE: BusinessProfileSettings = {
-  whatWeDo: '', whoWeServe: '', languages: '', serviceArea: '', edge: '', avoid: '', trade: '',
+  whatWeDo: '', whoWeServe: '', languages: '', serviceArea: '', edge: '', avoid: '', trade: '', tradeSource: '',
 };
 export const REBOOKING_SETTINGS_KEY = 'rebooking_settings';
 

@@ -97,7 +97,7 @@ export class SettingsController {
   @Patch('business-profile')
   updateBusinessProfile(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { whatWeDo?: string; whoWeServe?: string; languages?: string; serviceArea?: string; edge?: string; avoid?: string },
+    @Body() dto: { whatWeDo?: string; whoWeServe?: string; languages?: string; serviceArea?: string; edge?: string; avoid?: string; trade?: string },
   ) {
     return this.settings.updateBusinessProfile(user, dto);
   }

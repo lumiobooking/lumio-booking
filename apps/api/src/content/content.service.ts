@@ -36,6 +36,12 @@ const SCAN_RETRY_DAYS = 7;
 import { addDaysToKey, wallTimeToUtcTz as wallTimeToUtc } from '../common/salon-time';
 import { buildWeekOutcome, describeOutcome, describeDelta, type WeekOutcome } from './week-outcome';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
+import { detectIndustry, pickTrade } from './industry-detect';
+import {
+  TRADE_PROFILE_KEY, cleanTradeProfile, playbookOf, feedsOf, profileFingerprint, tradeProfilePrompt, wantsTradeProfile,
+  type TradeProfile,
+} from './trade-profile';
+import type { Playbook } from './industry-playbook';
 import { buildAudienceProfile, audienceToPrompt, type VisitRow, type AudienceProfile } from './audience-signals';
 import { promoAdvice, promoToPrompt, capAdvice, type PromoAdvice } from './promo-playbook';
 import { fetchCensus, describeArea, normaliseZips, type CensusResult } from './census';
@@ -131,6 +137,10 @@ export class ContentService {
     /** 'vi' | 'en' | null — null means "decide from the market", the old default. */
     contentLang: string | null;
     industry: string;
+    /** The playbook this business runs on: its own (see trade-profile) or the trade's built-in. */
+    playbook: Playbook;
+    /** Its own profile when it has one — null for every trade with a real built-in playbook. */
+    tradeProfile: TradeProfile | null;
     city: string;
     /** ISO code the salon bills in ('USD', 'VND'). */
     currency: string;
@@ -185,6 +195,13 @@ export class ContentService {
     const industry = knownTrades().includes(declaredTrade)
       ? declaredTrade
       : String((tenant as { businessType?: string } | null)?.businessType ?? 'SALON');
+    // A business outside the built-in trades runs on a playbook written for
+    // it (trade-profile.ts). Only the catch-all trade reads it: a person who
+    // chose RESTAURANT gets the restaurant book, whatever the scan wrote.
+    const tradeProfile = wantsTradeProfile(industry)
+      ? cleanTradeProfile((await this.prisma.setting.findFirst({ where: { tenantId, key: TRADE_PROFILE_KEY }, select: { value: true } }).catch(() => null))?.value)
+      : null;
+    const playbook = tradeProfile ? playbookOf(tradeProfile) : playbookFor(industry);
 
     const ex = (extra?.value ?? {}) as { address?: string; country?: string };
     const locale = localeForCountry(ex.country ?? '', tz);
@@ -458,6 +475,8 @@ export class ContentService {
       tenantName: tenant?.name || 'Tiệm',
       contentLang: (tenant as { contentLang?: string | null } | null)?.contentLang ?? null,
       industry,
+      playbook,
+      tradeProfile,
       city: region.label,
       currency,
       offer,
@@ -560,6 +579,7 @@ export class ContentService {
       today: new Date(),
       todayWeekday: this.localWeekday(ctx.tz),
       industry: ctx.industry,
+      playbook: ctx.playbook,
       topics: await this.topicsFor(tenantId, ctx),
       loads: ctx.revenue.loads,
       advice: ctx.revenue.advice,
@@ -1588,7 +1608,7 @@ export class ContentService {
     const season = seasonFor(ctx.industry, monthNow);
     const seasonBlock = seasonToPrompt(season, monthNow);
 
-    const pillar = pillarFor(playbookFor(ctx.industry), forDate);
+    const pillar = pillarFor(ctx.playbook, forDate);
     const pillarBlock = pillarToPrompt(pillar);
 
     const formatBlock = formats.length
@@ -1670,7 +1690,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       // The raw material this trade actually has to hand. Without it the model
       // reaches for stock ideas ("quay một video giới thiệu tiệm") instead of
       // the finished set sitting on the table right now.
-      `NGUỒN QUAY CÓ SẴN CỦA ${viOf(playbookFor(ctx.industry).trade).toUpperCase()} — ý tưởng phải bắt đầu từ một trong số này:\n`
+      `NGUỒN QUAY CÓ SẴN CỦA ${viOf(ctx.playbook.trade).toUpperCase()} — ý tưởng phải bắt đầu từ một trong số này:\n`
         + week.sources.map((s) => `- ${viOf(s.label)} (${viOf(s.when)}) — ${viOf(s.why)}`).join('\n'),
       '',
       trendLinksToPrompt(),
@@ -1939,6 +1959,131 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
   }
 
   /**
+   * Write (or rewrite) the business's own playbook — see trade-profile.ts.
+   *
+   * Only for a trade with no real built-in book (wantsTradeProfile), only
+   * when there is a description to write from, and only when that
+   * description has changed since the last time: the fingerprint is stored
+   * with the profile. Returns the profile in force, or null when the trade
+   * has a built-in book or nothing could be written.
+   */
+  async ensureTradeProfile(tenantId: string, opts: { force?: boolean } = {}): Promise<TradeProfile | null> {
+    const key = process.env.ANTHROPIC_API_KEY || '';
+    if (!key) return null;
+    const [tenant, profRow, curRow, services] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, businessType: true, market: true } as never })
+        .catch(() => null) as Promise<{ name?: string | null; businessType?: string | null; market?: string | null } | null>,
+      this.prisma.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } }).catch(() => null),
+      this.prisma.setting.findFirst({ where: { tenantId, key: TRADE_PROFILE_KEY }, select: { id: true, value: true } }).catch(() => null),
+      this.prisma.service.findMany({ where: { tenantId, isActive: true }, select: { name: true }, take: 40 }).catch(() => []) as Promise<{ name: string }[]>,
+    ]);
+    const prof = (profRow?.value ?? {}) as Record<string, string>;
+    const industry = knownTrades().includes(String(prof.trade ?? '').toUpperCase())
+      ? String(prof.trade).toUpperCase()
+      : String(tenant?.businessType ?? 'SALON');
+    if (!wantsTradeProfile(industry)) return null;
+    const whatWeDo = String(prof.whatWeDo ?? '').trim();
+    if (whatWeDo.length < 15) return null;
+    const names = services.map((x) => x.name);
+    const fp = profileFingerprint(prof, names);
+    const cur = cleanTradeProfile(curRow?.value);
+    if (cur && cur.generatedFrom === fp && !opts.force) return cur;
+
+    const market = String(tenant?.market ?? 'US').toUpperCase();
+    const { system, user } = tradeProfilePrompt({
+      whatWeDo, whoWeServe: prof.whoWeServe, edge: prof.edge, services: names, market, tenantName: tenant?.name ?? '',
+    });
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 3000,
+        system,
+        messages: [{ role: 'user', content: user }],
+      }),
+      signal: AbortSignal.timeout(60_000),
+    }).catch(() => null);
+    if (!res || !res.ok) { this.logger.warn(`trade profile: model call failed for ${tenantId} (${res ? res.status : 'network'})`); return cur; }
+    const data = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
+    const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
+    const braced = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+    let parsed: unknown = null;
+    try { parsed = JSON.parse(braced); } catch { parsed = null; }
+    const next = cleanTradeProfile({ ...((parsed ?? {}) as Record<string, unknown>), generatedFrom: fp, generatedAt: new Date().toISOString() });
+    if (!next) { this.logger.warn(`trade profile: unusable answer for ${tenantId}`); return cur; }
+    if (curRow?.id) await this.prisma.setting.update({ where: { id: curRow.id }, data: { value: next as never } }).catch(() => undefined);
+    else await this.prisma.setting.create({ data: { tenantId, key: TRADE_PROFILE_KEY, value: next as never } }).catch(() => undefined);
+    this.logger.log(`trade profile written for ${tenantId}: ${next.trade.en}`);
+    return next;
+  }
+
+  /**
+   * The businesses on the catch-all trade that have a description but no
+   * playbook of their own yet — a few per tick, each one a model call.
+   */
+  async writeMissingTradeProfiles(limit = 3): Promise<{ checked: number; written: number }> {
+    if (!process.env.ANTHROPIC_API_KEY) return { checked: 0, written: 0 };
+    const [profiles, existing, tenants] = await Promise.all([
+      this.prisma.setting.findMany({ where: { key: 'business_profile' }, select: { tenantId: true, value: true }, take: 2000 }).catch(() => []) as Promise<{ tenantId: string; value: unknown }[]>,
+      this.prisma.setting.findMany({ where: { key: TRADE_PROFILE_KEY }, select: { tenantId: true }, take: 2000 }).catch(() => []) as Promise<{ tenantId: string }[]>,
+      this.prisma.tenant.findMany({ where: { status: 'ACTIVE', deletedAt: null } as never, select: { id: true, businessType: true } as never, take: 2000 })
+        .catch(() => []) as Promise<{ id: string; businessType?: string | null }[]>,
+    ]);
+    const has = new Set(existing.map((e) => e.tenantId));
+    const enumOf = new Map(tenants.map((t) => [t.id, String(t.businessType ?? 'SALON')]));
+    let checked = 0; let written = 0;
+    for (const p of profiles) {
+      if (written >= limit) break;
+      if (has.has(p.tenantId) || !enumOf.has(p.tenantId)) continue;
+      const v = (p.value ?? {}) as Record<string, string>;
+      const industry = knownTrades().includes(String(v.trade ?? '').toUpperCase()) ? String(v.trade).toUpperCase() : enumOf.get(p.tenantId)!;
+      if (!wantsTradeProfile(industry) || String(v.whatWeDo ?? '').trim().length < 15) continue;
+      checked += 1;
+      const r = await this.ensureTradeProfile(p.tenantId).catch(() => null);
+      if (r) written += 1;
+    }
+    return { checked, written };
+  }
+
+  /**
+   * One pass over every profile that describes the business but never got a
+   * trade: fill it from the words alone (no model call), never over a
+   * person's choice. This is how the restaurants and agencies that signed up
+   * before the scan learned to read trades stop getting nail content — on
+   * the next tick, without anybody pressing "Quét lại" salon by salon.
+   */
+  async fillMissingTrades(): Promise<{ checked: number; filled: number }> {
+    const rows = await this.prisma.setting.findMany({
+      where: { key: 'business_profile' },
+      select: { id: true, tenantId: true, value: true },
+      take: 2000,
+    }).catch(() => []) as { id: string; tenantId: string; value: unknown }[];
+    let checked = 0;
+    let filled = 0;
+    for (const r of rows) {
+      const v = (r.value ?? {}) as Record<string, string>;
+      if (!v.whatWeDo || v.trade || v.tradeSource === 'manual') continue;
+      checked += 1;
+      const [tenant, services] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: r.tenantId }, select: { name: true, businessType: true } }).catch(() => null) as Promise<{ name?: string | null; businessType?: string | null } | null>,
+        this.prisma.service.findMany({ where: { tenantId: r.tenantId, isActive: true }, select: { name: true }, take: 40 }).catch(() => []) as Promise<{ name: string }[]>,
+      ]);
+      const detection = detectIndustry({
+        declaredWhatWeDo: v.whatWeDo,
+        serviceNames: services.map((x) => x.name),
+        tenantName: tenant?.name ?? null,
+        currentIndustry: String(tenant?.businessType || 'SALON'),
+      });
+      const picked = pickTrade({ modelTrade: '', detection, manual: false, known: knownTrades() });
+      if (!picked) continue;
+      await this.prisma.setting.update({ where: { id: r.id }, data: { value: { ...v, trade: picked, tradeSource: 'auto' } as never } }).catch(() => undefined);
+      filled += 1;
+    }
+    return { checked, filled };
+  }
+
+  /**
    * Release every drafted day whose salon morning has begun (see auto-release).
    *
    * Runs on the planner's hourly tick right after drafting, so a day drafted
@@ -2105,7 +2250,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       // region, because "everything looks like a nail salon" is a symptom with
       // two causes — the industry not being set, or the industry being set and
       // ignored — and only one line of UI tells them apart.
-      industry: { code: ctx.industry, trade: playbookFor(ctx.industry).trade },
+      industry: { code: ctx.industry, trade: ctx.playbook.trade },
       // The label the screen shows. The business's own sentence when it has
       // given one; the enum is demoted to a footnote beside it.
       contentLang: ctx.contentLang,
@@ -2139,7 +2284,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       // (`offer` below is the system's advice; this is the person's decision.)
       offerForm: ctx.offer,
       currencySign: currencySign(ctx.currency),
-      videoFeeds: videoFeeds(ctx.industry, ctx.region.market),
+      videoFeeds: ctx.tradeProfile ? feedsOf(ctx.tradeProfile) : videoFeeds(ctx.industry, ctx.region.market),
       productWatch: productWatch(ctx.industry),
       // The salon's own numbers steer the trend queries: it is shown Google
       // Trends for the service it actually sells most, not for a generic term
@@ -2459,7 +2604,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     // Who else the customer sees. Read from Google's own index once a month,
     // and simply absent when no key is configured — see ./places.service.
     const competition = await this.places.scan(tenantId, {
-      trade: viOf(playbookFor(ctx.industry).trade),
+      trade: viOf(ctx.playbook.trade),
       city: ctx.region.city,
       region: ctx.region.region,
       postalCode: ctx.loc?.postalCode ?? null,
@@ -2904,9 +3049,10 @@ LUẬT:
 3. Phân biệt DOANH NGHIỆP NÀY với KHÁCH HÀNG CỦA HỌ. Một công ty marketing phục vụ tiệm nail KHÔNG PHẢI là tiệm nail — đây là nhầm lẫn nguy hiểm nhất, hãy đọc kỹ.
 4. "whoWeServe" chỉ điền khi tài liệu nói rõ họ phục vụ ai. Không suy ra từ ngôn ngữ trang web hay từ tên.
 5. Viết tiếng Việt, ngắn gọn, mỗi ô 1-2 câu.
+6. "trade" = ngành CHÍNH của doanh nghiệp này, chọn ĐÚNG MỘT mã trong danh sách: ${knownTrades().join(' | ')}. NAIL/HAIR/LASH/BROW/SPA/MASSAGE/PMU là các ngành làm đẹp; RESTAURANT = quán ăn, nhà hàng, cà phê, tiệm bánh; REAL_ESTATE = bất động sản, môi giới nhà đất; SERVICE = dịch vụ tại nhà/sửa chữa/vệ sinh/lắp đặt và mọi ngành bán hàng hoặc dịch vụ khác. Không chắc thì để CHUỖI RỖNG — tuyệt đối không đoán là làm đẹp chỉ vì phần mềm này hay dùng cho tiệm nail.
 
 TRẢ VỀ JSON THUẦN:
-{"whatWeDo":"...","whoWeServe":"...","languages":"...","serviceArea":"...","edge":"...","avoid":""}`;
+{"trade":"...","whatWeDo":"...","whoWeServe":"...","languages":"...","serviceArea":"...","edge":"...","avoid":""}`;
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -2971,9 +3117,44 @@ TRẢ VỀ JSON THUẦN:
     if (cur?.avoid && !merged.avoid.includes(cur.avoid)) {
       merged.avoid = [cur.avoid, merged.avoid].filter(Boolean).join(' — ');
     }
+    // The trade, from what the business says it is. Every restaurant, agency
+    // and repair shop that signed up sat on the salon default and got nail
+    // trends, a nail plan and nail captions until somebody noticed. The scan
+    // now fills the trade from two witnesses (the model's reading of the
+    // sources, the keyword detector) — and only into a slot no person has
+    // set; see pickTrade.
+    {
+      const tenantRow = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, businessType: true } })
+        .catch(() => null) as unknown as { name?: string | null; businessType?: string | null } | null;
+      const detection = detectIndustry({
+        declaredWhatWeDo: draft.whatWeDo,
+        serviceNames: services.map((x) => x.name),
+        tenantName: tenantRow?.name ?? null,
+        website: website || null,
+        currentIndustry: String(cur?.trade || tenantRow?.businessType || 'SALON'),
+      });
+      const picked = pickTrade({
+        modelTrade: typeof parsed.trade === 'string' ? parsed.trade : '',
+        detection,
+        manual: cur?.tradeSource === 'manual',
+        known: knownTrades(),
+      });
+      if (picked && picked !== (cur?.trade || '')) {
+        merged.trade = picked;
+        merged.tradeSource = 'auto';
+        sources.push(bi(`Ngành: ${viOf(playbookFor(picked).trade)} (tự nhận từ mô tả)`, `Trade: ${enOf(playbookFor(picked).trade)} (read from the description)`));
+      } else if (cur?.tradeSource) {
+        merged.tradeSource = cur.tradeSource;
+      }
+    }
     const row = await this.prisma.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { id: true } }).catch(() => null);
     if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: merged as never } }).catch(() => undefined);
     else await this.prisma.setting.create({ data: { tenantId, key: 'business_profile', value: merged as never } }).catch(() => undefined);
+
+    // A business outside the built-in trades gets a playbook of its own,
+    // written from the description just saved. Same scan, one more call.
+    const tp = await this.ensureTradeProfile(tenantId).catch(() => null);
+    if (tp) sources.push(bi(`Sổ tay nội dung riêng cho ${tp.trade.vi}`, `A content playbook of its own: ${tp.trade.en}`));
 
     // While we are here: the address is in the same sources, and an empty
     // city/state is what makes every calendar fall back to nationwide dates.

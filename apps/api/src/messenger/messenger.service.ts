@@ -2262,7 +2262,7 @@ export class MessengerService implements OnModuleInit {
         closing: (conn as unknown as { closing?: string | null }).closing ?? null,
         agentName: (conn as unknown as { agentName?: string | null }).agentName ?? null,
         bizIntro: (conn as unknown as { bizIntro?: string | null }).bizIntro ?? null,
-        channel: ((fresh as unknown as { channel?: string }).channel === 'instagram') ? 'instagram' : 'messenger',
+        channel: (() => { const ch = (fresh as unknown as { channel?: string }).channel; return ch === 'instagram' || ch === 'zalo' || ch === 'web' ? ch : 'messenger'; })(),
         senderId,
         pageToken: conn.pageToken,
         memory,
@@ -2438,6 +2438,18 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
             birthDate: { type: 'string', description: 'Birthday as YYYY-MM-DD. If the year is unknown, use 2000, e.g. 2000-05-20.' },
           },
           required: ['customerPhone', 'birthDate'],
+        },
+      },
+      {
+        name: 'save_contact',
+        description: "Save the customer's name and phone the moment they share them, even if no booking happens — so the salon can call them back. Call it ONCE per conversation, as soon as you have at least a phone number. Never ask twice.",
+        input_schema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'What they said to call them. Empty if unknown.' },
+            phone: { type: 'string', description: 'Phone or Zalo number, digits as they typed them.' },
+          },
+          required: ['phone'],
         },
       },
     ];
@@ -2625,6 +2637,14 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // Vietnamese small talk is understated — the tell-tale AI openers must go.
     const voiceRule = `\nVOICE: never open or pad replies with exclamations like "Tuyệt vời", "Rất tốt", "Dạ tốt lắm", "Tuyệt quá", "Hoàn hảo", "Chính xác", "Great", "Perfect", "Awesome", "Wonderful". Real Vietnamese chat acknowledges quietly — "Dạ vâng ạ", "Dạ", "Dạ được ạ", "Oke anh/chị" — then gets straight to the point. No hype words, no cheering.`;
 
+    // A website visitor is a stranger with no profile: if they close the tab
+    // before booking, the salon has nothing to call. So the bot asks for a
+    // name and a number early — once, lightly — and the inbox has a contact
+    // even when the chat ends without an appointment.
+    const channelRule = ctx.channel === 'web'
+      ? `\nWEBSITE CHAT: this customer is chatting from the salon's website and is anonymous — no name, no phone, no profile. Answer their first question fully, then in that same reply or the next one ask ONCE, lightly, for their name and phone (or Zalo) "so the salon can reach you if this chat drops". If they decline or ignore it, continue normally and do not ask again until you book. Never make the contact details a condition for answering.`
+      : '';
+
     const formatRule = `\nFORMAT: Messenger shows PLAIN TEXT only — markdown is never rendered. Absolutely no **asterisks**, no # headers, no tables. Write prices and options inside natural sentences, not robotic bullet lists; if you must enumerate, short lines with "-" are the maximum.`;
 
     // Long-term memory: what we know about THIS customer from chats that may be
@@ -2639,7 +2659,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // The dossier goes LAST so it is the closest thing to the conversation:
     // exact facts, straight from the database, outranking any recollection.
     const dossier = leadDossier(ctx.lead);
-    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + formatRule + closingRule + memoryBlock + gapNote + dossier;
+    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + formatRule + channelRule + closingRule + memoryBlock + gapNote + dossier;
     const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
 
     const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.content }));
@@ -3555,6 +3575,30 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         if (!phone || isNaN(d.getTime())) return 'Could not save the birthday; gently ask again or simply skip it.';
         await this.prisma.customer.updateMany({ where: { tenantId, phone }, data: { birthDate: d } });
         return 'SUCCESS. Birthday saved — thank the customer warmly and wish them a great day.';
+      }
+      if (name === 'save_contact') {
+        // A name and a number, kept where the inbox reads them: the thread's
+        // display name, and a Customer row linked to the thread (found by
+        // phone, or made). Without this a website visitor who chatted and
+        // left was "Khách 3f9a2c" for ever, with nothing to dial.
+        const phone = String(input.phone || '').replace(/[^\d+]/g, '').trim();
+        const nm = String(input.name || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        if (phone.length < 8) return 'The phone number looks incomplete; ask them to check it, or skip.';
+        let customer = await this.prisma.customer.findFirst({ where: { tenantId, phone }, select: { id: true, firstName: true } }).catch(() => null);
+        if (!customer) {
+          const parts = nm.split(' ');
+          customer = await this.prisma.customer.create({
+            data: { tenantId, phone, firstName: parts[0] || 'Khách', lastName: parts.length > 1 ? parts.slice(1).join(' ') : null },
+            select: { id: true, firstName: true },
+          }).catch(() => null);
+        }
+        if (ctx?.threadId) {
+          await this.prisma.messengerThread.update({
+            where: { id: ctx.threadId },
+            data: { ...(nm ? { senderName: nm } : {}), ...(customer?.id ? { customerId: customer.id } : {}) } as never,
+          }).catch(() => undefined);
+        }
+        return 'SUCCESS. Contact saved — do not repeat it back or ask for it again; carry on with what they wanted.';
       }
       return `Unknown tool ${name}.`;
     } catch (e) {

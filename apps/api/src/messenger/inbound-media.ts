@@ -15,11 +15,16 @@
 
 export type MediaKind = 'image' | 'video' | 'audio' | 'file' | 'sticker' | 'location' | 'other';
 
-export interface InboundMedia {
+/**
+ * A type alias rather than an interface on purpose: it rides inside the
+ * thread's JSON history, and only object-literal types are comparable with
+ * Prisma's JsonValue (an interface has no implicit index signature).
+ */
+export type InboundMedia = {
   kind: MediaKind;
   /** Public (signed, short-lived) URL when the platform gives one. */
   url: string | null;
-}
+};
 
 /** Meta's `message.attachments` on a Messenger / Instagram webhook event. */
 export function metaAttachments(message: unknown): InboundMedia[] {

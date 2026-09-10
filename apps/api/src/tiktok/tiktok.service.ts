@@ -287,7 +287,9 @@ export class TikTokService {
             'content-length': String(part.length),
             'content-range': `bytes ${start}-${end}/${file.length}`,
           },
-          body: part,
+          // A fresh Uint8Array over an ArrayBuffer: `Buffer` is typed over
+          // ArrayBufferLike and fetch's BodyInit will not take it as-is.
+          body: new Uint8Array(part),
           signal: AbortSignal.timeout(120_000),
         });
         if (!up.ok && up.status !== 206) {

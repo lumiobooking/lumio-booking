@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsIn, IsISO8601, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsISO8601, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /** One photo or video in the post, in display order. */
@@ -15,6 +15,24 @@ export class PostMediaDto {
 }
 
 /**
+ * What a person decided for the TikTok copy of a post. Privacy is required
+ * by TikTok's guidelines to be chosen, never defaulted — so it is optional
+ * HERE (a draft may not have it yet) and the planner refuses to lock a post
+ * without it.
+ */
+export class TikTokOptionsDto {
+  @IsOptional() @IsIn(['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'])
+  privacy?: string;
+  @IsOptional() @IsBoolean() allowComment?: boolean;
+  @IsOptional() @IsBoolean() allowDuet?: boolean;
+  @IsOptional() @IsBoolean() allowStitch?: boolean;
+  @IsOptional() @IsBoolean() disclose?: boolean;
+  @IsOptional() @IsBoolean() yourBrand?: boolean;
+  @IsOptional() @IsBoolean() brandedContent?: boolean;
+  @IsOptional() @IsBoolean() aigc?: boolean;
+}
+
+/**
  * One queued post, validated at the door.
  *
  * The real content rules — Instagram cannot take a text-only post, a caption
@@ -27,10 +45,14 @@ export class SavePostDto {
   @IsOptional() @IsString() id?: string;
   @IsOptional() @IsString() ideaId?: string | null;
 
-  /** 'google' = the shop's Google Business Profile (connected under Đánh giá Google). */
+  /** 'google' = the shop's Google Business Profile; 'tiktok' = the shop's TikTok account (tiktok module). */
   @IsArray()
-  @IsIn(['facebook', 'instagram', 'google'], { each: true })
-  channels!: ('facebook' | 'instagram' | 'google')[];
+  @IsIn(['facebook', 'instagram', 'google', 'tiktok'], { each: true })
+  channels!: ('facebook' | 'instagram' | 'google' | 'tiktok')[];
+
+  /** TikTok's per-post decisions; only read when 'tiktok' is among the channels. */
+  @IsOptional() @ValidateNested() @Type(() => TikTokOptionsDto)
+  tiktok?: TikTokOptionsDto;
 
   @IsString() @MaxLength(63206)
   message!: string;

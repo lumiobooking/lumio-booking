@@ -49,12 +49,12 @@ export const IG_CAROUSEL_MAX = 10;
 // is re-exported so callers keep one import for every platform's numbers.
 export { GBP_SUMMARY_MAX };
 
-export type Channel = 'facebook' | 'instagram' | 'google';
+export type Channel = 'facebook' | 'instagram' | 'google' | 'tiktok';
 
-export const CHANNELS: Channel[] = ['facebook', 'instagram', 'google'];
+export const CHANNELS: Channel[] = ['facebook', 'instagram', 'google', 'tiktok'];
 
 export const CHANNEL_LABEL: Record<Channel, string> = {
-  facebook: 'Facebook', instagram: 'Instagram', google: 'Google Business',
+  facebook: 'Facebook', instagram: 'Instagram', google: 'Google Business', tiktok: 'TikTok',
 };
 export type MediaKind = 'image' | 'video';
 
@@ -94,6 +94,8 @@ export interface PostDraft {
   message: string;
   /** In display order. The first item is the one the feed shows. */
   media: MediaItem[];
+  /** TikTok's per-post decisions (privacy, toggles, disclosure) — see tiktok/tiktok.ts. */
+  tiktok?: TikTokPostOptions | null;
 }
 
 export interface ChannelPlan {
@@ -115,6 +117,7 @@ export interface PublishPlan {
 }
 
 import { GBP_SUMMARY_MAX, gbpRefusal, gbpSummary } from './gbp-policy';
+import { tiktokRefusal, type TikTokPostOptions, type TikTokTarget } from '../tiktok/tiktok';
 
 const hashtagCount = (s: string) => (s.match(/#[\p{L}\p{N}_]+/gu) ?? []).length;
 
@@ -182,7 +185,7 @@ export function shapeOf(media: MediaItem[]): PostShape {
   return m[0].kind === 'video' ? 'video' : 'image';
 }
 
-export function planPublish(draft: PostDraft, page: ConnectedPage | null, google: GoogleLocation | null = null): PublishPlan {
+export function planPublish(draft: PostDraft, page: ConnectedPage | null, google: GoogleLocation | null = null, tiktok: TikTokTarget | null = null): PublishPlan {
   const wanted = Array.from(new Set(draft.channels ?? []));
   const text = (draft.message ?? '').trim();
   const media = (draft.media ?? []).filter((m) => m && typeof m.url === 'string');
@@ -190,6 +193,12 @@ export function planPublish(draft: PostDraft, page: ConnectedPage | null, google
   const plans: ChannelPlan[] = [];
 
   for (const channel of wanted) {
+    if (channel === 'tiktok') {
+      // The whole rulebook lives next to the API it serves (tiktok/tiktok.ts).
+      const refusal = tiktokRefusal({ text, media }, tiktok, draft.tiktok ?? null);
+      plans.push({ channel, ok: refusal === null, targetId: refusal === null ? 'tiktok' : null, refusal });
+      continue;
+    }
     if (channel === 'google') {
       const refusal = refuseGoogle({ text, media, shape }, google);
       plans.push({ channel, ok: refusal === null, targetId: refusal === null ? google!.parent : null, refusal });

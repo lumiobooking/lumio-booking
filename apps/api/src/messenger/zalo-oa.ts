@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'crypto';
+import { zaloAttachments, type InboundMedia } from './inbound-media';
 
 /**
  * Zalo Official Account plumbing — the parts with no opinions.
@@ -91,6 +92,8 @@ export interface ZaloInbound {
   /** ms epoch, from Zalo's own event timestamp. */
   tsMs: number;
   eventName: string;
+  /** Photos, stickers, voice, files that came with (or instead of) the words. */
+  media: InboundMedia[];
 }
 
 /**
@@ -102,13 +105,18 @@ export function parseZaloEvent(body: unknown): ZaloInbound | null {
   const b = body as {
     app_id?: unknown; event_name?: unknown; timestamp?: unknown;
     sender?: { id?: unknown }; recipient?: { id?: unknown };
-    message?: { text?: unknown };
+    message?: { text?: unknown; attachments?: unknown };
   } | null;
-  if (!b || String(b.event_name ?? '') !== 'user_send_text') return null;
+  const eventName = String(b?.event_name ?? '');
+  // Words, or a picture / sticker / voice note / file — anything a person
+  // sends INTO the chat. Follows, unfollows and delivery receipts are not
+  // messages and stay ignored.
+  const media = b ? zaloAttachments(eventName, b.message) : [];
+  if (!b || (eventName !== 'user_send_text' && !media.length)) return null;
   const senderId = String(b.sender?.id ?? '').trim();
   const oaId = String(b.recipient?.id ?? '').trim();
   const text = String(b.message?.text ?? '').trim();
-  if (!senderId || !oaId || !text) return null;
+  if (!senderId || !oaId || (!text && !media.length)) return null;
   const ts = Number(b.timestamp);
   return {
     appId: String(b.app_id ?? ''),
@@ -116,7 +124,8 @@ export function parseZaloEvent(body: unknown): ZaloInbound | null {
     senderId,
     text,
     tsMs: Number.isFinite(ts) && ts > 0 ? ts : Date.now(),
-    eventName: 'user_send_text',
+    eventName,
+    media,
   };
 }
 

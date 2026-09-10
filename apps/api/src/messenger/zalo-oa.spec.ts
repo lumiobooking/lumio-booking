@@ -35,13 +35,28 @@ describe('parseZaloEvent', () => {
     });
     expect(e).toEqual({
       appId: '111', oaId: 'oa-7', senderId: 'user-9',
-      text: 'Dạ em muốn đặt lịch', tsMs: 1700000000123, eventName: 'user_send_text',
+      text: 'Dạ em muốn đặt lịch', tsMs: 1700000000123, eventName: 'user_send_text', media: [],
     });
   });
 
-  it('ignores every other event kind without throwing', () => {
+  it('reads a photo, with its link, so the bot can look at it', () => {
+    const e = parseZaloEvent({
+      event_name: 'user_send_image', timestamp: '1700000000123',
+      sender: { id: 'user-9' }, recipient: { id: 'oa-7' },
+      message: { attachments: [{ type: 'image', payload: { url: 'https://zalo-cdn/x.jpg', thumbnail: 'https://zalo-cdn/t.jpg' } }] },
+    })!;
+    expect(e.text).toBe('');
+    expect(e.media).toEqual([{ kind: 'image', url: 'https://zalo-cdn/x.jpg' }]);
+  });
+
+  it('turns a sticker into a turn too — silence after a sticker reads as being ignored', () => {
+    const e = parseZaloEvent({ event_name: 'user_send_sticker', sender: { id: 'a' }, recipient: { id: 'b' }, message: {} })!;
+    expect(e.media).toEqual([{ kind: 'sticker', url: null }]);
+  });
+
+  it('ignores every non-message event kind without throwing', () => {
     expect(parseZaloEvent({ event_name: 'follow', follower: { id: 'x' } })).toBeNull();
-    expect(parseZaloEvent({ event_name: 'user_send_sticker', sender: { id: 'a' }, recipient: { id: 'b' } })).toBeNull();
+    expect(parseZaloEvent({ event_name: 'user_received_message', sender: { id: 'a' }, recipient: { id: 'b' } })).toBeNull();
     expect(parseZaloEvent(null)).toBeNull();
     expect(parseZaloEvent('garbage')).toBeNull();
   });

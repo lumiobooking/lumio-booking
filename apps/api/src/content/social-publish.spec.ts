@@ -222,6 +222,32 @@ describe('Google Business Profile is a third place, with Google’s own rules', 
   });
 });
 
+describe('TikTok is a fourth place, with its own rulebook', () => {
+  const TT = { connected: true, needsReconnect: false, displayName: 'Lux', creator: { privacyOptions: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'] as ('PUBLIC_TO_EVERYONE' | 'SELF_ONLY')[], maxDurationSec: 600, commentDisabled: false, duetDisabled: false, stitchDisabled: false, checkedAt: '2026-09-10T00:00:00Z' } };
+  const opts = { privacy: 'PUBLIC_TO_EVERYONE' as const, allowComment: true, allowDuet: true, allowStitch: true, disclose: false, yourBrand: false, brandedContent: false, aigc: false };
+
+  it('posts a video to TikTok alongside Facebook', () => {
+    const p = planPublish(draft({ channels: ['facebook', 'tiktok'], media: [vid()], tiktok: opts }), PAGE, null, TT);
+    expect(p.ready).toBe(true);
+  });
+
+  it('needs no Facebook Page for a TikTok-only post', () => {
+    expect(planPublish(draft({ channels: ['tiktok'], media: [vid()], tiktok: opts }), null, null, TT).ready).toBe(true);
+  });
+
+  it('refuses a photo post, a post with no privacy choice, and a disconnected account', () => {
+    expect(planPublish(draft({ channels: ['tiktok'], media: [img()], tiktok: opts }), PAGE, null, TT).problems[0]).toMatch(/cần một video/);
+    expect(planPublish(draft({ channels: ['tiktok'], media: [vid()] }), PAGE, null, TT).problems[0]).toMatch(/quyền riêng tư/);
+    expect(planPublish(draft({ channels: ['tiktok'], media: [vid()], tiktok: opts }), PAGE, null, null).problems[0]).toMatch(/Kết nối TikTok/);
+  });
+
+  it('holds the whole post when TikTok cannot take it but Facebook can', () => {
+    const p = planPublish(draft({ channels: ['facebook', 'tiktok'], media: [img()], tiktok: opts }), PAGE, null, TT);
+    expect(p.ready).toBe(false);
+    expect(p.plans.find((x) => x.channel === 'facebook')!.ok).toBe(true);
+  });
+});
+
 describe('the scheduler sends what is due and nothing else', () => {
   it('sends a post whose moment has arrived', () => {
     expect(dueNow([q()], NOW).send).toHaveLength(1);

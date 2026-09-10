@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { SettingsModule } from '../settings/settings.module';
 import { UploadsModule } from '../uploads/uploads.module';
 import { GoogleReviewsModule } from '../google-reviews/google-reviews.module';
+import { TikTokModule } from '../tiktok/tiktok.module';
 import { ContentService } from './content.service';
 import { ContentAdminService } from './content-admin.service';
 import { ContentChatService } from './content-chat.service';
@@ -19,7 +20,7 @@ import { PlacesService } from './places.service';
 @Module({
   // GoogleReviewsModule: the calendar posts to the Business Profile through
   // the same grant the reviews screen holds.
-  imports: [SettingsModule, UploadsModule, GoogleReviewsModule],
+  imports: [SettingsModule, UploadsModule, GoogleReviewsModule, TikTokModule],
   controllers: [ContentController, ContentAdminController, PublicReviewController],
   providers: [
     ContentService, ContentAdminService, ContentChatService, SocialPublishService, ContentScheduler, TrendFeedService, PostReviewService,

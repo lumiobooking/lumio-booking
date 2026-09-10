@@ -28,19 +28,19 @@ import { dayKeyInTz, hourInTz, fmtInTz } from '../lib/datetime';
  * the reader to distrust the parts that are true.
  */
 
-export type Channel = 'facebook' | 'instagram' | 'google';
+export type Channel = 'facebook' | 'instagram' | 'google' | 'tiktok';
 /** What each place is called on screen. 'google' is the shop's Business Profile on Maps. */
-export const CHANNEL_NAME: Record<Channel, string> = { facebook: 'Facebook', instagram: 'Instagram', google: 'Google Business' };
-/** Each platform's own colour, so a dot reads without a legend. */
-export const CHANNEL_COLOR: Record<Channel, string> = { facebook: '#1877f2', instagram: '#e1306c', google: '#34a853' };
-export const CHANNEL_SHORT: Record<Channel, string> = { facebook: 'FB', instagram: 'IG', google: 'GG' };
+export const CHANNEL_NAME: Record<Channel, string> = { facebook: 'Facebook', instagram: 'Instagram', google: 'Google Business', tiktok: 'TikTok' };
+/** Each platform's own colour, so a dot reads without a legend. TikTok's cyan, because black is the page. */
+export const CHANNEL_COLOR: Record<Channel, string> = { facebook: '#1877f2', instagram: '#e1306c', google: '#34a853', tiktok: '#69c9d0' };
+export const CHANNEL_SHORT: Record<Channel, string> = { facebook: 'FB', instagram: 'IG', google: 'GG', tiktok: 'TT' };
 
 /**
  * Where a post goes, as coloured dots — replaces the ◈ ▣ ◉ glyphs nobody
  * could read. One dot per platform in the platform's colour; hover names them.
  */
 export function ChannelDots({ channels, size = 7 }: { channels: Channel[]; size?: number }) {
-  const list = (['facebook', 'instagram', 'google'] as Channel[]).filter((c) => channels?.includes(c));
+  const list = (['facebook', 'instagram', 'google', 'tiktok'] as Channel[]).filter((c) => channels?.includes(c));
   return (
     <span title={list.map((c) => CHANNEL_NAME[c]).join(' + ')} style={{ display: 'inline-flex', gap: 2, alignItems: 'center', flexShrink: 0, verticalAlign: 'middle' }}>
       {list.map((c) => (
@@ -331,7 +331,7 @@ export function MonthCalendar({
           </span>
         ))}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 4 }}>
-          {(['facebook', 'instagram', 'google'] as Channel[]).map((c) => (
+          {(['facebook', 'instagram', 'google', 'tiktok'] as Channel[]).map((c) => (
             <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: CHANNEL_COLOR[c], display: 'inline-block' }} />{CHANNEL_SHORT[c]}
             </span>
@@ -486,10 +486,31 @@ export function PostPreview({ channel, message, media, pageName, igUsername, vi 
   const head = cut ? text.slice(0, fold) : text;
   // Google takes one photo and no video: the preview shows exactly what Maps
   // will, so a carousel's second picture is not promised where it will not go.
-  const first = channel === 'google' ? media.find((m) => m.kind === 'image') : media[0];
+  const first = channel === 'google' ? media.find((m) => m.kind === 'image') : channel === 'tiktok' ? media.find((m) => m.kind === 'video') : media[0];
   const name = channel === 'instagram'
     ? (igUsername ? `@${igUsername}` : 'instagram')
-    : (pageName ?? (channel === 'google' ? T('Hồ sơ doanh nghiệp', 'Business Profile') : 'Facebook Page'));
+    : (pageName ?? (channel === 'google' ? T('Hồ sơ doanh nghiệp', 'Business Profile') : channel === 'tiktok' ? 'TikTok' : 'Facebook Page'));
+
+  // TikTok is a phone screen: the video fills it, the caption sits over the
+  // bottom edge. Drawn as such so nobody is surprised by a landscape clip
+  // arriving letterboxed.
+  if (channel === 'tiktok') {
+    return (
+      <div style={{ width: 220, aspectRatio: '9 / 16', borderRadius: 14, overflow: 'hidden', position: 'relative', background: '#000', border: '1px solid var(--c334155)' }}>
+        {first ? (
+          <video src={first.url} muted playsInline controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 12, textAlign: 'center', padding: 16 }}>
+            {T('Cần một video MP4', 'Needs an MP4 video')}
+          </div>
+        )}
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '28px 12px 12px', background: 'linear-gradient(transparent, rgba(0,0,0,.75))', color: '#fff', fontSize: 11.5, lineHeight: 1.4 }}>
+          <div style={{ fontWeight: 700, marginBottom: 3 }}>@{(pageName ?? 'tiktok').replace(/^@/, '')}</div>
+          <div style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{text}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{

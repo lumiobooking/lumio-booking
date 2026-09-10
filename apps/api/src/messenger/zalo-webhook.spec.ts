@@ -47,7 +47,7 @@ describe('Zalo webhook → brain', () => {
     const { svc, messenger } = makeSvc();
     const { body, sig } = signedEvent();
     await svc.handleWebhook(body, sig);
-    expect(messenger.inboundZalo).toHaveBeenCalledWith('oa-7', 'user-9', 'Dạ em muốn đặt lịch', 1700000000123);
+    expect(messenger.inboundZalo).toHaveBeenCalledWith('oa-7', 'user-9', 'Dạ em muốn đặt lịch', 1700000000123, []);
   });
 
   it('drops a forged signature silently', async () => {

@@ -3050,6 +3050,10 @@ model ScheduledPost {
   /// The Drive folder holding this post's files, for reuse elsewhere
   /// (Google Business posts, TikTok) — see social-publish archiveToDrive.
   driveFolderUrl String?
+  /// TikTok's per-post decisions — privacy level, comment/duet/stitch,
+  /// commercial disclosure. Settings only; the account token lives on the
+  /// tenant's Setting row and is read at send time, never stored here.
+  tiktok       Json?
 
   createdByName String?
   createdAt DateTime @default(now())

@@ -282,6 +282,8 @@ interface QueuedPost {
   fix: string | null;
   /** Files removed from storage after the post had been live a while. */
   mediaPurged?: boolean;
+  /** TikTok's per-post decisions, when the post goes there. */
+  tiktok?: TikTokOpts | null;
   /** The saved error is about a permission the connection now has. */
   errorIsStale: boolean;
   results: { channel: string; id: string | null; url: string | null; error: string | null }[];
@@ -308,6 +310,20 @@ interface QueuedPost {
   /** Where this post's files were filed on Drive, for reuse on Google Business / TikTok. */
   driveFolderUrl?: string | null;
 }
+/** TikTok's per-post decisions — mirrors api tiktok/tiktok.ts TikTokPostOptions. */
+interface TikTokOpts {
+  privacy?: '' | 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'FOLLOWER_OF_CREATOR' | 'SELF_ONLY';
+  allowComment?: boolean; allowDuet?: boolean; allowStitch?: boolean;
+  disclose?: boolean; yourBrand?: boolean; brandedContent?: boolean; aigc?: boolean;
+}
+interface TikTokCreator { privacyOptions: string[]; maxDurationSec: number; commentDisabled: boolean; duetDisabled: boolean; stitchDisabled: boolean; checkedAt: string }
+const TT_PRIVACY: { k: NonNullable<TikTokOpts['privacy']>; vi: string; en: string }[] = [
+  { k: 'PUBLIC_TO_EVERYONE', vi: 'Công khai', en: 'Everyone' },
+  { k: 'MUTUAL_FOLLOW_FRIENDS', vi: 'Bạn bè (theo dõi lẫn nhau)', en: 'Friends' },
+  { k: 'FOLLOWER_OF_CREATOR', vi: 'Người theo dõi', en: 'Followers' },
+  { k: 'SELF_ONLY', vi: 'Chỉ mình tôi (riêng tư)', en: 'Only me (private)' },
+];
+
 /** What /content/posts/google-check answers — see api content/gbp-policy.ts. */
 interface GbpCheckResult {
   summary: string;
@@ -328,6 +344,8 @@ interface QueuePayload {
   } | null;
   /** The Google Business Profile location, when connected under Đánh giá Google. */
   google?: { title: string | null } | null;
+  /** The TikTok account, when connected: name and what it may post. */
+  tiktok?: { displayName: string | null; needsReconnect: boolean; creator: TikTokCreator | null } | null;
   posts: QueuedPost[];
   /** Advice, never a refusal: where a month of posts fights itself. */
   crowding: { id: string; minutesApart: number; message: string }[];
@@ -532,9 +550,15 @@ function Inner() {
   // A notification that says "your post failed" has to LAND on the queue. Read
   // once on mount, not on every render: after that the tabs are the user's.
   useEffect(() => {
-    const want = new URLSearchParams(window.location.search).get('tab');
+    const q = new URLSearchParams(window.location.search);
+    const want = q.get('tab');
     const known: TabId[] = ['today', 'week', 'trends', 'calendar', 'audience', 'ads', 'start', 'map', 'queue'];
     if (want && (known as string[]).includes(want)) setTab(want as TabId);
+    // Back from TikTok's consent screen: say how it went, once.
+    const tt = q.get('tiktok');
+    if (tt === 'connected') notify('success', 'Đã kết nối TikTok. Chọn "TikTok" khi tạo bài để đăng.');
+    else if (tt === 'error') notify('error', `Kết nối TikTok không thành công (${q.get('msg') || 'lỗi'}). Thử lại, hoặc báo đội Lumio nếu lặp lại.`);
+    if (tt) window.history.replaceState({}, '', window.location.pathname + (want ? `?tab=${want}` : ''));
   }, []);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
@@ -569,7 +593,10 @@ function Inner() {
   const [postDraft, setPostDraft] = useState<{
     id?: string; channels: Channel[]; message: string; media: MediaItem[]; at: string;
     stage?: 'writing' | 'design' | 'ready'; writerName?: string; designerName?: string; teamNote?: string;
+    tiktok?: TikTokOpts;
   } | null>(null);
+  /** The TikTok connection, as the connect/disconnect buttons need it. */
+  const [ttBusy, setTtBusy] = useState(false);
   const [mediaInput, setMediaInput] = useState('');
   const [uploading, setUploading] = useState(false);
   /** "3/5" while a batch of photos is going up, so the wait has a shape. */
@@ -757,6 +784,7 @@ function Inner() {
           writerName: postDraft.writerName ?? '',
           designerName: postDraft.designerName ?? '',
           teamNote: postDraft.teamNote ?? '',
+          ...(postDraft.channels.includes('tiktok') && postDraft.tiktok ? { tiktok: postDraft.tiktok } : {}),
           // The picker gives a wall-clock string that means SALON time; the
           // server stores an instant. The conversion has to say whose wall the
           // digits belong to — an owner reading from Vietnam still schedules
@@ -946,7 +974,25 @@ function Inner() {
       id: p.id, channels: p.channels, message: p.message, media: p.media,
       at: instantToWall(p.scheduledAt),
       stage: p.stage ?? 'ready', writerName: p.writerName ?? '', designerName: p.designerName ?? '', teamNote: p.teamNote ?? '',
+      tiktok: p.tiktok ?? undefined,
     });
+  }
+
+  /** Start or end the TikTok connection. Connecting leaves for TikTok's consent screen. */
+  async function tiktokConnect(disconnect = false) {
+    if (ttBusy) return;
+    setTtBusy(true); setPostErr(null);
+    try {
+      if (disconnect) {
+        if (!window.confirm(T('Ngắt kết nối TikTok? Bài đã chốt lịch lên TikTok sẽ không đăng được nữa.', 'Disconnect TikTok? Posts locked for TikTok will no longer go out.'))) return;
+        await apiFetch('/tiktok/disconnect', { method: 'POST', token });
+        await loadQueue();
+      } else {
+        const r = await apiFetch<{ url: string }>('/tiktok/connect', { token });
+        window.location.href = r.url;
+      }
+    } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
+    finally { setTtBusy(false); }
   }
 
   async function postAction(id: string, action: 'publish' | 'cancel') {
@@ -2666,6 +2712,52 @@ function Inner() {
                     </>
                   )}
                 </div>
+
+                {/* ---- TikTok ----
+                     The client authorises once from their own phone; Lumio
+                     holds the token. Nobody logs into the client's TikTok
+                     from an agency laptop again — which is what gets those
+                     accounts locked. Owner-only buttons: STAFF have no
+                     /tiktok routes. */}
+                <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span>
+                    🎵 TikTok:{' '}
+                    {queue?.tiktok ? (
+                      <>
+                        <b style={{ color: 'var(--ce2e8f0)' }}>{queue.tiktok.displayName ?? T('đã kết nối', 'connected')}</b>
+                        {queue.tiktok.needsReconnect
+                          ? <span style={{ color: 'var(--cfde68a)' }}> · {T('quyền đã hết hạn (1 năm) — kết nối lại', 'permission expired (1 year) — reconnect')}</span>
+                          : queue.tiktok.creator && queue.tiktok.creator.privacyOptions.length === 1 && queue.tiktok.creator.privacyOptions[0] === 'SELF_ONLY'
+                            ? <span style={{ color: 'var(--cfde68a)' }}> · {T('app chưa được TikTok duyệt: bài chỉ đăng riêng tư (Chỉ mình tôi) cho tới khi duyệt xong', 'app not yet audited by TikTok: posts go out private (Only me) until the audit passes')}</span>
+                            : <span> · {T('bài chọn "TikTok" tự đăng đúng giờ, không ai cần đăng nhập tài khoản của tiệm.', 'posts marked "TikTok" go out on time; nobody logs into the shop’s account.')}</span>}
+                      </>
+                    ) : T('chưa kết nối.', 'not connected.')}
+                  </span>
+                  {(user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN' || Boolean(user?.supportSession)) && (
+                    queue?.tiktok ? (
+                      <>
+                        {queue.tiktok.needsReconnect && (
+                          <button onClick={() => tiktokConnect(false)} disabled={ttBusy} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 700, border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                            {T('Kết nối lại TikTok', 'Reconnect TikTok')}
+                          </button>
+                        )}
+                        <button onClick={() => tiktokConnect(true)} disabled={ttBusy} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 12, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                          {T('Ngắt', 'Disconnect')}
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={() => tiktokConnect(false)} disabled={ttBusy} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 700, border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        {ttBusy ? T('Đang mở TikTok…', 'Opening TikTok…') : T('Kết nối TikTok →', 'Connect TikTok →')}
+                      </button>
+                    )
+                  )}
+                </div>
+                {!queue?.tiktok && (
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 3, lineHeight: 1.5 }}>
+                    {T('Cách làm: bấm "Kết nối TikTok" trên máy/điện thoại của CHỦ tài khoản (hoặc gửi link màn hình này cho họ) → đăng nhập TikTok → Cho phép. Nhân viên không bao giờ cần mật khẩu TikTok của khách.',
+                       'How: press "Connect TikTok" on the account OWNER’s device (or send them this screen) → sign in to TikTok → Allow. Staff never need the client’s TikTok password.')}
+                  </div>
+                )}
               </div>
 
               {postErr && (
@@ -2810,9 +2902,9 @@ function Inner() {
                   </div>
 
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 11 }}>
-                    {(['facebook', 'instagram', 'google'] as const).map((c) => {
+                    {(['facebook', 'instagram', 'google', 'tiktok'] as const).map((c) => {
                       const on = postDraft.channels.includes(c);
-                      const absent = c === 'google' ? !queue?.google : c === 'instagram' ? queue?.connected ? !queue.connected.hasInstagram : false : false;
+                      const absent = c === 'google' ? !queue?.google : c === 'tiktok' ? !queue?.tiktok : c === 'instagram' ? queue?.connected ? !queue.connected.hasInstagram : false : false;
                       return (
                         <button
                           key={c}
@@ -2828,7 +2920,7 @@ function Inner() {
                             color: on ? '#fff' : absent ? 'var(--c64748b)' : 'var(--c94a3b8)',
                           }}
                         >
-                          {c === 'google' ? '📍 ' : ''}{CHANNEL_NAME[c]}
+                          {c === 'google' ? '📍 ' : c === 'tiktok' ? '🎵 ' : ''}{CHANNEL_NAME[c]}
                         </button>
                       );
                     })}
@@ -2916,6 +3008,108 @@ function Inner() {
                     );
                   })()}
 
+                  {/* ---- TikTok's decisions for this post ----
+                       Everything TikTok's Content Sharing Guidelines require
+                       an app to show before it may publish for a person: the
+                       creator's name, a privacy level THEY choose (no
+                       default), comment/duet/stitch toggles greyed when the
+                       account has them off, the commercial-content
+                       disclosure with its labels, the consent line, and the
+                       note that the post takes a few minutes to appear. Not
+                       decoration — the audit checks for each of these. */}
+                  {postDraft.channels.includes('tiktok') && (() => {
+                    const tt = queue?.tiktok ?? null;
+                    const cr = tt?.creator ?? null;
+                    const o: TikTokOpts = postDraft.tiktok ?? { privacy: '', allowComment: true, allowDuet: false, allowStitch: false, disclose: false, yourBrand: false, brandedContent: false };
+                    const set = (patch: Partial<TikTokOpts>) => setPostDraft({ ...postDraft, tiktok: { ...o, ...patch } });
+                    const allowed = cr?.privacyOptions?.length ? cr.privacyOptions : TT_PRIVACY.map((x) => x.k);
+                    const onlyPrivate = allowed.length === 1 && allowed[0] === 'SELF_ONLY';
+                    const video = postDraft.media.find((m) => m.kind === 'video');
+                    const Toggle = ({ k, label, off }: { k: 'allowComment' | 'allowDuet' | 'allowStitch'; label: string; off: boolean }) => (
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: off ? 'var(--c64748b)' : 'var(--ce2e8f0)', cursor: off ? 'not-allowed' : 'pointer' }} title={off ? T('Tài khoản đã tắt mục này trong app TikTok', 'Switched off in the TikTok app settings') : undefined}>
+                        <input type="checkbox" disabled={off} checked={!off && Boolean(o[k])} onChange={(e) => set({ [k]: e.target.checked } as Partial<TikTokOpts>)} style={{ width: 15, height: 15, accentColor: '#69c9d0' }} />
+                        {label}{off && ` (${T('đã tắt trong TikTok', 'off in TikTok')})`}
+                      </label>
+                    );
+                    return (
+                      <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 9, fontSize: 12.5, lineHeight: 1.55, background: 'var(--c1e293b)', border: `1px solid ${!tt || !o.privacy || !video ? '#f59e0b' : 'var(--c334155)'}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <b style={{ color: 'var(--ce2e8f0)' }}>🎵 {T('Bài đăng TikTok', 'TikTok post')}</b>
+                          <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
+                            {tt ? <>{T('Đăng lên tài khoản', 'Posting to')} <b style={{ color: 'var(--ce2e8f0)' }}>{tt.displayName ?? 'TikTok'}</b></> : T('chưa kết nối TikTok', 'TikTok not connected')}
+                            {cr?.maxDurationSec ? ` · ${T('video tối đa', 'max video')} ${Math.round(cr.maxDurationSec / 60)} ${T('phút', 'min')}` : ''}
+                          </span>
+                        </div>
+
+                        {!tt && (
+                          <div style={{ marginTop: 6, color: 'var(--cfde68a)' }}>{T('Bấm "Kết nối TikTok" ở đầu tab này trước. Bài vẫn lưu nháp được.', 'Press "Connect TikTok" at the top of this tab first. The draft still saves.')}</div>
+                        )}
+                        {!video && (
+                          <div style={{ marginTop: 6, color: 'var(--cfde68a)' }}>{T('TikTok cần đúng một video MP4 (dọc 9:16 là đẹp nhất). Dán link video .mp4 công khai ở ô bên dưới; ảnh không đăng lên TikTok được.', 'TikTok needs exactly one MP4 video (9:16 portrait looks best). Paste a public .mp4 link below; photos do not go to TikTok.')}</div>
+                        )}
+                        {onlyPrivate && (
+                          <div style={{ marginTop: 6, color: 'var(--cfde68a)' }}>{T('App Lumio chưa được TikTok duyệt (Content Posting audit) nên tài khoản này chỉ cho đăng "Chỉ mình tôi". Đăng thử được ngay; bài công khai sau khi TikTok duyệt app.', 'Lumio’s app has not passed TikTok’s Content Posting audit yet, so this account only allows "Only me". Test posts work now; public posts after the audit.')}</div>
+                        )}
+
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10, marginTop: 9 }}>
+                          <label style={{ display: 'block' }}>
+                            <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4 }}>{T('Ai xem được bài này', 'Who can view this video')} <span style={{ color: '#f59e0b' }}>*</span></div>
+                            <select
+                              value={o.privacy ?? ''}
+                              onChange={(e) => set({ privacy: e.target.value as TikTokOpts['privacy'] })}
+                              style={{ width: '100%', minHeight: 38, padding: '7px 10px', borderRadius: 8, border: `1px solid ${o.privacy ? 'var(--c334155)' : '#f59e0b'}`, background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 13, fontFamily: 'inherit' }}
+                            >
+                              <option value="">{T('— Chọn (TikTok bắt buộc tự chọn) —', '— Choose (TikTok requires a choice) —')}</option>
+                              {TT_PRIVACY.filter((x) => allowed.includes(x.k)).map((x) => (
+                                <option key={x.k} value={x.k}>{vi ? x.vi : x.en}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <div>
+                            <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4 }}>{T('Cho phép người xem', 'Allow viewers to')}</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                              <Toggle k="allowComment" label={T('Bình luận', 'Comment')} off={Boolean(cr?.commentDisabled)} />
+                              <Toggle k="allowDuet" label="Duet" off={Boolean(cr?.duetDisabled)} />
+                              <Toggle k="allowStitch" label="Stitch" off={Boolean(cr?.stitchDisabled)} />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--c334155)' }}>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: 'var(--ce2e8f0)', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={Boolean(o.disclose)} onChange={(e) => set({ disclose: e.target.checked, ...(e.target.checked ? {} : { yourBrand: false, brandedContent: false }) })} style={{ width: 15, height: 15, accentColor: '#69c9d0' }} />
+                            {T('Tiết lộ nội dung thương mại', 'Disclose commercial content')}
+                          </label>
+                          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2 }}>
+                            {T('Bật khi video quảng bá tiệm hoặc một thương hiệu khác. TikTok yêu cầu.', 'Turn on when the video promotes the shop or another brand. Required by TikTok.')}
+                          </div>
+                          {o.disclose && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 7, paddingLeft: 4 }}>
+                              <label style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 7, fontSize: 12.5, color: 'var(--ce2e8f0)', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={Boolean(o.yourBrand)} onChange={(e) => set({ yourBrand: e.target.checked })} style={{ width: 15, height: 15, accentColor: '#69c9d0', marginTop: 2 }} />
+                                <span>{T('Thương hiệu của tiệm', 'Your brand')}<br /><span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{T('Video sẽ được gắn nhãn "Promotional content".', 'Your video will be labeled "Promotional content".')}</span></span>
+                              </label>
+                              <label style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 7, fontSize: 12.5, color: 'var(--ce2e8f0)', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={Boolean(o.brandedContent)} onChange={(e) => set({ brandedContent: e.target.checked })} style={{ width: 15, height: 15, accentColor: '#69c9d0', marginTop: 2 }} />
+                                <span>{T('Nội dung được tài trợ', 'Branded content')}<br /><span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{T('Video sẽ được gắn nhãn "Paid partnership". Không đặt "Chỉ mình tôi" được.', 'Your video will be labeled "Paid partnership". Cannot be "Only me".')}</span></span>
+                              </label>
+                              {o.brandedContent && o.privacy === 'SELF_ONLY' && (
+                                <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)' }}>{T('Nội dung được tài trợ không được đặt "Chỉ mình tôi" — chọn quyền xem khác.', 'Branded content cannot be "Only me" — choose another audience.')}</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ marginTop: 9, fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+                          {T('Khi đăng, tiệm đồng ý với', 'By posting, you agree to TikTok’s')}{' '}
+                          <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)' }}>Music Usage Confirmation</a>
+                          {o.brandedContent && <> {T('và', 'and')} <a href="https://www.tiktok.com/legal/page/global/bc-policy/en" target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)' }}>Branded Content Policy</a></>}
+                          {T(' của TikTok. Sau khi đăng, TikTok cần vài phút xử lý trước khi video hiện trên trang cá nhân.', '. After publishing, TikTok may take a few minutes to process the video before it appears on the profile.')}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* ---- media, in the order they will appear ----
                        Order is the whole feature for a carousel: item one is
                        the thumbnail in the feed AND the square on the profile
@@ -2925,6 +3119,7 @@ function Inner() {
                       {T('Ảnh & video (link https công khai)', 'Photos & video (public https links)')}
                       {postDraft.channels.includes('instagram') && ` — ${T('Instagram bắt buộc có ít nhất 1', 'Instagram needs at least one')}`}
                       {postDraft.channels.includes('google') && ` — ${T('Google Business chỉ nhận ảnh', 'Google Business takes photos only')}`}
+                      {postDraft.channels.includes('tiktok') && ` — ${T('TikTok cần 1 video .mp4', 'TikTok needs one .mp4 video')}`}
                     </div>
 
                     <MediaList
@@ -3018,7 +3213,7 @@ function Inner() {
                             channel={c}
                             message={c === 'google' && gbp ? gbp.summary : postDraft.message}
                             media={postDraft.media}
-                            pageName={c === 'google' ? (queue?.google?.title ?? kit?.shop.name ?? null) : (queue?.connected?.pageName ?? null)}
+                            pageName={c === 'google' ? (queue?.google?.title ?? kit?.shop.name ?? null) : c === 'tiktok' ? (queue?.tiktok?.displayName ?? null) : (queue?.connected?.pageName ?? null)}
                             igUsername={queue?.connected?.igUsername ?? null}
                             vi={vi}
                           />
@@ -3499,11 +3694,11 @@ function Inner() {
                             reached Instagram. */}
                         {live.status === 'posted' && (
                           <div style={{ marginBottom: 9 }}>
-                            {(['facebook', 'instagram', 'google'] as const).map((c) => {
+                            {(['facebook', 'instagram', 'google', 'tiktok'] as const).map((c) => {
                               const asked = live.channels.includes(c);
                               const r = live.results.find((x) => x.channel === c);
                               const name = CHANNEL_NAME[c];
-                              const connected = c === 'facebook' ? Boolean(queue?.connected) : c === 'instagram' ? queue?.connected?.hasInstagram : Boolean(queue?.google);
+                              const connected = c === 'facebook' ? Boolean(queue?.connected) : c === 'instagram' ? queue?.connected?.hasInstagram : c === 'google' ? Boolean(queue?.google) : Boolean(queue?.tiktok);
                               if (!asked && !connected) return null;
                               return (
                                 <div key={c} style={{ fontSize: 12.5, lineHeight: 1.7 }}>

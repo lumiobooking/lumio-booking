@@ -356,7 +356,7 @@ export class ZaloOaService {
 
     // Keep the reply token alive, then let the brain do everything else.
     cfg = await this.ensureFreshToken(page.tenantId, cfg);
-    await this.messenger.inboundZalo(ev.oaId, ev.senderId, ev.text, ev.tsMs);
+    await this.messenger.inboundZalo(ev.oaId, ev.senderId, ev.text, ev.tsMs, ev.media);
   }
 
   /** The last event this process saw for an OA nobody holds. Memory only. */

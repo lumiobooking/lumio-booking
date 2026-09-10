@@ -14,6 +14,8 @@ import { publicWebBase } from '../common/public-url.util';
 import { explainPublishGap, type GapCause, type PublishGrant } from '../messenger/publish-grant';
 import { GoogleDriveService } from '../uploads/google-drive.service';
 import { GoogleReviewsService } from '../google-reviews/google-reviews.service';
+import { TikTokService } from '../tiktok/tiktok.service';
+import { cleanTikTokOptions, type TikTokPostOptions, type TikTokTarget } from '../tiktok/tiktok';
 import { checkGbpPost, gbpImageHeaderProblem, gbpSummary, type GbpCheck } from './gbp-policy';
 import { gbpScreenPrompt, parseScreenVerdict, screenRefusal, type ScreenVerdict } from './gbp-screen';
 import { createHash } from 'crypto';
@@ -37,6 +39,8 @@ interface PostRow {
   designerName?: string | null;
   teamNote?: string | null;
   driveFolderUrl?: string | null;
+  /** TikTok's per-post decisions (tiktok/tiktok.ts). Absent on rows that predate it. */
+  tiktok?: unknown;
 }
 
 /** The client's own words, carried to the screen that has to act on them. */
@@ -95,6 +99,8 @@ export class SocialPublishService {
     // Optional for the same reason as Drive: the isolation tests build the
     // service bare, and a shop without Google simply has no third channel.
     @Optional() private readonly google?: GoogleReviewsService,
+    // The client's TikTok account — same shape of optionality as Google.
+    @Optional() private readonly tiktok?: TikTokService,
   ) {}
 
   /**
@@ -339,6 +345,16 @@ export class SocialPublishService {
     return this.google.postingLocation(tenantId).catch(() => null);
   }
 
+  /** The TikTok connection this tenant holds — from the tenant, never the row. */
+  private async tiktokFor(tenantId: string): Promise<TikTokTarget | null> {
+    if (!this.tiktok) return null;
+    return this.tiktok.targetFor(tenantId).catch(() => null);
+  }
+
+  private tiktokOf(row: { tiktok?: unknown }): TikTokPostOptions | null {
+    return cleanTikTokOptions(row.tiktok);
+  }
+
   /**
    * The post's media, normalised.
    *
@@ -385,6 +401,7 @@ export class SocialPublishService {
 
     const conn = await this.pageFor(tenantId);
     const gbp = await this.googleFor(tenantId);
+    const tt = await this.tiktokFor(tenantId);
 
     // Can this connection publish at all? Asked before anything is attempted,
     // so the answer arrives on the screen rather than as a failed post — and so
@@ -426,7 +443,7 @@ export class SocialPublishService {
     const posts = (rows ?? []).map((r) => {
       const media = this.mediaOf(r);
       const channels = this.channelsOf(r);
-      const plan = planPublish({ channels, message: r.message, media }, conn?.page ?? null, gbp);
+      const plan = planPublish({ channels, message: r.message, media, tiktok: this.tiktokOf(r) }, conn?.page ?? null, gbp, tt);
       return {
         id: r.id,
         ideaId: r.ideaId,
@@ -456,6 +473,7 @@ export class SocialPublishService {
         designerName: r.designerName ?? null,
         teamNote: r.teamNote ?? null,
         driveFolderUrl: r.driveFolderUrl ?? null,
+        tiktok: this.tiktokOf(r),
         // The files are gone from storage; the post itself is untouched on
         // Facebook. The screen draws a placeholder instead of a broken image.
         mediaPurged: Boolean(r.mediaPurgedAt),
@@ -503,6 +521,8 @@ export class SocialPublishService {
        * and no Facebook Page, and the composer offers whichever exists.
        */
       google: gbp ? { title: gbp.title } : null,
+      /** The TikTok account, when connected: name and what it may post. */
+      tiktok: tt ? { displayName: tt.displayName, needsReconnect: tt.needsReconnect, creator: tt.creator } : null,
       posts,
       /** True for a Lumio support session: may delete published rows too. */
       canDeletePosted: isLumio,
@@ -516,6 +536,7 @@ export class SocialPublishService {
     id?: string; ideaId?: string | null; channels?: Channel[]; message?: string;
     media?: { url?: string; kind?: string; driveUrl?: string }[]; scheduledAt?: string; status?: string;
     stage?: string; writerName?: string; designerName?: string; teamNote?: string;
+    tiktok?: unknown;
   }) {
     const tenantId = this.tenantId(user);
     const channels = (body.channels ?? ['facebook']).filter((c) => (CHANNELS as unknown[]).includes(c));
@@ -530,13 +551,18 @@ export class SocialPublishService {
     // on a post still in design is a request to lock it — so the stage moves
     // to ready; a post explicitly kept in writing/design stays a draft.
     const prevRow = body.id
-      ? await this.posts?.findFirst({ where: { id: body.id, tenantId }, select: { id: true, status: true, media: true, stage: true, writerName: true, designerName: true, teamNote: true } })
-        .catch(() => null) as { id: string; status: string; media: unknown; stage?: string | null; writerName?: string | null; designerName?: string | null; teamNote?: string | null } | null
+      ? await this.posts?.findFirst({ where: { id: body.id, tenantId }, select: { id: true, status: true, media: true, stage: true, writerName: true, designerName: true, teamNote: true, tiktok: true } })
+        .catch(() => null) as { id: string; status: string; media: unknown; stage?: string | null; writerName?: string | null; designerName?: string | null; teamNote?: string | null; tiktok?: unknown } | null
       : null;
     let stage: Stage = cleanStage(body.stage, prevRow ? cleanStage(prevRow.stage) : 'ready');
     if (body.status === 'scheduled' && body.stage === undefined) stage = 'ready';
     const status = statusFor(stage, body.status === 'scheduled' ? 'scheduled' : 'draft');
     if (prevRow) media = keepDriveLinks(media, this.mediaOf({ media: prevRow.media }));
+    // TikTok's decisions travel with the post; a save that omits them keeps
+    // what the row had, so a drag or a stage change cannot erase a choice.
+    const tiktokOpts: TikTokPostOptions | null = body.tiktok !== undefined
+      ? cleanTikTokOptions(body.tiktok)
+      : (prevRow ? cleanTikTokOptions((prevRow as { tiktok?: unknown }).tiktok) : null);
     const workflow = {
       stage,
       writerName: typeof body.writerName === 'string' ? body.writerName.trim().slice(0, 80) || null : prevRow?.writerName ?? null,
@@ -547,7 +573,7 @@ export class SocialPublishService {
       // Refuse at write time, while the person who wrote it is still looking at
       // it, rather than failing in a scheduler run nobody is watching.
       const conn = await this.pageFor(tenantId);
-      const plan = planPublish({ channels, message, media }, conn?.page ?? null, await this.googleFor(tenantId));
+      const plan = planPublish({ channels, message, media, tiktok: tiktokOpts }, conn?.page ?? null, await this.googleFor(tenantId), await this.tiktokFor(tenantId));
       if (!plan.ready) throw new BadRequestException(plan.problems.join(' '));
       if (channels.includes('google')) {
         const g = await this.googleGate(tenantId, message, media);
@@ -555,7 +581,11 @@ export class SocialPublishService {
       }
     }
 
-    const data = { channels, message, media, imageUrl: null, scheduledAt: when, status, ...workflow };
+    // The key is written only when there is something to write: the isolation
+    // spec reads the create payload for anything token-shaped, and an empty
+    // "tiktok: null" would trip it for nothing.
+    const tiktokVal = tiktokOpts ?? (body.tiktok && typeof body.tiktok === 'object' ? body.tiktok : null);
+    const data = { channels, message, media, imageUrl: null, scheduledAt: when, status, ...workflow, ...(tiktokVal ? { tiktok: tiktokVal as never } : {}) };
     if (body.id) {
       const owned = prevRow;
       if (!owned) throw new NotFoundException('Không tìm thấy bài này.');
@@ -599,7 +629,7 @@ export class SocialPublishService {
     let blockers: string[] = [];
     if (stage === 'ready') {
       const conn = await this.pageFor(tenantId);
-      const plan = planPublish({ channels: this.channelsOf(row), message: row.message, media: this.mediaOf(row) }, conn?.page ?? null, await this.googleFor(tenantId));
+      const plan = planPublish({ channels: this.channelsOf(row), message: row.message, media: this.mediaOf(row), tiktok: this.tiktokOf(row) }, conn?.page ?? null, await this.googleFor(tenantId), await this.tiktokFor(tenantId));
       blockers = plan.ready ? [] : plan.problems;
       if (plan.ready && this.channelsOf(row).includes('google')) {
         const g = await this.googleGate(tenantId, row.message, this.mediaOf(row));
@@ -856,12 +886,13 @@ export class SocialPublishService {
   private async deliver(row: PostRow): Promise<{ ok: boolean; error: string | null; results: PublishResult[] }> {
     const conn = await this.pageFor(row.tenantId);
     const gbp = await this.googleFor(row.tenantId);
+    const tt = await this.tiktokFor(row.tenantId);
     const channels = this.channelsOf(row);
     const media = this.mediaOf(row);
-    const plan: PublishPlan = planPublish({ channels, message: row.message, media }, conn?.page ?? null, gbp);
+    const plan: PublishPlan = planPublish({ channels, message: row.message, media, tiktok: this.tiktokOf(row) }, conn?.page ?? null, gbp, tt);
     // A Meta channel that planned OK has a Page behind it (the planner refuses
     // otherwise); the second clause only keeps the compiler honest about `conn`.
-    const needsMeta = plan.plans.some((p) => p.channel !== 'google');
+    const needsMeta = plan.plans.some((p) => p.channel !== 'google' && p.channel !== 'tiktok');
     if (!plan.ready || (needsMeta && !conn)) {
       const error = plan.problems.join(' ') || 'Chưa kết nối Trang.';
       await this.fail(row, error);
@@ -894,9 +925,11 @@ export class SocialPublishService {
     for (const p of plan.plans) {
       const r = p.channel === 'google'
         ? await this.toGoogle(row.tenantId, row.message, media)
-        : p.channel === 'facebook'
-          ? await this.toFacebook(p.targetId!, conn!.token, row.message, media)
-          : await this.toInstagram(p.targetId!, conn!.token, media, row.message);
+        : p.channel === 'tiktok'
+          ? await this.toTikTok(row.tenantId, row.message, media, this.tiktokOf(row))
+          : p.channel === 'facebook'
+            ? await this.toFacebook(p.targetId!, conn!.token, row.message, media)
+            : await this.toInstagram(p.targetId!, conn!.token, media, row.message);
       results.push(r);
     }
 
@@ -1042,6 +1075,27 @@ export class SocialPublishService {
     if (this.screenCache.size > 500) this.screenCache.clear();
     this.screenCache.set(hash, { at: Date.now(), v });
     return v;
+  }
+
+  // ---- TikTok -----------------------------------------------------------------
+
+  /**
+   * The post's one video to the client's TikTok. The token never passes
+   * through here — TikTokService holds it and makes every call. TikTok
+   * finishes processing in the background: a "pending" answer is still a
+   * success, recorded with the publish id so the row is never sent twice.
+   */
+  private async toTikTok(tenantId: string, message: string, media: MediaItem[], opts: TikTokPostOptions | null): Promise<PublishResult> {
+    const fail = (e: string): PublishResult => ({ channel: 'tiktok', id: null, url: null, error: e });
+    if (!this.tiktok) return fail('TikTok chưa được bật trên máy chủ.');
+    const video = media.find((m) => m.kind === 'video');
+    if (!video || !opts) return fail('Bài thiếu video hoặc chưa chọn quyền riêng tư TikTok.');
+    try {
+      const out = await this.tiktok.publish(tenantId, { caption: message, videoUrl: video.url, opts });
+      return { channel: 'tiktok', id: out.postId ?? out.publishId, url: out.url, error: null };
+    } catch (e) {
+      return fail(e instanceof Error ? e.message.replace(/^Bad Request Exception:?\s*/i, '') : 'lỗi mạng');
+    }
   }
 
   // ---- Google Business Profile ----------------------------------------------

@@ -9,6 +9,9 @@ import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { mergeHistory } from './history-merge';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
+import {
+  metaAttachments, imageUrls, describeMedia, visionRule, nonImageRule, imageMediaType, IMAGE_MAX_BYTES, type InboundMedia,
+} from './inbound-media';
 import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
 import { withBookingLink } from './booking-link';
 import { isSameVisit, servicesAsked, type OpenVisit } from './one-visit';
@@ -59,7 +62,13 @@ function wallToUtcISO(local: string, tz: string): string {
   }
 }
 
-type Turn = { role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean };
+type Turn = {
+  role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean;
+  /** Photo URLs the customer attached to this turn — shown in the inbox, looked at once by the model. */
+  images?: string[];
+  /** What else came with it (sticker, voice, file), for the stage direction. */
+  media?: InboundMedia[];
+};
 type Channel = 'messenger' | 'instagram' | 'zalo' | 'web';
 export interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
@@ -1167,7 +1176,8 @@ export class MessengerService implements OnModuleInit {
       canned,
       pageName: pg?.pageName ?? null,
       // Never hand the page token or anything else secret to a browser.
-      history: turns.map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual })),
+      // Photos ride along so the inbox shows what the customer showed the bot.
+      history: turns.map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual, ...(t.images?.length ? { images: t.images } : {}) })),
       state: view.state,
       stateReason: view.reason,
       waitingMinutes: waitingMinutes(row as never, now),
@@ -1895,8 +1905,11 @@ export class MessengerService implements OnModuleInit {
           }
           continue;
         }
-        if (!text) continue;
-        await this.handleMessage(entryId, senderId, text, ev.timestamp, channel).catch((e) =>
+        // A photo with no caption used to be dropped here — the customer saw
+        // "seen" and nothing else. Now it is a turn like any other.
+        const media = metaAttachments(ev.message);
+        if (!text && !media.length) continue;
+        await this.handleMessage(entryId, senderId, text || describeMedia(media), ev.timestamp, channel, media).catch((e) =>
           this.logger.warn(`handleMessage failed: ${String(e).slice(0, 160)}`),
         );
       }
@@ -2065,8 +2078,8 @@ export class MessengerService implements OnModuleInit {
   }
 
   /** The Zalo webhook's door into the brain. Same body, third mouth. */
-  async inboundZalo(oaId: string, senderId: string, text: string, tsMs?: number): Promise<void> {
-    return this.handleMessage(oaId, senderId, text, tsMs, 'zalo');
+  async inboundZalo(oaId: string, senderId: string, text: string, tsMs?: number, media: InboundMedia[] = []): Promise<void> {
+    return this.handleMessage(oaId, senderId, text || describeMedia(media), tsMs, 'zalo', media);
   }
 
   /** A line typed into the website widget. The visitor id is the sender. */
@@ -2074,7 +2087,12 @@ export class MessengerService implements OnModuleInit {
     return this.handleMessage(webPageId(tenantId), visitorId, text, Date.now(), 'web');
   }
 
-  private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number, channel: Channel = 'messenger'): Promise<void> {
+  private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number, channel: Channel = 'messenger', media: InboundMedia[] = []): Promise<void> {
+    // What came with the words. Photos ride on the turn so the inbox shows
+    // them and the model looks at them; stickers and files only shape the
+    // stage direction.
+    const inImages = imageUrls(media);
+    const imgTurn: Partial<Turn> = { ...(inImages.length ? { images: inImages } : {}), ...(media.length ? { media } : {}) };
     // Route by Facebook Page id OR the linked Instagram account id: any of the
     // tenant's pages leads to the SAME brain — one brain, many mouths.
     const page = await this.pageByEntry(entryId);
@@ -2152,9 +2170,9 @@ export class MessengerService implements OnModuleInit {
       // the bot must still remember this exchange when it re-engages later.
       const histNow = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
       const lastNow = histNow[histNow.length - 1];
-      if (!(lastNow && lastNow.role === 'user' && lastNow.content === text)) {
+      if (!(lastNow && lastNow.role === 'user' && lastNow.content === text && !inImages.length)) {
         const inIso = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
-        await this.appendTurns(thread.id, histNow, this.threadSummary(thread), [{ role: 'user', content: text, at: inIso }]);
+        await this.appendTurns(thread.id, histNow, this.threadSummary(thread), [{ role: 'user', content: text, at: inIso, ...imgTurn }]);
       }
       // Two-tier yielding. The human owns the chat only while they are ACTIVE
       // (typed something in the last 15 minutes). Active → this new customer
@@ -2174,7 +2192,7 @@ export class MessengerService implements OnModuleInit {
       const activeMs = Math.max(1, tune.humanActiveMins ?? 15) * 60_000;
       const graceMs = Math.max(0, tune.graceMins ?? 5) * 60_000;
       if (activeAgo < activeMs && graceMs > 0) {
-        this.scheduleGraceReply(thread.id, text, eventTs, at ? new Date(at).getTime() : 0, graceMs);
+        this.scheduleGraceReply(thread.id, text, eventTs, at ? new Date(at).getTime() : 0, graceMs, imgTurn);
         return;
       }
       await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { handoff: false, handoffAt: null } as never });
@@ -2183,7 +2201,7 @@ export class MessengerService implements OnModuleInit {
     // NOT answered here. The customer may still be typing, or tapping the same
     // button again because the first tap felt slow — so the reply is queued
     // and a whole burst is answered once. See ./burst.
-    this.queueReply({ ...conn, pageToken: page.pageToken }, thread.id, senderId, text, eventTs);
+    this.queueReply({ ...conn, pageToken: page.pageToken }, thread.id, senderId, text, eventTs, imgTurn);
   }
 
   /**
@@ -2194,14 +2212,18 @@ export class MessengerService implements OnModuleInit {
    * next one they send. The alternative — a row per thread in the database,
    * written twice a second while somebody types — costs more than the problem.
    */
-  private readonly bursts = new Map<string, { texts: string[]; ts?: number; running: boolean }>();
+  private readonly bursts = new Map<string, { texts: string[]; ts?: number; running: boolean; images: string[]; media: InboundMedia[] }>();
 
   private queueReply(
     conn: { tenantId: string; pageToken: string; aiInstruction: string | null; botFacts: unknown },
-    threadId: string, senderId: string, text: string, eventTs?: number,
+    threadId: string, senderId: string, text: string, eventTs?: number, attach: Partial<Turn> = {},
   ): void {
-    const q = this.bursts.get(threadId) ?? { texts: [], ts: eventTs, running: false };
+    const q = this.bursts.get(threadId) ?? { texts: [], ts: eventTs, running: false, images: [], media: [] };
     q.texts.push(text);
+    // A photo and its caption often arrive as two events a second apart;
+    // the burst joins them so the model sees the picture WITH the words.
+    if (attach.images?.length) q.images.push(...attach.images);
+    if (attach.media?.length) q.media.push(...attach.media);
     if (q.ts === undefined) q.ts = eventTs;
     this.bursts.set(threadId, q);
     // A run is already in flight; it will collect this on its way out rather
@@ -2225,10 +2247,12 @@ export class MessengerService implements OnModuleInit {
         // so nothing can be queued into a run that is already leaving.
         if (!q || !q.texts.length) break;
         const texts = q.texts.splice(0, q.texts.length);
+        const images = q.images.splice(0, q.images.length).slice(0, 3);
+        const media = q.media.splice(0, q.media.length);
         const ts = q.ts;
         q.ts = undefined;
         const merged = mergeBurst(texts);
-        if (merged) await this.replyAndRecord(conn, threadId, senderId, merged, ts);
+        if (merged) await this.replyAndRecord(conn, threadId, senderId, merged, ts, { ...(images.length ? { images } : {}), ...(media.length ? { media } : {}) });
         if (!this.bursts.get(threadId)?.texts.length) break;
         await beat();
       }
@@ -2263,7 +2287,7 @@ export class MessengerService implements OnModuleInit {
    * newer stamp and stands down. A newer customer message replaces the timer,
    * so the bot answers the LATEST message once, not every queued one.
    */
-  private scheduleGraceReply(threadId: string, text: string, eventTs: number | undefined, stampAtSchedule: number, graceMs: number): void {
+  private scheduleGraceReply(threadId: string, text: string, eventTs: number | undefined, stampAtSchedule: number, graceMs: number, attach: Partial<Turn> = {}): void {
     const prev = this.graceTimers.get(threadId);
     if (prev) clearTimeout(prev);
     const timer = setTimeout(() => {
@@ -2279,7 +2303,7 @@ export class MessengerService implements OnModuleInit {
         const token = pg?.pageToken || conn.pageToken;
         if (!token) return;
         await this.prisma.messengerThread.update({ where: { id: threadId }, data: { handoff: false, handoffAt: null } as never }).catch(() => undefined);
-        await this.replyAndRecord({ ...conn, pageToken: token }, threadId, th.senderId, text, eventTs);
+        await this.replyAndRecord({ ...conn, pageToken: token }, threadId, th.senderId, text, eventTs, attach);
       })().catch((e) => this.logger.warn(`grace reply failed: ${String(e).slice(0, 120)}`));
     }, graceMs);
     timer.unref?.();
@@ -2293,14 +2317,18 @@ export class MessengerService implements OnModuleInit {
     senderId: string,
     text: string,
     eventTs?: number,
+    attach: Partial<Turn> = {},
   ): Promise<void> {
     const fresh = await this.prisma.messengerThread.findUnique({ where: { id: threadId } });
     if (!fresh) return;
     const history = (Array.isArray(fresh.history) ? fresh.history : []) as Turn[];
+    const imgTurn = attach;
+    const inImages = attach.images ?? [];
     // The customer turn may already be in history (recorded on arrival during a
-    // human-handled stretch) — never store it twice.
+    // human-handled stretch) — never store it twice. Two photos in a row carry
+    // the same placeholder text, so a turn WITH a picture is never "already".
     const lastTurn = history[history.length - 1];
-    const userAlready = Boolean(lastTurn && lastTurn.role === 'user' && lastTurn.content === text);
+    const userAlready = Boolean(lastTurn && lastTurn.role === 'user' && lastTurn.content === text && !inImages.length);
     // Long-term memory + how long they were away (returning-customer handling).
     const memory = this.threadSummary(fresh);
     // The lead row this very bot wrote. It used to be write-only: the agent
@@ -2336,6 +2364,8 @@ export class MessengerService implements OnModuleInit {
         memory,
         gapDays,
         lead,
+        images: inImages,
+        media: attach.media ?? [],
       }), 55_000, 'agent');
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
@@ -2351,7 +2381,7 @@ export class MessengerService implements OnModuleInit {
     if (guard?.handoff) {
       if (!userAlready) {
         const inAtDrop = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
-        await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtDrop }]);
+        await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtDrop, ...imgTurn }]);
       }
       return;
     }
@@ -2363,7 +2393,7 @@ export class MessengerService implements OnModuleInit {
       this.logger.log(`suppressed a repeat reply on thread ${threadId}`);
       if (!userAlready) {
         const inAtDup = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
-        await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtDup }]);
+        await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtDup, ...imgTurn }]);
       }
       return;
     }
@@ -2378,7 +2408,7 @@ export class MessengerService implements OnModuleInit {
     const outTurn: Turn = sent.ok ? { role: 'assistant', content: reply, at: outAt } : ({ role: 'assistant', content: reply, at: outAt, failed: true } as Turn);
     const newTurns: Turn[] = userAlready
       ? [outTurn]
-      : [{ role: 'user', content: text, at: inAt }, outTurn];
+      : [{ role: 'user', content: text, at: inAt, ...imgTurn }, outTurn];
     await this.appendTurns(threadId, history, memory, newTurns);
 
     if (agentFailed) {
@@ -2398,6 +2428,52 @@ export class MessengerService implements OnModuleInit {
     }
   }
 
+  // ---- the customer's photos, as the model sees them ------------------------
+
+  /**
+   * Download each photo and hand it over as bytes. Messenger and Zalo both
+   * re-encode what a customer sends (a phone photo comes out well under a
+   * megabyte), so the API's 5 MB ceiling is rarely met — but it is checked,
+   * and a file past it is skipped rather than failing the whole reply.
+   * Cached briefly by URL so a burst of two events does not fetch twice.
+   */
+  private readonly imageCache = new Map<string, { at: number; block: unknown | null }>();
+
+  private async fetchImageBlocks(urls: string[]): Promise<unknown[]> {
+    const out: unknown[] = [];
+    for (const url of urls.slice(0, 3)) {
+      const hit = this.imageCache.get(url);
+      if (hit && Date.now() - hit.at < 10 * 60 * 1000) { if (hit.block) out.push(hit.block); continue; }
+      let block: unknown | null = null;
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(12_000), redirect: 'follow' });
+        const len = Number(res.headers.get('content-length') || 0);
+        if (res.ok && (!len || len <= IMAGE_MAX_BYTES)) {
+          const buf = Buffer.from(await res.arrayBuffer());
+          // Sniff the bytes: Meta's CDN sometimes answers with a generic type.
+          const sniffed = buf[0] === 0xff && buf[1] === 0xd8 ? 'image/jpeg'
+            : buf[0] === 0x89 && buf[1] === 0x50 ? 'image/png'
+              : buf[0] === 0x47 && buf[1] === 0x49 ? 'image/gif'
+                : buf.subarray(8, 12).toString('ascii') === 'WEBP' ? 'image/webp' : null;
+          const type = imageMediaType(res.headers.get('content-type')) ?? sniffed;
+          if (type && buf.length > 0 && buf.length <= IMAGE_MAX_BYTES) {
+            block = { type: 'image', source: { type: 'base64', media_type: type, data: buf.toString('base64') } };
+          } else {
+            this.logger.warn(`inbound photo skipped (${type ?? 'unknown type'}, ${buf.length} bytes)`);
+          }
+        } else {
+          this.logger.warn(`inbound photo not fetched (${res.status}, ${len} bytes)`);
+        }
+      } catch (e) {
+        this.logger.warn(`inbound photo fetch failed: ${String(e).slice(0, 120)}`);
+      }
+      if (this.imageCache.size > 200) this.imageCache.clear();
+      this.imageCache.set(url, { at: Date.now(), block });
+      if (block) out.push(block);
+    }
+    return out;
+  }
+
   // ---- AI agent (tool use) -------------------------------------------------
   private async runAgent(
     tenantId: string,
@@ -2405,6 +2481,10 @@ export class MessengerService implements OnModuleInit {
     history: Turn[],
     userText: string,
     ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number; channel?: string; lead?: LeadFacts | null;
+      /** Photos on THIS turn, fetched and shown to the model. */
+      images?: string[];
+      /** Anything else attached (sticker, voice, file) — shapes the stage direction. */
+      media?: InboundMedia[];
       /** The visit created during THIS run, so a second service joins it
        *  instead of becoming a second bill, and so the confirmation link is
        *  sent whether or not the model remembers to include it. */
@@ -2727,7 +2807,13 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // The dossier goes LAST so it is the closest thing to the conversation:
     // exact facts, straight from the database, outranking any recollection.
     const dossier = leadDossier(ctx.lead);
-    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + formatRule + channelRule + closingRule + memoryBlock + gapNote + dossier;
+    // The picture, if any, fetched now: the platform's link is short-lived
+    // and the model reads bytes, not URLs. A photo that cannot be fetched
+    // becomes a sentence the model can act on instead of a silent gap.
+    const imageBlocks = await this.fetchImageBlocks(ctx.images ?? []);
+    const mediaRule = (imageBlocks.length ? visionRule() : '') + nonImageRule(ctx.media ?? [])
+      + ((ctx.images?.length ?? 0) > imageBlocks.length ? '\n(One of the customer\'s photos could not be loaded. Say you could not open it and ask them to send it again or describe it.)' : '');
+    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + formatRule + channelRule + closingRule + memoryBlock + gapNote + dossier + mediaRule;
     const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
 
     const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.content }));
@@ -2752,7 +2838,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           : '(The customer just opened the chat.)',
       });
     }
-    const messages: { role: string; content: unknown }[] = [...hist, { role: 'user', content: userText }];
+    const messages: { role: string; content: unknown }[] = [
+      ...hist,
+      { role: 'user', content: imageBlocks.length ? [...imageBlocks, { type: 'text', text: userText }] : userText },
+    ];
 
     // One rewrite only: a gate that can loop is a gate that can hang a reply.
     let retried = false;
@@ -4018,7 +4107,11 @@ interface MessagingEvent {
   // app_id is present only when the echoed message was sent BY AN APP (us, or
   // Meta's own automation tools). A person typing in the Page inbox produces
   // an echo with no app_id — that is how the two are told apart.
-  message?: { text?: string; is_echo?: boolean; metadata?: string; mid?: string; app_id?: string | number };
+  message?: {
+    text?: string; is_echo?: boolean; metadata?: string; mid?: string; app_id?: string | number;
+    /** Photos, videos, stickers, files — see inbound-media.ts. */
+    attachments?: { type?: string; payload?: { url?: string; sticker_id?: unknown } }[];
+  };
   postback?: { payload?: string; title?: string }; // "Get Started" tap and menu buttons
   timestamp?: number; // ms epoch set by Meta on the webhook event
 }

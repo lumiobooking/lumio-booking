@@ -36,7 +36,7 @@ import {
   InboxLabel, followUpState, followUpLabel, followUpCount,
 } from '../lib/inbox-view';
 
-interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean }
+interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Photos the customer attached. */ images?: string[] }
 interface CustomerCtx {
   firstName?: string | null; lastName?: string | null; phone?: string | null;
   visits?: number; nextAt?: string | null; usualTech?: string | null;
@@ -723,7 +723,23 @@ export function InboxView() {
                 const mine = t.role === 'assistant';
                 return (
                   <div key={i} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%' }}>
-                    <div style={{ background: mine ? (t.manual ? '#1d4ed8' : 'var(--c3730a3)') : 'var(--c1e293b)', color: 'var(--ce2e8f0)', borderRadius: 16, padding: narrow ? '9px 13px' : '7px 11px', fontSize: narrow ? 15 : 13, lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>{t.content}</div>
+                    {/* The customer's photos, as they sent them. The links
+                        are the platform's own and expire after a while; an
+                        expired one shows as a broken tile, which is still
+                        more honest than pretending no photo was sent. */}
+                    {!!t.images?.length && (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                        {t.images.map((u, j) => (
+                          <a key={j} href={u} target="_blank" rel="noreferrer" title={vi ? 'Mở ảnh gốc' : 'Open the photo'}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={u} alt="" loading="lazy" style={{ width: narrow ? 160 : 140, height: narrow ? 160 : 140, objectFit: 'cover', borderRadius: 12, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', display: 'block' }} />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    {(!t.images?.length || !/^\[Khách gửi/.test(t.content)) && (
+                      <div style={{ background: mine ? (t.manual ? '#1d4ed8' : 'var(--c3730a3)') : 'var(--c1e293b)', color: 'var(--ce2e8f0)', borderRadius: 16, padding: narrow ? '9px 13px' : '7px 11px', fontSize: narrow ? 15 : 13, lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>{t.content}</div>
+                    )}
                     <p style={{ margin: '3px 2px 0', fontSize: 11, color: 'var(--c64748b)', textAlign: mine ? 'right' : 'left' }}>
                       {/* Who said it. A staff reply and a bot reply looking
                           identical is how nobody could tell what the bot had

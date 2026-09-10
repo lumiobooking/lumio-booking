@@ -272,6 +272,20 @@ describe('the scheduler sends what is due and nothing else', () => {
     expect(r.expired).toHaveLength(0);
   });
 
+  // Unfinished work does not publish itself. statusFor already keeps a row in
+  // 'draft' while it is being written or designed, so in normal life the stage
+  // and the status agree — this is the second lock, for the day they do not.
+  it('will not send a post still being written or designed, whatever the status says', () => {
+    expect(dueNow([q({ stage: 'writing' })], NOW).send).toHaveLength(0);
+    expect(dueNow([q({ stage: 'design' })], NOW).send).toHaveLength(0);
+    expect(dueNow([q({ stage: 'ready' })], NOW).send).toHaveLength(1);
+  });
+
+  it('still sends a row from before the workflow existed — no stage means it was ready', () => {
+    expect(dueNow([q({ stage: null })], NOW).send).toHaveLength(1);
+    expect(dueNow([q()], NOW).send).toHaveLength(1);
+  });
+
   describe('what closes a client request, and what only acknowledges it', () => {
     it('a reply does not release the hold — answering is not fixing', () => {
       // The one that matters. If this ever flips back to true, a post goes out

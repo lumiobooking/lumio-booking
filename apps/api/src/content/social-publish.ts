@@ -367,6 +367,17 @@ export interface QueuedPost {
   attempts: number;
   /** An open client request nobody has closed out. A held post does not publish. */
   heldAt?: Date | null;
+  /**
+   * The team's step: 'writing' | 'design' | 'ready'. Only 'ready' publishes.
+   *
+   * A row that is still being written or designed already carries status
+   * 'draft' (see statusFor), so in normal life this never differs from the
+   * status check. It is here because "still being worked on" and "goes out by
+   * itself at 9am" must never be able to be true at once — and a status is one
+   * UPDATE away from saying anything. Rows written before the workflow existed
+   * have no stage at all; those are treated as ready, which is what they were.
+   */
+  stage?: string | null;
 }
 
 /** What can happen to a post while a client request is sitting open on it. */
@@ -417,6 +428,10 @@ export function dueNow(posts: QueuedPost[], now: Date): { send: QueuedPost[]; ex
     // nobody has marked it done. Publishing over an open request is how the
     // wrong price goes out with the client watching.
     if (p.heldAt) continue;
+    // Still being written or designed. The status should already say 'draft',
+    // and this is the second lock on the same door: nothing half-finished goes
+    // out on its own, whatever a status column happens to hold.
+    if (p.stage != null && p.stage !== 'ready') continue;
     const at = p.scheduledAt.getTime();
     if (at > now.getTime()) continue;
     if (now.getTime() - at > LATE_GRACE_MS) expired.push(p);

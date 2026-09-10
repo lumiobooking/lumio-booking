@@ -49,6 +49,36 @@ export function ChannelDots({ channels, size = 7 }: { channels: Channel[]; size?
     </span>
   );
 }
+
+/**
+ * Where a post goes, as two-letter chips in the platform's own colour.
+ *
+ * The dots above are still right for a dense list, but on the month view they
+ * were the thing people could not read: two small circles, one pink and one
+ * blue, tell you there are two platforms and not WHICH. FB / IG / GG / TT
+ * needs no legend and survives being looked at from a metre away.
+ *
+ * Outlined rather than filled on purpose — the colour has to carry in both
+ * themes, and a hard-coded ink on a hard-coded fill cannot.
+ */
+export function ChannelChips({ channels }: { channels: Channel[] }) {
+  const list = (['facebook', 'instagram', 'google', 'tiktok'] as Channel[]).filter((c) => channels?.includes(c));
+  return (
+    <span title={list.map((c) => CHANNEL_NAME[c]).join(' + ')} style={{ display: 'inline-flex', gap: 3, alignItems: 'center', flexShrink: 0 }}>
+      {list.map((c) => (
+        <span
+          key={c}
+          style={{
+            fontSize: 8.5, fontWeight: 800, letterSpacing: .3, lineHeight: 1,
+            padding: '2px 3px', borderRadius: 3,
+            color: CHANNEL_COLOR[c], border: `1px solid ${CHANNEL_COLOR[c]}`,
+          }}
+        >{CHANNEL_SHORT[c]}</span>
+      ))}
+    </span>
+  );
+}
+
 export type MediaKind = 'image' | 'video';
 export interface MediaItem { url: string; kind: MediaKind; /** The archive copy on Drive, once filed. */ driveUrl?: string }
 export type Stage = 'writing' | 'design' | 'ready';
@@ -104,15 +134,24 @@ export function postTone(p: { held?: unknown; blockers: string[]; status: string
  * colour means the same thing on every screen and nobody has to remember
  * which shade of green was "posted".
  */
-export const TONES: Record<Tone, { bg: string; border: string; fg: string; icon: string; vi: string; en: string }> = {
-  held:    { bg: 'var(--c450a0a)', border: '#ef4444', fg: 'var(--cfecaca)', icon: '🔴', vi: 'Khách yêu cầu sửa', en: 'Client asked for a change' },
-  failed:  { bg: 'var(--c450a0a)', border: '#f87171', fg: 'var(--cfecaca)', icon: '⚠', vi: 'Đăng lỗi', en: 'Failed' },
-  blocked: { bg: 'var(--c451a03)', border: '#f59e0b', fg: 'var(--ce2e8f0)', icon: '⚠', vi: 'Thiếu điều kiện đăng', en: 'Cannot publish as is' },
-  writing: { bg: 'var(--c1e293b)', border: '#60a5fa', fg: 'var(--ce2e8f0)', icon: '✍', vi: 'Đang viết content', en: 'Writing' },
-  design:  { bg: 'var(--c1e293b)', border: '#c084fc', fg: 'var(--ce2e8f0)', icon: '🎨', vi: 'Đang thiết kế', en: 'In design' },
-  ready:   { bg: 'var(--c1e293b)', border: '#22c55e', fg: 'var(--ce2e8f0)', icon: '📅', vi: 'Đã chốt lịch', en: 'Scheduled' },
-  posted:  { bg: 'var(--c14532d)', border: '#22c55e', fg: 'var(--ce2e8f0)', icon: '✓', vi: 'Đã đăng', en: 'Published' },
-  plain:   { bg: 'var(--c1e293b)', border: 'var(--c334155)', fg: 'var(--ce2e8f0)', icon: '', vi: 'Nháp', en: 'Draft' },
+/**
+ * One look per tone, shared by the calendar, the board and the legend.
+ *
+ * `bar` is the 4px stripe down the left edge — on the month view that stripe
+ * IS the status, because a whole card tinted in a tone stops being a signal
+ * once every card has one. `alarm` marks the three tones that mean somebody
+ * has to do something: only those get a filled card, so a month with two
+ * problems in it shows two red boxes instead of thirty coloured ones.
+ */
+export const TONES: Record<Tone, { bg: string; border: string; fg: string; bar: string; alarm: boolean; icon: string; vi: string; en: string }> = {
+  held:    { bg: 'var(--c450a0a)', border: '#ef4444', fg: 'var(--cfecaca)', bar: '#ef4444', alarm: true,  icon: '🔴', vi: 'Khách yêu cầu sửa', en: 'Client asked for a change' },
+  failed:  { bg: 'var(--c450a0a)', border: '#f87171', fg: 'var(--cfecaca)', bar: '#f87171', alarm: true,  icon: '⚠', vi: 'Đăng lỗi', en: 'Failed' },
+  blocked: { bg: 'var(--c451a03)', border: '#f59e0b', fg: 'var(--ce2e8f0)', bar: '#f59e0b', alarm: true,  icon: '⚠', vi: 'Thiếu điều kiện đăng', en: 'Cannot publish as is' },
+  writing: { bg: 'var(--c1e293b)', border: '#60a5fa', fg: 'var(--ce2e8f0)', bar: '#60a5fa', alarm: false, icon: '✍', vi: 'Đang viết content', en: 'Writing' },
+  design:  { bg: 'var(--c1e293b)', border: '#c084fc', fg: 'var(--ce2e8f0)', bar: '#c084fc', alarm: false, icon: '🎨', vi: 'Đang thiết kế', en: 'In design' },
+  ready:   { bg: 'var(--c1e293b)', border: '#22c55e', fg: 'var(--ce2e8f0)', bar: '#22c55e', alarm: false, icon: '📅', vi: 'Đã chốt lịch', en: 'Scheduled' },
+  posted:  { bg: 'var(--c14532d)', border: '#22c55e', fg: 'var(--ce2e8f0)', bar: 'var(--c475569)', alarm: false, icon: '✓', vi: 'Đã đăng', en: 'Published' },
+  plain:   { bg: 'var(--c1e293b)', border: 'var(--c334155)', fg: 'var(--ce2e8f0)', bar: 'var(--c475569)', alarm: false, icon: '', vi: 'Nháp', en: 'Draft' },
 };
 
 /** The calendar's tooltip: state, owners, the team note — what the hover has to answer. */
@@ -161,6 +200,8 @@ export function MonthCalendar({
   vi: boolean;
 }) {
   const [over, setOver] = useState<string | null>(null);
+  /** A day whose overflow the reader has opened. Busy days stay short by default. */
+  const [openDay, setOpenDay] = useState<string | null>(null);
   /**
    * The right-click menu, and its long-press twin.
    *
@@ -198,6 +239,8 @@ export function MonthCalendar({
       const k = dayKeyInTz(p.scheduledAt);
       m.set(k, [...(m.get(k) ?? []), p]);
     }
+    // Within a day, the order on screen is the order of the day.
+    for (const [k, list] of m) m.set(k, [...list].sort((a, b) => (a.scheduledAt < b.scheduledAt ? -1 : 1)));
     return m;
   }, [posts]);
 
@@ -207,18 +250,64 @@ export function MonthCalendar({
 
   const step = (n: number) => onMonth(new Date(month.getFullYear(), month.getMonth() + n, 1));
 
+  /** How many posts a day shows before it offers "+N more". */
+  const CAP = 3;
+
+  /** The month at a glance: how much work is waiting, and how much is bleeding. */
+  const totals = useMemo(() => {
+    let alarm = 0; let doing = 0; let locked = 0; let done = 0;
+    for (const p of posts) {
+      const t = postTone(p);
+      if (TONES[t].alarm) alarm += 1;
+      else if (t === 'writing' || t === 'design') doing += 1;
+      else if (t === 'posted') done += 1;
+      else locked += 1;
+    }
+    return { alarm, doing, locked, done };
+  }, [posts]);
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9, flexWrap: 'wrap' }}>
         <button onClick={() => step(-1)} style={navBtn}>‹</button>
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', minWidth: 150, textAlign: 'center' }}>{label}</div>
         <button onClick={() => step(1)} style={navBtn}>›</button>
+
+        {/* The month in four numbers. A person opening this screen wants to
+            know "is anything on fire" before they want to know anything else,
+            and counting red boxes by eye is not an answer. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginLeft: 4 }}>
+          <Tally n={totals.alarm} bar="#ef4444" label={T('cần xử lý', 'need attention')} loud />
+          <Tally n={totals.doing} bar="#c084fc" label={T('đang làm', 'in progress')} />
+          <Tally n={totals.locked} bar="#22c55e" label={T('chờ đăng', 'waiting to go')} />
+          <Tally n={totals.done} bar="var(--c475569)" label={T('đã đăng', 'published')} />
+        </div>
+
         <div style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--c64748b)' }}>
           {T('Kéo bài sang ngày khác để đổi lịch', 'Drag a post to another day to move it')}
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+      {/* The key sits ABOVE the grid now. Under it, nobody scrolled to it. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 12px', marginBottom: 9, fontSize: 11, color: 'var(--c94a3b8)', alignItems: 'center' }}>
+        {(['held', 'failed', 'blocked', 'writing', 'design', 'ready', 'posted'] as Tone[]).map((k) => (
+          <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{
+              width: 13, height: 11, borderRadius: 3,
+              background: TONES[k].alarm ? TONES[k].bg : 'var(--c1e293b)',
+              border: `1px solid ${TONES[k].alarm ? TONES[k].border : 'var(--c334155)'}`,
+              borderLeft: `4px solid ${TONES[k].bar}`,
+              opacity: k === 'posted' ? .55 : 1,
+            }} />
+            {TONES[k].icon} {vi ? TONES[k].vi : TONES[k].en}
+          </span>
+        ))}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 2, paddingLeft: 10, borderLeft: '1px solid var(--c334155)' }}>
+          <ChannelChips channels={['facebook', 'instagram', 'google', 'tiktok']} />
+        </span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4, minWidth: 0 }}>
         {dows.map((d) => (
           <div key={d} style={{ fontSize: 11, color: 'var(--c64748b)', textAlign: 'center', padding: '2px 0' }}>{d}</div>
         ))}
@@ -226,6 +315,9 @@ export function MonthCalendar({
           const k = dayKey(d);
           const mine = byDay.get(k) ?? [];
           const outside = d.getMonth() !== month.getMonth();
+          const alarmHere = mine.filter((p) => TONES[postTone(p)].alarm).length;
+          const shown = openDay === k ? mine : mine.slice(0, CAP);
+          const hidden = mine.length - shown.length;
           return (
             <div
               key={k}
@@ -238,17 +330,43 @@ export function MonthCalendar({
                 if (id) onDrop(id, d);
               }}
               style={{
-                minHeight: 78, padding: 5, borderRadius: 8,
+                minHeight: 84, padding: 5, borderRadius: 8, minWidth: 0, overflow: 'hidden',
                 background: over === k ? 'var(--c1e1b4b)' : 'var(--c0f172a)',
                 border: `1px solid ${k === today ? '#6366f1' : over === k ? '#6366f1' : 'var(--c1e293b)'}`,
                 opacity: outside ? 0.4 : 1,
               }}
             >
-              <div style={{ fontSize: 11, color: k === today ? 'var(--ca5b4fc)' : 'var(--c64748b)', fontWeight: k === today ? 700 : 500 }}>
-                {d.getDate()}
+              {/* The day number, and — only when it earns the ink — how much is
+                  on this day and how much of it is a problem. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 1 }}>
+                <span style={{ fontSize: 11, color: k === today ? 'var(--ca5b4fc)' : 'var(--c64748b)', fontWeight: k === today ? 700 : 500 }}>
+                  {d.getDate()}
+                </span>
+                {alarmHere > 0 && (
+                  <span title={T('bài cần xử lý', 'posts needing attention')} style={{ fontSize: 9, fontWeight: 800, color: '#ef4444' }}>●{alarmHere}</span>
+                )}
+                {mine.length > 0 && (
+                  <span style={{ marginLeft: 'auto', fontSize: 9.5, color: 'var(--c475569)' }}>{mine.length}</span>
+                )}
               </div>
-              {mine.map((p) => {
+
+              {shown.map((p) => {
                 const tone = postTone(p);
+                const t = TONES[tone];
+                const thumb = p.media[0];
+                const owner = tone === 'design' ? (p.designerName || p.writerName) : (p.writerName || p.designerName);
+                /**
+                 * The second line answers "what do I do about this one", and
+                 * only falls back to the caption when the answer is nothing.
+                 * A caption cut at 24 characters was never the answer.
+                 */
+                const detail = t.alarm
+                  ? `${t.icon} ${vi ? t.vi : t.en}${p.held?.note ? ` — ${p.held.note}` : p.blockers[0] ? ` — ${p.blockers[0]}` : ''}`
+                  : tone === 'writing' || tone === 'design'
+                    ? `${t.icon} ${vi ? t.vi : t.en}${owner ? ` · ${owner}` : ''}`
+                    : p.teamNote
+                      ? `📝 ${p.teamNote}`
+                      : (p.message.trim() || T('(chưa có caption)', '(no caption yet)'));
                 return (
                 <div
                   key={p.id}
@@ -267,76 +385,90 @@ export function MonthCalendar({
                   // Touch has no right-click. A long press is the same gesture.
                   onTouchStart={(e) => {
                     if (p.status === 'posted') return;
-                    const t = e.touches[0];
-                    press.current = setTimeout(() => setMenu({ id: p.id, x: t.clientX, y: t.clientY }), 500);
+                    const t2 = e.touches[0];
+                    press.current = setTimeout(() => setMenu({ id: p.id, x: t2.clientX, y: t2.clientY }), 500);
                   }}
                   onTouchEnd={() => { if (press.current) clearTimeout(press.current); }}
                   onTouchMove={() => { if (press.current) clearTimeout(press.current); }}
                   title={postHint(p, vi)}
                   style={{
-                    marginTop: 3, padding: '3px 5px', borderRadius: 5, cursor: 'grab',
-                    // One look per tone (TONES); red wins because it is the
-                    // only one with a person on the other end of it.
-                    background: TONES[tone].bg,
-                    border: `1px solid ${TONES[tone].border}`,
-                    borderLeftWidth: 3,
-                    fontSize: 10.5, lineHeight: 1.3,
-                    color: TONES[tone].fg,
-                    fontWeight: tone === 'held' ? 700 : 400,
+                    marginTop: 3, padding: '3px 5px', borderRadius: 6, cursor: 'grab',
+                    // Only a problem gets a filled card. Everything else is a
+                    // neutral box with a coloured stripe, so the two red ones
+                    // in a month of thirty are the two things you see.
+                    background: t.alarm ? t.bg : 'var(--c1e293b)',
+                    border: `1px solid ${t.alarm ? t.border : 'var(--c334155)'}`,
+                    borderLeft: `4px solid ${t.bar}`,
+                    // Published is history: still readable, never competing.
+                    opacity: tone === 'posted' ? .55 : 1,
                     overflow: 'hidden',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <ChannelDots channels={p.channels} />
-                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {TONES[tone].icon && `${TONES[tone].icon} `}
-                      <b>{hourInTz(p.scheduledAt)}h</b> {p.message.slice(0, 24) || T('(ảnh)', '(media)')}
-                    </span>
-                    {/* The archive, one click from the month — the reason it
-                        exists is to be found from here, not from the composer. */}
-                    {p.driveFolderUrl && (
-                      <a
-                        href={p.driveFolderUrl} target="_blank" rel="noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        title={T('Mở thư mục Drive (ảnh/clip của bài này)', 'Open the Drive folder (this post’s files)')}
-                        style={{ flexShrink: 0, textDecoration: 'none', fontSize: 11 }}
-                      >📁</a>
+                    {/* The picture is how a designer recognises their own post.
+                        A 24-character caption is not. */}
+                    {thumb ? (
+                      thumb.kind === 'video' ? (
+                        <span style={{ ...thumbBox, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'var(--c94a3b8)' }}>▶</span>
+                      ) : (
+                        <img src={thumb.url} alt="" loading="lazy" style={{ ...thumbBox, objectFit: 'cover' }} />
+                      )
+                    ) : (
+                      <span style={{ ...thumbBox, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'var(--c475569)' }}>✎</span>
                     )}
+                    <b style={{ fontSize: 10.5, color: t.alarm ? t.fg : 'var(--ce2e8f0)', flexShrink: 0 }}>
+                      {fmtInTz(new Date(p.scheduledAt), { hour: '2-digit', minute: '2-digit' })}
+                    </b>
+                    <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <ChannelChips channels={p.channels} />
+                      {/* The archive, one click from the month — the reason it
+                          exists is to be found from here, not from the composer. */}
+                      {p.driveFolderUrl && (
+                        <a
+                          href={p.driveFolderUrl} target="_blank" rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          title={T('Mở thư mục Drive (ảnh/clip của bài này)', 'Open the Drive folder (this post’s files)')}
+                          style={{ flexShrink: 0, textDecoration: 'none', fontSize: 10 }}
+                        >📁</a>
+                      )}
+                    </span>
                   </div>
-                  {/* Second line: the state in words, whose it is, the note —
-                      what the hover used to hold and nobody hovered for. */}
-                  {((tone !== 'plain' && tone !== 'posted') || p.teamNote || p.writerName || p.designerName) && (
-                    <div style={{ fontSize: 9.5, lineHeight: 1.3, opacity: .8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
-                      {tone === 'posted' ? '' : (vi ? TONES[tone].vi : TONES[tone].en)}
-                      {(p.designerName || p.writerName) ? `${tone === 'posted' ? '' : ' · '}${(tone === 'design' ? p.designerName : p.writerName) || p.designerName || p.writerName}` : ''}
-                      {p.teamNote ? `${tone === 'posted' && !(p.designerName || p.writerName) ? '' : ' · '}📝 ${p.teamNote}` : ''}
-                    </div>
-                  )}
+                  <div style={{
+                    fontSize: 9.5, lineHeight: 1.35, marginTop: 1,
+                    color: t.alarm ? t.fg : 'var(--c94a3b8)',
+                    fontWeight: t.alarm ? 700 : 400,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {detail}
+                  </div>
                 </div>
                 );
               })}
+
+              {hidden > 0 && (
+                <button
+                  onClick={() => setOpenDay(k)}
+                  style={{
+                    marginTop: 3, width: '100%', padding: '2px 4px', borderRadius: 5, cursor: 'pointer',
+                    border: '1px dashed var(--c334155)', background: 'transparent',
+                    color: 'var(--c94a3b8)', fontSize: 9.5, fontFamily: 'inherit',
+                  }}
+                >+{hidden} {T('bài nữa', 'more')}</button>
+              )}
+              {openDay === k && mine.length > CAP && (
+                <button
+                  onClick={() => setOpenDay(null)}
+                  style={{
+                    marginTop: 3, width: '100%', padding: '2px 4px', borderRadius: 5, cursor: 'pointer',
+                    border: '1px dashed var(--c334155)', background: 'transparent',
+                    color: 'var(--c94a3b8)', fontSize: 9.5, fontFamily: 'inherit',
+                  }}
+                >{T('Thu gọn', 'Collapse')}</button>
+              )}
             </div>
           );
         })}
-      </div>
-
-      {/* The key. Six colours are too many to remember; one line under the
-          month means nobody has to. */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginTop: 8, fontSize: 11, color: 'var(--c94a3b8)' }}>
-        {(['writing', 'design', 'ready', 'posted', 'blocked', 'held'] as Tone[]).map((k) => (
-          <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: TONES[k].bg, border: `1px solid ${TONES[k].border}`, borderLeftWidth: 3 }} />
-            {TONES[k].icon} {vi ? TONES[k].vi : TONES[k].en}
-          </span>
-        ))}
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 4 }}>
-          {(['facebook', 'instagram', 'google', 'tiktok'] as Channel[]).map((c) => (
-            <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: CHANNEL_COLOR[c], display: 'inline-block' }} />{CHANNEL_SHORT[c]}
-            </span>
-          ))}
-        </span>
       </div>
 
       {menu && (
@@ -366,6 +498,32 @@ export function MonthCalendar({
     </div>
   );
 }
+
+/** One number in the month's summary strip. Zero is drawn faint, not hidden —
+ *  "0 cần xử lý" is information; a missing chip is ambiguity. */
+function Tally({ n, bar, label, loud }: { n: number; bar: string; label: string; loud?: boolean }) {
+  const on = n > 0;
+  return (
+    <span
+      title={label}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '2px 8px 2px 6px', borderRadius: 20,
+        border: '1px solid var(--c334155)', background: 'var(--c0f172a)',
+        opacity: on ? 1 : .45,
+      }}
+    >
+      <span style={{ width: 4, height: 12, borderRadius: 2, background: bar, display: 'inline-block' }} />
+      <b style={{ fontSize: 12, color: loud && on ? '#ef4444' : 'var(--ce2e8f0)' }}>{n}</b>
+      <span style={{ fontSize: 10.5, color: 'var(--c94a3b8)' }}>{label}</span>
+    </span>
+  );
+}
+
+const thumbBox: React.CSSProperties = {
+  width: 17, height: 17, borderRadius: 4, flexShrink: 0,
+  background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
+};
 
 const menuItem: React.CSSProperties = {
   display: 'block', width: '100%', textAlign: 'left', padding: '9px 11px',

@@ -52,6 +52,50 @@ const timeOf = (iso: string) => {
   } catch { return ''; }
 };
 
+/**
+ * Eight colours that stay apart from each other, and from the indigo that
+ * means "me". Assigned by name, so the same person is the same colour on
+ * every screen, in every session, without anyone storing a preference.
+ */
+const PERSON_COLORS = ['#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#c084fc', '#22d3ee', '#fb923c', '#a3e635'];
+
+function personColor(name: string): string {
+  const n = String(name ?? '').trim() || '?';
+  let h = 0;
+  for (let i = 0; i < n.length; i += 1) h = (h * 31 + n.charCodeAt(i)) >>> 0;
+  return PERSON_COLORS[h % PERSON_COLORS.length];
+}
+
+/** Two letters for the avatar. Vietnamese names put the given name last. */
+function initialsOf(name: string): string {
+  const parts = String(name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  const last = parts[parts.length - 1];
+  return (parts.length > 1 ? `${parts[0][0]}${last[0]}` : last.slice(0, 2)).toUpperCase();
+}
+
+/**
+ * The thread.
+ *
+ * THREE THINGS TELL YOU WHO SAID SOMETHING, not one.
+ *
+ * Side answers "us or them" — mine right, theirs left. That is the coarse cut
+ * and it is not enough, because "them" is four people at an agency and a
+ * salon owner, and a wall of identical grey bubbles makes a conversation you
+ * have to read from the top to follow.
+ *
+ * So each person also gets a colour of their own, derived from their name so
+ * it never drifts, and it lands in three places at once: a tinted bubble, a
+ * coloured edge, and an initials disc. Colour alone would fail anyone who
+ * cannot separate two hues; the disc carries the same fact in letters.
+ *
+ * The tint is deliberately faint. A saturated bubble would have to fight the
+ * theme — dark by night, white by day — and text on it could only be right in
+ * one of them. A wash over the panel's own surface stays readable in both.
+ *
+ * A run of messages from one person shows the name once. Repeating it on every
+ * line is how a short exchange starts looking like an argument.
+ */
 function Bubbles({ messages, mine, empty }: {
   messages: ChatMessage[]; mine: 'lumio' | 'salon'; empty: string;
 }) {
@@ -63,29 +107,80 @@ function Bubbles({ messages, mine, empty }: {
   }
   return (
     <>
-      {messages.map((m) => {
+      {messages.map((m, idx) => {
         const isMine = m.side === mine;
+        const prev = idx > 0 ? messages[idx - 1] : null;
+        // A new speaker, or the same one after somebody else spoke.
+        const opensRun = !prev || prev.authorName !== m.authorName || prev.side !== m.side;
+        const color = personColor(m.authorName);
         return (
-          <div key={m.id} style={{ display: 'flex', justifyContent: isMine ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-            <div style={{ maxWidth: '85%' }}>
-              <div style={{
-                fontSize: 10.5, color: 'var(--c64748b)', marginBottom: 2,
-                textAlign: isMine ? 'right' : 'left',
-              }}>
-                {m.authorName} · {timeOf(m.createdAt)}
-              </div>
+          <div
+            key={m.id}
+            style={{
+              display: 'flex', gap: 7, marginBottom: 8,
+              marginTop: opensRun && idx > 0 ? 10 : 0,
+              justifyContent: isMine ? 'flex-end' : 'flex-start',
+              alignItems: 'flex-end',
+            }}
+          >
+            {!isMine && (
+              opensRun ? (
+                <span
+                  title={m.authorName}
+                  style={{
+                    width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 800, letterSpacing: .2,
+                    color, border: `1.5px solid ${color}`, background: `${color}1f`,
+                  }}
+                >{initialsOf(m.authorName)}</span>
+              ) : <span style={{ width: 26, flexShrink: 0 }} />
+            )}
+
+            <div style={{ maxWidth: '78%', minWidth: 0 }}>
+              {opensRun && (
+                <div style={{
+                  fontSize: 10.5, marginBottom: 3, fontWeight: 700,
+                  textAlign: isMine ? 'right' : 'left',
+                  color: isMine ? 'var(--c94a3b8)' : color,
+                }}>
+                  {m.authorName} <span style={{ fontWeight: 400, color: 'var(--c64748b)' }}>· {timeOf(m.createdAt)}</span>
+                </div>
+              )}
               <div style={{
                 fontSize: 13.5, lineHeight: 1.55, padding: '8px 11px', borderRadius: 12,
                 whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                // The two sides must be told apart at a glance, and the colours
-                // are tokens so they survive light mode.
-                background: isMine ? '#6366f1' : 'var(--c1e293b)',
+                // Mine is the one solid colour on the screen. Everyone else is
+                // a faint wash of their own colour with a matching edge, which
+                // reads in both themes because the surface underneath is the
+                // panel's, not a paint the theme cannot follow.
+                background: isMine ? '#6366f1' : `${color}1f`,
                 color: isMine ? 'var(--cf8fafc)' : 'var(--ce2e8f0)',
-                border: isMine ? 'none' : '1px solid var(--c334155)',
+                border: isMine ? 'none' : `1px solid ${color}59`,
+                borderLeft: isMine ? 'none' : `3px solid ${color}`,
                 borderBottomRightRadius: isMine ? 3 : 12,
                 borderBottomLeftRadius: isMine ? 12 : 3,
               }}>{m.body}</div>
+              {!opensRun && (
+                <div style={{ fontSize: 9.5, color: 'var(--c64748b)', marginTop: 2, textAlign: isMine ? 'right' : 'left' }}>
+                  {timeOf(m.createdAt)}
+                </div>
+              )}
             </div>
+
+            {isMine && (
+              opensRun ? (
+                <span
+                  title={m.authorName}
+                  style={{
+                    width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 800, letterSpacing: .2,
+                    color: 'var(--cf8fafc)', border: '1.5px solid #6366f1', background: '#6366f1',
+                  }}
+                >{initialsOf(m.authorName)}</span>
+              ) : <span style={{ width: 26, flexShrink: 0 }} />
+            )}
           </div>
         );
       })}

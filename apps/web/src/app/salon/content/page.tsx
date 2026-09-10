@@ -30,7 +30,7 @@ import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz } from '../../../lib/datetime';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
-import { MonthCalendar, IgGrid, PostPreview, MediaList, ChannelDots, CHANNEL_NAME, TONES, postTone, type MediaItem, type Channel } from '../../../components/PostStudio';
+import { MonthCalendar, IgGrid, PostPreview, MediaList, ChannelChips, CHANNEL_NAME, TONES, postTone, type MediaItem, type Channel } from '../../../components/PostStudio';
 import { WeekPlanBoard, type OfferForm } from '../../../components/WeekPlanBoard';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
@@ -4156,7 +4156,7 @@ function Inner() {
                                   }}
                                 >
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--c94a3b8)' }}>
-                                    <ChannelDots channels={p.channels} />
+                                    <ChannelChips channels={p.channels} />
                                     <span>{fmtInTz(new Date(p.scheduledAt), { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                                     {p.media.length > 0 && <span style={{ marginLeft: 'auto' }}>🖼 {p.media.length}</span>}
                                     {p.driveFolderUrl && <a href={p.driveFolderUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title={T('Thư mục Drive', 'Drive folder')} style={{ textDecoration: 'none' }}>📁</a>}

@@ -31,6 +31,24 @@ import { dayKeyInTz, hourInTz, fmtInTz } from '../lib/datetime';
 export type Channel = 'facebook' | 'instagram' | 'google';
 /** What each place is called on screen. 'google' is the shop's Business Profile on Maps. */
 export const CHANNEL_NAME: Record<Channel, string> = { facebook: 'Facebook', instagram: 'Instagram', google: 'Google Business' };
+/** Each platform's own colour, so a dot reads without a legend. */
+export const CHANNEL_COLOR: Record<Channel, string> = { facebook: '#1877f2', instagram: '#e1306c', google: '#34a853' };
+export const CHANNEL_SHORT: Record<Channel, string> = { facebook: 'FB', instagram: 'IG', google: 'GG' };
+
+/**
+ * Where a post goes, as coloured dots — replaces the ◈ ▣ ◉ glyphs nobody
+ * could read. One dot per platform in the platform's colour; hover names them.
+ */
+export function ChannelDots({ channels, size = 7 }: { channels: Channel[]; size?: number }) {
+  const list = (['facebook', 'instagram', 'google'] as Channel[]).filter((c) => channels?.includes(c));
+  return (
+    <span title={list.map((c) => CHANNEL_NAME[c]).join(' + ')} style={{ display: 'inline-flex', gap: 2, alignItems: 'center', flexShrink: 0, verticalAlign: 'middle' }}>
+      {list.map((c) => (
+        <span key={c} style={{ width: size, height: size, borderRadius: '50%', background: CHANNEL_COLOR[c], display: 'inline-block' }} />
+      ))}
+    </span>
+  );
+}
 export type MediaKind = 'image' | 'video';
 export interface MediaItem { url: string; kind: MediaKind; /** The archive copy on Drive, once filed. */ driveUrl?: string }
 export type Stage = 'writing' | 'design' | 'ready';
@@ -269,9 +287,10 @@ export function MonthCalendar({
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <ChannelDots channels={p.channels} />
                     <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {TONES[tone].icon && `${TONES[tone].icon} `}
-                      {p.channels.includes('instagram') ? '◈' : p.channels.includes('facebook') ? '▣' : '◉'} {hourInTz(p.scheduledAt)}h {p.message.slice(0, 24) || T('(ảnh)', '(media)')}
+                      <b>{hourInTz(p.scheduledAt)}h</b> {p.message.slice(0, 24) || T('(ảnh)', '(media)')}
                     </span>
                     {/* The archive, one click from the month — the reason it
                         exists is to be found from here, not from the composer. */}
@@ -287,11 +306,11 @@ export function MonthCalendar({
                   </div>
                   {/* Second line: the state in words, whose it is, the note —
                       what the hover used to hold and nobody hovered for. */}
-                  {(tone !== 'plain' || p.teamNote || p.writerName || p.designerName) && (
+                  {((tone !== 'plain' && tone !== 'posted') || p.teamNote || p.writerName || p.designerName) && (
                     <div style={{ fontSize: 9.5, lineHeight: 1.3, opacity: .8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
-                      {vi ? TONES[tone].vi : TONES[tone].en}
-                      {(p.designerName || p.writerName) ? ` · ${(tone === 'design' ? p.designerName : p.writerName) || p.designerName || p.writerName}` : ''}
-                      {p.teamNote ? ` · 📝 ${p.teamNote}` : ''}
+                      {tone === 'posted' ? '' : (vi ? TONES[tone].vi : TONES[tone].en)}
+                      {(p.designerName || p.writerName) ? `${tone === 'posted' ? '' : ' · '}${(tone === 'design' ? p.designerName : p.writerName) || p.designerName || p.writerName}` : ''}
+                      {p.teamNote ? `${tone === 'posted' && !(p.designerName || p.writerName) ? '' : ' · '}📝 ${p.teamNote}` : ''}
                     </div>
                   )}
                 </div>
@@ -311,6 +330,13 @@ export function MonthCalendar({
             {TONES[k].icon} {vi ? TONES[k].vi : TONES[k].en}
           </span>
         ))}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 4 }}>
+          {(['facebook', 'instagram', 'google'] as Channel[]).map((c) => (
+            <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: CHANNEL_COLOR[c], display: 'inline-block' }} />{CHANNEL_SHORT[c]}
+            </span>
+          ))}
+        </span>
       </div>
 
       {menu && (

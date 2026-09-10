@@ -30,7 +30,7 @@ import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz } from '../../../lib/datetime';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
-import { MonthCalendar, IgGrid, PostPreview, MediaList, CHANNEL_NAME, type MediaItem, type Channel } from '../../../components/PostStudio';
+import { MonthCalendar, IgGrid, PostPreview, MediaList, ChannelDots, CHANNEL_NAME, TONES, postTone, type MediaItem, type Channel } from '../../../components/PostStudio';
 import { WeekPlanBoard, type OfferForm } from '../../../components/WeekPlanBoard';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
@@ -585,7 +585,15 @@ function Inner() {
    */
   const [postWhen, setPostWhen] = useState<'now' | 'later'>('later');
   // Three views over one queue: a list reads, a calendar plans, a grid judges.
-  const [view, setView] = useState<'calendar' | 'grid' | 'list'>('calendar');
+  const [view, setView] = useState<'board' | 'calendar' | 'grid' | 'list'>('calendar');
+  /**
+   * One filter over every view — set by the counters at the top of the tab.
+   * "Show me what is stuck" is the question a person opens this tab with,
+   * and a month grid cannot answer it without hiding the rest.
+   */
+  const [workFilter, setWorkFilter] = useState<'all' | 'held' | 'problem' | 'writing' | 'design' | 'ready' | 'today'>('all');
+  /** The shop's raw files — folded away unless something new arrived. */
+  const [inboxOpen, setInboxOpen] = useState<boolean | null>(null);
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [showPosted, setShowPosted] = useState(true);
   const [postErr, setPostErr] = useState<string | null>(null);
@@ -884,6 +892,40 @@ function Inner() {
       await loadQueue();
     } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
     finally { setQueueBusy(false); }
+  }
+
+  /**
+   * Move a post along the team's path from the board, without opening it.
+   * The server keeps the one rule (not ready → not scheduled) and answers
+   * with what still blocks a lock, which is shown instead of swallowed.
+   */
+  async function changeStage(id: string, stage: 'writing' | 'design' | 'ready') {
+    if (queueBusy) return;
+    setQueueBusy(true); setPostErr(null);
+    try {
+      const r = await apiFetch<{ ok: boolean; stage: string; status: string; blockers: string[] }>(`/content/posts/${id}/stage`, {
+        method: 'PATCH', token, body: { stage },
+      });
+      if (r.blockers?.length) setPostErr(`${T('Chưa chốt lịch được', 'Could not lock it yet')}: ${r.blockers.join(' ')}`);
+      await loadQueue();
+    } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
+    finally { setQueueBusy(false); }
+  }
+
+  /** The posts a view shows once the work filter is applied. */
+  function workPosts(): QueuedPost[] {
+    const all = queue?.posts ?? [];
+    const open = (p: QueuedPost) => p.status !== 'posted' && p.status !== 'cancelled';
+    const todayKey = instantToWall(new Date().toISOString()).slice(0, 10);
+    switch (workFilter) {
+      case 'held': return all.filter((p) => p.held);
+      case 'problem': return all.filter((p) => open(p) && !p.held && (p.status === 'failed' || p.status === 'expired' || p.blockers.length > 0));
+      case 'writing': return all.filter((p) => open(p) && p.stage === 'writing');
+      case 'design': return all.filter((p) => open(p) && p.stage === 'design');
+      case 'ready': return all.filter((p) => p.status === 'scheduled' && !p.held);
+      case 'today': return all.filter((p) => instantToWall(p.scheduledAt).slice(0, 10) === todayKey);
+      default: return all;
+    }
   }
 
   /** Open one queued post in the composer. */
@@ -1269,8 +1311,8 @@ function Inner() {
   ];
 
   const TAB_GROUPS: { id: 'content' | 'growth'; label: string; hint: string }[] = [
-    { id: 'content', label: T('Việc tuần này', 'This week'), hint: T('nội dung, lịch, bài chờ đăng', 'content, calendar, posts waiting') },
-    { id: 'growth', label: T('Đường dài', 'The long game'), hint: T('khách, quảng cáo, SEO', 'customers, ads, SEO') },
+    { id: 'content', label: T('Sản xuất nội dung', 'Content production'), hint: T('hằng ngày: ý tưởng → viết → thiết kế → đăng', 'daily: ideas → write → design → publish') },
+    { id: 'growth', label: T('Chiến lược & tăng trưởng', 'Strategy & growth'), hint: T('hằng tháng: khách, quảng cáo, SEO', 'monthly: customers, ads, SEO') },
   ];
 
   /**
@@ -2390,19 +2432,103 @@ function Inner() {
                that goes out on a Tuesday morning while she is doing a fill. */}
           {tab === 'queue' && (
             <>
-              {/* What the shop sent back, first — a staff member opening this
-                  tab is here to build a post, and the footage for it arrived
-                  while they were asleep. Team only: a salon account has no
+              {/* ---- the work strip ----
+                   The first thing on the tab answers the first question a
+                   person opens it with: what needs me? Five counters, each a
+                   filter; the month grid and the board below obey it. */}
+              {queue && (() => {
+                const all = queue.posts;
+                const open = (p: QueuedPost) => p.status !== 'posted' && p.status !== 'cancelled';
+                const todayKey = instantToWall(new Date().toISOString()).slice(0, 10);
+                const counts = {
+                  held: all.filter((p) => p.held).length,
+                  problem: all.filter((p) => open(p) && !p.held && (p.status === 'failed' || p.status === 'expired' || p.blockers.length > 0)).length,
+                  writing: all.filter((p) => open(p) && p.stage === 'writing').length,
+                  design: all.filter((p) => open(p) && p.stage === 'design').length,
+                  ready: all.filter((p) => p.status === 'scheduled' && !p.held).length,
+                  today: all.filter((p) => instantToWall(p.scheduledAt).slice(0, 10) === todayKey).length,
+                };
+                const chips: { k: typeof workFilter; icon: string; label: string; n: number; color: string }[] = [
+                  { k: 'held', icon: '🔴', label: T('Khách yêu cầu sửa', 'Client changes'), n: counts.held, color: '#ef4444' },
+                  { k: 'problem', icon: '⚠', label: T('Lỗi / thiếu điều kiện', 'Failed / blocked'), n: counts.problem, color: '#f59e0b' },
+                  { k: 'writing', icon: '✍', label: T('Đang viết', 'Writing'), n: counts.writing, color: '#60a5fa' },
+                  { k: 'design', icon: '🎨', label: T('Đang thiết kế', 'In design'), n: counts.design, color: '#c084fc' },
+                  { k: 'ready', icon: '📅', label: T('Đã chốt, chờ giờ', 'Locked, waiting'), n: counts.ready, color: '#22c55e' },
+                  { k: 'today', icon: '⏰', label: T('Đăng hôm nay', 'Going out today'), n: counts.today, color: 'var(--ca5b4fc)' },
+                ];
+                return (
+                  <div style={{ ...ui.card, marginBottom: 14, padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                      <b style={{ fontSize: 13.5, color: 'var(--ce2e8f0)' }}>🧭 {T('Việc cần làm', 'Work board')}</b>
+                      <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>
+                        {T('Bấm một ô để lọc lịch & bảng. Đỏ và vàng là việc có người đang chờ.', 'Click a tile to filter the calendar and board. Red and amber mean somebody is waiting.')}
+                      </span>
+                      {workFilter !== 'all' && (
+                        <button onClick={() => setWorkFilter('all')} style={{ marginLeft: 'auto', background: 'none', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 7, padding: '3px 9px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          ✕ {T('Bỏ lọc', 'Clear filter')}
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 8 }}>
+                      {chips.map((c) => {
+                        const on = workFilter === c.k;
+                        const urgent = (c.k === 'held' || c.k === 'problem') && c.n > 0;
+                        return (
+                          <button
+                            key={c.k}
+                            onClick={() => { setWorkFilter(on ? 'all' : c.k); if (!on && c.k !== 'today') setView('board'); }}
+                            style={{
+                              textAlign: 'left', padding: '9px 11px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
+                              border: `1px solid ${on ? c.color : urgent ? c.color : 'var(--c334155)'}`,
+                              background: on ? 'var(--c1e293b)' : 'transparent',
+                              opacity: c.n === 0 && !on ? 0.55 : 1,
+                            }}
+                          >
+                            <div style={{ fontSize: 20, fontWeight: 800, color: urgent || on ? c.color : 'var(--ce2e8f0)', lineHeight: 1.1 }}>{c.n}</div>
+                            <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.icon} {c.label}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* What the shop sent back — folded away unless something new
+                  arrived, because a staff member opening this tab is here to
+                  work the queue, and a wall of raw footage above it pushed the
+                  queue below the fold. Kept mounted while folded so the count
+                  in the heading stays live. Team only: a salon account has no
                   suggestions of its own to read. */}
-              {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
-                <SuggestionInbox
-                  token={token}
-                  vi={vi}
-                  onCount={setReadyFiles}
-                  onMakePost={postFromSuggestion}
-                  canDelete={user?.role === 'SUPER_ADMIN' || user?.supportLevel === 'full'}
-                />
-              )}
+              {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (() => {
+                const open = inboxOpen ?? readyFiles > 0;
+                return (
+                  <div style={{ marginBottom: 14 }}>
+                    <button
+                      onClick={() => setInboxOpen(!open)}
+                      style={{
+                        width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'inherit',
+                        padding: '10px 14px', borderRadius: open ? '10px 10px 0 0' : 10, cursor: 'pointer',
+                        border: `1px solid ${readyFiles > 0 ? '#22c55e' : 'var(--c334155)'}`, background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: 700,
+                      }}
+                    >
+                      <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', fontSize: 11 }}>▶</span>
+                      📥 {T('Tiệm đã gửi ảnh/clip', 'Files from the shop')}
+                      {readyFiles > 0 && <span style={{ fontSize: 11.5, padding: '1px 8px', borderRadius: 20, background: 'var(--c14532d)', color: 'var(--cbbf7d0)', border: '1px solid #22c55e' }}>{readyFiles} {T('mới', 'new')}</span>}
+                      <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 400, color: 'var(--c64748b)' }}>{open ? T('Thu gọn', 'Collapse') : T('Mở', 'Open')}</span>
+                    </button>
+                    <div style={{ display: open ? 'block' : 'none' }}>
+                      <SuggestionInbox
+                        token={token}
+                        vi={vi}
+                        onCount={setReadyFiles}
+                        onMakePost={postFromSuggestion}
+                        canDelete={user?.role === 'SUPER_ADMIN' || user?.supportLevel === 'full'}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
@@ -3481,6 +3607,7 @@ function Inner() {
                 <div style={{ ...ui.card, marginBottom: 14, padding: 14 }}>
                   <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
                     {([
+                      ['board', '🧩', T('Bảng việc', 'Board')],
                       ['calendar', '🗓️', T('Lịch tháng', 'Calendar')],
                       ['grid', '▦', T('Lưới Instagram', 'IG grid')],
                       ['list', '☰', T('Danh sách', 'List')],
@@ -3522,7 +3649,7 @@ function Inner() {
                         </span>
                       </label>
                       <MonthCalendar
-                        posts={showPosted ? queue.posts : queue.posts.filter((p) => p.status !== 'posted')}
+                        posts={(showPosted && workFilter === 'all' ? workPosts() : workPosts().filter((p) => p.status !== 'posted'))}
                         month={month}
                         onMonth={setMonth}
                         onPick={editPost}
@@ -3532,6 +3659,95 @@ function Inner() {
                       />
                     </>
                   )}
+                  {view === 'board' && (() => {
+                    /**
+                     * The team's path as columns: who is holding what, and
+                     * the one action each card wants. Same rules as the
+                     * calendar (postTone), so a colour means the same thing
+                     * on both screens; published posts are history and stay
+                     * off the board.
+                     */
+                    const rows = workPosts().filter((p) => p.status !== 'posted' && p.status !== 'cancelled');
+                    const cols: { key: string; title: string; hint: string; color: string; pick: (p: QueuedPost) => boolean }[] = [
+                      { key: 'stuck', title: T('🔴 Cần xử lý', '🔴 Needs attention'), hint: T('khách yêu cầu sửa · đăng lỗi · thiếu điều kiện', 'client change · failed · blocked'), color: '#ef4444', pick: (p) => Boolean(p.held) || p.status === 'failed' || p.status === 'expired' || (p.blockers.length > 0 && p.stage === 'ready') },
+                      { key: 'writing', title: T('✍ Đang viết', '✍ Writing'), hint: T('content viết caption', 'writer drafts the caption'), color: '#60a5fa', pick: (p) => p.stage === 'writing' },
+                      { key: 'design', title: T('🎨 Đang thiết kế', '🎨 In design'), hint: T('thiết kế đưa ảnh/clip vào', 'designer adds the visuals'), color: '#c084fc', pick: (p) => p.stage === 'design' },
+                      { key: 'ready', title: T('📅 Đã chốt lịch', '📅 Locked'), hint: T('tự đăng đúng giờ', 'publishes on time'), color: '#22c55e', pick: (p) => p.status === 'scheduled' },
+                    ];
+                    const placed = new Set<string>();
+                    const byCol = cols.map((c) => {
+                      const items = rows.filter((p) => !placed.has(p.id) && c.pick(p)).sort((a, b) => (a.scheduledAt < b.scheduledAt ? -1 : 1));
+                      items.forEach((p) => placed.add(p.id));
+                      return { ...c, items };
+                    });
+                    const leftovers = rows.filter((p) => !placed.has(p.id));
+                    if (leftovers.length) byCol[1].items.push(...leftovers);
+                    return (
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
+                        {byCol.map((c) => (
+                          <div key={c.key} style={{ borderRadius: 10, border: '1px solid var(--c1e293b)', background: 'var(--c0f172a)', padding: 8, minHeight: isMobile ? undefined : 220 }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, padding: '2px 4px 8px', borderBottom: `2px solid ${c.color}`, marginBottom: 8 }}>
+                              <b style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>{c.title}</b>
+                              <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{c.items.length}</span>
+                              <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--c64748b)', textAlign: 'right' }}>{c.hint}</span>
+                            </div>
+                            {c.items.length === 0 && <div style={{ fontSize: 12, color: 'var(--c64748b)', padding: '6px 4px' }}>{T('Trống', 'Nothing here')}</div>}
+                            {c.items.map((p) => {
+                              const tone = postTone(p);
+                              const owner = p.stage === 'design' ? p.designerName : p.writerName;
+                              return (
+                                <div
+                                  key={p.id}
+                                  onClick={() => editPost(p.id)}
+                                  style={{
+                                    padding: '8px 9px', borderRadius: 8, marginBottom: 7, cursor: 'pointer',
+                                    background: TONES[tone].bg, border: `1px solid ${TONES[tone].border}`, borderLeftWidth: 3,
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--c94a3b8)' }}>
+                                    <ChannelDots channels={p.channels} />
+                                    <span>{fmtInTz(new Date(p.scheduledAt), { weekday: 'short', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                    {p.media.length > 0 && <span style={{ marginLeft: 'auto' }}>🖼 {p.media.length}</span>}
+                                    {p.driveFolderUrl && <a href={p.driveFolderUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title={T('Thư mục Drive', 'Drive folder')} style={{ textDecoration: 'none' }}>📁</a>}
+                                  </div>
+                                  <div style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.4, marginTop: 4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                    {p.message || T('(chưa có caption)', '(no caption yet)')}
+                                  </div>
+                                  {(owner || p.writerName || p.designerName) && (
+                                    <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 4 }}>
+                                      {p.writerName && <span>✍ {p.writerName}</span>}{p.writerName && p.designerName && ' · '}{p.designerName && <span>🎨 {p.designerName}</span>}
+                                    </div>
+                                  )}
+                                  {p.held && (
+                                    <div style={{ fontSize: 11.5, color: 'var(--cfecaca)', marginTop: 4 }}>🔴 {p.held.by ? `${p.held.by}: ` : ''}“{p.held.note ?? T('khách yêu cầu sửa', 'client asked for a change')}”</div>
+                                  )}
+                                  {!p.held && p.blockers.length > 0 && tone !== 'writing' && tone !== 'design' && (
+                                    <div style={{ fontSize: 11, color: 'var(--cfde68a)', marginTop: 4 }}>⚠ {p.blockers[0]}</div>
+                                  )}
+                                  {p.teamNote && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 4 }}>📝 {p.teamNote}</div>}
+                                  <div style={{ display: 'flex', gap: 6, marginTop: 7, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                                    {p.held && (
+                                      <button onClick={() => clearHold(p.id)} disabled={queueBusy} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>✓ {T('Đã xử lý xong', 'Handled')}</button>
+                                    )}
+                                    {!p.held && p.stage === 'writing' && (
+                                      <button onClick={() => changeStage(p.id, 'design')} disabled={queueBusy} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, border: '1px solid #c084fc', background: 'transparent', color: 'var(--ce2e8f0)', cursor: 'pointer', fontFamily: 'inherit' }}>→ {T('Chuyển thiết kế', 'To design')}</button>
+                                    )}
+                                    {!p.held && p.stage === 'design' && (
+                                      <button onClick={() => changeStage(p.id, 'ready')} disabled={queueBusy} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, border: '1px solid #22c55e', background: 'transparent', color: 'var(--ce2e8f0)', cursor: 'pointer', fontFamily: 'inherit' }}>✓ {T('Chốt lịch', 'Lock it')}</button>
+                                    )}
+                                    {!p.held && (p.status === 'failed' || p.status === 'expired') && (
+                                      <button onClick={() => postAction(p.id, 'publish')} disabled={queueBusy || p.blockers.length > 0} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>🚀 {T('Đăng lại', 'Retry')}</button>
+                                    )}
+                                    <button onClick={() => editPost(p.id)} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer', fontFamily: 'inherit' }}>✎ {T('Mở', 'Open')}</button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   {view === 'grid' && (
                     <IgGrid
                       posts={queue.posts
@@ -3573,7 +3789,7 @@ function Inner() {
                 </div>
               )}
 
-              {view === 'list' && queue?.posts.map((p) => {
+              {view === 'list' && workPosts().map((p) => {
                 const S: Record<string, { fg: string; text: string }> = {
                   draft: { fg: 'var(--c94a3b8)', text: T('Nháp', 'Draft') },
                   scheduled: { fg: '#6366f1', text: T('Đã đặt lịch', 'Scheduled') },

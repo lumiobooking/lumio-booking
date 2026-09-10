@@ -53,8 +53,16 @@ export class MessengerController {
   @Post('oauth/choose')
   @UseGuards(FeaturePolicyGuard)
   @RequiresFeature('messengerAi')
-  choose(@CurrentUser() user: AuthenticatedUser, @Body() dto: { pageId?: string }) {
-    return this.svc.oauthChoose(user, String(dto?.pageId || ''));
+  choose(@CurrentUser() user: AuthenticatedUser, @Body() dto: { pageId?: string; takeOver?: boolean }) {
+    return this.svc.oauthChoose(user, String(dto?.pageId || ''), dto?.takeOver === true);
+  }
+
+  /** Lumio staff: keep one page on this salon, detach the rest in one press. */
+  @Post('pages/keep-only')
+  @UseGuards(FeaturePolicyGuard)
+  @RequiresFeature('messengerAi')
+  keepOnly(@CurrentUser() user: AuthenticatedUser, @Body() dto: { pageId?: string }) {
+    return this.svc.keepOnlyPage(user, String(dto?.pageId || ''));
   }
 
   @Post('settings')

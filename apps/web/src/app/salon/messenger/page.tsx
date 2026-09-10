@@ -408,11 +408,14 @@ function Inner() {
     window.history.replaceState(null, '', window.location.pathname);
   }, [lang, token, pollWebhook]);
 
-  async function choosePage(id: string) {
+  async function choosePage(id: string, takeOver = false) {
     if (!token || picking) return;
+    if (takeOver && !window.confirm(lang === 'vi'
+      ? 'Chuyển page này về tiệm đang setup? Tiệm kia sẽ mất kết nối page này (hội thoại cũ của họ vẫn giữ).'
+      : 'Move this page to the salon you are setting up? The other salon loses the page (its old conversations are kept).')) return;
     setPicking(id);
     try {
-      const conf = await apiFetch<MConf>('/messenger/oauth/choose', { method: 'POST', token, body: { pageId: id } });
+      const conf = await apiFetch<MConf>('/messenger/oauth/choose', { method: 'POST', token, body: { pageId: id, ...(takeOver ? { takeOver: true } : {}) } });
       setC(conf); // list stays open — an agency connects several pages in a row
       setFbResult({ ok: true, text: `${DICT.fbConnectedMsg[lang as Lang]} — ${conf.pages?.length ?? 1} page ${DICT.fbSubscribedMsg[lang as Lang]}` });
       void pollWebhook(); // flip the panel to Active without a page reload
@@ -431,6 +434,18 @@ function Inner() {
       setError(e instanceof Error ? e.message : 'Failed to start Facebook connect');
       setConnecting(false);
     }
+  }
+
+  /** Staff clean-up: one page stays, every other page on this salon is detached. */
+  async function keepOnlyPage(pageId: string, name: string) {
+    if (!token) return;
+    const n = (c?.pages?.length ?? 1) - 1;
+    if (!window.confirm(lang === 'vi'
+      ? `Chỉ giữ "${name}" cho tiệm này và ngắt ${n} page còn lại? (Bot, nội dung và hội thoại cũ giữ nguyên.)`
+      : `Keep only "${name}" on this salon and detach the other ${n}? (Bot, content and old conversations stay.)`)) return;
+    setError(null);
+    try { await apiFetch('/messenger/pages/keep-only', { method: 'POST', token, body: { pageId } }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not prune pages'); }
   }
 
   async function disconnectPage(pageId: string) {
@@ -683,8 +698,17 @@ function Inner() {
                   {pg.taken === 'this' || c.pages?.some((x) => x.pageId === pg.id) ? (
                     <span style={{ color: '#34d399', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' }}>✓ {lang === 'vi' ? 'Đã nối' : 'Connected'}</span>
                   ) : pg.taken === 'other' ? (
-                    <span title={pg.takenBy || ''} style={{ color: '#f59e0b', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      🔒 {lang === 'vi' ? 'Đang dùng ở' : 'In use by'} {pg.takenBy || (lang === 'vi' ? 'tiệm khác' : 'another salon')}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span title={pg.takenBy || ''} style={{ color: '#f59e0b', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        🔒 {lang === 'vi' ? 'Đang dùng ở' : 'In use by'} {pg.takenBy || (lang === 'vi' ? 'tiệm khác' : 'another salon')}
+                      </span>
+                      {canPickMode && (
+                        <button onClick={() => choosePage(pg.id, true)} disabled={!!picking}
+                          title={lang === 'vi' ? 'Page bị gắn nhầm tiệm? Chuyển về tiệm đang setup.' : 'Bound to the wrong salon? Move it here.'}
+                          style={{ background: 'transparent', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          {picking === pg.id ? '…' : (lang === 'vi' ? '↪ Chuyển về tiệm này' : '↪ Move here')}
+                        </button>
+                      )}
                     </span>
                   ) : (
                   <button onClick={() => choosePage(pg.id)} disabled={!!picking}
@@ -866,6 +890,13 @@ function Inner() {
               <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 8 }}>
                 {lang === 'vi' ? `Các page đang dùng chung bot này (${c.pages.length})` : `Pages sharing this bot (${c.pages.length})`}
               </div>
+              {c.pages.length > 3 && (
+                <div style={{ fontSize: 12, color: '#fbbf24', marginBottom: 8, lineHeight: 1.5 }}>
+                  ⚠ {lang === 'vi'
+                    ? `Tiệm này đang giữ ${c.pages.length} page — thường là cả danh sách page của tài khoản agency bị gắn nhầm vào một tiệm. Bot sẽ trả lời và bài sẽ đăng lên TẤT CẢ các page này. Bấm "Chỉ giữ page này" ở đúng page của tiệm để dọn một lần.`
+                    : `This salon holds ${c.pages.length} pages — usually an agency account's whole page list bound to one salon by mistake. The bot answers and posts go to ALL of them. Press "Keep only this" on the salon's own page to clean up in one go.`}
+                </div>
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {c.pages.map((pg) => (
                   <div key={pg.pageId} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 8, padding: '8px 12px' }}>
@@ -876,6 +907,13 @@ function Inner() {
                         {pg.pageId}{pg.igId ? ` · IG ${pg.igUsername ? '@' + pg.igUsername + ' ' : ''}${pg.igId}` : ''}
                       </div>
                     </div>
+                    {canPickMode && (c.pages?.length ?? 0) > 1 && (
+                      <button onClick={() => keepOnlyPage(pg.pageId, pg.pageName || pg.pageId)}
+                        title={lang === 'vi' ? 'Giữ page này, ngắt tất cả page còn lại' : 'Keep this page, detach every other'}
+                        style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        {lang === 'vi' ? 'Chỉ giữ page này' : 'Keep only this'}
+                      </button>
+                    )}
                     <button onClick={() => disconnectPage(pg.pageId)}
                       style={{ background: 'transparent', border: '1px solid var(--c7f1d1d)', color: 'var(--cf87171)', borderRadius: 7, padding: '4px 10px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       {lang === 'vi' ? 'Ngắt page' : 'Detach'}

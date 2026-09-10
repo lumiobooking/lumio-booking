@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { personaFor } from '../common/business-persona';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import {
@@ -577,12 +577,25 @@ export class MessengerService implements OnModuleInit {
     });
   }
 
-  /** Staff picked a page — finish the connection with the parked token. */
-  async oauthChoose(user: AuthenticatedUser, pageId: string) {
+  /**
+   * Staff picked a page — finish the connection with the parked token.
+   *
+   * `takeOver` (Lumio staff only) moves a page that another salon holds to
+   * this one. It exists because one grant once bound an agency account's
+   * every client page to a single salon, and the only way back was sixteen
+   * detach clicks in the wrong salon. The page's conversations stay with
+   * the salon that had them; only the binding moves.
+   */
+  async oauthChoose(user: AuthenticatedUser, pageId: string, takeOver = false) {
     const tenantId = this.tenantId(user);
     const pages = await this.settings.getMessengerOauthStash(tenantId);
     const page = pages.find((p) => p.id === pageId);
     if (!page) throw new BadRequestException('That page is no longer available — press Connect and run the flow again.');
+    if (takeOver) {
+      const isLumio = user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession);
+      if (!isLumio) throw new ForbiddenException('Chỉ đội Lumio chuyển được page giữa các tiệm.');
+      await this.releasePageElsewhere(page.id, tenantId);
+    }
     const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { greeting: true } });
     const res = await this.completeConnect(
       tenantId,
@@ -594,6 +607,61 @@ export class MessengerService implements OnModuleInit {
     // The stash stays (15-min expiry): an agency connects several pages in a
     // row, one "Use this page" tap each.
     return this.get(user);
+  }
+
+  /**
+   * Unbind a page from whichever OTHER salon holds it, so this salon can take
+   * it. The other salon's brain row is repointed to a page it still has (or
+   * blanked), exactly as its own detach button would do.
+   */
+  private async releasePageElsewhere(pageId: string, keepTenantId: string): Promise<void> {
+    const rows = await this.prisma.messengerPage.findMany({ where: { pageId, NOT: { tenantId: keepTenantId } }, select: { tenantId: true } }).catch(() => []);
+    for (const r of rows) {
+      await this.prisma.messengerPage.deleteMany({ where: { tenantId: r.tenantId, pageId } }).catch(() => undefined);
+      const c0 = await this.prisma.messengerConnection.findUnique({ where: { tenantId: r.tenantId } }).catch(() => null);
+      if (c0?.pageId === pageId) {
+        const next = await this.prisma.messengerPage.findFirst({ where: { tenantId: r.tenantId }, orderBy: { createdAt: 'asc' } }).catch(() => null);
+        await this.prisma.messengerConnection.updateMany({
+          where: { tenantId: r.tenantId },
+          data: next
+            ? { pageId: next.pageId, igId: next.igId, pageToken: next.pageToken, pageName: next.pageName }
+            : { pageId: '', igId: null, pageToken: '', pageName: null },
+        }).catch(() => undefined);
+      }
+      await this.audit(r.tenantId, 'messenger.page_moved_out');
+    }
+    // A legacy-only binding (row on the connection, no page row) goes the same way.
+    const legacy = await this.prisma.messengerConnection.findFirst({ where: { pageId, NOT: { tenantId: keepTenantId } } }).catch(() => null);
+    if (legacy) {
+      await this.prisma.messengerConnection.updateMany({ where: { tenantId: legacy.tenantId }, data: { pageId: '', igId: null, pageToken: '', pageName: null } }).catch(() => undefined);
+      await this.audit(legacy.tenantId, 'messenger.page_moved_out');
+    }
+  }
+
+  /**
+   * Keep ONE page on this salon and detach every other. Lumio staff only —
+   * the clean-up for a salon that ended up holding an agency account's
+   * whole page list. Conversations on the detached pages are kept (they are
+   * the salon's records); the pages just stop routing here.
+   */
+  async keepOnlyPage(user: AuthenticatedUser, pageId: string) {
+    const tenantId = this.tenantId(user);
+    const isLumio = user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession);
+    if (!isLumio) throw new ForbiddenException('Chỉ đội Lumio dọn page hàng loạt được.');
+    const keep = await this.prisma.messengerPage.findFirst({ where: { tenantId, pageId } }).catch(() => null);
+    if (!keep) throw new NotFoundException('Page này không thuộc tiệm.');
+    const others = await this.prisma.messengerPage.findMany({ where: { tenantId, NOT: { pageId } } }).catch(() => []);
+    for (const pg of others) {
+      await fetch(`${GRAPH}/${pg.pageId}/subscribed_apps?access_token=${encodeURIComponent(pg.pageToken)}`, { method: 'DELETE' }).catch(() => undefined);
+      await this.prisma.messengerPage.deleteMany({ where: { tenantId, pageId: pg.pageId } }).catch(() => undefined);
+    }
+    // The brain row mirrors the page that stays.
+    await this.prisma.messengerConnection.updateMany({
+      where: { tenantId },
+      data: { pageId: keep.pageId, igId: keep.igId, pageToken: keep.pageToken, pageName: keep.pageName },
+    }).catch(() => undefined);
+    await this.audit(tenantId, 'messenger.pages_pruned');
+    return { ok: true, detached: others.length, ...(await this.get(user)) };
   }
 
   private async audit(tenantId: string, action: string): Promise<void> {

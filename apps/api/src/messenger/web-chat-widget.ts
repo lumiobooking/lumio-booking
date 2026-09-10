@@ -94,7 +94,32 @@ const WIDGET = `(function () {
       '.f button:disabled{opacity:.5;cursor:default}' +
       '.e{font-size:12px;color:#b91c1c;padding:0 12px 8px;background:#fff}' +
       '.pw{font-size:10.5px;color:#9ca3af;text-align:center;padding:4px 0 6px;background:#fff}' +
-      '@media (max-width:480px){.p{bottom:0;' + side + ':0;width:100vw;max-width:100vw;height:100vh;max-height:100vh;border-radius:0}}';
+      // The bubble must never sit on top of the panel it opened. On a phone the
+      // panel IS the screen, so the launcher goes away while it is open — the
+      // header's ✕ is the way out. Keeping both visible is what put a round
+      // blue button across the message box.
+      '.b.hid{display:none}' +
+      '.p{z-index:2147483001}' +
+      // The phone.
+      //
+      // 100vh is a lie on iOS: it measures the viewport WITHOUT the browser
+      // chrome, and it does not shrink when the keyboard opens — which is how
+      // the composer ended up floating in the middle of a blank screen. So the
+      // panel is pinned to all four edges and its real height is set from
+      // visualViewport in JS (see fit()); this rule is only the fallback for a
+      // browser that has no visualViewport.
+      '@media (max-width:480px){' +
+        '.p{inset:0;width:auto;max-width:none;height:auto;max-height:none;border-radius:0}' +
+        // Under the notch and over the home indicator.
+        '.h{padding-top:calc(14px + env(safe-area-inset-top,0px))}' +
+        '.pw{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}' +
+        // 16px or iOS zooms the whole page the moment the field is tapped, and
+        // a zoomed page is the other half of what these screenshots showed.
+        '.f textarea{font-size:16px;height:44px}' +
+        '.f button{font-size:15px;padding:0 16px}' +
+        '.m{padding:12px 10px}' +
+        '.r{max-width:88%;font-size:15px}' +
+      '}';
   }
 
   var styleEl = document.createElement('style');
@@ -177,16 +202,54 @@ const WIDGET = `(function () {
     }).catch(function () { err.textContent = t('fail'); err.style.display = 'block'; waitingSince = 0; render(); });
   }
 
+  function phone() { return window.innerWidth <= 480; }
+
+  /**
+   * Keep the panel inside what the visitor can actually see.
+   *
+   * On iOS a position:fixed element is laid out against the LAYOUT viewport,
+   * which does not move or shrink when the keyboard slides up. The panel
+   * therefore kept its full height, the composer went under the keyboard, and
+   * the message list showed as an empty grey field. visualViewport reports the
+   * part that is really on screen, so the panel is sized and offset from that.
+   */
+  function fit() {
+    var vv = window.visualViewport;
+    if (!open || !phone() || !vv) { panel.style.top = ''; panel.style.height = ''; return; }
+    panel.style.top = vv.offsetTop + 'px';
+    panel.style.height = vv.height + 'px';
+  }
+
   function toggle(force) {
     open = typeof force === 'boolean' ? force : !open;
     panel.className = 'p' + (open ? ' o' : '');
-    if (open) { unread = 0; badge.style.display = 'none'; poll(); setTimeout(function () { input.focus(); }, 50); }
+    // The launcher hides behind the panel on a phone; on a desktop the panel
+    // sits above it and it stays the way to close.
+    bubble.className = 'b' + (open && phone() ? ' hid' : '');
+    // The page behind must not scroll while a full-screen panel is up: a
+    // visitor swiping the message list would otherwise drag the salon's
+    // website around underneath it.
+    try {
+      if (open && phone()) { document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden'; }
+      else { document.documentElement.style.overflow = ''; document.body.style.overflow = ''; }
+    } catch (e) {}
+    if (open) { unread = 0; badge.style.display = 'none'; poll(); setTimeout(function () { input.focus(); fit(); }, 50); }
+    fit();
     schedule();
   }
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', fit);
+    window.visualViewport.addEventListener('scroll', fit);
+  }
+  window.addEventListener('orientationchange', function () { setTimeout(fit, 250); });
 
   bubble.addEventListener('click', function () { toggle(); });
   sendBtn.addEventListener('click', send);
   input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  // The keyboard appearing shortens the list; without this the visitor is
+  // left looking at the middle of the conversation instead of its end.
+  input.addEventListener('focus', function () { setTimeout(function () { fit(); list.scrollTop = list.scrollHeight; }, 300); });
 
   get('').then(function (c) {
     if (!c || !c.ok) return;

@@ -1,113 +1,213 @@
-'use client';
+/**
+ * Privacy Policy — a real page at /privacy.
+ *
+ * WHY IT EXISTS
+ *
+ * Every platform we publish through (TikTok, Meta, Google) asks for a public
+ * privacy policy URL and a reviewer clicks it. The `/:slug` rewrite in
+ * next.config.js sends any unmatched single segment to a salon's booking page,
+ * so a policy URL that is not a real route silently shows a booking form to
+ * the reviewer instead. This file makes /privacy a real route, which wins over
+ * the rewrite (`afterFiles` runs after real routes).
+ *
+ * Plain colours only — no var(--c…) backgrounds — so theme-lint has nothing to
+ * flag, and the page reads the same everywhere.
+ */
+import type { Metadata } from 'next';
 
-// Public Privacy Policy — required for A2P 10DLC (Twilio/TCR) approval.
-// Contains the mandatory clauses: SMS opt-in consent data is never shared, and
-// no mobile information is shared with third parties for marketing.
+export const metadata: Metadata = {
+  title: 'Privacy Policy — Lumio Booking',
+  description: 'How Lumio Booking collects, uses and protects information.',
+};
+
+const UPDATED = 'September 10, 2026';
+const CONTACT = 'support@lumiobooking.com';
 
 export default function PrivacyPage() {
   return (
-    <main style={wrap}>
-      <div style={card}>
-        <h1 style={h1}>Privacy Policy</h1>
-        <p style={muted}>Lumio Booking, operated by Lumio Agency. Last updated: June 2026.</p>
+    <main className="legal">
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+        .legal{max-width:820px;margin:0 auto;padding:48px 20px 96px;background:#ffffff;color:#1f2430;
+          font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+        .legal h1{font-size:32px;line-height:1.25;margin:0 0 8px;color:#111827}
+        .legal .meta{color:#6b7280;font-size:14px;margin:0 0 40px}
+        .legal h2{font-size:20px;margin:40px 0 12px;color:#111827}
+        .legal h3{font-size:16px;margin:24px 0 8px;color:#111827}
+        .legal p,.legal li{color:#374151}
+        .legal ul{padding-left:22px;margin:12px 0}
+        .legal li{margin:6px 0}
+        .legal a{color:#b3245f}
+        .legal .box{background:#f7f7f9;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;margin:20px 0}
+        .legal footer{margin-top:56px;padding-top:20px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:14px}
+        @media (max-width:600px){.legal{padding:32px 16px 72px}.legal h1{font-size:26px}}
+      `,
+        }}
+      />
 
-        <p style={p}>
-          This Privacy Policy explains how Lumio Booking (&ldquo;we&rdquo;, &ldquo;us&rdquo;) and the salons that use our software
-          collect, use, and protect your information when you book an appointment or receive messages from us.
-        </p>
+      <h1>Privacy Policy</h1>
+      <p className="meta">Last updated: {UPDATED}</p>
 
-        <h2 style={h2}>Information we collect</h2>
-        <p style={p}>
-          When you book an appointment we collect your name, phone number, email address (optional), and appointment
-          details. We use this information to schedule your visit, send you appointment-related messages, and (only if you
-          opt in) send you promotional offers from the salon you booked with.
-        </p>
+      <p>
+        Lumio Booking (&ldquo;Lumio&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;) is a booking and marketing platform for
+        local service businesses such as salons, spas and barbershops. This policy explains what information we
+        collect, why we collect it, and what we do with it.
+      </p>
+      <p>
+        Two groups of people use Lumio, and the policy treats them differently. <strong>Business customers</strong> are
+        the salon owners and staff who log in to run their business. <strong>Consumers</strong> are the people who book
+        an appointment through a salon&rsquo;s booking page or message a salon.
+      </p>
 
-        <h2 style={h2}>SMS / text messaging</h2>
-        <p style={p}>
-          If you provide your mobile number when booking, you may receive transactional text messages such as appointment
-          confirmations and reminders. If you separately opt in (by checking the marketing consent box), you may also
-          receive promotional offers. Message frequency varies. <strong>Message and data rates may apply.</strong> You can
-          opt out at any time by replying <strong>STOP</strong>, or reply <strong>HELP</strong> for assistance.
-        </p>
-        <p style={p}>
-          <strong>Text messaging consent and opt-in data will not be shared with any third parties.</strong> No mobile
-          information will be shared with third parties or affiliates for marketing or promotional purposes at any time.
-          The above categories of data we may process exclude text-messaging originator opt-in data and consent — this
-          information is never shared, sold, or transferred to any third party or lead generator.
-        </p>
+      <h2>1. Information we collect</h2>
 
-        <h2 style={h2}>How we use your information</h2>
-        <p style={p}>
-          We use your information only to: provide and manage your bookings; send appointment confirmations, reminders,
-          and updates; process payments; run loyalty and (with consent) marketing communications for the salon you
-          visited; and improve the service. We do not sell your personal information.
-        </p>
+      <h3>From business customers</h3>
+      <ul>
+        <li>Account details: name, email address, phone number, and the salon&rsquo;s business details.</li>
+        <li>Content you create in Lumio: appointments, services, prices, staff records, posts and schedules.</li>
+        <li>Photos and videos you upload in order to publish them to your own social accounts.</li>
+        <li>
+          Access tokens for the social accounts you choose to connect (TikTok, Facebook, Instagram, Google Business
+          Profile, Zalo). See section 3.
+        </li>
+      </ul>
 
-        <h2 style={h2}>Facebook Messenger &amp; Instagram messaging</h2>
-        <p style={p}>
-          A salon may connect its own Facebook Page or Instagram professional account so that messages sent to that
-          Page or account are answered by Lumio Booking on the salon&apos;s behalf. When a salon connects its Page we
-          receive, from Meta, the Page name and Page ID, the linked Instagram account ID, and a Page access token used
-          to receive and send messages. When a customer messages the Page or account, we receive the message content,
-          the customer&apos;s page-scoped ID, their public display name and the message timestamp. This information is
-          used only to answer that conversation, to create or update the appointment the customer asks for, and to show
-          the conversation to the salon in its own dashboard. We never read post insights, reactions, comments,
-          ratings or advertising data; we do not use messaging data for advertising, profiling or resale; and one
-          salon can never see another salon&apos;s conversations. A salon can disconnect its Page at any time from the
-          dashboard, which immediately revokes the stored token and stops all message processing.
-        </p>
+      <h3>From consumers</h3>
+      <ul>
+        <li>Booking details: name, phone number, email address if given, and the service and time chosen.</li>
+        <li>Messages you send to a salon through a channel the salon has connected to Lumio, including any photos you attach.</li>
+      </ul>
 
-        <h2 style={h2}>Automated replies (AI)</h2>
-        <p style={p}>
-          Replies are generated automatically. To do this, the text of the conversation and the salon&apos;s own
-          business information (services, prices, opening hours) are sent to our AI provider, Anthropic, acting as our
-          processor solely to generate the reply. Anthropic does not use this content to train its models. A salon
-          employee can take over any conversation at any time, and a customer can ask to speak to a person.
-        </p>
+      <h3>Automatically</h3>
+      <ul>
+        <li>Basic technical logs needed to operate and secure the service: IP address, browser type, timestamps, error traces.</li>
+      </ul>
 
-        <h2 style={h2}>Sharing</h2>
-        <p style={p}>
-          Your information is shared only with the salon you booked with and the service providers that operate the
-          platform on our behalf (for example, secure hosting, email, SMS, and payment processors) strictly to deliver
-          the service. These providers are bound to protect your data and may not use it for their own purposes. As stated
-          above, SMS opt-in/consent data is never shared.
-        </p>
+      <p>We do not sell personal information, and we do not buy it.</p>
 
-        <h2 style={h2}>Data retention &amp; security</h2>
-        <p style={p}>
-          We retain your information for as long as needed to provide the service and meet legal obligations, and we use
-          reasonable administrative and technical safeguards to protect it. Data is stored on secure cloud
-          infrastructure in the United States, encrypted in transit (TLS) and at rest, and access by our staff is
-          role-restricted and logged. Messaging conversations are kept only as long as the salon keeps its Page
-          connected; disconnecting the Page or deleting the salon account removes them. You may request deletion of
-          your data at any time — see our <a href="/data-deletion" style={{ color: '#6366f1' }}>data deletion</a> page.
-        </p>
+      <h2>2. How we use information</h2>
+      <ul>
+        <li>To run the booking system: create, confirm, change and remind about appointments.</li>
+        <li>To publish the content a business customer has scheduled, to the accounts that customer connected.</li>
+        <li>To deliver messages between a salon and its customers, and to draft replies with the salon&rsquo;s approval settings.</li>
+        <li>To provide support, investigate problems, and prevent abuse.</li>
+        <li>To meet legal obligations.</li>
+      </ul>
+      <p>
+        We do not use consumer contact details for our own marketing. A salon may message its own customers through
+        Lumio; the salon is responsible for having permission to do so.
+      </p>
 
-        <h2 style={h2}>Your choices</h2>
-        <p style={p}>
-          You may opt out of marketing texts at any time by replying STOP. You may request access to or deletion of your
-          information by contacting the salon you booked with or us at the address below.
-        </p>
-
-        <h2 style={h2}>Contact</h2>
-        <p style={p}>
-          Lumio Agency — <a href="mailto:lumioagency.com@gmail.com" style={a}>lumioagency.com@gmail.com</a> ·{' '}
-          <a href="https://lumioagency.com" style={a}>lumioagency.com</a>
-        </p>
-
-        <p style={{ ...muted, marginTop: 24 }}>
-          See also our <a href="/terms" style={a}>Terms of Service &amp; Messaging Terms</a>.
+      <h2>3. Connected social accounts</h2>
+      <p>
+        A business customer may connect their own social accounts to Lumio so that scheduled posts publish
+        automatically. Connecting is always done by the account holder, through the platform&rsquo;s own authorisation
+        screen. Lumio never asks for, receives or stores a social account password.
+      </p>
+      <div className="box">
+        <p style={{ margin: 0 }}>
+          <strong>What we store:</strong> the access and refresh tokens the platform issues, the account&rsquo;s
+          public display name and avatar, and the identifier the platform uses for that account.
         </p>
       </div>
+
+      <h3>TikTok</h3>
+      <ul>
+        <li>
+          We request only the permissions we use: <code>user.info.basic</code>, to show you which account is connected,
+          and <code>video.publish</code>, to post the content you scheduled.
+        </li>
+        <li>
+          Before every post we ask TikTok for your current creator settings and apply them. Your privacy level is never
+          preset by Lumio — you choose it for each post.
+        </li>
+        <li>We do not read your videos, your followers, your analytics, your inbox or any other account data.</li>
+        <li>
+          You can disconnect at any time from the Channels page in Lumio, which deletes the stored tokens. You can also
+          revoke access from TikTok directly, under Settings and privacy &rarr; Security and permissions &rarr; Manage
+          app permissions.
+        </li>
+      </ul>
+
+      <h3>Meta (Facebook and Instagram), Google Business Profile, Zalo</h3>
+      <p>
+        The same principles apply: we request the narrowest permissions needed to publish content and to handle
+        messages the business has asked us to handle, we store only the tokens and public account identifiers, and
+        disconnecting in Lumio deletes them.
+      </p>
+
+      <h2>4. Sharing</h2>
+      <p>We share information only in these situations:</p>
+      <ul>
+        <li>
+          <strong>With the platform you connected</strong>, in order to carry out what you asked — for example, sending
+          your video and caption to TikTok so it appears on your profile.
+        </li>
+        <li>
+          <strong>With service providers</strong> that host and operate Lumio (cloud hosting, database hosting, email
+          and SMS delivery, and the AI provider that drafts message replies). They may process information only on our
+          instructions.
+        </li>
+        <li>
+          <strong>With the salon</strong> whose booking page or message channel a consumer used. Each salon sees only
+          its own data; Lumio keeps every business separated.
+        </li>
+        <li><strong>When the law requires it</strong>, or to protect the rights and safety of people using Lumio.</li>
+      </ul>
+
+      <h2>5. Retention</h2>
+      <ul>
+        <li>Business account data is kept for as long as the account is active.</li>
+        <li>Social access tokens are deleted as soon as you disconnect the account.</li>
+        <li>Booking and message records are kept while the salon&rsquo;s account is active, so the salon has its own history.</li>
+        <li>
+          After an account is closed we delete or anonymise its data within 90 days, except where we must keep records
+          longer to comply with the law.
+        </li>
+      </ul>
+
+      <h2>6. Security</h2>
+      <p>
+        Traffic to Lumio runs over HTTPS. Access tokens are stored server-side and are never sent to a browser. Staff
+        accounts see only what their role allows, and each business&rsquo;s data is isolated from every other
+        business&rsquo;s. No system is perfect, but we treat credentials and customer contact details as the most
+        sensitive things we hold and design around that.
+      </p>
+
+      <h2>7. Your rights</h2>
+      <p>
+        You may ask us to show you the personal information we hold about you, correct it, or delete it. Business
+        customers can do most of this directly inside Lumio. For anything else, write to us at the address below and we
+        will respond within 30 days. If you are a consumer who booked with a salon, we will pass your request to that
+        salon where the salon is the one holding the record.
+      </p>
+
+      <h2>8. Children</h2>
+      <p>
+        Lumio is a tool for businesses and is not directed at children. We do not knowingly collect personal
+        information from anyone under 13. If you believe a child has given us information, contact us and we will
+        remove it.
+      </p>
+
+      <h2>9. International transfers</h2>
+      <p>
+        Lumio is operated from Vietnam and serves businesses in the United States and elsewhere. Information may be
+        processed in either country and by the service providers listed in section 4.
+      </p>
+
+      <h2>10. Changes</h2>
+      <p>
+        If we change this policy we will update the date at the top of this page, and we will tell business customers
+        inside the product when the change is significant.
+      </p>
+
+      <h2>11. Contact</h2>
+      <p>
+        Questions, requests, or data deletion: <a href={`mailto:${CONTACT}`}>{CONTACT}</a>
+      </p>
+
+      <footer>Lumio Booking · lumiobooking.com</footer>
     </main>
   );
 }
-
-const wrap: React.CSSProperties = { minHeight: '100vh', background: 'var(--cf8fafc)', padding: '32px 16px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
-const card: React.CSSProperties = { maxWidth: 760, margin: '0 auto', background: '#fff', borderRadius: 16, padding: '32px 36px', boxShadow: '0 8px 30px rgba(15,23,42,0.08)', color: 'var(--c1e293b)' };
-const h1: React.CSSProperties = { fontSize: 28, margin: '0 0 4px', color: 'var(--c0f172a)' };
-const h2: React.CSSProperties = { fontSize: 17, margin: '24px 0 6px', color: 'var(--c0f172a)' };
-const p: React.CSSProperties = { fontSize: 14.5, lineHeight: 1.65, color: 'var(--c334155)', margin: '0 0 10px' };
-const muted: React.CSSProperties = { fontSize: 13, color: 'var(--c64748b)', margin: '0 0 18px' };
-const a: React.CSSProperties = { color: '#4f46e5', textDecoration: 'none' };

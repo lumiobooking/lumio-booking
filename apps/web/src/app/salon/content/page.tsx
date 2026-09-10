@@ -324,6 +324,52 @@ const TT_PRIVACY: { k: NonNullable<TikTokOpts['privacy']>; vi: string; en: strin
   { k: 'SELF_ONLY', vi: 'Chỉ mình tôi (riêng tư)', en: 'Only me (private)' },
 ];
 
+/**
+ * What still stops this post from reaching TikTok.
+ *
+ * TikTok's Content Sharing Guidelines are checked by a person watching a
+ * screen recording, and the thing they are checking is that the app cannot
+ * publish until the creator has made every choice themselves. So the reasons
+ * are computed once, here, and used twice: the panel lists them, and the
+ * publish button refuses while any of them stand. One source, so the screen
+ * and the button can never tell the person two different stories.
+ */
+function tiktokGate(
+  draft: { channels: string[]; media: { kind: string; url: string }[]; tiktok?: TikTokOpts | null },
+  tt: { needsReconnect: boolean; creator: TikTokCreator | null } | null,
+  clipSec: number | null,
+  vi: boolean,
+): string[] {
+  if (!draft.channels.includes('tiktok')) return [];
+  const o = draft.tiktok ?? null;
+  const cr = tt?.creator ?? null;
+  const out: string[] = [];
+  const say = (a: string, b: string) => { out.push(vi ? a : b); };
+
+  if (!tt) say('Chưa kết nối TikTok.', 'TikTok is not connected.');
+  else if (tt.needsReconnect) say('Kết nối TikTok đã hết hạn — bấm "Kết nối lại TikTok".', 'The TikTok connection has expired — press "Reconnect TikTok".');
+
+  const videos = draft.media.filter((m) => m.kind === 'video');
+  if (videos.length === 0) say('Chưa có video — TikTok cần đúng một video.', 'No video yet — TikTok needs exactly one.');
+  else if (videos.length > 1) say(`Đang gắn ${videos.length} video — TikTok chỉ nhận một.`, `${videos.length} videos attached — TikTok takes one.`);
+
+  if (!o?.privacy) say('Chưa chọn "Ai xem được bài này" — TikTok bắt buộc người đăng tự chọn.', 'No audience chosen — TikTok requires the creator to pick one.');
+  else if (cr?.privacyOptions?.length && !cr.privacyOptions.includes(o.privacy)) say('Tài khoản TikTok không cho phép mức riêng tư đang chọn.', 'This TikTok account does not allow the chosen audience.');
+
+  if (o?.disclose && !o.yourBrand && !o.brandedContent) say('Đã bật "Tiết lộ nội dung thương mại" nhưng chưa chọn loại nào.', 'Commercial disclosure is on but neither kind is chosen.');
+  if (o?.brandedContent && o.privacy === 'SELF_ONLY') say('"Nội dung được tài trợ" không đăng ở chế độ "Chỉ mình tôi".', 'Branded content cannot be posted as "Only me".');
+
+  if (cr?.commentDisabled && o?.allowComment) say('Tài khoản đã tắt bình luận trong app TikTok — bỏ tick "Bình luận".', 'Comments are off in the TikTok app — untick "Comment".');
+  if (cr?.duetDisabled && o?.allowDuet) say('Tài khoản đã tắt Duet trong app TikTok — bỏ tick "Duet".', 'Duet is off in the TikTok app — untick "Duet".');
+  if (cr?.stitchDisabled && o?.allowStitch) say('Tài khoản đã tắt Stitch trong app TikTok — bỏ tick "Stitch".', 'Stitch is off in the TikTok app — untick "Stitch".');
+
+  if (cr?.maxDurationSec && clipSec && clipSec > cr.maxDurationSec + 1) {
+    say(`Video dài ${Math.round(clipSec)} giây — tài khoản này chỉ đăng được tối đa ${cr.maxDurationSec} giây.`,
+        `The clip runs ${Math.round(clipSec)}s — this account allows ${cr.maxDurationSec}s.`);
+  }
+  return out;
+}
+
 /** What /content/posts/google-check answers — see api content/gbp-policy.ts. */
 interface GbpCheckResult {
   summary: string;
@@ -345,7 +391,7 @@ interface QueuePayload {
   /** The Google Business Profile location, when connected under Đánh giá Google. */
   google?: { title: string | null } | null;
   /** The TikTok account, when connected: name and what it may post. */
-  tiktok?: { displayName: string | null; needsReconnect: boolean; creator: TikTokCreator | null } | null;
+  tiktok?: { displayName: string | null; username?: string | null; avatarUrl?: string | null; needsReconnect: boolean; creator: TikTokCreator | null } | null;
   posts: QueuedPost[];
   /** Advice, never a refusal: where a month of posts fights itself. */
   crowding: { id: string; minutesApart: number; message: string }[];
@@ -597,6 +643,11 @@ function Inner() {
   } | null>(null);
   /** The TikTok connection, as the connect/disconnect buttons need it. */
   const [ttBusy, setTtBusy] = useState(false);
+  /** Re-reading what the TikTok account allows, on demand. */
+  const [ttCreatorBusy, setTtCreatorBusy] = useState(false);
+  /** The attached clip, measured in the browser, so a too-long video is
+      caught here rather than by TikTok after the upload finishes. */
+  const [ttClip, setTtClip] = useState<{ url: string; sec: number } | null>(null);
   const [mediaInput, setMediaInput] = useState('');
   const [uploading, setUploading] = useState(false);
   /** "3/5" while a batch of photos is going up, so the wait has a shape. */
@@ -1063,6 +1114,22 @@ function Inner() {
       }
     } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
     finally { setTtBusy(false); }
+  }
+
+  /**
+   * Ask TikTok again what this account may post. TikTok requires the app to
+   * honour the account's own settings rather than cache them forever, and a
+   * person who has just changed a setting in the TikTok app needs a way to
+   * pull it through without disconnecting.
+   */
+  async function refreshTikTokCreator() {
+    if (ttCreatorBusy) return;
+    setTtCreatorBusy(true); setPostErr(null);
+    try {
+      await apiFetch('/tiktok/creator', { method: 'POST', token });
+      await loadQueue();
+    } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
+    finally { setTtCreatorBusy(false); }
   }
 
   async function postAction(id: string, action: 'publish' | 'cancel') {
@@ -2916,7 +2983,8 @@ function Inner() {
               {postDraft && (() => {
               const kit = queue?.postKit;
               const check = kit ? checkPost(postDraft.message, kit.shop) : { findings: [], unchecked: [] };
-              const blocked = check.findings.length > 0 && !contactOverride;
+              const ttGate = tiktokGate(postDraft, queue?.tiktok ?? null, ttClip && ttClip.url === postDraft.media.find((m) => m.kind === 'video')?.url ? ttClip.sec : null, vi);
+              const blocked = (check.findings.length > 0 && !contactOverride) || ttGate.length > 0;
               return (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#6366f1' }}>
                   {/* Which salon this post is for, in that salon's own colour.
@@ -3098,6 +3166,10 @@ function Inner() {
                     const allowed = cr?.privacyOptions?.length ? cr.privacyOptions : TT_PRIVACY.map((x) => x.k);
                     const onlyPrivate = allowed.length === 1 && allowed[0] === 'SELF_ONLY';
                     const video = postDraft.media.find((m) => m.kind === 'video');
+                    const clipSec = ttClip && video && ttClip.url === video.url ? ttClip.sec : null;
+                    const gate = tiktokGate(postDraft, tt, clipSec, vi);
+                    const checkedAt = cr?.checkedAt ? new Date(cr.checkedAt) : null;
+                    const mmss = (n: number) => `${Math.floor(n / 60)}:${String(Math.round(n % 60)).padStart(2, '0')}`;
                     const Toggle = ({ k, label, off }: { k: 'allowComment' | 'allowDuet' | 'allowStitch'; label: string; off: boolean }) => (
                       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: off ? 'var(--c64748b)' : 'var(--ce2e8f0)', cursor: off ? 'not-allowed' : 'pointer' }} title={off ? T('Tài khoản đã tắt mục này trong app TikTok', 'Switched off in the TikTok app settings') : undefined}>
                         <input type="checkbox" disabled={off} checked={!off && Boolean(o[k])} onChange={(e) => set({ [k]: e.target.checked } as Partial<TikTokOpts>)} style={{ width: 15, height: 15, accentColor: '#69c9d0' }} />
@@ -3105,45 +3177,113 @@ function Inner() {
                       </label>
                     );
                     return (
-                      <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 9, fontSize: 12.5, lineHeight: 1.55, background: 'var(--c1e293b)', border: `1px solid ${!tt || !o.privacy || !video ? '#f59e0b' : 'var(--c334155)'}` }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 9, fontSize: 12.5, lineHeight: 1.55, background: 'var(--c1e293b)', border: `1px solid ${gate.length ? '#f59e0b' : 'var(--c334155)'}` }}>
+
+                        {/* Who this is going to. TikTok's reviewer looks for the
+                            creator's own name and picture on the screen that
+                            publishes for them — an app that posts to "an
+                            account" without naming it is what they reject. */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
                           <b style={{ color: 'var(--ce2e8f0)' }}>🎵 {T('Bài đăng TikTok', 'TikTok post')}</b>
-                          <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
-                            {tt ? <>{T('Đăng lên tài khoản', 'Posting to')} <b style={{ color: 'var(--ce2e8f0)' }}>{tt.displayName ?? 'TikTok'}</b></> : T('chưa kết nối TikTok', 'TikTok not connected')}
-                            {cr?.maxDurationSec ? ` · ${T('video tối đa', 'max video')} ${Math.round(cr.maxDurationSec / 60)} ${T('phút', 'min')}` : ''}
-                          </span>
+                          {tt ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '3px 9px 3px 3px', borderRadius: 999, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }}>
+                              {tt.avatarUrl
+                                ? <img src={tt.avatarUrl} alt="" width={22} height={22} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
+                                : <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--c334155)', display: 'inline-block' }} />}
+                              <span style={{ fontSize: 12, color: 'var(--ce2e8f0)', fontWeight: 700 }}>{tt.displayName ?? 'TikTok'}</span>
+                              {tt.username && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>@{tt.username}</span>}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11.5, color: 'var(--cfde68a)' }}>{T('chưa kết nối TikTok', 'TikTok not connected')}</span>
+                          )}
+                          {tt && (
+                            <button
+                              onClick={refreshTikTokCreator}
+                              disabled={ttCreatorBusy}
+                              title={T('Đọc lại cài đặt từ tài khoản TikTok (quyền riêng tư, bình luận, Duet, Stitch, độ dài tối đa)', 'Re-read this account’s settings from TikTok (privacy, comments, Duet, Stitch, max length)')}
+                              style={{ marginLeft: 'auto', padding: '5px 11px', borderRadius: 7, fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: ttCreatorBusy ? 'wait' : 'pointer', border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ca5b4fc)' }}
+                            >
+                              {ttCreatorBusy ? T('↻ Đang đọc cài đặt…', '↻ Reading settings…') : T('↻ Đọc lại cài đặt tài khoản', '↻ Re-read account settings')}
+                            </button>
+                          )}
                         </div>
+
+                        {/* Where these controls came from. Saying it out loud is
+                            half of what the audit is looking for: the options
+                            below are the account's, not Lumio's. */}
+                        {cr && (
+                          <div style={{ marginTop: 6, fontSize: 11.5, color: 'var(--c94a3b8)' }}>
+                            {T('Các lựa chọn bên dưới lấy từ chính tài khoản TikTok này', 'The options below come from this TikTok account')}
+                            {checkedAt ? ` · ${T('đọc lúc', 'read at')} ${checkedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${checkedAt.toLocaleDateString()}` : ''}
+                            {cr.maxDurationSec ? ` · ${T('video tối đa', 'max video')} ${Math.round(cr.maxDurationSec / 60)} ${T('phút', 'min')}` : ''}
+                          </div>
+                        )}
 
                         {!tt && (
                           <div style={{ marginTop: 6, color: 'var(--cfde68a)' }}>{T('Bấm "Kết nối TikTok" ở đầu tab này trước. Bài vẫn lưu nháp được.', 'Press "Connect TikTok" at the top of this tab first. The draft still saves.')}</div>
-                        )}
-                        {!video && (
-                          <div style={{ marginTop: 6, color: 'var(--cfde68a)' }}>{T('TikTok cần đúng một video MP4 (dọc 9:16 là đẹp nhất). Dán link video .mp4 công khai ở ô bên dưới; ảnh không đăng lên TikTok được.', 'TikTok needs exactly one MP4 video (9:16 portrait looks best). Paste a public .mp4 link below; photos do not go to TikTok.')}</div>
                         )}
                         {onlyPrivate && (
                           <div style={{ marginTop: 6, color: 'var(--cfde68a)' }}>{T('App Lumio chưa được TikTok duyệt (Content Posting audit) nên tài khoản này chỉ cho đăng "Chỉ mình tôi". Đăng thử được ngay; bài công khai sau khi TikTok duyệt app.', 'Lumio’s app has not passed TikTok’s Content Posting audit yet, so this account only allows "Only me". Test posts work now; public posts after the audit.')}</div>
                         )}
 
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10, marginTop: 9 }}>
-                          <label style={{ display: 'block' }}>
-                            <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4 }}>{T('Ai xem được bài này', 'Who can view this video')} <span style={{ color: '#f59e0b' }}>*</span></div>
-                            <select
-                              value={o.privacy ?? ''}
-                              onChange={(e) => set({ privacy: e.target.value as TikTokOpts['privacy'] })}
-                              style={{ width: '100%', minHeight: 38, padding: '7px 10px', borderRadius: 8, border: `1px solid ${o.privacy ? 'var(--c334155)' : '#f59e0b'}`, background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 13, fontFamily: 'inherit' }}
-                            >
-                              <option value="">{T('— Chọn (TikTok bắt buộc tự chọn) —', '— Choose (TikTok requires a choice) —')}</option>
-                              {TT_PRIVACY.filter((x) => allowed.includes(x.k)).map((x) => (
-                                <option key={x.k} value={x.k}>{vi ? x.vi : x.en}</option>
-                              ))}
-                            </select>
-                          </label>
-                          <div>
-                            <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4 }}>{T('Cho phép người xem', 'Allow viewers to')}</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                              <Toggle k="allowComment" label={T('Bình luận', 'Comment')} off={Boolean(cr?.commentDisabled)} />
-                              <Toggle k="allowDuet" label="Duet" off={Boolean(cr?.duetDisabled)} />
-                              <Toggle k="allowStitch" label="Stitch" off={Boolean(cr?.stitchDisabled)} />
+                        {/* The clip itself, on the same screen as the choices —
+                            nobody should have to scroll away to check what they
+                            are about to publish, and the reviewer wants to see
+                            the content preview beside the settings. */}
+                        <div style={{ display: 'flex', gap: 11, marginTop: 9, alignItems: 'flex-start', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+                          <div style={{ width: 84, flex: '0 0 auto' }}>
+                            {video ? (
+                              <video
+                                src={video.url}
+                                muted
+                                playsInline
+                                preload="metadata"
+                                onLoadedMetadata={(e) => {
+                                  const sec = e.currentTarget.duration;
+                                  if (Number.isFinite(sec) && (!ttClip || ttClip.url !== video.url || Math.abs(ttClip.sec - sec) > 0.5)) setTtClip({ url: video.url, sec });
+                                }}
+                                style={{ width: 84, height: 112, borderRadius: 8, objectFit: 'cover', background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }}
+                              />
+                            ) : (
+                              <div style={{ width: 84, height: 112, borderRadius: 8, background: 'var(--c0f172a)', border: '1px dashed #f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--cfde68a)', textAlign: 'center', padding: 6, lineHeight: 1.35 }}>
+                                {T('chưa có video', 'no video yet')}
+                              </div>
+                            )}
+                            {video && (
+                              <div style={{ fontSize: 11, color: clipSec && cr?.maxDurationSec && clipSec > cr.maxDurationSec + 1 ? 'var(--cfca5a5)' : 'var(--c94a3b8)', marginTop: 4, textAlign: 'center' }}>
+                                {clipSec ? mmss(clipSec) : T('…', '…')}
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                            {!video && (
+                              <div style={{ marginBottom: 8, color: 'var(--cfde68a)' }}>{T('TikTok cần đúng một video MP4 (dọc 9:16 là đẹp nhất). Dùng "Tải video lên" hoặc dán link Google Drive ở phần bên dưới; ảnh không đăng lên TikTok được.', 'TikTok needs exactly one MP4 video (9:16 portrait looks best). Use "Upload a video" or paste a Google Drive link below; photos do not go to TikTok.')}</div>
+                            )}
+                            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
+                              <label style={{ display: 'block' }}>
+                                <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4 }}>{T('Ai xem được bài này', 'Who can view this video')} <span style={{ color: '#f59e0b' }}>*</span></div>
+                                <select
+                                  value={o.privacy ?? ''}
+                                  onChange={(e) => set({ privacy: e.target.value as TikTokOpts['privacy'] })}
+                                  style={{ width: '100%', minHeight: 38, padding: '7px 10px', borderRadius: 8, border: `1px solid ${o.privacy ? 'var(--c334155)' : '#f59e0b'}`, background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 13, fontFamily: 'inherit' }}
+                                >
+                                  <option value="">{T('— Chọn (TikTok bắt buộc tự chọn) —', '— Choose (TikTok requires a choice) —')}</option>
+                                  {TT_PRIVACY.filter((x) => allowed.includes(x.k)).map((x) => (
+                                    <option key={x.k} value={x.k} disabled={x.k === 'SELF_ONLY' && Boolean(o.brandedContent)}>
+                                      {vi ? x.vi : x.en}{x.k === 'SELF_ONLY' && o.brandedContent ? T(' — không dùng được với nội dung tài trợ', ' — not available for branded content') : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <div>
+                                <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4 }}>{T('Cho phép người xem', 'Allow viewers to')}</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                  <Toggle k="allowComment" label={T('Bình luận', 'Comment')} off={Boolean(cr?.commentDisabled)} />
+                                  <Toggle k="allowDuet" label="Duet" off={Boolean(cr?.duetDisabled)} />
+                                  <Toggle k="allowStitch" label="Stitch" off={Boolean(cr?.stitchDisabled)} />
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -3163,22 +3303,46 @@ function Inner() {
                                 <span>{T('Thương hiệu của tiệm', 'Your brand')}<br /><span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{T('Video sẽ được gắn nhãn "Promotional content".', 'Your video will be labeled "Promotional content".')}</span></span>
                               </label>
                               <label style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 7, fontSize: 12.5, color: 'var(--ce2e8f0)', cursor: 'pointer' }}>
-                                <input type="checkbox" checked={Boolean(o.brandedContent)} onChange={(e) => set({ brandedContent: e.target.checked })} style={{ width: 15, height: 15, accentColor: '#69c9d0', marginTop: 2 }} />
+                                <input type="checkbox" checked={Boolean(o.brandedContent)} onChange={(e) => set({ brandedContent: e.target.checked, ...(e.target.checked && o.privacy === 'SELF_ONLY' ? { privacy: '' as TikTokOpts['privacy'] } : {}) })} style={{ width: 15, height: 15, accentColor: '#69c9d0', marginTop: 2 }} />
                                 <span>{T('Nội dung được tài trợ', 'Branded content')}<br /><span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{T('Video sẽ được gắn nhãn "Paid partnership". Không đặt "Chỉ mình tôi" được.', 'Your video will be labeled "Paid partnership". Cannot be "Only me".')}</span></span>
                               </label>
-                              {o.brandedContent && o.privacy === 'SELF_ONLY' && (
-                                <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)' }}>{T('Nội dung được tài trợ không được đặt "Chỉ mình tôi" — chọn quyền xem khác.', 'Branded content cannot be "Only me" — choose another audience.')}</div>
+                              {(o.yourBrand || o.brandedContent) && (
+                                <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
+                                  {T('Nhãn hiện trên TikTok:', 'The label shown on TikTok:')}{' '}
+                                  <b style={{ color: 'var(--ce2e8f0)' }}>{o.brandedContent ? 'Paid partnership' : 'Promotional content'}</b>
+                                </div>
                               )}
                             </div>
                           )}
                         </div>
 
+                        {/* The consent line TikTok requires, worded the way it
+                            requires: Branded Content Policy joins it only when
+                            the post is actually branded content. */}
                         <div style={{ marginTop: 9, fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
                           {T('Khi đăng, tiệm đồng ý với', 'By posting, you agree to TikTok’s')}{' '}
+                          {o.brandedContent && <><a href="https://www.tiktok.com/legal/page/global/bc-policy/en" target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)' }}>Branded Content Policy</a> {T('và', 'and')} </>}
                           <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)' }}>Music Usage Confirmation</a>
-                          {o.brandedContent && <> {T('và', 'and')} <a href="https://www.tiktok.com/legal/page/global/bc-policy/en" target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)' }}>Branded Content Policy</a></>}
                           {T(' của TikTok. Sau khi đăng, TikTok cần vài phút xử lý trước khi video hiện trên trang cá nhân.', '. After publishing, TikTok may take a few minutes to process the video before it appears on the profile.')}
                         </div>
+
+                        {/* Everything still standing in the way, in one place,
+                            in the order a person would fix it. The publish
+                            button is refusing for exactly these reasons. */}
+                        {gate.length > 0 ? (
+                          <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--c334155)' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--cfde68a)' }}>
+                              {T(`Chưa đăng lên TikTok được — còn ${gate.length} việc:`, `Not ready for TikTok — ${gate.length} thing(s) left:`)}
+                            </div>
+                            {gate.map((g, i) => (
+                              <div key={`tg${i}`} style={{ marginTop: 5, color: 'var(--cfde68a)' }}>• {g}</div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--c334155)', color: '#22c55e', fontWeight: 600 }}>
+                            ✓ {T('Đủ điều kiện đăng lên TikTok.', 'Ready to publish to TikTok.')}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}

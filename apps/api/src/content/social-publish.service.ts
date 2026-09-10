@@ -521,8 +521,8 @@ export class SocialPublishService {
        * and no Facebook Page, and the composer offers whichever exists.
        */
       google: gbp ? { title: gbp.title } : null,
-      /** The TikTok account, when connected: name and what it may post. */
-      tiktok: tt ? { displayName: tt.displayName, needsReconnect: tt.needsReconnect, creator: tt.creator } : null,
+      /** The TikTok account, when connected: who it is and what it may post. */
+      tiktok: tt ? { displayName: tt.displayName, username: tt.username, avatarUrl: tt.avatarUrl, needsReconnect: tt.needsReconnect, creator: tt.creator } : null,
       posts,
       /** True for a Lumio support session: may delete published rows too. */
       canDeletePosted: isLumio,

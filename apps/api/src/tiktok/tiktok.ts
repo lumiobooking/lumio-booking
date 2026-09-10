@@ -222,12 +222,17 @@ export interface TikTokTarget {
   connected: boolean;
   needsReconnect: boolean;
   displayName: string | null;
+  /** The @handle and the profile picture — public profile facts, no secrets.
+   *  The composer shows them so the person publishing can see WHOSE account
+   *  the post is about to land on, which is also what TikTok's audit checks. */
+  username: string | null;
+  avatarUrl: string | null;
   creator: CreatorInfo | null;
 }
 
 export function targetOf(s: TikTokSettings | null): TikTokTarget | null {
   if (!s || !s.connected || !s.refreshToken) return null;
-  return { connected: true, needsReconnect: needsReconnect(s), displayName: s.displayName || s.username || null, creator: s.creator };
+  return { connected: true, needsReconnect: needsReconnect(s), displayName: s.displayName || s.username || null, username: s.username || null, avatarUrl: s.avatarUrl || null, creator: s.creator };
 }
 
 interface DraftLike { text: string; media: { url: string; kind: 'image' | 'video' }[] }

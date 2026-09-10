@@ -1,84 +1,143 @@
-'use client';
+/**
+ * Terms of Service — a real page at /terms.
+ *
+ * Same reason as /privacy: the platforms ask for a public terms URL and a
+ * reviewer clicks it, and the `/:slug` rewrite would otherwise hand them a
+ * salon booking page. Real routes win over `afterFiles` rewrites, so this file
+ * is what makes the URL honest.
+ */
+import type { Metadata } from 'next';
 
-// Public Terms of Service + SMS Messaging Terms — required for A2P 10DLC approval.
+export const metadata: Metadata = {
+  title: 'Terms of Service — Lumio Booking',
+  description: 'The terms that apply to businesses using Lumio Booking.',
+};
+
+const UPDATED = 'September 10, 2026';
+const CONTACT = 'support@lumiobooking.com';
 
 export default function TermsPage() {
   return (
-    <main style={wrap}>
-      <div style={card}>
-        <h1 style={h1}>Terms of Service &amp; Messaging Terms</h1>
-        <p style={muted}>Lumio Booking, operated by Lumio Agency. Last updated: June 2026.</p>
+    <main className="legal">
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+        .legal{max-width:820px;margin:0 auto;padding:48px 20px 96px;background:#ffffff;color:#1f2430;
+          font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+        .legal h1{font-size:32px;line-height:1.25;margin:0 0 8px;color:#111827}
+        .legal .meta{color:#6b7280;font-size:14px;margin:0 0 40px}
+        .legal h2{font-size:20px;margin:40px 0 12px;color:#111827}
+        .legal p,.legal li{color:#374151}
+        .legal ul{padding-left:22px;margin:12px 0}
+        .legal li{margin:6px 0}
+        .legal a{color:#b3245f}
+        .legal .box{background:#f7f7f9;border:1px solid #e5e7eb;border-radius:10px;padding:16px 20px;margin:20px 0}
+        .legal footer{margin-top:56px;padding-top:20px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:14px}
+        @media (max-width:600px){.legal{padding:32px 16px 72px}.legal h1{font-size:26px}}
+      `,
+        }}
+      />
 
-        <p style={p}>
-          By using Lumio Booking to book an appointment or by opting in to text messages, you agree to these terms.
-          Lumio Booking is appointment-booking software provided to salons; the salon you book with is responsible for
-          the services you receive.
-        </p>
+      <h1>Terms of Service</h1>
+      <p className="meta">Last updated: {UPDATED}</p>
 
-        <h2 style={h2}>SMS / Text Messaging Terms</h2>
-        <p style={p}>
-          <strong>Program description.</strong> When you book an appointment and provide your mobile number, the salon may
-          send you transactional text messages (appointment confirmations, reminders, and changes). If you check the
-          marketing-consent box, the salon may also send promotional offers and updates.
-        </p>
-        <p style={p}>
-          <strong>How to opt in.</strong> You opt in by providing your phone number when booking and, for promotional
-          messages, by checking the dedicated consent box on the booking form. Consent is not a condition of purchasing
-          any goods or services.
-        </p>
-        <p style={p}>
-          <strong>Message frequency.</strong> Message frequency varies depending on your appointments and the salon&rsquo;s
-          activity.
-        </p>
-        <p style={p}>
-          <strong>Cost.</strong> Message and data rates may apply, according to your mobile carrier&rsquo;s plan.
-        </p>
-        <p style={p}>
-          <strong>How to opt out.</strong> You can cancel SMS messages at any time by replying <strong>STOP</strong> to any
-          message. After you send STOP, we will send a one-time confirmation that you have been unsubscribed and will send
-          no further messages. To resume, reply START.
-        </p>
-        <p style={p}>
-          <strong>Help.</strong> Reply <strong>HELP</strong> for help, or contact the salon directly. Carriers are not
-          liable for delayed or undelivered messages.
-        </p>
-        <p style={p}>
-          <strong>Privacy.</strong> Your text-messaging opt-in and consent data is never shared with third parties. See our{' '}
-          <a href="/privacy" style={a}>Privacy Policy</a> for details.
-        </p>
+      <p>
+        These terms govern your use of Lumio Booking (&ldquo;Lumio&rdquo;), a booking and marketing platform for local
+        service businesses. By creating an account or using the service you agree to them.
+      </p>
 
-        <h2 style={h2}>Bookings &amp; cancellations</h2>
-        <p style={p}>
-          Appointment availability, pricing, deposits, and cancellation rules are set by each salon and shown to you
-          during booking. Please contact the salon directly for changes to a specific appointment.
-        </p>
+      <h2>1. Who may use Lumio</h2>
+      <p>
+        Lumio is for businesses. You must be at least 18 years old and authorised to act for the business you register.
+        You are responsible for everything done under your account, including by your staff, and for keeping your login
+        details private.
+      </p>
 
-        <h2 style={h2}>Acceptable use</h2>
-        <p style={p}>
-          You agree to provide accurate information and not to misuse the service. We may suspend access for fraudulent or
-          abusive activity.
-        </p>
+      <h2>2. What we provide</h2>
+      <ul>
+        <li>An online booking page and appointment calendar for your business.</li>
+        <li>Tools to write, schedule and publish content to social accounts you connect.</li>
+        <li>Tools to receive and answer customer messages on the channels you connect.</li>
+      </ul>
+      <p>
+        We work to keep the service available, but we do not promise uninterrupted service. We may change or improve
+        features over time. If we plan to remove something you rely on, we will give you reasonable notice.
+      </p>
 
-        <h2 style={h2}>Limitation of liability</h2>
-        <p style={p}>
-          The service is provided &ldquo;as is&rdquo;. To the extent permitted by law, Lumio Agency is not liable for indirect
-          or incidental damages arising from your use of the service.
-        </p>
+      <h2>3. Your content</h2>
+      <p>
+        You keep ownership of everything you upload — photos, videos, captions, business information. You grant us the
+        limited permission needed to store it and to publish it where you told us to publish it, and nothing more.
+      </p>
+      <p>You are responsible for having the rights to what you publish. In particular you agree not to use Lumio to:</p>
+      <ul>
+        <li>publish content you do not own or have permission to use, including music, footage and images;</li>
+        <li>publish content that is unlawful, deceptive, hateful, sexually explicit, or that harasses anyone;</li>
+        <li>make claims that break advertising rules in your market, including health, medical and financial claims;</li>
+        <li>impersonate another business or person;</li>
+        <li>send messages to people who have not agreed to receive them.</li>
+      </ul>
 
-        <h2 style={h2}>Contact</h2>
-        <p style={p}>
-          Lumio Agency — <a href="mailto:lumioagency.com@gmail.com" style={a}>lumioagency.com@gmail.com</a> ·{' '}
-          <a href="https://lumioagency.com" style={a}>lumioagency.com</a>
+      <h2>4. Connected accounts and platform rules</h2>
+      <p>
+        When you connect a social account, you authorise Lumio to act on that account only as you direct it — for
+        example, to publish a post you scheduled. You may disconnect at any time.
+      </p>
+      <div className="box">
+        <p style={{ margin: 0 }}>
+          Content you publish through Lumio must also follow the rules of the platform it goes to: TikTok&rsquo;s
+          Community Guidelines and Terms of Service, Meta&rsquo;s Community Standards, Google Business Profile content
+          policy, and Zalo&rsquo;s terms. Those platforms may remove content or restrict an account regardless of
+          anything in these terms.
         </p>
       </div>
+      <p>
+        Lumio screens content before publishing to help you stay inside those rules, but the check is a safeguard, not
+        a guarantee. Final responsibility for what you publish is yours.
+      </p>
+
+      <h2>5. Fees</h2>
+      <p>
+        Paid plans are billed in advance for the period shown when you subscribe. Fees are non-refundable except where
+        the law requires otherwise. We will give you notice before a price change takes effect, and you may cancel
+        before it does.
+      </p>
+
+      <h2>6. Suspension and termination</h2>
+      <p>
+        You may stop using Lumio and close your account at any time. We may suspend or close an account that breaks
+        these terms, that puts the service or other users at risk, or that has unpaid fees. Where circumstances allow,
+        we will warn you first and give you a chance to put things right. After closure we handle your data as
+        described in our <a href="/privacy">Privacy Policy</a>.
+      </p>
+
+      <h2>7. Third-party services</h2>
+      <p>
+        Lumio connects to services we do not control. If one of them changes its rules, restricts its interface, or
+        becomes unavailable, the related feature in Lumio may change or stop working. That is outside our control and
+        is not a breach of these terms.
+      </p>
+
+      <h2>8. Disclaimers and liability</h2>
+      <p>
+        Lumio is provided &ldquo;as is&rdquo;. To the extent the law allows, we exclude implied warranties, and we are
+        not liable for indirect or consequential loss, lost profits, or lost data. Where liability cannot be excluded,
+        it is limited to the fees you paid us in the twelve months before the claim.
+      </p>
+      <p>Nothing here limits liability for fraud, or for anything that cannot lawfully be limited.</p>
+
+      <h2>9. Changes to these terms</h2>
+      <p>
+        We may update these terms. We will change the date at the top of this page and tell you inside the product when
+        a change is significant. Continuing to use Lumio after a change means you accept it.
+      </p>
+
+      <h2>10. Contact</h2>
+      <p>
+        <a href={`mailto:${CONTACT}`}>{CONTACT}</a>
+      </p>
+
+      <footer>Lumio Booking · lumiobooking.com</footer>
     </main>
   );
 }
-
-const wrap: React.CSSProperties = { minHeight: '100vh', background: 'var(--cf8fafc)', padding: '32px 16px', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
-const card: React.CSSProperties = { maxWidth: 760, margin: '0 auto', background: '#fff', borderRadius: 16, padding: '32px 36px', boxShadow: '0 8px 30px rgba(15,23,42,0.08)', color: 'var(--c1e293b)' };
-const h1: React.CSSProperties = { fontSize: 28, margin: '0 0 4px', color: 'var(--c0f172a)' };
-const h2: React.CSSProperties = { fontSize: 17, margin: '24px 0 6px', color: 'var(--c0f172a)' };
-const p: React.CSSProperties = { fontSize: 14.5, lineHeight: 1.65, color: 'var(--c334155)', margin: '0 0 10px' };
-const muted: React.CSSProperties = { fontSize: 13, color: 'var(--c64748b)', margin: '0 0 18px' };
-const a: React.CSSProperties = { color: '#4f46e5', textDecoration: 'none' };

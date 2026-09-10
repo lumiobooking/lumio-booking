@@ -223,7 +223,7 @@ describe('Google Business Profile is a third place, with Google’s own rules', 
 });
 
 describe('TikTok is a fourth place, with its own rulebook', () => {
-  const TT = { connected: true, needsReconnect: false, displayName: 'Lux', creator: { privacyOptions: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'] as ('PUBLIC_TO_EVERYONE' | 'SELF_ONLY')[], maxDurationSec: 600, commentDisabled: false, duetDisabled: false, stitchDisabled: false, checkedAt: '2026-09-10T00:00:00Z' } };
+  const TT = { connected: true, needsReconnect: false, displayName: 'Lux', username: 'lux', avatarUrl: null, creator: { privacyOptions: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'] as ('PUBLIC_TO_EVERYONE' | 'SELF_ONLY')[], maxDurationSec: 600, commentDisabled: false, duetDisabled: false, stitchDisabled: false, checkedAt: '2026-09-10T00:00:00Z' } };
   const opts = { privacy: 'PUBLIC_TO_EVERYONE' as const, allowComment: true, allowDuet: true, allowStitch: true, disclose: false, yourBrand: false, brandedContent: false, aigc: false };
 
   it('posts a video to TikTok alongside Facebook', () => {

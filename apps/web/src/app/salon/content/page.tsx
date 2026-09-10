@@ -2893,7 +2893,7 @@ function Inner() {
                             </div>
                           ) : (
                             <div>{postDraft.media.length
-                              ? T('Chưa có bản lưu trên Drive — Google Drive chưa được kết nối (Super Admin → Google Drive), hoặc bài này đăng trước khi có tính năng lưu.', 'No Drive copy — Google Drive is not connected (Super Admin → Google Drive), or this post predates the archive.')
+                              ? T('Chưa có bản lưu trên Drive — đội Lumio chưa kết nối Google Drive, hoặc bài này đăng trước khi có tính năng lưu.', 'No Drive copy — the Lumio team has not connected Google Drive yet, or this post predates the archive.')
                               : T('Bài này không có ảnh/clip.', 'This post has no files.')}</div>
                           )}
                           {(live.teamNote || live.writerName || live.designerName) && (

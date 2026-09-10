@@ -300,6 +300,20 @@ export class ContentController {
     return this.publisher.list(user);
   }
 
+  /**
+   * Google's rules against a draft, while the writer is still typing: the
+   * text Google would receive, what was stripped, every policy finding —
+   * and, with `ai: true`, the model's look at the photo. Nothing is saved.
+   */
+  @Post('posts/google-check')
+  @HttpCode(200)
+  googleCheck(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { message?: string; media?: { url?: string; kind?: string }[]; ai?: boolean },
+  ) {
+    return this.publisher.googleCheck(user, body ?? {});
+  }
+
   /** Create or edit a queued post. Saving as 'scheduled' validates it first. */
   @Post('posts')
   savePost(@CurrentUser() user: AuthenticatedUser, @Body() body: SavePostDto) {

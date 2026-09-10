@@ -28,7 +28,9 @@ import { dayKeyInTz, hourInTz, fmtInTz } from '../lib/datetime';
  * the reader to distrust the parts that are true.
  */
 
-export type Channel = 'facebook' | 'instagram';
+export type Channel = 'facebook' | 'instagram' | 'google';
+/** What each place is called on screen. 'google' is the shop's Business Profile on Maps. */
+export const CHANNEL_NAME: Record<Channel, string> = { facebook: 'Facebook', instagram: 'Instagram', google: 'Google Business' };
 export type MediaKind = 'image' | 'video';
 export interface MediaItem { url: string; kind: MediaKind; /** The archive copy on Drive, once filed. */ driveUrl?: string }
 export type Stage = 'writing' | 'design' | 'ready';
@@ -269,7 +271,7 @@ export function MonthCalendar({
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {TONES[tone].icon && `${TONES[tone].icon} `}
-                      {p.channels.includes('instagram') ? '◈' : '▣'} {hourInTz(p.scheduledAt)}h {p.message.slice(0, 24) || T('(ảnh)', '(media)')}
+                      {p.channels.includes('instagram') ? '◈' : p.channels.includes('facebook') ? '▣' : '◉'} {hourInTz(p.scheduledAt)}h {p.message.slice(0, 24) || T('(ảnh)', '(media)')}
                     </span>
                     {/* The archive, one click from the month — the reason it
                         exists is to be found from here, not from the composer. */}
@@ -456,8 +458,12 @@ export function PostPreview({ channel, message, media, pageName, igUsername, vi 
   const text = (message ?? '').trim();
   const cut = text.length > fold;
   const head = cut ? text.slice(0, fold) : text;
-  const first = media[0];
-  const name = channel === 'instagram' ? (igUsername ? `@${igUsername}` : 'instagram') : (pageName ?? 'Facebook Page');
+  // Google takes one photo and no video: the preview shows exactly what Maps
+  // will, so a carousel's second picture is not promised where it will not go.
+  const first = channel === 'google' ? media.find((m) => m.kind === 'image') : media[0];
+  const name = channel === 'instagram'
+    ? (igUsername ? `@${igUsername}` : 'instagram')
+    : (pageName ?? (channel === 'google' ? T('Hồ sơ doanh nghiệp', 'Business Profile') : 'Facebook Page'));
 
   return (
     <div style={{
@@ -472,14 +478,14 @@ export function PostPreview({ channel, message, media, pageName, igUsername, vi 
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{name}</div>
           <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>
-            {channel === 'facebook' ? T('Được tài trợ · Trang', 'Page') : T('Bài đăng', 'Post')}
+            {channel === 'facebook' ? T('Được tài trợ · Trang', 'Page') : channel === 'google' ? T('Google Maps · Cập nhật', 'Google Maps · Update') : T('Bài đăng', 'Post')}
           </div>
         </div>
       </div>
 
       {/* Facebook puts the text above the picture, Instagram below it. Swapping
           them would preview a layout neither platform produces. */}
-      {channel === 'facebook' && text && (
+      {channel !== 'instagram' && text && (
         <div style={{ padding: '0 11px 9px', fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
           {head}{cut && <span style={{ color: 'var(--c64748b)' }}>… {T('Xem thêm', 'See more')}</span>}
         </div>
@@ -488,7 +494,7 @@ export function PostPreview({ channel, message, media, pageName, igUsername, vi 
       {first && (
         <div style={{
           position: 'relative', width: '100%',
-          aspectRatio: channel === 'instagram' ? '1 / 1' : '1.91 / 1',
+          aspectRatio: channel === 'instagram' ? '1 / 1' : channel === 'google' ? '4 / 3' : '1.91 / 1',
           background: 'var(--c1e293b)',
         }}>
           {first.kind === 'video' ? (
@@ -510,6 +516,17 @@ export function PostPreview({ channel, message, media, pageName, igUsername, vi 
         <div style={{ padding: '9px 11px', fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
           <b>{igUsername ? igUsername : ''}</b> {head}
           {cut && <span style={{ color: 'var(--c64748b)' }}>… {T('thêm', 'more')}</span>}
+        </div>
+      )}
+
+      {/* The Book button Lumio attaches to every Google post — it points at the
+          shop's own booking page, so a reader on Maps lands in the calendar. */}
+      {channel === 'google' && (
+        <div style={{ padding: '8px 11px 10px' }}>
+          <span style={{
+            display: 'inline-block', padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+            border: '1px solid var(--c60a5fa)', color: 'var(--c60a5fa)',
+          }}>{T('Đặt lịch', 'Book')}</span>
         </div>
       )}
 

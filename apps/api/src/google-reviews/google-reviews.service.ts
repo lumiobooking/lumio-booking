@@ -342,6 +342,64 @@ export class GoogleReviewsService {
     return loc.startsWith('accounts/') ? loc : `${s.accountId}/${s.locationId}`;
   }
 
+  // ---- posting to the Business Profile --------------------------------------
+
+  /**
+   * The location the content calendar may post to, or null when the shop has
+   * not connected Google / not chosen a location yet.
+   *
+   * Posting needs the account + location and the refresh token, and nothing
+   * else: the reviews `enabled` switch is about auto-replies and must not
+   * gate posts — a shop that answers reviews by hand still wants its offers
+   * on Maps.
+   */
+  async postingLocation(tenantId: string): Promise<{ parent: string; title: string | null } | null> {
+    const s = await this.getSettings(tenantId).catch(() => null);
+    if (!s || !s.connected || !s.refreshToken || !s.accountId || !s.locationId) return null;
+    return { parent: this.reviewsParent(s), title: s.locationTitle || null };
+  }
+
+  /**
+   * Create one local post ("What's new") on the shop's Business Profile.
+   *
+   * Only the v4 endpoint exists for this; Google never moved local posts to
+   * the newer APIs. One photo, up to 1,500 characters, an optional button —
+   * and no scheduling of its own, which is why Lumio's sweep calls it at the
+   * moment the post is due. Returns the post's resource name and the Maps
+   * link Google hands back, or throws with Google's own words.
+   */
+  async createLocalPost(tenantId: string, body: {
+    summary: string; languageCode: 'vi' | 'en'; photoUrl: string | null;
+    cta: { actionType: 'BOOK' | 'LEARN_MORE' | 'CALL' | 'ORDER' | 'SHOP' | 'SIGN_UP'; url: string } | null;
+  }): Promise<{ name: string | null; url: string | null }> {
+    const s = await this.getSettings(tenantId);
+    const where = await this.postingLocation(tenantId);
+    if (!where) throw new BadRequestException('Tiệm chưa kết nối Google Business hoặc chưa chọn địa điểm.');
+    const token = await this.accessToken(s);
+    const payload: Record<string, unknown> = {
+      languageCode: body.languageCode,
+      summary: body.summary,
+      topicType: 'STANDARD',
+    };
+    if (body.photoUrl) payload.media = [{ mediaFormat: 'PHOTO', sourceUrl: body.photoUrl }];
+    if (body.cta) payload.callToAction = { actionType: body.cta.actionType, url: body.cta.url };
+    const res = await fetch(`https://mybusiness.googleapis.com/v4/${where.parent}/localPosts`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(45_000),
+    });
+    const text = await res.text().catch(() => '');
+    if (!res.ok) {
+      let msg = text.slice(0, 200);
+      try { msg = (JSON.parse(text) as { error?: { message?: string } }).error?.message || msg; } catch { /* keep raw */ }
+      throw new BadRequestException(`Google ${res.status}: ${msg}`);
+    }
+    let out: { name?: string; searchUrl?: string } = {};
+    try { out = JSON.parse(text) as typeof out; } catch { /* empty body */ }
+    return { name: out.name ?? null, url: out.searchUrl ?? null };
+  }
+
   async syncNow(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     return this.syncReviews(tenantId);

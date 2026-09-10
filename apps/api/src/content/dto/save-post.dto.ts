@@ -27,9 +27,10 @@ export class SavePostDto {
   @IsOptional() @IsString() id?: string;
   @IsOptional() @IsString() ideaId?: string | null;
 
+  /** 'google' = the shop's Google Business Profile (connected under Đánh giá Google). */
   @IsArray()
-  @IsIn(['facebook', 'instagram'], { each: true })
-  channels!: ('facebook' | 'instagram')[];
+  @IsIn(['facebook', 'instagram', 'google'], { each: true })
+  channels!: ('facebook' | 'instagram' | 'google')[];
 
   @IsString() @MaxLength(63206)
   message!: string;

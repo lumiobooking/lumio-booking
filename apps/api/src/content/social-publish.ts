@@ -45,8 +45,17 @@ export const FB_MESSAGE_MAX = 63_206;
 /** An Instagram carousel holds between 2 and 10 items. */
 export const IG_CAROUSEL_MIN = 2;
 export const IG_CAROUSEL_MAX = 10;
+// The Google limits and the policy check live in gbp-policy.ts; the ceiling
+// is re-exported so callers keep one import for every platform's numbers.
+export { GBP_SUMMARY_MAX };
 
-export type Channel = 'facebook' | 'instagram';
+export type Channel = 'facebook' | 'instagram' | 'google';
+
+export const CHANNELS: Channel[] = ['facebook', 'instagram', 'google'];
+
+export const CHANNEL_LABEL: Record<Channel, string> = {
+  facebook: 'Facebook', instagram: 'Instagram', google: 'Google Business',
+};
 export type MediaKind = 'image' | 'video';
 
 export interface MediaItem {
@@ -65,6 +74,18 @@ export interface ConnectedPage {
   igUsername: string | null;
   pageName: string | null;
   enabled: boolean;
+}
+
+/**
+ * The Google Business Profile location the salon connected under "Đánh giá
+ * Google". Posting rides the same OAuth grant (business.manage), so a shop
+ * that already answers reviews through Lumio can post there with nothing new
+ * to connect.
+ */
+export interface GoogleLocation {
+  /** "accounts/123/locations/456" — the parent of every local post. */
+  parent: string;
+  title: string | null;
 }
 
 export interface PostDraft {
@@ -92,6 +113,8 @@ export interface PublishPlan {
   /** The blocking problems, deduped, for one line on the screen. */
   problems: string[];
 }
+
+import { GBP_SUMMARY_MAX, gbpRefusal, gbpSummary } from './gbp-policy';
 
 const hashtagCount = (s: string) => (s.match(/#[\p{L}\p{N}_]+/gu) ?? []).length;
 
@@ -159,7 +182,7 @@ export function shapeOf(media: MediaItem[]): PostShape {
   return m[0].kind === 'video' ? 'video' : 'image';
 }
 
-export function planPublish(draft: PostDraft, page: ConnectedPage | null): PublishPlan {
+export function planPublish(draft: PostDraft, page: ConnectedPage | null, google: GoogleLocation | null = null): PublishPlan {
   const wanted = Array.from(new Set(draft.channels ?? []));
   const text = (draft.message ?? '').trim();
   const media = (draft.media ?? []).filter((m) => m && typeof m.url === 'string');
@@ -167,6 +190,11 @@ export function planPublish(draft: PostDraft, page: ConnectedPage | null): Publi
   const plans: ChannelPlan[] = [];
 
   for (const channel of wanted) {
+    if (channel === 'google') {
+      const refusal = refuseGoogle({ text, media, shape }, google);
+      plans.push({ channel, ok: refusal === null, targetId: refusal === null ? google!.parent : null, refusal });
+      continue;
+    }
     const refusal = refuse(channel, { text, media, shape }, page);
     plans.push({
       channel,
@@ -229,6 +257,40 @@ function refuse(channel: Channel, c: Checked, page: ConnectedPage | null): strin
   const tags = hashtagCount(c.text);
   if (tags > IG_HASHTAG_MAX) return `Bài có ${tags} hashtag, quá giới hạn ${IG_HASHTAG_MAX} của Instagram.`;
   return null;
+}
+
+/**
+ * Google Business Profile: connected under Đánh giá Google, a location chosen,
+ * text within 1,500 characters, photos only. A second photo is not refused —
+ * the first one goes, and the composer says so — because a carousel written
+ * for Facebook should not have to be split just to reach Google Maps.
+ */
+function refuseGoogle(c: Checked, google: GoogleLocation | null): string | null {
+  if (!google) return 'Tiệm chưa kết nối Google Business. Vào mục Trả lời đánh giá Google, kết nối tài khoản và chọn địa điểm rồi mới đăng được.';
+  if (!c.text && !c.media.length) return 'Bài chưa có nội dung.';
+  // Google Business does not take a photo-only post: the summary is required.
+  if (!c.text) return 'Google Business bắt buộc phải có chữ — thêm vài dòng mô tả cho bài.';
+  // Length is judged on what Google RECEIVES — the caption minus the contact
+  // block — so a Facebook caption that fits once its footer is gone is not
+  // refused for the footer.
+  const summary = gbpSummary(c.text).text;
+  if (String(c.text).replace(/\s+/g, '').length > 0 && summary.length > GBP_SUMMARY_MAX) return `Nội dung dài ${summary.length} ký tự, quá giới hạn ${GBP_SUMMARY_MAX} của Google Business.`;
+  if (c.media.some((m) => m.kind === 'video')) return 'Google Business chỉ nhận ảnh, không nhận video. Bỏ video, hoặc bỏ Google Business khỏi bài này.';
+  const share = c.media.map((m) => sharePageProblem(m.url)).find(Boolean);
+  if (share) return share;
+  const bad = c.media.find((m) => !usableMediaUrl(m.url));
+  if (bad) return 'Link ảnh phải là https công khai — Google tự tải file về từ link này.';
+  // Google's content policy — restricted goods, health claims, adult words,
+  // politics, photo format. A profile suspension is the cost of skipping it.
+  return gbpRefusal(c.text, c.media);
+}
+
+/**
+ * The language tag a Google post is filed under. Vietnamese is unmistakable
+ * from its diacritics; everything else the shops write is English.
+ */
+export function gbpLanguage(text: string): 'vi' | 'en' {
+  return /[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/i.test(text ?? '') ? 'vi' : 'en';
 }
 
 /**
@@ -378,7 +440,7 @@ export interface SpacingWarning {
  */
 export function crowding(posts: { id: string; scheduledAt: Date; channels: Channel[] }[]): SpacingWarning[] {
   const out: SpacingWarning[] = [];
-  for (const channel of ['facebook', 'instagram'] as Channel[]) {
+  for (const channel of CHANNELS) {
     const on = (posts ?? [])
       .filter((p) => p.channels?.includes(channel))
       .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
@@ -389,7 +451,7 @@ export function crowding(posts: { id: string; scheduledAt: Date; channels: Chann
       out.push({
         id: on[i].id,
         minutesApart: mins,
-        message: `Cách bài trước ${mins < 60 ? `${mins} phút` : `${Math.round(mins / 60)} tiếng`} trên ${channel === 'facebook' ? 'Facebook' : 'Instagram'}. Đăng dồn thì bài sau ăn mất người xem của bài trước.`,
+        message: `Cách bài trước ${mins < 60 ? `${mins} phút` : `${Math.round(mins / 60)} tiếng`} trên ${CHANNEL_LABEL[channel]}. Đăng dồn thì bài sau ăn mất người xem của bài trước.`,
       });
     }
   }

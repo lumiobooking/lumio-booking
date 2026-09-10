@@ -30,7 +30,7 @@ import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz } from '../../../lib/datetime';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
-import { MonthCalendar, IgGrid, PostPreview, MediaList, type MediaItem } from '../../../components/PostStudio';
+import { MonthCalendar, IgGrid, PostPreview, MediaList, CHANNEL_NAME, type MediaItem, type Channel } from '../../../components/PostStudio';
 import { WeekPlanBoard, type OfferForm } from '../../../components/WeekPlanBoard';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
@@ -269,7 +269,7 @@ type TabId = 'today' | 'week' | 'trends' | 'calendar' | 'audience' | 'ads' | 'st
 interface QueuedPost {
   id: string;
   ideaId: string | null;
-  channels: ('facebook' | 'instagram')[];
+  channels: Channel[];
   message: string;
   /** Photos and videos in DISPLAY ORDER. Item one is the cover. */
   media: MediaItem[];
@@ -308,6 +308,16 @@ interface QueuedPost {
   /** Where this post's files were filed on Drive, for reuse on Google Business / TikTok. */
   driveFolderUrl?: string | null;
 }
+/** What /content/posts/google-check answers — see api content/gbp-policy.ts. */
+interface GbpCheckResult {
+  summary: string;
+  removed: ('phone' | 'link' | 'email' | 'handle' | 'hashtag')[];
+  blockers: { code: string; vi: string; en: string; match?: string }[];
+  warnings: { code: string; vi: string; en: string; match?: string }[];
+  ai: { ok: boolean; blockers: string[]; warnings: string[]; sawImage: boolean } | null;
+  aiOff: boolean;
+}
+
 interface QueuePayload {
   connected: {
     pageName: string | null; igUsername: string | null; hasInstagram: boolean; enabled: boolean;
@@ -316,6 +326,8 @@ interface QueuePayload {
     /** Why, and whether reconnecting is the fix. See api messenger/publish-grant. */
     publishGap?: { cause: 'declined' | 'not-offered' | 'not-requested' | 'stale' | 'unknown'; reconnectHelps: boolean } | null;
   } | null;
+  /** The Google Business Profile location, when connected under Đánh giá Google. */
+  google?: { title: string | null } | null;
   posts: QueuedPost[];
   /** Advice, never a refusal: where a month of posts fights itself. */
   crowding: { id: string; minutesApart: number; message: string }[];
@@ -555,11 +567,13 @@ function Inner() {
   const [sending, setSending] = useState<TrendCard | null>(null);
   const [sendBusy, setSendBusy] = useState(false);
   const [postDraft, setPostDraft] = useState<{
-    id?: string; channels: ('facebook' | 'instagram')[]; message: string; media: MediaItem[]; at: string;
+    id?: string; channels: Channel[]; message: string; media: MediaItem[]; at: string;
     stage?: 'writing' | 'design' | 'ready'; writerName?: string; designerName?: string; teamNote?: string;
   } | null>(null);
   const [mediaInput, setMediaInput] = useState('');
   const [uploading, setUploading] = useState(false);
+  /** "3/5" while a batch of photos is going up, so the wait has a shape. */
+  const [uploadStep, setUploadStep] = useState<{ done: number; total: number } | null>(null);
   /** What the fitter did to the last upload — crop, padding, or nothing. */
   const [fitNote, setFitNote] = useState<string | null>(null);
   /**
@@ -579,6 +593,58 @@ function Inner() {
   // — a shop really can mention a partner's number. Cleared whenever the draft
   // closes, so the next post starts guarded again.
   const [contactOverride, setContactOverride] = useState(false);
+
+  /**
+   * Google's rules against the draft, live.
+   *
+   * Asked of the server on every pause in typing while Google Business is a
+   * chosen channel: the text Google would receive (the contact block is
+   * stripped, not typed twice), what was stripped, and every policy finding.
+   * The word list is the server's — one copy, tested there — so the screen
+   * never disagrees with the refusal at save time. The model's look at the
+   * photo is a button, not a keystroke: it costs a call.
+   */
+  const [gbp, setGbp] = useState<GbpCheckResult | null>(null);
+  const [gbpAi, setGbpAi] = useState<'idle' | 'running'>('idle');
+  const [gbpPx, setGbpPx] = useState<{ url: string; w: number; h: number } | null>(null);
+  const gbpWanted = Boolean(postDraft?.channels.includes('google'));
+  const gbpMessage = postDraft?.message ?? '';
+  const gbpMediaKey = JSON.stringify((postDraft?.media ?? []).map((m) => [m.url, m.kind]));
+  useEffect(() => {
+    if (!token || !gbpWanted) { setGbp(null); return; }
+    const media = JSON.parse(gbpMediaKey) as [string, string][];
+    const timer = setTimeout(() => {
+      apiFetch<GbpCheckResult>('/content/posts/google-check', {
+        method: 'POST', token, body: { message: gbpMessage, media: media.map(([url, kind]) => ({ url, kind })) },
+      }).then(setGbp).catch(() => setGbp(null));
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [token, gbpWanted, gbpMessage, gbpMediaKey]);
+  // The first photo's pixels, measured in the browser — Google wants 250×250
+  // at least, and a link's headers never say.
+  useEffect(() => {
+    if (!gbpWanted) { setGbpPx(null); return; }
+    const first = (JSON.parse(gbpMediaKey) as [string, string][]).find(([, kind]) => kind === 'image')?.[0];
+    if (!first) { setGbpPx(null); return; }
+    const im = new Image();
+    im.onload = () => setGbpPx({ url: first, w: im.naturalWidth, h: im.naturalHeight });
+    im.onerror = () => setGbpPx(null);
+    im.src = first;
+  }, [gbpWanted, gbpMediaKey]);
+
+  async function runGbpAi() {
+    if (!postDraft || !token || gbpAi === 'running') return;
+    setGbpAi('running');
+    try {
+      const r = await apiFetch<GbpCheckResult>('/content/posts/google-check', {
+        method: 'POST', token, body: { message: postDraft.message, media: postDraft.media.map((m) => ({ url: m.url, kind: m.kind })), ai: true },
+      });
+      setGbp(r);
+      if (r.ai && r.ai.ok && r.blockers.length === 0) notify('success', T('Google Business: ảnh và chữ đạt policy.', 'Google Business: photo and text pass policy.'));
+    } catch (e) {
+      setPostErr(e instanceof Error ? e.message : 'error');
+    } finally { setGbpAi('idle'); }
+  }
   /**
    * How many queued posts need a human.
    *
@@ -708,40 +774,69 @@ function Inner() {
    * base64 image, and a phone video is tens of megabytes. Pretending otherwise
    * would fail at a size limit after the salon had waited for it.
    */
-  async function uploadMedia(file: File) {
+  async function uploadMedia(picked: File[]) {
     if (!postDraft || uploading) return;
-    setUploading(true); setPostErr(null);
+    // A carousel holds ten. Picking fifteen in the dialog is not an error,
+    // it is a person choosing a folder — take the first ten that fit and say so.
+    const room = Math.max(0, 10 - postDraft.media.length);
+    const files = picked.filter((f) => f && f.type.startsWith('image/')).slice(0, room);
+    if (!files.length) {
+      if (picked.length) setPostErr(T('Bài đã đủ 10 ảnh/video.', 'The post already holds 10 items.'));
+      return;
+    }
+    setUploading(true); setPostErr(null); setUploadStep({ done: 0, total: files.length });
+    const notes: string[] = [];
+    const failed: string[] = [];
+    let storageOff = false;
     try {
-      // ---- fit the SHAPE, not just the size ----
-      //
-      // Instagram takes 4:5 to 1.91:1. A photo taken holding a phone upright is
-      // 3:4 — already outside — so this is not an edge case, it is most of what
-      // a salon shoots. Left alone, the Graph API answers "Media ID is not
-      // available", which names a container id and says nothing about the
-      // picture.
-      //
-      // maxChars 1.6M ≈ 1.2MB decoded. The server refuses over 3MB, and a feed
-      // picture needs nothing like that: past this the upload is slower and
-      // nothing on screen looks better.
-      const { dataUrl, note } = await fitForSocial(file, { maxChars: 1_600_000 });
-      const { url } = await apiFetch<{ url: string }>('/uploads/service-photo', {
-        method: 'POST', token, body: { dataUrl },
-      });
-      setPostDraft((d) => (d ? { ...d, media: [...d.media, { url, kind: 'image' }] } : d));
+      // One after another, each landing on the draft the moment it is up, in
+      // the order they were picked — the order IS the carousel. Firing all
+      // ten at once would finish them in whatever order the network chose and
+      // put picture seven on the cover.
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
+        try {
+          // ---- fit the SHAPE, not just the size ----
+          //
+          // Instagram takes 4:5 to 1.91:1. A photo taken holding a phone upright is
+          // 3:4 — already outside — so this is not an edge case, it is most of what
+          // a salon shoots. Left alone, the Graph API answers "Media ID is not
+          // available", which names a container id and says nothing about the
+          // picture.
+          //
+          // maxChars 1.6M ≈ 1.2MB decoded. The server refuses over 3MB, and a feed
+          // picture needs nothing like that: past this the upload is slower and
+          // nothing on screen looks better.
+          const { dataUrl, note } = await fitForSocial(file, { maxChars: 1_600_000 });
+          const { url } = await apiFetch<{ url: string }>('/uploads/service-photo', {
+            method: 'POST', token, body: { dataUrl },
+          });
+          setPostDraft((d) => (d ? { ...d, media: [...d.media, { url, kind: 'image' }] } : d));
+          if (note) notes.push(files.length > 1 ? `${file.name}: ${note}` : note);
+        } catch (e) {
+          const raw = e instanceof Error ? e.message : '';
+          if (/STORAGE_NOT_CONFIGURED/i.test(raw)) { storageOff = true; break; }
+          failed.push(`${file.name}${raw ? ` (${raw})` : ''}`);
+        } finally {
+          setUploadStep({ done: i + 1, total: files.length });
+        }
+      }
       // A tool that silently reshapes somebody's photograph and posts the result
       // is one they stop trusting the first time they notice. Say it, and let
       // the preview below show the picture that will actually go out.
-      setFitNote(note);
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : '';
+      setFitNote(notes.length ? notes.join(' · ') : null);
       // The server answers with a code here, not a sentence. Passing that
       // through would tell a salon owner "STORAGE_NOT_CONFIGURED", which is a
       // message for whoever set up the platform, not for them.
-      setPostErr(/STORAGE_NOT_CONFIGURED/i.test(raw)
-        ? T('Chưa bật kho lưu ảnh trên hệ thống. Báo Lumio bật giúp, hoặc tạm thời dán link ảnh từ website của tiệm.',
-            'Image storage is not switched on yet. Ask Lumio to enable it, or paste a link from your own website for now.')
-        : `${T('Tải ảnh lên không được', 'Upload failed')}${raw ? `: ${raw}` : ''}`);
-    } finally { setUploading(false); }
+      if (storageOff) {
+        setPostErr(T('Chưa bật kho lưu ảnh trên hệ thống. Báo Lumio bật giúp, hoặc tạm thời dán link ảnh từ website của tiệm.',
+                     'Image storage is not switched on yet. Ask Lumio to enable it, or paste a link from your own website for now.'));
+      } else if (failed.length) {
+        setPostErr(`${T('Tải ảnh lên không được', 'Upload failed')}: ${failed.join(', ')}`);
+      } else if (picked.length > files.length) {
+        setPostErr(T(`Chỉ thêm được ${files.length} ảnh — bài tối đa 10 ảnh/video.`, `Only ${files.length} added — a post holds at most 10 items.`));
+      }
+    } finally { setUploading(false); setUploadStep(null); }
   }
 
   function addMedia() {
@@ -2424,6 +2519,27 @@ function Inner() {
                        'No Facebook Page connected yet. Connect one in Settings → Messenger, then come back.')}
                   </div>
                 )}
+
+                {/* ---- Google Business Profile ----
+                     Rides the grant the reviews screen holds, so there is
+                     nothing new to connect: a shop that answers Google reviews
+                     through Lumio can post to Maps from the same calendar. */}
+                <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 8 }}>
+                  📍 Google Business:{' '}
+                  {queue?.google ? (
+                    <>
+                      <b style={{ color: 'var(--ce2e8f0)' }}>{queue.google.title ?? T('địa điểm đã chọn', 'chosen location')}</b>
+                      {' · '}{T('bài chọn "Google Business" sẽ lên mục Cập nhật trên Google Maps đúng giờ đã hẹn.', 'posts marked "Google Business" go to the Updates tab on Google Maps at the set time.')}
+                    </>
+                  ) : (
+                    <>
+                      {T('chưa kết nối.', 'not connected.')}{' '}
+                      <a href="/salon/reviews-replies" style={{ color: 'var(--ca5b4fc)' }}>
+                        {T('Kết nối ở mục Trả lời đánh giá Google →', 'Connect under Google review replies →')}
+                      </a>
+                    </>
+                  )}
+                </div>
               </div>
 
               {postErr && (
@@ -2552,6 +2668,7 @@ function Inner() {
                     <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>
                       {postDraft.message.length} {T('ký tự', 'characters')}
                       {postDraft.channels.includes('instagram') && ` · ${T('Instagram tối đa 2.200', 'Instagram max 2,200')}`}
+                      {postDraft.channels.includes('google') && ` · ${T('Google Business tối đa 1.500', 'Google Business max 1,500')}`}
                     </span>
                     {/* Deleting the block by accident is one keystroke; putting
                         it back by hand is where the wrong address comes from. */}
@@ -2567,8 +2684,9 @@ function Inner() {
                   </div>
 
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 11 }}>
-                    {(['facebook', 'instagram'] as const).map((c) => {
+                    {(['facebook', 'instagram', 'google'] as const).map((c) => {
                       const on = postDraft.channels.includes(c);
+                      const absent = c === 'google' ? !queue?.google : c === 'instagram' ? queue?.connected ? !queue.connected.hasInstagram : false : false;
                       return (
                         <button
                           key={c}
@@ -2576,18 +2694,101 @@ function Inner() {
                             ...postDraft,
                             channels: on ? postDraft.channels.filter((x) => x !== c) : [...postDraft.channels, c],
                           })}
+                          title={absent ? T('Chưa kết nối', 'Not connected') : undefined}
                           style={{
                             minHeight: 40, padding: '9px 15px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5, fontWeight: 600,
-                            border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`,
+                            border: `1px ${absent && !on ? 'dashed' : 'solid'} ${on ? '#6366f1' : 'var(--c334155)'}`,
                             background: on ? '#6366f1' : 'transparent',
-                            color: on ? '#fff' : 'var(--c94a3b8)',
+                            color: on ? '#fff' : absent ? 'var(--c64748b)' : 'var(--c94a3b8)',
                           }}
                         >
-                          {c === 'facebook' ? 'Facebook' : 'Instagram'}
+                          {c === 'google' ? '📍 ' : ''}{CHANNEL_NAME[c]}
                         </button>
                       );
                     })}
                   </div>
+                  {postDraft.channels.includes('google') && (() => {
+                    const pxProblem = gbpPx && (gbpPx.w < 250 || gbpPx.h < 250)
+                      ? T(`Ảnh ${gbpPx.w}×${gbpPx.h} px — Google yêu cầu ít nhất 250×250 px (nên 720×720 trở lên).`, `Photo is ${gbpPx.w}×${gbpPx.h} px — Google needs at least 250×250 (720×720 or more is best).`)
+                      : null;
+                    const blockers = [
+                      ...(gbp?.blockers ?? []).map((b) => ({ text: vi ? b.vi : b.en, match: b.match })),
+                      ...(pxProblem ? [{ text: pxProblem, match: undefined }] : []),
+                      ...((gbp?.ai && !gbp.ai.ok ? gbp.ai.blockers : []).map((t) => ({ text: `🤖 ${t}`, match: undefined }))),
+                    ];
+                    const warnings = [
+                      ...(gbp?.warnings ?? []).map((w) => (vi ? w.vi : w.en)),
+                      ...((gbp?.ai?.warnings ?? []).map((t) => `🤖 ${t}`)),
+                    ];
+                    const removedLabel: Record<string, [string, string]> = {
+                      phone: ['số điện thoại', 'phone number'], link: ['link', 'links'], email: ['email', 'email'],
+                      handle: ['tên Instagram', 'Instagram handle'], hashtag: ['hashtag', 'hashtags'],
+                    };
+                    return (
+                      <div style={{
+                        marginTop: 8, padding: '10px 12px', borderRadius: 9, fontSize: 12.5, lineHeight: 1.55,
+                        background: 'var(--c1e293b)', border: `1px solid ${blockers.length ? '#ef4444' : warnings.length ? '#f59e0b' : 'var(--c334155)'}`,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <b style={{ color: 'var(--ce2e8f0)' }}>📍 {T('Kiểm soát policy Google Business', 'Google Business policy check')}</b>
+                          <span style={{ fontSize: 11.5, color: blockers.length ? 'var(--cfca5a5)' : warnings.length ? 'var(--cfde68a)' : '#22c55e' }}>
+                            {!queue?.google
+                              ? T('chưa kết nối', 'not connected')
+                              : blockers.length
+                                ? T(`${blockers.length} lỗi — không chốt lịch được`, `${blockers.length} issue(s) — cannot schedule`)
+                                : warnings.length
+                                  ? T(`đạt, ${warnings.length} lưu ý`, `passes, ${warnings.length} note(s)`)
+                                  : gbp ? T('✓ chữ đạt policy', '✓ text passes policy') : T('đang kiểm…', 'checking…')}
+                          </span>
+                          <button
+                            onClick={runGbpAi}
+                            disabled={gbpAi === 'running' || !gbp || gbp.aiOff}
+                            title={gbp?.aiOff ? T('Chưa bật AI trên máy chủ', 'AI is not enabled on the server') : undefined}
+                            style={{
+                              marginLeft: 'auto', padding: '5px 11px', borderRadius: 7, fontSize: 12, fontWeight: 600, fontFamily: 'inherit',
+                              cursor: gbpAi === 'running' ? 'wait' : 'pointer', border: '1px solid var(--c475569)', background: 'transparent',
+                              color: gbp?.aiOff ? 'var(--c64748b)' : 'var(--ca5b4fc)',
+                            }}
+                          >
+                            {gbpAi === 'running' ? T('🤖 Đang xem ảnh + chữ…', '🤖 Reviewing photo + text…') : gbp?.ai ? T('🤖 Kiểm duyệt lại', '🤖 Re-check with AI') : T('🤖 Kiểm duyệt AI ảnh + chữ', '🤖 AI check photo + text')}
+                          </button>
+                        </div>
+
+                        {!queue?.google && (
+                          <div style={{ marginTop: 6, color: 'var(--cfde68a)' }}>
+                            {T('Chưa kết nối Google Business — vào mục Trả lời đánh giá Google, kết nối và chọn địa điểm, rồi bài này mới chốt lịch được.',
+                               'Google Business is not connected — open Google review replies, connect and choose the location before this post can be scheduled.')}
+                          </div>
+                        )}
+
+                        {blockers.map((b, i) => (
+                          <div key={`b${i}`} style={{ marginTop: 6, color: 'var(--cfca5a5)' }}>
+                            ⛔ {b.text}{b.match && <> — {T('từ', 'word')}: <code style={{ background: 'var(--c0f172a)', padding: '0 4px', borderRadius: 4 }}>{b.match}</code></>}
+                          </div>
+                        ))}
+                        {warnings.map((w, i) => (
+                          <div key={`w${i}`} style={{ marginTop: 6, color: 'var(--cfde68a)' }}>⚠ {w}</div>
+                        ))}
+
+                        {gbp && gbp.removed.length > 0 && (
+                          <div style={{ marginTop: 6, color: 'var(--c94a3b8)' }}>
+                            ✂︎ {T('Bản gửi Google tự bỏ', 'The Google copy drops')}: {gbp.removed.map((r) => (vi ? removedLabel[r]?.[0] : removedLabel[r]?.[1]) ?? r).join(', ')}
+                            {' — '}{T('Google cấm số điện thoại trong bài và tự có nút Gọi / Đặt lịch. Facebook/Instagram vẫn giữ nguyên.', 'Google forbids phone numbers in posts and adds its own Call / Book buttons. Facebook/Instagram keep the full caption.')}
+                          </div>
+                        )}
+                        {gbp?.ai && gbp.ai.ok && gbp.blockers.length === 0 && (
+                          <div style={{ marginTop: 6, color: '#22c55e' }}>
+                            🤖 {gbp.ai.sawImage ? T('AI đã xem ảnh và chữ: đạt policy Google.', 'AI reviewed the photo and text: passes Google policy.') : T('AI đã xem chữ: đạt policy Google.', 'AI reviewed the text: passes Google policy.')}
+                          </div>
+                        )}
+
+                        <div style={{ marginTop: 7, fontSize: 11.5, color: 'var(--c64748b)' }}>
+                          {T('Quy tắc Google: tối đa 1.500 ký tự · chỉ 1 ảnh JPG/PNG (10 KB–5 MB, ≥250×250 px), không video · không số điện thoại · không quảng bá rượu bia, thuốc lá, cờ bạc, vũ khí, dược phẩm, y tế, tài chính, người lớn · không hứa chữa bệnh/giảm cân · không chính trị · ảnh thật, không filter quá đà, không ảnh stock/logo người khác. Khi chốt lịch và trước giờ đăng, hệ thống kiểm lại lần nữa (cả AI) — vi phạm thì bài dừng, không lên Google.',
+                             'Google rules: 1,500 characters max · one JPG/PNG photo (10 KB–5 MB, ≥250×250 px), no video · no phone number · no promotion of alcohol, tobacco, gambling, weapons, pharma, medical, financial or adult services · no cure/weight-loss promises · no politics · real photos, no heavy filters, no stock/others’ logos. The system re-checks (AI included) when you lock the post and again before sending — a violation stops the post from reaching Google.')}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* ---- media, in the order they will appear ----
                        Order is the whole feature for a carousel: item one is
@@ -2597,6 +2798,7 @@ function Inner() {
                     <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 5 }}>
                       {T('Ảnh & video (link https công khai)', 'Photos & video (public https links)')}
                       {postDraft.channels.includes('instagram') && ` — ${T('Instagram bắt buộc có ít nhất 1', 'Instagram needs at least one')}`}
+                      {postDraft.channels.includes('google') && ` — ${T('Google Business chỉ nhận ảnh', 'Google Business takes photos only')}`}
                     </div>
 
                     <MediaList
@@ -2642,12 +2844,19 @@ function Inner() {
                         display: 'inline-flex', alignItems: 'center', cursor: uploading ? 'wait' : 'pointer',
                         border: 'none', background: '#6366f1', color: '#fff',
                       }}>
-                        {uploading ? T('Đang tải…', 'Uploading…') : `📷 ${T('Tải ảnh lên', 'Upload a photo')}`}
+                        {uploading
+                          ? (uploadStep && uploadStep.total > 1
+                            ? T(`Đang tải ${Math.min(uploadStep.done + 1, uploadStep.total)}/${uploadStep.total}…`, `Uploading ${Math.min(uploadStep.done + 1, uploadStep.total)}/${uploadStep.total}…`)
+                            : T('Đang tải…', 'Uploading…'))
+                          : `📷 ${T('Tải ảnh lên', 'Upload photos')}`}
+                        {/* `multiple`: a carousel is picked in one go, not ten
+                            trips through the file dialog. */}
                         <input
                           type="file"
                           accept="image/*"
+                          multiple
                           disabled={uploading || postDraft.media.length >= 10}
-                          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadMedia(f); }}
+                          onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; if (fs.length) uploadMedia(fs); }}
                           style={{ display: 'none' }}
                         />
                       </label>
@@ -2666,8 +2875,8 @@ function Inner() {
                         ? T(`Bài nhiều ảnh (${postDraft.media.length}/10) — vuốt ngang trên Instagram.`, `Carousel (${postDraft.media.length}/10) — swipeable on Instagram.`)
                         : postDraft.media.some((m) => m.kind === 'video')
                           ? T('Video — Instagram đăng dạng Reels, Facebook đăng video thường.', 'Video — published as a Reel on Instagram, a video post on Facebook.')
-                          : T('Ảnh: bấm "Tải ảnh lên". Video: phải dán link trỏ THẲNG tới file .mp4 — link Google Drive/Photos không dùng được.',
-                              'Photos: use Upload. Video: paste a link pointing straight at the .mp4 file — Google Drive/Photos links do not work.')}
+                          : T('Ảnh: bấm "Tải ảnh lên" — chọn được nhiều ảnh một lần (giữ Ctrl/Shift), thứ tự chọn là thứ tự trong bài. Video: phải dán link trỏ THẲNG tới file .mp4 — link Google Drive/Photos không dùng được.',
+                              'Photos: use Upload — pick several at once (hold Ctrl/Shift); the order you pick is the order in the post. Video: paste a link pointing straight at the .mp4 file — Google Drive/Photos links do not work.')}
                     </div>
                   </div>
 
@@ -2677,13 +2886,13 @@ function Inner() {
                       {postDraft.channels.map((c) => (
                         <div key={c}>
                           <div style={{ fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 5 }}>
-                            {T('Xem trước', 'Preview')} · {c === 'facebook' ? 'Facebook' : 'Instagram'}
+                            {T('Xem trước', 'Preview')} · {CHANNEL_NAME[c]}
                           </div>
                           <PostPreview
                             channel={c}
-                            message={postDraft.message}
+                            message={c === 'google' && gbp ? gbp.summary : postDraft.message}
                             media={postDraft.media}
-                            pageName={queue?.connected?.pageName ?? null}
+                            pageName={c === 'google' ? (queue?.google?.title ?? kit?.shop.name ?? null) : (queue?.connected?.pageName ?? null)}
                             igUsername={queue?.connected?.igUsername ?? null}
                             vi={vi}
                           />
@@ -2703,7 +2912,8 @@ function Inner() {
                     const igReady = queue?.connected?.hasInstagram;
                     const missingIg = igReady && !on.includes('instagram');
                     const missingFb = !on.includes('facebook');
-                    if (!missingIg && !missingFb) return null;
+                    const missingGg = Boolean(queue?.google) && !on.includes('google');
+                    if (!missingIg && !missingFb && !missingGg) return null;
                     return (
                       <div style={{
                         marginTop: 9, padding: '9px 11px', borderRadius: 8,
@@ -2713,7 +2923,7 @@ function Inner() {
                         {on.length === 0
                           ? T('Chưa chọn nơi đăng — bài này sẽ không đi đâu cả.', 'No channel picked — this post goes nowhere.')
                           : <>
-                            {T('Chỉ đăng lên', 'Publishing to')} <b style={{ color: 'var(--ce2e8f0)' }}>{on.includes('facebook') ? 'Facebook' : 'Instagram'}</b>.{' '}
+                            {T('Chỉ đăng lên', 'Publishing to')} <b style={{ color: 'var(--ce2e8f0)' }}>{on.map((c) => CHANNEL_NAME[c]).join(' + ')}</b>.{' '}
                             {missingIg && (
                               <>
                                 {T('KHÔNG lên Instagram', 'NOT to Instagram')} (@{queue?.connected?.igUsername}).{' '}
@@ -2729,6 +2939,17 @@ function Inner() {
                               </>
                             )}
                             {missingFb && !missingIg && T('KHÔNG lên Facebook.', 'NOT to Facebook.')}
+                            {missingGg && (
+                              <>
+                                {' '}{T('KHÔNG lên Google Business.', 'NOT to Google Business.')}{' '}
+                                <button
+                                  onClick={() => setPostDraft({ ...postDraft, channels: [...on, 'google'] })}
+                                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, textDecoration: 'underline' }}
+                                >
+                                  {T('Thêm Google Business', 'Add Google Business')}
+                                </button>
+                              </>
+                            )}
                           </>}
                       </div>
                     );
@@ -3152,11 +3373,11 @@ function Inner() {
                             reached Instagram. */}
                         {live.status === 'posted' && (
                           <div style={{ marginBottom: 9 }}>
-                            {(['facebook', 'instagram'] as const).map((c) => {
+                            {(['facebook', 'instagram', 'google'] as const).map((c) => {
                               const asked = live.channels.includes(c);
                               const r = live.results.find((x) => x.channel === c);
-                              const name = c === 'facebook' ? 'Facebook' : 'Instagram';
-                              const connected = c === 'facebook' || queue?.connected?.hasInstagram;
+                              const name = CHANNEL_NAME[c];
+                              const connected = c === 'facebook' ? Boolean(queue?.connected) : c === 'instagram' ? queue?.connected?.hasInstagram : Boolean(queue?.google);
                               if (!asked && !connected) return null;
                               return (
                                 <div key={c} style={{ fontSize: 12.5, lineHeight: 1.7 }}>
@@ -3177,7 +3398,7 @@ function Inner() {
                             key={r.channel} href={r.url!} target="_blank" rel="noopener noreferrer"
                             style={{ display: 'inline-block', marginRight: 12, marginBottom: 8, fontSize: 12.5, color: 'var(--c60a5fa)' }}
                           >
-                            🔗 {T('Xem trên', 'View on')} {r.channel === 'facebook' ? 'Facebook' : 'Instagram'}
+                            🔗 {T('Xem trên', 'View on')} {CHANNEL_NAME[r.channel as Channel] ?? r.channel}
                           </a>
                         ))}
 
@@ -3379,7 +3600,7 @@ function Inner() {
                       </span>
                       <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg }}>{p.held ? '🔴 ' : ''}{st.text}</span>
                       <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
-                        {p.channels.map((c) => (c === 'facebook' ? 'Facebook' : 'Instagram')).join(' + ')}
+                        {p.channels.map((c) => CHANNEL_NAME[c]).join(' + ')}
                         {p.shape === 'carousel' && ` · ${p.media.length} ${T('ảnh/video', 'items')}`}
                         {p.shape === 'video' && ' · video'}
                       </span>

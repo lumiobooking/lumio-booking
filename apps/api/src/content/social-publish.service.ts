@@ -4,8 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import {
-  planPublish, dueNow, crowding, shapeOf, explainMetaError, MAX_ATTEMPTS,
-  type Channel, type ConnectedPage, type PublishPlan, type MediaItem,
+  planPublish, dueNow, crowding, shapeOf, explainMetaError, gbpLanguage, MAX_ATTEMPTS, CHANNELS,
+  type Channel, type ConnectedPage, type PublishPlan, type MediaItem, type GoogleLocation,
 } from './social-publish';
 import { planPurge, storagePathOf, DEFAULT_RETENTION_DAYS, type RetentionPost } from './media-retention';
 import { MEDIA_STORE, type MediaStore } from './media-store';
@@ -13,6 +13,10 @@ import { buildPostKit, type ShopFacts } from './post-kit';
 import { publicWebBase } from '../common/public-url.util';
 import { explainPublishGap, type GapCause, type PublishGrant } from '../messenger/publish-grant';
 import { GoogleDriveService } from '../uploads/google-drive.service';
+import { GoogleReviewsService } from '../google-reviews/google-reviews.service';
+import { checkGbpPost, gbpImageHeaderProblem, gbpSummary, type GbpCheck } from './gbp-policy';
+import { gbpScreenPrompt, parseScreenVerdict, screenRefusal, type ScreenVerdict } from './gbp-screen';
+import { createHash } from 'crypto';
 import {
   cleanStage, statusFor, keepDriveLinks, unarchived, postFolderName, mediaFileName, type Stage, type MediaRef,
 } from './post-workflow';
@@ -87,6 +91,10 @@ export class SocialPublishService {
     // Optional so the isolation tests can build the service without Drive;
     // in the app it is always there (UploadsModule exports it).
     @Optional() private readonly drive?: GoogleDriveService,
+    // Google Business posting rides the OAuth grant the reviews screen holds.
+    // Optional for the same reason as Drive: the isolation tests build the
+    // service bare, and a shop without Google simply has no third channel.
+    @Optional() private readonly google?: GoogleReviewsService,
   ) {}
 
   /**
@@ -319,7 +327,16 @@ export class SocialPublishService {
 
   private channelsOf(row: { channels: unknown }): Channel[] {
     const raw = Array.isArray(row.channels) ? row.channels : [];
-    return raw.filter((c): c is Channel => c === 'facebook' || c === 'instagram');
+    return raw.filter((c): c is Channel => (CHANNELS as unknown[]).includes(c));
+  }
+
+  /**
+   * The Google Business location this tenant may post to — looked up FROM the
+   * tenant, like the Page, never off a post row. Null when not connected.
+   */
+  private async googleFor(tenantId: string): Promise<GoogleLocation | null> {
+    if (!this.google) return null;
+    return this.google.postingLocation(tenantId).catch(() => null);
   }
 
   /**
@@ -367,6 +384,7 @@ export class SocialPublishService {
     }).catch(() => []) as PostRow[];
 
     const conn = await this.pageFor(tenantId);
+    const gbp = await this.googleFor(tenantId);
 
     // Can this connection publish at all? Asked before anything is attempted,
     // so the answer arrives on the screen rather than as a failed post — and so
@@ -408,7 +426,7 @@ export class SocialPublishService {
     const posts = (rows ?? []).map((r) => {
       const media = this.mediaOf(r);
       const channels = this.channelsOf(r);
-      const plan = planPublish({ channels, message: r.message, media }, conn?.page ?? null);
+      const plan = planPublish({ channels, message: r.message, media }, conn?.page ?? null, gbp);
       return {
         id: r.id,
         ideaId: r.ideaId,
@@ -479,6 +497,12 @@ export class SocialPublishService {
         /** Why they are missing, and whether reconnecting is the fix. */
         publishGap,
       } : null,
+      /**
+       * The Business Profile location, when the shop connected one under
+       * Đánh giá Google. Separate from `connected`: a shop can have Google
+       * and no Facebook Page, and the composer offers whichever exists.
+       */
+      google: gbp ? { title: gbp.title } : null,
       posts,
       /** True for a Lumio support session: may delete published rows too. */
       canDeletePosted: isLumio,
@@ -494,7 +518,7 @@ export class SocialPublishService {
     stage?: string; writerName?: string; designerName?: string; teamNote?: string;
   }) {
     const tenantId = this.tenantId(user);
-    const channels = (body.channels ?? ['facebook']).filter((c) => c === 'facebook' || c === 'instagram');
+    const channels = (body.channels ?? ['facebook']).filter((c) => (CHANNELS as unknown[]).includes(c));
     const message = (body.message ?? '').trim();
     let media = this.mediaOf({ media: body.media ?? [] });
     const when = body.scheduledAt ? await this.whenOf(tenantId, body.scheduledAt) : null;
@@ -523,8 +547,12 @@ export class SocialPublishService {
       // Refuse at write time, while the person who wrote it is still looking at
       // it, rather than failing in a scheduler run nobody is watching.
       const conn = await this.pageFor(tenantId);
-      const plan = planPublish({ channels, message, media }, conn?.page ?? null);
+      const plan = planPublish({ channels, message, media }, conn?.page ?? null, await this.googleFor(tenantId));
       if (!plan.ready) throw new BadRequestException(plan.problems.join(' '));
+      if (channels.includes('google')) {
+        const g = await this.googleGate(tenantId, message, media);
+        if (g) throw new BadRequestException(g);
+      }
     }
 
     const data = { channels, message, media, imageUrl: null, scheduledAt: when, status, ...workflow };
@@ -571,9 +599,13 @@ export class SocialPublishService {
     let blockers: string[] = [];
     if (stage === 'ready') {
       const conn = await this.pageFor(tenantId);
-      const plan = planPublish({ channels: this.channelsOf(row), message: row.message, media: this.mediaOf(row) }, conn?.page ?? null);
+      const plan = planPublish({ channels: this.channelsOf(row), message: row.message, media: this.mediaOf(row) }, conn?.page ?? null, await this.googleFor(tenantId));
       blockers = plan.ready ? [] : plan.problems;
-      status = plan.ready ? 'scheduled' : 'draft';
+      if (plan.ready && this.channelsOf(row).includes('google')) {
+        const g = await this.googleGate(tenantId, row.message, this.mediaOf(row));
+        if (g) blockers = [g];
+      }
+      status = blockers.length === 0 ? 'scheduled' : 'draft';
     } else {
       status = 'draft';
     }
@@ -823,13 +855,24 @@ export class SocialPublishService {
 
   private async deliver(row: PostRow): Promise<{ ok: boolean; error: string | null; results: PublishResult[] }> {
     const conn = await this.pageFor(row.tenantId);
+    const gbp = await this.googleFor(row.tenantId);
     const channels = this.channelsOf(row);
     const media = this.mediaOf(row);
-    const plan: PublishPlan = planPublish({ channels, message: row.message, media }, conn?.page ?? null);
-    if (!plan.ready || !conn) {
+    const plan: PublishPlan = planPublish({ channels, message: row.message, media }, conn?.page ?? null, gbp);
+    // A Meta channel that planned OK has a Page behind it (the planner refuses
+    // otherwise); the second clause only keeps the compiler honest about `conn`.
+    const needsMeta = plan.plans.some((p) => p.channel !== 'google');
+    if (!plan.ready || (needsMeta && !conn)) {
       const error = plan.problems.join(' ') || 'Chưa kết nối Trang.';
       await this.fail(row, error);
       return { ok: false, error, results: [] };
+    }
+    // Google's policy gate runs again at send time — the picture's host may
+    // have changed the file, and a post edited after its screen is a post
+    // the screen never saw. Cached, so an unchanged post costs nothing.
+    if (channels.includes('google')) {
+      const g = await this.googleGate(row.tenantId, row.message, media);
+      if (g) { await this.fail(row, g); return { ok: false, error: g, results: [] }; }
     }
 
     // Claim it first. Two scheduler instances running the same minute must not
@@ -849,9 +892,11 @@ export class SocialPublishService {
 
     const results: PublishResult[] = [];
     for (const p of plan.plans) {
-      const r = p.channel === 'facebook'
-        ? await this.toFacebook(p.targetId!, conn.token, row.message, media)
-        : await this.toInstagram(p.targetId!, conn.token, media, row.message);
+      const r = p.channel === 'google'
+        ? await this.toGoogle(row.tenantId, row.message, media)
+        : p.channel === 'facebook'
+          ? await this.toFacebook(p.targetId!, conn!.token, row.message, media)
+          : await this.toInstagram(p.targetId!, conn!.token, media, row.message);
       results.push(r);
     }
 
@@ -884,6 +929,151 @@ export class SocialPublishService {
         results: results as never,
       },
     }).catch(() => undefined);
+  }
+
+  // ---- Google policy ----------------------------------------------------------
+
+  /**
+   * What the composer asks while the writer types: the text Google would get,
+   * what was stripped, and every word-list finding. No network, no model —
+   * cheap enough to call on every pause. `ai: true` adds the model's look at
+   * the photo and the caption, for the "Kiểm duyệt" button.
+   */
+  async googleCheck(user: AuthenticatedUser, body: { message?: string; media?: { url?: string; kind?: string }[]; ai?: boolean }): Promise<GbpCheck & { ai: ScreenVerdict | null; aiOff: boolean }> {
+    const tenantId = this.tenantId(user);
+    const media = this.mediaOf({ media: body.media ?? [] });
+    const check = checkGbpPost(body.message ?? '', media);
+    let ai: ScreenVerdict | null = null;
+    if (body.ai && check.blockers.length === 0) {
+      const photo = media.find((m) => m.kind === 'image')?.url ?? null;
+      if (photo) {
+        const p = await this.googleImageProblem(photo);
+        if (p) check.blockers.push({ code: 'file', vi: p, en: p });
+      }
+      if (check.blockers.length === 0) ai = await this.googleScreen(tenantId, check.summary, photo);
+    }
+    return { ...check, ai, aiOff: !process.env.ANTHROPIC_API_KEY };
+  }
+
+  /**
+   * The gate every Google post passes before it is locked and again before
+   * it is sent: the file's headers, then the model's look. The refusal, or
+   * null. The word list ran already inside planPublish.
+   */
+  private async googleGate(tenantId: string, message: string, media: MediaItem[]): Promise<string | null> {
+    const photo = media.find((m) => m.kind === 'image')?.url ?? null;
+    if (photo) {
+      const p = await this.googleImageProblem(photo);
+      if (p) return `Google Business: ${p}`;
+    }
+    const v = await this.googleScreen(tenantId, checkGbpPost(message, media).summary, photo);
+    return screenRefusal(v);
+  }
+
+  /**
+   * Ask the picture's host what it is. Google fetches the file itself and
+   * refuses anything but a JPG/PNG of 10 KB – 5 MB, an hour after the writer
+   * has left — so the same question is asked here first. Null when the host
+   * will not say (a CDN that answers HEAD with nothing): not proof of a
+   * problem, so not a refusal.
+   */
+  private async googleImageProblem(url: string): Promise<string | null> {
+    try {
+      let res = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(8_000) }).catch(() => null);
+      if (!res || !res.ok || !res.headers.get('content-type')) {
+        res = await fetch(url, { method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(8_000) }).catch(() => null);
+        if (!res) return null;
+        void res.body?.cancel().catch(() => undefined);
+        if (!res.ok) return `Google sẽ không tải được ảnh này (link trả về HTTP ${res.status}). Tải lại bằng "Tải ảnh lên".`;
+      }
+      const len = Number(res.headers.get('content-length') || 0) || null;
+      return gbpImageHeaderProblem({ contentType: res.headers.get('content-type'), contentLength: len });
+    } catch {
+      return null;
+    }
+  }
+
+  /** Verdicts by (text, photo), for a day: a post locked at 9 and sent at 5 is screened once. */
+  private screenCache = new Map<string, { at: number; v: ScreenVerdict }>();
+
+  /**
+   * The model reads the photo and the caption against Google's policy.
+   * Null when there is no key or the call failed — "could not tell", which
+   * the callers treat as "no refusal from here"; the word list still stands.
+   */
+  async googleScreen(tenantId: string, summary: string, photoUrl: string | null): Promise<ScreenVerdict | null> {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) return null;
+    const hash = createHash('sha1').update(`${tenantId}\n${summary}\n${photoUrl ?? ''}`).digest('hex');
+    const hit = this.screenCache.get(hash);
+    if (hit && Date.now() - hit.at < 24 * 60 * 60 * 1000) return hit.v;
+
+    const [t, profRow] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, businessType: true } }).catch(() => null) as Promise<{ name?: string; businessType?: string } | null>,
+      this.prisma.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } }).catch(() => null),
+    ]);
+    const prof = (profRow?.value ?? {}) as { trade?: string; whatWeDo?: string };
+    const { system, user } = gbpScreenPrompt({
+      summary, hasPhoto: Boolean(photoUrl), shopName: t?.name ?? '',
+      trade: prof.whatWeDo?.trim() || prof.trade || t?.businessType || 'SALON',
+    });
+    const content: unknown[] = [];
+    if (photoUrl) content.push({ type: 'image', source: { type: 'url', url: photoUrl } });
+    content.push({ type: 'text', text: user });
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 700,
+        system,
+        messages: [{ role: 'user', content }],
+      }),
+      signal: AbortSignal.timeout(45_000),
+    }).catch(() => null);
+    if (!res || !res.ok) {
+      this.log.warn(`gbp screen: model call failed for ${tenantId} (${res ? res.status : 'network'})`);
+      return null;
+    }
+    const data = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
+    const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('');
+    const v = parseScreenVerdict(text, Boolean(photoUrl));
+    if (!v) { this.log.warn(`gbp screen: unusable answer for ${tenantId}`); return null; }
+    if (this.screenCache.size > 500) this.screenCache.clear();
+    this.screenCache.set(hash, { at: Date.now(), v });
+    return v;
+  }
+
+  // ---- Google Business Profile ----------------------------------------------
+
+  /**
+   * One "What's new" post on the shop's Business Profile: the caption, the
+   * FIRST photo, and a Book button pointing at the shop's own booking page.
+   *
+   * The token never passes through here — GoogleReviewsService holds the
+   * grant and makes the call, so a post row can no more carry a Google token
+   * than it can carry a Page token.
+   */
+  private async toGoogle(tenantId: string, message: string, media: MediaItem[]): Promise<PublishResult> {
+    const fail = (e: string): PublishResult => ({ channel: 'google', id: null, url: null, error: e });
+    if (!this.google) return fail('Google Business chưa được bật trên máy chủ.');
+    try {
+      const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } }).catch(() => null) as { slug?: string } | null;
+      const bookingUrl = t?.slug ? `${publicWebBase()}/book/${t.slug}` : null;
+      const photo = media.find((m) => m.kind === 'image')?.url ?? null;
+      // What Google receives is the caption minus the contact block — the
+      // same text the composer previewed and the gate approved.
+      const summary = gbpSummary(message).text;
+      const out = await this.google.createLocalPost(tenantId, {
+        summary,
+        languageCode: gbpLanguage(summary),
+        photoUrl: photo,
+        cta: bookingUrl ? { actionType: 'BOOK', url: bookingUrl } : null,
+      });
+      return { channel: 'google', id: out.name, url: out.url, error: null };
+    } catch (e) {
+      return fail(e instanceof Error ? e.message.replace(/^Bad Request Exception:?\s*/i, '') : 'lỗi mạng');
+    }
   }
 
   // ---- Facebook -------------------------------------------------------------

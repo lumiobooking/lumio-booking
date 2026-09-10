@@ -1,13 +1,14 @@
 import {
   planPublish, dueNow, usableMediaUrl, sharePageProblem, guessKind, shapeOf, crowding, igGrid, explainMetaError,
-  releasesHold,
-  IG_CAPTION_MAX, IG_HASHTAG_MAX, IG_CAROUSEL_MAX, MAX_ATTEMPTS, LATE_GRACE_MS, CROWDING_MS,
-  type ConnectedPage, type PostDraft, type QueuedPost, type MediaItem, type Channel,
+  releasesHold, gbpLanguage,
+  IG_CAPTION_MAX, IG_HASHTAG_MAX, IG_CAROUSEL_MAX, GBP_SUMMARY_MAX, MAX_ATTEMPTS, LATE_GRACE_MS, CROWDING_MS,
+  type ConnectedPage, type PostDraft, type QueuedPost, type MediaItem, type Channel, type GoogleLocation,
 } from './social-publish';
 
 const PAGE: ConnectedPage = {
   pageId: '1010', igId: '2020', igUsername: 'luxnails', pageName: 'Lux Nail Spa', enabled: true,
 };
+const GBP: GoogleLocation = { parent: 'accounts/1/locations/2', title: 'Lux Nail Spa' };
 const img = (n = 1): MediaItem => ({ url: `https://cdn.lumio.app/p/${n}.jpg`, kind: 'image' });
 const vid = (n = 1): MediaItem => ({ url: `https://cdn.lumio.app/p/${n}.mp4`, kind: 'video' });
 const many = (n: number) => Array.from({ length: n }, (_, i) => img(i));
@@ -171,6 +172,55 @@ describe('a post with no connected Page tells the salon where to go', () => {
 const q = (o: Partial<QueuedPost> = {}): QueuedPost =>
   ({ id: 'p1', status: 'scheduled', scheduledAt: new Date('2026-09-01T14:00:00Z'), attempts: 0, ...o });
 const NOW = new Date('2026-09-01T14:00:00Z');
+
+describe('Google Business Profile is a third place, with Google’s own rules', () => {
+  it('posts to Google alongside Facebook when a location is connected', () => {
+    const p = planPublish(draft({ channels: ['facebook', 'google'] }), PAGE, GBP);
+    expect(p.ready).toBe(true);
+    expect(p.plans.find((x) => x.channel === 'google')!.targetId).toBe('accounts/1/locations/2');
+  });
+
+  it('needs no Facebook Page at all for a Google-only post', () => {
+    // A restaurant on Maps with no Page is a real customer.
+    expect(planPublish(draft({ channels: ['google'] }), null, GBP).ready).toBe(true);
+  });
+
+  it('sends the salon to the Google reviews screen when nothing is connected', () => {
+    const p = planPublish(draft({ channels: ['google'] }), PAGE, null);
+    expect(p.ready).toBe(false);
+    expect(p.problems[0]).toMatch(/đánh giá Google/);
+  });
+
+  it('refuses video — Google local posts take photos only', () => {
+    const p = planPublish(draft({ channels: ['google'], media: [vid()] }), PAGE, GBP);
+    expect(p.problems[0]).toMatch(/không nhận video/);
+  });
+
+  it('refuses a caption past 1,500 characters and a photo with no words', () => {
+    expect(planPublish(draft({ channels: ['google'], message: 'x'.repeat(GBP_SUMMARY_MAX + 1) }), PAGE, GBP).ready).toBe(false);
+    expect(planPublish(draft({ channels: ['google'], message: 'x'.repeat(GBP_SUMMARY_MAX) }), PAGE, GBP).ready).toBe(true);
+    expect(planPublish(draft({ channels: ['google'], message: '' }), PAGE, GBP).problems[0]).toMatch(/phải có chữ/);
+  });
+
+  it('lets a text-only post through — Google does not need a picture', () => {
+    expect(planPublish(draft({ channels: ['google'], media: [] }), null, GBP).ready).toBe(true);
+  });
+
+  it('holds the whole post when Google cannot take it but Facebook can', () => {
+    const p = planPublish(draft({ channels: ['facebook', 'google'], media: [vid()] }), PAGE, GBP);
+    expect(p.ready).toBe(false);
+    expect(p.plans.find((x) => x.channel === 'facebook')!.ok).toBe(true);
+  });
+
+  it('files a Vietnamese caption as vi and everything else as en', () => {
+    expect(gbpLanguage('Còn giờ trống thứ Ba')).toBe('vi');
+    expect(gbpLanguage('Tuesday morning slots open')).toBe('en');
+  });
+
+  it('old callers that never heard of Google still work unchanged', () => {
+    expect(planPublish(draft(), PAGE).ready).toBe(true);
+  });
+});
 
 describe('the scheduler sends what is due and nothing else', () => {
   it('sends a post whose moment has arrived', () => {

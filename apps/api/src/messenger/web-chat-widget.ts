@@ -86,6 +86,13 @@ const WIDGET = `(function () {
       '.h small{display:block;font-size:12px;opacity:.85;margin-top:2px}' +
       '.x{margin-left:auto;background:rgba(255,255,255,.18);border:0;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px}' +
       '.m{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:8px;background:#f5f6fa}' +
+      // Messages sit on the FLOOR of the panel, the way every chat app does
+      // it — a two-line conversation stranded at the top of a full-screen
+      // panel with a field of grey under it reads as broken. A ::before with
+      // margin-top:auto is a flex item that eats the slack; justify-content
+      // :flex-end would do the same until the thread grows past the panel,
+      // at which point some browsers clip the top of it beyond reach.
+      '.m:before{content:"";margin-top:auto}' +
       '.r{max-width:82%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}' +
       '.r.u{align-self:flex-end;background:' + color + ';color:#fff;border-bottom-right-radius:4px}' +
       '.r.a{align-self:flex-start;background:#fff;color:#111827;border:1px solid #e5e7eb;border-bottom-left-radius:4px}' +
@@ -205,6 +212,9 @@ const WIDGET = `(function () {
     if (!text || failed) return;
     input.value = '';
     err.style.display = 'none';
+    // Keep the keyboard up: on a phone, dismissing it after every line means
+    // two taps to say two sentences. Every messaging app leaves it open.
+    try { input.focus(); } catch (e) {}
     turns.push({ role: 'user', text: text, at: '', human: false });
     waitingSince = Date.now();
     render(); schedule();
@@ -235,37 +245,58 @@ const WIDGET = `(function () {
   }
 
   /**
-   * Follow the part of the page the visitor can actually see.
+   * How the big chat widgets actually do this, and why the first three
+   * attempts here were wrong.
    *
-   * iOS moves TWO viewports and they disagree. The layout viewport is what a
-   * position:fixed element is measured against; the visual viewport is the
-   * glass. Open the keyboard and Safari scrolls the layout viewport so the
-   * focused field clears the keys — the fixed panel travels with it and half
-   * of it ends up above the top of the screen, which is exactly what the
-   * screenshots showed.
+   * The temptation is to measure the viewport all the time and keep the panel
+   * matched to it. That is what broke: iOS reports the viewport DURING the
+   * keyboard animation, so whatever number arrives last is a measurement of a
+   * screen that no longer exists — and the panel keeps that wrong height until
+   * something else happens to shake it. A 520px-tall panel on a 930px screen,
+   * exactly as the last screenshot showed, is the keyboard's height frozen in
+   * place after the keyboard has gone.
    *
-   * visualViewport reports where the glass now sits (offsetTop/offsetLeft) and
-   * how big it is. Pinning all four to those numbers is the only thing that
-   * holds in every combination of keyboard, rubber-band scroll and zoom.
+   * Intercom, Crisp and Messenger do something simpler. The panel is a plain
+   * full-screen element — inset:0, no measuring, nothing to get stale. The
+   * viewport is consulted for ONE case only: while the visitor is actually
+   * typing, because that is the only moment the keyboard is covering the
+   * composer. Lose focus and the measurements are thrown away and the panel
+   * goes back to being simply full screen.
+   *
+   * So the rule is: no typing, no arithmetic.
    */
+  var typing = false;
+
   function fit() {
     var vv = window.visualViewport;
-    if (!open || !phone() || !vv) { clearFit(); return; }
+    // Not a phone, not open, or nobody is typing — CSS already says inset:0,
+    // which is right and cannot go stale.
+    if (!open || !phone() || !typing || !vv) { clearFit(); toBottom(); return; }
     panel.style.top = vv.offsetTop + 'px';
     panel.style.left = vv.offsetLeft + 'px';
     panel.style.right = 'auto';
     panel.style.bottom = 'auto';
     panel.style.width = vv.width + 'px';
     panel.style.height = vv.height + 'px';
+    toBottom();
   }
 
+  /** The newest line, always. Resizing changes scrollHeight; a chat that lands
+   *  in the middle of yesterday's conversation looks broken even when it is not. */
+  function toBottom() { try { list.scrollTop = list.scrollHeight; } catch (e) {} }
+
   /**
-   * The keyboard's arrival is not one event at one moment: the viewport
-   * settles over a few hundred milliseconds while the keys slide up. One
-   * measurement taken at the start of that is a measurement of the wrong
-   * screen, so take several.
+   * The keyboard does not arrive at one moment: it slides, and the viewport
+   * settles over a few hundred milliseconds. One measurement taken at the
+   * start of that is a measurement of the wrong screen — and one taken at the
+   * end still misses browsers that animate slower. So measure across the whole
+   * animation, and let the visualViewport events correct it afterwards.
    */
-  function fitSoon() { fit(); setTimeout(fit, 80); setTimeout(fit, 250); setTimeout(fit, 500); }
+  function fitSoon() {
+    fit();
+    setTimeout(fit, 80); setTimeout(fit, 250);
+    setTimeout(fit, 500); setTimeout(fit, 900);
+  }
 
   function toggle(force) {
     open = typeof force === 'boolean' ? force : !open;
@@ -302,11 +333,14 @@ const WIDGET = `(function () {
     } catch (e) {}
     if (open) {
       unread = 0; badge.style.display = 'none'; poll();
-      // Focus after the panel has been sized, or the keyboard opens against a
-      // panel that is still the wrong shape.
+      // Do NOT force the keyboard up on opening. On a phone it would cover the
+      // conversation the visitor came to read, and every big widget waits for
+      // a deliberate tap on the field. Desktop has the room, so it still focuses.
       fitSoon();
-      setTimeout(function () { input.focus(); fitSoon(); }, 60);
+      if (!phone()) setTimeout(function () { input.focus(); }, 60);
+      setTimeout(toBottom, 60);
     } else {
+      typing = false;
       clearFit();
     }
     schedule();
@@ -317,16 +351,17 @@ const WIDGET = `(function () {
     window.visualViewport.addEventListener('scroll', fit);
   }
   window.addEventListener('orientationchange', function () { setTimeout(fitSoon, 250); });
-  // Blur puts the keyboard away, and the viewport grows back over the same
-  // few hundred milliseconds it took to shrink.
-  input.addEventListener('blur', function () { fitSoon(); });
+  // Blur puts the keyboard away. Stop measuring FIRST, then let fitSoon clear
+  // the sizes across the closing animation — otherwise the panel keeps the
+  // height it had while the keys were up.
+  input.addEventListener('blur', function () { typing = false; fitSoon(); });
 
   bubble.addEventListener('click', function () { toggle(); });
   sendBtn.addEventListener('click', send);
   input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   // The keyboard appearing shortens the list; without this the visitor is
   // left looking at the middle of the conversation instead of its end.
-  input.addEventListener('focus', function () { fitSoon(); setTimeout(function () { list.scrollTop = list.scrollHeight; }, 320); });
+  input.addEventListener('focus', function () { typing = true; fitSoon(); });
 
   get('').then(function (c) {
     if (!c || !c.ok) return;

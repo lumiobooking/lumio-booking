@@ -41,6 +41,9 @@ const STAFF_MAY = [
 // Running the business. A technician must never reach any of it.
 const STAFF_MUST_NOT = [
   'get', 'connect', 'candidates', 'choose', 'update', 'disconnect',
+  // Detaching every other page in one press changes where the bot answers
+  // and where posts go. Owner and Lumio staff only, like disconnect.
+  'keepOnly',
   'importFacts', 'suggestGreeting',
   'leads', 'leadStatus', 'webhookStatus', 'activity',
   'clearReviewData', 'clearConversations',

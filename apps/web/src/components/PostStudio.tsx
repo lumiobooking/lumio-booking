@@ -189,7 +189,7 @@ const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d
  * with holes in the corners is harder to read than one with grey edges.
  */
 export function MonthCalendar({
-  posts, month, onMonth, onPick, onDrop, onDelete, vi,
+  posts, month, onMonth, onPick, onDrop, onDelete, vi, compact = false,
 }: {
   posts: StudioPost[];
   month: Date;
@@ -198,6 +198,8 @@ export function MonthCalendar({
   onDrop: (id: string, day: Date) => void;
   onDelete: (id: string) => void;
   vi: boolean;
+  /** A phone. Seven columns of cards do not fit; see the compact branch below. */
+  compact?: boolean;
 }) {
   const [over, setOver] = useState<string | null>(null);
   /** A day whose overflow the reader has opened. Busy days stay short by default. */
@@ -266,6 +268,269 @@ export function MonthCalendar({
     return { alarm, doing, locked, done };
   }, [posts]);
 
+  /**
+   * One post, drawn the same everywhere.
+   *
+   * `big` is the phone: same card, room to breathe. A month grid squeezed onto
+   * a 390px screen gives each day about fifty pixels, which is a colour and
+   * nothing else — so on a phone the grid becomes a glance-map and this card
+   * is shown full width underneath, where a thumbnail and a sentence fit.
+   */
+  const card = (p: StudioPost, big = false) => {
+    const tone = postTone(p);
+    const t = TONES[tone];
+    const thumb = p.media[0];
+    const owner = tone === 'design' ? (p.designerName || p.writerName) : (p.writerName || p.designerName);
+    /**
+     * The second line answers "what do I do about this one", and only falls
+     * back to the caption when the answer is nothing. A caption cut at 24
+     * characters was never the answer.
+     */
+    const detail = t.alarm
+      ? `${t.icon} ${vi ? t.vi : t.en}${p.held?.note ? ` — ${p.held.note}` : p.blockers[0] ? ` — ${p.blockers[0]}` : ''}`
+      : tone === 'writing' || tone === 'design'
+        ? `${t.icon} ${vi ? t.vi : t.en}${owner ? ` · ${owner}` : ''}`
+        : p.teamNote
+          ? `📝 ${p.teamNote}`
+          : (p.message.trim() || T('(chưa có caption)', '(no caption yet)'));
+    const box: React.CSSProperties = big
+      ? { width: 46, height: 46, borderRadius: 8, flexShrink: 0, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }
+      : thumbBox;
+    return (
+      <div
+        key={p.id}
+        draggable={!big}
+        onDragStart={(e) => {
+          // Firefox refuses to start a drag unless setData is called.
+          e.dataTransfer.setData('text/plain', p.id);
+          e.dataTransfer.effectAllowed = 'move';
+        }}
+        onClick={() => onPick(p.id)}
+        onContextMenu={(e) => {
+          if (p.status === 'posted') return; // let the browser menu through
+          e.preventDefault();
+          setMenu({ id: p.id, x: e.clientX, y: e.clientY });
+        }}
+        // Touch has no right-click. A long press is the same gesture.
+        onTouchStart={(e) => {
+          if (p.status === 'posted') return;
+          const t2 = e.touches[0];
+          press.current = setTimeout(() => setMenu({ id: p.id, x: t2.clientX, y: t2.clientY }), 500);
+        }}
+        onTouchEnd={() => { if (press.current) clearTimeout(press.current); }}
+        onTouchMove={() => { if (press.current) clearTimeout(press.current); }}
+        title={postHint(p, vi)}
+        style={{
+          marginTop: big ? 6 : 3, padding: big ? '9px 10px' : '3px 5px', borderRadius: big ? 10 : 6,
+          cursor: big ? 'pointer' : 'grab',
+          // Only a problem gets a filled card. Everything else is a neutral box
+          // with a coloured stripe, so the two red ones in a month of thirty are
+          // the two things you see.
+          background: t.alarm ? t.bg : 'var(--c1e293b)',
+          border: `1px solid ${t.alarm ? t.border : 'var(--c334155)'}`,
+          borderLeft: `${big ? 5 : 4}px solid ${t.bar}`,
+          // Published is history: still readable, never competing.
+          opacity: tone === 'posted' ? .55 : 1,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: big ? 'flex-start' : 'center', gap: big ? 9 : 4 }}>
+          {/* The picture is how a designer recognises their own post.
+              A 24-character caption is not. */}
+          {thumb ? (
+            thumb.kind === 'video' ? (
+              <span style={{ ...box, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: big ? 15 : 8, color: 'var(--c94a3b8)' }}>▶</span>
+            ) : (
+              <img src={thumb.url} alt="" loading="lazy" style={{ ...box, objectFit: 'cover' }} />
+            )
+          ) : (
+            <span style={{ ...box, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: big ? 14 : 8, color: 'var(--c475569)' }}>✎</span>
+          )}
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: big ? 7 : 4 }}>
+              <b style={{ fontSize: big ? 14 : 10.5, color: t.alarm ? t.fg : 'var(--ce2e8f0)', flexShrink: 0 }}>
+                {fmtInTz(new Date(p.scheduledAt), { hour: '2-digit', minute: '2-digit' })}
+              </b>
+              <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <ChannelChips channels={p.channels} />
+                {/* The archive, one click from the month — the reason it exists
+                    is to be found from here, not from the composer. */}
+                {p.driveFolderUrl && (
+                  <a
+                    href={p.driveFolderUrl} target="_blank" rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    title={T('Mở thư mục Drive (ảnh/clip của bài này)', 'Open the Drive folder (this post’s files)')}
+                    style={{ flexShrink: 0, textDecoration: 'none', fontSize: big ? 13 : 10 }}
+                  >📁</a>
+                )}
+              </span>
+            </div>
+            <div style={{
+              fontSize: big ? 12.5 : 9.5, lineHeight: 1.4, marginTop: big ? 3 : 1,
+              color: t.alarm ? t.fg : 'var(--c94a3b8)',
+              fontWeight: t.alarm ? 700 : 400,
+              ...(big
+                ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }
+                : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
+            }}>
+              {detail}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /** The month's summary chips — same numbers on both layouts. */
+  const tallies = (
+    <>
+      <Tally n={totals.alarm} bar="#ef4444" label={T('cần xử lý', 'need attention')} loud />
+      <Tally n={totals.doing} bar="#c084fc" label={T('đang làm', 'in progress')} />
+      <Tally n={totals.locked} bar="#22c55e" label={T('chờ đăng', 'waiting to go')} />
+      <Tally n={totals.done} bar="var(--c475569)" label={T('đã đăng', 'published')} />
+    </>
+  );
+
+  /** The key, as one wrapping row. On a phone it hides behind a tap. */
+  const legend = (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 12px', fontSize: 11, color: 'var(--c94a3b8)', alignItems: 'center' }}>
+      {(['held', 'failed', 'blocked', 'writing', 'design', 'ready', 'posted'] as Tone[]).map((k) => (
+        <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <span style={{
+            width: 13, height: 11, borderRadius: 3,
+            background: TONES[k].alarm ? TONES[k].bg : 'var(--c1e293b)',
+            border: `1px solid ${TONES[k].alarm ? TONES[k].border : 'var(--c334155)'}`,
+            borderLeft: `4px solid ${TONES[k].bar}`,
+            opacity: k === 'posted' ? .55 : 1,
+          }} />
+          {TONES[k].icon} {vi ? TONES[k].vi : TONES[k].en}
+        </span>
+      ))}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 2, paddingLeft: 10, borderLeft: '1px solid var(--c334155)' }}>
+        <ChannelChips channels={['facebook', 'instagram', 'google', 'tiktok']} />
+      </span>
+    </div>
+  );
+
+  /**
+   * THE PHONE.
+   *
+   * Seven columns of cards do not fit and never will: each day would be about
+   * fifty pixels wide, which holds a colour and no information. So the month
+   * splits in two — a glance-map of thirty-odd squares that answers "where is
+   * the work and where is the trouble", and, under it, the days that actually
+   * have something on them, full width, in the order they happen.
+   *
+   * Tapping a square jumps to that day rather than opening anything: on a phone
+   * the question is nearly always "what is on the 14th", and an answer that
+   * costs one tap and no typing is the whole point of the map.
+   */
+  if (compact) {
+    const withPosts = days.filter((d) => !((byDay.get(dayKey(d)) ?? []).length === 0) && d.getMonth() === month.getMonth());
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9 }}>
+          <button onClick={() => step(-1)} style={navBtn}>‹</button>
+          <div style={{ flex: 1, fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', textAlign: 'center' }}>{label}</div>
+          <button onClick={() => step(1)} style={navBtn}>›</button>
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>{tallies}</div>
+
+        {/* The glance-map: a day is a number and up to four dots. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 3, marginBottom: 4 }}>
+          {dows.map((d) => (
+            <div key={d} style={{ fontSize: 10, color: 'var(--c64748b)', textAlign: 'center' }}>{d}</div>
+          ))}
+          {days.map((d) => {
+            const k = dayKey(d);
+            const mine = byDay.get(k) ?? [];
+            const outside = d.getMonth() !== month.getMonth();
+            const alarmHere = mine.filter((x) => TONES[postTone(x)].alarm).length;
+            return (
+              <button
+                key={k}
+                onClick={() => {
+                  if (!mine.length) return;
+                  document.getElementById(`agenda-${k}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                style={{
+                  minHeight: 42, padding: '3px 2px', borderRadius: 7, fontFamily: 'inherit',
+                  cursor: mine.length ? 'pointer' : 'default',
+                  background: k === today ? 'var(--c1e1b4b)' : 'var(--c0f172a)',
+                  border: `1px solid ${k === today ? '#6366f1' : 'var(--c1e293b)'}`,
+                  opacity: outside ? .35 : 1,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 2,
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: alarmHere ? 800 : 600, color: alarmHere ? '#ef4444' : k === today ? 'var(--ca5b4fc)' : 'var(--c94a3b8)' }}>
+                  {d.getDate()}
+                </span>
+                <span style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {mine.slice(0, 4).map((x) => (
+                    <span key={x.id} style={{ width: 5, height: 5, borderRadius: '50%', background: TONES[postTone(x)].bar, opacity: postTone(x) === 'posted' ? .5 : 1 }} />
+                  ))}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <details style={{ marginBottom: 10 }}>
+          <summary style={{ fontSize: 11.5, color: 'var(--c94a3b8)', cursor: 'pointer', padding: '4px 0' }}>
+            {T('Chú thích màu', 'What the colours mean')}
+          </summary>
+          <div style={{ paddingTop: 7 }}>{legend}</div>
+        </details>
+
+        {/* The days that have something on them, in order. */}
+        {withPosts.length === 0 && (
+          <div style={{ padding: 18, textAlign: 'center', fontSize: 13, color: 'var(--c64748b)', lineHeight: 1.6 }}>
+            {T('Tháng này chưa có bài nào.', 'Nothing scheduled this month.')}
+          </div>
+        )}
+        {withPosts.map((d) => {
+          const k = dayKey(d);
+          const mine = byDay.get(k) ?? [];
+          const alarmHere = mine.filter((x) => TONES[postTone(x)].alarm).length;
+          return (
+            <div key={k} id={`agenda-${k}`} style={{ marginBottom: 14, scrollMarginTop: 8 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 7, padding: '5px 2px',
+                borderBottom: `1px solid ${k === today ? '#6366f1' : 'var(--c1e293b)'}`,
+              }}>
+                <b style={{ fontSize: 13, color: k === today ? 'var(--ca5b4fc)' : 'var(--ce2e8f0)' }}>
+                  {d.toLocaleDateString(vi ? 'vi-VN' : 'en-US', { weekday: 'short', day: 'numeric', month: 'numeric' })}
+                </b>
+                {k === today && <span style={{ fontSize: 10.5, color: 'var(--ca5b4fc)' }}>{T('hôm nay', 'today')}</span>}
+                {alarmHere > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: '#ef4444' }}>● {alarmHere}</span>}
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--c64748b)' }}>{mine.length}</span>
+              </div>
+              {mine.map((x) => card(x, true))}
+            </div>
+          );
+        })}
+
+        {menu && (
+          <div
+            style={{
+              position: 'fixed', left: Math.min(menu.x, (typeof window !== 'undefined' ? window.innerWidth : 1000) - 190),
+              top: menu.y, zIndex: 90, minWidth: 176, padding: 5, borderRadius: 10,
+              background: 'var(--c111827)', border: '1px solid var(--c334155)',
+              boxShadow: '0 12px 32px rgba(0,0,0,.45)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button onClick={() => { onPick(menu.id); setMenu(null); }} style={menuItem}>✎ {T('Sửa bài', 'Edit post')}</button>
+            <button onClick={() => { onDelete(menu.id); setMenu(null); }} style={{ ...menuItem, color: '#ef4444' }}>🗑 {T('Xoá bài này', 'Delete this post')}</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9, flexWrap: 'wrap' }}>
@@ -276,12 +541,7 @@ export function MonthCalendar({
         {/* The month in four numbers. A person opening this screen wants to
             know "is anything on fire" before they want to know anything else,
             and counting red boxes by eye is not an answer. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginLeft: 4 }}>
-          <Tally n={totals.alarm} bar="#ef4444" label={T('cần xử lý', 'need attention')} loud />
-          <Tally n={totals.doing} bar="#c084fc" label={T('đang làm', 'in progress')} />
-          <Tally n={totals.locked} bar="#22c55e" label={T('chờ đăng', 'waiting to go')} />
-          <Tally n={totals.done} bar="var(--c475569)" label={T('đã đăng', 'published')} />
-        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginLeft: 4 }}>{tallies}</div>
 
         <div style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--c64748b)' }}>
           {T('Kéo bài sang ngày khác để đổi lịch', 'Drag a post to another day to move it')}
@@ -289,23 +549,7 @@ export function MonthCalendar({
       </div>
 
       {/* The key sits ABOVE the grid now. Under it, nobody scrolled to it. */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 12px', marginBottom: 9, fontSize: 11, color: 'var(--c94a3b8)', alignItems: 'center' }}>
-        {(['held', 'failed', 'blocked', 'writing', 'design', 'ready', 'posted'] as Tone[]).map((k) => (
-          <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <span style={{
-              width: 13, height: 11, borderRadius: 3,
-              background: TONES[k].alarm ? TONES[k].bg : 'var(--c1e293b)',
-              border: `1px solid ${TONES[k].alarm ? TONES[k].border : 'var(--c334155)'}`,
-              borderLeft: `4px solid ${TONES[k].bar}`,
-              opacity: k === 'posted' ? .55 : 1,
-            }} />
-            {TONES[k].icon} {vi ? TONES[k].vi : TONES[k].en}
-          </span>
-        ))}
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 2, paddingLeft: 10, borderLeft: '1px solid var(--c334155)' }}>
-          <ChannelChips channels={['facebook', 'instagram', 'google', 'tiktok']} />
-        </span>
-      </div>
+      <div style={{ marginBottom: 9 }}>{legend}</div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4, minWidth: 0 }}>
         {dows.map((d) => (
@@ -350,101 +594,7 @@ export function MonthCalendar({
                 )}
               </div>
 
-              {shown.map((p) => {
-                const tone = postTone(p);
-                const t = TONES[tone];
-                const thumb = p.media[0];
-                const owner = tone === 'design' ? (p.designerName || p.writerName) : (p.writerName || p.designerName);
-                /**
-                 * The second line answers "what do I do about this one", and
-                 * only falls back to the caption when the answer is nothing.
-                 * A caption cut at 24 characters was never the answer.
-                 */
-                const detail = t.alarm
-                  ? `${t.icon} ${vi ? t.vi : t.en}${p.held?.note ? ` — ${p.held.note}` : p.blockers[0] ? ` — ${p.blockers[0]}` : ''}`
-                  : tone === 'writing' || tone === 'design'
-                    ? `${t.icon} ${vi ? t.vi : t.en}${owner ? ` · ${owner}` : ''}`
-                    : p.teamNote
-                      ? `📝 ${p.teamNote}`
-                      : (p.message.trim() || T('(chưa có caption)', '(no caption yet)'));
-                return (
-                <div
-                  key={p.id}
-                  draggable
-                  onDragStart={(e) => {
-                    // Firefox refuses to start a drag unless setData is called.
-                    e.dataTransfer.setData('text/plain', p.id);
-                    e.dataTransfer.effectAllowed = 'move';
-                  }}
-                  onClick={() => onPick(p.id)}
-                  onContextMenu={(e) => {
-                    if (p.status === 'posted') return; // let the browser menu through
-                    e.preventDefault();
-                    setMenu({ id: p.id, x: e.clientX, y: e.clientY });
-                  }}
-                  // Touch has no right-click. A long press is the same gesture.
-                  onTouchStart={(e) => {
-                    if (p.status === 'posted') return;
-                    const t2 = e.touches[0];
-                    press.current = setTimeout(() => setMenu({ id: p.id, x: t2.clientX, y: t2.clientY }), 500);
-                  }}
-                  onTouchEnd={() => { if (press.current) clearTimeout(press.current); }}
-                  onTouchMove={() => { if (press.current) clearTimeout(press.current); }}
-                  title={postHint(p, vi)}
-                  style={{
-                    marginTop: 3, padding: '3px 5px', borderRadius: 6, cursor: 'grab',
-                    // Only a problem gets a filled card. Everything else is a
-                    // neutral box with a coloured stripe, so the two red ones
-                    // in a month of thirty are the two things you see.
-                    background: t.alarm ? t.bg : 'var(--c1e293b)',
-                    border: `1px solid ${t.alarm ? t.border : 'var(--c334155)'}`,
-                    borderLeft: `4px solid ${t.bar}`,
-                    // Published is history: still readable, never competing.
-                    opacity: tone === 'posted' ? .55 : 1,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {/* The picture is how a designer recognises their own post.
-                        A 24-character caption is not. */}
-                    {thumb ? (
-                      thumb.kind === 'video' ? (
-                        <span style={{ ...thumbBox, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'var(--c94a3b8)' }}>▶</span>
-                      ) : (
-                        <img src={thumb.url} alt="" loading="lazy" style={{ ...thumbBox, objectFit: 'cover' }} />
-                      )
-                    ) : (
-                      <span style={{ ...thumbBox, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'var(--c475569)' }}>✎</span>
-                    )}
-                    <b style={{ fontSize: 10.5, color: t.alarm ? t.fg : 'var(--ce2e8f0)', flexShrink: 0 }}>
-                      {fmtInTz(new Date(p.scheduledAt), { hour: '2-digit', minute: '2-digit' })}
-                    </b>
-                    <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                      <ChannelChips channels={p.channels} />
-                      {/* The archive, one click from the month — the reason it
-                          exists is to be found from here, not from the composer. */}
-                      {p.driveFolderUrl && (
-                        <a
-                          href={p.driveFolderUrl} target="_blank" rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          title={T('Mở thư mục Drive (ảnh/clip của bài này)', 'Open the Drive folder (this post’s files)')}
-                          style={{ flexShrink: 0, textDecoration: 'none', fontSize: 10 }}
-                        >📁</a>
-                      )}
-                    </span>
-                  </div>
-                  <div style={{
-                    fontSize: 9.5, lineHeight: 1.35, marginTop: 1,
-                    color: t.alarm ? t.fg : 'var(--c94a3b8)',
-                    fontWeight: t.alarm ? 700 : 400,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {detail}
-                  </div>
-                </div>
-                );
-              })}
+              {shown.map((p) => card(p))}
 
               {hidden > 0 && (
                 <button

@@ -4164,6 +4164,7 @@ function Inner() {
                         onDrop={movePost}
                         onDelete={removePost}
                         vi={vi}
+                        compact={isMobile}
                       />
                     </>
                   )}

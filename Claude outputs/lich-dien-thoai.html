@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lịch tháng trên điện thoại</title>
+<style>
+  :root{--c0f172a:#0f172a;--c1e293b:#1e293b;--c334155:#334155;--c475569:#475569;--c64748b:#64748b;
+        --c94a3b8:#94a3b8;--ce2e8f0:#e2e8f0;--ca5b4fc:#a5b4fc;--c1e1b4b:#1e1b4b;--c450a0a:#450a0a;--cfecaca:#fecaca}
+  body{margin:0;background:#020617;color:var(--ce2e8f0);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;padding:18px}
+  .note{max-width:820px;margin:0 auto 16px;font-size:12.5px;color:var(--c94a3b8)}
+  .phone{width:390px;max-width:100%;margin:0 auto;background:var(--c0f172a);border:1px solid var(--c334155);
+         border-radius:22px;padding:14px 12px;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+  .navrow{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+  .nav{width:32px;height:32px;border-radius:8px;border:1px solid var(--c334155);background:transparent;color:var(--c94a3b8);font-size:16px}
+  .mon{flex:1;font-size:15px;font-weight:700;text-align:center}
+  .tal{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .t{display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 6px;border-radius:20px;border:1px solid var(--c334155);background:var(--c0f172a)}
+  .t i{width:4px;height:12px;border-radius:2px;display:inline-block}.t b{font-size:12px}.t span{font-size:10.5px;color:var(--c94a3b8)}
+  .map{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-bottom:4px}
+  .dw{font-size:10px;color:var(--c64748b);text-align:center}
+  .sq{min-height:42px;padding:3px 2px;border-radius:7px;background:var(--c0f172a);border:1px solid var(--c1e293b);
+      display:flex;flex-direction:column;align-items:center;gap:2px;font-family:inherit}
+  .sq.today{background:var(--c1e1b4b);border-color:#6366f1}
+  .sq .n{font-size:11px;font-weight:600;color:var(--c94a3b8)}
+  .sq.today .n{color:var(--ca5b4fc)}.sq.al .n{color:#ef4444;font-weight:800}
+  .dots{display:flex;gap:2px;flex-wrap:wrap;justify-content:center}
+  .dot{width:5px;height:5px;border-radius:50%;display:inline-block}
+  details{margin-bottom:10px}summary{font-size:11.5px;color:var(--c94a3b8);padding:4px 0}
+  .dayhead{display:flex;align-items:center;gap:7px;padding:5px 2px;border-bottom:1px solid var(--c1e293b);margin-top:14px}
+  .dayhead.today{border-color:#6366f1}
+  .dayhead b{font-size:13px}.dayhead .ct{margin-left:auto;font-size:11px;color:var(--c64748b)}
+  .card{margin-top:6px;padding:9px 10px;border-radius:10px;background:var(--c1e293b);border:1px solid var(--c334155);display:flex;gap:9px}
+  .tb{width:46px;height:46px;border-radius:8px;flex-shrink:0;background:var(--c0f172a);border:1px solid var(--c334155);
+      display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--c94a3b8);background-size:cover}
+  .bd{flex:1;min-width:0}
+  .r1{display:flex;align-items:center;gap:7px}
+  .tm{font-size:14px;font-weight:700}
+  .rt{margin-left:auto;display:inline-flex;align-items:center;gap:3px}
+  .chip{font-size:8.5px;font-weight:800;letter-spacing:.3px;padding:2px 3px;border-radius:3px;border:1px solid}
+  .r2{font-size:12.5px;line-height:1.4;margin-top:3px;color:var(--c94a3b8);
+      display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .fb{color:#1877f2;border-color:#1877f2}.ig{color:#e1306c;border-color:#e1306c}
+  .gg{color:#34a853;border-color:#34a853}.tt{color:#69c9d0;border-color:#69c9d0}
+  .ready{border-left:5px solid #22c55e}.posted{border-left:5px solid var(--c475569);opacity:.55}
+  .writing{border-left:5px solid #60a5fa}.design{border-left:5px solid #c084fc}
+  .held{border-left:5px solid #ef4444;background:var(--c450a0a);border-color:#ef4444}
+  .held .r2,.held .tm{color:var(--cfecaca);font-weight:700}
+</style></head><body>
+
+<p class="note">Lịch tháng khi mở trên điện thoại — bản dựng tĩnh ở khổ 390px. Trên máy tính vẫn giữ nguyên lưới tháng như bạn đang thấy.</p>
+
+<div class="phone">
+  <div class="navrow"><button class="nav">‹</button><div class="mon">tháng 9 năm 2026</div><button class="nav">›</button></div>
+
+  <div class="tal">
+    <span class="t"><i style="background:#ef4444"></i><b style="color:#ef4444">1</b><span>cần xử lý</span></span>
+    <span class="t"><i style="background:#c084fc"></i><b>2</b><span>đang làm</span></span>
+    <span class="t"><i style="background:#22c55e"></i><b>1</b><span>chờ đăng</span></span>
+    <span class="t"><i style="background:var(--c475569)"></i><b>9</b><span>đã đăng</span></span>
+  </div>
+
+  <div class="map">
+    <div class="dw">T2</div><div class="dw">T3</div><div class="dw">T4</div><div class="dw">T5</div>
+    <div class="dw">T6</div><div class="dw">T7</div><div class="dw">CN</div>
+    <button class="sq" style="opacity:.35"><span class="n">31</span></button>
+    <button class="sq"><span class="n">1</span><span class="dots"><i class="dot" style="background:var(--c475569);opacity:.5"></i><i class="dot" style="background:var(--c475569);opacity:.5"></i><i class="dot" style="background:var(--c475569);opacity:.5"></i></span></button>
+    <button class="sq"><span class="n">2</span></button>
+    <button class="sq"><span class="n">3</span><span class="dots"><i class="dot" style="background:var(--c475569);opacity:.5"></i><i class="dot" style="background:var(--c475569);opacity:.5"></i></span></button>
+    <button class="sq"><span class="n">4</span><span class="dots"><i class="dot" style="background:var(--c475569);opacity:.5"></i></span></button>
+    <button class="sq"><span class="n">5</span><span class="dots"><i class="dot" style="background:var(--c475569);opacity:.5"></i></span></button>
+    <button class="sq"><span class="n">6</span><span class="dots"><i class="dot" style="background:var(--c475569);opacity:.5"></i></span></button>
+    <button class="sq"><span class="n">7</span></button>
+    <button class="sq"><span class="n">8</span></button>
+    <button class="sq"><span class="n">9</span><span class="dots"><i class="dot" style="background:var(--c475569);opacity:.5"></i></span></button>
+    <button class="sq today al"><span class="n">10</span><span class="dots"><i class="dot" style="background:#ef4444"></i><i class="dot" style="background:#22c55e"></i></span></button>
+    <button class="sq"><span class="n">11</span><span class="dots"><i class="dot" style="background:#60a5fa"></i><i class="dot" style="background:#c084fc"></i></span></button>
+    <button class="sq"><span class="n">12</span></button><button class="sq"><span class="n">13</span></button>
+    <button class="sq"><span class="n">14</span></button><button class="sq"><span class="n">15</span></button>
+    <button class="sq"><span class="n">16</span></button><button class="sq"><span class="n">17</span></button>
+    <button class="sq"><span class="n">18</span></button><button class="sq"><span class="n">19</span></button>
+    <button class="sq"><span class="n">20</span></button>
+  </div>
+
+  <details><summary>Chú thích màu</summary>
+    <div style="font-size:11px;color:var(--c94a3b8);padding-top:7px;line-height:2">
+      🔴 Khách yêu cầu sửa · ⚠ Đăng lỗi · ⚠ Thiếu điều kiện · ✍ Đang viết · 🎨 Đang thiết kế · 📅 Đã chốt lịch · ✓ Đã đăng
+    </div>
+  </details>
+
+  <div class="dayhead today"><b style="color:var(--ca5b4fc)">T5, 10/9</b><span style="font-size:10.5px;color:var(--ca5b4fc)">hôm nay</span><span style="font-size:11px;font-weight:800;color:#ef4444">● 1</span><span class="ct">2</span></div>
+  <div class="card held">
+    <span class="tb" style="background:#3f2a2a">▶</span>
+    <div class="bd"><div class="r1"><span class="tm">02:14</span><span class="rt"><b class="chip tt">TT</b>📁</span></div>
+      <div class="r2">⚠ Đăng lỗi — App Lumio chưa được TikTok duyệt (Content Posting audit) nên chỉ đăng được ở chế độ "Chỉ mình tôi"</div></div>
+  </div>
+  <div class="card ready">
+    <span class="tb" style="background:#233">▶</span>
+    <div class="bd"><div class="r1"><span class="tm">02:24</span><span class="rt"><b class="chip tt">TT</b>📁</span></div>
+      <div class="r2">Life is too short for boring nails ✨ Ghé Lumio Salon tuần này nhé</div></div>
+  </div>
+
+  <div class="dayhead"><b>T6, 11/9</b><span class="ct">2</span></div>
+  <div class="card writing">
+    <span class="tb">✎</span>
+    <div class="bd"><div class="r1"><span class="tm">09:00</span><span class="rt"><b class="chip fb">FB</b><b class="chip ig">IG</b></span></div>
+      <div class="r2">✍ Đang viết content · Ngân</div></div>
+  </div>
+  <div class="card design">
+    <span class="tb" style="background:#2a2340">✎</span>
+    <div class="bd"><div class="r1"><span class="tm">14:00</span><span class="rt"><b class="chip ig">IG</b><b class="chip tt">TT</b></span></div>
+      <div class="r2">🎨 Đang thiết kế · Huy</div></div>
+  </div>
+
+  <div class="dayhead"><b>T3, 1/9</b><span class="ct">3</span></div>
+  <div class="card posted">
+    <span class="tb">✎</span>
+    <div class="bd"><div class="r1"><span class="tm">06:59</span><span class="rt"><b class="chip fb">FB</b><b class="chip ig">IG</b></span></div>
+      <div class="r2">A little sparkle, a little shine — mùa lễ này để tụi mình lo phần móng cho chị</div></div>
+  </div>
+</div>
+</body></html>

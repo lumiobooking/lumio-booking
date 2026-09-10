@@ -79,16 +79,50 @@ export class SupportService {
         : Promise.resolve(null),
     ]);
     const myTeam = cleanTeam(me?.supportTeam) || null;
+    // Whether each salon's Facebook/Instagram is answered by the AI, read once
+    // for the whole list: 'on' / 'off' (connected for posting only) / 'none'
+    // (no Page at all). The board offers the switch so a salon sold posting
+    // without the bot can be set that way in one click, not by entering it.
+    const conns = await this.prisma.messengerConnection.findMany({
+      select: { tenantId: true, enabled: true, pageId: true } as never,
+    }).catch(() => []) as { tenantId: string; enabled: boolean; pageId: string | null }[];
+    const botOf = new Map(conns.map((c) => [c.tenantId, botStateOf(c)]));
     // Marked here, not in the grouping, so "how new is new" is decided once
     // and the screen only has to read the flag. See ./support-teams.
     const now = Date.now();
-    const marked = salons.map((s) => ({ ...s, isNew: isNewSalon(s.createdAt, now) }));
+    const marked = salons.map((s) => ({ ...s, isNew: isNewSalon(s.createdAt, now), bot: botOf.get(s.id) ?? 'none' }));
     // Whether THIS viewer may move a salon between teams — the same bar the
     // write enforces, sent down so the screen can leave the control out
     // instead of offering a button that always answers with a refusal.
     const canAssign = user.role === UserRole.SUPER_ADMIN
       || levelOf(user.supportLevel ?? me?.supportLevel) === 'full';
     return { myTeam, canAssign, groups: groupSalons(marked, myTeam), teams: teamSummaries(salons, staff) };
+  }
+
+  /**
+   * Switch a salon's Messenger/Instagram AI on or off from the board.
+   *
+   * Off means: the Page stays connected and posts keep publishing; Lumio
+   * neither reads nor answers the Page's messages. Exactly what the "Bật bot
+   * tự trả lời" box on the salon's Bot page does — offered here so the
+   * employee filing a posting-only client does not have to open a session
+   * to flip one box. Audited, because a customer feels this one.
+   */
+  async setTenantBot(user: AuthenticatedUser, tenantId: string, on: unknown) {
+    if (typeof on !== 'boolean') throw new BadRequestException('Cần on: true/false');
+    const tenant = await this.prisma.tenant.findFirst({ where: { id: tenantId, deletedAt: null }, select: { id: true } })
+      .catch(() => null);
+    if (!tenant) throw new NotFoundException('Salon not found');
+    const r = await this.prisma.messengerConnection.updateMany({ where: { tenantId }, data: { enabled: on } });
+    if (!r.count) throw new BadRequestException('Tiệm này chưa kết nối Facebook Page — kết nối trước rồi mới bật/tắt bot.');
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId, userId: user.userId ?? null,
+        action: on ? 'support.bot_enabled' : 'support.bot_disabled',
+        resourceType: 'tenant', resourceId: tenantId,
+      },
+    }).catch(() => undefined);
+    return { ok: true, bot: on ? 'on' : 'off' };
   }
 
   /**
@@ -561,4 +595,11 @@ export class SupportService {
     if (r.count === 0) throw new NotFoundException('Support account not found');
     return { id, isActive };
   }
+}
+
+
+/** What the board says about a salon's AI chat, from its brain row. */
+export function botStateOf(c: { enabled?: boolean | null; pageId?: string | null } | null | undefined): 'on' | 'off' | 'none' {
+  if (!c || !c.pageId) return 'none';
+  return c.enabled ? 'on' : 'off';
 }

@@ -113,3 +113,36 @@ describe('filing a whole batch at once', () => {
     await expect(junior.setTeamForMany(staff, ['a'], 'Nhóm 1')).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
+
+/**
+ * The AI-chat switch on the board: a salon sold posting without the bot is
+ * filed in one click, and the board says which salons are which.
+ */
+describe('bot on/off from the board', () => {
+  const { botStateOf } = require('./support.service') as { botStateOf: (c: unknown) => string };
+  const staff = { userId: 'u1', email: 'a@b.com', role: SUPPORT_ROLE, tenantId: null } as AuthenticatedUser;
+  const svc = (count: number, audit: unknown[] = []) => new SupportService({
+    tenant: { findFirst: async () => ({ id: 't1' }) },
+    messengerConnection: { updateMany: async (a: unknown) => { audit.push(a); return { count }; } },
+    auditLog: { create: async (a: unknown) => { audit.push(a); return {}; } },
+  } as never, {} as never, {} as never, {} as never);
+
+  it('reads the three states a salon can be in', () => {
+    expect(botStateOf(null)).toBe('none');
+    expect(botStateOf({ enabled: true, pageId: '' })).toBe('none');
+    expect(botStateOf({ enabled: true, pageId: 'p1' })).toBe('on');
+    expect(botStateOf({ enabled: false, pageId: 'p1' })).toBe('off');
+  });
+
+  it('switches a connected salon off and writes the audit line', async () => {
+    const writes: unknown[] = [];
+    await expect(svc(1, writes).setTenantBot(staff, 't1', false)).resolves.toEqual({ ok: true, bot: 'off' });
+    expect(writes[0]).toMatchObject({ where: { tenantId: 't1' }, data: { enabled: false } });
+    expect(writes[1]).toMatchObject({ data: { action: 'support.bot_disabled', tenantId: 't1' } });
+  });
+
+  it('says so when the salon has no Page to switch, and refuses a non-boolean', async () => {
+    await expect(svc(0).setTenantBot(staff, 't1', true)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(svc(1).setTenantBot(staff, 't1', 'yes')).rejects.toBeInstanceOf(BadRequestException);
+  });
+});

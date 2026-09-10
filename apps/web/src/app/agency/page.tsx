@@ -24,6 +24,8 @@ interface TenantRow {
   slug: string;
   status: string;
   createdAt: string;
+  /** Messenger/Instagram AI: on, off (Page connected for posting only), none (no Page). */
+  bot?: 'on' | 'off' | 'none';
 }
 /** One thing a shop sent that nobody has made a post from yet. */
 type InboxRow = InboxItem;
@@ -208,6 +210,27 @@ export default function AgencyPage() {
       setEditing(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Không đổi được nhóm');
+    }
+  }
+
+  /**
+   * Bot on/off for one salon, from the list. A confirm first: a customer
+   * feels this one within the minute, and the chip sits next to the row's
+   * click target.
+   */
+  async function setBot(t: TenantRow, on: boolean) {
+    if (!token) return;
+    const msg = on
+      ? `BẬT trợ lý AI trả lời tin nhắn cho ${t.name}? Bot sẽ trả lời khách trên Messenger/Instagram ngay.`
+      : `TẮT trợ lý AI của ${t.name}? Page vẫn kết nối để đăng bài; Lumio sẽ không đọc và không trả lời tin nhắn của khách.`;
+    if (!window.confirm(msg)) return;
+    setError(null);
+    try {
+      await apiFetch(`/support/tenants/${encodeURIComponent(t.id)}/bot`, { method: 'POST', token, body: { on } });
+      const b = await apiFetch<Board>('/support/board', { token });
+      setBoard(b);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Không đổi được trạng thái bot');
     }
   }
 
@@ -494,6 +517,7 @@ export default function AgencyPage() {
                   checked={chosen.has(t.id)}
                   onCheck={() => toggleChosen(t.id)}
                   busy={busy}
+                  onBot={setBot}
                   onEnter={enter}
                   editing={editing}
                   setEditing={setEditing}
@@ -623,7 +647,7 @@ function SideItem({ item, active, onClick, tone }: {
  */
 function Row({
   t, fresh, team, showTeam, canAssign, teams, picking, checked, onCheck,
-  busy, onEnter, editing, setEditing, onTeam,
+  busy, onEnter, editing, setEditing, onTeam, onBot,
 }: {
   t: TenantRow;
   fresh?: boolean;
@@ -639,6 +663,7 @@ function Row({
   editing: string | null;
   setEditing: (id: string | null) => void;
   onTeam: (tenantId: string, team: string) => void;
+  onBot: (t: TenantRow, on: boolean) => void;
 }) {
   const isEditing = editing === t.id;
   const suspended = t.status === 'SUSPENDED';
@@ -673,6 +698,21 @@ function Row({
         </div>
         <div style={{ fontSize: 12, color: 'var(--c64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>/{t.slug}</div>
       </div>
+
+      {/* The AI chat switch, only for salons that have a Page: a posting-only
+          client is filed here in one click instead of a session. Grey = off. */}
+      {!picking && t.bot && t.bot !== 'none' && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onBot(t, t.bot !== 'on'); }}
+          title={t.bot === 'on' ? 'Bot đang trả lời tin nhắn — bấm để TẮT (page chỉ đăng bài)' : 'Bot đang TẮT — page chỉ dùng để đăng bài. Bấm để BẬT'}
+          style={{
+            background: t.bot === 'on' ? 'rgba(34,197,94,.12)' : 'transparent',
+            border: `1px solid ${t.bot === 'on' ? '#22c55e' : 'var(--c334155)'}`,
+            color: t.bot === 'on' ? '#4ade80' : 'var(--c64748b)',
+            borderRadius: 999, padding: '2px 9px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 700,
+          }}
+        >🤖 {t.bot === 'on' ? 'AI bật' : 'AI tắt'}</button>
+      )}
 
       {/* Only the abnormal status is worth a badge. */}
       {suspended && (

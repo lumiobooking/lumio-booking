@@ -531,9 +531,11 @@ export class MessengerService implements OnModuleInit {
         update: { pageId: page.id, igId, pageToken: page.access_token, pageName: page.name || null, enabled: true },
         create: { tenantId, pageId: page.id, igId, pageToken: page.access_token, pageName: page.name || null, enabled: true },
       });
-    } else {
-      await this.prisma.messengerConnection.updateMany({ where: { tenantId }, data: { enabled: true } });
     }
+    // A second page, or a reconnect, keeps the salon's own answer to "does
+    // the AI reply?". Forcing it back on here meant that reconnecting a Page
+    // for POSTING quietly re-armed a bot the salon had switched off — and
+    // the salon found out from a customer.
     // Subscribe the Page to our app's webhook so messages start flowing.
     await fetch(
       `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes&access_token=${encodeURIComponent(page.access_token)}`,

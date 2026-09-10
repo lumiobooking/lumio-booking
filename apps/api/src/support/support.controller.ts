@@ -48,6 +48,18 @@ export class SupportController {
     return this.svc.setTenantTeam(user, tenantId, dto?.team);
   }
 
+  /** Switch a salon's Messenger/Instagram AI on or off. Any support account: the same box is on the salon's Bot page. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Post('tenants/:tenantId/bot')
+  @HttpCode(200)
+  setTenantBot(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Body() dto: { on?: boolean },
+  ) {
+    return this.svc.setTenantBot(user, tenantId, dto?.on);
+  }
+
   /** Move a whole batch at once — the only way fifty unfiled salons ever get filed. */
   @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
   @Post('tenants/team')

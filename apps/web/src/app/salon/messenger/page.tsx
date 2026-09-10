@@ -713,17 +713,38 @@ function Inner() {
                 {connecting ? t('connecting') : (c.connected ? (lang === 'vi' ? '＋ Thêm page / kết nối lại' : '＋ Add page / reconnect') : t('connectFb'))}
               </button>
               {c.connected && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
-                  <input type="checkbox" checked={c.enabled} onChange={(e) => save({ enabled: e.target.checked })} />
-                  {t('enable')}
-                </label>
-              )}
-              {c.connected && (
                 <button onClick={disconnectFacebook} style={{ ...ghost, borderColor: 'var(--c7f1d1d)', color: 'var(--cfca5a5)', marginLeft: 'auto' }}>
                   {t('disconnectFb')}
                 </button>
               )}
             </div>
+            {/* The one switch a posting-only client needs. Two states, each
+                saying what it means, because "Enable the bot" unticked read as
+                "broken" — and a reconnect used to tick it back on unasked. */}
+            {c.connected && (
+              <div style={{ marginTop: 14, padding: '11px 13px', borderRadius: 10, border: `1px solid ${c.enabled ? 'rgba(34,197,94,.35)' : 'var(--c334155)'}`, background: c.enabled ? 'rgba(34,197,94,.06)' : 'var(--c0f172a)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                      🤖 {lang === 'vi' ? 'Trợ lý AI trả lời tin nhắn' : 'AI replies to messages'}:{' '}
+                      <span style={{ color: c.enabled ? '#4ade80' : '#fbbf24' }}>{c.enabled ? (lang === 'vi' ? 'ĐANG BẬT' : 'ON') : (lang === 'vi' ? 'ĐANG TẮT' : 'OFF')}</span>
+                    </div>
+                    <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 3 }}>
+                      {c.enabled
+                        ? (lang === 'vi' ? 'Bot đọc và trả lời khách trên Messenger/Instagram, đặt lịch, và đưa tin vào Hộp thư.' : 'The bot reads and answers customers on Messenger/Instagram, books, and files chats in the Inbox.')
+                        : (lang === 'vi' ? 'Page/Instagram vẫn kết nối để lên lịch đăng bài. Lumio không đọc và không trả lời tin nhắn của khách.' : 'Page/Instagram stay connected for scheduling posts. Lumio neither reads nor answers customer messages.')}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => save({ enabled: !c.enabled })}
+                    disabled={saving}
+                    style={{ ...ui.primaryBtn, background: c.enabled ? 'var(--c334155)' : '#22c55e', color: c.enabled ? 'var(--ce2e8f0)' : '#052e16', whiteSpace: 'nowrap' }}
+                  >
+                    {c.enabled ? (lang === 'vi' ? 'Tắt trợ lý AI' : 'Turn the AI off') : (lang === 'vi' ? 'Bật trợ lý AI' : 'Turn the AI on')}
+                  </button>
+                </div>
+              </div>
+            )}
             <button onClick={() => setShowManual((v) => !v)} style={{ ...ghost, marginTop: 14, fontSize: 12 }}>
               {showManual ? '▾ ' : '▸ '}{t('advanced')}
             </button>

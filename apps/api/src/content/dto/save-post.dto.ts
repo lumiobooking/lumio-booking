@@ -8,6 +8,10 @@ export class PostMediaDto {
 
   @IsIn(['image', 'video'])
   kind!: 'image' | 'video';
+
+  /** The archive copy on Drive, sent back as received; the server keeps it either way. */
+  @IsOptional() @IsString() @MaxLength(400)
+  driveUrl?: string;
 }
 
 /**
@@ -45,4 +49,28 @@ export class SavePostDto {
   /** 'draft' keeps it out of the sweep; 'scheduled' is validated before saving. */
   @IsOptional() @IsIn(['draft', 'scheduled'])
   status?: 'draft' | 'scheduled';
+
+  // ---- the team's workflow (see post-workflow.ts) ----
+  /** writing | design | ready. Anything but ready forces status to draft. */
+  @IsOptional() @IsIn(['writing', 'design', 'ready'])
+  stage?: 'writing' | 'design' | 'ready';
+  @IsOptional() @IsString() @MaxLength(80)
+  writerName?: string;
+  @IsOptional() @IsString() @MaxLength(80)
+  designerName?: string;
+  /** Team-only note. Never shown to the client. */
+  @IsOptional() @IsString() @MaxLength(2000)
+  teamNote?: string;
+}
+
+/** Move a post between stages from the calendar, without re-sending the body. */
+export class SetStageDto {
+  @IsIn(['writing', 'design', 'ready'])
+  stage!: 'writing' | 'design' | 'ready';
+  @IsOptional() @IsString() @MaxLength(80)
+  writerName?: string;
+  @IsOptional() @IsString() @MaxLength(80)
+  designerName?: string;
+  @IsOptional() @IsString() @MaxLength(2000)
+  teamNote?: string;
 }

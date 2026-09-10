@@ -303,6 +303,20 @@ export class GoogleDriveService {
     return row;
   }
 
+  /**
+   * A folder for ONE post's files: "<salon>/Bài đăng/<day> <first words>".
+   *
+   * Made the first time the post has a file to archive. Browsable by a
+   * person: the point of the archive is that the same picture goes on the
+   * Google Business post and the TikTok without anybody hunting for it.
+   */
+  async postFolder(tenantId: string, name: string): Promise<{ folderId: string; folderUrl: string }> {
+    const { folderId: salon } = await this.folderForTenant(tenantId);
+    const posts = await this.folder('Bài đăng', salon);
+    const f = await this.folder(name.slice(0, 100), posts.id);
+    return { folderId: f.id, folderUrl: `https://drive.google.com/drive/folders/${f.id}` };
+  }
+
   /** The salon's folder link if one exists, without creating anything. */
   async folderLink(tenantId: string): Promise<string | null> {
     const row = await this.prisma.setting.findFirst({ where: { tenantId, key: 'google_drive' }, select: { value: true } }).catch(() => null);
@@ -348,8 +362,8 @@ export class GoogleDriveService {
    * account; the link itself is a 33-character id nobody guesses. The FTP
    * store this replaces was public in exactly the same way.
    */
-  async store(tenantId: string, name: string, mime: string, bytes: Buffer): Promise<DriveFile> {
-    const { folderId } = await this.folderForTenant(tenantId);
+  async store(tenantId: string, name: string, mime: string, bytes: Buffer, intoFolderId?: string): Promise<DriveFile> {
+    const folderId = intoFolderId || (await this.folderForTenant(tenantId)).folderId;
     const token = await this.accessToken();
     const start = await fetch(`${UPLOAD}/files?uploadType=resumable&fields=id,webViewLink`, {
       method: 'POST',
@@ -401,7 +415,7 @@ export class GoogleDriveService {
    * header counts only when it says image or video; the URL's extension and
    * the caller's `kind` decide otherwise.
    */
-  async mirrorFromUrl(tenantId: string, url: string, name: string, kind?: 'image' | 'video'): Promise<DriveFile | null> {
+  async mirrorFromUrl(tenantId: string, url: string, name: string, kind?: 'image' | 'video', intoFolderId?: string): Promise<DriveFile | null> {
     if (!(await this.configured())) return null;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`fetch ${res.status} for ${url}`);
@@ -409,7 +423,7 @@ export class GoogleDriveService {
       || (kind === 'video' ? 'video/mp4' : 'image/jpeg');
     const bytes = Buffer.from(await res.arrayBuffer());
     if (!bytes.length) throw new Error('empty body');
-    return this.store(tenantId, name, mime, bytes);
+    return this.store(tenantId, name, mime, bytes, intoFolderId);
   }
 
   /** Delete a file we put in Drive. Missing already counts as done. */

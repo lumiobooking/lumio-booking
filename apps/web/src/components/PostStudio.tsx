@@ -30,7 +30,8 @@ import { dayKeyInTz, hourInTz, fmtInTz } from '../lib/datetime';
 
 export type Channel = 'facebook' | 'instagram';
 export type MediaKind = 'image' | 'video';
-export interface MediaItem { url: string; kind: MediaKind }
+export interface MediaItem { url: string; kind: MediaKind; /** The archive copy on Drive, once filed. */ driveUrl?: string }
+export type Stage = 'writing' | 'design' | 'ready';
 
 export interface StudioPost {
   id: string;
@@ -49,20 +50,63 @@ export interface StudioPost {
    * the calendar cannot show a colour the scheduler does not honour.
    */
   held?: { at: string; by: string | null; note: string | null } | null;
+  /** The team's path — see api post-workflow.ts. Absent on rows that predate it. */
+  stage?: Stage;
+  writerName?: string | null;
+  designerName?: string | null;
+  teamNote?: string | null;
+  driveFolderUrl?: string | null;
 }
 
 /**
- * The three colours a card can be, in the order they win.
+ * The colours a card can be, in the order they win.
  *
  * Red first, because it is the only one that means a person is waiting. Amber
  * — the post cannot go out as it stands — is the team's own problem and can
  * wait behind the client's. Green is history.
  */
-export function postTone(p: { held?: unknown; blockers: string[]; status: string }): 'held' | 'blocked' | 'posted' | 'plain' {
+export type Tone = 'held' | 'failed' | 'blocked' | 'posted' | 'writing' | 'design' | 'ready' | 'plain';
+export function postTone(p: { held?: unknown; blockers: string[]; status: string; stage?: Stage }): Tone {
   if (p.held) return 'held';
-  if (p.blockers.length) return 'blocked';
+  if (p.status === 'failed' || p.status === 'expired') return 'failed';
   if (p.status === 'posted') return 'posted';
+  // The team's own path, before anything the platform has to say about it: a
+  // caption with no picture yet is "in design", not "blocked".
+  if (p.stage === 'writing') return 'writing';
+  if (p.stage === 'design') return 'design';
+  if (p.blockers.length) return 'blocked';
+  if (p.status === 'scheduled') return 'ready';
   return 'plain';
+}
+
+/**
+ * One look per tone, shared by the calendar, the grid and the legend — so a
+ * colour means the same thing on every screen and nobody has to remember
+ * which shade of green was "posted".
+ */
+export const TONES: Record<Tone, { bg: string; border: string; fg: string; icon: string; vi: string; en: string }> = {
+  held:    { bg: 'var(--c450a0a)', border: '#ef4444', fg: 'var(--cfecaca)', icon: '🔴', vi: 'Khách yêu cầu sửa', en: 'Client asked for a change' },
+  failed:  { bg: 'var(--c450a0a)', border: '#f87171', fg: 'var(--cfecaca)', icon: '⚠', vi: 'Đăng lỗi', en: 'Failed' },
+  blocked: { bg: 'var(--c451a03)', border: '#f59e0b', fg: 'var(--ce2e8f0)', icon: '⚠', vi: 'Thiếu điều kiện đăng', en: 'Cannot publish as is' },
+  writing: { bg: 'var(--c1e293b)', border: '#60a5fa', fg: 'var(--ce2e8f0)', icon: '✍', vi: 'Đang viết content', en: 'Writing' },
+  design:  { bg: 'var(--c1e293b)', border: '#c084fc', fg: 'var(--ce2e8f0)', icon: '🎨', vi: 'Đang thiết kế', en: 'In design' },
+  ready:   { bg: 'var(--c1e293b)', border: '#22c55e', fg: 'var(--ce2e8f0)', icon: '📅', vi: 'Đã chốt lịch', en: 'Scheduled' },
+  posted:  { bg: 'var(--c14532d)', border: '#22c55e', fg: 'var(--ce2e8f0)', icon: '✓', vi: 'Đã đăng', en: 'Published' },
+  plain:   { bg: 'var(--c1e293b)', border: 'var(--c334155)', fg: 'var(--ce2e8f0)', icon: '', vi: 'Nháp', en: 'Draft' },
+};
+
+/** The calendar's tooltip: state, owners, the team note — what the hover has to answer. */
+export function postHint(p: StudioPost, vi: boolean): string {
+  const tone = postTone(p);
+  const t = TONES[tone];
+  const lines = [`${t.icon} ${vi ? t.vi : t.en}`];
+  if (p.held) lines.push(`${p.held.by ? `${p.held.by}: ` : ''}${(p.held.note ?? '').slice(0, 200)}`);
+  const who = [p.writerName ? `✍ ${p.writerName}` : '', p.designerName ? `🎨 ${p.designerName}` : ''].filter(Boolean).join(' · ');
+  if (who) lines.push(who);
+  if (p.teamNote) lines.push(`📝 ${p.teamNote.slice(0, 200)}`);
+  lines.push(p.message.slice(0, 100) || (vi ? '(ảnh)' : '(media)'));
+  if (p.status !== 'posted') lines.push(vi ? 'Bấm để mở · chuột phải để xoá' : 'Click to open · right-click to delete');
+  return lines.join('\n');
 }
 
 /** Where Facebook and Instagram cut a caption before "… See more". */
@@ -208,35 +252,40 @@ export function MonthCalendar({
                   }}
                   onTouchEnd={() => { if (press.current) clearTimeout(press.current); }}
                   onTouchMove={() => { if (press.current) clearTimeout(press.current); }}
-                  title={p.held
-                    ? `${T('Khách yêu cầu sửa', 'Client asked for a change')}${p.held.by ? ` — ${p.held.by}` : ''}\n${(p.held.note ?? '').slice(0, 200)}\n${T('Bấm vào bài để xử lý', 'Open the post to deal with it')}`
-                    : p.status === 'posted'
-                      ? `${T('Đã đăng', 'Published')} — ${p.message.slice(0, 100)}`
-                      : `${p.message.slice(0, 100)}\n${T('Chuột phải để xoá', 'Right-click to delete')}`}
+                  title={postHint(p, vi)}
                   style={{
                     marginTop: 3, padding: '3px 5px', borderRadius: 5, cursor: 'grab',
-                    // Red wins over every other colour: it is the only one with
-                    // a person on the other end of it.
-                    background: tone === 'held' ? 'var(--c450a0a)'
-                      : tone === 'blocked' ? 'var(--c451a03)'
-                        : tone === 'posted' ? 'var(--c14532d)' : 'var(--c1e293b)',
-                    border: `1px solid ${tone === 'held' ? '#ef4444'
-                      : tone === 'blocked' ? '#f59e0b'
-                        : tone === 'posted' ? '#22c55e' : 'var(--c334155)'}`,
+                    // One look per tone (TONES); red wins because it is the
+                    // only one with a person on the other end of it.
+                    background: TONES[tone].bg,
+                    border: `1px solid ${TONES[tone].border}`,
+                    borderLeftWidth: 3,
                     fontSize: 10.5, lineHeight: 1.3,
-                    color: tone === 'held' ? 'var(--cfecaca)' : 'var(--ce2e8f0)',
+                    color: TONES[tone].fg,
                     fontWeight: tone === 'held' ? 700 : 400,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}
                 >
-                  {tone === 'held' && '🔴 '}
+                  {TONES[tone].icon && `${TONES[tone].icon} `}
                   {p.channels.includes('instagram') ? '◈' : '▣'} {hourInTz(p.scheduledAt)}h {p.message.slice(0, 18) || T('(ảnh)', '(media)')}
+                  {(p.teamNote || p.writerName || p.designerName) && <span style={{ opacity: .7 }}> ·{p.teamNote ? ' 📝' : ''}{p.writerName || p.designerName ? ` ${(p.designerName || p.writerName || '').split(/[\s@]/)[0]}` : ''}</span>}
                 </div>
                 );
               })}
             </div>
           );
         })}
+      </div>
+
+      {/* The key. Six colours are too many to remember; one line under the
+          month means nobody has to. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginTop: 8, fontSize: 11, color: 'var(--c94a3b8)' }}>
+        {(['writing', 'design', 'ready', 'posted', 'blocked', 'held'] as Tone[]).map((k) => (
+          <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: TONES[k].bg, border: `1px solid ${TONES[k].border}`, borderLeftWidth: 3 }} />
+            {TONES[k].icon} {vi ? TONES[k].vi : TONES[k].en}
+          </span>
+        ))}
       </div>
 
       {menu && (

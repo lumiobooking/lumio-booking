@@ -299,6 +299,14 @@ interface QueuedPost {
    * colour at all.
    */
   held?: { at: string; by: string | null; note: string | null } | null;
+  /** The team's path — writing → design → ready. See api post-workflow.ts. */
+  stage?: 'writing' | 'design' | 'ready';
+  writerName?: string | null;
+  designerName?: string | null;
+  /** Team-only note. Never shown to the client. */
+  teamNote?: string | null;
+  /** Where this post's files were filed on Drive, for reuse on Google Business / TikTok. */
+  driveFolderUrl?: string | null;
 }
 interface QueuePayload {
   connected: {
@@ -548,6 +556,7 @@ function Inner() {
   const [sendBusy, setSendBusy] = useState(false);
   const [postDraft, setPostDraft] = useState<{
     id?: string; channels: ('facebook' | 'instagram')[]; message: string; media: MediaItem[]; at: string;
+    stage?: 'writing' | 'design' | 'ready'; writerName?: string; designerName?: string; teamNote?: string;
   } | null>(null);
   const [mediaInput, setMediaInput] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -654,10 +663,15 @@ function Inner() {
    * still saved and scheduled for this minute, so the sweeper picks it up within
    * sixty seconds — a half-finished press leaves work queued, never lost.
    */
-  async function savePost(status: 'draft' | 'scheduled', now = false) {
+  async function savePost(status: 'draft' | 'scheduled', now = false, stageOverride?: 'writing' | 'design' | 'ready') {
     if (!postDraft || queueBusy) return;
     setQueueBusy(true); setPostErr(null);
     try {
+      // The stage travels with every save. "Schedule it" locks the post
+      // (ready); a draft keeps whichever step the team put it on, and a
+      // brand-new draft starts at "writing" unless it already has a picture.
+      const stage = stageOverride
+        ?? (status === 'scheduled' ? 'ready' : (postDraft.stage ?? (postDraft.media.length ? 'design' : 'writing')));
       const r = await apiFetch<{ id: string }>('/content/posts', {
         method: 'POST', token,
         body: {
@@ -665,6 +679,10 @@ function Inner() {
           channels: postDraft.channels,
           message: postDraft.message,
           media: postDraft.media,
+          stage,
+          writerName: postDraft.writerName ?? '',
+          designerName: postDraft.designerName ?? '',
+          teamNote: postDraft.teamNote ?? '',
           // The picker gives a wall-clock string that means SALON time; the
           // server stores an instant. The conversion has to say whose wall the
           // digits belong to — an owner reading from Vietnam still schedules
@@ -790,6 +808,7 @@ function Inner() {
     setPostDraft({
       id: p.id, channels: p.channels, message: p.message, media: p.media,
       at: instantToWall(p.scheduledAt),
+      stage: p.stage ?? 'ready', writerName: p.writerName ?? '', designerName: p.designerName ?? '', teamNote: p.teamNote ?? '',
     });
   }
 
@@ -2844,6 +2863,104 @@ function Inner() {
                     </div>
                   )}
 
+                  {/* ---- the team's path: who writes, who designs, where it stands ----
+                       Three people touch a post and Meta's scheduler knows
+                       nothing about it. This is the hand-off: the writer saves
+                       "in design", the designer adds the picture and locks the
+                       slot, and the calendar colours by that — so a glance at
+                       the month says what is waiting on whom. */}
+                  {(() => {
+                    const live = postDraft.id ? queue?.posts.find((x) => x.id === postDraft.id) : null;
+                    if (live?.status === 'posted') return null;
+                    const stage = postDraft.stage ?? (postDraft.media.length ? 'design' : 'writing');
+                    const STEP: { k: 'writing' | 'design' | 'ready'; icon: string; vi: string; en: string; color: string }[] = [
+                      { k: 'writing', icon: '✍', vi: 'Đang viết content', en: 'Writing', color: '#60a5fa' },
+                      { k: 'design', icon: '🎨', vi: 'Đang thiết kế', en: 'In design', color: '#c084fc' },
+                      { k: 'ready', icon: '📅', vi: 'Đã chốt lịch', en: 'Ready', color: '#22c55e' },
+                    ];
+                    const driveFiles = postDraft.media.filter((m) => m.driveUrl);
+                    return (
+                      <div style={{ marginTop: 14, padding: '11px 12px', borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginRight: 4 }}>{T('Việc của team', 'Team workflow')}</span>
+                          {STEP.map((st) => {
+                            const on = st.k === stage;
+                            return (
+                              <button
+                                key={st.k}
+                                onClick={() => setPostDraft({ ...postDraft, stage: st.k })}
+                                title={st.k === 'ready'
+                                  ? T('Chốt lịch: bài sẽ tự đăng đúng giờ (cần đủ ảnh/điều kiện)', 'Lock it: publishes on time (needs its media in place)')
+                                  : T('Bài ở bước này KHÔNG tự đăng', 'A post at this step never publishes')}
+                                style={{
+                                  padding: '5px 11px', borderRadius: 999, fontSize: 12.5, cursor: 'pointer', fontWeight: on ? 700 : 500,
+                                  border: `1px solid ${on ? st.color : 'var(--c334155)'}`,
+                                  background: on ? 'var(--c1e293b)' : 'transparent',
+                                  color: on ? st.color : 'var(--c94a3b8)',
+                                }}
+                              >{st.icon} {T(st.vi, st.en)}</button>
+                            );
+                          })}
+                          {stage !== 'ready' && (
+                            <button
+                              onClick={() => setPostDraft({ ...postDraft, stage: stage === 'writing' ? 'design' : 'ready' })}
+                              style={{ marginLeft: 'auto', padding: '5px 11px', borderRadius: 8, fontSize: 12.5, cursor: 'pointer', border: 'none', background: '#6366f1', color: '#fff', fontWeight: 700 }}
+                            >
+                              {stage === 'writing' ? T('→ Chuyển cho thiết kế', '→ Hand to design') : T('→ Chốt lịch đăng', '→ Lock the slot')}
+                            </button>
+                          )}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, marginBottom: 8 }}>
+                          <input
+                            value={postDraft.writerName ?? ''}
+                            placeholder={T('✍ Người viết content', '✍ Writer')}
+                            onChange={(e) => setPostDraft({ ...postDraft, writerName: e.target.value })}
+                            style={{ ...ui.input, fontSize: 12.5 }}
+                          />
+                          <input
+                            value={postDraft.designerName ?? ''}
+                            placeholder={T('🎨 Người thiết kế', '🎨 Designer')}
+                            onChange={(e) => setPostDraft({ ...postDraft, designerName: e.target.value })}
+                            style={{ ...ui.input, fontSize: 12.5 }}
+                          />
+                        </div>
+                        <textarea
+                          value={postDraft.teamNote ?? ''}
+                          placeholder={T('📝 Ghi chú nội bộ cho nhau (khách không thấy): cần ảnh gì, deadline, chỗ nào cần sửa…', '📝 Note for the team (the client never sees it): what picture, deadline, what to fix…')}
+                          onChange={(e) => setPostDraft({ ...postDraft, teamNote: e.target.value })}
+                          rows={2}
+                          style={{ ...ui.input, fontSize: 12.5, resize: 'vertical' }}
+                        />
+                        {(live?.driveFolderUrl || driveFiles.length > 0) && (
+                          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--c94a3b8)', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                            {live?.driveFolderUrl && (
+                              <a href={live.driveFolderUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)', fontWeight: 700 }}>
+                                📁 {T('Thư mục Drive của bài này', 'This post’s Drive folder')}
+                              </a>
+                            )}
+                            {driveFiles.map((m, i) => (
+                              <a key={m.url} href={m.driveUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)' }}>
+                                {m.kind === 'video' ? '🎬' : '🖼'} {T('File', 'File')} {i + 1}
+                              </a>
+                            ))}
+                            <button
+                              onClick={() => { try { void navigator.clipboard.writeText(postDraft.message); } catch { /* selectable anyway */ } }}
+                              style={{ padding: '3px 9px', borderRadius: 7, fontSize: 11.5, cursor: 'pointer', border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)' }}
+                            >
+                              ⧉ {T('Chép caption', 'Copy caption')}
+                            </button>
+                            <span style={{ color: 'var(--c64748b)' }}>{T('— dùng lại cho Google Maps, TikTok', '— reuse on Google Maps, TikTok')}</span>
+                          </div>
+                        )}
+                        {postDraft.id && !live?.driveFolderUrl && postDraft.media.length > 0 && (
+                          <div style={{ marginTop: 6, fontSize: 11.5, color: 'var(--c64748b)' }}>
+                            {T('Ảnh/clip sẽ được lưu vào thư mục Drive của tiệm sau khi lưu bài (Bài đăng / ngày + tên bài).', 'Files are filed into the salon’s Drive after saving (Bài đăng / day + title).')}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   <div style={{
                     display: postDraft.id && queue?.posts.find((x) => x.id === postDraft.id)?.status === 'posted' ? 'none' : 'flex',
                     gap: 9, flexWrap: 'wrap', marginTop: 14,
@@ -2861,17 +2978,18 @@ function Inner() {
                       {queueBusy
                         ? (postWhen === 'now' ? T('Đang đăng…', 'Publishing…') : T('Đang lưu…', 'Saving…'))
                         : blocked ? T('Đang bị chặn — xem cảnh báo ở trên', 'Blocked — see the warnings above')
-                          : postWhen === 'now' ? T('🚀 Đăng lên ngay', '🚀 Publish now') : T('✓ Đặt lịch đăng', '✓ Schedule it')}
+                          : postWhen === 'now' ? T('🚀 Đăng lên ngay', '🚀 Publish now') : T('✓ Chốt lịch đăng', '✓ Lock & schedule')}
                     </button>
                     <button
                       onClick={() => savePost('draft')}
                       disabled={queueBusy}
+                      title={T('Lưu ở bước hiện tại (viết / thiết kế) — chưa tự đăng', 'Save at the current step (writing / design) — will not publish')}
                       style={{
                         minHeight: 44, padding: '0 16px', borderRadius: 9, cursor: 'pointer',
                         border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13.5,
                       }}
                     >
-                      {T('Lưu nháp', 'Save draft')}
+                      {(postDraft.stage ?? (postDraft.media.length ? 'design' : 'writing')) === 'ready' ? T('Lưu nháp', 'Save draft') : (postDraft.stage ?? (postDraft.media.length ? 'design' : 'writing')) === 'design' ? T('💾 Lưu — đang thiết kế', '💾 Save — in design') : T('💾 Lưu — đang viết', '💾 Save — writing')}
                     </button>
                     <button
                       onClick={() => { setPostDraft(null); setPostErr(null); setContactOverride(false); }}

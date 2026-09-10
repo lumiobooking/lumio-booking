@@ -13,7 +13,7 @@ import { EditWeekDto } from './dto/edit-week.dto';
 import { SuggestionsService } from './suggestions.service';
 import { clientWeek, flattenForClient } from './client-view';
 import { SendChatDto } from './dto/chat.dto';
-import { SavePostDto } from './dto/save-post.dto';
+import { SavePostDto, SetStageDto } from './dto/save-post.dto';
 
 /**
  * What a salon can reach: today's approved plan, and marking it done.
@@ -314,6 +314,16 @@ export class ContentController {
     @Body() body: { scheduledAt: string },
   ) {
     return this.publisher.reschedule(user, id, body?.scheduledAt);
+  }
+
+  /**
+   * Move a post along the team's path — writing → design → ready — or hand it
+   * to somebody, or leave a note, without re-sending the caption and files.
+   * See post-workflow.ts for the one rule this enforces.
+   */
+  @Patch('posts/:id/stage')
+  setPostStage(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: SetStageDto) {
+    return this.publisher.setStage(user, id, body);
   }
 
   @Delete('posts/:id')

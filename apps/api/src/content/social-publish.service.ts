@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { wallTimeToUtcTz } from '../common/salon-time';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '@prisma/client';
@@ -12,6 +12,10 @@ import { MEDIA_STORE, type MediaStore } from './media-store';
 import { buildPostKit, type ShopFacts } from './post-kit';
 import { publicWebBase } from '../common/public-url.util';
 import { explainPublishGap, type GapCause, type PublishGrant } from '../messenger/publish-grant';
+import { GoogleDriveService } from '../uploads/google-drive.service';
+import {
+  cleanStage, statusFor, keepDriveLinks, unarchived, postFolderName, mediaFileName, type Stage, type MediaRef,
+} from './post-workflow';
 
 const GRAPH = 'https://graph.facebook.com/' + (process.env.META_GRAPH_VERSION || 'v21.0');
 
@@ -23,6 +27,12 @@ interface PostRow {
   mediaPurgedAt?: Date | null;
   /** An open client request nobody has closed out. Red on the calendar. */
   heldAt?: Date | null;
+  /** The team's workflow — see post-workflow.ts. Absent on rows that predate it. */
+  stage?: string | null;
+  writerName?: string | null;
+  designerName?: string | null;
+  teamNote?: string | null;
+  driveFolderUrl?: string | null;
 }
 
 /** The client's own words, carried to the screen that has to act on them. */
@@ -74,6 +84,9 @@ export class SocialPublishService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(MEDIA_STORE) private readonly uploads: MediaStore,
+    // Optional so the isolation tests can build the service without Drive;
+    // in the app it is always there (UploadsModule exports it).
+    @Optional() private readonly drive?: GoogleDriveService,
   ) {}
 
   /**
@@ -316,11 +329,16 @@ export class SocialPublishService {
    * through here means the old rows keep publishing instead of silently losing
    * their picture on the deploy that added the column.
    */
-  private mediaOf(row: { media: unknown; imageUrl?: string | null }): MediaItem[] {
+  private mediaOf(row: { media: unknown; imageUrl?: string | null }): MediaRef[] {
     const raw = Array.isArray(row.media) ? row.media : [];
     const out = raw
-      .filter((m): m is { url: string; kind?: string } => Boolean(m) && typeof (m as { url?: unknown }).url === 'string')
-      .map((m) => ({ url: m.url.trim(), kind: m.kind === 'video' ? 'video' as const : 'image' as const }))
+      .filter((m): m is { url: string; kind?: string; driveUrl?: string } => Boolean(m) && typeof (m as { url?: unknown }).url === 'string')
+      .map((m) => ({
+        url: m.url.trim(),
+        kind: m.kind === 'video' ? 'video' as const : 'image' as const,
+        // The archive copy rides along; the sweep and the screen both read it.
+        ...(typeof m.driveUrl === 'string' && m.driveUrl.trim() ? { driveUrl: m.driveUrl.trim() } : {}),
+      }))
       .filter((m) => m.url);
     if (out.length) return out;
     const legacy = (row.imageUrl ?? '').trim();
@@ -413,6 +431,13 @@ export class SocialPublishService {
         results: Array.isArray(r.results) ? r.results : [],
         postedAt: r.postedAt,
         createdByName: r.createdByName,
+        // The team's path (post-workflow): where it stands, whose it is, the
+        // note nobody outside the team sees, and where the files were filed.
+        stage: cleanStage(r.stage),
+        writerName: r.writerName ?? null,
+        designerName: r.designerName ?? null,
+        teamNote: r.teamNote ?? null,
+        driveFolderUrl: r.driveFolderUrl ?? null,
         // The files are gone from storage; the post itself is untouched on
         // Facebook. The screen draws a placeholder instead of a broken image.
         mediaPurged: Boolean(r.mediaPurgedAt),
@@ -465,18 +490,35 @@ export class SocialPublishService {
 
   async save(user: AuthenticatedUser, body: {
     id?: string; ideaId?: string | null; channels?: Channel[]; message?: string;
-    media?: { url?: string; kind?: string }[]; scheduledAt?: string; status?: string;
+    media?: { url?: string; kind?: string; driveUrl?: string }[]; scheduledAt?: string; status?: string;
+    stage?: string; writerName?: string; designerName?: string; teamNote?: string;
   }) {
     const tenantId = this.tenantId(user);
     const channels = (body.channels ?? ['facebook']).filter((c) => c === 'facebook' || c === 'instagram');
     const message = (body.message ?? '').trim();
-    const media = this.mediaOf({ media: body.media ?? [] });
+    let media = this.mediaOf({ media: body.media ?? [] });
     const when = body.scheduledAt ? await this.whenOf(tenantId, body.scheduledAt) : null;
     if (!message && !media.length) throw new BadRequestException('Bài chưa có nội dung.');
     if (!when || Number.isNaN(when.getTime())) throw new BadRequestException('Chưa chọn thời gian đăng.');
     if (!channels.length) throw new BadRequestException('Chọn ít nhất một nơi để đăng.');
 
-    const status = body.status === 'scheduled' ? 'scheduled' : 'draft';
+    // The team's stage decides what status is allowed to say. "Schedule it"
+    // on a post still in design is a request to lock it — so the stage moves
+    // to ready; a post explicitly kept in writing/design stays a draft.
+    const prevRow = body.id
+      ? await this.posts?.findFirst({ where: { id: body.id, tenantId }, select: { id: true, status: true, media: true, stage: true, writerName: true, designerName: true, teamNote: true } })
+        .catch(() => null) as { id: string; status: string; media: unknown; stage?: string | null; writerName?: string | null; designerName?: string | null; teamNote?: string | null } | null
+      : null;
+    let stage: Stage = cleanStage(body.stage, prevRow ? cleanStage(prevRow.stage) : 'ready');
+    if (body.status === 'scheduled' && body.stage === undefined) stage = 'ready';
+    const status = statusFor(stage, body.status === 'scheduled' ? 'scheduled' : 'draft');
+    if (prevRow) media = keepDriveLinks(media, this.mediaOf({ media: prevRow.media }));
+    const workflow = {
+      stage,
+      writerName: typeof body.writerName === 'string' ? body.writerName.trim().slice(0, 80) || null : prevRow?.writerName ?? null,
+      designerName: typeof body.designerName === 'string' ? body.designerName.trim().slice(0, 80) || null : prevRow?.designerName ?? null,
+      teamNote: typeof body.teamNote === 'string' ? body.teamNote.trim().slice(0, 2000) || null : prevRow?.teamNote ?? null,
+    };
     if (status === 'scheduled') {
       // Refuse at write time, while the person who wrote it is still looking at
       // it, rather than failing in a scheduler run nobody is watching.
@@ -485,10 +527,9 @@ export class SocialPublishService {
       if (!plan.ready) throw new BadRequestException(plan.problems.join(' '));
     }
 
-    const data = { channels, message, media, imageUrl: null, scheduledAt: when, status };
+    const data = { channels, message, media, imageUrl: null, scheduledAt: when, status, ...workflow };
     if (body.id) {
-      const owned = await this.posts?.findFirst({ where: { id: body.id, tenantId }, select: { id: true, status: true } })
-        .catch(() => null) as { id: string; status: string } | null;
+      const owned = prevRow;
       if (!owned) throw new NotFoundException('Không tìm thấy bài này.');
       // A post that already went out is history. Editing it here would change
       // the record without changing what is on Facebook.
@@ -501,13 +542,83 @@ export class SocialPublishService {
       // it. Leaving the thread open would keep the team inbox nagging about a
       // request that has already been carried out.
       await this.closeThread(tenantId, `post:${owned.id}`, user.email ?? null);
+      void this.archiveToDrive(owned.id).catch((e) => this.log.warn(`drive archive ${owned.id}: ${e instanceof Error ? e.message : e}`));
       return { ok: true, id: owned.id };
     }
 
     const created = await this.posts?.create({
       data: { tenantId, ideaId: body.ideaId ?? null, ...data, createdByName: user.email ?? null },
     }) as { id: string };
+    if (created?.id) void this.archiveToDrive(created.id).catch((e) => this.log.warn(`drive archive ${created.id}: ${e instanceof Error ? e.message : e}`));
     return { ok: true, id: created?.id };
+  }
+
+  /**
+   * Move a post along the team's path without re-sending its body.
+   *
+   * Locking it (stage → ready) schedules it only when it can actually go
+   * out; otherwise it stays a draft and the caller is told why, in the same
+   * words the composer uses. Stepping back from ready pulls it out of the
+   * sweep at once.
+   */
+  async setStage(user: AuthenticatedUser, id: string, body: { stage: string; writerName?: string; designerName?: string; teamNote?: string }) {
+    const tenantId = this.tenantId(user);
+    const row = await this.posts?.findFirst({ where: { id, tenantId } }).catch(() => null) as PostRow | null;
+    if (!row) throw new NotFoundException('Không tìm thấy bài này.');
+    if (row.status === 'posted' || row.status === 'publishing') throw new BadRequestException('Bài đã đăng rồi — không đổi trạng thái được nữa.');
+    const stage = cleanStage(body.stage, cleanStage(row.stage));
+    let status = row.status;
+    let blockers: string[] = [];
+    if (stage === 'ready') {
+      const conn = await this.pageFor(tenantId);
+      const plan = planPublish({ channels: this.channelsOf(row), message: row.message, media: this.mediaOf(row) }, conn?.page ?? null);
+      blockers = plan.ready ? [] : plan.problems;
+      status = plan.ready ? 'scheduled' : 'draft';
+    } else {
+      status = 'draft';
+    }
+    const data: Record<string, unknown> = { stage, status };
+    if (status === 'scheduled') Object.assign(data, { attempts: 0, lastError: null });
+    if (typeof body.writerName === 'string') data.writerName = body.writerName.trim().slice(0, 80) || null;
+    if (typeof body.designerName === 'string') data.designerName = body.designerName.trim().slice(0, 80) || null;
+    if (typeof body.teamNote === 'string') data.teamNote = body.teamNote.trim().slice(0, 2000) || null;
+    await this.posts?.updateMany({ where: { id, tenantId }, data });
+    return { ok: true, stage, status, blockers };
+  }
+
+  /**
+   * File this post's pictures and clips in the salon's Drive, in a folder
+   * named for the day and the caption, and remember the links on the row.
+   *
+   * The reason: the same picture goes on the Google Business post and the
+   * TikTok, and without this somebody re-downloads it from Facebook. Runs
+   * after every save, copies only what is not copied yet, and never blocks
+   * the save — Drive being slow is not the composer's problem.
+   */
+  async archiveToDrive(postId: string): Promise<{ copied: number }> {
+    if (!this.drive || !(await this.drive.configured().catch(() => false))) return { copied: 0 };
+    const row = await this.posts?.findFirst({ where: { id: postId } }).catch(() => null) as PostRow | null;
+    if (!row) return { copied: 0 };
+    const media = this.mediaOf(row);
+    const todo = unarchived(media);
+    if (!todo.length) return { copied: 0 };
+    const tz = (await this.prisma.tenant.findUnique({ where: { id: row.tenantId }, select: { timezone: true } }).catch(() => null))?.timezone || 'America/Los_Angeles';
+    const day = (() => { try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(row.scheduledAt); } catch { return row.scheduledAt.toISOString().slice(0, 10); } })();
+    const folder = await this.drive.postFolder(row.tenantId, postFolderName(day, row.message));
+    let copied = 0;
+    const next = [...media];
+    for (let i = 0; i < next.length; i += 1) {
+      const m = next[i];
+      if (m.driveUrl || !/^https?:\/\//i.test(m.url)) continue;
+      try {
+        const out = await this.drive.mirrorFromUrl(row.tenantId, m.url, mediaFileName(i, m), m.kind, folder.folderId);
+        if (out?.url) { next[i] = { ...m, driveUrl: out.url }; copied += 1; }
+      } catch (e) {
+        this.log.warn(`drive copy failed for post ${postId} #${i + 1}: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    await this.posts?.updateMany({ where: { id: postId }, data: { media: next, driveFolderUrl: folder.folderUrl } }).catch(() => undefined);
+    return { copied };
   }
 
   /**
@@ -521,9 +632,15 @@ export class SocialPublishService {
     const tenantId = this.tenantId(user);
     const when = await this.whenOf(tenantId, scheduledAt);
     if (Number.isNaN(when.getTime())) throw new BadRequestException('Thời gian không hợp lệ.');
+    // A dragged post keeps its stage: one still being written or designed
+    // moves day but stays a draft. Only a ready post is (re)armed.
+    const cur = await this.posts?.findFirst({ where: { id, tenantId }, select: { stage: true } }).catch(() => null) as { stage?: string | null } | null;
+    const ready = cleanStage(cur?.stage) === 'ready';
     const r = await this.posts?.updateMany({
       where: { id, tenantId, status: { in: ['draft', 'scheduled', 'failed', 'expired'] } },
-      data: { scheduledAt: when, status: 'scheduled', attempts: 0, lastError: null },
+      data: ready
+        ? { scheduledAt: when, status: 'scheduled', attempts: 0, lastError: null }
+        : { scheduledAt: when },
     }).catch(() => ({ count: 0 })) as { count: number };
     if (!r?.count) throw new NotFoundException('Không đổi được — bài không tồn tại hoặc đã đăng.');
     return { ok: true };

@@ -3036,6 +3036,21 @@ model ScheduledPost {
   /// and how the sweep knows not to examine the row again.
   mediaPurgedAt DateTime?
 
+  /// Where the post is in the team's hands: writing (caption being written)
+  /// | design (visuals being made) | ready (locked for the calendar). Only a
+  /// 'ready' post may hold status 'scheduled' — the sweep never sends a post
+  /// the designer is still working on. Existing rows default to 'ready',
+  /// which is exactly how they behaved before the column existed.
+  stage        String  @default("ready")
+  /// Who owns each half. Names, not user ids: the team is small and moves.
+  writerName   String?
+  designerName String?
+  /// The team's own note on this post. Never shown to the client.
+  teamNote     String?
+  /// The Drive folder holding this post's files, for reuse elsewhere
+  /// (Google Business posts, TikTok) — see social-publish archiveToDrive.
+  driveFolderUrl String?
+
   createdByName String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

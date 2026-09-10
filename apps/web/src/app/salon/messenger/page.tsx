@@ -456,23 +456,31 @@ function Inner() {
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true); setError(null);
+    // The screen is drawn the moment the connection row is back — one indexed
+    // read. Everything else arrives behind it. It used to wait for all five in
+    // one Promise.all, and the slowest of them (the webhook check makes half a
+    // dozen Graph calls in a row, each with an 8-second timeout; the activity
+    // list looks up customer names) held a blank "Đang tải…" for half a
+    // minute on a page whose first card is a button.
     try {
-      const [conf, th, whs, act, lds] = await Promise.all([
-        apiFetch<MConf>('/messenger', { token }),
-        apiFetch<MThread[]>('/messenger/threads', { token }).catch(() => [] as MThread[]),
-        // null = the check itself failed (cold start / timeout). That is NOT the
-        // same as "the Page is not subscribed" — rendering them the same way
-        // made the dashboard cry wolf, so keep the two states apart.
-        apiFetch<WebhookStatus>('/messenger/webhook-status', { token }).catch(() => null),
-        apiFetch<ActivityRes>('/messenger/activity', { token }).catch(() => ({ page: '', pageId: '', events: [] } as ActivityRes)),
-        apiFetch<SalesLead[]>('/messenger/leads', { token }).catch(() => [] as SalesLead[]),
-      ]);
-      setC(conf); setThreads(th); setActivity(act.events || []); setActivityPage(act.page || '');
-      if (whs) { setWh(whs); setWhFail(false); setWhTries(0); } else { setWhFail(true); }
-      setLeads(lds);
-      setSendTo((prev) => prev || th[0]?.id || '');
+      const conf = await apiFetch<MConf>('/messenger', { token });
+      setC(conf);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
     finally { setLoading(false); }
+    void apiFetch<MThread[]>('/messenger/threads', { token }).catch(() => [] as MThread[]).then((th) => {
+      setThreads(th);
+      setSendTo((prev) => prev || th[0]?.id || '');
+    });
+    // null = the check itself failed (cold start / timeout). That is NOT the
+    // same as "the Page is not subscribed" — rendering them the same way
+    // made the dashboard cry wolf, so keep the two states apart.
+    void apiFetch<WebhookStatus>('/messenger/webhook-status', { token }).catch(() => null).then((whs) => {
+      if (whs) { setWh(whs); setWhFail(false); setWhTries(0); } else { setWhFail(true); }
+    });
+    void apiFetch<ActivityRes>('/messenger/activity', { token }).catch(() => ({ page: '', pageId: '', events: [] } as ActivityRes)).then((act) => {
+      setActivity(act.events || []); setActivityPage(act.page || '');
+    });
+    void apiFetch<SalesLead[]>('/messenger/leads', { token }).catch(() => [] as SalesLead[]).then(setLeads);
   }, [token]);
   useEffect(() => { load(); }, [load]);
 

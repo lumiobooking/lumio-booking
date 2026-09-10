@@ -2871,7 +2871,39 @@ function Inner() {
                        the month says what is waiting on whom. */}
                   {(() => {
                     const live = postDraft.id ? queue?.posts.find((x) => x.id === postDraft.id) : null;
-                    if (live?.status === 'posted') return null;
+                    if (live?.status === 'posted') {
+                      // Published: nothing to move, but the archive and the
+                      // caption are exactly what somebody opens an old post
+                      // for — to put the same picture on Google Maps or TikTok.
+                      const files = postDraft.media.filter((m) => m.driveUrl);
+                      return (
+                        <div style={{ marginTop: 14, padding: '11px 12px', borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
+                          <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>📁 {T('Ảnh/clip của bài đã đăng', 'This post’s files')}</div>
+                          {live.driveFolderUrl ? (
+                            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                              <a href={live.driveFolderUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)', fontWeight: 700 }}>{T('Mở thư mục Drive', 'Open the Drive folder')}</a>
+                              {files.map((m, i) => (
+                                <a key={m.url} href={m.driveUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)' }}>{m.kind === 'video' ? '🎬' : '🖼'} {i + 1}</a>
+                              ))}
+                              <button
+                                onClick={() => { try { void navigator.clipboard.writeText(postDraft.message); } catch { /* selectable anyway */ } }}
+                                style={{ padding: '3px 9px', borderRadius: 7, fontSize: 11.5, cursor: 'pointer', border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)' }}
+                              >⧉ {T('Chép caption', 'Copy caption')}</button>
+                              <span style={{ color: 'var(--c64748b)' }}>{T('— đăng lại lên Google Maps, TikTok', '— reuse on Google Maps, TikTok')}</span>
+                            </div>
+                          ) : (
+                            <div>{postDraft.media.length
+                              ? T('Chưa có bản lưu trên Drive — Google Drive chưa được kết nối (Super Admin → Google Drive), hoặc bài này đăng trước khi có tính năng lưu.', 'No Drive copy — Google Drive is not connected (Super Admin → Google Drive), or this post predates the archive.')
+                              : T('Bài này không có ảnh/clip.', 'This post has no files.')}</div>
+                          )}
+                          {(live.teamNote || live.writerName || live.designerName) && (
+                            <div style={{ marginTop: 6 }}>
+                              {live.writerName ? `✍ ${live.writerName}  ` : ''}{live.designerName ? `🎨 ${live.designerName}  ` : ''}{live.teamNote ? `📝 ${live.teamNote}` : ''}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
                     const stage = postDraft.stage ?? (postDraft.media.length ? 'design' : 'writing');
                     const STEP: { k: 'writing' | 'design' | 'ready'; icon: string; vi: string; en: string; color: string }[] = [
                       { k: 'writing', icon: '✍', vi: 'Đang viết content', en: 'Writing', color: '#60a5fa' },

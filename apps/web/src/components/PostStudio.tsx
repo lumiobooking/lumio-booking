@@ -263,12 +263,35 @@ export function MonthCalendar({
                     fontSize: 10.5, lineHeight: 1.3,
                     color: TONES[tone].fg,
                     fontWeight: tone === 'held' ? 700 : 400,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    overflow: 'hidden',
                   }}
                 >
-                  {TONES[tone].icon && `${TONES[tone].icon} `}
-                  {p.channels.includes('instagram') ? '◈' : '▣'} {hourInTz(p.scheduledAt)}h {p.message.slice(0, 18) || T('(ảnh)', '(media)')}
-                  {(p.teamNote || p.writerName || p.designerName) && <span style={{ opacity: .7 }}> ·{p.teamNote ? ' 📝' : ''}{p.writerName || p.designerName ? ` ${(p.designerName || p.writerName || '').split(/[\s@]/)[0]}` : ''}</span>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {TONES[tone].icon && `${TONES[tone].icon} `}
+                      {p.channels.includes('instagram') ? '◈' : '▣'} {hourInTz(p.scheduledAt)}h {p.message.slice(0, 24) || T('(ảnh)', '(media)')}
+                    </span>
+                    {/* The archive, one click from the month — the reason it
+                        exists is to be found from here, not from the composer. */}
+                    {p.driveFolderUrl && (
+                      <a
+                        href={p.driveFolderUrl} target="_blank" rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        title={T('Mở thư mục Drive (ảnh/clip của bài này)', 'Open the Drive folder (this post’s files)')}
+                        style={{ flexShrink: 0, textDecoration: 'none', fontSize: 11 }}
+                      >📁</a>
+                    )}
+                  </div>
+                  {/* Second line: the state in words, whose it is, the note —
+                      what the hover used to hold and nobody hovered for. */}
+                  {(tone !== 'plain' || p.teamNote || p.writerName || p.designerName) && (
+                    <div style={{ fontSize: 9.5, lineHeight: 1.3, opacity: .8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
+                      {vi ? TONES[tone].vi : TONES[tone].en}
+                      {(p.designerName || p.writerName) ? ` · ${(tone === 'design' ? p.designerName : p.writerName) || p.designerName || p.writerName}` : ''}
+                      {p.teamNote ? ` · 📝 ${p.teamNote}` : ''}
+                    </div>
+                  )}
                 </div>
                 );
               })}

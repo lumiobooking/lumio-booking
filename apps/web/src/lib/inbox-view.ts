@@ -14,7 +14,7 @@
  */
 
 export type ThreadState = 'bot' | 'unclaimed' | 'human' | 'done';
-export type ChannelKind = 'messenger' | 'instagram' | 'zalo';
+export type ChannelKind = 'messenger' | 'instagram' | 'zalo' | 'web';
 
 export interface InboxRow {
   id: string;
@@ -53,7 +53,7 @@ export interface InboxLabel {
 /** Unknown channels read as Messenger — the one every salon has. */
 export function channelOf(raw: unknown): ChannelKind {
   const v = String(raw ?? '').trim().toLowerCase();
-  return v === 'instagram' || v === 'zalo' ? v : 'messenger';
+  return v === 'instagram' || v === 'zalo' || v === 'web' ? v : 'messenger';
 }
 
 /**
@@ -68,6 +68,7 @@ export function channelMark(raw: unknown): string {
   switch (channelOf(raw)) {
     case 'instagram': return '◎';
     case 'zalo': return '✆';
+    case 'web': return '⌂';
     default: return '✉';
   }
 }
@@ -81,6 +82,8 @@ export function channelLabel(raw: unknown): { text: string; fg: string; bg: stri
       return { text: '◎ Instagram', fg: '#f9a8d4', bg: 'rgba(219,39,119,0.16)', border: 'rgba(219,39,119,0.45)' };
     case 'zalo':
       return { text: '✆ Zalo', fg: '#7dd3fc', bg: 'rgba(14,165,233,0.16)', border: 'rgba(14,165,233,0.45)' };
+    case 'web':
+      return { text: '⌂ Website', fg: '#86efac', bg: 'rgba(34,197,94,0.16)', border: 'rgba(34,197,94,0.45)' };
     default:
       return { text: '✉ Messenger', fg: 'var(--c93c5fd)', bg: 'rgba(59,130,246,0.16)', border: 'rgba(59,130,246,0.45)' };
   }

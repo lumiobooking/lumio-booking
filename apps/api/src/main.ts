@@ -57,6 +57,14 @@ async function bootstrap() {
     }),
   );
 
+  // The website chat widget runs on the salons' OWN sites — any domain — so
+  // its public prefix answers every origin. Registered before the app-wide
+  // CORS below so it owns the preflight for this one path; nothing under it
+  // takes a login, and the visitor id is scoped to a single thread.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const cors = require('cors') as (o: Record<string, unknown>) => (req: any, res: any, next: () => void) => void;
+  app.use('/api/public/chat', cors({ origin: true, credentials: false, methods: ['GET', 'POST', 'OPTIONS'], maxAge: 600 }));
+
   // CORS limited to the configured frontend origins (default http://localhost:3005)
   const corsOrigins = (config.get<string>('CORS_ORIGINS') ?? 'http://localhost:3005')
     .split(',')

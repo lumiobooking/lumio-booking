@@ -8,6 +8,7 @@ import {
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { mergeHistory } from './history-merge';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY } from './zalo-oa';
+import { isWebPage, webPageId } from './web-chat';
 import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
 import { withBookingLink } from './booking-link';
 import { isSameVisit, servicesAsked, type OpenVisit } from './one-visit';
@@ -59,7 +60,7 @@ function wallToUtcISO(local: string, tz: string): string {
 }
 
 type Turn = { role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean };
-type Channel = 'messenger' | 'instagram' | 'zalo';
+type Channel = 'messenger' | 'instagram' | 'zalo' | 'web';
 export interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 
@@ -97,6 +98,7 @@ export class MessengerService implements OnModuleInit {
     const seen = new Set<string>();
     const subscribe = async (pageId: string, token: string) => {
       if (!pageId || !token || seen.has(pageId)) return;
+      if (isWebPage(pageId) || pageId.startsWith('zalo:')) return; // not Graph's to subscribe
       seen.add(pageId);
       await fetch(`${GRAPH}/${pageId}/subscribed_apps?subscribed_fields=${FIELDS}&access_token=${encodeURIComponent(token)}`, { method: 'POST' }).catch(() => undefined);
     };
@@ -780,10 +782,10 @@ export class MessengerService implements OnModuleInit {
       r.senderName = found;
       await this.prisma.messengerThread.update({ where: { id: r.id }, data: { senderName: found } }).catch(() => undefined);
     }
-    if (nameless.some((r) => r.channel !== 'zalo')) {
+    if (nameless.some((r) => r.channel !== 'zalo' && r.channel !== 'web')) {
       const byPage = new Map<string, string>();
       for (const r of nameless) {
-        if (r.channel === 'zalo') continue;
+        if (r.channel === 'zalo' || r.channel === 'web') continue; // no profile to ask for
         const pid = String(r.pageId ?? '');
         if (pid) byPage.set(pid, r.channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER');
       }
@@ -979,7 +981,7 @@ export class MessengerService implements OnModuleInit {
     // and the inbox showed eight rows all called "Customer" — a list nobody can
     // tell apart. Opening a conversation is a natural, rate-limited moment to
     // try again, and it costs nothing when it works or when it does not.
-    if (full && !row.senderName) {
+    if (full && !row.senderName && (row as { channel?: string }).channel !== 'web') {
       const pgTok = row.pageId
         ? await this.prisma.messengerPage.findUnique({ where: { pageId: String(row.pageId) }, select: { pageToken: true } }).catch(() => null)
         : null;
@@ -1131,6 +1133,7 @@ export class MessengerService implements OnModuleInit {
       where: { id, tenantId }, select: { senderId: true, pageId: true, channel: true } as never,
     }) as unknown as { senderId: string | null; pageId: string | null; channel?: string | null } | null;
     if (!row?.senderId) return null;
+    if (row.channel === 'web' || isWebPage(row.pageId)) return null; // a visitor has no picture; initials stand
 
     const cacheKey = `${row.pageId}:${row.senderId}`;
     const hit = this.avatarCache.get(cacheKey);
@@ -1447,11 +1450,30 @@ export class MessengerService implements OnModuleInit {
     const body = (text || '').trim();
     if (!body) throw new BadRequestException('Message text is required.');
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
-    if (!conn?.pageId || !conn?.pageToken) throw new BadRequestException('Connect a Facebook Page first.');
     const thread = threadId
       ? await this.prisma.messengerThread.findFirst({ where: { id: threadId, tenantId } })
       : await this.prisma.messengerThread.findFirst({ where: { tenantId }, orderBy: { updatedAt: 'desc' } });
     if (!thread) throw new NotFoundException('No conversation yet — the customer must message the Page first (24h messaging window).');
+
+    // A website thread needs no Page and no token: the reply is written into
+    // the history the visitor's browser is polling. A person answering puts
+    // the thread in their hands, exactly as a Page-inbox reply would.
+    if (((thread as unknown as { channel?: string }).channel ?? '') === 'web' || isWebPage(thread.pageId)) {
+      const wAt = new Date().toISOString();
+      const hist0 = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+      await this.prisma.messengerThread.update({
+        where: { id: thread.id },
+        data: {
+          history: [...hist0, { role: 'assistant', content: body, manual: true, at: wAt }].slice(-MAX_TURNS) as unknown as Prisma.InputJsonValue,
+          lastText: body.slice(0, 300), lastMessageAt: new Date(), readAt: new Date(),
+          handoff: true, handoffAt: new Date(),
+        } as never,
+      });
+      await this.audit(tenantId, 'messenger.manual_send');
+      this.events.publish(tenantId, 'message');
+      return { ok: true as const, messageId: null, recipientId: thread.senderId, at: wAt, channel: 'web' };
+    }
+    if (!conn?.pageId || !conn?.pageToken) throw new BadRequestException('Connect a Facebook Page first.');
 
     const pg = await this.prisma.messengerPage.findFirst({ where: { tenantId, pageId: thread.pageId } });
     const sendToken = pg?.pageToken || conn.pageToken;
@@ -1979,13 +2001,22 @@ export class MessengerService implements OnModuleInit {
     return this.handleMessage(oaId, senderId, text, tsMs, 'zalo');
   }
 
+  /** A line typed into the website widget. The visitor id is the sender. */
+  async inboundWeb(tenantId: string, visitorId: string, text: string): Promise<void> {
+    return this.handleMessage(webPageId(tenantId), visitorId, text, Date.now(), 'web');
+  }
+
   private async handleMessage(entryId: string, senderId: string, text: string, eventTs?: number, channel: Channel = 'messenger'): Promise<void> {
     // Route by Facebook Page id OR the linked Instagram account id: any of the
     // tenant's pages leads to the SAME brain — one brain, many mouths.
     const page = await this.pageByEntry(entryId);
     if (!page || !page.enabled) return;
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId: page.tenantId } });
-    if (!conn || !conn.enabled) return;
+    if (!conn) return;
+    // conn.enabled is the Messenger/Instagram switch. The website widget has
+    // its own (web_chat.enabled, checked before this is called), so a salon
+    // sold chat-on-website without the Facebook bot still gets answered.
+    if (!conn.enabled && channel !== 'web') return;
     const pageId = page.pageId;
     const thread = await this.prisma.messengerThread.upsert({
       where: { pageId_senderId: { pageId, senderId } },
@@ -1993,7 +2024,9 @@ export class MessengerService implements OnModuleInit {
       create: { tenantId: page.tenantId, pageId, senderId, lastText: text.slice(0, 300), channel } as never,
     });
     // Best-effort: resolve the customer's display name once (User Profile API).
-    if (!thread.senderName) {
+    if (!thread.senderName && channel !== 'web') {
+      // A website visitor has no profile to look up; the bot asks for a name
+      // when it books, like any walk-in.
       const name = channel === 'zalo'
         ? await this.zaloNameFor(page.pageToken, senderId)
         : await this.fetchSenderName(page.pageToken, senderId);
@@ -2173,7 +2206,7 @@ export class MessengerService implements OnModuleInit {
         const at = (th as unknown as { handoffAt?: Date | null }).handoffAt;
         if (at && new Date(at).getTime() > stampAtSchedule) return; // human DID reply — stand down
         const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId: th.tenantId } });
-        if (!conn || !conn.enabled) return;
+        if (!conn || (!conn.enabled && !isWebPage(th.pageId))) return;
         const pg = await this.prisma.messengerPage.findUnique({ where: { pageId: th.pageId } }).catch(() => null);
         const token = pg?.pageToken || conn.pageToken;
         if (!token) return;
@@ -2266,8 +2299,8 @@ export class MessengerService implements OnModuleInit {
       }
       return;
     }
-    const isZalo = (fresh as unknown as { channel?: string }).channel === 'zalo';
-    const sent = await this.sendText(conn.pageToken, senderId, reply, isZalo ? 'zalo' : undefined, conn.tenantId);
+    const freshCh = (fresh as unknown as { channel?: string }).channel;
+    const sent = await this.sendText(conn.pageToken, senderId, reply, freshCh === 'zalo' ? 'zalo' : freshCh === 'web' ? 'web' : undefined, conn.tenantId);
     // Inbound = Meta's own webhook timestamp (ms epoch); outbound = when we actually sent.
     const inAt = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
     const outAt = new Date().toISOString();
@@ -3831,6 +3864,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (tenantId) await this.traceZaloSend(tenantId, r);
       return r;
     }
+    // The website has no send: the reply appended to the thread's history is
+    // what the visitor's browser reads on its next poll.
+    if (channel === 'web') return { ok: true };
     try {
       // metadata comes back on the Messenger echo; Instagram drops it, so we
       // also remember the message id the Send API returns.

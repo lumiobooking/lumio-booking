@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { ZaloOaPanel } from '../../../components/ZaloOaPanel';
+import { WebChatPanel } from '../../../components/WebChatPanel';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
@@ -786,6 +787,7 @@ function Inner() {
           person looking for "kết nối Zalo AI" actually looks; the component
           itself stays silent for a salon outside Vietnam. */}
       <ZaloOaPanel token={token} />
+      <WebChatPanel token={token} />
 
       {/* Connection details + live webhook subscription status (App Review evidence).
           Facebook's checks, for a Facebook Page. A Zalo-only connection borrows

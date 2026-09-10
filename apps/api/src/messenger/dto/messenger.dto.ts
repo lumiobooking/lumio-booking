@@ -20,6 +20,14 @@ export class UpdateMessengerDto {
   // 'booking' (salon appointment bot) or 'sales' (agency sales/CS bot).
   @IsOptional() @IsIn(['booking', 'sales']) botMode?: 'booking' | 'sales';
   @IsOptional() @IsString() @MaxLength(200) leadEmail?: string;
+  // Staff distribution of chats. The screen sends its whole form on every
+  // save, and the global pipe forbids any field this class does not name —
+  // so when these three landed in the form without landing here, EVERY save
+  // on the Bot page (greeting, facts, the on/off switch) answered "property
+  // chatAssignMode should not exist". Ranges mirror the service's clamps.
+  @IsOptional() @IsIn(['off', 'round-robin']) chatAssignMode?: 'off' | 'round-robin';
+  @IsOptional() @IsInt() @Min(0) @Max(50) chatMaxOpenPerAgent?: number;
+  @IsOptional() @IsBoolean() chatPreferUsualTech?: boolean;
 }
 
 export class LeadStatusDto {

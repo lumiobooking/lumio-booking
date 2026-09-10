@@ -10,11 +10,13 @@ import { MessengerWebhookController } from './messenger-webhook.controller';
 import { ZaloOaService } from './zalo-oa.service';
 import { ZaloController, ZaloWebhookController } from './zalo.controller';
 import { SiteVerificationController } from './site-verification.controller';
+import { WebChatService } from './web-chat.service';
+import { WebChatAdminController, WebChatPublicController } from './web-chat.controller';
 
 @Module({
   imports: [BookingsModule, SettingsModule, NotificationsModule, PushModule],
-  controllers: [MessengerController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController],
-  providers: [InboxEventsService, MessengerService, ZaloOaService],
+  controllers: [MessengerController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController, WebChatAdminController, WebChatPublicController],
+  providers: [InboxEventsService, MessengerService, ZaloOaService, WebChatService],
   exports: [InboxEventsService, MessengerService],
 })
 export class MessengerModule {}

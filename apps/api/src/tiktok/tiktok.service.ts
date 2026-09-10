@@ -35,7 +35,21 @@ export class TikTokService {
     const cors = (process.env.CORS_ORIGINS || '').split(',')[0].trim();
     return (process.env.PUBLIC_WEB_URL || cors || 'https://lumiobooking.com').replace(/\/$/, '');
   }
-  private redirectUri(): string { return `${this.apiBase()}/api/tiktok/callback`; }
+  /**
+   * Where TikTok sends the browser back.
+   *
+   * Its OWN env var, not apiBase(): TikTok will only accept a redirect URI
+   * that sits under a URL property you have verified in the developer
+   * portal, and a Render hostname (…onrender.com) can never be verified —
+   * nobody can put a DNS record on somebody else's domain. So this points
+   * at a subdomain of the agency's own domain (api.lumiobooking.com →
+   * Render custom domain), while PUBLIC_API_URL stays exactly as it is and
+   * the Meta and Google callbacks registered against it keep working.
+   */
+  private redirectUri(): string {
+    const own = (process.env.TIKTOK_REDIRECT_URI || '').trim().replace(/\/+$/, '');
+    return own || `${this.apiBase()}/api/tiktok/callback`;
+  }
   /** PULL_FROM_URL only works from a domain verified in the developer portal; off until it is. */
   private pullFromUrl(): boolean { return /^(1|true|yes)$/i.test(process.env.TIKTOK_PULL_FROM_URL || ''); }
   private signingSecret(): string { return process.env.JWT_SECRET || process.env.APP_SECRET || 'lumio-tiktok-signing-dev'; }

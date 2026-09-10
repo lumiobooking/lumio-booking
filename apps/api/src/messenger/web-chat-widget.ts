@@ -46,6 +46,9 @@ const WIDGET = `(function () {
   }
 
   var cfg = null, open = false, turns = [], lastAt = '', waitingSince = 0, timer = null, unread = 0, failed = false, lastHtml = '';
+  // Where the salon's page was scrolled to before we froze it. -1 = not frozen.
+  var lockedY = -1;
+  function locked() { return lockedY >= 0; }
 
   function get(path) {
     return fetch(API + path, { method: 'GET', headers: { 'accept': 'application/json' } }).then(function (r) { return r.ok ? r.json() : null; });
@@ -226,17 +229,43 @@ const WIDGET = `(function () {
    * the message list showed as an empty grey field. visualViewport reports the
    * part that is really on screen, so the panel is sized and offset from that.
    */
+  function clearFit() {
+    panel.style.top = ''; panel.style.left = ''; panel.style.right = '';
+    panel.style.bottom = ''; panel.style.width = ''; panel.style.height = '';
+  }
+
+  /**
+   * Follow the part of the page the visitor can actually see.
+   *
+   * iOS moves TWO viewports and they disagree. The layout viewport is what a
+   * position:fixed element is measured against; the visual viewport is the
+   * glass. Open the keyboard and Safari scrolls the layout viewport so the
+   * focused field clears the keys — the fixed panel travels with it and half
+   * of it ends up above the top of the screen, which is exactly what the
+   * screenshots showed.
+   *
+   * visualViewport reports where the glass now sits (offsetTop/offsetLeft) and
+   * how big it is. Pinning all four to those numbers is the only thing that
+   * holds in every combination of keyboard, rubber-band scroll and zoom.
+   */
   function fit() {
     var vv = window.visualViewport;
-    if (!open || !phone() || !vv) { panel.style.top = ''; panel.style.bottom = ''; panel.style.height = ''; return; }
-    // Top of the layout viewport — where a position:fixed element already is —
-    // and only the HEIGHT taken from the visible part. Using offsetTop as well
-    // put the panel halfway down the screen whenever the page had been
-    // rubber-banded or pinched, which is most of the time on a phone.
-    panel.style.top = '0px';
+    if (!open || !phone() || !vv) { clearFit(); return; }
+    panel.style.top = vv.offsetTop + 'px';
+    panel.style.left = vv.offsetLeft + 'px';
+    panel.style.right = 'auto';
     panel.style.bottom = 'auto';
+    panel.style.width = vv.width + 'px';
     panel.style.height = vv.height + 'px';
   }
+
+  /**
+   * The keyboard's arrival is not one event at one moment: the viewport
+   * settles over a few hundred milliseconds while the keys slide up. One
+   * measurement taken at the start of that is a measurement of the wrong
+   * screen, so take several.
+   */
+  function fitSoon() { fit(); setTimeout(fit, 80); setTimeout(fit, 250); setTimeout(fit, 500); }
 
   function toggle(force) {
     open = typeof force === 'boolean' ? force : !open;
@@ -244,15 +273,42 @@ const WIDGET = `(function () {
     // The launcher hides behind the panel on a phone; on a desktop the panel
     // sits above it and it stays the way to close.
     bubble.className = 'b' + (open && phone() ? ' hid' : '');
-    // The page behind must not scroll while a full-screen panel is up: a
-    // visitor swiping the message list would otherwise drag the salon's
-    // website around underneath it.
+    // Lock the page behind.
+    //
+    // overflow:hidden alone does not hold on iOS — Safari still scrolls the
+    // document to bring a focused field above the keyboard, which is half of
+    // why the panel kept sliding. Taking the body out of flow does hold; the
+    // scroll position is remembered and put back on close, or the visitor
+    // returns to the top of the salon's site instead of where they were.
     try {
-      if (open && phone()) { document.documentElement.style.overflow = 'hidden'; document.body.style.overflow = 'hidden'; }
-      else { document.documentElement.style.overflow = ''; document.body.style.overflow = ''; }
+      if (open && phone()) {
+        lockedY = window.pageYOffset || document.documentElement.scrollTop || 0;
+        document.body.style.position = 'fixed';
+        document.body.style.top = (-lockedY) + 'px';
+        document.body.style.left = '0';
+        document.body.style.right = '0';
+        document.body.style.width = '100%';
+        document.documentElement.style.overflow = 'hidden';
+      } else if (locked()) {
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.left = '';
+        document.body.style.right = '';
+        document.body.style.width = '';
+        document.documentElement.style.overflow = '';
+        window.scrollTo(0, lockedY);
+        lockedY = -1;
+      }
     } catch (e) {}
-    if (open) { unread = 0; badge.style.display = 'none'; poll(); setTimeout(function () { input.focus(); fit(); }, 50); }
-    fit();
+    if (open) {
+      unread = 0; badge.style.display = 'none'; poll();
+      // Focus after the panel has been sized, or the keyboard opens against a
+      // panel that is still the wrong shape.
+      fitSoon();
+      setTimeout(function () { input.focus(); fitSoon(); }, 60);
+    } else {
+      clearFit();
+    }
     schedule();
   }
 
@@ -260,14 +316,17 @@ const WIDGET = `(function () {
     window.visualViewport.addEventListener('resize', fit);
     window.visualViewport.addEventListener('scroll', fit);
   }
-  window.addEventListener('orientationchange', function () { setTimeout(fit, 250); });
+  window.addEventListener('orientationchange', function () { setTimeout(fitSoon, 250); });
+  // Blur puts the keyboard away, and the viewport grows back over the same
+  // few hundred milliseconds it took to shrink.
+  input.addEventListener('blur', function () { fitSoon(); });
 
   bubble.addEventListener('click', function () { toggle(); });
   sendBtn.addEventListener('click', send);
   input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   // The keyboard appearing shortens the list; without this the visitor is
   // left looking at the middle of the conversation instead of its end.
-  input.addEventListener('focus', function () { setTimeout(function () { fit(); list.scrollTop = list.scrollHeight; }, 300); });
+  input.addEventListener('focus', function () { fitSoon(); setTimeout(function () { list.scrollTop = list.scrollHeight; }, 320); });
 
   get('').then(function (c) {
     if (!c || !c.ok) return;

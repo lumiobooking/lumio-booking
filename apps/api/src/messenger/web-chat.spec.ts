@@ -27,10 +27,28 @@ describe('website chat — the pure parts', () => {
   it('ships OFF, and a settings write moves only what it names', () => {
     expect(WEB_CHAT_DEFAULTS.enabled).toBe(false);
     const on = cleanWebChatConfig({ enabled: true, color: '#22C55E', greeting: '  Chào  bạn ' }, null);
-    expect(on).toEqual({ enabled: true, color: '#22c55e', greeting: 'Chào bạn', position: 'right' });
+    expect(on).toEqual({ enabled: true, color: '#22c55e', greeting: 'Chào bạn', position: 'right', offsetY: 20, size: 58 });
     // Saving the greeting alone must not flip the switch; a bad colour is ignored.
     const later = cleanWebChatConfig({ greeting: 'Hi', color: 'red', position: 'left', junk: 1 }, on);
-    expect(later).toEqual({ enabled: true, color: '#22c55e', greeting: 'Hi', position: 'left' });
+    expect(later).toEqual({ enabled: true, color: '#22c55e', greeting: 'Hi', position: 'left', offsetY: 20, size: 58 });
+  });
+
+  // The bubble has to dodge whatever furniture the salon's own site keeps in
+  // that corner, so the offset and the size are theirs to set — inside a range
+  // the layout survives, and never trusting a number that came from a form.
+  it('keeps the bubble’s offset and size inside a range the page survives', () => {
+    const base = cleanWebChatConfig({ enabled: true }, null);
+    expect(cleanWebChatConfig({ offsetY: 120, size: 44 }, base)).toMatchObject({ offsetY: 120, size: 44 });
+    // Out of range is pulled back, not accepted and not thrown away.
+    expect(cleanWebChatConfig({ offsetY: 9999 }, base).offsetY).toBe(240);
+    expect(cleanWebChatConfig({ offsetY: -50 }, base).offsetY).toBe(0);
+    expect(cleanWebChatConfig({ size: 500 }, base).size).toBe(80);
+    expect(cleanWebChatConfig({ size: 2 }, base).size).toBe(40);
+    // Nonsense falls back to the number the widget always drew.
+    expect(cleanWebChatConfig({ offsetY: 'abc', size: null }, base)).toMatchObject({ offsetY: 20, size: 58 });
+    // A row written before these existed reads as the old look, not as zero.
+    const legacy = { enabled: true, color: '#6366f1', greeting: '', position: 'right' as const };
+    expect(cleanWebChatConfig({}, legacy as never)).toMatchObject({ offsetY: 20, size: 58 });
   });
 
   it('returns only what the browser does not have, skipping failed and empty turns', () => {

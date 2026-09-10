@@ -47,9 +47,41 @@ export interface WebChatConfig {
   greeting: string;
   /** Where the bubble sits. */
   position: 'right' | 'left';
+  /**
+   * How far up from the bottom edge the bubble floats, in pixels.
+   *
+   * Not decoration. A salon's site already has its own furniture down there —
+   * a back-to-top arrow, a cookie bar, a Messenger badge, a sticky "Book now"
+   * on the phone — and whichever was added last wins the corner. Rather than
+   * guess a number that suits every WordPress theme in Texas, the salon (or
+   * whoever set the site up) moves ours out of the way.
+   */
+  offsetY: number;
+  /** The bubble's diameter in pixels. Small sites want it discreet; a busy
+   *  page wants it findable. */
+  size: number;
 }
 
-export const WEB_CHAT_DEFAULTS: WebChatConfig = { enabled: false, color: '#6366f1', greeting: '', position: 'right' };
+export const WEB_CHAT_DEFAULTS: WebChatConfig = { enabled: false, color: '#6366f1', greeting: '', position: 'right', offsetY: 20, size: 58 };
+
+/**
+ * A number from a form, kept inside the range the layout can survive.
+ *
+ * `Number(null)` is 0 and `Number('')` is 0, both perfectly finite — so a
+ * cleared field would otherwise be read as "put it flat against the bottom
+ * edge" rather than "leave it alone". Only an actual number, or a string that
+ * holds one, counts; everything else falls back.
+ */
+function clampInt(raw: unknown, lo: number, hi: number, fallback: number): number {
+  const n = typeof raw === 'number'
+    ? raw
+    : typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(hi, Math.max(lo, Math.round(n)));
+}
+
+export const OFFSET_Y_RANGE: [number, number] = [0, 240];
+export const SIZE_RANGE: [number, number] = [40, 80];
 
 /** Merge a settings write over what is stored. Unknown keys are dropped, a
  *  colour that is not a colour is dropped, and the switch only moves when the
@@ -61,6 +93,12 @@ export function cleanWebChatConfig(dto: Record<string, unknown> | null | undefin
   if (typeof d.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(d.color.trim())) base.color = d.color.trim().toLowerCase();
   if (typeof d.greeting === 'string') base.greeting = d.greeting.replace(/\s+/g, ' ').trim().slice(0, 200);
   if (d.position === 'left' || d.position === 'right') base.position = d.position;
+  if (d.offsetY !== undefined) base.offsetY = clampInt(d.offsetY, OFFSET_Y_RANGE[0], OFFSET_Y_RANGE[1], WEB_CHAT_DEFAULTS.offsetY);
+  if (d.size !== undefined) base.size = clampInt(d.size, SIZE_RANGE[0], SIZE_RANGE[1], WEB_CHAT_DEFAULTS.size);
+  // A row stored before these existed carries neither; the defaults above are
+  // what the widget always drew, so an old salon sees no change.
+  base.offsetY = clampInt(base.offsetY, OFFSET_Y_RANGE[0], OFFSET_Y_RANGE[1], WEB_CHAT_DEFAULTS.offsetY);
+  base.size = clampInt(base.size, SIZE_RANGE[0], SIZE_RANGE[1], WEB_CHAT_DEFAULTS.size);
   return base;
 }
 

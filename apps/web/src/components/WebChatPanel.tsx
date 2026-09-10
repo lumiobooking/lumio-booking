@@ -18,13 +18,13 @@ import { useLang } from '../lib/i18n';
  */
 export function WebChatPanel({ token }: { token: string | null }) {
   type Status = {
-    enabled: boolean; color: string; greeting: string; position: 'right' | 'left';
+    enabled: boolean; color: string; greeting: string; position: 'right' | 'left'; offsetY?: number; size?: number;
     slug: string; snippet: string; widgetUrl: string; brainReady: boolean; conversations: number;
   };
   const { lang } = useLang();
   const vi = lang === 'vi';
   const [st, setSt] = useState<Status | null>(null);
-  const [draft, setDraft] = useState<{ color: string; greeting: string; position: 'right' | 'left' }>({ color: '#6366f1', greeting: '', position: 'right' });
+  const [draft, setDraft] = useState<{ color: string; greeting: string; position: 'right' | 'left'; offsetY: number; size: number }>({ color: '#6366f1', greeting: '', position: 'right', offsetY: 20, size: 58 });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -33,7 +33,7 @@ export function WebChatPanel({ token }: { token: string | null }) {
     if (!token) return;
     let alive = true;
     apiFetch<Status>('/messenger/webchat', { token })
-      .then((s) => { if (!alive) return; setSt(s); setDraft({ color: s.color, greeting: s.greeting, position: s.position }); })
+      .then((s) => { if (!alive) return; setSt(s); setDraft({ color: s.color, greeting: s.greeting, position: s.position, offsetY: s.offsetY ?? 20, size: s.size ?? 58 }); })
       .catch(() => { if (alive) setSt(null); });
     return () => { alive = false; };
   }, [token]);
@@ -44,7 +44,7 @@ export function WebChatPanel({ token }: { token: string | null }) {
     setBusy(true); setMsg(null);
     try {
       const s = await apiFetch<Status>('/messenger/webchat', { method: 'POST', token, body: patch });
-      setSt(s); setDraft({ color: s.color, greeting: s.greeting, position: s.position });
+      setSt(s); setDraft({ color: s.color, greeting: s.greeting, position: s.position, offsetY: s.offsetY ?? 20, size: s.size ?? 58 });
       setMsg({ ok: true, text: okText });
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : (vi ? 'Không lưu được' : 'Could not save') });
@@ -112,6 +112,70 @@ export function WebChatPanel({ token }: { token: string | null }) {
               </select>
             </div>
           </div>
+
+          {/* Where the bubble sits, and how big.
+              A salon's site already has furniture in that corner — a
+              back-to-top arrow, a cookie bar, a sticky "Book now" on the
+              phone — and whichever was added last wins it. Rather than pick a
+              number that suits every theme, the person who set the site up
+              slides ours out of the way and watches it move. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 12 }}>
+            <div>
+              <label style={ui.label}>
+                {T('Cách đáy trang', 'Distance from the bottom')} — <b style={{ color: 'var(--ce2e8f0)' }}>{draft.offsetY}px</b>
+              </label>
+              <input
+                type="range" min={0} max={240} step={4}
+                value={draft.offsetY}
+                onChange={(e) => setDraft({ ...draft, offsetY: Number(e.target.value) })}
+                style={{ width: '100%', accentColor: draft.color }}
+              />
+              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2 }}>
+                {T('Nâng lên khi nút bị che bởi nút "Lên đầu trang", thanh cookie hay nút đặt lịch dính đáy.',
+                   'Raise it when a back-to-top arrow, a cookie bar or a sticky booking button covers it.')}
+              </div>
+            </div>
+            <div>
+              <label style={ui.label}>
+                {T('Cỡ nút', 'Bubble size')} — <b style={{ color: 'var(--ce2e8f0)' }}>{draft.size}px</b>
+              </label>
+              <input
+                type="range" min={40} max={80} step={2}
+                value={draft.size}
+                onChange={(e) => setDraft({ ...draft, size: Number(e.target.value) })}
+                style={{ width: '100%', accentColor: draft.color }}
+              />
+              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2 }}>
+                {T('Mặc định 58px. Nhỏ hơn cho trang gọn, lớn hơn cho trang nhiều nội dung.',
+                   'Default 58px. Smaller for a quiet page, larger for a busy one.')}
+              </div>
+            </div>
+          </div>
+
+          {/* The bubble at its real size, in the corner it will really use. */}
+          <div style={{
+            position: 'relative', height: 132, marginTop: 12, borderRadius: 10, overflow: 'hidden',
+            background: 'var(--c0f172a)', border: '1px dashed var(--c334155)',
+          }}>
+            <div style={{ position: 'absolute', top: 8, left: 10, fontSize: 11.5, color: 'var(--c64748b)' }}>
+              {T('Xem thử — góc dưới trang web của tiệm', 'Preview — the corner of the salon’s site')}
+            </div>
+            <div
+              aria-hidden
+              style={{
+                position: 'absolute',
+                bottom: Math.min(draft.offsetY, 132 - draft.size - 6),
+                [draft.position]: 16,
+                width: draft.size, height: draft.size, borderRadius: '50%',
+                background: draft.color, boxShadow: '0 8px 24px rgba(0,0,0,.35)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ width: Math.round(draft.size * 0.48), height: Math.round(draft.size * 0.48) }}>
+                <path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.2-4.2A8 8 0 1 1 21 12z" />
+              </svg>
+            </div>
+          </div>
           <div style={{ marginTop: 12 }}>
             <label style={ui.label}>{T('Câu chào đầu tiên (tuỳ chọn)', 'Opening line (optional)')}</label>
             <input
@@ -122,7 +186,7 @@ export function WebChatPanel({ token }: { token: string | null }) {
             />
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 12 }}>
-            <button onClick={() => save({ color: draft.color, greeting: draft.greeting, position: draft.position }, T('Đã lưu — website cập nhật trong vài phút.', 'Saved — your site picks it up within minutes.'))} disabled={busy} style={ui.primaryBtn}>
+            <button onClick={() => save({ color: draft.color, greeting: draft.greeting, position: draft.position, offsetY: draft.offsetY, size: draft.size }, T('Đã lưu — website cập nhật trong vài phút.', 'Saved — your site picks it up within minutes.'))} disabled={busy} style={ui.primaryBtn}>
               {T('Lưu giao diện', 'Save look')}
             </button>
             <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>

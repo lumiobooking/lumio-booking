@@ -122,12 +122,31 @@ export class WebChatService {
       color: s.cfg.color,
       greeting: s.cfg.greeting,
       position: s.cfg.position,
+      offsetY: s.cfg.offsetY,
+      size: s.cfg.size,
       agentName: s.agentName,
       lang: String(s.market ?? '').toUpperCase() === 'VN' ? 'vi' : 'en',
     };
   }
 
   /** A line from the visitor. The brain answers into the thread; the browser polls. */
+  /**
+   * One line from a visitor, answered in the same request.
+   *
+   * WHY THE REPLY RIDES BACK ON THE POST
+   *
+   * The brain already runs to completion inside this call — the model has
+   * spoken by the time we return. The widget used to be told only "ok", then
+   * waited 1.2 seconds, then polled, then waited for that round trip. So a
+   * visitor on a phone watched the three dots for the model's time PLUS two
+   * seconds of our own making, on every single message. That is the "chậm"
+   * people feel: not the model, the choreography around it.
+   *
+   * Reading the thread back costs one indexed lookup and removes the whole
+   * extra round trip. `since` is stamped before the brain runs, so the turns
+   * that come back are exactly this exchange — the visitor's own line included,
+   * which the widget de-duplicates against the one it drew optimistically.
+   */
   async inbound(slug: string, body: { visitor?: unknown; text?: unknown }) {
     const s = await this.salonBySlug(slug);
     if (!s) throw new NotFoundException('Chat is not available for this site.');
@@ -135,9 +154,15 @@ export class WebChatService {
     const text = cleanText(body?.text);
     if (!visitor) throw new BadRequestException('visitor');
     if (!text) throw new BadRequestException('text');
+    // A hair earlier than the write, so a reply stamped in the same millisecond
+    // is not filtered out by a strictly-greater-than comparison.
+    const since = new Date(Date.now() - 1000).toISOString();
     await this.ensureMouth(s.id);
     await this.messenger.inboundWeb(s.id, visitor, text);
-    return { ok: true };
+    // Best effort: if this read fails the widget still polls, so the visitor
+    // sees the answer a moment later rather than not at all.
+    const back = await this.messages(slug, visitor, since).catch(() => null);
+    return { ok: true, turns: back?.turns ?? [], handoff: Boolean(back?.handoff) };
   }
 
   /** The conversation as the browser shows it — only this visitor's, only what is new. */

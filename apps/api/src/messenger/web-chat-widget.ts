@@ -45,7 +45,7 @@ const WIDGET = `(function () {
     try { localStorage.setItem('lumio_chat_v', visitor); } catch (e) {}
   }
 
-  var cfg = null, open = false, turns = [], lastAt = '', waitingSince = 0, timer = null, unread = 0, failed = false;
+  var cfg = null, open = false, turns = [], lastAt = '', waitingSince = 0, timer = null, unread = 0, failed = false, lastHtml = '';
 
   function get(path) {
     return fetch(API + path, { method: 'GET', headers: { 'accept': 'application/json' } }).then(function (r) { return r.ok ? r.json() : null; });
@@ -64,15 +64,19 @@ const WIDGET = `(function () {
   host.setAttribute('data-lumio-chat', '');
   var root = host.attachShadow ? host.attachShadow({ mode: 'open' }) : host;
 
-  function css(color, side) {
+  function css(color, side, offsetY, size) {
+    var oy = Math.min(240, Math.max(0, Number(offsetY) || 0));
+    var sz = Math.min(80, Math.max(40, Number(size) || 58));
+    // The panel floats clear of whatever height the bubble ended up.
+    var panelBottom = oy + sz + 12;
     return '' +
       ':host{all:initial}' +
       '*{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}' +
-      '.b{position:fixed;bottom:20px;' + side + ':20px;z-index:2147483000;width:58px;height:58px;border-radius:50%;border:0;cursor:pointer;background:' + color + ';color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;transition:transform .15s}' +
+      '.b{position:fixed;bottom:' + oy + 'px;' + side + ':20px;z-index:2147483000;width:' + sz + 'px;height:' + sz + 'px;border-radius:50%;border:0;cursor:pointer;background:' + color + ';color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;transition:transform .15s}' +
       '.b:hover{transform:scale(1.06)}' +
-      '.b svg{width:28px;height:28px}' +
+      '.b svg{width:' + Math.round(sz * 0.48) + 'px;height:' + Math.round(sz * 0.48) + 'px}' +
       '.n{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;border-radius:10px;background:#ef4444;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 6px}' +
-      '.p{position:fixed;bottom:90px;' + side + ':20px;z-index:2147483000;width:360px;max-width:calc(100vw - 24px);height:520px;max-height:calc(100vh - 110px);background:#fff;border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,.28);display:none;flex-direction:column;overflow:hidden}' +
+      '.p{position:fixed;bottom:' + panelBottom + 'px;' + side + ':20px;z-index:2147483000;width:360px;max-width:calc(100vw - 24px);height:520px;max-height:calc(100vh - ' + (panelBottom + 20) + 'px);background:#fff;border-radius:16px;box-shadow:0 16px 48px rgba(0,0,0,.28);display:none;flex-direction:column;overflow:hidden}' +
       '.p.o{display:flex}' +
       '.h{background:' + color + ';color:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px}' +
       '.h b{display:block;font-size:15px}' +
@@ -151,6 +155,11 @@ const WIDGET = `(function () {
       else html += '<div class="r a">' + esc(x.text) + '</div><div class="l">' + esc(x.human ? t('staff') : name) + '</div>';
     }
     if (waitingSince) html += '<div class="ty"><i></i><i></i><i></i></div>';
+    // Same markup as last time: leave the DOM alone. A poll every 1.5 seconds
+    // that rebuilds the conversation is a poll that fights the visitor's own
+    // scrolling and re-decodes every bubble on a phone CPU.
+    if (html === lastHtml) return;
+    lastHtml = html;
     list.innerHTML = html;
     list.scrollTop = list.scrollHeight;
   }
@@ -184,8 +193,8 @@ const WIDGET = `(function () {
   function schedule() {
     if (timer) clearInterval(timer);
     // Quick while the visitor waits for an answer, relaxed otherwise, off when closed and quiet.
-    var ms = waitingSince ? 1500 : (open ? 4000 : (turns.length ? 20000 : 0));
-    if (ms) timer = setInterval(function () { poll(); if ((waitingSince ? 1500 : (open ? 4000 : 20000)) !== ms) schedule(); }, ms);
+    var ms = waitingSince ? 1200 : (open ? 5000 : (turns.length ? 30000 : 0));
+    if (ms) timer = setInterval(function () { poll(); if ((waitingSince ? 1200 : (open ? 5000 : 30000)) !== ms) schedule(); }, ms);
   }
 
   function send() {
@@ -197,8 +206,12 @@ const WIDGET = `(function () {
     waitingSince = Date.now();
     render(); schedule();
     post('/messages', { visitor: visitor, text: text }).then(function (d) {
-      if (!d || !d.ok) { err.textContent = t('fail'); err.style.display = 'block'; waitingSince = 0; render(); }
-      else setTimeout(poll, 1200);
+      if (!d || !d.ok) { err.textContent = t('fail'); err.style.display = 'block'; waitingSince = 0; render(); return; }
+      // The answer rides back on the POST now. Drawing it here removes a
+      // 1.2s wait plus a whole round trip from every message — the part of
+      // the delay that was ours rather than the model's.
+      if (d.turns && d.turns.length) { merge(d.turns); schedule(); }
+      else setTimeout(poll, 600);
     }).catch(function () { err.textContent = t('fail'); err.style.display = 'block'; waitingSince = 0; render(); });
   }
 
@@ -215,8 +228,13 @@ const WIDGET = `(function () {
    */
   function fit() {
     var vv = window.visualViewport;
-    if (!open || !phone() || !vv) { panel.style.top = ''; panel.style.height = ''; return; }
-    panel.style.top = vv.offsetTop + 'px';
+    if (!open || !phone() || !vv) { panel.style.top = ''; panel.style.bottom = ''; panel.style.height = ''; return; }
+    // Top of the layout viewport — where a position:fixed element already is —
+    // and only the HEIGHT taken from the visible part. Using offsetTop as well
+    // put the panel halfway down the screen whenever the page had been
+    // rubber-banded or pinched, which is most of the time on a phone.
+    panel.style.top = '0px';
+    panel.style.bottom = 'auto';
     panel.style.height = vv.height + 'px';
   }
 
@@ -254,7 +272,7 @@ const WIDGET = `(function () {
   get('').then(function (c) {
     if (!c || !c.ok) return;
     cfg = c;
-    styleEl.textContent = css(c.color || '#6366f1', c.position === 'left' ? 'left' : 'right');
+    styleEl.textContent = css(c.color || '#6366f1', c.position === 'left' ? 'left' : 'right', c.offsetY, c.size);
     header.innerHTML = '<div><b>' + esc(c.name || t('title')) + '</b><small>' + esc(t('sub')) + '</small></div>';
     var closeBtn = document.createElement('button'); closeBtn.className = 'x'; closeBtn.innerHTML = '&#x2715;'; closeBtn.setAttribute('aria-label', 'close');
     closeBtn.addEventListener('click', function () { toggle(false); });

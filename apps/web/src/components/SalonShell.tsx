@@ -61,6 +61,10 @@ const GROUPS: NavGroup[] = [
   ] },
   { id: 'growth', label: 'Marketing & AI', items: [
     { href: '/salon/content', label: 'Marketing plan & posts', icon: 'sparkle' },
+    // One door for every channel the shop publishes to or is reached on —
+    // Facebook, Instagram, Google Business, TikTok, Zalo, website chat.
+    // The screens that use a channel keep a status line and link here.
+    { href: '/salon/channels', label: 'Social channels', icon: 'plug' },
     // The client's own door: preview + approve what is about to publish.
     // Deliberately its own route, NOT the content page — that page is the
     // agency's kitchen and has its own switch; this one is the dining room.
@@ -120,7 +124,7 @@ const HREF_CAP: Record<string, string> = {
   '/salon/calendar': 'calendar', '/salon/bookings': 'bookings', '/salon/walkins': 'walkins',
   '/salon/waitlist': 'waitlist', '/salon/customers': 'customers', '/salon/services': 'services',
   '/salon/products': 'products', '/salon/gift-cards': 'pos', '/salon/staff': 'staff', '/salon/stations': 'staff', '/salon/payroll': 'payroll',
-  '/salon/reviews': 'reviews', '/salon/marketing': 'marketing', '/salon/content': 'marketing', '/salon/inventory': 'inventory',
+  '/salon/reviews': 'reviews', '/salon/marketing': 'marketing', '/salon/content': 'marketing', '/salon/channels': 'marketing', '/salon/inventory': 'inventory',
   '/salon/pos/report': 'reports', '/salon/reports': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
   '/salon/trash': 'settings',
   '/salon/integrations': 'integrations', '/salon/billing': 'billing', '/salon/usage-costs': 'billing', '/salon/settings': 'settings',

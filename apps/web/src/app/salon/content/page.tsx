@@ -23,7 +23,7 @@ import { isNorthAmerica } from '../../../lib/markets';
 import { checkPost, applyFix } from '../../../lib/post-check';
 import { uiMarket } from '../../../lib/ui-market';
 import { useAuth } from '../../../lib/auth';
-import { apiFetch } from '../../../lib/api';
+import { apiFetch, apiUpload } from '../../../lib/api';
 import { notify } from '../../../lib/feedback';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
@@ -601,6 +601,8 @@ function Inner() {
   const [uploading, setUploading] = useState(false);
   /** "3/5" while a batch of photos is going up, so the wait has a shape. */
   const [uploadStep, setUploadStep] = useState<{ done: number; total: number } | null>(null);
+  /** A clip on its way up — percent, because a phone clip on shop wifi is a minute of nothing otherwise. */
+  const [videoPct, setVideoPct] = useState<number | null>(null);
   /** What the fitter did to the last upload — crop, padding, or nothing. */
   const [fitNote, setFitNote] = useState<string | null>(null);
   /**
@@ -873,6 +875,35 @@ function Inner() {
         setPostErr(T(`Chỉ thêm được ${files.length} ảnh — bài tối đa 10 ảnh/video.`, `Only ${files.length} added — a post holds at most 10 items.`));
       }
     } finally { setUploading(false); setUploadStep(null); }
+  }
+
+  /**
+   * One clip, straight to the public host, as the post's video.
+   *
+   * Not the photo path: photos are shrunk in the browser and sent as a data
+   * URL, a video is tens of megabytes and goes up as multipart with a
+   * progress bar. Facebook posts it as a video, Instagram as a Reel, TikTok
+   * as the post itself — one MP4 serves all three.
+   */
+  async function uploadVideo(file: File) {
+    if (!postDraft || videoPct !== null) return;
+    if (postDraft.media.length >= 10) { setPostErr(T('Bài đã đủ 10 ảnh/video.', 'The post already holds 10 items.')); return; }
+    const MAX = 120 * 1024 * 1024;
+    if (file.size > MAX) {
+      setPostErr(T(`Video nặng ${(file.size / 1048576).toFixed(0)} MB — tối đa 120 MB. Xuất lại 1080p (H.264) hoặc cắt ngắn.`, `Video is ${(file.size / 1048576).toFixed(0)} MB — 120 MB max. Export at 1080p (H.264) or trim it.`));
+      return;
+    }
+    setVideoPct(0); setPostErr(null);
+    try {
+      const { url } = await apiUpload('/uploads/post-video', file, token, setVideoPct);
+      setPostDraft((d) => (d ? { ...d, media: [...d.media, { url, kind: 'video' }] } : d));
+      setFitNote(null);
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : '';
+      setPostErr(/STORAGE_NOT_CONFIGURED/i.test(raw)
+        ? T('Chưa bật kho lưu file trên hệ thống. Báo Lumio bật giúp.', 'File storage is not switched on yet. Ask Lumio to enable it.')
+        : `${T('Tải video lên không được', 'Video upload failed')}${raw ? `: ${raw}` : ''}`);
+    } finally { setVideoPct(null); }
   }
 
   function addMedia() {
@@ -2752,6 +2783,9 @@ function Inner() {
                     )
                   )}
                 </div>
+                <div style={{ fontSize: 11.5, marginTop: 4 }}>
+                  <a href="/salon/channels" style={{ color: 'var(--ca5b4fc)' }}>{T('Quản lý tất cả kết nối kênh (Facebook · Instagram · Google · TikTok · Zalo · Website) →', 'Manage every channel connection (Facebook · Instagram · Google · TikTok · Zalo · Website) →')}</a>
+                </div>
                 {!queue?.tiktok && (
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 3, lineHeight: 1.5 }}>
                     {T('Cách làm: bấm "Kết nối TikTok" trên máy/điện thoại của CHỦ tài khoản (hoặc gửi link màn hình này cho họ) → đăng nhập TikTok → Cho phép. Nhân viên không bao giờ cần mật khẩu TikTok của khách.',
@@ -3181,6 +3215,23 @@ function Inner() {
                           style={{ display: 'none' }}
                         />
                       </label>
+                      {/* The clip. One file, multipart, with a number on it —
+                          the photo path's data-URL trick would make a 60 MB
+                          clip 80 MB and time out. */}
+                      <label style={{
+                        minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 700,
+                        display: 'inline-flex', alignItems: 'center', cursor: videoPct !== null ? 'wait' : 'pointer',
+                        border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)',
+                      }}>
+                        {videoPct !== null ? T(`Đang tải video ${videoPct}%…`, `Uploading video ${videoPct}%…`) : `🎬 ${T('Tải video lên', 'Upload a video')}`}
+                        <input
+                          type="file"
+                          accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm"
+                          disabled={videoPct !== null || uploading || postDraft.media.length >= 10}
+                          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadVideo(f); }}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
                     </div>
                     {fitNote && (
                       <div style={{
@@ -3196,8 +3247,8 @@ function Inner() {
                         ? T(`Bài nhiều ảnh (${postDraft.media.length}/10) — vuốt ngang trên Instagram.`, `Carousel (${postDraft.media.length}/10) — swipeable on Instagram.`)
                         : postDraft.media.some((m) => m.kind === 'video')
                           ? T('Video — Instagram đăng dạng Reels, Facebook đăng video thường.', 'Video — published as a Reel on Instagram, a video post on Facebook.')
-                          : T('Ảnh: bấm "Tải ảnh lên" — chọn được nhiều ảnh một lần (giữ Ctrl/Shift), thứ tự chọn là thứ tự trong bài. Video: phải dán link trỏ THẲNG tới file .mp4 — link Google Drive/Photos không dùng được.',
-                              'Photos: use Upload — pick several at once (hold Ctrl/Shift); the order you pick is the order in the post. Video: paste a link pointing straight at the .mp4 file — Google Drive/Photos links do not work.')}
+                          : T('Ảnh: bấm "Tải ảnh lên" — chọn được nhiều ảnh một lần (giữ Ctrl/Shift), thứ tự chọn là thứ tự trong bài. Video: bấm "Tải video lên" (MP4/MOV, tối đa 120 MB) — Facebook đăng video, Instagram đăng Reels, TikTok đăng bài. Dán link chỉ khi file .mp4 đã nằm trên web công khai; link Google Drive/Photos không dùng được.',
+                              'Photos: use Upload — pick several at once (hold Ctrl/Shift); the order you pick is the order in the post. Video: press "Upload a video" (MP4/MOV, 120 MB max) — a video post on Facebook, a Reel on Instagram, the post itself on TikTok. Paste a link only for an .mp4 already on the public web; Google Drive/Photos links do not work.')}
                     </div>
                   </div>
 

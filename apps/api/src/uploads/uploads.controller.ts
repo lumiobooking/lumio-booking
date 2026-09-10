@@ -48,6 +48,32 @@ export class UploadsController {
   }
 
   /**
+   * A clip for a scheduled post — Facebook, Instagram Reels, TikTok.
+   *
+   * Different from `media` above on purpose: that one files the shop's raw
+   * footage in Drive (a Drive link, which Meta and TikTok cannot fetch).
+   * A post needs a plain public https address that the platforms' servers
+   * can pull the bytes from, so this one always goes to the public host.
+   * The Drive archive still gets its copy later, from the post row
+   * (social-publish archiveToDrive).
+   */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('post-video')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 130_000_000 } }))
+  async postVideo(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: { buffer: Buffer; mimetype?: string; originalname?: string } | undefined,
+  ) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) throw new BadRequestException('No salon in scope.');
+    if (!file) throw new BadRequestException('Chưa chọn được file.');
+    const declared = String(file.mimetype ?? '');
+    const byName = /\.(mp4|mov|m4v|webm)$/i.test(String(file.originalname ?? ''));
+    if (!declared.startsWith('video/') && !byName) throw new BadRequestException('Chỉ nhận video (MP4/MOV/WebM).');
+    return this.uploads.uploadFile(tenantId, file);
+  }
+
+  /**
    * The same file, in pieces — see ./chunk-store for why.
    *
    * `uploadId` is minted by the phone (a UUID) so a resume after the app was

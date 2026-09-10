@@ -65,6 +65,7 @@ export const SUPPORT_HREF_CAP: Record<string, string> = {
 
   // the marketing, which is what most of these accounts are for
   '/salon/content': 'marketing',
+  '/salon/channels': 'marketing',
   '/salon/approve-posts': 'marketing',
   '/salon/marketing': 'marketing',
   '/salon/marketing/monthly': 'marketing',

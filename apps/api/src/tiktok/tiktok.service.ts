@@ -107,7 +107,8 @@ export class TikTokService {
 
   /** TikTok sends the browser back here with ?code&state. Returns where to send it next. */
   async callback(code: string, state: string, error?: string): Promise<string> {
-    const back = (q: string) => `${this.webBase()}/salon/content?tab=queue&${q}`;
+    // Land on the channels hub — the one screen that shows every connection.
+    const back = (q: string) => `${this.webBase()}/salon/channels?${q}`;
     const tenantId = this.verifyState(state);
     if (!tenantId) return back('tiktok=error&msg=invalid_state');
     if (error || !code) return back(`tiktok=error&msg=${encodeURIComponent(error || 'no_code')}`);

@@ -177,11 +177,23 @@ export function WeekPlanBoard({
   // The two blocks that used to sit above the week. They are still here, still
   // editable, still one click away — they are just no longer the first thing a
   // person has to read before finding Monday.
+  /**
+   * Which day is on screen. -1 means the whole week at once, which is what
+   * somebody rewriting the plan wants; a number is one day, which is what
+   * somebody DOING the plan wants. It opens on today, because the person who
+   * opens this at 7am is the second kind.
+   */
+  const [dayTab, setDayTab] = useState<number>(0);
   const [openPrep, setOpenPrep] = useState(false);
   const [openWhy, setOpenWhy] = useState(false);
   // Local ticks so a tap answers before the server does.
   const [ticks, setTicks] = useState<Record<string, number[]>>(meta?.ticks ?? {});
   useEffect(() => { setDays(withAddresses(week.days)); }, [week.days]);
+  // A different week can be shorter. Land back on its first day rather than on
+  // a day that is not there, which would render an empty screen with no clue.
+  useEffect(() => {
+    setDayTab((d) => (d === -1 || d < week.days.length ? d : 0));
+  }, [week.days.length]);
   useEffect(() => { setTicks(meta?.ticks ?? {}); }, [meta?.ticks]);
 
   const dates = useMemo(() => {
@@ -289,7 +301,16 @@ export function WeekPlanBoard({
               </span>
             )}
           </div>
-          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>
+          {/* A salon whose "name" is a paragraph of services turned this into
+              three lines of blurb at the top of the plan, cut off mid-word.
+              One line, clipped, with the whole of it on hover. */}
+          <div
+            title={[salonName, salonCity, week.trade].filter(Boolean).join(' · ')}
+            style={{
+              fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}
+          >
             {[salonName, salonCity].filter(Boolean).join(' · ')}
             {week.trade ? ` · ${week.trade}` : ''}
           </div>
@@ -314,15 +335,10 @@ export function WeekPlanBoard({
         </div>
       </div>
 
-      {canEdit ? (
+      {canEdit && dayTab === -1 && (
         <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 8, lineHeight: 1.5 }}>
-          ✎ {T('Bấm vào chữ để sửa ngay tại chỗ — tự lưu khi bấm ra ngoài. Mở "Bản làm việc" dưới mỗi việc để xem cảnh quay, caption, hashtag và tích từng bước.',
-               'Click any line to edit it in place — saved when you click away. Open "Working sheet" under a job for the shots, caption, tags, and the tick list.')}
-        </div>
-      ) : !isPast && (
-        <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 8, lineHeight: 1.5 }}>
-          {T('Kế hoạch do team Lumio soạn. Chỉ nhân viên Lumio (vào tiệm qua "Vào setup") mới sửa được; tiệm xem, duyệt và tích việc đã làm.',
-             'Written by the Lumio team. Only Lumio staff (entering through "Enter setup") can edit; the salon reads, approves and ticks what is done.')}
+          ✎ {T('Bấm vào chữ để sửa ngay tại chỗ — tự lưu khi bấm ra ngoài.',
+               'Click any line to edit it in place — saved when you click away.')}
         </div>
       )}
 
@@ -349,60 +365,131 @@ export function WeekPlanBoard({
         <div style={{ flex: '1 1 160px', minWidth: 120, height: 8, borderRadius: 20, background: 'var(--c0f172a)', overflow: 'hidden' }}>
           <div style={{ width: `${jobCount ? Math.round((doneJobs / jobCount) * 100) : 0}%`, height: '100%', background: '#22c55e' }} />
         </div>
-        {!!week.targets?.length && (
-          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', flex: '0 0 auto' }}>
-            {week.targets.slice(0, 3).map((t, i) => (
-              <div key={i} style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
-                  {t.target} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--c64748b)' }}>{t.unit}</span>
-                </div>
-                <div style={{ ...label, letterSpacing: '.05em' }}>{t.label}</div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* Seven columns, read-only, purely to be glanced at. The editable week
-          stays as rows below it: a 150-pixel column cannot hold a kind picker,
-          two arrows and a day selector, and staff covering eight salons edit
-          this every morning. */}
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${days.length || 7}, minmax(0, 1fr))`, gap: 6, marginTop: 12 }}>
+      {/* ---- the numbers this week is aiming at ----
+          They were squeezed into the end of the progress row as tiny all-caps
+          labels, which is how "GHẾ LẤP THÊM Ở THỨ 2 BUỔI SÁNG" ends up
+          unreadable. Given their own line and normal sentence case, they read
+          like what they are: three promises with numbers on them. */}
+      {!!week.targets?.length && (
+        <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', marginTop: 10 }}>
+          {week.targets.slice(0, 3).map((t, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'baseline', gap: 8,
+              background: 'var(--c0f172a)', border: '1px solid var(--line)',
+              borderRadius: 10, padding: '10px 12px', minWidth: 0,
+            }}>
+              <span style={{ fontSize: 19, fontWeight: 800, color: 'var(--ca5b4fc)', lineHeight: 1.1, flex: '0 0 auto' }}>{t.target}</span>
+              <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.4, minWidth: 0 }}>
+                {t.unit ? `${t.unit} — ` : ''}{t.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ---- pick a day ----
+          These used to be seven boxes that only reported. A person's first
+          instinct on seeing a week laid out in columns is to press the day they
+          want, and pressing did nothing. Now the day IS the control: press it
+          and the rest of the screen becomes that day. "Cả tuần" is at the end
+          for the person rewriting the plan rather than working it. */}
+      <div style={{ display: 'flex', gap: 6, marginTop: 12, overflowX: 'auto', paddingBottom: 2, WebkitOverflowScrolling: 'touch' as const }}>
         {days.map((d, di) => {
           const real = d.jobs.filter((j) => j.kind !== 'rest');
           const isToday = di === 0 && !isPast;
+          const on = dayTab === di;
           const dayDone = real.filter((j) => isJobDone(j)).length;
+          const allDone = real.length > 0 && dayDone === real.length;
           return (
-            <div
+            <button
               key={`g-${d.weekday}-${di}`}
+              onClick={() => setDayTab(di)}
+              aria-pressed={on}
               style={{
-                border: `1px solid ${isToday ? '#4f46e5' : 'var(--line)'}`,
-                background: isToday ? 'var(--c1e1b4b)' : 'var(--c0f172a)',
-                borderRadius: 9, padding: '7px 8px', minWidth: 0,
+                flex: '1 1 0', minWidth: 96, textAlign: 'left', cursor: 'pointer', font: 'inherit',
+                border: `1px solid ${on ? '#6366f1' : isToday ? 'var(--c475569)' : 'var(--line)'}`,
+                background: on ? 'var(--c312e81)' : 'var(--c0f172a)',
+                borderRadius: 10, padding: '9px 10px',
               }}
             >
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: isToday ? 'var(--cc7d2fe)' : 'var(--ccbd5e1)' }}>{d.label}</div>
-              <div style={{ fontSize: 10.5, color: isToday ? 'var(--ca5b4fc)' : 'var(--c64748b)' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: on ? '#ffffff' : 'var(--ce2e8f0)' }}>{d.label}</div>
+              <div style={{ fontSize: 11.5, color: on ? 'var(--cc7d2fe)' : 'var(--c64748b)', marginTop: 1 }}>
                 {dates[di] ? dm(dates[di]) : ''}{isToday ? ` · ${T('hôm nay', 'today')}` : ''}
               </div>
-              <div style={{ fontSize: 11.5, marginTop: 4, color: real.length === 0 ? 'var(--c475569)' : (dayDone === real.length ? '#22c55e' : 'var(--c94a3b8)') }}>
-                {real.length === 0 ? T('Nghỉ', 'Rest') : `${dayDone}/${real.length}`}
+              {/* "0/2" is a score, not an instruction. A person who has never
+                  seen this screen reads words. */}
+              <div style={{
+                fontSize: 12, fontWeight: 600, marginTop: 5,
+                color: real.length === 0 ? 'var(--c64748b)' : allDone ? '#22c55e' : on ? '#ffffff' : 'var(--c94a3b8)',
+              }}>
+                {real.length === 0
+                  ? T('Nghỉ', 'Rest')
+                  : allDone
+                    ? T('✓ Xong', '✓ Done')
+                    : `${real.length - dayDone} ${T('việc', real.length - dayDone === 1 ? 'job' : 'jobs')}`}
               </div>
-            </div>
+            </button>
           );
         })}
+        <button
+          onClick={() => setDayTab(-1)}
+          aria-pressed={dayTab === -1}
+          style={{
+            flex: '0 0 auto', cursor: 'pointer', font: 'inherit', alignSelf: 'stretch',
+            border: `1px solid ${dayTab === -1 ? '#6366f1' : 'var(--line)'}`,
+            background: dayTab === -1 ? 'var(--c312e81)' : 'transparent',
+            color: dayTab === -1 ? '#ffffff' : 'var(--c94a3b8)',
+            borderRadius: 10, padding: '9px 12px', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap',
+          }}
+        >
+          {T('Cả tuần', 'Whole week')}
+        </button>
       </div>
 
-      {/* ---- the week itself ---- */}
+      {/* ---- the work ---- */}
       <div style={{ marginTop: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
-          <div style={label}>{T('LỊCH TUẦN', 'THE WEEK')}</div>
-          <div style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--c64748b)' }}>
-            {jobCount} {T('việc', jobCount === 1 ? 'job' : 'jobs')}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>
+            {dayTab === -1
+              ? T('Cả tuần', 'The whole week')
+              : dayTab === 0 && !isPast
+                ? T('Hôm nay phải làm', 'What to do today')
+                : `${T('Việc', 'Jobs for')} ${days[dayTab]?.label ?? ''}`}
+          </div>
+          <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c64748b)' }}>
+            {(dayTab === -1 ? days : [days[dayTab]].filter(Boolean))
+              .reduce((n, d) => n + d.jobs.filter((j) => j.kind !== 'rest').length, 0)}{' '}
+            {T('việc', 'jobs')}
           </div>
         </div>
 
+        {/* ---- how to work this screen, in one sentence ----
+            Somebody sitting down for the first time needs three facts: start at
+            number 1, the steps are already written under each job, tick as you
+            go. Everything else on this page is for somebody who already knows. */}
+        {dayTab !== -1 && (days[dayTab]?.jobs.filter((j) => j.kind !== 'rest').length ?? 0) > 0 && (
+          <div style={{
+            display: 'flex', gap: 10, alignItems: 'flex-start',
+            background: 'var(--c1e1b4b)', border: '1px solid var(--c312e81)',
+            borderRadius: 10, padding: '11px 14px', marginBottom: 12,
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ca5b4fc)" strokeWidth="1.8" strokeLinecap="round" style={{ flex: '0 0 auto', marginTop: 1 }}>
+              <circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" />
+            </svg>
+            <div style={{ fontSize: 12.5, color: 'var(--cc7d2fe)', lineHeight: 1.6 }}>
+              {T('Làm lần lượt từ việc số 1. Mỗi việc đã có sẵn các bước ở ngay bên dưới — làm xong bước nào thì tích ô vuông của bước đó.',
+                 'Work down from job 1. Each job already has its steps written underneath — tick each box as you finish that step.')}
+            </div>
+          </div>
+        )}
+
         {days.map((d, di) => {
+          // One day at a time unless somebody asked for the lot. Hiding rather
+          // than not rendering keeps every index, id and handler below exactly
+          // as it was — the editing paths are untouched by the filter.
+          if (dayTab !== -1 && dayTab !== di) return null;
           const real = d.jobs.filter((j) => j.kind !== 'rest');
           const isToday = di === 0 && !isPast;
           const resting = real.length === 0;
@@ -410,22 +497,30 @@ export function WeekPlanBoard({
             <div
               key={`${d.weekday}-${di}`}
               style={{
-                display: 'flex', gap: 12, padding: '10px 0 10px 11px',
-                borderTop: di === 0 ? 'none' : '1px solid var(--line)',
-                borderLeft: `2px solid ${isToday ? '#f59e0b' : 'transparent'}`,
-                marginLeft: -11,
+                display: 'flex', gap: 12, padding: dayTab === -1 ? '10px 0 10px 11px' : 0,
+                borderTop: dayTab === -1 && di !== 0 ? '1px solid var(--line)' : 'none',
+                borderLeft: dayTab === -1 && isToday ? '2px solid #6366f1' : '2px solid transparent',
+                marginLeft: dayTab === -1 ? -11 : 0,
               }}
             >
-              <div style={{ flex: '0 0 74px' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: isToday ? '#fbbf24' : 'var(--ce2e8f0)' }}>{d.label}</div>
-                <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{dates[di] ? dm(dates[di]) : ''}</div>
-                {isToday && <div style={{ fontSize: 10.5, fontWeight: 700, color: '#f59e0b', letterSpacing: '.4px' }}>{T('HÔM NAY', 'TODAY')}</div>}
-              </div>
+              {/* On one day the picker above already says which day it is. */}
+              {dayTab === -1 && (
+                <div style={{ flex: '0 0 74px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: isToday ? 'var(--ca5b4fc)' : 'var(--ce2e8f0)' }}>{d.label}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{dates[di] ? dm(dates[di]) : ''}</div>
+                  {isToday && <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ca5b4fc)', letterSpacing: '.4px' }}>{T('HÔM NAY', 'TODAY')}</div>}
+                </div>
+              )}
 
               <div style={{ flex: 1, minWidth: 0 }}>
                 {resting && (
-                  <div style={{ fontSize: 12.5, color: 'var(--c475569)', paddingTop: 2 }}>
-                    {T('Nghỉ — không có việc nào', 'Rest — nothing scheduled')}
+                  <div style={{
+                    fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.6,
+                    background: 'var(--c0f172a)', border: '1px solid var(--line)',
+                    borderRadius: 10, padding: '14px 16px',
+                  }}>
+                    {T('Ngày nghỉ — không giao việc nào. Chỉ cần trả lời tin nhắn khách như mọi ngày.',
+                       'A rest day — nothing assigned. Just answer customer messages as usual.')}
                   </div>
                 )}
 
@@ -442,8 +537,8 @@ export function WeekPlanBoard({
                       dayIndex={di}
                       vi={vi}
                       canEdit={canEdit}
-                      open={key in open ? Boolean(open[key]) : key === nextKey}
-                      onToggle={() => setOpen((o) => ({ ...o, [key]: !(key in o ? o[key] : key === nextKey) }))}
+                      open={key in open ? Boolean(open[key]) : (dayTab !== -1 || key === nextKey)}
+                      onToggle={() => setOpen((o) => ({ ...o, [key]: !(key in o ? o[key] : (dayTab !== -1 || key === nextKey)) }))}
                       ticked={ticks[j.id ?? ''] ?? []}
                       onTick={onTick && j.id && !isNew ? (s, done) => tick(j, s, done) : undefined}
                       onPatch={(patch) => {

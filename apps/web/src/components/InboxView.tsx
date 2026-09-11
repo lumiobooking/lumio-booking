@@ -747,7 +747,7 @@ export function InboxView() {
   const state = detail ? stateOf(detail) : 'bot';
 
   const pill = (tone: string, text: string) => (
-    <span style={{ background: TONE[tone].bg, color: TONE[tone].fg, borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{text}</span>
+    <span style={{ background: TONE[tone].bg, color: TONE[tone].fg, borderRadius: 7, padding: '3px 9px', fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{text}</span>
   );
 
   return (
@@ -1013,8 +1013,8 @@ export function InboxView() {
               // empty reads as an answer and they act on it.
               <div aria-busy="true" aria-label={vi ? 'Đang tải hội thoại' : 'Loading conversations'}>
                 {[0, 1, 2].map((i) => (
-                  <div key={i} style={{ display: 'flex', gap: 9, padding: narrow ? '13px 14px' : '9px 11px', borderBottom: '1px solid var(--line)', opacity: 1 - i * 0.25 }}>
-                    <div style={{ width: narrow ? 48 : 34, height: narrow ? 48 : 34, borderRadius: '50%', background: 'var(--c1e293b)', flexShrink: 0 }} />
+                  <div key={i} style={{ display: 'flex', gap: 12, padding: '12px 12px', margin: '0 8px 2px', opacity: 1 - i * 0.25 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--c1e293b)', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 3 }}>
                       <div style={{ height: 9, width: '55%', borderRadius: 4, background: 'var(--c1e293b)' }} />
                       <div style={{ height: 8, width: '80%', borderRadius: 4, background: 'var(--c1e293b)' }} />
@@ -1055,26 +1055,39 @@ export function InboxView() {
                   //   left rail + dot + bold name = WHAT IS NEW  (unread)
                   //
                   // A row can be both, and now it reads as both.
-                  style={{ width: '100%', textAlign: 'left', display: 'block', cursor: 'pointer',
+                  // THIRTEEN ROWS USED TO BE THIRTEEN HAIRLINES.
+                  //
+                  // A rule under every conversation draws a ladder across the
+                  // eye, and the eye reads the ladder before it reads a single
+                  // name. Rows are separated by the space between them now;
+                  // the one you are in is a rounded wash, which says "here"
+                  // far louder than a 3px bar at the far left edge ever did.
+                  // Unread is the dot and the weight of the name, nothing else
+                  // — one accent colour on this screen, not five.
+                  style={{ boxSizing: 'border-box', width: 'calc(100% - 16px)',
+                    margin: '0 8px 2px', textAlign: 'left', display: 'block', cursor: 'pointer',
                     background: on ? 'var(--row-on)' : 'transparent',
-                    border: 'none',
-                    borderLeft: `3px solid ${on ? '#4f46e5' : r.unread ? '#3b82f6' : 'transparent'}`,
-                    borderBottom: '1px solid var(--line)', padding: narrow ? '11px 14px' : '7px 11px' }}>
-                  <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
-                    <Avatar row={r} size={narrow ? 48 : 34} token={token} vi={vi} mark={showChannelMark} />
+                    border: 'none', borderRadius: 12, padding: '12px 12px' }}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                    <Avatar row={r} size={44} token={token} vi={vi} mark={showChannelMark} />
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1 }}>
-                        <span style={{ color: (r.unread || on) ? 'var(--cf8fafc)' : 'var(--c94a3b8)', fontSize: narrow ? 15.5 : 13, fontWeight: r.unread ? 800 : on ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {/* FOUR SIZES ON THE WHOLE ROW: 15.5 name, 14 message,
+                          13 clock, 11.5 chip — and the name and the message are
+                          nearly the same size on purpose. They are told apart
+                          by weight and colour, not by one being small, which is
+                          why a list like this reads calm instead of busy. */}
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 1 }}>
+                        <span style={{ color: 'var(--cf8fafc)', fontSize: 15.5, fontWeight: r.unread ? 700 : 600, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {displayName(r, vi)}
                         </span>
                         <span title={fmtInTz(r.lastMessageAt || r.updatedAt, { dateStyle: 'full', timeStyle: 'short' })}
                           // The clock is not the unread signal. Colouring it too
                           // put a third blue thing on every unread row, and the
                           // rail, the dot and the bold name already say it.
-                          style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--c64748b)', fontWeight: r.unread ? 600 : 400, flexShrink: 0 }}>
+                          style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--c64748b)', fontWeight: 400, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
                           {listStampLabel(r.lastMessageAt || r.updatedAt, vi)}
                         </span>
-                        {r.unread && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }} aria-label={vi ? 'Chưa đọc' : 'Unread'} />}
+                        {r.unread && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#6366f1', flexShrink: 0, alignSelf: 'center' }} aria-label={vi ? 'Chưa đọc' : 'Unread'} />}
                       </div>
                       {/* The preview and the state badge share ONE line.
                           The badge used to own a third line of its own, and on
@@ -1084,7 +1097,7 @@ export function InboxView() {
                           sits at the end of the preview, and four conversations
                           no longer fill the column. */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                        <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: narrow ? 13.5 : 12, color: r.unread ? 'var(--ce2e8f0)' : 'var(--c64748b)', fontWeight: r.unread ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
+                        <p style={{ margin: '3px 0 0', flex: 1, minWidth: 0, fontSize: 14, lineHeight: 1.45, color: r.unread ? 'var(--ce2e8f0)' : 'var(--c94a3b8)', fontWeight: r.unread ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
                         {/* THE DEFAULT IS NOT NEWS.
                             Thirteen conversations, thirteen identical "Bot"
                             badges in a column down the right edge. A badge
@@ -1101,7 +1114,7 @@ export function InboxView() {
                       {/* And this line is drawn only when it carries something.
                           An empty flex row still costs its gap. */}
                       {(rowChips > 0) && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                         {/* The Page, named and in its own colour — but only
                             when there are two of them to tell apart. A salon
                             with ONE Page got its own name stamped on every row
@@ -1110,7 +1123,7 @@ export function InboxView() {
                         {source === 'any' && showPageChip && r.pageName && (
                           <span style={{
                             background: pageColor(r.pageId).bg, color: pageColor(r.pageId).fg,
-                            borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 600,
+                            borderRadius: 7, padding: '3px 9px', fontSize: 11.5, fontWeight: 600,
                             maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           }}>{r.pageName}</span>
                         )}
@@ -1122,18 +1135,18 @@ export function InboxView() {
                             ...FOLLOWUP_TONE[followUpState(r.followUpAt)],
                             background: FOLLOWUP_TONE[followUpState(r.followUpAt)].bg,
                             color: FOLLOWUP_TONE[followUpState(r.followUpAt)].fg,
-                            borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 700,
+                            borderRadius: 7, padding: '3px 9px', fontSize: 11.5, fontWeight: 600,
                           }}>⏰ {followUpLabel(r.followUpAt, new Date())}</span>
                         )}
                         {(r.labels ?? []).slice(0, 3).map((l) => (
                           <span key={l.id} style={{
-                            background: l.color, color: '#fff', borderRadius: 999,
-                            padding: '1px 8px', fontSize: 10, fontWeight: 600,
+                            background: l.color, color: '#fff', borderRadius: 7,
+                            padding: '3px 9px', fontSize: 11.5, fontWeight: 600,
                             maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           }}>{l.name}</span>
                         ))}
                         {(r.labels?.length ?? 0) > 3 && (
-                          <span style={{ fontSize: 10, color: 'var(--c64748b)' }}>+{(r.labels?.length ?? 0) - 3}</span>
+                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>+{(r.labels?.length ?? 0) - 3}</span>
                         )}
                       </div>
                       )}

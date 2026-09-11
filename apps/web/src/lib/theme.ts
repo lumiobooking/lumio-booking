@@ -210,7 +210,7 @@ export const EXTRA: Record<string, [dark: string, light: string]> = {
    * the BACKGROUND says where you are, the blue rail and dot say what is
    * unread. Dark keeps its old value exactly.
    */
-  '--row-on': ['#1e293b', '#dbe5fa'],
+  '--row-on': ['#1e293b', '#eae8fd'],
   // the heavier rule: section splits, card outlines
   '--line-strong': ['#334155', '#c6d2e2'],
   // tinted note/banner grounds

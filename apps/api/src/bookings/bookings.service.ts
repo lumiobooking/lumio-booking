@@ -56,6 +56,27 @@ const BOOKING_INCLUDE = {
 type Tx = Prisma.TransactionClient;
 
 
+/**
+ * Turns the stored `source` code into something a salon owner reads as a
+ * sentence. "hosted" is the name of a code path, not an answer to "where did
+ * this booking come from".
+ */
+function bookingSourceLabel(source: string | null | undefined, vi: boolean): string {
+  const key = (source ?? '').toLowerCase();
+  const en: Record<string, string> = {
+    hosted: 'Online booking page', online: 'Online booking page', admin: 'Front desk',
+    messenger: 'Facebook Messenger', instagram: 'Instagram', zalo: 'Zalo',
+    web: 'Website chat', voice: 'Phone (AI)', walkin: 'Walk-in', pos: 'Front desk',
+  };
+  const viMap: Record<string, string> = {
+    hosted: 'Trang đặt lịch online', online: 'Trang đặt lịch online', admin: 'Quầy lễ tân',
+    messenger: 'Facebook Messenger', instagram: 'Instagram', zalo: 'Zalo',
+    web: 'Chat trên website', voice: 'Điện thoại (AI)', walkin: 'Khách vãng lai', pos: 'Quầy lễ tân',
+  };
+  const map = vi ? viMap : en;
+  return map[key] ?? (source ?? '');
+}
+
 /** Same rule as the booking form: digits/()+-. only, 8–15 digits. */
 function isValidPhoneNumber(v: string): boolean {
   const digits = v.replace(/\D/g, '');
@@ -391,7 +412,21 @@ export class BookingsService {
     return free ? free.id : null;
   }
 
-  async createForTenant(tenantId: string, dto: CreateBookingDto, actorUserId: string | null, source?: string, device?: string | null) {
+  async createForTenant(
+    tenantId: string,
+    dto: CreateBookingDto,
+    actorUserId: string | null,
+    source?: string,
+    device?: string | null,
+    /**
+     * `autoAssign` asks the engine to pick a technician BEFORE the confirmation
+     * is written. The online page and the chat bot used to create the booking,
+     * let the confirmation fly, and assign a technician a few milliseconds
+     * later — so every hosted booking told the customer "To be assigned" even
+     * though a tech had been chosen by the time they opened the mail.
+     */
+    opts?: { autoAssign?: boolean },
+  ) {
     // Contact rules. Online (public) customer bookings MUST include a phone number
     // — it is the salon's primary way to reach the client and it cuts down on spam
     // bookings. Admin-created bookings need NO contact at all: the person is at
@@ -612,14 +647,42 @@ export class BookingsService {
       },
     });
 
+    // Assign the technician BEFORE anyone is told about the booking.
+    //
+    // The confirmation can only name a technician if one is known while it is
+    // being written. Callers that ask for auto-assignment (the hosted booking
+    // page, the chat bot) used to run the engine after this method returned —
+    // milliseconds after the mail had already been queued — which is the whole
+    // reason the customer's email read "Technician: To be assigned" on a salon
+    // whose engine had in fact picked someone.
+    //
+    // Best-effort: a booking that cannot be staffed is still a booking, and the
+    // confirmation still goes out (naming no one, which is then the truth).
+    const hadStaffAtCreate = Boolean(appointment.assignedStaffId);
+    let finished: typeof appointment = appointment;
+    if (opts?.autoAssign && !hadStaffAtCreate) {
+      try {
+        const rules = await this.settings.getBookingRules(tenantId);
+        if (rules.assignmentMode === 'auto') {
+          const res = await this.autoAssignForTenant(tenantId, appointment.id);
+          const assigned = res?.booking as typeof appointment | null | undefined;
+          if (assigned) finished = assigned;
+        }
+      } catch {
+        // engine unavailable / nobody eligible — keep the unassigned booking
+      }
+    }
+
     // Fire-and-forget confirmation; never block/fail the booking on it.
-    this.sendBookingConfirmation(tenantId, appointment).catch(() => undefined);
-    // If a technician was assigned at creation, email them too.
-    if (appointment.assignedStaffId) {
+    this.sendBookingConfirmation(tenantId, finished).catch(() => undefined);
+    // If a technician was assigned at creation, email them too. An auto-assign
+    // above already sent that mail from autoAssignForTenant, so this only
+    // covers the front-desk case — otherwise the tech gets it twice.
+    if (hadStaffAtCreate) {
       this.sendStaffAssignmentEmail(tenantId, appointment.id).catch(() => undefined);
     }
 
-    return appointment;
+    return finished;
   }
 
   /**
@@ -953,7 +1016,9 @@ export class BookingsService {
       priceCents: number;
       currency: string;
       addons?: unknown;
-      customer: { id?: string; firstName?: string; email: string | null; phone: string | null } | null;
+      notes?: string | null;
+      source?: string | null;
+      customer: { id?: string; firstName?: string; lastName?: string | null; email: string | null; phone: string | null } | null;
       service: { name: string } | null;
       assignedStaff?: { firstName: string; lastName: string | null } | null;
     },
@@ -973,13 +1038,54 @@ export class BookingsService {
     const start = appointment.startTime;
     const end = appointment.endTime;
     const durationMin = Math.round((end.getTime() - start.getTime()) / 60_000);
-    const addonNames = Array.isArray(appointment.addons)
-      ? (appointment.addons as { name?: string }[]).map((a) => a.name).filter(Boolean).join(', ')
+    const lineItems: Array<Record<string, unknown>> = Array.isArray(appointment.addons)
+      ? (appointment.addons as unknown as Array<Record<string, unknown>>).filter(Boolean)
+      : [];
+    // Unchanged on purpose: salon-authored templates render %add_ons% and have
+    // always seen every extra line here. The split below is used by the
+    // built-in email only, so nobody's own wording loses information.
+    const addonNames = lineItems.map((a) => a.name).filter(Boolean).join(', ');
+    // An extra SERVICE is not an add-on. Listing "Nail Design" under Add-ons
+    // when it is a service the customer booked (and a second technician will
+    // do) is how the confirmation ends up describing a different visit from
+    // the one on the salon's calendar.
+    const serviceLines = lineItems.filter((l) => l.kind === 'service');
+    const addonOnlyNames = lineItems.filter((l) => l.kind !== 'service').map((a) => a.name).filter(Boolean).join(', ');
+
+    // Who is actually doing what. The primary service owns the calendar slot;
+    // every extra service line can carry its own technician, and a visit split
+    // across two people must say so — to the customer, the owner and the techs.
+    const lineStaffIds = [...new Set(serviceLines.map((l) => (l.staffMemberId ? String(l.staffMemberId) : '')).filter(Boolean))];
+    const staffNameById = new Map<string, string>();
+    if (lineStaffIds.length) {
+      const rows = await this.prisma.staffMember
+        .findMany({ where: { tenantId, id: { in: lineStaffIds } }, select: { id: true, firstName: true, lastName: true } })
+        .catch(() => [] as Array<{ id: string; firstName: string; lastName: string | null }>);
+      for (const r of rows) staffNameById.set(r.id, `${r.firstName} ${r.lastName ?? ''}`.trim());
+    }
+    const primaryTech = appointment.assignedStaff
+      ? `${appointment.assignedStaff.firstName} ${appointment.assignedStaff.lastName ?? ''}`.trim()
+      : '';
+    const lineup = serviceLines.length
+      ? [
+          primaryTech ? `${appointment.service?.name ?? ''} — ${primaryTech}` : (appointment.service?.name ?? ''),
+          ...serviceLines.map((l) => {
+            const who = l.staffMemberId ? staffNameById.get(String(l.staffMemberId)) : '';
+            const name = String(l.name ?? '');
+            return who ? `${name} — ${who}` : name;
+          }),
+        ].filter(Boolean).join(' · ')
       : '';
     // Was `cents / 100` with a hard en-US: a 200,000₫ service was quoted to the
     // customer as ₫2,000 — a hundredth of the real price, in the message that
     // is supposed to confirm what they will pay.
     const total = formatMoney(appointment.priceCents, appointment.currency, loc);
+
+    const vi = loc.toLowerCase().startsWith('vi');
+    // Where the salon is. Optional — a salon that has not filled it in simply
+    // gets no address row, exactly as before.
+    const extra = await this.settings.getCompanyExtra(tenantId).catch(() => ({ address: '' } as { address?: string }));
+    const custFull = `${appointment.customer?.firstName ?? ''} ${appointment.customer?.lastName ?? ''}`.trim();
 
     const d: BookingTemplateData = {
       salon: tenant?.name ?? 'Our salon',
@@ -987,12 +1093,21 @@ export class BookingsService {
       service: appointment.service?.name ?? 'your appointment',
       date: fmtD(start),
       time: `${fmtT(start)} – ${fmtT(end)}`,
-      technician: appointment.assignedStaff ? `${appointment.assignedStaff.firstName} ${appointment.assignedStaff.lastName ?? ''}`.trim() : 'To be assigned',
+      technician: primaryTech || (vi ? 'Tiệm sẽ sắp xếp' : 'To be assigned'),
       total,
-      duration: `${durationMin} min`,
+      duration: vi ? `${durationMin} phút` : `${durationMin} min`,
       addons: addonNames,
       accent: this.settings.brandingFrom(tenant?.branding).accentColor,
       contact: tenant?.contactEmail ?? tenant?.contactPhone ?? '',
+      // --- the rest of the booking, added so a confirmation is a confirmation ---
+      addonsOnly: addonOnlyNames,
+      lineup,
+      reference: appointment.id.slice(-6).toUpperCase(),
+      notes: (appointment.notes ?? '').trim().slice(0, 400),
+      address: (extra?.address ?? '').trim(),
+      customerPhone: appointment.customer?.phone ?? '',
+      customerEmail: appointment.customer?.email ?? '',
+      source: bookingSourceLabel(appointment.source, vi),
     };
 
     const custEmail = appointment.customer?.email;
@@ -1062,6 +1177,19 @@ export class BookingsService {
       add_ons: d.addons,
       salon_contact: d.contact,
       booking_id: appointment.id,
+      // New placeholders. Existing templates never mention them, so nothing
+      // a salon has already written changes; templates that want the full
+      // booking can now say so.
+      booking_ref: d.reference ?? '',
+      customer_full_name: custFull || d.customer,
+      customer_phone: d.customerPhone ?? '',
+      customer_email: d.customerEmail ?? '',
+      service_lineup: d.lineup ?? '',
+      add_ons_only: d.addonsOnly ?? '',
+      booking_notes: d.notes ?? '',
+      salon_address: d.address ?? '',
+      booking_source: d.source ?? '',
+      manage_url: manageUrl,
     };
 
     const emailCustomer = tpl ? tpl.email : n.emailCustomerOnBooking;
@@ -1080,13 +1208,16 @@ export class BookingsService {
           smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related,
         }));
       } else {
-        const intro = fill(n.emailIntroCustomer, d);
-        const footer = `${fill(n.emailFooter, d)}\n\nManage or cancel your appointment: ${manageUrl}`;
+        // Only the customer's own copy carries the self-service link.
+        const dc: BookingTemplateData = { ...d, manageUrl };
+        const intro = fill(n.emailIntroCustomer, dc);
+        const footer = fill(n.emailFooter, dc);
+        const heading = vi ? 'Lịch hẹn đã được xác nhận' : 'Booking confirmed';
         jobs.push(this.notifications.send({
           tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail,
-          subject: fill(n.emailSubjectCustomer, d),
-          body: renderBookingEmailText('Booking confirmed', intro, footer, d, referralBlock),
-          html: renderBookingEmailHtml({ heading: 'Booking confirmed', intro, footer, d, referral: referralBlock }),
+          subject: fill(n.emailSubjectCustomer, dc),
+          body: renderBookingEmailText(heading, intro, footer, dc, referralBlock, 'customer', vi ? 'vi' : 'en'),
+          html: renderBookingEmailHtml({ heading, intro, footer, d: dc, referral: referralBlock, audience: 'customer', lang: vi ? 'vi' : 'en' }),
           smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related,
         }));
       }
@@ -1117,12 +1248,18 @@ export class BookingsService {
     // sender email so the salon is never left un-notified.
     const adminTo = n.adminEmail || n.senderEmail || n.gmail.senderEmail || '';
     if (n.emailAdminOnBooking && adminTo) {
-      const intro = fill(n.emailIntroAdmin, d);
+      // The owner's copy is a work order, not a courtesy note: it carries the
+      // customer's phone and email, the technician on each service, the note
+      // the customer left and where the booking came from. Without those the
+      // salon has to open the app to do anything about it.
+      const da: BookingTemplateData = { ...d, customer: custFull || d.customer };
+      const intro = fill(n.emailIntroAdmin, da);
+      const heading = vi ? 'Lịch đặt mới' : 'New booking';
       jobs.push(this.notifications.send({
         tenantId, channel: NotificationChannel.EMAIL, recipient: adminTo,
-        subject: fill(n.emailSubjectAdmin, d),
-        body: renderBookingEmailText('New booking', intro, '', d),
-        html: renderBookingEmailHtml({ heading: 'New booking', intro, footer: '', d }),
+        subject: fill(n.emailSubjectAdmin, da),
+        body: renderBookingEmailText(heading, intro, '', da, null, 'owner', vi ? 'vi' : 'en'),
+        html: renderBookingEmailHtml({ heading, intro, footer: '', d: da, audience: 'owner', lang: vi ? 'vi' : 'en' }),
         smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related,
       }));
     }
@@ -1520,20 +1657,26 @@ export class BookingsService {
       where: { id: appointmentId, tenantId },
       select: {
         id: true, startTime: true, endTime: true, priceCents: true, currency: true, addons: true,
-        customer: { select: { firstName: true, lastName: true } },
+        notes: true,
+        customer: { select: { firstName: true, lastName: true, phone: true, email: true } },
         service: { select: { name: true } },
         assignedStaff: {
-          select: { firstName: true, lastName: true, email: true, user: { select: { email: true } } },
+          select: { firstName: true, lastName: true, email: true, phone: true, user: { select: { email: true } } },
         },
       },
     });
     if (!appt || !appt.assignedStaff) return;
     const staffEmail = appt.assignedStaff.email || appt.assignedStaff.user?.email;
-    if (!staffEmail) return;
+    const staffPhone = appt.assignedStaff.phone || '';
 
     const templates = await this.settings.getNotificationTemplates(tenantId);
     const tpl = templates['staff_new_booking'];
-    if (!tpl || !tpl.enabled || !tpl.email) return;
+    if (!tpl || !tpl.enabled) return;
+    // Email needs an address, SMS needs a number. Either one alone is a reason
+    // to keep going — a tech with no work email used to be told nothing at all.
+    const wantEmail = tpl.email && Boolean(staffEmail);
+    const wantSms = tpl.sms && Boolean(staffPhone);
+    if (!wantEmail && !wantSms) return;
 
     const n = await this.settings.getNotificationSettings(tenantId);
     const tenant = await this.prisma.tenant.findUnique({
@@ -1548,15 +1691,39 @@ export class BookingsService {
     const start = appt.startTime;
     const end = appt.endTime;
     const durationMin = Math.round((end.getTime() - start.getTime()) / 60_000);
-    const addonNames = Array.isArray(appt.addons)
-      ? (appt.addons as { name?: string }[]).map((a) => a.name).filter(Boolean).join(', ')
-      : '';
+    const lineItems: Array<Record<string, unknown>> = Array.isArray(appt.addons)
+      ? (appt.addons as unknown as Array<Record<string, unknown>>).filter(Boolean)
+      : [];
+    const addonNames = lineItems.map((a) => a.name).filter(Boolean).join(', ');
+    const serviceLines = lineItems.filter((l) => l.kind === 'service');
+    const addonOnlyNames = lineItems.filter((l) => l.kind !== 'service').map((a) => a.name).filter(Boolean).join(', ');
     const total = formatMoney(appt.priceCents, appt.currency, loc);
     const salon = tenant?.name ?? 'Our salon';
     const accent = this.settings.brandingFrom(tenant?.branding).accentColor;
     const contact = tenant?.contactEmail ?? tenant?.contactPhone ?? '';
     const customerName = `${appt.customer?.firstName ?? ''} ${appt.customer?.lastName ?? ''}`.trim() || 'A customer';
     const staffName = `${appt.assignedStaff.firstName} ${appt.assignedStaff.lastName ?? ''}`.trim();
+
+    // Who else is on this visit. A tech walking to the chair needs to know that
+    // the second service is someone else's, and which one is theirs.
+    const lineStaffIds = [...new Set(serviceLines.map((l) => (l.staffMemberId ? String(l.staffMemberId) : '')).filter(Boolean))];
+    const staffNameById = new Map<string, string>();
+    if (lineStaffIds.length) {
+      const rows = await this.prisma.staffMember
+        .findMany({ where: { tenantId, id: { in: lineStaffIds } }, select: { id: true, firstName: true, lastName: true } })
+        .catch(() => [] as Array<{ id: string; firstName: string; lastName: string | null }>);
+      for (const r of rows) staffNameById.set(r.id, `${r.firstName} ${r.lastName ?? ''}`.trim());
+    }
+    const lineup = serviceLines.length
+      ? [
+          `${appt.service?.name ?? ''} — ${staffName}`,
+          ...serviceLines.map((l) => {
+            const who = l.staffMemberId ? staffNameById.get(String(l.staffMemberId)) : '';
+            const nm = String(l.name ?? '');
+            return who ? `${nm} — ${who}` : nm;
+          }),
+        ].filter(Boolean).join(' · ')
+      : '';
 
     const pct: Record<string, string> = {
       salon_name: salon,
@@ -1570,6 +1737,16 @@ export class BookingsService {
       add_ons: addonNames,
       salon_contact: contact,
       booking_id: appt.id,
+      booking_ref: appt.id.slice(-6).toUpperCase(),
+      customer_full_name: customerName,
+      customer_phone: appt.customer?.phone ?? '',
+      customer_email: appt.customer?.email ?? '',
+      service_lineup: lineup,
+      add_ons_only: addonOnlyNames,
+      booking_notes: (appt.notes ?? '').trim().slice(0, 400),
+      salon_address: ((await this.settings.getCompanyExtra(tenantId).catch(() => ({ address: '' } as { address?: string })))?.address ?? '').trim(),
+      booking_source: '',
+      manage_url: '',
     };
 
     const smtp =
@@ -1586,22 +1763,39 @@ export class BookingsService {
         : undefined;
 
     const bodyFilled = fillPct(tpl.body, pct);
-    await this.notifications.send({
-      tenantId,
-      channel: NotificationChannel.EMAIL,
-      recipient: staffEmail,
-      subject: fillPct(tpl.subject, pct),
-      body: htmlToText(bodyFilled),
-      html: renderTemplatedEmailHtml({ salon, accent, contact, bodyText: bodyFilled }),
-      smtp,
-      brevo,
-      gmail,
-      mailService: n.mailService,
-      senderName: n.senderName || salon,
-      replyTo: n.replyTo || n.senderEmail || undefined,
-      relatedType: 'appointment',
-      relatedId: appt.id,
-    });
+    const jobs: Promise<unknown>[] = [];
+    if (wantEmail) {
+      jobs.push(this.notifications.send({
+        tenantId,
+        channel: NotificationChannel.EMAIL,
+        recipient: staffEmail as string,
+        subject: fillPct(tpl.subject, pct),
+        body: htmlToText(bodyFilled),
+        html: renderTemplatedEmailHtml({ salon, accent, contact, bodyText: bodyFilled }),
+        smtp,
+        brevo,
+        gmail,
+        mailService: n.mailService,
+        senderName: n.senderName || salon,
+        replyTo: n.replyTo || n.senderEmail || undefined,
+        relatedType: 'appointment',
+        relatedId: appt.id,
+      }));
+    }
+    // The tech is usually on the floor, not in an inbox. When the salon has
+    // turned SMS on for this event, text them too.
+    if (wantSms) {
+      jobs.push(this.notifications.send({
+        tenantId,
+        channel: NotificationChannel.SMS,
+        recipient: staffPhone,
+        body: fillPct(tpl.smsBody, pct),
+        twilio: n.twilio,
+        relatedType: 'appointment',
+        relatedId: appt.id,
+      }));
+    }
+    await Promise.allSettled(jobs);
   }
 
   /** Active services for a tenant, with their active add-ons (public flow). */
@@ -2530,12 +2724,17 @@ export class BookingsService {
 
   async autoAssignForTenant(tenantId: string, bookingId: string) {
     // 1) Assign the PRIMARY service's technician (fair rotation, skill + availability).
-    const res = await this.reassign(tenantId, bookingId, null);
+    //    `notify: false` — the technician's mail is held back until step 2 has run,
+    //    or it reads the booking while the other service lines are still unowned
+    //    and tells a two-tech visit it is a one-tech visit.
+    const res = await this.reassign(tenantId, bookingId, null, false);
     // 2) Multi-service visit: assign each EXTRA service to its own free specialist so a
     //    salon where every tech does one specialty needs ZERO manual assignment. The
     //    per-line tech is written into the appointment's line-item snapshot, and the POS
     //    checkout reads it — the front desk just presses Pay.
     await this.assignExtraServiceLines(tenantId, bookingId).catch(() => { /* best-effort */ });
+    // 3) Now the picture is complete: tell the technician (fire-and-forget).
+    if (res.reassigned) this.sendStaffAssignmentEmail(tenantId, bookingId).catch(() => undefined);
     return res;
   }
 
@@ -2592,7 +2791,7 @@ export class BookingsService {
    * everyone already in this booking's rejection log) and assign them race-safe,
    * or fall back to PENDING/unassigned.
    */
-  private async reassign(tenantId: string, id: string, actorUserId: string | null) {
+  private async reassign(tenantId: string, id: string, actorUserId: string | null, notify = true) {
     const booking = await this.prisma.appointment.findFirst({
       where: { id, tenantId },
       select: { id: true, serviceId: true, startTime: true, endTime: true, preferredStaffId: true },
@@ -2646,7 +2845,7 @@ export class BookingsService {
       return { reassigned: false, booking: result };
     }
 
-    const assigned = await this.assignStaff(tenantId, booking, nextStaffId, actorUserId);
+    const assigned = await this.assignStaff(tenantId, booking, nextStaffId, actorUserId, notify);
     return { reassigned: true, booking: assigned };
   }
 
@@ -2656,6 +2855,9 @@ export class BookingsService {
     booking: { id: string; startTime: Date; endTime: Date },
     staffId: string,
     actorUserId: string | null,
+    /** Set false by a caller that will send the technician's mail itself, once
+     *  the rest of the visit has been assigned too. */
+    notify = true,
   ) {
     const updated = await this.prisma.$transaction(async (tx) => {
       await this.lockStaffSlot(tx, tenantId, staffId);
@@ -2681,7 +2883,7 @@ export class BookingsService {
       metadata: { staffId, via: 'engine' },
     });
     // Notify the newly-assigned technician (fire-and-forget).
-    this.sendStaffAssignmentEmail(tenantId, booking.id).catch(() => undefined);
+    if (notify) this.sendStaffAssignmentEmail(tenantId, booking.id).catch(() => undefined);
     return updated;
   }
 

@@ -27,6 +27,8 @@ import {
   NOTIFICATION_TEMPLATES_KEY,
   VN_NOTIFICATION_TEXTS,
   VN_TEMPLATE_TEXTS,
+  LEGACY_NOTIFICATION_DEFAULTS,
+  LEGACY_TEMPLATE_DEFAULTS,
   NotificationSettings,
   NotificationTemplates,
   PAYMENT_GATEWAYS_KEY,
@@ -462,7 +464,11 @@ export class SettingsService {
     if (out.market === 'VN') {
       for (const [k, vnText] of Object.entries(VN_NOTIFICATION_TEXTS)) {
         const key = k as keyof NotificationSettings;
-        if (out[key] === DEFAULT_NOTIFICATION_SETTINGS[key]) (out as unknown as Record<string, unknown>)[key] = vnText;
+        // "Untouched" means the salon never wrote this field — which includes a
+        // salon still carrying an OLDER English default it saved verbatim.
+        const legacy = LEGACY_NOTIFICATION_DEFAULTS[key] ?? [];
+        const untouched = out[key] === DEFAULT_NOTIFICATION_SETTINGS[key] || legacy.includes(out[key] as string);
+        if (untouched) (out as unknown as Record<string, unknown>)[key] = vnText;
       }
     }
     return out;
@@ -635,9 +641,11 @@ export class SettingsService {
       for (const [id, vn] of Object.entries(VN_TEMPLATE_TEXTS)) {
         const def = DEFAULT_NOTIFICATION_TEMPLATES[id];
         if (!def || !out[id]) continue;
+        const legacy = LEGACY_TEMPLATE_DEFAULTS[id] ?? {};
         for (const [f, vnText] of Object.entries(vn)) {
           const field = f as 'subject' | 'body' | 'smsBody';
-          if (out[id][field] === def[field]) out[id][field] = vnText as string;
+          const untouched = out[id][field] === def[field] || (legacy[field] ?? []).includes(out[id][field]);
+          if (untouched) out[id][field] = vnText as string;
         }
       }
     }

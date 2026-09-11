@@ -12,9 +12,99 @@ export interface BookingTemplateData {
   technician: string;
   total: string;
   duration: string;
+  /** Every extra line on the visit — extra services AND add-ons. Unchanged on
+   *  purpose: salon-authored templates render %add_ons% and must keep seeing
+   *  exactly what they saw before. The split below is what the built-in email
+   *  uses. */
   addons: string;
   accent: string;
   contact: string;
+
+  // -------------------------------------------------------------------------
+  // Everything below is optional and was added later. A caller that does not
+  // set a field gets an empty string from fill(), and the row is skipped — so
+  // no existing template and no existing message changes shape.
+  // -------------------------------------------------------------------------
+
+  /** Add-ons only (the extra SERVICES are listed under `lineup` instead). */
+  addonsOnly?: string;
+  /** Every service on the visit with the technician doing it, e.g.
+   *  "Colour — Anna · Nail Design — Kim". Empty for a single-service visit. */
+  lineup?: string;
+  /** Short human-quotable booking code (what a customer reads on the phone). */
+  reference?: string;
+  /** What the customer typed into the booking form. */
+  notes?: string;
+  /** Street address of the salon, so the customer knows where to turn up. */
+  address?: string;
+  /** The customer's own contacts — for the OWNER and STAFF copies only. Never
+   *  rendered on the customer's copy. */
+  customerPhone?: string;
+  customerEmail?: string;
+  /** Where the booking came in from: online page, front desk, Messenger… */
+  source?: string;
+  /** Self-service view / reschedule / cancel link. */
+  manageUrl?: string;
+}
+
+/** Who is reading this email. Decides which rows are shown. */
+export type EmailAudience = 'customer' | 'owner' | 'staff';
+
+/** Row labels. A VN salon writes to VN customers; a US salon is untouched. */
+const LABELS = {
+  en: {
+    reference: 'Reference', service: 'Service', services: 'Services', addons: 'Add-ons',
+    date: 'Date', time: 'Time', duration: 'Duration', technician: 'Technician',
+    notes: 'Notes', total: 'Total', customer: 'Customer', phone: 'Phone',
+    email: 'Email', where: 'Address', source: 'Booked via', manage: 'Manage booking',
+  },
+  vi: {
+    reference: 'Mã lịch', service: 'Dịch vụ', services: 'Dịch vụ', addons: 'Dịch vụ thêm',
+    date: 'Ngày', time: 'Giờ', duration: 'Thời lượng', technician: 'Thợ làm',
+    notes: 'Ghi chú', total: 'Tổng cộng', customer: 'Khách hàng', phone: 'Điện thoại',
+    email: 'Email', where: 'Địa chỉ', source: 'Đặt qua', manage: 'Quản lý lịch hẹn',
+  },
+} as const;
+
+export type EmailLang = keyof typeof LABELS;
+
+/**
+ * The detail rows, in reading order, for one audience.
+ *
+ * A confirmation that leaves out who is doing the work, what the customer
+ * asked for, or how to reach them is a confirmation the salon has to chase by
+ * phone. Each audience gets the whole booking, minus what it must not see: the
+ * customer never reads their own phone number back, and only the salon side
+ * sees where the booking came from.
+ */
+export function bookingRowValues(d: BookingTemplateData, audience: EmailAudience, lang: EmailLang): Array<[string, string, boolean]> {
+  const L = LABELS[lang] ?? LABELS.en;
+  const addons = d.addonsOnly != null ? d.addonsOnly : d.addons;
+  const rows: Array<[string, string, boolean]> = [];
+  const put = (label: string, value: string | undefined, strong = false) => {
+    if (value) rows.push([label, value, strong]);
+  };
+
+  put(L.reference, d.reference);
+  if (audience !== 'customer') {
+    put(L.customer, d.customer);
+    put(L.phone, d.customerPhone);
+    put(L.email, d.customerEmail);
+  }
+  // A multi-service visit lists every service WITH the technician on it — the
+  // single-service row would only repeat the first of them.
+  if (d.lineup) put(L.services, d.lineup);
+  else put(L.service, d.service);
+  put(L.addons, addons);
+  put(L.date, d.date);
+  put(L.time, d.time);
+  put(L.duration, d.duration);
+  put(L.technician, d.technician);
+  put(L.notes, d.notes);
+  if (audience === 'customer') put(L.where, d.address);
+  if (audience === 'owner') put(L.source, d.source);
+  put(L.total, d.total, true);
+  return rows;
 }
 
 /** Replaces {key} tokens in a template string. Unknown tokens are left blank. */
@@ -74,16 +164,19 @@ export function renderBookingEmailHtml(args: {
   footer: string;
   d: BookingTemplateData;
   referral?: ReferralInvite | null;
+  /** Defaults to 'customer', which is exactly what this used to render. */
+  audience?: EmailAudience;
+  lang?: EmailLang;
 }): string {
   const { heading, intro, footer, d, referral } = args;
-  const rows =
-    detailRow('Service', d.service) +
-    detailRow('Add-ons', d.addons) +
-    detailRow('Date', d.date) +
-    detailRow('Time', d.time) +
-    detailRow('Duration', d.duration) +
-    detailRow('Technician', d.technician) +
-    detailRow('Total', d.total, true);
+  const audience = args.audience ?? 'customer';
+  const lang: EmailLang = args.lang === 'vi' ? 'vi' : 'en';
+  const rows = bookingRowValues(d, audience, lang)
+    .map(([label, value, strong]) => detailRow(label, value, strong))
+    .join('');
+  const manage = d.manageUrl
+    ? `<p style="margin:18px 0 0;"><a href="${esc(d.manageUrl)}" style="display:inline-block;background:${esc(d.accent)};color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:11px 20px;border-radius:9px;">${esc((LABELS[lang] ?? LABELS.en).manage)} &rarr;</a></p>`
+    : '';
 
   return `<!doctype html>
 <html>
@@ -97,6 +190,7 @@ export function renderBookingEmailHtml(args: {
         <h1 style="margin:0 0 8px;font-size:20px;color:#111827;">${esc(heading)}</h1>
         <p style="margin:0 0 18px;color:#4b5563;font-size:14px;line-height:1.6;">${esc(intro)}</p>
         <table style="width:100%;border-collapse:collapse;">${rows}</table>
+        ${manage}
         ${footer ? `<p style="margin:20px 0 0;color:#6b7280;font-size:13px;line-height:1.6;">${esc(footer)}</p>` : ''}
         ${referral ? referralBlockHtml(referral, d.accent) : ''}
       </div>
@@ -115,12 +209,51 @@ export function renderBookingEmailHtml(args: {
 // body the salon fully controls. These helpers fill and render those.
 // ===========================================================================
 
-/** Replaces %key% tokens. Unknown tokens are left blank. */
+/**
+ * Replaces %key% tokens. Unknown tokens are left blank.
+ *
+ * A line that is nothing but a label and an empty placeholder — "Add-ons:" on a
+ * booking with no add-ons, "Your note:" when the customer wrote none — is
+ * dropped whole. Leaving the bare label in is how a confirmation ends up
+ * looking broken, and it is the reason templates could not afford to carry the
+ * optional half of a booking. A line is only dropped when EVERY placeholder in
+ * it is empty and what is left over is just a label (blank, or ending in ':'),
+ * so prose is never touched.
+ */
 export function fillPct(template: string, data: Record<string, string>): string {
-  return template.replace(/%(\w+)%/g, (_m, key: string) => {
+  const value = (key: string) => {
     const v = data[key];
     return v == null ? '' : String(v);
-  });
+  };
+  // Split on line AND paragraph boundaries, keeping them, so the shape of the
+  // body survives. Paragraph tags matter: the editor joins paragraphs with no
+  // newline between them, so without </p><p> in this list the last label of one
+  // paragraph and the first sentence of the next read as a single line — and a
+  // line containing prose is never dropped.
+  const parts = template.split(/(<br\s*\/?>|<\/p\s*>|<p[^>]*>|\n)/i);
+  const isSep = (x: string) => /^(<br\s*\/?>|<\/p\s*>|<p[^>]*>|\n)$/i.test(x);
+  const isBreak = (x: string) => /^(<br\s*\/?>|\n)$/i.test(x);
+  const out: string[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (isSep(part)) { out.push(part); continue; }
+    const tokens = part.match(/%(\w+)%/g);
+    if (tokens && tokens.every((tk) => value(tk.slice(1, -1)) === '')) {
+      const leftover = part.replace(/%(\w+)%/g, '').replace(/<[^>]+>/g, '').trim();
+      if (leftover === '' || /[::]$/.test(leftover)) {
+        // Drop the line AND the break that followed it, or the body grows a
+        // blank gap everywhere an optional field was missing.
+        const tags = part.match(/<[^>]+>/g);
+        if (tags) out.push(tags.join('')); // keep any inline markup that was on the line
+        // Swallow the line break that followed it — but never a paragraph tag,
+        // which would unbalance the markup.
+        if (i + 1 < parts.length && isBreak(parts[i + 1])) i++;
+        continue;
+      }
+    }
+    out.push(part.replace(/%(\w+)%/g, (_m, key: string) => value(key)));
+  }
+  return out.join('');
 }
 
 /** Strips HTML to a readable plain-text fallback (for the SMS-less text email + log). */
@@ -178,19 +311,23 @@ export function renderTemplatedEmailHtml(args: {
 }
 
 /** Plain-text fallback (for clients that don't render HTML). */
-export function renderBookingEmailText(heading: string, intro: string, footer: string, d: BookingTemplateData, referral?: ReferralInvite | null): string {
+export function renderBookingEmailText(
+  heading: string,
+  intro: string,
+  footer: string,
+  d: BookingTemplateData,
+  referral?: ReferralInvite | null,
+  audience: EmailAudience = 'customer',
+  lang: EmailLang = 'en',
+): string {
+  const L = LABELS[lang] ?? LABELS.en;
   const lines = [
     heading,
     '',
     intro,
     '',
-    `Service: ${d.service}`,
-    d.addons ? `Add-ons: ${d.addons}` : '',
-    `Date: ${d.date}`,
-    `Time: ${d.time}`,
-    `Duration: ${d.duration}`,
-    `Technician: ${d.technician}`,
-    `Total: ${d.total}`,
+    ...bookingRowValues(d, audience, lang).map(([label, value]) => `${label}: ${value}`),
+    d.manageUrl ? `${L.manage}: ${d.manageUrl}` : '',
     '',
     footer,
     referral ? referralBlockText(referral) : '',

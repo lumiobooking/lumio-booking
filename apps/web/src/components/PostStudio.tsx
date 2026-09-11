@@ -189,7 +189,7 @@ const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d
  * with holes in the corners is harder to read than one with grey edges.
  */
 export function MonthCalendar({
-  posts, month, onMonth, onPick, onDrop, onDelete, vi, compact = false,
+  posts, month, onMonth, onPick, onDrop, onDelete, vi, compact = false, canDeletePosted = false,
 }: {
   posts: StudioPost[];
   month: Date;
@@ -200,6 +200,14 @@ export function MonthCalendar({
   vi: boolean;
   /** A phone. Seven columns of cards do not fit; see the compact branch below. */
   compact?: boolean;
+  /**
+   * A Lumio support session, which may delete a PUBLISHED row.
+   *
+   * A salon may not: that row is the record of what really went out, and the
+   * server refuses. But the menu still opens on a published post and says so —
+   * a gesture that does nothing at all is a gesture people conclude is broken.
+   */
+  canDeletePosted?: boolean;
 }) {
   const [over, setOver] = useState<string | null>(null);
   /** A day whose overflow the reader has opened. Busy days stay short by default. */
@@ -211,7 +219,7 @@ export function MonthCalendar({
    * what really went up, and the server refuses to delete it. Offering a menu
    * item that always errors is worse than offering none.
    */
-  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number; posted: boolean } | null>(null);
   const press = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!menu) return undefined;
@@ -306,16 +314,23 @@ export function MonthCalendar({
           e.dataTransfer.effectAllowed = 'move';
         }}
         onClick={() => onPick(p.id)}
+        /**
+         * The menu opens on EVERY card, published ones included.
+         *
+         * It used to bail out silently on anything already posted — and since
+         * most of a month IS already posted, the gesture looked broken. Now it
+         * opens and says why a published row cannot be deleted. That is an
+         * answer; nothing at all is not.
+         */
         onContextMenu={(e) => {
-          if (p.status === 'posted') return; // let the browser menu through
           e.preventDefault();
-          setMenu({ id: p.id, x: e.clientX, y: e.clientY });
+          setMenu({ id: p.id, x: e.clientX, y: e.clientY, posted: p.status === 'posted' });
         }}
         // Touch has no right-click. A long press is the same gesture.
         onTouchStart={(e) => {
-          if (p.status === 'posted') return;
           const t2 = e.touches[0];
-          press.current = setTimeout(() => setMenu({ id: p.id, x: t2.clientX, y: t2.clientY }), 500);
+          const wasPosted = p.status === 'posted';
+          press.current = setTimeout(() => setMenu({ id: p.id, x: t2.clientX, y: t2.clientY, posted: wasPosted }), 500);
         }}
         onTouchEnd={() => { if (press.current) clearTimeout(press.current); }}
         onTouchMove={() => { if (press.current) clearTimeout(press.current); }}
@@ -388,6 +403,33 @@ export function MonthCalendar({
     );
   };
 
+  /**
+   * What the menu offers, which depends on whether the post already went out.
+   *
+   * A published row is the record of what really reached the customer, and the
+   * server refuses to delete it for a salon — so instead of a greyed-out
+   * "Delete" that invites people to keep clicking, the menu says in a sentence
+   * where the post actually lives now. A Lumio support session may delete it,
+   * and for them the item is real.
+   */
+  const menuBody = (m: { id: string; posted: boolean }) => (
+    <>
+      <button onClick={() => { onPick(m.id); setMenu(null); }} style={menuItem}>
+        ✎ {m.posted ? T('Mở bài', 'Open post') : T('Sửa bài', 'Edit post')}
+      </button>
+      {(!m.posted || canDeletePosted) ? (
+        <button onClick={() => { onDelete(m.id); setMenu(null); }} style={{ ...menuItem, color: '#ef4444' }}>
+          🗑 {m.posted ? T('Xoá bản ghi khỏi lịch', 'Delete this record') : T('Xoá bài này', 'Delete this post')}
+        </button>
+      ) : (
+        <div style={{ padding: '8px 11px', fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5, maxWidth: 215 }}>
+          {T('Bài đã đăng được giữ làm sổ ghi. Muốn gỡ hẳn thì xoá trực tiếp trên Facebook / Instagram / TikTok.',
+             'A published post is kept as the record. To take it down, delete it on Facebook / Instagram / TikTok itself.')}
+        </div>
+      )}
+    </>
+  );
+
   /** The month's summary chips — same numbers on both layouts. */
   const tallies = (
     <>
@@ -442,6 +484,9 @@ export function MonthCalendar({
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>{tallies}</div>
+        <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 8 }}>
+          {T('Chạm để mở bài · Nhấn giữ để sửa hoặc xoá', 'Tap to open · press and hold to edit or delete')}
+        </div>
 
         {/* The glance-map: a day is a number and up to four dots. */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 3, marginBottom: 4 }}>
@@ -527,8 +572,7 @@ export function MonthCalendar({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <button onClick={() => { onPick(menu.id); setMenu(null); }} style={menuItem}>✎ {T('Sửa bài', 'Edit post')}</button>
-            <button onClick={() => { onDelete(menu.id); setMenu(null); }} style={{ ...menuItem, color: '#ef4444' }}>🗑 {T('Xoá bài này', 'Delete this post')}</button>
+            {menuBody(menu)}
           </div>
         )}
       </div>
@@ -547,8 +591,13 @@ export function MonthCalendar({
             and counting red boxes by eye is not an answer. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginLeft: 4 }}>{tallies}</div>
 
-        <div style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--c64748b)' }}>
+        {/* Two gestures nobody can see. Dragging a card and right-clicking one
+            are both invisible affordances; a line of grey text is what turns
+            them into features people actually have. */}
+        <div style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--c64748b)', textAlign: 'right', lineHeight: 1.5 }}>
           {T('Kéo bài sang ngày khác để đổi lịch', 'Drag a post to another day to move it')}
+          <br />
+          {T('Chuột phải vào bài để sửa hoặc xoá', 'Right-click a post to edit or delete it')}
         </div>
       </div>
 
@@ -635,18 +684,7 @@ export function MonthCalendar({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            onClick={() => { onPick(menu.id); setMenu(null); }}
-            style={menuItem}
-          >
-            ✎ {T('Sửa bài', 'Edit post')}
-          </button>
-          <button
-            onClick={() => { onDelete(menu.id); setMenu(null); }}
-            style={{ ...menuItem, color: '#ef4444' }}
-          >
-            🗑 {T('Xoá bài này', 'Delete this post')}
-          </button>
+          {menuBody(menu)}
         </div>
       )}
     </div>

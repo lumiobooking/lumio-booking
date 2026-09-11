@@ -1096,7 +1096,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         </button>
       </div>
       <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 0' }}>
-        {t('se.no.placeholders')} <code>{'{salon} {customer} {service} {date} {time} {technician} {total} {duration} {addons}'}</code>
+        {t('se.no.placeholders')} <code>{'{salon} {customer} {service} {date} {time} {technician} {total} {duration} {addons} {lineup} {reference} {notes} {address} {customerPhone} {customerEmail}'}</code>
       </p>
 
       {showTpl && (

@@ -4165,6 +4165,7 @@ function Inner() {
                         onDelete={removePost}
                         vi={vi}
                         compact={isMobile}
+                        canDeletePosted={Boolean(queue.canDeletePosted)}
                       />
                     </>
                   )}

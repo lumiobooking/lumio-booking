@@ -261,14 +261,12 @@ export class PublicSalonController {
     }
     const tenantId = await this.resolveTenantId(slug);
     const safeDto: CreateBookingDto = { ...dto, staffId: undefined };
-    let booking = await this.bookings.createForTenant(tenantId, safeDto, null, 'hosted', deviceSource(ua));
-
-    // Auto-assign (fair rotation) if the salon's assignment mode is 'auto'.
-    const rules = await this.settings.getBookingRules(tenantId);
-    if (rules.assignmentMode === 'auto') {
-      const result = await this.bookings.autoAssignForTenant(tenantId, booking.id);
-      if (result?.booking) booking = result.booking;
-    }
+    // `autoAssign` runs the fair-rotation engine INSIDE createForTenant, before
+    // the confirmation is written — the same work that used to happen here, a
+    // few milliseconds too late to make it into the customer's email.
+    const booking = await this.bookings.createForTenant(
+      tenantId, safeDto, null, 'hosted', deviceSource(ua), { autoAssign: true },
+    );
 
     // Deposit-to-hold: if the salon requires a deposit (and this customer is in
     // scope), take it as a partial online payment; otherwise honour the chosen

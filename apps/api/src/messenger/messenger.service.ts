@@ -3675,7 +3675,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         // The door is the THREAD's channel, not the module's name. Instagram
         // bookings used to be filed as 'messenger', which meant the owner's
         // "how much does Instagram bring in?" was unanswerable by design.
-        const booking = await this.bookings.createForTenant(tenantId, dto, null, ctx?.channel === 'instagram' ? 'instagram' : 'messenger');
+        // autoAssign inside create: the technician must be picked BEFORE the
+        // confirmation is written, or the customer's email names nobody.
+        const booking = await this.bookings.createForTenant(
+          tenantId, dto, null, ctx?.channel === 'instagram' ? 'instagram' : 'messenger', undefined, { autoAssign: true },
+        );
         const b = booking as { id?: string; customerId?: string | null };
         // The one moment this page-scoped id and a real customer are provably
         // the same person: they just gave a name and a phone and a Customer row
@@ -3687,14 +3691,6 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           }).catch(() => undefined);
         }
         this.logger.log(`bot booking CREATED id=${b.id} start=${startTime} local="${local}" tz=${tz} service=${serviceId} phone=…${phone.slice(-4)}`);
-        // Auto-assign a technician (fair rotation) when the salon runs in auto mode —
-        // same as the public web flow — so AI bookings don't land unassigned.
-        if (b.id) {
-          try {
-            const rules = await this.settings.getBookingRules(tenantId);
-            if (rules.assignmentMode === 'auto') await this.bookings.autoAssignForTenant(tenantId, b.id);
-          } catch { /* best-effort: the booking is already created */ }
-        }
         const manageUrl = b.id ? this.bookings.buildApptManageUrl(b.id) : '';
         // Remember this visit for the rest of the run: the merge check above
         // reads it, and the link below is appended by US rather than left to

@@ -462,8 +462,8 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   emailSubjectAdmin: 'New booking — {service} for {customer}',
   emailIntroAdmin: 'A new booking has just come in. Details below:',
   emailFooter: 'We look forward to seeing you. If you need to make changes, just reply to this email.',
-  smsCustomer: '{salon}: your {service} on {date} at {time} is booked. See you soon! Reply STOP to opt out.',
-  smsAdmin: 'New booking: {service} for {customer} on {date} at {time}.',
+  smsCustomer: '{salon}: {service} on {date} at {time} with {technician}. Total {total}. See you soon! Reply STOP to opt out.',
+  smsAdmin: 'New booking {reference}: {service} for {customer} {customerPhone} on {date} {time} — tech {technician}, {total}.',
   smtp: { host: 'smtp.gmail.com', port: 465, user: '', pass: '', fromEmail: '', secure: 'ssl' },
   brevo: { apiKey: '', senderEmail: '', senderName: '' },
   gmail: { clientId: '', clientSecret: '', refreshToken: '', senderEmail: '' },
@@ -699,16 +699,20 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
     body:
       'Hi %customer_name%,\n\n' +
       'Thank you for booking with %salon_name%! Your appointment is confirmed.\n\n' +
+      'Booking reference: %booking_ref%\n' +
       'Service: %service_name%\n' +
-      'Add-ons: %add_ons%\n' +
+      'Services & technicians: %service_lineup%\n' +
+      'Add-ons: %add_ons_only%\n' +
       'Technician: %staff_name%\n' +
       'Date: %appointment_date%\n' +
       'Time: %appointment_time%\n' +
       'Duration: %duration%\n' +
-      'Total: %total_price%\n\n' +
+      'Total: %total_price%\n' +
+      'Your note: %booking_notes%\n' +
+      'Address: %salon_address%\n\n' +
       'We look forward to seeing you. Need to make a change? Just reply to this message.\n' +
       '%salon_name% — %salon_contact%',
-    smsBody: '%salon_name%: your %service_name% on %appointment_date% at %appointment_time% is confirmed. See you soon! Reply STOP to opt out.',
+    smsBody: '%salon_name%: %service_name% on %appointment_date% at %appointment_time%. Tech: %staff_name%. Total: %total_price%. Reply STOP to opt out.',
   }),
   customer_booking_pending: t({
     enabled: false,
@@ -783,12 +787,18 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
     body:
       'Hi %staff_name%,\n\n' +
       'You have a new appointment:\n\n' +
-      'Client: %customer_name%\n' +
+      'Booking reference: %booking_ref%\n' +
+      'Client: %customer_full_name%\n' +
+      'Phone: %customer_phone%\n' +
       'Service: %service_name%\n' +
+      'Services & technicians: %service_lineup%\n' +
+      'Add-ons: %add_ons_only%\n' +
       'Date: %appointment_date%\n' +
       'Time: %appointment_time%\n' +
-      'Duration: %duration%\n\n%salon_name%',
-    smsBody: 'New booking: %service_name% for %customer_name% on %appointment_date% %appointment_time%.',
+      'Duration: %duration%\n' +
+      'Total: %total_price%\n' +
+      'Client note: %booking_notes%\n\n%salon_name%',
+    smsBody: 'New booking %booking_ref%: %service_name% for %customer_full_name% %customer_phone% on %appointment_date% %appointment_time%.',
   }),
   staff_booking_cancelled: t({
     subject: 'Booking cancelled: %appointment_date% %appointment_time%',
@@ -826,6 +836,60 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
 // No "Reply STOP" tail: opt-out language is appended per-market by sms-policy
 // (NĐ91 requires it on ADVERTISING only; these are transactional).
 // ===========================================================================
+
+/**
+ * Copy that USED to be the English default.
+ *
+ * A salon that pressed Save on its notification settings before the wording
+ * changed has the old default stored verbatim. That is still an untouched
+ * default — the salon never wrote it — so the Vietnamese overlay below has to
+ * keep recognising it. Without this table, editing an English default silently
+ * un-translates every VN salon that had ever saved its settings, which is a
+ * regression caused by improving the English copy.
+ *
+ * Append here whenever a default string below is changed. Never remove a line.
+ */
+export const LEGACY_NOTIFICATION_DEFAULTS: Partial<Record<keyof NotificationSettings, string[]>> = {
+  smsCustomer: ['{salon}: your {service} on {date} at {time} is booked. See you soon! Reply STOP to opt out.'],
+  smsAdmin: ['New booking: {service} for {customer} on {date} at {time}.'],
+};
+
+/** Same idea for the per-event catalog. Bodies are stored as HTML, so the old
+ *  text goes through the same converter the defaults do. */
+export const LEGACY_TEMPLATE_DEFAULTS: Record<string, Partial<Record<'subject' | 'body' | 'smsBody', string[]>>> = {
+  customer_booking_confirmed: {
+    body: [
+      toHtmlBody(
+        'Hi %customer_name%,\n\n' +
+        'Thank you for booking with %salon_name%! Your appointment is confirmed.\n\n' +
+        'Service: %service_name%\n' +
+        'Add-ons: %add_ons%\n' +
+        'Technician: %staff_name%\n' +
+        'Date: %appointment_date%\n' +
+        'Time: %appointment_time%\n' +
+        'Duration: %duration%\n' +
+        'Total: %total_price%\n\n' +
+        'We look forward to seeing you. Need to make a change? Just reply to this message.\n' +
+        '%salon_name% — %salon_contact%',
+      ),
+    ],
+    smsBody: ['%salon_name%: your %service_name% on %appointment_date% at %appointment_time% is confirmed. See you soon! Reply STOP to opt out.'],
+  },
+  staff_new_booking: {
+    body: [
+      toHtmlBody(
+        'Hi %staff_name%,\n\n' +
+        'You have a new appointment:\n\n' +
+        'Client: %customer_name%\n' +
+        'Service: %service_name%\n' +
+        'Date: %appointment_date%\n' +
+        'Time: %appointment_time%\n' +
+        'Duration: %duration%\n\n%salon_name%',
+      ),
+    ],
+    smsBody: ['New booking: %service_name% for %customer_name% on %appointment_date% %appointment_time%.'],
+  },
+};
 
 export const VN_NOTIFICATION_TEXTS: Partial<NotificationSettings> = {
   emailSubjectCustomer: 'Lịch hẹn của bạn đã được xác nhận — {salon}',

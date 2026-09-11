@@ -7,7 +7,7 @@ import {
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
-import { mergeHistory } from './history-merge';
+import { mergeHistory, isHidden, turnKeys } from './history-merge';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
 import {
@@ -1149,6 +1149,7 @@ export class MessengerService implements OnModuleInit {
     // silently pretending to be the whole story is how someone re-asks a
     // question the customer answered last week.
     let historySource: 'partial' | 'meta' | 'local' = full ? 'local' : 'partial';
+    const hiddenTurns = ((row as unknown as { hiddenTurns?: string[] | null }).hiddenTurns ?? []) as string[];
 
     // Read the real transcript from Meta. The local buffer is the fallback, not
     // the source — see fetchMetaHistory for why they are different things.
@@ -1209,7 +1210,15 @@ export class MessengerService implements OnModuleInit {
       pageName: pg?.pageName ?? null,
       // Never hand the page token or anything else secret to a browser.
       // Photos ride along so the inbox shows what the customer showed the bot.
-      history: turns.map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual, ...(t.images?.length ? { images: t.images } : {}) })),
+      // Messages the salon took off its own screen. Filtered HERE, on the way
+      // out, and not deleted from `history` - the row stays in the database so
+      // the activity log still has the whole story. Hiding is about what a
+      // receptionist has to look at, not about destroying a record.
+      history: turns
+        .filter((t) => !isHidden(t as never, hiddenTurns))
+        // messageId rides along so the screen can name a message back to us
+        // when somebody hides it. See turnKeys - a position cannot do that job.
+        .map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual, messageId: (t as { messageId?: string | null }).messageId ?? null, ...(t.images?.length ? { images: t.images } : {}) })),
       state: view.state,
       stateReason: view.reason,
       waitingMinutes: waitingMinutes(row as never, now),
@@ -1551,15 +1560,41 @@ export class MessengerService implements OnModuleInit {
     return { ok: true };
   }
 
-  /** Close a conversation. A new customer message reopens it (handleMessage). */
-  async setThreadStatus(user: AuthenticatedUser, id: string, status: 'open' | 'done') {
+  /**
+   * Close a conversation, or move it out of the way as junk.
+   *
+   * THREE STATES, AND THE THIRD IS NOT A TIDIER 'done'
+   *
+   * 'done' means handled - a real customer, answered, finished. A new message
+   * from them REOPENS it, because they came back and that matters.
+   *
+   * 'spam' means this is not a customer. A bot, a scammer, somebody who typed
+   * "hi" and vanished, a test conversation from the week the salon was setting
+   * the Page up. When they write again it must NOT reopen: the whole point is
+   * that the inbox stops asking about them.
+   *
+   * Marking spam also does three quiet things that are the real benefit:
+   *   - stamps it read, so it stops counting against the unread badge;
+   *   - releases the thread from whoever was holding it;
+   *   - stops the bot answering (see replyAndRecord) - which is the one that
+   *     costs money, because a scam bot messaging every hour was getting an
+   *     AI-written reply every hour.
+   *
+   * Nothing is deleted. The conversation, its whole transcript and its notes
+   * are exactly where they were, one filter chip away.
+   */
+  async setThreadStatus(user: AuthenticatedUser, id: string, status: 'open' | 'done' | 'spam') {
     const tenantId = this.tenantId(user);
     const row = await this.prisma.messengerThread.findFirst({ where: { id, tenantId } });
     if (!row) throw new NotFoundException('Thread not found');
     await this.prisma.messengerThread.update({
       where: { id: row.id },
-      data: { status } as never,
+      data: (status === 'spam'
+        ? { status, readAt: new Date(), handoff: false, handoffMode: 'auto', assignedUserId: null }
+        : { status }) as never,
     });
+    await this.audit(tenantId, status === 'spam' ? 'messenger.thread_spam' : 'messenger.thread_status');
+    this.events.publish(tenantId, 'message');
     return { ok: true };
   }
 
@@ -2284,7 +2319,14 @@ export class MessengerService implements OnModuleInit {
     // replies. A message from the customer also reopens a closed thread.
     await this.prisma.messengerThread.update({
       where: { id: thread.id },
-      data: { lastCustomerAt: new Date(eventTs && Number.isFinite(eventTs) ? eventTs : Date.now()), status: 'open' } as never,
+      data: {
+        lastCustomerAt: new Date(eventTs && Number.isFinite(eventTs) ? eventTs : Date.now()),
+        // A message reopens a CLOSED conversation, because the customer came
+        // back. It must not reopen a conversation somebody marked as junk -
+        // that would hand the inbox straight back to the scam bot that is
+        // messaging every hour, which is the exact thing the mark was for.
+        ...(String((thread as unknown as { status?: string | null }).status ?? '') === 'spam' ? {} : { status: 'open' }),
+      } as never,
     }).catch(() => undefined);
 
     // The customer's message is stored — tell every open inbox for this salon
@@ -2481,6 +2523,18 @@ export class MessengerService implements OnModuleInit {
   ): Promise<void> {
     const fresh = await this.prisma.messengerThread.findUnique({ where: { id: threadId } });
     if (!fresh) return;
+    // THE BOT DOES NOT ANSWER JUNK.
+    //
+    // This is the part of "mark as spam" that is worth more than the tidier
+    // list. A scam bot messaging the Page every hour was getting an
+    // AI-written reply every hour: our model bill, our Page's sending
+    // reputation, and a conversation that looks alive to anyone reading the
+    // log. One mark and it goes quiet, and it STAYS quiet, because an inbound
+    // message no longer reopens a spam thread either.
+    if (String((fresh as unknown as { status?: string | null }).status ?? '') === 'spam') {
+      this.logger.log(`bot silent on spam thread ${threadId}`);
+      return;
+    }
     const history = (Array.isArray(fresh.history) ? fresh.history : []) as Turn[];
     const imgTurn = attach;
     const inImages = attach.images ?? [];

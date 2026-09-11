@@ -34,7 +34,7 @@ import {
   InboxRow, InboxFilter, channelLabel, channelMark, stateLabel, stateOf,
   sortRows, filterRows, sourcesFrom, waitingCount, composerNotice, displayName, pageColor, initialsOf,
   InboxLabel, followUpState, followUpLabel, followUpCount, channelCounts, channelOf, humanAgentNotice,
-  windowNotice, type WindowInfo,
+  windowNotice, type WindowInfo, spamCount, isSpamRow,
 } from '../lib/inbox-view';
 
 /**
@@ -615,7 +615,9 @@ export function InboxView() {
   // labels onto a second line. Distinct names is the question that matters.
   const showPageChip = new Set(rows.map((r) => String(r.pageName ?? '').trim()).filter(Boolean)).size > 1;
   const sorted = sortRows(filterRows(rows, { filter, source, channel: chan, query, meId: me, labelId }));
-  const unreadCount = rows.filter((r) => r.unread).length;
+  const unreadCount = rows.filter((r) => r.unread && !isSpamRow(r)).length;
+  /** How many conversations are in the bin. Drives whether the chip exists. */
+  const junkCount = spamCount(rows);
 
   /** Clear every unread mark in the shop, then repaint from the server. */
   async function markAllRead() {
@@ -924,6 +926,9 @@ export function InboxView() {
               ['unread', vi ? 'Chưa đọc' : 'Unread'],
               ['mine', vi ? 'Của tôi' : 'Mine'],
               ['followup', vi ? 'Cần theo dõi' : 'Follow-up'],
+              // Last on purpose. It is a bin, not a view of the work - and it
+              // is only worth a chip once there is something in it.
+              ...(junkCount > 0 || filter === 'spam' ? [['spam', vi ? 'Spam' : 'Spam'] as [InboxFilter, string]] : []),
             ] as [InboxFilter, string][]).map(([key, label]) => (
               <button key={key} onClick={() => setFilter(key)}
                 style={{ ...ghostBtn, fontSize: narrow ? 13.5 : 11, padding: narrow ? '8px 14px' : '2px 8px', borderRadius: 999, flexShrink: 0,
@@ -935,6 +940,11 @@ export function InboxView() {
                     nobody can see the count of is a diary left in a drawer. */}
                 {key === 'followup' && dueCount > 0 && (
                   <span style={{ marginLeft: 5, background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>{dueCount}</span>
+                )}
+                {/* Grey, not red. Junk is not urgent - the count is here so
+                    somebody can check the bin was not swallowing real customers. */}
+                {key === 'spam' && junkCount > 0 && (
+                  <span style={{ marginLeft: 5, background: 'var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>{junkCount}</span>
                 )}
               </button>
             ))}
@@ -1239,9 +1249,19 @@ export function InboxView() {
                     title={vi ? 'Để lại dấu chưa đọc' : 'Leave it marked unread'}
                     style={ghostBtn}>● {vi ? 'Chưa đọc' : 'Unread'}</button>
                 )}
-                {!narrow && (state !== 'done'
+                {!narrow && !isSpamRow(detail) && (state !== 'done'
                   ? <button disabled={busy} onClick={() => void act('status', { status: 'done' })} style={ghostBtn}>{vi ? 'Xong' : 'Done'}</button>
                   : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={ghostBtn}>{vi ? 'Mở lại' : 'Reopen'}</button>)}
+                {/* Marking junk is not an everyday action, so it is quiet - and
+                    getting it back is one press, because the cost of a wrong
+                    mark has to be near zero or nobody will use it on the one
+                    that matters. */}
+                {!narrow && (isSpamRow(detail)
+                  ? <button disabled={busy} onClick={() => void act('status', { status: 'open' })}
+                      style={{ ...ghostBtn, borderColor: '#6366f1', color: 'var(--cc7d2fe)' }}>{vi ? 'Không phải spam' : 'Not spam'}</button>
+                  : <button disabled={busy} onClick={() => void act('status', { status: 'spam' })}
+                      title={vi ? 'Chuyển vào Spam — bot ngừng trả lời, khách vẫn nhắn được' : 'Move to Spam — the bot stops replying; nothing is deleted'}
+                      style={{ ...ghostBtn, color: 'var(--c64748b)' }}>{vi ? 'Spam' : 'Spam'}</button>)}
                 {narrow && (
                   // Labels, follow-up and notes are a column on a desktop and a
                   // panel behind this button on a phone. Same content either way.
@@ -1270,6 +1290,16 @@ export function InboxView() {
                   rather than justify-content, whose overflow clips the oldest
                   messages out of reach. */}
               <div style={{ marginTop: 'auto' }} aria-hidden="true" />
+              {/* Open a spam conversation and it looks exactly like a live one
+                  - same bubbles, same composer. Say so, or somebody answers a
+                  scammer wondering why the bot went quiet. */}
+              {isSpamRow(detail) && (
+                <div style={{ alignSelf: 'center', textAlign: 'center', fontSize: 11.5, color: 'var(--c94a3b8)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 8, padding: '6px 12px' }}>
+                  {vi
+                    ? 'Hội thoại này đang ở Spam — bot không trả lời. Không có gì bị xoá.'
+                    : 'This conversation is in Spam — the bot does not reply. Nothing was deleted.'}
+                </div>
+              )}
               {/* Twelve messages must never pretend to be the whole story.
                   When Meta refused the transcript, say so and offer the retry
                   — silence here is how somebody re-asks a question the
@@ -1556,9 +1586,14 @@ export function InboxView() {
                 name; the action itself moves here rather than disappearing. */}
             {narrow && (
               <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 8 }}>
-                {stateOf(detail) !== 'done'
-                  ? <button disabled={busy} onClick={() => void act('status', { status: 'done' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10 }}>✓ {vi ? 'Xong hội thoại' : 'Mark done'}</button>
-                  : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10 }}>{vi ? 'Mở lại hội thoại' : 'Reopen'}</button>}
+                {isSpamRow(detail) ? (
+                  <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10, borderColor: '#6366f1', color: 'var(--cc7d2fe)' }}>{vi ? 'Không phải spam' : 'Not spam'}</button>
+                ) : (<>
+                  {stateOf(detail) !== 'done'
+                    ? <button disabled={busy} onClick={() => void act('status', { status: 'done' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10 }}>✓ {vi ? 'Xong hội thoại' : 'Mark done'}</button>
+                    : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10 }}>{vi ? 'Mở lại hội thoại' : 'Reopen'}</button>}
+                  <button disabled={busy} onClick={() => void act('status', { status: 'spam' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10, color: 'var(--c64748b)' }}>{vi ? 'Spam' : 'Spam'}</button>
+                </>)}
               </div>
             )}
 

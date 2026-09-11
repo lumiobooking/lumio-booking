@@ -31,6 +31,9 @@ export interface InboxRow {
   pageName?: string | null;
   waitingMinutes?: number | null;
   unread?: boolean;
+  /** 'open' | 'done' | 'spam'. See spamRows below for why spam is not a filter
+   *  like the others but a thing every other filter has to exclude. */
+  status?: string | null;
   /** When a MESSAGE last happened. The list sorts by this. */
   lastMessageAt?: string | null;
   /** When the CUSTOMER last wrote — the only column an inbound webhook moves.
@@ -259,7 +262,7 @@ export function sourcesFrom(rows: InboxRow[]): InboxSource[] {
  * newest first, the way every other chat inbox in the world opens. 'waiting'
  * is one click away for when you want to sweep the ones nobody answered.
  */
-export type InboxFilter = 'all' | 'waiting' | 'unread' | 'mine' | 'followup';
+export type InboxFilter = 'all' | 'waiting' | 'unread' | 'mine' | 'followup' | 'spam';
 
 /**
  * How many conversations, and how many of them are waiting, per channel kind.
@@ -273,6 +276,8 @@ export function channelCounts(rows: InboxRow[]): { key: ChannelKind; total: numb
   const order: ChannelKind[] = ['messenger', 'instagram', 'zalo', 'web'];
   const seen = new Map<ChannelKind, { total: number; waiting: number }>();
   for (const r of rows ?? []) {
+    // The channel chips count what the list will actually show.
+    if (isSpamRow(r)) continue;
     const k = channelOf(r.channel);
     const cur = seen.get(k) ?? { total: 0, waiting: 0 };
     cur.total += 1;
@@ -360,6 +365,7 @@ export function followUpLabel(at: unknown, now: Date = new Date()): string {
  */
 export function followUpCount(rows: InboxRow[], now: Date = new Date()): number {
   return rows.reduce((n, r) => {
+    if (isSpamRow(r)) return n;
     const st = followUpState(r.followUpAt, now);
     return n + (st === 'overdue' || st === 'today' ? 1 : 0);
   }, 0);
@@ -371,8 +377,17 @@ export function hasLabel(row: InboxRow, labelId: string): boolean {
 }
 
 /** How many customers are sitting unanswered, across every source. */
+/** Junk is not work waiting. It must not be counted as any. */
+export function isSpamRow(r: InboxRow | null | undefined): boolean {
+  return String(r?.status ?? '') === 'spam';
+}
+
+export function spamCount(rows: InboxRow[]): number {
+  return rows.reduce((n, r) => n + (isSpamRow(r) ? 1 : 0), 0);
+}
+
 export function waitingCount(rows: InboxRow[]): number {
-  return rows.reduce((n, r) => n + (stateOf(r) === 'unclaimed' ? 1 : 0), 0);
+  return rows.reduce((n, r) => n + (!isSpamRow(r) && stateOf(r) === 'unclaimed' ? 1 : 0), 0);
 }
 
 /**
@@ -399,6 +414,15 @@ export function filterRows(rows: InboxRow[], f: FilterState, now: Date = new Dat
   return rows.filter((r) => {
     if (wantSource && sourceKey(r) !== wantSource) return false;
     if (f.channel && f.channel !== 'any' && channelOf(r.channel) !== f.channel) return false;
+
+    // SPAM IS NOT A FILTER LIKE THE OTHERS.
+    //
+    // 'waiting', 'unread', 'mine' each narrow the same list. Spam does the
+    // opposite: it is a pile every other view has to LEAVE OUT, or marking
+    // something as junk would change nothing about the screen it was cluttering.
+    // So the test is two-way, and it comes before everything else.
+    const isSpam = String(r.status ?? '') === 'spam';
+    if (filter === 'spam') { if (!isSpam) return false; } else if (isSpam) return false;
 
     const state = stateOf(r);
     if (filter === 'waiting' && state !== 'unclaimed') return false;

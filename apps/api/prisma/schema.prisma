@@ -1690,6 +1690,20 @@ model MessengerThread {
   senderName String? // customer's display name (best-effort from Graph profile)
 
   history  Json    @default("[]") // recent turns for context
+  /// Messages the salon has hidden from THIS conversation view.
+  ///
+  /// Not a delete. Meta has no API to unsend a message a Page has already
+  /// sent, so nothing here touches the customer's phone or the Page inbox on
+  /// facebook.com - the message is still there, and we do not pretend
+  /// otherwise. What this does is stop the message being drawn in Lumio's
+  /// transcript, which is what a receptionist means by "get that off my
+  /// screen": a test message, a duplicate, a wall of debug text.
+  ///
+  /// Keys, not indexes. The transcript is re-read from Meta on every open and
+  /// re-merged with our buffer, so a position means nothing five minutes from
+  /// now. See turnKeys() - a message is keyed by its Meta message id when we
+  /// have one and by role+text when we do not, and hiding stores both.
+  hiddenTurns String[] @default([])
   lastText String? // last customer message (admin preview)
   handoff  Boolean @default(false) // a human took over → bot stays quiet
   handoffAt DateTime? // last human activity — bot yields 15 min, gives each new message a 5-min grace

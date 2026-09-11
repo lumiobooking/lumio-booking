@@ -214,7 +214,8 @@ export class MessengerController {
   @Roles(...INBOX_ROLES)
   @Post('threads/:id/status')
   threadStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { status?: string }) {
-    return this.svc.setThreadStatus(user, id, dto?.status === 'done' ? 'done' : 'open');
+    const want = String(dto?.status ?? '');
+    return this.svc.setThreadStatus(user, id, want === 'done' ? 'done' : want === 'spam' ? 'spam' : 'open');
   }
 
   /** Opening a conversation in the inbox clears its unread mark. */

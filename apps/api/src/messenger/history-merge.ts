@@ -35,6 +35,43 @@ export interface HistoryTurn {
   messageId?: string | null;
 }
 
+/**
+ * How a message is named so it can still be found tomorrow.
+ *
+ * The transcript is not a stored list. It is re-read from Meta on every open
+ * and re-merged with our own buffer, so "the third message" means nothing five
+ * minutes from now - a delayed webhook or a late Meta page can put a different
+ * message in that position. Anything that has to survive across reads must be
+ * keyed by the message itself.
+ *
+ * Two keys, because neither alone is enough:
+ *
+ *   m:<mid>  Meta's own message id. Exact, and the right answer whenever we
+ *            have it - but our local buffer does not always carry one (a turn
+ *            the bot wrote before we started recording mids, a reply Meta
+ *            rejected and therefore never gave an id to).
+ *   k:role:text  The fallback the merge already dedupes on. Survives a message
+ *            we only know locally, and matches the same message when Meta
+ *            hands it back with an id we did not have before.
+ *
+ * Hiding records BOTH, and a turn is hidden if EITHER matches. That is what
+ * makes the hide stick when the same message arrives by the other route.
+ */
+export function turnKeys(t: HistoryTurn): string[] {
+  const out: string[] = [];
+  if (t?.messageId) out.push(`m:${String(t.messageId)}`);
+  const text = String(t?.content ?? '').trim();
+  if (text) out.push(`k:${t?.role ?? ''}:${text}`);
+  return out;
+}
+
+/** Is this turn one the salon has taken off its screen? */
+export function isHidden(t: HistoryTurn, hidden: readonly string[] | null | undefined): boolean {
+  if (!hidden || hidden.length === 0) return false;
+  const set = hidden instanceof Set ? hidden : new Set(hidden);
+  return turnKeys(t).some((k) => set.has(k));
+}
+
 const key = (t: HistoryTurn) => `${t.role}:${String(t?.content ?? '').trim()}`;
 const txt = (t: HistoryTurn) => String(t?.content ?? '').trim();
 const ms = (t: HistoryTurn) => {

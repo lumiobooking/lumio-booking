@@ -329,8 +329,6 @@ export function MonthCalendar({
           background: t.alarm ? t.bg : 'var(--c1e293b)',
           border: `1px solid ${t.alarm ? t.border : 'var(--c334155)'}`,
           borderLeft: `${big ? 5 : 4}px solid ${t.bar}`,
-          // Published is history: still readable, never competing.
-          opacity: tone === 'posted' ? .55 : 1,
           overflow: 'hidden',
         }}
       >
@@ -341,7 +339,7 @@ export function MonthCalendar({
             thumb.kind === 'video' ? (
               <span style={{ ...box, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: big ? 15 : 8, color: 'var(--c94a3b8)' }}>▶</span>
             ) : (
-              <img src={thumb.url} alt="" loading="lazy" style={{ ...box, objectFit: 'cover' }} />
+              <img src={thumb.url} alt="" loading="lazy" style={{ ...box, objectFit: 'cover', opacity: tone === 'posted' ? .7 : 1 }} />
             )
           ) : (
             <span style={{ ...box, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: big ? 14 : 8, color: 'var(--c475569)' }}>✎</span>
@@ -349,7 +347,14 @@ export function MonthCalendar({
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: big ? 7 : 4 }}>
-              <b style={{ fontSize: big ? 14 : 10.5, color: t.alarm ? t.fg : 'var(--ce2e8f0)', flexShrink: 0 }}>
+              {/* Published recedes by colour, never by opacity.
+                  Fading a card works on a dark screen and erases it on a light
+                  one: the text loses contrast AND the card's own surface fades
+                  into the white behind it, so a month of finished work turned
+                  into a page of ghosts the moment somebody switched themes.
+                  A dimmer TEXT token flips with the theme and stays legible in
+                  both. */}
+              <b style={{ fontSize: big ? 14 : 10.5, color: t.alarm ? t.fg : tone === 'posted' ? 'var(--c94a3b8)' : 'var(--ce2e8f0)', flexShrink: 0 }}>
                 {fmtInTz(new Date(p.scheduledAt), { hour: '2-digit', minute: '2-digit' })}
               </b>
               <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
@@ -369,7 +374,7 @@ export function MonthCalendar({
             </div>
             <div style={{
               fontSize: big ? 12.5 : 9.5, lineHeight: 1.4, marginTop: big ? 3 : 1,
-              color: t.alarm ? t.fg : 'var(--c94a3b8)',
+              color: t.alarm ? t.fg : tone === 'posted' ? 'var(--c64748b)' : 'var(--c94a3b8)',
               fontWeight: t.alarm ? 700 : 400,
               ...(big
                 ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }
@@ -397,13 +402,12 @@ export function MonthCalendar({
   const legend = (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 12px', fontSize: 11, color: 'var(--c94a3b8)', alignItems: 'center' }}>
       {(['held', 'failed', 'blocked', 'writing', 'design', 'ready', 'posted'] as Tone[]).map((k) => (
-        <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: k === 'posted' ? 'var(--c64748b)' : 'var(--c94a3b8)' }}>
           <span style={{
             width: 13, height: 11, borderRadius: 3,
             background: TONES[k].alarm ? TONES[k].bg : 'var(--c1e293b)',
             border: `1px solid ${TONES[k].alarm ? TONES[k].border : 'var(--c334155)'}`,
             borderLeft: `4px solid ${TONES[k].bar}`,
-            opacity: k === 'posted' ? .55 : 1,
           }} />
           {TONES[k].icon} {vi ? TONES[k].vi : TONES[k].en}
         </span>
@@ -470,7 +474,7 @@ export function MonthCalendar({
                 </span>
                 <span style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
                   {mine.slice(0, 4).map((x) => (
-                    <span key={x.id} style={{ width: 5, height: 5, borderRadius: '50%', background: TONES[postTone(x)].bar, opacity: postTone(x) === 'posted' ? .5 : 1 }} />
+                    <span key={x.id} style={{ width: 5, height: 5, borderRadius: '50%', background: TONES[postTone(x)].bar }} />
                   ))}
                 </span>
               </button>
@@ -660,12 +664,14 @@ function Tally({ n, bar, label, loud }: { n: number; bar: string; label: string;
         display: 'inline-flex', alignItems: 'center', gap: 5,
         padding: '2px 8px 2px 6px', borderRadius: 20,
         border: '1px solid var(--c334155)', background: 'var(--c0f172a)',
-        opacity: on ? 1 : .45,
       }}
     >
-      <span style={{ width: 4, height: 12, borderRadius: 2, background: bar, display: 'inline-block' }} />
-      <b style={{ fontSize: 12, color: loud && on ? '#ef4444' : 'var(--ce2e8f0)' }}>{n}</b>
-      <span style={{ fontSize: 10.5, color: 'var(--c94a3b8)' }}>{label}</span>
+      {/* A zero goes quiet through colour. Fading the whole chip made it
+          unreadable on a light background — and "0 waiting" is information
+          worth reading. */}
+      <span style={{ width: 4, height: 12, borderRadius: 2, background: bar, display: 'inline-block', opacity: on ? 1 : .35 }} />
+      <b style={{ fontSize: 12, color: loud && on ? '#ef4444' : on ? 'var(--ce2e8f0)' : 'var(--c64748b)' }}>{n}</b>
+      <span style={{ fontSize: 10.5, color: on ? 'var(--c94a3b8)' : 'var(--c64748b)' }}>{label}</span>
     </span>
   );
 }

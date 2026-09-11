@@ -29,7 +29,7 @@ const canStaff = (method: string) => (rolesOf(method) ?? []).includes(UserRole.S
 // Answering customers. A technician needs all of this to do the job.
 const STAFF_MAY = [
   'threads', 'thread', 'avatar', 'stream',
-  'send', 'handoff', 'threadStatus', 'threadRead', 'rename',
+  'send', 'handoff', 'threadStatus', 'threadRead', 'threadUnread', 'readAll', 'rename',
   'addNote', 'deleteNote',
   'labels', 'createLabel', 'setLabel', 'followUp',
   // Turning notifications on for their own phone is NOT here: that already

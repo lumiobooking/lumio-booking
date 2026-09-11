@@ -224,6 +224,28 @@ export class MessengerController {
     return this.svc.markThreadRead(user, id);
   }
 
+  /**
+   * Put the unread mark BACK.
+   *
+   * Reading is not the same as dealing with it. Somebody opens a conversation
+   * between two customers at the desk, sees it needs a price they have to go
+   * and check, and walks away — and the one signal that would have brought
+   * them back was spent by the act of looking. Every mail client has this for
+   * the same reason.
+   */
+  @Roles(...INBOX_ROLES)
+  @Post('threads/:id/unread')
+  threadUnread(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.markThreadUnread(user, id);
+  }
+
+  /** Clear the whole unread pile at once, the way an inbox is triaged after lunch. */
+  @Roles(...INBOX_ROLES)
+  @Post('threads/read-all')
+  readAll(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.markAllRead(user);
+  }
+
   @Roles(...INBOX_ROLES)
   @Post('threads/:id/rename')
   rename(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: RenameThreadDto) {

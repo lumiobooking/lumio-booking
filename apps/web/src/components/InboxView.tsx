@@ -222,7 +222,7 @@ export function InboxView() {
     }
   }, [token]);
 
-  const loadThread = useCallback(async (id: string) => {
+  const loadThread = useCallback(async (id: string, markRead = true) => {
     if (!token) return;
     // Being called IS the declaration that this conversation is now open.
     // Waiting for React to re-render and refresh the ref instead leaves a gap:
@@ -244,7 +244,13 @@ export function InboxView() {
       // không được".
       const quick = await apiFetch<ThreadDetail>(`/messenger/threads/${id}?full=0`, { token });
       if (openRef.current === id) setDetail(quick);
-      void apiFetch(`/messenger/threads/${id}/read`, { method: 'POST', token }).catch(() => undefined);
+      // Reading is a person's act, not the page's.
+      //
+      // The inbox opens the top conversation by itself so three columns are not
+      // blank — but spending its unread mark for it would be the page claiming
+      // somebody looked. `markRead: false` on that one path keeps the blue mark
+      // until a human clicks the row.
+      if (markRead) void apiFetch(`/messenger/threads/${id}/read`, { method: 'POST', token }).catch(() => undefined);
       const fullD = await apiFetch<ThreadDetail>(`/messenger/threads/${id}`, { token });
       if (openRef.current === id) setDetail(fullD);
     } catch (e) { setErr(String(e)); }
@@ -268,6 +274,10 @@ export function InboxView() {
   //
   // The stream carries no message content — see the comment on the endpoint.
   const openRef = useRef<string | null>(null);
+  /** A conversation the person put BACK on the unread pile while it is open.
+   *  Held in a ref, not state: the poll closure reads it, and re-creating that
+   *  closure on every change would tear down the event stream. */
+  const keepUnreadRef = useRef<string | null>(null);
   openRef.current = openId;
 
   useEffect(() => {
@@ -278,7 +288,10 @@ export function InboxView() {
 
     const refresh = () => {
       void loadList();
-      if (openRef.current) void loadThread(openRef.current);
+      // A poll is not a person. Refreshing the open thread re-reads it only
+      // when the person has not deliberately parked it as unread — otherwise
+      // the next tick would quietly undo the press.
+      if (openRef.current) void loadThread(openRef.current, keepUnreadRef.current !== openRef.current);
     };
 
     const connect = () => {
@@ -420,6 +433,35 @@ export function InboxView() {
   // labels onto a second line. Distinct names is the question that matters.
   const showPageChip = new Set(rows.map((r) => String(r.pageName ?? '').trim()).filter(Boolean)).size > 1;
   const sorted = sortRows(filterRows(rows, { filter, source, channel: chan, query, meId: me, labelId }));
+  const unreadCount = rows.filter((r) => r.unread).length;
+
+  /** Clear every unread mark in the shop, then repaint from the server. */
+  async function markAllRead() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      await apiFetch('/messenger/threads/read-all', { method: 'POST', token });
+      await loadList();
+    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+  }
+
+  /**
+   * Put this conversation back on the pile.
+   *
+   * Stays on screen — the row simply turns blue again. What makes that hold is
+   * keepUnreadRef: without it the 30-second poll re-reads the open thread and
+   * undoes the press, which is the kind of button that makes people stop
+   * trusting the screen.
+   */
+  async function markUnread(id: string) {
+    if (!token) return;
+    setBusy(true);
+    keepUnreadRef.current = id;
+    try {
+      await apiFetch(`/messenger/threads/${id}/unread`, { method: 'POST', token });
+      await loadList();
+    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+  }
   const firstId = sorted[0]?.id ?? null;
 
   // Open the top conversation by itself.
@@ -433,7 +475,7 @@ export function InboxView() {
   useEffect(() => {
     if (narrow || openId || !firstId) return;
     setOpenId(firstId);
-    void loadThread(firstId);
+    void loadThread(firstId, false);
     // Not `sorted` — it is rebuilt on every render, which would re-run this
     // effect on every render to do nothing. The id is the only part that matters.
   }, [narrow, openId, firstId, loadThread]);
@@ -550,9 +592,40 @@ export function InboxView() {
   return (
     <>
       {!narrow && (
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{vi ? 'Hộp thư' : 'Inbox'}</h1>
+        // The band above the inbox used to hold one word and a lot of dark.
+        // It now carries what a person standing at the desk wants before they
+        // read anything: how many are unanswered, how many unread, and WHICH
+        // accounts this inbox is actually watching — the last one is the fact
+        // that decides whether a silent inbox means "quiet day" or "the Page
+        // fell off two weeks ago and nobody noticed".
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{vi ? 'Hộp thư' : 'Inbox'}</h1>
           {waiting > 0 && pill('wait', vi ? `${waiting} khách đang chờ` : `${waiting} waiting`)}
+          {unreadCount > 0 && (
+            <span style={{ background: 'var(--c172554)', color: 'var(--c93c5fd)', border: '1px solid #3b82f6', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+              ● {unreadCount} {vi ? 'chưa đọc' : 'unread'}
+            </span>
+          )}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0 }}>
+            {sources.length === 0 ? (
+              <span style={{ fontSize: 12, color: 'var(--cfcd34d)' }}>
+                {vi ? 'Chưa nối kênh nào — vào Kênh kết nối để nối Trang.' : 'No channel connected — open Channels to connect a Page.'}
+              </span>
+            ) : sources.map((src) => (
+              <span key={src.key} title={src.label}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5, maxWidth: 220,
+                  background: pageColor(src.key.split('|')[0]).bg, color: pageColor(src.key.split('|')[0]).fg,
+                  borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 600,
+                }}>
+                {channelMark(src.channel)}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{src.label}</span>
+                {src.waiting > 0 && (
+                  <span style={{ background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>{src.waiting}</span>
+                )}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -639,12 +712,22 @@ export function InboxView() {
           display: (narrow && openId) ? 'none' : 'flex',
           ...(narrow ? { flex: '1 1 0%' } : {}),
         }}>
-          <div style={{ padding: '9px 10px', borderBottom: '1px solid var(--c1e293b)' }}>
+          <div style={{ padding: '9px 10px', borderBottom: '1px solid var(--c1e293b)', display: 'flex', gap: 7, alignItems: 'center' }}>
             <input value={query} onChange={(e) => setQuery(e.target.value)}
               placeholder={vi ? 'Tìm khách…' : 'Search…'}
               // 16px on the phone is not a taste choice: anything smaller and
               // iOS zooms the page the moment the field is tapped.
-              style={{ ...ui.input, fontSize: narrow ? 16 : 12, padding: narrow ? '10px 13px' : '6px 9px', borderRadius: narrow ? 12 : 8 }} />
+              style={{ ...ui.input, flex: 1, minWidth: 0, fontSize: narrow ? 16 : 12, padding: narrow ? '10px 13px' : '6px 9px', borderRadius: narrow ? 12 : 8 }} />
+            {/* Clears the whole blue pile. Only offered when there IS one —
+                a button that does nothing is a button people learn to ignore. */}
+            {unreadCount > 0 && (
+              <button onClick={() => void markAllRead()} disabled={busy}
+                title={vi ? `Đánh dấu đã đọc tất cả (${unreadCount})` : `Mark all read (${unreadCount})`}
+                aria-label={vi ? 'Đánh dấu đã đọc tất cả' : 'Mark all read'}
+                style={{ ...ghostBtn, flexShrink: 0, padding: narrow ? '9px 11px' : '6px 9px', fontSize: narrow ? 14 : 13, lineHeight: 1 }}>
+                ✓✓
+              </button>
+            )}
           </div>
 
           {/* Which channel.
@@ -767,24 +850,32 @@ export function InboxView() {
               const st = stateLabel(r, vi);
               const on = r.id === openId;
               return (
-                <button key={r.id} onClick={() => { setOpenId(r.id); void loadThread(r.id); }}
+                <button key={r.id} onClick={() => { keepUnreadRef.current = null; setOpenId(r.id); void loadThread(r.id); }}
+                  // Unread has to be readable from across the room.
+                  //
+                  // It used to be a 7px dot and a slightly bolder name — on a
+                  // dark list of dark rows, invisible. Three signals now carry
+                  // it together, so no single one has to win on its own: a solid
+                  // blue rail down the left edge, a lifted row background, and
+                  // the text at full strength while read rows sit back.
                   style={{ width: '100%', textAlign: 'left', display: 'block', cursor: 'pointer',
-                    background: on ? 'var(--c1e293b)' : 'transparent', border: 'none',
-                    borderLeft: `2px solid ${on ? '#6366f1' : 'transparent'}`,
+                    background: on ? 'var(--c1e293b)' : r.unread ? 'var(--c172554)' : 'transparent',
+                    border: 'none',
+                    borderLeft: `3px solid ${on ? '#6366f1' : r.unread ? '#3b82f6' : 'transparent'}`,
                     borderBottom: '1px solid var(--c1e293b)', padding: narrow ? '13px 14px' : '9px 11px' }}>
                   <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
                     <Avatar row={r} size={narrow ? 48 : 34} />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                        <span style={{ color: 'var(--ce2e8f0)', fontSize: narrow ? 15.5 : 13, fontWeight: r.unread ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ color: r.unread ? 'var(--cf8fafc)' : 'var(--c94a3b8)', fontSize: narrow ? 15.5 : 13, fontWeight: r.unread ? 800 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {displayName(r, vi)}
                         </span>
-                        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--c64748b)', flexShrink: 0 }}>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, color: r.unread ? 'var(--c93c5fd)' : 'var(--c64748b)', fontWeight: r.unread ? 700 : 400, flexShrink: 0 }}>
                           {fmtInTz(r.lastMessageAt || r.updatedAt, { hour: '2-digit', minute: '2-digit' })}
                         </span>
-                        {r.unread && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />}
+                        {r.unread && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }} aria-label={vi ? 'Chưa đọc' : 'Unread'} />}
                       </div>
-                      <p style={{ margin: '0 0 5px', fontSize: narrow ? 13.5 : 12, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
+                      <p style={{ margin: '0 0 5px', fontSize: narrow ? 13.5 : 12, color: r.unread ? 'var(--ce2e8f0)' : 'var(--c64748b)', fontWeight: r.unread ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                         {pill(st.tone, st.text)}
                         {/* The Page, named and in its own colour — but only
@@ -963,6 +1054,13 @@ export function InboxView() {
                 {(state === 'human' || state === 'unclaimed')
                   ? <button disabled={busy} onClick={() => void act('handoff', { handoff: false })} style={{ ...ghostBtn, ...(narrow ? { padding: '9px 13px', fontSize: 13.5, borderRadius: 10 } : {}) }}>{vi ? 'Trả bot' : 'To bot'}</button>
                   : <button disabled={busy} onClick={() => void act('handoff', { handoff: true })} style={{ ...ghostBtn, ...(narrow ? { padding: '9px 13px', fontSize: 13.5, borderRadius: 10, borderColor: '#6366f1', color: 'var(--cc7d2fe)' } : {}) }}>{vi ? 'Tôi nhận' : 'Take over'}</button>}
+                {/* Read, but not dealt with. The one action every mail client
+                    has and every chat inbox forgets. */}
+                {!narrow && (
+                  <button disabled={busy} onClick={() => void markUnread(detail.id)}
+                    title={vi ? 'Để lại dấu chưa đọc' : 'Leave it marked unread'}
+                    style={ghostBtn}>● {vi ? 'Chưa đọc' : 'Unread'}</button>
+                )}
                 {!narrow && (state !== 'done'
                   ? <button disabled={busy} onClick={() => void act('status', { status: 'done' })} style={ghostBtn}>{vi ? 'Xong' : 'Done'}</button>
                   : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={ghostBtn}>{vi ? 'Mở lại' : 'Reopen'}</button>)}

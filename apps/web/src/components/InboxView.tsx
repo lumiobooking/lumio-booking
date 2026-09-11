@@ -37,9 +37,20 @@ import {
 } from '../lib/inbox-view';
 
 interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Photos the customer attached. */ images?: string[] }
+interface ApptCtx {
+  id: string;
+  startTime: string;
+  status?: string | null;
+  service?: { name?: string | null } | null;
+  assignedStaff?: { firstName?: string | null } | null;
+}
 interface CustomerCtx {
-  firstName?: string | null; lastName?: string | null; phone?: string | null;
+  firstName?: string | null; lastName?: string | null; phone?: string | null; email?: string | null;
   visits?: number; nextAt?: string | null; usualTech?: string | null;
+  /** The last five appointments, newest first — service, technician, status.
+   *  The server has always sent these; the panel used to reduce them to three
+   *  numbers and throw the rest away, then leave half a column empty. */
+  appointments?: ApptCtx[] | null;
 }
 interface ThreadDetail extends InboxRow {
   history: Turn[];
@@ -816,6 +827,35 @@ export function InboxView() {
               );
             })}
           </div>
+
+          {/* The three numbers a person opens an inbox to check.
+              They used to live in the middle panel's empty state, which means
+              they were visible exactly when there was nothing to look at and
+              hidden the moment a conversation was open — backwards. Pinned to
+              the foot of the list they are always on screen, and they fill the
+              column below a short list instead of leaving it blank. */}
+          {!narrow && rows.length > 0 && (
+            <div style={{
+              flexShrink: 0, borderTop: '1px solid var(--c1e293b)', background: 'var(--c0b1220)',
+              display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+            }}>
+              {([
+                { n: waiting, label: vi ? 'đang chờ' : 'waiting', tone: waiting > 0 ? '#fcd34d' : 'var(--c64748b)', f: 'waiting' as InboxFilter },
+                { n: dueCount, label: vi ? 'cần theo dõi' : 'follow-up', tone: dueCount > 0 ? '#fdba74' : 'var(--c64748b)', f: 'followup' as InboxFilter },
+                { n: rows.filter((r) => r.unread).length, label: vi ? 'chưa đọc' : 'unread', tone: rows.some((r) => r.unread) ? '#f87171' : 'var(--c64748b)', f: 'unread' as InboxFilter },
+              ]).map((b) => (
+                <button key={b.label} onClick={() => setFilter(b.f)}
+                  title={vi ? 'Lọc theo mục này' : 'Filter by this'}
+                  style={{
+                    border: 'none', background: filter === b.f ? 'var(--c1e293b)' : 'transparent',
+                    cursor: 'pointer', padding: '8px 4px', fontFamily: 'inherit', textAlign: 'center',
+                  }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: b.tone, fontVariantNumeric: 'tabular-nums', lineHeight: 1.15 }}>{b.n}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{b.label}</div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Conversation */}
@@ -894,10 +934,20 @@ export function InboxView() {
                   {displayName(detail, vi)}
                   {!detail.senderName && <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}> ✎</span>}
                 </p>
-                <p style={{ margin: 0, fontSize: 11, color: 'var(--c64748b)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <p style={{ margin: 0, fontSize: 11, color: 'var(--c64748b)', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                   <span>{channelLabel(detail.channel).text.replace(/^\S+\s/, '')}</span>
                   {detail.pageName && (
                     <span style={{ background: pageColor(detail.pageId).bg, color: pageColor(detail.pageId).fg, borderRadius: 5, padding: '1px 6px', fontWeight: 600 }}>{detail.pageName}</span>
+                  )}
+                  {/* How long ago they wrote. Meta's 24-hour and 7-day windows
+                      are the rules this screen lives under, and the warning bar
+                      above the composer only says WHICH side of them we are on.
+                      This says by how much — the difference between "answer now"
+                      and "that ship sailed on Tuesday". */}
+                  {detail.lastMessageAt && (
+                    <span title={fmtInTz(detail.lastMessageAt, { dateStyle: 'medium', timeStyle: 'short' })}>
+                      · {vi ? 'nhắn' : 'wrote'} {sinceLabel(detail.lastMessageAt, vi)}
+                    </span>
                   )}
                 </p>
               </div>
@@ -926,6 +976,15 @@ export function InboxView() {
             </div>
 
             <div style={{ flex: '1 1 0%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0, padding: narrow ? 12 : 14, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--c0b1220)' }}>
+              {/* Messages sit on the floor, not the ceiling.
+                  A four-message conversation in a window-tall column used to
+                  cluster at the top with a field of empty dark between the last
+                  message and the box you answer in. `margin-top: auto` on a
+                  zero-height first child pushes the stack down when it is short
+                  and does nothing once it overflows — which is why it is this
+                  rather than justify-content, whose overflow clips the oldest
+                  messages out of reach. */}
+              <div style={{ marginTop: 'auto' }} aria-hidden="true" />
               {/* Twelve messages must never pretend to be the whole story.
                   When Meta refused the transcript, say so and offer the retry
                   — silence here is how somebody re-asks a question the
@@ -1057,14 +1116,76 @@ export function InboxView() {
           ) : (<>
             <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--c1e293b)' }}>
               <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--c64748b)' }}>{vi ? 'Khách này ở Lumio' : 'This customer, in Lumio'}</p>
-              {detail.customer ? (
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {detail.customer.nextAt && <Stat label={vi ? 'Lần tới' : 'Next'} value={fmtInTz(detail.customer.nextAt, { dateStyle: 'short', timeStyle: 'short' })} />}
-                  <Stat label={vi ? 'Đã đến' : 'Visits'} value={vi ? `${detail.customer.visits ?? 0} lần` : String(detail.customer.visits ?? 0)} />
-                  {detail.customer.usualTech && <Stat label={vi ? 'Thợ quen' : 'Usual tech'} value={detail.customer.usualTech} />}
-                  {detail.customer.phone && <Stat label={vi ? 'Điện thoại' : 'Phone'} value={detail.customer.phone} />}
-                </div>
-              ) : (
+              {detail.customer ? (() => {
+                // Four facts stacked two lines each used a third of the column
+                // to say very little, and the appointments the server had
+                // already sent were thrown away. They are the reason somebody
+                // opens this panel mid-conversation: is this person booked,
+                // for what, with whom.
+                const appts = [...(detail.customer.appointments ?? [])]
+                  .filter((a) => a && a.startTime)
+                  .sort((a, b) => +new Date(b.startTime) - +new Date(a.startTime));
+                const now = Date.now();
+                const upcoming = [...appts].reverse().find((a) => +new Date(a.startTime) > now) ?? null;
+                const past = appts.filter((a) => +new Date(a.startTime) <= now).slice(0, 3);
+                const who = (a: ApptCtx) => a.assignedStaff?.firstName ?? null;
+                const what = (a: ApptCtx) => a.service?.name ?? null;
+                return (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {/* The facts, two to a row. Same information, a third of the height. */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 10px' }}>
+                      <Stat label={vi ? 'Đã đến' : 'Visits'} value={vi ? `${detail.customer.visits ?? 0} lần` : String(detail.customer.visits ?? 0)} />
+                      {detail.customer.usualTech && <Stat label={vi ? 'Thợ quen' : 'Usual tech'} value={detail.customer.usualTech} />}
+                      {detail.customer.phone && <Stat label={vi ? 'Điện thoại' : 'Phone'} value={detail.customer.phone} />}
+                      {detail.customer.email && <Stat label="Email" value={detail.customer.email} />}
+                    </div>
+
+                    {/* The next appointment, given the weight it has in the
+                        conversation. Not a stat line — the thing itself. */}
+                    {upcoming ? (
+                      <div style={{ border: '1px solid var(--c334155)', borderRadius: 9, padding: '9px 11px', background: 'var(--c0b1220)' }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 4 }}>
+                          <span style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--c64748b)' }}>{vi ? 'Lịch tới' : 'Next visit'}</span>
+                          {upcoming.status && pill(apptTone(upcoming.status), apptStatusLabel(upcoming.status, vi))}
+                        </div>
+                        <p style={{ margin: 0, fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                          {fmtInTz(upcoming.startTime, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                        </p>
+                        <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--c94a3b8)' }}>
+                          {[what(upcoming), who(upcoming) && `${vi ? 'thợ' : 'with'} ${who(upcoming)}`].filter(Boolean).join(' · ') || (vi ? 'chưa rõ dịch vụ' : 'service not set')}
+                        </p>
+                      </div>
+                    ) : (
+                      <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)' }}>
+                        {vi ? 'Chưa có lịch hẹn sắp tới.' : 'No upcoming appointment.'}
+                      </p>
+                    )}
+
+                    {/* What they actually came in for. Three lines of history
+                        answer "have we done this before, and who did it" without
+                        leaving the conversation. */}
+                    {past.length > 0 && (
+                      <div>
+                        <p style={{ margin: '0 0 5px', fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--c64748b)' }}>
+                          {vi ? 'Đã làm gần đây' : 'Recent visits'}
+                        </p>
+                        <div style={{ display: 'grid', gap: 4 }}>
+                          {past.map((a) => (
+                            <div key={a.id} style={{ display: 'flex', gap: 8, fontSize: 12, lineHeight: 1.45 }}>
+                              <span style={{ color: 'var(--c64748b)', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                                {fmtInTz(a.startTime, { day: '2-digit', month: '2-digit' })}
+                              </span>
+                              <span style={{ color: 'var(--c94a3b8)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {[what(a), who(a)].filter(Boolean).join(' · ') || (vi ? 'lịch hẹn' : 'appointment')}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })() : (
                 <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5 }}>
                   {/* Deliberately empty rather than guessed. Matching on a name
                       would show one customer another customer's spending. */}
@@ -1284,6 +1405,46 @@ function Box({ n, label, sub, tone }: { n: number; label: string; sub?: string; 
       {sub && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{sub}</div>}
     </div>
   );
+}
+
+/**
+ * How a booking status reads and looks in the customer panel.
+ *
+ * Green is "this is on", amber is "not settled yet", grey is "off". Raw enum
+ * names are not words: a receptionist reading "ASSIGNED" has to translate it
+ * before it means anything, and CANCELLED in green means the opposite of what
+ * the colour says.
+ */
+/** "3 min", "9 days" — how long ago, in the one unit that reads cleanly. */
+function sinceLabel(at: string, vi: boolean): string {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60_000));
+  if (!Number.isFinite(mins)) return '';
+  if (mins < 1) return vi ? 'vừa xong' : 'just now';
+  if (mins < 60) return vi ? `${mins} phút trước` : `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return vi ? `${hrs} giờ trước` : `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return vi ? `${days} ngày trước` : `${days}d ago`;
+}
+
+function apptTone(status: string): string {
+  const s = String(status).toUpperCase();
+  if (s === 'CANCELLED' || s === 'NO_SHOW' || s === 'COMPLETED') return 'done';
+  if (s === 'PENDING') return 'wait';
+  return 'held';
+}
+
+function apptStatusLabel(status: string, vi: boolean): string {
+  const s = String(status).toUpperCase();
+  const en: Record<string, string> = {
+    PENDING: 'pending', ASSIGNED: 'assigned', ACCEPTED: 'accepted', CONFIRMED: 'confirmed',
+    COMPLETED: 'done', CANCELLED: 'cancelled', NO_SHOW: 'no-show',
+  };
+  const vn: Record<string, string> = {
+    PENDING: 'chờ xếp', ASSIGNED: 'đã xếp thợ', ACCEPTED: 'thợ nhận', CONFIRMED: 'đã xác nhận',
+    COMPLETED: 'đã xong', CANCELLED: 'đã huỷ', NO_SHOW: 'không đến',
+  };
+  return (vi ? vn : en)[s] ?? s.toLowerCase().replace(/_/g, ' ');
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

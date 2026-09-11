@@ -297,17 +297,30 @@ export function InboxView() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [detail?.history?.length]);
 
+  // The inbox is floor-to-ceiling, on every screen.
+  //
+  // It used to be measured on the phone only; on a desktop the card had no
+  // height at all and the panes inside were capped at 58vh / 46vh / 78vh. On a
+  // 1080p screen that produced a ~560px card floating in 340px of empty dark —
+  // the single loudest thing wrong with this screen. Measuring the card's own
+  // top is what makes a fixed height safe: whatever the shell puts above it
+  // (support banner, heading, an error) is already subtracted, so the bottom
+  // edge lands on the bottom of the window instead of somewhere past it.
   useEffect(() => {
-    if (!narrow) { setCardH(null); return; }
     const measure = () => {
-      window.scrollTo(0, 0);
+      if (narrow) window.scrollTo(0, 0);
       const top = cardRef.current?.getBoundingClientRect().top ?? 0;
-      setCardH(`calc(100dvh - ${Math.max(0, Math.round(top))}px - 8px)`);
+      const gap = narrow ? 8 : 16;
+      setCardH(`calc(100dvh - ${Math.max(0, Math.round(top))}px - ${gap}px)`);
     };
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
-  }, [narrow, openId, showInfo]);
+    // `err` is in here because the error banner renders ABOVE the card: showing
+    // or clearing one moves the card's top, and a height measured against the
+    // old top is a card that overshoots the window by the height of a banner.
+  }, [narrow, openId, showInfo, err]);
+
 
   async function act(path: string, body?: Record<string, unknown>) {
     if (!openId || !token) return;
@@ -387,7 +400,32 @@ export function InboxView() {
   }
 
   const sources = sourcesFrom(rows);
+  // Whether the Page chip on each row is worth its width.
+  //
+  // Counting SOURCES answers a different question: one Facebook Page plus the
+  // Instagram account linked to it is TWO sources carrying ONE name, so a salon
+  // with a single Page still got "Lumio Booking" stamped on every row — the
+  // same eleven characters repeated down the list, pushing the customer's own
+  // labels onto a second line. Distinct names is the question that matters.
+  const showPageChip = new Set(rows.map((r) => String(r.pageName ?? '').trim()).filter(Boolean)).size > 1;
   const sorted = sortRows(filterRows(rows, { filter, source, channel: chan, query, meId: me, labelId }));
+  const firstId = sorted[0]?.id ?? null;
+
+  // Open the top conversation by itself.
+  //
+  // Three columns of "pick a conversation" while three conversations sit in
+  // the list is an empty screen the person has to click to fill. Every inbox
+  // worth copying opens on a thread. Only on a desktop: on a phone the list
+  // IS the screen, and auto-opening would hide it behind a chat nobody asked
+  // for. Re-fires whenever nothing is open, so changing a filter lands on the
+  // first row of the new filter rather than on nothing.
+  useEffect(() => {
+    if (narrow || openId || !firstId) return;
+    setOpenId(firstId);
+    void loadThread(firstId);
+    // Not `sorted` — it is rebuilt on every render, which would re-run this
+    // effect on every render to do nothing. The id is the only part that matters.
+  }, [narrow, openId, firstId, loadThread]);
   const chans = channelCounts(rows);
   const waiting = waitingCount(rows);
   const dueCount = followUpCount(rows);
@@ -510,6 +548,9 @@ export function InboxView() {
       {err && <div style={{ ...ui.card, borderColor: 'var(--c7f1d1d)', color: 'var(--cfca5a5)', marginBottom: 12, fontSize: 13 }}>{err}</div>}
 
       <div ref={cardRef} style={{ ...ui.card, padding: 0, overflow: 'hidden', display: 'grid',
+        // Desktop: exactly as tall as the window allows, so every pane below
+        // fills its column and scrolls inside itself.
+        ...(narrow ? {} : { height: cardH ?? undefined }),
         // One column on a phone. The list and the conversation then take turns
         // filling the screen, the way every messaging app on a phone works.
         gridTemplateColumns: narrow ? '1fr' : '52px minmax(0,290px) minmax(0,1fr) minmax(0,270px)',
@@ -545,7 +586,7 @@ export function InboxView() {
           background: 'var(--c0b1220)', gap: 6, display: (narrow && openId) ? 'none' : 'flex',
           ...(narrow
             ? { flexDirection: 'row', padding: '10px 12px', borderBottom: '1px solid var(--c1e293b)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const, flexShrink: 0, minHeight: 54, alignItems: 'center' }
-            : { flexDirection: 'column', padding: '10px 0', borderRight: '1px solid var(--c1e293b)', alignItems: 'center' }),
+            : { flexDirection: 'column', padding: '10px 0', borderRight: '1px solid var(--c1e293b)', alignItems: 'center', minHeight: 0, overflowY: 'auto' as const }),
         }}>
           <button onClick={() => setSource('any')} title={vi ? 'Tất cả nguồn' : 'All sources'} aria-label={vi ? 'Tất cả nguồn' : 'All sources'}
             style={{
@@ -582,10 +623,10 @@ export function InboxView() {
 
         {/* Conversation list */}
         <div style={{
-          borderRight: narrow ? 'none' : '1px solid var(--c1e293b)', flexDirection: 'column', minWidth: 0,
+          borderRight: narrow ? 'none' : '1px solid var(--c1e293b)', flexDirection: 'column', minWidth: 0, minHeight: 0,
           // On a phone, picking a customer replaces the list with the chat.
           display: (narrow && openId) ? 'none' : 'flex',
-          ...(narrow ? { flex: '1 1 0%', minHeight: 0 } : {}),
+          ...(narrow ? { flex: '1 1 0%' } : {}),
         }}>
           <div style={{ padding: '9px 10px', borderBottom: '1px solid var(--c1e293b)' }}>
             <input value={query} onChange={(e) => setQuery(e.target.value)}
@@ -686,10 +727,10 @@ export function InboxView() {
             </div>
           )}
 
-          <div style={{ overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch',
-            // Desktop caps the list so the panels after it stay reachable; the
-            // phone is a fixed-height screen where flex:1 IS the cap.
-            maxHeight: narrow ? undefined : 'min(58vh, 520px)', minHeight: 0 }}>
+          <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+            // The card is window-tall on both screens now, so the list simply
+            // takes the room the search box and the filter chips left over.
+            flex: '1 1 0%', minHeight: 0 }}>
             {listErr && (
               <div style={{ margin: 10, padding: '9px 11px', borderRadius: 8, background: 'var(--c450a0a)', border: '1px solid var(--c7f1d1d)' }}>
                 <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--cfecaca)', fontWeight: 700 }}>
@@ -735,10 +776,12 @@ export function InboxView() {
                       <p style={{ margin: '0 0 5px', fontSize: narrow ? 13.5 : 12, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                         {pill(st.tone, st.text)}
-                        {/* The Page, named and in its own colour. Only while
-                            looking at everything — inside one source it would be
-                            the same chip on every row, which is noise. */}
-                        {source === 'any' && r.pageName && (
+                        {/* The Page, named and in its own colour — but only
+                            when there are two of them to tell apart. A salon
+                            with ONE Page got its own name stamped on every row
+                            of the list, which says nothing and costs the width
+                            that the customer's labels needed. */}
+                        {source === 'any' && showPageChip && r.pageName && (
                           <span style={{
                             background: pageColor(r.pageId).bg, color: pageColor(r.pageId).fg,
                             borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 600,
@@ -777,11 +820,11 @@ export function InboxView() {
 
         {/* Conversation */}
         <div style={{
-          flexDirection: 'column', minWidth: 0,
+          flexDirection: 'column', minWidth: 0, minHeight: 0,
           // On a phone this IS the screen once a customer is picked, and it is
           // hidden until then — never a half-width chat beside a half-width list.
           display: (narrow && (!openId || showInfo)) ? 'none' : 'flex',
-          ...(narrow ? { flex: '1 1 0%', minHeight: 0 } : {}),
+          ...(narrow ? { flex: '1 1 0%' } : {}),
         }}>
           {/* Nothing picked yet.
               A sentence telling somebody to pick a conversation is a sentence
@@ -817,30 +860,12 @@ export function InboxView() {
                   />
                 </div>
 
-                {/* Where the traffic is. One line, no chart — four numbers do
-                    not need an axis. */}
-                {chans.length > 0 && (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-                    {chans.map((c) => {
-                      const look = channelLabel(c.key);
-                      return (
-                        <span key={c.key} style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 6,
-                          border: `1px solid ${look.border}`, background: look.bg, color: look.fg,
-                          borderRadius: 999, padding: '4px 11px', fontSize: 12, fontWeight: 600,
-                        }}>
-                          {look.text} <b style={{ color: 'var(--ce2e8f0)' }}>{c.total}</b>
-                          {c.waiting > 0 && <span style={{ background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10 }}>{c.waiting}</span>}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
                 <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c64748b)', textAlign: 'center', lineHeight: 1.6, maxWidth: 380 }}>
                   {waiting > 0
                     ? (vi ? 'Bấm "Đang chờ" bên trái để xem đúng những người này trước.' : 'Tap “Waiting” on the left to see exactly those first.')
-                    : (vi ? 'Chọn một hội thoại bên trái để đọc và trả lời. Bot đã trả lời những câu nó chắc chắn.' : 'Pick a conversation on the left to read and reply. The bot has answered what it was sure about.')}
+                    : rows.length === 0
+                      ? (vi ? 'Chưa có hội thoại nào. Khi khách nhắn vào Page hoặc Instagram, hội thoại sẽ mở sẵn ở đây.' : 'No conversations yet. When a customer writes to the Page or Instagram, the conversation opens right here.')
+                      : (vi ? 'Không có hội thoại nào khớp bộ lọc bên trái.' : 'Nothing matches the filters on the left.')}
                 </p>
               </div>
             );
@@ -900,7 +925,7 @@ export function InboxView() {
               </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: narrow ? 0 : 180, maxHeight: narrow ? undefined : 'min(46vh, 420px)', padding: narrow ? 12 : 14, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--c0b1220)' }}>
+            <div style={{ flex: '1 1 0%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0, padding: narrow ? 12 : 14, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--c0b1220)' }}>
               {/* Twelve messages must never pretend to be the whole story.
                   When Meta refused the transcript, say so and offer the retry
                   — silence here is how somebody re-asks a question the
@@ -1011,7 +1036,7 @@ export function InboxView() {
             the conversation. */}
         <div style={{
           borderLeft: narrow ? 'none' : '1px solid var(--c1e293b)', flexDirection: 'column', minWidth: 0,
-          background: 'var(--c0f172a)', overflowY: 'auto', WebkitOverflowScrolling: 'touch', maxHeight: narrow ? undefined : 'min(78vh, 700px)', minHeight: 0,
+          background: 'var(--c0f172a)', overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0,
           // On a phone the notes, labels and follow-up live behind the ⓘ button
           // in the conversation header rather than in a fourth column.
           display: narrow ? (showInfo && !!openId ? 'flex' : 'none') : 'flex',
@@ -1213,7 +1238,7 @@ export function InboxView() {
               />
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', maxHeight: narrow ? undefined : 'min(40vh, 340px)', padding: '0 13px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <div style={{ flex: '1 1 0%', overflowY: 'auto', minHeight: narrow ? undefined : 120, padding: '0 13px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
               {!detail.notes?.length && (
                 <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)' }}>{vi ? 'Chưa có ghi chú nào.' : 'No notes yet.'}</p>
               )}

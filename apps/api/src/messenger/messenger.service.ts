@@ -837,50 +837,21 @@ export class MessengerService implements OnModuleInit {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
       } as never,
     });
-    // Backfill missing names for the WHOLE list in one call per page.
+    // Name backfill runs BEHIND the response, not in front of it.
     //
-    // Every conversation that started before the app had the right permission
-    // kept a null name, and the screen showed a column of identical rows called
-    // "Customer" — which is not a list, because you cannot tell one row from
-    // another. One conversations lookup names all of them at once, and it only
-    // runs when something is actually missing, so a fully-named inbox costs
-    // nothing.
-    // Typed explicitly: the generated Prisma client in the dev sandbox is stale
-    // and infers these as `any`, so an implicit-any here compiles locally and
-    // fails the real build. That has already cost one deploy.
-    type Nameless = { id: string; senderId: string | null; senderName: string | null; pageId: string; channel: string };
-    const nameless = (rows as unknown as Nameless[]).filter((r) => !r.senderName && r.senderId);
-    // Zalo rows are named by their own profile API, one call each — Graph
-    // knows nothing about an OA's users, and asking it would only fail slowly.
-    for (const r of nameless.filter((x) => x.channel === 'zalo').slice(0, 10)) {
-      const pg = await this.prisma.messengerPage.findUnique({ where: { pageId: String(r.pageId) }, select: { pageToken: true } }).catch(() => null);
-      if (!pg?.pageToken) continue;
-      const found = await this.zaloNameFor(pg.pageToken, String(r.senderId));
-      if (!found) continue;
-      r.senderName = found;
-      await this.prisma.messengerThread.update({ where: { id: r.id }, data: { senderName: found } }).catch(() => undefined);
-    }
-    if (nameless.some((r) => r.channel !== 'zalo' && r.channel !== 'web')) {
-      const byPage = new Map<string, string>();
-      for (const r of nameless) {
-        if (r.channel === 'zalo' || r.channel === 'web') continue; // no profile to ask for
-        const pid = String(r.pageId ?? '');
-        if (pid) byPage.set(pid, r.channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER');
-      }
-      for (const [pid, platform] of byPage) {
-        const pg = await this.prisma.messengerPage.findUnique({ where: { pageId: pid }, select: { pageToken: true } }).catch(() => null);
-        const tok = pg?.pageToken || (conn as { pageToken?: string } | null)?.pageToken;
-        if (!tok) continue;
-        const names = await this.fetchNamesForPage(pid, tok, platform as 'MESSENGER' | 'INSTAGRAM');
-        if (!names.size) continue;
-        for (const r of nameless) {
-          const found = names.get(String(r.senderId));
-          if (!found) continue;
-          r.senderName = found;
-          await this.prisma.messengerThread.update({ where: { id: r.id }, data: { senderName: found } }).catch(() => undefined);
-        }
-      }
-    }
+    // WHAT THIS COST
+    //
+    // The backfill asks Meta for the display names of conversations that never
+    // got one. It used to be awaited right here, so every single load of the
+    // inbox waited on a Graph round-trip before painting a single row — and it
+    // only takes ONE nameless conversation in the list to trigger it. A salon
+    // with one "Customer 326369" in its inbox paid several seconds of blank
+    // screen on every visit, for a cosmetic improvement to one row.
+    //
+    // Fire-and-forget instead: the names are written to the database, so the
+    // next poll (30 seconds, or the next stream push) shows them. The first
+    // paint costs one database query.
+    void this.backfillSenderNames(rows as never, conn as never).catch(() => undefined);
 
     // Which Page each conversation arrived on, by name. A salon running two
     // Pages needs to answer one at a time, and the customer sees the Page's
@@ -919,6 +890,63 @@ export class MessengerService implements OnModuleInit {
         unread: !row.readAt || row.readAt < ((r as unknown as { lastMessageAt?: Date | null }).lastMessageAt ?? row.updatedAt),
       };
     });
+  }
+
+  /**
+   * Fill in display names Meta never gave us, in the background.
+   *
+   * Called without await from listThreads — see the note there. Writes straight
+   * to the database; the rows handed to the caller are already on their way out
+   * and are not waiting for this.
+   */
+  private async backfillSenderNames(
+    rows: Array<{ id: string; senderId: string | null; senderName: string | null; pageId: string; channel: string }>,
+    conn: { pageToken?: string } | null,
+  ): Promise<void> {
+      // Backfill the names Meta never handed over.
+      //
+      // Every conversation that started before the app had the right permission
+      // kept a null name, and the screen showed a column of identical rows called
+      // "Customer" — which is not a list, because you cannot tell one row from
+      // another. One conversations lookup names all of them at once, and it only
+      // runs when something is actually missing, so a fully-named inbox costs
+      // nothing.
+      // Typed explicitly: the generated Prisma client in the dev sandbox is stale
+      // and infers these as `any`, so an implicit-any here compiles locally and
+      // fails the real build. That has already cost one deploy.
+      type Nameless = { id: string; senderId: string | null; senderName: string | null; pageId: string; channel: string };
+      const nameless = (rows as unknown as Nameless[]).filter((r) => !r.senderName && r.senderId);
+      // Zalo rows are named by their own profile API, one call each — Graph
+      // knows nothing about an OA's users, and asking it would only fail slowly.
+      for (const r of nameless.filter((x) => x.channel === 'zalo').slice(0, 10)) {
+        const pg = await this.prisma.messengerPage.findUnique({ where: { pageId: String(r.pageId) }, select: { pageToken: true } }).catch(() => null);
+        if (!pg?.pageToken) continue;
+        const found = await this.zaloNameFor(pg.pageToken, String(r.senderId));
+        if (!found) continue;
+        r.senderName = found;
+        await this.prisma.messengerThread.update({ where: { id: r.id }, data: { senderName: found } }).catch(() => undefined);
+      }
+      if (nameless.some((r) => r.channel !== 'zalo' && r.channel !== 'web')) {
+        const byPage = new Map<string, string>();
+        for (const r of nameless) {
+          if (r.channel === 'zalo' || r.channel === 'web') continue; // no profile to ask for
+          const pid = String(r.pageId ?? '');
+          if (pid) byPage.set(pid, r.channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER');
+        }
+        for (const [pid, platform] of byPage) {
+          const pg = await this.prisma.messengerPage.findUnique({ where: { pageId: pid }, select: { pageToken: true } }).catch(() => null);
+          const tok = pg?.pageToken || (conn as { pageToken?: string } | null)?.pageToken;
+          if (!tok) continue;
+          const names = await this.fetchNamesForPage(pid, tok, platform as 'MESSENGER' | 'INSTAGRAM');
+          if (!names.size) continue;
+          for (const r of nameless) {
+            const found = names.get(String(r.senderId));
+            if (!found) continue;
+            r.senderName = found;
+            await this.prisma.messengerThread.update({ where: { id: r.id }, data: { senderName: found } }).catch(() => undefined);
+          }
+        }
+      }
   }
 
   /**

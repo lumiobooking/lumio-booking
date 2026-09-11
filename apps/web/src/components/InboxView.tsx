@@ -166,6 +166,18 @@ export function InboxView() {
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  /**
+   * Has the conversation list come back from the server even once?
+   *
+   * Before this flag, an empty `rows` meant two completely different things and
+   * the screen said the alarming one out loud: opening the inbox showed "No
+   * channel connected — open Channels to connect a Page" and "No conversations
+   * yet" for the second or two before the first response landed, on a salon
+   * whose Page was connected and whose inbox was full. A warning that cries
+   * wolf on every single page load is a warning nobody reads on the day it is
+   * true.
+   */
+  const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [listErr, setListErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<InboxFilter>('all');
@@ -210,6 +222,7 @@ export function InboxView() {
       const r = await apiFetch<InboxRow[]>('/messenger/threads', { token });
       setRows(Array.isArray(r) ? r : []);
       setListErr(null);
+      setLoaded(true);
     } catch (e) {
       // A failed refresh must not blank the list someone is reading — but it
       // must SAY SO. This used to swallow the error entirely, and the screen
@@ -219,6 +232,7 @@ export function InboxView() {
       // "I could not ask" is the worst failure this screen has, because
       // nobody goes looking for messages they have been told do not exist.
       setListErr(String(e));
+      setLoaded(true);
     }
   }, [token]);
 
@@ -607,7 +621,9 @@ export function InboxView() {
             </span>
           )}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0 }}>
-            {sources.length === 0 ? (
+            {!loaded ? (
+              <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{vi ? 'Đang tải…' : 'Loading…'}</span>
+            ) : sources.length === 0 ? (
               <span style={{ fontSize: 12, color: 'var(--cfcd34d)' }}>
                 {vi ? 'Chưa nối kênh nào — vào Kênh kết nối để nối Trang.' : 'No channel connected — open Channels to connect a Page.'}
               </span>
@@ -836,7 +852,23 @@ export function InboxView() {
                 </button>
               </div>
             )}
-            {!sorted.length && !listErr && (
+            {!loaded && !listErr && (
+              // Three grey rows in the shape of real ones. A person reads the
+              // shape as "coming" and waits; a sentence saying the inbox is
+              // empty reads as an answer and they act on it.
+              <div aria-busy="true" aria-label={vi ? 'Đang tải hội thoại' : 'Loading conversations'}>
+                {[0, 1, 2].map((i) => (
+                  <div key={i} style={{ display: 'flex', gap: 9, padding: narrow ? '13px 14px' : '9px 11px', borderBottom: '1px solid var(--c1e293b)', opacity: 1 - i * 0.25 }}>
+                    <div style={{ width: narrow ? 48 : 34, height: narrow ? 48 : 34, borderRadius: '50%', background: 'var(--c1e293b)', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 3 }}>
+                      <div style={{ height: 9, width: '55%', borderRadius: 4, background: 'var(--c1e293b)' }} />
+                      <div style={{ height: 8, width: '80%', borderRadius: 4, background: 'var(--c1e293b)' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {loaded && !sorted.length && !listErr && (
               <p style={{ color: 'var(--c64748b)', fontSize: 13, padding: 16, margin: 0 }}>
                 {filter === 'waiting'
                   ? (vi ? 'Không ai đang chờ. Tốt.' : 'Nobody is waiting. Good.')
@@ -964,7 +996,12 @@ export function InboxView() {
               on the screen spends most of the day saying nothing. The same
               space can answer the question a person actually opens an inbox
               with — is anyone waiting, and for how long. */}
-          {!detail && (() => {
+          {!detail && !loaded && (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c64748b)', fontSize: 13 }}>
+              {vi ? 'Đang tải hộp thư…' : 'Loading the inbox…'}
+            </div>
+          )}
+          {!detail && loaded && (() => {
             const oldest = rows
               .filter((r) => stateOf(r) === 'unclaimed')
               .reduce((m, r) => Math.max(m, r.waitingMinutes ?? 0), 0);
@@ -1136,7 +1173,7 @@ export function InboxView() {
                       {mine ? (t.manual ? (vi ? 'Nhân viên' : 'Staff') : 'Bot') : (vi ? 'Khách' : 'Customer')}
                       {t.at ? (
                         <span title={fmtInTz(t.at, { dateStyle: 'full', timeStyle: 'short' })}>
-                          {` · ${fmtInTz(t.at, { hour: '2-digit', minute: '2-digit' })}`}
+                          {` · ${bubbleStampLabel(t.at, vi)}`}
                         </span>
                       ) : ''}
                     </p>
@@ -1558,6 +1595,36 @@ function dayDividerLabel(at: string, vi: boolean): string {
   return fmtInTz(at, sameYear
     ? { weekday: 'long', day: 'numeric', month: 'long' }
     : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/**
+ * The stamp under a message bubble.
+ *
+ * WHY THE DIVIDER WAS NOT ENOUGH
+ *
+ * A day divider only helps at the boundary between two days. A ten-day-old
+ * conversation that all happened inside one morning has exactly ONE divider —
+ * at the very top, above the first bubble, scrolled out of sight the moment
+ * the transcript jumps to the newest message. What the reader actually sees is
+ * ten bubbles stamped "07:11 AM", and reads them as this morning.
+ *
+ * So the date goes on the bubble itself whenever the message is not from
+ * today. Today keeps the bare clock, because that is the only day where
+ * printing the date on every line is noise.
+ */
+function bubbleStampLabel(at: string, vi: boolean): string {
+  const today = dayKeyInTz(new Date());
+  const key = dayKeyInTz(at);
+  if (key === today) return fmtInTz(at, { hour: '2-digit', minute: '2-digit' });
+  const y = new Date();
+  y.setDate(y.getDate() - 1);
+  if (key === dayKeyInTz(y)) {
+    return `${vi ? 'Hôm qua' : 'Yesterday'} ${fmtInTz(at, { hour: '2-digit', minute: '2-digit' })}`;
+  }
+  const sameYear = key.slice(0, 4) === today.slice(0, 4);
+  return fmtInTz(at, sameYear
+    ? { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }
+    : { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 /**

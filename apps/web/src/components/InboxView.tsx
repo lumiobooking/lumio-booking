@@ -259,6 +259,16 @@ function toLocalInput(iso: string | null | undefined): string {
 const ghostBtn: React.CSSProperties = {
   background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--ccbd5e1)',
   borderRadius: 8, padding: '5px 10px', fontSize: 12, cursor: 'pointer',
+  // A LABEL NEVER BREAKS MID-WORD.
+  //
+  // These sit in flex rows, and a flex child shrinks by default. Add one more
+  // button to a row and every label starts wrapping INSIDE the word - "Xon/g",
+  // "Spa/m", "Take/over" - which reads as a broken screen rather than a full
+  // one. nowrap says the text is indivisible; flexShrink:0 says so is the
+  // button. What has to give instead is the row, and that is handled where
+  // each row is laid out.
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
 };
 
 const TONE: Record<string, { bg: string; fg: string }> = {
@@ -1243,7 +1253,14 @@ export function InboxView() {
                   )}
                 </p>
               </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+              <div style={{
+                marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center',
+                // When the header runs out of width the buttons move onto a
+                // second line, whole. The customer's name shrinks first (its
+                // block is minWidth:0 with an ellipsis), and only once there is
+                // nothing left to give does this wrap.
+                flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0,
+              }}>
                 {/* The phone header keeps ONE action. The state pill repeats
                     what the list already showed, and "Done" lives on in the ⓘ
                     panel — on a 390px screen every extra button here is paid
@@ -1284,7 +1301,9 @@ export function InboxView() {
                       style={{ ...ghostBtn, borderColor: '#6366f1', color: 'var(--cc7d2fe)' }}>{vi ? 'Không phải spam' : 'Not spam'}</button>
                   : <button disabled={busy} onClick={() => void act('status', { status: 'spam' })}
                       title={vi ? 'Chuyển vào Spam — bot ngừng trả lời, khách vẫn nhắn được' : 'Move to Spam — the bot stops replying; nothing is deleted'}
-                      style={{ ...ghostBtn, color: 'var(--c64748b)' }}>{vi ? 'Spam' : 'Spam'}</button>)}
+                      // Softer than Done, but NOT the muted grey - at that
+                      // weight it reads as a disabled button and nobody presses it.
+                      style={{ ...ghostBtn, color: 'var(--c94a3b8)' }}>Spam</button>)}
                 {narrow && (
                   // Labels, follow-up and notes are a column on a desktop and a
                   // panel behind this button on a phone. Same content either way.
@@ -1615,7 +1634,7 @@ export function InboxView() {
                   {stateOf(detail) !== 'done'
                     ? <button disabled={busy} onClick={() => void act('status', { status: 'done' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10 }}>✓ {vi ? 'Xong hội thoại' : 'Mark done'}</button>
                     : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10 }}>{vi ? 'Mở lại hội thoại' : 'Reopen'}</button>}
-                  <button disabled={busy} onClick={() => void act('status', { status: 'spam' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10, color: 'var(--c64748b)' }}>{vi ? 'Spam' : 'Spam'}</button>
+                  <button disabled={busy} onClick={() => void act('status', { status: 'spam' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10, color: 'var(--c94a3b8)' }}>Spam</button>
                 </>)}
               </div>
             )}

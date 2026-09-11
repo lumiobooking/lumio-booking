@@ -1015,25 +1015,35 @@ export function InboxView() {
               const ch = channelLabel(r.channel);
               const st = stateLabel(r, vi);
               const on = r.id === openId;
+              // Does the third line carry anything at all? Most rows: no.
+              const rowChips = (source === 'any' && showPageChip && r.pageName ? 1 : 0)
+                + (followUpState(r.followUpAt) !== 'none' ? 1 : 0)
+                + (r.labels?.length ?? 0);
               return (
                 <button key={r.id} onClick={() => { keepUnreadRef.current = null; setOpenId(r.id); void loadThread(r.id); }}
-                  // Unread has to be readable from across the room.
+                  aria-current={on ? 'true' : undefined}
+                  // TWO SIGNALS, TWO CHANNELS, NEVER COMPETING.
                   //
-                  // It used to be a 7px dot and a slightly bolder name — on a
-                  // dark list of dark rows, invisible. Three signals now carry
-                  // it together, so no single one has to win on its own: a solid
-                  // blue rail down the left edge, a lifted row background, and
-                  // the text at full strength while read rows sit back.
+                  // These used to share one: selected filled the row and unread
+                  // ALSO filled the row, and by day the selected fill was the
+                  // paler of the two. So the open conversation was marked by a
+                  // 3px bar at the far edge and nothing else, and "which one am
+                  // I in" had to be answered by hunting for it.
+                  //
+                  //   background  = WHERE YOU ARE     (selected)
+                  //   left rail + dot + bold name = WHAT IS NEW  (unread)
+                  //
+                  // A row can be both, and now it reads as both.
                   style={{ width: '100%', textAlign: 'left', display: 'block', cursor: 'pointer',
-                    background: on ? 'var(--c1e293b)' : r.unread ? 'var(--c172554)' : 'transparent',
+                    background: on ? 'var(--row-on)' : 'transparent',
                     border: 'none',
-                    borderLeft: `3px solid ${on ? '#6366f1' : r.unread ? '#3b82f6' : 'transparent'}`,
-                    borderBottom: '1px solid var(--line)', padding: narrow ? '13px 14px' : '9px 11px' }}>
+                    borderLeft: `3px solid ${on ? '#4f46e5' : r.unread ? '#3b82f6' : 'transparent'}`,
+                    borderBottom: '1px solid var(--line)', padding: narrow ? '11px 14px' : '7px 11px' }}>
                   <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
                     <Avatar row={r} size={narrow ? 48 : 34} token={token} vi={vi} />
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                        <span style={{ color: r.unread ? 'var(--cf8fafc)' : 'var(--c94a3b8)', fontSize: narrow ? 15.5 : 13, fontWeight: r.unread ? 800 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1 }}>
+                        <span style={{ color: (r.unread || on) ? 'var(--cf8fafc)' : 'var(--c94a3b8)', fontSize: narrow ? 15.5 : 13, fontWeight: r.unread ? 800 : on ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {displayName(r, vi)}
                         </span>
                         <span title={fmtInTz(r.lastMessageAt || r.updatedAt, { dateStyle: 'full', timeStyle: 'short' })}
@@ -1042,9 +1052,21 @@ export function InboxView() {
                         </span>
                         {r.unread && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }} aria-label={vi ? 'Chưa đọc' : 'Unread'} />}
                       </div>
-                      <p style={{ margin: '0 0 5px', fontSize: narrow ? 13.5 : 12, color: r.unread ? 'var(--ce2e8f0)' : 'var(--c64748b)', fontWeight: r.unread ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                        {pill(st.tone, st.text)}
+                      {/* The preview and the state badge share ONE line.
+                          The badge used to own a third line of its own, and on
+                          almost every row it said "Bot" — the default. A whole
+                          line of row height, on every conversation, to repeat
+                          the thing that is true unless stated otherwise. Now it
+                          sits at the end of the preview, and four conversations
+                          no longer fill the column. */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                        <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: narrow ? 13.5 : 12, color: r.unread ? 'var(--ce2e8f0)' : 'var(--c64748b)', fontWeight: r.unread ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
+                        <span style={{ flexShrink: 0 }}>{pill(st.tone, st.text)}</span>
+                      </div>
+                      {/* And this line is drawn only when it carries something.
+                          An empty flex row still costs its gap. */}
+                      {(rowChips > 0) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 4 }}>
                         {/* The Page, named and in its own colour — but only
                             when there are two of them to tell apart. A salon
                             with ONE Page got its own name stamped on every row
@@ -1079,6 +1101,7 @@ export function InboxView() {
                           <span style={{ fontSize: 10, color: 'var(--c64748b)' }}>+{(r.labels?.length ?? 0) - 3}</span>
                         )}
                       </div>
+                      )}
                     </div>
                   </div>
                 </button>

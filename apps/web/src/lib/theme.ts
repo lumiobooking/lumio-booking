@@ -198,6 +198,19 @@ export const EXTRA: Record<string, [dark: string, light: string]> = {
    * exact indigo-900 it always had; light gets indigo-600.
    */
   '--bubble-bot': ['#3730a3', '#4f46e5'],
+  /**
+   * The conversation row you are standing on.
+   *
+   * It used to be `#1e293b`, which by day is `#edf1f8` - PALER than the unread
+   * tint sitting next to it. So the only thing actually marking the open
+   * conversation was a 3px bar at the far left edge, and the question "which
+   * one am I in" had to be answered by hunting for it.
+   *
+   * Selection and unread are now two different channels and never compete:
+   * the BACKGROUND says where you are, the blue rail and dot say what is
+   * unread. Dark keeps its old value exactly.
+   */
+  '--row-on': ['#1e293b', '#dbe5fa'],
   // the heavier rule: section splits, card outlines
   '--line-strong': ['#334155', '#c6d2e2'],
   // tinted note/banner grounds

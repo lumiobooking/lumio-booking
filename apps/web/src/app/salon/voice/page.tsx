@@ -291,7 +291,7 @@ function Inner() {
             <Stat label={t('usageSms')} value={usage.includedSms > 0 ? `${usage.smsSent} / ${usage.includedSms}` : usage.smsSent} />
           </div>
           {(usage.overageMinutes > 0 || usage.overageSms > 0) && (
-            <div style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#3b1d1d', border: '1px solid #b91c1c', color: 'var(--cfecaca)', fontSize: 13 }}>
+            <div style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#3b1d1d', border: '1px solid #b91c1c', color: '#fecaca', fontSize: 13 }}>
               ⚠️ {t('overWarn')}: {usage.overageMinutes > 0 ? `+${usage.overageMinutes} ${t('usageMinutes').toLowerCase()}` : ''}{usage.overageMinutes > 0 && usage.overageSms > 0 ? ', ' : ''}{usage.overageSms > 0 ? `+${usage.overageSms} SMS` : ''}{usage.overageCents > 0 ? ` (~$${(usage.overageCents / 100).toFixed(2)})` : ''}
             </div>
           )}

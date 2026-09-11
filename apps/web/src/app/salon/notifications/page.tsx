@@ -315,7 +315,7 @@ function EmailPreview({ accent, subject, body, salon, contact }: { accent: strin
         <div style={{ color: '#fff', fontSize: 17, fontWeight: 800 }}>{salon}</div>
       </div>
       <div style={{ padding: 22, color: '#374151', fontSize: 14, lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: body || `<em>${t('nt.emptyBody')}</em>` }} />
-      <div style={{ background: '#f9fafb', padding: '12px 22px', color: '#9aa4b2', fontSize: 12, borderTop: '1px solid #eef0f4' }}>
+      <div style={{ background: '#f9fafb', padding: '12px 22px', color: '#4b5563', fontSize: 12, borderTop: '1px solid #eef0f4' }}>
         {salon} · {contact}
       </div>
     </div>

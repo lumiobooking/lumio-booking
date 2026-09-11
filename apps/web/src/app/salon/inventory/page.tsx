@@ -83,7 +83,7 @@ function Inner() {
 
       {error && <div style={ui.banner}>{error}</div>}
       {lowCount > 0 && (
-        <div style={{ background: '#3f2d0e', color: 'var(--cfde68a)', padding: '9px 14px', borderRadius: 8, fontSize: 13, margin: '12px 0' }}>
+        <div style={{ background: '#3f2d0e', color: '#fde68a', padding: '9px 14px', borderRadius: 8, fontSize: 13, margin: '12px 0' }}>
           {t('iv.lowBanner').replace('{n}', String(lowCount))}
         </div>
       )}

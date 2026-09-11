@@ -5049,7 +5049,7 @@ function Inner() {
                             <div style={{ padding: '10px 2px 2px' }}>
                               <SpecRow k={T('Tên chiến dịch', 'Campaign name')} vi={vi}>
                                 <code style={{
-                                  fontSize: 12.5, color: '#22c55e', background: 'var(--c0f172a)',
+                                  fontSize: 12.5, color: 'var(--c6ee7b7)', background: 'var(--c0f172a)',
                                   padding: '4px 8px', borderRadius: 6, wordBreak: 'break-all',
                                 }}>{p.spec.name}</code>
                                 <button

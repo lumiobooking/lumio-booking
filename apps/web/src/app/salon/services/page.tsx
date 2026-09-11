@@ -349,7 +349,7 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
         <td style={ui.td}>
           <div>
             {s.name}
-            {s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: 'var(--c1f2937)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
+            {s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
           </div>
           {s.description && <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{s.description}</div>}
         </td>
@@ -421,7 +421,7 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
             onPointerDown={onGrab}
             style={{ color: dragging ? '#a5b4fc' : 'var(--c64748b)', fontSize: 16, cursor: 'grab', paddingRight: 8, touchAction: 'none', userSelect: 'none' }}
           >⠿</span>
-          {s.name}{s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: 'var(--c1f2937)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
+          {s.name}{s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
         </MHead>
         {s.description && <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{s.description}</div>}
         <MRow label={t('sv.colCategory')}>{catName(s.categoryId)}</MRow>
@@ -811,7 +811,7 @@ function ImageField({ value, onChange, token }: { value: string; onChange: (v: s
     <div style={{ marginTop: 12 }}>
       <span style={ui.label}>{t('sv.fImage')}</span>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-        <span style={{ width: 52, height: 52, borderRadius: 10, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--c475569)', fontSize: 18 }}>
+        <span style={{ width: 52, height: 52, borderRadius: 10, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', fontSize: 18 }}>
           {ok
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={show} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = 'none'; }} />

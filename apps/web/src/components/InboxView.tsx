@@ -1315,7 +1315,7 @@ export function InboxView() {
                     )}
                     {(!t.images?.length || !/^\[Khách gửi/.test(t.content)) && (
                       <div style={{
-                        background: mine ? (t.manual ? '#1d4ed8' : 'var(--c3730a3)') : 'var(--raised)',
+                        background: mine ? (t.manual ? '#1d4ed8' : 'var(--bubble-bot)') : 'var(--raised)',
                         // The salon's own replies are on a saturated indigo in
                         // both themes, so their text stays white; only the
                         // customer's bubble follows the surface.
@@ -1544,7 +1544,7 @@ export function InboxView() {
                     style={{
                       padding: narrow ? '9px 14px' : '5px 11px', fontSize: narrow ? 13.5 : 12, fontWeight: 700,
                       borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                      background: '#6366f1', color: 'var(--cf8fafc)',
+                      background: '#6366f1', color: '#ffffff',
                     }}>
                     📅 {vi ? 'Đặt lịch cho khách này' : 'Book this customer'}
                   </button>

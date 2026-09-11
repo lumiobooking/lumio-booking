@@ -797,7 +797,7 @@ function CheckInScreen({ st, salonName, logo, send }: {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
             {picked.map((sv) => (
               <button key={sv.id} onClick={() => tap(sv.id)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#eef2ff', border: '1px solid var(--cc7d2fe)', color: 'var(--c3730a3)', borderRadius: 999, padding: '9px 14px', fontSize: 15.5, fontWeight: 700, cursor: 'pointer' }}>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#eef2ff', border: '1px solid var(--cc7d2fe)', color: '#3730a3', borderRadius: 999, padding: '9px 14px', fontSize: 15.5, fontWeight: 700, cursor: 'pointer' }}>
                 {sv.name}<span style={{ color: '#6366f1', fontSize: 17 }}>✕</span>
               </button>
             ))}

@@ -934,7 +934,7 @@ function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
           <Field label={t('se.dep.threshold')}><input style={ui.input} type="number" min={1} value={f.thr} onChange={(e) => setF({ ...f, thr: e.target.value })} /></Field>
         )}
       </div>
-      <div style={{ background: '#3f2d0e', color: 'var(--cfde68a)', padding: '10px 12px', borderRadius: 8, fontSize: 12.5, marginTop: 12 }}>
+      <div style={{ background: '#3f2d0e', color: '#fde68a', padding: '10px 12px', borderRadius: 8, fontSize: 12.5, marginTop: 12 }}>
         {t('se.dep.warn')}
       </div>
       <button style={{ ...ui.primaryBtn, marginTop: 14 }} onClick={save}>{t('se.dep.save')}</button>
@@ -1206,7 +1206,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>
         {t('se.no.smtpHelp')}
       </p>
-      <div style={{ background: '#3f2d0e', color: 'var(--cfde68a)', padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 10 }}>
+      <div style={{ background: '#3f2d0e', color: '#fde68a', padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 10 }}>
         {t('se.no.smtpWarn')}
       </div>
       <button

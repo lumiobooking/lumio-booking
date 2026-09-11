@@ -159,7 +159,7 @@ export function ContentInbox({ token }: { token: string | null }) {
         {waiting > 0 && (
           <span style={{
             fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 20,
-            background: '#ef4444', color: 'var(--cf8fafc)',
+            background: '#ef4444', color: '#ffffff',
           }}>{waiting} đang chờ mình</span>
         )}
       </div>
@@ -200,7 +200,7 @@ export function ContentInbox({ token }: { token: string | null }) {
                     <span style={{
                       fontSize: 10.5, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 20,
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      background: '#ef4444', color: 'var(--cf8fafc)', padding: '0 5px',
+                      background: '#ef4444', color: '#ffffff', padding: '0 5px',
                     }}>{t.unread}</span>
                   )}
                   <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginLeft: 'auto' }}>

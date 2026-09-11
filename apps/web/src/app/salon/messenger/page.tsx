@@ -1188,7 +1188,7 @@ function Inner() {
                     <div style={{ flex: 1, color: 'var(--ce2e8f0)', fontSize: 13, lineHeight: 1.55 }}>{op}</div>
                     <button type="button"
                       onClick={() => { setC({ ...c, greeting: op }); save({ greeting: op }); setGreetOpen(false); setGreetOptions(null); }}
-                      style={{ background: '#22c55e', border: 'none', color: 'var(--c052e16)', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      style={{ background: '#22c55e', border: 'none', color: '#052e16', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       {lang === 'vi' ? 'Dùng' : 'Use'}
                     </button>
                   </div>

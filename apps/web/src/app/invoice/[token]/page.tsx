@@ -105,7 +105,7 @@ export default function InvoicePage() {
       {err && <div style={{ marginTop: 16, background: '#fef2f2', color: '#b91c1c', padding: '10px 14px', borderRadius: 8, fontSize: 13.5 }}>{err}</div>}
 
       {paid ? (
-        <div style={{ marginTop: 22, background: '#f0fdf4', border: '1px solid var(--cbbf7d0)', color: 'var(--c166534)', padding: '14px 16px', borderRadius: 10, fontSize: 14.5, fontWeight: 600 }}>
+        <div style={{ marginTop: 22, background: '#f0fdf4', border: '1px solid var(--cbbf7d0)', color: '#166534', padding: '14px 16px', borderRadius: 10, fontSize: 14.5, fontWeight: 600 }}>
           ✓ This invoice has been paid. Thank you! · Cảm ơn bạn đã thanh toán.
         </div>
       ) : voided ? (

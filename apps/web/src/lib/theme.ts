@@ -185,11 +185,24 @@ export const EXTRA: Record<string, [dark: string, light: string]> = {
    * Dark is the same `#1e293b` it always was, so night mode is untouched.
    */
   '--raised': ['#1e293b', '#ffffff'],
+  /**
+   * The BOT's message bubble.
+   *
+   * It was written as `var(--c3730a3)` - indigo-900, which by day becomes
+   * `#c7d2fe`, a pale lavender. White text on that is a contrast ratio of
+   * 1.43:1, which is not low contrast, it is invisible: the salon could see
+   * that the bot had replied and could not read what it said.
+   *
+   * An outgoing bubble has to be a SOLID colour in both themes, the way every
+   * messaging app draws one, so the white on it stays white. Dark keeps the
+   * exact indigo-900 it always had; light gets indigo-600.
+   */
+  '--bubble-bot': ['#3730a3', '#4f46e5'],
   // the heavier rule: section splits, card outlines
   '--line-strong': ['#334155', '#c6d2e2'],
   // tinted note/banner grounds
-  '--wash-amber': ['rgba(120,53,15,0.12)', '#fdf5e6'],
-  '--wash-amber-2': ['rgba(120,53,15,0.18)', '#fcf0d9'],
+  '--wash-amber': ['rgba(120,53,15,0.12)', '#fffaf0'],
+  '--wash-amber-2': ['rgba(120,53,15,0.18)', '#fff6e5'],
   '--wash-amber-3': ['rgba(120,53,15,0.25)', '#fbeacc'],
   '--wash-amber-4': ['rgba(120,53,15,0.28)', '#fae6c2'],
   '--wash-red': ['rgba(127,29,29,0.25)', '#fdeaea'],

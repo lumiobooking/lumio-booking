@@ -202,3 +202,45 @@ test('form controls inherit the app typeface', () => {
     expect(new RegExp(`(^|\\})[^{}]*\\b${tag}\\b[^{}]*\\{[^}]*font-family:\\s*inherit`, 'm').test(css)).toBe(true);
   }
 });
+
+/**
+ * ONE HALF FLIPS, THE OTHER CANNOT.
+ *
+ * A style object whose BACKGROUND is a fixed hex and whose TEXT is a themed
+ * token is wrong by construction: the background stays put while the text
+ * moves, so one of the two themes is always unreadable. It is how the bot's
+ * message bubble came to be white-on-lavender at 1.43:1 - the salon could see
+ * that the bot had answered and could not read what it said.
+ *
+ * The rule: a fixed background takes a fixed text colour. Write the hex.
+ */
+const HEX6 = "#[0-9a-fA-F]{6}";
+
+test('a fixed background never carries text that flips with the theme', () => {
+  const offenders: string[] = [];
+  const objRe = /\{[^{}]*\}/g;
+  for (const file of walk(ROOT)) {
+    const src = fs.readFileSync(file, 'utf8');
+    for (const m of src.matchAll(objRe)) {
+      const obj = m[0];
+      const bg = new RegExp(`background(?:Color)?:\\s*'(${HEX6})'`).exec(obj);
+      const fg = /color:\s*'var\(--c([0-9a-f]{6})\)'/.exec(obj);
+      if (!bg || !fg) continue;
+      const dark = `#${fg[1]}`;
+      const light = resolve(dark, 'light');
+      if (light === dark) continue;               // that token does not flip
+      const onLight = contrast(bg[1].toLowerCase(), light);
+      const onDark = contrast(bg[1].toLowerCase(), dark);
+      // A saturated accent is always a button or a badge - bold text at button
+      // size, where 3:1 is the bar. Everything else is prose, where it is 4.5.
+      const accent = /^#(6366f1|4f46e5|ef4444|dc2626|22c55e|16a34a|f59e0b|0ea5e9|3b82f6|a855f7|8b5cf6|ec4899|db2777)$/i.test(bg[1]);
+      const bar = accent ? 3 : 4.5;
+      if (onLight >= bar && onDark >= bar) continue;
+      const line = src.slice(0, m.index).split('\n').length;
+      offenders.push(
+        `${path.relative(ROOT, file)}:${line} - ${bg[1]} with var(--c${fg[1]}) = ${Math.min(onLight, onDark).toFixed(2)}:1`,
+      );
+    }
+  }
+  expect(offenders).toEqual([]);
+});

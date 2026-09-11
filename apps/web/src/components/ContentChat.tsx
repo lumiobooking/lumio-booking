@@ -176,7 +176,7 @@ function Bubbles({ messages, mine, empty }: {
                     width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 10, fontWeight: 800, letterSpacing: .2,
-                    color: 'var(--cf8fafc)', border: '1.5px solid #6366f1', background: '#6366f1',
+                    color: '#ffffff', border: '1.5px solid #6366f1', background: '#6366f1',
                   }}
                 >{initialsOf(m.authorName)}</span>
               ) : <span style={{ width: 26, flexShrink: 0 }} />
@@ -342,7 +342,7 @@ export function ItemComments({ token, subject, unread, labelVi, vi }: {
           <span style={{
             fontSize: 11, fontWeight: 700, minWidth: 20, height: 20, borderRadius: 20,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            background: '#ef4444', color: 'var(--cf8fafc)', padding: '0 6px',
+            background: '#ef4444', color: '#ffffff', padding: '0 6px',
           }}>{unread}</span>
         )}
         <span style={{ fontSize: 12, opacity: 0.7 }}>{open ? '▲' : '▼'}</span>
@@ -425,7 +425,7 @@ export function TeamChatDock({ token, unread, vi, height, salonName }: {
         {unread > 0 && (
           <span style={{
             minWidth: 20, height: 20, borderRadius: 20, background: '#ef4444',
-            color: 'var(--cf8fafc)', fontSize: 11, fontWeight: 700,
+            color: '#ffffff', fontSize: 11, fontWeight: 700,
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px',
           }}>{unread > 9 ? '9+' : unread}</span>
         )}
@@ -492,7 +492,7 @@ export function TeamChatWindow({ token, unread, vi }: {
             zIndex: 61,
             display: 'flex', alignItems: 'center', gap: 7,
             minHeight: 46, padding: '0 16px', borderRadius: 24, cursor: 'pointer',
-            border: 'none', background: '#6366f1', color: 'var(--cf8fafc)',
+            border: 'none', background: '#6366f1', color: '#ffffff',
             fontSize: 14, fontWeight: 700, boxShadow: '0 8px 24px rgba(0,0,0,.45)',
           }}
         >
@@ -502,7 +502,7 @@ export function TeamChatWindow({ token, unread, vi }: {
           {unread > 0 && (
             <span style={{
               minWidth: 21, height: 21,
-              borderRadius: 20, background: '#ef4444', color: 'var(--cf8fafc)',
+              borderRadius: 20, background: '#ef4444', color: '#ffffff',
               fontSize: 11.5, fontWeight: 700, display: 'flex',
               alignItems: 'center', justifyContent: 'center', padding: '0 5px',
             }}>{unread > 9 ? '9+' : unread}</span>

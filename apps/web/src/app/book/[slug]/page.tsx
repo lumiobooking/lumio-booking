@@ -1364,7 +1364,7 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
 
         <div style={{ padding: '16px 16px 18px' }}>
           {soon && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, background: '#ecfdf5', border: '1px solid var(--cbbf7d0)', color: 'var(--c166534)', fontSize: 12.5, fontWeight: 800, marginBottom: 12 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, background: '#ecfdf5', border: '1px solid var(--cbbf7d0)', color: '#166534', fontSize: 12.5, fontWeight: 800, marginBottom: 12 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} className="lumio-dot" />
               {btf('Next opening {when}', { when: soon })}
             </div>
@@ -1759,7 +1759,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                   <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
                     <span style={rowTitle}>
                       {s.name}
-                      {s.isFeatured && <span style={{ marginLeft: 8, background: '#dcfce7', color: 'var(--c166534)', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3 }}>{bt('POPULAR')}</span>}
+                      {s.isFeatured && <span style={{ marginLeft: 8, background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3 }}>{bt('POPULAR')}</span>}
                       {disc > 0 && <span style={{ marginLeft: 8, background: '#fee2e2', color: '#b91c1c', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 800 }}>-{disc}%</span>}
                     </span>
                     {/* The salon's own words about the service. Two clamped
@@ -2079,14 +2079,14 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       {/* A service nobody lists no longer blocks the day — the booking goes in
           and the front desk assigns someone. A quiet note keeps it honest. */}
       {avail && !avail.noStaff && avail.perService.some((ps) => ps.unstaffed) && (
-        <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fffbeb', border: '1px solid var(--cfde68a)', color: 'var(--c92400e)', fontSize: 12.5, fontWeight: 600 }}>
+        <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fffbeb', border: '1px solid var(--cfde68a)', color: '#92400e', fontSize: 12.5, fontWeight: 600 }}>
           🛠️ Part of your visit isn&apos;t linked to a technician yet — the salon will assign the right person after you book.
         </div>
       )}
       {/* More guests than technicians for these services: bookable, in waves.
           Said BEFORE the times so nobody expects four chairs at once. */}
       {groupNeeds.length > 1 && groupShortage && rules.groupPolicy === 'flexible' && (
-        <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fffbeb', border: '1px solid var(--cfde68a)', color: 'var(--c92400e)', fontSize: 12.5, fontWeight: 600, lineHeight: 1.6 }}>
+        <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 12, background: '#fffbeb', border: '1px solid var(--cfde68a)', color: '#92400e', fontSize: 12.5, fontWeight: 600, lineHeight: 1.6 }}>
           👥 Your group is bigger than the number of technicians who do these services — the salon will serve you in turns, so some guests may wait a little between starts. The times below are your group&apos;s arrival time.
         </div>
       )}
@@ -2096,7 +2096,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
              so no date will help — say the real reason, not "try tomorrow". */
           <div style={{ padding: '22px 0', textAlign: 'center' }}>
             <div style={{ fontSize: 30, marginBottom: 8 }}>👥</div>
-            <div style={{ textAlign: 'left', fontSize: 13.5, color: 'var(--c92400e)', background: '#fffbeb', border: '1px solid var(--cfde68a)', borderRadius: 12, padding: '12px 16px', lineHeight: 1.65 }}>
+            <div style={{ textAlign: 'left', fontSize: 13.5, color: '#92400e', background: '#fffbeb', border: '1px solid var(--cfde68a)', borderRadius: 12, padding: '12px 16px', lineHeight: 1.65 }}>
               A group of <b>{groupNeeds.length}</b> needs <b>{groupNeeds.length} different technicians</b> free at the same time — more than currently offer the services you picked, so no day will show times. Try different services, book one person at a time, or call the salon to arrange your group.
             </div>
             {waitlist}
@@ -2184,7 +2184,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
           <span>{bt("Total")}</span><span>{fmt(totalCents)}</span>
         </div>
         {salon?.firstVisit?.enabled && (salon.firstVisit.rules?.length ?? 0) > 0 && (
-          <div style={{ fontSize: 12, color: 'var(--c7c5c22)', background: '#fdf7ee', border: '1px solid #f0e2cc', borderRadius: 8, padding: '7px 11px', marginTop: 8, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 12, color: '#7c5c22', background: '#fdf7ee', border: '1px solid #f0e2cc', borderRadius: 8, padding: '7px 11px', marginTop: 8, lineHeight: 1.5 }}>
             🎁 Visit reward: we check your visit count automatically (by phone/email) and the matching discount is applied to your booking price.
           </div>
         )}

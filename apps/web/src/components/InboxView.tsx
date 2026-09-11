@@ -33,7 +33,7 @@ import { uiLocale } from '../lib/datetime';
 import {
   InboxRow, InboxFilter, channelLabel, channelMark, stateLabel, stateOf,
   sortRows, filterRows, sourcesFrom, waitingCount, composerNotice, displayName, pageColor, initialsOf,
-  InboxLabel, followUpState, followUpLabel, followUpCount,
+  InboxLabel, followUpState, followUpLabel, followUpCount, channelCounts, channelOf,
 } from '../lib/inbox-view';
 
 interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Photos the customer attached. */ images?: string[] }
@@ -114,6 +114,8 @@ export function InboxView() {
   const [listErr, setListErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<InboxFilter>('all');
   const [source, setSource] = useState<string>('any');
+  /** Which KIND of channel, as opposed to which account. See FilterState.channel. */
+  const [chan, setChan] = useState<string>('any');
   const [query, setQuery] = useState('');
   const [note, setNote] = useState('');
   const [labels, setLabels] = useState<InboxLabel[]>([]);
@@ -338,7 +340,8 @@ export function InboxView() {
   }
 
   const sources = sourcesFrom(rows);
-  const sorted = sortRows(filterRows(rows, { filter, source, query, meId: me, labelId }));
+  const sorted = sortRows(filterRows(rows, { filter, source, channel: chan, query, meId: me, labelId }));
+  const chans = channelCounts(rows);
   const waiting = waitingCount(rows);
   const dueCount = followUpCount(rows);
   const notice = composerNotice(detail?.replyWindow, vi);
@@ -503,6 +506,49 @@ export function InboxView() {
               style={{ ...ui.input, fontSize: narrow ? 16 : 12, padding: narrow ? '10px 13px' : '6px 9px', borderRadius: narrow ? 12 : 8 }} />
           </div>
 
+          {/* Which channel.
+              The rail on the left answers "which of my accounts"; this answers
+              "which kind of place is this coming from". A salon that has just
+              switched the website widget on wants to watch those without first
+              learning which internal id it hides behind — and the number of
+              people WAITING on each is the reason to look at all. Drawn only
+              when more than one kind has ever been used. */}
+          {chans.length > 1 && (
+            <div style={{ display: 'flex', gap: narrow ? 8 : 5, padding: narrow ? '8px 12px' : '7px 8px', borderBottom: '1px solid var(--c1e293b)', alignItems: 'center',
+              ...(narrow ? { flexWrap: 'nowrap' as const, overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const, scrollbarWidth: 'none' as const } : { flexWrap: 'wrap' as const }) }}>
+              <button onClick={() => setChan('any')}
+                style={{ ...ghostBtn, fontSize: narrow ? 13 : 11, padding: narrow ? '7px 12px' : '3px 9px', borderRadius: 999, flexShrink: 0, fontWeight: chan === 'any' ? 700 : 500,
+                  borderColor: chan === 'any' ? '#6366f1' : 'var(--c334155)',
+                  background: chan === 'any' ? 'var(--c312e81)' : 'transparent',
+                  color: chan === 'any' ? 'var(--cc7d2fe)' : 'var(--c94a3b8)' }}>
+                {vi ? 'Tất cả kênh' : 'All channels'} <span style={{ opacity: .7 }}>{rows.length}</span>
+              </button>
+              {chans.map((c) => {
+                const look = channelLabel(c.key);
+                const on = chan === c.key;
+                return (
+                  <button key={c.key} onClick={() => setChan(on ? 'any' : c.key)}
+                    title={c.waiting > 0 ? (vi ? `${c.waiting} khách đang chờ` : `${c.waiting} waiting`) : undefined}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, cursor: 'pointer',
+                      borderRadius: 999, padding: narrow ? '7px 12px' : '3px 9px',
+                      fontSize: narrow ? 13 : 11, fontWeight: on ? 700 : 500, fontFamily: 'inherit',
+                      border: `1px solid ${on ? look.border : 'var(--c334155)'}`,
+                      background: on ? look.bg : 'transparent',
+                      color: on ? look.fg : 'var(--c94a3b8)',
+                    }}>
+                    {look.text}
+                    <span style={{ opacity: .7 }}>{c.total}</span>
+                    {/* Waiting is the only number that earns a colour here. */}
+                    {c.waiting > 0 && (
+                      <span style={{ background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>{c.waiting}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: narrow ? 8 : 4, padding: narrow ? '8px 12px' : '7px 8px', borderBottom: '1px solid var(--c1e293b)',
             // One row that scrolls sideways. Wrapping onto a second line — the
             // desktop behaviour — costs a whole conversation of height on a
@@ -648,11 +694,68 @@ export function InboxView() {
           display: (narrow && (!openId || showInfo)) ? 'none' : 'flex',
           ...(narrow ? { flex: '1 1 0%', minHeight: 0 } : {}),
         }}>
-          {!detail && (
-            <p style={{ color: 'var(--c64748b)', fontSize: 13, padding: 20, margin: 0 }}>
-              {vi ? 'Chọn một hội thoại bên trái để trả lời.' : 'Pick a conversation on the left.'}
-            </p>
-          )}
+          {/* Nothing picked yet.
+              A sentence telling somebody to pick a conversation is a sentence
+              they have already obeyed or ignored; either way the largest panel
+              on the screen spends most of the day saying nothing. The same
+              space can answer the question a person actually opens an inbox
+              with — is anyone waiting, and for how long. */}
+          {!detail && (() => {
+            const oldest = rows
+              .filter((r) => stateOf(r) === 'unclaimed')
+              .reduce((m, r) => Math.max(m, r.waitingMinutes ?? 0), 0);
+            const mins = (n: number) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 ? ` ${n % 60}p` : ''}` : `${n} ${vi ? 'phút' : 'min'}`);
+            return (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16, minHeight: 0 }}>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <Box
+                    n={waiting}
+                    label={vi ? 'khách đang chờ' : 'waiting for a reply'}
+                    tone={waiting > 0 ? 'alarm' : 'calm'}
+                    sub={waiting > 0 ? (vi ? `lâu nhất ${mins(oldest)}` : `longest ${mins(oldest)}`) : (vi ? 'không ai phải đợi' : 'nobody is waiting')}
+                  />
+                  <Box
+                    n={dueCount}
+                    label={vi ? 'cần theo dõi hôm nay' : 'follow-ups due'}
+                    tone={dueCount > 0 ? 'warn' : 'calm'}
+                    sub={vi ? 'đã hẹn quay lại' : 'you said you would come back'}
+                  />
+                  <Box
+                    n={rows.filter((r) => r.unread).length}
+                    label={vi ? 'chưa đọc' : 'unread'}
+                    tone="calm"
+                    sub={vi ? 'trong toàn bộ hộp thư' : 'across the inbox'}
+                  />
+                </div>
+
+                {/* Where the traffic is. One line, no chart — four numbers do
+                    not need an axis. */}
+                {chans.length > 0 && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    {chans.map((c) => {
+                      const look = channelLabel(c.key);
+                      return (
+                        <span key={c.key} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          border: `1px solid ${look.border}`, background: look.bg, color: look.fg,
+                          borderRadius: 999, padding: '4px 11px', fontSize: 12, fontWeight: 600,
+                        }}>
+                          {look.text} <b style={{ color: 'var(--ce2e8f0)' }}>{c.total}</b>
+                          {c.waiting > 0 && <span style={{ background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10 }}>{c.waiting}</span>}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c64748b)', textAlign: 'center', lineHeight: 1.6, maxWidth: 380 }}>
+                  {waiting > 0
+                    ? (vi ? 'Bấm "Đang chờ" bên trái để xem đúng những người này trước.' : 'Tap “Waiting” on the left to see exactly those first.')
+                    : (vi ? 'Chọn một hội thoại bên trái để đọc và trả lời. Bot đã trả lời những câu nó chắc chắn.' : 'Pick a conversation on the left to read and reply. The bot has answered what it was sure about.')}
+                </p>
+              </div>
+            );
+          })()}
 
           {detail && (<>
             <div style={{ padding: '9px 13px', borderBottom: '1px solid var(--c1e293b)', display: 'flex', alignItems: 'center', gap: 9 }}>
@@ -813,7 +916,9 @@ export function InboxView() {
           )}
           {!detail ? (
             <p style={{ color: 'var(--c64748b)', fontSize: 12, padding: 14, margin: 0 }}>
-              {vi ? 'Thông tin khách hiện ở đây.' : 'Customer details appear here.'}
+              {vi
+                ? 'Chọn một hội thoại để xem: tên và số điện thoại, số lần đã ghé, lịch hẹn sắp tới, thợ quen, nhãn, lời nhắc theo dõi và ghi chú nội bộ của team.'
+                : 'Pick a conversation to see: name and phone, visits so far, the next appointment, their usual tech, labels, the follow-up reminder and the team’s private notes.'}
             </p>
           ) : (<>
             <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--c1e293b)' }}>
@@ -987,6 +1092,27 @@ export function InboxView() {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * One number, large, with what it counts under it.
+ *
+ * Alarm is the only saturated colour: a screen where three tiles shout is a
+ * screen where none of them do.
+ */
+function Box({ n, label, sub, tone }: { n: number; label: string; sub?: string; tone: 'alarm' | 'warn' | 'calm' }) {
+  const edge = tone === 'alarm' && n > 0 ? '#ef4444' : tone === 'warn' && n > 0 ? '#f59e0b' : 'var(--c334155)';
+  const num = tone === 'alarm' && n > 0 ? '#ef4444' : tone === 'warn' && n > 0 ? '#f59e0b' : 'var(--ce2e8f0)';
+  return (
+    <div style={{
+      minWidth: 132, padding: '13px 16px', borderRadius: 12, textAlign: 'center',
+      background: 'var(--c0f172a)', border: `1px solid ${edge}`,
+    }}>
+      <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.1, color: num }}>{n}</div>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 3 }}>{label}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{sub}</div>}
+    </div>
   );
 }
 

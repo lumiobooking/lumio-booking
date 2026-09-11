@@ -255,8 +255,41 @@ export function sourcesFrom(rows: InboxRow[]): InboxSource[] {
  */
 export type InboxFilter = 'all' | 'waiting' | 'unread' | 'mine' | 'followup';
 
+/**
+ * How many conversations, and how many of them are waiting, per channel kind.
+ *
+ * Both numbers, because they answer different questions from the same glance:
+ * the total says where the traffic is, the waiting count says where the work
+ * is. A channel with no conversations at all is left out — an empty chip is a
+ * button that can only disappoint.
+ */
+export function channelCounts(rows: InboxRow[]): { key: ChannelKind; total: number; waiting: number }[] {
+  const order: ChannelKind[] = ['messenger', 'instagram', 'zalo', 'web'];
+  const seen = new Map<ChannelKind, { total: number; waiting: number }>();
+  for (const r of rows ?? []) {
+    const k = channelOf(r.channel);
+    const cur = seen.get(k) ?? { total: 0, waiting: 0 };
+    cur.total += 1;
+    if (stateOf(r) === 'unclaimed') cur.waiting += 1;
+    seen.set(k, cur);
+  }
+  return order.filter((k) => seen.has(k)).map((k) => ({ key: k, ...(seen.get(k) as { total: number; waiting: number }) }));
+}
+
 export interface FilterState {
   filter?: InboxFilter;
+  /**
+   * A channel kind, or 'any'.
+   *
+   * Distinct from `source`, and both are needed. `source` is one connected
+   * account — "the Lux Nail Spa Page" — which is who the customer thinks they
+   * are writing to. This is the KIND of channel: Messenger, Instagram, Zalo,
+   * website. A salon that has just turned on the website widget wants to see
+   * how those are going without first learning which internal page id the
+   * widget hides behind, and a shop with two Facebook Pages wants "all of
+   * Facebook" in one list. Neither question is answerable with the other filter.
+   */
+  channel?: string;
   /** A key from sourcesFrom(), or 'any'. Replaces the old channel-type filter:
    *  a salon with two Pages needs to see one Page at a time. */
   source?: string;
@@ -359,6 +392,7 @@ export function filterRows(rows: InboxRow[], f: FilterState, now: Date = new Dat
 
   return rows.filter((r) => {
     if (wantSource && sourceKey(r) !== wantSource) return false;
+    if (f.channel && f.channel !== 'any' && channelOf(r.channel) !== f.channel) return false;
 
     const state = stateOf(r);
     if (filter === 'waiting' && state !== 'unclaimed') return false;

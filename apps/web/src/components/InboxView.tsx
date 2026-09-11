@@ -22,7 +22,7 @@
  * customer another customer's history is worse than showing none.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { fmtInTz } from '../lib/datetime';
 import { useAuth } from '../lib/auth';
 import { apiFetch, apiStream, apiImage } from '../lib/api';
@@ -870,8 +870,9 @@ export function InboxView() {
                         <span style={{ color: r.unread ? 'var(--cf8fafc)' : 'var(--c94a3b8)', fontSize: narrow ? 15.5 : 13, fontWeight: r.unread ? 800 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {displayName(r, vi)}
                         </span>
-                        <span style={{ marginLeft: 'auto', fontSize: 11, color: r.unread ? 'var(--c93c5fd)' : 'var(--c64748b)', fontWeight: r.unread ? 700 : 400, flexShrink: 0 }}>
-                          {fmtInTz(r.lastMessageAt || r.updatedAt, { hour: '2-digit', minute: '2-digit' })}
+                        <span title={fmtInTz(r.lastMessageAt || r.updatedAt, { dateStyle: 'full', timeStyle: 'short' })}
+                          style={{ marginLeft: 'auto', fontSize: 11, color: r.unread ? 'var(--c93c5fd)' : 'var(--c64748b)', fontWeight: r.unread ? 700 : 400, flexShrink: 0 }}>
+                          {listStampLabel(r.lastMessageAt || r.updatedAt, vi)}
                         </span>
                         {r.unread && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }} aria-label={vi ? 'Chưa đọc' : 'Unread'} />}
                       </div>
@@ -1095,8 +1096,22 @@ export function InboxView() {
               )}
               {detail.history.map((t, i) => {
                 const mine = t.role === 'assistant';
+                // A divider whenever the calendar day changes — and before the
+                // first message, so a transcript never opens without saying
+                // which day it starts on.
+                const prev = i > 0 ? detail.history[i - 1] : null;
+                const newDay = Boolean(t.at) && (!prev?.at || dayKeyInTz(t.at as string) !== dayKeyInTz(prev.at as string));
                 return (
-                  <div key={i} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%' }}>
+                  <Fragment key={i}>
+                  {newDay && (
+                    <div style={{ alignSelf: 'center', margin: '6px 0 2px' }}>
+                      <span style={{
+                        background: 'var(--c1e293b)', color: 'var(--c94a3b8)', borderRadius: 999,
+                        padding: '3px 12px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+                      }}>{dayDividerLabel(t.at as string, vi)}</span>
+                    </div>
+                  )}
+                  <div style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%' }}>
                     {/* The customer's photos, as they sent them. The links
                         are the platform's own and expire after a while; an
                         expired one shows as a broken tile, which is still
@@ -1119,9 +1134,14 @@ export function InboxView() {
                           identical is how nobody could tell what the bot had
                           already promised a customer. */}
                       {mine ? (t.manual ? (vi ? 'Nhân viên' : 'Staff') : 'Bot') : (vi ? 'Khách' : 'Customer')}
-                      {t.at ? ` · ${fmtInTz(t.at, { hour: '2-digit', minute: '2-digit' })}` : ''}
+                      {t.at ? (
+                        <span title={fmtInTz(t.at, { dateStyle: 'full', timeStyle: 'short' })}>
+                          {` · ${fmtInTz(t.at, { hour: '2-digit', minute: '2-digit' })}`}
+                        </span>
+                      ) : ''}
                     </p>
                   </div>
+                  </Fragment>
                 );
               })}
               <div ref={endRef} />
@@ -1513,6 +1533,54 @@ function Box({ n, label, sub, tone }: { n: number; label: string; sub?: string; 
  * before it means anything, and CANCELLED in green means the opposite of what
  * the colour says.
  */
+/**
+ * The day a message belongs to, written the way a person says it.
+ *
+ * WHY THIS EXISTS
+ *
+ * Every bubble used to be stamped with the clock alone — "02:00 AM" — so a
+ * conversation from eleven days ago read as if it had happened at two o'clock
+ * THIS morning. The thread header says "wrote 11d ago" and the bubbles said
+ * 2 AM, and the bubbles win, because they sit next to the words.
+ *
+ * The fix is the one every chat app uses: a day divider between days, and the
+ * clock alone inside a day. Compared with dayKeyInTz so the boundary is the
+ * salon's midnight, not UTC's — a 10 PM message in Texas is not "tomorrow".
+ */
+function dayDividerLabel(at: string, vi: boolean): string {
+  const today = dayKeyInTz(new Date());
+  const key = dayKeyInTz(at);
+  if (key === today) return vi ? 'Hôm nay' : 'Today';
+  const y = new Date();
+  y.setDate(y.getDate() - 1);
+  if (key === dayKeyInTz(y)) return vi ? 'Hôm qua' : 'Yesterday';
+  const sameYear = key.slice(0, 4) === today.slice(0, 4);
+  return fmtInTz(at, sameYear
+    ? { weekday: 'long', day: 'numeric', month: 'long' }
+    : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/**
+ * The stamp on a row in the conversation list, in 290px of width.
+ *
+ * Same trap as the bubbles: three rows reading 07:12 AM, 02:04 AM, 09:33 PM
+ * look like one busy morning when they are three different days. Today keeps
+ * the clock, because that is the one day where the hour is the useful part;
+ * every other day is named instead.
+ */
+function listStampLabel(at: string, vi: boolean): string {
+  const today = dayKeyInTz(new Date());
+  const key = dayKeyInTz(at);
+  if (key === today) return fmtInTz(at, { hour: '2-digit', minute: '2-digit' });
+  const y = new Date();
+  y.setDate(y.getDate() - 1);
+  if (key === dayKeyInTz(y)) return vi ? 'Hôm qua' : 'Yesterday';
+  const days = Math.round((Date.parse(today) - Date.parse(key)) / 86_400_000);
+  if (days > 1 && days < 7) return fmtInTz(at, { weekday: 'short' });
+  const sameYear = key.slice(0, 4) === today.slice(0, 4);
+  return fmtInTz(at, sameYear ? { day: '2-digit', month: '2-digit' } : { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
 /** "3 min", "9 days" — how long ago, in the one unit that reads cleanly. */
 function sinceLabel(at: string, vi: boolean): string {
   const mins = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60_000));

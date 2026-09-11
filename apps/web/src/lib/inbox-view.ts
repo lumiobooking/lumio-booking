@@ -82,6 +82,30 @@ export function channelMark(raw: unknown): string {
   }
 }
 
+/**
+ * The colour and the name a channel is RECOGNISED by.
+ *
+ * The badge on each avatar used to be a typographic mark — ✉ for Messenger, ◎
+ * for Instagram — in the Page's colour. On a list mixing Messenger and
+ * Instagram that reads as "mail" and "a circle": two grey stamps that answer
+ * neither "which app is this person in" nor "which of my Pages did it land
+ * on". Colour is what people actually recognise a channel by, long before any
+ * shape, so the badge carries the channel's own colour and a plain glyph.
+ *
+ * The glyphs are deliberately generic — a speech bubble, a camera, a letter, a
+ * globe. Drawing Meta's or Zalo's actual logo marks would be reproducing
+ * somebody's trademark inside our product; the colour does the recognising and
+ * the tooltip says the name in words.
+ */
+export function channelBrand(raw: unknown): { bg: string; name: string } {
+  switch (channelOf(raw)) {
+    case 'instagram': return { bg: '#e1306c', name: 'Instagram' };
+    case 'zalo': return { bg: '#0068ff', name: 'Zalo' };
+    case 'web': return { bg: '#16a34a', name: 'Website' };
+    default: return { bg: '#0084ff', name: 'Messenger' };
+  }
+}
+
 /** Two words and a mark that Windows can actually draw. No flag emoji: those
  *  are regional-indicator pairs with no glyph on Windows, and Chrome there
  *  renders them as raw letters — which is how a market column once read "us US". */

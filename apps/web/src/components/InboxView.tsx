@@ -31,7 +31,7 @@ import { ui } from '../lib/ui';
 import { useLang } from '../lib/i18n';
 import { uiLocale } from '../lib/datetime';
 import {
-  InboxRow, InboxFilter, channelLabel, channelMark, stateLabel, stateOf,
+  InboxRow, InboxFilter, channelBrand, channelLabel, channelMark, stateLabel, stateOf,
   sortRows, filterRows, sourcesFrom, waitingCount, composerNotice, displayName, pageColor, initialsOf,
   InboxLabel, followUpState, followUpLabel, followUpCount, channelCounts, channelOf, humanAgentNotice,
   windowNotice, type WindowInfo, spamCount, isSpamRow,
@@ -99,6 +99,34 @@ function keepRows(prev: InboxRow[], next: InboxRow[]): InboxRow[] {
   return moved ? out : prev;
 }
 
+/**
+ * Generic shapes, brand colours. A speech bubble, a camera, a letter, a globe —
+ * none of them anybody's trademark, all of them instantly legible at 19 pixels,
+ * which is more than can be said for ✉ standing in for Facebook Messenger.
+ */
+function channelGlyph(raw: unknown, px: number) {
+  const ch = String(raw ?? '').trim().toLowerCase();
+  const common = { width: px, height: px, viewBox: '0 0 24 24', fill: 'none', stroke: '#ffffff', strokeWidth: 2.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  if (ch === 'instagram') {
+    return (
+      <svg {...common}><rect x="3.5" y="6" width="17" height="13" rx="3" /><circle cx="12" cy="12.5" r="3.2" /><path d="M8.5 6l1.2-2h4.6L15.5 6" /></svg>
+    );
+  }
+  if (ch === 'zalo') {
+    return (
+      <svg width={px} height={px} viewBox="0 0 24 24"><text x="12" y="17" textAnchor="middle" fontSize="15" fontWeight="800" fill="#ffffff" fontFamily="inherit">Z</text></svg>
+    );
+  }
+  if (ch === 'web') {
+    return (
+      <svg {...common}><circle cx="12" cy="12" r="8.5" /><path d="M3.5 12h17M12 3.5c2.2 2.4 3.3 5.4 3.3 8.5s-1.1 6.1-3.3 8.5c-2.2-2.4-3.3-5.4-3.3-8.5S9.8 5.9 12 3.5z" /></svg>
+    );
+  }
+  return (
+    <svg {...common}><path d="M12 3.5c-4.8 0-8.5 3.5-8.5 7.9 0 2.5 1.2 4.7 3.1 6.2v3.1l2.9-1.6c.8.2 1.6.3 2.5.3 4.8 0 8.5-3.5 8.5-7.9S16.8 3.5 12 3.5z" /></svg>
+  );
+}
+
 const Avatar = memo(function Avatar(
   { row, size = 34, token, vi, mark = true }: { row: InboxRow; size?: number; token: string | null; vi: boolean; mark?: boolean },
 ) {
@@ -144,21 +172,26 @@ const Avatar = memo(function Avatar(
           dots running down a list, saying nothing that the channel filter
           above did not already say. It appears when the list actually mixes
           channels or Pages, and otherwise it does not. */}
-      {mark && (
-      <span
-        title={row.pageName ?? undefined}
-        style={{
-          position: 'absolute', right: -2, bottom: -2,
-          width: Math.round(size * 0.46), height: Math.round(size * 0.46), borderRadius: '50%',
-          // Ringed in the PAGE colour, so a real photograph still says which
-          // Fanpage it came in on - the thing initials were carrying before.
-          background: 'var(--c0b1220)', border: `2px solid ${c.bg}`,
-          color: channelLabel(row.channel).fg,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: Math.round(size * 0.28), lineHeight: 1,
-        }}
-      >{channelMark(row.channel)}</span>
-      )}
+      {mark && (() => {
+        const brand = channelBrand(row.channel);
+        const d = Math.round(size * 0.44);
+        return (
+          <span
+            title={[brand.name, row.pageName].filter(Boolean).join(' · ')}
+            aria-label={brand.name}
+            style={{
+              position: 'absolute', right: -2, bottom: -2,
+              width: d, height: d, borderRadius: '50%',
+              // The CHANNEL's colour fills it and the PAGE's colour rings it,
+              // so one glance answers both "which app" and "which Page" —
+              // neither of which the old grey ✉ answered.
+              background: brand.bg,
+              boxShadow: `0 0 0 2px var(--c0b1220), 0 0 0 3.5px ${c.bg}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >{channelGlyph(row.channel, Math.round(d * 0.7))}</span>
+        );
+      })()}
     </span>
   );
 });
@@ -1067,6 +1100,10 @@ export function InboxView() {
                   style={{ boxSizing: 'border-box', width: 'calc(100% - 16px)',
                     margin: '0 8px 2px', textAlign: 'left', display: 'block', cursor: 'pointer',
                     background: on ? 'var(--row-on)' : 'transparent',
+                    // Drawn INSIDE, so selecting a row cannot move it or its
+                    // neighbours by a pixel — a 1px border here would nudge the
+                    // whole list every time somebody arrowed through it.
+                    boxShadow: on ? 'inset 0 0 0 1.5px #6366f1' : 'none',
                     border: 'none', borderRadius: 12, padding: '12px 12px' }}>
                   <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                     <Avatar row={r} size={44} token={token} vi={vi} mark={showChannelMark} />

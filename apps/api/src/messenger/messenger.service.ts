@@ -3894,7 +3894,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         // The door is the THREAD's channel, not the module's name. Instagram
         // bookings used to be filed as 'messenger', which meant the owner's
         // "how much does Instagram bring in?" was unanswerable by design.
-        const booking = await this.bookings.createForTenant(tenantId, dto, null, ctx?.channel === 'instagram' ? 'instagram' : 'messenger');
+        // The door is the THREAD's channel, and the website is its own door.
+        // A booking the website's chat made was filed as 'messenger', so the
+        // owner asking "is the chat widget on my site worth anything?" had no
+        // way to answer — the same hole Instagram used to have.
+        const bookedVia = ctx?.channel === 'instagram' ? 'instagram' : ctx?.channel === 'web' ? 'web' : 'messenger';
+        const booking = await this.bookings.createForTenant(tenantId, dto, null, bookedVia);
         const b = booking as { id?: string; customerId?: string | null };
         // The one moment this page-scoped id and a real customer are provably
         // the same person: they just gave a name and a phone and a Customer row

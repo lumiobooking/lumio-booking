@@ -58,8 +58,8 @@ const WIDGET = `(function () {
   }
 
   var T = {
-    vi: { title: 'Nhắn tin cho tiệm', sub: 'Trả lời trong vài giây', ph: 'Nhập tin nhắn…', send: 'Gửi', hello: 'Xin chào! Em có thể giúp gì cho anh/chị hôm nay?', staff: 'Nhân viên', bot: 'Trợ lý', fail: 'Không gửi được — thử lại nhé.', open: 'Chat với tiệm' },
-    en: { title: 'Message us', sub: 'Replies in seconds', ph: 'Type a message…', send: 'Send', hello: 'Hi! How can we help you today?', staff: 'Staff', bot: 'Assistant', fail: 'Could not send — please try again.', open: 'Chat with us' }
+    vi: { title: 'Nhắn tin cho tiệm', sub: 'Trả lời trong vài giây', ph: 'Nhập tin nhắn…', send: 'Gửi', hello: 'Xin chào! Em có thể giúp gì cho anh/chị hôm nay?', staff: 'Nhân viên', bot: 'Trợ lý', fail: 'Không gửi được — thử lại nhé.', open: 'Chat với tiệm', appt: 'Xem lịch hẹn của bạn' },
+    en: { title: 'Message us', sub: 'Replies in seconds', ph: 'Type a message…', send: 'Send', hello: 'Hi! How can we help you today?', staff: 'Staff', bot: 'Assistant', fail: 'Could not send — please try again.', open: 'Chat with us', appt: 'View your appointment' }
   };
   function t(k) { var L = (cfg && cfg.lang === 'vi') ? T.vi : T.en; return L[k]; }
 
@@ -96,6 +96,11 @@ const WIDGET = `(function () {
       '.r{max-width:82%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}' +
       '.r.u{align-self:flex-end;background:' + color + ';color:#fff;border-bottom-right-radius:4px}' +
       '.r.a{align-self:flex-start;background:#fff;color:#111827;border:1px solid #e5e7eb;border-bottom-left-radius:4px}' +
+      '.lk{color:' + color + ';text-decoration:underline;word-break:break-all}' +
+      // The appointment link is the end of the sale, so it is a target, not a
+      // sentence: full width, its own line, and big enough for a thumb.
+      '.lk.btn{display:block;margin:8px 0 2px;padding:11px 14px;border-radius:10px;background:' + color + ';color:#fff;text-decoration:none;font-weight:600;text-align:center;word-break:normal}' +
+      '.lk.btn:hover{filter:brightness(1.08)}' +
       '.l{font-size:11px;color:#6b7280;margin:-4px 0 0 4px;align-self:flex-start}' +
       '.ty{align-self:flex-start;background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:10px 14px;display:flex;gap:4px}' +
       '.ty i{width:7px;height:7px;border-radius:50%;background:#9ca3af;animation:lb 1s infinite}' +
@@ -155,14 +160,46 @@ const WIDGET = `(function () {
 
   function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+  /* __LINKIFY_START__ */
+  function rich(s) {
+    // THE LINK THE WHOLE BOOKING DEPENDS ON WAS DEAD TEXT.
+    //
+    // Every bubble went through esc(), which is right: nothing a visitor or a
+    // model writes may become markup. But the confirmation link the bot sends
+    // after it books an appointment went through it too, so the customer got
+    // 200 characters of signed token they had to select and copy by hand. On a
+    // phone, inside an iframe-less shadow root, that is not a link — it is a
+    // dead end at the exact moment the sale closes.
+    //
+    // Escaping still happens FIRST, on the whole string. Only the http(s) runs
+    // that survive escaping are wrapped, so there is no path back to markup:
+    // any quote or angle bracket is already an entity by the time this reads
+    // it, and entities inside an attribute stay text.
+    var out = esc(s);
+    return out.replace(/https?:\\/\\/[^\\s<]+/g, function (u) {
+      var clean = u.replace(/[.,;:!?)\\]]+$/, '');
+      var tail = u.slice(clean.length);
+      var appt = clean.indexOf('/appt/') >= 0;
+      var label;
+      if (appt) label = t('appt');
+      else {
+        label = clean.replace(/^https?:\\/\\//, '');
+        if (label.length > 42) label = label.slice(0, 40) + '\\u2026';
+      }
+      return '<a class="lk' + (appt ? ' btn' : '') + '" href="' + clean
+        + '" target="_blank" rel="noopener noreferrer">' + label + '</a>' + tail;
+    });
+  }
+  /* __LINKIFY_END__ */
+
   function render() {
     var html = '';
     var name = cfg && cfg.agentName ? cfg.agentName : t('bot');
-    if (!turns.length) html += '<div class="r a">' + esc(cfg && cfg.greeting ? cfg.greeting : t('hello')) + '</div>';
+    if (!turns.length) html += '<div class="r a">' + rich(cfg && cfg.greeting ? cfg.greeting : t('hello')) + '</div>';
     for (var i = 0; i < turns.length; i++) {
       var x = turns[i];
       if (x.role === 'user') html += '<div class="r u">' + esc(x.text) + '</div>';
-      else html += '<div class="r a">' + esc(x.text) + '</div><div class="l">' + esc(x.human ? t('staff') : name) + '</div>';
+      else html += '<div class="r a">' + rich(x.text) + '</div><div class="l">' + esc(x.human ? t('staff') : name) + '</div>';
     }
     if (waitingSince) html += '<div class="ty"><i></i><i></i><i></i></div>';
     // Same markup as last time: leave the DOM alone. A poll every 1.5 seconds

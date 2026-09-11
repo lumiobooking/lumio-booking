@@ -210,7 +210,14 @@ export const EXTRA: Record<string, [dark: string, light: string]> = {
    * the BACKGROUND says where you are, the blue rail and dot say what is
    * unread. Dark keeps its old value exactly.
    */
-  '--row-on': ['#1e293b', '#eae8fd'],
+  // WEAK ON BOTH SIDES, INVISIBLE ON ONE.
+  //
+  // #1e293b against the #0f172a the list sits on is a two-step difference: on a
+  // laptop screen at an angle, in a bright salon, there was no selected row at
+  // all. The light value was a whisper for the same reason. Both are lifted,
+  // and the row itself now also carries an indigo ring — a wash alone has to
+  // survive every screen and every pair of eyes, and it does not.
+  '--row-on': ['#26334d', '#e2ddfc'],
   // the heavier rule: section splits, card outlines
   '--line-strong': ['#334155', '#c6d2e2'],
   // tinted note/banner grounds

@@ -72,6 +72,49 @@ const FOLLOWUP_TONE: Record<string, { bg: string; fg: string }> = {
  *  few enough that nobody spends a morning in a colour picker. */
 const LABEL_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7'];
 
+/**
+ * The four sentences a front desk types all day.
+ *
+ * Deliberately not salon-specific: prices, hours and address come from the
+ * salon's own facts (see ThreadDetail.canned) and must have exactly one
+ * source. These are the mechanics of turning a conversation into a booking —
+ * a name, a number, a time, a thank-you — and they are the same in every
+ * salon. Written the way a Vietnamese-owned shop in the US actually speaks to
+ * a customer, not translated from a template.
+ */
+/**
+ * Is this the salon's own dashboard, or the staff portal?
+ *
+ * The same inbox serves both, and /salon/bookings exists only in one of them.
+ * A button that 404s for a technician is worse than a button they never had.
+ */
+function inSalonPortal(): boolean {
+  try { return window.location.pathname.startsWith('/salon'); } catch { return false; }
+}
+
+const ASKS: { k: string; icon: string; viLabel: string; enLabel: string; vi: string; en: string }[] = [
+  {
+    k: 'name', icon: '👤', viLabel: 'Xin tên', enLabel: 'Ask name',
+    vi: 'Dạ cho em xin tên của mình để em ghi lịch nhé ạ.',
+    en: 'Could I get your name for the appointment?',
+  },
+  {
+    k: 'phone', icon: '☎', viLabel: 'Xin số', enLabel: 'Ask phone',
+    vi: 'Mình cho em xin số điện thoại để em giữ chỗ và nhắn nhắc trước giờ hẹn nha.',
+    en: 'What is the best number to reach you? We will text a reminder before your appointment.',
+  },
+  {
+    k: 'when', icon: '🕐', viLabel: 'Hỏi giờ', enLabel: 'Ask time',
+    vi: 'Mình muốn ghé ngày nào và khoảng mấy giờ ạ? Để em xem chỗ trống cho mình.',
+    en: 'What day and roughly what time works for you? Let me check what is open.',
+  },
+  {
+    k: 'thanks', icon: '🙏', viLabel: 'Cảm ơn', enLabel: 'Thanks',
+    vi: 'Dạ em cảm ơn mình nhiều ạ. Hẹn gặp mình nha!',
+    en: 'Thank you so much — see you then!',
+  },
+];
+
 /** <input type="datetime-local"> wants SALON wall-clock, not an ISO Z string. */
 function toLocalInput(iso: string | null | undefined): string {
   if (!iso) return '';
@@ -114,6 +157,8 @@ export function InboxView() {
   const [listErr, setListErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<InboxFilter>('all');
   const [source, setSource] = useState<string>('any');
+  /** Shows '✓ Đã chép' for a moment, so the press has an answer. */
+  const [copied, setCopied] = useState(false);
   /** Which KIND of channel, as opposed to which account. See FilterState.channel. */
   const [chan, setChan] = useState<string>('any');
   const [query, setQuery] = useState('');
@@ -344,6 +389,46 @@ export function InboxView() {
   const chans = channelCounts(rows);
   const waiting = waitingCount(rows);
   const dueCount = followUpCount(rows);
+  /**
+   * The name and number as one line, on the clipboard.
+   *
+   * Reading a phone number off one panel and typing it into another is where
+   * a digit gets lost, and a booking with one wrong digit is a no-show nobody
+   * can explain afterwards.
+   */
+  async function copyContact(d: ThreadDetail | null) {
+    if (!d) return;
+    const name = [d.customer?.firstName, d.customer?.lastName].filter(Boolean).join(' ').trim() || displayName(d, vi);
+    const line = [name, d.customer?.phone].filter(Boolean).join(' · ');
+    try {
+      await navigator.clipboard.writeText(line);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard refused (an insecure origin, or the browser said no). Saying
+      // nothing would look like a dead button.
+      window.prompt(vi ? 'Chép dòng này:' : 'Copy this:', line);
+    }
+  }
+
+  /**
+   * Open the booking screen for this customer.
+   *
+   * The clipboard is loaded first and the query string carries the same two
+   * facts: whichever the booking screen is ready to read, the person has them.
+   * A new tab rather than a navigation — losing a half-typed reply to open a
+   * booking form is not a trade anybody would make on purpose.
+   */
+  async function bookFor(d: ThreadDetail | null) {
+    if (!d) return;
+    await copyContact(d);
+    const name = [d.customer?.firstName, d.customer?.lastName].filter(Boolean).join(' ').trim() || displayName(d, vi);
+    const q = new URLSearchParams();
+    if (name) q.set('name', name);
+    if (d.customer?.phone) q.set('phone', String(d.customer.phone));
+    window.open(`/salon/bookings${q.toString() ? `?${q.toString()}` : ''}`, '_blank', 'noopener');
+  }
+
   const notice = composerNotice(detail?.replyWindow, vi);
   const state = detail ? stateOf(detail) : 'bot';
 
@@ -856,13 +941,33 @@ export function InboxView() {
               <div ref={endRef} />
             </div>
 
-            {!!detail.canned?.length && !notice.blocked && (
-              <div style={{ borderTop: '1px solid var(--c1e293b)', padding: narrow ? '8px 12px' : '8px 10px', display: 'flex', gap: narrow ? 8 : 6,
+            {/* One strip, two kinds of button.
+                The first are the salon's OWN facts — prices, hours, address —
+                read from what they wrote for the bot, so a receptionist can
+                never quote a figure the bot would contradict.
+                After the divider are the four things every conversation needs
+                and no salon should have to type again: a name, a number, a
+                time, a thank-you. Those are the ones that turn a chat into a
+                booking, and typing them thirty times a day is how a busy front
+                desk ends up answering in one word. */}
+            {!notice.blocked && (
+              <div style={{ borderTop: '1px solid var(--c1e293b)', padding: narrow ? '8px 12px' : '8px 10px', display: 'flex', gap: narrow ? 8 : 6, alignItems: 'center',
                 ...(narrow ? { flexWrap: 'nowrap' as const, overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const } : { flexWrap: 'wrap' as const }) }}>
-                {detail.canned.map((q) => (
+                {(detail.canned ?? []).map((q) => (
                   <button key={q.label} title={q.text}
                     onClick={() => setDraft((d) => (d.trim() ? `${d.trim()}\n${q.text}` : q.text))}
-                    style={{ ...ghostBtn, fontSize: narrow ? 13 : 11, padding: narrow ? '8px 13px' : '3px 9px', borderRadius: 999, flexShrink: 0 }}>{q.label}</button>
+                    style={{ ...ghostBtn, fontSize: narrow ? 13 : 11, padding: narrow ? '8px 13px' : '3px 9px', borderRadius: 999, flexShrink: 0,
+                      borderColor: '#6366f1', color: 'var(--cc7d2fe)' }}>{q.label}</button>
+                ))}
+                {!!detail.canned?.length && (
+                  <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--c334155)', flexShrink: 0, margin: '0 2px' }} />
+                )}
+                {ASKS.map((a) => (
+                  <button key={a.k} title={vi ? a.vi : a.en}
+                    onClick={() => setDraft((d) => { const t = vi ? a.vi : a.en; return d.trim() ? `${d.trim()} ${t}` : t; })}
+                    style={{ ...ghostBtn, fontSize: narrow ? 13 : 11, padding: narrow ? '8px 13px' : '3px 9px', borderRadius: 999, flexShrink: 0 }}>
+                    {a.icon} {vi ? a.viLabel : a.enLabel}
+                  </button>
                 ))}
               </div>
             )}
@@ -939,6 +1044,42 @@ export function InboxView() {
                     : 'Not linked to a customer record yet. It links itself when they book from this conversation.'}
                 </p>
               )}
+
+              {/* From a conversation to a booking, in one press.
+                  This is the shortest path in the product between a message
+                  and money, and until now it was: read the number, remember
+                  it, open another tab, find the booking screen, type it back.
+                  Four chances to transpose two digits.
+
+                  The name and number are put on the clipboard FIRST and the
+                  query string carries them too — whichever the booking screen
+                  is ready for, the receptionist has them. */}
+              <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 11 }}>
+                {detail.customer?.phone && (
+                  <a href={`tel:${String(detail.customer.phone).replace(/[^+\d]/g, '')}`}
+                    style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5, padding: narrow ? '9px 13px' : '5px 10px', fontSize: narrow ? 13.5 : 12 }}>
+                    ☎ {vi ? 'Gọi' : 'Call'}
+                  </a>
+                )}
+                {detail.customer?.phone && (
+                  <button
+                    onClick={() => { void copyContact(detail); }}
+                    style={{ ...ghostBtn, padding: narrow ? '9px 13px' : '5px 10px', fontSize: narrow ? 13.5 : 12 }}>
+                    {copied ? `✓ ${vi ? 'Đã chép' : 'Copied'}` : `⧉ ${vi ? 'Chép tên + số' : 'Copy name + number'}`}
+                  </button>
+                )}
+                {inSalonPortal() && (
+                  <button
+                    onClick={() => { void bookFor(detail); }}
+                    style={{
+                      padding: narrow ? '9px 14px' : '5px 11px', fontSize: narrow ? 13.5 : 12, fontWeight: 700,
+                      borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                      background: '#6366f1', color: 'var(--cf8fafc)',
+                    }}>
+                    📅 {vi ? 'Đặt lịch cho khách này' : 'Book this customer'}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* The phone header gave this button's seat to the customer's

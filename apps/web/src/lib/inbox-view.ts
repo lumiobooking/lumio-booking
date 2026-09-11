@@ -33,6 +33,12 @@ export interface InboxRow {
   unread?: boolean;
   /** When a MESSAGE last happened. The list sorts by this. */
   lastMessageAt?: string | null;
+  /** When the CUSTOMER last wrote — the only column an inbound webhook moves.
+   *  Everything Meta measures (the 24-hour window, the 7-day human-agent
+   *  window) is measured from this, never from lastMessageAt, which the bot
+   *  and the staff move too. A header that read lastMessageAt announced
+   *  "wrote 1h ago" about a customer who had written the night before. */
+  lastCustomerAt?: string | null;
   /** When the ROW was last written — moves when you merely mark it read. Kept
    *  only as a fallback for rows older than lastMessageAt. */
   updatedAt: string;

@@ -6,7 +6,7 @@ import {
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
-import { lastInboundAt, outboundEnvelope, replyWindowState } from './human-agent';
+import { customerLastWroteAt, outboundEnvelope, replyWindowState } from './human-agent';
 import { mergeHistory } from './history-merge';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
@@ -65,6 +65,9 @@ function wallToUtcISO(local: string, tz: string): string {
 
 type Turn = {
   role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean;
+  /** Meta's message id. Lets mergeHistory join our copy to Meta's on the id
+   *  rather than on the text — see markManual in ./history-merge. */
+  messageId?: string | null;
   /** Photo URLs the customer attached to this turn — shown in the inbox, looked at once by the model. */
   images?: string[];
   /** What else came with it (sticker, voice, file), for the stage direction. */
@@ -1217,7 +1220,14 @@ export class MessengerService implements OnModuleInit {
       // the middle one by name: a reply going out under HUMAN_AGENT is the
       // salon promising Meta that a person wrote it, and the person typing
       // should be told they are making that promise.
-      humanAgent: replyWindowState(lastInboundAt((row as { history?: unknown }).history), now),
+      humanAgent: replyWindowState(customerLastWroteAt(
+        (row as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt,
+        (row as { history?: unknown }).history,
+      ), now),
+      // The header prints "wrote N ago" from this, NOT from lastMessageAt —
+      // which the bot and the staff both move, and which therefore answers a
+      // different question than the one the header asks.
+      lastCustomerAt: (row as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt ?? null,
       customer,
     };
   }
@@ -1652,7 +1662,17 @@ export class MessengerService implements OnModuleInit {
      * left as RESPONSE, so a receptionist answering on day two simply got an
      * error — and the app was asking App Review for a feature it never used.
      */
-    const env = outboundEnvelope({ lastInbound: lastInboundAt(thread.history), byHuman: true }, new Date());
+    // lastCustomerAt is the column only an inbound webhook moves. Reading the
+    // history buffer alone let a thread with no timestamped user turn resolve
+    // to "unknown", which sends as RESPONSE — and that is how a reply went out
+    // 21 days after the customer last wrote, with the server never objecting.
+    const env = outboundEnvelope({
+      lastInbound: customerLastWroteAt(
+        (thread as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt,
+        thread.history,
+      ),
+      byHuman: true,
+    }, new Date());
     if (!env.body) {
       const hist0 = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
       await this.prisma.messengerThread.update({
@@ -3945,11 +3965,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // this is a single request rather than a walk over every conversation.
       const url = `${GRAPH}/${encodeURIComponent(pageId)}/conversations`
         + `?platform=${platform}&user_id=${encodeURIComponent(psid)}`
-        + `&fields=messages.limit(100){message,from,created_time}`
+        + `&fields=messages.limit(100){id,message,from,created_time}`
         + `&access_token=${encodeURIComponent(pageToken)}`;
       const r = await fetch(url);
       const j = (await r.json().catch(() => ({}))) as {
-        data?: { messages?: { data?: { message?: string; created_time?: string; from?: { id?: string } }[]; paging?: { next?: string } } }[];
+        data?: { messages?: { data?: { id?: string; message?: string; created_time?: string; from?: { id?: string } }[]; paging?: { next?: string } } }[];
         error?: { message?: string };
       };
       if (j.error) {
@@ -3966,7 +3986,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (next && msgs.length >= 100) {
         try {
           const r2 = await fetch(next);
-          const j2 = (await r2.json().catch(() => ({}))) as { data?: { message?: string; created_time?: string; from?: { id?: string } }[] };
+          const j2 = (await r2.json().catch(() => ({}))) as { data?: { id?: string; message?: string; created_time?: string; from?: { id?: string } }[] };
           if (Array.isArray(j2.data)) msgs.push(...j2.data.slice(0, 100));
         } catch { /* the first hundred still stand */ }
       }
@@ -3980,6 +4000,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           role: (String(m.from?.id ?? '') === pageId ? 'assistant' : 'user') as Turn['role'],
           content: String(m.message).trim(),
           at: m.created_time ? new Date(m.created_time).toISOString() : undefined,
+          // Carried so mergeHistory can say which Page messages a PERSON typed
+          // by matching ids instead of matching text. Text matching marked
+          // every "Thank you" the bot ever sent as staff the moment a
+          // receptionist typed the same two words.
+          ...(m.id ? { messageId: String(m.id) } : {}),
         }))
         // Meta returns newest first; people read oldest first.
         .reverse();

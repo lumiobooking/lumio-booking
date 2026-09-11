@@ -48,12 +48,53 @@ export interface OutboundEnvelope {
  * as "long ago".
  */
 export function lastInboundAt(history: unknown): string | null {
+  // The NEWEST customer turn by the clock, not the last one in the array.
+  //
+  // This used to walk backwards and return the first `user` turn it met, which
+  // is correct only if array order is time order. mergeHistory breaks that:
+  // anything Meta has not caught up with is appended to the end regardless of
+  // when it happened, so an OLD customer message could sit last. Reading that
+  // as "when they last wrote" makes the app believe the 24-hour window shut
+  // when it is open — and then attach HUMAN_AGENT inside the window, which is
+  // a policy violation, not a display bug. Taking the maximum cannot be fooled
+  // by order.
   const rows = Array.isArray(history) ? history : [];
-  for (let i = rows.length - 1; i >= 0; i -= 1) {
-    const r = rows[i] as { role?: string; at?: string } | null;
-    if (r && r.role === 'user' && typeof r.at === 'string' && r.at) return r.at;
+  let best: number | null = null;
+  let bestIso: string | null = null;
+  for (const row of rows) {
+    const r = row as { role?: string; at?: string } | null;
+    if (!r || r.role !== 'user' || typeof r.at !== 'string' || !r.at) continue;
+    const t = Date.parse(r.at);
+    if (!Number.isFinite(t)) continue;
+    if (best === null || t > best) { best = t; bestIso = r.at; }
   }
-  return null;
+  return bestIso;
+}
+
+/**
+ * When the customer last wrote — from the one column only they can move.
+ *
+ * `lastCustomerAt` is stamped by inbound webhooks and nothing else.
+ * `lastMessageAt` is stamped by the bot and by staff sends too, so it answers
+ * "when did anything happen here", which is a different question and the wrong
+ * one for every window Meta measures. The header read that second field and
+ * announced "wrote 1h ago" over a thread whose last customer message was the
+ * night before.
+ *
+ * The history scan stays as the fallback for rows written before the column
+ * existed. The column wins when both are present: it is a timestamp Meta gave
+ * us, while history is a rolling 12-turn buffer that can have rolled past the
+ * message in question.
+ */
+export function customerLastWroteAt(
+  lastCustomerAt: string | Date | null | undefined,
+  history: unknown,
+): string | null {
+  if (lastCustomerAt) {
+    const d = lastCustomerAt instanceof Date ? lastCustomerAt : new Date(lastCustomerAt);
+    if (Number.isFinite(d.getTime())) return d.toISOString();
+  }
+  return lastInboundAt(history);
 }
 
 /**

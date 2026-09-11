@@ -1073,9 +1073,15 @@ export function InboxView() {
                       above the composer only says WHICH side of them we are on.
                       This says by how much — the difference between "answer now"
                       and "that ship sailed on Tuesday". */}
-                  {detail.lastMessageAt && (
-                    <span title={fmtInTz(detail.lastMessageAt, { dateStyle: 'medium', timeStyle: 'short' })}>
-                      · {vi ? 'nhắn' : 'wrote'} {sinceLabel(detail.lastMessageAt, vi)}
+                  {/* "wrote N ago" means the CUSTOMER. It read lastMessageAt,
+                      which the bot and the staff also move — so a thread whose
+                      customer last wrote last night announced "wrote 1h ago"
+                      because the bot had answered an hour ago. Same field the
+                      24-hour and 7-day windows are measured from, so the header
+                      and the composer's warning can never disagree again. */}
+                  {(detail.lastCustomerAt ?? null) && (
+                    <span title={fmtInTz(detail.lastCustomerAt as string, { dateStyle: 'medium', timeStyle: 'short' })}>
+                      · {vi ? 'khách nhắn' : 'customer wrote'} {sinceLabel(detail.lastCustomerAt as string, vi)}
                     </span>
                   )}
                 </p>
@@ -1591,6 +1597,13 @@ function dayDividerLabel(at: string, vi: boolean): string {
   const y = new Date();
   y.setDate(y.getDate() - 1);
   if (key === dayKeyInTz(y)) return vi ? 'Hôm qua' : 'Yesterday';
+  // One way of writing a day per transcript, not two.
+  //
+  // The divider said "Yesterday" in one place and "Tuesday, September 1" in
+  // another, so a reader had to hold two mental formats at once to work out
+  // which group was older. Every divider past yesterday is now the same
+  // absolute shape, and the two relative words stay only for the two days
+  // where "yesterday" is genuinely clearer than a date.
   const sameYear = key.slice(0, 4) === today.slice(0, 4);
   return fmtInTz(at, sameYear
     ? { weekday: 'long', day: 'numeric', month: 'long' }
@@ -1616,11 +1629,10 @@ function bubbleStampLabel(at: string, vi: boolean): string {
   const today = dayKeyInTz(new Date());
   const key = dayKeyInTz(at);
   if (key === today) return fmtInTz(at, { hour: '2-digit', minute: '2-digit' });
-  const y = new Date();
-  y.setDate(y.getDate() - 1);
-  if (key === dayKeyInTz(y)) {
-    return `${vi ? 'Hôm qua' : 'Yesterday'} ${fmtInTz(at, { hour: '2-digit', minute: '2-digit' })}`;
-  }
+  // Bubbles never say "Yesterday": the divider above them already does, and a
+  // stack where one line reads "Yesterday 11:38 PM" and the next reads
+  // "01 Sep, 07:12 AM" is two formats asking the reader to compare them.
+  // Outside today, a bubble always carries a date.
   const sameYear = key.slice(0, 4) === today.slice(0, 4);
   return fmtInTz(at, sameYear
     ? { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }

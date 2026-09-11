@@ -100,7 +100,7 @@ function keepRows(prev: InboxRow[], next: InboxRow[]): InboxRow[] {
 }
 
 const Avatar = memo(function Avatar(
-  { row, size = 34, token, vi }: { row: InboxRow; size?: number; token: string | null; vi: boolean },
+  { row, size = 34, token, vi, mark = true }: { row: InboxRow; size?: number; token: string | null; vi: boolean; mark?: boolean },
 ) {
   const c = pageColor(row.pageId);
   const src = `/messenger/threads/${row.id}/avatar`;
@@ -138,6 +138,13 @@ const Avatar = memo(function Avatar(
           fontSize: Math.round(size * 0.36), fontWeight: 700,
         }}>{initialsOf(displayName(row, vi))}</span>
       )}
+      {/* THE MARK IS ONLY WORTH ITS INK WHEN IT DISTINGUISHES SOMETHING.
+          A salon on one Page, with one channel, got this same little circle
+          stamped on all thirteen rows - a second vertical stripe of identical
+          dots running down a list, saying nothing that the channel filter
+          above did not already say. It appears when the list actually mixes
+          channels or Pages, and otherwise it does not. */}
+      {mark && (
       <span
         title={row.pageName ?? undefined}
         style={{
@@ -151,6 +158,7 @@ const Avatar = memo(function Avatar(
           fontSize: Math.round(size * 0.28), lineHeight: 1,
         }}
       >{channelMark(row.channel)}</span>
+      )}
     </span>
   );
 });
@@ -624,6 +632,9 @@ export function InboxView() {
   // same eleven characters repeated down the list, pushing the customer's own
   // labels onto a second line. Distinct names is the question that matters.
   const showPageChip = new Set(rows.map((r) => String(r.pageName ?? '').trim()).filter(Boolean)).size > 1;
+  /** Does this inbox actually mix channels or Pages? If not, the little mark
+   *  on every avatar is thirteen copies of one fact. */
+  const showChannelMark = showPageChip || new Set(rows.map((r) => channelOf(r.channel))).size > 1;
   const sorted = sortRows(filterRows(rows, { filter, source, channel: chan, query, meId: me, labelId }));
   const unreadCount = rows.filter((r) => r.unread && !isSpamRow(r)).length;
   /** How many conversations are in the bin. Drives whether the chip exists. */
@@ -1050,14 +1061,17 @@ export function InboxView() {
                     borderLeft: `3px solid ${on ? '#4f46e5' : r.unread ? '#3b82f6' : 'transparent'}`,
                     borderBottom: '1px solid var(--line)', padding: narrow ? '11px 14px' : '7px 11px' }}>
                   <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
-                    <Avatar row={r} size={narrow ? 48 : 34} token={token} vi={vi} />
+                    <Avatar row={r} size={narrow ? 48 : 34} token={token} vi={vi} mark={showChannelMark} />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1 }}>
                         <span style={{ color: (r.unread || on) ? 'var(--cf8fafc)' : 'var(--c94a3b8)', fontSize: narrow ? 15.5 : 13, fontWeight: r.unread ? 800 : on ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {displayName(r, vi)}
                         </span>
                         <span title={fmtInTz(r.lastMessageAt || r.updatedAt, { dateStyle: 'full', timeStyle: 'short' })}
-                          style={{ marginLeft: 'auto', fontSize: 11, color: r.unread ? 'var(--c93c5fd)' : 'var(--c64748b)', fontWeight: r.unread ? 700 : 400, flexShrink: 0 }}>
+                          // The clock is not the unread signal. Colouring it too
+                          // put a third blue thing on every unread row, and the
+                          // rail, the dot and the bold name already say it.
+                          style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--c64748b)', fontWeight: r.unread ? 600 : 400, flexShrink: 0 }}>
                           {listStampLabel(r.lastMessageAt || r.updatedAt, vi)}
                         </span>
                         {r.unread && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }} aria-label={vi ? 'Chưa đọc' : 'Unread'} />}
@@ -1071,7 +1085,18 @@ export function InboxView() {
                           no longer fill the column. */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                         <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: narrow ? 13.5 : 12, color: r.unread ? 'var(--ce2e8f0)' : 'var(--c64748b)', fontWeight: r.unread ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
-                        <span style={{ flexShrink: 0 }}>{pill(st.tone, st.text)}</span>
+                        {/* THE DEFAULT IS NOT NEWS.
+                            Thirteen conversations, thirteen identical "Bot"
+                            badges in a column down the right edge. A badge
+                            every row carries tells you nothing about any row -
+                            it is the thing that is true unless stated
+                            otherwise, stated thirteen times. It is drawn now
+                            only when something is different: a person is
+                            holding it, it is waiting for one, or it is closed.
+                            The conversation header still shows the state
+                            always, which is where somebody about to type
+                            actually needs it. */}
+                        {stateOf(r) !== 'bot' && <span style={{ flexShrink: 0 }}>{pill(st.tone, st.text)}</span>}
                       </div>
                       {/* And this line is drawn only when it carries something.
                           An empty flex row still costs its gap. */}

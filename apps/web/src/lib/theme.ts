@@ -41,7 +41,7 @@ export const TOKENS: Record<string, string> = {
   '#0f172a': '#ffffff', // panel / input background
   '#111827': '#ffffff', // card / sticky header background
   '#1f2937': '#e6ebf4', // header borders, deep chips
-  '#1e293b': '#f1f4fa', // raised chip bg AND hairline borders
+  '#1e293b': '#edf1f8', // raised chip bg (dividers now use --line)
   '#334155': '#cfd9e8', // borders
   '#475569': '#aab8cb', // strong borders / faint strokes
 
@@ -145,10 +145,64 @@ export const varName = (darkHex: string) => `--c${darkHex.slice(1).toLowerCase()
  * the browser's OWN chrome with us: date pickers, selects, scrollbars, the
  * autofill tint — the parts of "light mode" no app stylesheet can reach.
  */
+/**
+ * Variables that are NOT a dark-hex→light-hex pair, because one dark value has
+ * two different jobs and light mode needs them to part company.
+ *
+ * THE HAIRLINE
+ *
+ * `#1e293b` is written in the source both as a raised chip's BACKGROUND and as
+ * a 1px divider. At night one value does both: on `#0f172a` a `#1e293b` line is
+ * a visible seam. By day it cannot: a surface pale enough to sit under text
+ * (`#f1f4fa`) is, as a line on white, no line at all. That is the whole of
+ * "mọi thứ dính vào nhau" - 125 dividers across 38 screens, each drawn and
+ * each invisible, so panels, list rows, table headers and the message composer
+ * had no edges and the eye had nothing to rest against.
+ *
+ * The dark value here is byte-identical to the literal it replaces, so night
+ * mode does not move by one pixel. Only the day value is new.
+ *
+ * THE WASHES
+ *
+ * Same story for `rgba(120,53,15,.12)` and friends: a translucent DARK colour.
+ * Over `#0f172a` it is a whisper of amber; over white it is mud. The dark side
+ * of each pair below is the exact rgba() it replaces.
+ */
+export const EXTRA: Record<string, [dark: string, light: string]> = {
+  // dividers, panel seams, table rules
+  '--line': ['#1e293b', '#dde4ee'],
+  /**
+   * A surface that has to lift off the MESSAGE PANE, not off a white card.
+   *
+   * `#1e293b` is the right chip on a `#0f172a` panel, and by day `#edf1f8` is
+   * the right chip on a white one. But the inbox transcript runs on the page
+   * ground (`#0b1220` -> `#eef2f8`), and there `#edf1f8` on `#eef2f8` is a
+   * contrast ratio of 1.01 - the customer's message bubbles, the day dividers
+   * and the "recent messages only" notice were all drawn and none of them
+   * could be seen. Messenger's own grammar is the answer: grey pane, WHITE
+   * incoming bubble, coloured outgoing one.
+   *
+   * Dark is the same `#1e293b` it always was, so night mode is untouched.
+   */
+  '--raised': ['#1e293b', '#ffffff'],
+  // the heavier rule: section splits, card outlines
+  '--line-strong': ['#334155', '#c6d2e2'],
+  // tinted note/banner grounds
+  '--wash-amber': ['rgba(120,53,15,0.12)', '#fdf5e6'],
+  '--wash-amber-2': ['rgba(120,53,15,0.18)', '#fcf0d9'],
+  '--wash-amber-3': ['rgba(120,53,15,0.25)', '#fbeacc'],
+  '--wash-amber-4': ['rgba(120,53,15,0.28)', '#fae6c2'],
+  '--wash-red': ['rgba(127,29,29,0.25)', '#fdeaea'],
+  '--wash-red-2': ['rgba(153,27,27,0.28)', '#fbdede'],
+  '--wash-blue': ['rgba(30,58,138,0.28)', '#e6eefc'],
+};
+
 export function themeCss(): string {
   const dark = Object.keys(TOKENS).map((k) => `${varName(k)}:${k}`).join(';');
   const light = Object.entries(TOKENS).map(([k, v]) => `${varName(k)}:${v}`).join(';');
-  return `:root{${dark};--glass:rgba(11,17,32,.82);color-scheme:dark}\nhtml[data-theme='light']{${light};--glass:rgba(255,255,255,.86);color-scheme:light}`;
+  const xDark = Object.entries(EXTRA).map(([n, [d]]) => `${n}:${d}`).join(';');
+  const xLight = Object.entries(EXTRA).map(([n, [, l]]) => `${n}:${l}`).join(';');
+  return `:root{${dark};${xDark};--glass:rgba(11,17,32,.82);color-scheme:dark}\nhtml[data-theme='light']{${light};${xLight};--glass:rgba(255,255,255,.86);color-scheme:light}`;
 }
 
 // ---- contrast arithmetic (WCAG 2.x), used by the spec ----------------------

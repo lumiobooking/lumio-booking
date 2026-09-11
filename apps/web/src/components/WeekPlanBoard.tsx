@@ -382,7 +382,7 @@ export function WeekPlanBoard({
               {week.targets.map((t, i) => (
                 <div key={i} style={{
                   display: 'flex', alignItems: 'baseline', gap: 9, padding: '6px 0',
-                  borderTop: i === 0 ? 'none' : '1px solid var(--c1e293b)',
+                  borderTop: i === 0 ? 'none' : '1px solid var(--line)',
                 }}>
                   <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--ca5b4fc)', lineHeight: 1, minWidth: 26 }}>{t.target}</span>
                   <span style={{ fontSize: 11.5, color: 'var(--c64748b)', minWidth: 44 }}>{t.unit}</span>
@@ -412,7 +412,7 @@ export function WeekPlanBoard({
               key={`${d.weekday}-${di}`}
               style={{
                 display: 'flex', gap: 12, padding: '10px 0 10px 11px',
-                borderTop: di === 0 ? 'none' : '1px solid var(--c1e293b)',
+                borderTop: di === 0 ? 'none' : '1px solid var(--line)',
                 borderLeft: `2px solid ${isToday ? '#f59e0b' : 'transparent'}`,
                 marginLeft: -11,
               }}
@@ -967,7 +967,7 @@ const sheetToggle: React.CSSProperties = {
   background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
 };
 const sheet: React.CSSProperties = {
-  marginTop: 6, padding: '8px 10px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)',
+  marginTop: 6, padding: '8px 10px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--line)',
 };
 const tickBox: React.CSSProperties = {
   width: 18, height: 18, borderRadius: 5, border: '1.5px solid', cursor: 'pointer', flex: '0 0 auto', marginTop: 1,

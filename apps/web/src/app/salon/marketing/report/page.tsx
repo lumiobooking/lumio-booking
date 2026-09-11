@@ -186,7 +186,7 @@ function Inner() {
 
 function Kpi({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: string }) {
   return (
-    <div style={{ background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 12, padding: '12px 14px' }}>
+    <div style={{ background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 12, padding: '12px 14px' }}>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: accent ?? '#fff' }}>{value}</div>
       {hint && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}

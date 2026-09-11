@@ -111,7 +111,7 @@ export function NotificationBell() {
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'transparent' }} />
           <div style={panel}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 15px', borderBottom: '1px solid var(--c1e293b)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 15px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
               <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{L('Thông báo', 'Notifications')}</span>
               <button onClick={() => setOpen(false)} aria-label={L('Đóng', 'Close')} style={{ background: 'transparent', border: 'none', color: 'var(--c94a3b8)', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
             </div>
@@ -130,7 +130,7 @@ export function NotificationBell() {
                     onClick={go}
                     onMouseEnter={() => setHoverId(i.id)}
                     onMouseLeave={() => setHoverId(null)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: hovered ? '#1a2536' : 'transparent', border: 'none', borderTop: '1px solid var(--c1e293b)', padding: '11px 14px', cursor: 'pointer' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: hovered ? '#1a2536' : 'transparent', border: 'none', borderTop: '1px solid var(--line)', padding: '11px 14px', cursor: 'pointer' }}
                   >
                     <span style={{ width: 32, height: 32, borderRadius: 9, background: m.bg, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -149,7 +149,7 @@ export function NotificationBell() {
               })}
             </div>
 
-            <button onClick={() => { setOpen(false); router.push('/salon/activity'); }} style={{ borderTop: '1px solid var(--c1e293b)', background: 'transparent', color: 'var(--c818cf8)', fontSize: 13.5, fontWeight: 600, padding: '12px', cursor: 'pointer', border: 'none', flexShrink: 0 }}>
+            <button onClick={() => { setOpen(false); router.push('/salon/activity'); }} style={{ borderTop: '1px solid var(--line)', background: 'transparent', color: 'var(--c818cf8)', fontSize: 13.5, fontWeight: 600, padding: '12px', cursor: 'pointer', border: 'none', flexShrink: 0 }}>
               {L('Xem tất cả thông báo', 'View all notifications')}
             </button>
           </div>

@@ -479,7 +479,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                       {mine.map((tpl) => (
                         <div key={tpl.id}
                           style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 10,
-                            border: chosen === tpl.name ? '1px solid #fbbf24' : '1px solid var(--c1e293b)',
+                            border: chosen === tpl.name ? '1px solid #fbbf24' : '1px solid var(--line)',
                             background: chosen === tpl.name ? 'rgba(251,191,36,0.10)' : 'var(--c0f172a)' }}>
                           <button onClick={() => applyTemplate(tpl)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>
                             <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{tpl.name}</span>
@@ -494,7 +494,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                             style={{ flexShrink: 0, background: 'none', border: 0, color: '#ef4444', fontSize: 20, cursor: 'pointer' }}>&times;</button>
                         </div>
                       ))}
-                      <div style={{ height: 1, background: 'var(--c1e293b)', margin: '6px 0' }} />
+                      <div style={{ height: 1, background: 'var(--line)', margin: '6px 0' }} />
                       <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--c64748b)', textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 2px 0' }}>
                         {t('Mẫu có sẵn của Lumio', 'Built-in templates')}
                       </div>
@@ -510,7 +510,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                           setPickOpen(false);
                         }}
                         style={{ display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', padding: '12px 14px', borderRadius: 10,
-                          border: on ? '1px solid #6366f1' : '1px solid var(--c1e293b)',
+                          border: on ? '1px solid #6366f1' : '1px solid var(--line)',
                           background: on ? 'rgba(99,102,241,0.12)' : 'var(--c0f172a)' }}>
                         <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 5 }}>{p.label}</span>
                         <span style={{ display: 'block', fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>
@@ -586,7 +586,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             <input value={d.replyTo} onChange={(e) => setD({ ...d, replyTo: e.target.value })}
               placeholder={t('Mặc định của hệ thống', 'Platform default')} style={{ ...ui.input, width: '100%' }} />)}
 
-          <div style={{ height: 1, background: 'var(--c1e293b)', margin: '6px 0 16px' }} />
+          <div style={{ height: 1, background: 'var(--line)', margin: '6px 0 16px' }} />
 
           {field(t('Người nhận — mỗi dòng một người (có tên càng tốt)', 'Recipients — one per line (a name is better)'),
             t('Có tên thì thư sẽ chào đúng tên khách, và tỉ lệ mở cao hơn hẳn. Trong nội dung, {{name|anh chị}} sẽ tự điền tên khách — ai chưa có tên thì thư vẫn chào "anh chị" bình thường. Hệ thống tự lọc trùng và địa chỉ sai.',
@@ -709,7 +709,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                'One person per line. With a name, the email greets them properly — which lifts open rates a lot. All four forms work:')}
           </p>
           <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, color: 'var(--ca5b4fc)', background: 'var(--c0f172a)',
-            border: '1px solid var(--c1e293b)', borderRadius: 8, padding: '10px 12px', marginBottom: 10, lineHeight: 1.9 }}>
+            border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', marginBottom: 10, lineHeight: 1.9 }}>
             Anh Tuấn &lt;tuan@gmail.com&gt;<br />
             tuan@gmail.com, Anh Tuấn<br />
             Chị Mai, mai@yahoo.com<br />
@@ -798,7 +798,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
           <div style={{ ...ui.card, color: 'var(--c64748b)', fontSize: 13.5 }}>{t('Chưa có ai trong nhóm này.', 'Nobody in this group yet.')}</div>
         ) : (
           <div style={{ ...ui.card, padding: 0, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--c0f172a)', borderBottom: '1px solid var(--c1e293b)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--c0f172a)', borderBottom: '1px solid var(--line)' }}>
               <input type="checkbox" checked={allPicked} onChange={toggleAll}
                 style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer', flexShrink: 0 }} />
               <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 700, color: 'var(--c64748b)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -823,7 +823,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                   : c.sends === 0 ? '#38bdf8' : c.lastStatus === 'failed' ? '#ef4444' : '#22c55e';
                 return (
                   <div key={c.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderBottom: '1px solid var(--c1e293b)',
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderBottom: '1px solid var(--line)',
                       background: on ? 'rgba(99,102,241,0.10)' : 'transparent', opacity: c.unsubscribed ? 0.55 : 1 }}>
                     <input type="checkbox" checked={on} disabled={c.unsubscribed}
                       onChange={() => togglePick(c.email)}
@@ -979,7 +979,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             <div style={{ display: 'grid', gap: 8 }}>
               {auto.steps.map((st, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10,
-                  background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
+                  background: 'var(--c0f172a)', border: '1px solid var(--line)' }}>
                   <span style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: '#6366f1', color: '#fff',
                     display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800 }}>{i + 1}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
@@ -1089,7 +1089,7 @@ function CampaignSheet({ c, vi, onClose }: { c: CampaignDetail; vi: boolean; onC
               {c.recipients.map((r) => {
                 const col = r.status === 'sent' ? '#22c55e' : r.status === 'failed' ? '#ef4444' : 'var(--c94a3b8)';
                 return (
-                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--line)' }}>
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: col, flexShrink: 0 }} />
                     <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.email}</span>
                     {r.error && <span title={r.error} style={{ fontSize: 11, color: 'var(--cf87171)', flexShrink: 0 }}>{t('lỗi', 'failed')}</span>}

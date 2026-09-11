@@ -251,7 +251,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
 
       <div style={card}>
         {byDay.map(({ label, di, jobs }) => (
-          <div key={di} style={{ padding: '9px 0', borderTop: di === 0 ? 'none' : '1px solid var(--c1e293b)' }}>
+          <div key={di} style={{ padding: '9px 0', borderTop: di === 0 ? 'none' : '1px solid var(--line)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ fontSize: 11.5, color: di === 0 ? '#a5b4fc' : 'var(--c64748b)', fontWeight: 800, letterSpacing: '.4px' }}>
                 {di === 0 ? T('HÔM NAY', 'TODAY') : label.toUpperCase()}

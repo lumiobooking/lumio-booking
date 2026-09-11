@@ -202,7 +202,7 @@ export default function CheckInKiosk() {
         {/* Header: who they are checking in with + how far along they are */}
         <header style={{
           display: 'flex', alignItems: 'center', gap: 12, padding: 'clamp(12px, 3.5vw, 18px) clamp(14px, 4vw, 24px)',
-          borderBottom: '1px solid var(--c1e293b)', flexShrink: 0,
+          borderBottom: '1px solid var(--line)', flexShrink: 0,
           position: 'sticky', top: 0, background: 'var(--c0b1120)', zIndex: 5,
           paddingTop: 'max(clamp(12px, 3.5vw, 18px), env(safe-area-inset-top))',
         }}>
@@ -339,7 +339,7 @@ export default function CheckInKiosk() {
                 ) : (
                   <>
                     {pickedList.map((s) => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--c1e293b)' }}>
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--line)' }}>
                         <span style={{ flex: 1, fontSize: 18, fontWeight: 600 }}>{s.name}</span>
                         <span style={{ fontSize: 15, color: 'var(--c94a3b8)' }}>{s.durationMinutes} min</span>
                         <span style={{ fontSize: 18, fontWeight: 700 }}>{money(s.priceCents)}</span>
@@ -366,7 +366,7 @@ export default function CheckInKiosk() {
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
           padding: 'clamp(12px, 3.5vw, 16px) clamp(14px, 4vw, 24px)',
           paddingBottom: 'max(clamp(12px, 3.5vw, 16px), env(safe-area-inset-bottom))',
-          borderTop: '1px solid var(--c1e293b)', background: 'var(--c0f172a)',
+          borderTop: '1px solid var(--line)', background: 'var(--c0f172a)',
           position: 'sticky', bottom: 0, zIndex: 5,
         }}>
           {step > 1
@@ -407,7 +407,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
 
 function Row({ k, v }: { k: string; v: string }) {
   return (
-    <div style={{ display: 'flex', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--c1e293b)' }}>
+    <div style={{ display: 'flex', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--line)' }}>
       <span style={{ color: 'var(--c94a3b8)', fontSize: 16, width: 110 }}>{k}</span>
       <span style={{ fontSize: 17, fontWeight: 600 }}>{v}</span>
     </div>
@@ -425,7 +425,7 @@ const screen: CSSProperties = {
   WebkitTapHighlightColor: 'transparent',
 };
 const panel: CSSProperties = {
-  background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 18, padding: 28, width: '100%',
+  background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 18, padding: 28, width: '100%',
 };
 // 16px is the floor: anything smaller makes iOS Safari zoom the page on focus.
 const bigInput: CSSProperties = {
@@ -434,7 +434,7 @@ const bigInput: CSSProperties = {
   fontSize: 'clamp(17px, 4.4vw, 20px)', minHeight: 58,
 };
 const pill: CSSProperties = {
-  border: '2px solid var(--c1e293b)', background: 'var(--c111827)', color: 'var(--ccbd5e1)',
+  border: '2px solid var(--line)', background: 'var(--c111827)', color: 'var(--ccbd5e1)',
   borderRadius: 999, padding: '14px 22px', fontSize: 17, fontWeight: 600, cursor: 'pointer', minHeight: 56,
 };
 const ghostBtn: CSSProperties = {

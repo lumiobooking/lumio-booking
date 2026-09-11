@@ -715,7 +715,7 @@ function StaffEditPanel({
           {hours.map((d) => {
             const label = DAY_LABEL[lang][d.dow] ?? '';
             return (
-              <div key={d.dow} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--c1e293b)' }}>
+              <div key={d.dow} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
                 <span style={{ width: 40, fontSize: 13.5, color: 'var(--ccbd5e1)', paddingTop: 5 }}>{label}</span>
                 <div style={{ paddingTop: 3 }}>
                   <HourToggle on={d.enabled} onChange={(v) => updDay(d.dow, { enabled: v })} />
@@ -876,7 +876,7 @@ function CreateStaffForm({
       </div>
 
       {/* Inline login. Required for receptionists/managers to actually sign in. */}
-      <div style={{ borderTop: '1px solid var(--c1e293b)', paddingTop: 14 }}>
+      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
         <span style={ui.label}>{t('st.loginOptional')}</span>
         <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '0 0 10px' }}>{t('st.loginHint')}</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
@@ -970,7 +970,7 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
   });
   const colHead: React.CSSProperties = {
     fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)',
-    padding: '8px 10px', borderBottom: '1px solid var(--c1e293b)', display: 'flex', alignItems: 'center', gap: 8,
+    padding: '8px 10px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 8,
   };
 
   return (
@@ -991,9 +991,9 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
       </div>
 
       {/* 3 columns: categories · services · selected */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', border: '1px solid var(--c1e293b)', borderRadius: 12, overflow: 'hidden', background: 'var(--c0b1220)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', background: 'var(--c0b1220)' }}>
         {/* Column 1 — categories */}
-        <div style={{ width: 210, minWidth: 180, flex: '0 1 210px', borderRight: '1px solid var(--c1e293b)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ width: 210, minWidth: 180, flex: '0 1 210px', borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column' }}>
           <div style={colHead}>{t('st.skCategories')}</div>
           <div style={{ maxHeight: colH, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <button type="button" onClick={() => { setCat('__all__'); setSelOnly(false); }} style={rowBtn(cat === '__all__' && !selOnly)}>
@@ -1002,7 +1002,7 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
             <button type="button" onClick={() => { setCat('__all__'); setSelOnly(true); }} style={rowBtn(selOnly)}>
               <span>✓</span><span>{t('st.skSelectedCol')}</span><span style={countPill(ids.length, ids.length)}>{ids.length}</span>
             </button>
-            <div style={{ height: 1, background: 'var(--c1e293b)', margin: '4px 6px' }} />
+            <div style={{ height: 1, background: 'var(--line)', margin: '4px 6px' }} />
             {cats.map((g) => {
               const sel = g.items.filter((sv) => has(sv.id)).length;
               return (
@@ -1016,7 +1016,7 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
         </div>
 
         {/* Column 2 — services in the active category */}
-        <div style={{ flex: '1 1 300px', minWidth: 260, borderRight: '1px solid var(--c1e293b)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: '1 1 300px', minWidth: 260, borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column' }}>
           <div style={colHead}>
             <span style={{ color: 'var(--ccbd5e1)' }}>{midTitle}</span>
             <span style={{ color: 'var(--c64748b)', textTransform: 'none', letterSpacing: 0 }}>{list.filter((sv) => has(sv.id)).length}/{list.length}</span>

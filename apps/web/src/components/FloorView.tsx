@@ -141,7 +141,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '8px 12px', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 10, padding: '8px 12px', marginBottom: 14 }}>
         <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{vi ? 'Thợ đang rảnh' : 'Idle techs'}</span>
         {idle.length === 0 ? <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{vi ? 'Tất cả đang bận' : 'all busy'}</span>
           : idle.map((s) => (
@@ -368,7 +368,7 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
   const content = (
     <div onClick={onClose} style={overlay}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(540px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--c1e293b)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{w.customerName || 'Walk-in'}</div>
             <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{vi ? 'Thợ' : 'Tech'} <strong style={{ color: 'var(--ccbd5e1)' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
@@ -385,7 +385,7 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
           <div style={{ border: '1px solid var(--c263041)', borderRadius: 10, overflow: 'hidden' }}>
             {items.length === 0 ? <div style={{ padding: 12, color: 'var(--c64748b)', fontSize: 13 }}>{vi ? 'Chưa có dịch vụ.' : 'No services yet.'}</div>
               : items.map((it) => (
-                <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--c1e293b)' }}>
+                <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
                     <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{techName(it.staffId)}</div>

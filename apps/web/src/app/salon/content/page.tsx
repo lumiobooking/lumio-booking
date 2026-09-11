@@ -513,7 +513,7 @@ function BriefStepRow({ step: st, index: i, T }: {
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div style={{ display: 'flex', gap: 11, padding: '10px 0', borderTop: i ? '1px solid var(--c1e293b)' : 'none' }}>
+    <div style={{ display: 'flex', gap: 11, padding: '10px 0', borderTop: i ? '1px solid var(--line)' : 'none' }}>
       <div style={{
         flex: '0 0 26px', height: 26, borderRadius: '50%', background: 'var(--c1e293b)',
         color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 700, display: 'flex',
@@ -1593,7 +1593,7 @@ function Inner() {
           top:0, so a second sticky bar would need that header's exact height —
           a number nothing here can read, and a wrong guess leaves the tabs
           sliced in half behind it on somebody else's screen size. */}
-      <div style={{ paddingBottom: 10, marginBottom: 12, borderBottom: '1px solid var(--c1e293b)' }}>
+      <div style={{ paddingBottom: 10, marginBottom: 12, borderBottom: '1px solid var(--line)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {TAB_GROUPS.map((g) => (
             <div key={g.id} style={{
@@ -1876,7 +1876,7 @@ function Inner() {
                        the plan explained in Vietnamese and the captions written
                        in English, because her customers are American. One toggle
                        cannot serve both, so there are two. */}
-                  <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--c1e293b)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--line)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
                       {T('AI viết kế hoạch bằng', 'The AI writes the plan in')}
                     </span>
@@ -1916,7 +1916,7 @@ function Inner() {
                       paragraphs of consequences. The consequence text is still
                       there — one line per gap — but it reads as a to-do. */}
                   {!!plan.identity.gaps.length && (
-                    <div style={{ marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--c1e293b)' }}>
+                    <div style={{ marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--line)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
                           {T('Hồ sơ tiệm', 'Shop profile')}: {6 - plan.identity.gaps.length}/6
@@ -2413,7 +2413,7 @@ function Inner() {
                   )}
 
                   {!!plan.lapsed?.count && (
-                    <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--c1e293b)' }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--line)' }}>
                       {T(`${plan.lapsed.count} khách lâu chưa quay lại`, `${plan.lapsed.count} customers overdue`)}
                       {plan.lapsed.medianDaysAway ? ` · ${T('trung bình', 'median')} ${plan.lapsed.medianDaysAway} ${T('ngày', 'days')}` : ''}
                     </div>
@@ -2467,7 +2467,7 @@ function Inner() {
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, fontStyle: 'italic' }}>{plan.audience.basis}</div>
 
                   {plan.audience.segments.map((sg) => (
-                    <div key={sg.key} style={{ padding: '8px 0', borderTop: '1px solid var(--c1e293b)' }}>
+                    <div key={sg.key} style={{ padding: '8px 0', borderTop: '1px solid var(--line)' }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{sg.label}</span>
                         <span style={{ fontSize: 13, color: 'var(--ca5b4fc)' }}>{sg.count} {T('người', 'people')} · {sg.sharePct}%</span>
@@ -2558,7 +2558,7 @@ function Inner() {
                   </div>
 
                   {plan.promo.plays.map((pl) => (
-                    <div key={pl.key} style={{ padding: '8px 0', borderTop: '1px solid var(--c1e293b)' }}>
+                    <div key={pl.key} style={{ padding: '8px 0', borderTop: '1px solid var(--line)' }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{pl.name}</span>
                         <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, background: 'var(--c1e293b)', color: COST_LABEL[pl.cost]?.color }}>
@@ -3731,7 +3731,7 @@ function Inner() {
                       // for — to put the same picture on Google Maps or TikTok.
                       const files = postDraft.media.filter((m) => m.driveUrl);
                       return (
-                        <div style={{ marginTop: 14, padding: '11px 12px', borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
+                        <div style={{ marginTop: 14, padding: '11px 12px', borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--line)', fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
                           <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>📁 {T('Ảnh/clip của bài đã đăng', 'This post’s files')}</div>
                           {live.driveFolderUrl ? (
                             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -3766,7 +3766,7 @@ function Inner() {
                     ];
                     const driveFiles = postDraft.media.filter((m) => m.driveUrl);
                     return (
-                      <div style={{ marginTop: 14, padding: '11px 12px', borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
+                      <div style={{ marginTop: 14, padding: '11px 12px', borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--line)' }}>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
                           <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginRight: 4 }}>{T('Việc của team', 'Team workflow')}</span>
                           {STEP.map((st) => {
@@ -4195,7 +4195,7 @@ function Inner() {
                     return (
                       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
                         {byCol.map((c) => (
-                          <div key={c.key} style={{ borderRadius: 10, border: '1px solid var(--c1e293b)', background: 'var(--c0f172a)', padding: 8, minHeight: isMobile ? undefined : 220 }}>
+                          <div key={c.key} style={{ borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', padding: 8, minHeight: isMobile ? undefined : 220 }}>
                             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, padding: '2px 4px 8px', borderBottom: `2px solid ${c.color}`, marginBottom: 8 }}>
                               <b style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>{c.title}</b>
                               <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{c.items.length}</span>
@@ -5199,7 +5199,7 @@ function Inner() {
                   {plan.seo.checks.map((c) => {
                     const st = STATE_STYLE[c.state];
                     return (
-                      <div key={c.key} style={{ padding: '9px 0', borderTop: '1px solid var(--c1e293b)' }}>
+                      <div key={c.key} style={{ padding: '9px 0', borderTop: '1px solid var(--line)' }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{c.title}</span>
                           <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: st.bg, color: st.fg }}>{st.text}</span>
@@ -5245,7 +5245,7 @@ function Inner() {
                     📅 {T('Sắp tới', 'Coming up')}
                   </div>
                   {plan.events.slice(0, 4).map((e) => (
-                    <div key={e.name} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '7px 0', borderTop: '1px solid var(--c1e293b)' }}>
+                    <div key={e.name} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '7px 0', borderTop: '1px solid var(--line)' }}>
                       <div style={{ flex: '0 0 66px' }}>
                         <div style={{ fontSize: e.daysAway < 0 ? 13 : 17, fontWeight: 800, color: e.daysAway <= 14 ? '#f59e0b' : 'var(--ca5b4fc)', lineHeight: 1.1 }}>
                           {e.daysAway < 0 ? T('Đang diễn ra', 'On now') : e.daysAway}
@@ -5297,7 +5297,7 @@ function Inner() {
                   {plan.calendar.map((e) => (
                     <div key={`${e.name}-${e.daysAway}`} style={{
                       display: 'flex', gap: 10, alignItems: 'baseline', padding: '6px 0',
-                      borderTop: '1px solid var(--c1e293b)',
+                      borderTop: '1px solid var(--line)',
                     }}>
                       {/* The date is what a person plans around; the countdown
                           is only how far off it is. So the date leads. */}

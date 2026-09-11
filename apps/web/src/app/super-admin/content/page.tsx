@@ -214,7 +214,7 @@ export default function ContentConsolePage() {
           </div>
         </div>
         {notes.filter((n) => n.active).map((n) => (
-          <div key={n.id} style={{ borderTop: '1px solid var(--c1e293b)', padding: '9px 0', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <div key={n.id} style={{ borderTop: '1px solid var(--line)', padding: '9px 0', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{n.title}</div>
               <div style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{n.body}</div>
@@ -254,7 +254,7 @@ export default function ContentConsolePage() {
 
         <div style={{ marginTop: 12 }}>
           {formats.filter((f) => f.active).map((f) => (
-            <div key={f.id} style={{ borderTop: '1px solid var(--c1e293b)', padding: '9px 0', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <div key={f.id} style={{ borderTop: '1px solid var(--line)', padding: '9px 0', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, color: 'var(--ce2e8f0)' }}>
                   <b>{f.name}</b>
@@ -302,7 +302,7 @@ export default function ContentConsolePage() {
               </div>
             </div>
             {g.ideas.map((i) => (
-              <div key={i.id} style={{ borderTop: '1px solid var(--c1e293b)', padding: '9px 0' }}>
+              <div key={i.id} style={{ borderTop: '1px solid var(--line)', padding: '9px 0' }}>
                 <div style={{ fontSize: 12, color: 'var(--c64748b)', marginBottom: 2 }}>
                   #{i.rank}{i.formatName ? ` · ${i.formatName}` : ''}{i.bestTime ? ` · ${i.bestTime}` : ''}
                 </div>

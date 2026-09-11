@@ -406,7 +406,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // account that navigates straight to an agency route sees who runs it and
   // how to ask, never a half-working screen it was not meant to operate.
   const gated = (!isSupport && !canSee(pathname, isSupport, hiddenHrefs)) ? (
-    <div style={{ maxWidth: 560, margin: '60px auto', textAlign: 'center', background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 14, padding: '36px 28px' }}>
+    <div style={{ maxWidth: 560, margin: '60px auto', textAlign: 'center', background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 14, padding: '36px 28px' }}>
       <div style={{ fontSize: 34, marginBottom: 10 }}>🛠</div>
       <h2 style={{ margin: '0 0 10px', fontSize: 19, color: 'var(--cf8fafc)' }}>{gateText(lang === 'vi').title}</h2>
       <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: 'var(--c94a3b8)' }}>{gateText(lang === 'vi').body}</p>

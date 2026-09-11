@@ -767,7 +767,7 @@ export function IgGrid({ posts, onPick, vi }: { posts: StudioPost[]; onPick: (id
               style={{
                 position: 'relative', aspectRatio: '1 / 1', padding: 0, cursor: 'pointer',
                 border: p.held ? '2px solid #ef4444'
-                  : p.blockers.length ? '2px solid #f59e0b' : '1px solid var(--c1e293b)',
+                  : p.blockers.length ? '2px solid #f59e0b' : '1px solid var(--line)',
                 borderRadius: 2, overflow: 'hidden', background: 'var(--c1e293b)',
               }}
             >

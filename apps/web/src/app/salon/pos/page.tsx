@@ -1930,14 +1930,14 @@ function Register() {
       {showHeld && typeof document !== 'undefined' && createPortal(
         <div onClick={() => setShowHeld(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(460px, 96vw)', maxHeight: '85vh', overflowY: 'auto', padding: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--c1e293b)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
               <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? 'Bill đang giữ' : 'Held bills'} {heldBills.length ? `(${heldBills.length})` : ''}</div>
               <button onClick={() => setShowHeld(false)} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer' }}>×</button>
             </div>
             <div style={{ padding: 12 }}>
               {heldBills.length === 0 ? <div style={{ color: 'var(--c64748b)', fontSize: 13, padding: 8 }}>{lang === 'vi' ? 'Chưa có bill nào được giữ.' : 'No held bills.'}</div>
                 : heldBills.map((h) => (
-                  <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 8px', borderBottom: '1px solid var(--c1e293b)' }}>
+                  <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 8px', borderBottom: '1px solid var(--line)' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.label || 'Walk-in'}</div>
                       <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{formatPrice(h.totalCents, currency)} · {fmtInTz(h.createdAt, { hour: 'numeric', minute: '2-digit' })}</div>
@@ -2075,7 +2075,7 @@ function GroupHeader({ label, count }: { label: string; count: number }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
       <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>· {count}</span>
-      <div style={{ flex: 1, height: 1, background: 'var(--c1e293b)' }} />
+      <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
     </div>
   );
 }

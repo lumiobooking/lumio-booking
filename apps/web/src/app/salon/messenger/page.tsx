@@ -866,7 +866,7 @@ function Inner() {
               </div>
             );
           })()}
-          <div style={{ marginTop: 12, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 8, padding: '10px 12px', fontSize: 12.5 }}>
+          <div style={{ marginTop: 12, background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 8, padding: '10px 12px', fontSize: 12.5 }}>
             <div style={{ color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('subscribedEvents')}</div>
             <div style={{ color: 'var(--ce2e8f0)', fontFamily: 'monospace' }}>
               {(wh?.fields && wh.fields.length ? wh.fields : ['messages', 'messaging_postbacks', 'message_reactions']).map((f) => `\u2713 ${f}`).join('   ')}
@@ -899,7 +899,7 @@ function Inner() {
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {c.pages.map((pg) => (
-                  <div key={pg.pageId} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 8, padding: '8px 12px' }}>
+                  <div key={pg.pageId} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 12px' }}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: pg.enabled ? '#22c55e' : 'var(--c64748b)', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.pageName || pg.pageId}</div>
@@ -1011,7 +1011,7 @@ function Inner() {
               </thead>
               <tbody>
                 {shownActivity.map((ev, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid var(--c1e293b)', background: (sentAtIso && ev.at === sentAtIso) || Date.now() - new Date(ev.at).getTime() < 30000 ? 'rgba(34,197,94,0.10)' : undefined }}>
+                  <tr key={i} style={{ borderTop: '1px solid var(--line)', background: (sentAtIso && ev.at === sentAtIso) || Date.now() - new Date(ev.at).getTime() < 30000 ? 'rgba(34,197,94,0.10)' : undefined }}>
                     <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{fmtInTz(ev.at, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
                     <td style={{ ...tdc, whiteSpace: 'nowrap' }}><ChannelBadge channel={ev.channel} /></td>
                     <td style={{ ...tdc, color: ev.direction === 'in' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
@@ -1115,7 +1115,7 @@ function Inner() {
         {/* Auto-distribution. Off unless the salon asks for it: switching it on
             changes who answers customers, which is not a behaviour anyone should
             acquire by taking an update. */}
-        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--c1e293b)' }}>
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)', marginBottom: 8 }}>
             {lang === 'vi' ? 'Chia hội thoại cho nhân viên' : 'Share conversations with staff'}
           </div>
@@ -1307,7 +1307,7 @@ function Inner() {
         {infoOpen && (
           <>
             <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '4px 0 10px', lineHeight: 1.5 }}>{t('infoHelp')}</p>
-            <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 8, padding: '8px 11px', marginBottom: 12, fontSize: 12 }}>
+            <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 11px', marginBottom: 12, fontSize: 12 }}>
               <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ {t('infoKnows')}</span> <span style={{ color: 'var(--c94a3b8)' }}>{t('infoKnowsList')}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto', paddingRight: facts.length > 6 ? 4 : 0 }}>

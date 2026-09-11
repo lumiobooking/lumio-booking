@@ -18,13 +18,13 @@ export default function SectionLoading() {
       {bar('38%', 26)}
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
         {[0, 1, 2].map((i) => (
-          <div key={i} style={{ background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 12, padding: 16, display: 'grid', gap: 10 }}>
+          <div key={i} style={{ background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 12, padding: 16, display: 'grid', gap: 10 }}>
             {bar('55%', 12)}
             {bar('75%', 22)}
           </div>
         ))}
       </div>
-      <div style={{ background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 12, padding: 16, display: 'grid', gap: 12 }}>
+      <div style={{ background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 12, padding: 16, display: 'grid', gap: 12 }}>
         {bar('30%', 16)}
         {bar('100%')}
         {bar('92%')}

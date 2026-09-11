@@ -328,7 +328,7 @@ function HoursSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
           const h = hours[day];
           const ivs = h.intervals ?? [];
           return (
-            <div key={day} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, borderTop: '1px solid var(--c1e293b)', paddingTop: 10 }}>
+            <div key={day} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
               <span style={{ width: 42, fontSize: 13, color: 'var(--ccbd5e1)', paddingTop: 8 }}>{DAY_LABEL[lang][day]}</span>
               <div style={{ paddingTop: 6 }}><Toggle on={!h.closed} onChange={(open) => setDay(day, (x) => ({ ...x, closed: !open }))} label="" /></div>
               {h.closed ? <span style={{ color: 'var(--c64748b)', fontSize: 13, paddingTop: 8 }}>{t('se.hr.closed')}</span> : (
@@ -1270,7 +1270,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
           the carrier — so this panel only appears for a VN salon, and Twilio
           above is the only path for everyone else. */}
       {isVN && (
-        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--c1e293b)' }}>
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
             SMS Việt Nam · eSMS.vn{' '}
             {es.brandname && n.esms?.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>đã kết nối</span>}

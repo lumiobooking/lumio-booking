@@ -561,7 +561,7 @@ function Inner() {
                   return (
                     <div style={{ margin: '8px 0 10px', border: '1px solid var(--c263041)', borderRadius: 8, overflow: 'hidden' }}>
                       {items.map((it) => (
-                        <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderBottom: '1px solid var(--c1e293b)' }}>
+                        <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderBottom: '1px solid var(--line)' }}>
                           <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>
                           {it.durationMinutes ? <span style={{ fontSize: 11, color: 'var(--c64748b)', flexShrink: 0 }}>{it.durationMinutes}′</span> : null}
                           <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ce2e8f0)', flexShrink: 0 }}>{formatPrice(it.priceCents || 0, currency)}</span>
@@ -692,11 +692,11 @@ function CompactServingCard({ w, currency, t, onOpen }: {
           <span style={{ color: '#fff', fontSize: 18, fontWeight: 800, flexShrink: 0 }}>{formatPrice(subtotal, currency)}</span>
         </div>
       </div>
-      <div style={{ display: 'flex', borderTop: '1px solid var(--c1e293b)', marginTop: 'auto' }}>
+      <div style={{ display: 'flex', borderTop: '1px solid var(--line)', marginTop: 'auto' }}>
         <a href={checkoutHref} onClick={(e) => e.stopPropagation()}
           style={{ flex: 1, textAlign: 'center', padding: '10px', color: 'var(--cc7d2fe)', fontWeight: 700, fontSize: 13, textDecoration: 'none', background: 'rgba(99,102,241,0.12)' }}>{t('wi.checkout')}</a>
         <button onClick={(e) => { e.stopPropagation(); onOpen(); }}
-          style={{ padding: '10px 16px', background: 'none', border: 'none', borderLeft: '1px solid var(--c1e293b)', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}>{t('wi.manage')} ›</button>
+          style={{ padding: '10px 16px', background: 'none', border: 'none', borderLeft: '1px solid var(--line)', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}>{t('wi.manage')} ›</button>
       </div>
     </div>
   );
@@ -742,7 +742,7 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
   const content = (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(560px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--c1e293b)', position: 'sticky', top: 0, background: 'var(--c111827)', zIndex: 1 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, background: 'var(--c111827)', zIndex: 1 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
             <div style={{ color: 'var(--c94a3b8)', fontSize: 12, marginTop: 2 }}>{t('wi.tech')} <strong style={{ color: 'var(--ccbd5e1)' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
@@ -871,7 +871,7 @@ function LineRow({ it, w, staff, services, t, currency, techLabel, onUpdateLine,
 
   if (!editing) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--c1e293b)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
           <div style={{ color: 'var(--c94a3b8)', fontSize: 11 }}>
@@ -888,7 +888,7 @@ function LineRow({ it, w, staff, services, t, currency, techLabel, onUpdateLine,
     );
   }
   return (
-    <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--c1e293b)', background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', gap: 7 }}>
+    <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', gap: 7 }}>
       <select value={svc} onChange={(e) => setSvc(e.target.value)} style={{ ...ui.input, padding: '7px 8px', fontSize: 13 }}>
         {services.every((x) => x.id !== svc) && <option value={svc}>{it.name}</option>}
         {services.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}

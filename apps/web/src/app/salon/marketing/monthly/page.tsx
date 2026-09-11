@@ -391,7 +391,7 @@ function Inner() {
                 const r = spendDraft[ch] ?? { channel: ch, amountCents: 0 };
                 const set = (p: Partial<SpendRow>) => setSpendDraft((d) => ({ ...d, [ch]: { ...r, ...p } }));
                 return (
-                  <tr key={ch} style={{ borderTop: '1px solid var(--c1e293b)' }}>
+                  <tr key={ch} style={{ borderTop: '1px solid var(--line)' }}>
                     <td style={td}>{CH_LABEL[ch]}</td>
                     <td style={td}><input type="number" min={0} step="0.01" value={r.amountCents ? r.amountCents / 100 : ''} placeholder="0" onChange={(e) => set({ amountCents: Math.round(parseFloat(e.target.value || '0') * 100) })} style={numInput} /></td>
                     {showMetrics && <>
@@ -421,7 +421,7 @@ function Inner() {
         {(data?.workLog ?? []).length === 0 ? <p style={{ color: 'var(--c64748b)', fontSize: 13, margin: 0 }}>{T('Chưa có công việc nào.', 'No work logged yet.')}</p> : (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {data!.workLog.map((w) => (
-              <li key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid var(--c1e293b)', fontSize: 13 }}>
+              <li key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid var(--line)', fontSize: 13 }}>
                 <span><span style={{ color: 'var(--c818cf8)', fontSize: 11, textTransform: 'uppercase', marginRight: 8 }}>{w.category}</span>{w.title}</span>
                 <button onClick={() => delWork(w.id)} style={{ ...ui.dangerBtn, padding: '3px 9px', fontSize: 11 }}>×</button>
               </li>
@@ -476,7 +476,7 @@ function AutoReportCard({ auto, vi, T, onOpen }: { auto: AutoStatus; vi: boolean
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {auto.months.map((m) => (
-          <div key={m.month} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--ccbd5e1)', borderTop: '1px solid var(--c1e293b)', paddingTop: 6 }}>
+          <div key={m.month} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--ccbd5e1)', borderTop: '1px solid var(--line)', paddingTop: 6 }}>
             <span style={{ minWidth: 120, fontWeight: 600 }}>{m.label}</span>
             {statusChip(m.status)}
             <span style={{ color: 'var(--c64748b)', fontSize: 11.5 }}>
@@ -1093,7 +1093,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
 
 function Kpi({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: string }) {
   return (
-    <div style={{ background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 12, padding: '12px 14px' }}>
+    <div style={{ background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 12, padding: '12px 14px' }}>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: accent ?? 'var(--cf8fafc)' }}>{value}</div>
       {hint && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}
@@ -1136,7 +1136,7 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
       {err && <div style={{ ...ui.banner, marginBottom: 10 }}>{err}</div>}
       {note && <div style={{ ...ui.banner, background: 'var(--c064e3b)', borderColor: '#059669', color: 'var(--cd1fae5)', marginBottom: 10 }}>{note}</div>}
       {chs.map((c) => (
-        <div key={c.platform} style={{ borderTop: '1px solid var(--c1e293b)', padding: '10px 0' }}>
+        <div key={c.platform} style={{ borderTop: '1px solid var(--line)', padding: '10px 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 14, color: 'var(--ce2e8f0)', display: 'flex', alignItems: 'center', gap: 8 }}>
               {c.label}
@@ -1204,7 +1204,7 @@ function PostRowView({ p, T }: { p: PostRow; T: (v: string, e: string) => string
   const stat = (label: string, v: number | null) => (v == null ? null : <span key={label} style={{ whiteSpace: 'nowrap' }}><b style={{ color: 'var(--cf8fafc)' }}>{num(v)}</b> <span style={{ color: 'var(--c64748b)' }}>{label}</span></span>);
   const stats = [stat(T('thích', 'likes'), p.likes), stat(T('bl', 'cmts'), p.comments), stat('reach', p.reach), stat(T('xem', 'views'), p.views), stat(T('lưu', 'saved'), p.saved), stat('share', p.shares)].filter(Boolean);
   return (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '8px 10px' }}>
+    <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: '8px 10px' }}>
       {img
         ? <span style={{ width: 46, height: 46, borderRadius: 8, flexShrink: 0, background: `var(--c1e293b) center/cover no-repeat url(${p.thumbnail})` }} />
         : <span style={{ width: 46, height: 46, borderRadius: 8, flexShrink: 0, background: 'var(--c1e293b)', display: 'grid', placeItems: 'center', fontSize: 18 }}>📷</span>}
@@ -1254,7 +1254,7 @@ function AudienceSection({ a, T }: { a: { gender?: Record<string, number>; age?:
       <div style={pvL}>{T('ĐỐI TƯỢNG INSTAGRAM', 'INSTAGRAM AUDIENCE')}</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 8 }}>
         {gPct.length > 0 && (
-          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: 12, display: 'flex', gap: 14, alignItems: 'center' }}>
+          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: 12, display: 'flex', gap: 14, alignItems: 'center' }}>
             <div style={{ width: 74, height: 74, borderRadius: '50%', flexShrink: 0, background: `conic-gradient(${stops})`, WebkitMask: 'radial-gradient(circle 22px at center, transparent 98%, #000 100%)', mask: 'radial-gradient(circle 22px at center, transparent 98%, #000 100%)' }} />
             <div style={{ fontSize: 12, flex: 1 }}>
               <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4 }}>{T('Giới tính', 'Gender')}</div>
@@ -1263,7 +1263,7 @@ function AudienceSection({ a, T }: { a: { gender?: Record<string, number>; age?:
           </div>
         )}
         {ageKeys.length > 0 && (
-          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: 12 }}>
+          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: 12 }}>
             <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 6 }}>{T('Độ tuổi', 'Age')}</div>
             {ageKeys.map((k) => { const pct = Math.round(((ageMap[k] || 0) / ageTotal) * 1000) / 10; return (
               <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '3px 0' }}>
@@ -1316,7 +1316,7 @@ function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string
     for (const m of ms) cum.push(m.followers);
   }
   return (
-    <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '10px 12px' }}>
+    <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
         <span style={{ width: 9, height: 9, borderRadius: 3, background: color, display: 'inline-block' }} />
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{name}</span>
@@ -1378,7 +1378,7 @@ function GbpCard({ g, T }: { g: GbpData; T: (v: string, e: string) => string }) 
   };
   const kw = (g.keywords || []).slice(0, 6);
   return (
-    <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '12px 14px' }}>
+    <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: '#1a73e8' }} /><span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>Google Business Profile (Maps)</span></div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {Stat(T('L\u01b0\u1ee3t xem', 'Views'), g.impressions, v.impressions)}
@@ -1484,7 +1484,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
             ))}
           </div>
           {(o.gbp?.bookings ?? 0) > 0 && (
-            <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 8, borderTop: '1px solid var(--c1e293b)', paddingTop: 6 }}>
+            <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 6 }}>
               {T('Từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b style={{ color: 'var(--ce2e8f0)' }}>{o.gbp!.bookings}</b> {T('lượt đặt', 'bookings')} · {o.gbp!.showed} {T('đã đến', 'showed')} · <b style={{ color: '#22c55e' }}>{money(o.gbp!.revenueCents)}</b>
             </div>
           )}

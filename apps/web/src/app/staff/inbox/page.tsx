@@ -16,7 +16,7 @@ export default function StaffInboxPage() {
   // bookmark, a shared link) get the sign on the door, not the machinery.
   return (
     <StaffShell title="Inbox" wide>
-      <div style={{ maxWidth: 560, margin: '60px auto', textAlign: 'center', background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 14, padding: '36px 28px' }}>
+      <div style={{ maxWidth: 560, margin: '60px auto', textAlign: 'center', background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 14, padding: '36px 28px' }}>
         <div style={{ fontSize: 34, marginBottom: 10 }}>🛠</div>
         <h2 style={{ margin: '0 0 10px', fontSize: 19, color: 'var(--cf8fafc)' }}>Mục này do Lumio Agency quản lý</h2>
         <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: 'var(--c94a3b8)' }}>Tin nhắn khách được đội ngũ Lumio theo dõi và phản hồi. Cần gì, nhắn Lumio nhé.</p>

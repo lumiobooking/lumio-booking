@@ -182,7 +182,7 @@ function CampaignCard({ t, campKey, token, adminEmail, title, desc, sent, camp, 
       <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '2px 0 0' }}>{t('mk.placeholders')}</p>
       <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '2px 0 0' }}>{t('mk.offerVars')}</p>
       {camp.email && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--c1e293b)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
           <button type="button" onClick={sendTest} disabled={testing} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' }}>
             {testing ? t('mk.testSending') : `🧪 ${t('mk.testSend')}`}
           </button>
@@ -301,7 +301,7 @@ function OfferEditor({ offer, t, onChange }: { offer?: Offer; t: (k: string) => 
     { k: 'gift', label: t('mk.offGift') },
   ];
   return (
-    <div style={{ border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '12px 14px', margin: '0 0 14px', background: 'var(--c0b1220)' }}>
+    <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', margin: '0 0 14px', background: 'var(--c0b1220)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' }}>🎁 {t('mk.offerTitle')}</span>
         <Toggle on={o.enabled} onChange={(v) => onChange({ enabled: v })} label={t('mk.enable')} />

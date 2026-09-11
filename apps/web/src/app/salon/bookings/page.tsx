@@ -523,7 +523,7 @@ function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDele
                   color="var(--ca5b4fc)"
                   onClick={() => { setMenu(false); window.location.href = checkoutHref; }}
                 />
-                <div style={{ height: 1, background: 'var(--c1e293b)', margin: '4px 6px' }} />
+                <div style={{ height: 1, background: 'var(--line)', margin: '4px 6px' }} />
               </>
             )}
             {active && (
@@ -531,7 +531,7 @@ function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDele
                 <MenuItem label={`✅ ${t('bk.complete')}`} color="#22c55e" onClick={() => { setMenu(false); onAction('complete'); }} />
                 <MenuItem label={`⚠ ${t('bk.noShow')}`} color="#f97316" onClick={() => { setMenu(false); if (confirm(t('bk.confirmNoShow'))) onAction('no-show'); }} />
                 <MenuItem label={`✖ ${t('bk.cancel')}`} color="#ef4444" onClick={() => { setMenu(false); if (confirm(t('bk.confirmCancel'))) onAction('cancel'); }} />
-                <div style={{ height: 1, background: 'var(--c1e293b)', margin: '4px 6px' }} />
+                <div style={{ height: 1, background: 'var(--line)', margin: '4px 6px' }} />
               </>
             )}
             <MenuItem label={`🗑 ${t('bk.delete')}`} color="var(--cf87171)" onClick={() => { setMenu(false); onDelete(); }} />
@@ -575,7 +575,7 @@ function AssignLines({ b, live, t, onAction, onClose }: {
         </select>
       </div>
       {lines.map((line) => (
-        <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, borderTop: '1px solid var(--c1e293b)', paddingTop: 6 }}>
+        <div key={line.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, borderTop: '1px solid var(--line)', paddingTop: 6 }}>
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{line.name}</span>
           <select
             value={line.staffMemberId ?? ''}

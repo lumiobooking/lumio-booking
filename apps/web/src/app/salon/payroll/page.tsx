@@ -411,7 +411,7 @@ function RecentList({ recent }: { recent: { name: string; date: string; service:
       <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 6, fontWeight: 700 }}>{t('pf.recentTitle')}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {recent.map((x, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, borderBottom: '1px solid var(--c1e293b)', paddingBottom: 5 }}>
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, borderBottom: '1px solid var(--line)', paddingBottom: 5 }}>
             <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{x.name}</span>
             <span style={{ color: 'var(--c94a3b8)' }}>{x.service}</span>
             <span style={{ color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{fmtInTz(x.date, { month: 'short', day: 'numeric' })}</span>

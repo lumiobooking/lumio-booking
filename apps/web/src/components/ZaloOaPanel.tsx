@@ -102,7 +102,7 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
   const showForm = open || !st.connected;
 
   return (
-    <div style={embedded ? { marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--c1e293b)' } : { ...ui.card, marginBottom: 16 }}>
+    <div style={embedded ? { marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--line)' } : { ...ui.card, marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ fontWeight: 700, fontSize: 15.5, color: 'var(--ce2e8f0)' }}>
           Kết nối Zalo OA
@@ -130,7 +130,7 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
       {/* Connected and answering are two different facts. This line is the
           second one: what the last event from Zalo did on its way in. */}
       {st.connected && (
-        <div style={{ fontSize: 12.5, lineHeight: 1.6, marginBottom: 12, padding: '8px 11px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', color: 'var(--ccbd5e1)' }}>
+        <div style={{ fontSize: 12.5, lineHeight: 1.6, marginBottom: 12, padding: '8px 11px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--line)', color: 'var(--ccbd5e1)' }}>
           <b style={{ color: 'var(--c94a3b8)' }}>Webhook gần nhất:</b>{' '}
           {st.lastWebhook ? (
             <>
@@ -203,7 +203,7 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
               {' '}— thêm vào Render → service có đúng tên miền đó → Environment → Save, rồi tải lại trang này. Tạm thời có thể nhập thủ công bên dưới.
             </div>
           )}
-          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '10px 12px', fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 12 }}>
+          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px', fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 12 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Lấy 6 giá trị ở đâu — làm theo thứ tự:</div>
             <ol style={{ margin: 0, paddingLeft: 18 }}>
               <li><b>developers.zalo.me</b> → Tạo ứng dụng (loại Official Account) → lấy <b>App ID</b> và <b>App Secret Key</b>.</li>

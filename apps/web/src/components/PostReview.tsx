@@ -305,7 +305,7 @@ function Detail(props: {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column' }}>
       {/* top bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--c1e293b)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
         <button onClick={onClose} style={{ font: 'inherit', fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 10px 8px 4px', minHeight: 44 }}>
           ‹ {T('Quay lại', 'Back')}
         </button>
@@ -452,7 +452,7 @@ function Detail(props: {
 
       {/* bottom bar — the thumb zone */}
       {(showApprove || justApproved || p.clientStatus === 'approved') && (
-        <div style={{ flexShrink: 0, borderTop: '1px solid var(--c1e293b)', background: 'var(--c0f172a)', padding: '10px 14px calc(10px + env(safe-area-inset-bottom, 0px))' }}>
+        <div style={{ flexShrink: 0, borderTop: '1px solid var(--line)', background: 'var(--c0f172a)', padding: '10px 14px calc(10px + env(safe-area-inset-bottom, 0px))' }}>
           <div style={{ maxWidth: 560, margin: '0 auto' }}>
             {showApprove ? (
               <>

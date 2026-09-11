@@ -131,7 +131,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
           </div>
         </div>
 
-        <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--c1e293b)', display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--line)', display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{r.shopName}</div>
             <div style={{ fontSize: 12.5, color: 'var(--c64748b)', marginTop: 2 }}>{r.trade} · {r.where}</div>
@@ -160,7 +160,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
             {known.map((k, i) => (
-              <div key={i} style={{ padding: '10px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
+              <div key={i} style={{ padding: '10px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--line)' }}>
                 <div style={{ fontSize: 11, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{k.label}</div>
                 <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.55, marginTop: 3 }}>{k.value}</div>
                 <div style={{ fontSize: 11.5, color: '#22c55e', marginTop: 4 }}>↳ {k.source}</div>
@@ -196,7 +196,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
             { n: r.start?.failing ?? 0, l: 'đang hỏng', c: '#ef4444' },
             { n: r.start?.unknown ?? 0, l: 'chưa thấy', c: '#f59e0b' },
           ].map((x) => (
-            <div key={x.l} style={{ flex: '1 1 100px', padding: '10px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
+            <div key={x.l} style={{ flex: '1 1 100px', padding: '10px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--line)' }}>
               <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: x.c }}>{x.n}</div>
               <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2 }}>{x.l}</div>
             </div>
@@ -222,7 +222,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
       <Section title="Tháng đầu tiên" alsoIn="🛣️ Lộ trình SEO" note="Chia theo tuần, mỗi tuần dưới khoảng 3 tiếng — vừa đủ để một chủ tiệm làm thật chứ không phải đọc rồi bỏ.">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {weeks.map((w) => (
-            <div key={w.week} style={{ padding: '11px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
+            <div key={w.week} style={{ padding: '11px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--line)' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ca5b4fc)' }}>Tuần {w.week} — {w.focus}</span>
                 <span style={{ fontFamily: mono, fontSize: 11.5, color: 'var(--c64748b)' }}>{w.minutes} phút</span>

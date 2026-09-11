@@ -22,10 +22,10 @@
  * customer another customer's history is worse than showing none.
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useRef, useState } from 'react';
 import { fmtInTz } from '../lib/datetime';
 import { useAuth } from '../lib/auth';
-import { apiFetch, apiStream, apiImage } from '../lib/api';
+import { apiFetch, apiStream, apiImage, apiImageCached } from '../lib/api';
 import { wallToInstantISO, instantToWall, dayKeyInTz } from '../lib/datetime';
 import { ui } from '../lib/ui';
 import { useLang } from '../lib/i18n';
@@ -36,6 +36,124 @@ import {
   InboxLabel, followUpState, followUpLabel, followUpCount, channelCounts, channelOf, humanAgentNotice,
   windowNotice, type WindowInfo,
 } from '../lib/inbox-view';
+
+/**
+ * Avatar with the channel mark tucked into its corner, coloured by PAGE.
+ *
+ * This is the piece that answers "which page is this from" at a glance. The
+ * channel mark alone cannot: two Fanpages are both Messenger and draw the same
+ * envelope. The colour separates them, and it is derived from the page id so it
+ * never changes between refreshes or between two people looking at the inbox.
+ *
+ * WHY THIS LIVES AT MODULE SCOPE AND NOT INSIDE THE INBOX
+ *
+ * It used to be declared inside the component body. That makes a NEW function
+ * on every render, and React compares component types by identity: a new type
+ * is a different component, so every avatar was unmounted and remounted on
+ * every render - every thirty-second poll, every push from the stream, every
+ * keystroke in the search box. Each remount reset `pic` to null, so each one
+ * flashed its initials and then the photograph again.
+ *
+ * That is the blink the shop sees - "lâu lâu chớp một cái giống như load".
+ * Nothing was loading. The list was being thrown away and rebuilt.
+ *
+ * Declared once, wrapped in memo, and seeded from the picture cache on the
+ * first frame, an avatar now renders exactly once per conversation and then
+ * holds still.
+ */
+/**
+ * Did the server actually send us anything new?
+ *
+ * A live inbox asks again every time a webhook fires and every thirty seconds
+ * regardless. Almost every one of those answers is identical to the one on
+ * screen. Writing it into state anyway re-renders the whole inbox for nothing,
+ * and a re-render of a list is never free: scroll position, text selection and
+ * every image in it pay for it.
+ *
+ * So: compare first, write only on a difference. This is what turns a polled
+ * screen into one that feels like Messenger - the screen stops moving unless
+ * something moved.
+ */
+function same(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+}
+
+/**
+ * Keep the row objects we already have wherever the row has not changed.
+ *
+ * Same idea one level down: even when ONE conversation moves, the other forty
+ * arrive as brand-new objects, and anything memoised on a row identity repaints
+ * for all of them. Handing back the previous object for every unchanged row
+ * means only the row that actually changed is new.
+ */
+function keepRows(prev: InboxRow[], next: InboxRow[]): InboxRow[] {
+  const byId = new Map(prev.map((r) => [r.id, r]));
+  let moved = prev.length !== next.length;
+  const out = next.map((r, i) => {
+    const old = byId.get(r.id);
+    if (old && same(old, r)) { if (prev[i] !== old) moved = true; return old; }
+    moved = true;
+    return r;
+  });
+  return moved ? out : prev;
+}
+
+const Avatar = memo(function Avatar(
+  { row, size = 34, token, vi }: { row: InboxRow; size?: number; token: string | null; vi: boolean },
+) {
+  const c = pageColor(row.pageId);
+  const src = `/messenger/threads/${row.id}/avatar`;
+  // Already fetched? Then paint it on frame one. This is what removes the
+  // flash; memo above is what removes the remount that caused it.
+  const [pic, setPic] = useState<string | null>(() => apiImageCached(src) ?? null);
+
+  useEffect(() => {
+    if (!token) return;
+    const cached = apiImageCached(src);
+    if (cached !== undefined) { setPic(cached); return; }
+    let gone = false;
+    // The real Facebook picture, through our own endpoint so the Page token
+    // stays on the server. Null is a normal answer - Meta withholds profiles
+    // for a great many people - and then the initials stand.
+    void apiImage(src, token).then((u) => { if (!gone) setPic(u); });
+    return () => { gone = true; };
+  }, [src, token]);
+
+  return (
+    <span style={{ position: 'relative', flexShrink: 0, width: size, height: size, display: 'inline-block' }}>
+      {pic ? (
+        <img
+          src={pic}
+          alt=""
+          style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', display: 'block' }}
+          // If the blob ever fails to decode, fall back rather than showing a
+          // broken-image icon in a list of customers.
+          onError={() => setPic(null)}
+        />
+      ) : (
+        <span style={{
+          width: size, height: size, borderRadius: '50%', background: c.bg, color: c.fg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: Math.round(size * 0.36), fontWeight: 700,
+        }}>{initialsOf(displayName(row, vi))}</span>
+      )}
+      <span
+        title={row.pageName ?? undefined}
+        style={{
+          position: 'absolute', right: -2, bottom: -2,
+          width: Math.round(size * 0.46), height: Math.round(size * 0.46), borderRadius: '50%',
+          // Ringed in the PAGE colour, so a real photograph still says which
+          // Fanpage it came in on - the thing initials were carrying before.
+          background: 'var(--c0b1220)', border: `2px solid ${c.bg}`,
+          color: channelLabel(row.channel).fg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: Math.round(size * 0.28), lineHeight: 1,
+        }}
+      >{channelMark(row.channel)}</span>
+    </span>
+  );
+});
 
 interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Photos the customer attached. */ images?: string[] }
 interface ApptCtx {
@@ -203,6 +321,8 @@ export function InboxView() {
   const [narrow, setNarrow] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  /** The scrolling message pane itself, so we can ask where the reader is. */
+  const paneRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   /** On a phone the inbox owns everything below the shell header. Measured,
    *  not guessed: the salon shell and the staff shell put different chrome
@@ -224,7 +344,11 @@ export function InboxView() {
     if (!token) return;
     try {
       const r = await apiFetch<InboxRow[]>('/messenger/threads', { token });
-      setRows(Array.isArray(r) ? r : []);
+      const next = Array.isArray(r) ? r : [];
+      // Nothing new -> nothing repaints. See `same` and `keepRows` above: this
+      // is the difference between a list that sits still and one that blinks
+      // twice a minute for no reason anybody can see.
+      setRows((cur) => keepRows(cur, next));
       setListErr(null);
       setLoaded(true);
     } catch (e) {
@@ -240,7 +364,7 @@ export function InboxView() {
     }
   }, [token]);
 
-  const loadThread = useCallback(async (id: string, markRead = true) => {
+  const loadThread = useCallback(async (id: string, markRead = true, background = false) => {
     if (!token) return;
     // Being called IS the declaration that this conversation is now open.
     // Waiting for React to re-render and refresh the ref instead leaves a gap:
@@ -260,8 +384,21 @@ export function InboxView() {
       // screen, B's answer arrived, "B ≠ A" → keep A — every click after the
       // first was silently discarded, the bug reported as "nhấn vào tin khác
       // không được".
-      const quick = await apiFetch<ThreadDetail>(`/messenger/threads/${id}?full=0`, { token });
-      if (openRef.current === id) setDetail(quick);
+      //
+      // THE FAST PASS IS FOR A CLICK, NOT FOR A REFRESH.
+      //
+      // `?full=0` answers from our own database with a twelve-turn buffer. That
+      // is exactly right when somebody has just clicked a row and there is
+      // nothing on screen yet. It is exactly wrong on a background refresh of a
+      // conversation already open: the full Meta transcript on screen would be
+      // REPLACED by the short buffer for a moment and then grow back - messages
+      // visibly vanishing and returning. That is the other half of the blink,
+      // and the half that happens in the middle of reading a customer.
+      if (!background) {
+        const quick = await apiFetch<ThreadDetail>(`/messenger/threads/${id}?full=0`, { token });
+        // Same rule as the list: only write when it differs.
+        if (openRef.current === id) setDetail((cur) => (cur && same(cur, quick) ? cur : quick));
+      }
       // Reading is a person's act, not the page's.
       //
       // The inbox opens the top conversation by itself so three columns are not
@@ -270,7 +407,7 @@ export function InboxView() {
       // until a human clicks the row.
       if (markRead) void apiFetch(`/messenger/threads/${id}/read`, { method: 'POST', token }).catch(() => undefined);
       const fullD = await apiFetch<ThreadDetail>(`/messenger/threads/${id}`, { token });
-      if (openRef.current === id) setDetail(fullD);
+      if (openRef.current === id) setDetail((cur) => (cur && same(cur, fullD) ? cur : fullD));
     } catch (e) { setErr(String(e)); }
   }, [token]);
 
@@ -309,7 +446,7 @@ export function InboxView() {
       // A poll is not a person. Refreshing the open thread re-reads it only
       // when the person has not deliberately parked it as unread — otherwise
       // the next tick would quietly undo the press.
-      if (openRef.current) void loadThread(openRef.current, keepUnreadRef.current !== openRef.current);
+      if (openRef.current) void loadThread(openRef.current, keepUnreadRef.current !== openRef.current, true);
     };
 
     const connect = () => {
@@ -337,7 +474,28 @@ export function InboxView() {
     };
   }, [token, loadList, loadThread]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [detail?.history?.length]);
+  /**
+   * Follow the conversation down - unless the reader has gone up.
+   *
+   * It used to jump to the newest message every time the history length
+   * changed. Open a conversation, scroll up to check what was quoted last
+   * week, and the next arriving message throws you back to the bottom
+   * mid-sentence. Messenger does not do that, and neither should this.
+   *
+   * Opening a DIFFERENT conversation always lands at the bottom, because that
+   * is where a conversation starts being read.
+   */
+  const atBottomRef = useRef(true);
+  useEffect(() => {
+    const pane = paneRef.current;
+    const stick = !pane || atBottomRef.current;
+    if (stick) endRef.current?.scrollIntoView({ block: 'end' });
+  }, [detail?.history?.length]);
+  useEffect(() => {
+    // A new conversation: forget where the reader was in the last one.
+    atBottomRef.current = true;
+    endRef.current?.scrollIntoView({ block: 'end' });
+  }, [detail?.id]);
 
   // The inbox is floor-to-ceiling, on every screen.
   //
@@ -565,64 +723,6 @@ export function InboxView() {
       : (vi && detail ? `Nhan cho ${displayName(detail, vi)}...` : 'Message the customer...');
   const state = detail ? stateOf(detail) : 'bot';
 
-  /**
-   * Avatar with the channel mark tucked into its corner, coloured by PAGE.
-   *
-   * This is the piece that answers "which page is this from" at a glance. The
-   * channel mark alone cannot: two Fanpages are both Messenger and draw the
-   * same envelope. The colour separates them, and it is derived from the page
-   * id so it never changes between refreshes or between two people looking at
-   * the same inbox.
-   */
-  const Avatar = ({ row, size = 34 }: { row: InboxRow; size?: number }) => {
-    const c = pageColor(row.pageId);
-    const [pic, setPic] = useState<string | null>(null);
-
-    useEffect(() => {
-      if (!token) return;
-      let gone = false;
-      // The real Facebook picture, through our own endpoint so the Page token
-      // stays on the server. Null is a normal answer — Meta withholds profiles
-      // for a great many people — and then the initials stand.
-      void apiImage(`/messenger/threads/${row.id}/avatar`, token).then((u) => { if (!gone) setPic(u); });
-      return () => { gone = true; };
-    }, [row.id]);
-
-    return (
-      <span style={{ position: 'relative', flexShrink: 0, width: size, height: size, display: 'inline-block' }}>
-        {pic ? (
-          <img
-            src={pic}
-            alt=""
-            style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', display: 'block' }}
-            // If the blob ever fails to decode, fall back rather than showing a
-            // broken-image icon in a list of customers.
-            onError={() => setPic(null)}
-          />
-        ) : (
-          <span style={{
-            width: size, height: size, borderRadius: '50%', background: c.bg, color: c.fg,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: Math.round(size * 0.36), fontWeight: 700,
-          }}>{initialsOf(displayName(row, vi))}</span>
-        )}
-        <span
-          title={row.pageName ?? undefined}
-          style={{
-            position: 'absolute', right: -2, bottom: -2,
-            width: Math.round(size * 0.46), height: Math.round(size * 0.46), borderRadius: '50%',
-            // Ringed in the PAGE colour, so a real photograph still says which
-            // Fanpage it came in on — the thing initials were carrying before.
-            background: 'var(--c0b1220)', border: `2px solid ${c.bg}`,
-            color: channelLabel(row.channel).fg,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: Math.round(size * 0.28), lineHeight: 1,
-          }}
-        >{channelMark(row.channel)}</span>
-      </span>
-    );
-  };
-
   const pill = (tone: string, text: string) => (
     <span style={{ background: TONE[tone].bg, color: TONE[tone].fg, borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{text}</span>
   );
@@ -709,8 +809,8 @@ export function InboxView() {
         <div style={{
           background: 'var(--c0b1220)', gap: 6, display: (narrow && openId) ? 'none' : 'flex',
           ...(narrow
-            ? { flexDirection: 'row', padding: '10px 12px', borderBottom: '1px solid var(--c1e293b)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const, flexShrink: 0, minHeight: 54, alignItems: 'center' }
-            : { flexDirection: 'column', padding: '10px 0', borderRight: '1px solid var(--c1e293b)', alignItems: 'center', minHeight: 0, overflowY: 'auto' as const }),
+            ? { flexDirection: 'row', padding: '10px 12px', borderBottom: '1px solid var(--line)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const, flexShrink: 0, minHeight: 54, alignItems: 'center' }
+            : { flexDirection: 'column', padding: '10px 0', borderRight: '1px solid var(--line)', alignItems: 'center', minHeight: 0, overflowY: 'auto' as const }),
         }}>
           <button onClick={() => setSource('any')} title={vi ? 'Tất cả nguồn' : 'All sources'} aria-label={vi ? 'Tất cả nguồn' : 'All sources'}
             style={{
@@ -747,12 +847,12 @@ export function InboxView() {
 
         {/* Conversation list */}
         <div style={{
-          borderRight: narrow ? 'none' : '1px solid var(--c1e293b)', flexDirection: 'column', minWidth: 0, minHeight: 0,
+          borderRight: narrow ? 'none' : '1px solid var(--line)', flexDirection: 'column', minWidth: 0, minHeight: 0,
           // On a phone, picking a customer replaces the list with the chat.
           display: (narrow && openId) ? 'none' : 'flex',
           ...(narrow ? { flex: '1 1 0%' } : {}),
         }}>
-          <div style={{ padding: '9px 10px', borderBottom: '1px solid var(--c1e293b)', display: 'flex', gap: 7, alignItems: 'center' }}>
+          <div style={{ padding: '9px 10px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 7, alignItems: 'center' }}>
             <input value={query} onChange={(e) => setQuery(e.target.value)}
               placeholder={vi ? 'Tìm khách…' : 'Search…'}
               // 16px on the phone is not a taste choice: anything smaller and
@@ -778,7 +878,7 @@ export function InboxView() {
               people WAITING on each is the reason to look at all. Drawn only
               when more than one kind has ever been used. */}
           {chans.length > 1 && (
-            <div style={{ display: 'flex', gap: narrow ? 8 : 5, padding: narrow ? '8px 12px' : '7px 8px', borderBottom: '1px solid var(--c1e293b)', alignItems: 'center',
+            <div style={{ display: 'flex', gap: narrow ? 8 : 5, padding: narrow ? '8px 12px' : '7px 8px', borderBottom: '1px solid var(--line)', alignItems: 'center',
               ...(narrow ? { flexWrap: 'nowrap' as const, overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const, scrollbarWidth: 'none' as const } : { flexWrap: 'wrap' as const }) }}>
               <button onClick={() => setChan('any')}
                 style={{ ...ghostBtn, fontSize: narrow ? 13 : 11, padding: narrow ? '7px 12px' : '3px 9px', borderRadius: 999, flexShrink: 0, fontWeight: chan === 'any' ? 700 : 500,
@@ -813,7 +913,7 @@ export function InboxView() {
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: narrow ? 8 : 4, padding: narrow ? '8px 12px' : '7px 8px', borderBottom: '1px solid var(--c1e293b)',
+          <div style={{ display: 'flex', gap: narrow ? 8 : 4, padding: narrow ? '8px 12px' : '7px 8px', borderBottom: '1px solid var(--line)',
             // One row that scrolls sideways. Wrapping onto a second line — the
             // desktop behaviour — costs a whole conversation of height on a
             // phone, and every chat app solved it the same way: swipe the chips.
@@ -843,7 +943,7 @@ export function InboxView() {
           {/* Label filter. Only drawn once the salon has made a label — an
               empty row of nothing is worse than no row. */}
           {labels.length > 0 && (
-            <div style={{ display: 'flex', gap: narrow ? 8 : 4, padding: narrow ? '8px 12px' : '0 8px 7px', borderBottom: '1px solid var(--c1e293b)', alignItems: 'center',
+            <div style={{ display: 'flex', gap: narrow ? 8 : 4, padding: narrow ? '8px 12px' : '0 8px 7px', borderBottom: '1px solid var(--line)', alignItems: 'center',
               ...(narrow ? { flexWrap: 'nowrap' as const, overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const } : { flexWrap: 'wrap' as const }) }}>
               <button onClick={() => setLabelId(null)}
                 style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px',
@@ -882,7 +982,7 @@ export function InboxView() {
               // empty reads as an answer and they act on it.
               <div aria-busy="true" aria-label={vi ? 'Đang tải hội thoại' : 'Loading conversations'}>
                 {[0, 1, 2].map((i) => (
-                  <div key={i} style={{ display: 'flex', gap: 9, padding: narrow ? '13px 14px' : '9px 11px', borderBottom: '1px solid var(--c1e293b)', opacity: 1 - i * 0.25 }}>
+                  <div key={i} style={{ display: 'flex', gap: 9, padding: narrow ? '13px 14px' : '9px 11px', borderBottom: '1px solid var(--line)', opacity: 1 - i * 0.25 }}>
                     <div style={{ width: narrow ? 48 : 34, height: narrow ? 48 : 34, borderRadius: '50%', background: 'var(--c1e293b)', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 3 }}>
                       <div style={{ height: 9, width: '55%', borderRadius: 4, background: 'var(--c1e293b)' }} />
@@ -918,9 +1018,9 @@ export function InboxView() {
                     background: on ? 'var(--c1e293b)' : r.unread ? 'var(--c172554)' : 'transparent',
                     border: 'none',
                     borderLeft: `3px solid ${on ? '#6366f1' : r.unread ? '#3b82f6' : 'transparent'}`,
-                    borderBottom: '1px solid var(--c1e293b)', padding: narrow ? '13px 14px' : '9px 11px' }}>
+                    borderBottom: '1px solid var(--line)', padding: narrow ? '13px 14px' : '9px 11px' }}>
                   <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
-                    <Avatar row={r} size={narrow ? 48 : 34} />
+                    <Avatar row={r} size={narrow ? 48 : 34} token={token} vi={vi} />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                         <span style={{ color: r.unread ? 'var(--cf8fafc)' : 'var(--c94a3b8)', fontSize: narrow ? 15.5 : 13, fontWeight: r.unread ? 800 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -984,7 +1084,7 @@ export function InboxView() {
               column below a short list instead of leaving it blank. */}
           {!narrow && rows.length > 0 && (
             <div style={{
-              flexShrink: 0, borderTop: '1px solid var(--c1e293b)', background: 'var(--c0b1220)',
+              flexShrink: 0, borderTop: '1px solid var(--line)', background: 'var(--c0b1220)',
               display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
             }}>
               {([
@@ -1065,13 +1165,13 @@ export function InboxView() {
           })()}
 
           {detail && (<>
-            <div style={{ padding: '9px 13px', borderBottom: '1px solid var(--c1e293b)', display: 'flex', alignItems: 'center', gap: 9 }}>
+            <div style={{ padding: '9px 13px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 9 }}>
               {narrow && (
                 <button onClick={() => { setOpenId(null); setDetail(null); setShowInfo(false); }}
                   aria-label={vi ? 'Quay lại danh sách' : 'Back to list'}
                   style={{ ...ghostBtn, padding: '10px 15px', fontSize: 19, lineHeight: 1, borderRadius: 12 }}>‹</button>
               )}
-              <Avatar row={detail} size={34} />
+              <Avatar row={detail} size={34} token={token} vi={vi} />
               <div style={{ minWidth: 0 }}>
                 {/* Click the name to set it. Meta withholds the profile for
                     plenty of people — accounts made with a phone number, anyone
@@ -1151,7 +1251,16 @@ export function InboxView() {
               </div>
             </div>
 
-            <div style={{ flex: '1 1 0%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0, padding: narrow ? 12 : 14, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--c0b1220)' }}>
+            <div
+              ref={paneRef}
+              // Within ~60px of the floor counts as "reading the newest" - a
+              // reader is never pixel-exact, and a half-scrolled line should
+              // not stop the next message arriving in view.
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+              }}
+              style={{ flex: '1 1 0%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0, padding: narrow ? 12 : 14, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--c0b1220)' }}>
               {/* Messages sit on the floor, not the ceiling.
                   A four-message conversation in a window-tall column used to
                   cluster at the top with a field of empty dark between the last
@@ -1166,7 +1275,7 @@ export function InboxView() {
                   — silence here is how somebody re-asks a question the
                   customer answered last week. */}
               {detail.historySource === 'local' && (
-                <div style={{ alignSelf: 'center', textAlign: 'center', fontSize: 11.5, color: 'var(--c94a3b8)', background: 'var(--c1e293b)', borderRadius: 8, padding: '6px 12px' }}>
+                <div style={{ alignSelf: 'center', textAlign: 'center', fontSize: 11.5, color: 'var(--c94a3b8)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 8, padding: '6px 12px' }}>
                   {vi ? 'Chỉ đang hiện các tin gần nhất — chưa tải được toàn bộ lịch sử từ Meta.' : 'Showing recent messages only — Meta did not return the full history.'}
                   <button onClick={() => void loadThread(detail.id)} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--c818cf8)', fontWeight: 700, cursor: 'pointer', fontSize: 11.5 }}>{vi ? 'Thử lại' : 'Retry'}</button>
                 </div>
@@ -1183,7 +1292,8 @@ export function InboxView() {
                   {newDay && (
                     <div style={{ alignSelf: 'center', margin: '6px 0 2px' }}>
                       <span style={{
-                        background: 'var(--c1e293b)', color: 'var(--c94a3b8)', borderRadius: 999,
+                        background: 'var(--raised)', border: '1px solid var(--line)',
+                        color: 'var(--c94a3b8)', borderRadius: 999,
                         padding: '3px 12px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
                       }}>{dayDividerLabel(t.at as string, vi)}</span>
                     </div>
@@ -1198,13 +1308,25 @@ export function InboxView() {
                         {t.images.map((u, j) => (
                           <a key={j} href={u} target="_blank" rel="noreferrer" title={vi ? 'Mở ảnh gốc' : 'Open the photo'}>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={u} alt="" loading="lazy" style={{ width: narrow ? 160 : 140, height: narrow ? 160 : 140, objectFit: 'cover', borderRadius: 12, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', display: 'block' }} />
+                            <img src={u} alt="" loading="lazy" style={{ width: narrow ? 160 : 140, height: narrow ? 160 : 140, objectFit: 'cover', borderRadius: 12, border: '1px solid var(--c334155)', background: 'var(--raised)', display: 'block' }} />
                           </a>
                         ))}
                       </div>
                     )}
                     {(!t.images?.length || !/^\[Khách gửi/.test(t.content)) && (
-                      <div style={{ background: mine ? (t.manual ? '#1d4ed8' : 'var(--c3730a3)') : 'var(--c1e293b)', color: 'var(--ce2e8f0)', borderRadius: 16, padding: narrow ? '9px 13px' : '7px 11px', fontSize: narrow ? 15 : 13, lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>{t.content}</div>
+                      <div style={{
+                        background: mine ? (t.manual ? '#1d4ed8' : 'var(--c3730a3)') : 'var(--raised)',
+                        // The salon's own replies are on a saturated indigo in
+                        // both themes, so their text stays white; only the
+                        // customer's bubble follows the surface.
+                        color: mine ? '#f8fafc' : 'var(--ce2e8f0)',
+                        // An edge, so a white bubble on a near-white pane is
+                        // still a bubble. In dark the line IS the bubble
+                        // colour, so nothing changes there.
+                        border: mine ? '1px solid transparent' : '1px solid var(--line)',
+                        borderRadius: 16, padding: narrow ? '9px 13px' : '7px 11px',
+                        fontSize: narrow ? 15 : 13, lineHeight: 1.4, whiteSpace: 'pre-wrap',
+                      }}>{t.content}</div>
                     )}
                     <p style={{ margin: '3px 2px 0', fontSize: 11, color: 'var(--c64748b)', textAlign: mine ? 'right' : 'left' }}>
                       {/* Who said it. A staff reply and a bot reply looking
@@ -1234,7 +1356,7 @@ export function InboxView() {
                 booking, and typing them thirty times a day is how a busy front
                 desk ends up answering in one word. */}
             {!notice.blocked && (
-              <div style={{ borderTop: '1px solid var(--c1e293b)', padding: narrow ? '8px 12px' : '8px 10px', display: 'flex', gap: narrow ? 8 : 6, alignItems: 'center',
+              <div style={{ borderTop: '1px solid var(--line)', padding: narrow ? '8px 12px' : '8px 10px', display: 'flex', gap: narrow ? 8 : 6, alignItems: 'center',
                 ...(narrow ? { flexWrap: 'nowrap' as const, overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const } : { flexWrap: 'wrap' as const }) }}>
                 {(detail.canned ?? []).map((q) => (
                   <button key={q.label} title={q.text}
@@ -1256,15 +1378,15 @@ export function InboxView() {
             )}
 
             {notice.text && (
-              <div style={{ borderTop: '1px solid var(--c1e293b)', padding: '7px 13px', fontSize: 12,
+              <div style={{ borderTop: '1px solid var(--line)', padding: '7px 13px', fontSize: 12,
                 // Amber is "a rule applies here"; red is "nothing can be sent".
                 // The take-over state locks the box but is NOT red: the reply
                 // is one click away, and red would read as a dead end.
                 color: (notice.tone ?? (notice.blocked ? 'red' : 'amber')) === 'red' ? 'var(--cfca5a5)' : 'var(--cfcd34d)',
-                background: (notice.tone ?? (notice.blocked ? 'red' : 'amber')) === 'red' ? 'rgba(127,29,29,0.25)' : 'rgba(120,53,15,0.25)' }}>{notice.text}</div>
+                background: (notice.tone ?? (notice.blocked ? 'red' : 'amber')) === 'red' ? 'var(--wash-red)' : 'var(--wash-amber-3)' }}>{notice.text}</div>
             )}
 
-            <div style={{ borderTop: '1px solid var(--c1e293b)', padding: narrow ? '8px 10px' : 10, display: 'flex', gap: 8, alignItems: 'flex-end',
+            <div style={{ borderTop: '1px solid var(--line)', padding: narrow ? '8px 10px' : 10, display: 'flex', gap: 8, alignItems: 'flex-end',
               // The iPhone home bar floats over anything that ignores the safe
               // area; a send button under it is a send button nobody can press.
               paddingBottom: narrow ? 'calc(8px + env(safe-area-inset-bottom))' : 10 }}>
@@ -1292,7 +1414,7 @@ export function InboxView() {
             you glance at while typing, not things that belong in the flow of
             the conversation. */}
         <div style={{
-          borderLeft: narrow ? 'none' : '1px solid var(--c1e293b)', flexDirection: 'column', minWidth: 0,
+          borderLeft: narrow ? 'none' : '1px solid var(--line)', flexDirection: 'column', minWidth: 0,
           background: 'var(--c0f172a)', overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0,
           // On a phone the notes, labels and follow-up live behind the ⓘ button
           // in the conversation header rather than in a fourth column.
@@ -1312,7 +1434,7 @@ export function InboxView() {
                 : 'Pick a conversation to see: name and phone, visits so far, the next appointment, their usual tech, labels, the follow-up reminder and the team’s private notes.'}
             </p>
           ) : (<>
-            <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--c1e293b)' }}>
+            <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line)' }}>
               <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--c64748b)' }}>{vi ? 'Khách này ở Lumio' : 'This customer, in Lumio'}</p>
               {detail.customer ? (() => {
                 // Four facts stacked two lines each used a third of the column
@@ -1433,7 +1555,7 @@ export function InboxView() {
             {/* The phone header gave this button's seat to the customer's
                 name; the action itself moves here rather than disappearing. */}
             {narrow && (
-              <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--c1e293b)', display: 'flex', gap: 8 }}>
+              <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 8 }}>
                 {stateOf(detail) !== 'done'
                   ? <button disabled={busy} onClick={() => void act('status', { status: 'done' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10 }}>✓ {vi ? 'Xong hội thoại' : 'Mark done'}</button>
                   : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10 }}>{vi ? 'Mở lại hội thoại' : 'Reopen'}</button>}
@@ -1441,7 +1563,7 @@ export function InboxView() {
             )}
 
             {/* Labels: where this conversation stands. */}
-            <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--c1e293b)' }}>
+            <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                 <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 700 }}>{vi ? 'NHÃN' : 'LABELS'}</span>
                 <button onClick={() => setShowLabelForm((v) => !v)}
@@ -1497,7 +1619,7 @@ export function InboxView() {
 
             {/* Follow-up: WHEN to come back. Deliberately not a label — a label
                 is true forever and so cannot remind anybody of anything. */}
-            <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--c1e293b)' }}>
+            <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                 <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 700 }}>{vi ? 'HẸN THEO DÕI' : 'FOLLOW-UP'}</span>
                 {followUpState(detail.followUpAt) !== 'none' && (
@@ -1553,7 +1675,7 @@ export function InboxView() {
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void addNote(); } }}
                 placeholder={vi ? 'Nhập ghi chú (Enter để lưu)' : 'Add a note (Enter to save)'}
                 rows={2}
-                style={{ ...ui.input, width: '100%', fontSize: 12, resize: 'vertical', minHeight: 38, borderColor: 'var(--c78350f)', background: 'rgba(120,53,15,0.12)' }}
+                style={{ ...ui.input, width: '100%', fontSize: 12, resize: 'vertical', minHeight: 38, borderColor: 'var(--c78350f)', background: 'var(--wash-amber)' }}
               />
             </div>
 
@@ -1562,7 +1684,7 @@ export function InboxView() {
                 <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)' }}>{vi ? 'Chưa có ghi chú nào.' : 'No notes yet.'}</p>
               )}
               {detail.notes?.map((n) => (
-                <div key={n.id} style={{ background: 'rgba(120,53,15,0.18)', border: '1px solid var(--c78350f)', borderRadius: 8, padding: '7px 9px' }}>
+                <div key={n.id} style={{ background: 'var(--wash-amber-2)', border: '1px solid var(--c78350f)', borderRadius: 8, padding: '7px 9px' }}>
                   <p style={{ margin: 0, fontSize: 12.5, color: 'var(--cfde68a)', whiteSpace: 'pre-wrap' }}>{n.text}</p>
                   <p style={{ margin: '4px 0 0', fontSize: 10.5, color: '#a16207', display: 'flex', gap: 6 }}>
                     <span>{n.authorName}</span>

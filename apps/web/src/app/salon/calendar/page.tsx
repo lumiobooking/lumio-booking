@@ -631,7 +631,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
           </div>
           <div style={{ position: 'relative', flex: 1, height: total }}>
             {Array.from({ length: endH - startH + 1 }, (_, i) => i).map((i) => (
-              <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid var(--c1e293b)' }} />
+              <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid var(--line)' }} />
             ))}
             {nowTop >= 0 && (
               <div style={{ position: 'absolute', top: nowTop, left: 0, right: 0, borderTop: '2px solid #ef4444', zIndex: 5 }}>

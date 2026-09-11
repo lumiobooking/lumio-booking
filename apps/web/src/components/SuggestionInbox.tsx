@@ -292,7 +292,7 @@ export function SuggestionInbox({
             <>
               <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', marginTop: 8 }}>
                 {doneL.slice.map((s) => (
-                  <div key={s.id} style={{ display: 'flex', gap: 8, background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 9, padding: 8, opacity: 0.85, position: 'relative' }}>
+                  <div key={s.id} style={{ display: 'flex', gap: 8, background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 9, padding: 8, opacity: 0.85, position: 'relative' }}>
                     {canDelete && (
                       <button
                         onClick={() => { if (window.confirm(T(`Xoá hẳn "${s.title}"? Ghi chú và lịch sử mất; file gốc trên Drive vẫn còn.`, `Delete "${s.title}" for good? The note and history go; the Drive originals stay.`))) void act(s.id, '', 'DELETE'); }}

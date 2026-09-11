@@ -385,7 +385,7 @@ function Inner() {
                     };
                     return (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8,
-                        background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)' }}>
+                        background: 'var(--c0f172a)', border: '1px solid var(--line)' }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', width: 92, flexShrink: 0 }}>
                           <input type="checkbox" checked={row.enabled} onChange={(e) => put({ enabled: e.target.checked })}
                             style={{ width: 16, height: 16, accentColor: '#6366f1', cursor: 'pointer' }} />

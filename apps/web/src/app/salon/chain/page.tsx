@@ -77,7 +77,7 @@ function Inner() {
               <span style={{ textAlign: 'right' }}>{t('cr.newCust')}</span>
             </div>
             {data.branches.map((b) => (
-              <div key={b.tenantId} style={{ padding: '10px 0', borderBottom: '1px solid var(--c1e293b)' }}>
+              <div key={b.tenantId} style={{ padding: '10px 0', borderBottom: '1px solid var(--line)' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.7fr 0.7fr', gap: 8, alignItems: 'center', fontSize: 14 }}>
                   <span style={{ fontWeight: 600, color: 'var(--ce2e8f0)' }}>{b.name}</span>
                   <span style={{ textAlign: 'right', color: '#22c55e', fontWeight: 600 }}>{formatPrice(b.revenueCents, currency)}</span>

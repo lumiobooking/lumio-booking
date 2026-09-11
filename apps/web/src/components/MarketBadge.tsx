@@ -24,8 +24,8 @@
 import { useEffect, useState } from 'react';
 
 const MARKETS: Record<string, { label: string; fg: string; bg: string; border: string }> = {
-  VN: { label: 'VIỆT NAM', fg: 'var(--cfca5a5)', bg: 'rgba(153,27,27,0.28)', border: '#b91c1c' },
-  US: { label: 'US / CA', fg: 'var(--c93c5fd)', bg: 'rgba(30,58,138,0.28)', border: '#1d4ed8' },
+  VN: { label: 'VIỆT NAM', fg: 'var(--cfca5a5)', bg: 'var(--wash-red-2)', border: '#b91c1c' },
+  US: { label: 'US / CA', fg: 'var(--c93c5fd)', bg: 'var(--wash-blue)', border: '#1d4ed8' },
 };
 
 /** Build-time market, for deployments that serve exactly one. */
@@ -45,7 +45,7 @@ export default function MarketBadge({ compact = false }: { compact?: boolean }) 
   // visible change to a system that is meant to stay untouched.
   if (!code || code === 'US') return null;
 
-  const m = MARKETS[code] ?? { label: code, fg: '#fbbf24', bg: 'rgba(120,53,15,0.28)', border: '#b45309' };
+  const m = MARKETS[code] ?? { label: code, fg: '#fbbf24', bg: 'var(--wash-amber-4)', border: '#b45309' };
   return (
     <span
       title="Hệ thống riêng của thị trường này — dữ liệu tách hoàn toàn khỏi thị trường khác"

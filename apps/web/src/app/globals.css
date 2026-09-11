@@ -47,8 +47,30 @@ th {
   overflow-wrap: anywhere;
 }
 
-button {
+/* Form controls inherit the app's typeface.
+ *
+ * A browser does not give these the page font: <textarea> defaults to
+ * monospace and <input>/<select> to the OS widget font. So the search box, the
+ * message composer and the notes box were all typing in a different, wider,
+ * typewriter face than every other word on the screen - visible as soon as the
+ * background went white and nothing else was competing for the eye.
+ *
+ * Only the FAMILY is inherited. Size stays whatever each control sets, so the
+ * 16px rule below (which is what stops iOS zooming on focus) is untouched. */
+button,
+input,
+select,
+textarea,
+optgroup {
   font-family: inherit;
+}
+
+/* Placeholders are a hint, not content. One muted tone in both themes, instead
+ * of whatever grey each browser picks - which on white read almost as dark as
+ * a real answer, so an empty box looked filled in. */
+::placeholder {
+  color: var(--c64748b);
+  opacity: 1;
 }
 
 /* Comfortable, tappable controls + no iOS auto-zoom (needs >= 16px font). */
@@ -92,6 +114,17 @@ button {
 ::-webkit-scrollbar-thumb {
   background: var(--c334155);
   border-radius: 8px;
+}
+/* The track has to exist in light mode, or the thumb floats on white with
+   nothing to say how far the list runs. */
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+html[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: #c3cfe0;
+}
+html[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
+  background: #a9b8cd;
 }
 
 /* ===========================================================================

@@ -53,6 +53,21 @@ interface ApiOptions {
  */
 const imageCache = new Map<string, string | null>();
 
+/**
+ * The cache, read synchronously.
+ *
+ * `apiImage` already never refetches a face - but it is a Promise, so a
+ * component that mounts with a cached picture still renders one frame of
+ * initials before the microtask resolves. Do that on every list refresh and
+ * the inbox blinks. Seeding useState from here means a face that has already
+ * been fetched paints on the FIRST frame, and the blink has nowhere to happen.
+ *
+ * `undefined` = never asked. `null` = asked, Meta has no picture.
+ */
+export function apiImageCached(path: string): string | null | undefined {
+  return imageCache.get(path);
+}
+
 export async function apiImage(path: string, token: string): Promise<string | null> {
   // Cached per path for the life of the page: scrolling a list must not refetch
   // the same face, and switching filters must not either.

@@ -281,7 +281,7 @@ function Inner() {
 /* ------------------------------------------------------------ components --- */
 function Kpi({ label, value, hint, accent }: { label: string; value: string; hint?: string; accent?: string }) {
   return (
-    <div style={{ background: 'var(--c111827)', border: '1px solid var(--c1e293b)', borderRadius: 12, padding: '12px 14px' }}>
+    <div style={{ background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 12, padding: '12px 14px' }}>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: accent ?? '#fff' }}>{value}</div>
       {hint && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}
@@ -419,7 +419,7 @@ function MarkdownCard({ md, money, T, vi }: { md?: Markdowns; money: (c: number)
           [T('Tỉ lệ giảm', 'Markdown rate'), `${md.discountRate}%`, heavy ? 'var(--cf87171)' : 'var(--ccbd5e1)'],
           [T('Số dòng', 'Lines'), String(md.lines), 'var(--ccbd5e1)'],
         ].map(([label, value, color]) => (
-          <div key={label} style={{ flex: '1 1 130px', background: 'var(--c0f172a)', border: '1px solid var(--c1e293b)', borderRadius: 10, padding: '10px 12px' }}>
+          <div key={label} style={{ flex: '1 1 130px', background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px' }}>
             <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{label}</div>
             <div style={{ fontSize: 19, fontWeight: 800, color }}>{value}</div>
           </div>
@@ -454,7 +454,7 @@ function MdTable({ title, rows, money, T }: { title: string; rows: MdRow[]; mone
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={(r.staffId ?? '') + r.name} style={{ borderTop: '1px solid var(--c1e293b)' }}>
+              <tr key={(r.staffId ?? '') + r.name} style={{ borderTop: '1px solid var(--line)' }}>
                 <td style={{ padding: '5px 0', color: 'var(--ce2e8f0)' }}>{r.name}</td>
                 <td style={{ padding: '5px 0', textAlign: 'right', color: 'var(--c94a3b8)' }}>{r.lines}</td>
                 <td style={{ padding: '5px 0', textAlign: 'right', color: 'var(--cfbbf24)', fontWeight: 600 }}>{money(r.discountCents)}</td>

@@ -257,7 +257,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                   </div>
                   <div style={{ position: 'relative', height: total }}>
                     {Array.from({ length: endH - startH }, (_, i) => i + 1).map((i) => (
-                      <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid var(--c1e293b)' }} />
+                      <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid var(--line)' }} />
                     ))}
                     {pos.map(({ b, s, e, col, cols }) => {
                       const cc = sc(b.status);

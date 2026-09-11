@@ -179,7 +179,7 @@ export function SalonWorkspace({ token, vi, onCount }: {
           <div style={{ ...card, marginTop: 6 }}>
             {sugg.past.map((s, i) => (
               <div key={s.id} style={{
-                padding: '9px 0', borderTop: i === 0 ? 'none' : '1px solid var(--c1e293b)',
+                padding: '9px 0', borderTop: i === 0 ? 'none' : '1px solid var(--line)',
                 display: 'flex', gap: 9, alignItems: 'baseline',
               }}>
                 <span style={{ flex: '0 0 auto' }}>{s.fromShop ? '📤' : s.status === 'done' ? '✅' : '—'}</span>

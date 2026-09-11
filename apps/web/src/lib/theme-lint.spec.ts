@@ -124,3 +124,81 @@ test('no hard-coded text colour that disappears on a themed surface in light mod
   // colour as its token — var(--c<hex>) — so it flips with the surface.
   expect(offenders).toEqual([]);
 });
+
+/**
+ * THE INVISIBLE DIVIDER.
+ *
+ * `#1e293b` does two jobs in the source: a raised chip's background, and a 1px
+ * rule. At night one value serves both. By day it cannot - a surface pale
+ * enough to sit under text is not a line you can see on white. 125 dividers
+ * across 38 screens were drawn and none of them were visible, which is why
+ * light mode read as one undifferentiated sheet with no panels on it.
+ *
+ * Borders use `var(--line)` (or `--line-strong`), whose dark value is that same
+ * `#1e293b` and whose light value is an actual line.
+ */
+test('no divider drawn in a colour that vanishes on white', () => {
+  const offenders: string[] = [];
+  for (const file of walk(ROOT)) {
+    fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+      // Only `#1e293b`. A ring drawn in the PAGE colour (`--c111827`,
+      // `--c0f172a`) is the opposite pattern and a correct one: it punches a
+      // badge out of whatever it overlaps, and it is meant to flip to white.
+      if (/solid var\(--c1e293b\)/.test(line)) {
+        offenders.push(`${path.relative(ROOT, file)}:${i + 1}`);
+      }
+    });
+  }
+  expect(offenders).toEqual([]);
+});
+
+/**
+ * THE WASH THAT CANNOT FLIP.
+ *
+ * `rgba(120,53,15,.12)` is amber-900 at twelve percent. Over `#0f172a` it is a
+ * whisper; over white it is mud - the tan smear the internal-notes box showed
+ * in light mode. A translucent DARK colour is the same bug as a raw dark hex:
+ * the thing underneath flips and the thing on top cannot.
+ *
+ * Tints written as `var(--wash-…)` flip with everything else. Accent hues
+ * (indigo, green, red-500, amber-500) are exempt: they are the same colour on
+ * both grounds and carry meaning that must not drift.
+ */
+const DARK_FAMILY = [
+  '120,53,15', '69,26,3', '146,64,14',      // amber 900 / 950 / 800
+  '127,29,29', '69,10,10', '153,27,27',     // red 900 / 950 / 800
+  '30,58,138', '23,37,84',                  // blue 900 / 950
+  '6,78,59', '5,46,22', '20,83,45',         // green 900 / 950
+  '49,46,129', '30,27,75',                  // indigo 900 / 950
+];
+
+test('no translucent dark-palette wash used as a surface', () => {
+  const offenders: string[] = [];
+  const re = new RegExp(`rgba\\(\\s*(?:${DARK_FAMILY.map((t) => t.split(',').join('\\s*,\\s*')).join('|')})\\s*,`);
+  for (const file of walk(ROOT)) {
+    // The palette file is where these values are DECLARED, paired with the
+    // light colour that replaces them. That is the fix, not the bug.
+    if (path.relative(ROOT, file).replace(/\\/g, '/') === 'lib/theme.ts') continue;
+    fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+      if (re.test(line)) offenders.push(`${path.relative(ROOT, file)}:${i + 1}`);
+    });
+  }
+  expect(offenders).toEqual([]);
+});
+
+/**
+ * THE TYPEWRITER.
+ *
+ * A browser does not hand form controls the page font: <textarea> defaults to
+ * monospace. The search box, the message composer and the notes box were all
+ * typing in a different face from every other word on screen. globals.css now
+ * says so once, for all of them; this is the guard that it keeps saying it.
+ */
+test('form controls inherit the app typeface', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'app', 'globals.css'), 'utf8');
+  const rule = /(^|\})[^{}]*\btextarea\b[^{}]*\{[^}]*font-family:\s*inherit/m;
+  expect(rule.test(css)).toBe(true);
+  for (const tag of ['input', 'select', 'button']) {
+    expect(new RegExp(`(^|\\})[^{}]*\\b${tag}\\b[^{}]*\\{[^}]*font-family:\\s*inherit`, 'm').test(css)).toBe(true);
+  }
+});

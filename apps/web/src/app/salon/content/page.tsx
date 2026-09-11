@@ -747,6 +747,12 @@ function Inner() {
    * number is to be seen by someone who was not going to look.
    */
   const [postAlerts, setPostAlerts] = useState(0);
+  /**
+   * Which ideas are open. Absent means "whatever the default is" — the job
+   * that is next up opens itself, the rest stay folded — so an empty map is
+   * the right first render and a person's click is remembered from then on.
+   */
+  const [openIdea, setOpenIdea] = useState<Record<string, boolean>>({});
   const [linkFor, setLinkFor] = useState<string | null>(null);
   const [linkDraft, setLinkDraft] = useState('');
   const [unread, setUnread] = useState<{ total: number; bySubject: Record<string, number> }>({ total: 0, bySubject: {} });
@@ -1955,19 +1961,70 @@ function Inner() {
                   </div>
                 </div>
               )}
-              {data?.ideas?.map((idea) => {
+              {!!data?.ideas?.length && (() => {
+                const all = data.ideas;
+                const finished = all.filter((i) => i.status === 'filmed' || i.status === 'posted').length;
+                const left = all.filter((i) => i.status !== 'filmed' && i.status !== 'posted' && i.status !== 'skipped').length;
+                return (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+                    marginBottom: 14, padding: '12px 16px', borderRadius: 10,
+                    background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
+                  }}>
+                    <div style={{ flex: '0 0 auto' }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>
+                        {finished}/{all.length} {T('việc xong', finished === 1 ? 'done' : 'done')}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2 }}>
+                        {left === 0
+                          ? T('Xong hết hôm nay', 'Everything done today')
+                          : `${T('Còn', 'Still to do')} ${left} ${T('việc trong hôm nay', left === 1 ? 'job today' : 'jobs today')}`}
+                      </div>
+                    </div>
+                    <div style={{ flex: '1 1 140px', minWidth: 110, height: 7, borderRadius: 20, background: 'var(--c111827)', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.round((finished / all.length) * 100)}%`, height: '100%', background: '#22c55e' }} />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ---- today, in the order somebody does it ----
+                  The old screen gave every idea the same full card, all open at
+                  once: four identical walls of shot list and caption, and no
+                  answer to "which one am I doing right now". So: the first
+                  unfinished job opens in full and carries the badge; everything
+                  else is one line until it is that job's turn; finished work
+                  drops to the bottom. Nothing is hidden — the click that opens
+                  a folded idea is the click that used to be scrolling. */}
+              {(() => {
+                const list = data?.ideas ?? [];
+                const rank = (i: Idea) => (i.status === 'filmed' || i.status === 'posted' ? 2 : i.status === 'skipped' ? 3 : 1);
+                return [...list].sort((a, b) => rank(a) - rank(b));
+              })().map((idea, ideaPos, ordered) => {
+                const leadId = ordered.find((x) => x.status !== 'filmed' && x.status !== 'posted' && x.status !== 'skipped')?.id ?? null;
+                const lead = idea.id === leadId;
+                const expanded = idea.id in openIdea ? openIdea[idea.id] : lead;
+                const toggle = () => setOpenIdea((o) => ({ ...o, [idea.id]: !(idea.id in o ? o[idea.id] : lead) }));
                 const done = idea.status === 'filmed' || idea.status === 'posted';
                 const skipped = idea.status === 'skipped';
                 return (
                   <div key={idea.id} style={{
-                    ...ui.card, marginBottom: 14, padding: 16,
+                    ...ui.card,
+                    marginBottom: expanded ? 14 : 8,
+                    padding: expanded ? 16 : '11px 14px',
                     opacity: skipped ? 0.55 : 1,
-                    borderColor: done ? '#22c55e' : 'var(--c334155)',
+                    borderColor: lead ? '#4f46e5' : done ? '#22c55e' : 'var(--c334155)',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 9 }}>
-                      <span style={{ background: rankColor(idea.rank), color: '#fff', fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6 }}>
-                        {rankLabel(idea.rank)}
-                      </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: expanded ? 9 : 0 }}>
+                      {lead ? (
+                        <span style={{ background: '#4f46e5', color: '#fff', fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6 }}>
+                          {T('LÀM NGAY', 'DO THIS NOW')}
+                        </span>
+                      ) : (
+                        <span style={{ background: rankColor(idea.rank), color: '#fff', fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6 }}>
+                          {rankLabel(idea.rank)}
+                        </span>
+                      )}
                       {idea.formatName && (
                         <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{idea.formatName}</span>
                       )}
@@ -1983,194 +2040,253 @@ function Inner() {
                       )}
                     </div>
 
-                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', lineHeight: 1.4, marginBottom: 8 }}>
-                      {idea.title}
-                    </div>
+                    {/* The title is the control. A folded idea is one line and a
+                        tap on that line opens it — there is no separate "expand"
+                        chevron to find on a phone held in one hand. */}
+                    <button
+                      onClick={toggle}
+                      aria-expanded={expanded}
+                      style={{
+                        display: 'flex', alignItems: 'baseline', gap: 9, width: '100%', textAlign: 'left',
+                        background: 'transparent', border: 'none', padding: 0, margin: 0, cursor: 'pointer',
+                        font: 'inherit', marginBottom: expanded ? 8 : 0, minHeight: expanded ? 0 : 34,
+                      }}
+                    >
+                      <span style={{
+                        fontSize: expanded ? 16 : 14, fontWeight: 700, lineHeight: 1.4, minWidth: 0, flex: 1,
+                        color: done || skipped ? 'var(--c94a3b8)' : 'var(--ce2e8f0)',
+                        textDecoration: skipped ? 'line-through' : 'none',
+                      }}>
+                        {idea.title}
+                      </span>
+                      <span style={{ flex: '0 0 auto', fontSize: 12, fontWeight: 600, color: 'var(--ca5b4fc)' }}>
+                        {expanded ? T('Thu lại', 'Close') : T('Mở ra', 'Open')}
+                      </span>
+                    </button>
 
-                    {/* The trend this idea adapted — with the reference clip, so
-                        the salon SEES what is working instead of taking our word. */}
-                    {idea.signals?.trend && (
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 9, padding: 8, marginBottom: 10 }}>
-                        {idea.signals.trend.thumbUrl && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={idea.signals.trend.thumbUrl} alt="" style={{ width: 64, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
-                        )}
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase', color: '#22c55e' }}>
-                            📈 {T('Phỏng theo trend đang chạy', 'Adapted from a live trend')} · {idea.signals.trend.source === 'youtube' ? 'YouTube' : 'Instagram'}
+                    {expanded && (<>
+                      {/* The trend this idea adapted — with the reference clip, so
+                          the salon SEES what is working instead of taking our word. */}
+                      {idea.signals?.trend && (
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 9, padding: 8, marginBottom: 10 }}>
+                          {idea.signals.trend.thumbUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={idea.signals.trend.thumbUrl} alt="" style={{ width: 64, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
+                          )}
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase', color: '#22c55e' }}>
+                              📈 {T('Phỏng theo trend đang chạy', 'Adapted from a live trend')} · {idea.signals.trend.source === 'youtube' ? 'YouTube' : 'Instagram'}
+                            </div>
+                            {idea.signals.trend.url ? (
+                              <a href={idea.signals.trend.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', textDecoration: 'none', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {idea.signals.trend.title} ↗
+                              </a>
+                            ) : (
+                              <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{idea.signals.trend.title}</div>
+                            )}
                           </div>
-                          {idea.signals.trend.url ? (
-                            <a href={idea.signals.trend.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', textDecoration: 'none', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {idea.signals.trend.title} ↗
-                            </a>
-                          ) : (
-                            <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{idea.signals.trend.title}</div>
+                        </div>
+                      )}
+
+                      {idea.hook && (
+                        <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 10 }}>
+                          <b style={{ color: 'var(--ca5b4fc)' }}>{T('Mở đầu 3 giây', 'First 3 seconds')}:</b> {idea.hook}
+                        </div>
+                      )}
+
+                      {idea.shotList && (
+                        <div style={{ background: 'var(--c1e293b)', borderRadius: 8, padding: '9px 12px', marginBottom: 10 }}>
+                          <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                            {T('Cần quay', 'Shots')}
+                          </div>
+                          {/* One scene per line. A shot list is read with a
+                              phone in one hand between two customers; a
+                              paragraph of scenes joined by dots is not. */}
+                          <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.65 }}>
+                            {idea.shotList.split(/\s+·\s+|\s*\n+\s*/).map((sc) => sc.trim()).filter(Boolean).map((sc, k) => (
+                              <li key={k}>{sc}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+
+                      {idea.caption && (
+                        <div style={{ marginBottom: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', textTransform: 'uppercase', letterSpacing: 0.6 }}>Caption</span>
+                            <button
+                              onClick={() => copy(idea.id, `${idea.caption}${idea.hashtags ? `\n\n${idea.hashtags}` : ''}`)}
+                              style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--c334155)', background: 'transparent', color: copied === idea.id ? '#22c55e' : 'var(--ca5b4fc)', fontSize: 12, cursor: 'pointer' }}
+                            >
+                              {copied === idea.id ? T('✓ Đã chép', '✓ Copied') : T('Chép', 'Copy')}
+                            </button>
+                          </div>
+                          <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{idea.caption}</div>
+                          {idea.hashtags && (
+                            <div style={{ fontSize: 12.5, color: 'var(--c60a5fa)', marginTop: 5, lineHeight: 1.5 }}>{idea.hashtags}</div>
                           )}
                         </div>
-                      </div>
-                    )}
-
-                    {idea.hook && (
-                      <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 10 }}>
-                        <b style={{ color: 'var(--ca5b4fc)' }}>{T('Mở đầu 3 giây', 'First 3 seconds')}:</b> {idea.hook}
-                      </div>
-                    )}
-
-                    {idea.shotList && (
-                      <div style={{ background: 'var(--c1e293b)', borderRadius: 8, padding: '9px 12px', marginBottom: 10 }}>
-                        <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                          {T('Cần quay', 'Shots')}
-                        </div>
-                        {/* One scene per line. A shot list is read with a
-                            phone in one hand between two customers; a
-                            paragraph of scenes joined by dots is not. */}
-                        <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.65 }}>
-                          {idea.shotList.split(/\s+·\s+|\s*\n+\s*/).map((sc) => sc.trim()).filter(Boolean).map((sc, k) => (
-                            <li key={k}>{sc}</li>
-                          ))}
-                        </ol>
-                      </div>
-                    )}
-
-                    {idea.caption && (
-                      <div style={{ marginBottom: 10 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', textTransform: 'uppercase', letterSpacing: 0.6 }}>Caption</span>
-                          <button
-                            onClick={() => copy(idea.id, `${idea.caption}${idea.hashtags ? `\n\n${idea.hashtags}` : ''}`)}
-                            style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--c334155)', background: 'transparent', color: copied === idea.id ? '#22c55e' : 'var(--ca5b4fc)', fontSize: 12, cursor: 'pointer' }}
-                          >
-                            {copied === idea.id ? T('✓ Đã chép', '✓ Copied') : T('Chép', 'Copy')}
-                          </button>
-                        </div>
-                        <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{idea.caption}</div>
-                        {idea.hashtags && (
-                          <div style={{ fontSize: 12.5, color: 'var(--c60a5fa)', marginTop: 5, lineHeight: 1.5 }}>{idea.hashtags}</div>
-                        )}
-                      </div>
-                    )}
-
-                    {idea.reason && (
-                      <div style={{ background: 'var(--c172554)', borderRadius: 8, padding: '9px 12px', marginBottom: 12 }}>
-                        <span style={{ fontSize: 12, color: 'var(--c93c5fd)', fontWeight: 700 }}>{T('Vì sao gợi ý', 'Why this')}: </span>
-                        <span style={{ fontSize: 12.5, color: 'var(--cbfdbfe)', lineHeight: 1.6 }}>{idea.reason}</span>
-                      </div>
-                    )}
-
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button
-                        onClick={() => mark(idea.id, done ? 'published' : 'posted')}
-                        disabled={busy === idea.id}
-                        style={{
-                          flex: '1 1 auto', minHeight: 42, padding: '10px 14px', borderRadius: 9, fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                          border: done ? '1px solid #22c55e' : 'none',
-                          background: done ? 'transparent' : '#6366f1',
-                          color: done ? '#22c55e' : '#fff',
-                        }}
-                      >
-                        {done ? T('✓ Đã đăng', '✓ Posted') : T('Đánh dấu đã đăng', 'Mark as posted')}
-                      </button>
-                      {/* The step the plan used to stop short of. Copying text
-                          into Facebook is what a technician with both hands wet
-                          does not do — so the schedule is the product, not the
-                          text. */}
-                      <button
-                        onClick={() => scheduleFromIdea(idea)}
-                        style={{
-                          minHeight: 42, padding: '10px 14px', borderRadius: 9, cursor: 'pointer',
-                          border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)',
-                          fontSize: 13.5, fontWeight: 600,
-                        }}
-                      >
-                        🚀 {T('Hẹn giờ đăng', 'Schedule it')}
-                      </button>
-                      {!done && (
-                        <button
-                          onClick={() => mark(idea.id, skipped ? 'published' : 'skipped')}
-                          disabled={busy === idea.id}
-                          style={{ minHeight: 42, padding: '10px 14px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13.5, cursor: 'pointer' }}
-                        >
-                          {skipped ? T('Bỏ qua ✓', 'Skipped ✓') : T('Bỏ qua', 'Skip')}
-                        </button>
                       )}
-                    </div>
 
-                    {/* ---- where it went up ----
-                        A post nobody can open is a post nobody can check. The
-                        link is what turns "we posted 8 things" into 8 things a
-                        client can click, and it is the only field in the weekly
-                        record that is verifiable from outside this system. */}
-                    {done && (
-                      <div style={{ marginTop: 9 }}>
-                        {idea.postedUrl && linkFor !== idea.id ? (
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                            <a
-                              href={idea.postedUrl} target="_blank" rel="noopener noreferrer"
-                              style={{ fontSize: 12.5, color: 'var(--c60a5fa)', wordBreak: 'break-all' }}
-                            >
-                              🔗 {T('Xem bài đã đăng', 'Open the post')}
-                            </a>
-                            <button
-                              onClick={() => { setLinkFor(idea.id); setLinkDraft(idea.postedUrl ?? ''); }}
-                              style={{ fontSize: 11.5, background: 'transparent', border: 'none', color: 'var(--c64748b)', cursor: 'pointer', padding: 0 }}
-                            >
-                              {T('sửa', 'edit')}
-                            </button>
+                      {idea.reason && (
+                        <div style={{ borderLeft: '2px solid var(--c334155)', padding: '2px 0 2px 11px', marginBottom: 12 }}>
+                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)', fontWeight: 700 }}>{T('VÌ SAO GỢI Ý', 'WHY THIS')}{' '}</span>
+                          <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>{idea.reason}</span>
+                        </div>
+                      )}
+
+                      {/* ---- the quality bar ----
+                          The same four checks every time. They are what turns a
+                          clip that was filmed into a clip a client is glad to
+                          have, and they are the part a new member of staff has
+                          no way to know. Not generated, not per-idea: a bar that
+                          moves every day is a bar nobody learns. */}
+                      {!done && !skipped && (
+                        <div style={{
+                          marginBottom: 12, padding: '10px 12px', borderRadius: 9,
+                          background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
+                        }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: 'var(--cfcd34d)', marginBottom: 7 }}>
+                            {T('TRƯỚC KHI BẤM ĐĂNG — KIỂM 4 Ý NÀY', 'BEFORE YOU POST — CHECK THESE 4')}
                           </div>
-                        ) : linkFor === idea.id ? (
-                          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                            <input
-                              value={linkDraft}
-                              onChange={(e) => setLinkDraft(e.target.value)}
-                              placeholder="https://facebook.com/..."
-                              autoFocus
-                              style={{
-                                flex: '1 1 200px', minHeight: 40, padding: '9px 11px', borderRadius: 8, fontSize: 13,
-                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
-                              }}
-                            />
-                            <button
-                              onClick={async () => {
-                                await mark(idea.id, 'posted', linkDraft.trim());
-                                setLinkFor(null);
-                              }}
-                              disabled={busy === idea.id || !/^https:\/\//i.test(linkDraft.trim())}
-                              style={{
-                                minHeight: 40, padding: '9px 15px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-                                border: 'none', cursor: 'pointer',
-                                background: /^https:\/\//i.test(linkDraft.trim()) ? '#6366f1' : 'var(--c334155)',
-                                color: /^https:\/\//i.test(linkDraft.trim()) ? '#fff' : 'var(--c64748b)',
-                              }}
-                            >
-                              {T('Lưu link', 'Save link')}
-                            </button>
-                            <button
-                              onClick={() => setLinkFor(null)}
-                              style={{ minHeight: 40, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, cursor: 'pointer' }}
-                            >
-                              {T('Huỷ', 'Cancel')}
-                            </button>
+                          <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
+                            {[
+                              T('Clip dọc, không lọt tay người quay vào khung', 'Shot vertical, no camera hand in frame'),
+                              T('Tên tiệm hiện trong 3 giây đầu', 'The salon’s name shows in the first 3 seconds'),
+                              T('Có câu mời đặt lịch ở cuối caption', 'The caption ends with an invitation to book'),
+                              T('Đã trả lời hết bình luận bài hôm trước', 'Yesterday’s comments are all answered'),
+                            ].map((line, k) => (
+                              <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                                <span style={{ flex: '0 0 auto', width: 14, height: 14, marginTop: 2, borderRadius: 4, border: '1.5px solid var(--c475569)' }} />
+                                <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.45 }}>{line}</span>
+                              </div>
+                            ))}
                           </div>
-                        ) : (
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => mark(idea.id, done ? 'published' : 'posted')}
+                          disabled={busy === idea.id}
+                          style={{
+                            flex: '1 1 auto', minHeight: 42, padding: '10px 14px', borderRadius: 9, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                            border: done ? '1px solid #22c55e' : 'none',
+                            background: done ? 'transparent' : '#6366f1',
+                            color: done ? '#22c55e' : '#fff',
+                          }}
+                        >
+                          {done ? T('✓ Đã đăng', '✓ Posted') : T('Đánh dấu đã đăng', 'Mark as posted')}
+                        </button>
+                        {/* The step the plan used to stop short of. Copying text
+                            into Facebook is what a technician with both hands wet
+                            does not do — so the schedule is the product, not the
+                            text. */}
+                        <button
+                          onClick={() => scheduleFromIdea(idea)}
+                          style={{
+                            minHeight: 42, padding: '10px 14px', borderRadius: 9, cursor: 'pointer',
+                            border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)',
+                            fontSize: 13.5, fontWeight: 600,
+                          }}
+                        >
+                          🚀 {T('Hẹn giờ đăng', 'Schedule it')}
+                        </button>
+                        {!done && (
                           <button
-                            onClick={() => { setLinkFor(idea.id); setLinkDraft(''); }}
-                            style={{
-                              fontSize: 12.5, padding: '7px 12px', borderRadius: 8, cursor: 'pointer',
-                              border: '1px dashed var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)',
-                            }}
+                            onClick={() => mark(idea.id, skipped ? 'published' : 'skipped')}
+                            disabled={busy === idea.id}
+                            style={{ minHeight: 42, padding: '10px 14px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13.5, cursor: 'pointer' }}
                           >
-                            🔗 {T('Dán link bài đã đăng', 'Paste the link to the post')}
+                            {skipped ? T('Bỏ qua ✓', 'Skipped ✓') : T('Bỏ qua', 'Skip')}
                           </button>
                         )}
                       </div>
-                    )}
 
-                    <ItemComments
-                      token={token}
-                      subject={`idea:${idea.id}`}
-                      unread={unread.bySubject[`idea:${idea.id}`] ?? 0}
-                      vi={vi}
-                    />
+                      {/* ---- where it went up ----
+                          A post nobody can open is a post nobody can check. The
+                          link is what turns "we posted 8 things" into 8 things a
+                          client can click, and it is the only field in the weekly
+                          record that is verifiable from outside this system. */}
+                      {done && (
+                        <div style={{ marginTop: 9 }}>
+                          {idea.postedUrl && linkFor !== idea.id ? (
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <a
+                                href={idea.postedUrl} target="_blank" rel="noopener noreferrer"
+                                style={{ fontSize: 12.5, color: 'var(--c60a5fa)', wordBreak: 'break-all' }}
+                              >
+                                🔗 {T('Xem bài đã đăng', 'Open the post')}
+                              </a>
+                              <button
+                                onClick={() => { setLinkFor(idea.id); setLinkDraft(idea.postedUrl ?? ''); }}
+                                style={{ fontSize: 11.5, background: 'transparent', border: 'none', color: 'var(--c64748b)', cursor: 'pointer', padding: 0 }}
+                              >
+                                {T('sửa', 'edit')}
+                              </button>
+                            </div>
+                          ) : linkFor === idea.id ? (
+                            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                              <input
+                                value={linkDraft}
+                                onChange={(e) => setLinkDraft(e.target.value)}
+                                placeholder="https://facebook.com/..."
+                                autoFocus
+                                style={{
+                                  flex: '1 1 200px', minHeight: 40, padding: '9px 11px', borderRadius: 8, fontSize: 13,
+                                  border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                                }}
+                              />
+                              <button
+                                onClick={async () => {
+                                  await mark(idea.id, 'posted', linkDraft.trim());
+                                  setLinkFor(null);
+                                }}
+                                disabled={busy === idea.id || !/^https:\/\//i.test(linkDraft.trim())}
+                                style={{
+                                  minHeight: 40, padding: '9px 15px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                                  border: 'none', cursor: 'pointer',
+                                  background: /^https:\/\//i.test(linkDraft.trim()) ? '#6366f1' : 'var(--c334155)',
+                                  color: /^https:\/\//i.test(linkDraft.trim()) ? '#fff' : 'var(--c64748b)',
+                                }}
+                              >
+                                {T('Lưu link', 'Save link')}
+                              </button>
+                              <button
+                                onClick={() => setLinkFor(null)}
+                                style={{ minHeight: 40, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, cursor: 'pointer' }}
+                              >
+                                {T('Huỷ', 'Cancel')}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setLinkFor(idea.id); setLinkDraft(''); }}
+                              style={{
+                                fontSize: 12.5, padding: '7px 12px', borderRadius: 8, cursor: 'pointer',
+                                border: '1px dashed var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)',
+                              }}
+                            >
+                              🔗 {T('Dán link bài đã đăng', 'Paste the link to the post')}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                    </>)}
+
+                    {/* Folding an idea must never fold away a message from the
+                        salon. The thread rides with the open card; on a folded
+                        one it appears only while something is unread, so an
+                        answer waiting for us is still impossible to miss. */}
+                    {(expanded || (unread.bySubject[`idea:${idea.id}`] ?? 0) > 0) && (
+                      <ItemComments
+                        token={token}
+                        subject={`idea:${idea.id}`}
+                        unread={unread.bySubject[`idea:${idea.id}`] ?? 0}
+                        vi={vi}
+                      />
+                    )}
                   </div>
                 );
               })}

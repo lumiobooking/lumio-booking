@@ -127,6 +127,9 @@ const KINDS: { id: string; icon: string; vi: string; en: string }[] = [
   { id: 'rest', icon: '·', vi: 'Nghỉ', en: 'Rest' },
 ];
 const ICON = (k: string) => KINDS.find((x) => x.id === k)?.icon ?? '•';
+
+/** Kinds whose end product is something the public sees. */
+const POSTABLE = new Set(['film', 'photo', 'post', 'story', 'offer', 'gbp', 'event']);
 const WD_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 const WD_EN = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
@@ -171,6 +174,11 @@ export function WeekPlanBoard({
   const [saving, setSaving] = useState(false);
   const [days, setDays] = useState<DayPlan[]>(() => withAddresses(week.days));
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  // The two blocks that used to sit above the week. They are still here, still
+  // editable, still one click away — they are just no longer the first thing a
+  // person has to read before finding Monday.
+  const [openPrep, setOpenPrep] = useState(false);
+  const [openWhy, setOpenWhy] = useState(false);
   // Local ticks so a tap answers before the server does.
   const [ticks, setTicks] = useState<Record<string, number[]>>(meta?.ticks ?? {});
   useEffect(() => { setDays(withAddresses(week.days)); }, [week.days]);
@@ -182,6 +190,40 @@ export function WeekPlanBoard({
   }, [week.days]);
 
   const jobCount = days.reduce((n, d) => n + d.jobs.filter((j) => j.kind !== 'rest').length, 0);
+
+  /**
+   * A job counts as done when every line on its sheet is ticked. A job with no
+   * sheet is never counted done — there is nothing to have finished — so the
+   * bar can only move because somebody actually ticked something.
+   */
+  const isJobDone = (j: Job) => {
+    const st = j.brief?.steps ?? [];
+    if (!st.length || !j.id) return false;
+    const t = ticks[j.id] ?? [];
+    return st.every((_, i) => t.includes(i));
+  };
+  /**
+   * The one job whose sheet opens by itself: the first unfinished job on the
+   * first working day. "Film 3 clips" collapsed behind a toggle is the reason
+   * a new member of staff could not tell what to do — the how was one click
+   * away and nobody made that click. One sheet open costs a screenful; not
+   * opening it cost the whole point of the sheet. Anything else stays folded,
+   * and a person can close this one like any other.
+   */
+  const nextKey = useMemo(() => {
+    if (isPast) return null;
+    for (let di = 0; di < days.length; di += 1) {
+      const real = days[di].jobs.filter((j) => j.kind !== 'rest');
+      const j = real.find((x) => !isJobDone(x) && !!(x.brief?.steps?.length));
+      if (j) return j.id ?? `${di}:${real.indexOf(j)}`;
+      if (real.length) return null; // today has jobs and they are all done
+    }
+    return null;
+  }, [days, isPast, ticks]);
+
+  const doneJobs = days.reduce(
+    (n, d) => n + d.jobs.filter((j) => j.kind !== 'rest' && isJobDone(j)).length, 0);
+  const leftJobs = Math.max(0, jobCount - doneJobs);
 
   /** Every change to the week goes out at once. Small, frequent, reversible. */
   async function commit(next: DayPlan[]) {
@@ -284,118 +326,75 @@ export function WeekPlanBoard({
         </div>
       )}
 
-      {/* ---- the reasoning ---- */}
-      <div style={{ marginTop: 14, borderTop: '1px solid var(--c334155)', paddingTop: 12 }}>
-        <Field label={T('TRỌNG TÂM', 'FOCUS')}>
-          <Inline
-            value={week.focus} canEdit={canEdit} strong
-            onCommit={(v) => onSave({ focus: v })}
-          />
-        </Field>
-        <Field label={T('CƠ SỞ', 'BASIS')}>
-          <span style={{ color: 'var(--c94a3b8)' }}>{week.basis}</span>
-        </Field>
-        {week.report && (
-          <Field label={T('TUẦN TRƯỚC', 'LAST WEEK')}>
-            <span style={{ color: 'var(--ccbd5e1)' }}>{week.report}</span>
-          </Field>
-        )}
-        {week.stage && (
-          <Field label={`${T('GIAI ĐOẠN', 'STAGE')} ${week.stage.step}/5`}>
-            <div>
-              <div style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>
-                {week.stage.title}
-                <span style={{ color: 'var(--c64748b)', fontWeight: 500 }}>
-                  {'  ·  '}{T('Tuần', 'Week')} {week.week + 1}
-                </span>
-              </div>
-              <div style={{ color: 'var(--c94a3b8)', marginTop: 2 }}>{week.stage.goal}</div>
-              {week.stage.progress && week.stage.progress.need > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 6 }}>
-                  <div style={{ flex: 1, maxWidth: 260, height: 6, borderRadius: 20, background: 'var(--c0f172a)', overflow: 'hidden' }}>
-                    <div style={{
-                      width: `${Math.min(100, Math.round((week.stage.progress.done / week.stage.progress.need) * 100))}%`,
-                      height: '100%', background: '#6366f1',
-                    }} />
-                  </div>
-                  <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
-                    {week.stage.progress.done}/{week.stage.progress.need} {week.stage.progress.label}
-                  </span>
+
+      {/* ---- the week at a glance ----
+          Seven days, one strip, before any prose. A person opening this on a
+          Tuesday wants to know what is left, not what the thinking was. The
+          bar counts jobs, not opinions, and today is marked with the accent
+          rather than with orange text, so the eye lands on it first. */}
+      <div style={{
+        marginTop: 14, borderTop: '1px solid var(--c334155)', paddingTop: 12,
+        display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+      }}>
+        <div style={{ flex: '0 0 auto' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>
+            {doneJobs}/{jobCount} {T('việc xong', jobCount === 1 ? 'job done' : 'jobs done')}
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2 }}>
+            {leftJobs === 0
+              ? T('Xong hết tuần này', 'Nothing left this week')
+              : `${T('Còn', 'Still to do')} ${leftJobs} ${T('việc', leftJobs === 1 ? 'job' : 'jobs')}`}
+          </div>
+        </div>
+        <div style={{ flex: '1 1 160px', minWidth: 120, height: 8, borderRadius: 20, background: 'var(--c0f172a)', overflow: 'hidden' }}>
+          <div style={{ width: `${jobCount ? Math.round((doneJobs / jobCount) * 100) : 0}%`, height: '100%', background: '#22c55e' }} />
+        </div>
+        {!!week.targets?.length && (
+          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', flex: '0 0 auto' }}>
+            {week.targets.slice(0, 3).map((t, i) => (
+              <div key={i} style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                  {t.target} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--c64748b)' }}>{t.unit}</span>
                 </div>
-              )}
-              <div style={{ color: 'var(--c64748b)', marginTop: 5, fontSize: 12 }}>
-                <b style={{ color: 'var(--c94a3b8)' }}>{T('Xong khi', 'Done when')}:</b> {week.stage.exitWhen}
+                <div style={{ ...label, letterSpacing: '.05em' }}>{t.label}</div>
               </div>
-              {stageAction && (
-                <button onClick={stageAction.onGo} style={{ ...btn, marginTop: 8, borderColor: '#6366f1', color: 'var(--ca5b4fc)' }}>
-                  {stageAction.label} →
-                </button>
-              )}
-            </div>
-          </Field>
-        )}
-        {(week.teamNote || canEdit) && (
-          <Field label={T('LUMIO NHẮN', 'FROM LUMIO')}>
-            <Inline
-              value={week.teamNote ?? ''} canEdit={canEdit} multiline
-              placeholder={T('Lời nhắn cho tiệm tuần này (không bắt buộc)', 'A note to the salon this week (optional)')}
-              onCommit={(v) => onSave({ note: v })}
-            />
-          </Field>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* ---- the offer, as a form ---- */}
-      {canEdit && offer && onSaveOffer && (
-        <OfferCard offer={offer} vi={vi} currencySign={currencySign ?? '$'} onSave={onSaveOffer} />
-      )}
-
-      {/* ---- what to carry in, and what it is for ---- */}
-      {(!!week.prep?.length || !!week.targets?.length) && (
-        <div style={{
-          marginTop: 16, borderTop: '1px solid var(--c334155)', paddingTop: 12,
-          display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-        }}>
-          {!!week.prep?.length && (
-            <div>
-              <div style={label}>{T('TUẦN NÀY CẦN CHUẨN BỊ', 'WHAT THIS WEEK NEEDS')}</div>
-              <div style={{ marginTop: 6 }}>
-                {week.prep.map((l, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 9, padding: '4px 0' }}>
-                    <span style={{ flex: '0 0 auto', color: 'var(--c475569)', paddingTop: 1 }}>▢</span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>{l.label}</div>
-                      <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{l.detail}</div>
-                    </div>
-                  </div>
-                ))}
+      {/* Seven columns, read-only, purely to be glanced at. The editable week
+          stays as rows below it: a 150-pixel column cannot hold a kind picker,
+          two arrows and a day selector, and staff covering eight salons edit
+          this every morning. */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${days.length || 7}, minmax(0, 1fr))`, gap: 6, marginTop: 12 }}>
+        {days.map((d, di) => {
+          const real = d.jobs.filter((j) => j.kind !== 'rest');
+          const isToday = di === 0 && !isPast;
+          const dayDone = real.filter((j) => isJobDone(j)).length;
+          return (
+            <div
+              key={`g-${d.weekday}-${di}`}
+              style={{
+                border: `1px solid ${isToday ? '#4f46e5' : 'var(--line)'}`,
+                background: isToday ? 'var(--c1e1b4b)' : 'var(--c0f172a)',
+                borderRadius: 9, padding: '7px 8px', minWidth: 0,
+              }}
+            >
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: isToday ? 'var(--cc7d2fe)' : 'var(--ccbd5e1)' }}>{d.label}</div>
+              <div style={{ fontSize: 10.5, color: isToday ? 'var(--ca5b4fc)' : 'var(--c64748b)' }}>
+                {dates[di] ? dm(dates[di]) : ''}{isToday ? ` · ${T('hôm nay', 'today')}` : ''}
+              </div>
+              <div style={{ fontSize: 11.5, marginTop: 4, color: real.length === 0 ? 'var(--c475569)' : (dayDone === real.length ? '#22c55e' : 'var(--c94a3b8)') }}>
+                {real.length === 0 ? T('Nghỉ', 'Rest') : `${dayDone}/${real.length}`}
               </div>
             </div>
-          )}
-          {!!week.targets?.length && (
-            <div>
-              <div style={label}>{T('MỤC TIÊU TUẦN NÀY', 'THIS WEEK’S TARGETS')}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', margin: '2px 0 7px', lineHeight: 1.5 }}>
-                {T('Chỉ những con số đếm được — tuần sau đối chiếu lại ở phần "Các tuần đã qua".',
-                   'Countable only — next week’s archive checks them against what happened.')}
-              </div>
-              {week.targets.map((t, i) => (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'baseline', gap: 9, padding: '6px 0',
-                  borderTop: i === 0 ? 'none' : '1px solid var(--line)',
-                }}>
-                  <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--ca5b4fc)', lineHeight: 1, minWidth: 26 }}>{t.target}</span>
-                  <span style={{ fontSize: 11.5, color: 'var(--c64748b)', minWidth: 44 }}>{t.unit}</span>
-                  <span style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.4 }}>{t.label}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+          );
+        })}
+      </div>
 
       {/* ---- the week itself ---- */}
-      <div style={{ marginTop: 16, borderTop: '1px solid var(--c334155)', paddingTop: 12 }}>
+      <div style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
           <div style={label}>{T('LỊCH TUẦN', 'THE WEEK')}</div>
           <div style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--c64748b)' }}>
@@ -443,8 +442,8 @@ export function WeekPlanBoard({
                       dayIndex={di}
                       vi={vi}
                       canEdit={canEdit}
-                      open={Boolean(open[key])}
-                      onToggle={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
+                      open={key in open ? Boolean(open[key]) : key === nextKey}
+                      onToggle={() => setOpen((o) => ({ ...o, [key]: !(key in o ? o[key] : key === nextKey) }))}
                       ticked={ticks[j.id ?? ''] ?? []}
                       onTick={onTick && j.id && !isNew ? (s, done) => tick(j, s, done) : undefined}
                       onPatch={(patch) => {
@@ -486,36 +485,6 @@ export function WeekPlanBoard({
         })}
       </div>
 
-      {canEdit && meta?.edited && (
-        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <button
-            disabled={saving}
-            onClick={() => { if (window.confirm(T('Bỏ mọi chỉnh sửa của team, dùng lại bản hệ thống tự viết?', 'Discard the team’s edits and use the system’s week?'))) onSave({ reset: true }); }}
-            style={{ ...btn, borderColor: 'var(--c475569)', color: 'var(--cf87171)' }}
-          >
-            ↺ {T('Bỏ bản sửa, dùng lại bản hệ thống', 'Discard edits, use the system’s week')}
-          </button>
-          <span style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5 }}>
-            {T('Chữ bạn gõ hiện y như vậy ở cả bản tiếng Anh; câu bạn không đụng tới giữ nguyên cả hai thứ tiếng.',
-               'Text you type reads the same on both sides; lines you leave alone keep both languages.')}
-          </span>
-        </div>
-      )}
-
-      {/* ---- the two supporting sections ---- */}
-      {!!week.sources?.length && (
-        <Section title={T('QUAY TỪ ĐÂU', 'WHAT TO FILM')}
-          hint={T(`Nguồn có sẵn của ${week.trade} — không cần dựng cảnh`, 'Already in front of you — nothing to stage')}>
-          {week.sources.map((s, k) => (
-            <div key={k} style={{ padding: '4px 0' }}>
-              <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
-                • {s.label} <span style={{ color: '#f59e0b', fontSize: 12 }}>· {s.when}</span>
-              </div>
-              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45 }}>{s.why}</div>
-            </div>
-          ))}
-        </Section>
-      )}
       {!!week.daily?.length && (
         <Section title={T('3 THÓI QUEN HẰNG NGÀY', 'THE 3 DAILY HABITS')}
           hint={T('Không nằm trong lịch vì ngày nào cũng làm', 'Not on the schedule because they happen every day')}>
@@ -532,6 +501,161 @@ export function WeekPlanBoard({
           ))}
         </Section>
       )}
+      {canEdit && meta?.edited && (
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            disabled={saving}
+            onClick={() => { if (window.confirm(T('Bỏ mọi chỉnh sửa của team, dùng lại bản hệ thống tự viết?', 'Discard the team’s edits and use the system’s week?'))) onSave({ reset: true }); }}
+            style={{ ...btn, borderColor: 'var(--c475569)', color: 'var(--cf87171)' }}
+          >
+            ↺ {T('Bỏ bản sửa, dùng lại bản hệ thống', 'Discard edits, use the system’s week')}
+          </button>
+          <span style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5 }}>
+            {T('Chữ bạn gõ hiện y như vậy ở cả bản tiếng Anh; câu bạn không đụng tới giữ nguyên cả hai thứ tiếng.',
+               'Text you type reads the same on both sides; lines you leave alone keep both languages.')}
+          </span>
+        </div>
+      )}
+
+      {(!!week.prep?.length || !!week.targets?.length) && (
+      <Fold
+        label={T('Tuần này cần chuẩn bị gì', 'What this week needs')}
+        hint={T('Đồ nghề và số mục tiêu', 'Kit and the numbers')}
+        open={openPrep} onToggle={() => setOpenPrep((v) => !v)}
+      >
+        {/* ---- what to carry in, and what it is for ---- */}
+        {(!!week.prep?.length || !!week.targets?.length) && (
+          <div style={{
+            marginTop: 2,
+            display: 'grid', gap: 14, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+          }}>
+            {!!week.prep?.length && (
+              <div>
+                <div style={label}>{T('TUẦN NÀY CẦN CHUẨN BỊ', 'WHAT THIS WEEK NEEDS')}</div>
+                <div style={{ marginTop: 6 }}>
+                  {week.prep.map((l, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 9, padding: '4px 0' }}>
+                      <span style={{ flex: '0 0 auto', color: 'var(--c475569)', paddingTop: 1 }}>▢</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>{l.label}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{l.detail}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {!!week.targets?.length && (
+              <div>
+                <div style={label}>{T('MỤC TIÊU TUẦN NÀY', 'THIS WEEK’S TARGETS')}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--c64748b)', margin: '2px 0 7px', lineHeight: 1.5 }}>
+                  {T('Chỉ những con số đếm được — tuần sau đối chiếu lại ở phần "Các tuần đã qua".',
+                     'Countable only — next week’s archive checks them against what happened.')}
+                </div>
+                {week.targets.map((t, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'baseline', gap: 9, padding: '6px 0',
+                    borderTop: i === 0 ? 'none' : '1px solid var(--line)',
+                  }}>
+                    <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--ca5b4fc)', lineHeight: 1, minWidth: 26 }}>{t.target}</span>
+                    <span style={{ fontSize: 11.5, color: 'var(--c64748b)', minWidth: 44 }}>{t.unit}</span>
+                    <span style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.4 }}>{t.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+      </Fold>
+      )}
+
+      <Fold
+        label={T('Vì sao tuần này làm vậy', 'Why this week looks like this')}
+        hint={week.stage ? `${T('Giai đoạn', 'Stage')} ${week.stage.step}/5` : undefined}
+        open={openWhy} onToggle={() => setOpenWhy((v) => !v)}
+      >
+        {/* ---- the reasoning ---- */}
+        <div style={{ marginTop: 2 }}>
+          <Field label={T('TRỌNG TÂM', 'FOCUS')}>
+            <Inline
+              value={week.focus} canEdit={canEdit} strong
+              onCommit={(v) => onSave({ focus: v })}
+            />
+          </Field>
+          <Field label={T('CƠ SỞ', 'BASIS')}>
+            <span style={{ color: 'var(--c94a3b8)' }}>{week.basis}</span>
+          </Field>
+          {week.report && (
+            <Field label={T('TUẦN TRƯỚC', 'LAST WEEK')}>
+              <span style={{ color: 'var(--ccbd5e1)' }}>{week.report}</span>
+            </Field>
+          )}
+          {week.stage && (
+            <Field label={`${T('GIAI ĐOẠN', 'STAGE')} ${week.stage.step}/5`}>
+              <div>
+                <div style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>
+                  {week.stage.title}
+                  <span style={{ color: 'var(--c64748b)', fontWeight: 500 }}>
+                    {'  ·  '}{T('Tuần', 'Week')} {week.week + 1}
+                  </span>
+                </div>
+                <div style={{ color: 'var(--c94a3b8)', marginTop: 2 }}>{week.stage.goal}</div>
+                {week.stage.progress && week.stage.progress.need > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 6 }}>
+                    <div style={{ flex: 1, maxWidth: 260, height: 6, borderRadius: 20, background: 'var(--c0f172a)', overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${Math.min(100, Math.round((week.stage.progress.done / week.stage.progress.need) * 100))}%`,
+                        height: '100%', background: '#6366f1',
+                      }} />
+                    </div>
+                    <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
+                      {week.stage.progress.done}/{week.stage.progress.need} {week.stage.progress.label}
+                    </span>
+                  </div>
+                )}
+                <div style={{ color: 'var(--c64748b)', marginTop: 5, fontSize: 12 }}>
+                  <b style={{ color: 'var(--c94a3b8)' }}>{T('Xong khi', 'Done when')}:</b> {week.stage.exitWhen}
+                </div>
+                {stageAction && (
+                  <button onClick={stageAction.onGo} style={{ ...btn, marginTop: 8, borderColor: '#6366f1', color: 'var(--ca5b4fc)' }}>
+                    {stageAction.label} →
+                  </button>
+                )}
+              </div>
+            </Field>
+          )}
+          {(week.teamNote || canEdit) && (
+            <Field label={T('LUMIO NHẮN', 'FROM LUMIO')}>
+              <Inline
+                value={week.teamNote ?? ''} canEdit={canEdit} multiline
+                placeholder={T('Lời nhắn cho tiệm tuần này (không bắt buộc)', 'A note to the salon this week (optional)')}
+                onCommit={(v) => onSave({ note: v })}
+              />
+            </Field>
+          )}
+        </div>
+
+        {/* ---- the offer, as a form ---- */}
+        {canEdit && offer && onSaveOffer && (
+          <OfferCard offer={offer} vi={vi} currencySign={currencySign ?? '$'} onSave={onSaveOffer} />
+        )}
+
+        {!!week.sources?.length && (
+          <Section title={T('QUAY TỪ ĐÂU', 'WHAT TO FILM')}
+            hint={T(`Nguồn có sẵn của ${week.trade} — không cần dựng cảnh`, 'Already in front of you — nothing to stage')}>
+            {week.sources.map((s, k) => (
+              <div key={k} style={{ padding: '4px 0' }}>
+                <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
+                  • {s.label} <span style={{ color: '#f59e0b', fontSize: 12 }}>· {s.when}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45 }}>{s.why}</div>
+              </div>
+            ))}
+          </Section>
+        )}
+      </Fold>
+
     </div>
   );
 }
@@ -691,6 +815,35 @@ function JobRow({
                     />
                   </SheetBlock>
                 )}
+                {/* ---- the quality bar ----
+                    Four things, the same four every time, that separate a clip
+                    a salon is glad to have from one it quietly deletes. They
+                    are deliberately not per-job and not generated: a checklist
+                    that changes every day is a checklist nobody learns. */}
+                {POSTABLE.has(job.kind) && (
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
+                    <div style={{ ...label, fontSize: 10, color: 'var(--cfcd34d)' }}>
+                      {T('TRƯỚC KHI BẤM ĐĂNG — KIỂM 4 Ý NÀY', 'BEFORE YOU POST — CHECK THESE 4')}
+                    </div>
+                    <div style={{ marginTop: 7, display: 'grid', gap: 5, gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
+                      {[
+                        T('Clip dọc, không lọt tay người quay vào khung', 'Shot vertical, no camera hand in frame'),
+                        T('Tên tiệm hiện trong 3 giây đầu', 'The salon’s name shows in the first 3 seconds'),
+                        T('Có câu mời đặt lịch ở cuối caption', 'The caption ends with an invitation to book'),
+                        T('Đã trả lời hết bình luận bài hôm trước', 'Yesterday’s comments are all answered'),
+                      ].map((line, i) => (
+                        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                          <span style={{
+                            flex: '0 0 auto', width: 14, height: 14, marginTop: 2, borderRadius: 4,
+                            border: '1.5px solid var(--c475569)',
+                          }} />
+                          <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.45 }}>{line}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {canEdit && (
                   <button
                     onClick={() => { if (window.confirm(T('Viết lại bản làm việc theo việc này?', 'Regenerate the sheet for this job?'))) onPatch({ brief: null }); }}
@@ -921,6 +1074,34 @@ function Field({ label: l, children }: { label: string; children: React.ReactNod
     <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 8 }}>
       <div style={{ ...label, flex: '0 0 84px', paddingTop: 2 }}>{l}</div>
       <div style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.55 }}>{children}</div>
+    </div>
+  );
+}
+
+/**
+ * A block that is a single line until somebody wants it. Used for the two
+ * things this screen used to open with — the reasoning and the prep — which
+ * are worth having and are not worth reading before the work.
+ */
+function Fold({ label: l, hint, open, onToggle, children }: {
+  label: string; hint?: string; open: boolean; onToggle: () => void; children: React.ReactNode;
+}) {
+  return (
+    <div style={{ marginTop: 12, border: '1px solid var(--line)', borderRadius: 10, background: 'var(--c0f172a)' }}>
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left',
+          background: 'transparent', border: 'none', padding: '12px 16px', cursor: 'pointer',
+          font: 'inherit', color: 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600,
+        }}
+      >
+        <span style={{ color: 'var(--c64748b)', fontSize: 11 }}>{open ? '\u25be' : '\u25b8'}</span>
+        {l}
+        {hint && <span style={{ fontWeight: 500, color: 'var(--c64748b)', fontSize: 12 }}>{'  \u00b7  '}{hint}</span>}
+      </button>
+      {open && <div style={{ padding: '0 16px 14px' }}>{children}</div>}
     </div>
   );
 }

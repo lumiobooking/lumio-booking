@@ -464,6 +464,89 @@ export function humanAgentNotice(
   return null;
 }
 
+/** The four-state window, exactly as the server computed it. */
+export interface WindowInfo {
+  kind: 'open' | 'needs-takeover' | 'human-agent' | 'closed' | 'unknown';
+  daysLeft: number | null;
+  canSend: boolean;
+  code: 'take_over_required' | 'window_closed' | null;
+  staffName?: string | null;
+}
+
+export interface WindowNotice {
+  tone: 'amber' | 'red' | null;
+  banner: string | null;
+  placeholder: string;
+  blocked: boolean;
+}
+
+/**
+ * What the composer shows, from the SAME four states the send route enforces.
+ *
+ * WHY THE MIDDLE STATE LOCKS THE BOX
+ *
+ * Between 24 hours and 7 days a message may still go out, but only under
+ * Meta's HUMAN_AGENT tag â and that tag is a statement that a PERSON wrote it.
+ * So while the bot still holds the conversation there is nothing legitimate to
+ * send, and the box is shut. Pressing "Take over" is what makes the statement
+ * true, and the box opens on the same click. That visible lock-then-unlock is
+ * the whole argument for the permission, and it is what the reviewer watches.
+ *
+ * The English wording is fixed by the submission: it is quoted in the notes
+ * that go to Meta, so it must be what the screencast shows, word for word.
+ * Vietnamese is the same meaning for the salons that read Vietnamese.
+ */
+export function windowNotice(
+  w: WindowInfo | null | undefined,
+  vi: boolean,
+  customerName?: string,
+): WindowNotice | null {
+  if (!w) return null;
+  const openPlaceholder = vi
+    ? (customerName ? `Nhắn cho ${customerName}…` : 'Nhắn cho khách…')
+    : 'Message the customer…';
+
+  if (w.kind === 'open' || w.kind === 'unknown') {
+    return { tone: null, banner: null, placeholder: openPlaceholder, blocked: false };
+  }
+
+  const n = Math.max(1, w.daysLeft ?? 1);
+
+  if (w.kind === 'needs-takeover') {
+    return {
+      tone: 'amber',
+      banner: vi
+        ? `Quá 24 giờ — tin gửi lúc này đi dưới nhãn human-agent của Meta, nhãn chỉ người thật được dùng. Bấm "Tôi nhận" để trả lời khách này. Còn khoảng ${n} ngày.`
+        : `Past 24 hours — a reply now goes out under Meta's human-agent tag, which only a person may use. Press "Take over" to answer this customer. About ${n} day(s) left.`,
+      placeholder: vi ? 'Bấm "Tôi nhận" để trả lời' : 'Press "Take over" to reply',
+      blocked: true,
+    };
+  }
+
+  if (w.kind === 'human-agent') {
+    const who = (w.staffName || '').trim();
+    return {
+      tone: 'amber',
+      banner: vi
+        ? `Quá 24 giờ — tin này đi dưới nhãn human-agent của Meta. Bot không còn nhắn cho khách này được nữa. Còn khoảng ${n} ngày.`
+        : `Past 24 hours — this reply goes out under Meta's human-agent tag. The bot can no longer message this customer. About ${n} day(s) left.`,
+      placeholder: who
+        ? (vi ? `Soạn trả lời — gửi dưới tên ${who}` : `Type your reply — sent as ${who}`)
+        : (vi ? 'Soạn trả lời — gửi dưới tên nhân viên' : 'Type your reply — sent as a member of staff'),
+      blocked: false,
+    };
+  }
+
+  return {
+    tone: 'red',
+    banner: vi
+      ? 'Quá 7 ngày kể từ tin nhắn của khách — Meta đã đóng cửa sổ. Gọi điện hoặc nhắn SMS cho khách.'
+      : 'More than 7 days since they wrote — Meta has closed the window. Call or text them instead.',
+    placeholder: vi ? 'Không gửi được — cửa sổ 7 ngày đã đóng' : 'Cannot send — the 7-day window has closed',
+    blocked: true,
+  };
+}
+
 export function composerNotice(
   win: { open: boolean; minutesLeft: number | null; unknown?: boolean } | null | undefined,
   vi: boolean,

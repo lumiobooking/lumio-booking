@@ -34,6 +34,7 @@ import {
   InboxRow, InboxFilter, channelLabel, channelMark, stateLabel, stateOf,
   sortRows, filterRows, sourcesFrom, waitingCount, composerNotice, displayName, pageColor, initialsOf,
   InboxLabel, followUpState, followUpLabel, followUpCount, channelCounts, channelOf, humanAgentNotice,
+  windowNotice, type WindowInfo,
 } from '../lib/inbox-view';
 
 interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Photos the customer attached. */ images?: string[] }
@@ -61,6 +62,9 @@ interface ThreadDetail extends InboxRow {
   replyWindow?: { open: boolean; minutesLeft: number | null };
   /** Which of Meta's three windows this conversation is in. See api human-agent.ts. */
   humanAgent?: { kind: 'open' | 'human-agent' | 'closed' | 'unknown'; hoursLeft: number | null };
+  /** The four states of Meta's reply window, decided by the server and
+   *  enforced by the same function on the send route. See api human-agent.ts. */
+  window?: WindowInfo;
   /** Taken from the facts the salon already wrote for the bot — one source, two
    *  readers, so a receptionist can never quote a different price than the bot. */
   canned?: { label: string; text: string }[];
@@ -434,7 +438,13 @@ export function InboxView() {
       await apiFetch('/messenger/send', { method: 'POST', token, body: { threadId: detail.id, text } });
       setDraft('');
       await Promise.all([loadList(), loadThread(detail.id)]);
-    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+    } catch (e) {
+      setErr(String(e));
+      // The server refused. Whatever it knows about the window, the screen
+      // should now be showing — a locked box the staff can see beats an error
+      // string they have to read twice.
+      await loadThread(detail.id, false).catch(() => undefined);
+    } finally { setBusy(false); }
   }
 
   const sources = sourcesFrom(rows);
@@ -538,7 +548,21 @@ export function InboxView() {
 
   // The human-agent state is the more precise answer when the server sent
   // one; the older notice stays as the fallback for rows it cannot judge.
-  const notice = humanAgentNotice(detail?.humanAgent, vi) ?? composerNotice(detail?.replyWindow, vi);
+  // The server's four-state window is the one the send route will actually
+  // enforce, so it wins. The two older notices stay as the fallback for a
+  // server that has not deployed yet — an inbox must never be blank because
+  // one field is missing.
+  const w4 = windowNotice(detail?.window, vi, detail ? displayName(detail, vi) : undefined);
+  const wnotice = w4 ? { ...w4, kind: detail?.window?.kind } : null;
+  const legacy = humanAgentNotice(detail?.humanAgent, vi) ?? composerNotice(detail?.replyWindow, vi);
+  const notice: { blocked: boolean; text: string | null; tone?: 'amber' | 'red' | null } = wnotice
+    ? { blocked: wnotice.blocked, text: wnotice.banner, tone: wnotice.tone }
+    : legacy;
+  const composerPlaceholder = wnotice
+    ? wnotice.placeholder
+    : notice.blocked
+      ? (vi ? 'Khong gui duoc' : 'Cannot send')
+      : (vi && detail ? `Nhan cho ${displayName(detail, vi)}...` : 'Message the customer...');
   const state = detail ? stateOf(detail) : 'bot';
 
   /**
@@ -1097,7 +1121,17 @@ export function InboxView() {
                 {pill(stateLabel(detail, vi).tone, stateLabel(detail, vi).text)}
                 {(state === 'human' || state === 'unclaimed')
                   ? <button disabled={busy} onClick={() => void act('handoff', { handoff: false })} style={{ ...ghostBtn, ...(narrow ? { padding: '9px 13px', fontSize: 13.5, borderRadius: 10 } : {}) }}>{vi ? 'Trả bot' : 'To bot'}</button>
-                  : <button disabled={busy} onClick={() => void act('handoff', { handoff: true })} style={{ ...ghostBtn, ...(narrow ? { padding: '9px 13px', fontSize: 13.5, borderRadius: 10, borderColor: '#6366f1', color: 'var(--cc7d2fe)' } : {}) }}>{vi ? 'Tôi nhận' : 'Take over'}</button>}
+                  : <button disabled={busy} onClick={() => void act('handoff', { handoff: true })}
+                      style={{
+                        ...ghostBtn,
+                        ...(narrow ? { padding: '9px 13px', fontSize: 13.5, borderRadius: 10, borderColor: '#6366f1', color: 'var(--cc7d2fe)' } : {}),
+                        // Past 24 hours this button is the ONLY way to answer
+                        // at all, so it stops being one control among several
+                        // and becomes the thing to press.
+                        ...(wnotice?.kind === 'needs-takeover'
+                          ? { background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 700 }
+                          : {}),
+                      }}>{vi ? 'Tôi nhận' : 'Take over'}</button>}
                 {/* Read, but not dealt with. The one action every mail client
                     has and every chat inbox forgets. */}
                 {!narrow && (
@@ -1223,8 +1257,11 @@ export function InboxView() {
 
             {notice.text && (
               <div style={{ borderTop: '1px solid var(--c1e293b)', padding: '7px 13px', fontSize: 12,
-                color: notice.blocked ? 'var(--cfca5a5)' : 'var(--cfcd34d)',
-                background: notice.blocked ? 'rgba(127,29,29,0.25)' : 'rgba(120,53,15,0.25)' }}>{notice.text}</div>
+                // Amber is "a rule applies here"; red is "nothing can be sent".
+                // The take-over state locks the box but is NOT red: the reply
+                // is one click away, and red would read as a dead end.
+                color: (notice.tone ?? (notice.blocked ? 'red' : 'amber')) === 'red' ? 'var(--cfca5a5)' : 'var(--cfcd34d)',
+                background: (notice.tone ?? (notice.blocked ? 'red' : 'amber')) === 'red' ? 'rgba(127,29,29,0.25)' : 'rgba(120,53,15,0.25)' }}>{notice.text}</div>
             )}
 
             <div style={{ borderTop: '1px solid var(--c1e293b)', padding: narrow ? '8px 10px' : 10, display: 'flex', gap: 8, alignItems: 'flex-end',
@@ -1233,7 +1270,7 @@ export function InboxView() {
               paddingBottom: narrow ? 'calc(8px + env(safe-area-inset-bottom))' : 10 }}>
               <textarea value={draft} onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
-                placeholder={notice.blocked ? (vi ? 'Không gửi được — quá 24 giờ' : 'Cannot send — past 24 hours') : (vi ? `Nhắn cho ${displayName(detail, vi)}…` : 'Message the customer…')}
+                placeholder={composerPlaceholder}
                 disabled={notice.blocked || busy} rows={narrow ? 1 : 2}
                 style={{ ...ui.input, flex: 1, resize: narrow ? 'none' : 'vertical', minHeight: 44,
                   fontSize: narrow ? 16 : 14, borderRadius: narrow ? 22 : 8, padding: narrow ? '11px 16px' : '9px 11px' }} />

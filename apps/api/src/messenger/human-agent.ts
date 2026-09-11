@@ -152,6 +152,92 @@ export function outboundEnvelope(
   };
 }
 
+/**
+ * THE window function. One answer, used by the composer and by the send route.
+ *
+ * Meta's rule has FOUR states, not two, and the fourth is the one that makes
+ * the feature legitimate:
+ *
+ *   under 24h                     — reply freely, no tag
+ *   24h-7d, nobody has taken it   — NOTHING may go out. The tag is a promise
+ *                                   that a person is writing, and until somebody
+ *                                   has actually taken the conversation there is
+ *                                   no person to promise about.
+ *   24h-7d, a human is holding it — the tag applies, seven days from their last
+ *                                   message
+ *   past 7d                       — shut, by Meta, for good
+ *
+ * The third state is the one App Review wants to see, and the second is the one
+ * that proves we are entitled to it: the composer unlocking the moment somebody
+ * presses "Take over" is the difference between using the tag and abusing it.
+ *
+ * `unknown` — no timestamp at all — sends as RESPONSE and locks nothing. Our
+ * copy of when the customer wrote can be missing; Meta's cannot. Blocking on a
+ * value we do not have would disable the main action of the screen over our own
+ * gap, and Meta refuses the send itself if the window really has shut.
+ */
+export type WindowKind = 'open' | 'needs-takeover' | 'human-agent' | 'closed' | 'unknown';
+export type WindowBlock = 'take_over_required' | 'window_closed';
+
+export interface WindowState {
+  kind: WindowKind;
+  /** Whole days left of the seven, rounded UP, never below 1. */
+  daysLeft: number | null;
+  /** Age of the conversation in hours, for the log line. */
+  ageHours: number | null;
+  /** May anything go out right now? */
+  canSend: boolean;
+  /** What the API answers with when canSend is false. */
+  code: WindowBlock | null;
+  /** The Send API envelope, when something may go out. */
+  body: { messaging_type: 'RESPONSE' } | { messaging_type: 'MESSAGE_TAG'; tag: 'HUMAN_AGENT' } | null;
+}
+
+const RESPONSE_BODY = { messaging_type: 'RESPONSE' } as const;
+const TAGGED_BODY = { messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' } as const;
+
+export function windowState(
+  lastInbound: string | Date | null | undefined,
+  holder: 'human' | 'bot',
+  now: Date = new Date(),
+): WindowState {
+  const raw = lastInbound instanceof Date ? lastInbound.getTime() : (lastInbound ? Date.parse(String(lastInbound)) : NaN);
+  if (!Number.isFinite(raw)) {
+    return { kind: 'unknown', daysLeft: null, ageHours: null, canSend: true, code: null, body: RESPONSE_BODY };
+  }
+  const age = now.getTime() - raw;
+  const ageHours = Math.floor(age / 3_600_000);
+
+  if (age <= RESPONSE_WINDOW_MS) {
+    return { kind: 'open', daysLeft: null, ageHours, canSend: true, code: null, body: RESPONSE_BODY };
+  }
+
+  if (age >= HUMAN_AGENT_WINDOW_MS) {
+    return { kind: 'closed', daysLeft: 0, ageHours, canSend: false, code: 'window_closed', body: null };
+  }
+
+  // Rounded UP and floored at 1: "about 1 day left" while some of that day
+  // remains is honest; "0 days left" on a window that is still open is not.
+  const daysLeft = Math.max(1, Math.ceil((HUMAN_AGENT_WINDOW_MS - age) / 86_400_000));
+
+  if (holder !== 'human') {
+    return { kind: 'needs-takeover', daysLeft, ageHours, canSend: false, code: 'take_over_required', body: null };
+  }
+  return { kind: 'human-agent', daysLeft, ageHours, canSend: true, code: null, body: TAGGED_BODY };
+}
+
+/** What the server says when it refuses. The screen writes its own words. */
+export function blockMessage(code: WindowBlock, vi = false): string {
+  if (code === 'window_closed') {
+    return vi
+      ? 'Quá 7 ngày kể từ tin nhắn của khách — Meta đã đóng cửa sổ trả lời. Gọi điện hoặc nhắn SMS cho khách.'
+      : 'More than 7 days since the customer wrote — Meta has closed the window. Call or text them instead.';
+  }
+  return vi
+    ? 'Quá 24 giờ — tin gửi lúc này đi dưới nhãn human-agent của Meta, nhãn chỉ người thật được dùng. Bấm "Tôi nhận" trước khi trả lời.'
+    : 'Past 24 hours — a reply now goes out under Meta\'s human-agent tag, which only a person may use. Press "Take over" before replying.';
+}
+
 /** A defensive read: anything but a literal true is not a human. */
 function byHumanSafe(v: unknown): boolean {
   return v === true;

@@ -6,7 +6,7 @@ import {
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
-import { customerLastWroteAt, outboundEnvelope, replyWindowState } from './human-agent';
+import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory } from './history-merge';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
@@ -1224,6 +1224,25 @@ export class MessengerService implements OnModuleInit {
         (row as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt,
         (row as { history?: unknown }).history,
       ), now),
+      // The four states the composer renders, computed by the SAME function
+      // the send path enforces with. One rule, two readers - so the box can
+      // never be open on a send the server is about to refuse.
+      window: (() => {
+        const w = windowState(
+          customerLastWroteAt(
+            (row as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt,
+            (row as { history?: unknown }).history,
+          ),
+          view.state === 'human' ? 'human' : 'bot',
+          now,
+        );
+        // Who the reply will be signed by. In the human-agent window that is
+        // the person who pressed Take over - the same person the tag is a
+        // promise about - so the composer can say it out loud.
+        const who = (row as unknown as { assignedUser?: { firstName?: string | null; lastName?: string | null } | null }).assignedUser;
+        const staffName = [who?.firstName, who?.lastName].filter(Boolean).join(' ').trim() || null;
+        return { kind: w.kind, daysLeft: w.daysLeft, canSend: w.canSend, code: w.code, staffName };
+      })(),
       // The header prints "wrote N ago" from this, NOT from lastMessageAt —
       // which the bot and the staff both move, and which therefore answers a
       // different question than the one the header asks.
@@ -1666,27 +1685,62 @@ export class MessengerService implements OnModuleInit {
     // history buffer alone let a thread with no timestamped user turn resolve
     // to "unknown", which sends as RESPONSE — and that is how a reply went out
     // 21 days after the customer last wrote, with the server never objecting.
-    const env = outboundEnvelope({
-      lastInbound: customerLastWroteAt(
+    //
+    // THE SERVER DECIDES, NOT THE SCREEN.
+    //
+    // Meta's reviewer can call this endpoint directly with curl. If the rule
+    // lived only in the composer the message would still go out, and the note
+    // we submit to Meta - which states that Lumio stops sending after seven
+    // days - would be a false statement. So the age is recomputed HERE from
+    // the database column, and nothing the browser sends is trusted.
+    const sendNow = new Date();
+    const ownerView = ownershipOf(thread as never, { now: sendNow });
+    const win = windowState(
+      customerLastWroteAt(
         (thread as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt,
         thread.history,
       ),
-      byHuman: true,
-    }, new Date());
-    if (!env.body) {
-      const hist0 = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
-      await this.prisma.messengerThread.update({
-        where: { id: thread.id },
-        data: {
-          history: [...hist0, { role: 'assistant', content: body, manual: true, failed: true, at: new Date().toISOString() }].slice(-MAX_TURNS) as unknown as Prisma.InputJsonValue,
-        },
-      }).catch(() => undefined);
-      throw new BadRequestException(env.refusal ?? 'Meta đã đóng cửa sổ trả lời cho hội thoại này.');
+      ownerView.state === 'human' ? 'human' : 'bot',
+      sendNow,
+    );
+    if (!win.canSend || !win.body) {
+      const code = win.code ?? 'window_closed';
+      // Every refusal is on the record with the three things an audit asks:
+      // which conversation, how old the customer's last message was, who tried.
+      this.logger.warn(
+        `human_agent_block code=${code} conversation_id=${thread.id} age_hours=${win.ageHours ?? 'unknown'} staff_id=${user.userId ?? 'unknown'}`,
+      );
+      if (code === 'window_closed') {
+        const hist0 = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+        await this.prisma.messengerThread.update({
+          where: { id: thread.id },
+          data: {
+            history: [...hist0, { role: 'assistant', content: body, manual: true, failed: true, at: sendNow.toISOString() }].slice(-MAX_TURNS) as unknown as Prisma.InputJsonValue,
+          },
+        }).catch(() => undefined);
+      }
+      // 403, not 400: this is "you may not", not "your request was malformed".
+      // The code is what the inbox switches on; the message is the fallback
+      // for anything that only knows how to print an error.
+      throw new ForbiddenException({
+        statusCode: 403,
+        code,
+        error: 'Forbidden',
+        message: blockMessage(code),
+        daysLeft: win.daysLeft,
+      });
+    }
+    if (win.kind === 'human-agent') {
+      // A tagged send is the salon promising Meta a person wrote this one.
+      // The promise is logged where it can be checked afterwards.
+      this.logger.log(
+        `human_agent_tag conversation_id=${thread.id} age_hours=${win.ageHours ?? 0} days_left=${win.daysLeft ?? 0} staff_id=${user.userId ?? 'unknown'}`,
+      );
     }
     const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(sendToken)}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ recipient: { id: thread.senderId }, ...env.body, message: { text: body.slice(0, 1900) } }),
+      body: JSON.stringify({ recipient: { id: thread.senderId }, ...win.body, message: { text: body.slice(0, 1900) } }),
     });
     const out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: { message?: string } };
     this.rememberSentMid(out.message_id);
@@ -2504,6 +2558,37 @@ export class MessengerService implements OnModuleInit {
       return;
     }
     const freshCh = (fresh as unknown as { channel?: string }).channel;
+    // THE BOT IS SILENT PAST 24 HOURS. NOT "sends without the tag" - silent.
+    //
+    // HUMAN_AGENT means a person wrote the message. An automated reply going
+    // out under it is a false statement to Meta, and an automated reply going
+    // out without it past 24h is a policy break Meta answers with an error we
+    // never see, because the Graph path is fire-and-forget. Either way the
+    // right behaviour is the same: do not send, keep the customer's turn.
+    //
+    // On the normal path this costs nothing - the bot answers seconds after
+    // the customer wrote, so the window is wide open. It matters for the
+    // paths where time passed in between: a slow model, a retry, a queued job.
+    if (freshCh !== 'zalo' && freshCh !== 'web') {
+      const botWin = windowState(
+        customerLastWroteAt(
+          (fresh as unknown as { lastCustomerAt?: Date | null }).lastCustomerAt,
+          (fresh as unknown as { history?: unknown }).history,
+        ),
+        'bot',
+        new Date(),
+      );
+      if (!botWin.canSend) {
+        this.logger.warn(
+          `bot_send_suppressed code=${botWin.code ?? 'window_closed'} conversation_id=${threadId} age_hours=${botWin.ageHours ?? 'unknown'}`,
+        );
+        if (!userAlready) {
+          const inAtShut = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+          await this.appendTurns(threadId, history, memory, [{ role: 'user', content: text, at: inAtShut, ...imgTurn }]);
+        }
+        return;
+      }
+    }
     const sent = await this.sendText(conn.pageToken, senderId, reply, freshCh === 'zalo' ? 'zalo' : freshCh === 'web' ? 'web' : undefined, conn.tenantId);
     // Inbound = Meta's own webhook timestamp (ms epoch); outbound = when we actually sent.
     const inAt = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();

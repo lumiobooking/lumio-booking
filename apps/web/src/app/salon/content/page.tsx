@@ -5346,7 +5346,7 @@ function Inner() {
             // The summary cards scroll inside their own strip; the thread keeps
             // its height, because reading three messages at a time is what made
             // the first version useless.
-            height: 'calc(100vh - 16px)',
+            height: 'calc(100dvh - 16px)',
             overflow: 'hidden',
           }}>
             <div style={{

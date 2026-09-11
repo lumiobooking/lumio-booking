@@ -832,9 +832,14 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
   return (
     <>
       {/* backdrop */}
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 40 }} />
+      {/* Above the phone tab bar, not under it.
+          The tab bar is position:fixed at zIndex 60. This drawer sat at 41 and
+          its backdrop at 40, so on a phone the bar drew ON TOP of both — a
+          bright strip across the bottom of a dimmed screen, covering the last
+          64px of the drawer, which is exactly where the actions are. */}
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 70 }} />
       {/* right drawer */}
-      <div style={{ position: 'fixed', top: 0, right: 0, height: '100vh', width: 380, maxWidth: '90vw', background: 'var(--c111827)', borderLeft: '1px solid var(--c1f2937)', zIndex: 41, padding: 24, overflowY: 'auto', boxShadow: '-8px 0 30px rgba(0,0,0,0.4)' }}>
+      <div style={{ position: 'fixed', top: 0, right: 0, height: '100dvh', width: 380, maxWidth: '90vw', background: 'var(--c111827)', borderLeft: '1px solid var(--c1f2937)', zIndex: 71, padding: 24, paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))', overflowY: 'auto', WebkitOverflowScrolling: 'touch', boxShadow: '-8px 0 30px rgba(0,0,0,0.4)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ fontSize: 18, margin: 0 }}>{t('cal.detailsTitle')}</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>

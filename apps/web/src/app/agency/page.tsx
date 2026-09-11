@@ -314,7 +314,7 @@ export default function AgencyPage() {
   }
 
   return (
-    <main style={{ minHeight: '100vh', background: 'var(--c0b1120)', color: 'var(--ce2e8f0)', padding: '28px 16px' }}>
+    <main style={{ minHeight: '100dvh', background: 'var(--c0b1120)', color: 'var(--ce2e8f0)', padding: '28px 16px' }}>
       <div style={{ maxWidth: 1060, margin: '0 auto', paddingBottom: 72 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
           <h1 style={{ fontSize: 22, margin: 0 }}>🛠 Lumio Support</h1>
@@ -573,7 +573,7 @@ export default function AgencyPage() {
   );
 }
 
-const screen: React.CSSProperties = { minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--c0b1120)' };
+const screen: React.CSSProperties = { minHeight: '100dvh', display: 'grid', placeItems: 'center', background: 'var(--c0b1120)' };
 
 /**
  * A salon that arrived this week.

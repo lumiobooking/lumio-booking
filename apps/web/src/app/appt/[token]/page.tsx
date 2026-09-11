@@ -154,7 +154,7 @@ function ReferCard({ r, salon }: { r: NonNullable<Summary['referral']>; salon: s
   );
 }
 
-const wrap: React.CSSProperties = { minHeight: '100vh', background: 'linear-gradient(160deg,#eef2ff,var(--cf8fafc) 55%)', display: 'grid', placeItems: 'center', padding: 16, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
+const wrap: React.CSSProperties = { minHeight: '100dvh', background: 'linear-gradient(160deg,#eef2ff,var(--cf8fafc) 55%)', display: 'grid', placeItems: 'center', padding: 16, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
 const card: React.CSSProperties = { width: '100%', maxWidth: 380, background: '#fff', borderRadius: 22, padding: '26px 22px', boxShadow: '0 12px 40px rgba(15,23,42,0.12)' };
 const btn: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '13px', borderRadius: 12, border: 'none', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 };
 const referCard: React.CSSProperties = { background: '#eef2ff', border: '1px solid var(--cc7d2fe)', borderRadius: 14, padding: 16, marginTop: 16 };

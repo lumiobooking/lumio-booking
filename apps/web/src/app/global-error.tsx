@@ -12,7 +12,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
   const stale = useStaleReload(error);
   return (
     <html lang="en">
-      <body style={{ margin: 0, minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 20, background: '#0f172a', color: '#e2e8f0', fontFamily: 'system-ui, sans-serif' }}>
+      <body style={{ margin: 0, minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 20, background: '#0f172a', color: '#e2e8f0', fontFamily: 'system-ui, sans-serif' }}>
         <div style={{ maxWidth: 560, width: '100%' }}>
           <h1 style={{ fontSize: 20, margin: '0 0 6px' }}>{stale ? 'Lumio vừa cập nhật · Lumio was just updated' : 'Có lỗi xảy ra · Something broke'}</h1>
           <p style={{ fontSize: 14, color: '#94a3b8', margin: '0 0 14px' }}>

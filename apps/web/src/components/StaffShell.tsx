@@ -32,7 +32,7 @@ export function StaffShell({ children, title = 'My Bookings', wide = false }: { 
 
   if (!ready || !token || user?.role !== 'STAFF') {
     return (
-      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)' }}>
+      <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)' }}>
         Loading...
       </div>
     );
@@ -41,7 +41,10 @@ export function StaffShell({ children, title = 'My Bookings', wide = false }: { 
   return (
     // The inbox needs the whole screen; 900px would squeeze four columns into
     // a letterbox. Everything else keeps the readable column it had.
-    <div style={{ maxWidth: wide ? 1500 : 900, margin: '0 auto', padding: '20px 16px' }}>
+    // Technicians are the most phone-bound people in the product — they read
+    // this standing at a chair. The home-indicator inset keeps the last row of
+    // a list off the bar at the bottom of an iPhone.
+    <div style={{ maxWidth: wide ? 1500 : 900, margin: '0 auto', padding: '20px 16px', paddingBottom: 'calc(28px + env(safe-area-inset-bottom, 0px))' }}>
       <header
         style={{
           display: 'flex',

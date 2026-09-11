@@ -258,7 +258,7 @@ function appDeepLink(url: string): string {
 
 function Center({ children, accent }: { children: React.ReactNode; accent: string }) {
   return (
-    <div style={{ minHeight: '100vh', background: `linear-gradient(160deg, ${accent}14, var(--cf8fafc) 55%)`, display: 'grid', placeItems: 'center', padding: 16, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
+    <div style={{ minHeight: '100dvh', background: `linear-gradient(160deg, ${accent}14, var(--cf8fafc) 55%)`, display: 'grid', placeItems: 'center', padding: 16, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
       {children}
     </div>
   );

@@ -1254,7 +1254,7 @@ function Register() {
       paddingBottom: isMobile ? (mobileView === 'catalog' ? 96 : 24) : undefined,
       // Wide mode: the register owns exactly one screen. Nothing below the fold,
       // so the pay button can never be scrolled away.
-      ...(wide && !fullscreen ? { height: 'calc(100vh - 92px)', marginBottom: -24, display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
+      ...(wide && !fullscreen ? { height: 'calc(100dvh - 92px)', marginBottom: -24, display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
       // Full screen: cover the shell entirely — no sidebar, no page header.
       ...(fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, margin: 0, padding: '12px 16px', background: 'var(--c0b1120)', display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
     }}>
@@ -1280,7 +1280,7 @@ function Register() {
         {(!isMobile || mobileView === 'catalog') && (
         <div style={{
           ...ui.card, display: 'flex', flexDirection: 'column',
-          maxHeight: isMobile ? 'none' : (wide ? '100%' : 'calc(100vh - 130px)'),
+          maxHeight: isMobile ? 'none' : (wide ? '100%' : 'calc(100dvh - 130px)'),
           ...(wide ? { height: '100%', minHeight: 0, overflow: 'hidden', gridColumn: 1, gridRow: 1 } : null),
         }}>
           {/* Tabs with counts */}
@@ -1411,7 +1411,7 @@ function Register() {
           top: 12,
           ...(isMobile ? {} : wide
             ? { height: '100%', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gridColumn: 2, gridRow: '1 / -1' }
-            : { maxHeight: 'calc(100vh - 96px)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }),
+            : { maxHeight: 'calc(100dvh - 96px)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }),
         }}>
           {isMobile && (
             <button onClick={() => setMobileView('catalog')} style={{ ...ghost, marginBottom: 12, padding: '8px 12px', fontSize: 14 }}>← {t('po.backToCatalog')}</button>

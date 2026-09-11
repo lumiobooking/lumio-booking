@@ -1162,7 +1162,7 @@ export default function PublicBookingPage() {
                   {summary}
                 </div>
               ) : (
-                <div style={{ position: 'sticky', top: 92, height: 'calc(100vh - 124px)', minHeight: 420, marginTop: 16 }}>
+                <div style={{ position: 'sticky', top: 92, height: 'calc(100dvh - 124px)', minHeight: 420, marginTop: 16 }}>
                   {summary}
                 </div>
               )
@@ -2856,7 +2856,7 @@ function Shell({ children, accent, fullscreen }: { children: React.ReactNode; ac
     document.body.style.margin = '0';
     // NO viewport lock here, on purpose.
     //
-    // We tried it: `height: 100vh` + an inner scroller made the widget a sealed box —
+    // We tried it: `height: 100dvh` + an inner scroller made the widget a sealed box —
     // the iframe never grew, the host page could not be reached from inside it, and
     // scrolling felt trapped. The form must stay as tall as its content so the SITE
     // scrolls it, exactly like any other block on the page. Everything that needs to
@@ -2882,7 +2882,7 @@ function Shell({ children, accent, fullscreen }: { children: React.ReactNode; ac
     <>
       <style>{BOOK_CSS}</style>
       <div ref={rootRef} className="lumio-shell" style={{
-        minHeight: embedded && !fullscreen ? 0 : '100vh',
+        minHeight: embedded && !fullscreen ? 0 : '100dvh',
         // The same stage in both places: a page that glows a little around the edges,
         // in the salon's own colour. The embed used to be transparent and flat, which
         // is why it felt like a widget bolted onto the site instead of the booking page.

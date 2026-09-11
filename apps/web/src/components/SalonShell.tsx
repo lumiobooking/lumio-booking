@@ -394,7 +394,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
 
   if (!ready || !token || !user || !hasSalonAccess) {
     return (
-      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)', background: 'var(--c0b1120)' }}>
+      <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)', background: 'var(--c0b1120)' }}>
         {tr('shell.loading', lang)}
       </div>
     );
@@ -562,7 +562,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // ---------------------------- Mobile ----------------------------
   if (isMobile) {
     return (
-      <div style={{ minHeight: '100vh', background: 'var(--c0b1120)' }}>
+      <div style={{ minHeight: '100dvh', background: 'var(--c0b1120)' }}>
         {/* Sticky top bar */}
         <header style={{ position: 'sticky', top: 0, zIndex: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: 'var(--c111827)', borderBottom: '1px solid var(--c1f2937)' }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ce2e8f0)' }}>Lumio</div>
@@ -578,8 +578,13 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         {/* Drawer + overlay */}
         {drawerOpen && (
           <>
-            <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 40 }} />
-            <aside style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 'min(82vw, 300px)', background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)', padding: '18px 14px', display: 'flex', flexDirection: 'column', overflowY: 'auto', WebkitOverflowScrolling: 'touch', zIndex: 50, boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}>
+            {/* The menu covers the tab bar while it is open.
+                At zIndex 50 against the bar's 60, the bar floated on top of an
+                open, dimmed menu — and tapping it navigated somewhere while the
+                menu was still showing. 70/71 puts the menu and its backdrop
+                over everything, which is what a modal drawer means. */}
+            <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 70 }} />
+            <aside style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 'min(82vw, 300px)', background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)', padding: '18px 14px', paddingBottom: 'calc(18px + env(safe-area-inset-bottom, 0px))', display: 'flex', flexDirection: 'column', overflowY: 'auto', WebkitOverflowScrolling: 'touch', zIndex: 71, boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 {brand}
                 <button onClick={() => setDrawerOpen(false)} aria-label="Close" style={{ width: 36, height: 36, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer' }}>✕</button>
@@ -599,9 +604,9 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
 
   // ---------------------------- Desktop ----------------------------
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: navHidden ? '1fr' : '230px 1fr', background: 'var(--c0b1120)' }}>
+    <div style={{ minHeight: '100dvh', display: 'grid', gridTemplateColumns: navHidden ? '1fr' : '230px 1fr', background: 'var(--c0b1120)' }}>
       {!navHidden && (
-        <aside style={{ background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)', padding: '20px 14px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto' }}>
+        <aside style={{ background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)', padding: '20px 14px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 0, height: '100dvh', overflowY: 'auto' }}>
           {brand}
           <BranchSwitcher />
           {navList}

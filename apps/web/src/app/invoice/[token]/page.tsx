@@ -129,7 +129,7 @@ export default function InvoicePage() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--cf1f5f9)', display: 'flex', justifyContent: 'center', padding: '5vh 16px', boxSizing: 'border-box' }}>
+    <div style={{ minHeight: '100dvh', background: 'var(--cf1f5f9)', display: 'flex', justifyContent: 'center', padding: '5vh 16px', boxSizing: 'border-box' }}>
       <div style={card}>{children}</div>
     </div>
   );

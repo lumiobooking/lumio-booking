@@ -75,7 +75,7 @@ export default function SignupPage() {
   const upd = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#eef2ff,#fff 40%)', color: INK, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
+    <div style={{ minHeight: '100dvh', background: 'linear-gradient(180deg,#eef2ff,#fff 40%)', color: INK, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
       <div style={{ maxWidth: 980, margin: '0 auto', padding: '28px 24px' }}>
         <Link href="/" style={{ fontSize: 20, fontWeight: 800, color: INK, textDecoration: 'none' }}>Lumio<span style={{ color: INDIGO }}>Booking</span></Link>
       </div>

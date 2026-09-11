@@ -20,7 +20,7 @@ import { isStaleBuild, reloadOnceForStaleBuild } from '../lib/stale-build';
 export default function PageError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const stale = useStaleReload(error);
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 20, background: '#0f172a', color: '#e2e8f0', fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 20, background: '#0f172a', color: '#e2e8f0', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ maxWidth: 560, width: '100%' }}>
         <div style={{ fontSize: 40, marginBottom: 10 }}>{stale ? '🔄' : '😵'}</div>
         <h1 style={{ fontSize: 20, margin: '0 0 6px' }}>{stale ? 'Lumio vừa cập nhật · Lumio was just updated' : 'Có lỗi xảy ra · Something broke'}</h1>

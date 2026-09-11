@@ -47,6 +47,77 @@ interface SnapshotRow {
  * payload, so a deployment without a YouTube key shows "not configured" in
  * the right place rather than an empty screen with no explanation.
  */
+/** The two fields a hashtag lookup needs from a connected Page. */
+interface IgPage { igId: string; pageToken: string }
+
+/**
+ * A hashtag as Instagram will accept it.
+ *
+ * Letters, digits and underscore only — Instagram's own rule — with the # and
+ * any whitespace stripped, because that is what people type. Returns null
+ * rather than a guess when nothing usable is left: sending a junk tag spends
+ * one of the account's thirty unique tags for the week.
+ */
+export function cleanHashtag(raw: unknown): string | null {
+  const t = String(raw ?? '').trim().replace(/^#+/, '').replace(/\s+/g, '');
+  if (!/^[A-Za-z0-9_]{2,60}$/.test(t)) return null;
+  return t.toLowerCase();
+}
+
+/** Both languages, because the same message is read by a Vietnamese staffer
+ *  and by an English-speaking App Review reviewer. */
+const ERR = {
+  noTenant: { code: 'no_tenant', en: 'No salon is selected.', vi: 'Chưa chọn tiệm.' },
+  badTag: {
+    code: 'bad_tag',
+    en: 'Use letters, numbers and underscore only — for example nailart or gelmanicure.',
+    vi: 'Chỉ dùng chữ, số và gạch dưới — ví dụ nailart hoặc gelmanicure.',
+  },
+  notConnected: {
+    code: 'not_connected',
+    en: 'No Instagram Business account is connected. Connect the Facebook Page that has Instagram linked, then try again.',
+    vi: 'Chưa nối tài khoản Instagram Business. Kết nối Trang Facebook có liên kết Instagram rồi thử lại.',
+  },
+} as const;
+
+/**
+ * Meta's hashtag errors, in one sentence somebody can act on — in both
+ * languages, and with Meta's own words kept behind them for the support
+ * ticket. A paraphrase is for the screen; the exact string is evidence.
+ */
+export function igSearchError(raw: string): { code: string; en: string; vi: string } {
+  const e = String(raw ?? '').toLowerCase();
+  if (/public content access|\(#10\)|permission|instagram_basic/.test(e)) {
+    return {
+      code: 'permission',
+      en: 'Instagram refused the hashtag search: this app has not been granted the Instagram Public Content Access feature yet, or the Page token is missing instagram_basic. Reconnect the Page and grant both.',
+      vi: 'Instagram từ chối tìm hashtag: app chưa được cấp feature "Instagram Public Content Access", hoặc token Trang thiếu quyền instagram_basic. Kết nối lại Trang và tick đủ.',
+    };
+  }
+  if (/#4|limit|rate/.test(e)) {
+    return {
+      code: 'rate_limit',
+      en: 'Instagram allows 30 unique hashtags per 7 days for each account, and this one has reached it. The limit rolls off as the week passes.',
+      vi: 'Instagram cho tối đa 30 hashtag khác nhau trong 7 ngày cho mỗi tài khoản — tài khoản này đã dùng hết. Hạn mức sẽ tự nhả dần theo tuần.',
+    };
+  }
+  if (/#190|expired|invalid/.test(e)) {
+    return {
+      code: 'expired',
+      en: 'The Facebook connection has expired. Reconnect the Page under Channels.',
+      vi: 'Kết nối Facebook đã hết hạn — vào mục Kết nối kênh social để nối lại Trang.',
+    };
+  }
+  if (/no results|not found|#803/.test(e)) {
+    return {
+      code: 'not_found',
+      en: 'Instagram has no public posts for that hashtag. Try a more common one.',
+      vi: 'Instagram không có bài công khai nào cho hashtag đó. Thử một hashtag phổ biến hơn.',
+    };
+  }
+  return { code: 'unknown', en: `Instagram refused the request: ${raw}`, vi: `Instagram từ chối yêu cầu: ${raw}` };
+}
+
 @Injectable()
 export class TrendFeedService {
   private readonly log = new Logger(TrendFeedService.name);
@@ -257,29 +328,97 @@ export class TrendFeedService {
     if (!pg?.igId || !pg.pageToken) throw new Error('not_connected');
     const q = await this.queriesForScope(scope);
     const all: TrendItem[] = [];
-    for (const tag of q.hashtags) {
-      const s = await this.getJson(
-        `${GRAPH}/ig_hashtag_search?user_id=${encodeURIComponent(pg.igId)}&q=${encodeURIComponent(tag)}&access_token=${encodeURIComponent(pg.pageToken)}`,
-      );
-      const hid = (s.body as { data?: { id?: string }[] })?.data?.[0]?.id;
-      if (!s.ok || !hid) {
-        const msg = (s.body as { error?: { message?: string } })?.error?.message ?? `hashtag search ${s.status}`;
-        throw new Error(msg);
-      }
-      const m = await this.getJson(
-        `${GRAPH}/${hid}/top_media?user_id=${encodeURIComponent(pg.igId)}`
-        + `&fields=id,media_type,media_url,permalink,like_count,caption,timestamp&limit=15`
-        + `&access_token=${encodeURIComponent(pg.pageToken)}`,
-      );
-      if (!m.ok) {
-        const msg = (m.body as { error?: { message?: string } })?.error?.message ?? `top_media ${m.status}`;
-        throw new Error(msg);
-      }
-      all.push(...parseInstagram((m.body as { data?: unknown })?.data, tag));
-    }
+    for (const tag of q.hashtags) all.push(...await this.igTag(pg as IgPage, tag));
     // Hashtag media is on-topic by construction, so only the script check
     // does any work here — and a caption that is all emoji passes it.
     return relevant(all, scope.split(':')[0], null, q);
+  }
+
+  /**
+   * One hashtag, as this salon's own Instagram account sees it.
+   *
+   * Two calls, because Instagram splits them: a hashtag has to be resolved to
+   * an id before its media can be read, and both are charged against the same
+   * account. Pulled out of pullInstagram so a person can ask for a single tag
+   * on demand — which is also the only way the feature can be SHOWN to
+   * somebody, rather than merely running overnight.
+   */
+  private async igTag(pg: IgPage, tag: string): Promise<TrendItem[]> {
+    const s = await this.getJson(
+      `${GRAPH}/ig_hashtag_search?user_id=${encodeURIComponent(pg.igId)}&q=${encodeURIComponent(tag)}&access_token=${encodeURIComponent(pg.pageToken)}`,
+    );
+    const hid = (s.body as { data?: { id?: string }[] })?.data?.[0]?.id;
+    if (!s.ok || !hid) {
+      const msg = (s.body as { error?: { message?: string } })?.error?.message ?? `hashtag search ${s.status}`;
+      throw new Error(msg);
+    }
+    const m = await this.getJson(
+      `${GRAPH}/${hid}/top_media?user_id=${encodeURIComponent(pg.igId)}`
+      + `&fields=id,media_type,media_url,permalink,like_count,caption,timestamp&limit=15`
+      + `&access_token=${encodeURIComponent(pg.pageToken)}`,
+    );
+    if (!m.ok) {
+      const msg = (m.body as { error?: { message?: string } })?.error?.message ?? `top_media ${m.status}`;
+      throw new Error(msg);
+    }
+    return parseInstagram((m.body as { data?: unknown })?.data, tag);
+  }
+
+  /**
+   * Look up one hashtag the salon typed, now.
+   *
+   * WHY THIS EXISTS AT ALL
+   *
+   * The overnight pull already reads Instagram hashtags, but nobody can WATCH
+   * it: a feed simply appears, and from the outside there is no way to tell
+   * that Instagram's public content is where it came from. Meta's App Review
+   * asks to see the end-to-end experience of the use case — a person doing the
+   * thing the permission is for — and an overnight job is not something a
+   * person does.
+   *
+   * So the same capability gets a front door: the salon types a hashtag, sees
+   * the top public posts on it, and turns one into a post of their own. That
+   * is the use case, in three visible steps, with the permission plainly doing
+   * the work in the middle.
+   *
+   * The 30-hashtags-per-7-days cap is Instagram's, per account, and counts
+   * UNIQUE tags rather than calls — so the count is reported back and the
+   * screen can say it before somebody burns the week's allowance on typos.
+   */
+  async searchHashtag(user: AuthenticatedUser, rawTag: unknown): Promise<{
+    ok: boolean;
+    tag: string;
+    items: unknown[];
+    error: { code: string; en: string; vi: string } | null;
+  }> {
+    const tenantId = resolveTenantScope(user);
+    const tag = cleanHashtag(rawTag);
+    if (!tenantId) {
+      return { ok: false, tag: '', items: [], error: ERR.noTenant };
+    }
+    if (!tag) {
+      return { ok: false, tag: '', items: [], error: ERR.badTag };
+    }
+
+    const pg = await this.prisma.messengerPage.findFirst({
+      where: { tenantId, igId: { not: null } },
+      orderBy: { createdAt: 'asc' },
+      select: { igId: true, pageToken: true },
+    }).catch(() => null);
+    if (!pg?.igId || !pg.pageToken) {
+      return { ok: false, tag, items: [], error: ERR.notConnected };
+    }
+
+    try {
+      const found = await this.igTag({ igId: pg.igId, pageToken: pg.pageToken }, tag);
+      // The same shaping the nightly feed gets, so a searched card and a fed
+      // card are the same object on screen and in the composer.
+      const cards = overlay(rankItems(found), { services: [], events: [] }, new Date());
+      return { ok: true, tag, items: cards, error: null };
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      return { ok: false, tag, items: [], error: igSearchError(raw) };
+    }
   }
 
   /**

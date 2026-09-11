@@ -33,7 +33,7 @@ import { uiLocale } from '../lib/datetime';
 import {
   InboxRow, InboxFilter, channelLabel, channelMark, stateLabel, stateOf,
   sortRows, filterRows, sourcesFrom, waitingCount, composerNotice, displayName, pageColor, initialsOf,
-  InboxLabel, followUpState, followUpLabel, followUpCount, channelCounts, channelOf,
+  InboxLabel, followUpState, followUpLabel, followUpCount, channelCounts, channelOf, humanAgentNotice,
 } from '../lib/inbox-view';
 
 interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Photos the customer attached. */ images?: string[] }
@@ -48,6 +48,8 @@ interface ThreadDetail extends InboxRow {
   historySource?: 'partial' | 'meta' | 'local';
   customer: CustomerCtx | null;
   replyWindow?: { open: boolean; minutesLeft: number | null };
+  /** Which of Meta's three windows this conversation is in. See api human-agent.ts. */
+  humanAgent?: { kind: 'open' | 'human-agent' | 'closed' | 'unknown'; hoursLeft: number | null };
   /** Taken from the facts the salon already wrote for the bot — one source, two
    *  readers, so a receptionist can never quote a different price than the bot. */
   canned?: { label: string; text: string }[];
@@ -429,7 +431,9 @@ export function InboxView() {
     window.open(`/salon/bookings${q.toString() ? `?${q.toString()}` : ''}`, '_blank', 'noopener');
   }
 
-  const notice = composerNotice(detail?.replyWindow, vi);
+  // The human-agent state is the more precise answer when the server sent
+  // one; the older notice stays as the fallback for rows it cannot judge.
+  const notice = humanAgentNotice(detail?.humanAgent, vi) ?? composerNotice(detail?.replyWindow, vi);
   const state = detail ? stateOf(detail) : 'bot';
 
   /**

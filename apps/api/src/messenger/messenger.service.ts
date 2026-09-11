@@ -6,6 +6,7 @@ import {
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
+import { lastInboundAt, outboundEnvelope, replyWindowState } from './human-agent';
 import { mergeHistory } from './history-merge';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
@@ -1184,6 +1185,11 @@ export class MessengerService implements OnModuleInit {
       // The composer has to know BEFORE someone types a long answer. Finding
       // out after pressing send is how a reply is lost silently.
       replyWindow: replyWindow(row as never, now),
+      // Which of the three windows this conversation is in. The inbox needs
+      // the middle one by name: a reply going out under HUMAN_AGENT is the
+      // salon promising Meta that a person wrote it, and the person typing
+      // should be told they are making that promise.
+      humanAgent: replyWindowState(lastInboundAt((row as { history?: unknown }).history), now),
       customer,
     };
   }
@@ -1577,10 +1583,30 @@ export class MessengerService implements OnModuleInit {
       return { ok: true as const, messageId: null, recipientId: thread.senderId, at: zAt, channel: 'zalo' };
     }
 
+    /**
+     * A PERSON is sending this one — that is what this whole method is.
+     *
+     * Inside Meta's 24 hours it goes as an ordinary RESPONSE. Outside it, the
+     * only thing that may go at all is a message from a human being, tagged
+     * HUMAN_AGENT, and Meta allows that for seven days. Until now every reply
+     * left as RESPONSE, so a receptionist answering on day two simply got an
+     * error — and the app was asking App Review for a feature it never used.
+     */
+    const env = outboundEnvelope({ lastInbound: lastInboundAt(thread.history), byHuman: true }, new Date());
+    if (!env.body) {
+      const hist0 = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+      await this.prisma.messengerThread.update({
+        where: { id: thread.id },
+        data: {
+          history: [...hist0, { role: 'assistant', content: body, manual: true, failed: true, at: new Date().toISOString() }].slice(-MAX_TURNS) as unknown as Prisma.InputJsonValue,
+        },
+      }).catch(() => undefined);
+      throw new BadRequestException(env.refusal ?? 'Meta đã đóng cửa sổ trả lời cho hội thoại này.');
+    }
     const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(sendToken)}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ recipient: { id: thread.senderId }, messaging_type: 'RESPONSE', message: { text: body.slice(0, 1900) } }),
+      body: JSON.stringify({ recipient: { id: thread.senderId }, ...env.body, message: { text: body.slice(0, 1900) } }),
     });
     const out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: { message?: string } };
     this.rememberSentMid(out.message_id);

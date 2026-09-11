@@ -385,6 +385,25 @@ export class ContentController {
     return this.trends.refreshFor(user);
   }
 
+  /**
+   * Top public Instagram posts on one hashtag the salon typed.
+   *
+   * Reads PUBLIC content through the salon's own connected Instagram Business
+   * account — the account holder granted that when they connected the Page.
+   * Nothing is stored: the results are shown, one may be turned into a post of
+   * the salon's own, and that is the end of it.
+   *
+   * Never 500s on Instagram saying no. A refusal from Meta is an answer the
+   * screen has to show a person — the permission is missing, the week's thirty
+   * hashtags are spent, the token expired — and an exception would turn every
+   * one of those into the same blank red box.
+   */
+  @Post('trends/instagram/search')
+  @HttpCode(200)
+  searchHashtag(@CurrentUser() user: AuthenticatedUser, @Body() body: { tag?: unknown }) {
+    return this.trends.searchHashtag(user, body?.tag);
+  }
+
   /** Upcoming events + the discount advice, computed from this salon's book. */
   @Get('plan')
   plan(@CurrentUser() user: AuthenticatedUser) {

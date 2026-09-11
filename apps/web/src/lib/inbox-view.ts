@@ -422,6 +422,42 @@ export function filterRows(rows: InboxRow[], f: FilterState, now: Date = new Dat
  * lost and the customer hears nothing, so the warning has to be on screen while
  * they are still typing.
  */
+/**
+ * What to say above the message box about Meta's reply window.
+ *
+ * Three states worth naming, and the middle one is the one that matters: past
+ * 24 hours a message may still go, but only because a PERSON is writing it and
+ * it will carry the HUMAN_AGENT tag. Somebody typing should know they are
+ * making that promise on the salon's behalf — it is not a detail, it is the
+ * condition Meta grants the extra six days on.
+ */
+export function humanAgentNotice(
+  st: { kind: 'open' | 'human-agent' | 'closed' | 'unknown'; hoursLeft: number | null } | null | undefined,
+  vi: boolean,
+): { blocked: boolean; text: string | null } | null {
+  if (!st) return null;
+  if (st.kind === 'human-agent') {
+    const days = Math.max(1, Math.round((st.hoursLeft ?? 0) / 24));
+    return {
+      blocked: false,
+      text: vi
+        ? `Quá 24 giờ — tin này gửi dưới nhãn "nhân viên trả lời" của Meta. Còn khoảng ${days} ngày. Bot không nhắn tiếp được nữa.`
+        : `Past 24 hours — this goes out under Meta's human-agent tag. About ${days} day(s) left. The bot can no longer message.`,
+    };
+  }
+  if (st.kind === 'closed') {
+    return {
+      blocked: true,
+      text: vi
+        ? 'Quá 7 ngày kể từ tin nhắn của khách — Meta đóng hẳn cửa sổ. Gọi điện hoặc nhắn SMS cho khách.'
+        : 'More than 7 days since they wrote — Meta has closed the window. Call or text them instead.',
+    };
+  }
+  // 'open' and 'unknown' are the ordinary case; the older notice already
+  // handles the last two hours of it.
+  return null;
+}
+
 export function composerNotice(
   win: { open: boolean; minutesLeft: number | null; unknown?: boolean } | null | undefined,
   vi: boolean,

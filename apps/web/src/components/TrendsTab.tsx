@@ -100,6 +100,19 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
   const [filter, setFilter] = useState<'all' | 'youtube' | 'instagram'>('all');
   const [showAll, setShowAll] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  /**
+   * Looking one hashtag up, on purpose, right now.
+   *
+   * The nightly pull already reads Instagram hashtags, but a feed that simply
+   * appears cannot be watched — and "watch a person use it" is exactly what
+   * Meta's App Review asks for before granting Instagram Public Content
+   * Access. It is also what a salon wanted anyway: the overnight tags are the
+   * trade's, not tonight's idea.
+   */
+  const [tag, setTag] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [hits, setHits] = useState<{ tag: string; cards: TrendCard[] } | null>(null);
+  const [searchErr, setSearchErr] = useState<string | null>(null);
 
   const feed: TrendFeed | null = raw ? (vi ? raw : (raw.en ?? raw)) : null;
 
@@ -122,7 +135,26 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
     finally { setRefreshing(false); }
   }
 
-  const items = (feed?.items ?? []).filter((c) => filter === 'all' || c.source === filter);
+  async function searchTag() {
+    const q = tag.trim().replace(/^#+/, '');
+    if (!q || searching || !token) return;
+    setSearching(true); setSearchErr(null);
+    try {
+      const r = await apiFetch<{ ok: boolean; tag: string; items: TrendCard[]; error: { en: string; vi: string } | null }>(
+        '/content/trends/instagram/search', { method: 'POST', token, body: { tag: q } },
+      );
+      if (r.ok) { setHits({ tag: r.tag, cards: r.items ?? [] }); }
+      else { setHits(null); setSearchErr(r.error ? (vi ? r.error.vi : r.error.en) : T('Không tìm được.', 'Search failed.')); }
+    } catch (e) {
+      setHits(null);
+      setSearchErr(e instanceof Error ? e.message : 'error');
+    } finally { setSearching(false); }
+  }
+
+  // A search replaces the board while it is open; clearing it puts the
+  // morning's feed back exactly as it was.
+  const base = hits ? hits.cards : (feed?.items ?? []);
+  const items = base.filter((c) => hits ? true : (filter === 'all' || c.source === filter));
   const shown = showAll ? items : items.slice(0, isMobile ? 4 : 8);
   const anyConfigured = Boolean(feed && (feed.sources.youtube.configured || feed.sources.google.configured || feed.sources.instagram.connected || feed.sources.pinterest?.configured));
   const anyFailed = Boolean(feed && (feed.sources.youtube.error || feed.sources.google.error || feed.sources.instagram.error || feed.sources.pinterest?.error));
@@ -184,6 +216,50 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
         </div>
 
         {err && <div style={{ fontSize: 12.5, color: '#fca5a5', marginBottom: 10 }}>{err}</div>}
+
+        {/* Look up a hashtag on Instagram, now.
+            Reads PUBLIC posts through the salon's own connected Instagram
+            Business account. Nothing is stored — the posts are shown, one can
+            become a post of the salon's own, and that is all. */}
+        <div style={{ marginBottom: 12, padding: '11px 12px', borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 3 }}>
+            {T('Tra hashtag trên Instagram', 'Search a hashtag on Instagram')}
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 8, lineHeight: 1.5 }}>
+            {T('Xem bài công khai đang nổi nhất của một hashtag, qua tài khoản Instagram của chính tiệm. Instagram cho 30 hashtag khác nhau mỗi 7 ngày, nên gõ đúng ngay từ đầu.',
+               'See the top public posts on a hashtag, through the salon’s own connected Instagram account. Instagram allows 30 different hashtags per 7 days, so type it right the first time.')}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', flex: '1 1 220px', minWidth: 0, borderRadius: 8, border: '1px solid var(--c475569)', background: 'var(--c0b1120)', paddingLeft: 10 }}>
+              <span style={{ color: 'var(--c64748b)', fontSize: 14, flexShrink: 0 }}>#</span>
+              <input
+                value={tag}
+                onChange={(e) => setTag(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void searchTag(); } }}
+                placeholder={T('vd: nailart', 'e.g. nailart')}
+                maxLength={60}
+                style={{ flex: 1, minWidth: 0, background: 'transparent', border: 'none', outline: 'none', color: 'var(--ce2e8f0)', fontSize: isMobile ? 16 : 13, padding: '9px 10px 9px 4px', fontFamily: 'inherit' }} />
+            </div>
+            <button onClick={() => void searchTag()} disabled={searching || !tag.trim()}
+              style={{ ...ui.primaryBtn, height: 38, padding: '0 16px', fontSize: 13, opacity: (searching || !tag.trim()) ? 0.6 : 1 }}>
+              {searching ? T('Đang tra…', 'Searching…') : T('Tra Instagram', 'Search Instagram')}
+            </button>
+            {hits && (
+              <button onClick={() => { setHits(null); setSearchErr(null); setTag(''); }}
+                style={{ height: 38, padding: '0 14px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {T('Bỏ lọc, về bảng sáng nay', 'Clear, back to this morning’s board')}
+              </button>
+            )}
+          </div>
+          {searchErr && <div style={{ marginTop: 8, fontSize: 12, color: '#fca5a5', lineHeight: 1.5 }}>{searchErr}</div>}
+          {hits && !searchErr && (
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--c94a3b8)' }}>
+              {hits.cards.length > 0
+                ? T(`Đang xem ${hits.cards.length} bài công khai nổi nhất của #${hits.tag}.`, `Showing the ${hits.cards.length} top public posts on #${hits.tag}.`)
+                : T(`Instagram không trả về bài công khai nào cho #${hits.tag}.`, `Instagram returned no public posts for #${hits.tag}.`)}
+            </div>
+          )}
+        </div>
 
         {loading && !feed ? (
           <div style={{ fontSize: 13, color: 'var(--c64748b)', padding: '18px 0' }}>{T('Đang tải…', 'Loading…')}</div>

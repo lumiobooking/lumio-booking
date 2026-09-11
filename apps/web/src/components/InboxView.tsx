@@ -100,30 +100,47 @@ function keepRows(prev: InboxRow[], next: InboxRow[]): InboxRow[] {
 }
 
 /**
- * Generic shapes, brand colours. A speech bubble, a camera, a letter, a globe —
- * none of them anybody's trademark, all of them instantly legible at 19 pixels,
- * which is more than can be said for ✉ standing in for Facebook Messenger.
+ * SOLID SHAPES, NOT OUTLINES.
+ *
+ * At seventeen pixels a 2px stroke is most of the shape: the outlined speech
+ * bubble came out as a ring with a dot in it. Filled silhouettes survive the
+ * size, which is the only size this is ever drawn at.
+ *
+ * The shapes stay generic — a speech bubble, a camera, a letter, a globe.
+ * Drawing Meta's or Zalo's actual marks would be putting somebody else's
+ * trademark in our product; the colour is what does the recognising anyway,
+ * and the name is on the tooltip and the aria-label for anyone who needs it.
  */
 function channelGlyph(raw: unknown, px: number) {
   const ch = String(raw ?? '').trim().toLowerCase();
-  const common = { width: px, height: px, viewBox: '0 0 24 24', fill: 'none', stroke: '#ffffff', strokeWidth: 2.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  const box = { width: px, height: px, viewBox: '0 0 24 24', fill: '#ffffff' };
   if (ch === 'instagram') {
     return (
-      <svg {...common}><rect x="3.5" y="6" width="17" height="13" rx="3" /><circle cx="12" cy="12.5" r="3.2" /><path d="M8.5 6l1.2-2h4.6L15.5 6" /></svg>
+      <svg {...box}>
+        {/* body and lens in one path, evenodd knocking the lens out, so the
+            white never doubles up into a grey edge at this size */}
+        <path fillRule="evenodd" clipRule="evenodd" d="M9.4 3h5.2l1.1 2H19a2.6 2.6 0 0 1 2.6 2.6v10.8A2.6 2.6 0 0 1 19 21H5a2.6 2.6 0 0 1-2.6-2.6V7.6A2.6 2.6 0 0 1 5 5h3.3l1.1-2zM12 8.6a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8zm0 2.2a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4z" />
+      </svg>
     );
   }
   if (ch === 'zalo') {
     return (
-      <svg width={px} height={px} viewBox="0 0 24 24"><text x="12" y="17" textAnchor="middle" fontSize="15" fontWeight="800" fill="#ffffff" fontFamily="inherit">Z</text></svg>
+      <svg width={px} height={px} viewBox="0 0 24 24">
+        <text x="12" y="17.5" textAnchor="middle" fontSize="16" fontWeight="800" fill="#ffffff" fontFamily="system-ui, sans-serif">Z</text>
+      </svg>
     );
   }
   if (ch === 'web') {
     return (
-      <svg {...common}><circle cx="12" cy="12" r="8.5" /><path d="M3.5 12h17M12 3.5c2.2 2.4 3.3 5.4 3.3 8.5s-1.1 6.1-3.3 8.5c-2.2-2.4-3.3-5.4-3.3-8.5S9.8 5.9 12 3.5z" /></svg>
+      <svg {...box}>
+        <path fillRule="evenodd" clipRule="evenodd" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2.3c.9 1 1.7 2.5 2.1 4.4H9.9c.4-1.9 1.2-3.4 2.1-4.4zM7.7 8.7c.4-1.8 1-3.3 1.9-4.4a7.8 7.8 0 0 0-4.2 4.4h2.3zm-.4 2.2H4.4a7.8 7.8 0 0 0 0 2.2h2.9a18 18 0 0 1 0-2.2zm2.2 0h5a16 16 0 0 1 0 2.2h-5a16 16 0 0 1 0-2.2zm7.2 0h2.9a7.8 7.8 0 0 1 0 2.2h-2.9a18 18 0 0 0 0-2.2zm-.8-2.2h2.3a7.8 7.8 0 0 0-4.2-4.4c.9 1.1 1.5 2.6 1.9 4.4zM9.9 15.1h4.2c-.4 1.9-1.2 3.4-2.1 4.4-.9-1-1.7-2.5-2.1-4.4zm-2.2 0H5.4a7.8 7.8 0 0 0 4.2 4.4c-.9-1.1-1.5-2.6-1.9-4.4zm8.6 0h2.3a7.8 7.8 0 0 1-4.2 4.4c.9-1.1 1.5-2.6 1.9-4.4z" />
+      </svg>
     );
   }
   return (
-    <svg {...common}><path d="M12 3.5c-4.8 0-8.5 3.5-8.5 7.9 0 2.5 1.2 4.7 3.1 6.2v3.1l2.9-1.6c.8.2 1.6.3 2.5.3 4.8 0 8.5-3.5 8.5-7.9S16.8 3.5 12 3.5z" /></svg>
+    <svg {...box}>
+      <path d="M12 2.6c-5.3 0-9.4 3.9-9.4 8.8 0 2.7 1.3 5.2 3.4 6.8v3.6l3.2-1.8c.9.2 1.8.4 2.8.4 5.3 0 9.4-3.9 9.4-8.8S17.3 2.6 12 2.6z" />
+    </svg>
   );
 }
 
@@ -174,7 +191,7 @@ const Avatar = memo(function Avatar(
           channels or Pages, and otherwise it does not. */}
       {mark && (() => {
         const brand = channelBrand(row.channel);
-        const d = Math.round(size * 0.44);
+        const d = Math.round(size * 0.4);
         return (
           <span
             title={[brand.name, row.pageName].filter(Boolean).join(' · ')}
@@ -186,10 +203,16 @@ const Avatar = memo(function Avatar(
               // so one glance answers both "which app" and "which Page" —
               // neither of which the old grey ✉ answered.
               background: brand.bg,
-              boxShadow: `0 0 0 2px var(--c0b1220), 0 0 0 3.5px ${c.bg}`,
+              // ONE ring, in the colour behind the row. The badge used to carry
+              // a second, wider ring in the Page's colour so it could answer
+              // "which Page" too — two haloes round an 18px dot, on every row,
+              // and the result read as clutter rather than as an answer. The
+              // Page has a chip of its own when there is more than one; the
+              // badge does one job.
+              boxShadow: '0 0 0 2px var(--c0b1220)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
-          >{channelGlyph(row.channel, Math.round(d * 0.7))}</span>
+          >{channelGlyph(row.channel, Math.round(d * 0.66))}</span>
         );
       })()}
     </span>
@@ -665,9 +688,17 @@ export function InboxView() {
   // same eleven characters repeated down the list, pushing the customer's own
   // labels onto a second line. Distinct names is the question that matters.
   const showPageChip = new Set(rows.map((r) => String(r.pageName ?? '').trim()).filter(Boolean)).size > 1;
-  /** Does this inbox actually mix channels or Pages? If not, the little mark
-   *  on every avatar is thirteen copies of one fact. */
-  const showChannelMark = showPageChip || new Set(rows.map((r) => channelOf(r.channel))).size > 1;
+  // THE BADGE IS NOT CONDITIONAL ANY MORE, AND THE OLD REASONING WAS WRONG.
+  //
+  // It used to appear only when the list actually mixed channels, on the
+  // argument that thirteen identical marks say nothing. That is true of a
+  // LABEL, which costs a row its width. It is not true of a badge on a picture
+  // that is already there: it costs nothing, and its absence is not "no news",
+  // it is a blank where a person expected an answer. Somebody scanning an
+  // inbox does not first work out whether this inbox happens to mix channels;
+  // they look at the row and expect it to say where the message came from.
+  // Messenger, Instagram, Zalo and the website all land in one list, and which
+  // one decides the rules — a 24-hour window, a 7-day window, or none at all.
   const sorted = sortRows(filterRows(rows, { filter, source, channel: chan, query, meId: me, labelId }));
   const unreadCount = rows.filter((r) => r.unread && !isSpamRow(r)).length;
   /** How many conversations are in the bin. Drives whether the chip exists. */
@@ -1106,7 +1137,7 @@ export function InboxView() {
                     boxShadow: on ? 'inset 0 0 0 1.5px #6366f1' : 'none',
                     border: 'none', borderRadius: 12, padding: '12px 12px' }}>
                   <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <Avatar row={r} size={44} token={token} vi={vi} mark={showChannelMark} />
+                    <Avatar row={r} size={44} token={token} vi={vi} />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       {/* FOUR SIZES ON THE WHOLE ROW: 15.5 name, 14 message,
                           13 clock, 11.5 chip — and the name and the message are

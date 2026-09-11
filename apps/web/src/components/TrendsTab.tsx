@@ -140,10 +140,13 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
     if (!q || searching || !token) return;
     setSearching(true); setSearchErr(null);
     try {
-      const r = await apiFetch<{ ok: boolean; tag: string; items: TrendCard[]; error: { en: string; vi: string } | null }>(
-        '/content/trends/instagram/search', { method: 'POST', token, body: { tag: q } },
-      );
-      if (r.ok) { setHits({ tag: r.tag, cards: r.items ?? [] }); }
+      const r = await apiFetch<{
+        ok: boolean; tag: string; items: TrendCard[];
+        en?: { items: TrendCard[] };
+        error: { en: string; vi: string } | null;
+      }>('/content/trends/instagram/search', { method: 'POST', token, body: { tag: q } });
+      // Same envelope as the feed: Vietnamese inline, English beside it.
+      if (r.ok) { setHits({ tag: r.tag, cards: (vi ? r.items : r.en?.items ?? r.items) ?? [] }); }
       else { setHits(null); setSearchErr(r.error ? (vi ? r.error.vi : r.error.en) : T('Không tìm được.', 'Search failed.')); }
     } catch (e) {
       setHits(null);

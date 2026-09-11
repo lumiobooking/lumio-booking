@@ -43,3 +43,66 @@ describe('what Instagram’s refusals mean', () => {
     expect(igSearchError('weird thing').en).toContain('weird thing');
   });
 });
+
+// ===========================================================================
+// The crash this file now guards.
+//
+// growthLabel / perDayLabel / ageLabel each return a Txt — `{ vi, en }`, not a
+// string. Every endpoint in this module is supposed to end with the
+// localizeDeep envelope that flattens those. searchHashtag shipped without it,
+// so a SUCCESSFUL search handed React an object where it expected text. React
+// will not render an object: it threw #31 — "object with keys {vi, en}" — and
+// that does not degrade the panel, it takes the whole /salon/content route
+// down. The salon pressed Search and the screen died.
+//
+// Tested on the shaping functions rather than through the service, because the
+// bug was never in the network call: it was in what the shaped card carries.
+// ===========================================================================
+import { growthLabel, perDayLabel, ageLabel } from './trend-feed';
+import { localizeDeep, isBi } from '../i18n';
+
+/** Every {vi,en} left anywhere in a payload, by path. Empty is the pass. */
+function biPaths(v: unknown, path = '$'): string[] {
+  if (v === null || v === undefined) return [];
+  if (isBi(v)) return [path];
+  if (Array.isArray(v)) return v.flatMap((x, i) => biPaths(x, `${path}[${i}]`));
+  if (typeof v === 'object') {
+    return Object.entries(v as Record<string, unknown>).flatMap(([k, x]) => biPaths(x, `${path}.${k}`));
+  }
+  return [];
+}
+
+describe('a searched card never reaches React carrying {vi, en}', () => {
+  const NOW = new Date('2026-09-11T12:00:00Z');
+  const card = () => ({
+    id: 'm1', source: 'instagram' as const, title: 'gel set', url: 'https://x',
+    thumbUrl: null, count: 4200, publishedAt: '2026-09-09T12:00:00Z', breakout: false,
+    growthLabel: growthLabel(38, false),
+    perDayLabel: perDayLabel(2100, 'instagram'),
+    ageLabel: ageLabel('2026-09-09T12:00:00Z', NOW),
+  });
+
+  it('the raw shaped card DOES carry them — this is the trap', () => {
+    expect(biPaths(card()).sort()).toEqual(['$.ageLabel', '$.growthLabel', '$.perDayLabel']);
+  });
+
+  it('the Vietnamese side the endpoint returns carries none', () => {
+    expect(biPaths(localizeDeep(card(), 'vi'))).toEqual([]);
+  });
+
+  it('the English side carries none either', () => {
+    expect(biPaths(localizeDeep(card(), 'en'))).toEqual([]);
+  });
+
+  it('and the two sides really are different text, not one language twice', () => {
+    const v = localizeDeep(card(), 'vi') as Record<string, string>;
+    const e = localizeDeep(card(), 'en') as Record<string, string>;
+    expect(v.ageLabel).not.toBe(e.ageLabel);
+    expect(typeof v.growthLabel).toBe('string');
+    expect(typeof e.perDayLabel).toBe('string');
+  });
+
+  it('a whole list of cards is flattened, not just the first', () => {
+    expect(biPaths(localizeDeep([card(), card(), card()], 'vi'))).toEqual([]);
+  });
+});

@@ -389,6 +389,9 @@ export class TrendFeedService {
     ok: boolean;
     tag: string;
     items: unknown[];
+    /** The same cards with every bilingual label resolved to English. Mirrors
+     *  the `en` side of the nightly feed envelope — see the note on the return. */
+    en?: { items: unknown[] };
     error: { code: string; en: string; vi: string } | null;
   }> {
     const tenantId = resolveTenantScope(user);
@@ -414,7 +417,27 @@ export class TrendFeedService {
       // The same shaping the nightly feed gets, so a searched card and a fed
       // card are the same object on screen and in the composer.
       const cards = overlay(rankItems(found), { services: [], events: [] }, new Date());
-      return { ok: true, tag, items: cards, error: null };
+      // Resolve the bilingual labels before the cards leave the server.
+      //
+      // WHAT THIS COST
+      //
+      // growthLabel, perDayLabel and ageLabel each return a Txt — `{ vi, en }`,
+      // not a string. Every other endpoint in this module ends with the
+      // localizeDeep envelope that flattens those; this one did not, so a
+      // successful hashtag search handed React an object where it expected
+      // text. React refuses to render an object and throws #31 — "object with
+      // keys {vi, en}" — which does not break the panel, it kills the WHOLE
+      // /salon/content route. Pressing Search took the screen down.
+      //
+      // Shaped exactly like the feed (vi inline, en beside it) so the client
+      // picks a side the same way for both.
+      return {
+        ok: true,
+        tag,
+        items: localizeDeep(cards, 'vi') as unknown[],
+        en: { items: localizeDeep(cards, 'en') as unknown[] },
+        error: null,
+      };
     } catch (e) {
       const raw = e instanceof Error ? e.message : String(e);
       return { ok: false, tag, items: [], error: igSearchError(raw) };

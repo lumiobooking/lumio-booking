@@ -1,4 +1,5 @@
 import { bi, viOf, enOf, type Txt } from './i18n';
+import type { JobOwner } from './work-owner';
 import type { Playbook } from './industry-playbook';
 import type { Job, JobKind } from './weekly-plan';
 
@@ -221,9 +222,14 @@ const MAP_JOBS: { kind: JobKind; text: Txt; why: Txt }[] = [
       'A post on the Google profile shows inside the map result — where people are choosing a shop, not where they are scrolling for fun'),
   },
   {
-    kind: 'photo',
-    text: bi('Thêm 3 ảnh mới vào hồ sơ Google — 1 ảnh mặt tiền, 1 ảnh bên trong, 1 ảnh thành phẩm',
-      'Add 3 new photos to the Google profile — the storefront, the room inside, and finished work'),
+    // WAS kind:'photo', and that was a counting bug with a client on the other
+    // end of it: weeklyAsk parses the digit out of the instruction, so the shop
+    // was asked for 9 photos while photoSheet only ever gave steps for 6. The
+    // job is ours — we upload from the week's photo bank, and only ask the shop
+    // for a storefront shot when the bank has none (seo-roadmap 'photos-20').
+    kind: 'gbp',
+    text: bi('Thêm 3 ảnh mới vào hồ sơ Google, lấy từ kho ảnh tuần này',
+      'Add 3 new photos to the Google profile, from this week’s photo bank'),
     why: bi('Hồ sơ có ảnh mới đều đặn được Google ưu tiên hơn hồ sơ đứng yên, và ảnh mặt tiền là thứ khách nhìn để biết có đúng chỗ không',
       'A profile with fresh photos outranks one that sits still, and the storefront shot is how a customer knows they are at the right door'),
   },
@@ -320,8 +326,10 @@ export function storyJobs(hasOffer: boolean): { kind: JobKind; text: Txt; why: T
   const out: { kind: JobKind; text: Txt; why: Txt }[] = [
     {
       kind: 'story',
-      text: bi('Story hậu trường buổi quay — 3-4 khung, không cần dựng',
-        'Behind-the-scenes stories from the shoot — 3 or 4 frames, nothing produced'),
+      // Cut from the raw footage the shop already uploaded. Asking for a second
+      // shoot to get backstage frames out of the first one is asking twice.
+      text: bi('Cắt 3-4 khung hậu trường từ clip gốc tiệm đã gửi — đăng story, không cần dựng',
+        'Cut 3 or 4 backstage frames out of the raw clips the shop sent — story, nothing produced'),
       why: bi('Người xem tin hậu trường hơn thành phẩm, vì thành phẩm thì tiệm nào cũng đăng. Đây cũng là cách hâm nóng trước khi bài chính lên',
         'People trust the backstage more than the finished shot, because every shop posts the finished shot. It also warms the audience up before the real post lands'),
     },
@@ -356,7 +364,16 @@ export function storyJobs(hasOffer: boolean): { kind: JobKind; text: Txt; why: T
  * Everything here is DERIVED. Nothing is a second copy of the week that can
  * disagree with the first one.
  */
-export interface PrepLine { label: Txt; detail: Txt }
+/**
+ * One line of the week's material list — and WHO produces it.
+ *
+ * The list used to be one undifferentiated pile, so "write 3 captions" (the
+ * team's, in the team's own tool) sat next to "film 3 clips" (the shop's, with
+ * the shop's phone) as though one person did both. Nobody does both: the team
+ * is in another country. Tagging the line is what lets the shop's screen show
+ * the shop's half and the queue show the team's.
+ */
+export interface PrepLine { label: Txt; detail: Txt; who: JobOwner }
 
 export function buildPrep(input: {
   /** Clips the week actually asks for, counted by the caller that knows. */
@@ -372,6 +389,7 @@ export function buildPrep(input: {
 
   if (input.clips > 0) {
     out.push({
+      who: 'salon',
       label: bi(`Quay ${input.clips} clip`, `Film ${input.clips} clips`),
       detail: bi('Mỗi clip 15-30 giây. Quay hết trong một buổi — dựng cảnh hai lần là lần thứ hai không xảy ra',
         'Each 15-30 seconds. Shoot them all in one session — setting up twice means the second time does not happen'),
@@ -381,12 +399,16 @@ export function buildPrep(input: {
     const src = input.book.dailySources;
     const pick = [0, 1, 2].map((i) => src[(input.week * 2 + i) % src.length]).filter(Boolean);
     out.push({
+      who: 'salon',
       label: bi(`Chụp ${PHOTO_COUNT} ảnh`, `Take ${PHOTO_COUNT} photos`),
       detail: bi(pick.map((s) => viOf(s.label)).join(' · '), pick.map((s) => enOf(s.label)).join(' · ')),
     });
   }
   if (input.posts > 0) {
     out.push({
+      // The team's own work, in the team's own tool — it was on the shop's
+      // list only because the list had no owner on it.
+      who: 'agency',
       label: bi(`Viết ${input.posts} caption`, `Write ${input.posts} captions`),
       detail: bi('Bấm "Bài mới" ở tab Lịch đăng bài — phần liên hệ và hashtag đã có sẵn, chỉ cần viết nội dung',
         'Press “New post” on the Post schedule tab — the contact block and hashtags are already there, so only the words are left'),
@@ -395,12 +417,14 @@ export function buildPrep(input: {
   if (input.reviewsNeeded && input.reviewsNeeded > 0) {
     const weekly = Math.min(7, input.reviewsNeeded);
     out.push({
+      who: 'salon',
       label: bi(`Xin ${weekly} đánh giá Google`, `Ask for ${weekly} Google reviews`),
       detail: bi('Xin lúc thanh toán, khi khách vừa nhìn tay xong. Xin qua tin nhắn sau đó thì tỉ lệ rớt hẳn',
         'Ask at checkout, right after she has looked at her hands. Asking by message later converts far worse'),
     });
   }
   out.push({
+    who: 'salon',
     label: bi('Xin phép trước khi đăng mặt khách', 'Get permission before posting a face'),
     detail: bi('Một câu lúc đang làm là đủ. Đăng rồi mới hỏi là cách nhanh nhất mất một khách quen',
       'One sentence while you work is enough. Posting first and asking after is the quickest way to lose a regular'),

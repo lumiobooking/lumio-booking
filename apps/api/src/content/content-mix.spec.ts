@@ -163,9 +163,10 @@ describe('the whole week, once the new work is in it', () => {
   it('carries its own prep list and its own targets', () => {
     expect(p.prep.length).toBeGreaterThan(2);
     expect(p.targets.length).toBeGreaterThan(0);
-    // Derived, not restated: the caption count is the post count.
-    const posts = all.filter((j) => j.kind === 'post').length;
-    expect(viOf(p.prep.find((l) => viOf(l.label).includes('caption'))!.label)).toBe(`Viết ${posts} caption`);
+    // Caption writing is OURS and left the shop's list when prep gained an
+    // owner: the plan goes to a salon in the US, the writer is in Vietnam.
+    expect(p.prep.find((l) => viOf(l.label).includes('caption'))).toBeUndefined();
+    expect(p.prep.every((l) => l.who === 'salon')).toBe(true);
   });
 
   it('says all of it in English too', () => {

@@ -22,6 +22,7 @@
  */
 
 import { WEEKDAY_VI, type SlotLoad, type OfferAdvice, type LapsedSignal } from './revenue-signals';
+import type { JobOwner } from './work-owner';
 import type { DatedEvent } from './region-events';
 import { playbookFor, type ContentSource, type Playbook } from './industry-playbook';
 import { rotate, type RoadmapStage } from './roadmap';
@@ -47,6 +48,15 @@ export type JobKind =
 
 export interface Job {
   kind: JobKind;
+  /**
+   * WHO DOES IT — the agency or the shop. See ./work-owner.
+   *
+   * Optional so the weeks already stored keep working: a row written before
+   * this field existed falls back to the kind's default, which is what it
+   * meant anyway. Set it explicitly only where the kind's default is wrong for
+   * this particular job.
+   */
+  who?: JobOwner;
   /** The instruction itself, short enough to read on a phone at 7am. */
   text: Txt;
   /** Why this job is on this day — the part that earns trust. */
@@ -84,13 +94,25 @@ export interface WeekPlan {
   stage: RoadmapStage | null;
   /** Weeks since this shop's plan began — 0 for a brand-new salon. */
   week: number;
-  /** Every-day habits, separate from the dated work. */
-  daily: Job[];
   /**
-   * What to walk into the shop carrying, summed from the week's own jobs.
+   * Every-day habits, separate from the dated work — each tagged with whose
+   * hands it needs. Roughly half are the team's (replying to messages, chasing
+   * regulars) and half the shop's (a story from the room, the review ask at the
+   * counter); printing them as one list put all of it on the shop.
+   */
+  daily: { kind: 'engage' | 'story'; who: JobOwner; text: Txt; why: Txt; when: Txt }[];
+  /**
+   * WHAT THE SHOP HAS TO PRODUCE THIS WEEK — the request, not a packing list.
    *
-   * Derived, never a second copy: a prep list that can disagree with the plan
-   * is worse than none, because the person packs from the list.
+   * This was written as "what to walk into the shop carrying", which describes
+   * an agency that visits its clients. Lumio never does: the team is in another
+   * country and the only thing that crosses the distance is a file the shop
+   * uploads. So the list is the message sent TO the salon — what to film, how
+   * many, what of — and it holds salon-owned work only. Team work belongs in
+   * the team's queue, where somebody is actually going to pick it up.
+   *
+   * Derived, never a second copy: a list that can disagree with the plan is
+   * worse than none, because the shop works from the list.
    */
   prep: PrepLine[];
   /** What this week is supposed to move, in numbers next week can check. */
@@ -530,8 +552,13 @@ export function buildWeekPlan(input: {
 
   return {
     days: attachBriefs(days, sheetCtx), focus, basis, report, stage, week,
+    // The habits carry their own owner now (see industry-playbook), so the two
+    // screens can each show their half instead of the shop reading a list that
+    // is two thirds ours.
     daily: book.habits, sources: book.dailySources, trade: book.trade, dataThin,
-    prep, targets,
+    // Salon-owned lines only: this is the request that goes TO the shop, and a
+    // request containing our own caption-writing is not a request.
+    prep: prep.filter((l) => l.who === 'salon'), targets,
   };
 }
 

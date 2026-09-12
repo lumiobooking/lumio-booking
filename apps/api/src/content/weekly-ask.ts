@@ -1,4 +1,5 @@
 import { bi, enOf, viOf, type Txt } from './i18n';
+import { isMediaAsk, isSalonWork, type JobOwner } from './work-owner';
 import type { JobKind } from './weekly-plan';
 
 /**
@@ -35,16 +36,25 @@ import type { JobKind } from './weekly-plan';
  * date somebody picked: material is needed before it can be published.
  */
 
-/** The only work that is physically the shop's. */
+/** The media ask: one physical act, one deadline, one button. See work-owner. */
 export const ASK_KINDS: JobKind[] = ['film', 'photo'];
-/** Habits at the counter — the shop's, but never counted or ticked. */
-export const COUNTER_KINDS: JobKind[] = ['engage'];
+/**
+ * WAS: "habits at the counter — the shop's".
+ *
+ * It named `engage`, which is replying to comments, messages and Google
+ * reviews — desk work this agency does from another country. Filing it as the
+ * shop's put it on the shop's screen AND kept it out of the team's queue
+ * (crew-board excluded it too), so it belonged to nobody. Ownership is in
+ * ./work-owner now and this list is empty rather than wrong.
+ */
+export const COUNTER_KINDS: JobKind[] = [];
 /** Jobs whose day is a publishing day: the ask has to land before the first one. */
 const PUBLISH_KINDS: JobKind[] = ['post', 'story', 'offer', 'gbp'];
 
 export interface AskJobLike {
   id?: string;
   kind: JobKind;
+  who?: JobOwner;
   dayIndex: number;
   day: Txt;
   text: Txt;
@@ -59,6 +69,20 @@ export interface WeeklyAsk {
   by: Txt;
   /** Which day that is, so the screen can colour it when it is close. */
   byDayIndex: number;
+  /**
+   * EVERYTHING ELSE THIS WEEK THAT ONLY THE SHOP CAN DO.
+   *
+   * The header of this file promises the shop ONE ask a week. That promise was
+   * kept by counting only filming and photography — while partnership jobs,
+   * printing, and anything else physical went out on the same screen without
+   * passing through here. The owner was told "one thing" and shown four.
+   *
+   * They are listed rather than folded into `what`, because they are not one
+   * physical act: you cannot set the phone on a stand once and also have
+   * printed thirty cards. Listing them is what makes the real size of the ask
+   * visible — to the client, and to us before we promise it.
+   */
+  also: Txt[];
 }
 
 /** "3 clip" / "6 ảnh", counted from the instruction the plan wrote. */
@@ -83,8 +107,27 @@ function joinEn(parts: string[]): string {
  * the screen should say plainly rather than inventing a chore to fill space.
  */
 export function weeklyAsk(jobs: AskJobLike[], dayLabels: Txt[]): WeeklyAsk | null {
-  const mine = jobs.filter((j) => ASK_KINDS.includes(j.kind));
-  if (!mine.length) return null;
+  const mine = jobs.filter((j) => isMediaAsk(j));
+  // Salon-owned work that is NOT the media sitting: partnerships, print,
+  // anything else needing hands in the room.
+  const also = jobs.filter((j) => isSalonWork(j) && !isMediaAsk(j)).map((j) => j.text);
+  if (!mine.length) {
+    // No filming this week does not mean nothing is asked of the shop. Saying
+    // "nothing for you" while a partnership job sits on the same screen is the
+    // exact mismatch this field exists to close.
+    if (!also.length) return null;
+    const d = Math.max(...jobs.filter((j) => isSalonWork(j)).map((j) => j.dayIndex));
+    const lb = dayLabels[d];
+    return {
+      jobIds: jobs.filter((j) => isSalonWork(j)).map((j) => j.id).filter((id): id is string => Boolean(id)),
+      what: bi('Tuần này không cần quay chụp', 'No filming needed this week'),
+      by: d === 0
+        ? bi('trong hôm nay', 'today')
+        : bi(`trước ${viOf(lb) || `ngày ${d + 1}`}`, `by ${enOf(lb) || `day ${d + 1}`}`),
+      byDayIndex: d,
+      also,
+    };
+  }
 
   const clips = mine.filter((j) => j.kind === 'film').reduce((n, j) => n + (countIn(j.text) ?? 1), 0);
   const photos = mine.filter((j) => j.kind === 'photo').reduce((n, j) => n + (countIn(j.text) ?? 1), 0);
@@ -114,5 +157,6 @@ export function weeklyAsk(jobs: AskJobLike[], dayLabels: Txt[]): WeeklyAsk | nul
     what,
     by,
     byDayIndex,
+    also,
   };
 }

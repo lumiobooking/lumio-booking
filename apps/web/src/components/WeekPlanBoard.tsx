@@ -66,7 +66,7 @@ export interface WeekView {
   focus: string;
   basis: string;
   report?: string | null;
-  daily: Job[];
+  daily: (Job & { who?: 'agency' | 'salon' })[];
   sources: ContentSourceRow[];
   trade: string;
   week: number;
@@ -581,13 +581,23 @@ export function WeekPlanBoard({
       </div>
 
       {!!week.daily?.length && (
-        <Section title={T('3 THÓI QUEN HẰNG NGÀY', 'THE 3 DAILY HABITS')}
+        /* The habits were one undifferentiated list, so a team member reading
+           the board could not tell which of them were hers. Roughly half are
+           ours — clearing messages, chasing regulars — and half need hands in
+           the room. The tag is the whole point of the list. */
+        <Section title={T('THÓI QUEN HẰNG NGÀY', 'DAILY HABITS')}
           hint={T('Không nằm trong lịch vì ngày nào cũng làm', 'Not on the schedule because they happen every day')}>
           {week.daily.map((j, k) => (
             <div key={k} style={{ display: 'flex', gap: 8, padding: '4px 0' }}>
               <span style={{ flex: '0 0 auto' }}>{ICON(j.kind)}</span>
               <div>
                 <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, letterSpacing: .4, padding: '1px 6px', borderRadius: 999,
+                    marginRight: 6, textTransform: 'uppercase',
+                    background: j.who === 'salon' ? 'rgba(245,158,11,.16)' : 'rgba(99,102,241,.18)',
+                    color: j.who === 'salon' ? '#fbbf24' : '#a5b4fc',
+                  }}>{j.who === 'salon' ? T('tiệm', 'shop') : T('bên em', 'us')}</span>
                   {j.text}{j.when && <span style={{ color: 'var(--c64748b)' }}> · {j.when}</span>}
                 </div>
                 <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45 }}>{j.why}</div>

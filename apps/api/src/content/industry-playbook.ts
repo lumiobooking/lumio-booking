@@ -25,6 +25,7 @@
  */
 
 import { bi, viOf, enOf, type Txt } from './i18n';
+import type { JobOwner } from './work-owner';
 
 export interface ContentSource {
   /** The moment or object the clip comes from. */
@@ -68,7 +69,16 @@ export interface Playbook {
    * the week plan's JobKind. Widening it to `string` compiled here and failed
    * over there — the kind of error that only appears once the two files meet.
    */
-  habits: { kind: 'engage' | 'story'; text: Txt; why: Txt; when: Txt }[];
+  /**
+   * Every-day habits — and who has the hands for them.
+   *
+   * Split because the same list held two different jobs. "Trả lời hết tin nhắn
+   * còn sót" is desk work Lumio does from another country; "Xin 1 khách vui vẻ
+   * nhất để lại đánh giá" happens at a counter with a person standing there.
+   * Printing both on the shop's screen under one heading is how a client who
+   * was promised "we do nearly everything" ends up with three chores a day.
+   */
+  habits: { kind: 'engage' | 'story'; who: JobOwner; text: Txt; why: Txt; when: Txt }[];
 }
 
 const SALON: Playbook = {
@@ -89,9 +99,9 @@ const SALON: Playbook = {
     { label: bi('Trả lời một câu khách hay hỏi', 'Answering a question customers keep asking'), job: bi('Bài gỡ lý do khách còn chần chừ trước khi đặt lịch', 'The post that clears the last reason someone is holding off on booking'), shots: bi('Câu hỏi hiện trên màn hình · vừa làm vừa trả lời · kết bằng lời mời đặt lịch', 'The question on screen · answer it while you work · end with an invitation to book') },
   ],
   habits: [
-    { kind: 'engage', text: bi('Trả lời hết tin nhắn và bình luận còn sót', 'Clear every leftover message and comment'), why: bi('Khách nhắn mà chờ quá một buổi là mất — đây là việc rẻ nhất trong ngày', 'A customer who waits more than half a day is gone — this is the cheapest job on the list'), when: bi('trước khi mở cửa', 'before you open') },
-    { kind: 'story', text: bi('Chụp 1 bộ móng đẹp nhất trong ngày, đăng story ngay', 'Shoot the best set of the day and put it straight on a story'), why: bi('Story không cần dựng, chỉ cần đều. Đây là kho ảnh cho các bài tuần sau', 'A story needs no editing, only regularity. It is also the photo bank for next week\'s posts'), when: bi('lúc làm xong', 'as soon as it is finished') },
-    { kind: 'engage', text: bi('Xin 1 khách vui vẻ nhất để lại đánh giá Google', 'Ask the happiest customer of the day for a Google review'), why: bi('Một đánh giá mỗi ngày đưa tiệm lên trước đối thủ trên bản đồ — nhanh hơn mọi thứ khác', 'One review a day moves you ahead of the shop down the road on the map — faster than anything else you can do'), when: bi('lúc thanh toán', 'at checkout') },
+    { kind: 'engage', who: 'agency', text: bi('Trả lời hết tin nhắn và bình luận còn sót', 'Clear every leftover message and comment'), why: bi('Khách nhắn mà chờ quá một buổi là mất — đây là việc rẻ nhất trong ngày', 'A customer who waits more than half a day is gone — this is the cheapest job on the list'), when: bi('trước khi mở cửa', 'before you open') },
+    { kind: 'story', who: 'salon', text: bi('Chụp 1 bộ móng đẹp nhất trong ngày, đăng story ngay', 'Shoot the best set of the day and put it straight on a story'), why: bi('Story không cần dựng, chỉ cần đều. Đây là kho ảnh cho các bài tuần sau', 'A story needs no editing, only regularity. It is also the photo bank for next week\'s posts'), when: bi('lúc làm xong', 'as soon as it is finished') },
+    { kind: 'engage', who: 'salon', text: bi('Xin 1 khách vui vẻ nhất để lại đánh giá Google', 'Ask the happiest customer of the day for a Google review'), why: bi('Một đánh giá mỗi ngày đưa tiệm lên trước đối thủ trên bản đồ — nhanh hơn mọi thứ khác', 'One review a day moves you ahead of the shop down the road on the map — faster than anything else you can do'), when: bi('lúc thanh toán', 'at checkout') },
   ],
 };
 
@@ -112,9 +122,9 @@ const RESTAURANT: Playbook = {
     { label: bi('Một buổi trong quán, không dựng', 'A shift in the room, uncut'), job: bi('Bài cho người chưa từng tới hình dung được không khí', 'The post that lets someone who has never been in picture the place'), shots: bi('Mở cửa buổi sáng · lúc đông nhất · dọn bàn cuối ngày', 'Opening up in the morning · the busiest moment · clearing tables at the end of the night') },
   ],
   habits: [
-    { kind: 'engage', text: bi('Trả lời mọi đánh giá mới, kể cả đánh giá xấu', 'Reply to every new review, the bad ones included'), why: bi('Người đọc đánh giá xấu quan tâm cách quán phản hồi hơn là nội dung phàn nàn', 'People reading a bad review care more about how the place answered than about the complaint itself'), when: bi('đầu ca', 'at the start of the shift') },
-    { kind: 'story', text: bi('Đăng story món đặc biệt hôm nay', 'Put today\'s special on a story'), why: bi('Khách quen mở story lúc đang nghĩ trưa nay ăn gì — đúng lúc đó là đủ', 'Regulars open stories while they are deciding where to eat — being there at that moment is enough'), when: bi('trước 11 giờ', 'before 11am') },
-    { kind: 'engage', text: bi('Xin 1 bàn hài lòng để lại đánh giá Google', 'Ask one happy table for a Google review'), why: bi('Thứ hạng trên bản đồ quyết định lượng khách vãng lai nhiều hơn mọi quảng cáo', 'Where you sit on the map brings in more walk-ins than any ad does'), when: bi('lúc tính tiền', 'when they pay the check') },
+    { kind: 'engage', who: 'agency', text: bi('Trả lời mọi đánh giá mới, kể cả đánh giá xấu', 'Reply to every new review, the bad ones included'), why: bi('Người đọc đánh giá xấu quan tâm cách quán phản hồi hơn là nội dung phàn nàn', 'People reading a bad review care more about how the place answered than about the complaint itself'), when: bi('đầu ca', 'at the start of the shift') },
+    { kind: 'story', who: 'salon', text: bi('Đăng story món đặc biệt hôm nay', 'Put today\'s special on a story'), why: bi('Khách quen mở story lúc đang nghĩ trưa nay ăn gì — đúng lúc đó là đủ', 'Regulars open stories while they are deciding where to eat — being there at that moment is enough'), when: bi('trước 11 giờ', 'before 11am') },
+    { kind: 'engage', who: 'salon', text: bi('Xin 1 bàn hài lòng để lại đánh giá Google', 'Ask one happy table for a Google review'), why: bi('Thứ hạng trên bản đồ quyết định lượng khách vãng lai nhiều hơn mọi quảng cáo', 'Where you sit on the map brings in more walk-ins than any ad does'), when: bi('lúc tính tiền', 'when they pay the check') },
   ],
 };
 
@@ -134,9 +144,9 @@ const REAL_ESTATE: Playbook = {
     { label: bi('Sai lầm hay gặp khi mua/bán', 'The mistakes people make buying or selling'), job: bi('Bài giữ người xem tới cuối — ai cũng sợ mất tiền vì không biết', 'The post that holds people to the end — nobody wants to lose money for not knowing'), shots: bi('Nói thẳng vào máy · một ví dụ cụ thể · cách tránh', 'Talk straight to camera · one concrete example · how to avoid it') },
   ],
   habits: [
-    { kind: 'engage', text: bi('Trả lời mọi tin nhắn hỏi về căn đang bán', 'Answer every message about a listing'), why: bi('Người mua nhắn nhiều môi giới cùng lúc — ai trả lời trước thường thắng', 'Buyers message several agents at once — whoever answers first usually wins'), when: bi('trong giờ làm', 'during working hours') },
-    { kind: 'story', text: bi('Đăng story một góc nhà đang xem', 'Story one corner of the house you are showing'), why: bi('Giữ sự hiện diện mà không tốn buổi quay', 'Stay visible without spending a filming session'), when: bi('khi đi xem nhà', 'at a showing') },
-    { kind: 'engage', text: bi('Nhắn 1 khách cũ hỏi thăm', 'Check in with one past client'), why: bi('Giới thiệu từ khách cũ là nguồn khách rẻ nhất trong ngành này', 'Referrals from past clients are the cheapest source of business there is'), when: bi('cuối ngày', 'at the end of the day') },
+    { kind: 'engage', who: 'agency', text: bi('Trả lời mọi tin nhắn hỏi về căn đang bán', 'Answer every message about a listing'), why: bi('Người mua nhắn nhiều môi giới cùng lúc — ai trả lời trước thường thắng', 'Buyers message several agents at once — whoever answers first usually wins'), when: bi('trong giờ làm', 'during working hours') },
+    { kind: 'story', who: 'salon', text: bi('Đăng story một góc nhà đang xem', 'Story one corner of the house you are showing'), why: bi('Giữ sự hiện diện mà không tốn buổi quay', 'Stay visible without spending a filming session'), when: bi('khi đi xem nhà', 'at a showing') },
+    { kind: 'engage', who: 'agency', text: bi('Nhắn 1 khách cũ hỏi thăm', 'Check in with one past client'), why: bi('Giới thiệu từ khách cũ là nguồn khách rẻ nhất trong ngành này', 'Referrals from past clients are the cheapest source of business there is'), when: bi('cuối ngày', 'at the end of the day') },
   ],
 };
 
@@ -155,9 +165,9 @@ const SERVICE: Playbook = {
     { label: bi('Khách cũ nói về lần làm trước', 'A past customer on the last job you did'), job: bi('Bài bằng chứng — lời khách nặng hơn lời mình tự nói', 'The proof post — a customer\'s word carries more than your own'), shots: bi('Khách nói ngắn · kết quả còn giữ được · lời mời liên hệ', 'A short word from them · the result still holding up · an invitation to call') },
   ],
   habits: [
-    { kind: 'engage', text: bi('Trả lời hết tin nhắn và cuộc gọi nhỡ', 'Clear every message and missed call'), why: bi('Khách dịch vụ thường gọi nhiều nơi — ai bắt máy trước thường được việc', 'People call several places — whoever picks up first usually gets the job'), when: bi('đầu ngày', 'first thing in the morning') },
-    { kind: 'story', text: bi('Đăng story một ca đang làm', 'Story a job in progress'), why: bi('Đều đặn quan trọng hơn hoàn hảo', 'Steady beats perfect'), when: bi('giữa ca', 'mid-job') },
-    { kind: 'engage', text: bi('Xin 1 khách hài lòng để lại đánh giá', 'Ask one satisfied customer for a review'), why: bi('Đánh giá là thứ quyết định người lạ có gọi hay không', 'Reviews decide whether a stranger calls you at all'), when: bi('lúc xong việc', 'when the job is done') },
+    { kind: 'engage', who: 'agency', text: bi('Trả lời hết tin nhắn và cuộc gọi nhỡ', 'Clear every message and missed call'), why: bi('Khách dịch vụ thường gọi nhiều nơi — ai bắt máy trước thường được việc', 'People call several places — whoever picks up first usually gets the job'), when: bi('đầu ngày', 'first thing in the morning') },
+    { kind: 'story', who: 'salon', text: bi('Đăng story một ca đang làm', 'Story a job in progress'), why: bi('Đều đặn quan trọng hơn hoàn hảo', 'Steady beats perfect'), when: bi('giữa ca', 'mid-job') },
+    { kind: 'engage', who: 'salon', text: bi('Xin 1 khách hài lòng để lại đánh giá', 'Ask one satisfied customer for a review'), why: bi('Đánh giá là thứ quyết định người lạ có gọi hay không', 'Reviews decide whether a stranger calls you at all'), when: bi('lúc xong việc', 'when the job is done') },
   ],
 };
 
@@ -191,9 +201,9 @@ const HAIR: Playbook = {
     { label: bi('Chăm tóc nhuộm tại nhà', 'Keeping colour alive at home'), job: bi('Bài giữ màu bền hơn, giảm hẳn ca khách quay lại phàn nàn bạc màu', 'Keeps the colour alive longer and cuts the come-back-and-complain visits'), shots: bi('Dầu gội không sulfate · nhiệt độ nước · điều tuyệt đối tránh', 'Sulfate-free shampoo · water temperature · the one thing never to do') },
   ],
   habits: [
-    { kind: 'engage', text: bi('Trả lời hết tin nhắn hỏi giá nhuộm', 'Clear every message asking what colour costs'), why: bi('Giá nhuộm là câu hỏi số một và là câu khách bỏ đi nếu không được trả lời', 'Colour price is the number one question and the one people leave over'), when: bi('trước khi mở cửa', 'before you open') },
-    { kind: 'story', text: bi('Đăng story mái tóc đẹp nhất trong ngày', 'Story the best head of hair today'), why: bi('Không cần dựng, chỉ cần đều — và là kho ảnh cho tuần sau', 'No editing needed, only regularity — and it is next week\'s photo bank'), when: bi('lúc tháo áo choàng', 'as the cape comes off') },
-    { kind: 'engage', text: bi('Hẹn ngày dặm chân tóc ngay tại quầy', 'Book the root touch-up at the counter'), why: bi('Ngành tóc sống bằng lịch quay lại, và lúc khách còn đứng đó là lúc dễ hẹn nhất', 'This trade lives on rebookings, and the easiest moment is while she is still standing there'), when: bi('lúc thanh toán', 'at checkout') },
+    { kind: 'engage', who: 'agency', text: bi('Trả lời hết tin nhắn hỏi giá nhuộm', 'Clear every message asking what colour costs'), why: bi('Giá nhuộm là câu hỏi số một và là câu khách bỏ đi nếu không được trả lời', 'Colour price is the number one question and the one people leave over'), when: bi('trước khi mở cửa', 'before you open') },
+    { kind: 'story', who: 'salon', text: bi('Đăng story mái tóc đẹp nhất trong ngày', 'Story the best head of hair today'), why: bi('Không cần dựng, chỉ cần đều — và là kho ảnh cho tuần sau', 'No editing needed, only regularity — and it is next week\'s photo bank'), when: bi('lúc tháo áo choàng', 'as the cape comes off') },
+    { kind: 'engage', who: 'salon', text: bi('Hẹn ngày dặm chân tóc ngay tại quầy', 'Book the root touch-up at the counter'), why: bi('Ngành tóc sống bằng lịch quay lại, và lúc khách còn đứng đó là lúc dễ hẹn nhất', 'This trade lives on rebookings, and the easiest moment is while she is still standing there'), when: bi('lúc thanh toán', 'at checkout') },
   ],
 };
 
@@ -213,9 +223,9 @@ const LASH: Playbook = {
     { label: bi('Một ca dặm mi, từ đầu đến cuối', 'A fill, start to finish'), job: bi('Khách mới không biết dặm mi là gì và vì sao phải quay lại — bài này bán cả chu kỳ', 'New customers do not know what a fill is or why they must return — this post sells the whole cycle'), shots: bi('Mi đã thưa · gỡ sợi rụng · gắn bù · hai mắt đều lại', 'The gappy set · removing what fell · filling in · both eyes even again') },
   ],
   habits: [
-    { kind: 'engage', text: bi('Nhắn khách tới hạn dặm mi', 'Message everyone due for a fill'), why: bi('Ngành mi sống bằng lịch dặm 2–3 tuần. Quên nhắn một tuần là mất nguyên chu kỳ', 'This trade lives on the two-to-three-week fill. Miss a week of reminders and you lose a whole cycle'), when: bi('đầu ngày', 'first thing') },
-    { kind: 'story', text: bi('Đăng story một bộ mi mỗi ngày', 'Story one set a day'), why: bi('Mi khó chụp đẹp bằng điện thoại — đăng đều thì tay nghề chụp cũng lên theo', 'Lashes are hard to shoot on a phone — posting daily is how the shooting gets better too'), when: bi('lúc làm xong', 'as you finish') },
-    { kind: 'engage', text: bi('Hẹn ngày dặm ngay khi khách còn ngồi', 'Book the fill before she stands up'), why: bi('Hẹn sau khi khách về là hẹn không bao giờ đặt', 'A fill booked after she leaves is a fill never booked'), when: bi('lúc thanh toán', 'at checkout') },
+    { kind: 'engage', who: 'agency', text: bi('Nhắn khách tới hạn dặm mi', 'Message everyone due for a fill'), why: bi('Ngành mi sống bằng lịch dặm 2–3 tuần. Quên nhắn một tuần là mất nguyên chu kỳ', 'This trade lives on the two-to-three-week fill. Miss a week of reminders and you lose a whole cycle'), when: bi('đầu ngày', 'first thing') },
+    { kind: 'story', who: 'salon', text: bi('Đăng story một bộ mi mỗi ngày', 'Story one set a day'), why: bi('Mi khó chụp đẹp bằng điện thoại — đăng đều thì tay nghề chụp cũng lên theo', 'Lashes are hard to shoot on a phone — posting daily is how the shooting gets better too'), when: bi('lúc làm xong', 'as you finish') },
+    { kind: 'engage', who: 'salon', text: bi('Hẹn ngày dặm ngay khi khách còn ngồi', 'Book the fill before she stands up'), why: bi('Hẹn sau khi khách về là hẹn không bao giờ đặt', 'A fill booked after she leaves is a fill never booked'), when: bi('lúc thanh toán', 'at checkout') },
   ],
 };
 
@@ -234,8 +244,8 @@ const BROW: Playbook = {
     { label: bi('Người thợ và cách đo của họ', 'The artist and how she measures'), job: bi('Ngành này khách chọn người, không chọn tiệm', 'In this trade people choose a person, not a shop'), shots: bi('Thợ đang đo · dụng cụ riêng · một câu về nghề', 'Measuring · her own tools · one line about the work') },
   ],
   habits: [
-    { kind: 'story', text: bi('Đăng story một cặp mày trước–sau mỗi ngày', 'Story one before-and-after brow a day'), why: bi('Đây là ngành mà một tấm ảnh so sánh bán hàng giỏi hơn mọi lời quảng cáo', 'This is a trade where one comparison photo sells better than any copy'), when: bi('lúc làm xong', 'as you finish') },
-    { kind: 'engage', text: bi('Nhắc khách lịch tỉa lại sau 4–6 tuần', 'Remind customers of the four-to-six week reshape'), why: bi('Mày mọc lại là đồng hồ đếm ngược có sẵn — chỉ cần nhắc đúng lúc', 'Regrowth is a built-in clock — it only needs a reminder at the right moment'), when: bi('đầu tuần', 'start of the week') },
+    { kind: 'story', who: 'salon', text: bi('Đăng story một cặp mày trước–sau mỗi ngày', 'Story one before-and-after brow a day'), why: bi('Đây là ngành mà một tấm ảnh so sánh bán hàng giỏi hơn mọi lời quảng cáo', 'This is a trade where one comparison photo sells better than any copy'), when: bi('lúc làm xong', 'as you finish') },
+    { kind: 'engage', who: 'agency', text: bi('Nhắc khách lịch tỉa lại sau 4–6 tuần', 'Remind customers of the four-to-six week reshape'), why: bi('Mày mọc lại là đồng hồ đếm ngược có sẵn — chỉ cần nhắc đúng lúc', 'Regrowth is a built-in clock — it only needs a reminder at the right moment'), when: bi('đầu tuần', 'start of the week') },
   ],
 };
 
@@ -254,8 +264,8 @@ const SPA: Playbook = {
     { label: bi('Người làm và tay nghề của họ', 'The esthetician and her hands'), job: bi('Khách giao mặt mình cho một người, không phải cho một phòng', 'A customer hands her face to a person, not to a room'), shots: bi('Thao tác tay cận cảnh · dụng cụ riêng · một câu về nghề', 'Close on the hands · her own tools · one line about the work') },
   ],
   habits: [
-    { kind: 'engage', text: bi('Nhắn khách đang giữa liệu trình mà chưa đặt buổi tiếp', 'Message anyone mid-course with no next session booked'), why: bi('Liệu trình đứt giữa chừng là mất cả kết quả lẫn doanh thu — và khách thường chỉ quên', 'A course that stops halfway loses the result and the revenue — and usually she just forgot'), when: bi('đầu ngày', 'first thing') },
-    { kind: 'story', text: bi('Đăng story một khuôn mặt sau liệu trình', 'Story one face after a treatment'), why: bi('Ánh sáng phòng spa vốn đã đẹp — chỉ cần bấm máy đều', 'Treatment-room light is already flattering — it only needs the shutter pressed regularly'), when: bi('ngay sau buổi làm', 'right after the session') },
+    { kind: 'engage', who: 'agency', text: bi('Nhắn khách đang giữa liệu trình mà chưa đặt buổi tiếp', 'Message anyone mid-course with no next session booked'), why: bi('Liệu trình đứt giữa chừng là mất cả kết quả lẫn doanh thu — và khách thường chỉ quên', 'A course that stops halfway loses the result and the revenue — and usually she just forgot'), when: bi('đầu ngày', 'first thing') },
+    { kind: 'story', who: 'salon', text: bi('Đăng story một khuôn mặt sau liệu trình', 'Story one face after a treatment'), why: bi('Ánh sáng phòng spa vốn đã đẹp — chỉ cần bấm máy đều', 'Treatment-room light is already flattering — it only needs the shutter pressed regularly'), when: bi('ngay sau buổi làm', 'right after the session') },
   ],
 };
 
@@ -274,8 +284,8 @@ const MASSAGE: Playbook = {
     { label: bi('Một động tác tự làm được ở nhà', 'One thing you can do yourself at home'), job: bi('Cho đi một chút là cách rẻ nhất để người lạ tin mình biết nghề', 'Giving something away is the cheapest way for a stranger to believe you know the work'), shots: bi('Chỉ vị trí · làm mẫu chậm · nói rõ khi nào cần tới thợ', 'Point to the spot · demonstrate slowly · say plainly when it needs a professional') },
   ],
   habits: [
-    { kind: 'engage', text: bi('Nhắn khách quen quá 4 tuần chưa quay lại', 'Message regulars four weeks overdue'), why: bi('Massage là thói quen, và thói quen đứt là đứt luôn nếu không ai nhắc', 'Massage is a habit, and a broken habit stays broken unless somebody mentions it'), when: bi('đầu tuần', 'start of the week') },
-    { kind: 'story', text: bi('Đăng story căn phòng đã dọn sẵn', 'Story the room, ready'), why: bi('Rẻ nhất, nhanh nhất, và là thứ khách mới muốn thấy nhất', 'The cheapest, fastest shot there is, and the one a new customer most wants to see'), when: bi('trước giờ mở cửa', 'before opening') },
+    { kind: 'engage', who: 'agency', text: bi('Nhắn khách quen quá 4 tuần chưa quay lại', 'Message regulars four weeks overdue'), why: bi('Massage là thói quen, và thói quen đứt là đứt luôn nếu không ai nhắc', 'Massage is a habit, and a broken habit stays broken unless somebody mentions it'), when: bi('đầu tuần', 'start of the week') },
+    { kind: 'story', who: 'salon', text: bi('Đăng story căn phòng đã dọn sẵn', 'Story the room, ready'), why: bi('Rẻ nhất, nhanh nhất, và là thứ khách mới muốn thấy nhất', 'The cheapest, fastest shot there is, and the one a new customer most wants to see'), when: bi('trước giờ mở cửa', 'before opening') },
   ],
 };
 
@@ -294,8 +304,8 @@ const PMU: Playbook = {
     { label: bi('Sửa lại nét phun cũ của chỗ khác', 'Correcting somebody else\'s old work'), job: bi('Nhóm khách sẵn sàng trả cao nhất, vì họ đang mang một lỗi trên mặt mỗi ngày', 'The customers who will pay the most, because they wear the mistake on their face every day'), shots: bi('Nét cũ ám xanh · quy trình xử lý · kết quả đã lành', 'The old blue-grey shape · the correction process · the healed result') },
   ],
   habits: [
-    { kind: 'engage', text: bi('Nhắn khách tới hạn dặm lại sau 1–2 năm', 'Message customers due for a top-up after a year or two'), why: bi('Màu phai là hẹn quay lại có sẵn, nhưng cách nhau quá lâu nên không ai tự nhớ', 'Fading is a built-in rebooking, but the gap is long enough that nobody remembers on their own'), when: bi('mỗi tháng một lần rà danh sách', 'once a month, work the list') },
-    { kind: 'story', text: bi('Đăng story ảnh đã lành, ghi rõ mốc tuần', 'Story a healed result and say how many weeks'), why: bi('Ghi rõ mốc tuần là điều làm khách tin — và gần như không ai trong ngành chịu ghi', 'Stating the week is what earns belief, and almost nobody in this trade states it'), when: bi('khi khách quay lại kiểm tra', 'when a customer comes back for a check') },
+    { kind: 'engage', who: 'agency', text: bi('Nhắn khách tới hạn dặm lại sau 1–2 năm', 'Message customers due for a top-up after a year or two'), why: bi('Màu phai là hẹn quay lại có sẵn, nhưng cách nhau quá lâu nên không ai tự nhớ', 'Fading is a built-in rebooking, but the gap is long enough that nobody remembers on their own'), when: bi('mỗi tháng một lần rà danh sách', 'once a month, work the list') },
+    { kind: 'story', who: 'salon', text: bi('Đăng story ảnh đã lành, ghi rõ mốc tuần', 'Story a healed result and say how many weeks'), why: bi('Ghi rõ mốc tuần là điều làm khách tin — và gần như không ai trong ngành chịu ghi', 'Stating the week is what earns belief, and almost nobody in this trade states it'), when: bi('khi khách quay lại kiểm tra', 'when a customer comes back for a check') },
   ],
 };
 

@@ -230,10 +230,14 @@ function storySheet(job: Job): JobBrief {
         bi('Đăng 8–9h sáng ngày cuối. Trả lời tin nhắn trong 10 phút', 'Post 8–9am on the last day. Answer messages within 10 minutes'),
       ]
       : [
-        bi('Khung 1: góc quay đang set (giá đỡ, đèn) — "Hôm nay quay gì đây?"', 'Frame 1: the corner being set up (stand, light) — "Guess what we\'re filming?"'),
-        bi('Khung 2: tay thợ đang làm, 5 giây, không chữ', 'Frame 2: the tech\'s hands at work, 5 seconds, no text'),
+        bi('Mở clip gốc tiệm gửi tuần này — lấy khung dựng cảnh hoặc góc quay lúc bắt đầu',
+          'Open the raw clips the shop sent this week — take a frame from the set-up or the opening shot'),
+        bi('Khung 1: cảnh đang chuẩn bị + chữ "Hôm nay làm gì đây?"',
+          'Frame 1: the set-up shot + text "Guess what we\'re doing today?"'),
+        bi('Khung 2: cắt 5 giây tay thợ đang làm, không chữ', 'Frame 2: a 5-second cut of the hands at work, no text'),
         bi('Khung 3: sticker bình chọn — "Mẫu A hay B?"', 'Frame 3: poll sticker — "Design A or B?"'),
-        bi('Khung 4: kết quả gần xong + "Bài đầy đủ tối nay 👀"', 'Frame 4: nearly done + "Full post tonight 👀"'),
+        bi('Khung 4: khung áp chót của clip + "Bài đầy đủ tối nay 👀"',
+          'Frame 4: the second-to-last frame of the clip + "Full post tonight 👀"'),
       ],
     channel: bi('Instagram Story · Facebook Story', 'Instagram Story · Facebook Story'),
   };

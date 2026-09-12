@@ -1,4 +1,5 @@
 import { viOf, enOf, bi, type Txt } from './i18n';
+import { isAgencyWork, ownerOf } from './work-owner';
 import type { DayPlan, Job, JobKind } from './weekly-plan';
 
 /**
@@ -33,8 +34,22 @@ import type { DayPlan, Job, JobKind } from './weekly-plan';
  * then explains, three days later, why nothing went out.
  */
 
-/** The kinds Lumio does with its own hands. Filming and photographing are the shop's. */
-export const CREW_KINDS: JobKind[] = ['post', 'story', 'offer', 'winback', 'gbp', 'event'];
+/**
+ * WHAT REACHES THIS QUEUE — now decided per job, not per kind.
+ *
+ * The list below was the whole rule, and it was wrong twice over:
+ *   - `event` was on it. Its steps are "pick a partner within 1km", "print 30
+ *     cards", "photograph both owners". A designer in Vietnam opened the queue
+ *     and was told to print cards in an American strip mall.
+ *   - `engage` was NOT on it, because weekly-ask filed replying to comments and
+ *     messages as a habit of the shop's counter. It is desk work, it is ours,
+ *     and being on neither list meant nobody did it at all.
+ *
+ * Ownership now lives in ./work-owner, on the job. This constant survives only
+ * as the fallback for week rows written before jobs carried an owner — a stored
+ * plan from last month must not silently change shape.
+ */
+export const CREW_KINDS: JobKind[] = ['post', 'story', 'offer', 'winback', 'gbp', 'engage'];
 
 export type CrewRole = 'design' | 'content';
 
@@ -47,8 +62,8 @@ export type CrewRole = 'design' | 'content';
  * click, not a blocked job.
  */
 const ROLE: Partial<Record<JobKind, CrewRole>> = {
-  post: 'design', story: 'design', offer: 'design', event: 'design',
-  gbp: 'content', winback: 'content',
+  post: 'design', story: 'design', offer: 'design',
+  gbp: 'content', winback: 'content', engage: 'content',
 };
 
 export const KIND_LABEL: Partial<Record<JobKind, Txt>> = {
@@ -142,7 +157,10 @@ export function crewJobs(rows: WeekRowLike[], opts: { today: string; lang?: 'vi'
     (row.days ?? []).forEach((day: DayPlan, dayIndex) => {
       for (const j of day.jobs ?? []) {
         const job = j as Job;
-        if (!CREW_KINDS.includes(job.kind) || !job.id) continue;
+        // The job's own owner decides. Rows stored before `who` existed fall
+        // back to the kind list, so an old week keeps the queue it had.
+        const mine = job.who ? isAgencyWork(job) : CREW_KINDS.includes(job.kind);
+        if (!mine || !job.id) continue;
         const due = jobDate(row.startDate, dayIndex);
         const lateDays = Math.round((todayMs - Date.parse(`${due}T00:00:00Z`)) / DAY);
         // Ahead of the horizon: real work, but not today's question.

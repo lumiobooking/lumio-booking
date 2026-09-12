@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { habitOwner } from './work-owner';
 import { bi, type Txt } from './i18n';
 import type { Playbook, ContentSource, PostType, FeedLink } from './industry-playbook';
 import type { TradeQueries } from './trends/trend-feed';
@@ -115,7 +116,11 @@ export function playbookOf(p: TradeProfile): Playbook {
     trade: t(p.trade),
     dailySources: p.dailySources.map((s): ContentSource => ({ label: t(s.label), when: t(s.when), why: t(s.why) })),
     postTypes: p.postTypes.map((s): PostType => ({ label: t(s.label), job: t(s.job), shots: t(s.shots) })),
-    habits: p.habits.map((h) => ({ kind: h.kind, text: t(h.text), why: t(h.why), when: t(h.when) })),
+    // A generated playbook carries no owner, and defaulting to the shop would
+    // hand a paying client back the work she hired us for. See habitOwner.
+    habits: p.habits.map((h) => ({
+      kind: h.kind, who: habitOwner(h.kind, h.text.vi), text: t(h.text), why: t(h.why), when: t(h.when),
+    })),
   };
 }
 

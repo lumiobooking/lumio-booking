@@ -46,7 +46,18 @@ export interface ShopJob {
 export interface ShopWeekData {
   focus: string; jobs: ShopJob[]; prep: { label: string; detail: string }[]; days?: string[];
   /** The one thing asked of the shop this week. Absent on an older API. */
-  ask?: { jobIds: string[]; what: string; by: string; byDayIndex: number } | null;
+  ask?: {
+    jobIds: string[]; what: string; by: string; byDayIndex: number;
+    /**
+     * Everything else this week that only somebody standing in the shop can do.
+     *
+     * The card promised ONE ask and counted only filming — so a partnership job
+     * or a print job went out on the same screen without ever passing the
+     * counter. An owner told "one thing" and shown four stops believing the
+     * one. Optional: an older API sends no field and the block is skipped.
+     */
+    also?: string[];
+  } | null;
   /** Counter habits — shown as a soft line, never as a task. */
   counterIds?: string[];
 }
@@ -381,6 +392,17 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
           </div>
           <div style={{ fontSize: 14, color: 'var(--ce2e8f0)', lineHeight: 1.6, marginTop: 5 }}>{week.ask.what}</div>
 
+          {!!week.ask.also?.length && (
+            <div style={{ marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--line-strong)' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, color: 'var(--ink-faint)', textTransform: 'uppercase' }}>
+                {T('Ngoài ra, cần người ở tiệm', 'Also needs someone in the shop')}
+              </div>
+              {week.ask.also.map((t, i) => (
+                <div key={i} style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 3 }}>· {t}</div>
+              ))}
+            </div>
+          )}
+
           {onSend && (
             <button onClick={onSend} style={{ ...smallPrimary, minHeight: 46, fontSize: 15, marginTop: 11, width: '100%' }}>
               📷 {T('Chụp/quay xong rồi — gửi cho Lumio', 'Shot it — send to Lumio')}
@@ -424,7 +446,11 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
       {!!week.prep.length && (
         <div style={{ ...card, background: 'var(--c0f172a)', marginTop: 10 }}>
           <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 7 }}>
-            {T('BÊN EM CHUẨN BỊ SẴN CHO TIỆM', 'WHAT WE HAVE READY FOR YOU')}
+            {/* The heading said "what we have ready for you" over a list of
+                things the SHOP has to produce — film three clips, take six
+                photos, ask for reviews. Now that the list is salon-owned only
+                (see PrepLine.who), the heading says what it is. */}
+            {T('VIỆC CỦA TIỆM TUẦN NÀY', 'YOUR PART THIS WEEK')}
           </div>
           {week.prep.map((l, i) => (
             <div key={i} style={{ display: 'flex', gap: 9, padding: '4px 0' }}>

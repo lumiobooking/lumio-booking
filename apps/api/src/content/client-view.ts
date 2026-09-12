@@ -1,4 +1,5 @@
 import { bi, viOf, enOf, type Txt } from './i18n';
+import { ownerOf, isSalonWork, type JobOwner } from './work-owner';
 import { mergeTicks } from './auto-ticks';
 import type { DayPlan, Job, JobKind, WeekPlan } from './weekly-plan';
 import { weeklyAsk, COUNTER_KINDS, type WeeklyAsk } from './weekly-ask';
@@ -33,8 +34,20 @@ import { weeklyAsk, COUNTER_KINDS, type WeeklyAsk } from './weekly-ask';
  * reason attached and no publishing schedule at all.
  */
 
-/** The job kinds a salon does with its own hands. Everything else is Lumio's. */
-export const SHOP_JOB_KINDS: JobKind[] = ['film', 'photo', 'engage'];
+/**
+ * WAS the fourth list in this repo claiming to know who does what — and it
+ * disagreed with the other three in both directions:
+ *   - `engage` was on it, so the shop was told IT answers the comments and
+ *     messages we are paid to answer;
+ *   - `event` was not, so a job whose steps are "print 30 cards" and
+ *     "photograph both owners" was labelled `by: 'lumio'` on the salon's own
+ *     screen — a promise nobody in another country can keep.
+ *
+ * Ownership lives in ./work-owner now. Kept as an export because other modules
+ * import the name, and kept correct by being derived rather than written down.
+ */
+export const SHOP_JOB_KINDS: JobKind[] = (['film', 'photo', 'post', 'story', 'offer', 'winback', 'engage', 'gbp', 'event'] as JobKind[])
+  .filter((k) => isSalonWork({ kind: k }));
 
 export interface ClientJob {
   /**
@@ -148,6 +161,7 @@ export interface ClientWeekMeta {
 export function clientWeek(plan: WeekPlan | null | undefined, meta?: ClientWeekMeta | null): ClientWeek | null {
   if (!plan?.days?.length) return null;
   const jobs: ClientJob[] = [];
+  const owners = new Map<string, JobOwner>();
   plan.days.forEach((d: DayPlan, dayIndex) => {
     for (const j of d.jobs ?? []) {
       // The whole week, both sides of it: the shop asked to see the plan it
@@ -157,9 +171,14 @@ export function clientWeek(plan: WeekPlan | null | undefined, meta?: ClientWeekM
       // fields that are the agency reading this shop's book.
       if (j.kind === 'rest') continue;
       const id = (j as Job).id ?? '';
+      const who: JobOwner = ownerOf(j as Job);
+      owners.set(id || `${dayIndex}:${j.kind}`, who);
       jobs.push({
         id, dayIndex, day: d.label, kind: j.kind,
-        by: SHOP_JOB_KINDS.includes(j.kind) ? 'shop' : 'lumio',
+        // `by` IS the owner, in the shop's vocabulary. The field stays the only
+        // copy on the wire — the client payload has a guard test on its exact
+        // shape, and a second spelling of one fact is how those drift.
+        by: who === 'salon' ? 'shop' : 'lumio',
         text: (j as Job).text,
         done: mergeTicks(id ? meta?.ticks?.[id]?.slice(0, 32) : [], id ? (meta?.auto?.[id] ?? []) : []),
         auto: id ? (meta?.auto?.[id] ?? []) : [],
@@ -171,9 +190,12 @@ export function clientWeek(plan: WeekPlan | null | undefined, meta?: ClientWeekM
     }
   });
   const dayLabels = plan.days.map((d) => d.label);
+  // weeklyAsk needs the owner, including any per-job override; the wire does
+  // not. Re-attached here and thrown away with this function.
+  const withOwner = jobs.map((j) => ({ ...j, who: owners.get(j.id || `${j.dayIndex}:${j.kind}`) }));
   return {
     days: dayLabels,
-    ask: weeklyAsk(jobs, dayLabels),
+    ask: weeklyAsk(withOwner, dayLabels),
     counterIds: jobs.filter((j) => COUNTER_KINDS.includes(j.kind)).map((j) => j.id).filter(Boolean),
     // The focus line is the one piece of reasoning the shop does get, because
     // without it the week is a list of chores. It says WHAT this week is for,

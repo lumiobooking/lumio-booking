@@ -209,3 +209,42 @@ describe('a thin profile changes where the ads point, not whether they run', () 
     expect(viOf(p.why)).toMatch(/mua khách không có ghế ngồi/);
   });
 });
+
+/**
+ * "Chưa thuyết phục, quá ít dữ liệu."
+ *
+ * The block stated a conclusion and showed none of its working, so there was
+ * no way to tell a well-founded recommendation from a guess — and no way for
+ * the person reading it to argue with the input instead of the output. The
+ * sources now travel with the answer, in every state, silence included.
+ */
+describe('the recommendation shows what it was read from', () => {
+  const basis = [
+    { label: bi('Một lần khách tới thu', 'Per visit'), value: bi('$65', '$65'), known: true },
+    { label: bi('Hồ sơ Google', 'Google profile'), value: bi('chưa nối', 'not connected'), known: false },
+  ];
+
+  it('carries the sources on an offer', () => {
+    expect(adsPitch({ ...base, basis })?.basis).toHaveLength(2);
+  });
+
+  it('carries them on a refusal too — that is when they matter most', () => {
+    const p = adsPitch({ ...base, basis, feasible: 'no', bookingsToBreakEven: 20, openSlots: 4 });
+    expect(p.state).toBe('not-yet');
+    expect(p.basis).toHaveLength(2);
+  });
+
+  it('carries them when it cannot size a budget at all', () => {
+    const p = adsPitch({ ...base, basis, ceilingCents: 0, missing: 'ticket' });
+    expect(p.state).toBe('unknown');
+    expect(p.basis).toHaveLength(2);
+  });
+
+  it('LISTS THE SILENT SOURCES rather than dropping them', () => {
+    // A list of only the things that answered looks complete and is not. The
+    // gap is the useful part: it names what to connect next.
+    const out = adsPitch({ ...base, basis }).basis!;
+    expect(out.filter((b) => !b.known)).toHaveLength(1);
+    expect(viOf(out.find((b) => !b.known)!.value)).toBe('chưa nối');
+  });
+});

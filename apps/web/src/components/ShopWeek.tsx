@@ -72,6 +72,18 @@ export interface AdsPlan {
    * front of it.
    */
   todo?: string | null;
+  /**
+   * What the recommendation was read FROM — every source, including the silent
+   * ones.
+   *
+   * The block showed a verdict and hid its evidence, so "this is not convincing,
+   * it is built on too little data" had no answer on the screen and no way to
+   * check. Six lines, each with the figure and where it came from; a source
+   * that said nothing says so rather than being left out. It is folded shut by
+   * default — an owner who believes the number should not have to scroll past
+   * its workings, and the one who does not should be one tap from them.
+   */
+  basis?: { label: string; value: string; known: boolean }[] | null;
 }
 export interface LastWeek {
   label: string; posted: number; reviews: number; newCustomers: number; bookings: number;
@@ -264,6 +276,28 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
                 <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 2 }}>{adsPlan.todo}</div>
               </div>
             </div>
+          )}
+
+          {!!adsPlan.basis?.length && (
+            <details style={{ marginTop: 12 }}>
+              <summary style={{
+                cursor: 'pointer', fontSize: 11.5, fontWeight: 800, letterSpacing: .5,
+                color: 'var(--c94a3b8)', textTransform: 'uppercase', listStyle: 'none',
+              }}>
+                {T('Con số này dựa trên đâu', 'What this is based on')} ({adsPlan.basis.filter((b) => b.known).length}/{adsPlan.basis.length})
+              </summary>
+              <div style={{ marginTop: 9, borderTop: '1px solid var(--line)', paddingTop: 9, display: 'grid', gap: 7 }}>
+                {adsPlan.basis.map((b, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, color: 'var(--ink-faint)', flex: '0 0 auto', minWidth: 150 }}>{b.label}</span>
+                    <span style={{
+                      fontSize: 12.5, fontWeight: b.known ? 700 : 400,
+                      color: b.known ? 'var(--ccbd5e1)' : 'var(--cfbbf24)', minWidth: 0,
+                    }}>{b.value}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
           )}
 
           {adsPlan.cta && <AdsYes token={token} vi={vi} label={adsPlan.cta} onError={onError} />}

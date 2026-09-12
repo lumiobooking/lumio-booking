@@ -66,6 +66,23 @@ export interface AdsPitch {
    * are live, rather than waiting for twenty of them before spending a dollar.
    */
   todo?: Txt | null;
+  /**
+   * EVERY SOURCE THIS RECOMMENDATION RESTS ON, AND WHETHER IT ANSWERED.
+   *
+   * The screen showed a conclusion and no working. An agency owner read it and
+   * said, correctly, that it was built on too little — and there was no way for
+   * him to check, because the one thing the screen would not show was what it
+   * had looked at. A number with no provenance is not persuasive even when it
+   * is right, and when it is wrong nobody can see why.
+   *
+   * So the sources travel with the answer: what a visit is worth and where that
+   * came from, what the margin is, how the free capacity was worked out, what
+   * Google says, what the Page says, which channel the salon's own customers
+   * arrive through. Silence is listed too — a source that said nothing appears
+   * as "chưa có", never omitted. An owner can then argue with the input rather
+   * than with the conclusion, which is the only argument worth having.
+   */
+  basis?: { label: Txt; value: Txt; known: boolean }[];
 }
 
 const fmt = (c: number) => `$${Math.round(c / 100)}`;
@@ -282,12 +299,15 @@ export function adsPitch(input: {
    * need later. So it says so, in the same breath as the number.
    */
   ticketEstimated?: boolean;
+  /** What every figure above was read from. See AdsPitch.basis. */
+  basis?: { label: Txt; value: Txt; known: boolean }[];
 } & PitchPlanInput): AdsPitch {
   const { ceilingCents: ceiling, dailyCents: daily, days, totalCents: total } = input;
 
   if (!ceiling) {
     return {
       state: 'unknown',
+      basis: input.basis,
       figures: [],
       steps: [],
       headline: bi('Chưa tính được ngân sách quảng cáo cho tiệm', 'We cannot size an ad budget for you yet'),
@@ -320,6 +340,7 @@ export function adsPitch(input: {
     const room = input.openSlots ?? 0;
     return {
       state: 'not-yet',
+      basis: input.basis,
       figures: [],
       steps: [],
       headline: bi('Lúc này chưa nên chạy quảng cáo', 'Now is not the moment to advertise'),
@@ -335,6 +356,7 @@ export function adsPitch(input: {
   const room = input.openSlots;
   return {
     state: 'offer',
+    basis: input.basis,
     steps: planSteps(input, days, fmt(ceiling)),
     todo: input.aim?.doNext ?? null,
     figures: [

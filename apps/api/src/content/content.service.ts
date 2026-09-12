@@ -20,6 +20,7 @@ import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { estimateTicket, isEstimate } from './ticket-estimate';
 import { assessSalon, adsAim } from './salon-assessment';
+import { adCapacity, isFull, openMinutesPerWeek } from './ad-capacity';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
@@ -166,6 +167,18 @@ export class ContentService {
     firstVisitTicketCents: number | null;
     /** Minutes an average appointment takes here, from the service list. */
     avgServiceMinutes: number | null;
+    /**
+     * How many people can serve a customer at the same time, and how many
+     * minutes a week the salon is open.
+     *
+     * Both are on file from the day a salon is set up — before one appointment
+     * exists. They are here because free capacity used to be derived entirely
+     * from booking history, which is the one source guaranteed to be empty for
+     * a new client, and the answer it gave for an empty salon was "no room".
+     * See ./ad-capacity.
+     */
+    chairs: number | null;
+    openMinutesPerWeek: number | null;
     /** The salon's website, when it has one. A source the assessment reads. */
     website: string | null;
     /**
@@ -442,6 +455,17 @@ export class ContentService {
       select: { commissionPercent: true } as never,
       take: 100,
     }).catch(() => []) as unknown as { commissionPercent?: number | null }[];
+    // Anybody active can take a customer; how many of them there are is the
+    // other half of "how many visits could this salon absorb". Zero is read as
+    // "not set up yet", never as "no capacity" — see ./ad-capacity.
+    const chairs = staffRows.length || null;
+    // The salon's own opening hours, from the booking rules it set up.
+    const hoursRow = await this.prisma.setting.findFirst({
+      where: { tenantId, key: 'booking_rules' }, select: { value: true },
+    }).catch(() => null);
+    const openWeek = openMinutesPerWeek(
+      (hoursRow?.value as { businessHours?: unknown } | null)?.businessHours as never,
+    );
     const rates = staffRows.map((r) => Number(r.commissionPercent ?? 0)).filter((n) => n > 0 && n < 100);
     const staffAvgPct = rates.length ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : null;
 
@@ -522,6 +546,8 @@ export class ContentService {
       avgServiceMinutes: services.length
         ? Math.max(15, Math.round(services.reduce((s2, x) => s2 + (x.durationMinutes || 0), 0) / services.length))
         : null,
+      chairs,
+      openMinutesPerWeek: openWeek,
       menu: services,
       website: (ex as { website?: string }).website ?? null,
       lead,
@@ -1109,10 +1135,20 @@ export class ContentService {
    * shape invites is not hypothetical, it is what happens the first time
    * somebody adds a threshold to one of them and not the other.
    */
+  /**
+   * The whole-salon reading, plus the raw figures it was read FROM.
+   *
+   * The assessment on its own answers "what is wrong"; the ad screen also has
+   * to answer "what did you look at", which is a different question and the one
+   * an agency owner asks when a recommendation does not convince him. Returning
+   * the counts alongside the verdict means the screen quotes the same numbers
+   * the verdict was formed from, rather than fetching them a second time and
+   * risking two answers.
+   */
   private async lookAtSalon(
     tenantId: string,
     ctx: Awaited<ReturnType<ContentService['gather']>>,
-  ): Promise<ReturnType<typeof assessSalon>> {
+  ): Promise<ReturnType<typeof assessSalon> & { raw: { reviews: number | null; posted30: number | null; fanpage: boolean } }> {
     const loose = this.prisma as unknown as Record<string, { count?: (a: unknown) => Promise<number> }>;
     const since90 = new Date(Date.now() - 90 * 86_400_000);
     const [reviews, posted30, bookings90, conn] = await Promise.all([
@@ -1129,7 +1165,12 @@ export class ContentService {
     const daysWithUs = tenant?.createdAt
       ? Math.floor((Date.now() - new Date(tenant.createdAt).getTime()) / 86_400_000)
       : null;
-    return assessSalon({
+    const raw = {
+      reviews: typeof reviews === 'number' ? reviews : null,
+      posted30: typeof posted30 === 'number' ? posted30 : null,
+      fanpage: Boolean(conn?.pageId),
+    };
+    return { ...assessSalon({
       googleConnected: typeof reviews === 'number',
       googleReviews: typeof reviews === 'number' ? reviews : null,
       postedLast30: typeof posted30 === 'number' ? posted30 : null,
@@ -1140,7 +1181,7 @@ export class ContentService {
       customers: ctx.audience.totalCustomers,
       daysWithUs,
       areaKnown: Boolean(ctx.nearbyZips),
-    });
+    }), raw };
   }
 
   async adsPitchForSalon(user: AuthenticatedUser): Promise<AdsPitch | null> {
@@ -1176,12 +1217,30 @@ export class ContentService {
     // two screens cannot disagree about whether there are chairs to fill.
     const LOAD_WINDOW_DAYS = 28;
     const quiet = ctx.revenue.loads.slice(0, 3);
-    const peakMinutes = Math.max(...ctx.revenue.loads.map((l) => l.minutes), 0);
-    const slotMinutes = ctx.avgServiceMinutes ?? 60;
-    const idleMinutes = quiet.reduce((sum, q) => sum + Math.max(0, peakMinutes - q.minutes), 0);
-    const openSlots = peakMinutes > 0
-      ? Math.max(0, Math.floor((idleMinutes / slotMinutes) * (CAMPAIGN_DAYS / LOAD_WINDOW_DAYS)))
-      : null;
+    /**
+     * FREE CAPACITY, FROM THE SHOP RATHER THAN FROM ITS BOOKING HISTORY.
+     *
+     * What stood here measured the gap between the busiest weekday and the
+     * quietest three. A salon with two appointments a day, every day, has no
+     * gap — so it reported no room, for a shop that was almost entirely empty.
+     * A salon being set up got the same answer, and the ad screen used it to
+     * refuse a campaign: "your quiet hours only hold 0". See ./ad-capacity for
+     * the whole account; the short version is that open hours times chairs is
+     * a fact about the salon, and it exists before the first booking does.
+     */
+    const capacity = adCapacity({
+      openMinutesPerWeek: ctx.openMinutesPerWeek,
+      chairs: ctx.chairs,
+      bookedMinutes: ctx.revenue.loads.reduce((sum, l) => sum + l.minutes, 0),
+      historyDays: LOAD_WINDOW_DAYS,
+      slotMinutes: ctx.avgServiceMinutes,
+      campaignDays: CAMPAIGN_DAYS,
+    });
+    // A salon that is genuinely full is the one case where more traffic has
+    // nowhere to sit. Everything else — thin data, no hours on file, no staff
+    // yet — comes through as null, and budgetPlan reports 'unknown' rather
+    // than printing a zero it cannot stand behind.
+    const openSlots = capacity.slots === null ? null : (isFull(capacity) ? 0 : capacity.slots);
 
     const budget = budgetPlan({ ceiling, openSlots });
 
@@ -1221,7 +1280,65 @@ export class ContentService {
     const advice = ctx.revenue.advice;
     const offerLine = advice && advice.discountPct > 0 ? advice.headline : null;
 
+    /**
+     * THE WORKING, SHOWN.
+     *
+     * Six sources, each with the figure it produced and whether it answered at
+     * all. This exists because the screen was making a confident recommendation
+     * out of sight of its own evidence, and the honest response to "too little
+     * data" is not a better sentence — it is the list, including the blanks.
+     */
+    const basis: { label: Txt; value: Txt; known: boolean }[] = [
+      {
+        label: bi('Một lần khách tới thu', 'What one visit brings in'),
+        value: ticket
+          ? bi(`${ctx.money(ticket)}${isEstimate(est.source) ? ' (ước tính từ bảng giá)' : ' (từ lịch hẹn tại tiệm)'}`,
+            `${ctx.money(ticket)}${isEstimate(est.source) ? ' (estimated from the price list)' : ' (from bookings here)'}`)
+          : bi('chưa có — nhập bảng giá là tính được', 'not yet — enter the price list'),
+        known: Boolean(ticket),
+      },
+      {
+        label: bi('Lãi gộp mỗi khách', 'Gross margin per visit'),
+        value: margin
+          ? bi(`${margin}%${ctx.promo.margin.source === 'assumed' ? ' (ước tính theo ngành)' : ' (từ hoa hồng thợ đang trả)'}`,
+            `${margin}%${ctx.promo.margin.source === 'assumed' ? ' (trade estimate)' : ' (from the commission you pay)'}`)
+          : bi('chưa có', 'not yet'),
+        known: Boolean(margin),
+      },
+      {
+        label: bi('Chỗ trống 2 tuần tới', 'Free visits over two weeks'),
+        value: capacity.slots === null
+          ? bi(`chưa tính được — thiếu ${capacity.missing.includes('chairs') ? 'danh sách thợ' : 'giờ mở cửa'}`,
+            `cannot compute — ${capacity.missing.includes('chairs') ? 'no staff on file' : 'no opening hours on file'}`)
+          : bi(`${capacity.slots} lượt · đang kín ${capacity.utilisationPct}% (${ctx.chairs} thợ × giờ mở cửa${capacity.basis === 'assumed-hours' ? ', giờ là giả định' : ''})`,
+            `${capacity.slots} visits · ${capacity.utilisationPct}% full (${ctx.chairs} staff × opening hours${capacity.basis === 'assumed-hours' ? ', hours assumed' : ''})`),
+        known: capacity.slots !== null,
+      },
+      {
+        label: bi('Hồ sơ Google', 'Google profile'),
+        value: look.read.find((r) => r.source === 'google')?.answered
+          ? bi(`${look.raw.reviews ?? 0} đánh giá`, `${look.raw.reviews ?? 0} reviews`)
+          : bi('chưa nối', 'not connected'),
+        known: Boolean(look.read.find((r) => r.source === 'google')?.answered),
+      },
+      {
+        label: bi('Fanpage / Instagram', 'Facebook / Instagram'),
+        value: look.read.find((r) => r.source === 'fanpage')?.answered
+          ? bi(`đã nối · ${look.raw.posted30 ?? 0} bài trong 30 ngày`, `connected · ${look.raw.posted30 ?? 0} posts in 30 days`)
+          : bi('chưa nối', 'not connected'),
+        known: Boolean(look.read.find((r) => r.source === 'fanpage')?.answered),
+      },
+      {
+        label: bi('Khách hiện tới từ đâu', 'Where customers come from now'),
+        value: plans[0]?.label
+          ? bi(viOf(plans[0].label), enOf(plans[0].label))
+          : bi('chưa đủ lịch hẹn để biết', 'not enough bookings to tell'),
+        known: Boolean(plans[0]?.label),
+      },
+    ];
+
     return adsPitch({
+      basis,
       ticketEstimated: isEstimate(est.source),
       aim,
       ceilingCents: ceiling.strictCents,
@@ -2631,12 +2748,30 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     // buying customers it cannot seat.
     const LOAD_WINDOW_DAYS = 28;
     const quiet = ctx.revenue.loads.slice(0, 3);
-    const peakMinutes = Math.max(...ctx.revenue.loads.map((l) => l.minutes), 0);
-    const slotMinutes = ctx.avgServiceMinutes ?? 60;
-    const idleMinutes = quiet.reduce((sum, q) => sum + Math.max(0, peakMinutes - q.minutes), 0);
-    const openSlots = peakMinutes > 0
-      ? Math.max(0, Math.floor((idleMinutes / slotMinutes) * (CAMPAIGN_DAYS / LOAD_WINDOW_DAYS)))
-      : null;
+    /**
+     * FREE CAPACITY, FROM THE SHOP RATHER THAN FROM ITS BOOKING HISTORY.
+     *
+     * What stood here measured the gap between the busiest weekday and the
+     * quietest three. A salon with two appointments a day, every day, has no
+     * gap — so it reported no room, for a shop that was almost entirely empty.
+     * A salon being set up got the same answer, and the ad screen used it to
+     * refuse a campaign: "your quiet hours only hold 0". See ./ad-capacity for
+     * the whole account; the short version is that open hours times chairs is
+     * a fact about the salon, and it exists before the first booking does.
+     */
+    const capacity = adCapacity({
+      openMinutesPerWeek: ctx.openMinutesPerWeek,
+      chairs: ctx.chairs,
+      bookedMinutes: ctx.revenue.loads.reduce((sum, l) => sum + l.minutes, 0),
+      historyDays: LOAD_WINDOW_DAYS,
+      slotMinutes: ctx.avgServiceMinutes,
+      campaignDays: CAMPAIGN_DAYS,
+    });
+    // A salon that is genuinely full is the one case where more traffic has
+    // nowhere to sit. Everything else — thin data, no hours on file, no staff
+    // yet — comes through as null, and budgetPlan reports 'unknown' rather
+    // than printing a zero it cannot stand behind.
+    const openSlots = capacity.slots === null ? null : (isFull(capacity) ? 0 : capacity.slots);
 
     const budget = budgetPlan({ ceiling, openSlots });
     const window = runWindow({

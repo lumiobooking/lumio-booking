@@ -100,7 +100,14 @@ interface Ads {
   budget: { dailyCents: number; days: number; totalCents: number; bookingsToBreakEven: number | null; openSlots: number | null; feasible: string; plain: string };
   window: { runDays: number[]; pauseDays: number[]; labels: { run: string[]; pause: string[] }; why: string };
   lead: { medianDays: number | null; sample: number; basis: string };
-  channels: { reports: ChannelReport[]; coverage: { total: number; attributed: number; pct: number; unknown: number }; caveat: string | null };
+  channels: { reports: ChannelReport[]; coverage: { total: number; attributed: number; pct: number; unknown: number; ownedDoor: number }; caveat: string | null };
+  /**
+   * The review the ads card promised the shop — day 7 and day 14.
+   *
+   * Optional: an older API sends nothing and the block simply does not render,
+   * rather than the page dying on a salon whose server has not caught up.
+   */
+  review?: AdsReview | null;
   plans: PlatformPlan[];
   audiences: AdAudience[];
   money: { ceilingStrict: string | null; ceilingRepeat: string | null; daily: string; total: string };
@@ -108,6 +115,32 @@ interface Ads {
   calendar?: AdsCalendar | null;
   /** Who else the customer sees. Absent when no Places key is configured. */
   competition?: Competition | null;
+}
+/**
+ * WHAT THE TEAM OWES THIS SALON TODAY.
+ *
+ * The card promises a review on day 7 and day 14 and a message with three
+ * numbers. Until this shipped, nothing recorded that a campaign existed — so
+ * nothing was ever due, and the promise above the owner's yes button had never
+ * once been kept. `started: false` is the loudest state here: the shop agreed
+ * and nobody switched it on.
+ */
+interface AdsReview {
+  started: boolean;
+  days: number;
+  startedAt?: string;
+  salon: string;
+  reviews: { dayNumber: number; dueDate: string; lateDays: number; done: boolean; doneAt?: string | null }[];
+  next: { dayNumber: number; dueDate: string; lateDays: number; done: boolean } | null;
+  job?: string | null;
+  report: {
+    dayNumber: number;
+    verdict: 'too-early' | 'winning' | 'tight' | 'losing' | 'no-ceiling';
+    perCustomerCents: number | null;
+    figures: { value: string; label: string }[];
+    message: string;
+    doNext: string;
+  } | null;
 }
 interface AdsCalendar {
   baseDaily: string;
@@ -1613,6 +1646,9 @@ function Inner() {
                 <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)' }}>
                   {g.label}
                 </div>
+                {/* --ink-faint, not --c475569: that token is a BORDER colour and
+                    flips to #aab8cb in light mode — 2.01:1 on white, an invisible
+                    hint. See theme.ts. */}
                 {!isMobile && (
                   <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 1 }}>{g.hint}</div>
                 )}
@@ -4828,6 +4864,10 @@ function Inner() {
                 </div>
               )}
 
+              {plan?.ads?.review && (
+                <CampaignReview review={plan.ads.review} token={token} vi={vi} onDone={load} />
+              )}
+
               {plan?.ads && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
@@ -5536,5 +5576,164 @@ function Inner() {
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * THE CAMPAIGN REVIEW, ON THE TEAM'S SCREEN.
+ *
+ * WHAT THIS REPLACES: nothing. That is the point.
+ *
+ * The salon's ads card promises a review on day 7 and day 14 and a short
+ * message with three numbers in it. There was no record that a campaign
+ * existed, so nothing was ever due, so a staff member covering a dozen shops
+ * had no way of knowing which one she owed a report to — and the promise
+ * printed above the owner's yes button had never once been kept.
+ *
+ * Three states, and the first is the one that matters most:
+ *   - agreed but never switched on: the loudest box on the page, with the
+ *     number of days it has been sitting there;
+ *   - running, review not due yet: one quiet line saying which day it falls on;
+ *   - review due or overdue: the numbers, what to do about them BEFORE
+ *     sending, and the message already written.
+ *
+ * The message has exactly one blank — "bên em đã đổi ___" — and the box that
+ * fills it is required before the review can be ticked. A review that changed
+ * nothing says we watched, and watching is not what the shop is paying for.
+ */
+function CampaignReview({ review, token, vi, onDone }: {
+  review: AdsReview; token: string | null; vi: boolean; onDone: () => void | Promise<void>;
+}) {
+  const T = (v: string, e: string) => (vi ? v : e);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const post = async (path: string, body: Record<string, unknown>) => {
+    if (!token) return;
+    setBusy(true); setErr(null);
+    try { await apiFetch(path, { method: 'POST', token, body }); await onDone(); }
+    catch (e) { setErr(e instanceof Error ? e.message : T('Không lưu được', 'Could not save')); }
+    finally { setBusy(false); }
+  };
+
+  const ghost = {
+    padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c475569)',
+    background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+  } as const;
+  const box = (bg: string, bd: string) => ({
+    ...ui.card, marginBottom: 14, padding: 16, background: bg, borderColor: bd,
+  });
+
+  // ---- agreed, never started ------------------------------------------------
+  if (!review.started) {
+    return (
+      <div style={box('rgba(239,68,68,.07)', '#ef4444')}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#fca5a5' }}>
+          ⚠️ {T('Tiệm đã duyệt ngân sách — chưa ai bật chiến dịch', 'The shop approved the budget — nobody has switched it on')}
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 6 }}>
+          {T(`Đợt chạy ${review.days} ngày. Mọi mốc soi lại đếm từ ngày bật, nên trước khi bấm nút này thì lời hứa "ngày thứ 7 bên em báo tiệm" chưa có ngày nào để đếm.`,
+             `A ${review.days}-day run. Every review date counts from the day it goes live, so until this is pressed the "day 7" promise has no day to count from.`)}
+        </div>
+        <button
+          disabled={busy || !token}
+          onClick={() => post('/content/ads-campaign/start', {})}
+          style={{ ...ui.primaryBtn, marginTop: 11 }}
+        >{busy ? '…' : T('Chiến dịch đã chạy — bắt đầu tính từ hôm nay', 'It is live — start counting from today')}</button>
+        {err && <div style={{ fontSize: 12.5, color: '#fca5a5', marginTop: 7 }}>{err}</div>}
+      </div>
+    );
+  }
+
+  const r = review.report;
+
+  // ---- running, nothing due yet --------------------------------------------
+  if (!r) {
+    const next = review.next;
+    return (
+      <div style={box('var(--c0f172a)', 'var(--c334155)')}>
+        <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>
+          {next
+            ? T(`Chiến dịch đang chạy. Lần soi tiếp theo: ngày thứ ${next.dayNumber} — ${next.dueDate} (còn ${Math.abs(next.lateDays)} ngày).`,
+                `Campaign running. Next review: day ${next.dayNumber} — ${next.dueDate}, in ${Math.abs(next.lateDays)} days.`)
+            : T('Chiến dịch đã soi đủ cả hai lần. Không còn gì đến hạn.', 'Both reviews are done. Nothing outstanding.')}
+        </div>
+      </div>
+    );
+  }
+
+  const late = review.next?.lateDays ?? 0;
+  const bad = r.verdict === 'losing';
+  const tone = bad ? '#ef4444' : late > 0 ? '#f59e0b' : 'var(--c334155)';
+
+  return (
+    <div style={box(bad ? 'rgba(239,68,68,.06)' : late > 0 ? 'rgba(245,158,11,.06)' : 'var(--c0f172a)', tone)}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+          📊 {T(`Đến hạn soi — ngày thứ ${r.dayNumber}/${review.days}`, `Review due — day ${r.dayNumber} of ${review.days}`)}
+        </div>
+        {late > 0 && (
+          <span style={{ fontSize: 11.5, fontWeight: 800, padding: '2px 9px', borderRadius: 999, background: 'rgba(245,158,11,.18)', color: '#fbbf24' }}>
+            {T(`trễ ${late} ngày`, `${late} days late`)}
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', marginTop: 10 }}>
+        {r.figures.map((f, i) => (
+          <div key={i}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: i === 2 && bad ? '#fca5a5' : 'var(--ce2e8f0)' }}>{f.value}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{f.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* What to DO, above the message — because a report sent before the fix
+          is a report that says we watched. */}
+      <div style={{
+        marginTop: 11, padding: '9px 11px', borderRadius: 8,
+        background: bad ? 'rgba(239,68,68,.12)' : 'rgba(99,102,241,.12)',
+        border: `1px solid ${bad ? 'rgba(239,68,68,.5)' : 'rgba(99,102,241,.45)'}`,
+      }}>
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: bad ? '#fca5a5' : '#a5b4fc' }}>
+          {T('Làm cái này trước khi gửi', 'Do this before you send')}
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.55, marginTop: 3 }}>{r.doNext}</div>
+      </div>
+
+      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--ink-faint)', marginTop: 12 }}>
+        {T('Tin nhắn gửi tiệm', 'The message to send')}
+      </div>
+      <div style={{
+        fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.65, marginTop: 4, whiteSpace: 'pre-line',
+        padding: '9px 11px', borderRadius: 8, background: 'var(--c0b1120)', border: '1px solid var(--line-strong)',
+      }}>{r.message.replace('___', note.trim() || '___')}</div>
+
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder={T('Tuần này bên em đã đổi gì? (bắt buộc)', 'What did you change this week? (required)')}
+        style={{ ...ui.input, marginTop: 9, width: '100%' }}
+      />
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 9, flexWrap: 'wrap' }}>
+        <button
+          onClick={() => {
+            void navigator.clipboard?.writeText(r.message.replace('___', note.trim() || '___'));
+            setCopied(true); window.setTimeout(() => setCopied(false), 1600);
+          }}
+          style={ghost}
+        >{copied ? T('✓ Đã sao chép', '✓ Copied') : T('Sao chép tin nhắn', 'Copy the message')}</button>
+        <button
+          disabled={busy || !token || !note.trim()}
+          title={!note.trim() ? T('Phải ghi đã đổi gì — "bên em có nhìn" không phải dịch vụ tiệm trả tiền', 'Say what you changed — "we watched it" is not the service') : ''}
+          onClick={() => post(`/content/ads-campaign/review/${r.dayNumber}`, { note: note.trim() })}
+          style={{ ...ui.primaryBtn, opacity: note.trim() ? 1 : .5 }}
+        >{busy ? '…' : T('Đã gửi tiệm — đánh dấu xong', 'Sent — mark it done')}</button>
+      </div>
+      {err && <div style={{ fontSize: 12.5, color: '#fca5a5', marginTop: 7 }}>{err}</div>}
+    </div>
   );
 }

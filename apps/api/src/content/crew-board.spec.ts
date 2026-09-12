@@ -1,4 +1,4 @@
-import { crewJobs, sortCrew, groupByKind, crewCounts, jobDate, CREW_KINDS, type WeekRowLike } from './crew-board';
+import { splitCrew, crewJobs, sortCrew, groupByKind, crewCounts, jobDate, CREW_KINDS, type WeekRowLike } from './crew-board';
 import { attachBriefs } from './job-brief';
 import { bi } from './i18n';
 import type { DayPlan } from './weekly-plan';
@@ -112,6 +112,87 @@ describe('the order and the grouping', () => {
     // Monday's post is late and held by me; Tuesday's gbp is late but DONE, so it
     // is counted as done and not as late — a finished job is not a debt.
     // Wednesday's story is today's, unheld.
-    expect(c).toEqual({ open: 1, mine: 1, late: 1, done: 1 });
+    // `waiting` is 0 here: no media map was passed, so nothing is known to be
+    // blocked and the board behaves exactly as it did before the lane existed.
+    expect(c).toEqual({ open: 1, mine: 1, late: 1, done: 1, waiting: 0 });
+  });
+});
+
+/**
+ * "A job whose material has not arrived is not work — it is a phone call."
+ * The header of crew-board.ts promised this lane from the beginning and it was
+ * never built, so a designer picked up "Đăng clip" and found nothing to edit.
+ */
+describe('the lane for work that is really a phone call', () => {
+  const held = {};
+
+  it('marks a post as waiting when the shop has sent nothing this week', () => {
+    const jobs = crewJobs([row('t1', 'Lux Nails', held)], {
+      today: '2026-09-09',
+      lastMediaByTenant: { t1: null },
+    });
+    const post = jobs.find((j) => j.kind === 'post')!;
+    expect(post.material).toBe('waiting');
+    expect(post.waitingDays).toBeGreaterThanOrEqual(0);
+  });
+
+  it('counts media from BEFORE this week as not arrived', () => {
+    // A clip sent three weeks ago is not material for Tuesday's post.
+    const jobs = crewJobs([row('t1', 'Lux Nails', held)], {
+      today: '2026-09-09',
+      lastMediaByTenant: { t1: '2026-08-20' },
+    });
+    expect(jobs.find((j) => j.kind === 'post')!.material).toBe('waiting');
+  });
+
+  it('clears the whole salon the moment anything arrives for the week', () => {
+    const jobs = crewJobs([row('t1', 'Lux Nails', held)], {
+      today: '2026-09-09',
+      lastMediaByTenant: { t1: '2026-09-08' },
+    });
+    expect(jobs.filter((j) => j.material === 'waiting')).toHaveLength(0);
+  });
+
+  it('never blocks work that needs no footage at all', () => {
+    const jobs = crewJobs([row('t1', 'Lux Nails', held)], {
+      today: '2026-09-09',
+      lastMediaByTenant: { t1: null },
+    });
+    for (const j of jobs) {
+      if (j.kind === 'gbp' || j.kind === 'winback' || j.kind === 'engage') {
+        expect(j.material).toBe('not-needed');
+      }
+    }
+  });
+
+  it('behaves exactly as before when no media map is given at all', () => {
+    const jobs = crewJobs([row('t1', 'Lux Nails', held)], { today: '2026-09-09' });
+    expect(jobs.every((j) => j.material !== 'waiting')).toBe(true);
+  });
+
+  it('splits the morning into work and calls, and one call per salon', () => {
+    const jobs = crewJobs(
+      [row('t1', 'Lux Nails', held), row('t2', 'Bella Nails', held)],
+      { today: '2026-09-09', lastMediaByTenant: { t1: null, t2: '2026-09-08' } },
+    );
+    const s = splitCrew(jobs);
+    expect(s.ready.every((j) => j.material !== 'waiting')).toBe(true);
+    expect(s.blocked.every((j) => j.material === 'waiting')).toBe(true);
+    expect(s.blocked.every((j) => j.salon === 'Lux Nails')).toBe(true);
+    // Several stuck jobs are still ONE phone call.
+    expect(s.chase).toHaveLength(1);
+    expect(s.chase[0]).toMatchObject({ salon: 'Lux Nails', tenantId: 't1' });
+    expect(s.chase[0].jobs).toBe(s.blocked.length);
+  });
+
+  it('does not count a phone call as open work in the header', () => {
+    // "14 việc" on a morning where four of them are four phone calls is how a
+    // person plans a day they cannot have.
+    const jobs = crewJobs([row('t1', 'Lux Nails', held)], {
+      today: '2026-09-09', lastMediaByTenant: { t1: null },
+    });
+    const c = crewCounts(jobs, null);
+    expect(c.waiting).toBeGreaterThan(0);
+    expect(c.open).toBe(jobs.filter((j) => !j.done && j.material !== 'waiting').length);
   });
 });

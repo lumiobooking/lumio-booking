@@ -22,6 +22,7 @@
  */
 
 import { WEEKDAY_VI, type SlotLoad, type OfferAdvice, type LapsedSignal } from './revenue-signals';
+import { noMediaJobs, type BankContext } from './no-media-content';
 import type { JobOwner } from './work-owner';
 import type { DatedEvent } from './region-events';
 import { playbookFor, type ContentSource, type Playbook } from './industry-playbook';
@@ -70,6 +71,16 @@ export interface Job {
   brief?: JobBrief;
   /** What the post is about and the one figure behind it. See week-topics. */
   topic?: Topic;
+  /**
+   * TRUE WHEN THIS JOB NEEDS NOTHING NEW FROM THE SHOP.
+   *
+   * Built from the photo bank, the shop's own reviews, its price list or the
+   * area it sits in — see ./no-media-content. The crew board reads this to
+   * keep the job out of the waiting lane, because a job made from material we
+   * already hold is work on a Monday when nothing has arrived, and a remote
+   * agency has those Mondays.
+   */
+  fromBank?: boolean;
 }
 
 export interface DayPlan {
@@ -192,6 +203,13 @@ export function buildWeekPlan(input: {
   currency?: string;
   /** The shop's own numbers, so every post gets a subject. See week-topics. */
   topics?: TopicData | null;
+  /**
+   * MATERIAL WE ALREADY HOLD — the week's floor. See ./no-media-content.
+   *
+   * Absent means the caller has not been updated, and the week is built the way
+   * it always was: entirely out of footage that has not arrived yet.
+   */
+  bank?: BankContext | null;
 }): WeekPlan {
   const industry = (input.industry || 'SALON').toUpperCase();
   const book = input.playbook ?? playbookFor(industry);
@@ -456,6 +474,22 @@ export function buildWeekPlan(input: {
     const lg = longGameJob(book, week);
     add((film.weekday + 6) % 7, { kind: lg.kind, text: lg.text, why: lg.why });
   }
+
+  /**
+   * -- THE FLOOR: work that ships even if nothing arrives ------------------
+   *
+   * Every publishing job above starts with "pick the clip" or "pick 4–6
+   * photos". In a remote agency the footage lives in someone else's hands and
+   * some weeks it simply does not come — so without this, some weeks produce
+   * nothing at all, and the client is paying for those weeks too.
+   *
+   * Seeded BEFORE the trim, deliberately: these compete for the week's budget
+   * on merit like everything else rather than being bolted on top, and a
+   * five-star review in a customer's own words earns its place against most
+   * of what a salon posts.
+   */
+  const floor = input.bank ? noMediaJobs({ ...input.bank, week }) : [];
+  floor.forEach((j, i) => add((film.weekday + 2 + i * 3) % 7, j));
 
   // -- cut the week down to something a shop finishes -----------------------
   // Trim to what a shop finishes, THEN even it out across the week. Trimming

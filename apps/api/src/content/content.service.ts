@@ -21,7 +21,9 @@ import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { estimateTicket, isEstimate } from './ticket-estimate';
 import { assessSalon, adsAim } from './salon-assessment';
 import { adCapacity, isFull, openMinutesPerWeek, openDaysPerWeek } from './ad-capacity';
+import { SHOP } from './client-view';
 import { pickAdServices } from './ad-service';
+import type { BankContext } from './no-media-content';
 import { dueReviews, nextReview, reviewReport, reviewJobText, type Campaign } from './ads-review';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
@@ -684,7 +686,44 @@ export class ContentService {
       salonName: ctx.tenantName,
       city: ctx.city,
       currency: currencySign(ctx.currency),
+      // The week's floor: work built from what we already hold, so a week the
+      // shop sends nothing still ships something. See ./no-media-content.
+      bank: await this.bankFor(tenantId, ctx).catch(() => null),
     });
+  }
+
+  /**
+   * EVERYTHING WE ALREADY HAVE ON A MONDAY MORNING.
+   *
+   * Three cheap reads and no network: how much media this salon has ever sent,
+   * its best Google reviews, and its own price list. None of it needs the shop
+   * to do anything, which is the whole point — a remote agency cannot make
+   * footage appear, and a plan that stalls without it stalls often.
+   */
+  private async bankFor(tenantId: string, ctx: Awaited<ReturnType<ContentService['gather']>>): Promise<BankContext> {
+    const loose = this.prisma as unknown as Record<string, {
+      count?: (a: unknown) => Promise<number>;
+      findMany?: (a: unknown) => Promise<unknown[]>;
+    }>;
+    const [bankItems, reviewRows] = await Promise.all([
+      loose.contentSuggestion?.count?.({ where: { tenantId, createdByName: SHOP } }).catch(() => 0) ?? Promise.resolve(0),
+      loose.googleReview?.findMany?.({
+        where: { tenantId, starRating: 5 },
+        select: { starRating: true, comment: true, reviewerName: true },
+        orderBy: { reviewCreatedAt: 'desc' },
+        take: 20,
+      }).catch(() => []) ?? Promise.resolve([]),
+    ]);
+    const reviews = (reviewRows as { starRating?: number; comment?: string | null; reviewerName?: string | null }[])
+      .map((r) => ({ stars: Number(r.starRating ?? 0), text: String(r.comment ?? ''), author: r.reviewerName ?? null }))
+      .filter((r) => r.text.trim().length >= 40);
+    return {
+      bankItems: Number(bankItems) || 0,
+      reviews,
+      menu: (ctx.menu ?? []).map((m) => ({ name: m.name, priceCents: m.priceCents })),
+      city: ctx.region.city,
+      week: 0,
+    };
   }
 
   /**

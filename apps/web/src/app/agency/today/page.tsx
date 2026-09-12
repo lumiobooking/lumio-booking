@@ -35,8 +35,16 @@ interface CrewJob {
 interface CrewGroup { kind: string; label: string; jobs: CrewJob[] }
 interface Board {
   me: string | null; today: string;
-  counts: { open: number; mine: number; late: number; done: number };
+  counts: { open: number; mine: number; late: number; done: number; waiting?: number };
   groups: CrewGroup[]; done: number;
+  /**
+   * Jobs that are a phone call, not work — the clip they are made from has
+   * not arrived. Optional so an older API simply renders the board it always
+   * did rather than crashing this page.
+   */
+  blocked?: CrewJob[];
+  /** One line per salon being chased. Several stuck jobs are still one call. */
+  chase?: { tenantId: string; salon: string; slug: string; jobs: number; waitingDays: number }[];
 }
 
 const ICON: Record<string, string> = {
@@ -126,8 +134,51 @@ export default function TodayPage() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
             <Tally n={c.late} label="trễ hạn" tone={c.late ? 'bad' : 'flat'} />
             <Tally n={c.open} label="chưa ai nhận" tone={c.open ? 'warn' : 'flat'} />
+            {/* Not work. A job with no clip behind it used to be counted in
+                "chưa ai nhận", so the board read 14 việc on a morning when four
+                of them were four phone calls. */}
+            {!!c.waiting && <Tally n={c.waiting} label="chờ tiệm gửi" tone="warn" />}
             <Tally n={c.mine} label="của tôi" tone="mine" />
             <Tally n={c.done} label="đã xong" tone="good" />
+          </div>
+        )}
+
+        {/* THE LANE crew-board.ts PROMISED ON DAY ONE.
+            "A job whose material has not arrived is not work — it is a phone
+            call." Mixed into the queue, a designer opened "Đăng clip", found
+            no clip, put it back, and three days later somebody asked why
+            nothing went out. Above the work, sorted by how long each salon has
+            been sitting there, one line per salon however many jobs are stuck
+            behind it. */}
+        {!!board?.chase?.length && (
+          <div style={{
+            border: '1px solid #f59e0b', background: 'rgba(245,158,11,.07)',
+            borderRadius: 12, padding: '13px 15px', marginBottom: 14,
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#fbbf24' }}>
+              📞 Gọi tiệm — {board.chase.length} tiệm đang nợ ảnh/clip
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 3 }}>
+              Chưa có nguyên liệu thì mấy việc bên dưới không làm được. Đây là cuộc gọi, không phải việc.
+            </div>
+            <div style={{ marginTop: 9, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {board.chase.map((cs) => (
+                <div key={cs.tenantId} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                  padding: '7px 10px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--line-strong)',
+                }}>
+                  <Link href={`/agency/${cs.slug}`} style={{ fontSize: 13.5, fontWeight: 700, color: '#a5b4fc', textDecoration: 'none' }}>
+                    {cs.salon}
+                  </Link>
+                  <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{cs.jobs} việc đang kẹt</span>
+                  <span style={{
+                    marginLeft: 'auto', fontSize: 11.5, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
+                    background: cs.waitingDays >= 3 ? 'rgba(239,68,68,.18)' : 'rgba(245,158,11,.18)',
+                    color: cs.waitingDays >= 3 ? '#fca5a5' : '#fbbf24',
+                  }}>chờ {cs.waitingDays} ngày</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

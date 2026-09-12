@@ -8,7 +8,8 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { hashSecret } from '../auth/password.util';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { capsFor, cleanCaps, levelOf, type SupportLevel } from './support-scope';
-import { crewJobs, groupByKind, crewCounts, type WeekRowLike, type CrewHold } from '../content/crew-board';
+import { crewJobs, splitCrew, groupByKind, crewCounts, type WeekRowLike, type CrewHold } from '../content/crew-board';
+import { SHOP } from '../content/client-view';
 import { cleanTeam, groupSalons, teamSummaries, isNewSalon } from './support-teams';
 
 /**
@@ -305,13 +306,48 @@ export class SupportService {
       };
     });
 
+    /**
+     * WHEN EACH SALON LAST SENT US ANYTHING.
+     *
+     * The shop's own uploads — the cards it opens and closes in one move when
+     * it presses "Đã quay xong" (suggestions.service sendFromShop stamps them
+     * createdByName: SHOP). One query for the whole board, and it is what turns
+     * "Đăng clip — Dip Powder" from a job into a phone call on the mornings
+     * when no clip exists.
+     *
+     * Deliberately NOT the posting queue: that knows what was PUBLISHED, which
+     * is the wrong end of the day. The question at 9am is who owes us footage.
+     */
+    const lastMediaByTenant: Record<string, string | null> = {};
+    const ids = weeks.map((w) => w.tenantId);
+    if (ids.length) {
+      const sent = await (this.prisma as unknown as {
+        contentSuggestion?: { findMany?: (a: unknown) => Promise<{ tenantId: string; createdAt: Date }[]> };
+      }).contentSuggestion?.findMany?.({
+        where: { tenantId: { in: ids }, createdByName: SHOP },
+        select: { tenantId: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 2000,
+      }).catch(() => []) ?? [];
+      for (const r of sent) {
+        const d = new Date(r.createdAt).toISOString().slice(0, 10);
+        const cur = lastMediaByTenant[r.tenantId];
+        if (!cur || d > cur) lastMediaByTenant[r.tenantId] = d;
+      }
+      for (const id of ids) if (!(id in lastMediaByTenant)) lastMediaByTenant[id] = null;
+    }
+
     const tongue = lang === 'en' ? 'en' : 'vi';
-    const jobs = crewJobs(weeks, { today, lang: tongue });
+    const jobs = crewJobs(weeks, { today, lang: tongue, lastMediaByTenant });
     const me = user.email ?? null;
+    // Work and phone calls are two different jobs, in two different lists.
+    const split = splitCrew(jobs);
     return {
       me, today,
       counts: crewCounts(jobs, me),
-      groups: groupByKind(jobs.filter((j) => !j.done), tongue),
+      groups: groupByKind(split.ready, tongue),
+      blocked: split.blocked,
+      chase: split.chase,
       done: jobs.filter((j) => j.done).length,
     };
   }

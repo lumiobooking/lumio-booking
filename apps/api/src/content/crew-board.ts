@@ -77,6 +77,36 @@ export const KIND_LABEL: Partial<Record<JobKind, Txt>> = {
 
 export interface CrewHold { by?: unknown; at?: unknown; done?: unknown }
 
+/**
+ * HAS THE RAW MATERIAL ARRIVED?
+ *
+ * The header of this file has promised this lane since the day it was written:
+ * "A job whose material has not arrived is not work — it is a phone call."
+ * It was never built. `CrewJob` knew who held a job and how late it was and
+ * had no idea whether the clip it is made from exists, so a designer opened
+ * the queue, picked up "Đăng clip — Dip Powder", and found nothing to edit.
+ *
+ * The signal is the shop's own upload, not the posting queue. `auto-ticks`
+ * reads the queue and can therefore only say whether something was PUBLISHED —
+ * useless for the question asked at 9am, which is which salons owe us footage.
+ */
+export type MaterialState =
+  /** Something arrived from the shop for this week. */
+  | 'ready'
+  /** This job needs footage or photos and none has come in. A phone call. */
+  | 'waiting'
+  /** Words only — a win-back message, a reply. Nothing to wait for. */
+  | 'not-needed';
+
+/**
+ * The kinds whose first step is "pick the clip" or "pick 4–6 photos".
+ *
+ * `gbp` is deliberately absent: its photos come out of the bank we already
+ * hold, so it is work even in a week the shop sends nothing — which is exactly
+ * the property that makes it worth having in a remote agency's queue.
+ */
+export const NEEDS_MEDIA: JobKind[] = ['post', 'story', 'offer'];
+
 export interface CrewJob {
   tenantId: string;
   salon: string;
@@ -97,6 +127,14 @@ export interface CrewJob {
   by: string | null;
   heldAt: string | null;
   done: boolean;
+  /** Whether the raw material for it has arrived. See MaterialState. */
+  material: MaterialState;
+  /**
+   * Days since this week's material was asked for, when it still has not come.
+   * Null unless waiting. This is the number that turns "chase the salon" from
+   * a thing somebody remembers into a thing somebody can see.
+   */
+  waitingDays: number | null;
 }
 
 export interface CrewGroup {
@@ -145,7 +183,21 @@ const str = (v: unknown) => {
  * forward rather than inventing some. Anything further out is noise on a
  * screen whose whole job is to answer "what now".
  */
-export function crewJobs(rows: WeekRowLike[], opts: { today: string; lang?: 'vi' | 'en'; horizonDays?: number }): CrewJob[] {
+export function crewJobs(rows: WeekRowLike[], opts: {
+  today: string;
+  lang?: 'vi' | 'en';
+  horizonDays?: number;
+  /**
+   * The most recent thing each salon has SENT US, as 'YYYY-MM-DD', keyed by
+   * tenantId. Absent or null means nothing has ever arrived.
+   *
+   * Taken from the shop's own uploads — the suggestion rows it opens and
+   * closes in one move when it presses "Đã quay xong". Passing it is optional
+   * so an older caller keeps working: with no map, nothing is marked waiting
+   * and the board behaves exactly as it did.
+   */
+  lastMediaByTenant?: Record<string, string | null | undefined>;
+}): CrewJob[] {
   const lang = opts.lang ?? 'vi';
   const say = (t: Txt | undefined) => (lang === 'en' ? enOf(t) : viOf(t));
   const horizon = opts.horizonDays ?? 2;
@@ -154,6 +206,7 @@ export function crewJobs(rows: WeekRowLike[], opts: { today: string; lang?: 'vi'
 
   for (const row of rows ?? []) {
     const crew = (row.crew ?? {}) as Record<string, CrewHold>;
+    const lastMedia = opts.lastMediaByTenant?.[row.tenantId] ?? null;
     (row.days ?? []).forEach((day: DayPlan, dayIndex) => {
       for (const j of day.jobs ?? []) {
         const job = j as Job;
@@ -161,6 +214,16 @@ export function crewJobs(rows: WeekRowLike[], opts: { today: string; lang?: 'vi'
         // back to the kind list, so an old week keeps the queue it had.
         const mine = job.who ? isAgencyWork(job) : CREW_KINDS.includes(job.kind);
         if (!mine || !job.id) continue;
+        // "Arrived" means arrived for THIS week. A clip sent three weeks ago is
+        // not material for Tuesday's post, and treating it as such is how the
+        // lane would have quietly stopped meaning anything.
+        // `fromBank` wins over the kind: a review card is a `post` and needs
+        // no footage at all. See no-media-content.ts.
+        const material: MaterialState = job.fromBank || !NEEDS_MEDIA.includes(job.kind)
+          ? 'not-needed'
+          : (opts.lastMediaByTenant === undefined
+            ? 'ready'
+            : (lastMedia && lastMedia >= row.startDate ? 'ready' : 'waiting'));
         const due = jobDate(row.startDate, dayIndex);
         const lateDays = Math.round((todayMs - Date.parse(`${due}T00:00:00Z`)) / DAY);
         // Ahead of the horizon: real work, but not today's question.
@@ -181,6 +244,10 @@ export function crewJobs(rows: WeekRowLike[], opts: { today: string; lang?: 'vi'
           by: str(hold.by),
           heldAt: str(hold.at),
           done: hold.done === true,
+          material,
+          waitingDays: material === 'waiting'
+            ? Math.max(0, Math.round((todayMs - Date.parse(`${row.startDate}T00:00:00Z`)) / DAY))
+            : null,
         });
       }
     });
@@ -213,14 +280,62 @@ export function groupByKind(jobs: CrewJob[], lang: 'vi' | 'en' = 'vi'): CrewGrou
     .sort((a, b) => b.jobs.length - a.jobs.length);
 }
 
-export interface CrewCounts { open: number; mine: number; late: number; done: number }
+/**
+ * THE LANE THIS FILE PROMISED ON DAY ONE.
+ *
+ * Work and phone calls are two different jobs and belong in two different
+ * places. Mixed together, the designer opens "Đăng clip — Dip Powder", finds
+ * no clip, puts it back, and three days later somebody asks why nothing went
+ * out. Separated, the morning has a shape: these I can do now, these salons I
+ * have to chase, and the second list is sorted by how long they have been
+ * sitting there.
+ */
+export interface CrewSplit {
+  /** Work that can actually be started right now. */
+  ready: CrewJob[];
+  /** Jobs that are a phone call, not work. Longest wait first. */
+  blocked: CrewJob[];
+  /** One line per salon being chased, so twelve jobs are not twelve calls. */
+  chase: { tenantId: string; salon: string; slug: string; jobs: number; waitingDays: number }[];
+}
+
+export function splitCrew(jobs: CrewJob[]): CrewSplit {
+  const live = jobs.filter((j) => !j.done);
+  const blocked = live.filter((j) => j.material === 'waiting');
+  const ready = sortCrew(live.filter((j) => j.material !== 'waiting'));
+
+  // One salon, one call — however many jobs of theirs are stuck behind it.
+  const bySalon = new Map<string, { tenantId: string; salon: string; slug: string; jobs: number; waitingDays: number }>();
+  for (const j of blocked) {
+    const cur = bySalon.get(j.tenantId);
+    bySalon.set(j.tenantId, {
+      tenantId: j.tenantId,
+      salon: j.salon,
+      slug: j.slug,
+      jobs: (cur?.jobs ?? 0) + 1,
+      waitingDays: Math.max(cur?.waitingDays ?? 0, j.waitingDays ?? 0),
+    });
+  }
+  return {
+    ready,
+    blocked: [...blocked].sort((a, b) => (b.waitingDays ?? 0) - (a.waitingDays ?? 0) || a.salon.localeCompare(b.salon)),
+    chase: [...bySalon.values()].sort((a, b) => b.waitingDays - a.waitingDays || b.jobs - a.jobs),
+  };
+}
+
+export interface CrewCounts { open: number; mine: number; late: number; done: number; waiting: number }
 
 export function crewCounts(jobs: CrewJob[], me: string | null): CrewCounts {
   const live = jobs.filter((j) => !j.done);
+  // `open` counts work somebody can pick up. A job with no clip behind it is
+  // not open work — counting it as such is how a queue reads "14 việc" on a
+  // morning when four of them are actually four phone calls.
+  const startable = live.filter((j) => j.material !== 'waiting');
   return {
-    open: live.filter((j) => !j.by).length,
+    open: startable.filter((j) => !j.by).length,
     mine: me ? live.filter((j) => j.by === me).length : 0,
-    late: live.filter((j) => j.lateDays > 0).length,
+    late: startable.filter((j) => j.lateDays > 0).length,
     done: jobs.filter((j) => j.done).length,
+    waiting: live.filter((j) => j.material === 'waiting').length,
   };
 }

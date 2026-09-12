@@ -11,8 +11,29 @@
 -- turns approval back on will have that respected, because from this release
 -- the code actually reads it.
 --
+-- WHY THE GUARD.
+--
+-- The first version of this was a bare UPDATE, and it took the API deploy down
+-- with `relation "Setting" does not exist`. Postgres parses a top-level
+-- statement before it runs, so a missing table is a hard error at parse time
+-- even inside a transaction that would never have touched a row.
+--
+-- That is the wrong failure mode for a DATA migration. This one changes no
+-- schema and nothing depends on it; a database where the table is not there
+-- yet has nothing to back-fill, and the correct behaviour is to do nothing and
+-- let the deploy continue. Inside a DO block the table name is resolved at
+-- RUN time, so the IF EXISTS genuinely protects it.
+--
 -- Idempotent: re-running changes nothing. Scoped to the one settings key.
-UPDATE "Setting"
-SET "value" = jsonb_set("value"::jsonb, '{approveFirst}', 'false'::jsonb, true)
-WHERE "key" = 'googleReviews'
-  AND ("value"::jsonb ->> 'approveFirst') IS DISTINCT FROM 'false';
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = current_schema() AND table_name = 'Setting'
+  ) THEN
+    UPDATE "Setting"
+    SET "value" = jsonb_set("value"::jsonb, '{approveFirst}', 'false'::jsonb, true)
+    WHERE "key" = 'googleReviews'
+      AND ("value"::jsonb ->> 'approveFirst') IS DISTINCT FROM 'false';
+  END IF;
+END $$;

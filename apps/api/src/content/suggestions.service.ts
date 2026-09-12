@@ -296,7 +296,7 @@ export class SuggestionsService {
       findFirst: (a: unknown) => Promise<unknown>;
       findMany: (a: unknown) => Promise<unknown>;
     }>;
-    const [sug, post, weeks, offer] = await Promise.all([
+    const [sug, post, weeks, offer, setup] = await Promise.all([
       loose.contentSuggestion?.findFirst({ where: { tenantId, NOT: { createdByName: SHOP } }, select: { id: true } }).catch(() => null),
       loose.scheduledPost?.findFirst({ where: { tenantId }, select: { id: true } }).catch(() => null),
       loose.contentWeek?.findMany({
@@ -304,12 +304,19 @@ export class SuggestionsService {
         select: { edited: true, approvedAt: true, ticks: true },
       }).catch(() => []) as Promise<{ edited?: unknown; approvedAt?: unknown; ticks?: unknown }[]>,
       this.prisma.setting.findFirst({ where: { tenantId, key: 'content_offer' }, select: { id: true } }).catch(() => null),
+      // A member of staff has been inside this salon setting it up. Written by
+      // support.enterSalon, so the row exists because somebody did the work —
+      // there is no switch to leave off.
+      this.prisma.auditLog.findFirst({
+        where: { tenantId, action: 'support.entered_salon' }, select: { id: true },
+      }).catch(() => null),
     ]);
     return hasAgencyWork({
       teamSuggestion: Boolean(sug),
       scheduledPost: Boolean(post),
       weeks: Array.isArray(weeks) ? weeks : [],
       offerSet: Boolean(offer),
+      staffSetup: Boolean(setup),
     });
   }
 

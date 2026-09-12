@@ -28,4 +28,25 @@ describe('hasAgencyWork', () => {
     expect(weekTouched({ edited: { focus: 'x' } })).toBe(true);
     expect(weekTouched(null)).toBe(false);
   });
+
+  it('opens the shop screen as soon as a staff member has set the salon up', () => {
+    // The reported gap: an afternoon of setup, then the shop opens its own
+    // screen and reads "chưa có việc nào cho tiệm".
+    expect(hasAgencyWork({ staffSetup: true })).toBe(true);
+  });
+
+  it('still shows nothing to a shop that signed up on its own', () => {
+    // No suggestion, no scheduled post, no offer, no touched week, and nobody
+    // from Lumio ever inside it — a booking-only customer. This is the case the
+    // whole rule exists to protect, so it must survive the widening.
+    expect(hasAgencyWork({
+      staffSetup: false, teamSuggestion: false, scheduledPost: false,
+      offerSet: false, weeks: [{}, {}],
+    })).toBe(false);
+    expect(hasAgencyWork({})).toBe(false);
+  });
+
+  it('is not a setting: absent evidence reads as absent, never as yes', () => {
+    expect(hasAgencyWork({ staffSetup: undefined })).toBe(false);
+  });
 });

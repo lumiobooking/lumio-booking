@@ -92,10 +92,17 @@ const DICT: Record<string, { vi: string; en: string }> = {
   syncNow: { vi: 'Đồng bộ đánh giá ngay', en: 'Sync reviews now' },
   syncing: { vi: 'Đang đồng bộ…', en: 'Syncing…' },
   lastSync: { vi: 'Lần đồng bộ gần nhất', en: 'Last sync' },
+  syncStale: {
+    vi: 'Đồng bộ đã ngừng — hơn 1 tiếng chưa chạy. Không có đánh giá mới nào được kéo về và không câu trả lời nào được gửi. Kiểm tra API còn sống không.',
+    en: 'Sync has stopped — nothing for over an hour. No new reviews are being pulled and no replies are going out. Check the API is up.',
+  },
   never: { vi: 'chưa có', en: 'never' },
   inbox: { vi: 'Hộp đánh giá', en: 'Reviews inbox' },
   fNeeds: { vi: 'Cần xử lý', en: 'Needs attention' },
   fDraft: { vi: 'Chờ duyệt', en: 'To approve' },
+  // The rule line said "→ Chờ duyệt" whatever the switch below it was set to,
+  // so with auto-reply ON the screen stated the opposite of what it does.
+  ruleAutoPost: { vi: 'Tự trả lời sau 30 phút', en: 'Posts itself after 30 minutes' },
   fReplied: { vi: 'Đã trả lời', en: 'Replied' },
   fAll: { vi: 'Tất cả', en: 'All' },
   empty: { vi: 'Chưa có đánh giá nào ở mục này.', en: 'No reviews here yet.' },
@@ -350,7 +357,8 @@ function Inner() {
             {t('ruleAuto')}{' '}
             <select value={s.autoMinStars} onChange={(e) => saveSettings({ autoMinStars: Number(e.target.value) })} style={selStyle}>
               <option value={4}>4</option><option value={5}>5</option>
-            </select>{' '}{t('ruleStarUp')} <span style={{ color: '#22c55e' }}>→ {t('fDraft')}</span>
+            </select>{' '}{t('ruleStarUp')}{' '}
+            <span style={{ color: '#22c55e' }}>→ {t(s.approveFirst ? 'fDraft' : 'ruleAutoPost')}</span>
           </div>
           <div>
             {t('ruleAlert')}{' '}
@@ -426,9 +434,27 @@ function Inner() {
             {t('lastSync')}: {s.lastSyncAt ? fmtInTz(s.lastSyncAt, { dateStyle: 'short', timeStyle: 'short' }) : t('never')}
           </span>
         </div>
-        {s.enabled && s.hasLocation && (
-          <div style={{ fontSize: 11.5, color: '#22c55e', marginTop: 8 }}>🔄 {t('autoSyncNote')}</div>
-        )}
+        {/* A DEAD SYNC LOOKED EXACTLY LIKE A LIVE ONE.
+            The screen said "auto-syncs every 15 minutes" in green and printed a
+            timestamp next to it, and the timestamp had been fourteen hours old
+            for half a day. Nothing on the page connected those two facts, so
+            the honest reading of the screen was "it is working" — which is the
+            worst thing a status line can do. The green promise now only shows
+            while the promise is being kept. */}
+        {s.enabled && s.hasLocation && (() => {
+          const age = s.lastSyncAt ? Date.now() - new Date(s.lastSyncAt).getTime() : Infinity;
+          const stale = age > 60 * 60 * 1000;
+          return stale ? (
+            <div style={{
+              fontSize: 12.5, lineHeight: 1.6, marginTop: 10, padding: '10px 12px', borderRadius: 9,
+              background: 'var(--wash-red)', border: '1px solid var(--cf87171)', color: 'var(--cf87171)',
+            }}>
+              ⚠ {t('syncStale')}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11.5, color: '#22c55e', marginTop: 8 }}>🔄 {t('autoSyncNote')}</div>
+          );
+        })()}
       </div>
 
       {/* Inbox */}

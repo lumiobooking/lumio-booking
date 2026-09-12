@@ -117,7 +117,7 @@ export default function TodayPage() {
       <div style={{ maxWidth: 940, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
           <h1 style={{ fontSize: 23, margin: 0, fontWeight: 800 }}>🛠 Việc hôm nay</h1>
-          <Link href="/agency" style={{ fontSize: 13, color: '#a5b4fc', textDecoration: 'none' }}>← Danh sách tiệm</Link>
+          <Link href="/agency" style={{ fontSize: 13, color: 'var(--ink-link)', textDecoration: 'none' }}>← Danh sách tiệm</Link>
           <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--c64748b)' }}>
             {who(board?.me ?? null) || user?.email} · {board?.today}
           </span>
@@ -155,7 +155,7 @@ export default function TodayPage() {
             border: '1px solid #f59e0b', background: 'rgba(245,158,11,.07)',
             borderRadius: 12, padding: '13px 15px', marginBottom: 14,
           }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#fbbf24' }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--ink-warn)' }}>
               📞 Gọi tiệm — {board.chase.length} tiệm đang nợ ảnh/clip
             </div>
             <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 3 }}>
@@ -167,14 +167,14 @@ export default function TodayPage() {
                   display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
                   padding: '7px 10px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--line-strong)',
                 }}>
-                  <Link href={`/agency/${cs.slug}`} style={{ fontSize: 13.5, fontWeight: 700, color: '#a5b4fc', textDecoration: 'none' }}>
+                  <Link href={`/agency/${cs.slug}`} style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink-link)', textDecoration: 'none' }}>
                     {cs.salon}
                   </Link>
                   <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{cs.jobs} việc đang kẹt</span>
                   <span style={{
                     marginLeft: 'auto', fontSize: 11.5, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
                     background: cs.waitingDays >= 3 ? 'rgba(239,68,68,.18)' : 'rgba(245,158,11,.18)',
-                    color: cs.waitingDays >= 3 ? '#fca5a5' : '#fbbf24',
+                    color: cs.waitingDays >= 3 ? 'var(--ink-bad)' : 'var(--ink-warn)',
                   }}>chờ {cs.waitingDays} ngày</span>
                 </div>
               ))}
@@ -226,15 +226,15 @@ export default function TodayPage() {
                       }} />
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 12.5, fontWeight: 800, color: '#fbbf24' }}>{j.salon}</span>
-                          <span style={{ fontSize: 11.5, color: j.lateDays > 0 ? '#fca5a5' : 'var(--c64748b)' }}>
+                          <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--ink-warn)' }}>{j.salon}</span>
+                          <span style={{ fontSize: 11.5, color: j.lateDays > 0 ? 'var(--ink-bad)' : 'var(--c64748b)' }}>
                             {j.lateDays > 0 ? `trễ ${j.lateDays} ngày` : j.lateDays === 0 ? 'hôm nay' : `còn ${-j.lateDays} ngày`}
                           </span>
                           {j.by && (
                             <span style={{
                               fontSize: 11, fontWeight: 800, padding: '1px 7px', borderRadius: 999,
                               background: mine ? 'rgba(99,102,241,.2)' : 'rgba(148,163,184,.16)',
-                              color: mine ? '#a5b4fc' : 'var(--c94a3b8)',
+                              color: mine ? 'var(--ink-link)' : 'var(--c94a3b8)',
                             }}>{mine ? 'TÔI' : who(j.by).toUpperCase()} · {ago(j.heldAt)}</span>
                           )}
                         </div>
@@ -287,7 +287,7 @@ function Btn({ children, onClick, busy, tone }: { children: React.ReactNode; onC
   const style: React.CSSProperties = tone === 'primary'
     ? { background: '#6366f1', color: '#fff', border: 'none' }
     : tone === 'good'
-      ? { background: 'transparent', color: '#86efac', border: '1px solid rgba(34,197,94,.4)' }
+      ? { background: 'transparent', color: 'var(--ink-good)', border: '1px solid rgba(34,197,94,.4)' }
       : { background: 'transparent', color: 'var(--c94a3b8)', border: '1px solid var(--c334155)' };
   return (
     <button onClick={onClick} disabled={busy} style={{ ...style, borderRadius: 8, padding: '6px 11px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: busy ? 0.5 : 1, whiteSpace: 'nowrap' }}>

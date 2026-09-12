@@ -250,7 +250,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
             <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', margin: '11px 0 9px' }}>
               {adsPlan.figures.map((f, i) => (
                 <div key={i}>
-                  <div style={{ fontSize: 24, fontWeight: 800, color: i === 2 ? '#86efac' : 'var(--cf1f5f9)', lineHeight: 1.1 }}>{f.value}</div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: i === 2 ? 'var(--ink-good)' : 'var(--cf1f5f9)', lineHeight: 1.1 }}>{f.value}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{f.label}</div>
                 </div>
               ))}
@@ -328,7 +328,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
         {byDay.map(({ label, di, jobs }) => (
           <div key={di} style={{ padding: '9px 0', borderTop: di === 0 ? 'none' : '1px solid var(--line)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontSize: 11.5, color: di === 0 ? '#a5b4fc' : 'var(--c64748b)', fontWeight: 800, letterSpacing: '.4px' }}>
+              <div style={{ fontSize: 11.5, color: di === 0 ? 'var(--ink-link)' : 'var(--c64748b)', fontWeight: 800, letterSpacing: '.4px' }}>
                 {di === 0 ? T('HÔM NAY', 'TODAY') : label.toUpperCase()}
               </div>
               {canEdit && (
@@ -387,7 +387,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
             <span style={{
               fontSize: 12, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
               background: week.ask.byDayIndex <= 1 ? 'rgba(245,158,11,.18)' : 'rgba(148,163,184,.14)',
-              color: week.ask.byDayIndex <= 1 ? '#fbbf24' : 'var(--c94a3b8)',
+              color: week.ask.byDayIndex <= 1 ? 'var(--ink-warn)' : 'var(--c94a3b8)',
             }}>{week.ask.by}</span>
           </div>
           <div style={{ fontSize: 14, color: 'var(--ce2e8f0)', lineHeight: 1.6, marginTop: 5 }}>{week.ask.what}</div>
@@ -419,7 +419,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
           ))}
 
           <details style={{ marginTop: 10 }}>
-            <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#86efac', listStyle: 'none' }}>
+            <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-good)', listStyle: 'none' }}>
               {T('Mẹo quay cho đẹp (không bắt buộc) →', 'Tips for a good shot (optional) →')}
             </summary>
             <div style={{ marginTop: 7, paddingLeft: 10, borderLeft: '2px solid rgba(34,197,94,.35)' }}>
@@ -492,7 +492,7 @@ function AdsYes({ token, vi, label, onError }: {
   const [sent, setSent] = useState(false);
   if (sent) {
     return (
-      <div style={{ marginTop: 11, fontSize: 13, fontWeight: 700, color: '#86efac' }}>
+      <div style={{ marginTop: 11, fontSize: 13, fontWeight: 700, color: 'var(--ink-good)' }}>
         {T('✓ Đã gửi cho Lumio — bên em dựng chiến dịch và báo lại tiệm trước khi chạy.',
            '✓ Sent to Lumio — we will build the campaign and come back to you before it goes live.')}
       </div>
@@ -569,7 +569,7 @@ function PitchRow({ st, n, last, vi }: {
               onClick={() => setOpen((o) => !o)}
               style={{
                 marginTop: 5, padding: 0, background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 11.5, fontWeight: 700, color: '#a5b4fc', letterSpacing: .2,
+                fontSize: 11.5, fontWeight: 700, color: 'var(--ink-link)', letterSpacing: .2,
               }}
             >
               {open
@@ -601,7 +601,7 @@ function Stat({ n, label, delta, tone }: { n: number | string; label: string; de
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
         <span style={{ fontSize: 22, fontWeight: 800, color: col, lineHeight: 1.1 }}>{n}</span>
         {(up || down) && (
-          <span style={{ fontSize: 11.5, fontWeight: 800, color: up ? '#86efac' : '#fca5a5' }}>
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: up ? 'var(--ink-good)' : 'var(--ink-bad)' }}>
             {up ? '▲' : '▼'}{Math.abs(delta as number)}
           </span>
         )}
@@ -669,9 +669,9 @@ function JobLine({ j, vi, canEdit, busy, days, onText, onSteps, onMove, onRemove
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
           <span style={{
             fontSize: 10.5, fontWeight: 800, letterSpacing: '.4px', padding: '1px 6px', borderRadius: 6,
-            background: by === 'shop' ? 'rgba(34,197,94,.15)' : 'rgba(99,102,241,.15)', color: by === 'shop' ? '#86efac' : '#a5b4fc',
+            background: by === 'shop' ? 'rgba(34,197,94,.15)' : 'rgba(99,102,241,.15)', color: by === 'shop' ? 'var(--ink-good)' : 'var(--ink-link)',
           }}>{by === 'shop' ? T('TIỆM LÀM', 'YOU') : 'LUMIO'}</span>
-          {allDone && <span style={{ fontSize: 11, color: '#86efac', fontWeight: 700 }}>✓ {T('xong', 'done')}</span>}
+          {allDone && <span style={{ fontSize: 11, color: 'var(--ink-good)', fontWeight: 700 }}>✓ {T('xong', 'done')}</span>}
         </div>
         <div style={{ fontSize: 14, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 2, textDecoration: allDone ? 'line-through' : undefined }}>
           <Inline value={j.text} canEdit={canEdit} onCommit={onText} multiline />
@@ -767,7 +767,7 @@ export function HolidayOffers({ token, vi, ideas, onError }: {
           <div key={i.key} style={{ ...card, padding: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
               <span style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{i.name}</span>
-              <span style={{ marginLeft: 'auto', fontSize: 11.5, color: i.daysAway <= 7 ? '#fbbf24' : 'var(--c64748b)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+              <span style={{ marginLeft: 'auto', fontSize: 11.5, color: i.daysAway <= 7 ? 'var(--ink-warn)' : 'var(--c64748b)', fontWeight: 700, whiteSpace: 'nowrap' }}>
                 {i.daysAway === 0 ? T('hôm nay', 'today') : T(`còn ${i.daysAway} ngày`, `in ${i.daysAway} days`)}
               </span>
             </div>
@@ -776,7 +776,7 @@ export function HolidayOffers({ token, vi, ideas, onError }: {
             <button
               disabled={busy === i.key || sent[i.key]}
               onClick={() => request({ key: i.key }, i.key)}
-              style={{ ...smallPrimary, marginTop: 'auto', background: sent[i.key] ? 'rgba(34,197,94,.18)' : '#6366f1', color: sent[i.key] ? '#86efac' : '#fff' }}
+              style={{ ...smallPrimary, marginTop: 'auto', background: sent[i.key] ? 'rgba(34,197,94,.18)' : '#6366f1', color: sent[i.key] ? 'var(--ink-good)' : '#fff' }}
             >
               {sent[i.key] ? T('✓ Đã gửi cho Lumio', '✓ Sent to Lumio') : busy === i.key ? '…' : T('Chạy chương trình này →', 'Run this →')}
             </button>

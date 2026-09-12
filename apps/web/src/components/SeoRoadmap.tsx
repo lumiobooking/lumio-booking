@@ -125,7 +125,7 @@ function monthsText(weeks: unknown): string {
 function Mismatch({ what }: { what: string }) {
   return (
     <div style={{ ...ui.card, padding: 16, borderColor: '#f59e0b' }}>
-      <div style={{ fontSize: 14.5, fontWeight: 700, color: '#f59e0b' }}>Chưa hiển thị được {what}</div>
+      <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ink-warn)' }}>Chưa hiển thị được {what}</div>
       <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.65, marginTop: 6 }}>
         Máy chủ đang trả về dữ liệu theo phiên bản cũ hơn màn hình này — thường là vì bản cập nhật
         vừa lên và phần máy chủ còn đang chạy. Đợi vài phút rồi tải lại trang.
@@ -206,7 +206,7 @@ function TaskRow({
             </span>
           )}
           {t.recurring && (
-            <span style={{ fontSize: 10.5, fontWeight: 600, color: '#38bdf8', border: '1px solid #38bdf8', borderRadius: 20, padding: '1px 7px', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--ink-sky)', border: '1px solid #38bdf8', borderRadius: 20, padding: '1px 7px', whiteSpace: 'nowrap' }}>
               🔁 {CADENCE_LABEL[t.cadence]}
             </span>
           )}
@@ -227,7 +227,7 @@ function TaskRow({
                   fontSize: 10.5, fontWeight: 800, letterSpacing: .4, padding: '1px 7px', borderRadius: 999,
                   textTransform: 'uppercase',
                   background: t.who === 'salon' ? 'rgba(245,158,11,.16)' : 'rgba(99,102,241,.18)',
-                  color: t.who === 'salon' ? '#fbbf24' : '#a5b4fc',
+                  color: t.who === 'salon' ? 'var(--ink-warn)' : 'var(--ink-link)',
                 }}>{t.who === 'salon' ? 'tiệm làm' : 'bên em làm'}</span>
               </div>
             )}
@@ -241,7 +241,7 @@ function TaskRow({
                 padding: '6px 9px', borderRadius: 8, background: 'rgba(245,158,11,.10)',
                 border: '1px solid rgba(245,158,11,.35)',
               }}>
-                <b style={{ color: '#fbbf24' }}>Cần tiệm cung cấp:</b> {t.needs}
+                <b style={{ color: 'var(--ink-warn)' }}>Cần tiệm cung cấp:</b> {t.needs}
               </div>
             )}
             <div style={{ fontSize: 12.5, color: 'var(--c64748b)', lineHeight: 1.55, marginTop: 5 }}>{t.why}</div>
@@ -287,7 +287,7 @@ function KeywordPanel({ plan }: { plan: KeywordPlan }) {
           <div key={i} style={{ padding: '11px 12px', borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.4 }}>{t.title}</span>
-              <span style={{ fontSize: 10.5, fontWeight: 600, color: '#38bdf8', border: '1px solid #38bdf8', borderRadius: 20, padding: '1px 7px', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--ink-sky)', border: '1px solid #38bdf8', borderRadius: 20, padding: '1px 7px', whiteSpace: 'nowrap' }}>
                 {KIND_LABEL[t.kind] ?? t.kind}
               </span>
             </div>
@@ -313,7 +313,7 @@ function KeywordPanel({ plan }: { plan: KeywordPlan }) {
         onClick={() => setShowAds(!showAds)}
         style={{
           marginTop: 14, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
-          fontFamily: 'inherit', fontSize: 12.5, color: '#38bdf8', fontWeight: 600,
+          fontFamily: 'inherit', fontSize: 12.5, color: 'var(--ink-sky)', fontWeight: 600,
         }}
       >
         {showAds ? '▾' : '▸'} Nhóm từ khoá chạy quảng cáo ({plan.adGroups.length} nhóm)
@@ -387,7 +387,7 @@ export function SeoRoadmap({ token }: { token: string | null }) {
     finally { setBusy(null); }
   };
 
-  if (err) return <div style={{ ...ui.card, padding: 16, color: '#ef4444', fontSize: 13.5 }}>{err}</div>;
+  if (err) return <div style={{ ...ui.card, padding: 16, color: 'var(--ink-bad)', fontSize: 13.5 }}>{err}</div>;
   if (!data) return <div style={{ fontSize: 13, color: 'var(--c64748b)', padding: '18px 0' }}>Đang tải…</div>;
 
   // The one shape check on this screen. Everything below indexes into
@@ -535,7 +535,7 @@ export function SeoRoadmap({ token }: { token: string | null }) {
             >
               <span style={{
                 fontFamily: mono, fontSize: 12, fontWeight: 700,
-                color: finished ? '#22c55e' : meta.accent, background: finished ? 'rgba(34,197,94,.12)' : 'var(--c1e293b)',
+                color: finished ? 'var(--ink-good)' : meta.accent, background: finished ? 'rgba(34,197,94,.12)' : 'var(--c1e293b)',
                 borderRadius: 7, minWidth: 30, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               }}>{finished ? '✓' : p.n}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
@@ -545,7 +545,7 @@ export function SeoRoadmap({ token }: { token: string | null }) {
                     : p.weeksLeft ? `dự kiến ${p.weeksLeft[0]}–${p.weeksLeft[1]} tuần` : 'xong'}
                 </span>
               </span>
-              <span style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 600, color: finished ? '#22c55e' : 'var(--c94a3b8)', flexShrink: 0, paddingTop: 4 }}>
+              <span style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 600, color: finished ? 'var(--ink-good)' : 'var(--c94a3b8)', flexShrink: 0, paddingTop: 4 }}>
                 {p.done}/{p.total} {shown ? '▾' : '▸'}
               </span>
             </button>
@@ -556,7 +556,7 @@ export function SeoRoadmap({ token }: { token: string | null }) {
                   <div style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>{p.goal}</div>
                   {p.target && (
                     <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55, marginTop: 7, paddingLeft: 10, borderLeft: '2px solid #22c55e' }}>
-                      <b style={{ color: '#22c55e' }}>Xong giai đoạn khi:</b> {p.target}
+                      <b style={{ color: 'var(--ink-good)' }}>Xong giai đoạn khi:</b> {p.target}
                     </div>
                   )}
                 </div>
@@ -572,9 +572,9 @@ export function SeoRoadmap({ token }: { token: string | null }) {
 
       <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.7, marginTop: 16, padding: '0 2px' }}>
         Mục có nhãn <b style={{ color: 'var(--c94a3b8)' }}>hệ thống tự xác nhận</b> không tích tay được — hệ thống đọc thẳng từ số liệu thật của tiệm, nên không ai tích nhầm một việc chưa làm.
-        Mục <b style={{ color: '#f59e0b' }}>chưa đo được</b> nghĩa là hệ thống chưa nhìn thấy dữ liệu, thường vì chưa kết nối Google Business Profile — không phải là chưa làm.
-        <br />Mục có <b style={{ color: '#38bdf8' }}>🔁</b> là việc lặp lại: tích xong chỉ tính cho kỳ này, sang tuần hoặc sang tháng nó tự bật lại thành chưa làm — vì việc đó thật sự phải làm lại.
-        <br /><b style={{ color: '#ef4444' }}>Không mua backlink, không mua traffic, không mua listing.</b> Toàn bộ lộ trình này làm tay. Link mua được là link Google đã biết cách nhận ra, và traffic mua là bot vào rồi thoát ngay — dạy Google đúng một điều là trang này không đáng ở lại.
+        Mục <b style={{ color: 'var(--ink-warn)' }}>chưa đo được</b> nghĩa là hệ thống chưa nhìn thấy dữ liệu, thường vì chưa kết nối Google Business Profile — không phải là chưa làm.
+        <br />Mục có <b style={{ color: 'var(--ink-sky)' }}>🔁</b> là việc lặp lại: tích xong chỉ tính cho kỳ này, sang tuần hoặc sang tháng nó tự bật lại thành chưa làm — vì việc đó thật sự phải làm lại.
+        <br /><b style={{ color: 'var(--ink-bad)' }}>Không mua backlink, không mua traffic, không mua listing.</b> Toàn bộ lộ trình này làm tay. Link mua được là link Google đã biết cách nhận ra, và traffic mua là bot vào rồi thoát ngay — dạy Google đúng một điều là trang này không đáng ở lại.
       </div>
     </>
   );

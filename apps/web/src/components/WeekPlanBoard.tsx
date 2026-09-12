@@ -318,7 +318,7 @@ export function WeekPlanBoard({
         <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
           {saving && <span style={{ ...pill, borderColor: 'var(--c475569)', color: 'var(--c94a3b8)' }}>{T('Đang lưu…', 'Saving…')}</span>}
           {meta?.approvedAt && (
-            <span style={{ ...pill, borderColor: '#22c55e', color: '#22c55e' }}>
+            <span style={{ ...pill, borderColor: '#22c55e', color: 'var(--ink-good)' }}>
               ✓ {T('Tiệm đã duyệt', 'Approved')}{meta.approvedByName ? ` — ${meta.approvedByName}` : ''}
             </span>
           )}
@@ -422,7 +422,7 @@ export function WeekPlanBoard({
                   seen this screen reads words. */}
               <div style={{
                 fontSize: 12, fontWeight: 600, marginTop: 5,
-                color: real.length === 0 ? 'var(--c64748b)' : allDone ? '#22c55e' : on ? '#ffffff' : 'var(--c94a3b8)',
+                color: real.length === 0 ? 'var(--c64748b)' : allDone ? 'var(--ink-good)' : on ? '#ffffff' : 'var(--c94a3b8)',
               }}>
                 {real.length === 0
                   ? T('Nghỉ', 'Rest')
@@ -596,7 +596,7 @@ export function WeekPlanBoard({
                     fontSize: 10, fontWeight: 800, letterSpacing: .4, padding: '1px 6px', borderRadius: 999,
                     marginRight: 6, textTransform: 'uppercase',
                     background: j.who === 'salon' ? 'rgba(245,158,11,.16)' : 'rgba(99,102,241,.18)',
-                    color: j.who === 'salon' ? '#fbbf24' : '#a5b4fc',
+                    color: j.who === 'salon' ? 'var(--ink-warn)' : 'var(--ink-link)',
                   }}>{j.who === 'salon' ? T('tiệm', 'shop') : T('bên em', 'us')}</span>
                   {j.text}{j.when && <span style={{ color: 'var(--c64748b)' }}> · {j.when}</span>}
                 </div>
@@ -752,7 +752,7 @@ export function WeekPlanBoard({
             {week.sources.map((s, k) => (
               <div key={k} style={{ padding: '4px 0' }}>
                 <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
-                  • {s.label} <span style={{ color: '#f59e0b', fontSize: 12 }}>· {s.when}</span>
+                  • {s.label} <span style={{ color: 'var(--ink-warn)', fontSize: 12 }}>· {s.when}</span>
                 </div>
                 <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.45 }}>{s.why}</div>
               </div>
@@ -864,7 +864,7 @@ function JobRow({
             <button onClick={onToggle} style={{ ...sheetToggle, color: open ? 'var(--ca5b4fc)' : 'var(--c94a3b8)' }}>
               {open ? '▾' : '▸'} {T('Bản làm việc', 'Working sheet')}
               {steps.length > 0 && (
-                <span style={{ marginLeft: 6, fontSize: 11, color: done === steps.length ? '#22c55e' : 'var(--c64748b)' }}>
+                <span style={{ marginLeft: 6, fontSize: 11, color: done === steps.length ? 'var(--ink-good)' : 'var(--c64748b)' }}>
                   {done}/{steps.length}
                 </span>
               )}
@@ -983,7 +983,7 @@ function SheetBlock({ label: l, copy, vi, children }: { label: string; copy?: st
         {copy && (
           <button
             onClick={() => { navigator.clipboard?.writeText(copy).then(() => { setOk(true); setTimeout(() => setOk(false), 1500); }).catch(() => undefined); }}
-            style={{ ...btn, fontSize: 10.5, padding: '1px 7px', color: ok ? '#22c55e' : 'var(--c94a3b8)' }}
+            style={{ ...btn, fontSize: 10.5, padding: '1px 7px', color: ok ? 'var(--ink-good)' : 'var(--c94a3b8)' }}
           >{ok ? (vi ? '✓ Đã chép' : '✓ Copied') : (vi ? 'Sao chép' : 'Copy')}</button>
         )}
       </div>
@@ -1097,7 +1097,7 @@ function OfferCard({ offer, vi, currencySign, onSave }: {
           {modeBtn('custom', T('Team tự đặt', 'Set by the team'))}
           {modeBtn('off', T('Không chạy ưu đãi', 'No offer'))}
         </div>
-        {saved && <span style={{ fontSize: 11.5, color: '#22c55e' }}>✓ {T('Đã lưu', 'Saved')}</span>}
+        {saved && <span style={{ fontSize: 11.5, color: 'var(--ink-good)' }}>✓ {T('Đã lưu', 'Saved')}</span>}
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 5, lineHeight: 1.5 }}>
         {o.mode === 'auto' && T('Con số và khung giờ lấy từ sổ đặt lịch của tiệm — khung trống nhất, giảm vừa đủ theo biên lợi nhuận.',

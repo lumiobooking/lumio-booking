@@ -413,7 +413,7 @@ function OutboxBar({ vi, pending, running, online, pct }: {
                   'You can put the phone down — the screen stays on. If you close the app, it resumes where it left off next time, no need to pick the files again.')}
           </div>
           {reason && (
-            <div style={{ fontSize: 11.5, color: '#fca5a5', marginTop: 4, fontFamily: 'ui-monospace, monospace', wordBreak: 'break-word' }}>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-bad)', marginTop: 4, fontFamily: 'ui-monospace, monospace', wordBreak: 'break-word' }}>
               {T('Lỗi', 'Error')}: {reason}
             </div>
           )}

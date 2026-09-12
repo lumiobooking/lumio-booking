@@ -67,8 +67,32 @@ export interface AdsReceipt {
   verdict: 'good' | 'tight' | 'over' | 'early' | 'no-ceiling';
   headline: string; caveat: string;
 }
+/** One missing fact, and what filling it in turns on. See ads-starter.ts. */
+export interface DataStep {
+  key: string; title: string; where: string; unlocks: string;
+  minutes: number; done: boolean; who: 'shop' | 'lumio';
+}
 export interface AdsPlan {
-  state: 'offer' | 'not-yet' | 'unknown';
+  /**
+   * 'starter' replaced the state that used to be called 'unknown'.
+   *
+   * A shop with no bookings here and no prices typed in got one sentence of
+   * homework and no plan — on the screen an owner opens on the first call, when
+   * asking for an ad plan is the first thing she does. 'starter' carries the
+   * four parts of the plan that need no numbers and puts the missing number in
+   * front of her as one question. 'unknown' now means something narrower: no
+   * channel connected either, so there is genuinely nowhere to put money.
+   */
+  state: 'offer' | 'not-yet' | 'starter' | 'unknown';
+  /** Which tier the figures are on. Printed before any of them. */
+  confidence?: 'measured' | 'estimated' | 'starter' | null;
+  /** The missing facts as a route, on every tier — not only the thin one. */
+  roadmap?: DataStep[] | null;
+  /** The one number that turns a starter plan into a costed one. */
+  ask?: {
+    question: string; unlocks: string; where: string;
+    hint?: { lowCents: number; highCents: number; service: string; note: string } | null;
+  } | null;
   figures: { value: string; label: string }[];
   headline: string; why: string; cta: string | null;
   /**
@@ -240,11 +264,37 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
       {!ads && adsPlan && (
         <div style={{
           ...card, marginBottom: 12,
-          borderColor: adsPlan.state === 'offer' ? '#6366f1' : 'var(--c334155)',
-          background: adsPlan.state === 'offer' ? 'linear-gradient(135deg, rgba(99,102,241,.16), rgba(99,102,241,.05))' : 'var(--c0f172a)',
+          // A starter plan IS a proposal and is framed as one. It used to be
+          // drawn in the grey of a dead end, next to an hourglass, which told
+          // the owner to come back later rather than to read the plan.
+          borderColor: adsPlan.state === 'offer' ? '#6366f1' : adsPlan.state === 'starter' ? '#38bdf8' : 'var(--c334155)',
+          background: adsPlan.state === 'offer'
+            ? 'linear-gradient(135deg, rgba(99,102,241,.16), rgba(99,102,241,.05))'
+            : adsPlan.state === 'starter'
+              ? 'linear-gradient(135deg, rgba(56,189,248,.13), rgba(56,189,248,.04))'
+              : 'var(--c0f172a)',
         }}>
+          {/* WHICH TIER THIS IS, BEFORE ANY DOLLAR SIGN.
+              Measured, estimated and starter render as identical dollars, and
+              the difference between them is the difference between arithmetic
+              and an opening offer. An owner who finds that out later, by being
+              wrong with her own money, stops believing the rest of the screen. */}
+          {adsPlan.confidence && (
+            <div style={{
+              display: 'inline-block', marginBottom: 7, padding: '2px 8px', borderRadius: 20,
+              fontSize: 10.5, fontWeight: 800, letterSpacing: .4, textTransform: 'uppercase',
+              background: adsPlan.confidence === 'measured' ? 'rgba(34,197,94,.14)' : adsPlan.confidence === 'estimated' ? 'rgba(251,191,36,.14)' : 'rgba(56,189,248,.14)',
+              color: adsPlan.confidence === 'measured' ? 'var(--ink-good)' : adsPlan.confidence === 'estimated' ? 'var(--ink-warn)' : 'var(--ink-sky)',
+            }}>
+              {adsPlan.confidence === 'measured'
+                ? T('Tính từ lịch hẹn thật của tiệm', 'From your real bookings')
+                : adsPlan.confidence === 'estimated'
+                  ? T('Tạm tính từ bảng giá của tiệm', 'Estimated from your price list')
+                  : T('Đề xuất khởi động — chưa có số của tiệm', 'Starter plan — none of your numbers yet')}
+            </div>
+          )}
           <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}>
-            {adsPlan.state === 'offer' ? '📣 ' : adsPlan.state === 'not-yet' ? '✋ ' : '⏳ '}{adsPlan.headline}
+            {adsPlan.state === 'offer' ? '📣 ' : adsPlan.state === 'not-yet' ? '✋ ' : adsPlan.state === 'starter' ? '🚀 ' : '⏳ '}{adsPlan.headline}
           </div>
           {!!adsPlan.figures.length && (
             <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', margin: '11px 0 9px' }}>
@@ -291,6 +341,85 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
               </div>
             </div>
           )}
+
+          {/* THE ONE QUESTION THAT COSTS A MINUTE AND CHANGES EVERY FIGURE.
+              Not buried in settings: on the card, next to the plan it would
+              sharpen, with the trade's published band beside it so the owner
+              can confirm or correct rather than start from nothing. The band is
+              labelled as the market's number, never as hers. */}
+          {adsPlan.ask && adsPlan.state === 'starter' && (
+            <div style={{
+              marginTop: 12, borderRadius: 10, padding: '10px 12px',
+              background: 'rgba(56,189,248,.10)', border: '1px solid var(--line-strong)',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, color: 'var(--ink-sky)', textTransform: 'uppercase' }}>
+                {T('Bên em cần đúng 1 con số', 'We need exactly one number')}
+              </div>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cf1f5f9)', marginTop: 4, lineHeight: 1.5 }}>
+                {adsPlan.ask.question}
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 4 }}>{adsPlan.ask.unlocks}</div>
+              {adsPlan.ask.hint && (
+                <div style={{ fontSize: 12, color: 'var(--ink-faint)', lineHeight: 1.6, marginTop: 6 }}>{adsPlan.ask.hint.note}</div>
+              )}
+              <div style={{ fontSize: 12, color: 'var(--ink-warn)', lineHeight: 1.6, marginTop: 6, fontWeight: 600 }}>
+                {adsPlan.ask.where}
+              </div>
+            </div>
+          )}
+
+          {/* WHAT IS MISSING, AS A ROUTE RATHER THAN A COMPLAINT.
+              Shown on every tier: a fully measured card still usually has no
+              opening hours and no connected Page, and the same list then reads
+              as "what would sharpen this". Each row says what it TURNS ON, so
+              the owner is choosing between outcomes, not doing chores. */}
+          {!!adsPlan.roadmap?.length && (() => {
+            const left = adsPlan.roadmap!.filter((r) => !r.done);
+            const mins = left.reduce((sum, r) => sum + r.minutes, 0);
+            return (
+              <details style={{ marginTop: 12 }} open={adsPlan.state === 'starter'}>
+                <summary style={{
+                  cursor: 'pointer', fontSize: 11.5, fontWeight: 800, letterSpacing: .5,
+                  color: 'var(--ink-sky)', textTransform: 'uppercase', listStyle: 'none',
+                }}>
+                  {left.length
+                    ? T(`Lộ trình để số chính xác hơn — còn ${left.length} việc, ~${mins} phút`,
+                      `Route to sharper numbers — ${left.length} left, about ${mins} min`)
+                    : T('Lộ trình — tiệm đã đủ dữ liệu', 'Route — all data in')}
+                  {' '}({adsPlan.roadmap!.length - left.length}/{adsPlan.roadmap!.length})
+                </summary>
+                <div style={{ marginTop: 9, borderTop: '1px solid var(--line)', paddingTop: 9, display: 'grid', gap: 9 }}>
+                  {adsPlan.roadmap!.map((r) => (
+                    <div key={r.key} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', opacity: r.done ? .6 : 1 }}>
+                      <span style={{ fontSize: 13, flex: '0 0 auto', lineHeight: 1.5 }}>{r.done ? '✅' : '⬜'}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', gap: 7, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                          <span style={{
+                            fontSize: 13, fontWeight: 700, minWidth: 0,
+                            color: r.done ? 'var(--ink-faint)' : 'var(--cf1f5f9)',
+                            textDecoration: r.done ? 'line-through' : 'none',
+                          }}>{r.title}</span>
+                          <span style={{
+                            fontSize: 10, fontWeight: 800, letterSpacing: .3, padding: '1px 6px', borderRadius: 20,
+                            whiteSpace: 'nowrap',
+                            background: r.who === 'shop' ? 'rgba(251,191,36,.14)' : 'rgba(99,102,241,.14)',
+                            color: r.who === 'shop' ? 'var(--ink-warn)' : 'var(--ink-link)',
+                          }}>
+                            {r.who === 'shop' ? T('tiệm làm', 'you do') : T('bên em làm', 'we do')}
+                          </span>
+                          <span style={{ fontSize: 11, color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>~{r.minutes}p</span>
+                        </div>
+                        <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 2 }}>
+                          <b style={{ color: 'var(--ink-good)', fontWeight: 700 }}>{T('Mở khoá', 'Unlocks')}:</b> {r.unlocks}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', lineHeight: 1.55, marginTop: 2 }}>{r.where}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            );
+          })()}
 
           {!!adsPlan.basis?.length && (
             <details style={{ marginTop: 12 }}>

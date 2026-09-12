@@ -1,5 +1,9 @@
 import { bi, enOf, viOf, type Txt } from './i18n';
 import { MIN_AD_MINUTES, type AdServicePick } from './ad-service';
+import {
+  type AdsConfidence, type DataStep, type TicketAsk,
+} from './ads-starter';
+import { MEASURABLE_CONVERSIONS as MEASURABLE_BOOKINGS } from './channel-plan';
 
 /**
  * The ad budget, offered to the SALON in the salon's own words.
@@ -30,7 +34,17 @@ import { MIN_AD_MINUTES, type AdServicePick } from './ad-service';
  * its own money.
  */
 
-export type PitchState = 'offer' | 'not-yet' | 'unknown';
+/**
+ * 'starter' is the state that used to be 'unknown'.
+ *
+ * The rename is the whole fix. 'unknown' described OUR data and was read by
+ * the owner as a verdict on her shop — and it printed no plan, on the one
+ * screen she opens before deciding whether to hire us. 'starter' carries the
+ * five parts of the plan that need no numbers, plus the one question that
+ * turns it into an exact one. 'unknown' is kept for a card that cannot even
+ * name a channel, which in practice means the trade is unknown too.
+ */
+export type PitchState = 'offer' | 'not-yet' | 'starter' | 'unknown';
 
 /**
  * One numbered step of the plan. Four of them, and each answers a question the
@@ -123,6 +137,24 @@ export interface AdsPitch {
    * than with the conclusion, which is the only argument worth having.
    */
   basis?: { label: Txt; value: Txt; known: boolean }[];
+  /**
+   * WHICH OF THE THREE TIERS THIS CARD IS ON — measured, estimated, starter.
+   *
+   * Printed at the top, before any figure. The three tiers look identical once
+   * rendered as dollars, and the difference between them is the difference
+   * between arithmetic and an opening offer.
+   */
+  confidence?: AdsConfidence;
+  /**
+   * THE MISSING FACTS, AS A ROUTE RATHER THAN A COMPLAINT.
+   *
+   * Present on every state, not only the thin ones: a salon on the measured
+   * tier still has hours or a Page missing, and the same list then reads as
+   * "what would sharpen this" instead of "what is broken". See ./ads-starter.
+   */
+  roadmap?: DataStep[] | null;
+  /** The one number that converts a starter plan into an exact one. */
+  ask?: TicketAsk | null;
 }
 
 const fmt = (c: number) => `$${Math.round(c / 100)}`;
@@ -388,6 +420,19 @@ function shortOf(short: Txt | null | undefined, fallbackVi: string, fallbackEn: 
 function planSteps(input: PitchPlanInput, days: number, ceilingText: string): PitchStep[] {
   const steps: PitchStep[] = [];
 
+  /**
+   * THE SPENDING LIMIT, NAMED EVEN WHEN ITS FIGURE IS NOT KNOWN YET.
+   *
+   * The steps quote the limit five times, and with no ticket on file
+   * `ceilingText` is empty — which used to render "Rẻ hơn /khách", a sentence
+   * with a hole in it. The rule itself does not depend on the figure: stop when
+   * a customer costs more than one is worth. So the phrase falls back to naming
+   * the rule, and the starter card explains one line lower how the figure
+   * arrives. A plan that states its stopping rule in words is still a plan.
+   */
+  const limitVi = ceilingText || 'ngưỡng hoà vốn của tiệm';
+  const limitEn = ceilingText || 'your break-even limit';
+
   const dest = destinationStep(input.aim);
 
   const first = input.platform ?? null;
@@ -580,9 +625,9 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
       'Three numbers each time: what was spent, how many new customers, what each cost. You do not have to watch anything.'),
     detailTitle: bi('Bên em sửa những gì', 'What we change'),
     detail: bi(
-      `Rẻ hơn ${ceilingText}/khách thì bên em dồn thêm tiền vào khung giờ và dịch vụ đang chạy tốt. `
+      `Rẻ hơn ${limitVi}/khách thì bên em dồn thêm tiền vào khung giờ và dịch vụ đang chạy tốt. `
       + `Đắt hơn thì sửa ngay trong tuần — đổi dịch vụ quảng cáo, thu hẹp khu vực, hoặc tắt khung giờ không ra khách — chứ không chờ hết đợt rồi mới nói.`,
-      `Cheaper than ${ceilingText} a customer and we put more behind the hours and services that are working. `
+      `Cheaper than ${limitEn} a customer and we put more behind the hours and services that are working. `
       + `Dearer and we fix it inside the week — change the advertised service, tighten the radius, or switch off an hour that brings nobody — rather than waiting for the run to end to tell you.`),
     whenTitle: bi('Tiệm nhận được gì', 'What you get'),
     when: bi(
@@ -593,18 +638,18 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
   steps.push({
     title: bi(`Hết ${days} ngày thì sao`, `After the ${days} days`),
     head: bi(
-      `Dưới ${ceilingText}/khách thì tăng ngân sách, vượt thì tắt`,
-      `Under ${ceilingText} a customer we raise it, over it we stop`),
+      `Dưới ${limitVi}/khách thì tăng ngân sách, vượt thì tắt`,
+      `Under ${limitEn} a customer we raise it, over it we stop`),
     body: bi(
       'Quyết bằng con số thật của đợt, không phải bằng cảm tính của bên em hay của tiệm.',
       'Decided on the real numbers from the run, not on our opinion or yours.'),
     detailTitle: bi('Rồi tiền đi đâu', 'And then where the money goes'),
     detail: bi(
-      `Vượt ${ceilingText} thì bên em chuyển tiền đó sang nhắc khách cũ — rẻ hơn nhiều so với mua khách mới.`
+      `Vượt ${limitVi} thì bên em chuyển tiền đó sang nhắc khách cũ — rẻ hơn nhiều so với mua khách mới.`
         + (back
           ? ` Dù đợt này ra sao, mọi khách mới của đợt đều được nhắn lại sau khoảng ${back} ngày: lãi thật nằm ở lần thứ hai họ quay lại, không phải lần đầu.`
           : ' Dù đợt này ra sao, mọi khách mới của đợt đều được nhắn lại sau đó: lãi thật nằm ở lần thứ hai họ quay lại, không phải lần đầu.'),
-      `Over ${ceilingText} and we move the money to reminding your past customers, which is far cheaper than buying new ones.`
+      `Over ${limitEn} and we move the money to reminding your past customers, which is far cheaper than buying new ones.`
         + (back
           ? ` Either way every new customer from this run is messaged again after about ${back} days: the profit is in the second visit, not the first.`
           : ' Either way every new customer from this run is messaged again later: the profit is in the second visit, not the first.')),
@@ -639,27 +684,89 @@ export function adsPitch(input: {
   ticketEstimated?: boolean;
   /** What every figure above was read from. See AdsPitch.basis. */
   basis?: { label: Txt; value: Txt; known: boolean }[];
+  /** Which tier this card is on. See ./ads-starter. */
+  confidence?: AdsConfidence;
+  /** The missing facts, as a route. Rides through to every state. */
+  roadmap?: DataStep[] | null;
+  /** The one number that turns a starter plan into a costed one. */
+  ask?: TicketAsk | null;
 } & PitchPlanInput): AdsPitch {
   const { ceilingCents: ceiling, dailyCents: daily, days, totalCents: total } = input;
 
+  /**
+   * NO TICKET ON FILE — A STARTER PLAN, NOT A LOCKED DOOR.
+   *
+   * Reaching here means both sources are empty: no appointments booked with us
+   * and no priced menu either. Three real businesses look exactly like this —
+   * one that joined last week, one that opens next month, and one that has
+   * traded for nine years on somebody else's system — and all three ask for an
+   * ad plan on the first call. What they used to get was a sentence telling
+   * them to go and do some data entry.
+   *
+   * So the plan is built anyway, out of the five things that do not need the
+   * ticket, and the ticket becomes the one question on the card. The figures
+   * shown are the structural floor of a measurable campaign — the smallest
+   * daily spend the platform will read, over the standard fortnight, and the
+   * booking count below which no cost-per-customer means anything. Every
+   * figure that WOULD require the ticket is absent rather than estimated: an
+   * invented break-even is the one number on this screen that could cost her
+   * real money, and it is the number she would trust most.
+   */
   if (!ceiling) {
+    const reads = input.provingBookings ?? MEASURABLE_BOOKINGS;
+    const hasPlan = Boolean(input.platform);
+    const whyVi = input.missing === 'margin'
+      ? 'Bên em chưa biết tiệm trả công thợ bao nhiêu phần trăm, nên chưa nói được một khách mới để lại bao nhiêu lãi.\n'
+      : 'Bên em chưa biết một lần khách tới tiệm thu khoảng bao nhiêu, nên chưa nói được mỗi khách mới tối đa được phép tốn bao nhiêu.\n';
+    const whyEn = input.missing === 'margin'
+      ? 'We do not know what share of a ticket goes to the tech, so we cannot say what profit a new customer leaves.\n'
+      : 'We do not know yet what one visit brings in here, so we cannot yet say what a new customer may cost at most.\n';
     return {
-      state: 'unknown',
+      state: hasPlan ? 'starter' : 'unknown',
+      confidence: 'starter',
       basis: input.basis,
-      figures: [],
-      steps: [],
-      headline: bi('Chưa tính được ngân sách quảng cáo cho tiệm', 'We cannot size an ad budget for you yet'),
-      why: input.missing === 'margin'
+      roadmap: input.roadmap ?? null,
+      ask: input.ask ?? null,
+      // Structural, not economic. Each of the three is true of any salon in
+      // this trade on day one, and none of them pretends to be hers.
+      figures: hasPlan
+        ? [
+          { value: fmt(daily), label: bi('mỗi ngày để bắt đầu', 'a day to start') },
+          { value: fmt(total), label: bi(`cả đợt ${days} ngày`, `for ${days} days`) },
+          { value: String(reads), label: bi('lượt đặt mới đọc được kết quả', 'bookings before the result can be read') },
+        ]
+        : [],
+      steps: hasPlan ? planSteps(input, days, '') : [],
+      todo: input.aim?.doNext ?? null,
+      headline: hasPlan
+        ? bi('Đề xuất khởi động cho tiệm', 'A starter plan for your shop')
+        : bi('Chưa tính được ngân sách quảng cáo cho tiệm', 'We cannot size an ad budget for you yet'),
+      /**
+       * WHAT IS KNOWN, WHAT IS NOT, AND WHAT IS BEING PROPOSED — in that order.
+       *
+       * The missing number leads, because hiding it until the end is how a
+       * starter plan gets mistaken for a costed one. Then what the plan still
+       * decides, so the owner can see that four of five questions are answered.
+       * Then the stopping rule, which works with no figure at all and is the
+       * reason a starter campaign is safe to run.
+       */
+      why: hasPlan
         ? bi(
-          'Bên em cần biết tiệm trả công thợ bao nhiêu phần trăm thì mới tính được một khách mới để lại bao nhiêu lãi. Chưa có con số đó thì mọi mức chi đều là đoán — bên em không đề xuất kiểu đó.',
-          'We need to know what share of a ticket goes to the tech before we can say what a new customer leaves you. Without it any budget is a guess, and we do not put guesses on this screen.')
+          whyVi
+          + `Nhưng phần còn lại của kế hoạch không cần con số đó: quảng cáo chạy ở đâu, bán dịch vụ nào, chạy ngày nào và dừng khi nào — bốn thứ này bên em quyết được ngay hôm nay, đọc bên dưới.\n`
+          + `Đợt đầu chạy ở mức nhỏ nhất còn đo được: ${fmt(daily)}/ngày trong ${days} ngày. Thứ mua được là con số của chính tiệm — mỗi khách mới thật sự tốn bao nhiêu.\n`
+          + `Luật dừng có hiệu lực ngay cả khi chưa có ngưỡng: đủ ${reads} lượt đặt là bên em đọc được, rẻ thì tăng, đắt thì tắt.`,
+          whyEn
+          + `The rest of the plan does not need it: where the money goes, which service the ad sells, which days it runs and when it stops — all four are decided today, below.\n`
+          + `The first run is the smallest spend that can still be measured: ${fmt(daily)} a day for ${days} days. What it buys is your own shop's figure for what a new customer really costs.\n`
+          + `The stopping rule works before the limit exists: at ${reads} bookings we can read it — cheap and we raise it, dear and we switch it off.`)
         : bi(
-          // Reaching here now means BOTH sources are empty: no appointments
-          // here and no priced menu either. That is not "wait a few weeks" —
-          // it is one afternoon of typing the price list in, and saying so
-          // turns a dead end into the next thing to do.
-          'Bên em chưa biết một lần khách tới tiệm thu khoảng bao nhiêu. Tiệm nhập bảng giá dịch vụ vào hệ thống là bên em tính được ngân sách ngay, không cần chờ có lịch hẹn.',
-          'We do not know yet what one visit is worth here. Enter your service price list and we can size a budget straight away — no need to wait for bookings.'),
+          whyVi
+          + 'Tiệm nhập bảng giá dịch vụ vào hệ thống là bên em tính được ngân sách ngay, không cần chờ có lịch hẹn.\n'
+          + 'Và chưa nối kênh nào nên bên em cũng chưa biết đưa tiền vào đâu — nối Google hoặc Fanpage là bên em dựng được kế hoạch ngay.',
+          whyEn
+          + 'Enter your service price list and we can size a budget straight away — no need to wait for bookings.\n'
+          + 'No channel is connected either, so there is nowhere to put the money yet — connect Google or the Page and we can draw up a plan.'),
       cta: null,
       request: null,
     };
@@ -678,6 +785,9 @@ export function adsPitch(input: {
     const room = input.openSlots ?? 0;
     return {
       state: 'not-yet',
+      confidence: input.confidence,
+      roadmap: input.roadmap ?? null,
+      ask: input.ask ?? null,
       basis: input.basis,
       figures: [],
       steps: [],
@@ -694,6 +804,9 @@ export function adsPitch(input: {
   const room = input.openSlots;
   return {
     state: 'offer',
+    confidence: input.confidence,
+    roadmap: input.roadmap ?? null,
+    ask: input.ask ?? null,
     basis: input.basis,
     steps: planSteps(input, days, fmt(ceiling)),
     todo: input.aim?.doNext ?? null,

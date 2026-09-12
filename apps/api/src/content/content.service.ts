@@ -95,6 +95,7 @@ import { leadTime, cpaCeiling, budgetPlan, runWindow, adAudiences } from './ads-
 import { adsCalendar } from './ads-calendar';
 import { adsReceipt, type AdsReceipt } from './ads-receipt';
 import { adsPitch, type AdsPitch } from './ads-pitch';
+import { ticketHint, ticketAsk, dataRoadmap, confidenceOf } from './ads-starter';
 import { PlacesService } from './places.service';
 import { buildSeoReport } from './seo-local';
 import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './business-profile';
@@ -1400,7 +1401,17 @@ export class ContentService {
         value: ticket
           ? bi(`${ctx.money(ticket)}${isEstimate(est.source) ? ' (ước tính từ bảng giá)' : ' (từ lịch hẹn tại tiệm)'}`,
             `${ctx.money(ticket)}${isEstimate(est.source) ? ' (estimated from the price list)' : ' (from bookings here)'}`)
-          : bi('chưa có — nhập bảng giá là tính được', 'not yet — enter the price list'),
+          // Naming the trade band here as well as on the ask: the basis list is
+          // where a sceptical owner looks first, and "chưa có" alone told her
+          // the screen knew nothing at all about her trade.
+          : (() => {
+            const h = ticketHint(ctx.industry, ctx.money);
+            return h
+              ? bi(
+                `chưa có — tiệm cùng ngành thường ${ctx.money(h.lowCents)}–${ctx.money(h.highCents)}; nhập bảng giá là ra số của tiệm`,
+                `not yet — shops in your trade usually ${ctx.money(h.lowCents)}–${ctx.money(h.highCents)}; enter your prices for your own figure`)
+              : bi('chưa có — nhập bảng giá là tính được', 'not yet — enter the price list');
+          })(),
         known: Boolean(ticket),
       },
       {
@@ -1450,8 +1461,36 @@ export class ContentService {
       },
     ];
 
+    /**
+     * THE MISSING FACTS AS A ROUTE, AND THE ONE QUESTION WORTH ASKING.
+     *
+     * Built on every tier, not only the thin one. A salon whose budget is fully
+     * measured still usually has no opening hours and no connected Page, and
+     * the same list then reads as "what would sharpen this" rather than as a
+     * list of faults. On the starter tier it is the plan for the next quarter
+     * of an hour. See ./ads-starter for the ordering and for why the trade
+     * price band is offered beside an input instead of substituted for hers.
+     */
+    const pricedMenu = ctx.menu.filter((m) => Number(m.priceCents ?? 0) > 0).length;
+    const roadmap = dataRoadmap({
+      hasTicket: ticket !== null,
+      ticketMeasured: ticket !== null && !isEstimate(est.source),
+      hasMenuPrices: pricedMenu > 0,
+      marginEntered: ctx.promo.margin.source === 'entered' || ctx.promo.margin.source === 'staff',
+      hasHours: ctx.openMinutesPerWeek !== null,
+      hasStaff: ctx.chairs !== null,
+      googleConnected: Boolean(look.read.find((r) => r.source === 'google')?.answered),
+      pageConnected: Boolean(look.read.find((r) => r.source === 'fanpage')?.answered),
+    });
+
     return adsPitch({
       basis,
+      roadmap,
+      ask: ticketAsk(ticketHint(ctx.industry, ctx.money)),
+      confidence: confidenceOf({
+        hasTicket: ticket !== null,
+        ticketMeasured: ticket !== null && !isEstimate(est.source),
+      }),
       ticketEstimated: isEstimate(est.source),
       aim,
       ceilingCents: ceiling.strictCents,

@@ -61,6 +61,10 @@ describe('adsPitch', () => {
     const t = adsPitch({ ...base, ceilingCents: null, missing: 'ticket' });
     expect(viOf(t.why)).toMatch(/bảng giá dịch vụ/);
     expect(viOf(t.why)).not.toMatch(/chưa đủ lịch hẹn|vài tuần nữa/);
+    // `base` names no channel, so this is the honest end of the ladder. With a
+    // channel the same missing ticket produces a starter plan instead — see
+    // ads-starter.spec.ts for the tier that replaced the dead end.
+    expect(t.state).toBe('unknown');
 
     // And when the ceiling DID come from the price list, the screen says so
     // rather than passing an estimate off as a measurement.
@@ -208,9 +212,26 @@ describe('adsPitch', () => {
     expect(viOf(w.body)).toMatch(/Tiệm không phải theo dõi gì cả/);
   });
 
-  it('keeps the plan off the screen entirely when there is no offer', () => {
+  it('keeps the plan off the screen when the answer is NO — but not when it is "not yet"', () => {
+    // 'no' means the chairs cannot hold the customers the budget must buy.
+    // Printing a plan under a refusal argues with itself, so it stays empty.
     expect(adsPitch({ ...planned, feasible: 'no' }).steps).toEqual([]);
-    expect(adsPitch({ ...planned, ceilingCents: null }).steps).toEqual([]);
+    // A MISSING TICKET IS NOT A NO, AND THIS ASSERTION USED TO SAY IT WAS.
+    //
+    // It expected an empty plan whenever the ceiling was absent, which is the
+    // state every salon is in on the first call — no bookings with us and no
+    // priced menu. The card then showed one sentence of data entry and no
+    // plan, at the exact moment the agency is being asked for one. Four of the
+    // five questions (where, what, which days, when to stop) do not depend on
+    // the ticket, so they are answered now and the ticket becomes the one
+    // question on the card. See ./ads-starter.
+    const starter = adsPitch({ ...planned, ceilingCents: null });
+    expect(starter.state).toBe('starter');
+    expect(starter.steps.length).toBeGreaterThanOrEqual(3);
+    // What must still be absent is the figure that needs the missing number.
+    expect(starter.figures.map((f) => viOf(f.label)).join(' ')).not.toMatch(/huề vốn/);
+    // With no channel either there is genuinely nowhere to put money.
+    expect(adsPitch({ ...planned, ceilingCents: null, platform: null }).steps).toEqual([]);
   });
 
   it('carries no team vocabulary into the plan either', () => {

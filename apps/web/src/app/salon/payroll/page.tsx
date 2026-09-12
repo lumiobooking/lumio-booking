@@ -365,13 +365,13 @@ function Performance() {
                         <td style={ui.td}>{r.completed}</td>
                         <td style={{ ...ui.td, fontWeight: 800, color: money(r) === best.revenue && best.revenue > 0 ? '#22c55e' : 'var(--ce2e8f0)' }}>{formatPrice(money(r))}</td>
                         <td style={{ ...ui.td, color: r.tipsCents === best.tips && best.tips > 0 ? '#a855f7' : 'var(--ccbd5e1)', fontWeight: r.tipsCents === best.tips && best.tips > 0 ? 700 : 400 }}>{formatPrice(r.tipsCents)}</td>
-                        <td style={ui.td}>{r.reviewCount ? <span style={{ color: r.reviewCount === best.reviews && best.reviews > 0 ? '#f59e0b' : 'var(--ce2e8f0)', fontWeight: 600 }}>⭐ {r.rating} <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>({r.reviewCount})</span></span> : <span style={{ color: 'var(--c475569)' }}>—</span>}</td>
+                        <td style={ui.td}>{r.reviewCount ? <span style={{ color: r.reviewCount === best.reviews && best.reviews > 0 ? '#f59e0b' : 'var(--ce2e8f0)', fontWeight: 600 }}>⭐ {r.rating} <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>({r.reviewCount})</span></span> : <span style={{ color: 'var(--ink-faint)' }}>—</span>}</td>
                         <td style={{ ...ui.td, color: r.points === best.points && best.points > 0 ? '#eab308' : 'var(--ccbd5e1)', fontWeight: r.points === best.points && best.points > 0 ? 700 : 400 }}>{r.points || '—'}</td>
                         <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{r.topService ? <>{r.topService.name} <span style={{ color: 'var(--c64748b)' }}>×{r.topService.count}</span></> : '—'}</td>
                         <td style={ui.td}>
                           {r.recent.length > 0
                             ? <button onClick={() => setOpen(open === r.staffId ? null : r.staffId)} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c818cf8)', fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '4px 10px' }}>{open === r.staffId ? t('pf.hide') : `${r.recent.length} ▾`}</button>
-                            : <span style={{ color: 'var(--c475569)' }}>—</span>}
+                            : <span style={{ color: 'var(--ink-faint)' }}>—</span>}
                         </td>
                       </tr>
                       {open === r.staffId && (

@@ -264,7 +264,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
               )}
             </div>
             {!jobs.length && !(adding?.dayIndex === di) && (
-              <div style={{ fontSize: 12.5, color: 'var(--c475569)', padding: '4px 0' }}>{T('Nghỉ', 'Rest')}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-faint)', padding: '4px 0' }}>{T('Nghỉ', 'Rest')}</div>
             )}
             {jobs.map((j) => (
               <JobLine key={j.id ?? `${di}:${j.text}`} j={j} vi={vi} canEdit={canEdit} busy={busy} days={labels}
@@ -364,7 +364,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
           </div>
           {week.prep.map((l, i) => (
             <div key={i} style={{ display: 'flex', gap: 9, padding: '4px 0' }}>
-              <span style={{ color: 'var(--c475569)', flex: '0 0 auto' }}>▢</span>
+              <span style={{ color: 'var(--ink-faint)', flex: '0 0 auto' }}>▢</span>
               <div>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>{l.label}</div>
                 <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{l.detail}</div>

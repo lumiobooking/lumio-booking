@@ -220,6 +220,28 @@ export const EXTRA: Record<string, [dark: string, light: string]> = {
   '--row-on': ['#26334d', '#e2ddfc'],
   // the heavier rule: section splits, card outlines
   '--line-strong': ['#334155', '#c6d2e2'],
+  /**
+   * A MARK, not a surface — the faintest thing that is still meant to be read.
+   *
+   * Empty tick boxes, step numbers, the `↳` under a job, the `|` between two
+   * stats, the unlit half of a star rating, a "—" standing in for no value.
+   * All of them were written as `var(--c475569)` or `var(--c334155)`, because
+   * at night those are exactly the right faint grey.
+   *
+   * By day they are not a grey at all: `#475569` resolves to `#aab8cb` and
+   * `#334155` to `#cfd9e8`, which are the BORDER and the CHIP SURFACE. Used as
+   * text on a white card they measure 2.0:1 and 1.4:1 — the week plan's tick
+   * boxes, step numbers and arrows were being drawn in the colour of a divider
+   * and were, correctly, invisible.
+   *
+   * The mistake is a category one and it will be made again: the neutral ramp
+   * has a surface half and a text half, and nothing in the name `--c475569`
+   * says which half it is from. So the faint mark gets its own name. Dark keeps
+   * the exact `#475569` it always had — night mode does not change by a pixel —
+   * and light gets 3.4:1 on a white card: quieter than the muted text beside it
+   * (`#64748b`, 4.8:1), louder than the rule under it.
+   */
+  '--ink-faint': ['#475569', '#7d8ca1'],
   // tinted note/banner grounds
   '--wash-amber': ['rgba(120,53,15,0.12)', '#fffaf0'],
   '--wash-amber-2': ['rgba(120,53,15,0.18)', '#fff6e5'],

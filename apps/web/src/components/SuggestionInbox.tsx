@@ -269,7 +269,7 @@ export function SuggestionInbox({
             {feed.waitingOnShop.map((s) => (
               <span key={s.id} title={s.title} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--c94a3b8)', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '4px 6px 4px 9px', maxWidth: 320 }}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {s.refThumbUrl ? '▶ ' : ''}{s.title} <span style={{ color: 'var(--c475569)' }}>· {ago(s.createdAt, vi)}</span>
+                  {s.refThumbUrl ? '▶ ' : ''}{s.title} <span style={{ color: 'var(--ink-faint)' }}>· {ago(s.createdAt, vi)}</span>
                 </span>
                 <button
                   onClick={() => { if (window.confirm(T(`Thu hồi đề xuất "${s.title}"? Tiệm sẽ không thấy nữa.`, `Withdraw "${s.title}"? The shop will no longer see it.`))) void act(s.id, '', 'DELETE'); }}

@@ -198,7 +198,7 @@ function Inner() {
 
       {shownGroups.map(([cat, list]) => (
         <div key={cat} style={{ marginTop: 4 }}>
-          {activeCat === '__all' && <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c818cf8)', textTransform: 'uppercase', letterSpacing: 0.4, margin: '14px 0 6px' }}>{cat} <span style={{ color: 'var(--c475569)' }}>· {list.length}</span></div>}
+          {activeCat === '__all' && <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c818cf8)', textTransform: 'uppercase', letterSpacing: 0.4, margin: '14px 0 6px' }}>{cat} <span style={{ color: 'var(--ink-faint)' }}>· {list.length}</span></div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {list.map((it) => (
               <div key={it.id} style={{ ...ui.card, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: 10, opacity: it.isActive ? 1 : 0.5, borderColor: bulk.has(it.id) ? '#4338ca' : undefined, background: bulk.has(it.id) ? 'var(--c1e1b4b)' : undefined }}>

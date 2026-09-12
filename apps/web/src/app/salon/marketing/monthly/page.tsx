@@ -1436,7 +1436,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
     };
     const chips = [chip(T('Chi', 'Spend'), tr.spend, false), chip('Reach', tr.reach, true), chip('Click', tr.clicks, true), chip(T('Liên hệ', 'Leads'), tr.leads, true)].filter(Boolean);
     if (chips.length === 0) return null;
-    return <div style={{ marginTop: 4 }}>{chips}<span style={{ color: 'var(--c475569)', fontSize: 10.5 }}>{T('so tháng trước', 'vs last month')}</span></div>;
+    return <div style={{ marginTop: 4 }}>{chips}<span style={{ color: 'var(--ink-faint)', fontSize: 10.5 }}>{T('so tháng trước', 'vs last month')}</span></div>;
   };
 
   return (
@@ -1511,7 +1511,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
             const label = x.platform === 'facebook' ? T('CHI TIẾT BÀI FACEBOOK', 'FACEBOOK POSTS') : x.platform === 'tiktok' ? T('VIDEO TIKTOK', 'TIKTOK VIDEOS') : T('CHI TIẾT BÀI INSTAGRAM', 'INSTAGRAM POSTS');
             return (
               <div key={x.platform} style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 700, marginBottom: 6 }}>{label} <span style={{ color: 'var(--c475569)' }}>· {posts.length}</span></div>
+                <div style={{ fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 700, marginBottom: 6 }}>{label} <span style={{ color: 'var(--ink-faint)' }}>· {posts.length}</span></div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {posts.slice(0, 12).map((p, i) => <PostRowView key={p.id || i} p={p} T={T} />)}
                 </div>
@@ -1531,7 +1531,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
             if (!dbg) return null;
             return <div style={{ fontSize: 10.5, color: dbg.error ? '#f59e0b' : 'var(--c64748b)', marginTop: 6 }}>{T('Facebook: đọc được', 'Facebook: read')} <b>{dbg.count}</b> {T('bài', 'posts')}{dbg.error ? ` · ${dbg.error}` : (dbg.count === 0 ? T(' (Page chưa có bài trong tháng)', ' (no page posts this month)') : '')}</div>;
           })()}
-          <div style={{ fontSize: 10.5, color: 'var(--c475569)', marginTop: 8, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 10.5, color: 'var(--ink-faint)', marginTop: 8, lineHeight: 1.5 }}>
             {T('Số liệu tự nhiên (không tính quảng cáo), lấy trực tiếp từ Facebook/Instagram. Ô trống nghĩa là Meta đã ngừng cung cấp chỉ số đó.',
                'Organic (non-paid) numbers pulled directly from Facebook/Instagram. A blank means Meta no longer provides that metric.')}
           </div>
@@ -1543,7 +1543,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
         <div style={pv}>
           <div style={pvL}>{T('K\u00caNH GOOGLE MAPS (BUSINESS PROFILE)', 'GOOGLE MAPS (BUSINESS PROFILE)')}</div>
           <div style={{ marginTop: 8 }}><GbpCard g={data.gbp} T={T} /></div>
-          <div style={{ fontSize: 10.5, color: 'var(--c475569)', marginTop: 8, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 10.5, color: 'var(--ink-faint)', marginTop: 8, lineHeight: 1.5 }}>
             {T('S\u1ed1 li\u1ec7u l\u1ea5y tr\u1ef1c ti\u1ebfp t\u1eeb Google Business Profile. Xu\u1ea5t PDF \u0111\u1ec3 xem deck GBP \u0111\u1ea7y \u0111\u1ee7 (xu h\u01b0\u1edbng, t\u1ef7 l\u1ec7 h\u00e0nh \u0111\u1ed9ng, \u0111\u1ec1 xu\u1ea5t, m\u1ee5c ti\u00eau).',
                'Pulled directly from Google Business Profile. Export PDF for the full GBP deck (trend, action rate, recommendations, goals).')}
           </div>

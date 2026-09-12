@@ -630,7 +630,7 @@ export function WeekPlanBoard({
                 <div style={{ marginTop: 6 }}>
                   {week.prep.map((l, i) => (
                     <div key={i} style={{ display: 'flex', gap: 9, padding: '4px 0' }}>
-                      <span style={{ flex: '0 0 auto', color: 'var(--c475569)', paddingTop: 1 }}>▢</span>
+                      <span style={{ flex: '0 0 auto', color: 'var(--ink-faint)', paddingTop: 1 }}>▢</span>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>{l.label}</div>
                         <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{l.detail}</div>
@@ -779,7 +779,7 @@ function JobRow({
 
   return (
     <div style={{ display: 'flex', gap: 9, marginBottom: index < total - 1 ? 9 : 0 }}>
-      <span style={{ flex: '0 0 16px', fontSize: 11.5, color: 'var(--c475569)', paddingTop: 3, textAlign: 'right' }}>{index + 1}</span>
+      <span style={{ flex: '0 0 16px', fontSize: 11.5, color: 'var(--ink-faint)', paddingTop: 3, textAlign: 'right' }}>{index + 1}</span>
       <div style={{ minWidth: 0, flex: 1 }}>
         {/* the line */}
         {/* ONE CHARACTER PER LINE.
@@ -824,7 +824,7 @@ function JobRow({
             </div>
             {(job.why || canEdit) && (
               <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 1, display: 'flex', gap: 5 }}>
-                <span style={{ color: 'var(--c475569)' }}>↳</span>
+                <span style={{ color: 'var(--ink-faint)' }}>↳</span>
                 <Inline
                   value={job.why} canEdit={canEdit} multiline muted
                   placeholder={T('Vì sao việc này nằm ở ngày này', 'Why it sits on this day')}

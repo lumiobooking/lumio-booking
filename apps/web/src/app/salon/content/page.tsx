@@ -1614,7 +1614,7 @@ function Inner() {
                   {g.label}
                 </div>
                 {!isMobile && (
-                  <div style={{ fontSize: 10, color: 'var(--c475569)', marginTop: 1 }}>{g.hint}</div>
+                  <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 1 }}>{g.hint}</div>
                 )}
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
@@ -4949,7 +4949,7 @@ function Inner() {
                       <div key={m.month} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1f2937)', borderRadius: 9, padding: '7px 11px' }}>
                         <div style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 700 }}>{m.month}</div>
                         <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{m.total}</div>
-                        <div style={{ fontSize: 10.5, color: 'var(--c475569)' }}>{T('chia đều', 'flat')} {m.flat}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{T('chia đều', 'flat')} {m.flat}</div>
                       </div>
                     ))}
                   </div>

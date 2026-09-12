@@ -609,7 +609,7 @@ function Inner() {
               · {t('mirroredLine')} {s.google.mirrored} ({s.google.answered} {t('hasReply')}, {s.google.waiting} {t('noReply')})
             </span>
             {s.google.at && (
-              <span style={{ fontSize: 11.5, color: 'var(--c475569)' }}>
+              <span style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>
                 · {t('statsAt')} {fmtInTz(s.google.at, { dateStyle: 'short', timeStyle: 'short' })}
               </span>
             )}

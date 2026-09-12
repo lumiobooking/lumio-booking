@@ -357,7 +357,7 @@ export function MonthCalendar({
               <img src={thumb.url} alt="" loading="lazy" style={{ ...box, objectFit: 'cover', opacity: tone === 'posted' ? .7 : 1 }} />
             )
           ) : (
-            <span style={{ ...box, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: big ? 14 : 8, color: 'var(--c475569)' }}>✎</span>
+            <span style={{ ...box, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: big ? 14 : 8, color: 'var(--ink-faint)' }}>✎</span>
           )}
 
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -643,7 +643,7 @@ export function MonthCalendar({
                   <span title={T('bài cần xử lý', 'posts needing attention')} style={{ fontSize: 9, fontWeight: 800, color: '#ef4444' }}>●{alarmHere}</span>
                 )}
                 {mine.length > 0 && (
-                  <span style={{ marginLeft: 'auto', fontSize: 9.5, color: 'var(--c475569)' }}>{mine.length}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 9.5, color: 'var(--ink-faint)' }}>{mine.length}</span>
                 )}
               </div>
 

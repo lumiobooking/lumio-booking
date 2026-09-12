@@ -198,9 +198,9 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
     <div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10, padding: '10px 14px', background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 10 }}>
         <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.apptWord')}</span></span>
-        <span style={{ color: 'var(--c334155)' }}>|</span>
+        <span style={{ color: 'var(--ink-faint)' }}>|</span>
         <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
-        <span style={{ color: 'var(--c334155)' }}>|</span>
+        <span style={{ color: 'var(--ink-faint)' }}>|</span>
         <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.stArrived')}: </span><strong style={{ color: '#10b981' }}>{arrived}</strong></span>
         {note && <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--ca7f3d0)', background: 'var(--c064e3b)', padding: '3px 10px', borderRadius: 6 }}>{note}</span>}
       </div>
@@ -248,7 +248,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                     ) : c.avatar ? (
                       <img src={c.avatar} alt="" style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, objectFit: 'cover', border: '1px solid var(--c334155)' }} />
                     ) : (
-                      <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: AVATAR_BG[ci % AVATAR_BG.length], color: 'var(--c0b1220)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>{c.name.charAt(0).toUpperCase()}</div>
+                      <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: AVATAR_BG[ci % AVATAR_BG.length], color: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>{c.name.charAt(0).toUpperCase()}</div>
                     )}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>

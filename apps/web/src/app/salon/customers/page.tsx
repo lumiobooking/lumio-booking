@@ -237,7 +237,7 @@ function Inner() {
                   <td style={ui.td}><a href={`/salon/customers/${c.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none', fontWeight: 600 }}>{c.firstName} {c.lastName ?? ''}</a></td>
                   <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{c.email ?? '—'}</td>
                   <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{c.phone ?? '—'}</td>
-                  <td style={ui.td}>{c.birthDate ? <span style={{ color: '#f0abfc', fontWeight: 600 }}>🎂 {fmtBirthday(c.birthDate)}</span> : <span style={{ color: 'var(--c475569)' }}>—</span>}</td>
+                  <td style={ui.td}>{c.birthDate ? <span style={{ color: '#f0abfc', fontWeight: 600 }}>🎂 {fmtBirthday(c.birthDate)}</span> : <span style={{ color: 'var(--ink-faint)' }}>—</span>}</td>
                   <td style={ui.td}>{c._count.appointments}</td>
                   <td style={ui.td}>
                     {(c.noShowCount ?? 0) === 0 ? <span style={{ color: 'var(--c94a3b8)' }}>0</span>

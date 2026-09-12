@@ -188,7 +188,7 @@ function Inner() {
         {fbPage.paged.map((f) => (
           <div key={f.id} style={{ ...ui.card, padding: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-              <span style={{ color: '#f59e0b' }}>{'★'.repeat(f.rating)}<span style={{ color: 'var(--c334155)' }}>{'★'.repeat(5 - f.rating)}</span></span>
+              <span style={{ color: '#f59e0b' }}>{'★'.repeat(f.rating)}<span style={{ color: 'var(--ink-faint)' }}>{'★'.repeat(5 - f.rating)}</span></span>
               <span style={{ color: 'var(--c64748b)' }}>{fmtInTz(f.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</span>
             </div>
             <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginTop: 4 }}>

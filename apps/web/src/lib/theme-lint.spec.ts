@@ -244,3 +244,61 @@ test('a fixed background never carries text that flips with the theme', () => {
   }
   expect(offenders).toEqual([]);
 });
+
+/**
+ * A SURFACE TOKEN IS NOT A TEXT COLOUR.
+ *
+ * The neutral ramp has two halves that look identical from the call site. One
+ * half is what you paint a panel, a chip or a border with; the other is what
+ * you write words in. Nothing in the name `var(--c475569)` says which half it
+ * came from, and at night it does not matter — every one of them is some shade
+ * of grey against a dark ground, and all of them read.
+ *
+ * By day the two halves move in OPPOSITE directions. A text token gets darker
+ * (`#94a3b8` → `#5b6d85`); a surface token gets lighter (`#475569` → `#aab8cb`,
+ * `#334155` → `#cfd9e8`). So a surface token used as text is a colour that was
+ * legible in dark mode and is a divider in light mode: 2.0:1 and 1.4:1 on a
+ * white card. That is how the week plan's tick boxes, step numbers and `↳`
+ * arrows, the calendar's `|` separators and the unlit half of every star
+ * rating came to be drawn in the colour of a rule.
+ *
+ * Neither lint above catches it: the colour is not a raw hex, and the surface
+ * it sits on is declared by a PARENT element, so there is no pair to measure.
+ * This one does not measure anything. It says: these eight tokens are
+ * surfaces, and a surface is never `color:`.
+ *
+ * The exception, and the reason the style object is read at all: dark ink ON a
+ * bright accent — white text's opposite — is correct, and there the surface is
+ * a raw hex or a gradient in the same object.
+ *
+ * Scope: the app the salon and the team log into. The public pages
+ * (/book, /appt, /display, /invoice …) carry the same mistake at larger scale
+ * AND a second one under it — surfaces written as raw `#fff` that cannot flip
+ * at all — so they are a change of their own, not a line in this list.
+ */
+const SURFACE_TOKENS = ['0b1120', '0b1220', '0f172a', '111827', '1f2937', '1e293b', '334155', '475569'];
+const SURFACE_AS_TEXT = new RegExp(`color:\\s*'var\\(--c(${SURFACE_TOKENS.join('|')})\\)'`, 'g');
+const ACCENT_BG = /background(?:Color)?:\s*'(#|linear-gradient|rgba\()/;
+const APP_SHELL = ['components', 'app/salon', 'app/agency', 'app/super-admin', 'app/staff'];
+
+test('no surface token used as a text colour in the app the team logs into', () => {
+  const offenders: string[] = [];
+  for (const sub of APP_SHELL) {
+    const dir = path.join(ROOT, sub);
+    if (!fs.existsSync(dir)) continue;
+    for (const file of walk(dir)) {
+      const lines = fs.readFileSync(file, 'utf8').split('\n');
+      lines.forEach((line, i) => {
+        for (const m of line.matchAll(SURFACE_AS_TEXT)) {
+          // Dark ink on a bright accent: the accent does not flip, so neither
+          // should the ink — and that is written as a raw hex, not a token.
+          if (ACCENT_BG.test(styleObjectAround(lines, i))) continue;
+          offenders.push(`${path.relative(ROOT, file)}:${i + 1} — ${m[0]}`);
+        }
+      });
+    }
+  }
+  // The fix is `var(--ink-faint)` for a faint mark, `var(--c64748b)` for muted
+  // text, or a raw hex when the surface under it is raw too.
+  expect(offenders).toEqual([]);
+});

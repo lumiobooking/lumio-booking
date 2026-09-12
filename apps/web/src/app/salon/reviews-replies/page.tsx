@@ -72,7 +72,15 @@ const DICT: Record<string, { vi: string; en: string }> = {
   ruleStarDown: { vi: '★ trở xuống', en: '★ and below' },
   settingsTitle: { vi: 'Cài đặt', en: 'Settings' },
   enable: { vi: 'Bật xử lý tự động', en: 'Enable auto-processing' },
-  approveFirst: { vi: 'Chờ tôi duyệt trước khi đăng (khuyên bật)', en: 'Wait for my approval before posting (recommended)' },
+  approveFirst: { vi: 'Chờ tôi duyệt trước khi đăng', en: 'Wait for my approval before posting' },
+  approveOff: {
+    vi: 'Đang TẮT — đánh giá 4-5 sao không có lời phàn nàn sẽ tự trả lời sau 30 phút. Từ 3 sao trở xuống, hoặc 4-5 sao có phàn nàn, luôn chờ người duyệt.',
+    en: 'OFF — 4-5 star reviews with no complaint in them reply themselves after 30 minutes. Three stars or fewer, and any review that complains, always wait for a person.',
+  },
+  approveOn: {
+    vi: 'Đang BẬT — mọi câu trả lời đều chờ bạn bấm duyệt, kể cả đánh giá 5 sao.',
+    en: 'ON — every reply waits for you to approve it, including five-star reviews.',
+  },
   tone: { vi: 'Giọng văn trả lời', en: 'Reply tone' },
   toneWarm: { vi: 'Ấm áp, thân thiện', en: 'Warm & friendly' },
   tonePro: { vi: 'Chuyên nghiệp', en: 'Professional' },
@@ -356,6 +364,12 @@ function Inner() {
           <input type="checkbox" checked={s.approveFirst} onChange={(e) => saveSettings({ approveFirst: e.target.checked })} />
           {t('approveFirst')}
         </label>
+        <div style={{
+          fontSize: 12.5, lineHeight: 1.6, marginTop: -6, marginBottom: 12, paddingLeft: 24,
+          color: s.approveFirst ? 'var(--c94a3b8)' : 'var(--c6ee7b7)',
+        }}>
+          {t(s.approveFirst ? 'approveOn' : 'approveOff')}
+        </div>
 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 220px' }}>

@@ -30,7 +30,7 @@ import { topicFor, type TopicData, type Topic } from './week-topics';
 import { attachBriefs, offerSheet, type JobBrief } from './job-brief';
 import { customOfferJob, offerPostDay, type WeekOffer } from './week-offer';
 import {
-  trimToBudget, photoJob, mapJob, longGameJob, longGameWeek, storyJobs,
+  trimToBudget, spreadAcrossWeek, photoJob, mapJob, longGameJob, longGameWeek, storyJobs,
   buildPrep, buildTargets, WEEK_BUDGET, type Budgeted, type PrepLine, type WeekTarget,
 } from './content-mix';
 
@@ -207,10 +207,16 @@ export function buildWeekPlan(input: {
    * stops being decoration and starts doing work.
    */
   const restWeekday = (film.weekday + 6) % 7;
-  const add = (wd: number, j: Job, keep?: number) => {
+  /**
+   * `pin` marks a job whose DAY is the point — the shoot on the shop's own
+   * quietest day, the offer two days before the gap it fills, a clip that has
+   * to exist before the event. Everything else is on its day only because an
+   * offset put it there, and spreadAcrossWeek is free to even it out.
+   */
+  const add = (wd: number, j: Job, keep?: number, pin = false) => {
     let day = ((wd % 7) + 7) % 7;
     if (day === restWeekday) day = (day + 6) % 7; // back a day, never onto the shoot
-    seeded.push({ ...j, day, ...(keep === undefined ? {} : { keep }) });
+    seeded.push({ ...j, day, ...(keep === undefined ? {} : { keep }), ...(pin ? { pinned: true } : {}) });
   };
 
   // -- the filming block: one session, done for the week --------------------
@@ -234,11 +240,11 @@ export function buildWeekPlan(input: {
         'Chưa đủ dữ liệu đặt lịch để biết ngày nào tiệm vắng, tạm lấy thứ 3 — sửa lại khi tiệm chạy được vài tuần',
         'Not enough booking data yet to tell which day is quiet, so this is Tuesday for now — change it once the shop has run a few weeks'),
     when: bi('giờ vắng nhất trong ngày', 'the quietest hour of the day'),
-  });
+  }, undefined, true);
 
   // -- the stills, in the same session --------------------------------------
   const shoot = photoJob(book, week);
-  add(film.weekday, { kind: shoot.kind, text: shoot.text, why: shoot.why, ...(shoot.when ? { when: shoot.when } : {}) });
+  add(film.weekday, { kind: shoot.kind, text: shoot.text, why: shoot.why, ...(shoot.when ? { when: shoot.when } : {}) }, undefined, true);
 
   // -- three posts, spaced, each with a job to do ---------------------------
   // Three posts, each doing a different job — taken from the trade's playbook,
@@ -324,7 +330,7 @@ export function buildWeekPlan(input: {
   const sheetCtx = { salonName: input.salonName, city: input.city, trade: book.trade };
   if (offer?.mode === 'custom') {
     const o = customOfferJob(offer, { ...sheetCtx, currency: input.currency });
-    add(offerPostDay(offer, offerDay), { kind: 'offer', text: o.text, why: o.why, when: o.when, brief: o.brief });
+    add(offerPostDay(offer, offerDay), { kind: 'offer', text: o.text, why: o.why, when: o.when, brief: o.brief }, undefined, true);
   } else if (offer?.mode === 'off') {
     add(offerDay, {
       kind: 'post',
@@ -406,7 +412,7 @@ export function buildWeekPlan(input: {
       why: bi(
         `${viOf(e.note)}. Quay sớm để đăng trước 5-7 ngày — đăng đúng hôm lễ là muộn, khách đã đặt chỗ khác rồi`,
         `${enOf(e.note)}. Film it early so it can go out 5-7 days ahead — posting on the day itself is too late, customers have already booked somewhere else`),
-    });
+    }, undefined, true);
   }
 
   // -- the profile that decides where the shop sits on the map --------------
@@ -430,7 +436,13 @@ export function buildWeekPlan(input: {
   }
 
   // -- cut the week down to something a shop finishes -----------------------
-  const kept = trimToBudget(seeded, WEEK_BUDGET);
+  // Trim to what a shop finishes, THEN even it out across the week. Trimming
+  // first is deliberate: spreading a week that is about to lose two jobs just
+  // moves work that will not be done.
+  const kept = spreadAcrossWeek(trimToBudget(seeded, WEEK_BUDGET), {
+    todayWeekday: input.todayWeekday,
+    restWeekday,
+  });
   const jobs = new Map<number, Job[]>();
   for (const j of kept) {
     const list = jobs.get(j.day) ?? [];

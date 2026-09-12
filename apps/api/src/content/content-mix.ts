@@ -47,6 +47,17 @@ export const WEEK_BUDGET = 10;
  * because it fills a chair this week; the story outranks nothing, because it is
  * the one job that also exists as a daily habit and so is never truly lost.
  */
+/**
+ * Work that fills a day versus work that fits in a gap.
+ *
+ * A post is a sit-down: pick the clip, write the caption, publish. A story is
+ * three frames shot between two customers, and the photo set is taken inside
+ * the filming session that is already happening. Treating them as equal is how
+ * a day ends up labelled "2 việc" when it is really one job and a two-minute
+ * errand — and how a staffer reads the plan as heavier than it is.
+ */
+export const HEAVY = new Set<string>(['film', 'post', 'offer', 'gbp', 'event', 'winback']);
+
 export const PRIORITY: Record<string, number> = {
   film: 1, photo: 2, post: 3, offer: 4, gbp: 5, engage: 6, winback: 7, event: 8, story: 9, rest: 99,
 };
@@ -56,6 +67,13 @@ export interface Budgeted extends Job {
   day: number;
   /** Lower is kept. Defaults from PRIORITY when a job does not say. */
   keep?: number;
+  /**
+   * This job's day is the POINT, not a default: the shoot sits on the shop's
+   * own quietest day, the offer goes out two days before the gap it fills, an
+   * event clip has to exist before the event. Everything else is only on the
+   * day it is on because an offset put it there, and may be moved.
+   */
+  pinned?: boolean;
 }
 
 /**
@@ -74,6 +92,84 @@ export function trimToBudget(jobs: Budgeted[], max = WEEK_BUDGET): Budgeted[] {
     .slice(0, max)
     .sort((a, b) => a.i - b.i)
     .map((x) => x.j);
+}
+
+/**
+ * ONE JOB A DAY, NOT THREE ON FRIDAY AND NONE ON MONDAY.
+ *
+ * Every job picked its own day with an offset from the shoot — `+2`, `+3`,
+ * `+4`, `+6`. Offsets collide. Ten jobs over seven offsets landed as 2, 1, 2,
+ * 0, 2, 1, 2: two days carrying double the work and one carrying none, week
+ * after week. For an agency running dozens of shops that is the difference
+ * between a staffer finishing a day and abandoning the plan.
+ *
+ * So: the jobs whose day is genuinely load-bearing stay where they are, and
+ * the rest are dealt out to the emptiest days — nearest to where they wanted
+ * to be, so the reasoning behind an offset is kept where it can be.
+ *
+ * Deterministic by construction. The plan is re-read many times a week and a
+ * schedule that reshuffles between two readings is not a schedule.
+ */
+export function spreadAcrossWeek(
+  jobs: Budgeted[],
+  opts: { todayWeekday: number; restWeekday?: number | null },
+): Budgeted[] {
+  const order: number[] = [];
+  for (let i = 0; i < 7; i += 1) order.push(((opts.todayWeekday % 7) + 7 + i) % 7);
+  const rest = typeof opts.restWeekday === 'number' ? ((opts.restWeekday % 7) + 7) % 7 : null;
+  const usable = order.filter((wd) => wd !== rest);
+  const count = new Map<number, number>(order.map((wd) => [wd, 0]));
+
+  // Indexed, because a moved job is a NEW object and cannot be looked up by
+  // identity afterwards — the first version of this sorted every moved job to
+  // position zero and quietly reversed the week.
+  const out: { at: number; job: Budgeted }[] = [];
+  jobs.forEach((j, at) => {
+    if (!j.pinned) return;
+    count.set(j.day, (count.get(j.day) ?? 0) + 1);
+    out.push({ at, job: j });
+  });
+
+  // ONE PIECE OF REAL WORK A DAY.
+  //
+  // Counting every job the same made a day with a post AND a story look like
+  // a day with two jobs, and it is not: the post is a sit-down, the story is
+  // three frames on a phone between customers. So the heavy work is dealt out
+  // one a day first, and the light work fills in around it. That is what "một
+  // ngày một bài" actually means to the person doing it.
+  const heavyCount = jobs.filter((j) => HEAVY.has(j.kind)).length;
+  const cap = Math.max(1, Math.ceil(heavyCount / Math.max(1, usable.length)));
+  const heavyOn = new Map<number, number>(order.map((wd) => [wd, 0]));
+  for (const j of jobs) if (j.pinned && HEAVY.has(j.kind)) heavyOn.set(j.day, (heavyOn.get(j.day) ?? 0) + 1);
+  const pos = new Map(order.map((wd, i) => [wd, i]));
+  const gap = (a: number, b: number) => Math.min(((a - b) % 7 + 7) % 7, ((b - a) % 7 + 7) % 7);
+
+  // Heavy first — it is the work that decides whether a day is full — then the
+  // light jobs slot into whatever is quietest.
+  const place = (heavy: boolean) => jobs.forEach((j, at) => {
+    if (j.pinned || HEAVY.has(j.kind) !== heavy) return;
+    const load = (wd: number) => (heavy ? (heavyOn.get(wd) ?? 0) : (count.get(wd) ?? 0));
+    let best: number | null = null;
+    for (const wd of usable) {
+      if (heavy && load(wd) >= cap) continue;
+      if (best === null) { best = wd; continue; }
+      const better = load(wd) < load(best)
+        || (load(wd) === load(best) && gap(wd, j.day) < gap(best, j.day))
+        || (load(wd) === load(best) && gap(wd, j.day) === gap(best, j.day) && (pos.get(wd) ?? 0) < (pos.get(best) ?? 0));
+      if (better) best = wd;
+    }
+    // Every usable day at capacity: leave it where it asked to be rather than
+    // inventing a worse answer.
+    const day = best ?? j.day;
+    count.set(day, (count.get(day) ?? 0) + 1);
+    if (heavy) heavyOn.set(day, (heavyOn.get(day) ?? 0) + 1);
+    out.push({ at, job: { ...j, day } });
+  });
+  place(true);
+  place(false);
+
+  // Back into the order they were added, so trimming and reading agree.
+  return out.sort((a, b) => a.at - b.at).map((x) => x.job);
 }
 
 // ---- the photo session -----------------------------------------------------

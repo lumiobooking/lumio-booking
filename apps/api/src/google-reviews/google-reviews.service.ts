@@ -24,7 +24,17 @@ export interface GbrSettings {
   connectedEmail: string;
   autoMinStars: number; // >= this → draft/auto reply (default 4)
   alertMaxStars: number; // <= this → alert manager, no auto reply (default 3)
-  approveFirst: boolean; // true = draft & wait for one-tap approval (default)
+  /**
+   * true = every reply waits for a human tap. false = 4-5 star reviews with no
+   * complaint in them post themselves after AUTO_REPLY_DELAY_MIN.
+   *
+   * This field existed for months and NOTHING READ IT. It was stored, returned
+   * to the settings screen and rendered as a switch, so a salon could turn
+   * "approve first" off, believe replies were going out, and have a Google
+   * profile full of unanswered five-star reviews. A switch that does nothing is
+   * worse than no switch: it converts a missing feature into a false belief.
+   */
+  approveFirst: boolean;
   alertEmail: string; // where bad-review alerts go (falls back to salon email)
   tone: 'warm' | 'professional' | 'short';
   aiInstruction: string; // optional brand-voice guidance for the AI replies
@@ -33,9 +43,29 @@ export interface GbrSettings {
 
 const DEFAULTS: GbrSettings = {
   enabled: false, connected: false, refreshToken: '', accountId: '', locationId: '', locationTitle: '',
-  connectedEmail: '', autoMinStars: 4, alertMaxStars: 3, approveFirst: true,
+  connectedEmail: '', autoMinStars: 4, alertMaxStars: 3, approveFirst: false,
   alertEmail: '', tone: 'warm', aiInstruction: '', lastSyncAt: null,
 };
+
+/**
+ * How long a happy review sits before its reply goes up.
+ *
+ * A five-star review answered eight seconds after it was written reads as a
+ * machine to every person who sees it, and the reply is public. Half an hour
+ * reads as a busy owner who checks their phone — and it leaves the salon a
+ * window to stop a reply it does not like before any customer sees it.
+ */
+export const AUTO_REPLY_DELAY_MIN = 30;
+
+/**
+ * The most auto-replies one salon can post in a day.
+ *
+ * Not a product limit — a blast radius. If a token goes bad, a status is
+ * mis-decided, or this loop is ever wrong in a way nobody predicted, it is
+ * wrong twenty times and then stops, on one salon's profile, instead of
+ * posting all day across fifty-five of them.
+ */
+export const AUTO_REPLY_DAILY_CAP = 20;
 
 /** A blank or masked ("••••") secret must never overwrite the stored one. */
 function cleanSecret(v: unknown): string | null {
@@ -437,24 +467,24 @@ export class GoogleReviewsService {
   /** Background auto-sync: for every tenant that has connected Google, picked a
    *  location and turned ON auto-processing, pull new reviews (draft/alert). One
    *  tenant failing (expired token, quota) never blocks the others. */
-  async syncAllConnected(): Promise<{ tenants: number; drafted: number; alerted: number }> {
+  async syncAllConnected(): Promise<{ tenants: number; drafted: number; alerted: number; posted: number }> {
     const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY } });
-    let tenants = 0, drafted = 0, alerted = 0;
+    let tenants = 0, drafted = 0, alerted = 0, posted = 0;
     for (const row of rows) {
       const s = { ...DEFAULTS, ...((row.value ?? {}) as Partial<GbrSettings>) };
       if (!s.enabled || !s.connected || !s.accountId || !s.locationId) continue;
       try {
         const r = await this.syncReviews(row.tenantId);
-        tenants++; drafted += r.drafted; alerted += r.alerted;
+        tenants++; drafted += r.drafted; alerted += r.alerted; posted += r.posted;
       } catch (e) {
         this.logger.warn(`Auto-sync failed for tenant ${row.tenantId}: ${String(e).slice(0, 120)}`);
       }
     }
-    return { tenants, drafted, alerted };
+    return { tenants, drafted, alerted, posted };
   }
 
   /** Pull the latest reviews for a tenant, store new ones, and route them. */
-  async syncReviews(tenantId: string): Promise<{ fetched: number; drafted: number; alerted: number }> {
+  async syncReviews(tenantId: string): Promise<{ fetched: number; drafted: number; alerted: number; posted: number }> {
     const s = await this.getSettings(tenantId);
     if (!s.connected) throw new BadRequestException('Connect your Google Business Profile first.');
     if (!s.accountId || !s.locationId) throw new BadRequestException('Choose which Google location this salon is, then sync.');
@@ -508,7 +538,87 @@ export class GoogleReviewsService {
       }
     }
     await this.writeSettings(tenantId, { lastSyncAt: new Date().toISOString() });
-    return { fetched: reviews.length, drafted, alerted };
+    // Drafts written on an earlier tick that have now waited long enough.
+    const posted = await this.autoPostDue(tenantId, s, salonName).catch((e) => {
+      this.logger.warn(`Auto-reply pass failed for ${tenantId}: ${String(e).slice(0, 120)}`);
+      return 0;
+    });
+    return { fetched: reviews.length, drafted, alerted, posted };
+  }
+
+  /**
+   * Post the replies that have waited long enough.
+   *
+   * Runs on the same tick as the sync, so a review drafted now is posted by a
+   * later tick — never in the same breath as the customer pressing submit.
+   *
+   * FOUR THINGS HAVE TO BE TRUE, and each one is checked here rather than
+   * trusted from upstream, because this writes in public under the salon's own
+   * name and a wrong reply cannot be taken back quietly:
+   *
+   *   1. the salon has not asked to approve first
+   *   2. the review earns it — 4 stars or better, and `decide` already left it
+   *      DRAFTED, which is what rules out a complaint inside a five-star review
+   *   3. it is at least AUTO_REPLY_DELAY_MIN old
+   *   4. the salon is under its daily cap
+   *
+   * Google's reply endpoint is a PUT — replacing a reply with the same text is
+   * a no-op — so a crash between posting and recording costs nothing worse than
+   * one repeated call on the next tick.
+   */
+  private async autoPostDue(tenantId: string, s: GbrSettings, salonName: string): Promise<number> {
+    if (s.approveFirst) return 0;
+    const cutoff = new Date(Date.now() - AUTO_REPLY_DELAY_MIN * 60_000);
+    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+
+    const postedToday = await this.prisma.auditLog.count({
+      where: { tenantId, action: 'google_reviews.auto_replied', createdAt: { gte: dayStart } },
+    }).catch(() => 0);
+    let budget = AUTO_REPLY_DAILY_CAP - postedToday;
+    if (budget <= 0) {
+      this.logger.warn(`Auto-reply: tenant ${tenantId} hit the daily cap of ${AUTO_REPLY_DAILY_CAP}.`);
+      return 0;
+    }
+
+    const due = await this.prisma.googleReview.findMany({
+      where: {
+        tenantId,
+        status: 'DRAFTED',
+        repliedAt: null,
+        starRating: { gte: Math.max(4, s.autoMinStars) },
+        draftReply: { not: null },
+        // A review with no create time from Google has no provable age, so it
+        // waits for a person rather than being assumed old enough.
+        reviewCreatedAt: { not: null, lte: cutoff },
+      },
+      orderBy: { reviewCreatedAt: 'asc' },
+      take: budget,
+    });
+
+    let posted = 0;
+    for (const row of due) {
+      const text = (row.draftReply || '').trim();
+      if (!text) continue;
+      // Belt and braces: the query already excludes these, and this is the last
+      // line before something public happens.
+      if (row.starRating < 4 || this.negativeSignal(row.comment || '')) continue;
+      if (budget <= 0) break;
+      try {
+        await this.postReply(s, row.googleReviewId, text);
+        await this.prisma.googleReview.update({
+          where: { id: row.id },
+          data: { status: 'REPLIED', replyText: text, repliedAt: new Date() },
+        });
+        await this.audit(tenantId, null, 'google_reviews.auto_replied', row.id);
+        posted++; budget--;
+      } catch (e) {
+        // One bad review must not stop the rest, and must not retry for ever:
+        // the next tick sees it again, and the daily cap bounds the damage.
+        this.logger.warn(`Auto-reply failed for ${row.googleReviewId}: ${String(e).slice(0, 140)}`);
+      }
+    }
+    if (posted) this.logger.log(`Auto-reply: ${posted} for "${salonName}" (${tenantId}).`);
+    return posted;
   }
 
   /** Star + text → status + optional draft reply. */

@@ -57,6 +57,14 @@ export interface AdsPitch {
   cta: Txt | null;
   /** What the team reads when the shop says yes. */
   request: string | null;
+  /**
+   * The one thing to do INSTEAD, when the answer is "not now".
+   *
+   * A refusal with no next step reads as a door closing. The salon came to this
+   * screen wanting customers; it should leave it knowing what to do about that,
+   * even when the answer is that ads are not it yet.
+   */
+  todo?: Txt | null;
 }
 
 const fmt = (c: number) => `$${Math.round(c / 100)}`;
@@ -213,6 +221,11 @@ export function adsPitch(input: {
   /** Which of the two figures is missing, so "unknown" can name it. */
   missing?: 'ticket' | 'margin' | null;
   /**
+   * A finding from the whole-salon assessment that makes advertising the wrong
+   * place for the money right now. See adsBlocker in salon-assessment.ts.
+   */
+  blocker?: { because: Txt; doNext: Txt | null } | null;
+  /**
    * True when the ticket came from the salon's PRICE LIST rather than from
    * appointments booked here. The number is usable — it is the salon's own
    * statement about what a visit costs — but it has not met reality yet, and a
@@ -242,6 +255,23 @@ export function adsPitch(input: {
           'We do not know yet what one visit is worth here. Enter your service price list and we can size a budget straight away — no need to wait for bookings.'),
       cta: null,
       request: null,
+    };
+  }
+
+  // The foundation comes first, and it is checked BEFORE the chairs: a salon
+  // with empty chairs and a three-review profile has an audience problem that
+  // money makes worse, not better. The words come from the finding itself, so
+  // this screen and the plan screen cannot describe the same salon differently.
+  if (input.blocker) {
+    return {
+      state: 'not-yet',
+      figures: [],
+      steps: [],
+      headline: bi('Chưa nên đổ tiền quảng cáo lúc này', 'Not the moment to put money into ads'),
+      why: input.blocker.because,
+      cta: null,
+      request: null,
+      todo: input.blocker.doNext,
     };
   }
 

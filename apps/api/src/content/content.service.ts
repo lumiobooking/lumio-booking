@@ -19,6 +19,7 @@ import { resolveShopLocation, type ResolvedShopLocation } from './shop-location'
 import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { estimateTicket, isEstimate } from './ticket-estimate';
+import { assessSalon, adsBlocker } from './salon-assessment';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
@@ -165,6 +166,8 @@ export class ContentService {
     firstVisitTicketCents: number | null;
     /** Minutes an average appointment takes here, from the service list. */
     avgServiceMinutes: number | null;
+    /** The salon's website, when it has one. A source the assessment reads. */
+    website: string | null;
     /**
      * The salon's OWN price list, with prices and durations.
      *
@@ -520,6 +523,7 @@ export class ContentService {
         ? Math.max(15, Math.round(services.reduce((s2, x) => s2 + (x.durationMinutes || 0), 0) / services.length))
         : null,
       menu: services,
+      website: (ex as { website?: string }).website ?? null,
       lead,
       // ZIPs, in order of authority, and never asked for twice: the field
       // someone filled, the extra ZIPs the team added, then the one the shop's
@@ -1097,6 +1101,48 @@ export class ContentService {
    * The wording, and the state that declines to offer anything, live in
    * ./ads-pitch.
    */
+  /**
+   * Every source, read once, for whichever screen is asking.
+   *
+   * Built as its own method precisely so the ad screen and the plan screen
+   * cannot end up with two different opinions about one salon — the bug that
+   * shape invites is not hypothetical, it is what happens the first time
+   * somebody adds a threshold to one of them and not the other.
+   */
+  private async lookAtSalon(
+    tenantId: string,
+    ctx: Awaited<ReturnType<ContentService['gather']>>,
+  ): Promise<ReturnType<typeof assessSalon>> {
+    const loose = this.prisma as unknown as Record<string, { count?: (a: unknown) => Promise<number> }>;
+    const since90 = new Date(Date.now() - 90 * 86_400_000);
+    const [reviews, posted30, bookings90, conn] = await Promise.all([
+      loose.googleReview?.count?.({ where: { tenantId } }).catch(() => null) ?? Promise.resolve(null),
+      loose.contentIdea?.count?.({
+        where: { tenantId, status: { in: ['posted', 'filmed'] }, doneAt: { gte: new Date(Date.now() - 30 * 86_400_000) } },
+      } as never).catch(() => 0) ?? Promise.resolve(0),
+      this.prisma.appointment.count({ where: { tenantId, startTime: { gte: since90 } } }).catch(() => null),
+      this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageId: true } }).catch(() => null),
+    ]);
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId }, select: { createdAt: true },
+    }).catch(() => null);
+    const daysWithUs = tenant?.createdAt
+      ? Math.floor((Date.now() - new Date(tenant.createdAt).getTime()) / 86_400_000)
+      : null;
+    return assessSalon({
+      googleConnected: typeof reviews === 'number',
+      googleReviews: typeof reviews === 'number' ? reviews : null,
+      postedLast30: typeof posted30 === 'number' ? posted30 : null,
+      fanpageConnected: Boolean(conn?.pageId),
+      websiteUrl: ctx.website ?? null,
+      menuSize: ctx.menu.filter((m) => (m.priceCents ?? 0) > 0).length,
+      bookings90: typeof bookings90 === 'number' ? bookings90 : null,
+      customers: ctx.audience.totalCustomers,
+      daysWithUs,
+      areaKnown: Boolean(ctx.nearbyZips),
+    });
+  }
+
   async adsPitchForSalon(user: AuthenticatedUser): Promise<AdsPitch | null> {
     const tenantId = this.tenantId(user);
     const ctx = await this.gather(tenantId);
@@ -1114,6 +1160,13 @@ export class ContentService {
     });
     const ticket = est.cents;
     const margin = ctx.promo.margin.grossMarginPct;
+
+    // The SAME reading of this salon the plan screen uses. Two screens that
+    // describe one business differently is how a product stops being believed:
+    // "spend $30 a day" on one page and "your profile has three reviews" on the
+    // next are both true and cannot both be advice.
+    const look = await this.lookAtSalon(tenantId, ctx);
+    const blocker = adsBlocker(look);
     const ceiling = cpaCeiling({ avgTicketCents: ticket, grossMarginPct: margin, medianGapDays: regulars?.medianGapDays ?? null });
 
     // The same free-capacity figure the team's plan is checked against, so the
@@ -1167,6 +1220,7 @@ export class ContentService {
 
     return adsPitch({
       ticketEstimated: isEstimate(est.source),
+      blocker,
       ceilingCents: ceiling.strictCents,
       dailyCents: budget.dailyCents,
       days: budget.days,

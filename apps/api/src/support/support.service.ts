@@ -330,7 +330,12 @@ export class SupportService {
         take: 2000,
       }).catch(() => []) ?? [];
       for (const r of sent) {
-        const d = new Date(r.createdAt).toISOString().slice(0, 10);
+        // A row with no createdAt makes `new Date(...).toISOString()` throw a
+        // RangeError, and this runs inside the crew board's only query — one
+        // bad row would 500 the screen two people open every hour.
+        const t = new Date(r.createdAt as never).getTime();
+        if (!Number.isFinite(t)) continue;
+        const d = new Date(t).toISOString().slice(0, 10);
         const cur = lastMediaByTenant[r.tenantId];
         if (!cur || d > cur) lastMediaByTenant[r.tenantId] = d;
       }

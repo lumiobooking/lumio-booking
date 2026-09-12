@@ -3211,7 +3211,20 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       },
       // The review the card promised the shop. Null when no campaign was ever
       // agreed; present and shouting when one is agreed and nobody started it.
-      review: await this.adsReviewFor(tenantId, ctx),
+      /**
+       * ITS OWN CATCH, AND THAT IS THE WHOLE POINT.
+       *
+       * `planFor` wraps this entire method in `.catch(() => null)`, so one throw
+       * anywhere in here does not produce an error — it silently deletes the
+       * WHOLE ads tab from the screen, which looks exactly like "deployed and
+       * nothing works". The review is the newest and least-proven thing on this
+       * payload; it must not be able to take the budget, the channels and the
+       * audiences down with it.
+       */
+      review: await this.adsReviewFor(tenantId, ctx).catch((e) => {
+        this.logger.warn(`adsReview ${tenantId}: ${e instanceof Error ? e.message : e}`);
+        return null;
+      }),
     };
   }
 

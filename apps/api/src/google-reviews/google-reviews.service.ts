@@ -39,12 +39,27 @@ export interface GbrSettings {
   tone: 'warm' | 'professional' | 'short';
   aiInstruction: string; // optional brand-voice guidance for the AI replies
   lastSyncAt: string | null;
+  /**
+   * What GOOGLE says this location has — the number under the salon's name on
+   * Maps, and the star average beside it.
+   *
+   * Kept because the inbox could not answer the first question an owner asks:
+   * "I have 187 reviews, why does this say 53?". The screen was counting the
+   * rows Lumio had mirrored and calling that the total, which is a different
+   * number and was silently smaller — the sync only ever read the newest fifty.
+   * Both numbers are now shown side by side, so a gap is visible instead of
+   * being mistaken for a wrong count.
+   */
+  googleTotal: number | null;
+  googleRating: number | null;
+  googleStatsAt: string | null;
 }
 
 const DEFAULTS: GbrSettings = {
   enabled: false, connected: false, refreshToken: '', accountId: '', locationId: '', locationTitle: '',
   connectedEmail: '', autoMinStars: 4, alertMaxStars: 3, approveFirst: false,
   alertEmail: '', tone: 'warm', aiInstruction: '', lastSyncAt: null,
+  googleTotal: null, googleRating: null, googleStatsAt: null,
 };
 
 /**
@@ -76,6 +91,56 @@ export const AUTO_REPLY_DAILY_CAP = 20;
  * has to wait for.
  */
 export const DRAFT_BACKFILL_PER_SYNC = 10;
+
+/** What Google hands back in one page of reviews. Its own maximum is 50. */
+export const GBR_PAGE_SIZE = 50;
+
+/**
+ * The most pages one sync will walk. 20 x 50 = 1000 reviews.
+ *
+ * A bound rather than a target: a salon with three thousand reviews catches up
+ * a thousand at a time across successive ticks instead of holding one request
+ * open for sixty calls.
+ */
+export const GBR_MAX_PAGES = 20;
+
+/**
+ * How many pages to pull this time.
+ *
+ * The sync read ONE page of fifty, ordered newest-updated first, and called it
+ * the salon's reviews. Everything older than the newest fifty was therefore
+ * invisible for ever: never mirrored, never counted, and — the part that
+ * actually hurt — never given a suggested reply, because the backfill only
+ * looks at rows it saw in the page. Both one-star reviews a salon was staring
+ * at were from June, well past the fiftieth row.
+ *
+ * So: while Lumio has fewer reviews than Google says exist, walk far enough to
+ * close the gap. Once it has them all, one page a tick is plenty — the ordering
+ * puts anything new or newly-edited on that first page by definition.
+ */
+export function pagesToWalk(mirrored: number, totalOnGoogle: number | null): number {
+  if (!totalOnGoogle || totalOnGoogle <= mirrored) return 1;
+  return Math.min(GBR_MAX_PAGES, Math.max(1, Math.ceil(totalOnGoogle / GBR_PAGE_SIZE)));
+}
+
+/**
+ * When a reply that was ALREADY on Google went up.
+ *
+ * This used to be `new Date()` — the moment Lumio first happened to see it. On
+ * the first sync of a salon with fifty answered reviews, all fifty were stamped
+ * with the same instant, every one of them lit up the "just replied" badge, and
+ * the inbox claimed a morning's work that was really three years of the owner's.
+ * Google tells us when the reply was written; if it does not, the review's own
+ * date is closer to the truth than today is.
+ */
+export function replyTimeOf(r: { reviewReply?: { updateTime?: string }; createTime?: string }): Date | null {
+  for (const raw of [r.reviewReply?.updateTime, r.createTime]) {
+    if (!raw) continue;
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  return null;
+}
 
 /**
  * Does this review, already on file, still need a suggestion written for it?
@@ -183,6 +248,20 @@ export class GoogleReviewsService {
     const grouped = await this.prisma.googleReview.groupBy({ by: ['status'], where: { tenantId }, _count: true });
     const counts: Record<string, number> = {};
     for (const g of grouped) counts[g.status as string] = g._count;
+    /**
+     * THE NUMBER THE OWNER IS ACTUALLY LOOKING AT.
+     *
+     * The tabs count rows Lumio holds, and one of them was labelled "replied"
+     * — so a salon with 187 reviews on Maps read "53" and concluded the system
+     * was broken. Two different numbers were being conflated: what exists on
+     * Google, and what Lumio has mirrored. Both are sent now, plus how many of
+     * the mirrored ones carry a reply, so the screen can state the gap instead
+     * of printing one figure that is wrong from either direction.
+     */
+    const mirrored = Object.values(counts).reduce((a, b) => a + b, 0);
+    const answered = await this.prisma.googleReview.count({
+      where: { tenantId, NOT: { replyText: null } },
+    }).catch(() => counts.REPLIED ?? 0);
     return {
       enabled: s.enabled,
       connected: s.connected,
@@ -202,6 +281,22 @@ export class GoogleReviewsService {
       clientConfigured: Boolean(this.clientId() && this.clientSecret()),
       redirectUri: this.redirectUri(),
       counts,
+      /**
+       * What Google itself reports for this location, and what Lumio holds.
+       *
+       * `total` is the figure under the salon's name on Maps. `mirrored` is how
+       * many of those Lumio has pulled down; while the two differ the sync is
+       * still catching up (see pagesToWalk) and the screen says so rather than
+       * letting the smaller number pass as the answer.
+       */
+      google: {
+        total: s.googleTotal,
+        rating: s.googleRating,
+        at: s.googleStatsAt,
+        mirrored,
+        answered,
+        waiting: Math.max(0, mirrored - answered),
+      },
       /**
        * WHICH BUILD IS ANSWERING.
        *
@@ -537,15 +632,30 @@ export class GoogleReviewsService {
     if (!s.accountId || !s.locationId) throw new BadRequestException('Choose which Google location this salon is, then sync.');
     const token = await this.accessToken(s);
     const parent = this.reviewsParent(s);
-    const res = await fetch(`https://mybusiness.googleapis.com/v4/${parent}/reviews?pageSize=50&orderBy=updateTime%20desc`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) {
-      const t = await res.text().catch(() => '');
-      throw new BadRequestException(`Google reviews fetch failed (${res.status}). ${t.slice(0, 160)}`);
+
+    // The first page carries the two numbers the whole screen hangs on:
+    // how many reviews this location really has, and its star average.
+    const first = await this.fetchReviewPage(parent, token);
+    const googleTotal = typeof first.totalReviewCount === 'number' ? first.totalReviewCount : null;
+    const googleRating = typeof first.averageRating === 'number' ? first.averageRating : null;
+    const mirrored = await this.prisma.googleReview.count({ where: { tenantId } }).catch(() => 0);
+    const want = pagesToWalk(mirrored, googleTotal);
+
+    const reviews: GoogleApiReview[] = [...(first.reviews || [])];
+    let next = first.nextPageToken;
+    for (let i = 1; i < want && next; i++) {
+      try {
+        const page = await this.fetchReviewPage(parent, token, next);
+        reviews.push(...(page.reviews || []));
+        next = page.nextPageToken;
+      } catch (e) {
+        // Keep what we already have. A quota refusal on page nine is not a
+        // reason to lose pages one to eight, and the next tick resumes.
+        this.logger.warn(`Reviews page ${i + 1} failed for ${tenantId}: ${String(e).slice(0, 120)}`);
+        break;
+      }
     }
-    const data = (await res.json()) as { reviews?: GoogleApiReview[] };
-    const reviews = data.reviews || [];
+
     const salonName = await this.salonName(tenantId);
     let drafted = 0;
     let alerted = 0;
@@ -560,6 +670,8 @@ export class GoogleReviewsService {
         where: { tenantId_googleReviewId: { tenantId, googleReviewId: gid } },
       });
       const already = Boolean(r.reviewReply?.comment);
+      // Not `new Date()` — see replyTimeOf.
+      const repliedOn = already ? replyTimeOf(r) : null;
       const base = {
         reviewerName: r.reviewer?.displayName || null,
         reviewerPhoto: r.reviewer?.profilePhotoUrl || null,
@@ -584,7 +696,7 @@ export class GoogleReviewsService {
           ? await this.generateReply(stars, r.comment || '', s, salonName, r.reviewer?.displayName || '')
           : null;
         const created = await this.prisma.googleReview.create({
-          data: { tenantId, googleReviewId: gid, ...base, status, draftReply: draft, replyText: already ? r.reviewReply?.comment || null : null, repliedAt: already ? new Date() : null },
+          data: { tenantId, googleReviewId: gid, ...base, status, draftReply: draft, replyText: already ? r.reviewReply?.comment || null : null, repliedAt: repliedOn },
         });
         if (status === 'DRAFTED') drafted++;
         if (status === 'NEEDS_ATTENTION') {
@@ -623,7 +735,15 @@ export class GoogleReviewsService {
         if (wantsDraft && room) backfilled++;
       }
     }
-    await this.writeSettings(tenantId, { lastSyncAt: new Date().toISOString() });
+    await this.writeSettings(tenantId, {
+      lastSyncAt: new Date().toISOString(),
+      // Only overwritten when Google actually said something. A page that came
+      // back without the totals must not erase yesterday's answer and leave the
+      // screen saying the salon has no reviews.
+      ...(googleTotal === null ? {} : { googleTotal }),
+      ...(googleRating === null ? {} : { googleRating }),
+      ...(googleTotal === null && googleRating === null ? {} : { googleStatsAt: new Date().toISOString() }),
+    });
     // Drafts written on an earlier tick that have now waited long enough.
     const posted = await this.autoPostDue(tenantId, s, salonName).catch((e) => {
       this.logger.warn(`Auto-reply pass failed for ${tenantId}: ${String(e).slice(0, 120)}`);
@@ -951,8 +1071,39 @@ Output ONLY the final reply text: no quotes, no preamble.${extra}`;
     const s = await this.getSettings(tenantId);
     const salonName = await this.salonName(tenantId);
     const draft = await this.generateReply(row.starRating, row.comment || '', s, salonName, row.reviewerName || '');
-    await this.prisma.googleReview.update({ where: { id: row.id }, data: { draftReply: draft, status: 'DRAFTED' } });
+    /**
+     * A new suggestion does not change what kind of review this is.
+     *
+     * This used to force the row to DRAFTED. Asking for a better sentence on an
+     * angry one-star therefore moved it out of "needs attention" and into the
+     * queue that posts by itself — the auto-post gates would still have refused
+     * it, but the salon would have watched the card vanish from the tab it was
+     * working through, which is its own kind of broken.
+     */
+    const status = row.status === 'NEW' ? 'DRAFTED' : row.status;
+    await this.prisma.googleReview.update({ where: { id: row.id }, data: { draftReply: draft, status } });
     return { ok: true, draft };
+  }
+
+  /**
+   * One page of reviews, newest-updated first.
+   *
+   * Split out of the sync so the walk above reads as a walk, and so the totals
+   * Google reports alongside the page have a named home.
+   */
+  private async fetchReviewPage(parent: string, token: string, pageToken?: string): Promise<{
+    reviews?: GoogleApiReview[]; nextPageToken?: string; averageRating?: number; totalReviewCount?: number;
+  }> {
+    const qs = new URLSearchParams({ pageSize: String(GBR_PAGE_SIZE), orderBy: 'updateTime desc' });
+    if (pageToken) qs.set('pageToken', pageToken);
+    const res = await fetch(`https://mybusiness.googleapis.com/v4/${parent}/reviews?${qs.toString()}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new BadRequestException(`Google reviews fetch failed (${res.status}). ${t.slice(0, 160)}`);
+    }
+    return (await res.json()) as { reviews?: GoogleApiReview[]; nextPageToken?: string; averageRating?: number; totalReviewCount?: number };
   }
 
   private async postReply(s: GbrSettings, googleReviewId: string, text: string) {

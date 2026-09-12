@@ -26,6 +26,16 @@ interface GrSettings {
   autoReply?: { live: boolean; delayMinutes: number; dailyCap: number; onForThisSalon: boolean } | null;
   clientConfigured: boolean; redirectUri: string;
   counts: Record<string, number>;
+  /**
+   * What Google itself reports for this location, next to what Lumio holds.
+   *
+   * Absent on an older API build — the block that renders it stays out rather
+   * than printing zeros, which would read as "this salon has no reviews".
+   */
+  google?: {
+    total: number | null; rating: number | null; at: string | null;
+    mirrored: number; answered: number; waiting: number;
+  } | null;
 }
 interface GrReview {
   id: string; googleReviewId: string; reviewerName: string | null; reviewerPhoto: string | null;
@@ -39,7 +49,10 @@ interface GrReview {
 type Lang = 'vi' | 'en';
 const DICT: Record<string, { vi: string; en: string }> = {
   title: { vi: 'Trả lời đánh giá Google', en: 'Google review replies' },
-  subtitle: { vi: 'Tự soạn trả lời cho đánh giá tốt (bạn duyệt 1 chạm); đánh giá xấu thì báo bạn xử lý.', en: 'Auto-draft replies to good reviews for one-tap approval; bad reviews are held for you.' },
+  subtitle: {
+    vi: 'Đánh giá tốt: soạn sẵn rồi tự đăng sau 30 phút nếu bạn không sửa. Đánh giá xấu: cũng soạn sẵn câu tham khảo, nhưng chờ bạn duyệt — duyệt ngay tại đây, không cần mở Google.',
+    en: 'Good reviews: drafted, then posted after 30 minutes unless you change them. Bad ones: also drafted, but they wait for you — approve right here, no need to open Google.',
+  },
   connectTitle: { vi: 'Kết nối Google Business Profile', en: 'Connect Google Business Profile' },
   connectDesc: { vi: 'Đăng nhập bằng tài khoản Google quản lý hồ sơ tiệm để hệ thống đọc và trả lời đánh giá.', en: 'Sign in with the Google account that manages this salon so we can read and reply to reviews.' },
   connectBtn: { vi: 'Kết nối Google', en: 'Connect Google' },
@@ -111,7 +124,10 @@ const DICT: Record<string, { vi: string; en: string }> = {
   // The rule line said "→ Chờ duyệt" whatever the switch below it was set to,
   // so with auto-reply ON the screen stated the opposite of what it does.
   ruleAutoPost: { vi: 'Tự trả lời sau 30 phút', en: 'Posts itself after 30 minutes' },
-  fReplied: { vi: 'Đã trả lời', en: 'Replied' },
+  // "Đã trả lời" read as "replies Lumio sent", and most of them are replies the
+  // owner wrote on Google years ago. The tab counts reviews that HAVE a reply,
+  // whoever wrote it, and now says so.
+  fReplied: { vi: 'Đã có trả lời', en: 'Has a reply' },
   fAll: { vi: 'Tất cả', en: 'All' },
   empty: { vi: 'Chưa có đánh giá nào ở mục này.', en: 'No reviews here yet.' },
   draftLabel: { vi: 'Lời trả lời gợi ý (sửa được):', en: 'Suggested reply (editable):' },
@@ -135,7 +151,35 @@ const DICT: Record<string, { vi: string; en: string }> = {
   justReplied: { vi: 'VỪA TRẢ LỜI', en: 'JUST REPLIED' },
   markHandled: { vi: 'Đánh dấu đã xử lý', en: 'Mark handled' },
   yourReply: { vi: 'Trả lời của bạn:', en: 'Your reply:' },
-  needsHuman: { vi: 'Đánh giá này cần bạn trả lời tay (không tự động).', en: 'This one needs a personal reply (no auto-reply).' },
+  needsHuman: { vi: 'Đánh giá này KHÔNG bao giờ tự đăng — bạn duyệt thì mới lên.', en: 'This one never posts itself — it goes up only when you approve it.' },
+  // ---- the totals block
+  onGoogle: { vi: 'Trên Google Maps', en: 'On Google Maps' },
+  grReviews: { vi: 'đánh giá', en: 'reviews' },
+  mirroredLine: { vi: 'Lumio đã tải về', en: 'Lumio has pulled down' },
+  hasReply: { vi: 'đã có trả lời', en: 'have a reply' },
+  noReply: { vi: 'chưa trả lời', en: 'not answered' },
+  catchingUp: {
+    vi: 'Đang tải nốt đánh giá cũ — mỗi lần đồng bộ kéo thêm một ít, vài lần là đủ.',
+    en: 'Still pulling older reviews — each sync fetches more; a few rounds and it is complete.',
+  },
+  totalsNote: {
+    vi: 'Số trong các thẻ dưới đây đếm đánh giá Lumio đã tải về, không phải tổng trên Google.',
+    en: 'The tab counts below are the reviews Lumio holds, not the Google total.',
+  },
+  statsAt: { vi: 'số liệu lúc', en: 'as of' },
+  // ---- replying to a hard review, from here
+  postBad: { vi: 'Duyệt & đăng lên Google', en: 'Approve & post to Google' },
+  postBadSure: { vi: 'Chắc chắn đăng công khai?', en: 'Post this publicly?' },
+  badNote: {
+    vi: 'Câu gợi ý để tham khảo — sửa cho đúng ý tiệm rồi bấm Duyệt & đăng, Lumio đăng thẳng lên Google hộ bạn (không cần đăng nhập Google).',
+    en: 'A starting point — edit it, then press Approve & post and Lumio publishes it to Google for you (no Google sign-in needed).',
+  },
+  badEmpty: {
+    vi: 'Chưa có câu gợi ý cho đánh giá này. Bạn tự viết vào ô dưới rồi bấm Duyệt & đăng.',
+    en: 'No suggestion for this one yet. Type your own below, then press Approve & post.',
+  },
+  writeYours: { vi: 'Câu trả lời của bạn (sửa được):', en: 'Your reply (editable):' },
+  onGoogleInstead: { vi: 'Mở trên Google', en: 'Open on Google' },
   connectedOk: { vi: 'Đã kết nối Google thành công 🎉', en: 'Google connected successfully 🎉' },
   connectErr: { vi: 'Kết nối Google thất bại. Thử lại.', en: 'Google connection failed. Try again.' },
   loading: { vi: 'Đang tải…', en: 'Loading…' },
@@ -154,6 +198,10 @@ function Inner() {
   const [reviews, setReviews] = useState<GrReview[]>([]);
   const pgReviews = usePaged(reviews, 12);
   const [filter, setFilter] = useState<'NEEDS_ATTENTION' | 'DRAFTED' | 'REPLIED' | 'ALL'>('DRAFTED');
+  // Which hard review is asking "really?". Only one at a time, and it clears
+  // itself the moment the button loses focus — a half-armed button left on
+  // screen is a trap the next person walks into.
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   // A countdown that does not move is a picture of a countdown. One tick a
   // second, one state, and every card re-reads it — cheaper than a timer each.
   const [now, setNow] = useState(() => Date.now());
@@ -225,6 +273,25 @@ function Inner() {
 
   useEffect(() => { if (!loading) loadReviews(filter); }, [filter, loading, loadReviews]);
 
+  /**
+   * Open on a tab that has something in it.
+   *
+   * "Chờ duyệt" is the right default the day auto-reply is doing its job and
+   * the wrong one every other day: a salon with nothing waiting and two angry
+   * reviews unanswered was shown "Chưa có đánh giá nào ở mục này" and concluded
+   * the whole feature was dead. Runs once, and only while the owner has not
+   * picked a tab themselves.
+   */
+  const [tabPicked, setTabPicked] = useState(false);
+  useEffect(() => {
+    if (tabPicked || loading || !s) return;
+    setTabPicked(true);
+    const c2 = s.counts || {};
+    if ((c2.DRAFTED ?? 0) > 0) return;
+    if ((c2.NEEDS_ATTENTION ?? 0) > 0) setFilter('NEEDS_ATTENTION');
+    else if ((c2.REPLIED ?? 0) > 0) setFilter('REPLIED');
+  }, [tabPicked, loading, s]);
+
   async function connect() {
     try {
       const r = await apiFetch<{ url: string }>('/google-reviews/connect', { token });
@@ -290,11 +357,20 @@ function Inner() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setTesting(false); }
   }
+  /** Settings again, purely for the numbers: counts and the Google totals. */
+  const refreshCounts = useCallback(async () => {
+    if (!token) return;
+    const st = await apiFetch<GrSettings>('/google-reviews', { token }).catch(() => null);
+    if (st) setS(st);
+  }, [token]);
+
   async function approve(id: string) {
     setBusyId(id); setError(null);
     try {
       await apiFetch(`/google-reviews/${id}/approve`, { method: 'POST', token, body: { text: drafts[id] } });
-      await loadReviews(filter);
+      // Both: the list this tab shows, and the tallies above it. Posting a
+      // reply and watching "chưa trả lời 2" stay at 2 reads as a failure.
+      await Promise.all([loadReviews(filter), refreshCounts()]);
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setBusyId(null); }
   }
@@ -308,7 +384,7 @@ function Inner() {
   }
   async function skip(id: string) {
     setBusyId(id);
-    try { await apiFetch(`/google-reviews/${id}/skip`, { method: 'POST', token }); await loadReviews(filter); }
+    try { await apiFetch(`/google-reviews/${id}/skip`, { method: 'POST', token }); await Promise.all([loadReviews(filter), refreshCounts()]); }
     catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setBusyId(null); }
   }
@@ -510,6 +586,43 @@ function Inner() {
 
       {/* Inbox */}
       <div style={{ ...ui.card }}>
+        {/* WHAT THE SALON ACTUALLY HAS, BEFORE ANY TAB COUNT.
+            The first question an owner asks this screen is "I have 187 reviews,
+            why does it say 53?" — and the honest answer is that those were two
+            different numbers all along. Both are printed, with the gap named. */}
+        {s.google && (
+          <div style={{
+            display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',
+            background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
+            borderRadius: 10, padding: '11px 13px', marginBottom: 12,
+          }}>
+            <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{t('onGoogle')}:</span>
+            {typeof s.google.rating === 'number' && (
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#fbbf24' }}>
+                ★ {s.google.rating.toFixed(1)}
+              </span>
+            )}
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+              {typeof s.google.total === 'number' ? s.google.total : '—'} {t('grReviews')}
+            </span>
+            <span style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>
+              · {t('mirroredLine')} {s.google.mirrored} ({s.google.answered} {t('hasReply')}, {s.google.waiting} {t('noReply')})
+            </span>
+            {s.google.at && (
+              <span style={{ fontSize: 11.5, color: 'var(--c475569)' }}>
+                · {t('statsAt')} {fmtInTz(s.google.at, { dateStyle: 'short', timeStyle: 'short' })}
+              </span>
+            )}
+            {typeof s.google.total === 'number' && s.google.total > s.google.mirrored && (
+              <div style={{ flexBasis: '100%', fontSize: 12, color: 'var(--cfbbf24)', lineHeight: 1.55, marginTop: 2 }}>
+                {t('catchingUp')}
+              </div>
+            )}
+            <div style={{ flexBasis: '100%', fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5, marginTop: 2 }}>
+              {t('totalsNote')}
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('inbox')}</div>
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
@@ -589,31 +702,56 @@ function Inner() {
                 {r.status === 'NEEDS_ATTENTION' && (
                   <div>
                     <div style={{ color: '#f59e0b', fontSize: 12.5, marginBottom: 8 }}>⚠️ {t('needsHuman')}</div>
-                    {/* The review that is hardest to answer used to be the one
-                        handed over with an empty box. A five-star "Loved it"
-                        writes itself; this is the one an owner puts off for
-                        three days. It gets a starting point — and a label that
-                        leaves no doubt it will never send itself. */}
-                    {r.draftReply && (
-                      <div style={{ marginBottom: 10 }}>
-                        <div style={{ ...ui.label, marginTop: 2 }}>{t('draftLabel')}</div>
-                        <textarea value={drafts[r.id] ?? r.draftReply ?? ''} onChange={(e) => setDrafts({ ...drafts, [r.id]: e.target.value })}
-                          rows={3} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
-                        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 6 }}>{t('handDraftNote')}</div>
-                        <button
-                          onClick={() => {
-                            const text = drafts[r.id] ?? r.draftReply ?? '';
-                            navigator.clipboard?.writeText(text)
-                              .then(() => { setCopiedId(r.id); setTimeout(() => setCopiedId(null), 1500); })
-                              .catch(() => undefined);
-                          }}
-                          style={{ ...ghostBtn, marginTop: 8, color: copiedId === r.id ? '#22c55e' : 'var(--ca5b4fc)' }}
-                        >{copiedId === r.id ? t('copied') : t('copyDraft')}</button>
+                    {/* THE BOX IS ALWAYS HERE NOW, DRAFT OR NO DRAFT.
+                        It used to render only when the AI had written something,
+                        so the reviews with no suggestion — which is every review
+                        that came in before the drafting existed — offered nothing
+                        but a link to Google. The owner was sent to another site
+                        to do the one thing this screen is for. */}
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ ...ui.label, marginTop: 2 }}>{r.draftReply ? t('draftLabel') : t('writeYours')}</div>
+                      <textarea value={drafts[r.id] ?? r.draftReply ?? ''} onChange={(e) => setDrafts({ ...drafts, [r.id]: e.target.value })}
+                        rows={4} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+                      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 6 }}>
+                        {r.draftReply ? t('badNote') : t('badEmpty')}
                       </div>
-                    )}
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <a href="https://business.google.com/reviews" target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, textDecoration: 'none', display: 'inline-block' }}>{t('replyOnGoogle')}</a>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {/* Two taps, and only on this card.
+                          A drafted five-star reply is going out anyway, so its
+                          button is one press. This one is a public answer to an
+                          angry customer, typed seconds ago, and it cannot be
+                          taken back quietly — so the second press is the point
+                          at which the owner reads it once more. */}
+                      <button
+                        onClick={() => {
+                          if (confirmId !== r.id) { setConfirmId(r.id); return; }
+                          setConfirmId(null);
+                          approve(r.id);
+                        }}
+                        onBlur={() => setConfirmId((cur) => (cur === r.id ? null : cur))}
+                        disabled={busyId === r.id || !(drafts[r.id] ?? r.draftReply ?? '').trim()}
+                        style={{
+                          ...ui.primaryBtn,
+                          ...(confirmId === r.id ? { background: '#b45309' } : {}),
+                          opacity: (drafts[r.id] ?? r.draftReply ?? '').trim() ? 1 : 0.45,
+                        }}
+                      >
+                        {busyId === r.id ? t('posting') : confirmId === r.id ? t('postBadSure') : t('postBad')}
+                      </button>
+                      <button onClick={() => regenerate(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('regen')}</button>
+                      <button
+                        onClick={() => {
+                          const text = drafts[r.id] ?? r.draftReply ?? '';
+                          navigator.clipboard?.writeText(text)
+                            .then(() => { setCopiedId(r.id); setTimeout(() => setCopiedId(null), 1500); })
+                            .catch(() => undefined);
+                        }}
+                        style={{ ...ghostBtn, color: copiedId === r.id ? '#22c55e' : 'var(--ca5b4fc)' }}
+                      >{copiedId === r.id ? t('copied') : t('copyDraft')}</button>
                       <button onClick={() => skip(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('markHandled')}</button>
+                      <a href="https://business.google.com/reviews" target="_blank" rel="noreferrer"
+                        style={{ fontSize: 12.5, color: 'var(--c64748b)', textDecoration: 'underline', marginLeft: 'auto' }}>{t('onGoogleInstead')}</a>
                     </div>
                   </div>
                 )}

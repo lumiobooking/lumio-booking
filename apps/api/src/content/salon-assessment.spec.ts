@@ -1,4 +1,4 @@
-import { assessSalon, adsBlocker, firstAction, REVIEWS_THIN, BOOKINGS_QUIET, SETTLING_DAYS } from './salon-assessment';
+import { assessSalon, adsAim, firstAction, REVIEWS_THIN, BOOKINGS_QUIET, SETTLING_DAYS } from './salon-assessment';
 import { viOf } from './i18n';
 
 const keys = (s: Parameters<typeof assessSalon>[0]) => assessSalon(s).findings.map((f) => f.key);
@@ -115,34 +115,54 @@ describe('ordering is dependency, not alphabet', () => {
   });
 });
 
-describe('advertising is stopped by the same reading, not by a second opinion', () => {
-  it('will not advertise into a salon with no Google profile', () => {
-    const b = adsBlocker(assessSalon({ googleConnected: false, menuSize: 20, bookings90: 50 }));
-    expect(b?.key).toBe('no-google');
+describe('what the salon\u2019s own profile decides about its ads', () => {
+  /**
+   * These used to assert that advertising was BLOCKED. It is not any more, and
+   * the reason is worth keeping next to the tests: reviews come from customers,
+   * customers come from traffic, and advertising is traffic — so "reach twenty
+   * reviews, then advertise" asks a shop to wait for the thing advertising
+   * produces, and asks a shop opening next month to wait for ever. What the
+   * profile can honestly decide is where the click LANDS.
+   */
+  it('sends the click away from a Google profile the salon does not have', () => {
+    const a = adsAim(assessSalon({ googleConnected: false, menuSize: 20, bookings90: 50 }));
+    expect(a?.key).toBe('no-google');
   });
 
-  it('will not advertise into a three-review profile, however many chairs are free', () => {
-    const b = adsBlocker(assessSalon({ googleConnected: true, googleReviews: 3, bookings90: 0, daysWithUs: 200 }));
-    expect(b?.key).toBe('thin-google');
+  it('does the same for a three-review profile — and still lets the money out', () => {
+    const a = adsAim(assessSalon({ googleConnected: true, googleReviews: 3, bookings90: 0, daysWithUs: 200 }));
+    expect(a?.key).toBe('thin-google');
+    // The sentence an owner reads must not tell them to stop advertising.
+    expect(viOf(a!.because)).toMatch(/Vẫn chạy quảng cáo được/);
+    expect(viOf(a!.because)).not.toMatch(/đốt tiền/);
   });
 
-  it('stops the salon that is found and not booked, and says where the money goes instead', () => {
-    const b = adsBlocker(assessSalon({ ...ESTABLISHED, bookings90: 1 }))!;
-    expect(b.key).toBe('found-not-booked');
-    expect(viOf(b.doNext!)).toMatch(/link đặt lịch/);
+  it('points a found-but-not-booked salon at its booking link', () => {
+    const a = adsAim(assessSalon({ ...ESTABLISHED, bookings90: 1 }))!;
+    expect(a.key).toBe('found-not-booked');
+    expect(viOf(a.doNext!)).toMatch(/link đặt lịch/);
   });
 
-  it('does NOT stop for a missing website or a quiet Page — those cost conversions, not the spend', () => {
-    const b = adsBlocker(assessSalon({ ...ESTABLISHED, websiteUrl: null, fanpageConnected: false, postedLast30: 1 }));
-    expect(b).toBeNull();
+  it('says nothing about a missing website or a quiet Page — those are not where the click lands', () => {
+    expect(adsAim(assessSalon({ ...ESTABLISHED, websiteUrl: null, fanpageConnected: false, postedLast30: 1 }))).toBeNull();
   });
 
-  it('lets a healthy salon advertise', () => {
-    expect(adsBlocker(assessSalon(ESTABLISHED))).toBeNull();
+  it('leaves a healthy salon\u2019s ads pointed wherever they were', () => {
+    expect(adsAim(assessSalon(ESTABLISHED))).toBeNull();
   });
 
-  it('does not stop a salon that is merely too new to read', () => {
-    expect(adsBlocker(assessSalon({ ...ESTABLISHED, bookings90: 0, daysWithUs: 5 }))).toBeNull();
+  it('does not redirect a salon that is merely too new to read', () => {
+    expect(adsAim(assessSalon({ ...ESTABLISHED, bookings90: 0, daysWithUs: 5 }))).toBeNull();
   });
+
+  it('NEVER tells a brand-new salon to wait for reviews before it advertises', () => {
+    // The circular case, stated as a test because it is the one that matters
+    // most: a shop about to open has no customers, therefore no reviews, and
+    // being known is the whole job. It gets an aim, never a refusal.
+    const a = adsAim(assessSalon({ googleConnected: true, googleReviews: 0, bookings90: 0, daysWithUs: 2 }));
+    expect(a?.key).toBe('thin-google');
+    expect(viOf(a!.doNext!)).toMatch(/Xin đánh giá/);
+  });
+});
 });
 

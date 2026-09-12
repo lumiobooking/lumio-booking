@@ -58,11 +58,12 @@ export interface AdsPitch {
   /** What the team reads when the shop says yes. */
   request: string | null;
   /**
-   * The one thing to do INSTEAD, when the answer is "not now".
+   * The one thing to do ALONGSIDE the campaign — or instead of it, in the one
+   * state that still says no (no chairs free).
    *
-   * A refusal with no next step reads as a door closing. The salon came to this
-   * screen wanting customers; it should leave it knowing what to do about that,
-   * even when the answer is that ads are not it yet.
+   * It used to be the consolation prize attached to a refusal. It is now what
+   * runs in parallel: ask every finished customer for a review while the ads
+   * are live, rather than waiting for twenty of them before spending a dollar.
    */
   todo?: Txt | null;
 }
@@ -70,6 +71,11 @@ export interface AdsPitch {
 const fmt = (c: number) => `$${Math.round(c / 100)}`;
 
 export interface PitchPlanInput {
+  /**
+   * The assessment finding that decides where the paid clicks land. Read by
+   * destinationStep; never a reason to withhold a budget.
+   */
+  aim?: { key: string; because: Txt; doNext: Txt | null } | null;
   /** Where to start, and what comes after it. Both already named for a person. */
   platform?: { label: Txt; key: string } | null;
   secondPlatform?: Txt | null;
@@ -108,8 +114,46 @@ const listEn = (xs: string[]) => {
  * a plan that invents its own reasons is worse than a short one. The last step
  * is always there, because "and then what" is answerable from the budget alone.
  */
+/**
+ * Where the person who taps the ad ends up.
+ *
+ * THE STEP THAT WAS MISSING, AND WHAT IT COST.
+ *
+ * The plan answered four questions — which channel, which service, which days,
+ * what happens after — and never the one that decides whether the money works:
+ * where does the tap LAND. The default for a salon ad is the Google profile or
+ * the call button, and for a shop with four reviews that is the one page you
+ * would not choose. Rather than notice that and refuse to advertise, which is
+ * what this module used to do, the plan now says so and points somewhere else.
+ *
+ * Only rendered when the assessment has something to say. A salon with a solid
+ * profile does not need a step explaining that the map is fine.
+ */
+function destinationStep(aim: { key: string } | null | undefined): PitchStep | null {
+  if (!aim) return null;
+  if (aim.key === 'found-not-booked') {
+    return {
+      title: bi('Bấm vào thì tới đâu', 'Where the tap lands'),
+      head: bi('Thẳng vào link đặt lịch — không phải số điện thoại', 'Straight to the booking link — not the phone number'),
+      body: bi(
+        'Tiệm đã có người tìm tới rồi mà không đặt được lịch, nên chỗ rò không nằm ở lượng người. Quảng cáo đổ về đúng cái link đặt lịch là bịt chỗ rò đó ngay trong ngày đầu — gọi điện thì mất khách vào những giờ không ai bắt máy.',
+        'People already find this salon and cannot book, so the leak is not the number of visitors. Pointing the ads at the booking link closes it on day one — a phone number loses everyone who taps outside opening hours.'),
+    };
+  }
+  // no-google / thin-google: the profile is not the page to argue the case on.
+  return {
+    title: bi('Bấm vào thì tới đâu', 'Where the tap lands'),
+    head: bi('Vào tin nhắn hoặc link đặt lịch — chưa đổ về trang Google', 'Into Messenger or the booking link — not the Google profile yet'),
+    body: bi(
+      'Khách lạ bấm vào quảng cáo rồi mở trang Google ra là họ đọc phần đánh giá chứ không đọc quảng cáo nữa. Trong lúc hồ sơ còn mỏng thì cho họ vào thẳng chỗ có người trả lời — bot của tiệm nhắn lại trong vài giây và đặt lịch luôn, không ai nhìn thấy con số đánh giá ở đó. Số đánh giá vẫn tăng song song từ chính những khách này, không phải chờ đủ rồi mới chạy.',
+      'A stranger who taps the ad and opens the Google profile reads the reviews, not the ad. While the profile is thin, land them where someone answers instead — the salon bot replies in seconds and books them, and the review count is nowhere on that screen. The reviews then grow from these same customers, rather than being something to finish before spending anything.'),
+  };
+}
+
 function planSteps(input: PitchPlanInput, days: number, ceilingText: string): PitchStep[] {
   const steps: PitchStep[] = [];
+
+  const dest = destinationStep(input.aim);
 
   const first = input.platform ?? null;
   if (first) {
@@ -135,6 +179,10 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
       body: bi(bodyVi, bodyEn),
     });
   }
+
+  // Second, because "which channel" is the question an owner asks first and
+  // "where does it land" is the one that decides whether the answer works.
+  if (dest) steps.push(dest);
 
   const services = (input.services ?? []).map((s) => s.trim()).filter(Boolean).slice(0, 3);
   const offerVi = input.offerLine ? viOf(input.offerLine).trim() : '';
@@ -221,10 +269,11 @@ export function adsPitch(input: {
   /** Which of the two figures is missing, so "unknown" can name it. */
   missing?: 'ticket' | 'margin' | null;
   /**
-   * A finding from the whole-salon assessment that makes advertising the wrong
-   * place for the money right now. See adsBlocker in salon-assessment.ts.
+   * What the whole-salon assessment says about where the paid clicks should
+   * LAND. It changes the plan; it never withholds the budget. See adsAim in
+   * salon-assessment.ts for why that distinction is the whole point.
    */
-  blocker?: { because: Txt; doNext: Txt | null } | null;
+  aim?: { key: string; because: Txt; doNext: Txt | null } | null;
   /**
    * True when the ticket came from the salon's PRICE LIST rather than from
    * appointments booked here. The number is usable — it is the salon's own
@@ -258,22 +307,13 @@ export function adsPitch(input: {
     };
   }
 
-  // The foundation comes first, and it is checked BEFORE the chairs: a salon
-  // with empty chairs and a three-review profile has an audience problem that
-  // money makes worse, not better. The words come from the finding itself, so
-  // this screen and the plan screen cannot describe the same salon differently.
-  if (input.blocker) {
-    return {
-      state: 'not-yet',
-      figures: [],
-      steps: [],
-      headline: bi('Chưa nên đổ tiền quảng cáo lúc này', 'Not the moment to put money into ads'),
-      why: input.blocker.because,
-      cta: null,
-      request: null,
-      todo: input.blocker.doNext,
-    };
-  }
+  // NOTHING ABOUT THE PROFILE STOPS THE PLAN ANY MORE.
+  //
+  // A thin Google profile used to return "not the moment to put money into
+  // ads" with no budget on screen. It is a real cost and it is not a veto: see
+  // adsAim in salon-assessment.ts. The finding now rides into planSteps, where
+  // it decides where the click lands, and out again as `todo`, which is the
+  // thing to run in parallel — not the thing to finish first.
 
   if (input.feasible === 'no') {
     const need = input.bookingsToBreakEven ?? 0;
@@ -296,6 +336,7 @@ export function adsPitch(input: {
   return {
     state: 'offer',
     steps: planSteps(input, days, fmt(ceiling)),
+    todo: input.aim?.doNext ?? null,
     figures: [
       { value: fmt(daily), label: bi('mỗi ngày', 'per day') },
       { value: fmt(total), label: bi(`cả đợt ${days} ngày`, `for ${days} days`) },

@@ -19,7 +19,7 @@ import { resolveShopLocation, type ResolvedShopLocation } from './shop-location'
 import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { estimateTicket, isEstimate } from './ticket-estimate';
-import { assessSalon, adsBlocker } from './salon-assessment';
+import { assessSalon, adsAim } from './salon-assessment';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
@@ -1166,7 +1166,10 @@ export class ContentService {
     // "spend $30 a day" on one page and "your profile has three reviews" on the
     // next are both true and cannot both be advice.
     const look = await this.lookAtSalon(tenantId, ctx);
-    const blocker = adsBlocker(look);
+    // Not a veto — it decides where the paid clicks land, and what runs
+    // alongside the campaign. See adsAim in salon-assessment.ts.
+    const aimFinding = adsAim(look);
+    const aim = aimFinding ? { key: aimFinding.key, because: aimFinding.because, doNext: aimFinding.doNext } : null;
     const ceiling = cpaCeiling({ avgTicketCents: ticket, grossMarginPct: margin, medianGapDays: regulars?.medianGapDays ?? null });
 
     // The same free-capacity figure the team's plan is checked against, so the
@@ -1220,7 +1223,7 @@ export class ContentService {
 
     return adsPitch({
       ticketEstimated: isEstimate(est.source),
-      blocker,
+      aim,
       ceilingCents: ceiling.strictCents,
       dailyCents: budget.dailyCents,
       days: budget.days,

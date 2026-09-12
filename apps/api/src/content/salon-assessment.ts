@@ -153,8 +153,8 @@ export function assessSalon(s: SalonSignals): Assessment {
       key: 'thin-google', severity: 'fix',
       title: bi(`Hồ sơ Google mới có ${reviews} đánh giá`, `Only ${reviews} Google reviews so far`),
       because: bi(
-        `Khách lạ đọc đánh giá trước khi bấm gọi. Dưới ${REVIEWS_THIN} cái thì hồ sơ đọc như tiệm mới, dù tiệm mở lâu rồi — và quảng cáo đổ người vào một hồ sơ mỏng là đốt tiền.`,
-        `Strangers read reviews before they call. Under ${REVIEWS_THIN} the profile reads as brand new even for a long-established shop, and ads pointed at a thin profile are wasted.`),
+        `Khách lạ đọc đánh giá trước khi bấm gọi. Dưới ${REVIEWS_THIN} cái thì hồ sơ đọc như tiệm mới, dù tiệm mở lâu rồi. Vẫn chạy quảng cáo được — nhưng cho khách bấm vào thẳng tin nhắn hoặc link đặt lịch, đừng đổ về trang Google, và xin đánh giá song song.`,
+        `Strangers read reviews before they call. Under ${REVIEWS_THIN} the profile reads as brand new even for a long-established shop. Still worth advertising — just land the click on Messenger or the booking link rather than the map, and grow the reviews alongside.`),
       doNext: bi(`Xin đánh giá từng khách làm xong — cần thêm ${Math.max(0, REVIEWS_THIN - reviews)} cái`,
         `Ask each finished customer — ${Math.max(0, REVIEWS_THIN - reviews)} to go`),
     });
@@ -249,35 +249,50 @@ export function assessSalon(s: SalonSignals): Assessment {
 }
 
 /**
- * WHEN ADVERTISING IS THE WRONG PLACE TO PUT THE MONEY.
+ * WHERE THE PAID CLICK SHOULD LAND — NOT WHETHER TO BUY IT.
  *
- * The ad screen used to ask one question — can we compute a cost-per-customer
- * ceiling, and are there empty chairs — and if both answered yes it offered to
- * spend. Both can answer yes for a salon where advertising is certain to lose
- * money, because neither of them looks at what the click LANDS on.
+ * THE MISTAKE THIS REPLACES.
  *
- * Three findings stop it, and each is a different leak:
+ * These three findings used to BLOCK the ad plan: the screen showed "not the
+ * moment to put money into ads" and no budget at all. That was wrong twice
+ * over, and an agency owner running fifty-five salons said so.
  *
- *   no-google        the click has nowhere to land
- *   thin-google      it lands on a profile a stranger will not trust
- *   found-not-booked it lands, the stranger is convinced, and nothing takes
- *                    the booking — the most expensive of the three, because
- *                    this salon is ALREADY paying for traffic in reviews and
- *                    losing it at the last step
+ *   1. It is circular. Reviews come from customers, customers come from
+ *      traffic, and advertising IS traffic. "Get to twenty reviews, then
+ *      advertise" tells a shop to wait for the thing advertising produces. For
+ *      a salon opening next month it is not merely unhelpful — there are no
+ *      customers yet by definition, and being known is the entire job.
+ *   2. It answered a question nobody asked. Ads also buy AWARENESS: people
+ *      within a few miles learning the salon exists. A review count says
+ *      nothing about whether that is worth doing.
  *
- * A thin website or a quiet Page do not stop it: they cost conversions, they do
- * not waste the whole spend, and a salon that waits for a perfect setup never
- * advertises at all.
+ * WHAT SURVIVES, BECAUSE IT IS STILL TRUE.
  *
- * This is not the ads module second-guessing itself. It is the ads module
- * reading the same assessment every other screen reads, so the product stops
- * telling a salon "spend $30 a day" on one page and "your profile has three
- * reviews" on another.
+ * A stranger who taps an ad and lands on a Google profile with four reviews
+ * reads the profile, not the ad. That is a real cost — and it is an argument
+ * about the DESTINATION, never about the budget. So each finding now picks
+ * where the money points instead of refusing to spend it:
+ *
+ *   no-google        there is no profile to send anyone to → send the click to
+ *                    Messenger or the booking link, where a person answers
+ *   thin-google      the profile is thin → same: skip the map, land the click
+ *                    somewhere the review count is not the first thing seen,
+ *                    and thicken the profile in parallel rather than first
+ *   found-not-booked people already arrive and nothing takes the booking →
+ *                    point every click at the booking link; this is the one
+ *                    where the fix pays for itself the same day
+ *
+ * The evidence behind "thin": BrightLocal's Local Consumer Review Survey finds
+ * that most consumers expect a local business to carry 20-99 reviews before
+ * they trust its star rating. That is a survey of shoppers, not a measurement
+ * of these fifty-five salons, and it is quoted here as what it is — a reason to
+ * choose a landing page, not a reason to hold a budget.
  */
-export const ADS_BLOCKERS: FindingKey[] = ['no-google', 'thin-google', 'found-not-booked'];
+export const ADS_AIM: FindingKey[] = ['no-google', 'thin-google', 'found-not-booked'];
 
-export function adsBlocker(a: Assessment): Finding | null {
-  return a.findings.find((f) => ADS_BLOCKERS.includes(f.key)) ?? null;
+/** The finding that should decide where this salon's ads point, if any. */
+export function adsAim(a: Assessment): Finding | null {
+  return a.findings.find((f) => ADS_AIM.includes(f.key)) ?? null;
 }
 
 /** The one thing to do next — the first finding that asks for an action. */

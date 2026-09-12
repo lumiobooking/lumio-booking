@@ -61,6 +61,17 @@ export interface AdsPlan {
   figures: { value: string; label: string }[];
   headline: string; why: string; cta: string | null;
   steps: { title: string; head: string; body: string }[];
+  /**
+   * The thing to do WHILE the campaign runs — usually "ask each finished
+   * customer for a review".
+   *
+   * It used to arrive attached to a refusal ("reach twenty reviews, then we
+   * will advertise"), which is a loop: reviews come from customers, customers
+   * come from traffic, and advertising is traffic. It now runs in parallel with
+   * the spend, so it reads as the second half of the plan rather than a gate in
+   * front of it.
+   */
+  todo?: string | null;
 }
 export interface LastWeek {
   label: string; posted: number; reviews: number; newCustomers: number; bookings: number;
@@ -236,6 +247,22 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {adsPlan.todo && (
+            <div style={{
+              display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 12,
+              background: 'var(--wash-amber)', border: '1px solid var(--line-strong)',
+              borderRadius: 9, padding: '9px 11px',
+            }}>
+              <span style={{ fontSize: 13, flex: '0 0 auto' }}>🤝</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, color: 'var(--c94a3b8)', textTransform: 'uppercase' }}>
+                  {T('Tiệm làm song song', 'Alongside, on your side')}
+                </div>
+                <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 2 }}>{adsPlan.todo}</div>
+              </div>
             </div>
           )}
 

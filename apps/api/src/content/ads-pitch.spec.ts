@@ -131,3 +131,81 @@ describe('adsPitch', () => {
     expect(s).not.toMatch(/CPA|feasib|fillIndex|perHour|unproven|rank|status|verdict/i);
   });
 });
+
+/**
+ * THE REFUSAL THAT WAS REMOVED, AND WHY IT MUST NOT COME BACK.
+ *
+ * This module used to answer a thin Google profile with "not the moment to put
+ * money into ads" and no budget on screen. An agency owner running fifty-five
+ * salons pushed back, and he was right: reviews come from customers, customers
+ * come from traffic, advertising IS traffic — and a salon opening next month
+ * has no customers by definition, so "reach twenty reviews first" is a loop
+ * with no way in. Ads also buy awareness, which a review count says nothing
+ * about.
+ *
+ * What survives is the true part, and it is a statement about the LANDING PAGE:
+ * a stranger who taps an ad and opens a four-review profile reads the profile,
+ * not the ad. So the finding changes where the click goes and what runs
+ * alongside — never whether to spend.
+ */
+describe('a thin profile changes where the ads point, not whether they run', () => {
+  const thin = {
+    key: 'thin-google',
+    because: bi('Hồ sơ còn mỏng.', 'The profile is thin.'),
+    doNext: bi('Xin đánh giá từng khách làm xong', 'Ask each finished customer'),
+  };
+
+  it('STILL OFFERS the budget — the numbers do not disappear', () => {
+    const p = adsPitch({ ...base, aim: thin });
+    expect(p.state).toBe('offer');
+    expect(p.figures.map((f) => f.value)).toEqual(['$14', '$196', '$38']);
+    expect(p.cta).not.toBeNull();
+  });
+
+  it('never prints the old refusal', () => {
+    const all = Object.values(adsPitch({ ...base, aim: thin })).map((v) => JSON.stringify(v)).join(' ');
+    expect(all).not.toMatch(/Chưa nên đổ tiền quảng cáo|Not the moment to put money into ads/);
+  });
+
+  it('adds the step that decides whether the money works: where the tap lands', () => {
+    const p = adsPitch({ ...base, aim: thin, platform: { label: bi('Google', 'Google'), key: 'google' } });
+    const dest = p.steps.find((s) => viOf(s.title) === 'Bấm vào thì tới đâu');
+    expect(dest).toBeDefined();
+    expect(viOf(dest!.head)).toMatch(/tin nhắn hoặc link đặt lịch/);
+    expect(viOf(dest!.body)).toMatch(/chưa đổ về trang Google|không đọc quảng cáo nữa/);
+    // It comes AFTER the channel, because "which channel" is what an owner
+    // asks first and "where does it land" is what decides the answer.
+    expect(p.steps.indexOf(dest!)).toBe(1);
+  });
+
+  it('carries the review ask as something to do ALONGSIDE, not first', () => {
+    const p = adsPitch({ ...base, aim: thin });
+    expect(viOf(p.todo!)).toMatch(/Xin đánh giá/);
+  });
+
+  it('points a found-but-not-booked salon at the booking link instead', () => {
+    const p = adsPitch({
+      ...base,
+      aim: { key: 'found-not-booked', because: bi('a', 'a'), doNext: bi('Bật link đặt lịch', 'Turn on the booking link') },
+      platform: { label: bi('Google', 'Google'), key: 'google' },
+    });
+    expect(p.state).toBe('offer');
+    const dest = p.steps.find((s) => viOf(s.title) === 'Bấm vào thì tới đâu')!;
+    expect(viOf(dest.head)).toMatch(/link đặt lịch/);
+    expect(viOf(dest.head)).not.toMatch(/tin nhắn/);
+  });
+
+  it('leaves a healthy salon’s plan exactly as it was', () => {
+    const p = adsPitch({ ...base, platform: { label: bi('Google', 'Google'), key: 'google' } });
+    expect(p.steps.some((s) => viOf(s.title) === 'Bấm vào thì tới đâu')).toBe(false);
+    expect(p.todo ?? null).toBeNull();
+  });
+
+  it('still says no when there are no chairs — that one is about capacity, not trust', () => {
+    // The one refusal that survives, and it is a different argument: buying
+    // customers with nowhere to sit is waste whatever the profile looks like.
+    const p = adsPitch({ ...base, aim: thin, feasible: 'no', bookingsToBreakEven: 20, openSlots: 4 });
+    expect(p.state).toBe('not-yet');
+    expect(viOf(p.why)).toMatch(/mua khách không có ghế ngồi/);
+  });
+});

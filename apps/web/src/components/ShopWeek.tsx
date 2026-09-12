@@ -60,7 +60,12 @@ export interface AdsPlan {
   state: 'offer' | 'not-yet' | 'unknown';
   figures: { value: string; label: string }[];
   headline: string; why: string; cta: string | null;
-  steps: { title: string; head: string; body: string }[];
+  /**
+   * `when` is the condition that moves a step forward — the day to look, the
+   * number that decides it, and what to do with either answer. Only the steps
+   * that have a real trigger carry one.
+   */
+  steps: { title: string; head: string; body: string; when?: string | null }[];
   /**
    * The thing to do WHILE the campaign runs — usually "ask each finished
    * customer for a review".
@@ -256,6 +261,21 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
                     <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{st.title}</div>
                     <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.4, marginTop: 2 }}>{st.head}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 3 }}>{st.body}</div>
+                    {/* The trigger, boxed away from the reasoning around it.
+                        "Meta sau" with the condition buried in a paragraph is
+                        the same as "Meta sau" with no condition — nobody finds
+                        it on the day they need to check it. */}
+                    {st.when && (
+                      <div style={{
+                        marginTop: 7, padding: '8px 10px', borderRadius: 8,
+                        background: 'var(--c0f172a)', border: '1px solid var(--line-strong)',
+                      }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: 'var(--ink-faint)', textTransform: 'uppercase' }}>
+                          {T('Điều kiện để sang bước sau', 'What has to be true first')}
+                        </div>
+                        <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 3 }}>{st.when}</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

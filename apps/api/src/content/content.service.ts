@@ -1373,6 +1373,11 @@ export class ContentService {
       missing: ticket === null ? 'ticket' : margin === null ? 'margin' : null,
       platform: first ? { label: first.label, key: first.platform } : null,
       secondPlatform: second?.label ?? null,
+      // The number the "when do we open the second channel" test hangs on:
+      // the bookings this campaign has to produce before its cost per customer
+      // is a reading rather than noise. Same figure the break-even line quotes,
+      // so the two cannot drift apart on one screen.
+      provingBookings: budget.bookingsToBreakEven,
       // 'unproven' is the default order speaking, not this salon's book.
       platformFromData: first ? first.status !== 'unproven' : false,
       services: ctx.revenue.yields.slice(0, 2).map((y) => y.name),

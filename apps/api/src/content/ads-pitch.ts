@@ -43,6 +43,19 @@ export interface PitchStep {
   head: Txt;
   /** Why that answer and not another. This is what makes it a plan. */
   body: Txt;
+  /**
+   * THE CONDITION THAT MOVES THIS STEP FORWARD.
+   *
+   * "Google trước, Meta sau" was the whole answer, and an agency owner asked
+   * the obvious next question: sau là khi nào? A step with no trigger is not a
+   * plan, it is an ordering — and an ordering nobody can act on, because there
+   * is no day and no number at which anything changes.
+   *
+   * So a step may carry the test that has to come true, in the salon's own
+   * figures: which day to look, what number decides it, and what to do with
+   * either answer. Present only where there is a real condition to state.
+   */
+  when?: Txt | null;
 }
 
 export interface AdsPitch {
@@ -93,6 +106,13 @@ export interface PitchPlanInput {
    * destinationStep; never a reason to withhold a budget.
    */
   aim?: { key: string; because: Txt; doNext: Txt | null } | null;
+  /**
+   * How many bookings the first channel has to produce before its cost per
+   * customer means anything — the same number the campaign is sized to break
+   * even on. Below it, every rate pulled out of the result is noise, which is
+   * exactly why the second channel must not be switched on yet.
+   */
+  provingBookings?: number | null;
   /** Where to start, and what comes after it. Both already named for a person. */
   platform?: { label: Txt; key: string } | null;
   secondPlatform?: Txt | null;
@@ -190,10 +210,51 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
       : first.key === 'google'
         ? 'Someone typing "nail salon near me" has already decided to go today; they need an address, not persuasion. That is the fastest dollar. Facebook and Instagram come after — their job is to keep the shop in mind locally.'
         : `Around your block people sit on ${firstEn} rather than search for a salon, so we put real photos of your work in front of them first, then look at search.`;
+    /**
+     * WHAT "SAU" ACTUALLY MEANS.
+     *
+     * The step said "Google trước, Meta sau" and stopped there. An agency owner
+     * asked the question that exposes it: sau là khi nào, đạt tiêu chuẩn gì?
+     * There was no answer anywhere on the screen — no day, no number, nothing
+     * that could come true. An ordering with no trigger is not a plan, and it
+     * is worse than useless to somebody who has to explain it to a client.
+     *
+     * The test below is written from this salon's own figures: the day the
+     * first result can be read, the cost per customer it has to beat (the
+     * salon's own margin on a visit), and the number of bookings below which
+     * that cost is noise. Both outcomes are stated, because a condition that
+     * only says what happens on success is a condition nobody checks.
+     */
+    const proving = input.provingBookings && input.provingBookings > 0 ? input.provingBookings : null;
+    const when = secondVi && ceilingText
+      ? bi(
+        `Mở ${secondVi} khi ĐỦ CẢ HAI, soi vào ngày thứ 7: `
+        + `(1) ${firstVi} đã mang về ${proving ? `ít nhất ${proving} booking` : 'đủ booking để đọc được'} — ít hơn thì mọi tỷ lệ rút ra đều là nhiễu; `
+        + `(2) mỗi khách mới từ ${firstVi} đang tốn dưới ${ceilingText}. `
+        + `Đủ hai thì mở ${secondVi} với nửa ngân sách của ${firstVi}. `
+        + `Trên ${ceilingText} thì sửa ${firstVi} trước — chưa mở ${secondVi}, vì bật hai kênh lúc một kênh đang lỗ thì chỉ lỗ nhanh gấp đôi. `
+        + `Hết ${days} ngày mà vẫn chưa đủ booking thì chạy thêm một đợt ${firstVi} nữa, vẫn chưa mở ${secondVi}.`,
+        `Open ${secondEn} when BOTH are true, checked on day 7: `
+        + `(1) ${firstEn} has produced ${proving ? `at least ${proving} bookings` : 'enough bookings to read'} — fewer and every rate you pull out of them is noise; `
+        + `(2) each new customer from ${firstEn} is costing under ${ceilingText}. `
+        + `Both true, open ${secondEn} at half the ${firstEn} budget. `
+        + `Over ${ceilingText}, fix ${firstEn} first — do not open ${secondEn}, because switching on a second channel while the first is losing money only loses it twice as fast. `
+        + `If ${days} days pass without enough bookings, run ${firstEn} once more and still do not open ${secondEn}.`)
+      : null;
+
     steps.push({
       title: bi('Chạy ở kênh nào', 'Where it runs'),
       head: bi(headVi, headEn),
-      body: bi(bodyVi, bodyEn),
+      // WHERE THE ORDER CAME FROM, SAID OUT LOUD.
+      //
+      // When the salon's own bookings chose it, the body already says so. When
+      // they did not — no booking has ever been attributed to either channel —
+      // the order is a starting rule, not a reading of this shop, and calling
+      // it a reading is how an agency loses an argument with its own client.
+      body: bi(
+        bodyVi + (input.platformFromData ? '' : ` (Thứ tự này chưa phải từ số liệu của tiệm — chưa có booking nào ghi nhận từ ${firstVi} hay ${secondVi || 'kênh còn lại'}. Nó là điểm khởi đầu, và đợt chạy này chính là thứ tạo ra số liệu để lần sau xếp theo tiệm.)`),
+        bodyEn + (input.platformFromData ? '' : ` (This order is not from your numbers yet — no booking has been attributed to ${firstEn} or ${secondEn || 'the other channel'}. It is a starting rule, and this campaign is what produces the data to order it by your shop next time.)`)),
+      when,
     });
   }
 

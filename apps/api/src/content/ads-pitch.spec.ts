@@ -276,3 +276,61 @@ describe('the capacity sentence is one an agency can say out loud', () => {
     expect(p.state).toBe('offer');
   });
 });
+
+/**
+ * "Meta sau — tức là khi nào?"
+ *
+ * The step said "Google trước, Meta sau" and offered nothing further: no day,
+ * no number, nothing that could come true. An agency owner asked the question
+ * and there was no answer on the screen to give him. An ordering with no
+ * trigger is not a plan, and it is worst of all for the person who has to
+ * explain it to a paying client.
+ */
+describe('the second channel has a condition, not just a position', () => {
+  const two = {
+    ...base,
+    platform: { label: bi('Google', 'Google'), key: 'google' },
+    secondPlatform: bi('Meta', 'Meta'),
+    provingBookings: 8,
+  };
+  const channelStep = (p: ReturnType<typeof adsPitch>) => p.steps.find((s) => viOf(s.title) === 'Chạy ở kênh nào')!;
+
+  it('names the day, the number and the money threshold', () => {
+    const w = viOf(channelStep(adsPitch(two)).when!);
+    expect(w).toMatch(/ngày thứ 7/);
+    expect(w).toMatch(/ít nhất 8 booking/);
+    expect(w).toMatch(/\$38/); // the salon's own ceiling, not a generic figure
+  });
+
+  it('says what happens on BOTH answers, not only on success', () => {
+    const w = viOf(channelStep(adsPitch(two)).when!);
+    expect(w).toMatch(/mở Meta với nửa ngân sách/);
+    expect(w).toMatch(/sửa Google trước — chưa mở Meta/);
+    expect(w).toMatch(/Hết 14 ngày mà vẫn chưa đủ booking/);
+  });
+
+  it('ADMITS the order is not from this salon when it is not', () => {
+    // The order for a shop with no attributed bookings is a starting rule.
+    // Presenting a default as a reading is how an agency loses an argument
+    // with its own client.
+    const b = viOf(channelStep(adsPitch(two)).body);
+    expect(b).toMatch(/chưa phải từ số liệu của tiệm/);
+    expect(b).toMatch(/chưa có booking nào ghi nhận từ Google hay Meta/);
+  });
+
+  it('drops that admission once the salon’s own bookings chose the order', () => {
+    const b = viOf(channelStep(adsPitch({ ...two, platformFromData: true })).body);
+    expect(b).not.toMatch(/chưa phải từ số liệu của tiệm/);
+    expect(b).toMatch(/Khách của tiệm đang đến từ Google nhiều hơn/);
+  });
+
+  it('states no condition when there is no second channel to move to', () => {
+    expect(channelStep(adsPitch({ ...two, secondPlatform: null })).when ?? null).toBeNull();
+  });
+
+  it('still gives a usable test when the proving number is unknown', () => {
+    const w = viOf(channelStep(adsPitch({ ...two, provingBookings: null })).when!);
+    expect(w).toMatch(/đủ booking để đọc được/);
+    expect(w).toMatch(/\$38/);
+  });
+});

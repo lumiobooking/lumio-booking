@@ -300,6 +300,12 @@ test('no surface token used as a text colour in the app the team logs into', () 
   }
   // The fix is `var(--ink-faint)` for a faint mark, `var(--c64748b)` for muted
   // text, or a raw hex when the surface under it is raw too.
+  //
+  // PRINTED, not only asserted: Render truncates Jest's toEqual diff, so a red
+  // build showed a file and a line number of THIS file and nothing whatsoever
+  // about which colours in which components were wrong. Two deploys were spent
+  // guessing. The list now arrives in the log.
+  if (offenders.length) console.error(`\nSURFACE-TOKEN-AS-TEXT (${offenders.length}):\n${offenders.join('\n')}\n`);
   expect(offenders).toEqual([]);
 });
 
@@ -348,6 +354,7 @@ test('no light accent hex used as a text colour — it cannot flip, and by day i
       });
     }
   }
+  if (offenders.length) console.error(`\nACCENT-HEX-AS-TEXT (${offenders.length}):\n${offenders.join('\n')}\n`);
   expect(offenders).toEqual([]);
 });
 

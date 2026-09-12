@@ -112,8 +112,46 @@ function fromUtm(utm: string): BookingChannel | null {
   return null;
 }
 
+
+/**
+ * THE LANDING URL — the evidence that cannot be lost.
+ *
+ * WHY A THIRD LAYER EXISTS
+ *
+ * Google Maps was the largest source of new customers for most salons and the
+ * book recorded almost none of it. Every link in the chain was correct: the
+ * /gbp route exists, it stamps utm_source=google, the DTO accepts it, the
+ * service stores it, this function maps it. And the tally still read zero,
+ * because BOTH of the two signals it had can be absent:
+ *
+ *   utm       — only present if the salon actually pasted the /gbp link into
+ *               its Google profile. Until it does, a Google customer arrives
+ *               on the plain link carrying nothing.
+ *   referrer  — empty for most Google Maps traffic. The Maps app opens the
+ *               booking link in an in-app browser or a Custom Tab, and there
+ *               is no document.referrer in one. Google's own redirect hops
+ *               strip it too. This fallback was written for exactly this case
+ *               and is the least reliable precisely there.
+ *
+ * The PATH is the third signal and the only one that cannot go missing: it is
+ * the route the customer asked for, it is in the landing URL the booking page
+ * already sends, and nothing between Google and the form rewrites it. If the
+ * stamping effect fails — as its predecessor did, silently, for months — the
+ * landing URL still ends in /gbp and the booking is still Google's.
+ *
+ * Checked AFTER the utm and the referrer, so an explicit campaign still wins.
+ */
+function fromLanding(url: string | null | undefined): BookingChannel | null {
+  const raw = String(url ?? '').trim();
+  if (!raw) return null;
+  let path = '';
+  try { path = new URL(raw).pathname; } catch { path = raw.split('?')[0]; }
+  return /\/gbp\/?$/.test(path) ? 'gmap' : null;
+}
+
 export function bookingChannel(b: {
   source?: string | null; utmSource?: string | null; attrReferrer?: string | null;
+  attrLandingUrl?: string | null;
 }): BookingChannel {
   const s = String(b?.source ?? '').trim().toLowerCase();
 
@@ -126,7 +164,9 @@ export function bookingChannel(b: {
   if (s === 'gmap' || s === 'google' || s === 'gbp' || s === 'rwg' || s === 'reserve_with_google') return 'gmap';
 
   const utm = String(b?.utmSource ?? '').trim();
-  const refined = (utm ? fromUtm(utm) : null) ?? fromReferrer(b?.attrReferrer);
+  const refined = (utm ? fromUtm(utm) : null)
+    ?? fromReferrer(b?.attrReferrer)
+    ?? fromLanding(b?.attrLandingUrl);
 
   if (s === 'plugin' || s === 'website' || s === 'wordpress') return refined ?? 'website';
   if (s === 'hosted' || s === 'lumiolink' || s === 'link') return refined ?? 'lumiolink';

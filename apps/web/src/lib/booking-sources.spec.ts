@@ -118,3 +118,64 @@ describe('the referrer tells the organic truth', () => {
     expect(srcKey({ source: 'hosted', attrReferrer: 'https://familysmarthomes.com/book' })).toBe('lumiolink');
   });
 });
+
+/**
+ * THE SIGNAL THAT CANNOT GO MISSING.
+ *
+ * A salon's book showed 95 bookings through the Lumio link and zero from
+ * Google Maps, while the owner watched Google customers walk in all week.
+ * Nothing in the chain was broken — the /gbp route exists, it stamps the
+ * campaign, the API accepts and stores it, and this function maps it. The
+ * tally read zero because both of the signals it had can simply be absent:
+ *
+ *   the utm       is only there once the salon has actually pasted the /gbp
+ *                 link into its Google profile
+ *   the referrer  is empty for most Google Maps traffic — the Maps app opens
+ *                 the link in an in-app browser, which has no document.referrer
+ *
+ * The landing URL still ends in /gbp when both of those fail, which is the
+ * whole reason it is now read.
+ */
+describe('a Google Maps booking is still Google when the tags go missing', () => {
+  const hosted = { source: 'hosted' as const };
+
+  it('reads the /gbp path off the landing URL with no utm and no referrer', () => {
+    expect(srcKey({ ...hosted, attrLandingUrl: 'https://lumiobooking.com/model-nails-salon/gbp' })).toBe('gmap');
+  });
+
+  it('still reads it when the stamping effect DID run and added the campaign', () => {
+    expect(srcKey({
+      ...hosted,
+      attrLandingUrl: 'https://lumiobooking.com/model-nails-salon/gbp?utm_source=google&utm_medium=organic',
+    })).toBe('gmap');
+  });
+
+  it('tolerates a trailing slash and a hash', () => {
+    expect(srcKey({ ...hosted, attrLandingUrl: 'https://lumiobooking.com/x/gbp/' })).toBe('gmap');
+    expect(srcKey({ ...hosted, attrLandingUrl: 'https://lumiobooking.com/x/gbp#book' })).toBe('gmap');
+  });
+
+  it('does NOT claim a plain booking link', () => {
+    // The bug this replaces went the other way; the fix must not overcorrect.
+    expect(srcKey({ ...hosted, attrLandingUrl: 'https://lumiobooking.com/model-nails-salon' })).toBe('lumiolink');
+    expect(srcKey({ ...hosted, attrLandingUrl: 'https://lumiobooking.com/gbp-nails' })).toBe('lumiolink');
+    expect(srcKey({ ...hosted, attrLandingUrl: 'https://lumiobooking.com/x?ref=gbp' })).toBe('lumiolink');
+  });
+
+  it('lets an explicit campaign and a real referrer win over the path', () => {
+    // Somebody who built a tracked link meant it; the path is the last resort.
+    expect(srcKey({ ...hosted, utmSource: 'facebook', attrLandingUrl: 'https://x.com/a/gbp' })).toBe('facebook');
+    expect(srcKey({ ...hosted, attrReferrer: 'https://www.instagram.com/', attrLandingUrl: 'https://x.com/a/gbp' })).toBe('instagram');
+  });
+
+  it('never lets a door that already knows itself be overridden', () => {
+    expect(srcKey({ source: 'messenger', attrLandingUrl: 'https://x.com/a/gbp' })).toBe('messenger');
+    expect(srcKey({ source: 'walkin', attrLandingUrl: 'https://x.com/a/gbp' })).toBe('walkin');
+  });
+
+  it('survives a landing URL that is not a URL at all', () => {
+    expect(srcKey({ ...hosted, attrLandingUrl: 'not a url' })).toBe('lumiolink');
+    expect(srcKey({ ...hosted, attrLandingUrl: '' })).toBe('lumiolink');
+    expect(srcKey({ ...hosted, attrLandingUrl: null })).toBe('lumiolink');
+  });
+});

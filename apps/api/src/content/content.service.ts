@@ -309,6 +309,7 @@ export class ContentService {
     type HistRow = {
       startTime: Date; createdAt: Date; priceCents: number | null; customerId: string | null;
       source: string | null; utmSource: string | null; attrReferrer: string | null;
+      attrLandingUrl: string | null;
       service: { name: string } | null;
     };
     const history: HistRow[] = await this.prisma.appointment.findMany({
@@ -319,11 +320,17 @@ export class ContentService {
       where: { tenantId, startTime: { gte: d365 }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } as never },
       select: {
         startTime: true, createdAt: true, priceCents: true, customerId: true,
-        // attrReferrer is the ONLY evidence for an organic arrival: a customer
-        // who found the salon on Google and tapped the booking link carries no
-        // utm at all. Leaving it out of the query is what made every such
-        // booking land in "nguồn chưa rõ" and vanish from the channel tally.
-        source: true, utmSource: true, attrReferrer: true, service: { select: { name: true } },
+        // THREE columns, because each one can be the only evidence there is.
+        //
+        // utm is present only once the salon has pasted the /gbp link into its
+        // Google profile. attrReferrer is empty for most Google Maps traffic —
+        // the Maps app opens the link in an in-app browser, where there is no
+        // document.referrer at all. attrLandingUrl still ends in /gbp whatever
+        // else failed, which is why it was added: see fromLanding in
+        // common/booking-channel.ts. Leaving any of them out of the query is
+        // what made Google bookings land in "nguồn chưa rõ" and vanish.
+        source: true, utmSource: true, attrReferrer: true, attrLandingUrl: true,
+        service: { select: { name: true } },
       } as never,
       take: 20000,
     }).catch(() => [] as HistRow[]) as HistRow[];
@@ -347,6 +354,7 @@ export class ContentService {
     // The result was a channel report that could not see Google Maps at all.
     const channels = history.map((h) => bookingChannel({
       source: h.source, utmSource: h.utmSource, attrReferrer: h.attrReferrer,
+      attrLandingUrl: h.attrLandingUrl,
     }));
     const sourceCounts: Record<string, number> = {};
     for (const c of channels) sourceCounts[c] = (sourceCounts[c] ?? 0) + 1;
@@ -1412,9 +1420,9 @@ export class ContentService {
       }).catch(() => []) as Promise<{ channel: string; amountCents: number }[]>,
       this.prisma.appointment.findMany({
         where: { tenantId, startTime: { gte: from }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } as never },
-        select: { customerId: true, startTime: true, source: true, utmSource: true, attrReferrer: true } as never,
+        select: { customerId: true, startTime: true, source: true, utmSource: true, attrReferrer: true, attrLandingUrl: true } as never,
         take: 5000,
-      }).catch(() => []) as Promise<{ customerId: string | null; startTime: Date; source?: string | null; utmSource?: string | null; attrReferrer?: string | null }[]>,
+      }).catch(() => []) as Promise<{ customerId: string | null; startTime: Date; source?: string | null; utmSource?: string | null; attrReferrer?: string | null; attrLandingUrl?: string | null }[]>,
     ]);
 
     // Only money that bought clicks. SEO, email and SMS are billed work, not
@@ -1440,7 +1448,7 @@ export class ContentService {
     }
     const firsts = appts.filter((a) => a.customerId && earliest.get(a.customerId) === a.startTime.getTime());
     const fromAds = firsts.filter((a) => {
-      const p = PLATFORM_OF[bookingChannel({ source: a.source, utmSource: a.utmSource, attrReferrer: a.attrReferrer })];
+      const p = PLATFORM_OF[bookingChannel({ source: a.source, utmSource: a.utmSource, attrReferrer: a.attrReferrer, attrLandingUrl: a.attrLandingUrl })];
       return p === 'google' || p === 'meta' || p === 'zalo';
     }).length;
 

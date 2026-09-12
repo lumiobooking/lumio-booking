@@ -35,6 +35,13 @@ interface Booking {
   source?: string | null;
   utmSource?: string | null;
   attrReferrer?: string | null;
+  /**
+   * The URL the customer landed on. Carried because it is the ONLY evidence
+   * left when a Google Maps arrival has no utm (the salon has not pasted the
+   * /gbp link yet) and no referrer (the Maps app opens links in an in-app
+   * browser, which has none). See fromLanding in lib/booking-sources.
+   */
+  attrLandingUrl?: string | null;
   cancelledBy?: string | null;
   cancelledByName?: string | null;
   device?: string | null;

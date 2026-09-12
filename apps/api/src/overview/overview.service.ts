@@ -129,6 +129,11 @@ export class OverviewService {
           source: true,
           utmSource: true,
           attrReferrer: true,
+          // The third evidence layer. A Google Maps arrival can carry no utm
+          // (the salon has not pasted the /gbp link yet) and no referrer (the
+          // Maps app opens links in an in-app browser, which has none) — the
+          // landing path is what is left. See common/booking-channel.ts.
+          attrLandingUrl: true,
           assignedStaff: { select: { firstName: true, lastName: true } },
           service: { select: { name: true } },
         },
@@ -347,7 +352,10 @@ export class OverviewService {
       range: { from: fromKey, to: toKey },
       // Raw (source, utmSource) pairs — tiny, and the web's booking-sources
       // lib owns ALL classification rules in one place.
-      sourceRows: appts.map((a) => ({ source: a.source ?? null, utmSource: a.utmSource ?? null, attrReferrer: a.attrReferrer ?? null })),
+      sourceRows: appts.map((a) => ({
+        source: a.source ?? null, utmSource: a.utmSource ?? null,
+        attrReferrer: a.attrReferrer ?? null, attrLandingUrl: a.attrLandingUrl ?? null,
+      })),
       kpis: {
         totalBookings,
         revenueCents,

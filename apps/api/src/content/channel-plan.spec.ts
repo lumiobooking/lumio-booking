@@ -208,8 +208,40 @@ describe('each platform gets its own number, its own steps and its own stop rule
     const p = platformPlans(channelReports(make('gmap', 20, { newOnes: 12 }), NOW).reports, CTX)
       .find((x) => x.platform === 'meta')!;
     expect(p.status).toBe('unproven');
-    expect(viOf(p.evidence)).toMatch(/Chưa có booking nào ghi nhận từ/);
+    expect(viOf(p.evidence)).toMatch(/chưa ghi nhận được booking nào từ/);
     expect(viOf(p.evidence)).toMatch(/PHÉP THỬ/);
+  });
+
+  /**
+   * "CHƯA GHI NHẬN ĐƯỢC" IS NOT "CHƯA CÓ", AND THE DIFFERENCE IS THE READER.
+   *
+   * A salon that watches Google customers walk in every week, reading "chưa có
+   * booking nào từ Google", concludes the screen is broken — and is right to.
+   * Most Google Maps arrivals carry no trace at all: the Maps app opens links
+   * in an in-app browser with no referrer, and the /gbp link only starts
+   * tagging once it is pasted into the Google profile. The book is silent; the
+   * street is not.
+   */
+  it('NEVER tells a salon its Google customers do not exist', () => {
+    const p = platformPlans(channelReports(make('facebook', 20, { newOnes: 12 }), NOW).reports, CTX)
+      .find((x) => x.platform === 'google')!;
+    const vi = viOf(p.evidence);
+    expect(vi).not.toMatch(/Chưa có booking nào/);
+    expect(vi).toMatch(/không có nghĩa là không có khách/);
+    // And it names the one thing that starts the recording.
+    expect(vi).toMatch(/\/gbp/);
+  });
+
+  it('uses the SHORT channel name in running text, not the parenthetical', () => {
+    // "Google (Tìm kiếm + Maps)" repeated inside a sentence is what makes an
+    // agency's output read as machine-written. The long form belongs on a
+    // heading, said once.
+    const p = platformPlans(channelReports(make('facebook', 20, { newOnes: 12 }), NOW).reports, CTX)
+      .find((x) => x.platform === 'google')!;
+    expect(viOf(p.evidence)).not.toMatch(/Tìm kiếm \+ Maps/);
+    expect(viOf(p.short)).toBe('Google');
+    // The full label is still there, where it explains what the channel covers.
+    expect(viOf(p.label)).toMatch(/Tìm kiếm \+ Maps/);
   });
 
   it('offers Zalo only in the market where it exists', () => {

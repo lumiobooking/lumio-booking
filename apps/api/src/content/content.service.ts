@@ -1381,6 +1381,11 @@ export class ContentService {
       missing: ticket === null ? 'ticket' : margin === null ? 'margin' : null,
       platform: first ? { label: first.label, key: first.platform } : null,
       secondPlatform: second?.label ?? null,
+      // The same two channels in two words, for the sentences. The long form
+      // ("Google (Tìm kiếm + Maps)") belongs on a headline, said once — inside
+      // a paragraph it turns the plan into something no owner reads.
+      platformShort: first?.short ?? null,
+      secondShort: second?.short ?? null,
       // The number the "when do we open the second channel" test hangs on:
       // the bookings this campaign has to produce before its cost per customer
       // is a reading rather than noise. Same figure the break-even line quotes,

@@ -1,5 +1,5 @@
 import { adsPitch } from './ads-pitch';
-import { viOf, enOf, bi } from './i18n';
+import { viOf, enOf, bi, type Txt } from './i18n';
 
 const base = { ceilingCents: 3800, dailyCents: 1400, days: 14, totalCents: 19600, bookingsToBreakEven: 6, openSlots: 14, feasible: 'yes' as const };
 
@@ -116,9 +116,26 @@ describe('adsPitch', () => {
   });
 
   it('drops the steps it has no facts for rather than inventing reasons', () => {
+    // Channel, service and schedule all need this salon's own data and are
+    // absent without it. The two that remain need no data: what we do every
+    // week, and what happens at the end. Those are the SERVICE — a promise the
+    // agency makes, true whatever the shop's numbers say — and an agency that
+    // goes quiet between the budget and day fourteen is the reason an owner
+    // stops paying for one.
     const s = adsPitch(base).steps;
-    expect(s).toHaveLength(1);
-    expect(viOf(s[0].title)).toBe('Hết 14 ngày thì sao');
+    expect(s.map((x) => viOf(x.title))).toEqual(['Mỗi tuần bên em làm gì', 'Hết 14 ngày thì sao']);
+  });
+
+  it('names the days of the weekly check, so it can be held to them', () => {
+    const w = adsPitch(base).steps.find((x) => viOf(x.title) === 'Mỗi tuần bên em làm gì')!;
+    expect(viOf(w.head)).toBe('Ngày thứ 7 và ngày thứ 14: bên em soi lại và báo tiệm bằng con số');
+    expect(viOf(adsPitch({ ...base, days: 21 }).steps[0].head)).toMatch(/Ngày thứ 11 và ngày thứ 21/);
+  });
+
+  it('tells the owner what lands in their hand, and that it is short', () => {
+    const w = adsPitch(base).steps.find((x) => viOf(x.title) === 'Mỗi tuần bên em làm gì')!;
+    expect(viOf(w.when!)).toMatch(/Một tin nhắn ngắn có ba con số/);
+    expect(viOf(w.body)).toMatch(/Tiệm không phải theo dõi gì cả/);
   });
 
   it('keeps the plan off the screen entirely when there is no offer', () => {
@@ -298,15 +315,14 @@ describe('the second channel has a condition, not just a position', () => {
   it('names the day, the number and the money threshold', () => {
     const w = viOf(channelStep(adsPitch(two)).when!);
     expect(w).toMatch(/ngày thứ 7/);
-    expect(w).toMatch(/ít nhất 8 booking/);
+    expect(w).toMatch(/8 booking trở lên/);
     expect(w).toMatch(/\$38/); // the salon's own ceiling, not a generic figure
   });
 
   it('says what happens on BOTH answers, not only on success', () => {
     const w = viOf(channelStep(adsPitch(two)).when!);
-    expect(w).toMatch(/mở Meta với nửa ngân sách/);
-    expect(w).toMatch(/sửa Google trước — chưa mở Meta/);
-    expect(w).toMatch(/Hết 14 ngày mà vẫn chưa đủ booking/);
+    expect(w).toMatch(/→ Đúng cả hai: bên em mở Meta, ngân sách bằng một nửa Google/);
+    expect(w).toMatch(/→ Chưa đúng: giữ nguyên Google và sửa cho đạt trước/);
   });
 
   it('ADMITS the order is not from this salon when it is not', () => {
@@ -332,5 +348,91 @@ describe('the second channel has a condition, not just a position', () => {
     const w = viOf(channelStep(adsPitch({ ...two, provingBookings: null })).when!);
     expect(w).toMatch(/đủ booking để đọc được/);
     expect(w).toMatch(/\$38/);
+  });
+});
+
+/**
+ * THE CARD IS AN AGENCY'S WORK, AND IT IS READ BY SOMEBODY WHO IS NOT A MARKETER.
+ *
+ * The salon hired an agency precisely so they would not have to understand ad
+ * platforms. Everything on this card is therefore judged by one test: would an
+ * owner read it, and does it read as though a person wrote it?
+ *
+ * The failure this guards against is specific and was real. The condition
+ * paragraph named its channels in full — "Google (Tìm kiếm + Maps)", "Meta
+ * (Facebook + Instagram)" — nine times in one block of text. Nobody reads that,
+ * and an agency that sends it looks like it did not read its own output.
+ */
+describe('the card reads like an agency wrote it', () => {
+  const two = {
+    ...base,
+    platform: { label: bi('Google (Tìm kiếm + Maps)', 'Google (Search + Maps)'), key: 'google' },
+    platformShort: bi('Google', 'Google'),
+    secondPlatform: bi('Meta (Facebook + Instagram)', 'Meta (Facebook + Instagram)'),
+    secondShort: bi('Meta', 'Meta'),
+    provingBookings: 8,
+  };
+  const step = (t: string) => adsPitch(two).steps.find((s) => viOf(s.title) === t)!;
+
+  it('uses the SHORT channel name inside sentences', () => {
+    const w = viOf(step('Chạy ở kênh nào').when!);
+    expect(w).toMatch(/\bGoogle\b/);
+    expect(w).toMatch(/\bMeta\b/);
+    // The long parenthetical belongs on the headline, said once.
+    expect(w).not.toMatch(/Tìm kiếm \+ Maps/);
+    expect(w).not.toMatch(/Facebook \+ Instagram/);
+  });
+
+  it('states the full name exactly once, where it explains what the channel covers', () => {
+    const head = viOf(step('Chạy ở kênh nào').head);
+    expect(head.match(/Tìm kiếm \+ Maps/g) ?? []).toHaveLength(1);
+  });
+
+  it('breaks the condition into lines a person can follow, not one paragraph', () => {
+    const w = viOf(step('Chạy ở kênh nào').when!);
+    const lines = w.split('\n').filter(Boolean);
+    expect(lines).toHaveLength(5); // the check, two tests, two answers
+    expect(lines[1]).toMatch(/^1\./);
+    expect(lines[2]).toMatch(/^2\./);
+    expect(lines[3]).toMatch(/^→/);
+    expect(lines[4]).toMatch(/^→/);
+  });
+
+  it('keeps every sentence short enough to be read once', () => {
+    // A 60-word sentence is where an owner stops reading and starts trusting
+    // nothing on the page.
+    for (const s of adsPitch(two).steps) {
+      for (const field of [s.head, s.body, s.when].filter(Boolean) as Txt[]) {
+        for (const sentence of viOf(field).split(/[.!?]\s|\n/)) {
+          expect(sentence.trim().split(/\s+/).length).toBeLessThan(60);
+        }
+      }
+    }
+  });
+
+  it('NEVER tells an owner his Google customers do not exist', () => {
+    // "Chưa có booking nào từ Google" to a salon that watches Google customers
+    // walk in every week is how a screen loses its reader for good. The book is
+    // silent because most Maps arrivals carry no trace — not because nobody came.
+    const all = JSON.stringify(adsPitch(two));
+    expect(all).not.toMatch(/Chưa có booking nào/);
+  });
+});
+
+describe('the box over a condition says what kind of box it is', () => {
+  it('calls the channel test a condition, and the weekly promise a deliverable', () => {
+    const p = adsPitch({
+      ...base,
+      platform: { label: bi('Google', 'Google'), key: 'google' },
+      platformShort: bi('Google', 'Google'),
+      secondShort: bi('Meta', 'Meta'), secondPlatform: bi('Meta', 'Meta'),
+      provingBookings: 8,
+    });
+    const ch = p.steps.find((s) => viOf(s.title) === 'Chạy ở kênh nào')!;
+    const wk = p.steps.find((s) => viOf(s.title) === 'Mỗi tuần bên em làm gì')!;
+    expect(viOf(ch.whenTitle!)).toBe('Khi nào mở kênh thứ hai');
+    // A promise printed under "what has to be true first" reads as a hurdle,
+    // which is the opposite of a promise.
+    expect(viOf(wk.whenTitle!)).toBe('Tiệm nhận được gì');
   });
 });

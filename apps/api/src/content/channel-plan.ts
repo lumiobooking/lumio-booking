@@ -73,6 +73,30 @@ const PLATFORM_EN: Record<AdPlatform, string> = {
 const channelLabel = (c: BookingChannel): Txt => bi(CHANNEL_VI[c], CHANNEL_EN[c]);
 const platformLabel = (p: AdPlatform): Txt => bi(PLATFORM_VI[p], PLATFORM_EN[p]);
 
+/**
+ * The SHORT name, for running text.
+ *
+ * "Google (Tìm kiếm + Maps)" is the right label on a heading, where it says
+ * once what the channel covers. Inside a sentence it is a disaster: the
+ * condition paragraph came out saying "Mở Meta (Facebook + Instagram) khi…
+ * Google (Tìm kiếm + Maps) đã mang về… từ Google (Tìm kiếm + Maps)… nửa ngân
+ * sách của Google (Tìm kiếm + Maps)…" — nine parentheticals in one paragraph.
+ *
+ * A salon owner does not read that as thorough. They read it as something a
+ * machine wrote, and the agency that sent it looks like it did not read its own
+ * output. The long form earns its place once, on the headline; everywhere else
+ * the channel has a name people already use.
+ */
+const PLATFORM_SHORT: Record<AdPlatform, string> = {
+  google: 'Google', meta: 'Meta', zalo: 'Zalo',
+  owned: 'kênh của tiệm', offline: 'ngoài đời',
+};
+const PLATFORM_SHORT_EN: Record<AdPlatform, string> = {
+  google: 'Google', meta: 'Meta', zalo: 'Zalo',
+  owned: 'your own channels', offline: 'offline',
+};
+export const platformShort = (p: AdPlatform): Txt => bi(PLATFORM_SHORT[p], PLATFORM_SHORT_EN[p]);
+
 /** One booking, reduced to the facts a channel verdict rests on. */
 export interface ChannelBooking {
   channel: BookingChannel;
@@ -249,6 +273,8 @@ function saysFor(i: {
 export interface PlatformPlan {
   platform: AdPlatform;
   label: Txt;
+  /** The channel's short name — "Google", "Meta" — for running text. */
+  short: Txt;
   /** Rank: 1 is where to start. */
   rank: number;
   status: 'spend' | 'later' | 'hold' | 'unproven';
@@ -395,6 +421,8 @@ export function platformPlans(reports: ChannelReport[], ctx: PlanContext): Platf
     return {
       platform: s.platform,
       label: platformLabel(s.platform),
+      /** The same channel in two words, for use inside a sentence. */
+      short: platformShort(s.platform),
       rank: i + 1,
       status: s.status,
       evidence: evidenceFor(s, ctx),
@@ -428,9 +456,23 @@ function evidenceFor(
     const whyEn = s.platform === 'google'
       ? ' With no history at all, start at search: somebody typing "nail salon near me" wants one now, and somebody scrolling a feed never asked. Intent is the cheapest thing a local business can buy, and the cleanest thing to measure.'
       : '';
+    /**
+     * "CHƯA GHI NHẬN ĐƯỢC", NOT "CHƯA CÓ".
+     *
+     * These are not the same sentence and the difference decides whether an
+     * owner trusts the screen. A salon that watches Google customers walk in
+     * every week, reading "chưa có booking nào từ Google", concludes the
+     * system is broken — and is right to, because most Google arrivals carry
+     * no trace at all: the Maps app opens links in an in-app browser with no
+     * referrer, and the /gbp link only starts tagging once it is pasted into
+     * the Google profile. The book is silent, the street is not.
+     *
+     * So the screen states what it can honestly claim — that it has not
+     * RECORDED any — and says what to do about the recording.
+     */
     return bi(
-      `Chưa có booking nào ghi nhận từ ${PLATFORM_VI[s.platform]}. Chưa có bằng chứng kênh này chạy được ở tiệm — nếu chạy thì chạy như một PHÉP THỬ: ngân sách nhỏ, đọc kết quả rồi mới tăng.${whyVi}`,
-      `No bookings have been recorded from ${PLATFORM_EN[s.platform]}. There is no evidence yet that this one works for your shop — if you run it, run it as a TEST: small budget, read the result, then raise it.${whyEn}`);
+      `Hệ thống chưa ghi nhận được booking nào từ ${PLATFORM_SHORT[s.platform]} — điều đó không có nghĩa là không có khách. ${s.platform === 'google' ? 'Khách từ Google Maps thường không mang theo dấu vết nguồn; gắn link /gbp ở mục Tích hợp là từ đó ghi nhận được đích danh. ' : ''}Chưa có số đo thì chạy như một PHÉP THỬ: ngân sách nhỏ, đọc kết quả rồi mới tăng.${whyVi}`,
+      `No bookings have been RECORDED from ${PLATFORM_SHORT_EN[s.platform]} — which is not the same as none arriving. ${s.platform === 'google' ? 'Google Maps customers usually arrive with no trace of where they came from; the /gbp link under Integrations is what starts recording them by name. ' : ''}With nothing measured, run it as a TEST: small budget, read the result, then raise it.${whyEn}`);
   }
   const ticketVi = s.platTicket ? ` Hoá đơn trung bình đến từ kênh này: ${ctx.money(s.platTicket)}.` : '';
   const ticketEn = s.platTicket ? ` The average ticket coming from here: ${ctx.money(s.platTicket)}.` : '';

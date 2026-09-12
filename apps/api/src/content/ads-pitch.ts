@@ -56,6 +56,15 @@ export interface PitchStep {
    * either answer. Present only where there is a real condition to state.
    */
   when?: Txt | null;
+  /**
+   * What that box is called on this step.
+   *
+   * Not every `when` is a condition. The channel step's is a test that has to
+   * come true; the weekly step's is what lands in the owner's hand. Printing
+   * "điều kiện để sang bước sau" over the second one made a promise read as a
+   * hurdle — the opposite of its point.
+   */
+  whenTitle?: Txt | null;
 }
 
 export interface AdsPitch {
@@ -106,6 +115,10 @@ export interface PitchPlanInput {
    * destinationStep; never a reason to withhold a budget.
    */
   aim?: { key: string; because: Txt; doNext: Txt | null } | null;
+  /** The first channel's short name — "Google" — for use inside a sentence. */
+  platformShort?: Txt | null;
+  /** The second channel's short name — "Meta". */
+  secondShort?: Txt | null;
   /**
    * How many bookings the first channel has to produce before its cost per
    * customer means anything — the same number the campaign is sized to break
@@ -187,6 +200,17 @@ function destinationStep(aim: { key: string } | null | undefined): PitchStep | n
   };
 }
 
+/**
+ * The channel's short name when we have one, else whatever label we were given.
+ *
+ * A fallback rather than a requirement: an older caller that sends only the
+ * long label still produces a readable sentence, just a wordier one.
+ */
+function shortOf(short: Txt | null | undefined, fallbackVi: string, fallbackEn: string): { vi: string; en: string } {
+  if (!short) return { vi: fallbackVi, en: fallbackEn };
+  return { vi: viOf(short).trim() || fallbackVi, en: enOf(short).trim() || fallbackEn };
+}
+
 function planSteps(input: PitchPlanInput, days: number, ceilingText: string): PitchStep[] {
   const steps: PitchStep[] = [];
 
@@ -226,20 +250,34 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
      * only says what happens on success is a condition nobody checks.
      */
     const proving = input.provingBookings && input.provingBookings > 0 ? input.provingBookings : null;
-    const when = secondVi && ceilingText
+    /**
+     * THE CONDITION, AS A CHECKLIST — NOT AS A PARAGRAPH.
+     *
+     * The first version was six sentences run together, and it repeated the
+     * full channel names — "Google (Tìm kiếm + Maps)", "Meta (Facebook +
+     * Instagram)" — nine times inside them. A salon owner who does not work in
+     * marketing does not read that; and the agency that hands it over looks
+     * like it never read its own output, which is the opposite of the reason
+     * the salon is paying an agency at all.
+     *
+     * So: two numbered tests, then the two answers, each on its own line, using
+     * the channel's short name. The full name is stated once, on the headline
+     * above, where it belongs.
+     */
+    const a = shortOf(input.platformShort, firstVi, firstEn);
+    const b = shortOf(input.secondShort, secondVi, secondEn);
+    const when = b.vi && ceilingText
       ? bi(
-        `Mở ${secondVi} khi ĐỦ CẢ HAI, soi vào ngày thứ 7: `
-        + `(1) ${firstVi} đã mang về ${proving ? `ít nhất ${proving} booking` : 'đủ booking để đọc được'} — ít hơn thì mọi tỷ lệ rút ra đều là nhiễu; `
-        + `(2) mỗi khách mới từ ${firstVi} đang tốn dưới ${ceilingText}. `
-        + `Đủ hai thì mở ${secondVi} với nửa ngân sách của ${firstVi}. `
-        + `Trên ${ceilingText} thì sửa ${firstVi} trước — chưa mở ${secondVi}, vì bật hai kênh lúc một kênh đang lỗ thì chỉ lỗ nhanh gấp đôi. `
-        + `Hết ${days} ngày mà vẫn chưa đủ booking thì chạy thêm một đợt ${firstVi} nữa, vẫn chưa mở ${secondVi}.`,
-        `Open ${secondEn} when BOTH are true, checked on day 7: `
-        + `(1) ${firstEn} has produced ${proving ? `at least ${proving} bookings` : 'enough bookings to read'} — fewer and every rate you pull out of them is noise; `
-        + `(2) each new customer from ${firstEn} is costing under ${ceilingText}. `
-        + `Both true, open ${secondEn} at half the ${firstEn} budget. `
-        + `Over ${ceilingText}, fix ${firstEn} first — do not open ${secondEn}, because switching on a second channel while the first is losing money only loses it twice as fast. `
-        + `If ${days} days pass without enough bookings, run ${firstEn} once more and still do not open ${secondEn}.`)
+        `Soi vào ngày thứ 7 của đợt, hai điều phải cùng đúng:\n`
+        + `1. ${a.vi} đã mang về ${proving ? `${proving} booking trở lên` : 'đủ booking để đọc được'} — ít hơn thì con số nào rút ra cũng là nhiễu.\n`
+        + `2. Mỗi khách mới từ ${a.vi} đang tốn dưới ${ceilingText}.\n`
+        + `→ Đúng cả hai: bên em mở ${b.vi}, ngân sách bằng một nửa ${a.vi}.\n`
+        + `→ Chưa đúng: giữ nguyên ${a.vi} và sửa cho đạt trước. Bật thêm kênh khi kênh đầu chưa có lãi chỉ làm mất tiền nhanh gấp đôi, và khi đó không còn biết kênh nào gây ra kết quả.`,
+        `Checked on day 7, both have to be true:\n`
+        + `1. ${a.en} has brought in ${proving ? `${proving} bookings or more` : 'enough bookings to read'} — fewer and any figure pulled out of them is noise.\n`
+        + `2. Each new customer from ${a.en} is costing under ${ceilingText}.\n`
+        + `→ Both true: we open ${b.en} at half the ${a.en} budget.\n`
+        + `→ Not yet: keep ${a.en} and fix it first. Adding a channel while the first one is losing money loses it twice as fast, and you can no longer tell which channel caused what.`)
       : null;
 
     steps.push({
@@ -255,6 +293,7 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
         bodyVi + (input.platformFromData ? '' : ` (Thứ tự này chưa phải từ số liệu của tiệm — chưa có booking nào ghi nhận từ ${firstVi} hay ${secondVi || 'kênh còn lại'}. Nó là điểm khởi đầu, và đợt chạy này chính là thứ tạo ra số liệu để lần sau xếp theo tiệm.)`),
         bodyEn + (input.platformFromData ? '' : ` (This order is not from your numbers yet — no booking has been attributed to ${firstEn} or ${secondEn || 'the other channel'}. It is a starting rule, and this campaign is what produces the data to order it by your shop next time.)`)),
       when,
+      whenTitle: bi('Khi nào mở kênh thứ hai', 'When the second channel opens'),
     });
   }
 
@@ -321,6 +360,41 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
   }
 
   const back = input.returnDays ?? null;
+  /**
+   * WHAT THE SALON IS ACTUALLY PAYING FOR.
+   *
+   * The card described a budget, a channel and a schedule, and then went quiet
+   * until day fourteen. To an owner who does not work in marketing that reads
+   * as "we spend your money and tell you at the end" — which is what a
+   * self-serve ad platform does, and the reason they hired an agency instead is
+   * that they do not want to be the one watching it.
+   *
+   * The weekly check IS the service. It is stated here in the shape a person
+   * can hold somebody to: which day, which numbers, and what gets changed
+   * without having to be asked. A promise with a day on it can be kept or
+   * broken; "we monitor it" can be neither.
+   */
+  const midDay = Math.max(3, Math.round(days / 2));
+  steps.push({
+    title: bi('Mỗi tuần bên em làm gì', 'What we do every week'),
+    head: bi(
+      `Ngày thứ ${midDay} và ngày thứ ${days}: bên em soi lại và báo tiệm bằng con số`,
+      `Day ${midDay} and day ${days}: we review it and report back in numbers`),
+    body: bi(
+      `Mỗi lần soi bên em trả lời đúng ba câu: đã chi bao nhiêu, mang về mấy khách mới, mỗi khách tốn bao nhiêu. `
+      + `Rẻ hơn ${ceilingText}/khách thì bên em dồn thêm tiền vào khung giờ và dịch vụ đang chạy tốt. `
+      + `Đắt hơn thì bên em sửa ngay trong tuần — đổi dịch vụ quảng cáo, thu hẹp khu vực, hoặc tắt khung giờ không ra khách — chứ không chờ hết đợt rồi mới nói. `
+      + `Tiệm không phải theo dõi gì cả; việc của tiệm là nhận khách.`,
+      `Each review answers three questions: what has been spent, how many new customers came, what each one cost. `
+      + `Cheaper than ${ceilingText} a customer and we put more behind the hours and services that are working. `
+      + `Dearer and we fix it inside the week — change the advertised service, tighten the radius, or switch off an hour that brings nobody — rather than waiting for the run to end to tell you. `
+      + `You do not have to watch anything; your job is to take the customers.`),
+    whenTitle: bi('Tiệm nhận được gì', 'What you get'),
+    when: bi(
+      `Một tin nhắn ngắn có ba con số đó, kèm một dòng bên em đã đổi gì và vì sao. Không có gì phải đọc thêm.`,
+      `A short message with those three numbers and one line on what we changed and why. Nothing else to read.`),
+  });
+
   steps.push({
     title: bi(`Hết ${days} ngày thì sao`, `After the ${days} days`),
     head: bi(

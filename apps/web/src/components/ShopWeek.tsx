@@ -65,7 +65,7 @@ export interface AdsPlan {
    * number that decides it, and what to do with either answer. Only the steps
    * that have a real trigger carry one.
    */
-  steps: { title: string; head: string; body: string; when?: string | null }[];
+  steps: { title: string; head: string; body: string; when?: string | null; whenTitle?: string | null }[];
   /**
    * The thing to do WHILE the campaign runs — usually "ask each finished
    * customer for a review".
@@ -271,9 +271,13 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
                         background: 'var(--c0f172a)', border: '1px solid var(--line-strong)',
                       }}>
                         <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: 'var(--ink-faint)', textTransform: 'uppercase' }}>
-                          {T('Điều kiện để sang bước sau', 'What has to be true first')}
+                          {st.whenTitle || T('Điều kiện để sang bước sau', 'What has to be true first')}
                         </div>
-                        <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 3 }}>{st.when}</div>
+                        {/* pre-line, because the condition is written as a
+                            numbered check and two answers — one per line. As a
+                            single run-on paragraph it is the thing an owner
+                            skips, which is the same as not writing it. */}
+                        <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.65, marginTop: 3, whiteSpace: 'pre-line' }}>{st.when}</div>
                       </div>
                     )}
                   </div>

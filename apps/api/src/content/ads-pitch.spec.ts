@@ -13,11 +13,14 @@ describe('adsPitch', () => {
     // one number doing two jobs on the screen an owner reads before saying yes.
     expect(p.figures.map((f) => f.value)).toEqual(['$14', '$196', '6']);
     expect(viOf(p.figures[2].label)).toBe('khách mới là huề vốn');
-    expect(viOf(p.why)).toMatch(/Tiệm bỏ ra \$14 mỗi ngày, tổng \$196 cho 14 ngày/);
+    // The prose no longer repeats the three figures printed directly above it.
+    expect(viOf(p.why)).not.toMatch(/Tiệm bỏ ra/);
     // The two readings of $38 are reconciled in one sentence instead of being
     // left two lines apart for the owner to reconcile herself.
-    expect(viOf(p.why)).toMatch(/vừa là tiền tiệm giữ được, vừa là mức TỐI ĐA bên em được phép chi/);
-    expect(viOf(p.why)).toMatch(/chỉ cần 6 khách mới là lấy lại đủ tiền\. Từ khách thứ 7 trở đi là tiệm lãi/);
+    expect(viOf(p.why)).toMatch(/để lại cho tiệm khoảng \$38 sau khi trả công thợ — nên \$38 cũng là mức tối đa/);
+    expect(viOf(p.why)).toMatch(/Đủ 6 khách là huề vốn; từ khách thứ 7 trở đi là tiệm lãi/);
+    // three lines, not five: the card an owner abandons is worth nothing
+    expect(viOf(p.why).split('\n')).toHaveLength(3);
     expect(viOf(p.cta!)).toBe('Đồng ý — chạy thử 14 ngày');
   });
 
@@ -29,8 +32,8 @@ describe('adsPitch', () => {
   it('promises the switch-off before it is needed', () => {
     // The sentence that makes a yes safe to give has to be on the screen at
     // the moment of the yes, not produced later in an argument.
-    expect(viOf(adsPitch(base).why)).toMatch(/tốn hơn \$38, bên em tự tắt chứ không đợi tiệm hỏi/);
-    expect(enOf(adsPitch(base).why)).toMatch(/we switch it off ourselves rather than waiting for you to ask/);
+    expect(viOf(adsPitch(base).why)).toMatch(/tự tắt khi một khách bắt đầu tốn hơn \$38/);
+    expect(enOf(adsPitch(base).why)).toMatch(/switch it off ourselves the moment a customer starts costing more than \$38/);
   });
 
   it('SAYS NO when there are not enough free chairs, and offers nothing', () => {
@@ -124,13 +127,15 @@ describe('adsPitch', () => {
     expect(enOf(s[1].head)).not.toMatch(/Chin/);
     // And it says out loud that it was left out, which is the part that reads
     // as expertise rather than as a list.
-    expect(viOf(s[1].body)).toMatch(/cố ý KHÔNG quảng cáo Chin/);
-    expect(enOf(s[1].body)).toMatch(/do NOT advertise Chin/);
+    expect(viOf(s[1].detail!)).toMatch(/cố ý KHÔNG quảng cáo Chin/);
+    expect(enOf(s[1].detail!)).toMatch(/do NOT advertise Chin/);
+    // and the CARD says it in one clause, without the lecture
+    expect(viOf(s[1].body)).toMatch(/Mấy món ngắn dưới 30 phút bên em không quảng cáo/);
   });
 
   it('shows the three reasons with this salon\'s own numbers in them', () => {
     const s = adsPitch(planned).steps;
-    const v = viOf(s[1].body);
+    const v = viOf(s[1].detail!);
     expect(v).toMatch(/Gel manicure \$55\/60 phút · 41 lượt đặt trong 30 ngày qua/);
     expect(v).toMatch(/hoá đơn trung bình \$45/);
     expect(v).toMatch(/từ 30 phút trở lên/);
@@ -156,15 +161,15 @@ describe('adsPitch', () => {
         { name: 'Pedicure', priceCents: 3500, durationMinutes: 45, bookings: 4 },
       ], 6000),
     }).steps;
-    expect(viOf(s[1].body)).toMatch(/không dịch vụ nào trên bảng đạt \$60/);
-    expect(viOf(s[1].body)).toMatch(/ghép một combo từ \$60 trở lên/);
+    expect(viOf(s[1].detail!)).toMatch(/không dịch vụ nào trên bảng đạt \$60/);
+    expect(viOf(s[1].detail!)).toMatch(/ghép một combo từ \$60 trở lên/);
   });
 
   it('names the days to run, the days to stop, and the hours to aim at', () => {
     const s = adsPitch(planned).steps;
     expect(viOf(s[2].head)).toBe('Bật Thứ Hai và Thứ Ba · tắt Thứ Bảy · nhắm vào khung Thứ Ba trưa');
     expect(viOf(s[2].body)).toMatch(/đặt trước khoảng 3 ngày/);
-    expect(viOf(s[2].body)).toMatch(/Ngày đông thì tắt/);
+    expect(viOf(s[2].detail!)).toMatch(/Ngày đông thì tắt/);
   });
 
   it('says what happens after the run, in both directions, before the yes', () => {
@@ -173,9 +178,11 @@ describe('adsPitch', () => {
     const s = adsPitch(planned).steps;
     const last = s[s.length - 1];
     expect(viOf(last.title)).toBe('Hết 14 ngày thì sao');
-    expect(viOf(last.body)).toMatch(/Dưới \$38 thì đáng tăng tiền/);
-    expect(viOf(last.body)).toMatch(/vượt \$38 thì bên em tắt/);
-    expect(viOf(last.body)).toMatch(/nhắn lại sau khoảng 35 ngày/);
+    expect(viOf(last.head)).toMatch(/Dưới \$38\/khách thì tăng ngân sách, vượt thì tắt/);
+    // the body must ADD something — it used to restate the head word for word
+    expect(viOf(last.body)).toMatch(/Quyết bằng con số thật của đợt/);
+    expect(viOf(last.detail!)).toMatch(/Vượt \$38 thì bên em chuyển tiền đó sang nhắc khách cũ/);
+    expect(viOf(last.detail!)).toMatch(/nhắn lại sau khoảng 35 ngày/);
   });
 
   it('drops the steps it has no facts for rather than inventing reasons', () => {
@@ -252,7 +259,8 @@ describe('a thin profile changes where the ads point, not whether they run', () 
     const dest = p.steps.find((s) => viOf(s.title) === 'Bấm vào thì tới đâu');
     expect(dest).toBeDefined();
     expect(viOf(dest!.head)).toMatch(/tin nhắn hoặc link đặt lịch/);
-    expect(viOf(dest!.body)).toMatch(/chưa đổ về trang Google|không đọc quảng cáo nữa/);
+    expect(viOf(dest!.body)).toMatch(/vào thẳng chỗ có người trả lời/);
+    expect(viOf(dest!.detail!)).toMatch(/không đọc quảng cáo nữa/);
     // It comes AFTER the channel, because "which channel" is what an owner
     // asks first and "where does it land" is what decides the answer.
     expect(p.steps.indexOf(dest!)).toBe(1);
@@ -341,7 +349,7 @@ describe('the capacity sentence is one an agency can say out loud', () => {
   it('never claims empty HOURS — it claims extra customers, which is what was measured', () => {
     const vi = viOf(adsPitch(base).why);
     expect(vi).not.toMatch(/khung giờ trống của tiệm còn chỗ cho/);
-    expect(vi).toMatch(/nhận thêm được khoảng 14 lượt khách mà không ai phải chờ/);
+    expect(vi).toMatch(/còn nhận thêm được khoảng 14 lượt/);
   });
 
   it('NEVER lets the seat count read as a forecast of customers', () => {
@@ -349,11 +357,10 @@ describe('the capacity sentence is one an agency can say out loud', () => {
     // that put a break-even count and a capacity count in one breath. The seat
     // count now arrives under its own heading and next to what is needed.
     const vi = viOf(adsPitch({ ...base, openSlots: 98, bookingsToBreakEven: 8 }).why);
-    expect(vi).toMatch(/Còn chỗ ngồi thì dư/);
-    expect(vi).toMatch(/trong khi đợt này chỉ cần 8/);
+    expect(vi).toMatch(/Chỗ ngồi thì dư/);
     // and on its own line, never in the same breath as the break-even count
-    const lines = vi.split('\n');
-    expect(lines.some((l) => /lấy lại đủ tiền/.test(l) && /nhận thêm được/.test(l))).toBe(false);
+    // the seat count never shares a sentence with the break-even count
+    expect(vi).not.toMatch(/huề vốn[^.\n]*nhận thêm được/);
   });
 
   it('never prints a dollar figure whose meaning changes between the two lines', () => {
@@ -367,24 +374,24 @@ describe('the capacity sentence is one an agency can say out loud', () => {
   it('falls back to the ceiling in the figures when break-even cannot be computed', () => {
     const p = adsPitch({ ...base, bookingsToBreakEven: null });
     expect(p.figures.map((f) => f.value)).toEqual(['$14', '$196', '$38']);
-    expect(viOf(p.why)).not.toMatch(/là lấy lại đủ tiền/);
+    expect(viOf(p.why)).not.toMatch(/huề vốn/);
   });
 
   it('counts the first profitable customer correctly in both languages', () => {
     const p = adsPitch({ ...base, bookingsToBreakEven: 2 });
-    expect(viOf(p.why)).toMatch(/Từ khách thứ 3 trở đi/);
-    expect(enOf(p.why)).toMatch(/From the 3rd one on/);
-    expect(enOf(adsPitch({ ...base, bookingsToBreakEven: 20 }).why)).toMatch(/From the 21st one on/);
-    expect(enOf(adsPitch({ ...base, bookingsToBreakEven: 12 }).why)).toMatch(/From the 13th one on/);
+    expect(viOf(p.why)).toMatch(/từ khách thứ 3 trở đi/);
+    expect(enOf(p.why)).toMatch(/from the 3rd one on/);
+    expect(enOf(adsPitch({ ...base, bookingsToBreakEven: 20 }).why)).toMatch(/from the 21st one on/);
+    expect(enOf(adsPitch({ ...base, bookingsToBreakEven: 12 }).why)).toMatch(/from the 13th one on/);
   });
 
   it('ties the room to the campaign length, so the figure has a window on it', () => {
-    expect(viOf(adsPitch({ ...base, days: 21 }).why)).toMatch(/21 ngày tới tiệm nhận thêm được/);
+    expect(viOf(adsPitch({ ...base, days: 21 }).why)).toMatch(/21 ngày tới tiệm còn nhận thêm được/);
   });
 
   it('drops the clause entirely rather than printing a room it does not have', () => {
     const p = adsPitch({ ...base, openSlots: null, feasible: 'unknown' });
-    expect(viOf(p.why)).toMatch(/chỉ cần 6 khách mới là lấy lại đủ tiền\./);
+    expect(viOf(p.why)).toMatch(/Đủ 6 khách là huề vốn/);
     expect(viOf(p.why)).not.toMatch(/nhận thêm được/);
     // And it still offers: not knowing the room is not a reason to refuse.
     expect(p.state).toBe('offer');
@@ -410,31 +417,37 @@ describe('the second channel has a condition, not just a position', () => {
   const channelStep = (p: ReturnType<typeof adsPitch>) => p.steps.find((s) => viOf(s.title) === 'Chạy ở kênh nào')!;
 
   it('names the day, the number and the money threshold', () => {
+    // One line on the card — the day, the number and the threshold all in it.
     const w = viOf(channelStep(adsPitch(two)).when!);
-    expect(w).toMatch(/ngày thứ 7/);
-    expect(w).toMatch(/8 booking trở lên/);
+    expect(w).toMatch(/Ngày thứ 7/);
+    expect(w).toMatch(/8 booking/);
     expect(w).toMatch(/\$38/); // the salon's own ceiling, not a generic figure
+    expect(w.split('\n')).toHaveLength(1);
   });
 
   it('says what happens on BOTH answers, not only on success', () => {
+    // The one-liner carries both answers; the full test is under "Vì sao".
     const w = viOf(channelStep(adsPitch(two)).when!);
-    expect(w).toMatch(/→ Đúng cả hai: bên em mở Meta, ngân sách bằng một nửa Google/);
-    expect(w).toMatch(/→ Chưa đúng: giữ nguyên Google và sửa cho đạt trước/);
+    expect(w).toMatch(/thì bên em mở Meta/);
+    expect(w).toMatch(/Chưa đạt thì giữ nguyên Google/);
+    const d = viOf(channelStep(adsPitch(two)).detail!);
+    expect(d).toMatch(/→ Đúng cả hai: bên em mở Meta, ngân sách bằng một nửa Google/);
+    expect(d).toMatch(/→ Chưa đúng: giữ nguyên Google/);
   });
 
   it('ADMITS the order is not from this salon when it is not', () => {
     // The order for a shop with no attributed bookings is a starting rule.
     // Presenting a default as a reading is how an agency loses an argument
     // with its own client.
-    const b = viOf(channelStep(adsPitch(two)).body);
-    expect(b).toMatch(/chưa phải từ số liệu của tiệm/);
-    expect(b).toMatch(/chưa có booking nào ghi nhận từ Google hay Meta/);
+    const d = viOf(channelStep(adsPitch(two)).detail!);
+    expect(d).toMatch(/chưa phải từ số liệu của tiệm/);
+    expect(d).toMatch(/chưa có booking nào ghi nhận từ Google hay Meta/);
   });
 
   it('drops that admission once the salon’s own bookings chose the order', () => {
-    const b = viOf(channelStep(adsPitch({ ...two, platformFromData: true })).body);
-    expect(b).not.toMatch(/chưa phải từ số liệu của tiệm/);
-    expect(b).toMatch(/Khách của tiệm đang đến từ Google nhiều hơn/);
+    const st = channelStep(adsPitch({ ...two, platformFromData: true }));
+    expect(viOf(st.detail!)).not.toMatch(/chưa phải từ số liệu của tiệm/);
+    expect(viOf(st.body)).toMatch(/Khách của tiệm đang đến từ Google nhiều hơn/);
   });
 
   it('states no condition when there is no second channel to move to', () => {
@@ -486,9 +499,10 @@ describe('the card reads like an agency wrote it', () => {
   });
 
   it('breaks the condition into lines a person can follow, not one paragraph', () => {
-    const w = viOf(step('Chạy ở kênh nào').when!);
-    const lines = w.split('\n').filter(Boolean);
+    const w = viOf(step('Chạy ở kênh nào').detail!);
+    const lines = w.split('\n').filter(Boolean).slice(-5);
     expect(lines).toHaveLength(5); // the check, two tests, two answers
+    expect(lines[0]).toMatch(/Hai điều phải cùng đúng/);
     expect(lines[1]).toMatch(/^1\./);
     expect(lines[2]).toMatch(/^2\./);
     expect(lines[3]).toMatch(/^→/);

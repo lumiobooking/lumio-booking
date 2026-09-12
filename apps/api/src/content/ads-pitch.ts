@@ -66,6 +66,23 @@ export interface PitchStep {
    * hurdle — the opposite of its point.
    */
   whenTitle?: Txt | null;
+  /**
+   * THE REASONING — BEHIND A TAP, NOT ON THE PAGE.
+   *
+   * Every gate, every figure and every thing deliberately left out used to be
+   * printed in the body, and the card grew into forty lines of argument. An
+   * agency owner put it plainly: khách hàng không có chuyên môn, và cái này
+   * quá dài. He is right, and the mistake was mine — showing the work is not
+   * the same as printing all of it.
+   *
+   * So `body` is now ONE short sentence: the answer. `detail` holds the
+   * working, collapsed, for the owner who wants to check it and for the agency
+   * that has to defend it. Nothing was deleted; it stopped being compulsory
+   * reading. A card an owner finishes is worth more than one she abandons.
+   */
+  detail?: Txt | null;
+  /** What the toggle over `detail` is called on this step. */
+  detailTitle?: Txt | null;
 }
 
 export interface AdsPitch {
@@ -208,9 +225,10 @@ function sellsStep(p: AdServicePick | null, offerVi: string, offerEn: string): P
   const offer: { when: Txt | null; whenTitle: Txt | null } = offerVi || offerEn
     ? {
       whenTitle: bi('Ưu đãi đi kèm', 'The offer that goes with it'),
-      when: bi(
-        `${offerVi}\nĐây là ưu đãi của tuần này — dán đúng câu đó vào quảng cáo để thứ khách thấy trên mạng khớp với thứ tiệm đang chạy tại chỗ.`,
-        `${offerEn}\nThat is this week's offer — put that exact line in the ad so what people see online matches what the shop is actually running.`),
+      // The offer line and nothing else. The sentence that used to follow it
+      // ("dán đúng câu đó vào quảng cáo…") was an instruction to ourselves
+      // printed on the client's screen.
+      when: bi(offerVi, offerEn),
     }
     : { when: null, whenTitle: null };
 
@@ -275,10 +293,32 @@ function sellsStep(p: AdServicePick | null, offerVi: string, offerEn: string): P
   V.push('Quảng cáo một dịch vụ có tên luôn rẻ hơn quảng cáo cả tiệm, vì người bấm vào là người đã muốn đúng thứ đó.');
   E.push('Advertising one named service always costs less than advertising the salon, because the person who clicks already wants that exact thing.');
 
+  // ONE SENTENCE ON THE CARD. The three gates, the figures behind them and the
+  // add-ons left out all moved into `detail` — see PitchStep.detail for why.
+  const many = names.length > 1;
+  const leftOut = addOns.length
+    ? ` Mấy món ngắn dưới ${MIN_AD_MINUTES} phút bên em không quảng cáo — khách làm thêm khi đã ngồi trên ghế chứ không lái xe tới vì nó.`
+    : '';
+  const leftOutEn = addOns.length
+    ? ` Anything under ${MIN_AD_MINUTES} minutes stays out — it gets bought in the chair, nobody drives over for it.`
+    : '';
+  const shortVi = p?.basis === 'best-available'
+    ? `${many ? 'Hai dịch vụ' : 'Dịch vụ'} đáng tiền nhất tiệm đang có. Bên em sẽ bàn với tiệm một gói lớn hơn để quảng cáo chắc lãi hơn.`
+    : booked
+      ? `${many ? 'Hai dịch vụ này' : 'Dịch vụ này'} vừa có khách đặt đều, vừa đủ lớn để bù được tiền quảng cáo.${leftOut}`
+      : `Lấy từ bảng giá của tiệm: đủ lớn để bù được tiền quảng cáo. Đợt đầu cũng là phép thử xem khách bấm vào cái nào.${leftOut}`;
+  const shortEn = p?.basis === 'best-available'
+    ? `The best-paying ${many ? 'services' : 'service'} you currently have. We will put a bigger package together with you so the ads pay more surely.`
+    : booked
+      ? `${many ? 'Both are' : 'It is'} booked regularly and big enough to cover what an ad costs.${leftOutEn}`
+      : `Taken from your price list: big enough to cover what an ad costs. The first run also tests which one people click.${leftOutEn}`;
+
   return {
     title,
     head: bi(listOf(names), listEn(names)),
-    body: bi(V.join('\n'), E.join('\n')),
+    body: bi(shortVi, shortEn),
+    detailTitle: bi('Vì sao chọn dịch vụ này', 'Why these'),
+    detail: bi(V.join('\n'), E.join('\n')),
     ...offer,
   };
 }
@@ -312,8 +352,12 @@ function destinationStep(aim: { key: string } | null | undefined): PitchStep | n
       title: bi('Bấm vào thì tới đâu', 'Where the tap lands'),
       head: bi('Thẳng vào link đặt lịch — không phải số điện thoại', 'Straight to the booking link — not the phone number'),
       body: bi(
-        'Tiệm đã có người tìm tới rồi mà không đặt được lịch, nên chỗ rò không nằm ở lượng người. Quảng cáo đổ về đúng cái link đặt lịch là bịt chỗ rò đó ngay trong ngày đầu — gọi điện thì mất khách vào những giờ không ai bắt máy.',
-        'People already find this salon and cannot book, so the leak is not the number of visitors. Pointing the ads at the booking link closes it on day one — a phone number loses everyone who taps outside opening hours.'),
+        'Tiệm đã có người tìm tới rồi mà không đặt được lịch — chỗ rò không nằm ở lượng người.',
+        'People already find this salon and cannot book — the leak is not the number of visitors.'),
+      detailTitle: bi('Vì sao không để số điện thoại', 'Why not the phone number'),
+      detail: bi(
+        'Quảng cáo đổ thẳng về link đặt lịch là bịt chỗ rò đó ngay trong ngày đầu. Để số điện thoại thì mất hết khách bấm vào ngoài giờ mở cửa — mà đó lại là lúc người ta rảnh để đi tìm tiệm.',
+        'Pointing the ads at the booking link closes that leak on day one. A phone number loses everyone who taps outside opening hours — which is exactly when people go looking.'),
     };
   }
   // no-google / thin-google: the profile is not the page to argue the case on.
@@ -321,8 +365,12 @@ function destinationStep(aim: { key: string } | null | undefined): PitchStep | n
     title: bi('Bấm vào thì tới đâu', 'Where the tap lands'),
     head: bi('Vào tin nhắn hoặc link đặt lịch — chưa đổ về trang Google', 'Into Messenger or the booking link — not the Google profile yet'),
     body: bi(
-      'Khách lạ bấm vào quảng cáo rồi mở trang Google ra là họ đọc phần đánh giá chứ không đọc quảng cáo nữa. Trong lúc hồ sơ còn mỏng thì cho họ vào thẳng chỗ có người trả lời — bot của tiệm nhắn lại trong vài giây và đặt lịch luôn, không ai nhìn thấy con số đánh giá ở đó. Số đánh giá vẫn tăng song song từ chính những khách này, không phải chờ đủ rồi mới chạy.',
-      'A stranger who taps the ad and opens the Google profile reads the reviews, not the ad. While the profile is thin, land them where someone answers instead — the salon bot replies in seconds and books them, and the review count is nowhere on that screen. The reviews then grow from these same customers, rather than being something to finish before spending anything.'),
+      'Hồ sơ Google còn mỏng, nên bên em cho khách vào thẳng chỗ có người trả lời — bot nhắn lại trong vài giây và đặt lịch luôn.',
+      'The Google profile is still thin, so we land people where someone answers — the bot replies in seconds and books them.'),
+    detailTitle: bi('Vì sao chưa đổ về trang Google', 'Why not the Google profile yet'),
+    detail: bi(
+      'Khách lạ bấm quảng cáo rồi mở trang Google ra là họ đọc phần đánh giá chứ không đọc quảng cáo nữa. Ở màn hình tin nhắn thì con số đánh giá không xuất hiện ở đâu cả. Và số đánh giá vẫn tăng song song từ chính những khách này — không phải chờ đủ rồi mới chạy.',
+      'A stranger who taps the ad and opens the Google profile reads the reviews, not the ad. On the Messenger screen the review count is nowhere to be seen. And the reviews still grow from these same customers — this is not something to finish before spending anything.'),
   };
 }
 
@@ -350,16 +398,28 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
     const secondEn = input.secondPlatform ? enOf(input.secondPlatform).trim() : '';
     const headVi = secondVi ? `${firstVi} trước, ${secondVi} sau` : firstVi;
     const headEn = secondEn ? `${firstEn} first, ${secondEn} after` : firstEn;
+    // ONE SENTENCE the owner reads; the rest waits under the toggle.
+    const short = shortOf(input.platformShort, firstVi, firstEn);
     const bodyVi = input.platformFromData
-      ? `Khách của tiệm đang đến từ ${firstVi} nhiều hơn hẳn các kênh khác — bên em dồn tiền vào chỗ đã có người tìm tiệm, không rải đều cho đẹp báo cáo.`
+      ? `Khách của tiệm đang đến từ ${short.vi} nhiều hơn hẳn các kênh khác — bên em dồn tiền vào chỗ đã có người tìm tiệm.`
       : first.key === 'google'
-        ? 'Người gõ "nail salon near me" là người đang định đi hôm nay — họ cần một chỗ, không cần được thuyết phục. Tiền bỏ vào đây trả về khách nhanh nhất. Facebook và Instagram để sau, việc của chúng là làm người quanh đây nhớ mặt tiệm.'
-        : `Người quanh khu tiệm ở trên ${firstVi} nhiều hơn là đi tìm kiếm — bên em đưa hình ảnh thật của tiệm tới trước mặt họ trước, rồi mới tính tới tìm kiếm.`;
+        ? 'Người gõ "nail salon near me" là người đang định đi hôm nay — tiền bỏ vào đây ra khách nhanh nhất.'
+        : `Quanh khu tiệm người ta ở trên ${short.vi} nhiều hơn là đi tìm kiếm, nên bên em đưa hình ảnh thật của tiệm tới trước mặt họ.`;
     const bodyEn = input.platformFromData
-      ? `Your own bookings come from ${firstEn} more than anywhere else, so that is where the money goes first — we back the channel already bringing you people.`
+      ? `Your bookings come from ${short.en} more than anywhere else, so that is where the money goes first.`
       : first.key === 'google'
-        ? 'Someone typing "nail salon near me" has already decided to go today; they need an address, not persuasion. That is the fastest dollar. Facebook and Instagram come after — their job is to keep the shop in mind locally.'
-        : `Around your block people sit on ${firstEn} rather than search for a salon, so we put real photos of your work in front of them first, then look at search.`;
+        ? 'Someone typing "nail salon near me" has already decided to go today — that is the fastest dollar.'
+        : `Around your block people sit on ${short.en} rather than search for a salon, so we put real photos of your work in front of them.`;
+    const longVi = input.platformFromData
+      ? 'Bên em không rải đều cho đẹp báo cáo: dồn vào kênh đang thật sự mang khách tới thì mỗi đồng đọc được kết quả rõ hơn.'
+      : first.key === 'google'
+        ? 'Họ cần một chỗ, không cần được thuyết phục. Facebook và Instagram để sau, việc của chúng là làm người quanh đây nhớ mặt tiệm chứ không phải kéo khách về trong tuần này.'
+        : 'Tìm kiếm tính sau — trước hết phải có người quanh đây nhìn thấy tay nghề của tiệm.';
+    const longEn = input.platformFromData
+      ? 'We do not spread it evenly to make a report look good: backing the channel that is already bringing people makes every dollar readable.'
+      : first.key === 'google'
+        ? 'They need an address, not persuasion. Facebook and Instagram come after — their job is keeping the shop in mind locally, not filling this week.'
+        : 'Search comes later — first people nearby have to see the work.';
     /**
      * WHAT "SAU" ACTUALLY MEANS.
      *
@@ -392,32 +452,49 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
      */
     const a = shortOf(input.platformShort, firstVi, firstEn);
     const b = shortOf(input.secondShort, secondVi, secondEn);
+    // ONE LINE IN THE BOX, the full test under "Vì sao". A six-line checklist
+    // sitting open on the card was most of what made this screen unreadable —
+    // and the answer to "sau là khi nào" fits in a sentence.
+    const proveVi = proving ? `${proving} booking` : 'đủ booking để đọc được';
+    const proveEn = proving ? `${proving} bookings` : 'enough bookings to read';
     const when = b.vi && ceilingText
       ? bi(
-        `Soi vào ngày thứ 7 của đợt, hai điều phải cùng đúng:\n`
-        + `1. ${a.vi} đã mang về ${proving ? `${proving} booking trở lên` : 'đủ booking để đọc được'} — ít hơn thì con số nào rút ra cũng là nhiễu.\n`
+        `Ngày thứ 7: nếu ${a.vi} đã về ${proveVi} và mỗi khách tốn dưới ${ceilingText} thì bên em mở ${b.vi}. Chưa đạt thì giữ nguyên ${a.vi} và sửa cho đạt trước.`,
+        `Day 7: if ${a.en} has brought in ${proveEn} at under ${ceilingText} each, we open ${b.en}. If not, we keep ${a.en} and fix it first.`)
+      : null;
+    const whenDetail = b.vi && ceilingText
+      ? bi(
+        `Hai điều phải cùng đúng vào ngày thứ 7:\n`
+        + `1. ${a.vi} đã mang về ${proveVi} trở lên — ít hơn thì con số nào rút ra cũng là nhiễu.\n`
         + `2. Mỗi khách mới từ ${a.vi} đang tốn dưới ${ceilingText}.\n`
         + `→ Đúng cả hai: bên em mở ${b.vi}, ngân sách bằng một nửa ${a.vi}.\n`
-        + `→ Chưa đúng: giữ nguyên ${a.vi} và sửa cho đạt trước. Bật thêm kênh khi kênh đầu chưa có lãi chỉ làm mất tiền nhanh gấp đôi, và khi đó không còn biết kênh nào gây ra kết quả.`,
-        `Checked on day 7, both have to be true:\n`
-        + `1. ${a.en} has brought in ${proving ? `${proving} bookings or more` : 'enough bookings to read'} — fewer and any figure pulled out of them is noise.\n`
+        + `→ Chưa đúng: giữ nguyên ${a.vi}. Bật thêm kênh khi kênh đầu chưa có lãi chỉ làm mất tiền nhanh gấp đôi, và khi đó không còn biết kênh nào gây ra kết quả.`,
+        `Both have to be true on day 7:\n`
+        + `1. ${a.en} has brought in ${proveEn} or more — fewer and any figure pulled out of them is noise.\n`
         + `2. Each new customer from ${a.en} is costing under ${ceilingText}.\n`
         + `→ Both true: we open ${b.en} at half the ${a.en} budget.\n`
-        + `→ Not yet: keep ${a.en} and fix it first. Adding a channel while the first one is losing money loses it twice as fast, and you can no longer tell which channel caused what.`)
+        + `→ Not yet: keep ${a.en}. Adding a channel while the first one is losing money loses it twice as fast, and you can no longer tell which channel caused what.`)
       : null;
 
+    // WHERE THE ORDER CAME FROM, SAID OUT LOUD — but under the toggle. When the
+    // salon's own bookings chose it the short body already says so; when they
+    // did not, the order is a starting rule rather than a reading of this shop,
+    // and calling it a reading is how an agency loses an argument with its own
+    // client. That caveat is honesty, not headline material.
+    const caveatVi = input.platformFromData
+      ? ''
+      : `Thứ tự này chưa phải từ số liệu của tiệm — chưa có booking nào ghi nhận từ ${firstVi} hay ${secondVi || 'kênh còn lại'}. Nó là điểm khởi đầu, và đợt chạy này chính là thứ tạo ra số liệu để lần sau xếp theo tiệm.`;
+    const caveatEn = input.platformFromData
+      ? ''
+      : `This order is not from your numbers yet — no booking has been attributed to ${firstEn} or ${secondEn || 'the other channel'}. It is a starting rule, and this campaign is what produces the data to order it by your shop next time.`;
+    const detVi = [longVi, caveatVi, whenDetail ? viOf(whenDetail) : ''].filter(Boolean).join('\n');
+    const detEn = [longEn, caveatEn, whenDetail ? enOf(whenDetail) : ''].filter(Boolean).join('\n');
     steps.push({
       title: bi('Chạy ở kênh nào', 'Where it runs'),
       head: bi(headVi, headEn),
-      // WHERE THE ORDER CAME FROM, SAID OUT LOUD.
-      //
-      // When the salon's own bookings chose it, the body already says so. When
-      // they did not — no booking has ever been attributed to either channel —
-      // the order is a starting rule, not a reading of this shop, and calling
-      // it a reading is how an agency loses an argument with its own client.
-      body: bi(
-        bodyVi + (input.platformFromData ? '' : ` (Thứ tự này chưa phải từ số liệu của tiệm — chưa có booking nào ghi nhận từ ${firstVi} hay ${secondVi || 'kênh còn lại'}. Nó là điểm khởi đầu, và đợt chạy này chính là thứ tạo ra số liệu để lần sau xếp theo tiệm.)`),
-        bodyEn + (input.platformFromData ? '' : ` (This order is not from your numbers yet — no booking has been attributed to ${firstEn} or ${secondEn || 'the other channel'}. It is a starting rule, and this campaign is what produces the data to order it by your shop next time.)`)),
+      body: bi(bodyVi, bodyEn),
+      detailTitle: bi('Vì sao kênh này trước', 'Why this one first'),
+      detail: detVi ? bi(detVi, detEn) : null,
       when,
       whenTitle: bi('Khi nào mở kênh thứ hai', 'When the second channel opens'),
     });
@@ -452,28 +529,28 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
       quietE.length ? `aimed at ${listEn(quietE)}` : '',
     ].filter(Boolean).join(' · ');
     const lead = input.leadDays ?? null;
-    const bodyVi = (lead
-      ? `Khách của tiệm thường đặt trước khoảng ${lead} ngày, nên quảng cáo phải chạy sớm hơn ngày cần khách chừng đó. `
-      : '')
-      + (pause.length
-        ? 'Ngày đông thì tắt — ngày đó tự đầy, trả tiền để lấp một chỗ đã có người là ném tiền đi. '
-        : '')
-      + (quiet.length
-        ? 'Tiền dồn vào những khung còn ghế trống, để khách mới tới đúng lúc thợ đang rảnh chứ không phải lúc phải chờ.'
-        : '');
-    const bodyEn = (lead
-      ? `Your customers book about ${lead} days ahead, so the ad has to run that far before the day you want filled. `
-      : '')
-      + (pauseE.length
-        ? 'We switch it off on the busy days — those fill themselves, and paying for a seat that was already taken is money thrown away. '
-        : '')
-      + (quietE.length
-        ? 'The spend goes to the blocks that still have chairs free, so a new customer arrives when someone can take her, not when she has to wait.'
-        : '');
+    // The lead time is the one fact on the card; the rest is the reason, and
+    // the reason waits under the toggle.
+    const whyVi = [
+      pause.length ? 'Ngày đông thì tắt — ngày đó tự đầy, trả tiền để lấp một chỗ đã có người là ném tiền đi.' : '',
+      quiet.length ? 'Tiền dồn vào những khung còn ghế trống, để khách mới tới đúng lúc thợ đang rảnh chứ không phải lúc phải chờ.' : '',
+    ].filter(Boolean).join(' ');
+    const whyEn = [
+      pauseE.length ? 'We switch it off on the busy days — those fill themselves, and paying for a seat that was already taken is money thrown away.' : '',
+      quietE.length ? 'The spend goes to the blocks that still have chairs free, so a new customer arrives when someone can take her, not when she has to wait.' : '',
+    ].filter(Boolean).join(' ');
     steps.push({
       title: bi('Chạy ngày nào, giờ nào', 'When it runs'),
       head: bi(headVi, headEn),
-      body: bi(bodyVi.trim(), bodyEn.trim()),
+      body: bi(
+        lead
+          ? `Khách của tiệm thường đặt trước khoảng ${lead} ngày, nên quảng cáo phải chạy sớm hơn chừng đó.`
+          : 'Tiền dồn vào những khung còn ghế trống, không rải đều cả tuần.',
+        lead
+          ? `Your customers book about ${lead} days ahead, so the ad runs that far in front.`
+          : 'The spend goes to the blocks that still have chairs free, not evenly across the week.'),
+      detailTitle: bi('Vì sao tắt ngày đông', 'Why we switch off the busy days'),
+      detail: whyVi ? bi(whyVi, whyEn) : null,
     });
   }
 
@@ -499,14 +576,14 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
       `Ngày thứ ${midDay} và ngày thứ ${days}: bên em soi lại và báo tiệm bằng con số`,
       `Day ${midDay} and day ${days}: we review it and report back in numbers`),
     body: bi(
-      `Mỗi lần soi bên em trả lời đúng ba câu: đã chi bao nhiêu, mang về mấy khách mới, mỗi khách tốn bao nhiêu. `
-      + `Rẻ hơn ${ceilingText}/khách thì bên em dồn thêm tiền vào khung giờ và dịch vụ đang chạy tốt. `
-      + `Đắt hơn thì bên em sửa ngay trong tuần — đổi dịch vụ quảng cáo, thu hẹp khu vực, hoặc tắt khung giờ không ra khách — chứ không chờ hết đợt rồi mới nói. `
-      + `Tiệm không phải theo dõi gì cả; việc của tiệm là nhận khách.`,
-      `Each review answers three questions: what has been spent, how many new customers came, what each one cost. `
-      + `Cheaper than ${ceilingText} a customer and we put more behind the hours and services that are working. `
-      + `Dearer and we fix it inside the week — change the advertised service, tighten the radius, or switch off an hour that brings nobody — rather than waiting for the run to end to tell you. `
-      + `You do not have to watch anything; your job is to take the customers.`),
+      'Ba câu mỗi lần: đã chi bao nhiêu, về mấy khách mới, mỗi khách tốn bao nhiêu. Tiệm không phải theo dõi gì cả.',
+      'Three numbers each time: what was spent, how many new customers, what each cost. You do not have to watch anything.'),
+    detailTitle: bi('Bên em sửa những gì', 'What we change'),
+    detail: bi(
+      `Rẻ hơn ${ceilingText}/khách thì bên em dồn thêm tiền vào khung giờ và dịch vụ đang chạy tốt. `
+      + `Đắt hơn thì sửa ngay trong tuần — đổi dịch vụ quảng cáo, thu hẹp khu vực, hoặc tắt khung giờ không ra khách — chứ không chờ hết đợt rồi mới nói.`,
+      `Cheaper than ${ceilingText} a customer and we put more behind the hours and services that are working. `
+      + `Dearer and we fix it inside the week — change the advertised service, tighten the radius, or switch off an hour that brings nobody — rather than waiting for the run to end to tell you.`),
     whenTitle: bi('Tiệm nhận được gì', 'What you get'),
     when: bi(
       `Một tin nhắn ngắn có ba con số đó, kèm một dòng bên em đã đổi gì và vì sao. Không có gì phải đọc thêm.`,
@@ -519,10 +596,18 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
       `Dưới ${ceilingText}/khách thì tăng ngân sách, vượt thì tắt`,
       `Under ${ceilingText} a customer we raise it, over it we stop`),
     body: bi(
-      `Hết đợt bên em đưa tiệm con số thật: chi bao nhiêu, được bao nhiêu khách mới, mỗi khách bao nhiêu. Dưới ${ceilingText} thì đáng tăng tiền trước mùa cao điểm; vượt ${ceilingText} thì bên em tắt và chuyển tiền đó sang nhắc khách cũ — rẻ hơn nhiều.`
-        + (back ? ` Và mọi khách mới của đợt này đều được nhắn lại sau khoảng ${back} ngày, vì lãi thật nằm ở lần thứ hai họ quay lại chứ không phải lần đầu.` : ' Và mọi khách mới của đợt này đều được nhắn lại sau đó, vì lãi thật nằm ở lần thứ hai họ quay lại chứ không phải lần đầu.'),
-      `At the end you get the real numbers: what was spent, how many new customers came, what each one cost. Under ${ceilingText} it is worth raising before the busy season; over ${ceilingText} we switch it off and move the money to reminding your past customers, which is far cheaper.`
-        + (back ? ` Either way every new customer from this run is messaged again after about ${back} days, because the profit is in the second visit, not the first.` : ' Either way every new customer from this run is messaged again later, because the profit is in the second visit, not the first.')),
+      'Quyết bằng con số thật của đợt, không phải bằng cảm tính của bên em hay của tiệm.',
+      'Decided on the real numbers from the run, not on our opinion or yours.'),
+    detailTitle: bi('Rồi tiền đi đâu', 'And then where the money goes'),
+    detail: bi(
+      `Vượt ${ceilingText} thì bên em chuyển tiền đó sang nhắc khách cũ — rẻ hơn nhiều so với mua khách mới.`
+        + (back
+          ? ` Dù đợt này ra sao, mọi khách mới của đợt đều được nhắn lại sau khoảng ${back} ngày: lãi thật nằm ở lần thứ hai họ quay lại, không phải lần đầu.`
+          : ' Dù đợt này ra sao, mọi khách mới của đợt đều được nhắn lại sau đó: lãi thật nằm ở lần thứ hai họ quay lại, không phải lần đầu.'),
+      `Over ${ceilingText} and we move the money to reminding your past customers, which is far cheaper than buying new ones.`
+        + (back
+          ? ` Either way every new customer from this run is messaged again after about ${back} days: the profit is in the second visit, not the first.`
+          : ' Either way every new customer from this run is messaged again later: the profit is in the second visit, not the first.')),
   });
 
   return steps;
@@ -655,34 +740,33 @@ export function adsPitch(input: {
       (input.ticketEstimated
         ? 'Con số dưới đây tính theo BẢNG GIÁ của tiệm, chưa phải từ lịch hẹn thật — đủ để bắt đầu, và bên em chỉnh lại sau vài tuần khi có số thật.\n'
         : '')
-      + `Tiệm bỏ ra ${fmt(daily)} mỗi ngày, tổng ${fmt(total)} cho ${days} ngày.\n`
-      + `Một khách mới, sau khi đã trả công thợ, để lại cho tiệm khoảng ${fmt(ceiling)}. Đó vừa là tiền tiệm giữ được, vừa là mức TỐI ĐA bên em được phép chi để kéo một khách về — chi hơn ${fmt(ceiling)} là lỗ ngay từ khách đó.`
+      // The first line used to repeat the three figures directly above it.
+      + `Một khách mới để lại cho tiệm khoảng ${fmt(ceiling)} sau khi trả công thợ — nên ${fmt(ceiling)} cũng là mức tối đa bên em được phép chi để kéo một khách về.`
       + (need
-        ? `\nVậy nên đợt này chỉ cần ${need} khách mới là lấy lại đủ tiền. Từ khách thứ ${need + 1} trở đi là tiệm lãi.`
+        ? `\nĐủ ${need} khách là huề vốn; từ khách thứ ${need + 1} trở đi là tiệm lãi.`
         : '')
       // Capacity answers "are there chairs", never "how many customers will
       // come". Said in the same breath as the break-even count it was read as
       // a forecast — see the comment above.
       + (room && need
-        ? `\nCòn chỗ ngồi thì dư: ${days} ngày tới tiệm nhận thêm được khoảng ${room} lượt khách mà không ai phải chờ, trong khi đợt này chỉ cần ${need}.`
+        ? ` Chỗ ngồi thì dư — ${days} ngày tới tiệm còn nhận thêm được khoảng ${room} lượt.`
         : room
-          ? `\n${days} ngày tới tiệm nhận thêm được khoảng ${room} lượt khách mà không ai phải chờ.`
+          ? ` ${days} ngày tới tiệm còn nhận thêm được khoảng ${room} lượt khách.`
           : '')
-      + `\nBên em chạy và soi mỗi ngày. Khi một khách mới bắt đầu tốn hơn ${fmt(ceiling)}, bên em tự tắt chứ không đợi tiệm hỏi.`,
+      + `\nBên em chạy và soi mỗi ngày, tự tắt khi một khách bắt đầu tốn hơn ${fmt(ceiling)}.`,
       (input.ticketEstimated
         ? 'The figures below come from your PRICE LIST, not from bookings yet — enough to start with, and we correct them once real numbers arrive.\n'
         : '')
-      + `You put in ${fmt(daily)} a day, ${fmt(total)} over ${days} days.\n`
-      + `A new customer leaves you about ${fmt(ceiling)} once the tech is paid. That is both what you keep and the MOST we are allowed to spend to bring one in — over ${fmt(ceiling)} and that customer lost you money.`
+      + `A new customer leaves you about ${fmt(ceiling)} once the tech is paid — so ${fmt(ceiling)} is also the most we are allowed to spend bringing one in.`
       + (need
-        ? `\nSo this run only needs ${need} new customers to pay for itself. From the ${need + 1}${ordSuffix(need + 1)} one on, you are ahead.`
+        ? `\n${need} of them and you are square; from the ${need + 1}${ordSuffix(need + 1)} one on, you are ahead.`
         : '')
       + (room && need
-        ? `\nChairs are not the problem: over the next ${days} days you can take about ${room} more visits with nobody waiting, and this run needs ${need}.`
+        ? ` Chairs are not the problem — you can take about ${room} more visits over the next ${days} days.`
         : room
-          ? `\nOver the next ${days} days you can take about ${room} more visits with nobody waiting.`
+          ? ` You can take about ${room} more visits over the next ${days} days.`
           : '')
-      + `\nWe run it and check it daily. The moment a new customer starts costing more than ${fmt(ceiling)}, we switch it off ourselves rather than waiting for you to ask.`),
+      + `\nWe run it and check it daily, and switch it off ourselves the moment a customer starts costing more than ${fmt(ceiling)}.`),
     cta: bi(`Đồng ý — chạy thử ${days} ngày`, `Yes — run the ${days}-day test`),
     request: `Tiệm đồng ý chạy quảng cáo thử: ${fmt(daily)}/ngày × ${days} ngày (~${fmt(total)}) · ngưỡng ${fmt(ceiling)}/khách mới`,
   };

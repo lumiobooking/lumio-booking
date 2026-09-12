@@ -65,7 +65,12 @@ export interface AdsPlan {
    * number that decides it, and what to do with either answer. Only the steps
    * that have a real trigger carry one.
    */
-  steps: { title: string; head: string; body: string; when?: string | null; whenTitle?: string | null }[];
+  steps: {
+    title: string; head: string; body: string;
+    when?: string | null; whenTitle?: string | null;
+    /** The reasoning — collapsed. See PitchStep.detail on the API side. */
+    detail?: string | null; detailTitle?: string | null;
+  }[];
   /**
    * The thing to do WHILE the campaign runs — usually "ask each finished
    * customer for a review".
@@ -255,43 +260,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
                 {T('Bên em sẽ chạy như thế nào', 'How we will run it')}
               </div>
               {adsPlan.steps.map((st, i) => (
-                <div key={i} style={{ display: 'flex', gap: 10, marginBottom: i === adsPlan.steps.length - 1 ? 0 : 11 }}>
-                  <div style={{
-                    flex: '0 0 22px', height: 22, borderRadius: 999, background: 'rgba(99,102,241,.22)',
-                    border: '1px solid rgba(99,102,241,.55)', color: '#c7d2fe', fontSize: 11.5, fontWeight: 800,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1,
-                  }}>{i + 1}</div>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{st.title}</div>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.4, marginTop: 2 }}>{st.head}</div>
-                    {/* pre-line: the "what the ad sells" step states its three
-                        reasons one per line, each carrying one of the salon's
-                        own numbers. Run together as a paragraph they are the
-                        part an owner skips — and the reasons are the whole
-                        point of showing them. Steps whose body is a single
-                        paragraph are unaffected. */}
-                    <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 3, whiteSpace: 'pre-line' }}>{st.body}</div>
-                    {/* The trigger, boxed away from the reasoning around it.
-                        "Meta sau" with the condition buried in a paragraph is
-                        the same as "Meta sau" with no condition — nobody finds
-                        it on the day they need to check it. */}
-                    {st.when && (
-                      <div style={{
-                        marginTop: 7, padding: '8px 10px', borderRadius: 8,
-                        background: 'var(--c0f172a)', border: '1px solid var(--line-strong)',
-                      }}>
-                        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: 'var(--ink-faint)', textTransform: 'uppercase' }}>
-                          {st.whenTitle || T('Điều kiện để sang bước sau', 'What has to be true first')}
-                        </div>
-                        {/* pre-line, because the condition is written as a
-                            numbered check and two answers — one per line. As a
-                            single run-on paragraph it is the thing an owner
-                            skips, which is the same as not writing it. */}
-                        <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.65, marginTop: 3, whiteSpace: 'pre-line' }}>{st.when}</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <PitchRow key={i} st={st} n={i + 1} last={i === adsPlan.steps.length - 1} vi={vi} />
               ))}
             </div>
           )}
@@ -522,6 +491,81 @@ function AdsYes({ token, vi, label, onError }: {
 }
 
 /** One number, with the change against the period before when there is one. */
+/**
+ * ONE STEP OF THE AD PLAN: the answer out loud, the argument behind a tap.
+ *
+ * Everything this card knows used to be printed at once, and an agency owner
+ * whose clients are salon owners said the obvious thing about it: quá dài, và
+ * khách của tôi không có chuyên môn. The content was not wrong, it was
+ * compulsory — five steps of reasoning to read before you could say yes.
+ *
+ * So a step now shows a title, one bold answer and one sentence. The gates,
+ * the figures and the things deliberately ruled out sit under "Vì sao?",
+ * closed. The owner who just wants to decide reads six lines; the one who
+ * wants to check — or the agency defending the plan to her — opens it.
+ */
+function PitchRow({ st, n, last, vi }: {
+  st: { title: string; head: string; body: string; when?: string | null; whenTitle?: string | null; detail?: string | null; detailTitle?: string | null };
+  n: number; last: boolean; vi: boolean;
+}) {
+  const T = (v: string, e: string) => (vi ? v : e);
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ display: 'flex', gap: 10, marginBottom: last ? 0 : 11 }}>
+      <div style={{
+        flex: '0 0 22px', height: 22, borderRadius: 999, background: 'rgba(99,102,241,.22)',
+        border: '1px solid rgba(99,102,241,.55)', color: '#c7d2fe', fontSize: 11.5, fontWeight: 800,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1,
+      }}>{n}</div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{st.title}</div>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.4, marginTop: 2 }}>{st.head}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 3 }}>{st.body}</div>
+        {/* The trigger, boxed away from the reasoning around it. "Meta sau"
+            with the condition buried in a paragraph is the same as "Meta sau"
+            with no condition — nobody finds it on the day they check it. One
+            line here; the full two-part test lives under "Vì sao?". */}
+        {st.when && (
+          <div style={{
+            marginTop: 7, padding: '7px 10px', borderRadius: 8,
+            background: 'var(--c0f172a)', border: '1px solid var(--line-strong)',
+          }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: 'var(--ink-faint)', textTransform: 'uppercase' }}>
+              {st.whenTitle || T('Điều kiện để sang bước sau', 'What has to be true first')}
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 2, whiteSpace: 'pre-line' }}>{st.when}</div>
+          </div>
+        )}
+        {st.detail && (
+          <>
+            <button
+              type="button"
+              onClick={() => setOpen((o) => !o)}
+              style={{
+                marginTop: 5, padding: 0, background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: 11.5, fontWeight: 700, color: '#a5b4fc', letterSpacing: .2,
+              }}
+            >
+              {open
+                ? `${st.detailTitle || T('Vì sao', 'Why')} ↑`
+                : `${st.detailTitle || T('Vì sao', 'Why')} ↓`}
+            </button>
+            {open && (
+              /* pre-line: the reasoning is written as one point per line, each
+                 carrying one of this salon's own numbers. Reflowed into a block
+                 it becomes the thing that got this card called unreadable. */
+              <div style={{
+                fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.65, marginTop: 4,
+                whiteSpace: 'pre-line', paddingLeft: 9, borderLeft: '2px solid var(--line-strong)',
+              }}>{st.detail}</div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Stat({ n, label, delta, tone }: { n: number | string; label: string; delta?: number | null; tone?: 'good' | 'bad' }) {
   const up = typeof delta === 'number' && delta > 0;
   const down = typeof delta === 'number' && delta < 0;

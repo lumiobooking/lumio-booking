@@ -21,6 +21,7 @@ import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { estimateTicket, isEstimate } from './ticket-estimate';
 import { assessSalon, adsAim } from './salon-assessment';
 import { adCapacity, isFull, openMinutesPerWeek, openDaysPerWeek } from './ad-capacity';
+import { pickAdServices } from './ad-service';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
@@ -36,6 +37,32 @@ const PROFILE_SCAN_KEY = 'profile_scan';
 /** Attempts before a shop nothing can be read about is left alone. */
 const SCAN_TRIES = 3;
 const SCAN_RETRY_DAYS = 7;
+
+/**
+ * The menu, with how often each item was actually booked.
+ *
+ * `menu` carries the money (price, duration) and `signals.services` carries the
+ * demand (a count per service name over the last 30 days) — and until now the ad
+ * plan only ever read the first. That is how a five-minute chin wax, top of the
+ * per-chair-hour table and booked by nobody, became the service the card told a
+ * salon to advertise. Joined on the name, both halves reach pickAdServices.
+ */
+const menuWithBookings = (
+  menu: { name: string; priceCents: number; durationMinutes: number }[],
+  counts: { name: string; count: number }[],
+) => {
+  const seen = new Map<string, number>();
+  for (const c of counts ?? []) {
+    const k = String(c?.name ?? '').trim().toLowerCase();
+    if (k) seen.set(k, (seen.get(k) ?? 0) + (c.count ?? 0));
+  }
+  return (menu ?? []).map((m) => ({
+    name: m.name,
+    priceCents: m.priceCents,
+    durationMinutes: m.durationMinutes,
+    bookings: seen.get(String(m.name ?? '').trim().toLowerCase()) ?? 0,
+  }));
+};
 import { addDaysToKey, wallTimeToUtcTz as wallTimeToUtc } from '../common/salon-time';
 import { buildWeekOutcome, describeOutcome, describeDelta, type WeekOutcome } from './week-outcome';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
@@ -1277,6 +1304,11 @@ export class ContentService {
       busyWeekdays: [...ctx.revenue.loads].reverse().slice(0, 2).map((l) => l.weekday),
       leadDays: ctx.lead.medianDays,
     });
+    // WHICH SERVICE THE AD MAY SELL — decided once, here, and used by the ad
+    // copy, the keyword list and the card the owner reads, so those three can
+    // never name three different services. See ./ad-service for the three gates.
+    const sells = pickAdServices(menuWithBookings(ctx.menu, ctx.signals.services), ticket);
+
     const { reports } = channelReports(ctx.channelBookings, Date.now());
     const plans = platformPlans(reports, {
       grossMarginPct: margin,
@@ -1286,7 +1318,7 @@ export class ContentService {
       pauseDayLabels: window.labels.pause,
       quietLabels: quiet.map((q) => q.label),
       leadDays: ctx.lead.medianDays,
-      topServiceName: ctx.revenue.yields[0]?.name ?? ctx.signals.services[0]?.name ?? null,
+      topServiceName: sells.names[0] ?? ctx.signals.services[0]?.name ?? null,
       city: ctx.region.city,
       region: ctx.region.region,
       lapsedCount: ctx.revenue.lapsed.count,
@@ -1393,7 +1425,7 @@ export class ContentService {
       provingBookings: budget.bookingsToBreakEven,
       // 'unproven' is the default order speaking, not this salon's book.
       platformFromData: first ? first.status !== 'unproven' : false,
-      services: ctx.revenue.yields.slice(0, 2).map((y) => y.name),
+      sells,
       offerLine,
       runDays: window.labels.run,
       pauseDays: window.labels.pause,
@@ -2764,6 +2796,14 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
   private async adsFor(tenantId: string, ctx: Awaited<ReturnType<ContentService['gather']>>) {
     const regulars = ctx.audience.segments.find((s) => s.key === 'regular');
     const anySeg = ctx.audience.segments[0];
+    // The SAME service pick the salon's own card shows. The team's ad copy and
+    // keyword list used to be built from the top of the per-chair-hour table,
+    // which on a real menu is a five-minute wax — so the build sheet named a
+    // service nobody would search for. See ./ad-service.
+    const sells = pickAdServices(
+      menuWithBookings(ctx.menu, ctx.signals.services),
+      ctx.firstVisitTicketCents ?? ctx.audience.segments[0]?.avgTicketCents ?? null,
+    );
     const ceiling = cpaCeiling({
       // A first visit, not the biggest segment's average. Advertising buys
       // first visits; pricing them at what a regular spends is how a salon
@@ -2849,7 +2889,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       pauseDayLabels: window.labels.pause,
       quietLabels: quiet.map((q) => q.label),
       leadDays: ctx.lead.medianDays,
-      topServiceName: ctx.revenue.yields[0]?.name ?? ctx.signals.services[0]?.name ?? null,
+      topServiceName: sells.names[0] ?? ctx.signals.services[0]?.name ?? null,
       city: ctx.region.city,
       region: ctx.region.region,
       lapsedCount: ctx.revenue.lapsed.count,
@@ -2915,7 +2955,7 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
             businessName: viOf(ctx.identity.label) || null,
             city: ctx.region.city,
             region: ctx.region.region,
-            topServiceName: ctx.revenue.yields[0]?.name ?? ctx.signals.services[0]?.name ?? null,
+            topServiceName: sells.names[0] ?? ctx.signals.services[0]?.name ?? null,
             offerHeadline: null,
             reviewCount,
             bookingUrl: null,

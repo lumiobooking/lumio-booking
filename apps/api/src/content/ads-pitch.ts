@@ -1,4 +1,5 @@
 import { bi, enOf, viOf, type Txt } from './i18n';
+import { MIN_AD_MINUTES, type AdServicePick } from './ad-service';
 
 /**
  * The ad budget, offered to the SALON in the salon's own words.
@@ -109,6 +110,13 @@ export interface AdsPitch {
 
 const fmt = (c: number) => `$${Math.round(c / 100)}`;
 
+/** 1st, 2nd, 3rd, 9th — only ever used on a small break-even count. */
+const ordSuffix = (n: number) => {
+  const t = n % 100;
+  if (t >= 11 && t <= 13) return 'th';
+  return ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th';
+};
+
 export interface PitchPlanInput {
   /**
    * The assessment finding that decides where the paid clicks land. Read by
@@ -131,8 +139,16 @@ export interface PitchPlanInput {
   secondPlatform?: Txt | null;
   /** True when the choice came from this salon's OWN bookings, not the default order. */
   platformFromData?: boolean;
-  /** What to advertise: the services that earn most per chair-hour, best first. */
-  services?: string[];
+  /**
+   * WHAT THE AD SELLS, already gated — see ./ad-service.
+   *
+   * This used to be a bare list of names taken straight off the per-chair-hour
+   * table, and on a real menu that table is topped by a five-minute chin wax.
+   * The card said, in bold, to advertise "Chin". The pick now arrives with the
+   * figures behind it and with what was ruled out, because an owner does not
+   * trust a conclusion she cannot check — and she checks this one first.
+   */
+  sells?: AdServicePick | null;
   /** The week's offer, when there is one to put in the ad. */
   offerLine?: Txt | null;
   /** Weekday names to run on, and to stay off. */
@@ -156,6 +172,116 @@ const listEn = (xs: string[]) => {
   if (clean.length <= 1) return clean[0] ?? '';
   return `${clean.slice(0, -1).join(', ')} and ${clean[clean.length - 1]}`;
 };
+
+/**
+ * WHAT THE AD SELLS — and, just as loudly, what it does not.
+ *
+ * THE FAILURE THIS REPLACES
+ *
+ * The step used to print the top of the per-chair-hour table and assert that
+ * those were "the services that earn you the most per chair-hour". On a real
+ * nail-salon menu the top of that table is a five-minute chin wax, so the card
+ * on a paying salon's screen read: advertise Chin. The assertion was even true
+ * of the formula — $8 for 5 minutes IS $96 an hour — and still the advice was
+ * indefensible, because you cannot fill an hour with twelve chin waxes and
+ * nobody drives across town for one.
+ *
+ * WHY THE REASONS ARE ON THE CARD NOW
+ *
+ * An owner with no marketing background cannot audit a recommendation; she can
+ * only audit arithmetic about her own shop. So the step shows the three gates
+ * with her numbers in them — booked how many times, priced at what against her
+ * own average ticket, long enough to hold a chair — and names the add-ons it
+ * deliberately left out. The ruled-out list is the part that reads as expertise:
+ * it is the trap an amateur would have walked into, pointed at.
+ */
+function sellsStep(p: AdServicePick | null, offerVi: string, offerEn: string): PitchStep {
+  const title = bi('Quảng cáo dịch vụ gì', 'What the ad sells');
+  const rows = p?.rows ?? [];
+  const names = rows.map((r) => r.name);
+  const floor = p?.floorCents && p.floorCents > 0 ? p.floorCents : null;
+  const f = floor ? fmt(floor) : '';
+
+  // The offer is a second decision, not part of the answer to "which service",
+  // and cramming both into one bold line made the line unreadable. It gets its
+  // own labelled box.
+  const offer: { when: Txt | null; whenTitle: Txt | null } = offerVi || offerEn
+    ? {
+      whenTitle: bi('Ưu đãi đi kèm', 'The offer that goes with it'),
+      when: bi(
+        `${offerVi}\nĐây là ưu đãi của tuần này — dán đúng câu đó vào quảng cáo để thứ khách thấy trên mạng khớp với thứ tiệm đang chạy tại chỗ.`,
+        `${offerEn}\nThat is this week's offer — put that exact line in the ad so what people see online matches what the shop is actually running.`),
+    }
+    : { when: null, whenTitle: null };
+
+  if (!names.length) {
+    return {
+      title,
+      head: bi(offerVi, offerEn),
+      body: bi(
+        'Bảng giá của tiệm chưa trả lời được câu này: mỗi dịch vụ cần có GIÁ và có THỜI LƯỢNG. Thiếu một trong hai thì mọi phép tính "dịch vụ nào đáng quảng cáo" đều là đoán. Điền hai ô đó xong, bên em chọn bằng số liệu của tiệm chứ không chọn bằng cảm tính.',
+        'Your price list cannot answer this yet: every service needs a PRICE and a LENGTH on it. Missing either one, any claim about which service is worth advertising is a guess. Fill those two fields in and we choose from your own figures instead of by feel.'),
+    };
+  }
+
+  const figVi = rows
+    .map((r) => `${r.name} ${fmt(r.priceCents)}/${r.minutes} phút${r.bookings > 0 ? ` · ${r.bookings} lượt đặt trong 30 ngày qua` : ''}`)
+    .join(' — ');
+  const figEn = rows
+    .map((r) => `${r.name} ${fmt(r.priceCents)} for ${r.minutes} min${r.bookings > 0 ? ` · booked ${r.bookings} times in the last 30 days` : ''}`)
+    .join(' — ');
+
+  const addOns = (p?.skipped ?? []).filter((x) => x.why === 'add-on').map((x) => x.name);
+  const under = (p?.skipped ?? []).filter((x) => x.why === 'under-ticket').map((x) => x.name);
+
+  const V: string[] = [];
+  const E: string[] = [];
+
+  // Keyed on whether THESE rows were booked, not on the basis: a salon whose
+  // whole menu sits under its average ticket can still have real bookings on
+  // the rows we picked, and telling that owner "no bookings recorded" would be
+  // false on her own screen — the fastest way to lose the card's credibility.
+  const booked = rows.some((r) => r.bookings > 0);
+  if (booked) {
+    V.push(`• Có khách thật đang đặt: ${figVi}.`);
+    E.push(`• Real customers are already booking these: ${figEn}.`);
+  } else {
+    V.push(`• Lấy từ bảng giá của tiệm: ${figVi}. Ba mươi ngày qua hệ thống chưa ghi nhận lượt đặt nào cho những dịch vụ này, nên đợt chạy đầu cũng chính là phép thử xem khách bấm vào cái nào.`);
+    E.push(`• Taken from your price list: ${figEn}. No bookings for these came through the system in the last 30 days, so this first run doubles as the test of which one people click.`);
+  }
+
+  if (p?.basis === 'best-available' && f) {
+    V.push(`• Về tiền, đây là mức cao nhất tiệm đang có: không dịch vụ nào trên bảng đạt ${f} — mức hoá đơn trung bình mà ngân sách quảng cáo đang tính theo. Tiệm nên ghép một combo từ ${f} trở lên để đưa vào quảng cáo; bên em dựng gói đó cho tiệm.`);
+    E.push(`• On money this is the best you currently have: nothing on the list reaches ${f}, which is the average ticket the ad budget is priced off. Build one package at ${f} or above to advertise — we will put it together with you.`);
+  } else if (f) {
+    V.push(`• Đủ để trả tiền cho một khách mới: ngân sách mỗi khách được tính theo hoá đơn trung bình ${f} của tiệm, nên thứ đem đi quảng cáo phải đáng từ ${f} trở lên. Quảng cáo món rẻ hơn mức đó thì tiền bỏ ra mua một khách còn lớn hơn tiền khách đó trả.`);
+    E.push(`• Enough to pay for a new customer: the per-customer budget is priced off your ${f} average ticket, so what the ad sells has to be worth ${f} or more. Advertise something cheaper and the money spent winning the customer is bigger than the money they hand over.`);
+  } else {
+    V.push('• Chưa đủ lịch hẹn để biết hoá đơn trung bình của tiệm, nên bên em chưa đặt mức giá sàn cho dịch vụ quảng cáo — tạm chọn theo thời lượng và tiền thu trên mỗi giờ ghế, và chỉnh lại ngay khi có đủ lịch.');
+    E.push('• There are not enough appointments yet to know your average ticket, so no price floor has been set on what the ad sells — for now it is chosen on length and earnings per chair-hour, and it gets corrected as soon as the bookings are there.');
+  }
+
+  V.push(`• Đủ dài để đáng một chuyến đi: từ ${MIN_AD_MINUTES} phút trở lên, và trong nhóm đó xếp theo tiền thu trên mỗi GIỜ GHẾ — không phải theo giá ghi trên bảng. Một dịch vụ ${fmt(4500)} làm 40 phút đẻ ra nhiều tiền hơn một dịch vụ ${fmt(6000)} làm 90 phút.`);
+  E.push(`• Long enough to be worth the trip: ${MIN_AD_MINUTES} minutes or more, and inside that group we put first whatever earns most per CHAIR-HOUR, not whatever carries the biggest price on the board. A ${fmt(4500)} service that takes 40 minutes earns more than a ${fmt(6000)} one that takes 90.`);
+
+  if (addOns.length) {
+    V.push(`Bên em cố ý KHÔNG quảng cáo ${listOf(addOns)}. Tính theo tiền trên mỗi giờ ghế thì mấy món này luôn đứng đầu bảng — đúng là vì chúng quá ngắn — nhưng không ai lái xe tới tiệm chỉ để làm một món dưới nửa tiếng; khách làm thêm khi đã ngồi trên ghế rồi. Quảng cáo chúng là bỏ tiền mua khách bằng giá một hoá đơn lớn để thu về một hoá đơn nhỏ.`);
+    E.push(`We deliberately do NOT advertise ${listEn(addOns)}. Per chair-hour they top the table — precisely because they are so short — but nobody drives to a salon for something that takes under half an hour; it gets bought once the customer is already in the chair. Advertising it means paying a big-ticket price for a customer who buys a small ticket.`);
+  } else if (under.length && f) {
+    V.push(`Bên em không đưa ${listOf(under)} vào quảng cáo: dưới mức hoá đơn trung bình ${f}, bán thêm tại tiệm thì lãi hơn là bỏ tiền quảng cáo để bán.`);
+    E.push(`${listEn(under)} stays out of the ad: below the ${f} average ticket, it is more profitable sold at the counter than bought with ad money.`);
+  }
+
+  V.push('Quảng cáo một dịch vụ có tên luôn rẻ hơn quảng cáo cả tiệm, vì người bấm vào là người đã muốn đúng thứ đó.');
+  E.push('Advertising one named service always costs less than advertising the salon, because the person who clicks already wants that exact thing.');
+
+  return {
+    title,
+    head: bi(listOf(names), listEn(names)),
+    body: bi(V.join('\n'), E.join('\n')),
+    ...offer,
+  };
+}
 
 /**
  * The plan, in four questions the owner would ask if she knew to ask them.
@@ -301,19 +427,11 @@ function planSteps(input: PitchPlanInput, days: number, ceilingText: string): Pi
   // "where does it land" is the one that decides whether the answer works.
   if (dest) steps.push(dest);
 
-  const services = (input.services ?? []).map((s) => s.trim()).filter(Boolean).slice(0, 3);
+  const sells = input.sells ?? null;
   const offerVi = input.offerLine ? viOf(input.offerLine).trim() : '';
   const offerEn = input.offerLine ? enOf(input.offerLine).trim() : '';
-  if (services.length || offerVi) {
-    const headVi = [services.length ? listOf(services) : '', offerVi ? `kèm ${offerVi}` : ''].filter(Boolean).join(' — ');
-    const headEn = [services.length ? listEn(services) : '', offerEn ? `with ${offerEn}` : ''].filter(Boolean).join(' — ');
-    steps.push({
-      title: bi('Quảng cáo dịch vụ gì', 'What the ad sells'),
-      head: bi(headVi, headEn),
-      body: bi(
-        'Đây là những dịch vụ mang về nhiều tiền nhất trên mỗi giờ ghế của tiệm — không phải dịch vụ ghi giá cao nhất trên bảng. Quảng cáo một dịch vụ cụ thể luôn rẻ hơn quảng cáo cả tiệm, vì người bấm vào là người đã muốn đúng thứ đó.',
-        'These earn you the most per chair-hour — not the highest price on the board, which is a different thing. Advertising one named service always costs less than advertising the salon, because the person who clicks already wants that exact thing.'),
-    });
+  if (sells?.rows.length || offerVi) {
+    steps.push(sellsStep(sells, offerVi, offerEn));
   }
 
   const run = (input.runDays ?? []).map((d) => viOf(d));
@@ -494,29 +612,77 @@ export function adsPitch(input: {
     basis: input.basis,
     steps: planSteps(input, days, fmt(ceiling)),
     todo: input.aim?.doNext ?? null,
+    // THREE NUMBERS THAT TELL ONE STORY, IN ORDER.
+    //
+    // The third used to be the spending ceiling — the same $28 that the
+    // paragraph underneath calls the profit a new customer leaves behind. Both
+    // readings are correct (the ceiling IS that profit) and putting them two
+    // lines apart with different labels made one number mean two things on the
+    // one screen an owner reads before saying yes. The count that decides the
+    // offer takes its place: spend this, spend that in total, and you are square
+    // at this many customers. The ceiling is explained once, in words, below.
     figures: [
       { value: fmt(daily), label: bi('mỗi ngày', 'per day') },
       { value: fmt(total), label: bi(`cả đợt ${days} ngày`, `for ${days} days`) },
-      { value: fmt(ceiling), label: bi('tối đa mỗi khách mới', 'max per new customer') },
+      ...(need
+        ? [{ value: String(need), label: bi('khách mới là huề vốn', 'new customers to break even') }]
+        : [{ value: fmt(ceiling), label: bi('tối đa mỗi khách mới', 'max per new customer') }]),
     ],
     headline: bi('Muốn có khách ngay? Bên em đề xuất chạy thử', 'Want customers now? Here is what we suggest'),
+    /**
+     * FOUR SHORT SENTENCES, ONE IDEA EACH, IN THE ORDER AN OWNER ASKS THEM.
+     *
+     * This was one paragraph of four clauses, and it failed on the two things
+     * a card like this must not do.
+     *
+     *   1. One number, two jobs. $28 sat in the figures as "most per new
+     *      customer" and in the prose as "what a new customer leaves you".
+     *      Same number, opposite direction, two lines apart. It is the same
+     *      number for a good reason and now the sentence SAYS so instead of
+     *      leaving the owner to work it out.
+     *   2. The capacity figure read as a promise. "cần 8 khách để lấy lại
+     *      tiền, và trong 14 ngày tiệm nhận thêm được khoảng 98 khách" put a
+     *      break-even count and a seat count in one breath, and $224 for 98
+     *      customers is what the owner takes away. That is a promise no
+     *      campaign keeps. Capacity now gets its own sentence, introduced as
+     *      what it is — whether there are chairs for the customers — and tied
+     *      to the break-even count rather than to the money.
+     *
+     * Line breaks are deliberate: the screen renders them, and four short
+     * lines get read where one dense block gets skipped.
+     */
     why: bi(
       (input.ticketEstimated
-        ? 'Con số dưới đây tính theo BẢNG GIÁ của tiệm, chưa phải từ lịch hẹn thật — đủ để bắt đầu, và bên em chỉnh lại sau vài tuần khi có số thật. '
+        ? 'Con số dưới đây tính theo BẢNG GIÁ của tiệm, chưa phải từ lịch hẹn thật — đủ để bắt đầu, và bên em chỉnh lại sau vài tuần khi có số thật.\n'
         : '')
-      + `Một khách mới, sau khi trả công thợ, để lại cho tiệm khoảng ${fmt(ceiling)}. Nên chừng nào mỗi khách tốn dưới ${fmt(ceiling)} thì tiệm lãi ngay từ lần đầu họ tới.`
-      // "khung giờ trống còn chỗ cho 717" was true arithmetic and unsayable to
-      // a client. The figure is conservative now (see ad-capacity) and the
-      // sentence says what it IS — extra visits the salon could take without
-      // anyone waiting — rather than implying a measurement of empty hours.
-      + (need ? ` Đợt này cần ${need} khách để lấy lại tiền${room ? `, và trong ${days} ngày tiệm nhận thêm được khoảng ${room} khách mà không ai phải chờ` : ''}.` : '')
-      + ' Bên em chạy, theo dõi từng ngày, và tự tắt nếu vượt ngưỡng.',
+      + `Tiệm bỏ ra ${fmt(daily)} mỗi ngày, tổng ${fmt(total)} cho ${days} ngày.\n`
+      + `Một khách mới, sau khi đã trả công thợ, để lại cho tiệm khoảng ${fmt(ceiling)}. Đó vừa là tiền tiệm giữ được, vừa là mức TỐI ĐA bên em được phép chi để kéo một khách về — chi hơn ${fmt(ceiling)} là lỗ ngay từ khách đó.`
+      + (need
+        ? `\nVậy nên đợt này chỉ cần ${need} khách mới là lấy lại đủ tiền. Từ khách thứ ${need + 1} trở đi là tiệm lãi.`
+        : '')
+      // Capacity answers "are there chairs", never "how many customers will
+      // come". Said in the same breath as the break-even count it was read as
+      // a forecast — see the comment above.
+      + (room && need
+        ? `\nCòn chỗ ngồi thì dư: ${days} ngày tới tiệm nhận thêm được khoảng ${room} lượt khách mà không ai phải chờ, trong khi đợt này chỉ cần ${need}.`
+        : room
+          ? `\n${days} ngày tới tiệm nhận thêm được khoảng ${room} lượt khách mà không ai phải chờ.`
+          : '')
+      + `\nBên em chạy và soi mỗi ngày. Khi một khách mới bắt đầu tốn hơn ${fmt(ceiling)}, bên em tự tắt chứ không đợi tiệm hỏi.`,
       (input.ticketEstimated
-        ? 'The figures below come from your PRICE LIST, not from bookings yet — enough to start with, and we correct them once real numbers arrive. '
+        ? 'The figures below come from your PRICE LIST, not from bookings yet — enough to start with, and we correct them once real numbers arrive.\n'
         : '')
-      + `A new customer leaves you about ${fmt(ceiling)} after the tech is paid. So as long as one costs less than ${fmt(ceiling)}, you are ahead on their very first visit.`
-      + (need ? ` This run needs ${need} of them to get the money back${room ? `, and over ${days} days you could take about ${room} more without anyone waiting` : ''}.` : '')
-      + ' We run it, watch it daily, and switch it off ourselves if it goes over the line.'),
+      + `You put in ${fmt(daily)} a day, ${fmt(total)} over ${days} days.\n`
+      + `A new customer leaves you about ${fmt(ceiling)} once the tech is paid. That is both what you keep and the MOST we are allowed to spend to bring one in — over ${fmt(ceiling)} and that customer lost you money.`
+      + (need
+        ? `\nSo this run only needs ${need} new customers to pay for itself. From the ${need + 1}${ordSuffix(need + 1)} one on, you are ahead.`
+        : '')
+      + (room && need
+        ? `\nChairs are not the problem: over the next ${days} days you can take about ${room} more visits with nobody waiting, and this run needs ${need}.`
+        : room
+          ? `\nOver the next ${days} days you can take about ${room} more visits with nobody waiting.`
+          : '')
+      + `\nWe run it and check it daily. The moment a new customer starts costing more than ${fmt(ceiling)}, we switch it off ourselves rather than waiting for you to ask.`),
     cta: bi(`Đồng ý — chạy thử ${days} ngày`, `Yes — run the ${days}-day test`),
     request: `Tiệm đồng ý chạy quảng cáo thử: ${fmt(daily)}/ngày × ${days} ngày (~${fmt(total)}) · ngưỡng ${fmt(ceiling)}/khách mới`,
   };

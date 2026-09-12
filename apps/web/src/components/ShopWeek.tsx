@@ -240,7 +240,11 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
               ))}
             </div>
           )}
-          <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.65, marginTop: adsPlan.figures.length ? 0 : 7 }}>{adsPlan.why}</div>
+          {/* pre-line: the reasoning is four short sentences, one idea each —
+              what it costs, what a customer is worth, how many pay it back,
+              whether there are chairs. Run together they became the paragraph
+              an owner told us she could not follow. */}
+          <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.65, marginTop: adsPlan.figures.length ? 0 : 7, whiteSpace: 'pre-line' }}>{adsPlan.why}</div>
 
           {/* The plan, numbered. An owner who cannot follow marketing can still
               follow four steps, and four steps she can read before she says yes
@@ -260,7 +264,13 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{st.title}</div>
                     <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.4, marginTop: 2 }}>{st.head}</div>
-                    <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 3 }}>{st.body}</div>
+                    {/* pre-line: the "what the ad sells" step states its three
+                        reasons one per line, each carrying one of the salon's
+                        own numbers. Run together as a paragraph they are the
+                        part an owner skips — and the reasons are the whole
+                        point of showing them. Steps whose body is a single
+                        paragraph are unaffected. */}
+                    <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 3, whiteSpace: 'pre-line' }}>{st.body}</div>
                     {/* The trigger, boxed away from the reasoning around it.
                         "Meta sau" with the condition buried in a paragraph is
                         the same as "Meta sau" with no condition — nobody finds

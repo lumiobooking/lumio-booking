@@ -1,4 +1,5 @@
 import { adsPitch } from './ads-pitch';
+import { pickAdServices } from './ad-service';
 import { viOf, enOf, bi, type Txt } from './i18n';
 
 const base = { ceilingCents: 3800, dailyCents: 1400, days: 14, totalCents: 19600, bookingsToBreakEven: 6, openSlots: 14, feasible: 'yes' as const };
@@ -7,9 +8,16 @@ describe('adsPitch', () => {
   it('offers three numbers and a yes, in the shop\'s own words', () => {
     const p = adsPitch(base);
     expect(p.state).toBe('offer');
-    expect(p.figures.map((f) => f.value)).toEqual(['$14', '$196', '$38']);
-    expect(viOf(p.why)).toMatch(/để lại cho tiệm khoảng \$38.*mỗi khách tốn dưới \$38 thì tiệm lãi ngay/);
-    expect(viOf(p.why)).toMatch(/cần 6 khách để lấy lại tiền, và trong 14 ngày tiệm nhận thêm được khoảng 14 khách mà không ai phải chờ/);
+    // Spend, total spend, and the count that decides it. The ceiling used to
+    // be the third figure and the paragraph called the same $38 a profit —
+    // one number doing two jobs on the screen an owner reads before saying yes.
+    expect(p.figures.map((f) => f.value)).toEqual(['$14', '$196', '6']);
+    expect(viOf(p.figures[2].label)).toBe('khách mới là huề vốn');
+    expect(viOf(p.why)).toMatch(/Tiệm bỏ ra \$14 mỗi ngày, tổng \$196 cho 14 ngày/);
+    // The two readings of $38 are reconciled in one sentence instead of being
+    // left two lines apart for the owner to reconcile herself.
+    expect(viOf(p.why)).toMatch(/vừa là tiền tiệm giữ được, vừa là mức TỐI ĐA bên em được phép chi/);
+    expect(viOf(p.why)).toMatch(/chỉ cần 6 khách mới là lấy lại đủ tiền\. Từ khách thứ 7 trở đi là tiệm lãi/);
     expect(viOf(p.cta!)).toBe('Đồng ý — chạy thử 14 ngày');
   });
 
@@ -21,8 +29,8 @@ describe('adsPitch', () => {
   it('promises the switch-off before it is needed', () => {
     // The sentence that makes a yes safe to give has to be on the screen at
     // the moment of the yes, not produced later in an argument.
-    expect(viOf(adsPitch(base).why)).toMatch(/tự tắt nếu vượt ngưỡng/);
-    expect(enOf(adsPitch(base).why)).toMatch(/switch it off ourselves if it goes over the line/);
+    expect(viOf(adsPitch(base).why)).toMatch(/tốn hơn \$38, bên em tự tắt chứ không đợi tiệm hỏi/);
+    expect(enOf(adsPitch(base).why)).toMatch(/we switch it off ourselves rather than waiting for you to ask/);
   });
 
   it('SAYS NO when there are not enough free chairs, and offers nothing', () => {
@@ -70,7 +78,14 @@ describe('adsPitch', () => {
     platform: { label: bi('Google (Tìm kiếm + Maps)', 'Google (Search + Maps)'), key: 'google' },
     secondPlatform: bi('Meta (Facebook + Instagram)', 'Meta (Facebook + Instagram)'),
     platformFromData: false,
-    services: ['Gel manicure', 'Dip powder'],
+    // The pick as ad-service.ts produces it: two real destination services out
+    // of a menu whose per-chair-hour table is topped by a five-minute wax.
+    sells: pickAdServices([
+      { name: 'Chin', priceCents: 800, durationMinutes: 5, bookings: 3 },
+      { name: 'Gel manicure', priceCents: 5500, durationMinutes: 60, bookings: 41 },
+      { name: 'Dip powder', priceCents: 5000, durationMinutes: 45, bookings: 22 },
+      { name: 'Polish change', priceCents: 1500, durationMinutes: 30, bookings: 12 },
+    ], 4500),
     offerLine: bi('Giảm 15% khung trưa thứ Ba', '15% off Tuesday middays'),
     runDays: [bi('Thứ Hai', 'Monday'), bi('Thứ Ba', 'Tuesday')],
     pauseDays: [bi('Thứ Bảy', 'Saturday')],
@@ -91,10 +106,58 @@ describe('adsPitch', () => {
     expect(viOf(s[0].body)).not.toMatch(/nail salon near me/);
   });
 
-  it('sells the services that earn most per chair-hour, with the week\'s offer', () => {
+  it('names only services worth advertising, and the offer gets its own box', () => {
     const s = adsPitch(planned).steps;
-    expect(viOf(s[1].head)).toBe('Gel manicure và Dip powder — kèm Giảm 15% khung trưa thứ Ba');
-    expect(viOf(s[1].body)).toMatch(/nhiều tiền nhất trên mỗi giờ ghế/);
+    // The head is the answer to "which service" and nothing else. The offer is
+    // a second decision and used to be crammed into the same bold line.
+    expect(viOf(s[1].head)).toBe('Dip powder và Gel manicure');
+    expect(viOf(s[1].head)).not.toMatch(/kèm/);
+    expect(viOf(s[1].whenTitle ?? bi('', ''))).toBe('Ưu đãi đi kèm');
+    expect(viOf(s[1].when ?? bi('', ''))).toMatch(/Giảm 15% khung trưa thứ Ba/);
+  });
+
+  it('NEVER leads the ad with the five-minute wax that tops the per-hour table', () => {
+    // The bug this whole path exists for: $8 / 5 min is $96 an hour and beats a
+    // $55 full set on paper, so the card told a live salon to advertise "Chin".
+    const s = adsPitch(planned).steps;
+    expect(viOf(s[1].head)).not.toMatch(/Chin/);
+    expect(enOf(s[1].head)).not.toMatch(/Chin/);
+    // And it says out loud that it was left out, which is the part that reads
+    // as expertise rather than as a list.
+    expect(viOf(s[1].body)).toMatch(/cố ý KHÔNG quảng cáo Chin/);
+    expect(enOf(s[1].body)).toMatch(/do NOT advertise Chin/);
+  });
+
+  it('shows the three reasons with this salon\'s own numbers in them', () => {
+    const s = adsPitch(planned).steps;
+    const v = viOf(s[1].body);
+    expect(v).toMatch(/Gel manicure \$55\/60 phút · 41 lượt đặt trong 30 ngày qua/);
+    expect(v).toMatch(/hoá đơn trung bình \$45/);
+    expect(v).toMatch(/từ 30 phút trở lên/);
+    // One reason per line — a run-on paragraph is the thing an owner skips.
+    expect(v.split('\n').length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('asks for the two missing fields instead of guessing when the menu is unusable', () => {
+    const s = adsPitch({
+      ...planned,
+      sells: pickAdServices([{ name: 'Gel', priceCents: 0, durationMinutes: 0 }], 4500),
+    }).steps;
+    expect(viOf(s[1].head)).toBe('Giảm 15% khung trưa thứ Ba');
+    expect(viOf(s[1].body)).toMatch(/cần có GIÁ và có THỜI LƯỢNG/);
+    expect(viOf(s[1].body)).not.toMatch(/Gel/);
+  });
+
+  it('says so, and what to build, when nothing on the menu reaches the ticket', () => {
+    const s = adsPitch({
+      ...planned,
+      sells: pickAdServices([
+        { name: 'Polish change', priceCents: 1500, durationMinutes: 30, bookings: 9 },
+        { name: 'Pedicure', priceCents: 3500, durationMinutes: 45, bookings: 4 },
+      ], 6000),
+    }).steps;
+    expect(viOf(s[1].body)).toMatch(/không dịch vụ nào trên bảng đạt \$60/);
+    expect(viOf(s[1].body)).toMatch(/ghép một combo từ \$60 trở lên/);
   });
 
   it('names the days to run, the days to stop, and the hours to aim at', () => {
@@ -175,7 +238,7 @@ describe('a thin profile changes where the ads point, not whether they run', () 
   it('STILL OFFERS the budget — the numbers do not disappear', () => {
     const p = adsPitch({ ...base, aim: thin });
     expect(p.state).toBe('offer');
-    expect(p.figures.map((f) => f.value)).toEqual(['$14', '$196', '$38']);
+    expect(p.figures.map((f) => f.value)).toEqual(['$14', '$196', '6']);
     expect(p.cta).not.toBeNull();
   });
 
@@ -278,16 +341,50 @@ describe('the capacity sentence is one an agency can say out loud', () => {
   it('never claims empty HOURS — it claims extra customers, which is what was measured', () => {
     const vi = viOf(adsPitch(base).why);
     expect(vi).not.toMatch(/khung giờ trống của tiệm còn chỗ cho/);
-    expect(vi).toMatch(/nhận thêm được khoảng 14 khách mà không ai phải chờ/);
+    expect(vi).toMatch(/nhận thêm được khoảng 14 lượt khách mà không ai phải chờ/);
+  });
+
+  it('NEVER lets the seat count read as a forecast of customers', () => {
+    // "$224 gets you 98 customers" is what an owner took away from a sentence
+    // that put a break-even count and a capacity count in one breath. The seat
+    // count now arrives under its own heading and next to what is needed.
+    const vi = viOf(adsPitch({ ...base, openSlots: 98, bookingsToBreakEven: 8 }).why);
+    expect(vi).toMatch(/Còn chỗ ngồi thì dư/);
+    expect(vi).toMatch(/trong khi đợt này chỉ cần 8/);
+    // and on its own line, never in the same breath as the break-even count
+    const lines = vi.split('\n');
+    expect(lines.some((l) => /lấy lại đủ tiền/.test(l) && /nhận thêm được/.test(l))).toBe(false);
+  });
+
+  it('never prints a dollar figure whose meaning changes between the two lines', () => {
+    const p = adsPitch(base);
+    // The ceiling appears in the figures row only when there is no break-even
+    // count to show instead — and never alongside a paragraph calling it profit.
+    const inFigures = p.figures.some((f) => f.value === '$38');
+    expect(inFigures).toBe(false);
+  });
+
+  it('falls back to the ceiling in the figures when break-even cannot be computed', () => {
+    const p = adsPitch({ ...base, bookingsToBreakEven: null });
+    expect(p.figures.map((f) => f.value)).toEqual(['$14', '$196', '$38']);
+    expect(viOf(p.why)).not.toMatch(/là lấy lại đủ tiền/);
+  });
+
+  it('counts the first profitable customer correctly in both languages', () => {
+    const p = adsPitch({ ...base, bookingsToBreakEven: 2 });
+    expect(viOf(p.why)).toMatch(/Từ khách thứ 3 trở đi/);
+    expect(enOf(p.why)).toMatch(/From the 3rd one on/);
+    expect(enOf(adsPitch({ ...base, bookingsToBreakEven: 20 }).why)).toMatch(/From the 21st one on/);
+    expect(enOf(adsPitch({ ...base, bookingsToBreakEven: 12 }).why)).toMatch(/From the 13th one on/);
   });
 
   it('ties the room to the campaign length, so the figure has a window on it', () => {
-    expect(viOf(adsPitch({ ...base, days: 21 }).why)).toMatch(/trong 21 ngày/);
+    expect(viOf(adsPitch({ ...base, days: 21 }).why)).toMatch(/21 ngày tới tiệm nhận thêm được/);
   });
 
   it('drops the clause entirely rather than printing a room it does not have', () => {
     const p = adsPitch({ ...base, openSlots: null, feasible: 'unknown' });
-    expect(viOf(p.why)).toMatch(/cần 6 khách để lấy lại tiền\./);
+    expect(viOf(p.why)).toMatch(/chỉ cần 6 khách mới là lấy lại đủ tiền\./);
     expect(viOf(p.why)).not.toMatch(/nhận thêm được/);
     // And it still offers: not knowing the room is not a reason to refuse.
     expect(p.state).toBe('offer');

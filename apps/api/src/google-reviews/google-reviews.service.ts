@@ -67,6 +67,35 @@ export const AUTO_REPLY_DELAY_MIN = 30;
  */
 export const AUTO_REPLY_DAILY_CAP = 20;
 
+/**
+ * How many missing suggestions one sync will write.
+ *
+ * Each one is a model call. A salon that arrives with a long unanswered
+ * backlog should not turn a single fifteen-minute tick into two hundred of
+ * them; it drains a few at a time instead, which nobody notices and nothing
+ * has to wait for.
+ */
+export const DRAFT_BACKFILL_PER_SYNC = 10;
+
+/**
+ * Does this review, already on file, still need a suggestion written for it?
+ *
+ * Pulled out of the sync loop because the dangerous half of this decision is
+ * the NO: a yes writes a sentence nobody had, a wrong yes overwrites what the
+ * owner typed at midnight about a customer who was bleeding. So the rule is
+ * tested on its own, and it says no to everything that has been touched —
+ * replied, skipped, or already carrying any draft at all, whoever wrote it.
+ */
+export function needsDraftBackfill(
+  row: { status?: string | null; draftReply?: string | null; repliedAt?: Date | string | null },
+  repliedOnGoogle = false,
+): boolean {
+  if (repliedOnGoogle) return false;
+  if (row.repliedAt) return false;
+  if (String(row.draftReply ?? '').trim()) return false;
+  return row.status === 'DRAFTED' || row.status === 'NEEDS_ATTENTION';
+}
+
 /** A blank or masked ("••••") secret must never overwrite the stored one. */
 function cleanSecret(v: unknown): string | null {
   if (typeof v !== 'string') return null;
@@ -520,6 +549,8 @@ export class GoogleReviewsService {
     const salonName = await this.salonName(tenantId);
     let drafted = 0;
     let alerted = 0;
+    /** Suggestions written this run for reviews that were already on file. */
+    let backfilled = 0;
     for (const r of reviews) {
       const gid = (r.reviewId || (r.name || '').split('/').pop() || '').trim();
       if (!gid) continue;
@@ -562,7 +593,34 @@ export class GoogleReviewsService {
         }
       } else {
         // Keep content fresh; never clobber a decision the manager already acted on.
-        await this.prisma.googleReview.update({ where: { id: existing.id }, data: base });
+        //
+        // AND FILL IN A DRAFT THAT IS MISSING.
+        //
+        // Drafting only ran for rows being CREATED, so every review already in
+        // the database when this shipped kept its empty box for ever — which
+        // is every review a salon actually has. The feature was live and
+        // invisible, and the only cure was "delete everything and re-sync",
+        // by hand, on fifty-five salons.
+        //
+        // A row that still needs answering and has no suggestion gets one on
+        // the next tick. Nothing a person has touched is overwritten: a row
+        // that is REPLIED or SKIPPED is left exactly as it is, and an existing
+        // draft — including one the salon edited — is never replaced.
+        const wantsDraft = needsDraftBackfill(
+          existing as unknown as { status?: string | null; draftReply?: string | null; repliedAt?: Date | null },
+          already,
+        );
+        // Bounded: a salon arriving with two hundred unanswered reviews would
+        // otherwise fire two hundred model calls in one tick. The rest are
+        // picked up fifteen minutes later, and the backlog drains on its own.
+        const room = backfilled < DRAFT_BACKFILL_PER_SYNC;
+        await this.prisma.googleReview.update({
+          where: { id: existing.id },
+          data: wantsDraft && room
+            ? { ...base, draftReply: await this.generateReply(stars, r.comment || '', s, salonName, r.reviewer?.displayName || '') }
+            : base,
+        });
+        if (wantsDraft && room) backfilled++;
       }
     }
     await this.writeSettings(tenantId, { lastSyncAt: new Date().toISOString() });
@@ -571,6 +629,7 @@ export class GoogleReviewsService {
       this.logger.warn(`Auto-reply pass failed for ${tenantId}: ${String(e).slice(0, 120)}`);
       return 0;
     });
+    if (backfilled) this.logger.log(`Wrote ${backfilled} missing reply suggestion(s) for ${tenantId}.`);
     return { fetched: reviews.length, drafted, alerted, posted };
   }
 

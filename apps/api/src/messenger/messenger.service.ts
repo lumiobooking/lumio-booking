@@ -15,6 +15,7 @@ import {
 } from './inbound-media';
 import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
 import { withBookingLink } from './booking-link';
+import { FbPageRow, FbPagesBody, walkFbPages } from './fb-pages';
 import { isSameVisit, servicesAsked, type OpenVisit } from './one-visit';
 import { leadDossier, rawMemoryFallback, LeadFacts } from './lead-memory';
 import { InboxEventsService } from './inbox-events.service';
@@ -323,18 +324,15 @@ export class MessengerService implements OnModuleInit {
       } catch (e) {
         trace.push(`publish scopes: could not read — ${String(e).slice(0, 80)}`);
       }
-      const pagesRes = await fetch(
-        `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(tok.access_token)}`,
-      );
-      const pagesData = (await pagesRes.json()) as { data?: { id: string; name?: string; access_token?: string; instagram_business_account?: { id?: string } }[]; error?: { message?: string } };
-      if (pagesData.error) {
+      const walked = await this.fetchAllFbPages(tok.access_token, trace);
+      if (walked.error) {
         // Meta told us exactly what is wrong — passing that through beats a
         // guessed "no pages" every time.
-        this.logger.warn(`fb oauth /me/accounts error for ${tenantId}: ${pagesData.error.message || 'unknown'}`);
-        trace.push(`accounts: ERROR — ${pagesData.error.message || 'unknown'}`);
-        return finish(`fb=error&msg=${encodeURIComponent(`accounts_error:${(pagesData.error.message || 'unknown').slice(0, 140)}`)}`);
+        this.logger.warn(`fb oauth /me/accounts error for ${tenantId}: ${walked.error}`);
+        return finish(`fb=error&msg=${encodeURIComponent(`accounts_error:${walked.error.slice(0, 140)}`)}`);
       }
-      let pages = pagesData.data || [];
+      let pages: FbPageRow[] = walked.pages;
+      this.logger.log(`fb oauth ${tenantId}: /me/accounts returned ${pages.length} page(s) across the cursor`);
       trace.push(`accounts: ${pages.length} page(s)`);
       if (!pages.length) {
         // Known Meta quirk: /me/accounts often OMITS pages the user manages
@@ -353,7 +351,13 @@ export class MessengerService implements OnModuleInit {
           this.logger.log(`fb oauth fallback for ${tenantId}: /me/accounts empty, granular pages = ${ids.length}`);
           trace.push(`granular scopes: ${ids.length} page id(s) ${ids.length ? '[' + ids.slice(0, 5).join(', ') + ']' : ''}`);
           const fetched: typeof pages = [];
-          for (const id of ids.slice(0, 25)) {
+          // This cap was 25 as well, for no reason beyond matching the page
+          // size that has just been fixed above. It is one request per Page,
+          // so it stays bounded — just not at a number that silently hides a
+          // client's Page from an agency managing dozens of them.
+          const FALLBACK_MAX = 200;
+          if (ids.length > FALLBACK_MAX) trace.push(`granular: ${ids.length} ids, fetching the first ${FALLBACK_MAX}`);
+          for (const id of ids.slice(0, FALLBACK_MAX)) {
             const pr = await fetch(
               `https://graph.facebook.com/v21.0/${id}?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(tok.access_token)}`,
             );
@@ -463,6 +467,21 @@ export class MessengerService implements OnModuleInit {
    *  that the platform already knows (any tenant). Page identity is global —
    *  a token belongs to the page — so this crosses tenants SAFELY: it never
    *  reads or moves tenant data, it only keeps existing links alive. */
+  /** The real network behind the walk in fb-pages.ts. */
+  private async fetchAllFbPages(
+    userToken: string,
+    trace: string[],
+  ): Promise<{ pages: FbPageRow[]; error?: string }> {
+    const walked = await walkFbPages(userToken, async (url) => {
+      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      return (await res.json()) as FbPagesBody;
+    }, trace);
+    if (walked.truncated && walked.pages.length) {
+      this.logger.warn(`fb oauth: page walk stopped early at ${walked.pages.length} page(s)`);
+    }
+    return { pages: walked.pages, error: walked.error };
+  }
+
   private async healKnownPages(
     pages: { id: string; name?: string; access_token?: string; instagram_business_account?: { id?: string } }[],
   ): Promise<number> {

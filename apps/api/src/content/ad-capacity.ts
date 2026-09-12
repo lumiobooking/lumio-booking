@@ -69,13 +69,69 @@ export const MIN_HISTORY_DAYS = 14;
 /** At or above this, the shop is full and more traffic has nowhere to sit. */
 export const FULL_PCT = 92;
 
+/**
+ * THE TWO SAFETY FACTORS, AND WHY A RAW CAPACITY NUMBER IS USELESS.
+ *
+ * The first version of this file computed open hours x chairs and printed the
+ * result: "your quiet hours hold 717". That is arithmetically true and useless
+ * as advice — it is the number you get if every chair is busy every open minute
+ * for a fortnight, which no salon has ever done. The agency owner who has to
+ * say this figure out loud to a client asked for a number he can defend, and
+ * 717 is not one.
+ *
+ * So two factors, each defensible in a single sentence to a salon owner:
+ *
+ *   ADS_SHARE            one two-week campaign is asked to fill a QUARTER of
+ *                        the genuinely free chair-time, not all of it. The rest
+ *                        is for walk-ins, regulars rebooking, and the ordinary
+ *                        unevenness of a working week.
+ *
+ *   EXTRA_PER_CHAIR_DAY  and never more than one extra customer per technician
+ *                        per day, whatever the arithmetic says. "Could each of
+ *                        your techs take one more customer a day?" is a
+ *                        question an owner answers yes to without thinking, and
+ *                        that is the bar this number has to clear.
+ *
+ * The smaller of the two wins. In practice the cap governs, which is the point:
+ * the figure on screen is the one the owner would have guessed, and the working
+ * printed beside it is "5 thợ x 14 ngày x 1 khách".
+ */
+export const ADS_SHARE = 0.25;
+export const EXTRA_PER_CHAIR_DAY = 1;
+
 export type CapacityBasis = 'measured' | 'assumed-hours' | 'unknown';
+
+/**
+ * Where the chair count came from.
+ *
+ * 'staff' is the list the salon set up. 'busiest-day' is a MEASUREMENT taken
+ * when that list is empty — a great many salons never fill it in, and refusing
+ * to answer for all of them is not a service. If this shop has ever had nine
+ * hours of work booked on a nine-hour day, two people were working; the busiest
+ * day it has ever had is a floor on how many chairs it has, and it costs no
+ * extra query because the booking minutes are already here.
+ */
+export type ChairsFrom = 'staff' | 'busiest-day' | 'none';
 
 export interface CapacityInput {
   /** Minutes the salon is open across one week, from its own opening hours. */
   openMinutesPerWeek?: number | null;
   /** How many people can serve a customer at the same time. */
   chairs?: number | null;
+  /**
+   * Booked minutes on the salon's busiest single day, when it has one.
+   * Used only to infer a chair count for a salon that never set its staff up.
+   */
+  busiestDayMinutes?: number | null;
+  /**
+   * How many days a week the salon actually opens.
+   *
+   * Needed because the inferred chair count divides a day's booked minutes by
+   * the length of a DAY, and a six-day week divided by seven makes every day
+   * look shorter than it is — which rounds the chair count up and quietly
+   * inflates the figure the owner is asked to defend.
+   */
+  openDaysPerWeek?: number | null;
   /** Minutes booked through Lumio over `historyDays`. */
   bookedMinutes?: number | null;
   /** How many days that booked figure covers. */
@@ -94,29 +150,47 @@ export interface Capacity {
   basis: CapacityBasis;
   /** What is missing, when the honest answer is "we do not know". */
   missing: ('hours' | 'chairs')[];
+  /** The chair count actually used, and where it came from. */
+  chairs: number | null;
+  chairsFrom: ChairsFrom;
 }
 
 const DEFAULT_SLOT_MINUTES = 60;
 
 export function adCapacity(i: CapacityInput): Capacity {
-  const chairs = num(i.chairs);
   const hours = num(i.openMinutesPerWeek);
-  const missing: ('hours' | 'chairs')[] = [];
-  if (!hours || hours <= 0) missing.push('hours');
-  if (!chairs || chairs <= 0) missing.push('chairs');
-
-  // Without somebody to do the work there is no capacity question to answer,
-  // and no assumption worth making: "how many staff" is one field away.
-  if (!chairs || chairs <= 0) {
-    return { slots: null, utilisationPct: null, basis: 'unknown', missing };
-  }
-
+  const days = Math.max(1, i.campaignDays);
   const openWeek = hours && hours > 0 ? hours : ASSUMED_OPEN_MINUTES_PER_WEEK;
   const basis: CapacityBasis = hours && hours > 0 ? 'measured' : 'assumed-hours';
 
-  const days = Math.max(1, i.campaignDays);
+  // The staff list first; the busiest day the salon has ever worked second.
+  // Very many salons never fill the staff list in, and "we cannot say" for all
+  // of them helps nobody — their own booking book answers the question.
+  const stated = num(i.chairs);
+  const busiest = num(i.busiestDayMinutes);
+  const openDays = Math.min(7, Math.max(1, num(i.openDaysPerWeek) ?? 6));
+  const dayMinutes = openWeek / openDays;
+  const implied = busiest && busiest > 0 && dayMinutes > 0
+    ? Math.max(1, Math.round(busiest / dayMinutes))
+    : null;
+  const chairs = stated && stated > 0 ? stated : implied;
+  const chairsFrom: ChairsFrom = stated && stated > 0 ? 'staff' : implied ? 'busiest-day' : 'none';
+
+  const missing: ('hours' | 'chairs')[] = [];
+  if (!hours || hours <= 0) missing.push('hours');
+  if (!chairs) missing.push('chairs');
+
+  // No staff list and no booking history: there is nothing to measure and
+  // nothing worth guessing. Null, so the caller says what is missing rather
+  // than printing a number it cannot stand behind.
+  if (!chairs) {
+    return { slots: null, utilisationPct: null, basis: 'unknown', missing, chairs: null, chairsFrom };
+  }
+
   const capacityMinutes = openWeek * chairs * (days / 7);
-  if (capacityMinutes <= 0) return { slots: null, utilisationPct: null, basis: 'unknown', missing };
+  if (capacityMinutes <= 0) {
+    return { slots: null, utilisationPct: null, basis: 'unknown', missing, chairs, chairsFrom };
+  }
 
   // Booked minutes only count as evidence once there are enough days of them.
   // Below that, an empty book is what a new account looks like AND what an
@@ -131,11 +205,17 @@ export function adCapacity(i: CapacityInput): Capacity {
   const freeMinutes = Math.max(0, capacityMinutes - bookedInWindow);
   const slot = Math.max(15, num(i.slotMinutes) ?? DEFAULT_SLOT_MINUTES);
 
+  // The two safety factors, smaller wins. See ADS_SHARE / EXTRA_PER_CHAIR_DAY.
+  const fromFreeTime = Math.floor((freeMinutes * ADS_SHARE) / slot);
+  const fromChairs = Math.floor(chairs * days * EXTRA_PER_CHAIR_DAY);
+
   return {
-    slots: Math.floor(freeMinutes / slot),
+    slots: Math.max(0, Math.min(fromFreeTime, fromChairs)),
     utilisationPct,
     basis,
     missing,
+    chairs,
+    chairsFrom,
   };
 }
 
@@ -147,6 +227,15 @@ export function isFull(c: Capacity): boolean {
 function num(v: unknown): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/** How many days a week this salon opens at all. */
+export function openDaysPerWeek(
+  days: { closed?: boolean; openMinutes?: number; closeMinutes?: number; intervals?: { open: number; close: number }[] }[] | null | undefined,
+): number | null {
+  if (!Array.isArray(days) || days.length === 0) return null;
+  const open = days.filter((d) => d && !d.closed && (openMinutesPerWeek([d]) ?? 0) > 0).length;
+  return open > 0 ? open : null;
 }
 
 /** Open minutes in one week, from the salon's own business hours. */

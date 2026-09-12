@@ -9,7 +9,7 @@ describe('adsPitch', () => {
     expect(p.state).toBe('offer');
     expect(p.figures.map((f) => f.value)).toEqual(['$14', '$196', '$38']);
     expect(viOf(p.why)).toMatch(/để lại cho tiệm khoảng \$38.*mỗi khách tốn dưới \$38 thì tiệm lãi ngay/);
-    expect(viOf(p.why)).toMatch(/cần 6 khách để lấy lại tiền, mà khung giờ trống của tiệm còn chỗ cho 14/);
+    expect(viOf(p.why)).toMatch(/cần 6 khách để lấy lại tiền, và trong 14 ngày tiệm nhận thêm được khoảng 14 khách mà không ai phải chờ/);
     expect(viOf(p.cta!)).toBe('Đồng ý — chạy thử 14 ngày');
   });
 
@@ -33,7 +33,7 @@ describe('adsPitch', () => {
     expect(p.cta).toBeNull();
     expect(p.request).toBeNull();
     expect(p.figures).toEqual([]);
-    expect(viOf(p.why)).toMatch(/cần 20 khách.*chỉ còn chỗ cho 4.*mua khách không có ghế ngồi/);
+    expect(viOf(p.why)).toMatch(/cần 20 khách.*chỉ nhận thêm được khoảng 4 khách.*mua khách không có ghế ngồi/);
     expect(viOf(p.why)).toMatch(/lấp chỗ trống bằng khách cũ trước/);
   });
 
@@ -246,5 +246,33 @@ describe('the recommendation shows what it was read from', () => {
     const out = adsPitch({ ...base, basis }).basis!;
     expect(out.filter((b) => !b.known)).toHaveLength(1);
     expect(viOf(out.find((b) => !b.known)!.value)).toBe('chưa nối');
+  });
+});
+
+/**
+ * THE SENTENCE THAT GOES IN FRONT OF A PAYING CLIENT.
+ *
+ * The block said "your quiet hours have room for 717". True arithmetic, and
+ * the agency owner who has to read it aloud to a salon said, correctly, that
+ * he could not defend it. A recommendation is only as good as the least
+ * defensible number in it.
+ */
+describe('the capacity sentence is one an agency can say out loud', () => {
+  it('never claims empty HOURS — it claims extra customers, which is what was measured', () => {
+    const vi = viOf(adsPitch(base).why);
+    expect(vi).not.toMatch(/khung giờ trống của tiệm còn chỗ cho/);
+    expect(vi).toMatch(/nhận thêm được khoảng 14 khách mà không ai phải chờ/);
+  });
+
+  it('ties the room to the campaign length, so the figure has a window on it', () => {
+    expect(viOf(adsPitch({ ...base, days: 21 }).why)).toMatch(/trong 21 ngày/);
+  });
+
+  it('drops the clause entirely rather than printing a room it does not have', () => {
+    const p = adsPitch({ ...base, openSlots: null, feasible: 'unknown' });
+    expect(viOf(p.why)).toMatch(/cần 6 khách để lấy lại tiền\./);
+    expect(viOf(p.why)).not.toMatch(/nhận thêm được/);
+    // And it still offers: not knowing the room is not a reason to refuse.
+    expect(p.state).toBe('offer');
   });
 });

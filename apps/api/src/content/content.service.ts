@@ -20,7 +20,7 @@ import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
 import { estimateTicket, isEstimate } from './ticket-estimate';
 import { assessSalon, adsAim } from './salon-assessment';
-import { adCapacity, isFull, openMinutesPerWeek } from './ad-capacity';
+import { adCapacity, isFull, openMinutesPerWeek, openDaysPerWeek } from './ad-capacity';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
@@ -179,6 +179,7 @@ export class ContentService {
      */
     chairs: number | null;
     openMinutesPerWeek: number | null;
+    openDaysPerWeek: number | null;
     /** The salon's website, when it has one. A source the assessment reads. */
     website: string | null;
     /**
@@ -463,9 +464,9 @@ export class ContentService {
     const hoursRow = await this.prisma.setting.findFirst({
       where: { tenantId, key: 'booking_rules' }, select: { value: true },
     }).catch(() => null);
-    const openWeek = openMinutesPerWeek(
-      (hoursRow?.value as { businessHours?: unknown } | null)?.businessHours as never,
-    );
+    const businessHours = (hoursRow?.value as { businessHours?: unknown } | null)?.businessHours as never;
+    const openWeek = openMinutesPerWeek(businessHours);
+    const openDays = openDaysPerWeek(businessHours);
     const rates = staffRows.map((r) => Number(r.commissionPercent ?? 0)).filter((n) => n > 0 && n < 100);
     const staffAvgPct = rates.length ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : null;
 
@@ -548,6 +549,7 @@ export class ContentService {
         : null,
       chairs,
       openMinutesPerWeek: openWeek,
+      openDaysPerWeek: openDays,
       menu: services,
       website: (ex as { website?: string }).website ?? null,
       lead,
@@ -1228,9 +1230,22 @@ export class ContentService {
      * the whole account; the short version is that open hours times chairs is
      * a fact about the salon, and it exists before the first booking does.
      */
+    // The busiest single day this salon has worked, so a shop that never filled
+    // in its staff list still gets an answer: the loads are weekday x block
+    // summed over the window, so one weekday's total divided by the weeks in it
+    // is what that day looks like.
+    const perWeekday = new Map<number, number>();
+    for (const l of ctx.revenue.loads) perWeekday.set(l.weekday, (perWeekday.get(l.weekday) ?? 0) + l.minutes);
+    const weeksInWindow = LOAD_WINDOW_DAYS / 7;
+    const busiestDayMinutes = perWeekday.size
+      ? Math.max(...Array.from(perWeekday.values())) / weeksInWindow
+      : null;
+
     const capacity = adCapacity({
       openMinutesPerWeek: ctx.openMinutesPerWeek,
+      openDaysPerWeek: ctx.openDaysPerWeek,
       chairs: ctx.chairs,
+      busiestDayMinutes,
       bookedMinutes: ctx.revenue.loads.reduce((sum, l) => sum + l.minutes, 0),
       historyDays: LOAD_WINDOW_DAYS,
       slotMinutes: ctx.avgServiceMinutes,
@@ -1310,8 +1325,15 @@ export class ContentService {
         value: capacity.slots === null
           ? bi(`chưa tính được — thiếu ${capacity.missing.includes('chairs') ? 'danh sách thợ' : 'giờ mở cửa'}`,
             `cannot compute — ${capacity.missing.includes('chairs') ? 'no staff on file' : 'no opening hours on file'}`)
-          : bi(`${capacity.slots} lượt · đang kín ${capacity.utilisationPct}% (${ctx.chairs} thợ × giờ mở cửa${capacity.basis === 'assumed-hours' ? ', giờ là giả định' : ''})`,
-            `${capacity.slots} visits · ${capacity.utilisationPct}% full (${ctx.chairs} staff × opening hours${capacity.basis === 'assumed-hours' ? ', hours assumed' : ''})`),
+          : bi(
+            `${capacity.slots} lượt — ${capacity.chairs} thợ × ${CAMPAIGN_DAYS} ngày × 1 khách thêm/ngày`
+              + `${capacity.chairsFrom === 'busiest-day' ? ' (số thợ suy từ ngày đông nhất tiệm đã làm, vì tiệm chưa nhập danh sách thợ)' : ''}`
+              + `${capacity.basis === 'assumed-hours' ? ' (giờ mở cửa là giả định)' : ''}`
+              + ` · tiệm đang kín ${capacity.utilisationPct}%`,
+            `${capacity.slots} visits — ${capacity.chairs} staff × ${CAMPAIGN_DAYS} days × 1 extra a day`
+              + `${capacity.chairsFrom === 'busiest-day' ? ' (staff count inferred from the busiest day worked — no staff list on file)' : ''}`
+              + `${capacity.basis === 'assumed-hours' ? ' (opening hours assumed)' : ''}`
+              + ` · ${capacity.utilisationPct}% full`),
         known: capacity.slots !== null,
       },
       {
@@ -2759,9 +2781,22 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
      * the whole account; the short version is that open hours times chairs is
      * a fact about the salon, and it exists before the first booking does.
      */
+    // The busiest single day this salon has worked, so a shop that never filled
+    // in its staff list still gets an answer: the loads are weekday x block
+    // summed over the window, so one weekday's total divided by the weeks in it
+    // is what that day looks like.
+    const perWeekday = new Map<number, number>();
+    for (const l of ctx.revenue.loads) perWeekday.set(l.weekday, (perWeekday.get(l.weekday) ?? 0) + l.minutes);
+    const weeksInWindow = LOAD_WINDOW_DAYS / 7;
+    const busiestDayMinutes = perWeekday.size
+      ? Math.max(...Array.from(perWeekday.values())) / weeksInWindow
+      : null;
+
     const capacity = adCapacity({
       openMinutesPerWeek: ctx.openMinutesPerWeek,
+      openDaysPerWeek: ctx.openDaysPerWeek,
       chairs: ctx.chairs,
+      busiestDayMinutes,
       bookedMinutes: ctx.revenue.loads.reduce((sum, l) => sum + l.minutes, 0),
       historyDays: LOAD_WINDOW_DAYS,
       slotMinutes: ctx.avgServiceMinutes,

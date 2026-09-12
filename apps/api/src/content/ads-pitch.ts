@@ -345,7 +345,7 @@ export function adsPitch(input: {
       steps: [],
       headline: bi('Lúc này chưa nên chạy quảng cáo', 'Now is not the moment to advertise'),
       why: bi(
-        `Đợt nhỏ nhất mà còn đo được cần ${need} khách mới hoà vốn, trong khi khung giờ trống của tiệm chỉ còn chỗ cho ${room}. Bỏ tiền lúc này là mua khách không có ghế ngồi. Bên em lấp chỗ trống bằng khách cũ trước — không tốn tiền quảng cáo — rồi mở lại sau.`,
+        `Đợt nhỏ nhất mà còn đo được cần ${need} khách mới hoà vốn, trong khi tiệm chỉ nhận thêm được khoảng ${room} khách. Bỏ tiền lúc này là mua khách không có ghế ngồi. Bên em lấp chỗ trống bằng khách cũ trước — không tốn tiền quảng cáo — rồi mở lại sau.`,
         `The smallest campaign that can still be measured needs ${need} new customers to break even, and your quiet hours only hold ${room}. Spending now buys customers with nowhere to sit. We will fill those gaps with your past customers first — which costs nothing — and come back to ads after.`),
       cta: null,
       request: null,
@@ -370,13 +370,17 @@ export function adsPitch(input: {
         ? 'Con số dưới đây tính theo BẢNG GIÁ của tiệm, chưa phải từ lịch hẹn thật — đủ để bắt đầu, và bên em chỉnh lại sau vài tuần khi có số thật. '
         : '')
       + `Một khách mới, sau khi trả công thợ, để lại cho tiệm khoảng ${fmt(ceiling)}. Nên chừng nào mỗi khách tốn dưới ${fmt(ceiling)} thì tiệm lãi ngay từ lần đầu họ tới.`
-      + (need ? ` Đợt này cần ${need} khách để lấy lại tiền${room ? `, mà khung giờ trống của tiệm còn chỗ cho ${room}` : ''}.` : '')
+      // "khung giờ trống còn chỗ cho 717" was true arithmetic and unsayable to
+      // a client. The figure is conservative now (see ad-capacity) and the
+      // sentence says what it IS — extra visits the salon could take without
+      // anyone waiting — rather than implying a measurement of empty hours.
+      + (need ? ` Đợt này cần ${need} khách để lấy lại tiền${room ? `, và trong ${days} ngày tiệm nhận thêm được khoảng ${room} khách mà không ai phải chờ` : ''}.` : '')
       + ' Bên em chạy, theo dõi từng ngày, và tự tắt nếu vượt ngưỡng.',
       (input.ticketEstimated
         ? 'The figures below come from your PRICE LIST, not from bookings yet — enough to start with, and we correct them once real numbers arrive. '
         : '')
       + `A new customer leaves you about ${fmt(ceiling)} after the tech is paid. So as long as one costs less than ${fmt(ceiling)}, you are ahead on their very first visit.`
-      + (need ? ` This run needs ${need} of them to get the money back${room ? `, and your quiet hours have room for ${room}` : ''}.` : '')
+      + (need ? ` This run needs ${need} of them to get the money back${room ? `, and over ${days} days you could take about ${room} more without anyone waiting` : ''}.` : '')
       + ' We run it, watch it daily, and switch it off ourselves if it goes over the line.'),
     cta: bi(`Đồng ý — chạy thử ${days} ngày`, `Yes — run the ${days}-day test`),
     request: `Tiệm đồng ý chạy quảng cáo thử: ${fmt(daily)}/ngày × ${days} ngày (~${fmt(total)}) · ngưỡng ${fmt(ceiling)}/khách mới`,

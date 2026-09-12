@@ -539,7 +539,17 @@ export class GoogleReviewsService {
       if (!existing) {
         // Decide the status, then draft a reply (AI) only when one is needed.
         const status = this.decide(stars, r.comment || '', s, already);
-        const draft = status === 'DRAFTED'
+        // A SUGGESTION FOR THE HARD ONES TOO.
+        //
+        // Only DRAFTED reviews got a draft, so the reviews that are genuinely
+        // difficult to answer — the angry one-star at eleven at night — were
+        // the ones handed over with a blank box. That is backwards: a five-star
+        // "Loved it" writes itself, and the one that matters is the one an
+        // owner stares at and puts off for three days.
+        //
+        // The status does not change. NEEDS_ATTENTION still never auto-posts;
+        // it now arrives with a starting point that a person edits and sends.
+        const draft = (status === 'DRAFTED' || status === 'NEEDS_ATTENTION')
           ? await this.generateReply(stars, r.comment || '', s, salonName, r.reviewer?.displayName || '')
           : null;
         const created = await this.prisma.googleReview.create({
@@ -669,6 +679,15 @@ export class GoogleReviewsService {
 
 STYLE: ${toneDesc}; sound like a real, sincere human — never robotic or templated. Greet by the reviewer's first name if given, otherwise "Hi there,". Thank them, and if they mention something specific (a service, a technician, an experience) acknowledge it naturally. Reply in the SAME language as the review. Keep it concise: 1-3 sentences.
 
+IF THE REVIEW IS NEGATIVE (3 stars or fewer, or a complaint inside a higher rating) — this reply is PUBLIC and permanent, and some of what it could say has legal weight:
+- Be brief. Two sentences. Thank them for telling you, say you are sorry the visit was not what they wanted, and ask them to contact the salon directly so the owner can speak with them.
+- NEVER accept fault, apologise FOR an act, or agree that anything described actually happened. "We're sorry your visit wasn't what you hoped for" — never "we're sorry we hurt you".
+- NEVER dispute, correct or explain away what the customer said. Arguing in public loses even when the salon is right.
+- NEVER mention anyone's health, injury, pain, infection, scarring, or any medical or legal matter, even to deny it — not one word, whatever the review claims.
+- NEVER offer a refund, a free service, a discount or any compensation. That is the owner's decision and Google's policy forbids offers in replies.
+- NEVER name a staff member, and never comment on one.
+- Do not be defensive, wounded, or sarcastic.
+
 GOOGLE POLICY — never include any of these (they can get the reply or the listing penalized): promotional language, discounts, coupons or offers (e.g. "come back for 10% off"); incentives of any kind; keyword stuffing (cramming service names, city names, or business keywords to game search); phone numbers, emails, URLs, addresses, or any contact info; the customer's last name or private details; opinions on politics, religion, ethics, or social issues. Never be defensive, sarcastic, or argumentative; never invent facts or promise refunds.
 
 If the review is negative or mentions a problem: briefly acknowledge it, apologize sincerely, and warmly invite them to give the salon another chance — WITHOUT posting any contact details.
@@ -708,6 +727,28 @@ Output ONLY the final reply text: no quotes, no preamble.${extra}`;
   private draftReply(stars: number, comment: string, tone: GbrSettings['tone'], salonName: string, first: string): string {
     const hi = first ? `Hi ${first}, ` : 'Hi there, ';
     const salon = salonName || 'our salon';
+
+    // THE TEMPLATE POOL BELOW IS ALL PRAISE, AND IT USED TO BE THE ONLY POOL.
+    //
+    // Nothing reached it with a low rating because bad reviews were never
+    // drafted at all. Now they are, and without this branch a one-star review
+    // alleging an injury would have been answered "thank you so much for the
+    // kind words and the 1-star review!" — which is the single worst sentence
+    // this product could publish in a salon's name.
+    //
+    // What a reply to a bad review may do: be sorry that the visit was not
+    // what the customer wanted, and offer to talk. What it must NOT do, in
+    // public, under the salon's name: accept fault, dispute the customer's
+    // account, discuss anyone's health or injuries, or promise money. Those
+    // are decisions for the owner, and some of them have legal weight.
+    if (stars <= 3) {
+      const sorry = [
+        `${hi}thank you for telling us. We're sorry your visit wasn't what you hoped for. Please contact ${salon} directly so the owner can speak with you personally.`,
+        `${hi}we're sorry to hear about your experience. We take this seriously and would like to speak with you — please reach out to ${salon} directly.`,
+        `${hi}thank you for taking the time to share this. This is not the experience we want anyone to have. Please get in touch with ${salon} so we can talk it through.`,
+      ];
+      return sorry[Math.abs(this.hash(comment + salon)) % sorry.length];
+    }
     const warm = [
       `${hi}thank you so much for the kind words and the ${stars}-star review! We're so happy you enjoyed your visit and we can't wait to pamper you again at ${salon}. 💅`,
       `${hi}this made our whole team smile — thank you for the ${stars} stars! It means the world to us. See you again soon at ${salon}! 💕`,
@@ -793,7 +834,31 @@ Output ONLY the final reply text: no quotes, no preamble.${extra}`;
     const rows = await this.prisma.googleReview.findMany({
       where, orderBy: [{ status: 'asc' }, { reviewCreatedAt: 'desc' }], take: 200,
     });
-    return rows;
+    // WHEN THIS ONE GOES OUT BY ITSELF.
+    //
+    // The rule lived only in autoPostDue, where nobody can see it. A salon
+    // looking at a drafted reply had no way to know whether it was waiting for
+    // them or about to publish on its own — the same card meant two opposite
+    // things. The server answers it here rather than the screen guessing,
+    // because the screen guessing is how the two drift apart.
+    const s2 = await this.getSettings(tenantId);
+    const minStars = Math.max(4, s2.autoMinStars);
+    return rows.map((r) => {
+      const willPost = !s2.approveFirst
+        && r.status === 'DRAFTED'
+        && !r.repliedAt
+        && Boolean(r.draftReply)
+        && r.starRating >= minStars
+        && !this.negativeSignal(r.comment || '')
+        && Boolean(r.reviewCreatedAt);
+      return {
+        ...r,
+        /** When this reply posts itself. Null when a person has to send it. */
+        autoPostAt: willPost && r.reviewCreatedAt
+          ? new Date(new Date(r.reviewCreatedAt).getTime() + AUTO_REPLY_DELAY_MIN * 60_000).toISOString()
+          : null,
+      };
+    });
   }
 
   /** Approve (and optionally edit) a drafted reply → post it to Google. */

@@ -31,6 +31,8 @@ interface GrReview {
   id: string; googleReviewId: string; reviewerName: string | null; reviewerPhoto: string | null;
   starRating: number; comment: string | null; status: string;
   draftReply: string | null; replyText: string | null; repliedAt: string | null;
+  /** When this reply posts itself. Null when it is waiting for a person. */
+  autoPostAt?: string | null;
   reviewCreatedAt: string | null;
 }
 
@@ -117,6 +119,20 @@ const DICT: Record<string, { vi: string; en: string }> = {
   posting: { vi: 'Đang đăng…', en: 'Posting…' },
   skip: { vi: 'Bỏ qua', en: 'Skip' },
   replyOnGoogle: { vi: 'Trả lời trên Google', en: 'Reply on Google' },
+  autoIn: { vi: 'Tự đăng sau', en: 'Posts itself in' },
+  autoNow: { vi: 'Đang đăng…', en: 'Posting…' },
+  autoNote: {
+    vi: 'Không sửa gì thì câu này tự lên Google. Muốn đổi thì cứ sửa rồi bấm Duyệt & đăng — nó lên ngay.',
+    en: 'Leave it and this goes up on its own. Change it and press Approve — it goes up immediately.',
+  },
+  handDraftNote: {
+    vi: 'Câu gợi ý để tham khảo — đánh giá này KHÔNG bao giờ tự đăng. Sửa lại cho đúng ý tiệm rồi chép sang Google.',
+    en: 'A starting point only — this review never posts itself. Edit it, then copy it across to Google.',
+  },
+  copyDraft: { vi: 'Chép câu trả lời', en: 'Copy the reply' },
+  copied: { vi: '✓ Đã chép', en: '✓ Copied' },
+  newReview: { vi: 'MỚI', en: 'NEW' },
+  justReplied: { vi: 'VỪA TRẢ LỜI', en: 'JUST REPLIED' },
   markHandled: { vi: 'Đánh dấu đã xử lý', en: 'Mark handled' },
   yourReply: { vi: 'Trả lời của bạn:', en: 'Your reply:' },
   needsHuman: { vi: 'Đánh giá này cần bạn trả lời tay (không tự động).', en: 'This one needs a personal reply (no auto-reply).' },
@@ -138,6 +154,24 @@ function Inner() {
   const [reviews, setReviews] = useState<GrReview[]>([]);
   const pgReviews = usePaged(reviews, 12);
   const [filter, setFilter] = useState<'NEEDS_ATTENTION' | 'DRAFTED' | 'REPLIED' | 'ALL'>('DRAFTED');
+  // A countdown that does not move is a picture of a countdown. One tick a
+  // second, one state, and every card re-reads it — cheaper than a timer each.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  /** Landed in the last day — what "mới" means on this screen. */
+  const isFresh = (iso: string | null | undefined) =>
+    Boolean(iso) && now - new Date(iso as string).getTime() < 24 * 3600 * 1000;
+  const countdown = (iso: string) => {
+    const ms = new Date(iso).getTime() - now;
+    if (ms <= 0) return null;
+    const m = Math.floor(ms / 60000);
+    const sec = Math.floor((ms % 60000) / 1000);
+    return m > 0 ? `${m} phút ${String(sec).padStart(2, '0')}` : `${sec} giây`;
+  };
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -499,11 +533,48 @@ function Inner() {
                   <span style={{ color: r.starRating >= 4 ? '#22c55e' : '#f59e0b', fontSize: 16, letterSpacing: 1 }}>{stars(r.starRating)}</span>
                   <span style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14 }}>{r.reviewerName || 'Google user'}</span>
                   {r.reviewCreatedAt && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{fmtInTz(r.reviewCreatedAt, { dateStyle: 'short' })}</span>}
+                  {/* WHAT CHANGED SINCE YESTERDAY.
+                      Fifty-two answered reviews and two new ones look the same
+                      in a list sorted by date, and the two that matter are the
+                      two that moved. A review that arrived in the last day, and
+                      a reply that went out in the last day, each say so. */}
+                  {isFresh(r.reviewCreatedAt) && (
+                    <span style={{
+                      background: 'var(--c312e81)', color: 'var(--cc7d2fe)', fontSize: 10.5, fontWeight: 700,
+                      letterSpacing: '.06em', borderRadius: 6, padding: '2px 7px',
+                    }}>{t('newReview')}</span>
+                  )}
+                  {r.status === 'REPLIED' && isFresh(r.repliedAt) && (
+                    <span style={{
+                      background: 'var(--c064e3b)', color: 'var(--c6ee7b7)', fontSize: 10.5, fontWeight: 700,
+                      letterSpacing: '.06em', borderRadius: 6, padding: '2px 7px',
+                    }}>{t('justReplied')}</span>
+                  )}
                 </div>
                 {r.comment && <div style={{ color: 'var(--ccbd5e1)', fontSize: 13.5, lineHeight: 1.5, marginBottom: 10 }}>{r.comment}</div>}
 
                 {r.status === 'DRAFTED' && (
                   <div>
+                    {/* THE SAME CARD USED TO MEAN TWO OPPOSITE THINGS.
+                        "A reply is drafted" reads identically whether it is
+                        waiting for the owner or thirty seconds from publishing
+                        in their name. The clock removes the ambiguity, and the
+                        line under it says what leaving it alone will do. */}
+                    {r.autoPostAt && countdown(r.autoPostAt) && (
+                      <div style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 4, marginBottom: 8,
+                        padding: '10px 12px', borderRadius: 9,
+                        background: 'var(--c1e1b4b)', border: '1px solid var(--c312e81)',
+                      }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cc7d2fe)', whiteSpace: 'nowrap' }}>
+                          ⏱ {t('autoIn')} {countdown(r.autoPostAt)}
+                        </span>
+                        <span style={{ fontSize: 12.5, color: 'var(--ca5b4fc)', lineHeight: 1.55 }}>{t('autoNote')}</span>
+                      </div>
+                    )}
+                    {r.autoPostAt && !countdown(r.autoPostAt) && (
+                      <div style={{ fontSize: 12.5, color: '#22c55e', marginTop: 4, marginBottom: 8 }}>⏱ {t('autoNow')}</div>
+                    )}
                     <div style={{ ...ui.label, marginTop: 4 }}>{t('draftLabel')}</div>
                     <textarea value={drafts[r.id] ?? r.draftReply ?? ''} onChange={(e) => setDrafts({ ...drafts, [r.id]: e.target.value })}
                       rows={3} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
@@ -518,6 +589,28 @@ function Inner() {
                 {r.status === 'NEEDS_ATTENTION' && (
                   <div>
                     <div style={{ color: '#f59e0b', fontSize: 12.5, marginBottom: 8 }}>⚠️ {t('needsHuman')}</div>
+                    {/* The review that is hardest to answer used to be the one
+                        handed over with an empty box. A five-star "Loved it"
+                        writes itself; this is the one an owner puts off for
+                        three days. It gets a starting point — and a label that
+                        leaves no doubt it will never send itself. */}
+                    {r.draftReply && (
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ ...ui.label, marginTop: 2 }}>{t('draftLabel')}</div>
+                        <textarea value={drafts[r.id] ?? r.draftReply ?? ''} onChange={(e) => setDrafts({ ...drafts, [r.id]: e.target.value })}
+                          rows={3} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+                        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 6 }}>{t('handDraftNote')}</div>
+                        <button
+                          onClick={() => {
+                            const text = drafts[r.id] ?? r.draftReply ?? '';
+                            navigator.clipboard?.writeText(text)
+                              .then(() => { setCopiedId(r.id); setTimeout(() => setCopiedId(null), 1500); })
+                              .catch(() => undefined);
+                          }}
+                          style={{ ...ghostBtn, marginTop: 8, color: copiedId === r.id ? '#22c55e' : 'var(--ca5b4fc)' }}
+                        >{copiedId === r.id ? t('copied') : t('copyDraft')}</button>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <a href="https://business.google.com/reviews" target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, textDecoration: 'none', display: 'inline-block' }}>{t('replyOnGoogle')}</a>
                       <button onClick={() => skip(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('markHandled')}</button>

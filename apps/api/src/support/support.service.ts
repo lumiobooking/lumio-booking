@@ -7,7 +7,7 @@ import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { hashSecret } from '../auth/password.util';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
-import { capsForLevel, levelOf, type SupportLevel } from './support-scope';
+import { capsFor, cleanCaps, levelOf, type SupportLevel } from './support-scope';
 import { crewJobs, groupByKind, crewCounts, type WeekRowLike, type CrewHold } from '../content/crew-board';
 import { cleanTeam, groupSalons, teamSummaries, isNewSalon } from './support-teams';
 
@@ -426,9 +426,22 @@ export class SupportService {
      * A SUPER_ADMIN entering a salon is not a setup employee and is not
      * narrowed: `levelOf` is only asked about a stored SUPPORT row.
      */
-    const level: SupportLevel = user.role === UserRole.SUPER_ADMIN
-      ? 'full'
-      : levelOf(await this.levelOfAccount(user.userId));
+    const row = user.role === UserRole.SUPER_ADMIN ? null : await this.scopeOfAccount(user.userId);
+    const level: SupportLevel = user.role === UserRole.SUPER_ADMIN ? 'full' : levelOf(row?.supportLevel);
+    /**
+     * The employee's own ticks, when they have any.
+     *
+     * Three presets fitted the first six employees and stopped fitting soon
+     * after — the person who only answers the inbox, the one who also needs
+     * the calendar because they reschedule. So a list may be hand-picked per
+     * employee, and when it exists it REPLACES the preset rather than adding
+     * to it: "what this person sees" has to be readable off one row, not
+     * computed by unioning a preset with an exception list.
+     *
+     * A SUPER_ADMIN is not a setup employee and is never narrowed.
+     */
+    const custom = user.role === UserRole.SUPER_ADMIN ? [] : cleanCaps(row?.supportCaps);
+    const capabilities = capsFor(level, custom);
 
     const payload: JwtPayload = {
       sub: user.userId, // the EMPLOYEE — audit logs stay honest
@@ -437,6 +450,10 @@ export class SupportService {
       tenantId: tenant.id,
       supportSession: true,
       supportLevel: level,
+      // Only when it differs from the preset, so an ordinary session's token
+      // does not grow twenty-one strings for nothing — and so that a preset
+      // that widens in a later release reaches the employees who are on it.
+      ...(custom.length ? { supportCaps: custom } : {}),
     };
     const accessToken = await this.jwt.signAsync(payload, {
       secret: this.config.get<string>('JWT_SECRET') ?? 'insecure_dev_secret_change_me',
@@ -449,7 +466,13 @@ export class SupportService {
       action: 'support.entered_salon',
       resourceType: 'tenant',
       resourceId: tenant.id,
-      metadata: { by: user.email, sessionHours: SESSION_HOURS, level },
+      // The scope is written into the audit row, not just the level: a
+      // hand-picked session has to be answerable afterwards for what it could
+      // reach, and "level: setup" alone would misdescribe it.
+      metadata: {
+        by: user.email, sessionHours: SESSION_HOURS, level,
+        ...(custom.length ? { caps: custom } : {}),
+      },
     });
 
     return {
@@ -460,35 +483,84 @@ export class SupportService {
       // guessing. The server does not trust them back — every request is
       // checked against the level inside the token (see SupportScopeGuard).
       level,
-      capabilities: capsForLevel(level),
+      // True when this employee's ticks replace the preset. The banner says so,
+      // because "Setup" on the badge while half the Setup screens are missing
+      // reads as a broken build rather than as an account.
+      custom: custom.length > 0,
+      capabilities,
     };
   }
 
-  /** The stored level for one SUPPORT row, or null when there is no such row. */
+  /**
+   * The stored scope for one SUPPORT row, or null when there is no such row.
+   *
+   * Asked for with the ticks, and asked again without them if that fails — the
+   * same two-step as `listAccounts`, and here it matters more. `supportCaps`
+   * arrives with a migration; if this select threw because the column was not
+   * there yet, the single `.catch(() => null)` it replaced would have read as
+   * "no such row", and `levelOf(null)` is `setup`. Every full-level employee
+   * would have been quietly demoted for as long as that lasted. A demotion is
+   * not a safe failure just because it is the narrow direction: it locks the
+   * person covering a salon out of screens they were using ten minutes ago.
+   */
+  private async scopeOfAccount(userId: string): Promise<{ supportLevel?: string | null; supportCaps?: unknown } | null> {
+    const where = { id: userId, role: SUPPORT_ROLE };
+    return await this.prisma.user.findFirst({
+      where, select: { supportLevel: true, supportCaps: true } as never,
+    }).catch(() => this.prisma.user.findFirst({
+      where, select: { supportLevel: true } as never,
+    }).catch(() => null)) as { supportLevel?: string | null; supportCaps?: unknown } | null;
+  }
+
+  /**
+   * The stored level for one SUPPORT row, or null when there is no such row.
+   *
+   * Kept as its own question because `mustBeSenior` asks only about the level:
+   * seniority — who may reshuffle the teams — is a rank, and the ticks are a
+   * list of screens. Widening somebody's screens must not quietly promote them.
+   */
   private async levelOfAccount(userId: string): Promise<string | null> {
-    const row = await this.prisma.user.findFirst({
-      where: { id: userId, role: SUPPORT_ROLE },
-      select: { supportLevel: true } as never,
-    }).catch(() => null) as { supportLevel?: string | null } | null;
-    return row?.supportLevel ?? null;
+    return (await this.scopeOfAccount(userId))?.supportLevel ?? null;
   }
 
   // ---- For the Super Admin (account management) ---------------------------
 
   async listAccounts() {
+    const base = {
+      id: true, email: true, firstName: true, lastName: true,
+      isActive: true, lastLoginAt: true, createdAt: true, supportLevel: true, supportTeam: true,
+    };
+    /**
+     * Asked for with the ticks, and asked again without them if that fails.
+     *
+     * `supportCaps` arrives with a migration. Between the code going live and
+     * the column existing there is a window — a rolled-back migration reopens
+     * it — and in that window a single select decides whether the owner can
+     * manage his staff at all. Losing the ticks for a minute is recoverable;
+     * a blank Support accounts screen is what gets somebody phoned at night.
+     */
     const rows = await this.prisma.user.findMany({
       where: { role: SUPPORT_ROLE },
-      select: {
-        id: true, email: true, firstName: true, lastName: true,
-        isActive: true, lastLoginAt: true, createdAt: true, supportLevel: true, supportTeam: true,
-      } as never,
+      select: { ...base, supportCaps: true } as never,
       orderBy: { createdAt: 'desc' },
-    }) as unknown as { supportLevel?: string | null; supportTeam?: string | null }[];
+    }).catch(() => this.prisma.user.findMany({
+      where: { role: SUPPORT_ROLE },
+      select: base as never,
+      orderBy: { createdAt: 'desc' },
+    })) as unknown as { supportLevel?: string | null; supportTeam?: string | null; supportCaps?: unknown }[];
     // Normalised on the way out, so the screen never has to decide what a null
     // means — and shows the same word the guard will act on. The team is
     // normalised for the same reason: '' and null both mean "no team", and a
     // screen that has to know the difference will one day get it wrong.
-    return rows.map((r) => ({ ...r, supportLevel: levelOf(r.supportLevel), supportTeam: cleanTeam(r.supportTeam) || null }));
+    // `supportCaps` is cleaned on the way out for the same reason the level is
+    // normalised: the screen draws the ticks from it, and a name this build no
+    // longer knows would draw a box that cannot be unticked.
+    return rows.map((r) => ({
+      ...r,
+      supportLevel: levelOf(r.supportLevel),
+      supportTeam: cleanTeam(r.supportTeam) || null,
+      supportCaps: cleanCaps(r.supportCaps),
+    }));
   }
 
   async createAccount(dto: { email?: string; password?: string; firstName?: string; lastName?: string; supportLevel?: string }) {
@@ -523,14 +595,25 @@ export class SupportService {
    * minted with, which is stated on the screen rather than left to be
    * discovered.
    */
-  async setAccountLevel(id: string, supportLevel: unknown) {
+  async setAccountLevel(id: string, supportLevel: unknown, supportCaps?: unknown) {
     const level = levelOf(supportLevel);
+    /**
+     * The ticks are only written when the caller sent the field.
+     *
+     * The level dropdown and the tick list are two controls on one row, and
+     * they post to one endpoint. If `undefined` meant "clear the ticks", then
+     * changing somebody's preset would silently throw away the list that was
+     * overriding it — so absent means "leave them alone" and an empty array
+     * means "back to the preset". That distinction is the whole reason this
+     * takes `unknown` rather than `Capability[]`.
+     */
+    const caps = supportCaps === undefined ? undefined : cleanCaps(supportCaps);
     const r = await this.prisma.user.updateMany({
       where: { id, role: SUPPORT_ROLE },
-      data: { supportLevel: level } as never,
+      data: (caps === undefined ? { supportLevel: level } : { supportLevel: level, supportCaps: caps }) as never,
     });
     if (r.count === 0) throw new NotFoundException('Support account not found');
-    return { id, supportLevel: level };
+    return { id, supportLevel: level, supportCaps: caps ?? null };
   }
 
   /**

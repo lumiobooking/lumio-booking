@@ -22,6 +22,23 @@ import { ALL_CAPS, type Capability } from '../auth/capabilities';
  * No per-salon assignment, and no read/write split. Both are real wants and
  * both would double the surface; the honest version of this feature is "which
  * screens", answered once per employee.
+ *
+ * THE THREE LEVELS ARE PRESETS NOW, NOT THE WHOLE ANSWER
+ *
+ * Three buckets fit the first six employees and stopped fitting soon after.
+ * A person who answers the inbox and nothing else, a person who may also see
+ * the calendar because they reschedule, a bookkeeper who needs reports and no
+ * marketing — none of them is 'content', 'setup' or 'full', and picking the
+ * nearest one either hands over too much or blocks the work.
+ *
+ * So an employee may carry an explicit capability list, and when they do it
+ * REPLACES the preset. The presets stay, because ticking twenty boxes for
+ * every new starter is how a permission system ends up with everyone on
+ * 'full'.
+ *
+ * The safety property from `levelOf` is carried over exactly: an unknown,
+ * empty or corrupted list must never read as "everything". It falls back to
+ * the preset, and the preset for garbage is `setup`.
  */
 export type SupportLevel = 'content' | 'setup' | 'full';
 
@@ -79,6 +96,77 @@ export function capsForLevel(level: SupportLevel): Capability[] {
   if (level === 'content') return [...CONTENT_CAPS];
   return [...SETUP_CAPS];
 }
+
+/**
+ * Keep only the strings that are really capabilities, in a stable order.
+ *
+ * The stored list is data that has been through a form, a JSON column and
+ * possibly a hand-written API call. A name this build does not know — a
+ * capability that was renamed, or a typo — is dropped rather than carried,
+ * because a permission system that keeps values it cannot interpret is one
+ * that cannot say what it grants.
+ */
+export function cleanCaps(raw: unknown): Capability[] {
+  const want = new Set(
+    (Array.isArray(raw) ? raw : [])
+      .map((v) => String(v ?? '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  return ALL_CAPS.filter((c) => want.has(c));
+}
+
+/**
+ * What this employee may actually see: their own list when they have one, the
+ * level's preset when they do not.
+ *
+ * A list that survives cleaning to nothing is treated as no list at all. That
+ * is deliberate and it is the safe direction: the alternative reading — "an
+ * empty list means no capabilities" — locks a real person out of every screen
+ * on a typo, and the person it locks out is the one covering a salon at the
+ * time. Falling back to the preset is visible and recoverable; a blank app is
+ * neither.
+ */
+export function capsFor(level: SupportLevel, custom?: unknown): Capability[] {
+  const picked = cleanCaps(custom);
+  return picked.length ? picked : capsForLevel(level);
+}
+
+/** Does this employee carry a hand-picked list rather than a preset? */
+export function isCustomScope(custom?: unknown): boolean {
+  return cleanCaps(custom).length > 0;
+}
+
+/**
+ * Every capability, with what it is called and whether its DATA is private.
+ *
+ * The Super Admin screen needs to draw twenty-one checkboxes without inventing
+ * its own names for them, and it needs to mark the ones that expose money or
+ * customers — those are the ticks somebody should think twice about, and a
+ * list that does not say so invites a click that hands over a salon's takings.
+ */
+export const CAP_CATALOG: { id: Capability; label: string; private: boolean }[] = [
+  { id: 'dashboard', label: 'Tổng quan (có doanh thu)', private: true },
+  { id: 'calendar', label: 'Lịch hẹn', private: true },
+  { id: 'bookings', label: 'Danh sách booking', private: true },
+  { id: 'walkins', label: 'Khách vãng lai', private: true },
+  { id: 'waitlist', label: 'Danh sách chờ', private: true },
+  { id: 'customers', label: 'Khách hàng (tên, số điện thoại)', private: true },
+  { id: 'pos', label: 'Tính tiền (POS)', private: true },
+  { id: 'orders', label: 'Hoá đơn', private: true },
+  { id: 'payments', label: 'Thanh toán thẻ', private: true },
+  { id: 'payroll', label: 'Lương thợ', private: true },
+  { id: 'reports', label: 'Báo cáo doanh thu', private: true },
+  { id: 'billing', label: 'Hoá đơn dịch vụ Lumio', private: true },
+  { id: 'inventory', label: 'Kho hàng', private: true },
+  { id: 'services', label: 'Bảng dịch vụ & giá', private: false },
+  { id: 'products', label: 'Sản phẩm bán lẻ', private: false },
+  { id: 'staff', label: 'Thợ & ca làm', private: false },
+  { id: 'marketing', label: 'Marketing, hộp thư, đăng bài', private: false },
+  { id: 'reviews', label: 'Đánh giá Google', private: false },
+  { id: 'notifications', label: 'Nhắc hẹn & thông báo', private: false },
+  { id: 'integrations', label: 'Kết nối kênh', private: false },
+  { id: 'settings', label: 'Cài đặt tiệm', private: false },
+];
 
 /**
  * A stored value into a level.
@@ -228,12 +316,22 @@ function isWrite(method: unknown): boolean {
  * `public/...` is answered before either rule: those endpoints serve the
  * salon's own customers with no token at all, and a support session must not
  * be treated more harshly than an anonymous visitor.
+ *
+ * `custom` is the employee's own hand-picked list when they carry one. It is
+ * read here rather than resolved by the caller so that the guard, the token
+ * and this rule cannot drift into three different answers: whatever the
+ * session was minted with is the same list this function asks about.
  */
-export function supportMayCall(level: SupportLevel, method: unknown, path: unknown): boolean {
+export function supportMayCall(
+  level: SupportLevel,
+  method: unknown,
+  path: unknown,
+  custom?: unknown,
+): boolean {
   const p = normalizePath(path);
   if (p === 'public' || p.startsWith('public/')) return true;
   const cap = capForApiPath(p);
   if (!cap) return true;
-  if (capsForLevel(level).includes(cap)) return true;
+  if (capsFor(level, custom).includes(cap)) return true;
   return !isPrivateCap(cap) && !isWrite(method);
 }

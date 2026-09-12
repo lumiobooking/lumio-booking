@@ -268,6 +268,7 @@ export default function AgencyPage() {
         accessToken: string;
         tenant: { id: string; name: string; slug: string };
         level?: string;
+        custom?: boolean;
         capabilities?: string[];
       }>(
         `/support/enter/${t.id}`, { method: 'POST', token, body: {} },
@@ -293,6 +294,9 @@ export default function AgencyPage() {
           supportSession: true,
           tenantName: r.tenant.name,
           supportLevel: r.level,
+          // Whether the level shown on the banner is the real answer or has
+          // been replaced by this employee's own ticked list.
+          supportCustom: r.custom === true,
           capabilities: r.capabilities,
         },
       };

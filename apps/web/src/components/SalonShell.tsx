@@ -421,12 +421,23 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           employee who cannot find the reports should know in one glance
           whether the screen is broken or their account simply does not open
           it — those two look identical from the outside. */}
-      {user.supportLevel && user.supportLevel !== 'full' && (
-        <span style={{
-          fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 20,
-          background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.25)',
-        }}>
-          {SUPPORT_LEVEL_LABEL[user.supportLevel] ?? user.supportLevel}
+      {/* A hand-picked list shows its own badge, and it shows even at level
+          'full': the preset is not what this session can reach, so printing
+          "Toàn quyền" — or printing nothing, which is what 'full' used to do —
+          would describe an account that does not exist. */}
+      {(user.supportCustom || (user.supportLevel && user.supportLevel !== 'full')) && (
+        <span
+          title={user.supportCustom
+            ? `${caps.length} mục được mở riêng cho tài khoản của bạn`
+            : undefined}
+          style={{
+            fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 20,
+            background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.25)',
+          }}
+        >
+          {user.supportCustom
+            ? `Quyền riêng · ${caps.length} mục`
+            : SUPPORT_LEVEL_LABEL[user.supportLevel as string] ?? user.supportLevel}
         </span>
       )}
       <button

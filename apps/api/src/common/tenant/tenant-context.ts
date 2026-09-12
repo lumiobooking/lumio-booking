@@ -27,6 +27,12 @@ export interface AuthenticatedUser {
   // 'content' | 'setup' | 'full'. Absent on every other kind of token, and the
   // guards treat absent as "not a support session", never as "no limits".
   supportLevel?: string | null;
+  // SUPPORT sessions only: the employee's own hand-picked capability list,
+  // when they have one. Present, it REPLACES the level's preset; absent or
+  // empty, the preset stands. Frozen into the token alongside the level, so a
+  // session carries the answer to what it was allowed to do. See
+  // support/support-scope.ts.
+  supportCaps?: string[] | null;
 }
 
 /**

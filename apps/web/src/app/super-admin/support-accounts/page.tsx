@@ -26,6 +26,19 @@ interface Account {
    * the salons they look after — never a permission. See support-teams.ts.
    */
   supportTeam?: string | null;
+  /**
+   * This employee's own list of screens. Non-empty, it REPLACES the level's
+   * preset; empty, the preset stands. Absent on a build older than the column.
+   */
+  supportCaps?: string[];
+}
+
+/** One tickable screen, as the server describes it. */
+interface CapRow {
+  id: string;
+  label: string;
+  /** Its DATA is the salon's money or its customers — a tick to think about. */
+  private: boolean;
 }
 
 type SupportLevel = 'content' | 'setup' | 'full';
@@ -37,6 +50,11 @@ type SupportLevel = 'content' | 'setup' | 'full';
  * because "level 2" tells the reader nothing and "cannot see the takings" is
  * the entire decision. The order is narrowest first: the safe pick is the one
  * the eye lands on.
+ *
+ * These are PRESETS. An employee whose slice none of the three cuts gets a
+ * hand-picked list instead, ticked on their own row, and that list replaces the
+ * preset entirely. The presets stay because ticking twenty-one boxes for every
+ * new starter is how a permission system ends up with everybody on "toàn quyền".
  */
 const LEVELS: { id: SupportLevel; label: string; sees: string; hides: string; tone: string }[] = [
   {
@@ -64,6 +82,25 @@ const LEVELS: { id: SupportLevel; label: string; sees: string; hides: string; to
 
 const LEVEL = (id: string) => LEVELS.find((l) => l.id === id) ?? LEVELS[1];
 
+/** The ticks this employee actually carries, tolerating an older API shape. */
+const custom = (a: Account): string[] => (Array.isArray(a.supportCaps) ? a.supportCaps : []);
+
+/**
+ * What the panel starts ticked with for somebody who has no list yet.
+ *
+ * Their preset's contents, so the first thing the owner does is UNtick what
+ * this person should not have. Starting from an empty panel would make the
+ * obvious first action — open it, tick the one extra screen, save — quietly
+ * remove everything else they had.
+ */
+const capsOfPreset = (level: string, all: CapRow[], presets: Record<string, string[]>): string[] => {
+  const p = presets[level];
+  if (Array.isArray(p) && p.length) return p;
+  // No answer from the server: tick nothing rather than guess, and the panel
+  // says why. Saving from here is still the owner's explicit choice.
+  return all.length ? [] : [];
+};
+
 export default function SupportAccountsPage() {
   const { token, user, ready } = useAuth();
   const router = useRouter();
@@ -79,12 +116,33 @@ export default function SupportAccountsPage() {
   // The default is the middle level, not the widest: an account created in a
   // hurry should not be the one that can read the salon's takings.
   const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', supportLevel: 'setup' as SupportLevel });
+  // The tickable screens, named by the server — the same half that refuses the
+  // requests. Empty on an API build older than this screen, which is why the
+  // panel says so instead of drawing nothing.
+  const [catalog, setCatalog] = useState<CapRow[]>([]);
+  // What each preset contains, from the server. Used only to open the tick
+  // panel on the employee's CURRENT access — see capsOfPreset.
+  const [presets, setPresets] = useState<Record<string, string[]>>({});
+  // Whose ticks are open, and the unsaved state of them. Held apart from `rows`
+  // so closing the panel without saving cannot leave a half-edited account on
+  // screen looking saved.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     if (!token) return;
     try { setRows(await apiFetch<Account[]>('/support/accounts', { token })); }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not load'); }
     finally { setLoading(false); }
+  }, [token]);
+
+  // Asked for once. A failure here is not an error on screen: the level
+  // dropdown still works, and the panel explains why it has no boxes.
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ caps: CapRow[]; presets?: Record<string, string[]> }>('/support/capabilities', { token })
+      .then((r) => { setCatalog(Array.isArray(r?.caps) ? r.caps : []); setPresets(r?.presets ?? {}); })
+      .catch(() => { setCatalog([]); setPresets({}); });
   }, [token]);
 
   useEffect(() => {
@@ -128,14 +186,41 @@ export default function SupportAccountsPage() {
     } finally { setBusy(null); }
   }
 
+  /**
+   * Change the preset. Deliberately sends NO `supportCaps`, so an employee on a
+   * hand-picked list keeps it: the two controls sit on one row and a person
+   * nudging the dropdown does not expect the ticks underneath to vanish.
+   */
   async function setLevel(a: Account, supportLevel: SupportLevel) {
     if (!token || supportLevel === a.supportLevel) return;
     setBusy(a.id); setError(null); setMsg(null);
     try {
       await apiFetch(`/support/accounts/${a.id}/level`, { method: 'POST', token, body: { supportLevel } });
-      setMsg(`${a.email}: ${LEVEL(supportLevel).label}. Có hiệu lực từ lần vào tiệm tiếp theo của bạn ấy.`);
+      setMsg(custom(a).length
+        ? `${a.email}: mức nền ${LEVEL(supportLevel).label} — nhưng bạn ấy đang dùng danh sách riêng nên mức nền chưa có tác dụng.`
+        : `${a.email}: ${LEVEL(supportLevel).label}. Có hiệu lực từ lần vào tiệm tiếp theo của bạn ấy.`);
       await load();
     } catch (e2) { setError(e2 instanceof Error ? e2.message : 'Update failed'); }
+    finally { setBusy(null); }
+  }
+
+  /**
+   * Save the ticks. An empty list is a real answer — "back to the preset" — so
+   * it is sent, not skipped.
+   */
+  async function saveCaps(a: Account, caps: string[]) {
+    if (!token) return;
+    setBusy(a.id); setError(null); setMsg(null);
+    try {
+      await apiFetch(`/support/accounts/${a.id}/level`, {
+        method: 'POST', token, body: { supportLevel: a.supportLevel, supportCaps: caps },
+      });
+      setMsg(caps.length
+        ? `${a.email}: ${caps.length} mục riêng. Có hiệu lực từ lần vào tiệm tiếp theo của bạn ấy.`
+        : `${a.email}: quay về mức ${LEVEL(a.supportLevel).label}.`);
+      setEditing(null);
+      await load();
+    } catch (e2) { setError(e2 instanceof Error ? e2.message : 'Không lưu được') }
     finally { setBusy(null); }
   }
 
@@ -176,6 +261,8 @@ export default function SupportAccountsPage() {
         <p style={{ color: 'var(--c64748b)', fontSize: 13, margin: '-10px 0 18px', lineHeight: 1.6 }}>
           Mức quyền quyết định bạn ấy thấy gì <i>bên trong</i> tiệm. Đổi mức có hiệu lực từ lần vào tiệm kế tiếp —
           phiên đang mở giữ nguyên mức đã cấp, và nhật ký ghi lại mức của từng phiên.
+          {' '}Ai cần đúng vài mục mà 3 mức không khớp thì bấm <b>Tuỳ chỉnh</b> ở dòng của bạn ấy và tick từng mục;
+          danh sách riêng <b>thay thế</b> mức nền chứ không cộng thêm.
         </p>
 
         {error && <div style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 12 }}>{error}</div>}
@@ -258,7 +345,8 @@ export default function SupportAccountsPage() {
               </button>
             </div>
           ) : (
-            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
+            <div key={a.id}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderBottom: editing === a.id ? 'none' : '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14.5 }}>{`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}</div>
                 <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>
@@ -286,15 +374,43 @@ export default function SupportAccountsPage() {
                 value={a.supportLevel}
                 disabled={busy === a.id}
                 onChange={(e) => setLevel(a, e.target.value as SupportLevel)}
-                title={`Thấy: ${LEVEL(a.supportLevel).sees}\nẨn: ${LEVEL(a.supportLevel).hides}`}
+                title={custom(a).length
+                  ? `Mức nền (đang bị danh sách riêng ${custom(a).length} mục thay thế)`
+                  : `Thấy: ${LEVEL(a.supportLevel).sees}\nẨn: ${LEVEL(a.supportLevel).hides}`}
                 style={{
-                  background: 'var(--c0f172a)', color: LEVEL(a.supportLevel).tone,
-                  border: `1px solid ${LEVEL(a.supportLevel).tone}`, borderRadius: 8,
-                  padding: '6px 9px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                  background: 'var(--c0f172a)',
+                  // Greyed while a hand-picked list is in force, because the
+                  // preset is not what this employee sees and a coloured badge
+                  // saying "Setup" next to a half-empty menu reads as a bug.
+                  color: custom(a).length ? 'var(--c64748b)' : LEVEL(a.supportLevel).tone,
+                  border: `1px solid ${custom(a).length ? 'var(--c334155)' : LEVEL(a.supportLevel).tone}`,
+                  borderRadius: 8, padding: '6px 9px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                  opacity: custom(a).length ? 0.6 : 1,
                 }}
               >
                 {LEVELS.map((l) => <option key={l.id} value={l.id} style={{ color: 'var(--ce2e8f0)' }}>{l.label}</option>)}
               </select>
+              {/* The ticks. Closed by default: most employees are on a preset,
+                  and twenty-one boxes on every row would bury the three names
+                  that answer the question for five of the six of them. */}
+              <button
+                onClick={() => {
+                  const on = editing === a.id;
+                  setEditing(on ? null : a.id);
+                  setDraft(on ? [] : custom(a).length ? custom(a) : capsOfPreset(a.supportLevel, catalog, presets));
+                  setMsg(null); setError(null);
+                }}
+                disabled={busy === a.id}
+                title="Chọn từng mục cho riêng bạn này"
+                style={{
+                  background: custom(a).length ? 'var(--c312e81)' : 'transparent',
+                  border: `1px solid ${custom(a).length ? '#6366f1' : 'var(--c334155)'}`,
+                  color: custom(a).length ? '#c7d2fe' : 'var(--c94a3b8)',
+                  borderRadius: 8, padding: '6px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                {custom(a).length ? `Riêng · ${custom(a).length}` : 'Tuỳ chỉnh'}{editing === a.id ? ' ▴' : ' ▾'}
+              </button>
               <span style={{ fontSize: 11.5, fontWeight: 700, color: a.isActive ? '#22c55e' : '#ef4444' }}>
                 {a.isActive ? 'ACTIVE' : 'DISABLED'}
               </span>
@@ -309,6 +425,91 @@ export default function SupportAccountsPage() {
                 style={{ background: 'transparent', border: 'none', color: 'var(--c64748b)', borderRadius: 8, padding: '7px 8px', fontSize: 14, cursor: 'pointer' }}>
                 🗑
               </button>
+            </div>
+            {editing === a.id && (
+              <div style={{ background: 'var(--c0f172a)', borderBottom: '1px solid var(--c1f2937)', padding: '14px 16px 16px' }}>
+                <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 700, marginBottom: 4 }}>
+                  Chọn từng mục cho {`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}
+                </div>
+                {/* Said plainly, because this is the one thing about the feature
+                    that surprises people: the list is not added to the preset,
+                    it takes its place. */}
+                <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.6, marginBottom: 12 }}>
+                  Danh sách này <b>thay thế</b> mức <b>{LEVEL(a.supportLevel).label}</b> — không phải cộng thêm.
+                  Bỏ tick hết rồi Lưu là quay về mức đó. Có hiệu lực từ lần bạn ấy vào tiệm tiếp theo.
+                </div>
+
+                {catalog.length === 0 ? (
+                  <div style={{ fontSize: 12.5, color: 'var(--cfca5a5)', lineHeight: 1.6 }}>
+                    API chưa trả về danh sách mục (bản API đang chạy cũ hơn màn hình này).
+                    Deploy lại API rồi mở lại — mức quyền ở trên vẫn dùng được bình thường.
+                  </div>
+                ) : (
+                  <>
+                    {([[false, 'Công việc hằng ngày'], [true, 'Tiền & dữ liệu khách — cân nhắc trước khi tick']] as [boolean, string][]).map(([priv, title]) => {
+                      const group = catalog.filter((c) => c.private === priv);
+                      if (!group.length) return null;
+                      return (
+                        <div key={title} style={{ marginBottom: 12 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: .3, textTransform: 'uppercase', color: priv ? '#fca5a5' : 'var(--c64748b)', marginBottom: 7 }}>
+                            {title}
+                          </div>
+                          <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))' }}>
+                            {group.map((c) => {
+                              const on = draft.includes(c.id);
+                              return (
+                                <label
+                                  key={c.id}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+                                    fontSize: 12.5, lineHeight: 1.4, padding: '7px 10px', borderRadius: 8,
+                                    background: on ? 'var(--c111827)' : 'transparent',
+                                    border: `1px solid ${on ? (priv ? '#b45309' : '#6366f1') : 'var(--c1f2937)'}`,
+                                    color: on ? 'var(--ce2e8f0)' : 'var(--c94a3b8)',
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={on}
+                                    onChange={() => setDraft(on ? draft.filter((x) => x !== c.id) : [...draft, c.id])}
+                                    style={{ accentColor: priv ? '#f59e0b' : '#6366f1', width: 15, height: 15, flex: '0 0 auto' }}
+                                  />
+                                  <span>{c.label}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
+                      <button onClick={() => saveCaps(a, draft)} disabled={busy === a.id}
+                        style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: busy === a.id ? 0.5 : 1 }}>
+                        {busy === a.id ? '…' : `Lưu ${draft.length} mục`}
+                      </button>
+                      {/* The way back, spelled out. Without it the only route
+                          off a hand-picked list is "untick all twenty-one",
+                          which nobody finds. */}
+                      <button onClick={() => saveCaps(a, [])} disabled={busy === a.id || custom(a).length === 0}
+                        title="Bỏ danh sách riêng, dùng lại mức quyền ở trên"
+                        style={{ background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer', opacity: custom(a).length === 0 ? 0.4 : 1 }}>
+                        Dùng lại mức {LEVEL(a.supportLevel).label}
+                      </button>
+                      <button onClick={() => { setEditing(null); setDraft([]); }} disabled={busy === a.id}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--c94a3b8)', fontSize: 13, cursor: 'pointer' }}>
+                        Huỷ
+                      </button>
+                      {draft.length === 0 && (
+                        <span style={{ fontSize: 12, color: 'var(--cfbbf24)' }}>
+                          Chưa tick mục nào — Lưu sẽ đưa bạn ấy về mức {LEVEL(a.supportLevel).label}.
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             </div>
           )))}
         </div>

@@ -21,7 +21,10 @@ import { levelOf, supportMayCall } from './support-scope';
  *
  * The rule itself lives in `support-scope.ts` and is tested there. In one
  * sentence: money and client data are refused outright; anything else outside
- * the employee's level can be read but not written.
+ * the employee's scope can be read but not written.
+ *
+ * "Scope" is the level's preset unless the employee carries a hand-picked list,
+ * in which case the list is the whole answer. Both ride on the token.
  */
 @Injectable()
 export class SupportScopeGuard implements CanActivate {
@@ -33,7 +36,12 @@ export class SupportScopeGuard implements CanActivate {
     // `originalUrl` is what the browser asked for, before Nest rewrote
     // anything; `url` is the fallback for the test harness.
     const path = String(req?.originalUrl ?? req?.url ?? '');
-    if (supportMayCall(levelOf(user.supportLevel), req?.method, path)) return true;
+    // The preset AND the employee's own list, both frozen into the token at
+    // enter-salon time. Passing the list here rather than re-reading the row is
+    // what keeps the session honest: changing somebody's ticks takes effect on
+    // their next entry, and the token that did the work still says what it was
+    // allowed to do.
+    if (supportMayCall(levelOf(user.supportLevel), req?.method, path, user.supportCaps)) return true;
 
     throw new ForbiddenException(
       'Tài khoản setup của bạn không mở mục này. Nhắn quản lý Lumio nếu bạn cần nó cho công việc.',

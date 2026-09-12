@@ -17,6 +17,14 @@ export interface JwtPayload {
   supportSession?: boolean;
   /** SUPPORT sessions: the level baked in when the employee entered the salon. */
   supportLevel?: string; // short-lived per-salon session for Lumio SUPPORT staff
+  /**
+   * SUPPORT sessions: the employee's own hand-picked capability list, when they
+   * have one, baked in at the same moment as the level. Absent on every older
+   * token and on every non-support token — and absent must read as "use the
+   * level's preset", never as "nothing" (which would lock the employee out of
+   * every screen) and never as "everything".
+   */
+  supportCaps?: string[];
   iat?: number; // issued-at (seconds) — used to invalidate tokens after a password change
 }
 
@@ -64,6 +72,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // on their next entry, not mid-session, which is also what makes it
     // auditable: the token that did the work says what it was allowed to do.
     supportLevel: payload.supportLevel ?? null,
+    // Same freeze, same reason. Only a real array survives: a token carrying
+    // anything else is read as no list at all, which falls back to the level's
+    // preset rather than to a blank app.
+    supportCaps: Array.isArray(payload.supportCaps) ? payload.supportCaps.map((c) => String(c)) : null,
     };
   }
 

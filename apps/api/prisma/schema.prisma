@@ -404,6 +404,12 @@ model User {
   /// Which pair of people this employee works with. A plain name, shared with
   /// the salons they look after — see Tenant.supportTeam.
   supportTeam String?
+  /// SUPPORT accounts only: this employee's own list of screens, when the three
+  /// presets do not cut the slice they need. Non-empty, it REPLACES
+  /// supportLevel's preset; empty (the default), the preset stands. A name this
+  /// build no longer knows is dropped on read, never carried — see
+  /// support/support-scope.ts.
+  supportCaps String[] @default([])
 
   // If this user is a technician, this links to their StaffMember profile.
   staffMember StaffMember?

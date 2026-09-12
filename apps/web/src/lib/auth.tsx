@@ -21,6 +21,12 @@ export interface AuthUser {
   tenantName?: string; // shown in the support banner
   /** SUPPORT sessions: how much of the salon this employee may see. */
   supportLevel?: string;
+  /**
+   * SUPPORT sessions: true when this employee's own ticked list is in force
+   * instead of the level's preset. Only the banner reads it — `capabilities` is
+   * what actually shapes the menu, and the token is what the API checks.
+   */
+  supportCustom?: boolean;
 }
 
 interface LoginResponse {

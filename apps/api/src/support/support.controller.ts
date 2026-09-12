@@ -4,6 +4,7 @@ import { SupportService, SUPPORT_ROLE } from './support.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
+import { CAP_CATALOG, SUPPORT_LEVELS, capsForLevel } from './support-scope';
 
 /**
  * SUPPORT staff working surface. Note what is NOT here: creating, suspending
@@ -113,18 +114,52 @@ export class SupportController {
     return this.svc.listAccounts();
   }
 
+  /**
+   * Every screen that can be ticked, with its Vietnamese name and whether its
+   * DATA is private.
+   *
+   * Served rather than duplicated in the web bundle on purpose: the server is
+   * the half that refuses requests, so it must also be the half that says what
+   * the boxes are. A second hand-maintained list in the browser drifts, and the
+   * drift shows up as a box that is ticked and does nothing.
+   */
+  @Roles(UserRole.SUPER_ADMIN)
+  @Get('capabilities')
+  capabilities() {
+    return {
+      caps: CAP_CATALOG,
+      levels: SUPPORT_LEVELS,
+      // What each preset already contains, so the tick panel can open on the
+      // employee's CURRENT access instead of on an empty list. Opening empty
+      // would mean the first save of a hand-picked list silently took every
+      // screen away from somebody mid-job.
+      presets: {
+        content: capsForLevel('content'),
+        setup: capsForLevel('setup'),
+        full: capsForLevel('full'),
+      },
+    };
+  }
+
   @Roles(UserRole.SUPER_ADMIN)
   @Post('accounts')
   create(@Body() dto: { email?: string; password?: string; firstName?: string; lastName?: string; supportLevel?: string }) {
     return this.svc.createAccount(dto || {});
   }
 
-  /** What this employee may see inside a salon. Applies from their next entry. */
+  /**
+   * What this employee may see inside a salon. Applies from their next entry.
+   *
+   * One endpoint for the preset AND the hand-picked list, because they are one
+   * decision: a request that omits `supportCaps` changes only the preset and
+   * leaves any list alone; one that sends `[]` puts the employee back on the
+   * preset. See SupportService.setAccountLevel.
+   */
   @Roles(UserRole.SUPER_ADMIN)
   @Post('accounts/:id/level')
   @HttpCode(200)
-  setLevel(@Param('id') id: string, @Body() dto: { supportLevel?: string }) {
-    return this.svc.setAccountLevel(id, dto?.supportLevel);
+  setLevel(@Param('id') id: string, @Body() dto: { supportLevel?: string; supportCaps?: string[] }) {
+    return this.svc.setAccountLevel(id, dto?.supportLevel, dto && 'supportCaps' in dto ? dto.supportCaps : undefined);
   }
 
   /**

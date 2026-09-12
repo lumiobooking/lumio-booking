@@ -173,6 +173,24 @@ export class GoogleReviewsService {
       clientConfigured: Boolean(this.clientId() && this.clientSecret()),
       redirectUri: this.redirectUri(),
       counts,
+      /**
+       * WHICH BUILD IS ANSWERING.
+       *
+       * There was no way to tell from the outside whether a deploy carrying
+       * auto-reply had actually landed, so the only way to find out was to wait
+       * and see whether anything got posted — which is indistinguishable from
+       * the feature being broken. This block is absent on every build before
+       * auto-reply existed, so the screen can say plainly which one it is
+       * talking to, and it reports the rule AS THE SERVER HOLDS IT rather than
+       * as anyone remembers it.
+       */
+      autoReply: {
+        live: true,
+        delayMinutes: AUTO_REPLY_DELAY_MIN,
+        dailyCap: AUTO_REPLY_DAILY_CAP,
+        /** True for THIS salon right now: 4-5 star, no complaint, posts itself. */
+        onForThisSalon: !s.approveFirst,
+      },
     };
   }
 

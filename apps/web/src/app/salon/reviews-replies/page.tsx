@@ -22,6 +22,8 @@ interface GrSettings {
   accountId: string; locationId: string; locationTitle: string; hasLocation: boolean;
   autoMinStars: number; alertMaxStars: number; approveFirst: boolean;
   alertEmail: string; tone: string; aiInstruction: string; aiEnabled: boolean; lastSyncAt: string | null;
+  /** Absent on any API build from before auto-reply existed. */
+  autoReply?: { live: boolean; delayMinutes: number; dailyCap: number; onForThisSalon: boolean } | null;
   clientConfigured: boolean; redirectUri: string;
   counts: Record<string, number>;
 }
@@ -92,6 +94,10 @@ const DICT: Record<string, { vi: string; en: string }> = {
   syncNow: { vi: 'Đồng bộ đánh giá ngay', en: 'Sync reviews now' },
   syncing: { vi: 'Đang đồng bộ…', en: 'Syncing…' },
   lastSync: { vi: 'Lần đồng bộ gần nhất', en: 'Last sync' },
+  apiOld: {
+    vi: 'Bản API đang chạy CHƯA có tính năng tự trả lời. Công tắc bên trên hiện không có tác dụng — deploy API rồi hãy chỉnh.',
+    en: 'The API build currently running does NOT have auto-reply. The switch above does nothing until the API is deployed.',
+  },
   syncStale: {
     vi: 'Đồng bộ đã ngừng — hơn 1 tiếng chưa chạy. Không có đánh giá mới nào được kéo về và không câu trả lời nào được gửi. Kiểm tra API còn sống không.',
     en: 'Sync has stopped — nothing for over an hour. No new reviews are being pulled and no replies are going out. Check the API is up.',
@@ -378,6 +384,17 @@ function Inner() {
         }}>
           {t(s.approveFirst ? 'approveOn' : 'approveOff')}
         </div>
+        {/* A switch that silently does nothing is worse than a missing switch.
+            The block is absent on older builds, which is exactly what makes it
+            a reliable test of what is answering. */}
+        {!s.autoReply?.live && (
+          <div style={{
+            fontSize: 12.5, lineHeight: 1.6, marginTop: -4, marginBottom: 12, padding: '10px 12px',
+            borderRadius: 9, background: 'var(--wash-amber)', border: '1px solid var(--cf59e0b)', color: 'var(--cfcd34d)',
+          }}>
+            ⚠ {t('apiOld')}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 220px' }}>

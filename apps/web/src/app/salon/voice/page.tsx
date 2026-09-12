@@ -183,12 +183,12 @@ const DICT: Record<string, { vi: string; en: string }> = {
 };
 
 const OUTCOME: Record<string, { vi: string; en: string; color: string }> = {
-  booked: { vi: 'Đã đặt lịch', en: 'Booked', color: '#22c55e' },
+  booked: { vi: 'Đã đặt lịch', en: 'Booked', color: 'var(--ink-good)' },
   info: { vi: 'Trả lời câu hỏi', en: 'Answered', color: 'var(--c60a5fa)' },
   no_action: { vi: 'Không đặt', en: 'No booking', color: 'var(--c94a3b8)' },
-  handoff: { vi: 'Chuyển người', en: 'Handoff', color: '#f59e0b' },
+  handoff: { vi: 'Chuyển người', en: 'Handoff', color: 'var(--ink-warn)' },
   in_progress: { vi: 'Đang gọi', en: 'In progress', color: '#a78bfa' },
-  error: { vi: 'Lỗi', en: 'Error', color: '#ef4444' },
+  error: { vi: 'Lỗi', en: 'Error', color: 'var(--ink-bad)' },
 };
 
 export default function VoicePage() {
@@ -275,7 +275,7 @@ function Inner() {
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
               <input type="checkbox" checked={c.enabled} disabled={saving} onChange={(e) => save({ enabled: e.target.checked })}
                 style={{ width: 18, height: 18, accentColor: '#6366f1', cursor: 'pointer' }} />
-              {t('enable')} — <span style={{ color: c.enabled ? '#22c55e' : 'var(--c94a3b8)', fontWeight: 700 }}>{c.enabled ? t('enabledOn') : t('enabledOff')}</span>
+              {t('enable')} — <span style={{ color: c.enabled ? 'var(--ink-good)' : 'var(--c94a3b8)', fontWeight: 700 }}>{c.enabled ? t('enabledOn') : t('enabledOff')}</span>
             </label>
           </>
         )}

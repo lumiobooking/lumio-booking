@@ -146,7 +146,7 @@ export function PostReview({ api, vi, onCount }: {
       )}
       {groups.map(([day, posts]) => (
         <div key={day} style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: day === dayKeyOf(new Date().toISOString()) ? '#fbbf24' : 'var(--c64748b)', padding: '0 2px 7px' }}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: day === dayKeyOf(new Date().toISOString()) ? 'var(--ink-warn)' : 'var(--c64748b)', padding: '0 2px 7px' }}>
             {day === dayKeyOf(new Date().toISOString()) ? T('Hôm nay', 'Today') + ' · ' : ''}{fmtDay(posts[0].scheduledAt)}
           </div>
           {posts.map((p) => <Row key={p.id} p={p} onOpen={() => setOpenId(p.id)} fmtTime={fmtTime} T={T} />)}
@@ -465,7 +465,7 @@ function Detail(props: {
                 </button>
               </>
             ) : (
-              <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 700, color: '#86efac', padding: '12px 0' }}>
+              <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 700, color: 'var(--ink-good)', padding: '12px 0' }}>
                 🟢 {T('Đã duyệt', 'Approved')}{(justApproved || p.approvedByName) ? ` — ${justApproved || p.approvedByName}` : ''} · {T('bài sẽ đăng đúng lịch', 'publishing on schedule')}
               </div>
             )}

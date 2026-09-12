@@ -525,7 +525,7 @@ function Inner() {
                 <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
                 <div style={{ fontSize: 34, fontWeight: 800, color: 'var(--cf8fafc)', lineHeight: 1.1, margin: '4px 0' }}>{s.turns}</div>
                 <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{t('wi.turns')}</div>
-                <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: isNext ? '#22c55e' : s.busy ? '#f59e0b' : 'var(--c64748b)' }}>
+                <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: isNext ? 'var(--ink-good)' : s.busy ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
                   {isNext ? t('wi.nextUp') : s.busy ? t('wi.serving') : t('wi.free')}
                 </div>
               </div>
@@ -534,7 +534,7 @@ function Inner() {
         </div>
       )}
 
-      <style>{`.wi-serving{transition:border-color .12s ease, transform .06s ease}.wi-serving:hover{border-color:#6366f1}.wi-serving:active{transform:scale(.99)}`}</style>
+      <style>{`.wi-serving{transition:border-color .12s ease, transform .06s ease}.wi-serving:hover{border-color: #6366f1}.wi-serving:active{transform:scale(.99)}`}</style>
 
       {/* Waiting queue — full width, compact grid (usually short). */}
       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{t('wi.waiting')} ({board?.waiting.length ?? 0})</div>
@@ -570,7 +570,7 @@ function Inner() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', background: 'var(--c0f172a)' }}>
                         <span style={{ flex: 1, fontSize: 11.5, fontWeight: 700, color: 'var(--c94a3b8)' }}>{t('wi.subtotal')}</span>
                         {mins > 0 && <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{mins} {t('wi.mins')}</span>}
-                        <span style={{ fontSize: 14, fontWeight: 800, color: '#22c55e' }}>{formatPrice(total, currency)}</span>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--ink-good)' }}>{formatPrice(total, currency)}</span>
                       </div>
                     </div>
                   );
@@ -883,7 +883,7 @@ function LineRow({ it, w, staff, services, t, currency, techLabel, onUpdateLine,
         <button onClick={() => setEditing(true)} title={t('wi.editLine')} aria-label={t('wi.editLine')}
           style={{ background: 'none', border: 'none', color: 'var(--c818cf8)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' }}>✎</button>
         <button onClick={() => onRemove(w.id, it.lineId)} title={t('wi.removeLine')} aria-label={t('wi.removeLine')}
-          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>×</button>
+          style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>×</button>
       </div>
     );
   }
@@ -1016,8 +1016,8 @@ function printQr(url: string, title: string) {
   if (!w) return;
   w.document.write(`<!doctype html><meta charset="utf-8"><title>${title}</title>
     <style>body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;
-      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--c0f172a);text-align:center}
-      h1{font-size:34px;margin:0 0 10px}p{font-size:17px;color:var(--c475569);margin:0 0 26px}
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color: var(--c0f172a);text-align:center}
+      h1{font-size:34px;margin:0 0 10px}p{font-size:17px;color: var(--c475569);margin:0 0 26px}
       img{width:340px;height:340px}</style>
     <h1>${title}</h1><p>Scan with your phone camera</p><img src="${src}" alt="">`);
   w.document.close();

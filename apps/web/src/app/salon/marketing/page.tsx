@@ -95,7 +95,7 @@ function Inner() {
           </select>
         </label>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
-          {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('mk.saved')}</span>}
+          {saved && <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>{t('mk.saved')}</span>}
           <button onClick={runNow} disabled={running} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{running ? t('mk.running') : t('mk.runNow')}</button>
           <button onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? t('mk.saving') : t('mk.save')}</button>
         </div>
@@ -108,7 +108,7 @@ function Inner() {
       <ReferralSection token={token} t={t} />
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 4 }}>
-        {saved && <span style={{ color: '#22c55e', fontSize: 13, alignSelf: 'center' }}>{t('mk.saved')}</span>}
+        {saved && <span style={{ color: 'var(--ink-good)', fontSize: 13, alignSelf: 'center' }}>{t('mk.saved')}</span>}
         <button onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? t('mk.saving') : t('mk.save')}</button>
       </div>
     </section>
@@ -262,7 +262,7 @@ function ReferralSection({ token, t }: { token: string | null; t: (k: string) =>
       <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '0 0 12px' }}>{t('rf.note')}</p>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <button onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? t('mk.saving') : t('mk.save')}</button>
-        {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('mk.saved')}</span>}
+        {saved && <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>{t('mk.saved')}</span>}
       </div>
     </div>
   );

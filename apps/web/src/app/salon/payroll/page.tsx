@@ -136,7 +136,7 @@ function Inner() {
               {techs.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('pr.empty')}</p>}
               {techs.map((r) => (
                 <MCard key={r.staffId}>
-                  <MHead right={<span style={{ color: '#22c55e', fontWeight: 800, fontSize: 16 }}>{formatPrice(r.totalPayCents)}</span>}>
+                  <MHead right={<span style={{ color: 'var(--ink-good)', fontWeight: 800, fontSize: 16 }}>{formatPrice(r.totalPayCents)}</span>}>
                     {r.name}
                   </MHead>
                   <MRow label={t('pr.cCount')}>{r.serviceCount}</MRow>
@@ -159,7 +159,7 @@ function Inner() {
                 <th style={ui.th}>{t('pr.cBase')}</th>
                 <th style={ui.th}>{t('pr.cTips')}</th>
                 <th style={{ ...ui.th, color: '#34d399' }}>{t('pr.cDirectTips')}</th>
-                <th style={{ ...ui.th, color: '#22c55e' }}>{t('pr.cTotal')}</th>
+                <th style={{ ...ui.th, color: 'var(--ink-good)' }}>{t('pr.cTotal')}</th>
               </tr></thead>
               <tbody>
                 {techs.length === 0 && <tr><td style={ui.td} colSpan={8}>{t('pr.empty')}</td></tr>}
@@ -172,7 +172,7 @@ function Inner() {
                     <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{r.baseCents > 0 ? formatPrice(r.baseCents) : '—'}</td>
                     <td style={{ ...ui.td, color: '#a855f7' }}>{formatPrice(r.tipsCents)}</td>
                     <td style={{ ...ui.td, color: '#34d399' }}>{(r.directTipsCents ?? 0) > 0 ? formatPrice(r.directTipsCents!) : '—'}</td>
-                    <td style={{ ...ui.td, fontWeight: 800, color: '#22c55e', fontSize: 15 }}>{formatPrice(r.totalPayCents)}</td>
+                    <td style={{ ...ui.td, fontWeight: 800, color: 'var(--ink-good)', fontSize: 15 }}>{formatPrice(r.totalPayCents)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -203,7 +203,7 @@ function Kpi({ label, value, accent, big }: { label: string; value: string; acce
   return (
     <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 16, borderLeft: `3px solid ${accent}` }}>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{label}</div>
-      <div style={{ fontSize: big ? 30 : 24, fontWeight: 800, marginTop: 4, color: big ? '#22c55e' : '#fff' }}>{value}</div>
+      <div style={{ fontSize: big ? 30 : 24, fontWeight: 800, marginTop: 4, color: big ? 'var(--ink-good)' : '#fff' }}>{value}</div>
     </div>
   );
 }
@@ -323,7 +323,7 @@ function Performance() {
             <MList>
               {rows.map((r, i) => (
                 <MCard key={r.staffId}>
-                  <MHead right={<span style={{ color: '#22c55e', fontWeight: 800 }}>{formatPrice(money(r))}</span>}>
+                  <MHead right={<span style={{ color: 'var(--ink-good)', fontWeight: 800 }}>{formatPrice(money(r))}</span>}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{medal(i)}<Ava r={r} />{r.name}</span>
                   </MHead>
                   <MRow label={t('pf.cVisits')}>{r.completed}</MRow>
@@ -363,9 +363,9 @@ function Performance() {
                         <td style={{ ...ui.td, color: 'var(--c64748b)' }}>{medal(i) || i + 1}</td>
                         <td style={ui.td}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Ava r={r} /><b>{r.name}</b>{!r.isActive && <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>({t('pf.inactive')})</span>}</span></td>
                         <td style={ui.td}>{r.completed}</td>
-                        <td style={{ ...ui.td, fontWeight: 800, color: money(r) === best.revenue && best.revenue > 0 ? '#22c55e' : 'var(--ce2e8f0)' }}>{formatPrice(money(r))}</td>
+                        <td style={{ ...ui.td, fontWeight: 800, color: money(r) === best.revenue && best.revenue > 0 ? 'var(--ink-good)' : 'var(--ce2e8f0)' }}>{formatPrice(money(r))}</td>
                         <td style={{ ...ui.td, color: r.tipsCents === best.tips && best.tips > 0 ? '#a855f7' : 'var(--ccbd5e1)', fontWeight: r.tipsCents === best.tips && best.tips > 0 ? 700 : 400 }}>{formatPrice(r.tipsCents)}</td>
-                        <td style={ui.td}>{r.reviewCount ? <span style={{ color: r.reviewCount === best.reviews && best.reviews > 0 ? '#f59e0b' : 'var(--ce2e8f0)', fontWeight: 600 }}>⭐ {r.rating} <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>({r.reviewCount})</span></span> : <span style={{ color: 'var(--ink-faint)' }}>—</span>}</td>
+                        <td style={ui.td}>{r.reviewCount ? <span style={{ color: r.reviewCount === best.reviews && best.reviews > 0 ? 'var(--ink-warn)' : 'var(--ce2e8f0)', fontWeight: 600 }}>⭐ {r.rating} <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>({r.reviewCount})</span></span> : <span style={{ color: 'var(--ink-faint)' }}>—</span>}</td>
                         <td style={{ ...ui.td, color: r.points === best.points && best.points > 0 ? '#eab308' : 'var(--ccbd5e1)', fontWeight: r.points === best.points && best.points > 0 ? 700 : 400 }}>{r.points || '—'}</td>
                         <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{r.topService ? <>{r.topService.name} <span style={{ color: 'var(--c64748b)' }}>×{r.topService.count}</span></> : '—'}</td>
                         <td style={ui.td}>

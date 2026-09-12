@@ -1138,22 +1138,22 @@ function Register() {
     const rows = cart
       .map((l) => {
         const lt = formatPrice(l.unitPriceCents * l.quantity, currency);
-        const tech = l.staffMemberId ? `<div style="font-size:11px;color:#555">${staffName(l.staffMemberId)}</div>` : '';
-        const tip = l.tipCents ? `<div style="font-size:11px;color:#555">Tip: ${formatPrice(l.tipCents, currency)}</div>` : '';
+        const tech = l.staffMemberId ? `<div style="font-size:11px;color: #555">${staffName(l.staffMemberId)}</div>` : '';
+        const tip = l.tipCents ? `<div style="font-size:11px;color: #555">Tip: ${formatPrice(l.tipCents, currency)}</div>` : '';
         const disc = l.discountPercent > 0
-          ? `<div style="font-size:11px;color:#777"><s>${formatPrice(l.origUnitPriceCents * l.quantity, currency)}</s> &nbsp;-${l.discountPercent}%</div>`
+          ? `<div style="font-size:11px;color: #777"><s>${formatPrice(l.origUnitPriceCents * l.quantity, currency)}</s> &nbsp;-${l.discountPercent}%</div>`
           : '';
-        const addon = l.isAddon ? `<span style="font-size:10px;color:#777"> (add-on)</span>` : '';
+        const addon = l.isAddon ? `<span style="font-size:10px;color: #777"> (add-on)</span>` : '';
         return `<tr><td>${l.quantity}× ${escapeHtml(l.name)}${addon}${disc}${tech}${tip}</td><td style="text-align:right;vertical-align:top">${lt}</td></tr>`;
       })
       .join('');
     const line = (label: string, val: string, bold = false) =>
       `<tr><td style="${bold ? 'font-weight:700' : ''}">${label}</td><td style="text-align:right;${bold ? 'font-weight:700' : ''}">${val}</td></tr>`;
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Receipt #${orderNumber}</title>
-      <style>body{font-family:ui-monospace,Menlo,monospace;width:300px;margin:0 auto;padding:12px;color:#000}
+      <style>body{font-family:ui-monospace,Menlo,monospace;width:300px;margin:0 auto;padding:12px;color: #000}
       h2{text-align:center;margin:4px 0}table{width:100%;border-collapse:collapse;font-size:13px}
       td{padding:2px 0;vertical-align:top}hr{border:none;border-top:1px dashed #999;margin:8px 0}
-      .center{text-align:center;font-size:12px;color:#333}</style></head><body>
+      .center{text-align:center;font-size:12px;color: #333}</style></head><body>
       <h2>Receipt</h2>
       <div class="center">Order #${orderNumber} · ${fmtInTz(new Date(), { dateStyle: 'short', timeStyle: 'short' })}</div><hr>
       <table>${rows}</table><hr>
@@ -1303,7 +1303,7 @@ function Register() {
             <button type="button" onClick={() => setShowScanner(true)} style={{ ...ghost, padding: '8px 12px', whiteSpace: 'nowrap' }}>📷 {t('po.scanCamera')}</button>
           </div>
           {scanMsg && (
-            <div style={{ fontSize: 12, color: scanMsg.ok ? '#22c55e' : '#f59e0b', marginBottom: 10 }}>{scanMsg.text}</div>
+            <div style={{ fontSize: 12, color: scanMsg.ok ? 'var(--ink-good)' : 'var(--ink-warn)', marginBottom: 10 }}>{scanMsg.text}</div>
           )}
 
           {/* Search */}
@@ -1371,7 +1371,7 @@ function Register() {
                         {grp.items.map((a) => (
                           <button key={a.id} onClick={() => addAddon(a)} className="pos-card" style={{ ...catBtn, borderStyle: 'dashed' }}>
                             <span style={cardTitle}>+ {a.name}</span>
-                            <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(a.priceCents, currency)}</span>
+                            <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(a.priceCents, currency)}</span>
                           </button>
                         ))}
                       </div>
@@ -1393,7 +1393,7 @@ function Register() {
                     <button key={p.id} onClick={() => addProduct(p)} className="pos-card" style={catBtn}>
                       <span style={cardTitle}>{p.name}</span>
                       <CatPrice priceCents={p.priceCents} discountPercent={p.discountPercent} currency={currency} />
-                      {p.trackStock && <span style={{ fontSize: 11, fontWeight: 600, color: p.stockQty > 0 ? 'var(--c94a3b8)' : '#ef4444' }}>{t('po.stock')}: {p.stockQty}</span>}
+                      {p.trackStock && <span style={{ fontSize: 11, fontWeight: 600, color: p.stockQty > 0 ? 'var(--c94a3b8)' : 'var(--ink-bad)' }}>{t('po.stock')}: {p.stockQty}</span>}
                     </button>
                   ))}
                 </div>
@@ -1463,13 +1463,13 @@ function Register() {
                         value={fromMinorUnits(l.unitPriceCents, currency)}
                         onChange={(e) => setLinePrice(l.uid, e.target.value)}
                         onFocus={(e) => e.currentTarget.select()}
-                        style={{ ...ui.input, width: 74, padding: '4px 6px', fontSize: 13, textAlign: 'right', color: l.discountPercent > 0 ? '#22c55e' : 'var(--ce2e8f0)', fontWeight: 600 }}
+                        style={{ ...ui.input, width: 74, padding: '4px 6px', fontSize: 13, textAlign: 'right', color: l.discountPercent > 0 ? 'var(--ink-good)' : 'var(--ce2e8f0)', fontWeight: 600 }}
                       />
                       {l.quantity > 1 && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>= {formatPrice(l.unitPriceCents * l.quantity, currency)}</span>}
                       {catalogPrice(l) != null && catalogPrice(l) !== l.unitPriceCents && (
                         <button onClick={() => resetLinePrice(l.uid)} title={t('po.resetPrice')} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 6, padding: '2px 6px', fontSize: 11, cursor: 'pointer' }}>↺</button>
                       )}
-                      <button onClick={() => removeLine(l.uid)} title={t('po.clear')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 15, padding: '0 2px' }}>×</button>
+                      <button onClick={() => removeLine(l.uid)} title={t('po.clear')} style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 15, padding: '0 2px' }}>×</button>
                     </div>
                   </div>
                   {/* Row 2: the controls, one line, no wrapping. */}
@@ -1524,8 +1524,8 @@ function Register() {
                 <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5, width: 72, flexShrink: 0 }}>🏷️ {t('po.promoCode')}</span>
                 {promo ? (
                   <>
-                    <span style={{ flex: 1, minWidth: 0, color: '#22c55e', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${promo.code} · ${promo.label}`}>{promo.code} · {promo.label}</span>
-                    {money.promoCents > 0 && <span style={{ color: '#22c55e', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>−{formatPrice(money.promoCents, currency)}</span>}
+                    <span style={{ flex: 1, minWidth: 0, color: 'var(--ink-good)', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${promo.code} · ${promo.label}`}>{promo.code} · {promo.label}</span>
+                    {money.promoCents > 0 && <span style={{ color: 'var(--ink-good)', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>−{formatPrice(money.promoCents, currency)}</span>}
                     <button onClick={() => { setPromo(null); setPromoInput(''); setPromoErr(null); }} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>✕</button>
                   </>
                 ) : (
@@ -1587,7 +1587,7 @@ function Register() {
                 </div>
                 <span
                   title={discountMode === 'PERCENT' && money.typedDiscount > 0 ? `${orderDiscount}% × ${formatPrice(money.subtotal, currency)}` : undefined}
-                  style={{ width: 62, textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: money.typedDiscount > 0 ? '#22c55e' : 'var(--c475569)', flexShrink: 0 }}
+                  style={{ width: 62, textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: money.typedDiscount > 0 ? 'var(--ink-good)' : 'var(--c475569)', flexShrink: 0 }}
                 >
                   {money.typedDiscount > 0 ? `−${formatPrice(money.typedDiscount, currency)}` : '—'}
                 </span>
@@ -1612,13 +1612,13 @@ function Register() {
               </div>
             )}
             {money.savings > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#22c55e', fontWeight: 600 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ink-good)', fontWeight: 600 }}>
                 <span>{t('po.youSaved')}</span><span>−{formatPrice(money.savings, currency)}</span>
               </div>
             )}
             <div style={{ borderTop: '1px solid var(--c334155)', marginTop: 4, paddingTop: 7, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>{t('po.total')}</span>
-              <span style={{ color: '#22c55e', fontSize: 22, fontWeight: 800, letterSpacing: -0.4 }}>{formatPrice(money.total, currency)}</span>
+              <span style={{ color: 'var(--ink-good)', fontSize: 22, fontWeight: 800, letterSpacing: -0.4 }}>{formatPrice(money.total, currency)}</span>
             </div>
           </div>
 
@@ -1646,7 +1646,7 @@ function Register() {
           )}
           {giftCard && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, fontSize: 16, fontWeight: 700 }}>
-              <span>{t('po.gcDue')}</span><span style={{ color: '#22c55e' }}>{formatPrice(money.due, currency)}</span>
+              <span>{t('po.gcDue')}</span><span style={{ color: 'var(--ink-good)' }}>{formatPrice(money.due, currency)}</span>
             </div>
           )}
 
@@ -1768,7 +1768,7 @@ function Register() {
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, borderTop: '1px solid var(--c334155)', paddingTop: 8 }}>
                 <span style={{ color: 'var(--c94a3b8)' }}>{money.splitRemaining > 0 ? t('po.splitRemaining') : t('po.change')}</span>
-                <span style={{ color: money.splitRemaining > 0 ? '#f59e0b' : '#22c55e' }}>
+                <span style={{ color: money.splitRemaining > 0 ? 'var(--ink-warn)' : 'var(--ink-good)' }}>
                   {formatPrice(Math.abs(money.splitRemaining), currency)}
                 </span>
               </div>
@@ -1791,7 +1791,7 @@ function Register() {
               </div>
               {money.tenderedCents > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontWeight: 600 }}>
-                  <span>{t('po.change')}</span><span style={{ color: money.change >= 0 ? '#22c55e' : '#ef4444' }}>{formatPrice(money.change, currency)}</span>
+                  <span>{t('po.change')}</span><span style={{ color: money.change >= 0 ? 'var(--ink-good)' : 'var(--ink-bad)' }}>{formatPrice(money.change, currency)}</span>
                 </div>
               )}
             </>
@@ -1911,7 +1911,7 @@ function Register() {
         <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))', zIndex: 45, background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 -4px 16px rgba(0,0,0,0.4)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{cart.length} {t('po.itemsWord')}</div>
-            <div style={{ fontSize: 19, fontWeight: 800, color: '#22c55e' }}>{formatPrice(money.total, currency)}</div>
+            <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--ink-good)' }}>{formatPrice(money.total, currency)}</div>
           </div>
           <button onClick={() => setMobileView('ticket')} style={{ ...ui.primaryBtn, padding: '12px 20px', fontSize: 15, whiteSpace: 'nowrap' }}>{t('po.viewTicket')} →</button>
         </div>
@@ -1943,7 +1943,7 @@ function Register() {
                       <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{formatPrice(h.totalCents, currency)} · {fmtInTz(h.createdAt, { hour: 'numeric', minute: '2-digit' })}</div>
                     </div>
                     <button onClick={() => recall(h)} style={{ ...ui.primaryBtn, padding: '7px 14px' }}>{lang === 'vi' ? 'Mở lại' : 'Recall'}</button>
-                    <button onClick={() => deleteHeld(h.id)} aria-label="delete" style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 18, cursor: 'pointer' }}>×</button>
+                    <button onClick={() => deleteHeld(h.id)} aria-label="delete" style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', fontSize: 18, cursor: 'pointer' }}>×</button>
                   </div>
                 ))}
             </div>
@@ -1997,12 +1997,12 @@ function IpadPairPanel({ session, onRotate, onClose, t }: {
 
 function CatPrice({ priceCents, discountPercent, currency }: { priceCents: number; discountPercent?: number; currency: string }) {
   const d = discountPercent ?? 0;
-  if (d <= 0) return <span style={{ color: '#22c55e' }}>{formatPrice(priceCents, currency)}</span>;
+  if (d <= 0) return <span style={{ color: 'var(--ink-good)' }}>{formatPrice(priceCents, currency)}</span>;
   const netP = Math.round((priceCents * (100 - d)) / 100);
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
       <span style={{ textDecoration: 'line-through', color: 'var(--c64748b)', fontSize: 11 }}>{formatPrice(priceCents, currency)}</span>
-      <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(netP, currency)}</span>
+      <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(netP, currency)}</span>
       <span style={{ background: '#ef4444', color: '#fff', borderRadius: 4, padding: '0 4px', fontSize: 10, fontWeight: 700 }}>-{d}%</span>
     </span>
   );

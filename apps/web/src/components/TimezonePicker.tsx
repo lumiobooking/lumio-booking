@@ -103,7 +103,7 @@ export function TimezonePicker({ value, onChange, selectStyle }: { value: string
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 6, fontSize: 12 }}>
         {currentTime && <span style={{ color: '#16a34a', fontWeight: 600 }}>Salon time now: {currentTime}</span>}
         {detected && detected !== value && (
-          <button type="button" onClick={() => onChange(detected)} style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', fontSize: 12, padding: 0, textDecoration: 'underline' }}>
+          <button type="button" onClick={() => onChange(detected)} style={{ background: 'none', border: 'none', color: 'var(--ink-link)', cursor: 'pointer', fontSize: 12, padding: 0, textDecoration: 'underline' }}>
             Use detected ({detected})
           </button>
         )}

@@ -129,7 +129,7 @@ export default function GatewaysPage() {
   }
 
   const copy = (t: string) => navigator.clipboard?.writeText(t).then(() => { setMsg('✓ Webhook URL copied'); }).catch(() => {});
-  const dot = (on: boolean) => <span style={{ color: on ? '#22c55e' : '#ef4444', fontWeight: 700 }}>● {on ? 'Connected' : 'Not set'}</span>;
+  const dot = (on: boolean) => <span style={{ color: on ? 'var(--ink-good)' : 'var(--ink-bad)', fontWeight: 700 }}>● {on ? 'Connected' : 'Not set'}</span>;
 
   return (
     <main style={{ maxWidth: 820, margin: '0 auto', padding: '32px 24px', color: 'var(--ce2e8f0)' }}>
@@ -404,4 +404,4 @@ const ghost: React.CSSProperties = { padding: '7px 12px', borderRadius: 8, borde
 const code: React.CSSProperties = { background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 6, padding: '3px 7px', fontFamily: 'ui-monospace, monospace', fontSize: 12, color: 'var(--ca5b4fc)' };
 const hintBox: React.CSSProperties = { marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--c334155)' };
 const codeBox: React.CSSProperties = { flex: 1, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 6, padding: '6px 10px', fontSize: 12, color: 'var(--ccbd5e1)', overflowX: 'auto', whiteSpace: 'nowrap' };
-const savedTag: React.CSSProperties = { marginLeft: 6, fontSize: 11, color: '#22c55e', border: '1px solid #22c55e', borderRadius: 999, padding: '0 6px' };
+const savedTag: React.CSSProperties = { marginLeft: 6, fontSize: 11, color: 'var(--ink-good)', border: '1px solid #22c55e', borderRadius: 999, padding: '0 6px' };

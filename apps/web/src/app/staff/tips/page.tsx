@@ -135,7 +135,7 @@ function Inner() {
               📷 {busy ? 'Processing…' : qr ? 'Change QR' : 'Upload QR'}
               <input type="file" accept="image/*" onChange={pickQr} style={{ display: 'none' }} />
             </label>
-            {qr && <button type="button" onClick={() => setQr('')} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>Remove QR</button>}
+            {qr && <button type="button" onClick={() => setQr('')} style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>Remove QR</button>}
           </div>
         </div>
 

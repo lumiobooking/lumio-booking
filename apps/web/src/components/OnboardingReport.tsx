@@ -103,7 +103,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
     catch { /* a browser that refuses the clipboard is not worth a red box */ }
   };
 
-  if (err) return <div style={{ ...ui.card, padding: 16, color: '#ef4444', fontSize: 13.5 }}>{err}</div>;
+  if (err) return <div style={{ ...ui.card, padding: 16, color: 'var(--ink-bad)', fontSize: 13.5 }}>{err}</div>;
   if (!r) return <div style={{ fontSize: 13, color: 'var(--c64748b)', padding: '18px 0' }}>Đang dựng bản đánh giá…</div>;
 
   // Every list below is iterated. A server on an older shape must produce a
@@ -142,7 +142,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
               background: copied ? 'rgba(34,197,94,.14)' : 'var(--c0f172a)',
               border: `1px solid ${copied ? '#22c55e' : 'var(--c334155)'}`, borderRadius: 9,
               padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit',
-              fontSize: 13, fontWeight: 600, color: copied ? '#22c55e' : 'var(--ccbd5e1)',
+              fontSize: 13, fontWeight: 600, color: copied ? 'var(--ink-good)' : 'var(--ccbd5e1)',
             }}
           >{copied ? '✓ Đã chép — dán vào email hoặc Zalo' : 'Chép bản này để gửi khách'}</button>
         </div>
@@ -154,7 +154,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
         note="Mỗi dòng kèm nguồn. Dòng nào không có nguồn thì không phải sự thật, nó là phỏng đoán, và ở đây không có phỏng đoán."
       >
         {known.length === 0 ? (
-          <div style={{ fontSize: 13, color: '#ef4444', lineHeight: 1.6 }}>
+          <div style={{ fontSize: 13, color: 'var(--ink-bad)', lineHeight: 1.6 }}>
             Chưa đọc được gì về tiệm này. Toàn bộ phần dưới là khung chuẩn của ngành, không phải phân tích riêng.
           </div>
         ) : (
@@ -163,7 +163,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
               <div key={i} style={{ padding: '10px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--line)' }}>
                 <div style={{ fontSize: 11, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{k.label}</div>
                 <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.55, marginTop: 3 }}>{k.value}</div>
-                <div style={{ fontSize: 11.5, color: '#22c55e', marginTop: 4 }}>↳ {k.source}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--ink-good)', marginTop: 4 }}>↳ {k.source}</div>
               </div>
             ))}
           </div>
@@ -178,10 +178,10 @@ export function OnboardingReport({ token }: { token: string | null }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
           {gaps.map((u, i) => (
             <div key={i} style={{ padding: '11px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: '#f59e0b', lineHeight: 1.4 }}>{u.label}</div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink-warn)', lineHeight: 1.4 }}>{u.label}</div>
               <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 5 }}>{u.cost}</div>
               <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55, marginTop: 6, paddingLeft: 10, borderLeft: '2px solid #38bdf8' }}>
-                <b style={{ color: '#38bdf8' }}>Cách mở:</b> {u.unlock}
+                <b style={{ color: 'var(--ink-sky)' }}>Cách mở:</b> {u.unlock}
               </div>
             </div>
           ))}
@@ -233,7 +233,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
                   {w.tasks.map((t) => (
                     <div key={t.id} style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.5 }}>
-                      <span style={{ color: t.track === 'map' ? '#6366f1' : '#38bdf8', marginRight: 6 }}>{t.track === 'map' ? '📍' : '🔍'}</span>
+                      <span style={{ color: t.track === 'map' ? 'var(--ink-link)' : 'var(--ink-sky)', marginRight: 6 }}>{t.track === 'map' ? '📍' : '🔍'}</span>
                       {t.title}
                       <span style={{ fontSize: 11.5, color: 'var(--c64748b)', marginLeft: 6 }}>≈{t.minutes}p</span>
                     </div>
@@ -254,7 +254,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
         ...ui.card, padding: 14, borderColor: '#f59e0b', background: 'rgba(245,158,11,.07)',
         fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.65,
       }}>
-        <b style={{ color: '#f59e0b' }}>Bản này không phải audit đầy đủ.</b> {r.caveat}
+        <b style={{ color: 'var(--ink-warn)' }}>Bản này không phải audit đầy đủ.</b> {r.caveat}
       </div>
     </>
   );

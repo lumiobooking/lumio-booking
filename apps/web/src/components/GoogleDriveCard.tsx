@@ -95,7 +95,7 @@ export function GoogleDriveCard({ token, onSaveClient }: {
             fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
             background: st.connected ? 'rgba(34,197,94,.14)' : 'var(--c0f172a)',
             border: `1px solid ${st.connected ? '#22c55e' : 'var(--c475569)'}`,
-            color: st.connected ? '#86efac' : 'var(--c94a3b8)',
+            color: st.connected ? 'var(--ink-good)' : 'var(--c94a3b8)',
           }}>
             {st.connected ? `Đã kết nối${st.email ? ` — ${st.email}` : ''}` : 'Chưa kết nối'}
           </span>

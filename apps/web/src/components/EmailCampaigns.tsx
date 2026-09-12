@@ -491,7 +491,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                             </span>
                           </button>
                           <button onClick={() => deleteTemplate(tpl)} title={t('Xoá mẫu', 'Delete')}
-                            style={{ flexShrink: 0, background: 'none', border: 0, color: '#ef4444', fontSize: 20, cursor: 'pointer' }}>&times;</button>
+                            style={{ flexShrink: 0, background: 'none', border: 0, color: 'var(--ink-bad)', fontSize: 20, cursor: 'pointer' }}>&times;</button>
                         </div>
                       ))}
                       <div style={{ height: 1, background: 'var(--line)', margin: '6px 0' }} />
@@ -555,7 +555,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
               <textarea value={d.body} onChange={(e) => setD({ ...d, body: e.target.value })} rows={10}
                 style={{ ...ui.input, width: '100%', resize: 'vertical', lineHeight: 1.6, fontFamily: 'ui-monospace, monospace', fontSize: 13,
                   border: bodyOver ? '1px solid #ef4444' : undefined }} />
-              <div style={{ textAlign: 'right', fontSize: 11.5, marginTop: 4, color: bodyOver ? '#ef4444' : 'var(--c64748b)', fontWeight: bodyOver ? 700 : 400 }}>
+              <div style={{ textAlign: 'right', fontSize: 11.5, marginTop: 4, color: bodyOver ? 'var(--ink-bad)' : 'var(--c64748b)', fontWeight: bodyOver ? 700 : 400 }}>
                 {d.body.length.toLocaleString()} / {BODY_MAX.toLocaleString()}
                 {bodyOver && ' — ' + t('Nội dung quá dài, hệ thống sẽ không gửi. Anh chị cắt bớt giúp em.', 'Too long — this will not send. Please trim it.')}
               </div>
@@ -845,7 +845,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                         </span>
                       )}
                     </span>
-                    <span style={{ width: 62, textAlign: 'center', flexShrink: 0, fontSize: 12.5, fontWeight: 800, color: c.sends > 2 ? '#fbbf24' : c.sends ? 'var(--ccbd5e1)' : 'var(--c475569)' }}>
+                    <span style={{ width: 62, textAlign: 'center', flexShrink: 0, fontSize: 12.5, fontWeight: 800, color: c.sends > 2 ? 'var(--ink-warn)' : c.sends ? 'var(--ccbd5e1)' : 'var(--c475569)' }}>
                       {c.sends}×
                     </span>
                     <span style={{ width: 170, flexShrink: 0, minWidth: 0 }}>
@@ -862,7 +862,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                         style={{ padding: '5px 10px', borderRadius: 999, cursor: c.unsubscribed ? 'not-allowed' : 'pointer', fontSize: 11.5, fontWeight: 700,
                           border: `1px solid ${c.replied ? '#fbbf24' : 'var(--c334155)'}`,
                           background: c.replied ? 'rgba(251,191,36,0.15)' : 'transparent',
-                          color: c.replied ? '#fbbf24' : 'var(--c64748b)', whiteSpace: 'nowrap' }}>
+                          color: c.replied ? 'var(--ink-warn)' : 'var(--c64748b)', whiteSpace: 'nowrap' }}>
                         {c.replied ? t('💬 Đã trả lời', '💬 Replied') : t('Đánh dấu', 'Mark')}
                       </button>
                     </span>
@@ -993,7 +993,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
                     </span>
                   </span>
                   <button onClick={() => saveAuto({ steps: auto.steps.filter((_, j) => j !== i) })} disabled={busy}
-                    style={{ flexShrink: 0, background: 'none', border: 0, color: '#ef4444', fontSize: 20, cursor: 'pointer' }}>&times;</button>
+                    style={{ flexShrink: 0, background: 'none', border: 0, color: 'var(--ink-bad)', fontSize: 20, cursor: 'pointer' }}>&times;</button>
                 </div>
               ))}
             </div>

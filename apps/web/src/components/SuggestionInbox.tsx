@@ -303,7 +303,7 @@ export function SuggestionInbox({
                     <Thumb media={s.media} vi={vi} small />
                     <div style={{ minWidth: 0, flex: 1, paddingRight: canDelete ? 14 : 0 }}>
                       <div style={{ fontSize: 12, color: 'var(--ce2e8f0)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{s.title}</div>
-                      <div style={{ fontSize: 11.5, color: s.status === 'skipped' ? '#fca5a5' : '#86efac', marginTop: 3, lineHeight: 1.4 }}>
+                      <div style={{ fontSize: 11.5, color: s.status === 'skipped' ? 'var(--ink-bad)' : 'var(--ink-good)', marginTop: 3, lineHeight: 1.4 }}>
                         {s.status === 'skipped' ? `✕ ${T('Tiệm từ chối', 'Shop declined')}` : `✓ ${s.usedNote || T('Đã dùng', 'Used')}`}
                       </div>
                       <div style={{ fontSize: 10.5, color: 'var(--c64748b)', marginTop: 2 }}>
@@ -351,7 +351,7 @@ function Card({ s, vi, border, me, closing, note, setNote, busy, onClose, onPutA
       <Thumb media={s.media} vi={vi} />
       <div style={{ padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4, color: s.fromShop ? '#fde68a' : 'var(--c64748b)' }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4, color: s.fromShop ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
             {s.fromShop ? `📤 ${T('TIỆM TỰ GỬI', 'SENT BY SHOP')}` : T('TRẢ LỜI ĐỀ XUẤT', 'ANSWERS A REQUEST')}
             <span style={{ fontWeight: 500, color: 'var(--c64748b)' }}> · {ago(s.doneAt ?? s.createdAt, vi)}</span>
           </div>

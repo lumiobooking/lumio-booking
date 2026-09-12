@@ -746,7 +746,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
                 onChange={(e) => setFp((rows) => rows.map((r, idx) => (idx === i ? { ...r, mode: e.target.checked ? 'salon' : 'platform' } : r)))} />
               <span>{f.label} — {f.unavailable
                 ? <span style={{ color: 'var(--c64748b)', fontWeight: 600 }}>Not available in this market</span>
-                : <span style={{ color: f.mode === 'salon' ? '#22c55e' : '#f59e0b', fontWeight: 600 }}>{f.mode === 'salon' ? 'Salon can manage' : 'Platform-managed (hidden)'}</span>}</span>
+                : <span style={{ color: f.mode === 'salon' ? 'var(--ink-good)' : 'var(--ink-warn)', fontWeight: 600 }}>{f.mode === 'salon' ? 'Salon can manage' : 'Platform-managed (hidden)'}</span>}</span>
             </label>
           ))}
         </div>
@@ -976,7 +976,7 @@ function AiDiagButton() {
       <button onClick={run} disabled={busy} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12.5, cursor: busy ? 'wait' : 'pointer' }}>
         {busy ? 'Đang kiểm tra…' : '🧠 Kiểm tra não AI'}
       </button>
-      {res && <span style={{ fontSize: 12.5, fontWeight: 700, color: ok ? '#22c55e' : 'var(--cfca5a5)', maxWidth: 520 }}>{res}</span>}
+      {res && <span style={{ fontSize: 12.5, fontWeight: 700, color: ok ? 'var(--ink-good)' : 'var(--cfca5a5)', maxWidth: 520 }}>{res}</span>}
     </span>
   );
 }
@@ -1034,7 +1034,7 @@ const dangerBtn: React.CSSProperties = {
   borderRadius: 8,
   border: '1px solid #ef4444',
   background: 'transparent',
-  color: '#ef4444',
+  color: 'var(--ink-bad)',
   fontSize: 13,
   cursor: 'pointer',
 };
@@ -1045,7 +1045,7 @@ const okBtn: React.CSSProperties = {
   borderRadius: 8,
   border: '1px solid #22c55e',
   background: 'transparent',
-  color: '#22c55e',
+  color: 'var(--ink-good)',
   fontSize: 13,
   cursor: 'pointer',
 };

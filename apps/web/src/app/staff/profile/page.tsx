@@ -96,7 +96,7 @@ function Inner() {
             📷 {busy ? 'Processing…' : form.avatarUrl ? 'Change photo' : 'Upload photo'}
             <input type="file" accept="image/*" onChange={pickPhoto} style={{ display: 'none' }} />
           </label>
-          {form.avatarUrl && <button type="button" onClick={() => setForm((f) => ({ ...f, avatarUrl: '' }))} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>Remove photo</button>}
+          {form.avatarUrl && <button type="button" onClick={() => setForm((f) => ({ ...f, avatarUrl: '' }))} style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>Remove photo</button>}
         </div>
       </div>
 

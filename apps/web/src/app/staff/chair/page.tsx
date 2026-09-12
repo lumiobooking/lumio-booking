@@ -236,7 +236,7 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
             <div style={{ flex: 1, minWidth: 0, color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
             <div style={{ color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 700 }}>{formatPrice(it.priceCents, currency)}</div>
             <button onClick={() => onRemove(w.id, it.lineId)} aria-label={t('wi.removeLine')}
-              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 22, lineHeight: 1, padding: '0 4px' }}>&times;</button>
+              style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 22, lineHeight: 1, padding: '0 4px' }}>&times;</button>
           </div>
         ))}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: 'var(--c0f172a)' }}>

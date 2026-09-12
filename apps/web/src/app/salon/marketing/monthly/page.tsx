@@ -296,7 +296,7 @@ function Inner() {
             if (!rv) return <span style={{ fontSize: 11, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 9px' }}>{T('chưa có số', 'no data')}</span>;
             const auto = rv.manual !== true;
             return (
-              <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 9px', color: auto ? '#22c55e' : '#f59e0b', border: `1px solid ${auto ? '#22c55e' : '#f59e0b'}` }}>
+              <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 9px', color: auto ? 'var(--ink-good)' : 'var(--ink-warn)', border: `1px solid ${auto ? '#22c55e' : '#f59e0b'}` }}>
                 {auto ? T('TỰ ĐỘNG', 'AUTOMATIC') : T('ĐANG NHẬP TAY', 'MANUAL OVERRIDE')}
               </span>
             );
@@ -346,7 +346,7 @@ function Inner() {
             padding: '10px 13px', marginBottom: 12, fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6,
           }}>
             {T('Chưa lấy được đề xuất ngân sách', 'Could not load the budget suggestion')} —{' '}
-            <span style={{ fontFamily: 'ui-monospace, monospace', color: '#fbbf24' }}>{budgetErr}</span>
+            <span style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--ink-warn)' }}>{budgetErr}</span>
           </div>
         )}
         {budget && (
@@ -355,7 +355,7 @@ function Inner() {
             background: budget.ceilingCents ? 'rgba(99,102,241,.08)' : 'var(--c0f172a)',
             borderRadius: 11, padding: '11px 13px', marginBottom: 12,
           }}>
-            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.4px', color: '#a5b4fc', marginBottom: 7 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.4px', color: 'var(--ink-link)', marginBottom: 7 }}>
               💡 {T('BÊN EM ĐỀ XUẤT CHI BAO NHIÊU', 'WHAT WE SUGGEST SPENDING')}
             </div>
             {budget.ceilingCents ? (
@@ -367,7 +367,7 @@ function Inner() {
                   <Fig n={budget.ceiling ?? '—'} label={T('tối đa / khách mới', 'max per new customer')} accent="#86efac" />
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>{T(budget.why, budget.whyEn)}</div>
-                <div style={{ fontSize: 12, color: budget.feasible === 'no' ? '#fca5a5' : 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: budget.feasible === 'no' ? 'var(--ink-bad)' : 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 4 }}>
                   {T(budget.note, budget.noteEn)}
                 </div>
               </>
@@ -464,7 +464,7 @@ function AutoReportCard({ auto, vi, T, onOpen }: { auto: AutoStatus; vi: boolean
     <div style={{ ...ui.card, marginTop: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{T('Báo cáo tự động cuối tháng', 'Month-end auto-report')}</span>
-        <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 9px', color: auto.enabled ? '#22c55e' : 'var(--c94a3b8)', border: `1px solid ${auto.enabled ? '#22c55e' : 'var(--c475569)'}` }}>
+        <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 9px', color: auto.enabled ? 'var(--ink-good)' : 'var(--c94a3b8)', border: `1px solid ${auto.enabled ? '#22c55e' : 'var(--c475569)'}` }}>
           {auto.enabled ? T('ĐANG BẬT', 'ON') : T('ĐANG TẮT', 'OFF')}
         </span>
       </div>
@@ -607,20 +607,20 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const arrow = (dl?: Delta) => {
     if (!dl || dl.pct == null) return '';
     const up = dl.pct >= 0;
-    return `<span class="t-cap" style="color:${up ? '#059669' : '#dc2626'};font-weight:700">${up ? '▲' : '▼'} ${Math.abs(dl.pct)}%</span>`;
+    return `<span class="t-cap" style="color: ${up ? '#059669' : '#dc2626'};font-weight:700">${up ? '▲' : '▼'} ${Math.abs(dl.pct)}%</span>`;
   };
   // The value prints in ink for everyone. It used to paint revenue green
   // unconditionally, so a month that earned 35$ against 200$ of spend still
   // glowed "good" — the delta arrow is where the judgement lives. `tone` exists
   // for the one number that IS a verdict by definition (ROAS).
   const bignum = (val: string, label: string, dl?: Delta, tone?: string) =>
-    `<div style="flex:1;min-width:86px;text-align:center"><div class="t-num" style="color:${tone || '#0b1f3a'}">${val}</div><div class="t-cap" style="color:#64748b;margin-top:3px">${label}</div><div class="t-cap" style="min-height:14px">${arrow(dl)}</div></div>`;
+    `<div style="flex:1;min-width:86px;text-align:center"><div class="t-num" style="color: ${tone || '#0b1f3a'}">${val}</div><div class="t-cap" style="color: #64748b;margin-top:3px">${label}</div><div class="t-cap" style="min-height:14px">${arrow(dl)}</div></div>`;
 
   const CH: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google_ads: 'Google Ads', gbp: 'Google Maps', seo: 'SEO', email: 'Email', sms: 'SMS', website: 'Website', other: t('Khác', 'Other') };
   const spendRows = (data.spend ?? []).filter((x) => x.amountCents > 0).sort((a, z) => z.amountCents - a.amountCents);
   const spendLine = spendRows.map((x) => `${esc(CH[x.channel] || x.channel)} ${money(x.amountCents)}`).join(' · ');
-  const work = (data.workLog ?? []).map((w) => `<div style="margin:4px 0">✓ ${esc(w.title)}</div>`).join('') || `<div style="color:#9ca3af">${t('Chưa ghi', 'None logged')}</div>`;
-  const plan = (c.plan ?? []).map((x) => `<div style="margin:4px 0">→ ${esc(L(x))}</div>`).join('') || `<div style="color:#9ca3af">—</div>`;
+  const work = (data.workLog ?? []).map((w) => `<div style="margin:4px 0">✓ ${esc(w.title)}</div>`).join('') || `<div style="color: #9ca3af">${t('Chưa ghi', 'None logged')}</div>`;
+  const plan = (c.plan ?? []).map((x) => `<div style="margin:4px 0">→ ${esc(L(x))}</div>`).join('') || `<div style="color: #9ca3af">—</div>`;
   const total = b?.totalSpendCents ?? 0;
 
   const card = (inner: string, bg = '#f7f7fb') => `<div style="background:${bg};border-radius:12px;padding:14px 16px;margin-top:10px">${inner}</div>`;
@@ -642,14 +642,14 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
       if (!dl || dl.pct == null || dl.value === dl.prev) return '';
       const up = dl.pct >= 0;
       const col = !perf ? '#6b7280' : up ? '#059669' : '#dc2626';
-      return `<span style="color:${col};font-weight:700;margin-right:8px">${esc(label)} ${up ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>`;
+      return `<span style="color: ${col};font-weight:700;margin-right:8px">${esc(label)} ${up ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>`;
     };
     const parts = [one(t('Chi', 'Spend'), tr.spend, false), one('Reach', tr.reach, true), one('Click', tr.clicks, true), one(t('Liên hệ', 'Leads'), tr.leads, true)].filter(Boolean).join('');
-    return parts ? `<div class="t-body" style="margin-top:3px">${parts}<span style="color:#9ca3af">${t('so tháng trước', 'vs last month')}</span></div>` : '';
+    return parts ? `<div class="t-body" style="margin-top:3px">${parts}<span style="color: #9ca3af">${t('so tháng trước', 'vs last month')}</span></div>` : '';
   };
   const channelsHtml = (c.channels ?? []).map((ch) => {
     const col = vColor[ch.verdict] || '#6b7280'; const met = chMet(ch.name);
-    return `<div style="border-left:4px solid ${col};background:#fafafa;border-radius:8px;padding:9px 13px;margin:0;break-inside:avoid"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span class="t-body" style="font-weight:700">${esc(CH[ch.name] || ch.name)} <span style="color:${col}">· ${esc(vTxt(ch.verdict))}</span></span>${met ? `<span class="t-cap" style="color:#6b7280">${esc(met)}</span>` : ''}</div><div class="t-body" style="color:#374151;font-weight:400;margin-top:3px">${esc(L(ch))}</div>${chTrendTxt(ch.name)}</div>`;
+    return `<div style="border-left:4px solid ${col};background:#fafafa;border-radius:8px;padding:9px 13px;margin:0;break-inside:avoid"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span class="t-body" style="font-weight:700">${esc(CH[ch.name] || ch.name)} <span style="color: ${col}">· ${esc(vTxt(ch.verdict))}</span></span>${met ? `<span class="t-cap" style="color: #6b7280">${esc(met)}</span>` : ''}</div><div class="t-body" style="color: #374151;font-weight:400;margin-top:3px">${esc(L(ch))}</div>${chTrendTxt(ch.name)}</div>`;
   }).join('');
   const hiHtml = (c.highlights ?? []).map((x) => `<div style="margin:3px 0">✓ ${esc(L(x))}</div>`).join('');
   const issHtml = (c.issues ?? []).map((x) => `<div style="margin:3px 0">▲ ${esc(L(x))}</div>`).join('');
@@ -657,11 +657,11 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     const isIg = si.platform === 'instagram';
     const nm = isIg ? 'Instagram' : 'Facebook'; const col = isIg ? '#e1306c' : '#1877f2';
     const f = (n: number | null) => (n == null ? '—' : Number(n).toLocaleString(uiLocale()));
-    const ar = (dl?: SocialDelta | null) => (dl && dl.pct != null ? `<span class="t-cap" style="color:${dl.pct >= 0 ? '#059669' : '#dc2626'};font-weight:700"> ${dl.pct >= 0 ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>` : '');
-    const st = (label: string, val: number | null, dl?: SocialDelta | null) => (val == null ? '' : `<div style="text-align:center;flex:1;min-width:58px"><div class="t-h2" style="font-weight:800">${f(val)}${ar(dl)}</div><div class="t-cap" style="color:#6b7280">${label}</div></div>`);
+    const ar = (dl?: SocialDelta | null) => (dl && dl.pct != null ? `<span class="t-cap" style="color: ${dl.pct >= 0 ? '#059669' : '#dc2626'};font-weight:700"> ${dl.pct >= 0 ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>` : '');
+    const st = (label: string, val: number | null, dl?: SocialDelta | null) => (val == null ? '' : `<div style="text-align:center;flex:1;min-width:58px"><div class="t-h2" style="font-weight:800">${f(val)}${ar(dl)}</div><div class="t-cap" style="color: #6b7280">${label}</div></div>`);
     const cells = [st(t('Follower', 'Followers'), si.followers, si.vsPrev?.followers), st(t('Follower mới', 'New'), si.newFollowers, si.vsPrev?.newFollowers), st('Reach', si.reach, si.vsPrev?.reach), st(t('Xem', 'Views'), si.views, si.vsPrev?.views), st(t('Tương tác', 'Engagement'), si.engagement, si.vsPrev?.engagement)].filter(Boolean).join('');
     if (!cells) return '';
-    return `<div style="border:1px solid #eee;border-radius:10px;padding:9px 12px;margin:6px 0"><div style="font-weight:700;color:${col};margin-bottom:4px">${nm}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${cells}</div></div>`;
+    return `<div style="border:1px solid #eee;border-radius:10px;padding:9px 12px;margin:6px 0"><div style="font-weight:700;color: ${col};margin-bottom:4px">${nm}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${cells}</div></div>`;
   }).join('');
   const igPosts = ((data.socialInsights ?? []).find((x) => x.platform === 'instagram')?.posts ?? []).slice(0, 12);
   const postsHtml = igPosts.map((p) => {
@@ -669,9 +669,9 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     const dt = p.timestamp ? fmtInTz(p.timestamp, { month: 'short', day: 'numeric' }) : '';
     const tl = p.type === 'reel' ? 'Reel' : p.type === 'video' ? 'Video' : p.type === 'carousel_album' ? 'Album' : t('Ảnh', 'Photo');
     const thumb = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;flex-shrink:0" />` : `<div style="width:40px;height:40px;border-radius:6px;background:#f1f4f9;flex-shrink:0"></div>`;
-    const cell = (label: string, v: number | null) => (v == null ? '' : `<span style="margin-right:10px"><b>${f(v)}</b> <span style="color:#6b7280">${label}</span></span>`);
+    const cell = (label: string, v: number | null) => (v == null ? '' : `<span style="margin-right:10px"><b>${f(v)}</b> <span style="color: #6b7280">${label}</span></span>`);
     const stats = [cell(t('thích', 'likes'), p.likes), cell(t('bl', 'cmts'), p.comments), cell('reach', p.reach), cell(t('xem', 'views'), p.views), cell(t('lưu', 'saved'), p.saved)].join('');
-    return `<div style="display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid #f0ece7">${thumb}<div style="flex:1;min-width:0"><div class="t-body" style="color:#6b7280">${esc(tl)} · ${dt}${p.caption ? ' · ' + esc(p.caption) : ''}</div><div class="t-body" style="margin-top:2px">${stats}</div></div></div>`;
+    return `<div style="display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid #f0ece7">${thumb}<div style="flex:1;min-width:0"><div class="t-body" style="color: #6b7280">${esc(tl)} · ${dt}${p.caption ? ' · ' + esc(p.caption) : ''}</div><div class="t-body" style="margin-top:2px">${stats}</div></div></div>`;
   }).join('');
 
   const igAud = (data.socialInsights ?? []).find((x) => x.platform === 'instagram')?.audience;
@@ -681,8 +681,8 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     const gl: Record<string, string> = { F: t('Nữ', 'Female'), M: t('Nam', 'Male'), U: t('Khác', 'Other') };
     const gRows = ['F', 'M', 'U'].filter((k) => g[k] != null).map((k) => `<span style="margin-right:14px">${esc(gl[k] || k)}: <b>${Math.round((g[k] / gt) * 1000) / 10}%</b></span>`).join('');
     const age = igAud.age || {}; const at = Object.values(age).reduce((a, b) => a + b, 0) || 1;
-    const ageRows = ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'].filter((k) => age[k] != null).map((k) => { const pct = Math.round((age[k] / at) * 1000) / 10; return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span class="t-body" style="width:44px;color:#6b7280">${k}</span><span style="flex:1;height:8px;background:#eee;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:#6366f1"></span></span><span class="t-body" style="width:38px;text-align:right">${pct}%</span></div>`; }).join('');
-    audienceHtml = `${gRows ? `<div class="t-body" style="color:#374151;margin-bottom:6px"><b>${t('Giới tính', 'Gender')}</b> — ${gRows}</div>` : ''}${ageRows ? `<div class="lbl" style="margin-bottom:2px">${t('Độ tuổi', 'Age')}</div>${ageRows}` : ''}`;
+    const ageRows = ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'].filter((k) => age[k] != null).map((k) => { const pct = Math.round((age[k] / at) * 1000) / 10; return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span class="t-body" style="width:44px;color: #6b7280">${k}</span><span style="flex:1;height:8px;background:#eee;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:#6366f1"></span></span><span class="t-body" style="width:38px;text-align:right">${pct}%</span></div>`; }).join('');
+    audienceHtml = `${gRows ? `<div class="t-body" style="color: #374151;margin-bottom:6px"><b>${t('Giới tính', 'Gender')}</b> — ${gRows}</div>` : ''}${ageRows ? `<div class="lbl" style="margin-bottom:2px">${t('Độ tuổi', 'Age')}</div>${ageRows}` : ''}`;
   }
   // ---- Client deck (landscape, matches the agency template) ----
   const S = data.socialInsights ?? [];
@@ -690,7 +690,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const ig = S.find((x) => x.platform === 'instagram');
   const tt = S.find((x) => x.platform === 'tiktok');
   const fnum = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString(uiLocale()));
-  const arS = (dl?: SocialDelta | null) => (dl && dl.pct != null ? `<span class="t-cap" style="color:${dl.pct >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${dl.pct >= 0 ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>` : '');
+  const arS = (dl?: SocialDelta | null) => (dl && dl.pct != null ? `<span class="t-cap" style="color: ${dl.pct >= 0 ? '#16a34a' : '#dc2626'};font-weight:700">${dl.pct >= 0 ? '▲' : '▼'}${Math.abs(dl.pct)}%</span>` : '');
   // Engagement ÷ reach, else ÷ views, else ÷ followers. TikTok has no reach,
   // and dividing by its 21 followers printed "1209.5%" in a client report — one
   // impossible number and every other number on the page stops being believed.
@@ -710,11 +710,11 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const panel = (n: string, title: string, inner: string) =>
     `<div class="panel"><div class="sec">${n ? `<span class="sec-n">${n}</span>` : ''}<span class="sec-t">${title}</span></div>${inner}</div>`;
   const prow = (label: string, fv: string, fd: SocialDelta | null | undefined, iv: string, idv: SocialDelta | null | undefined, tv?: string, tdv?: SocialDelta | null) =>
-    `<tr><td class="t-body" style="padding:7px 2px;color:#475569;border-top:1px solid #eef1f6">${label}</td><td style="padding:7px 2px;text-align:right;font-weight:700;color:#0f2a52;border-top:1px solid #eef1f6">${fv} ${arS(fd)}</td><td style="padding:7px 2px;text-align:right;font-weight:700;color:#0f2a52;border-top:1px solid #eef1f6">${iv} ${arS(idv)}</td>${tt ? `<td style="padding:7px 2px;text-align:right;font-weight:700;color:#0f2a52;border-top:1px solid #eef1f6">${tv ?? '—'} ${arS(tdv)}</td>` : ''}</tr>`;
+    `<tr><td class="t-body" style="padding:7px 2px;color: #475569;border-top:1px solid #eef1f6">${label}</td><td style="padding:7px 2px;text-align:right;font-weight:700;color: #0f2a52;border-top:1px solid #eef1f6">${fv} ${arS(fd)}</td><td style="padding:7px 2px;text-align:right;font-weight:700;color: #0f2a52;border-top:1px solid #eef1f6">${iv} ${arS(idv)}</td>${tt ? `<td style="padding:7px 2px;text-align:right;font-weight:700;color: #0f2a52;border-top:1px solid #eef1f6">${tv ?? '—'} ${arS(tdv)}</td>` : ''}</tr>`;
   const perfTable = `<table style="width:100%;border-collapse:collapse">
-    <tr class="t-body" style=""><td></td><td style="text-align:right;padding-bottom:4px"><span style="color:#1877f2;font-weight:800">Facebook</span></td><td style="text-align:right;padding-bottom:4px"><span style="color:#e1306c;font-weight:800">Instagram</span></td>${tt ? '<td style="text-align:right;padding-bottom:4px"><span style="color:#010101;font-weight:800">TikTok</span></td>' : ''}</tr>
+    <tr class="t-body" style=""><td></td><td style="text-align:right;padding-bottom:4px"><span style="color: #1877f2;font-weight:800">Facebook</span></td><td style="text-align:right;padding-bottom:4px"><span style="color:#e1306c;font-weight:800">Instagram</span></td>${tt ? '<td style="text-align:right;padding-bottom:4px"><span style="color:#010101;font-weight:800">TikTok</span></td>' : ''}</tr>
     ${prow(t('Tổng follower', 'Total followers'), fnum(fb?.followers), fb?.vsPrev?.followers, fnum(ig?.followers), ig?.vsPrev?.followers, fnum(tt?.followers), tt?.vsPrev?.followers)}
-    ${prow(t('Người tiếp cận (Reach)', 'Reach'), fb?.reach == null ? ('<span class="t-cap" style="color:#94a3b8;font-weight:600">' + t('Meta ngừng cung cấp', 'retired by Meta') + '</span>') : fnum(fb?.reach), fb?.vsPrev?.reach, fnum(ig?.reach), ig?.vsPrev?.reach, '<span class="t-cap" style="color:#94a3b8;font-weight:600">' + t('Không áp dụng', 'n/a') + '</span>', null)}
+    ${prow(t('Người tiếp cận (Reach)', 'Reach'), fb?.reach == null ? ('<span class="t-cap" style="color: #94a3b8;font-weight:600">' + t('Meta ngừng cung cấp', 'retired by Meta') + '</span>') : fnum(fb?.reach), fb?.vsPrev?.reach, fnum(ig?.reach), ig?.vsPrev?.reach, '<span class="t-cap" style="color: #94a3b8;font-weight:600">' + t('Không áp dụng', 'n/a') + '</span>', null)}
     ${prow(t('Lượt xem (Views)', 'Views'), fnum(fb?.views), fb?.vsPrev?.views, fnum(ig?.views), ig?.vsPrev?.views, fnum(tt?.views), tt?.vsPrev?.views)}
     ${prow(t('Lượt tương tác', 'Engagements'), fnum(fb?.engagement), fb?.vsPrev?.engagement, fnum(ig?.engagement), ig?.vsPrev?.engagement, fnum(tt?.engagement), tt?.vsPrev?.engagement)}
     ${prow(t('Tỉ lệ tương tác', 'Engagement rate'), engR(fb), null, engR(ig), null, engR(tt), null)}
@@ -756,8 +756,8 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     </svg>`;
   };
   const growth = `<div style="display:flex;gap:16px">
-    <div style="flex:1"><div class="t-h3" style="color:#1877f2;font-weight:800;">Facebook</div><div class="t-num2" style="font-weight:800;color:#0f2a52">${fnum(fb?.followers)} ${arS(fb?.vsPrev?.followers)}</div><div class="t-cap" style="color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${cumF.length > 1 ? sparkD(cumF, '#1877f2', fbMs.map((m) => m.month)) : `<div class="empty" style="margin-top:10px">${t('Biểu đồ tăng trưởng theo tháng hiện khi có ≥2 tháng đồng bộ','Monthly growth chart appears once ≥2 months are synced')}</div>`}</div>
-    <div style="flex:1"><div class="t-h3" style="color:#e1306c;font-weight:800;">Instagram</div><div class="t-num2" style="font-weight:800;color:#0f2a52">${fnum(ig?.followers)} ${arS(ig?.vsPrev?.followers)}</div><div class="t-cap" style="color:#94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${cumA.length > 1 ? sparkD(cumA, '#e1306c', igMonthly ? igMs.map((m) => m.month) : undefined) : `<div class="empty" style="margin-top:10px">${t('Biểu đồ tăng trưởng theo tháng hiện khi có ≥2 tháng đồng bộ','Monthly growth chart appears once ≥2 months are synced')}</div>`}</div>
+    <div style="flex:1"><div class="t-h3" style="color: #1877f2;font-weight:800;">Facebook</div><div class="t-num2" style="font-weight:800;color:#0f2a52">${fnum(fb?.followers)} ${arS(fb?.vsPrev?.followers)}</div><div class="t-cap" style="color: #94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${cumF.length > 1 ? sparkD(cumF, '#1877f2', fbMs.map((m) => m.month)) : `<div class="empty" style="margin-top:10px">${t('Biểu đồ tăng trưởng theo tháng hiện khi có ≥2 tháng đồng bộ','Monthly growth chart appears once ≥2 months are synced')}</div>`}</div>
+    <div style="flex:1"><div class="t-h3" style="color: #e1306c;font-weight:800;">Instagram</div><div class="t-num2" style="font-weight:800;color:#0f2a52">${fnum(ig?.followers)} ${arS(ig?.vsPrev?.followers)}</div><div class="t-cap" style="color: #94a3b8">${t('Tổng theo dõi', 'Total followers')}</div>${cumA.length > 1 ? sparkD(cumA, '#e1306c', igMonthly ? igMs.map((m) => m.month) : undefined) : `<div class="empty" style="margin-top:10px">${t('Biểu đồ tăng trưởng theo tháng hiện khi có ≥2 tháng đồng bộ','Monthly growth chart appears once ≥2 months are synced')}</div>`}</div>
   </div>`;
   const igP = ig?.posts ?? [];
   const reels = igP.filter((x) => x.type === 'reel' || x.type === 'video').length;
@@ -765,42 +765,42 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const fbReels = fbP.filter((x) => x.type === 'reel' || x.type === 'video').length;
   const fbTot = fb?.postsCount ?? (fbP.length || null);
   const contentTable = `<table class="t-body" style="width:100%;border-collapse:collapse">
-    <tr class="t-cap" style="color:#94a3b8"><td></td><td style="text-align:right"><b style="color:#1877f2">FB</b></td><td style="text-align:right"><b style="color:#e1306c">IG</b></td></tr>
-    <tr><td style="padding:3px 0;color:#475569">${t('Tổng bài', 'Total posts')}</td><td style="text-align:right;font-weight:700">${fbTot ?? '—'}</td><td style="text-align:right;font-weight:700">${ig?.postsCount ?? igP.length}</td></tr>
-    <tr><td style="padding:3px 0;color:#475569">Reels/Video</td><td style="text-align:right;font-weight:700">${fbP.length ? fbReels : '—'}</td><td style="text-align:right;font-weight:700">${reels}</td></tr>
-    <tr><td style="padding:3px 0;color:#475569">${t('Bài ảnh', 'Photos')}</td><td style="text-align:right;font-weight:700">${fbP.length ? (fbP.length - fbReels) : '—'}</td><td style="text-align:right;font-weight:700">${igP.length - reels}</td></tr>
+    <tr class="t-cap" style="color: #94a3b8"><td></td><td style="text-align:right"><b style="color:#1877f2">FB</b></td><td style="text-align:right"><b style="color:#e1306c">IG</b></td></tr>
+    <tr><td style="padding:3px 0;color: #475569">${t('Tổng bài', 'Total posts')}</td><td style="text-align:right;font-weight:700">${fbTot ?? '—'}</td><td style="text-align:right;font-weight:700">${ig?.postsCount ?? igP.length}</td></tr>
+    <tr><td style="padding:3px 0;color: #475569">Reels/Video</td><td style="text-align:right;font-weight:700">${fbP.length ? fbReels : '—'}</td><td style="text-align:right;font-weight:700">${reels}</td></tr>
+    <tr><td style="padding:3px 0;color: #475569">${t('Bài ảnh', 'Photos')}</td><td style="text-align:right;font-weight:700">${fbP.length ? (fbP.length - fbReels) : '—'}</td><td style="text-align:right;font-weight:700">${igP.length - reels}</td></tr>
   </table>`;
   // Top posts across BOTH Facebook and Instagram, ranked by views (highest first).
   const topAll = [
     ...fbP.map((p) => ({ ...p, _pf: 'FB', _col: '#1877f2' })),
     ...igP.map((p) => ({ ...p, _pf: 'IG', _col: '#e1306c' })),
   ].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 4);
-  const top3 = topAll.map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div class="t-cap" style="width:34px;height:34px;border-radius:6px;background:${p._col}22;color:${p._col};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:800">${p._pf}</div>`; const badge = `<span class="t-cap" style="font-weight:800;color:#fff;background:${p._col};border-radius:4px;padding:1px 5px;margin-right:5px">${p._pf}</span>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div class="t-cap" style="color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${badge}${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div class="t-cap" style="color:#0f2a52"><b>${fnum(p.views)}</b> ${t('xem', 'views')}${p.reach != null ? ` · <b>${fnum(p.reach)}</b> reach` : ''} · <b>${fnum((p.likes ?? 0) + (p.comments ?? 0))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div class="t-body" style="color:#94a3b8;">—</div>`;
-  const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;min-width:0;border-left:1px solid #eef1f6;padding-left:12px"><div class="t-cap" style="color:#94a3b8;margin-bottom:2px">${t('TOP BÀI (FB + IG) — theo lượt xem', 'TOP POSTS (FB + IG) — by views')}</div>${top3}</div></div>`;
+  const top3 = topAll.map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div class="t-cap" style="width:34px;height:34px;border-radius:6px;background:${p._col}22;color: ${p._col};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:800">${p._pf}</div>`; const badge = `<span class="t-cap" style="font-weight:800;color: #fff;background:${p._col};border-radius:4px;padding:1px 5px;margin-right:5px">${p._pf}</span>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div class="t-cap" style="color: #475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${badge}${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div class="t-cap" style="color: #0f2a52"><b>${fnum(p.views)}</b> ${t('xem', 'views')}${p.reach != null ? ` · <b>${fnum(p.reach)}</b> reach` : ''} · <b>${fnum((p.likes ?? 0) + (p.comments ?? 0))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div class="t-body" style="color: #94a3b8;">—</div>`;
+  const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;min-width:0;border-left:1px solid #eef1f6;padding-left:12px"><div class="t-cap" style="color: #94a3b8;margin-bottom:2px">${t('TOP BÀI (FB + IG) — theo lượt xem', 'TOP POSTS (FB + IG) — by views')}</div>${top3}</div></div>`;
   const adsPanel = spendLine
-    ? `<div class="t-body" style="color:#0f2a52">${t('Tổng chi', 'Spend')}: <b>${money(total)}</b><div class="t-body" style="color:#6b7280;margin-top:4px">${spendLine}</div></div>`
-    : `<div class="t-body" style="color:#94a3b8;line-height:1.6">${t('Chưa chạy quảng cáo tháng này. Khi bật quảng cáo, mục này hiển thị Chi phí · Reach · Click · CPC · CTR · ROAS.', 'No paid ads this month. Once ads run, this shows Spend · Reach · Clicks · CPC · CTR · ROAS.')}</div>`;
+    ? `<div class="t-body" style="color: #0f2a52">${t('Tổng chi', 'Spend')}: <b>${money(total)}</b><div class="t-body" style="color: #6b7280;margin-top:4px">${spendLine}</div></div>`
+    : `<div class="t-body" style="color: #94a3b8;line-height:1.6">${t('Chưa chạy quảng cáo tháng này. Khi bật quảng cáo, mục này hiển thị Chi phí · Reach · Click · CPC · CTR · ROAS.', 'No paid ads this month. Once ads run, this shows Spend · Reach · Clicks · CPC · CTR · ROAS.')}</div>`;
   let donutHtml = '';
-  if (igAud?.gender) { const g = igAud.gender; const gt = Object.values(g).reduce((a, b2) => a + b2, 0) || 1; let acc = 0; const seg = ([['F', '#e1306c'], ['M', '#3b82f6'], ['U', '#cbd5e1']] as [string, string][]).map(([k, cc]) => { const pctv = Math.round(((g[k] || 0) / gt) * 1000) / 10; const from = acc; acc += pctv; return `${cc} ${from}% ${acc}%`; }).join(','); const leg = ([['F', t('Nữ', 'Female'), '#e1306c'], ['M', t('Nam', 'Male'), '#3b82f6'], ['U', t('Khác', 'Other'), '#cbd5e1']] as [string, string, string][]).filter(([k]) => g[k] != null).map(([k, lb, cc]) => `<div class="t-body" style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:9px;height:9px;border-radius:2px;background:${cc}"></span><span style="color:#475569">${esc(lb)}</span><b style="margin-left:auto;color:#0f2a52">${Math.round(((g[k] || 0) / gt) * 1000) / 10}%</b></div>`).join(''); donutHtml = `<div style="display:flex;gap:12px;align-items:center"><div style="width:76px;height:76px;border-radius:50%;flex-shrink:0;background:conic-gradient(${seg});-webkit-mask:radial-gradient(circle 23px at center,transparent 98%,#000 100%);mask:radial-gradient(circle 23px at center,transparent 98%,#000 100%)"></div><div style="flex:1">${leg}</div></div>`; }
+  if (igAud?.gender) { const g = igAud.gender; const gt = Object.values(g).reduce((a, b2) => a + b2, 0) || 1; let acc = 0; const seg = ([['F', '#e1306c'], ['M', '#3b82f6'], ['U', '#cbd5e1']] as [string, string][]).map(([k, cc]) => { const pctv = Math.round(((g[k] || 0) / gt) * 1000) / 10; const from = acc; acc += pctv; return `${cc} ${from}% ${acc}%`; }).join(','); const leg = ([['F', t('Nữ', 'Female'), '#e1306c'], ['M', t('Nam', 'Male'), '#3b82f6'], ['U', t('Khác', 'Other'), '#cbd5e1']] as [string, string, string][]).filter(([k]) => g[k] != null).map(([k, lb, cc]) => `<div class="t-body" style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:9px;height:9px;border-radius:2px;background:${cc}"></span><span style="color: #475569">${esc(lb)}</span><b style="margin-left:auto;color: #0f2a52">${Math.round(((g[k] || 0) / gt) * 1000) / 10}%</b></div>`).join(''); donutHtml = `<div style="display:flex;gap:12px;align-items:center"><div style="width:76px;height:76px;border-radius:50%;flex-shrink:0;background:conic-gradient(${seg});-webkit-mask:radial-gradient(circle 23px at center,transparent 98%,#000 100%);mask:radial-gradient(circle 23px at center,transparent 98%,#000 100%)"></div><div style="flex:1">${leg}</div></div>`; }
   const audiencePanel = (donutHtml || audienceHtml)
-    ? `${donutHtml}${igAud?.age ? `<div style="margin-top:8px">${(() => { const age = igAud.age || {}; const at = Object.values(age).reduce((a, b2) => a + b2, 0) || 1; return ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'].filter((k) => age[k] != null).map((k) => { const pv = Math.round(((age[k] || 0) / at) * 1000) / 10; return `<div style="display:flex;align-items:center;gap:8px;margin:2px 0"><span class="t-cap" style="width:42px;color:#94a3b8">${k}</span><span style="flex:1;height:7px;background:#eef1f6;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pv}%;background:#6366f1"></span></span><span class="t-cap" style="width:36px;text-align:right;color:#0f2a52">${pv}%</span></div>`; }).join(''); })()}</div>` : ''}`
-    : `<div class="t-body" style="color:#94a3b8">${t('Meta không cung cấp nhân khẩu cho Facebook. Instagram cần ≥100 follower.', 'Meta does not provide Facebook demographics. Instagram needs ≥100 followers.')}</div>`;
-  const posBox = hiHtml ? `<div class="t-body" style="line-height:1.55;color:#166534">${hiHtml}</div>` : `<div class="muted">—</div>`;
-  const negBox = issHtml ? `<div class="t-body" style="line-height:1.55;color:#b45309">${issHtml}</div>` : `<div class="muted">—</div>`;
-  const insightBox = (c.tldr && L(c.tldr)) || (c.summary && L(c.summary)) ? `<div class="t-body" style="color:#334155;line-height:1.6">${esc(L(c.tldr) || L(c.summary))}</div>` : `<div class="muted">—</div>`;
-  const insightsBox = (c.insights ?? []).length ? (c.insights ?? []).map((x) => `<div class="t-body" style="margin:3px 0;color:#334155">• ${esc(L(x))}</div>`).join('') : insightBox;
-  const planGroup = (label: string, items?: Item[]) => `<div style="flex:1;min-width:130px"><div class="t-body" style="font-weight:800;color:#4338ca;margin-bottom:3px">${esc(label)}</div>${(items ?? []).length ? (items ?? []).map((x) => `<div class="t-body" style="margin:2px 0;color:#334155">• ${esc(L(x))}</div>`).join('') : '<div class="muted">—</div>'}</div>`;
+    ? `${donutHtml}${igAud?.age ? `<div style="margin-top:8px">${(() => { const age = igAud.age || {}; const at = Object.values(age).reduce((a, b2) => a + b2, 0) || 1; return ['13-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+'].filter((k) => age[k] != null).map((k) => { const pv = Math.round(((age[k] || 0) / at) * 1000) / 10; return `<div style="display:flex;align-items:center;gap:8px;margin:2px 0"><span class="t-cap" style="width:42px;color: #94a3b8">${k}</span><span style="flex:1;height:7px;background:#eef1f6;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pv}%;background:#6366f1"></span></span><span class="t-cap" style="width:36px;text-align:right;color: #0f2a52">${pv}%</span></div>`; }).join(''); })()}</div>` : ''}`
+    : `<div class="t-body" style="color: #94a3b8">${t('Meta không cung cấp nhân khẩu cho Facebook. Instagram cần ≥100 follower.', 'Meta does not provide Facebook demographics. Instagram needs ≥100 followers.')}</div>`;
+  const posBox = hiHtml ? `<div class="t-body" style="line-height:1.55;color: #166534">${hiHtml}</div>` : `<div class="muted">—</div>`;
+  const negBox = issHtml ? `<div class="t-body" style="line-height:1.55;color: #b45309">${issHtml}</div>` : `<div class="muted">—</div>`;
+  const insightBox = (c.tldr && L(c.tldr)) || (c.summary && L(c.summary)) ? `<div class="t-body" style="color: #334155;line-height:1.6">${esc(L(c.tldr) || L(c.summary))}</div>` : `<div class="muted">—</div>`;
+  const insightsBox = (c.insights ?? []).length ? (c.insights ?? []).map((x) => `<div class="t-body" style="margin:3px 0;color: #334155">• ${esc(L(x))}</div>`).join('') : insightBox;
+  const planGroup = (label: string, items?: Item[]) => `<div style="flex:1;min-width:130px"><div class="t-body" style="font-weight:800;color: #4338ca;margin-bottom:3px">${esc(label)}</div>${(items ?? []).length ? (items ?? []).map((x) => `<div class="t-body" style="margin:2px 0;color: #334155">• ${esc(L(x))}</div>`).join('') : '<div class="muted">—</div>'}</div>`;
   const nm = c.nextMonth;
   const kehoachHtml = nm && (nm.content || nm.ads || nm.growth || nm.kpi)
     ? `<div style="display:flex;gap:14px;flex-wrap:wrap">${planGroup(t('NỘI DUNG', 'CONTENT'), nm.content)}${planGroup(t('QUẢNG CÁO', 'ADS'), nm.ads)}${planGroup(t('TĂNG TRƯỞNG', 'GROWTH'), nm.growth)}${planGroup(t('KPI THÁNG SAU', 'NEXT-MONTH KPIs'), nm.kpi)}</div>`
-    : `<div class="t-body" style="color:#4338ca;line-height:1.55">${plan}</div>`;
+    : `<div class="t-body" style="color: #4338ca;line-height:1.55">${plan}</div>`;
   // ---- Google Business Profile deck page (real GBP metrics only) ----
   const g = data.gbp;
   let gbpHtml = '';
   if (g && (g.impressions != null || g.calls != null || g.directions != null || g.websiteClicks != null || g.bookings != null)) {
     const gv = g.vsPrev || ({} as NonNullable<GbpData['vsPrev']>);
     const card = (label: string, sub: string, val: number | null | undefined, d: SocialDelta | null | undefined, color: string) =>
-      `<div style="flex:1;min-width:150px;background:#fff;border:1px solid #e6ebf3;border-radius:12px;padding:11px 13px"><div class="t-body" style="color:#475569;font-weight:600">${esc(label)}</div><div class="t-cap" style="color:#94a3b8">${esc(sub)}</div><div style="display:flex;align-items:baseline;gap:8px;margin-top:5px"><div class="t-num2" style="font-weight:800;color:${color}">${fnum(val)}</div>${arS(d)}</div></div>`;
+      `<div style="flex:1;min-width:150px;background:#fff;border:1px solid #e6ebf3;border-radius:12px;padding:11px 13px"><div class="t-body" style="color: #475569;font-weight:600">${esc(label)}</div><div class="t-cap" style="color: #94a3b8">${esc(sub)}</div><div style="display:flex;align-items:baseline;gap:8px;margin-top:5px"><div class="t-num2" style="font-weight:800;color: ${color}">${fnum(val)}</div>${arS(d)}</div></div>`;
     const overview = `<div style="display:flex;gap:9px;flex-wrap:wrap">
       ${card(t('Lượt xem hồ sơ', 'Profile views'), 'Impressions', g.impressions, gv.impressions, '#1a73e8')}
       ${card(t('Lượt gọi điện', 'Calls'), 'Call clicks', g.calls, gv.calls, '#0f2a52')}
@@ -810,27 +810,27 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
       ${card(t('Lượt nhắn tin', 'Messages'), 'Conversations', g.conversations, gv.conversations, '#0f2a52')}
     </div>`;
     const totImp = g.impressions || 0;
-    const bar = (label: string, val: number, color: string) => { const pct = totImp > 0 ? Math.round((val / totImp) * 100) : 0; return `<div style="margin:4px 0"><div class="t-body" style="display:flex;justify-content:space-between;color:#475569"><span>${esc(label)}</span><b style="color:#0f2a52">${fnum(val)} · ${pct}%</b></div><div style="height:8px;background:#eef1f6;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:${color}"></span></div></div>`; };
+    const bar = (label: string, val: number, color: string) => { const pct = totImp > 0 ? Math.round((val / totImp) * 100) : 0; return `<div style="margin:4px 0"><div class="t-body" style="display:flex;justify-content:space-between;color:#475569"><span>${esc(label)}</span><b style="color: #0f2a52">${fnum(val)} · ${pct}%</b></div><div style="height:8px;background:#eef1f6;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:${color}"></span></div></div>`; };
     const sourcePanel = `${bar(t('Trên Tìm kiếm', 'On Search'), g.searchImpr || 0, '#4285F4')}${bar(t('Trên Maps', 'On Maps'), g.mapsImpr || 0, '#34A853')}<div style="height:6px"></div>${bar('Mobile', g.mobileImpr || 0, '#5b8def')}${bar('Desktop', g.desktopImpr || 0, '#9bb8f0')}`;
     const kw = (g.keywords || []).slice(0, 6);
-    const kwPanel = kw.length ? `<div class="t-body" style="">${kw.map((k) => `<div style="display:flex;justify-content:space-between;margin:2px 0;color:#475569"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k.keyword)}</span><b style="color:#0f2a52;flex-shrink:0;margin-left:8px">${fnum(k.count)}</b></div>`).join('')}</div>` : `<div class="empty">${t('Chưa có dữ liệu từ khoá tháng này.', 'No keyword data this month.')}</div>`;
+    const kwPanel = kw.length ? `<div class="t-body" style="">${kw.map((k) => `<div style="display:flex;justify-content:space-between;margin:2px 0;color: #475569"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k.keyword)}</span><b style="color: #0f2a52;flex-shrink:0;margin-left:8px">${fnum(k.count)}</b></div>`).join('')}</div>` : `<div class="empty">${t('Chưa có dữ liệu từ khoá tháng này.', 'No keyword data this month.')}</div>`;
     const impSeries = (g.series || []).map((x) => x.impressions || 0);
     const trendPanel = impSeries.length > 1 ? sparkD(impSeries, '#1a73e8', (g.series || []).map((x) => x.month)) : `<div class="empty">${t('Cần ≥2 tháng đồng bộ để vẽ xu hướng.', 'Need ≥2 synced months for a trend.')}</div>`;
     const actRate = (val: number | null | undefined) => (totImp > 0 && val != null ? Math.round((val / totImp) * 1000) / 10 : null);
-    const actBar = (label: string, val: number | null | undefined, color: string) => { const r = actRate(val); return `<div style="margin:4px 0"><div class="t-body" style="display:flex;justify-content:space-between;color:#475569"><span>${esc(label)}</span><b style="color:#0f2a52">${r != null ? r + '%' : '—'}</b></div><div style="height:8px;background:#eef1f6;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${r || 0}%;background:${color}"></span></div></div>`; };
+    const actBar = (label: string, val: number | null | undefined, color: string) => { const r = actRate(val); return `<div style="margin:4px 0"><div class="t-body" style="display:flex;justify-content:space-between;color:#475569"><span>${esc(label)}</span><b style="color: #0f2a52">${r != null ? r + '%' : '—'}</b></div><div style="height:8px;background:#eef1f6;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${r || 0}%;background:${color}"></span></div></div>`; };
     const actionPanel = `${actBar(t('Gọi điện', 'Calls'), g.calls, '#4285F4')}${actBar(t('Chỉ đường', 'Directions'), g.directions, '#34A853')}${actBar(t('Truy cập web', 'Website'), g.websiteClicks, '#FBBC05')}${actBar(t('Đặt lịch', 'Bookings'), g.bookings, '#EA4335')}`;
     const up = (x: number | null | undefined) => (x == null ? null : Math.ceil((x * 1.1) / 50) * 50);
-    const kpiRow = (label: string, cur: number | null | undefined) => (cur != null ? `<div class="t-body" style="display:flex;justify-content:space-between;margin:3px 0"><span style="color:#475569">${esc(label)}</span><b style="color:#0f2a52">≥ ${fnum(up(cur))}</b></div>` : '');
+    const kpiRow = (label: string, cur: number | null | undefined) => (cur != null ? `<div class="t-body" style="display:flex;justify-content:space-between;margin:3px 0"><span style="color: #475569">${esc(label)}</span><b style="color: #0f2a52">≥ ${fnum(up(cur))}</b></div>` : '');
     const kpiPanel = `${kpiRow(t('Lượt xem hồ sơ', 'Profile views'), g.impressions)}${kpiRow(t('Lượt gọi', 'Calls'), g.calls)}${kpiRow(t('Lượt chỉ đường', 'Directions'), g.directions)}${kpiRow(t('Lượt truy cập web', 'Website'), g.websiteClicks)}${kpiRow(t('Lượt đặt lịch', 'Bookings'), g.bookings)}` || '<div class="muted">—</div>';
     const rv = g.reviews;
     const stars = (n: number) => '★'.repeat(Math.max(0, Math.min(5, Math.round(n)))) + '☆'.repeat(Math.max(0, 5 - Math.round(n)));
     const reviewPanel = rv && (rv.rating != null || rv.count != null)
-      ? `<div style="display:flex;align-items:center;gap:8px"><div class="t-num" style="font-weight:800;color:#0f2a52">${rv.rating ?? '—'}</div><div><div class="t-h2" style="color:#f59e0b;line-height:1">${stars(rv.rating || 0)}</div><div class="t-cap" style="color:#64748b">${fnum(rv.count)} ${t('đánh giá', 'reviews')}</div></div></div>
+      ? `<div style="display:flex;align-items:center;gap:8px"><div class="t-num" style="font-weight:800;color: #0f2a52">${rv.rating ?? '—'}</div><div><div class="t-h2" style="color: #f59e0b;line-height:1">${stars(rv.rating || 0)}</div><div class="t-cap" style="color: #64748b">${fnum(rv.count)} ${t('đánh giá', 'reviews')}</div></div></div>
         <div style="display:flex;gap:18px;margin-top:10px;border-top:1px solid #eef1f6;padding-top:8px">
-          <div><div class="t-num2" style="font-weight:800;color:#16A34A">${rv.newThisMonth != null ? '+' + fnum(rv.newThisMonth) : '—'}</div><div class="t-cap" style="color:#64748b">${t('review mới tháng này', 'new this month')}</div></div>
-          <div><div class="t-num2" style="font-weight:800;color:${(rv.badCount || 0) > 0 ? '#DC2626' : '#0f2a52'}">${rv.badCount != null ? fnum(rv.badCount) : '—'}</div><div class="t-cap" style="color:#64748b">${t('review xấu (≤2★)', 'bad (≤2★)')}</div></div>
-        </div>${(rv.recent || []).slice(0, 2).map((r) => `<div class="t-cap" style="border-top:1px solid #eef1f6;padding:5px 0;margin-top:4px"><b>${esc(r.author || '')}</b> · <span style="color:#f59e0b">${'★'.repeat(r.rating || 0)}</span><div style="color:#475569">${esc((r.comment || '').slice(0, 90))}</div></div>`).join('')}`
-      : `<div class="t-body" style="color:#94a3b8;line-height:1.6">${t('Chưa có dữ liệu đánh giá — vào Chỉnh sửa → “Google — Đánh giá (nhập tay)” để nhập rating, tổng review, review mới, review xấu.', 'No review data — go to Edit → “Google — Reviews (manual)” to enter rating, totals, new & bad reviews.')}</div>`;
+          <div><div class="t-num2" style="font-weight:800;color: #16A34A">${rv.newThisMonth != null ? '+' + fnum(rv.newThisMonth) : '—'}</div><div class="t-cap" style="color: #64748b">${t('review mới tháng này', 'new this month')}</div></div>
+          <div><div class="t-num2" style="font-weight:800;color: ${(rv.badCount || 0) > 0 ? '#DC2626' : '#0f2a52'}">${rv.badCount != null ? fnum(rv.badCount) : '—'}</div><div class="t-cap" style="color: #64748b">${t('review xấu (≤2★)', 'bad (≤2★)')}</div></div>
+        </div>${(rv.recent || []).slice(0, 2).map((r) => `<div class="t-cap" style="border-top:1px solid #eef1f6;padding:5px 0;margin-top:4px"><b>${esc(r.author || '')}</b> · <span style="color: #f59e0b">${'★'.repeat(r.rating || 0)}</span><div style="color: #475569">${esc((r.comment || '').slice(0, 90))}</div></div>`).join('')}`
+      : `<div class="t-body" style="color: #94a3b8;line-height:1.6">${t('Chưa có dữ liệu đánh giá — vào Chỉnh sửa → “Google — Đánh giá (nhập tay)” để nhập rating, tổng review, review mới, review xấu.', 'No review data — go to Edit → “Google — Reviews (manual)” to enter rating, totals, new & bad reviews.')}</div>`;
     const recs: string[] = [];
     if ((g.bookings || 0) === 0) recs.push(t('Bật Đặt lịch qua Google (Reserve with Google) để khách đặt ngay trên Maps.', 'Turn on Reserve with Google so customers book from Maps.'));
     recs.push(t('Đăng 2–3 bài/tuần (ưu đãi, ảnh trước/sau) để giữ hồ sơ hoạt động.', 'Post 2–3/week (offers, before/after) to keep the profile active.'));
@@ -838,7 +838,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     recs.push((g.searchImpr || 0) > (g.mapsImpr || 0)
       ? t('Khách tìm chủ yếu qua Tìm kiếm — tối ưu từ khoá dịch vụ trong mô tả hồ sơ.', 'Most discovery is via Search — optimise service keywords in the profile description.')
       : t('Khách chủ yếu thấy trên Maps — thêm ảnh mới & cập nhật giờ mở cửa để nổi bật.', 'Most views are on Maps — add fresh photos & keep hours updated to stand out.'));
-    const recPanel = `<div class="t-body" style="line-height:1.5">${recs.map((r) => `<div style="margin:3px 0;color:#334155">• ${esc(r)}</div>`).join('')}</div>`;
+    const recPanel = `<div class="t-body" style="line-height:1.5">${recs.map((r) => `<div style="margin:3px 0;color: #334155">• ${esc(r)}</div>`).join('')}</div>`;
     gbpHtml = `
     ${panel('01', t('TỔNG QUAN HIỆU QUẢ GBP', 'GBP PERFORMANCE'), overview)}
     <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
@@ -851,7 +851,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
       ${panel('06', t('ĐÁNH GIÁ & XẾP HẠNG', 'REVIEWS'), reviewPanel)}
     </div>`;
   }
-  const bizNums = `<div style="display:flex;gap:12px;flex-wrap:wrap">${bignum(String(o.totals.bookings), t('Lượt đặt lịch', 'Bookings'), d?.bookings)}${bignum(String(o.totals.showed), t('Đã đến', 'Showed'), d?.showed)}${bignum(String(o.newCustomers), t('Khách mới', 'New customers'), d?.newCustomers)}${bignum(money(o.totals.revenueCents), t('Doanh thu', 'Revenue'), d?.revenueCents)}${total > 0 ? bignum(money(total), t('Chi phí marketing', 'Marketing spend'), d?.spendCents) : ''}${(total > 0 && b?.revenuePerSpend != null) ? bignum(String(b.revenuePerSpend) + '×', 'ROAS', undefined, b.revenuePerSpend >= 1 ? '#059669' : '#d97706') : ''}</div>${(o.gbp?.bookings ?? 0) > 0 ? `<div class="t-body" style="color:#475569;margin-top:8px;border-top:1px solid #eef1f6;padding-top:6px">${t('Trong đó từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b>${o.gbp!.bookings}</b> ${t('đặt lịch', 'bookings')} · <b style="color:#059669">${money(o.gbp!.revenueCents)}</b></div>` : ''}${spendLine ? `<div class="t-body" style="color:#6b7280;margin-top:6px">${t('Chi tiết chi phí', 'Spend detail')}: ${esc(spendLine)}</div>` : ''}`;
+  const bizNums = `<div style="display:flex;gap:12px;flex-wrap:wrap">${bignum(String(o.totals.bookings), t('Lượt đặt lịch', 'Bookings'), d?.bookings)}${bignum(String(o.totals.showed), t('Đã đến', 'Showed'), d?.showed)}${bignum(String(o.newCustomers), t('Khách mới', 'New customers'), d?.newCustomers)}${bignum(money(o.totals.revenueCents), t('Doanh thu', 'Revenue'), d?.revenueCents)}${total > 0 ? bignum(money(total), t('Chi phí marketing', 'Marketing spend'), d?.spendCents) : ''}${(total > 0 && b?.revenuePerSpend != null) ? bignum(String(b.revenuePerSpend) + '×', 'ROAS', undefined, b.revenuePerSpend >= 1 ? '#059669' : '#d97706') : ''}</div>${(o.gbp?.bookings ?? 0) > 0 ? `<div class="t-body" style="color: #475569;margin-top:8px;border-top:1px solid #eef1f6;padding-top:6px">${t('Trong đó từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b>${o.gbp!.bookings}</b> ${t('đặt lịch', 'bookings')} · <b style="color: #059669">${money(o.gbp!.revenueCents)}</b></div>` : ''}${spendLine ? `<div class="t-body" style="color: #6b7280;margin-top:6px">${t('Chi tiết chi phí', 'Spend detail')}: ${esc(spendLine)}</div>` : ''}`;
   // "Tháng 08/2026", not the raw "2026-08" — a client report speaks the
   // client's calendar, not the database's.
   const [yy, mm] = String(data.month || '').split('-');
@@ -873,16 +873,16 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
       <div style="min-width:0">
         <div class="kick">${kicker}</div>
         <div class="t-title">${esc(salonName || t('Báo cáo Marketing', 'Marketing Report'))}</div>
-        <div class="t-cap" style="color:#64748b;margin-top:3px">Facebook · Instagram · TikTok · Google · ${monthLabel} · <b style="color:${effColor}">${effLabel}</b></div>
+        <div class="t-cap" style="color: #64748b;margin-top:3px">Facebook · Instagram · TikTok · Google · ${monthLabel} · <b style="color: ${effColor}">${effLabel}</b></div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         ${chip}
-        <div class="t-cap" style="color:#8a97ad;margin-top:4px">Lumio Agency</div>
+        <div class="t-cap" style="color: #8a97ad;margin-top:4px">Lumio Agency</div>
       </div>
     </div>
     <div class="rule"></div>`;
-  const lumioChip = `<span class="chip" style="background:#eef2ff;color:#4338ca">Lumio</span>`;
-  const gChip = `<span class="chip" style="background:#e8f0fe;color:#1a73e8">G</span>`;
+  const lumioChip = `<span class="chip" style="background:#eef2ff;color: #4338ca">Lumio</span>`;
+  const gChip = `<span class="chip" style="background:#e8f0fe;color: #1a73e8">G</span>`;
 
   // The footer says where the numbers came from — and which page you hold.
   // Page numbers are the cheapest professionalism there is, and the old export
@@ -921,7 +921,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     ${sheetHead(t('TỔNG KẾT & KẾ HOẠCH THÁNG TỚI — TẤT CẢ KÊNH', 'SUMMARY & NEXT-MONTH PLAN'), lumioChip)}
     ${channelsHtml ? panel('01', t('ĐÁNH GIÁ TỪNG KÊNH', 'CHANNEL EVALUATION'), `<div class="grid" style="grid-template-columns:1fr 1fr">${channelsHtml}</div>`) : ''}
     <div class="grid" style="grid-template-columns:1fr 1fr">
-      ${panel('02', t('ĐÁNH GIÁ CHUNG', 'OVERALL ASSESSMENT'), `<div class="t-body" style="font-weight:700;color:#166534;margin-bottom:2px">${t('Điểm tích cực', 'Wins')}</div>${posBox}<div class="t-body" style="font-weight:700;color:#b45309;margin:8px 0 2px">${t('Điểm cần cải thiện', 'To improve')}</div>${negBox}`)}
+      ${panel('02', t('ĐÁNH GIÁ CHUNG', 'OVERALL ASSESSMENT'), `<div class="t-body" style="font-weight:700;color: #166534;margin-bottom:2px">${t('Điểm tích cực', 'Wins')}</div>${posBox}<div class="t-body" style="font-weight:700;color: #b45309;margin:8px 0 2px">${t('Điểm cần cải thiện', 'To improve')}</div>${negBox}`)}
       ${panel('03', t('INSIGHT NỔI BẬT', 'KEY INSIGHTS'), insightsBox)}
     </div>
     ${panel('04', t('KẾ HOẠCH & ĐỊNH HƯỚNG THÁNG TIẾP THEO', 'NEXT-MONTH PLAN'), kehoachHtml)}
@@ -933,7 +933,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   /* Without this line the browser strips every background at print time —
      which is exactly how the last export shipped with grey ghost titles. */
   *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  body{font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#1f2a3d;margin:0 auto;padding:0;background:#eef2f8;width:281mm;line-height:1.45;
+  body{font-family:'Be Vietnam Pro',-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color: #1f2a3d;margin:0 auto;padding:0;background:#eef2f8;width:281mm;line-height:1.45;
        /* Lining, equal-width digits: numbers in columns land in columns. */
        font-variant-numeric:tabular-nums}
   @media print{body{background:#fff;width:auto}}
@@ -944,7 +944,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   @media screen{.sheet{margin:10px auto;border:1px solid #dbe2ee;border-radius:10px}}
   .sheet:last-of-type{page-break-after:auto}
   .head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px}
-  .kick{font-size:10.5px;font-weight:800;letter-spacing:2.2px;color:#4f46e5;text-transform:uppercase}
+  .kick{font-size:10.5px;font-weight:800;letter-spacing:2.2px;color: #4f46e5;text-transform:uppercase}
   .rule{height:3px;border-radius:2px;background:linear-gradient(90deg,#4f46e5,#e1306c 55%,#f59e0b);margin:8px 0 1px;flex-shrink:0}
   .chip{display:inline-grid;place-items:center;min-width:44px;height:34px;border-radius:9px;font-weight:800;font-size:15px;padding:0 10px}
   .grid{display:grid;gap:10px;margin-top:10px;break-inside:avoid}
@@ -957,31 +957,31 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   .panel{background:#fff;border:1px solid #e3e8f2;border-radius:12px;padding:12px 14px;break-inside:avoid;margin-top:10px;overflow:hidden}
   .grid .panel{margin-top:0} /* the grid's gap already spaces these */
   .sec{display:flex;align-items:center;gap:8px;margin-bottom:9px}
-  .sec-n{width:21px;height:21px;border-radius:6px;background:#eef2ff;color:#4338ca;font-size:11px;font-weight:800;display:grid;place-items:center;flex-shrink:0}
-  .sec-t{font-size:12px;font-weight:800;letter-spacing:1.1px;color:#0b1f3a;text-transform:uppercase}
+  .sec-n{width:21px;height:21px;border-radius:6px;background:#eef2ff;color: #4338ca;font-size:11px;font-weight:800;display:grid;place-items:center;flex-shrink:0}
+  .sec-t{font-size:12px;font-weight:800;letter-spacing:1.1px;color: #0b1f3a;text-transform:uppercase}
   table{width:100%;border-collapse:collapse} td{vertical-align:middle}
   /* Type scale — print sizes, not screen sizes. Every size comes from here. */
-  .t-title{font-size:27px;font-weight:800;color:#0b1f3a;letter-spacing:.2px;line-height:1.3;padding:1px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .t-title{font-size:27px;font-weight:800;color: #0b1f3a;letter-spacing:.2px;line-height:1.3;padding:1px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .t-num  {font-size:24px;font-weight:800;line-height:1.12}
   .t-num2 {font-size:19px;font-weight:800;line-height:1.15}
   .t-h2   {font-size:16px;font-weight:800}
   .t-h3   {font-size:13px;font-weight:800;letter-spacing:.3px}
   .t-body {font-size:12.5px;font-weight:400}
   .t-cap  {font-size:11px;font-weight:400}
-  .muted{color:#7a8ba6;line-height:1.5}
-  .empty{color:#8496b0;background:#f7f9fc;border:1px dashed #dde4ef;border-radius:10px;padding:14px 12px;text-align:center;font-size:12px}
-  .foot{margin-top:auto;padding-top:7px;border-top:1px solid #e8edf5;display:flex;justify-content:space-between;align-items:baseline;gap:16px;color:#8a97ad;font-size:10px}
+  .muted{color: #7a8ba6;line-height:1.5}
+  .empty{color: #8496b0;background:#f7f9fc;border:1px dashed #dde4ef;border-radius:10px;padding:14px 12px;text-align:center;font-size:12px}
+  .foot{margin-top:auto;padding-top:7px;border-top:1px solid #e8edf5;display:flex;justify-content:space-between;align-items:baseline;gap:16px;color: #8a97ad;font-size:10px}
   .toolbar{position:fixed;top:12px;right:14px;z-index:50;display:flex;align-items:center;gap:10px}
-  .print-btn{background:#4f46e5;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(79,70,229,.35)}
-  .toolbar .t-cap{color:#64748b;background:#fff;border:1px solid #e3e8f2;border-radius:8px;padding:4px 9px}
-  .tool-btn{background:#fff;border:1px solid #cdd6e6;color:#334155;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
-  .tool-btn.on{background:#eef2ff;border-color:#6366f1;color:#4338ca}
+  .print-btn{background:#4f46e5;color: #fff;border:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(79,70,229,.35)}
+  .toolbar .t-cap{color: #64748b;background:#fff;border:1px solid #e3e8f2;border-radius:8px;padding:4px 9px}
+  .tool-btn{background:#fff;border:1px solid #cdd6e6;color: #334155;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+  .tool-btn.on{background:#eef2ff;border-color: #6366f1;color:#4338ca}
   /* Edit mode: hover shows what a click will edit; × removes a whole block. */
   body.editing .sheet{cursor:text}
   .panel{position:relative}
   body.editing .panel:hover{outline:2px dashed #a5b4fc;outline-offset:2px}
   [contenteditable]:focus{outline:none}
-  .del-x{display:none;position:absolute;top:6px;right:6px;width:21px;height:21px;border-radius:6px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;font-size:12px;font-weight:800;cursor:pointer;line-height:1;z-index:5;font-family:inherit}
+  .del-x{display:none;position:absolute;top:6px;right:6px;width:21px;height:21px;border-radius:6px;border:1px solid #fecaca;background:#fef2f2;color: #dc2626;font-size:12px;font-weight:800;cursor:pointer;line-height:1;z-index:5;font-family:inherit}
   body.editing .del-x{display:block}
   @media print{.toolbar{display:none}.del-x{display:none!important}body.editing .panel:hover{outline:none}}
   </style></head><body>
@@ -1141,7 +1141,7 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
             <span style={{ fontSize: 14, color: 'var(--ce2e8f0)', display: 'flex', alignItems: 'center', gap: 8 }}>
               {c.label}
               {!c.enabled && <span style={{ fontSize: 10.5, color: 'var(--c94a3b8)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 8px' }}>{T('sắp có', 'coming soon')}</span>}
-              {c.connected && !c.keyHint?.startsWith('LINKED:') && <span style={{ fontSize: 10.5, color: '#22c55e', border: '1px solid #22c55e', borderRadius: 999, padding: '1px 8px' }}>{T('đã kết nối', 'connected')}</span>}
+              {c.connected && !c.keyHint?.startsWith('LINKED:') && <span style={{ fontSize: 10.5, color: 'var(--ink-good)', border: '1px solid #22c55e', borderRadius: 999, padding: '1px 8px' }}>{T('đã kết nối', 'connected')}</span>}
               {/* A linked channel explains itself. A bare green tick reads as
                   "somebody set this up here"; this one says which existing
                   connection it is riding on, so nobody hunts for settings that
@@ -1286,7 +1286,7 @@ function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string
   const color = isTt ? '#25f4ee' : isIg ? '#e1306c' : '#1877f2';
   const fmt = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString(uiLocale()));
   const arrow = (dl?: SocialDelta | null) =>
-    dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? '#22c55e' : 'var(--cf87171)', fontSize: 10.5, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'}{Math.abs(dl.pct)}%</span> : null;
+    dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 10.5, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'}{Math.abs(dl.pct)}%</span> : null;
   const Stat = (label: string, val: number | null, dl?: SocialDelta | null) => (
     <div key={label} style={{ textAlign: 'center', flex: 1, minWidth: 62 }}>
       <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--cf8fafc)' }}>{fmt(val)}</div>
@@ -1357,7 +1357,7 @@ const CH_NAME: Record<string, string> = { facebook: 'Facebook', instagram: 'Inst
 
 function GbpCard({ g, T }: { g: GbpData; T: (v: string, e: string) => string }) {
   const fmt = (n: number | null | undefined) => (n == null ? '\u2014' : Number(n).toLocaleString(uiLocale()));
-  const arrow = (d?: SocialDelta | null) => (d && d.pct != null ? <span style={{ color: d.pct >= 0 ? '#22c55e' : 'var(--cf87171)', fontSize: 10.5, fontWeight: 700 }}>{d.pct >= 0 ? '\u25B2' : '\u25BC'}{Math.abs(d.pct)}%</span> : null);
+  const arrow = (d?: SocialDelta | null) => (d && d.pct != null ? <span style={{ color: d.pct >= 0 ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 10.5, fontWeight: 700 }}>{d.pct >= 0 ? '\u25B2' : '\u25BC'}{Math.abs(d.pct)}%</span> : null);
   const Stat = (label: string, val: number | null | undefined, d?: SocialDelta | null) => (
     <div key={label} style={{ textAlign: 'center', flex: 1, minWidth: 80 }}>
       <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--cf8fafc)' }}>{fmt(val)}</div>
@@ -1412,7 +1412,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
   const [effColor, effLabel] = effMap[eff] ?? effMap.organic;
   const hasReport = !!content && !content._aiUnavailable && (!!L(content.headline) || !!L(content.tldr) || (content.plan ?? []).length > 0 || (content.channels ?? []).length > 0);
 
-  const arrow = (dl?: Delta) => dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? '#22c55e' : 'var(--cf87171)', fontSize: 11, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'} {Math.abs(dl.pct)}%</span> : null;
+  const arrow = (dl?: Delta) => dl && dl.pct != null ? <span style={{ color: dl.pct >= 0 ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 11, fontWeight: 700 }}>{dl.pct >= 0 ? '▲' : '▼'} {Math.abs(dl.pct)}%</span> : null;
   const spendRows = (data.spend ?? []).filter((x) => x.amountCents > 0).sort((a, z) => z.amountCents - a.amountCents);
   const spendByCh: Record<string, SpendRow> = {}; (data.spend ?? []).forEach((x) => { spendByCh[x.channel] = x; });
   const vLabel = (v: string) => T(({ good: 'Tốt', ok: 'Ổn', weak: 'Yếu', nodata: 'Chưa đủ dữ liệu' } as Record<string, string>)[v] || v, ({ good: 'Good', ok: 'OK', weak: 'Weak', nodata: 'No data' } as Record<string, string>)[v] || v);
@@ -1468,7 +1468,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
           const mk = (label: string, o: { v: number; p: number }) => {
             if (o.v === 0 && o.p === 0) return null;
             const pct = o.p > 0 ? Math.round(((o.v - o.p) / o.p) * 100) : null;
-            return <span key={label} style={{ marginRight: 10 }}>{label} <b style={{ color: 'var(--ce2e8f0)' }}>{o.v.toLocaleString()}</b>{pct != null && <span style={{ color: pct >= 0 ? '#22c55e' : 'var(--cf87171)', fontSize: 11, fontWeight: 700 }}> {pct >= 0 ? '▲' : '▼'}{Math.abs(pct)}%</span>}</span>;
+            return <span key={label} style={{ marginRight: 10 }}>{label} <b style={{ color: 'var(--ce2e8f0)' }}>{o.v.toLocaleString()}</b>{pct != null && <span style={{ color: pct >= 0 ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 11, fontWeight: 700 }}> {pct >= 0 ? '▲' : '▼'}{Math.abs(pct)}%</span>}</span>;
           };
           const r2 = mk(T('Hiển thị', 'Reach'), tot('reach')); const c2 = mk('Click', tot('clicks'));
           return (r2 || c2) ? <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }}>{r2}{c2}</div> : null;
@@ -1477,7 +1477,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
             {[[String(o.totals.bookings), T('lượt đặt', 'bookings'), d?.bookings, false], [String(o.totals.showed), T('đã đến', 'showed'), d?.showed, false], [String(o.newCustomers), T('khách mới', 'new'), d?.newCustomers, false], [money(o.totals.revenueCents), T('doanh thu', 'revenue'), d?.revenueCents, true]].map((x, i) => (
               <div key={i} style={{ flex: 1, minWidth: 70, textAlign: 'center' }}>
-                <div style={{ fontSize: 21, fontWeight: 800, color: x[3] ? '#22c55e' : 'var(--cf8fafc)' }}>{x[0] as string}</div>
+                <div style={{ fontSize: 21, fontWeight: 800, color: x[3] ? 'var(--ink-good)' : 'var(--cf8fafc)' }}>{x[0] as string}</div>
                 <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{x[1] as string}</div>
                 <div>{arrow(x[2] as Delta)}</div>
               </div>
@@ -1485,7 +1485,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
           </div>
           {(o.gbp?.bookings ?? 0) > 0 && (
             <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 6 }}>
-              {T('Từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b style={{ color: 'var(--ce2e8f0)' }}>{o.gbp!.bookings}</b> {T('lượt đặt', 'bookings')} · {o.gbp!.showed} {T('đã đến', 'showed')} · <b style={{ color: '#22c55e' }}>{money(o.gbp!.revenueCents)}</b>
+              {T('Từ Google Maps (đo đích danh)', 'From Google Maps (verified)')}: <b style={{ color: 'var(--ce2e8f0)' }}>{o.gbp!.bookings}</b> {T('lượt đặt', 'bookings')} · {o.gbp!.showed} {T('đã đến', 'showed')} · <b style={{ color: 'var(--ink-good)' }}>{money(o.gbp!.revenueCents)}</b>
             </div>
           )}
         </div>
@@ -1529,7 +1529,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
             const fbI = (data.socialInsights ?? []).find((x) => x.platform === 'facebook');
             const dbg = fbI?.fbDebug;
             if (!dbg) return null;
-            return <div style={{ fontSize: 10.5, color: dbg.error ? '#f59e0b' : 'var(--c64748b)', marginTop: 6 }}>{T('Facebook: đọc được', 'Facebook: read')} <b>{dbg.count}</b> {T('bài', 'posts')}{dbg.error ? ` · ${dbg.error}` : (dbg.count === 0 ? T(' (Page chưa có bài trong tháng)', ' (no page posts this month)') : '')}</div>;
+            return <div style={{ fontSize: 10.5, color: dbg.error ? 'var(--ink-warn)' : 'var(--c64748b)', marginTop: 6 }}>{T('Facebook: đọc được', 'Facebook: read')} <b>{dbg.count}</b> {T('bài', 'posts')}{dbg.error ? ` · ${dbg.error}` : (dbg.count === 0 ? T(' (Page chưa có bài trong tháng)', ' (no page posts this month)') : '')}</div>;
           })()}
           <div style={{ fontSize: 10.5, color: 'var(--ink-faint)', marginTop: 8, lineHeight: 1.5 }}>
             {T('Số liệu tự nhiên (không tính quảng cáo), lấy trực tiếp từ Facebook/Instagram. Ô trống nghĩa là Meta đã ngừng cung cấp chỉ số đó.',
@@ -1579,7 +1579,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
         <div style={pv}>
           <div style={pvL}>{T('ĐIỂM NỔI BẬT', 'HIGHLIGHTS')}</div>
           <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ce2e8f0)', display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {content!.highlights!.map((x, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ color: '#22c55e', fontWeight: 700 }}>✓</span><span>{L(x)}</span></div>)}
+            {content!.highlights!.map((x, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>✓</span><span>{L(x)}</span></div>)}
           </div>
         </div>
       )}
@@ -1589,7 +1589,7 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
         <div style={{ ...pv, border: '1px solid #b45309' }}>
           <div style={{ ...pvL, color: 'var(--cfbbf24)' }}>{T('THÁCH THỨC & HƯỚNG XỬ LÝ', 'CHALLENGES & SOLUTIONS')}</div>
           <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ce2e8f0)', display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {content!.issues!.map((x, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ color: '#f59e0b', fontWeight: 700 }}>▲</span><span>{L(x)}</span></div>)}
+            {content!.issues!.map((x, i) => <div key={i} style={{ display: 'flex', gap: 8 }}><span style={{ color: 'var(--ink-warn)', fontWeight: 700 }}>▲</span><span>{L(x)}</span></div>)}
           </div>
         </div>
       )}

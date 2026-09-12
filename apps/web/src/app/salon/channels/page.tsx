@@ -242,9 +242,9 @@ function Inner() {
 // ---- pieces ---------------------------------------------------------------------
 
 const STATE: Record<string, { color: string; bg: string; vi: string; en: string }> = {
-  ok: { color: '#22c55e', bg: 'var(--c052e16)', vi: 'Đã kết nối ✓', en: 'Connected ✓' },
-  warn: { color: '#f59e0b', bg: 'var(--c451a03)', vi: 'Cần chú ý', en: 'Needs attention' },
-  error: { color: '#ef4444', bg: 'var(--c450a0a)', vi: 'Không đọc được', en: 'Could not read' },
+  ok: { color: 'var(--ink-good)', bg: 'var(--c052e16)', vi: 'Đã kết nối ✓', en: 'Connected ✓' },
+  warn: { color: 'var(--ink-warn)', bg: 'var(--c451a03)', vi: 'Cần chú ý', en: 'Needs attention' },
+  error: { color: 'var(--ink-bad)', bg: 'var(--c450a0a)', vi: 'Không đọc được', en: 'Could not read' },
   off: { color: 'var(--c64748b)', bg: 'var(--c1e293b)', vi: 'Chưa kết nối', en: 'Not connected' },
   loading: { color: 'var(--c64748b)', bg: 'var(--c1e293b)', vi: 'Đang tải…', en: 'Loading…' },
 };

@@ -81,7 +81,7 @@ function Inner() {
 
       {justIssued && (
         <div style={{ ...ui.card, border: '1px solid #22c55e', marginBottom: 16 }}>
-          <strong style={{ color: '#22c55e' }}>{t('gc.issued')}</strong>
+          <strong style={{ color: 'var(--ink-good)' }}>{t('gc.issued')}</strong>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
             <code style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, background: 'var(--c0f172a)', padding: '8px 14px', borderRadius: 8, color: 'var(--ca5f3fc)' }}>{justIssued.code}</code>
             <span style={{ fontSize: 16, color: 'var(--ce2e8f0)' }}>{formatPrice(justIssued.balanceCents, justIssued.currency)}</span>
@@ -167,7 +167,7 @@ function IssueForm({ token, onDone, currency = 'USD' }: { token: string; onDone:
   return (
     <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        <label><span style={ui.label}>{t('gc.amount')} <span style={{ color: '#ef4444' }}>*</span></span>
+        <label><span style={ui.label}>{t('gc.amount')} <span style={{ color: 'var(--ink-bad)' }}>*</span></span>
           <input style={ui.input} type="number" min={0} step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required /></label>
         <label><span style={ui.label}>{t('gc.payMethod')}</span>
           <select style={ui.input} value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value as 'CASH' | 'CARD' | 'OTHER' })}>

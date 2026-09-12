@@ -243,7 +243,7 @@ export function ContentInbox({ token }: { token: string | null }) {
                 style={{
                   marginLeft: 'auto', cursor: 'pointer', borderRadius: 8, padding: '5px 11px',
                   fontSize: 12.5, fontWeight: 600,
-                  border: '1px solid #22c55e', background: 'transparent', color: '#22c55e',
+                  border: '1px solid #22c55e', background: 'transparent', color: 'var(--ink-good)',
                 }}
               >{open.resolvedAt
                 ? 'Mở lại'

@@ -242,6 +242,30 @@ export const EXTRA: Record<string, [dark: string, light: string]> = {
    * (`#64748b`, 4.8:1), louder than the rule under it.
    */
   '--ink-faint': ['#475569', '#7d8ca1'],
+  /**
+   * ACCENT COLOURS USED AS TEXT.
+   *
+   * Every green, amber, indigo and red in this app was picked against a very
+   * dark panel, and raw hex does not flip. On white they measure:
+   *
+   *     #86efac  1.40 : 1      #fbbf24  1.67 : 1
+   *     #a5b4fc  1.99 : 1      #fca5a5  1.90 : 1
+   *     #22c55e  2.28 : 1      #38bdf8  2.14 : 1
+   *
+   * — which is why the break-even figure, the "Vì sao" toggles, the LUMIO chip
+   * and "Mẹo quay cho đẹp" were all drawn in light mode and none of them could
+   * be read. The theme lint could not catch them either: it watched for SURFACE
+   * TOKENS used as text, and these are not tokens at all.
+   *
+   * Night keeps the exact hex it has today, so nothing about dark mode moves.
+   * Day gets the 700/800 step of the same hue — 5.3:1 or better on the page
+   * ground, and still unmistakably green, amber, indigo, red.
+   */
+  '--ink-good': ['#4ade80', '#166534'],
+  '--ink-warn': ['#fbbf24', '#92400e'],
+  '--ink-bad': ['#fca5a5', '#b91c1c'],
+  '--ink-link': ['#a5b4fc', '#4338ca'],
+  '--ink-sky': ['#38bdf8', '#0369a1'],
   // tinted note/banner grounds
   '--wash-amber': ['rgba(120,53,15,0.12)', '#fffaf0'],
   '--wash-amber-2': ['rgba(120,53,15,0.18)', '#fff6e5'],

@@ -48,7 +48,7 @@ export class Panel extends Component<Props, State> {
         border: '1px solid #ef4444', background: 'rgba(239,68,68,.08)',
         borderRadius: 12, padding: 16, color: '#e2e8f0',
       }}>
-        <div style={{ fontSize: 14.5, fontWeight: 700, color: '#ef4444' }}>
+        <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ink-bad)' }}>
           Phần “{this.props.name}” không hiển thị được
         </div>
         <div style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6, marginTop: 5 }}>

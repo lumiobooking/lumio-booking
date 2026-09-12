@@ -62,11 +62,11 @@ interface Booking {
 // fold into these so the calendar reads at a glance (key → bilingual label via
 // `cal.st<Key>`; color → dot/stripe).
 const STATUS_BUCKETS: { key: string; color: string }[] = [
-  { key: 'Pending', color: '#f59e0b' },
+  { key: 'Pending', color: 'var(--ink-warn)' },
   { key: 'Confirmed', color: '#3b82f6' },
   { key: 'Arrived', color: '#10b981' },
   { key: 'Completed', color: '#8b5cf6' },
-  { key: 'NoShow', color: '#ef4444' },
+  { key: 'NoShow', color: 'var(--ink-bad)' },
   { key: 'Cancelled', color: 'var(--c64748b)' },
 ];
 function statusBucket(status: string): { key: string; color: string } {
@@ -381,9 +381,9 @@ function Inner() {
         </div>
         <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>
           {t('cal.todayLabel')}: <strong style={{ color: 'var(--ce2e8f0)' }}>{todayStats.total}</strong> {t('cal.apptWord')}
-          {todayStats.pending > 0 && <> · <span style={{ color: '#f59e0b' }}>{todayStats.pending} {t('cal.stPending')}</span></>}
+          {todayStats.pending > 0 && <> · <span style={{ color: 'var(--ink-warn)' }}>{todayStats.pending} {t('cal.stPending')}</span></>}
           {todayStats.arrived > 0 && <> · <span style={{ color: '#10b981' }}>{todayStats.arrived} {t('cal.stArrived')}</span></>}
-          {walkinNow > 0 && <> · <span style={{ color: '#f59e0b' }}>{walkinNow} {lang === 'vi' ? 'khách vãng lai' : 'walk-in'}</span></>}
+          {walkinNow > 0 && <> · <span style={{ color: 'var(--ink-warn)' }}>{walkinNow} {lang === 'vi' ? 'khách vãng lai' : 'walk-in'}</span></>}
         </div>
       </div>
 
@@ -620,7 +620,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, padding: '10px 14px', background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 10 }}>
         <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.apptWord')}</span></span>
         <span style={{ color: 'var(--ink-faint)' }}>|</span>
-        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
+        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: 'var(--ink-good)' }}>{formatPrice(revenue, currency)}</strong></span>
         {ev.length > 0 && <><span style={{ color: 'var(--ink-faint)' }}>|</span><span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{fmtT(ev[0].b.startTime)} – {fmtT(ev[ev.length - 1].b.endTime)}</span></>}
         {nextB && <><span style={{ color: 'var(--ink-faint)' }}>|</span><span style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{lang === 'vi' ? 'Kế tiếp' : 'Next'}: <strong style={{ color: 'var(--cf1f5f9)' }}>{fmtT(nextB.startTime)}</strong> {nextB.customer?.firstName ?? ''}</span></>}
       </div>
@@ -682,7 +682,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                         <span style={{ width: 26, height: 26, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
                         <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tech}</span>
                       </div>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: '#22c55e', flexShrink: 0, minWidth: 54, textAlign: 'right' }}>{formatPrice(b.priceCents, b.currency)}</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--ink-good)', flexShrink: 0, minWidth: 54, textAlign: 'right' }}>{formatPrice(b.priceCents, b.currency)}</div>
                       <span style={{ flexShrink: 0, color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
                     </>
                   ) : (
@@ -690,7 +690,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
                         <span style={{ fontSize: 11.5, fontWeight: 700, color: m.color, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#22c55e', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: 'var(--ink-good)', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</span>
                       </div>
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
                       {h > 50 && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.assignedStaff ? ` · ${tech}` : ''}</div>}
@@ -744,7 +744,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14, padding: '10px 14px', background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 10 }}>
         <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.apptWord')}</span></span>
         <span style={{ color: 'var(--ink-faint)' }}>|</span>
-        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
+        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: 'var(--ink-good)' }}>{formatPrice(revenue, currency)}</strong></span>
       </div>
 
       {items.length === 0 ? (
@@ -789,7 +789,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                           <span style={{ width: 22, height: 22, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
                           <span style={{ fontSize: 12, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tech}</span>
                         </span>
-                        <span style={{ fontSize: 14, fontWeight: 800, color: '#22c55e', flexShrink: 0 }}>{formatPrice(b.priceCents, b.currency)}</span>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--ink-good)', flexShrink: 0 }}>{formatPrice(b.priceCents, b.currency)}</span>
                       </div>
                     </div>
                   );
@@ -896,7 +896,7 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
         })()}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 14 }}>
           <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.dPaid')}</span>
-          <span style={{ textAlign: 'right', fontWeight: 600, color: paidCents > 0 ? '#22c55e' : '#f59e0b' }}>
+          <span style={{ textAlign: 'right', fontWeight: 600, color: paidCents > 0 ? 'var(--ink-good)' : 'var(--ink-warn)' }}>
             {paidCents > 0 ? `✓ ${formatPrice(paidCents, b.currency)}` : t('cal.unpaid')}
           </span>
         </div>
@@ -1023,7 +1023,7 @@ function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path:
               <button key={m} onClick={() => setMinutes((v) => v + m)} style={chipBtn}>+{m}m</button>
             ))}
             <button onClick={() => setMinutes(0)} style={chipBtn} disabled={minutes === 0}>↺</button>
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: minutes ? '#22c55e' : 'var(--c475569)', width: 46, textAlign: 'right' }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: minutes ? 'var(--ink-good)' : 'var(--c475569)', width: 46, textAlign: 'right' }}>
               {minutes ? `+${minutes}m` : '—'}
             </span>
           </div>
@@ -1121,13 +1121,13 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
           <select
             value={b.assignedStaff?.id ?? ''}
             onChange={(e) => { if (e.target.value) onAction(b.id, 'assign', { staffId: e.target.value }); }}
-            style={{ ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 150, flexShrink: 0, ...(b.assignedStaff ? {} : { color: '#f59e0b', borderColor: 'var(--c7c5c22)' }) }}
+            style={{ ...ui.input, padding: '5px 7px', fontSize: 12.5, width: 150, flexShrink: 0, ...(b.assignedStaff ? {} : { color: 'var(--ink-warn)', borderColor: 'var(--c7c5c22)' }) }}
           >
             <option value="" disabled>{tr('cal.linePick', lang)}</option>
             {staff.map((x) => <option key={x.id} value={x.id}>{x.firstName} {x.lastName ?? ''}</option>)}
           </select>
         ) : (
-          <span style={{ color: b.assignedStaff ? 'var(--ce2e8f0)' : '#f59e0b', fontWeight: 600, whiteSpace: 'nowrap' }}>👤 {primaryTech}</span>
+          <span style={{ color: b.assignedStaff ? 'var(--ce2e8f0)' : 'var(--ink-warn)', fontWeight: 600, whiteSpace: 'nowrap' }}>👤 {primaryTech}</span>
         )}
       </div>
 

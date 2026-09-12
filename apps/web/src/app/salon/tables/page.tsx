@@ -155,7 +155,7 @@ function Inner() {
             <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--ccbd5e1)' }}>
               <input type="checkbox" checked={tb.isActive} onChange={(e) => patch(tb.id, { isActive: e.target.checked })} />{t('tb.active')}
             </label>
-            <button onClick={() => remove(tb.id)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 13 }}>{t('tb.delete')}</button>
+            <button onClick={() => remove(tb.id)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #ef4444', color: 'var(--ink-bad)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 13 }}>{t('tb.delete')}</button>
           </div>
         ))}
       </div>

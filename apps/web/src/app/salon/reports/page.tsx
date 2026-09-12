@@ -317,8 +317,8 @@ function Bar({ color, label, n, total }: { color: string; label: string; n: numb
 function Outcomes({ k, vi }: { k: Dash['kpis'] | undefined; vi: boolean }) {
   if (!k || k.totalBookings === 0) return <Empty vi={vi} />;
   const rows: { label: string; n: number; color: string }[] = [
-    { label: vi ? 'Hoàn tất' : 'Completed', n: k.completed, color: '#22c55e' },
-    { label: 'No-show', n: k.noShow, color: '#f59e0b' },
+    { label: vi ? 'Hoàn tất' : 'Completed', n: k.completed, color: 'var(--ink-good)' },
+    { label: 'No-show', n: k.noShow, color: 'var(--ink-warn)' },
     { label: vi ? 'Huỷ' : 'Cancelled', n: k.cancelled, color: 'var(--c64748b)' },
   ];
   const other = Math.max(0, k.totalBookings - k.completed - k.noShow - k.cancelled);
@@ -335,7 +335,7 @@ function RankedList({ rows, money, vi }: { rows: Ranked[]; money: (c: number) =>
       <div key={i} style={{ marginBottom: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 3 }}>
           <span style={{ color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '62%' }}>{r.name}</span>
-          <span style={{ color: 'var(--c94a3b8)', flexShrink: 0 }}>{r.bookings} · <span style={{ color: '#22c55e' }}>{money(r.revenueCents)}</span></span>
+          <span style={{ color: 'var(--c94a3b8)', flexShrink: 0 }}>{r.bookings} · <span style={{ color: 'var(--ink-good)' }}>{money(r.revenueCents)}</span></span>
         </div>
         <div style={{ height: 6, background: 'var(--c0f172a)', borderRadius: 999 }}><div style={{ height: '100%', width: `${Math.max(3, (r.revenueCents / max) * 100)}%`, background: '#6366f1', borderRadius: 999 }} /></div>
       </div>
@@ -390,7 +390,7 @@ function Hours({ byHour, vi }: { byHour: number[]; vi: boolean }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 10, color: 'var(--c64748b)' }}>
         {[0, 6, 12, 18, 23].map((h) => <span key={h}>{hr(h)}</span>)}
       </div>
-      <p style={{ ...hint, marginTop: 8 }}>{vi ? 'Giờ đông nhất' : 'Busiest'}: <strong style={{ color: '#f59e0b' }}>{hr(peak)}</strong> ({max})</p>
+      <p style={{ ...hint, marginTop: 8 }}>{vi ? 'Giờ đông nhất' : 'Busiest'}: <strong style={{ color: 'var(--ink-warn)' }}>{hr(peak)}</strong> ({max})</p>
     </div>
   );
 }
@@ -475,7 +475,7 @@ function Weekdays({ byWeekday, vi }: { byWeekday: number[]; vi: boolean }) {
   return (
     <>{byWeekday.map((n, i) => (
       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-        <div style={{ width: 40, flexShrink: 0, fontSize: 12, color: i === peak ? '#f59e0b' : 'var(--ccbd5e1)', fontWeight: i === peak ? 700 : 400 }}>{names[i]}</div>
+        <div style={{ width: 40, flexShrink: 0, fontSize: 12, color: i === peak ? 'var(--ink-warn)' : 'var(--ccbd5e1)', fontWeight: i === peak ? 700 : 400 }}>{names[i]}</div>
         <div style={track}><div style={{ width: `${(n / max) * 100}%`, height: '100%', background: i === peak ? '#f59e0b' : '#6366f1', borderRadius: 6 }} /></div>
         <div style={{ width: 34, textAlign: 'right', fontSize: 13, color: 'var(--ce2e8f0)', flexShrink: 0 }}>{n}</div>
       </div>

@@ -173,7 +173,7 @@ export function TableDayView({ date, items, tz, isMobile, onOpen, today, onChang
         <span style={{ color: 'var(--ink-faint)' }}>|</span>
         <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.covers')}: </span><strong style={{ color: 'var(--ce2e8f0)' }}>{covers}</strong></span>
         <span style={{ color: 'var(--ink-faint)' }}>|</span>
-        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
+        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: 'var(--ink-good)' }}>{formatPrice(revenue, currency)}</strong></span>
         {note && <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--ca7f3d0)', background: 'var(--c064e3b)', padding: '3px 10px', borderRadius: 6 }}>{note}</span>}
       </div>
 

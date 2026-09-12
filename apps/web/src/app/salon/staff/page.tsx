@@ -92,7 +92,7 @@ function RolePicker({
         <input type="checkbox" checked={takesAppointments} onChange={(e) => onChange(role, e.target.checked)} />
         <span style={{ fontSize: 14, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{t('st.takesAppts')}</span>
       </label>
-      <p style={{ color: takesAppointments ? 'var(--c64748b)' : '#f59e0b', fontSize: 12, marginTop: 6 }}>
+      <p style={{ color: takesAppointments ? 'var(--c64748b)' : 'var(--ink-warn)', fontSize: 12, marginTop: 6 }}>
         {takesAppointments ? t('st.bookableHint') : t('st.notBookableHint')}
       </p>
     </div>
@@ -117,7 +117,7 @@ function RoleBadge({ role, takes }: { role?: Role; takes?: boolean }) {
         <span style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>· {t('st.notBookableTag')}</span>
       )}
       {takes === true && r !== 'TECHNICIAN' && (
-        <span style={{ fontSize: 11, color: '#22c55e' }}>· {t('st.bookableTag')}</span>
+        <span style={{ fontSize: 11, color: 'var(--ink-good)' }}>· {t('st.bookableTag')}</span>
       )}
     </span>
   );
@@ -172,8 +172,8 @@ function AvatarPicker({ value, name, onChange }: { value: string; name: string; 
           📷 {busy ? t('st.processing') : value ? t('st.changePhoto') : t('st.uploadPhoto')}
           <input type="file" accept="image/*" onChange={pick} style={{ display: 'none' }} />
         </label>
-        {value && <button type="button" onClick={() => onChange('')} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>{t('st.removePhoto')}</button>}
-        {err && <span style={{ color: '#ef4444', fontSize: 12 }}>{err}</span>}
+        {value && <button type="button" onClick={() => onChange('')} style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>{t('st.removePhoto')}</button>}
+        {err && <span style={{ color: 'var(--ink-bad)', fontSize: 12 }}>{err}</span>}
         <span style={{ color: 'var(--c64748b)', fontSize: 11 }}>{t('st.photoHint')}</span>
       </div>
     </div>
@@ -203,7 +203,7 @@ function QrPicker({ value, onChange }: { value: string; onChange: (dataUrl: stri
           📷 {busy ? t('st.processing') : value ? t('st.changePhoto') : t('st.tipQrUpload')}
           <input type="file" accept="image/*" onChange={pick} style={{ display: 'none' }} />
         </label>
-        {value && <button type="button" onClick={() => onChange('')} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>{t('st.removePhoto')}</button>}
+        {value && <button type="button" onClick={() => onChange('')} style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>{t('st.removePhoto')}</button>}
       </div>
     </div>
   );
@@ -349,7 +349,7 @@ function StaffInner() {
           {pg.paged.map((m) => (
             <Fragment key={m.id}>
               <MCard>
-                <MHead right={<span style={{ color: m.isActive ? '#22c55e' : 'var(--c94a3b8)', fontSize: 12, fontWeight: 600 }}>{m.isActive ? t('st.active') : t('st.inactive')}</span>}>
+                <MHead right={<span style={{ color: m.isActive ? 'var(--ink-good)' : 'var(--c94a3b8)', fontSize: 12, fontWeight: 600 }}>{m.isActive ? t('st.active') : t('st.inactive')}</span>}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <Avatar url={m.avatarUrl} name={m.firstName} />
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -363,7 +363,7 @@ function StaffInner() {
                 <MRow label={t('st.colLogin')}>
                   {m.user ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ color: '#22c55e' }}>🔑 {m.user.email}</span>
+                      <span style={{ color: 'var(--ink-good)' }}>🔑 {m.user.email}</span>
                       <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? 'var(--c475569)' : 'var(--c334155)' }}>{loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}</button>
                     </span>
                   ) : (
@@ -443,7 +443,7 @@ function StaffInner() {
                   <td style={ui.td}>
                     {m.user ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ color: '#22c55e', fontSize: 13 }}>🔑 {m.user.email}</span>
+                        <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>🔑 {m.user.email}</span>
                         <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? 'var(--c475569)' : 'var(--c334155)' }}>
                           {loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}
                         </button>
@@ -455,7 +455,7 @@ function StaffInner() {
                     )}
                   </td>
                   <td style={ui.td}>
-                    <span style={{ color: m.isActive ? '#22c55e' : 'var(--c94a3b8)' }}>
+                    <span style={{ color: m.isActive ? 'var(--ink-good)' : 'var(--c94a3b8)' }}>
                       {m.isActive ? t('st.active') : t('st.inactive')}
                     </span>
                   </td>
@@ -676,7 +676,7 @@ function StaffEditPanel({
 
       {/* Profile */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.fFirstName')} <span style={{ color: '#ef4444' }}>*</span></span>
+        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.fFirstName')} <span style={{ color: 'var(--ink-bad)' }}>*</span></span>
           <input style={{ ...ui.input, marginTop: 'auto' }} value={form.firstName} onChange={(e) => up('firstName', e.target.value)} required /></label>
         <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.fLastName')}</span>
           <input style={{ ...ui.input, marginTop: 'auto' }} value={form.lastName} onChange={(e) => up('lastName', e.target.value)} /></label>
@@ -764,7 +764,7 @@ function StaffEditPanel({
         <button onClick={save} disabled={saving} style={ui.primaryBtn}>
           {saving ? t('st.saving') : t('st.saveChanges')}
         </button>
-        {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('st.saved')}</span>}
+        {saved && <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>{t('st.saved')}</span>}
       </div>
     </div>
   );
@@ -827,7 +827,7 @@ function CreateStaffForm({
     <form onSubmit={submit} style={{ ...ui.card, marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <label>
-          <span style={ui.label}>{t('st.fFirstName')} <span style={{ color: '#ef4444' }}>*</span></span>
+          <span style={ui.label}>{t('st.fFirstName')} <span style={{ color: 'var(--ink-bad)' }}>*</span></span>
           <input
             style={ui.input}
             value={form.firstName}

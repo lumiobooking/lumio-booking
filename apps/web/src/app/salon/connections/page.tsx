@@ -23,9 +23,9 @@ interface Item {
 }
 
 const STATE: Record<string, { color: string; bg: string; vi: string; en: string }> = {
-  ok:    { color: '#22c55e', bg: 'var(--c052e16)', vi: 'Đã kết nối ✓', en: 'Connected ✓' },
-  warn:  { color: '#f59e0b', bg: '#3a2606', vi: 'Cần chú ý', en: 'Needs attention' },
-  error: { color: '#ef4444', bg: '#3f1212', vi: 'Lỗi kết nối', en: 'Connection error' },
+  ok:    { color: 'var(--ink-good)', bg: 'var(--c052e16)', vi: 'Đã kết nối ✓', en: 'Connected ✓' },
+  warn:  { color: 'var(--ink-warn)', bg: '#3a2606', vi: 'Cần chú ý', en: 'Needs attention' },
+  error: { color: 'var(--ink-bad)', bg: '#3f1212', vi: 'Lỗi kết nối', en: 'Connection error' },
   off:   { color: 'var(--c64748b)', bg: 'var(--c1e293b)', vi: 'Chưa kết nối', en: 'Not connected' },
 };
 
@@ -85,7 +85,7 @@ function Inner() {
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{T('Kết nối hệ thống', 'Connections')}</h1>
       <p style={{ color: 'var(--c94a3b8)', marginTop: 0, fontSize: 14 }}>
         {T('Tất cả kết nối bên thứ ba của tiệm ở một nơi — xanh là chạy tốt.', 'Every third-party connection in one place — green means working.')}
-        {!loading && <> · <b style={{ color: '#22c55e' }}>{okCount} {T('đang chạy', 'working')}</b>{problem > 0 && <> · <b style={{ color: '#f59e0b' }}>{problem} {T('cần xem', 'need attention')}</b></>}</>}
+        {!loading && <> · <b style={{ color: 'var(--ink-good)' }}>{okCount} {T('đang chạy', 'working')}</b>{problem > 0 && <> · <b style={{ color: 'var(--ink-warn)' }}>{problem} {T('cần xem', 'need attention')}</b></>}</>}
       </p>
 
       {err && <div style={ui.banner}>{err}</div>}
@@ -120,7 +120,7 @@ function Inner() {
                           {it.lastActivity && <span> · {T('hoạt động gần nhất', 'last activity')}: {fmtInTz(it.lastActivity, { dateStyle: 'short', timeStyle: 'short' })}</span>}
                         </div>
                       )}
-                      {t === 'ok' && <div style={{ fontSize: 12.5, color: '#22c55e', marginTop: 6 }}>✓ {T('Kiểm tra thành công — kết nối đang hoạt động.', 'Test passed — the connection works.')} {testMsg[it.key]}</div>}
+                      {t === 'ok' && <div style={{ fontSize: 12.5, color: 'var(--ink-good)', marginTop: 6 }}>✓ {T('Kiểm tra thành công — kết nối đang hoạt động.', 'Test passed — the connection works.')} {testMsg[it.key]}</div>}
                       {t === 'fail' && <div style={{ fontSize: 12.5, color: 'var(--cf87171)', marginTop: 6 }}>✗ {T('Kiểm tra thất bại', 'Test failed')}{testMsg[it.key] ? `: ${testMsg[it.key]}` : ''} — {T('bấm Quản lý để sửa.', 'open Manage to fix.')}</div>}
                     </div>
                   );

@@ -672,7 +672,7 @@ function Inner() {
             {lang === 'vi' ? 'Tài khoản của bạn quản lý nhiều page khách. Chỉ page được chọn mới gắn vào tiệm đang setup — các page khác không bị ảnh hưởng.' : 'Your account manages many client pages. Only the page you pick is bound to the salon being set up — the rest are untouched.'}
           </p>
           {pickList.length === 0 ? (
-            <p style={{ color: '#f59e0b', fontSize: 13 }}>{lang === 'vi' ? 'Danh sách đã hết hạn — bấm Connect làm lại.' : 'The list expired — press Connect and run the flow again.'}</p>
+            <p style={{ color: 'var(--ink-warn)', fontSize: 13 }}>{lang === 'vi' ? 'Danh sách đã hết hạn — bấm Connect làm lại.' : 'The list expired — press Connect and run the flow again.'}</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {pickList.length > 6 && (
@@ -699,13 +699,13 @@ function Inner() {
                     <span style={{ color: '#34d399', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' }}>✓ {lang === 'vi' ? 'Đã nối' : 'Connected'}</span>
                   ) : pg.taken === 'other' ? (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span title={pg.takenBy || ''} style={{ color: '#f59e0b', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span title={pg.takenBy || ''} style={{ color: 'var(--ink-warn)', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         🔒 {lang === 'vi' ? 'Đang dùng ở' : 'In use by'} {pg.takenBy || (lang === 'vi' ? 'tiệm khác' : 'another salon')}
                       </span>
                       {canPickMode && (
                         <button onClick={() => choosePage(pg.id, true)} disabled={!!picking}
                           title={lang === 'vi' ? 'Page bị gắn nhầm tiệm? Chuyển về tiệm đang setup.' : 'Bound to the wrong salon? Move it here.'}
-                          style={{ background: 'transparent', border: '1px solid #f59e0b', color: '#fbbf24', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          style={{ background: 'transparent', border: '1px solid #f59e0b', color: 'var(--ink-warn)', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                           {picking === pg.id ? '…' : (lang === 'vi' ? '↪ Chuyển về tiệm này' : '↪ Move here')}
                         </button>
                       )}
@@ -731,7 +731,7 @@ function Inner() {
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('connectTitle')}</div>
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: c.connected ? '#22c55e' : '#f59e0b' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: c.connected ? 'var(--ink-good)' : 'var(--ink-warn)' }}>
             ● {c.connected ? t('connected') : t('notConnected')}
           </span>
         </div>
@@ -760,7 +760,7 @@ function Inner() {
                   <div style={{ flex: 1, minWidth: 220 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
                       🤖 {lang === 'vi' ? 'Trợ lý AI trả lời tin nhắn' : 'AI replies to messages'}:{' '}
-                      <span style={{ color: c.enabled ? '#4ade80' : '#fbbf24' }}>{c.enabled ? (lang === 'vi' ? 'ĐANG BẬT' : 'ON') : (lang === 'vi' ? 'ĐANG TẮT' : 'OFF')}</span>
+                      <span style={{ color: c.enabled ? 'var(--ink-good)' : 'var(--ink-warn)' }}>{c.enabled ? (lang === 'vi' ? 'ĐANG BẬT' : 'ON') : (lang === 'vi' ? 'ĐANG TẮT' : 'OFF')}</span>
                     </div>
                     <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 3 }}>
                       {c.enabled
@@ -808,7 +808,7 @@ function Inner() {
             </label>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14 }}>
               <button onClick={() => save({ pageToken: pageToken || undefined })} disabled={saving} style={ui.primaryBtn}>{t('save')}</button>
-              {saved && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span>}
+              {saved && <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>{t('saved')}</span>}
             </div>
           </div>
         )}
@@ -873,7 +873,7 @@ function Inner() {
             </div>
             {wh?.verifiedAt && <div style={{ color: 'var(--c64748b)', marginTop: 6 }}>{t('lastVerified')}: {fmtInTz(wh.verifiedAt, { dateStyle: 'short', timeStyle: 'short' })}</div>}
             {typeof wh?.echoOk === 'boolean' && (
-              <div style={{ color: wh.echoOk ? '#34d399' : '#f59e0b', marginTop: 6 }}>
+              <div style={{ color: wh.echoOk ? '#34d399' : 'var(--ink-warn)', marginTop: 6 }}>
                 {wh.echoOk
                   ? (lang === 'vi' ? '\u2713 Nh\u1eadn di\u1ec7n tin nh\u00e2n vi\u00ean (message_echoes): ho\u1ea1t \u0111\u1ed9ng \u2014 bot t\u1ef1 nh\u01b0\u1eddng khi ng\u01b0\u1eddi th\u1eadt tr\u1ea3 l\u1eddi' : '\u2713 Staff-reply detection (message_echoes): active \u2014 the bot yields when a human answers')
                   : (lang === 'vi' ? '\u26a0 Nh\u1eadn di\u1ec7n tin nh\u00e2n vi\u00ean (message_echoes): CH\u01afA b\u1eadt \u2014 h\u1ec7 th\u1ed1ng \u0111ang t\u1ef1 s\u1eeda, b\u1ea5m l\u00e0m m\u1edbi trang sau 1 ph\u00fat; n\u1ebfu v\u1eabn c\u1ea3nh b\u00e1o, ki\u1ec3m tra Meta App \u2192 Messenger \u2192 Webhooks' : '\u26a0 Staff-reply detection (message_echoes): NOT enabled \u2014 auto-repair is running, refresh in a minute; if it persists check Meta App \u2192 Messenger \u2192 Webhooks')}
@@ -884,14 +884,14 @@ function Inner() {
             ? <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '8px 0 0' }}>{t('whPolling')}</p>
             : (!wh || (whFail && !wh.subscribed))
               ? <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '8px 0 0' }}>{t('whUnknown')}</p>
-              : !wh.subscribed && <p style={{ color: '#f59e0b', fontSize: 12, margin: '8px 0 0' }}>{t('notSubscribed')}</p>}
+              : !wh.subscribed && <p style={{ color: 'var(--ink-warn)', fontSize: 12, margin: '8px 0 0' }}>{t('notSubscribed')}</p>}
           {(c.pages?.length ?? 0) > 0 && (
             <div style={{ marginTop: 14 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 8 }}>
                 {lang === 'vi' ? `Các page đang dùng chung bot này (${c.pages.length})` : `Pages sharing this bot (${c.pages.length})`}
               </div>
               {c.pages.length > 3 && (
-                <div style={{ fontSize: 12, color: '#fbbf24', marginBottom: 8, lineHeight: 1.5 }}>
+                <div style={{ fontSize: 12, color: 'var(--ink-warn)', marginBottom: 8, lineHeight: 1.5 }}>
                   ⚠ {lang === 'vi'
                     ? `Tiệm này đang giữ ${c.pages.length} page — thường là cả danh sách page của tài khoản agency bị gắn nhầm vào một tiệm. Bot sẽ trả lời và bài sẽ đăng lên TẤT CẢ các page này. Bấm "Chỉ giữ page này" ở đúng page của tiệm để dọn một lần.`
                     : `This salon holds ${c.pages.length} pages — usually an agency account's whole page list bound to one salon by mistake. The bot answers and posts go to ALL of them. Press "Keep only this" on the salon's own page to clean up in one go.`}
@@ -934,7 +934,7 @@ function Inner() {
         <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('sendTestTitle')}</div>
         <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('sendTestHint')}</p>
         {threads.length === 0 ? (
-          <p style={{ color: '#f59e0b', fontSize: 13 }}>{t('noRecipient')}</p>
+          <p style={{ color: 'var(--ink-warn)', fontSize: 13 }}>{t('noRecipient')}</p>
         ) : (
           <>
             <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginBottom: 10 }}>
@@ -966,7 +966,7 @@ function Inner() {
             <textarea value={sendMsg} onChange={(e) => setSendMsg(e.target.value)} rows={2} placeholder={t('sendMsgPh')} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button onClick={sendTest} disabled={sending || !sendMsg.trim()} style={ui.primaryBtn}>{sending ? t('sendingMsg') : t('sendMessageBtn')}</button>
-              {sendResult === 'ok' && <span style={{ color: '#22c55e', fontSize: 12.5 }}>{t('sentOk')}{sentAt ? ` · ${sentAt}` : ''}</span>}
+              {sendResult === 'ok' && <span style={{ color: 'var(--ink-good)', fontSize: 12.5 }}>{t('sentOk')}{sentAt ? ` · ${sentAt}` : ''}</span>}
               {sendResult && sendResult !== 'ok' && <span style={{ color: 'var(--cfca5a5)', fontSize: 12.5 }}>{sendResult}</span>}
             </div>
           </>
@@ -996,7 +996,7 @@ function Inner() {
             {reviewId && <button onClick={() => copy(reviewId, 'rid')} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>{copied === 'rid' ? '✓' : 'Copy'}</button>}
             <button onClick={clearReview} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>Clear review test data</button>
             <button onClick={clearAllConvos} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>Clear ALL conversations</button>
-            {reviewNotice && <span style={{ color: '#22c55e' }}>{reviewNotice}</span>}
+            {reviewNotice && <span style={{ color: 'var(--ink-good)' }}>{reviewNotice}</span>}
           </div>
         )}
         {shownActivity.length === 0 ? (
@@ -1014,10 +1014,10 @@ function Inner() {
                   <tr key={i} style={{ borderTop: '1px solid var(--line)', background: (sentAtIso && ev.at === sentAtIso) || Date.now() - new Date(ev.at).getTime() < 30000 ? 'rgba(34,197,94,0.10)' : undefined }}>
                     <td style={{ ...tdc, whiteSpace: 'nowrap' }}>{fmtInTz(ev.at, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
                     <td style={{ ...tdc, whiteSpace: 'nowrap' }}><ChannelBadge channel={ev.channel} /></td>
-                    <td style={{ ...tdc, color: ev.direction === 'in' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
+                    <td style={{ ...tdc, color: ev.direction === 'in' ? 'var(--ink-sky)' : '#a3e635', fontWeight: 600 }}>{ev.direction === 'in' ? t('dirIn') : t('dirOut')}</td>
                     <td style={{ ...tdc, fontFamily: 'monospace', color: 'var(--c94a3b8)' }}>{ev.user}</td>
                     <td style={{ ...tdc, maxWidth: 320 }}>{ev.text}</td>
-                    <td style={{ ...tdc, color: ev.status === 'Failed' ? 'var(--cfca5a5)' : ev.status === 'Received' ? '#38bdf8' : '#a3e635', fontWeight: 600 }}>{ev.status}</td>
+                    <td style={{ ...tdc, color: ev.status === 'Failed' ? 'var(--cfca5a5)' : ev.status === 'Received' ? 'var(--ink-sky)' : '#a3e635', fontWeight: 600 }}>{ev.status}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1053,7 +1053,7 @@ function Inner() {
       {/* Behaviour */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
-          {t('behaviorTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: c.aiEnabled ? '#22c55e' : '#f59e0b' }}>· {c.aiEnabled ? t('aiOn') : t('aiOff')}</span>
+          {t('behaviorTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: c.aiEnabled ? 'var(--ink-good)' : 'var(--ink-warn)' }}>· {c.aiEnabled ? t('aiOn') : t('aiOff')}</span>
         </div>
         {canPickMode && (
           <>
@@ -1308,7 +1308,7 @@ function Inner() {
           <>
             <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '4px 0 10px', lineHeight: 1.5 }}>{t('infoHelp')}</p>
             <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 11px', marginBottom: 12, fontSize: 12 }}>
-              <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ {t('infoKnows')}</span> <span style={{ color: 'var(--c94a3b8)' }}>{t('infoKnowsList')}</span>
+              <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>✓ {t('infoKnows')}</span> <span style={{ color: 'var(--c94a3b8)' }}>{t('infoKnowsList')}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto', paddingRight: facts.length > 6 ? 4 : 0 }}>
               {facts.map((f, i) => (
@@ -1325,7 +1325,7 @@ function Inner() {
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
               <button onClick={addFact} style={ghost}>{t('addItem')}</button>
               <button onClick={saveFacts} disabled={saving} style={ui.primaryBtn}>{t('saveInfo')}</button>
-              {saved && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span>}
+              {saved && <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>{t('saved')}</span>}
             </div>
           </>
         )}
@@ -1432,7 +1432,7 @@ function Field({ label, value, mono, good, warn }: { label: string; value: strin
   return (
     <div>
       <div style={{ color: 'var(--c94a3b8)', fontSize: 11.5, marginBottom: 3 }}>{label}</div>
-      <div style={{ color: good ? '#22c55e' : warn ? '#f59e0b' : 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: 600, fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value}</div>
+      <div style={{ color: good ? 'var(--ink-good)' : warn ? 'var(--ink-warn)' : 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: 600, fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value}</div>
     </div>
   );
 }

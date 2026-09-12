@@ -112,7 +112,7 @@ export default function ContentConsolePage() {
           an hour, an unanswered client cannot. */}
       <ContentInbox token={token} />
 
-      {msg && <div style={{ ...banner, borderColor: '#22c55e', color: '#22c55e' }}>{msg}</div>}
+      {msg && <div style={{ ...banner, borderColor: '#22c55e', color: 'var(--ink-good)' }}>{msg}</div>}
       {err && <div style={{ ...banner, borderColor: '#ef4444', color: 'var(--cfca5a5)' }}>{err}</div>}
 
       {/* ---- the setup scan ----
@@ -142,7 +142,7 @@ export default function ContentConsolePage() {
             </div>
 
             {scan.rows.filter((r) => r.gaps.length).length === 0 && (
-              <p style={{ color: '#22c55e', fontSize: 14 }}>Mọi tiệm đã đủ cấu hình.</p>
+              <p style={{ color: 'var(--ink-good)', fontSize: 14 }}>Mọi tiệm đã đủ cấu hình.</p>
             )}
 
             {scan.rows.filter((r) => r.gaps.length).map((r) => {
@@ -258,7 +258,7 @@ export default function ContentConsolePage() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, color: 'var(--ce2e8f0)' }}>
                   <b>{f.name}</b>
-                  <span style={{ marginLeft: 8, fontSize: 11.5, color: f.heat === 'hot' ? '#f59e0b' : 'var(--c64748b)' }}>{HEAT_LABEL[f.heat] ?? f.heat}</span>
+                  <span style={{ marginLeft: 8, fontSize: 11.5, color: f.heat === 'hot' ? 'var(--ink-warn)' : 'var(--c64748b)' }}>{HEAT_LABEL[f.heat] ?? f.heat}</span>
                   {f.lengthSec ? <span style={{ marginLeft: 8, fontSize: 11.5, color: 'var(--c64748b)' }}>~{f.lengthSec}s</span> : null}
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>{f.summary}</div>

@@ -307,7 +307,7 @@ function DragHint({ saved, lang }: { saved: string; lang: string }) {
     <div style={{
       fontSize: 12.5, marginBottom: 8, padding: '7px 11px', borderRadius: 8,
       background: saved === 'saved' ? 'var(--c14532d)' : 'var(--c1e293b)',
-      color: saved === 'saved' ? '#bbf7d0' : saved === 'error' ? 'var(--cfca5a5)' : 'var(--c94a3b8)',
+      color: saved === 'saved' ? 'var(--ink-good)' : saved === 'error' ? 'var(--cfca5a5)' : 'var(--c94a3b8)',
       border: '1px solid var(--c334155)',
     }}>{text}</div>
   );
@@ -339,7 +339,7 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
             onPointerDown={onGrab}
             title={lang === 'vi' ? 'Giữ và kéo để đổi thứ tự' : 'Hold and drag to reorder'}
             style={{
-              display: 'inline-block', color: dragging ? '#a5b4fc' : 'var(--c64748b)',
+              display: 'inline-block', color: dragging ? 'var(--ink-link)' : 'var(--c64748b)',
               fontSize: 17, cursor: 'grab', padding: '6px 4px',
               touchAction: 'none', userSelect: 'none',
             }}
@@ -359,7 +359,7 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
           {s.discountPercent && s.discountPercent > 0 ? (
             <span>
               <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{fmt(s.priceCents)}</span>
-              <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
+              <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
               <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{s.discountPercent}%</span>
             </span>
           ) : (
@@ -367,7 +367,7 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
           )}
         </td>
         <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
-          <button onClick={onToggle} style={{ cursor: 'pointer', whiteSpace: 'nowrap', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : 'var(--c64748b)'}`, color: s.isActive ? '#22c55e' : 'var(--c94a3b8)', borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>
+          <button onClick={onToggle} style={{ cursor: 'pointer', whiteSpace: 'nowrap', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : 'var(--c64748b)'}`, color: s.isActive ? 'var(--ink-good)' : 'var(--c94a3b8)', borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>
             {s.isActive ? t('sv.active') : t('sv.inactive')}
           </button>
         </td>
@@ -414,12 +414,12 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
     <>
       <div data-row="" style={{ opacity: dragging ? 0.7 : 1 }}>
       <MCard>
-        <MHead right={<button onClick={onToggle} style={{ cursor: 'pointer', whiteSpace: 'nowrap', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : 'var(--c64748b)'}`, color: s.isActive ? '#22c55e' : 'var(--c94a3b8)', borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>{s.isActive ? t('sv.active') : t('sv.inactive')}</button>}>
+        <MHead right={<button onClick={onToggle} style={{ cursor: 'pointer', whiteSpace: 'nowrap', background: 'transparent', border: `1px solid ${s.isActive ? '#22c55e' : 'var(--c64748b)'}`, color: s.isActive ? 'var(--ink-good)' : 'var(--c94a3b8)', borderRadius: 999, padding: '3px 12px', fontSize: 12 }}>{s.isActive ? t('sv.active') : t('sv.inactive')}</button>}>
           {/* Same handle as the desktop table. A phone cannot use the HTML5
               drag API at all, which is why this is a pointer handle. */}
           <span
             onPointerDown={onGrab}
-            style={{ color: dragging ? '#a5b4fc' : 'var(--c64748b)', fontSize: 16, cursor: 'grab', paddingRight: 8, touchAction: 'none', userSelect: 'none' }}
+            style={{ color: dragging ? 'var(--ink-link)' : 'var(--c64748b)', fontSize: 16, cursor: 'grab', paddingRight: 8, touchAction: 'none', userSelect: 'none' }}
           >⠿</span>
           {s.name}{s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
         </MHead>
@@ -430,7 +430,7 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
           {s.discountPercent && s.discountPercent > 0 ? (
             <span>
               <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{fmt(s.priceCents)}</span>
-              <span style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
+              <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
               <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{s.discountPercent}%</span>
             </span>
           ) : fmt(s.priceCents)}
@@ -548,7 +548,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
         <button type="submit" disabled={saving} style={ui.primaryBtn}>{saving ? t('sv.saving') : t('sv.saveChanges')}</button>
-        {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('sv.savedLive')}</span>}
+        {saved && <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>{t('sv.savedLive')}</span>}
       </div>
     </form>
   );
@@ -607,7 +607,7 @@ function AddonsPanel({ serviceId, token, fmt, currency = 'USD' }: { serviceId: s
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
               <span style={{ flex: 1 }}>{a.name}</span>
               <span style={{ color: 'var(--c94a3b8)' }}>{a.durationMinutes} {t('sv.min')}</span>
-              <span style={{ color: '#22c55e' }}>{fmt(a.priceCents)}</span>
+              <span style={{ color: 'var(--ink-good)' }}>{fmt(a.priceCents)}</span>
               <button onClick={() => remove(a.id)} style={{ ...ui.dangerBtn, padding: '3px 8px', fontSize: 12 }}>{t('sv.remove')}</button>
             </div>
           ))}
@@ -936,7 +936,7 @@ function CategoryManager({ token, categories, onChanged }: { token: string; cate
                   <button onClick={() => move(c, -1)} style={miniBtn} aria-label={t('sv.moveUp')}>↑</button>
                   <button onClick={() => move(c, 1)} style={miniBtn} aria-label={t('sv.moveDown')}>↓</button>
                   <button onClick={() => rename(c)} style={miniBtn}>{t('sv.rename')}</button>
-                  <button onClick={() => remove(c)} style={{ ...miniBtn, color: '#ef4444', borderColor: '#ef4444' }}>{t('sv.delete')}</button>
+                  <button onClick={() => remove(c)} style={{ ...miniBtn, color: 'var(--ink-bad)', borderColor: '#ef4444' }}>{t('sv.delete')}</button>
                 </div>
               ))}
             </div>
@@ -1028,7 +1028,7 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <button onClick={() => setRules([...rules, { day: 2, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('sv.addRule')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
-            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
+            {msg && <span style={{ color: msg.startsWith('✓') ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>
         </div>
       )}
@@ -1102,7 +1102,7 @@ function FirstVisitDiscountCard({ token }: { token: string }) {
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <button onClick={() => setRules([...rules, { visit: Math.min(100, (rules[rules.length - 1]?.visit ?? 0) + 1), percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('sv.grAddTier')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
-            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
+            {msg && <span style={{ color: msg.startsWith('✓') ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>
         </div>
       )}
@@ -1173,7 +1173,7 @@ function GroupDiscountCard({ token }: { token: string }) {
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <button onClick={() => setTiers([...tiers, { minSize: Math.min(20, (tiers[tiers.length - 1]?.minSize ?? 1) + 1), percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('sv.grAddTier')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
-            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
+            {msg && <span style={{ color: msg.startsWith('✓') ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>
         </div>
       )}
@@ -1252,7 +1252,7 @@ function DateDiscountCard({ token, categories }: { token: string; categories: Ca
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <button onClick={() => setRules([...rules, { startDate: today, endDate: null, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('sv.dateAddRule')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
-            {msg && <span style={{ color: msg.startsWith('✓') ? '#22c55e' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
+            {msg && <span style={{ color: msg.startsWith('✓') ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>
           <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('sv.dateHint')}</p>
         </div>
@@ -1337,7 +1337,7 @@ function ImportPanel({ token, onDone, currency = 'USD' }: { token: string; onDon
           {busy ? t('sv.importing') : `${t('sv.importVerb')} ${items.length || ''} ${t('sv.serviceWord')}`}
         </button>
         {items.length > 0 && !msg && <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.rowsDetected').replace('{n}', String(items.length))}</span>}
-        {msg && <span style={{ color: ok ? '#22c55e' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
+        {msg && <span style={{ color: ok ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
       </div>
     </div>
   );

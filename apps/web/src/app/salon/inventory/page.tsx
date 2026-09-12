@@ -111,7 +111,7 @@ function Inner() {
                   <MRow label={t('iv.colStock')}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <button onClick={() => adjust(i.id, -1)} style={qtyBtn}>−</button>
-                      <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 700, color: i.lowStock ? '#f59e0b' : 'var(--ce2e8f0)' }}>{i.stockQty} <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
+                      <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 700, color: i.lowStock ? 'var(--ink-warn)' : 'var(--ce2e8f0)' }}>{i.stockQty} <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
                       <button onClick={() => adjust(i.id, 1)} style={qtyBtn}>+</button>
                     </span>
                   </MRow>
@@ -161,7 +161,7 @@ function Inner() {
                     <td style={ui.td}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <button onClick={() => adjust(i.id, -1)} style={qtyBtn}>−</button>
-                        <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 700, color: i.lowStock ? '#f59e0b' : 'var(--ce2e8f0)' }}>{i.stockQty} <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
+                        <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 700, color: i.lowStock ? 'var(--ink-warn)' : 'var(--ce2e8f0)' }}>{i.stockQty} <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
                         <button onClick={() => adjust(i.id, 1)} style={qtyBtn}>+</button>
                       </div>
                     </td>
@@ -291,7 +291,7 @@ function MovePanel({ token, item, dir, onDone, onCancel, currency = 'USD' }: { t
 
   return (
     <form onSubmit={submit}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: dir === 'IN' ? '#22c55e' : '#f59e0b', marginBottom: 10 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: dir === 'IN' ? 'var(--ink-good)' : 'var(--ink-warn)', marginBottom: 10 }}>
         {dir === 'IN' ? t('iv.stockIn') : t('iv.stockOut')} — {item.name} <span style={{ color: 'var(--c64748b)', fontWeight: 400 }}>({t('iv.mNow')}: {item.stockQty} {item.unit})</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end' }}>
@@ -340,7 +340,7 @@ function HistoryPanel({ token, item }: { token: string; item: Supply }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 280, overflowY: 'auto' }}>
             {rows.map((m) => (
               <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '5px 8px', background: 'var(--c1e293b)', borderRadius: 6 }}>
-                <span style={{ width: 56, fontWeight: 700, textAlign: 'right', color: m.delta >= 0 ? '#22c55e' : '#f59e0b' }}>{m.delta >= 0 ? '+' : ''}{m.delta}</span>
+                <span style={{ width: 56, fontWeight: 700, textAlign: 'right', color: m.delta >= 0 ? 'var(--ink-good)' : 'var(--ink-warn)' }}>{m.delta >= 0 ? '+' : ''}{m.delta}</span>
                 <span style={{ color: 'var(--ccbd5e1)', minWidth: 120 }}>{t(REASON_KEY[m.reason] ?? 'iv.rAdjust')}</span>
                 <span style={{ color: 'var(--c94a3b8)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.note || ''}</span>
                 <span style={{ color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{fmtInTz(m.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</span>

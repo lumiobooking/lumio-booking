@@ -218,7 +218,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
           </div>
         </div>
 
-        {err && <div style={{ fontSize: 12.5, color: '#fca5a5', marginBottom: 10 }}>{err}</div>}
+        {err && <div style={{ fontSize: 12.5, color: 'var(--ink-bad)', marginBottom: 10 }}>{err}</div>}
 
         {/* Look up a hashtag on Instagram, now.
             Reads PUBLIC posts through the salon's own connected Instagram
@@ -254,7 +254,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
               </button>
             )}
           </div>
-          {searchErr && <div style={{ marginTop: 8, fontSize: 12, color: '#fca5a5', lineHeight: 1.5 }}>{searchErr}</div>}
+          {searchErr && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--ink-bad)', lineHeight: 1.5 }}>{searchErr}</div>}
           {hits && !searchErr && (
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--c94a3b8)' }}>
               {hits.cards.length > 0
@@ -308,9 +308,9 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
                       made-up number, and the first build printed one. */}
                   <div style={{ display: 'flex', gap: '4px 8px', alignItems: 'baseline', flexWrap: 'wrap', fontSize: 12, lineHeight: 1.4 }}>
                     {c.countLabel && <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{c.countLabel} {c.source === 'youtube' ? T('lượt xem', 'views') : T('lượt thích', 'likes')}</span>}
-                    {c.perDayLabel && <span style={{ color: '#22c55e', fontWeight: 700 }}>{c.perDayLabel}</span>}
+                    {c.perDayLabel && <span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>{c.perDayLabel}</span>}
                     {c.ageLabel && <span style={{ color: 'var(--c64748b)' }}>{c.ageLabel}</span>}
-                    {c.growthLabel && <span style={{ color: (c.growthLabel.startsWith('-') || c.growthLabel.startsWith('−')) ? 'var(--c94a3b8)' : '#22c55e', fontWeight: 700, width: '100%' }}>{c.growthLabel}</span>}
+                    {c.growthLabel && <span style={{ color: (c.growthLabel.startsWith('-') || c.growthLabel.startsWith('−')) ? 'var(--c94a3b8)' : 'var(--ink-good)', fontWeight: 700, width: '100%' }}>{c.growthLabel}</span>}
                   </div>
                   {(c.matchesService || c.matchesEvent) && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -392,7 +392,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
             {([['YouTube', feed.sources.youtube.error], ['Google Trends', feed.sources.google.error], ['Instagram', feed.sources.instagram.error], ['Pinterest', feed.sources.pinterest?.error ?? null]] as const)
               .filter(([, e]) => e)
               .map(([name, e]) => (
-                <div key={name} style={{ fontSize: 11.5, color: '#fbbf24', lineHeight: 1.5, wordBreak: 'break-word', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                <div key={name} style={{ fontSize: 11.5, color: 'var(--ink-warn)', lineHeight: 1.5, wordBreak: 'break-word', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
                   {name}: {e}
                 </div>
               ))}
@@ -423,7 +423,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
                     {T(`${q.posts} bài`, `${q.posts} posts`)}
                   </span>
                   {q.growthPct != null && (
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#22c55e' }}>+{q.growthPct}%</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-good)' }}>+{q.growthPct}%</span>
                   )}
                 </div>
               ))}
@@ -447,7 +447,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
                   background: 'var(--c0f172a)', border: `1px solid ${q.matchesService ? '#22c55e' : 'var(--c334155)'}`,
                 }}>
                   <span style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{q.query}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#22c55e' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-good)' }}>
                     {q.breakout ? T('đột biến', 'breakout') : q.growthPct != null ? `+${q.growthPct}%` : ''}
                   </span>
                 </div>

@@ -80,7 +80,7 @@ function Inner() {
               <div key={b.tenantId} style={{ padding: '10px 0', borderBottom: '1px solid var(--line)' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.7fr 0.7fr', gap: 8, alignItems: 'center', fontSize: 14 }}>
                   <span style={{ fontWeight: 600, color: 'var(--ce2e8f0)' }}>{b.name}</span>
-                  <span style={{ textAlign: 'right', color: '#22c55e', fontWeight: 600 }}>{formatPrice(b.revenueCents, currency)}</span>
+                  <span style={{ textAlign: 'right', color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(b.revenueCents, currency)}</span>
                   <span style={{ textAlign: 'right', color: 'var(--ccbd5e1)' }}>{b.bookings}</span>
                   <span style={{ textAlign: 'right', color: 'var(--ccbd5e1)' }}>{b.newCustomers}</span>
                 </div>

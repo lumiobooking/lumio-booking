@@ -128,12 +128,12 @@ function Inner() {
               </MHead>
               <MRow label={t('rv.colEarned')}><strong style={{ color: 'var(--ceab308)' }}>{s.earnedMonth}</strong> <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('rv.pts')}</span></MRow>
               <MRow label={t('rv.colBalance')}>{s.balance}</MRow>
-              <MRow label={t('rv.colSends')}><strong style={{ color: '#22c55e' }}>{s.sendsMonth}</strong>{s.blockedMonth ? <span style={{ color: '#f97316', fontSize: 12 }}> · {t('rv.blocked').replace('{n}', String(s.blockedMonth))}</span> : null}</MRow>
+              <MRow label={t('rv.colSends')}><strong style={{ color: 'var(--ink-good)' }}>{s.sendsMonth}</strong>{s.blockedMonth ? <span style={{ color: '#f97316', fontSize: 12 }}> · {t('rv.blocked').replace('{n}', String(s.blockedMonth))}</span> : null}</MRow>
               <MRow label={t('rv.colFeedbacks')}>{s.feedbackMonth}</MRow>
               <MRow label={t('rv.colAvg')}>{s.avgMonth ? `${s.avgMonth}★` : '—'}</MRow>
               <MActions>
                 <button onClick={() => adjust(s.id, 10)} style={miniBtn}>+10</button>
-                <button onClick={() => adjust(s.id, -50)} style={{ ...miniBtn, borderColor: '#ef4444', color: '#ef4444' }}>{t('rv.redeem50')}</button>
+                <button onClick={() => adjust(s.id, -50)} style={{ ...miniBtn, borderColor: '#ef4444', color: 'var(--ink-bad)' }}>{t('rv.redeem50')}</button>
                 <button onClick={() => resetStaff(s.id, s.name)} style={{ ...miniBtn, borderColor: 'var(--c64748b)', color: 'var(--c94a3b8)' }}>{t('rv.reset')}</button>
               </MActions>
             </MCard>
@@ -160,13 +160,13 @@ function Inner() {
                 <td style={ui.td}>{s.name}{s.flagged && <span title={t('rv.checkTitle')} style={{ marginLeft: 6, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('rv.checkBadge')}</span>}</td>
                 <td style={ui.td}><strong style={{ color: 'var(--ceab308)' }}>{s.earnedMonth}</strong> <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('rv.pts')}</span></td>
                 <td style={ui.td}>{s.balance}</td>
-                <td style={ui.td}><strong style={{ color: '#22c55e' }}>{s.sendsMonth}</strong>{s.blockedMonth ? <span style={{ color: '#f97316', fontSize: 12 }}> · {t('rv.blocked').replace('{n}', String(s.blockedMonth))}</span> : null}</td>
+                <td style={ui.td}><strong style={{ color: 'var(--ink-good)' }}>{s.sendsMonth}</strong>{s.blockedMonth ? <span style={{ color: '#f97316', fontSize: 12 }}> · {t('rv.blocked').replace('{n}', String(s.blockedMonth))}</span> : null}</td>
                 <td style={ui.td}>{s.feedbackMonth}</td>
                 <td style={ui.td}>{s.avgMonth ? `${s.avgMonth}★` : '—'}</td>
                 <td style={ui.td}>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button onClick={() => adjust(s.id, 10)} style={miniBtn}>+10</button>
-                    <button onClick={() => adjust(s.id, -50)} style={{ ...miniBtn, borderColor: '#ef4444', color: '#ef4444' }}>{t('rv.redeem50')}</button>
+                    <button onClick={() => adjust(s.id, -50)} style={{ ...miniBtn, borderColor: '#ef4444', color: 'var(--ink-bad)' }}>{t('rv.redeem50')}</button>
                     <button onClick={() => resetStaff(s.id, s.name)} style={{ ...miniBtn, borderColor: 'var(--c64748b)', color: 'var(--c94a3b8)' }}>{t('rv.reset')}</button>
                   </div>
                 </td>
@@ -188,14 +188,14 @@ function Inner() {
         {fbPage.paged.map((f) => (
           <div key={f.id} style={{ ...ui.card, padding: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-              <span style={{ color: '#f59e0b' }}>{'★'.repeat(f.rating)}<span style={{ color: 'var(--ink-faint)' }}>{'★'.repeat(5 - f.rating)}</span></span>
+              <span style={{ color: 'var(--ink-warn)' }}>{'★'.repeat(f.rating)}<span style={{ color: 'var(--ink-faint)' }}>{'★'.repeat(5 - f.rating)}</span></span>
               <span style={{ color: 'var(--c64748b)' }}>{fmtInTz(f.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</span>
             </div>
             <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginTop: 4 }}>
               {f.staff ? `${f.staff.firstName} ${f.staff.lastName ?? ''}`.trim() : t('rv.salon')} · {f.customer?.phone ?? f.customer?.firstName ?? t('rv.anonymous')}
               {f.verified
-                ? <span style={{ marginLeft: 8, color: '#22c55e', fontSize: 11 }}>{t('rv.verified')}</span>
-                : <span style={{ marginLeft: 8, color: '#f59e0b', fontSize: 11 }}>{t('rv.noMatch')}</span>}
+                ? <span style={{ marginLeft: 8, color: 'var(--ink-good)', fontSize: 11 }}>{t('rv.verified')}</span>
+                : <span style={{ marginLeft: 8, color: 'var(--ink-warn)', fontSize: 11 }}>{t('rv.noMatch')}</span>}
               {f.invitedToGoogle && <span style={{ marginLeft: 8, color: 'var(--c818cf8)', fontSize: 11 }}>{t('rv.invited')}</span>}
             </div>
             {f.comment && <div style={{ fontSize: 14, marginTop: 6, color: 'var(--ce2e8f0)' }}>“{f.comment}”</div>}
@@ -217,7 +217,7 @@ function Inner() {
                 <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{fmtInTz(r.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</td>
                 <td style={ui.td}>{r.staff}</td>
                 <td style={{ ...ui.td, color: 'var(--c64748b)' }}>{r.device}</td>
-                <td style={ui.td}>{r.counted ? <span style={{ color: '#22c55e', fontWeight: 600 }}>{t('rv.plusPts')}</span> : <span style={{ color: 'var(--c94a3b8)' }}>—</span>}</td>
+                <td style={ui.td}>{r.counted ? <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{t('rv.plusPts')}</span> : <span style={{ color: 'var(--c94a3b8)' }}>—</span>}</td>
                 <td style={ui.td}>{reasonLabel(r.reason, lang)}</td>
               </tr>
             ))}
@@ -281,8 +281,8 @@ function AdminReviewQr({ slug, enabled, hasGoogle }: { slug: string; enabled: bo
         <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>🔗 Salon review QR — test &amp; front desk</div>
         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', margin: '5px 0 10px', lineHeight: 1.5 }}>
           Scan to test the customer flow, or print it for the counter. Not tied to a specific tech.
-          {!enabled && <span style={{ color: '#f59e0b' }}> Turn the program ON above to use it.</span>}
-          {enabled && !hasGoogle && <span style={{ color: '#f59e0b' }}> Add your Place ID / review link above so it opens Google.</span>}
+          {!enabled && <span style={{ color: 'var(--ink-warn)' }}> Turn the program ON above to use it.</span>}
+          {enabled && !hasGoogle && <span style={{ color: 'var(--ink-warn)' }}> Add your Place ID / review link above so it opens Google.</span>}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <a href={url} target="_blank" rel="noopener noreferrer" style={{ ...miniBtn, textDecoration: 'none', display: 'inline-block' }}>Open ↗</a>
@@ -471,7 +471,7 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
         <button type="submit" disabled={saving} style={ui.primaryBtn}>{saving ? t('rv.saving') : t('rv.saveSettings')}</button>
-        {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('rv.saved')}</span>}
+        {saved && <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>{t('rv.saved')}</span>}
       </div>
     </form>
   );

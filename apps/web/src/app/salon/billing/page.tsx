@@ -188,7 +188,7 @@ function Inner() {
                 </div>
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {p.features.slice(0, 6).map((f) => (
-                    <li key={f} style={{ fontSize: 13, color: 'var(--ccbd5e1)', display: 'flex', gap: 8 }}><span style={{ color: '#22c55e' }}>✓</span>{f}</li>
+                    <li key={f} style={{ fontSize: 13, color: 'var(--ccbd5e1)', display: 'flex', gap: 8 }}><span style={{ color: 'var(--ink-good)' }}>✓</span>{f}</li>
                   ))}
                 </ul>
                 {isCurrent ? (
@@ -263,7 +263,7 @@ function InvoicesList({ token, lang }: { token: string; lang: Lang }) {
               </div>
               <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 3 }}>
                 {invMoney(iv.totalCents, iv.currency)} · {fmtInvDate(iv.createdAt)}
-                {' · '}<span style={{ color: paid ? 'var(--c4ade80)' : void_ ? 'var(--c94a3b8)' : '#fbbf24', fontWeight: 600 }}>
+                {' · '}<span style={{ color: paid ? 'var(--c4ade80)' : void_ ? 'var(--c94a3b8)' : 'var(--ink-warn)', fontWeight: 600 }}>
                   {paid ? t('bl.invPaid') : void_ ? t('bl.invVoid') : t('bl.invDue')}
                 </span>
               </div>

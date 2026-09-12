@@ -199,7 +199,7 @@ function Inner() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <div>
               <strong style={{ fontSize: 16 }}>{PROVIDER_META[c.provider]?.name ?? c.provider}</strong>
-              <span style={{ marginLeft: 10, fontSize: 12, color: '#22c55e', fontWeight: 700 }}>● {L.connected}</span>
+              <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--ink-good)', fontWeight: 700 }}>● {L.connected}</span>
               <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 4 }}>
                 {L.secret}: {c.keyHint ?? '—'} · {c.currency}
                 {c.capabilities?.interac ? ' · Interac' : ''}{c.capabilities?.tapToPay ? ' · Tap to Pay' : ''}
@@ -378,7 +378,7 @@ function Readers({ provider, token, L }: { provider: string; token: string | nul
         <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0' }}>
           {readers.map((r) => (
             <li key={r.id} style={{ fontSize: 13, color: 'var(--ce2e8f0)', padding: '5px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ color: r.status === 'ONLINE' ? '#22c55e' : 'var(--c94a3b8)' }}>●</span>
+              <span style={{ color: r.status === 'ONLINE' ? 'var(--ink-good)' : 'var(--c94a3b8)' }}>●</span>
               <span>{r.label || r.externalReaderId}</span>
               <span style={{ color: 'var(--c64748b)' }}>({r.status})</span>
               {r.locationId && <span style={{ color: 'var(--ca5b4fc)', fontSize: 11 }}>· {r.locationId}</span>}
@@ -464,7 +464,7 @@ function AgentsSection({ token, vi }: { token: string | null; vi: boolean }) {
       <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0' }}>
         {agents.map((a) => (
           <li key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: 'var(--ce2e8f0)', padding: '6px 0' }}>
-            <span><span style={{ color: a.status === 'ONLINE' ? '#22c55e' : 'var(--c94a3b8)' }}>●</span> {a.kind}{a.label ? ' · ' + a.label : ''} <span style={{ color: 'var(--c64748b)' }}>({a.status})</span></span>
+            <span><span style={{ color: a.status === 'ONLINE' ? 'var(--ink-good)' : 'var(--c94a3b8)' }}>●</span> {a.kind}{a.label ? ' · ' + a.label : ''} <span style={{ color: 'var(--c64748b)' }}>({a.status})</span></span>
             <button onClick={() => unpair(a.id)} style={{ ...ghost, padding: '4px 10px', fontSize: 12 }}>{vi ? 'Gỡ' : 'Unpair'}</button>
           </li>
         ))}

@@ -281,7 +281,7 @@ function RankedTable({ rows, firstCol, empty }: { rows: Ranked[]; firstCol: stri
               {r.name}
             </span>
             <span style={{ color: 'var(--c94a3b8)' }}>
-              {r.bookings} · <span style={{ color: '#22c55e' }}>{formatPrice(r.revenueCents)}</span>
+              {r.bookings} · <span style={{ color: 'var(--ink-good)' }}>{formatPrice(r.revenueCents)}</span>
             </span>
           </div>
           <div style={{ height: 6, background: 'var(--c0f172a)', borderRadius: 999 }}>
@@ -297,7 +297,7 @@ function PaymentMethods({ pm }: { pm: { cash: number; card: number; transfer: nu
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const rows: { label: string; value: number; color: string }[] = [
-    { label: t('db.pmCash'), value: pm.cash, color: '#22c55e' },
+    { label: t('db.pmCash'), value: pm.cash, color: 'var(--ink-good)' },
     { label: t('db.pmCard'), value: pm.card, color: '#3b82f6' },
     { label: t('db.pmTransfer'), value: pm.transfer, color: '#06b6d4' },
     { label: t('db.pmOnline'), value: pm.online, color: '#a855f7' },

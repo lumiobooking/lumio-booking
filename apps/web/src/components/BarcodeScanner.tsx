@@ -112,7 +112,7 @@ export function BarcodeScanner({
         </div>
         <div id="lumio-bc-reader" style={{ width: '100%', minHeight: 240, borderRadius: 12, overflow: 'hidden', background: '#000' }} />
         {err ? (
-          <p style={{ color: '#f59e0b', fontSize: 13, marginTop: 12, textAlign: 'center' }}>{errorText}</p>
+          <p style={{ color: 'var(--ink-warn)', fontSize: 13, marginTop: 12, textAlign: 'center' }}>{errorText}</p>
         ) : (
           <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 12, textAlign: 'center' }}>{hint}</p>
         )}

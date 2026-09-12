@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { contrast, resolve } from './theme';
+import { contrast, resolve, EXTRA } from './theme';
 
 /**
  * The lint that keeps light mode honest — forever.
@@ -301,4 +301,62 @@ test('no surface token used as a text colour in the app the team logs into', () 
   // The fix is `var(--ink-faint)` for a faint mark, `var(--c64748b)` for muted
   // text, or a raw hex when the surface under it is raw too.
   expect(offenders).toEqual([]);
+});
+
+/**
+ * THE SECOND HALF OF THE SAME BUG, AND THE HALF THE LINT ABOVE COULD NOT SEE.
+ *
+ * That test watches for SURFACE TOKENS used as text. The accents are not
+ * tokens at all — they are raw hex, picked years ago against a very dark
+ * panel, and raw hex does not flip. Measured on white:
+ *
+ *     #86efac  1.40 : 1      #fbbf24  1.67 : 1      #fca5a5  1.90 : 1
+ *     #a5b4fc  1.99 : 1      #38bdf8  2.14 : 1      #22c55e  2.28 : 1
+ *
+ * So in light mode the break-even figure, every "Vì sao" toggle, the LUMIO
+ * chip and "Mẹo quay cho đẹp (không bắt buộc)" were all painted and none of
+ * them could be read. The fix is --ink-good / --ink-warn / --ink-bad /
+ * --ink-link / --ink-sky, which keep tonight's hex and darken by day.
+ *
+ * BORDERS AND BACKGROUNDS ARE NOT COVERED, deliberately. A green border or a
+ * tinted panel made of the same hex is fine in both themes; it is only as INK
+ * that these fail.
+ */
+const ACCENT_HEX = [
+  '22c55e', '4ade80', '86efac', 'bbf7d0',   // greens
+  'fbbf24', 'fde68a', 'f59e0b',             // ambers
+  'fca5a5', 'f87171', 'fecaca', 'ef4444',   // reds
+  'a5b4fc', 'c7d2fe', '6366f1',             // indigos
+  '38bdf8', '93c5fd',                       // skies
+];
+const ACCENT_AS_TEXT = new RegExp(`(?<![a-zA-Z])color:\\s*[^,\\n}]*?'#(${ACCENT_HEX.join('|')})'`, 'gi');
+
+test('no light accent hex used as a text colour — it cannot flip, and by day it cannot be read', () => {
+  const offenders: string[] = [];
+  for (const sub of APP_SHELL) {
+    const dir = path.join(ROOT, sub);
+    if (!fs.existsSync(dir)) continue;
+    for (const file of walk(dir)) {
+      const lines = fs.readFileSync(file, 'utf8').split('\n');
+      lines.forEach((line, i) => {
+        for (const m of line.matchAll(ACCENT_AS_TEXT)) {
+          // Ink on a bright accent GROUND is the one place a raw hex is right:
+          // the ground does not flip, so the ink must not either.
+          if (ACCENT_BG.test(styleObjectAround(lines, i))) continue;
+          offenders.push(`${path.relative(ROOT, file)}:${i + 1} — ${m[0].trim()}`);
+        }
+      });
+    }
+  }
+  expect(offenders).toEqual([]);
+});
+
+test('the accent ink tokens are defined, and day is dark enough to read', () => {
+  for (const name of ['--ink-good', '--ink-warn', '--ink-bad', '--ink-link', '--ink-sky']) {
+    const pair = EXTRA[name];
+    expect(pair).toBeTruthy();
+    const [, light] = pair;
+    // 4.5:1 on the page ground is the bar this whole file exists to hold.
+    expect(contrast(light, '#eef2f8')).toBeGreaterThanOrEqual(4.5);
+  }
 });

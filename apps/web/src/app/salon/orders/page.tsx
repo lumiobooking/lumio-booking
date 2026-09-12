@@ -94,15 +94,15 @@ function Inner() {
     const line = (label: string, val: string, bold = false) =>
       `<tr><td style="${bold ? 'font-weight:700' : ''}">${label}</td><td style="text-align:right;${bold ? 'font-weight:700' : ''}">${val}</td></tr>`;
     const rows = o.items.map((l) => {
-      const tech = l.staffMemberId ? `<div style="font-size:11px;color:#555">${esc(staffName(l.staffMemberId))}</div>` : '';
-      const tip = l.tipCents ? `<div style="font-size:11px;color:#555">Tip: ${formatPrice(l.tipCents, o.currency)}</div>` : '';
+      const tech = l.staffMemberId ? `<div style="font-size:11px;color: #555">${esc(staffName(l.staffMemberId))}</div>` : '';
+      const tip = l.tipCents ? `<div style="font-size:11px;color: #555">Tip: ${formatPrice(l.tipCents, o.currency)}</div>` : '';
       return `<tr><td>${l.quantity}× ${esc(l.name)}${tech}${tip}</td><td style="text-align:right;vertical-align:top">${formatPrice(l.lineTotalCents, o.currency)}</td></tr>`;
     }).join('');
     const tenders = o.tenders.map((t) => line(METHOD_LABEL[t.method] ?? t.method, formatPrice(t.amountCents, o.currency))).join('');
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Receipt #${o.orderNumber}</title>
-      <style>body{font-family:ui-monospace,Menlo,monospace;width:300px;margin:0 auto;padding:12px;color:#000}
+      <style>body{font-family:ui-monospace,Menlo,monospace;width:300px;margin:0 auto;padding:12px;color: #000}
       h2{text-align:center;margin:4px 0}table{width:100%;border-collapse:collapse;font-size:13px}td{padding:2px 0;vertical-align:top}
-      hr{border:none;border-top:1px dashed #999;margin:8px 0}.center{text-align:center;font-size:12px;color:#333}</style></head><body>
+      hr{border:none;border-top:1px dashed #999;margin:8px 0}.center{text-align:center;font-size:12px;color: #333}</style></head><body>
       <h2>Receipt</h2><div class="center">Order #${o.orderNumber} · ${fmtInTz(o.paidAt ?? o.createdAt, { dateStyle: 'short', timeStyle: 'short' })}${o.status === 'VOID' ? ' · VOID' : ''}</div><hr>
       <table>${rows}</table><hr><table>
       ${line('Subtotal', formatPrice(o.subtotalCents, o.currency))}
@@ -223,7 +223,7 @@ function Inner() {
                         {o.discountCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.discount')}</span><span>-{formatPrice(o.discountCents, o.currency)}</span></div>}
                         {o.taxCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.tax')}</span><span>{formatPrice(o.taxCents, o.currency)}</span></div>}
                         {o.tipCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.tips')}</span><span>{formatPrice(o.tipCents, o.currency)}</span></div>}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}><span>{t('or.total')}</span><span style={{ color: '#22c55e' }}>{formatPrice(o.totalCents, o.currency)}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}><span>{t('or.total')}</span><span style={{ color: 'var(--ink-good)' }}>{formatPrice(o.totalCents, o.currency)}</span></div>
                         {o.changeCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.change')}</span><span>{formatPrice(o.changeCents, o.currency)}</span></div>}
                       </div>
                     </td></tr>

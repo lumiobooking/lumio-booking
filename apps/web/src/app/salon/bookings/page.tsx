@@ -388,7 +388,7 @@ function BookingsInner() {
                         <td style={{ ...ui.td, width: 34, boxShadow: 'inset 3px 0 0 #4338ca' }}><BulkRowBox on={bulk.has(m.id)} onChange={() => bulk.toggle(m.id)} /></td>
                         <td style={ui.td}></td>
                         <td style={ui.td}>
-                          <span style={{ color: '#6366f1', marginRight: 6 }}>↳</span>
+                          <span style={{ color: 'var(--ink-link)', marginRight: 6 }}>↳</span>
                           {m.customer?.id
                             ? <a href={`/salon/customers/${m.customer.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{staffName(m.customer)}</a>
                             : staffName(m.customer)}
@@ -568,7 +568,7 @@ function AssignLines({ b, live, t, onAction, onClose }: {
         <select
           value={b.assignedStaff?.id ?? ''}
           onChange={(e) => { if (e.target.value) onAction('assign', { staffId: e.target.value }); }}
-          style={{ ...selStyle, ...(b.assignedStaff ? {} : { color: '#f59e0b', borderColor: 'var(--c7c5c22)' }) }}
+          style={{ ...selStyle, ...(b.assignedStaff ? {} : { color: 'var(--ink-warn)', borderColor: 'var(--c7c5c22)' }) }}
         >
           <option value="" disabled>{t('cal.linePick')}</option>
           {live.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}
@@ -873,7 +873,7 @@ function CreateBookingForm({
             <div
               style={{
                 marginTop: 10, fontSize: 12.5, lineHeight: 1.5, display: 'inline-flex', alignItems: 'center', gap: 6,
-                color: staffShort ? '#fbbf24' : 'var(--c94a3b8)',
+                color: staffShort ? 'var(--ink-warn)' : 'var(--c94a3b8)',
                 background: staffShort ? '#2a1c06' : 'var(--c0f172a)',
                 border: `1px solid ${staffShort ? 'var(--c78350f)' : 'var(--c334155)'}`,
                 borderRadius: 999, padding: '6px 12px',
@@ -936,7 +936,7 @@ function CreateBookingForm({
                     style={{
                       border: `1px solid ${on ? '#6366f1' : n === 0 ? 'var(--c78350f)' : 'var(--c334155)'}`,
                       background: on ? 'var(--c312e81)' : 'var(--c0f172a)',
-                      color: on ? 'var(--ce0e7ff)' : n === 0 ? '#fbbf24' : 'var(--ccbd5e1)',
+                      color: on ? 'var(--ce0e7ff)' : n === 0 ? 'var(--ink-warn)' : 'var(--ccbd5e1)',
                       borderRadius: 999, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
                     }}
                   >

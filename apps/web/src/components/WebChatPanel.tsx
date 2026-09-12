@@ -24,7 +24,7 @@ export function WebChatPanel({ token }: { token: string | null }) {
   const { lang } = useLang();
   const vi = lang === 'vi';
   const [st, setSt] = useState<Status | null>(null);
-  const [draft, setDraft] = useState<{ color: string; greeting: string; position: 'right' | 'left'; offsetY: number; size: number }>({ color: '#6366f1', greeting: '', position: 'right', offsetY: 20, size: 58 });
+  const [draft, setDraft] = useState<{ color: string; greeting: string; position: 'right' | 'left'; offsetY: number; size: number }>({ color: 'var(--ink-link)', greeting: '', position: 'right', offsetY: 20, size: 58 });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -64,7 +64,7 @@ export function WebChatPanel({ token }: { token: string | null }) {
           🌐 {T('Chat trên website của tiệm', 'Chat on your website')}
         </div>
         {st.enabled
-          ? <span style={{ fontSize: 12, fontWeight: 700, color: '#22c55e' }}>● {T('ĐANG BẬT', 'ON')}{st.conversations ? ` · ${st.conversations} ${T('cuộc trò chuyện', 'conversations')}` : ''}</span>
+          ? <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-good)' }}>● {T('ĐANG BẬT', 'ON')}{st.conversations ? ` · ${st.conversations} ${T('cuộc trò chuyện', 'conversations')}` : ''}</span>
           : <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{T('đang tắt', 'off')}</span>}
         <button
           onClick={() => save({ enabled: !st.enabled }, st.enabled ? T('Đã tắt chat trên website.', 'Website chat is off.') : T('Đã bật — dán đoạn mã bên dưới vào website là chạy.', 'On — paste the line below into your site.'))}
@@ -80,7 +80,7 @@ export function WebChatPanel({ token }: { token: string | null }) {
       </p>
 
       {msg && (
-        <div style={{ fontSize: 12.5, color: msg.ok ? '#4ade80' : '#f87171', marginBottom: 10 }}>{msg.text}</div>
+        <div style={{ fontSize: 12.5, color: msg.ok ? 'var(--ink-good)' : 'var(--ink-bad)', marginBottom: 10 }}>{msg.text}</div>
       )}
 
       {st.enabled && (

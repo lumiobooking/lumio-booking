@@ -113,7 +113,7 @@ function Inner() {
           <input value={footer} onChange={(e) => setFooter(e.target.value)} style={ui.input} placeholder={t('pd.receiptFooterPh')} />
         </label>
         <button onClick={saveTax} style={ui.primaryBtn}>{t('pd.save')}</button>
-        {savedTax && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('pd.saved')}</span>}
+        {savedTax && <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>{t('pd.saved')}</span>}
       </div>
 
       {showForm && <ProductForm token={token!} currency={currency} onDone={async () => { setShowForm(false); await load(); }} />}
@@ -130,14 +130,14 @@ function Inner() {
             {pg.paged.map((p) => (
               <Fragment key={p.id}>
                 <MCard>
-                  <MHead right={<span style={{ color: p.isActive ? '#22c55e' : 'var(--c94a3b8)', fontSize: 12, fontWeight: 600 }}>{p.isActive ? t('pd.active') : t('pd.inactive')}</span>}>
+                  <MHead right={<span style={{ color: p.isActive ? 'var(--ink-good)' : 'var(--c94a3b8)', fontSize: 12, fontWeight: 600 }}>{p.isActive ? t('pd.active') : t('pd.inactive')}</span>}>
                     {p.name}{p.sku ? <span style={{ color: 'var(--c64748b)', fontSize: 12 }}> · {p.sku}</span> : null}
                   </MHead>
                   <MRow label={t('pd.colPrice')}>
                     {p.discountPercent && p.discountPercent > 0 ? (
                       <span>
                         <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{formatPrice(p.priceCents, p.currency)}</span>
-                        <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(netCents(p), p.currency)}</span>
+                        <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(netCents(p), p.currency)}</span>
                         <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{p.discountPercent}%</span>
                       </span>
                     ) : formatPrice(p.priceCents, p.currency)}
@@ -175,14 +175,14 @@ function Inner() {
                       {p.discountPercent && p.discountPercent > 0 ? (
                         <span>
                           <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{formatPrice(p.priceCents, p.currency)}</span>
-                          <span style={{ color: '#22c55e', fontWeight: 600 }}>{formatPrice(netCents(p), p.currency)}</span>
+                          <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(netCents(p), p.currency)}</span>
                           <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{p.discountPercent}%</span>
                         </span>
                       ) : formatPrice(p.priceCents, p.currency)}
                     </td>
                     <td style={ui.td}>{p.taxable ? t('pd.yes') : t('pd.no')}</td>
                     <td style={ui.td}>{p.trackStock ? p.stockQty : '—'}</td>
-                    <td style={ui.td}><span style={{ color: p.isActive ? '#22c55e' : 'var(--c94a3b8)' }}>{p.isActive ? t('pd.active') : t('pd.inactive')}</span></td>
+                    <td style={ui.td}><span style={{ color: p.isActive ? 'var(--ink-good)' : 'var(--c94a3b8)' }}>{p.isActive ? t('pd.active') : t('pd.inactive')}</span></td>
                     <td style={ui.td}>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === p.id ? 'var(--c475569)' : '#6366f1' }}>{editId === p.id ? t('pd.close') : t('pd.edit')}</button>

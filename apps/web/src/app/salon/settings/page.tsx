@@ -366,7 +366,7 @@ function DaysOffSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
         {days.map((d) => (
           <span key={d} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '4px 10px', fontSize: 13 }}>
             {d}
-            <button onClick={() => setDays(days.filter((x) => x !== d))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 }}>×</button>
+            <button onClick={() => setDays(days.filter((x) => x !== d))} style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 14 }}>×</button>
           </span>
         ))}
       </div>
@@ -580,7 +580,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       {(!isVN || shownGw.length > 0) && (
       <Panel
         title={t('se.pay.gwTitle')}
-        badge={connectedGw.length ? { text: t('se.pay.connectedN').replace('{n}', String(connectedGw.length)), color: '#22c55e' } : { text: t('se.pay.none'), color: 'var(--c64748b)' }}
+        badge={connectedGw.length ? { text: t('se.pay.connectedN').replace('{n}', String(connectedGw.length)), color: 'var(--ink-good)' } : { text: t('se.pay.none'), color: 'var(--c64748b)' }}
         hint={connectedGw.length ? connectedGw.map((g) => g.name).join(', ') : t('se.pay.gwHintNone')}
       >
         <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 10px' }}>
@@ -596,7 +596,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 15 }}>
                       {g.name}{' '}
-                      {connected && <span style={{ color: '#22c55e', fontSize: 12, fontWeight: 600 }}>{t('se.pay.connected')}</span>}
+                      {connected && <span style={{ color: 'var(--ink-good)', fontSize: 12, fontWeight: 600 }}>{t('se.pay.connected')}</span>}
                     </div>
                     <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{t(`se.gw.${g.id}`)}</div>
                   </div>
@@ -630,7 +630,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       <Panel
         title={lang === 'vi' ? 'Phụ phí thẻ (giá Cash / Card)' : 'Card surcharge (Cash / Card)'}
         badge={data.pos?.cardSurchargeEnabled && (data.pos?.cardSurchargePercent ?? 0) > 0
-          ? { text: (lang === 'vi' ? 'Bật ' : 'On ') + (data.pos?.cardSurchargePercent ?? 0) + '%', color: '#22c55e' }
+          ? { text: (lang === 'vi' ? 'Bật ' : 'On ') + (data.pos?.cardSurchargePercent ?? 0) + '%', color: 'var(--ink-good)' }
           : { text: lang === 'vi' ? 'Tắt' : 'Off', color: 'var(--c64748b)' }}
         hint={lang === 'vi' ? 'Tự cộng % khi khách trả bằng thẻ' : 'Auto-adds % when the customer pays by card'}
       >
@@ -641,7 +641,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         title={lang === 'vi' ? 'Tiền tip' : 'Tipping'}
         badge={data.pos?.tipsEnabled === false
           ? { text: lang === 'vi' ? 'Tắt' : 'Off', color: 'var(--c64748b)' }
-          : { text: lang === 'vi' ? 'Bật' : 'On', color: '#22c55e' }}
+          : { text: lang === 'vi' ? 'Bật' : 'On', color: 'var(--ink-good)' }}
         hint={lang === 'vi' ? 'Có hỏi khách tiền tip hay không' : 'Whether the customer is asked for a tip'}
       >
         <TipsConfig data={data} onSave={onSave} />
@@ -660,7 +660,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           did not recognise "Bank transfer (manual)" as the answer. */}
       <Panel
         title={isVN ? 'Nhận tiền chuyển khoản · VietQR · MoMo · ZaloPay' : t('se.pay.bankTitle')}
-        badge={data.pos?.transferInstructions ? { text: t('se.pay.setBadge'), color: '#22c55e' } : { text: t('se.pay.notSet'), color: '#f59e0b' }}
+        badge={data.pos?.transferInstructions ? { text: t('se.pay.setBadge'), color: 'var(--ink-good)' } : { text: t('se.pay.notSet'), color: 'var(--ink-warn)' }}
         hint={isVN ? 'Mã QR và số tài khoản khách quét để trả tiền' : t('se.pay.bankHint')}
       >
         <BankTransferConfig data={data} onSave={onSave} />
@@ -819,7 +819,7 @@ function MethodDetails({
     <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 10, padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <strong style={{ color: 'var(--ce2e8f0)', fontSize: 14 }}>{label}</strong>
-        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: filled ? '#22c55e' : '#f59e0b', border: `1px solid ${filled ? 'var(--c166534)' : 'var(--c78350f)'}` }}>
+        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: filled ? 'var(--ink-good)' : 'var(--ink-warn)', border: `1px solid ${filled ? 'var(--c166534)' : 'var(--c78350f)'}` }}>
           {filled ? (lang === 'vi' ? 'Đã đặt' : 'Set') : (lang === 'vi' ? 'Chưa đặt' : 'Not set')}
         </span>
       </div>
@@ -1157,7 +1157,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       <div style={{ marginTop: 12, padding: 14, background: 'var(--c0f172a)', borderRadius: 10, border: '1px solid var(--c334155)' }}>
         <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ccbd5e1)' }}>
           {t('se.no.brevoSetup')}{' '}
-          {n.brevo.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('se.no.keySaved')}</span>}
+          {n.brevo.connected && <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>{t('se.no.keySaved')}</span>}
         </div>
         <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '4px 0 10px' }}>
           {t('se.no.brevoHelp')}
@@ -1170,7 +1170,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       <>
       <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
         {t('se.no.connectGmail')}{' '}
-        {n.gmail?.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('se.no.connectedAs').replace('{email}', n.gmail.senderEmail)}</span>}
+        {n.gmail?.connected && <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>{t('se.no.connectedAs').replace('{email}', n.gmail.senderEmail)}</span>}
       </div>
       <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>
         {t('se.no.gmailHelp')}
@@ -1188,8 +1188,8 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         <button onClick={connectGmail} style={{ ...ui.primaryBtn, background: '#ea4335' }}>
           {n.gmail?.connected ? t('se.no.reconnectGoogle') : t('se.no.connectGoogle')}
         </button>
-        {n.gmail?.connected && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('se.no.connectedAs').replace('{email}', n.gmail.senderEmail)}</span>}
-        {gmailMsg && <span style={{ color: gmailMsg.startsWith('✓') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{gmailMsg}</span>}
+        {n.gmail?.connected && <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>{t('se.no.connectedAs').replace('{email}', n.gmail.senderEmail)}</span>}
+        {gmailMsg && <span style={{ color: gmailMsg.startsWith('✓') ? 'var(--ink-good)' : 'var(--ink-bad)', fontSize: 13 }}>{gmailMsg}</span>}
       </div>
       <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 8 }}>
         {t('se.no.gmailPublishTip')}
@@ -1201,7 +1201,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       <>
       <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
         {t('se.no.smtpServer')}{' '}
-        {n.smtp.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('se.pay.connected')}</span>}
+        {n.smtp.connected && <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>{t('se.pay.connected')}</span>}
       </div>
       <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>
         {t('se.no.smtpHelp')}
@@ -1241,8 +1241,8 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         </button>
         <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{t('se.no.testHint')}</span>
       </div>
-      {test.kind === 'ok' && <div style={{ marginTop: 8, color: '#22c55e', fontSize: 13 }}>✓ {test.msg}</div>}
-      {test.kind === 'err' && <div style={{ marginTop: 8, color: '#ef4444', fontSize: 13, wordBreak: 'break-word' }}>✕ {test.msg}</div>}
+      {test.kind === 'ok' && <div style={{ marginTop: 8, color: 'var(--ink-good)', fontSize: 13 }}>✓ {test.msg}</div>}
+      {test.kind === 'err' && <div style={{ marginTop: 8, color: 'var(--ink-bad)', fontSize: 13, wordBreak: 'break-word' }}>✕ {test.msg}</div>}
 
       {/* Twilio, for everyone except Vietnam.
           It used to render here unconditionally, ABOVE the Vietnamese
@@ -1253,7 +1253,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       {!isVN && (<>
         <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
           {t('se.no.smsGateway')}{' '}
-          {n.twilio.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>{t('se.pay.connected')}</span>}
+          {n.twilio.connected && <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>{t('se.pay.connected')}</span>}
         </div>
         <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>
           {t('se.no.twilioHelp')}
@@ -1273,7 +1273,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
             SMS Việt Nam · eSMS.vn{' '}
-            {es.brandname && n.esms?.connected && <span style={{ color: '#22c55e', fontSize: 12 }}>đã kết nối</span>}
+            {es.brandname && n.esms?.connected && <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>đã kết nối</span>}
           </div>
           <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px', lineHeight: 1.5 }}>
             Twilio KHÔNG gửi được vào Việt Nam — nhà mạng chặn tin từ đầu số chưa đăng ký, mà Twilio vẫn báo &quot;đã gửi&quot;.
@@ -1288,7 +1288,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
           {/* Zalo ZNS — same eSMS keys and wallet. Optional: empty = SMS only. */}
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)', marginTop: 14 }}>
             Zalo ZNS (tùy chọn){' '}
-            {es.oaid && (es.znsBookingTempId || es.znsReminderTempId) && <span style={{ color: '#22c55e', fontSize: 12 }}>đang bật</span>}
+            {es.oaid && (es.znsBookingTempId || es.znsReminderTempId) && <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>đang bật</span>}
           </div>
           <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px', lineHeight: 1.5 }}>
             Có OAID + Template ID thì tin xác nhận/nhắc lịch đi qua Zalo trước (rẻ hơn ~50%, hiện ngay trong app) —
@@ -1304,7 +1304,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
           {/* The bot's Zalo connection moved to the bot's own page. This line
               stays so anyone who learned the old place is sent on, not lost. */}
           <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '14px 0 0', lineHeight: 1.5 }}>
-            Bot trả lời tin nhắn qua <b>Zalo OA</b> được kết nối ở mục <a href="/salon/messenger" style={{ color: '#a5b4fc' }}>Bot trả lời tin nhắn →</a> (ngay dưới phần kết nối Facebook).
+            Bot trả lời tin nhắn qua <b>Zalo OA</b> được kết nối ở mục <a href="/salon/messenger" style={{ color: 'var(--ink-link)' }}>Bot trả lời tin nhắn →</a> (ngay dưới phần kết nối Facebook).
           </p>
         </div>
       )}
@@ -1318,8 +1318,8 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         >{smsTest.kind === 'sending' ? t('se.no.sending') : t('se.no.smsTestBtn')}</button>
       </div>
       <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '6px 0 0' }}>{t('se.no.smsTestHint')}</p>
-      {smsTest.kind === 'ok' && <p style={{ color: '#22c55e', fontSize: 13, margin: '4px 0 0' }}>{smsTest.msg}</p>}
-      {smsTest.kind === 'err' && <p style={{ color: '#ef4444', fontSize: 13, margin: '4px 0 0' }}>{smsTest.msg}</p>}
+      {smsTest.kind === 'ok' && <p style={{ color: 'var(--ink-good)', fontSize: 13, margin: '4px 0 0' }}>{smsTest.msg}</p>}
+      {smsTest.kind === 'err' && <p style={{ color: 'var(--ink-bad)', fontSize: 13, margin: '4px 0 0' }}>{smsTest.msg}</p>}
 
       <button style={{ ...ui.primaryBtn, marginTop: 16 }} onClick={() => onSave('notifications', { ...f, smtp, brevo, gmail, twilio: tw, esms: es }, 'Notifications')}>{t('se.no.save')}</button>
     </Card>

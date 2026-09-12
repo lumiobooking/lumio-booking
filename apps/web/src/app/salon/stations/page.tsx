@@ -119,7 +119,7 @@ function Inner() {
             <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '150px 1fr auto', gap: 8, alignItems: 'center' }}>
               <input defaultValue={t.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.name) patchType(t.id, { name: v }); }} style={{ ...ui.input, padding: '7px 10px' }} />
               <input defaultValue={t.keywords ?? ''} onBlur={(e) => { const v = e.target.value; if (v !== (t.keywords ?? '')) patchType(t.id, { keywords: v }); }} placeholder={vi ? 'vd: pedi, chân, foot, spa' : 'e.g. pedi, foot, spa'} style={{ ...ui.input, padding: '7px 10px' }} />
-              <button onClick={() => delType(t.id)} aria-label="delete type" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 16, padding: '0 6px' }}>×</button>
+              <button onClick={() => delType(t.id)} aria-label="delete type" style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 16, padding: '0 6px' }}>×</button>
             </div>
           ))}
         </div>
@@ -167,8 +167,8 @@ function Inner() {
                   {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
                 <button onClick={() => patch(s.id, { isActive: !s.isActive })} title={s.isActive ? (vi ? 'Đang dùng' : 'Active') : (vi ? 'Tạm ẩn' : 'Hidden')}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: s.isActive ? '#22c55e' : 'var(--c64748b)', fontSize: 16 }}>{s.isActive ? '●' : '○'}</button>
-                <button onClick={() => del(s.id)} aria-label="delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 16 }}>×</button>
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: s.isActive ? 'var(--ink-good)' : 'var(--c64748b)', fontSize: 16 }}>{s.isActive ? '●' : '○'}</button>
+                <button onClick={() => del(s.id)} aria-label="delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-bad)', fontSize: 16 }}>×</button>
               </div>
             ))}
           </div>

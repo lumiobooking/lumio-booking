@@ -365,7 +365,7 @@ export default function SupportAccountsPage() {
                 onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                 title="Nhóm phụ trách — gõ tên mới để tạo nhóm"
                 style={{
-                  width: 104, background: 'var(--c0f172a)', color: a.supportTeam ? '#a5b4fc' : 'var(--c64748b)',
+                  width: 104, background: 'var(--c0f172a)', color: a.supportTeam ? 'var(--ink-link)' : 'var(--c64748b)',
                   border: `1px solid ${a.supportTeam ? '#6366f1' : 'var(--c334155)'}`, borderRadius: 8,
                   padding: '6px 9px', fontSize: 12.5, fontWeight: 700,
                 }}
@@ -405,13 +405,13 @@ export default function SupportAccountsPage() {
                 style={{
                   background: custom(a).length ? 'var(--c312e81)' : 'transparent',
                   border: `1px solid ${custom(a).length ? '#6366f1' : 'var(--c334155)'}`,
-                  color: custom(a).length ? '#c7d2fe' : 'var(--c94a3b8)',
+                  color: custom(a).length ? 'var(--ink-link)' : 'var(--c94a3b8)',
                   borderRadius: 8, padding: '6px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
                 }}
               >
                 {custom(a).length ? `Riêng · ${custom(a).length}` : 'Tuỳ chỉnh'}{editing === a.id ? ' ▴' : ' ▾'}
               </button>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: a.isActive ? '#22c55e' : '#ef4444' }}>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: a.isActive ? 'var(--ink-good)' : 'var(--ink-bad)' }}>
                 {a.isActive ? 'ACTIVE' : 'DISABLED'}
               </span>
               <button onClick={() => toggle(a)} disabled={busy === a.id}
@@ -451,7 +451,7 @@ export default function SupportAccountsPage() {
                       if (!group.length) return null;
                       return (
                         <div key={title} style={{ marginBottom: 12 }}>
-                          <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: .3, textTransform: 'uppercase', color: priv ? '#fca5a5' : 'var(--c64748b)', marginBottom: 7 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: .3, textTransform: 'uppercase', color: priv ? 'var(--ink-bad)' : 'var(--c64748b)', marginBottom: 7 }}>
                             {title}
                           </div>
                           <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))' }}>

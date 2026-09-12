@@ -219,7 +219,7 @@ function Inner() {
                 <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--ccbd5e1)' }}>
                   <input type="checkbox" checked={it.isActive} onChange={(e) => patch(it.id, { isActive: e.target.checked })} />{t('mn.active')}
                 </label>
-                <button onClick={() => remove(it.id)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 13 }}>{t('mn.delete')}</button>
+                <button onClick={() => remove(it.id)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #ef4444', color: 'var(--ink-bad)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 13 }}>{t('mn.delete')}</button>
               </div>
             ))}
           </div>

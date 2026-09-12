@@ -175,7 +175,7 @@ function Inner() {
           <li>{lang === 'vi' ? 'Edit profile → Bookings / Appointment links.' : 'Edit profile → Bookings / Appointment links.'}</li>
           <li>{lang === 'vi' ? 'Add appointment link → dán ĐÚNG link /gbp ở trên (đừng dán link thường — sẽ mất định danh nguồn Google) → Save.' : 'Add appointment link → paste the /gbp link above (not the plain link — you would lose Google attribution) → Save.'}</li>
           <li>{lang === 'vi' ? 'Chờ 24–48h Google duyệt → nút “Book online” hiện ra.' : 'Wait 24–48h for Google to approve → the “Book online” button appears.'}</li>
-          <li style={{ color: '#f59e0b' }}>{lang === 'vi' ? 'KHÔNG dùng link này làm Final URL trong Google Ads — Ads dùng URL riêng + auto-tagging (gclid) để hệ thống phân biệt đơn từ quảng cáo và đơn từ Maps.' : 'Do NOT use this link as a Google Ads Final URL — Ads needs its own URL with auto-tagging (gclid) so paid and Maps bookings stay separate.'}</li>
+          <li style={{ color: 'var(--ink-warn)' }}>{lang === 'vi' ? 'KHÔNG dùng link này làm Final URL trong Google Ads — Ads dùng URL riêng + auto-tagging (gclid) để hệ thống phân biệt đơn từ quảng cáo và đơn từ Maps.' : 'Do NOT use this link as a Google Ads Final URL — Ads needs its own URL with auto-tagging (gclid) so paid and Maps bookings stay separate.'}</li>
         </ol>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => gbpLink && navigator.clipboard?.writeText(gbpLink)} style={ui.primaryBtn} disabled={!gbpLink}>
@@ -206,7 +206,7 @@ function Inner() {
             marginBottom: 16,
           }}
         >
-          <strong style={{ color: '#22c55e' }}>{t('in.copyNow')}</strong>
+          <strong style={{ color: 'var(--ink-good)' }}>{t('in.copyNow')}</strong>
           <p style={{ color: 'var(--ccbd5e1)', fontSize: 13, margin: '6px 0' }}>
             {t('in.onlyOnce')}
           </p>
@@ -276,7 +276,7 @@ function Inner() {
                     {k.keyPrefix}…{k.lastFour}
                   </td>
                   <td style={ui.td}>
-                    <span style={{ color: k.status === 'ACTIVE' ? '#22c55e' : '#ef4444' }}>
+                    <span style={{ color: k.status === 'ACTIVE' ? 'var(--ink-good)' : 'var(--ink-bad)' }}>
                       {k.status}
                     </span>
                   </td>

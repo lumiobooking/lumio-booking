@@ -182,7 +182,7 @@ function TemplatesView({ token }: { token: string | null }) {
           <SubTab active={audience === 'staff'} onClick={() => { setAudience('staff'); setSelectedId('staff_new_booking'); }}>{t('nt.toStaff')}</SubTab>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {saved && <span style={{ color: '#22c55e', fontSize: 13 }}>{t('nt.saved')}</span>}
+          {saved && <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>{t('nt.saved')}</span>}
           <button onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? t('nt.saving') : t('nt.saveChanges')}</button>
         </div>
       </div>

@@ -418,7 +418,7 @@ export function MonthCalendar({
         ✎ {m.posted ? T('Mở bài', 'Open post') : T('Sửa bài', 'Edit post')}
       </button>
       {(!m.posted || canDeletePosted) ? (
-        <button onClick={() => { onDelete(m.id); setMenu(null); }} style={{ ...menuItem, color: '#ef4444' }}>
+        <button onClick={() => { onDelete(m.id); setMenu(null); }} style={{ ...menuItem, color: 'var(--ink-bad)' }}>
           🗑 {m.posted ? T('Xoá bản ghi khỏi lịch', 'Delete this record') : T('Xoá bài này', 'Delete this post')}
         </button>
       ) : (
@@ -514,7 +514,7 @@ export function MonthCalendar({
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 2,
                 }}
               >
-                <span style={{ fontSize: 11, fontWeight: alarmHere ? 800 : 600, color: alarmHere ? '#ef4444' : k === today ? 'var(--ca5b4fc)' : 'var(--c94a3b8)' }}>
+                <span style={{ fontSize: 11, fontWeight: alarmHere ? 800 : 600, color: alarmHere ? 'var(--ink-bad)' : k === today ? 'var(--ca5b4fc)' : 'var(--c94a3b8)' }}>
                   {d.getDate()}
                 </span>
                 <span style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -554,7 +554,7 @@ export function MonthCalendar({
                   {d.toLocaleDateString(vi ? 'vi-VN' : 'en-US', { weekday: 'short', day: 'numeric', month: 'numeric' })}
                 </b>
                 {k === today && <span style={{ fontSize: 10.5, color: 'var(--ca5b4fc)' }}>{T('hôm nay', 'today')}</span>}
-                {alarmHere > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: '#ef4444' }}>● {alarmHere}</span>}
+                {alarmHere > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--ink-bad)' }}>● {alarmHere}</span>}
                 <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--c64748b)' }}>{mine.length}</span>
               </div>
               {mine.map((x) => card(x, true))}
@@ -640,7 +640,7 @@ export function MonthCalendar({
                   {d.getDate()}
                 </span>
                 {alarmHere > 0 && (
-                  <span title={T('bài cần xử lý', 'posts needing attention')} style={{ fontSize: 9, fontWeight: 800, color: '#ef4444' }}>●{alarmHere}</span>
+                  <span title={T('bài cần xử lý', 'posts needing attention')} style={{ fontSize: 9, fontWeight: 800, color: 'var(--ink-bad)' }}>●{alarmHere}</span>
                 )}
                 {mine.length > 0 && (
                   <span style={{ marginLeft: 'auto', fontSize: 9.5, color: 'var(--ink-faint)' }}>{mine.length}</span>
@@ -708,7 +708,7 @@ function Tally({ n, bar, label, loud }: { n: number; bar: string; label: string;
           unreadable on a light background — and "0 waiting" is information
           worth reading. */}
       <span style={{ width: 4, height: 12, borderRadius: 2, background: bar, display: 'inline-block', opacity: on ? 1 : .35 }} />
-      <b style={{ fontSize: 12, color: loud && on ? '#ef4444' : on ? 'var(--ce2e8f0)' : 'var(--c64748b)' }}>{n}</b>
+      <b style={{ fontSize: 12, color: loud && on ? 'var(--ink-bad)' : on ? 'var(--ce2e8f0)' : 'var(--c64748b)' }}>{n}</b>
       <span style={{ fontSize: 10.5, color: on ? 'var(--c94a3b8)' : 'var(--c64748b)' }}>{label}</span>
     </span>
   );
@@ -930,7 +930,7 @@ export function PostPreview({ channel, message, media, pageName, igUsername, vi 
       )}
 
       {cut && (
-        <div style={{ padding: '0 11px 10px', fontSize: 11, color: '#f59e0b', lineHeight: 1.5 }}>
+        <div style={{ padding: '0 11px 10px', fontSize: 11, color: 'var(--ink-warn)', lineHeight: 1.5 }}>
           {T(`Bị cắt sau ${fold} ký tự — câu đầu phải nói hết ý.`,
              `Cut after ${fold} characters — the first line has to carry the message.`)}
         </div>

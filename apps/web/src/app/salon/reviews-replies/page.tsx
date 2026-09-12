@@ -420,7 +420,7 @@ function Inner() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ fontSize: 14, color: 'var(--ce2e8f0)' }}>
-                <span style={{ color: '#22c55e', fontWeight: 700 }}>● {t('connected')}</span>
+                <span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>● {t('connected')}</span>
                 {s.connectedEmail ? <span style={{ color: 'var(--c94a3b8)' }}> · {s.connectedEmail}</span> : null}
               </div>
               <button onClick={disconnect} style={ui.dangerBtn}>{t('disconnect')}</button>
@@ -431,10 +431,10 @@ function Inner() {
             <div style={{ marginTop: 14, borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 8 }}>
                 {t('pickLocation')}
-                {s.hasLocation && <span style={{ color: '#22c55e', fontWeight: 500, marginLeft: 8, fontSize: 12.5 }}>✓ {t('locSet')}</span>}
+                {s.hasLocation && <span style={{ color: 'var(--ink-good)', fontWeight: 500, marginLeft: 8, fontSize: 12.5 }}>✓ {t('locSet')}</span>}
               </div>
               {s.hasLocation && s.locationTitle && (
-                <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginBottom: 10 }}>📍 <strong>{s.locationTitle}</strong>{saved && <span style={{ color: '#22c55e', marginLeft: 8, fontSize: 12 }}>{t('saved')}</span>}</div>
+                <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginBottom: 10 }}>📍 <strong>{s.locationTitle}</strong>{saved && <span style={{ color: 'var(--ink-good)', marginLeft: 8, fontSize: 12 }}>{t('saved')}</span>}</div>
               )}
               {locations === null ? (
                 <button onClick={loadLocations} style={ui.primaryBtn}>{s.hasLocation ? t('changeLoc') : t('loadLocations')}</button>
@@ -474,13 +474,13 @@ function Inner() {
             <select value={s.autoMinStars} onChange={(e) => saveSettings({ autoMinStars: Number(e.target.value) })} style={selStyle}>
               <option value={4}>4</option><option value={5}>5</option>
             </select>{' '}{t('ruleStarUp')}{' '}
-            <span style={{ color: '#22c55e' }}>→ {t(s.approveFirst ? 'fDraft' : 'ruleAutoPost')}</span>
+            <span style={{ color: 'var(--ink-good)' }}>→ {t(s.approveFirst ? 'fDraft' : 'ruleAutoPost')}</span>
           </div>
           <div>
             {t('ruleAlert')}{' '}
             <select value={s.alertMaxStars} onChange={(e) => saveSettings({ alertMaxStars: Number(e.target.value) })} style={selStyle}>
               <option value={2}>2</option><option value={3}>3</option>
-            </select>{' '}{t('ruleStarDown')} <span style={{ color: '#f59e0b' }}>→ {t('fNeeds')}</span>
+            </select>{' '}{t('ruleStarDown')} <span style={{ color: 'var(--ink-warn)' }}>→ {t('fNeeds')}</span>
           </div>
         </div>
 
@@ -526,8 +526,8 @@ function Inner() {
           <label style={ui.label}>
             {t('aiInstr')}{' '}
             {s.aiEnabled
-              ? <span style={{ color: '#22c55e' }}>· ✨ {t('aiOn')}</span>
-              : <span style={{ color: '#f59e0b' }}>· {t('aiOff')}</span>}
+              ? <span style={{ color: 'var(--ink-good)' }}>· ✨ {t('aiOn')}</span>
+              : <span style={{ color: 'var(--ink-warn)' }}>· {t('aiOff')}</span>}
           </label>
           <textarea value={s.aiInstruction} placeholder={t('aiInstrPh')} rows={2}
             onChange={(e) => setS({ ...s, aiInstruction: e.target.value })}
@@ -538,7 +538,7 @@ function Inner() {
           </div>
           {aiTest && (
             <div style={{ marginTop: 10, background: 'var(--c0f172a)', border: `1px solid ${aiTest.ok ? 'var(--c14532d)' : 'var(--c7f1d1d)'}`, borderRadius: 10, padding: 12 }}>
-              <div style={{ fontSize: 12, color: aiTest.ok ? '#22c55e' : '#f59e0b', fontWeight: 700, marginBottom: 6 }}>
+              <div style={{ fontSize: 12, color: aiTest.ok ? 'var(--ink-good)' : 'var(--ink-warn)', fontWeight: 700, marginBottom: 6 }}>
                 {aiTest.ok ? `✨ ${t('testOk')}` : `⚠️ ${t('testFallback')}`}
               </div>
               <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('testSample')}: &ldquo;{aiTest.sample}&rdquo;</div>
@@ -556,7 +556,7 @@ function Inner() {
             style={{ ...ghostBtn, padding: '9px 12px', fontSize: 12.5, opacity: (s.connected && s.hasLocation) ? 1 : 0.5 }}>
             {t('resyncFresh')}
           </button>
-          {saving ? <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>…</span> : saved ? <span style={{ color: '#22c55e', fontSize: 12 }}>{t('saved')}</span> : null}
+          {saving ? <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>…</span> : saved ? <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>{t('saved')}</span> : null}
           <span style={{ color: 'var(--c64748b)', fontSize: 12, marginLeft: 'auto' }}>
             {t('lastSync')}: {s.lastSyncAt ? fmtInTz(s.lastSyncAt, { dateStyle: 'short', timeStyle: 'short' }) : t('never')}
           </span>
@@ -579,7 +579,7 @@ function Inner() {
               ⚠ {t('syncStale')}
             </div>
           ) : (
-            <div style={{ fontSize: 11.5, color: '#22c55e', marginTop: 8 }}>🔄 {t('autoSyncNote')}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-good)', marginTop: 8 }}>🔄 {t('autoSyncNote')}</div>
           );
         })()}
       </div>
@@ -598,7 +598,7 @@ function Inner() {
           }}>
             <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{t('onGoogle')}:</span>
             {typeof s.google.rating === 'number' && (
-              <span style={{ fontSize: 15, fontWeight: 700, color: '#fbbf24' }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-warn)' }}>
                 ★ {s.google.rating.toFixed(1)}
               </span>
             )}
@@ -643,7 +643,7 @@ function Inner() {
             {pgReviews.paged.map((r) => (
               <div key={r.id} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                  <span style={{ color: r.starRating >= 4 ? '#22c55e' : '#f59e0b', fontSize: 16, letterSpacing: 1 }}>{stars(r.starRating)}</span>
+                  <span style={{ color: r.starRating >= 4 ? 'var(--ink-good)' : 'var(--ink-warn)', fontSize: 16, letterSpacing: 1 }}>{stars(r.starRating)}</span>
                   <span style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14 }}>{r.reviewerName || 'Google user'}</span>
                   {r.reviewCreatedAt && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{fmtInTz(r.reviewCreatedAt, { dateStyle: 'short' })}</span>}
                   {/* WHAT CHANGED SINCE YESTERDAY.
@@ -686,7 +686,7 @@ function Inner() {
                       </div>
                     )}
                     {r.autoPostAt && !countdown(r.autoPostAt) && (
-                      <div style={{ fontSize: 12.5, color: '#22c55e', marginTop: 4, marginBottom: 8 }}>⏱ {t('autoNow')}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--ink-good)', marginTop: 4, marginBottom: 8 }}>⏱ {t('autoNow')}</div>
                     )}
                     <div style={{ ...ui.label, marginTop: 4 }}>{t('draftLabel')}</div>
                     <textarea value={drafts[r.id] ?? r.draftReply ?? ''} onChange={(e) => setDrafts({ ...drafts, [r.id]: e.target.value })}
@@ -701,7 +701,7 @@ function Inner() {
 
                 {r.status === 'NEEDS_ATTENTION' && (
                   <div>
-                    <div style={{ color: '#f59e0b', fontSize: 12.5, marginBottom: 8 }}>⚠️ {t('needsHuman')}</div>
+                    <div style={{ color: 'var(--ink-warn)', fontSize: 12.5, marginBottom: 8 }}>⚠️ {t('needsHuman')}</div>
                     {/* THE BOX IS ALWAYS HERE NOW, DRAFT OR NO DRAFT.
                         It used to render only when the AI had written something,
                         so the reviews with no suggestion — which is every review
@@ -747,7 +747,7 @@ function Inner() {
                             .then(() => { setCopiedId(r.id); setTimeout(() => setCopiedId(null), 1500); })
                             .catch(() => undefined);
                         }}
-                        style={{ ...ghostBtn, color: copiedId === r.id ? '#22c55e' : 'var(--ca5b4fc)' }}
+                        style={{ ...ghostBtn, color: copiedId === r.id ? 'var(--ink-good)' : 'var(--ca5b4fc)' }}
                       >{copiedId === r.id ? t('copied') : t('copyDraft')}</button>
                       <button onClick={() => skip(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('markHandled')}</button>
                       <a href="https://business.google.com/reviews" target="_blank" rel="noreferrer"

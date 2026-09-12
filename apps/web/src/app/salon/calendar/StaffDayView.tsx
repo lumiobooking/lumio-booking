@@ -199,7 +199,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10, padding: '10px 14px', background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 10 }}>
         <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.apptWord')}</span></span>
         <span style={{ color: 'var(--ink-faint)' }}>|</span>
-        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: '#22c55e' }}>{formatPrice(revenue, currency)}</strong></span>
+        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: 'var(--ink-good)' }}>{formatPrice(revenue, currency)}</strong></span>
         <span style={{ color: 'var(--ink-faint)' }}>|</span>
         <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.stArrived')}: </span><strong style={{ color: '#10b981' }}>{arrived}</strong></span>
         {note && <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--ca7f3d0)', background: 'var(--c064e3b)', padding: '3px 10px', borderRadius: 6 }}>{note}</span>}

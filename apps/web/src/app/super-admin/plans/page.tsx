@@ -141,7 +141,7 @@ export default function PlansPage() {
                         <Tag on={p.whiteLabelEnabled}>White-label</Tag>
                       </div>
                     </td>
-                    <td style={td}><span style={{ color: p.isActive ? '#22c55e' : 'var(--c94a3b8)' }}>{p.isActive ? 'Active' : 'Inactive'}</span></td>
+                    <td style={td}><span style={{ color: p.isActive ? 'var(--ink-good)' : 'var(--c94a3b8)' }}>{p.isActive ? 'Active' : 'Inactive'}</span></td>
                     <td style={td}><div style={{ display: 'flex', gap: 6 }}><button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...primary, padding: '6px 12px', fontSize: 12, background: editId === p.id ? 'var(--c475569)' : '#6366f1' }}>{editId === p.id ? 'Close' : 'Edit'}</button><button onClick={() => deletePlan(p.id, p.name)} style={{ ...ghost, padding: '6px 10px', fontSize: 12, borderColor: 'var(--c7f1d1d)', color: 'var(--cfca5a5)' }}>Delete</button></div></td>
                   </tr>
                   {editId === p.id && (
@@ -259,7 +259,7 @@ function PlanForm({ token, plan, onDone }: { token: string; plan?: Plan; onDone:
 
 function Tag({ on, children }: { on: boolean; children: React.ReactNode }) {
   return (
-    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, border: `1px solid ${on ? '#22c55e' : 'var(--c334155)'}`, color: on ? '#22c55e' : 'var(--c64748b)' }}>
+    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, border: `1px solid ${on ? '#22c55e' : 'var(--c334155)'}`, color: on ? 'var(--ink-good)' : 'var(--c64748b)' }}>
       {on ? '✓ ' : '✕ '}{children}
     </span>
   );

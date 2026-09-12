@@ -108,7 +108,7 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
           Kết nối Zalo OA
         </div>
         {st.connected
-          ? <span style={{ fontSize: 12, fontWeight: 700, color: '#22c55e' }}>● Đã kết nối{st.oaName ? ` · ${st.oaName}` : ''}{st.oaid ? ` · OA ${st.oaid}` : ''}</span>
+          ? <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-good)' }}>● Đã kết nối{st.oaName ? ` · ${st.oaName}` : ''}{st.oaid ? ` · OA ${st.oaid}` : ''}</span>
           : <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>chưa kết nối</span>}
         {st.connected && (
           <button onClick={() => setOpen((o) => !o)} style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '5px 10px', fontSize: 12.5, cursor: 'pointer' }}>
@@ -135,20 +135,20 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
           {st.lastWebhook ? (
             <>
               {new Date(st.lastWebhook.at).toLocaleString('vi-VN')} · <code>{st.lastWebhook.event}</code> ·{' '}
-              {st.lastWebhook.outcome === 'ok' ? <span style={{ color: '#4ade80' }}>✓ đã chuyển cho bot</span>
-                : st.lastWebhook.outcome === 'ignored' ? <span style={{ color: '#a5b4fc' }}>bỏ qua (không phải tin nhắn chữ) — Zalo đang gửi tới bình thường</span>
-                : st.lastWebhook.outcome === 'bad-signature' ? <span style={{ color: '#f87171' }}>✗ sai chữ ký — ZALO_OA_SECRET_KEY trên server không khớp OA Secret Key ở trang Webhook của app Zalo</span>
-                : st.lastWebhook.outcome === 'no-secret' ? <span style={{ color: '#f87171' }}>✗ server chưa có ZALO_OA_SECRET_KEY</span>
-                : st.lastWebhook.outcome === 'page-disabled' ? <span style={{ color: '#fbbf24' }}>OA đang tắt trong Lumio</span>
-                : st.lastWebhook.outcome === 'no-config' ? <span style={{ color: '#fbbf24' }}>chưa có cấu hình OA cho tiệm</span>
+              {st.lastWebhook.outcome === 'ok' ? <span style={{ color: 'var(--ink-good)' }}>✓ đã chuyển cho bot</span>
+                : st.lastWebhook.outcome === 'ignored' ? <span style={{ color: 'var(--ink-link)' }}>bỏ qua (không phải tin nhắn chữ) — Zalo đang gửi tới bình thường</span>
+                : st.lastWebhook.outcome === 'bad-signature' ? <span style={{ color: 'var(--ink-bad)' }}>✗ sai chữ ký — ZALO_OA_SECRET_KEY trên server không khớp OA Secret Key ở trang Webhook của app Zalo</span>
+                : st.lastWebhook.outcome === 'no-secret' ? <span style={{ color: 'var(--ink-bad)' }}>✗ server chưa có ZALO_OA_SECRET_KEY</span>
+                : st.lastWebhook.outcome === 'page-disabled' ? <span style={{ color: 'var(--ink-warn)' }}>OA đang tắt trong Lumio</span>
+                : st.lastWebhook.outcome === 'no-config' ? <span style={{ color: 'var(--ink-warn)' }}>chưa có cấu hình OA cho tiệm</span>
                 : <span>{st.lastWebhook.outcome}</span>}
             </>
           ) : st.unrouted ? (
-            <span style={{ color: '#fbbf24' }}>
+            <span style={{ color: 'var(--ink-warn)' }}>
               {new Date(st.unrouted.at).toLocaleString('vi-VN')} · Zalo gửi sự kiện cho OA {st.unrouted.oaId} nhưng không khớp tiệm nào — bấm "Kết nối lại Zalo OA".
             </span>
           ) : (
-            <span style={{ color: '#fbbf24' }}>
+            <span style={{ color: 'var(--ink-warn)' }}>
               chưa nhận được sự kiện nào từ Zalo. Nếu đã nhắn thử mà vẫn trống: kiểm tra app Zalo → <b>Webhook</b> có đúng URL <code>{`${apiBase}/public/zalo/webhook`}</code> và đã tick <i>Sự kiện người dùng gửi tin nhắn đến OA</i> ở <b>Official Account → Thiết lập chung</b>.
             </span>
           )}
@@ -160,8 +160,8 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
               <b style={{ color: 'var(--c94a3b8)' }}>Trả lời gần nhất:</b>{' '}
               {new Date(st.lastSend.at).toLocaleString('vi-VN')} ·{' '}
               {st.lastSend.ok
-                ? <span style={{ color: '#4ade80' }}>✓ Zalo đã nhận tin trả lời của bot</span>
-                : <span style={{ color: '#f87171' }}>✗ Zalo từ chối: <code>{st.lastSend.error}</code>{st.lastSend.hint ? ` — ${st.lastSend.hint}` : ''}</span>}
+                ? <span style={{ color: 'var(--ink-good)' }}>✓ Zalo đã nhận tin trả lời của bot</span>
+                : <span style={{ color: 'var(--ink-bad)' }}>✗ Zalo từ chối: <code>{st.lastSend.error}</code>{st.lastSend.hint ? ` — ${st.lastSend.hint}` : ''}</span>}
             </div>
           )}
         </div>
@@ -187,7 +187,7 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
           <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 8, lineHeight: 1.55 }}>
             Zalo sẽ hỏi đăng nhập bằng tài khoản <b>quản trị OA</b> của tiệm → chọn OA → bấm <b>Đồng ý</b>. Không cần dán mã hay token gì cả.
           </div>
-          {zMsg.kind === 'err' && <p style={{ color: '#ef4444', fontSize: 13, margin: '6px 0 0' }}>{zMsg.text}</p>}
+          {zMsg.kind === 'err' && <p style={{ color: 'var(--ink-bad)', fontSize: 13, margin: '6px 0 0' }}>{zMsg.text}</p>}
           <button onClick={() => setAdvanced((a) => !a)} style={{ background: 'transparent', border: 'none', color: 'var(--c64748b)', fontSize: 12, cursor: 'pointer', padding: '8px 0 0' }}>
             {advanced ? '▾' : '▸'} Nhập thủ công (nâng cao — dùng app Zalo riêng)
           </button>
@@ -197,7 +197,7 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
       {showForm && (!st.oauthReady || advanced) && (
         <>
           {!st.oauthReady && (
-            <div style={{ fontSize: 12.5, color: '#fbbf24', marginBottom: 10, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--ink-warn)', marginBottom: 10, lineHeight: 1.6 }}>
               Kết nối một nút chưa bật. Server <code>{st.apiHost || '?'}</code> chưa thấy biến:{' '}
               <code>{(st.oauthMissing?.length ? st.oauthMissing : ['ZALO_APP_ID', 'ZALO_APP_SECRET']).join(', ')}</code>
               {' '}— thêm vào Render → service có đúng tên miền đó → Environment → Save, rồi tải lại trang này. Tạm thời có thể nhập thủ công bên dưới.
@@ -211,7 +211,7 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
               <li>App → <b>Webhook</b>: dán URL bên dưới, tick sự kiện <i>user_send_text</i>, lấy <b>OA Secret Key</b>.</li>
               <li>App → <b>Công cụ khai thác API</b> (API Explorer) → chọn OA → lấy <b>Access token</b> và <b>Refresh token</b>.</li>
             </ol>
-            <div style={{ marginTop: 6 }}>URL webhook: <code style={{ fontSize: 11.5, wordBreak: 'break-all', color: '#a5b4fc' }}>{`${apiBase}/public/zalo/webhook`}</code></div>
+            <div style={{ marginTop: 6 }}>URL webhook: <code style={{ fontSize: 11.5, wordBreak: 'break-all', color: 'var(--ink-link)' }}>{`${apiBase}/public/zalo/webhook`}</code></div>
           </div>
           {/* Chrome read this grid as a login form and filled App ID with the
               person's email and the secret with their password. The names
@@ -241,8 +241,8 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
           </div>
         </>
       )}
-      {zMsg.kind === 'ok' && <p style={{ color: '#22c55e', fontSize: 13, margin: '6px 0 0' }}>{zMsg.text}</p>}
-      {zMsg.kind === 'err' && (!st.oauthReady || advanced) && <p style={{ color: '#ef4444', fontSize: 13, margin: '6px 0 0' }}>{zMsg.text}</p>}
+      {zMsg.kind === 'ok' && <p style={{ color: 'var(--ink-good)', fontSize: 13, margin: '6px 0 0' }}>{zMsg.text}</p>}
+      {zMsg.kind === 'err' && (!st.oauthReady || advanced) && <p style={{ color: 'var(--ink-bad)', fontSize: 13, margin: '6px 0 0' }}>{zMsg.text}</p>}
     </div>
   );
 }

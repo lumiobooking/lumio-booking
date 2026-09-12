@@ -143,7 +143,7 @@ function Inner() {
           <input lang="en-US" type="date" value={bday} onChange={(e) => setBday(e.target.value)} style={{ ...ui.input, width: 190}} />
         </label>
         <button onClick={saveBirthday} style={ui.primaryBtn}>{t('cu.bdSave')}</button>
-        {bdaySaved && <span style={{ color: '#22c55e', fontSize: 13, paddingBottom: 8 }}>{t('cu.bdSaved')}</span>}
+        {bdaySaved && <span style={{ color: 'var(--ink-good)', fontSize: 13, paddingBottom: 8 }}>{t('cu.bdSaved')}</span>}
         <span style={{ color: 'var(--c64748b)', fontSize: 12, paddingBottom: 8 }}>{t('cu.birthdayHint')}</span>
       </div>
 
@@ -165,7 +165,7 @@ function Inner() {
             {pgLoyalty.paged.map((tx) => (
               <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid var(--c1f2937)', paddingBottom: 4 }}>
                 <span style={{ color: 'var(--ccbd5e1)' }}>{fmtDate(tx.createdAt, salonTz)} · {tx.reason}</span>
-                <span style={{ color: tx.points >= 0 ? '#22c55e' : '#f97316', fontWeight: 600 }}>{tx.points >= 0 ? '+' : ''}{tx.points} {t('cu.pts')} <span style={{ color: 'var(--c64748b)', fontWeight: 400 }}>({t('cu.bal')} {tx.balanceAfter})</span></span>
+                <span style={{ color: tx.points >= 0 ? 'var(--ink-good)' : '#f97316', fontWeight: 600 }}>{tx.points >= 0 ? '+' : ''}{tx.points} {t('cu.pts')} <span style={{ color: 'var(--c64748b)', fontWeight: 400 }}>({t('cu.bal')} {tx.balanceAfter})</span></span>
               </div>
             ))}
             <Pager paged={pgLoyalty} />
@@ -198,7 +198,7 @@ function Inner() {
                 <td style={ui.td}>
                   {o.items.length === 0 ? '—' : o.items.map((it) => `${it.name}${it.quantity > 1 ? ` ×${it.quantity}` : ''}`).join(' · ')}
                 </td>
-                <td style={{ ...ui.td, textAlign: 'right', fontWeight: 700, color: '#22c55e' }}>{formatPrice(o.totalCents, o.currency)}</td>
+                <td style={{ ...ui.td, textAlign: 'right', fontWeight: 700, color: 'var(--ink-good)' }}>{formatPrice(o.totalCents, o.currency)}</td>
               </tr>
             ))}
           </tbody>
@@ -226,7 +226,7 @@ function Inner() {
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ color: PAY_COLORS[pay.status] ?? 'var(--c94a3b8)' }}>{formatPrice(pay.amountCents, pay.currency)} · {pay.status}</span>
                         {pay.status === 'PENDING' && (
-                          <button onClick={() => markPaid(pay.id)} style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #22c55e', background: 'transparent', color: '#22c55e', fontSize: 12, cursor: 'pointer' }}>{t('cu.markPaid')}</button>
+                          <button onClick={() => markPaid(pay.id)} style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #22c55e', background: 'transparent', color: 'var(--ink-good)', fontSize: 12, cursor: 'pointer' }}>{t('cu.markPaid')}</button>
                         )}
                       </span>
                     ) : '—'}

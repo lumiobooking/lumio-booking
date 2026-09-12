@@ -120,11 +120,11 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
   return (
     <div>
-      <style>{`.fl-tile{transition:border-color .12s,transform .06s}.fl-tile:hover{border-color:#6366f1}.fl-drop{outline:2px dashed #22c55e;outline-offset:-4px}`}</style>
+      <style>{`.fl-tile{transition:border-color .12s,transform .06s}.fl-tile:hover{border-color: #6366f1}.fl-drop{outline:2px dashed #22c55e;outline-offset:-4px}`}</style>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 13, color: freeCount > 0 ? '#22c55e' : '#f59e0b', background: freeCount > 0 ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)', borderRadius: 8, padding: '5px 10px', fontWeight: 700 }}>
+          <span style={{ fontSize: 13, color: freeCount > 0 ? 'var(--ink-good)' : 'var(--ink-warn)', background: freeCount > 0 ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)', borderRadius: 8, padding: '5px 10px', fontWeight: 700 }}>
             {active.length === 0 ? (vi ? 'Chưa có ghế' : 'No chairs yet') : `${freeCount} ${vi ? 'ghế trống' : 'free'}`}
           </span>
           {active.length === 0 && <a href="/salon/stations" style={{ fontSize: 12, color: 'var(--c818cf8)', textDecoration: 'none' }}>{vi ? 'Khai báo ghế →' : 'Set up chairs →'}</a>}
@@ -235,7 +235,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
                   style={{ background: 'rgba(34,197,94,0.06)', border: '1.5px dashed #16a34a', borderRadius: 12, minHeight: 118, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, color: '#22c55e' }}>
                   <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
                   <span style={{ fontSize: 14, fontWeight: 600 }}>{vi ? 'Trống' : 'Free'}</span>
-                  <span style={{ fontSize: 11, color: '#22c55e' }}>{st.name}</span>
+                  <span style={{ fontSize: 11, color: 'var(--ink-good)' }}>{st.name}</span>
                 </div>
               );
             })}
@@ -391,7 +391,7 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
                     <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{techName(it.staffId)}</div>
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{formatPrice(it.priceCents, currency)}</div>
-                  <button onClick={() => onRemove(w.id, it.lineId)} aria-label="remove" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18 }}>×</button>
+                  <button onClick={() => onRemove(w.id, it.lineId)} aria-label="remove" style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 18 }}>×</button>
                 </div>
               ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--c0f172a)' }}>

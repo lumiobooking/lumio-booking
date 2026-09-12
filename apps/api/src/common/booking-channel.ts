@@ -174,18 +174,50 @@ export function bookingChannel(b: {
 }
 
 /**
- * How much of the book can be attributed at all.
+ * A DOOR IS NOT A SOURCE.
  *
- * `online` means "a booking arrived through a web door carrying no utm and no
- * referrer" — a real booking whose origin is genuinely unknown. Reporting a
- * channel split without saying what share of it is this bucket is how a chart
- * built on a third of the data gets read as the whole picture.
+ * This counted everything except `online` as attributed, and that made the
+ * coverage number wrong in the direction that flatters us. A salon's screen
+ * read "Link Lumio 95 · Tạo tại tiệm 34" and reported 100% coverage, while the
+ * agency owner was telling us the exact opposite: khách về từ Google rất nhiều
+ * nhưng hệ thống gần như không ghi nhận được.
+ *
+ * Both statements were true. `lumiolink` and `website` are DOORS — the hosted
+ * booking page, the shop's own site. A booking that came through one carrying
+ * no utm, no referrer and no landing path tells us the customer used that door
+ * and nothing whatsoever about what sent her to it. She may have come off the
+ * Google profile, off a friend's recommendation, off a sign in the window.
+ * Counting her as "attributed" answers a question nobody asked.
+ *
+ * The question the report answers is "where do my customers come FROM", so the
+ * unknown bucket is every booking that cannot answer it. The number drops on
+ * every salon the day this ships. It drops to the truth, and the truth is what
+ * makes the fix — a /gbp link, a utm on every shared link — worth doing.
  */
+export const SOURCELESS: BookingChannel[] = ['online', 'lumiolink', 'website'];
+
 export function channelCoverage(channels: BookingChannel[]): {
-  total: number; attributed: number; pct: number; unknown: number;
+  total: number;
+  attributed: number;
+  pct: number;
+  unknown: number;
+  /**
+   * Of the unknown ones, how many at least came through a door we own.
+   *
+   * Kept separate because the fix is different: a `lumiolink` booking is one
+   * utm away from being attributed, and an `online` booking may be a walk-in
+   * somebody typed in. Telling an owner "95 of these are one link away" is
+   * actionable; "125 unknown" is just bad news.
+   */
+  ownedDoor: number;
 } {
   const total = channels.length;
-  const unknown = channels.filter((c) => c === 'online').length;
+  const unknownList = channels.filter((c) => SOURCELESS.includes(c));
+  const unknown = unknownList.length;
+  const ownedDoor = unknownList.filter((c) => c !== 'online').length;
   const attributed = total - unknown;
-  return { total, attributed, unknown, pct: total ? Math.round((attributed / total) * 100) : 0 };
+  return {
+    total, attributed, unknown, ownedDoor,
+    pct: total ? Math.round((attributed / total) * 100) : 0,
+  };
 }

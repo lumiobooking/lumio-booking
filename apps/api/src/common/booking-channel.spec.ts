@@ -76,6 +76,31 @@ describe('the rule the two copies have to agree on', () => {
 describe('how much of the book can be attributed at all', () => {
   it('counts the unknowns rather than hiding them', () => {
     const c = channelCoverage(['gmap', 'facebook', 'online', 'online']);
-    expect(c).toEqual({ total: 4, attributed: 2, unknown: 2, pct: 50 });
+    expect(c).toEqual({ total: 4, attributed: 2, unknown: 2, ownedDoor: 0, pct: 50 });
+  });
+
+  it('A DOOR IS NOT A SOURCE — a hosted-link booking with no utm is unknown', () => {
+    // The salon's screen said "Link Lumio 95 · Tạo tại tiệm 34" and reported
+    // full coverage, while its owner was telling us customers plainly come
+    // from Google and nothing records it. Both were true: the hosted page is
+    // the door they walked through, not what sent them to it.
+    const c = channelCoverage(['gmap', 'lumiolink', 'lumiolink', 'website', 'online']);
+    expect(c.attributed).toBe(1);
+    expect(c.unknown).toBe(4);
+    expect(c.pct).toBe(20);
+  });
+
+  it('separates the ones that are a single link away from being measurable', () => {
+    const c = channelCoverage(['lumiolink', 'lumiolink', 'website', 'online', 'online']);
+    expect(c.unknown).toBe(5);
+    // three came through a door we own; two carry no trace at all
+    expect(c.ownedDoor).toBe(3);
+  });
+
+  it('keeps a real origin attributed even when it is not a marketing channel', () => {
+    // A walk-in is not a channel we buy, but we know where she came from.
+    const c = channelCoverage(['walkin', 'staff', 'hotline', 'online']);
+    expect(c.attributed).toBe(3);
+    expect(c.unknown).toBe(1);
   });
 });

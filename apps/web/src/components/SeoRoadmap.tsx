@@ -44,6 +44,10 @@ type TrackId = 'map' | 'web';
 
 interface Task {
   id: string; track: TrackId; phase: number; title: string; how: string; why: string;
+  /** Whose hands. See work-owner.ts on the API side. */
+  who?: 'agency' | 'salon';
+  /** What has to come from the salon before we can start. Agency tasks only. */
+  needs?: string | null;
   kind: 'manual' | 'check'; state: TaskState; auto: boolean; recurring: boolean;
   cadence: Cadence; minutes?: number; at?: string | null; by?: string | null;
 }
@@ -213,7 +217,33 @@ function TaskRow({
 
         {!collapsed && (
           <>
+            {/* WHOSE JOB. Sixty-seven tasks used to arrive with no owner and one
+                comment aiming the lot at "salon staff" — so an owner paying us
+                to run her marketing opened a list of 67 chores with her name on
+                it. Eight of them really are hers; the chip says which. */}
+            {t.who && (
+              <div style={{ marginTop: 6 }}>
+                <span style={{
+                  fontSize: 10.5, fontWeight: 800, letterSpacing: .4, padding: '1px 7px', borderRadius: 999,
+                  textTransform: 'uppercase',
+                  background: t.who === 'salon' ? 'rgba(245,158,11,.16)' : 'rgba(99,102,241,.18)',
+                  color: t.who === 'salon' ? '#fbbf24' : '#a5b4fc',
+                }}>{t.who === 'salon' ? 'tiệm làm' : 'bên em làm'}</span>
+              </div>
+            )}
             <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 5 }}>{t.how}</div>
+            {/* The client-chasing list, which used to live in somebody's head:
+                we do the work, but we cannot invent the real opening hours or
+                spend the shop's money without being told to. */}
+            {t.needs && (
+              <div style={{
+                fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.5, marginTop: 6,
+                padding: '6px 9px', borderRadius: 8, background: 'rgba(245,158,11,.10)',
+                border: '1px solid rgba(245,158,11,.35)',
+              }}>
+                <b style={{ color: '#fbbf24' }}>Cần tiệm cung cấp:</b> {t.needs}
+              </div>
+            )}
             <div style={{ fontSize: 12.5, color: 'var(--c64748b)', lineHeight: 1.55, marginTop: 5 }}>{t.why}</div>
           </>
         )}

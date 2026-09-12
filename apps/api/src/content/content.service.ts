@@ -22,6 +22,7 @@ import { estimateTicket, isEstimate } from './ticket-estimate';
 import { assessSalon, adsAim } from './salon-assessment';
 import { adCapacity, isFull, openMinutesPerWeek, openDaysPerWeek } from './ad-capacity';
 import { pickAdServices } from './ad-service';
+import { dueReviews, nextReview, reviewReport, reviewJobText, type Campaign } from './ads-review';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
@@ -32,6 +33,17 @@ import { buildOnboardingReport } from './onboarding-report';
 
 /** Where one salon's roadmap ticks live. JSON per tenant — adding a task needs
  *  no migration, and an id that disappears simply stops being read. */
+/**
+ * The agreed ad campaign, and the reviews it owes.
+ *
+ * The pitch card promises a review on day 7 and day 14 and a message with
+ * three numbers in it. Nothing recorded that a campaign existed, so nothing
+ * could be due, so nothing ever was. This row is the smallest thing that makes
+ * the promise checkable: what was agreed, when it went live, and which reviews
+ * have actually been sent.
+ */
+const ADS_CAMPAIGN_KEY = 'ads_campaign';
+
 const SEO_ROADMAP_KEY = 'seo_roadmap';
 const PROFILE_SCAN_KEY = 'profile_scan';
 /** Attempts before a shop nothing can be read about is left alone. */
@@ -2793,6 +2805,180 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
    * from its own segments. Nothing here forecasts bookings from a budget —
    * see ads-plan.ts for why that question is unanswerable and what replaces it.
    */
+  /**
+   * The shop said yes. File WHAT it said yes to, not just that it did.
+   *
+   * The approval used to write one line into the team's inbox and nothing
+   * else, so the day-7 promise had no campaign to be seven days into. The row
+   * holds the agreed figures: a review that reports against a budget nobody
+   * recorded is a review about nothing.
+   */
+  async approveAdsCampaign(user: AuthenticatedUser): Promise<void> {
+    const tenantId = this.tenantId(user);
+    const pitch = await this.adsPitchForSalon(user);
+    if (!pitch || pitch.state !== 'offer') return;
+    const ctx0 = await this.gather(tenantId);
+    const num = (label: string) => {
+      const raw = pitch.figures.find((f) => viOf(f.label) === label)?.value ?? '';
+      const n = Number(String(raw).replace(/[^0-9]/g, ''));
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+    const ceiling = cpaCeiling({
+      avgTicketCents: ctx0.firstVisitTicketCents ?? ctx0.audience.segments[0]?.avgTicketCents ?? null,
+      grossMarginPct: ctx0.promo.margin.grossMarginPct,
+      medianGapDays: ctx0.audience.segments.find((sg) => sg.key === 'regular')?.medianGapDays ?? null,
+    });
+    await this.writeCampaign(tenantId, {
+      requestedAt: new Date().toISOString(),
+      days: CAMPAIGN_DAYS,
+      dailyCents: num('mỗi ngày') * 100,
+      ceilingCents: ceiling.strictCents,
+      startedAt: null,
+      done: {},
+    });
+  }
+
+  /** A person switched the campaign on. Everything downstream dates from here. */
+  async startAdsCampaign(user: AuthenticatedUser, onIso?: string): Promise<{ startedAt: string }> {
+    const tenantId = this.tenantId(user);
+    const startedAt = (typeof onIso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(onIso))
+      ? onIso
+      : new Date().toISOString().slice(0, 10);
+    await this.writeCampaign(tenantId, { startedAt });
+    return { startedAt };
+  }
+
+  /**
+   * A review was actually sent. Ticking it is what stops it shouting.
+   *
+   * `note` is what was changed — the one blank in the generated message, kept
+   * here so the next review can say what the last one did, and so "we watched
+   * it" can never pass for the service.
+   */
+  async markAdsReview(user: AuthenticatedUser, day: unknown, note?: unknown): Promise<{ ok: true }> {
+    const tenantId = this.tenantId(user);
+    const n = Math.max(1, Math.min(365, Math.round(Number(day) || 0)));
+    const c = await this.campaignRow(tenantId);
+    const done = { ...(c?.done ?? {}) };
+    done[String(n)] = {
+      at: new Date().toISOString(),
+      by: user.email ?? user.userId ?? null,
+      ...(typeof note === 'string' && note.trim() ? { note: note.trim().slice(0, 500) } : {}),
+    } as never;
+    await this.writeCampaign(tenantId, { done });
+    return { ok: true };
+  }
+
+  /** The campaign row, or a blank one. Never throws — a missing row is "no campaign". */
+  private async campaignRow(tenantId: string): Promise<Campaign | null> {
+    const row = await this.prisma.setting
+      .findFirst({ where: { tenantId, key: ADS_CAMPAIGN_KEY }, select: { value: true } })
+      .catch(() => null);
+    const v = (row?.value ?? null) as (Partial<Campaign> & { requestedAt?: string }) | null;
+    if (!v || !v.days) return null;
+    return {
+      startedAt: typeof v.startedAt === 'string' ? v.startedAt : null,
+      days: Math.max(1, Math.round(Number(v.days) || 14)),
+      dailyCents: Math.max(0, Math.round(Number(v.dailyCents) || 0)),
+      ceilingCents: typeof v.ceilingCents === 'number' ? v.ceilingCents : null,
+      done: (v.done ?? {}) as Campaign['done'],
+    };
+  }
+
+  private async writeCampaign(tenantId: string, patch: Record<string, unknown>): Promise<void> {
+    const row = await this.prisma.setting
+      .findFirst({ where: { tenantId, key: ADS_CAMPAIGN_KEY }, select: { id: true, value: true } })
+      .catch(() => null);
+    const next = { ...((row?.value ?? {}) as object), ...patch };
+    if (row?.id) {
+      await this.prisma.setting.update({ where: { id: row.id }, data: { value: next as never } }).catch(() => null);
+    } else {
+      await this.prisma.setting.create({ data: { tenantId, key: ADS_CAMPAIGN_KEY, value: next as never } as never }).catch(() => null);
+    }
+  }
+
+  /**
+   * NEW CUSTOMERS THE ADS BROUGHT, INSIDE THE CAMPAIGN'S OWN WINDOW.
+   *
+   * The monthly receipt answers "this month"; a review answers "since the
+   * campaign started", and the two windows are not the same fortnight. Same
+   * rule for who counts: a customer whose FIRST appointment ever arrived
+   * through a paid channel. Everything else is the sign outside and the friend
+   * who recommended them.
+   */
+  private async paidFirstsSince(tenantId: string, fromIso: string): Promise<number> {
+    const from = new Date(`${fromIso}T00:00:00Z`);
+    if (Number.isNaN(from.getTime())) return 0;
+    type Row = { customerId: string | null; startTime: Date; source?: string | null; utmSource?: string | null; attrReferrer?: string | null; attrLandingUrl?: string | null };
+    const appts = await this.prisma.appointment.findMany({
+      where: { tenantId, startTime: { gte: from }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } as never },
+      select: { customerId: true, startTime: true, source: true, utmSource: true, attrReferrer: true, attrLandingUrl: true } as never,
+      take: 5000,
+    }).catch(() => [] as Row[]) as Row[];
+    const ids = Array.from(new Set(appts.map((a) => a.customerId).filter(Boolean))) as string[];
+    if (!ids.length) return 0;
+    const hist = await this.prisma.appointment.findMany({
+      where: { tenantId, customerId: { in: ids }, status: { notIn: ['CANCELLED', 'NO_SHOW'] } as never },
+      select: { customerId: true, startTime: true },
+      take: 20000,
+    }).catch(() => [] as { customerId: string | null; startTime: Date }[]) as { customerId: string | null; startTime: Date }[];
+    const earliest = new Map<string, number>();
+    for (const h of hist) {
+      if (!h.customerId) continue;
+      const t = h.startTime.getTime();
+      earliest.set(h.customerId, Math.min(earliest.get(h.customerId) ?? t, t));
+    }
+    return appts.filter((a) => {
+      if (!a.customerId || earliest.get(a.customerId) !== a.startTime.getTime()) return false;
+      const p = PLATFORM_OF[bookingChannel({ source: a.source, utmSource: a.utmSource, attrReferrer: a.attrReferrer, attrLandingUrl: a.attrLandingUrl })];
+      return p === 'google' || p === 'meta' || p === 'zalo';
+    }).length;
+  }
+
+  /**
+   * WHAT THE TEAM OWES THIS SALON TODAY.
+   *
+   * Returns null only when there is no campaign at all. A campaign agreed but
+   * not started still comes back, because "the shop said yes eleven days ago
+   * and nobody switched it on" is exactly the thing a screen has to say out
+   * loud.
+   */
+  async adsReviewFor(tenantId: string, ctx: Awaited<ReturnType<ContentService['gather']>>) {
+    const c = await this.campaignRow(tenantId);
+    if (!c) return null;
+    const todayKey = new Date().toISOString().slice(0, 10);
+    if (!c.startedAt) {
+      return { started: false, days: c.days, reviews: [], next: null, report: null, salon: ctx.tenantName };
+    }
+    const reviews = dueReviews(c, todayKey);
+    const due = nextReview(c, todayKey);
+    if (!due || due.lateDays < 0) {
+      return { started: true, days: c.days, startedAt: c.startedAt, reviews, next: due, report: null, salon: ctx.tenantName };
+    }
+
+    const elapsed = Math.max(1, Math.min(c.days, Math.round(
+      (Date.parse(`${todayKey}T00:00:00Z`) - Date.parse(`${c.startedAt}T00:00:00Z`)) / 86_400_000) + 1));
+    const fromAds = await this.paidFirstsSince(tenantId, c.startedAt);
+    const sells = pickAdServices(menuWithBookings(ctx.menu, ctx.signals.services), ctx.firstVisitTicketCents);
+
+    const report = reviewReport({
+      dayNumber: due.dayNumber,
+      days: c.days,
+      // No platform figure is stored per campaign, so this is the approved
+      // budget for the days actually run — and it says so on the message.
+      spentCents: c.dailyCents * elapsed,
+      spendEstimated: true,
+      fromAds,
+      ceilingCents: c.ceilingCents,
+      service: sells.names[0] ? { vi: sells.names[0], en: sells.names[0] } : null,
+    });
+    return {
+      started: true, days: c.days, startedAt: c.startedAt, reviews, next: due, report,
+      salon: ctx.tenantName,
+      job: reviewJobText(due.dayNumber, ctx.tenantName),
+    };
+  }
+
   private async adsFor(tenantId: string, ctx: Awaited<ReturnType<ContentService['gather']>>) {
     const regulars = ctx.audience.segments.find((s) => s.key === 'regular');
     const anySeg = ctx.audience.segments[0];
@@ -2984,6 +3170,9 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
         daily: ctx.money(budget.dailyCents),
         total: ctx.money(budget.totalCents),
       },
+      // The review the card promised the shop. Null when no campaign was ever
+      // agreed; present and shouting when one is agreed and nobody started it.
+      review: await this.adsReviewFor(tenantId, ctx),
     };
   }
 

@@ -3,6 +3,7 @@ import {
   TASKS, PHASES, WEB_TASKS, WEB_PHASES, TIERS, TRACKS,
   allTasks, allPhases, type Track,
 } from './seo-roadmap';
+import { viOf } from './i18n';
 
 type View = ReturnType<typeof buildRoadmap>;
 const trackOf = (r: View, track: Track) => r.tracks.find((t) => t.track === track)!;
@@ -287,5 +288,49 @@ describe('the competition tier', () => {
     // to do too little and wondering for six months why nothing moved.
     for (const bad of [null, undefined, '', 'HIGH ', 'enormous', 7]) expect(asTier(bad)).toBe('medium');
     for (const t of TIERS) expect(asTier(t)).toBe(t);
+  });
+});
+
+/**
+ * WHO OWNS THE ROADMAP.
+ *
+ * 67 tasks, no owner field, and one comment on `how` saying "concrete enough
+ * to hand to salon staff" — which aimed the whole catalogue at the client,
+ * on-page work and citation cleanup and the monthly report included.
+ */
+describe('the roadmap says whose job each task is', () => {
+  const ALL_TASKS = [...TASKS, ...WEB_TASKS];
+
+  it('gives every task an owner, with no silent default', () => {
+    for (const t of ALL_TASKS) expect(['agency', 'salon']).toContain(t.who);
+  });
+
+  it('keeps the client to the eight things a laptop cannot do', () => {
+    const mine = ALL_TASKS.filter((t) => t.who === 'salon').map((t) => t.id).sort();
+    expect(mine).toEqual([
+      'area-mentions', 'daily-review-ask', 'hero-photos', 'photos-20',
+      'review-count', 'review-keywords', 'review-qr', 'review-velocity',
+    ]);
+  });
+
+  it('never puts desk work on the client', () => {
+    // On-page, citations, grid scans, reports: ours, all of it.
+    for (const id of ['w-p8-coverage', 'citation-core', 'monthly-grid', 'monthly-report', 'spam-sweep']) {
+      expect(ALL_TASKS.find((t) => t.id === id)!.who).toBe('agency');
+    }
+  });
+
+  it('names what has to come from the shop before we can start', () => {
+    // We write the description and file the citations, but we cannot invent
+    // the real opening hours or spend the shop's money on a membership.
+    const hours = ALL_TASKS.find((t) => t.id === 'hours-exact')!;
+    expect(hours.who).toBe('agency');
+    expect(viOf(hours.needs!)).toMatch(/giờ mở cửa thật/);
+    const chamber = ALL_TASKS.find((t) => t.id === 'link-chamber')!;
+    expect(viOf(chamber.needs!)).toMatch(/duyệt khoản phí/);
+  });
+
+  it('never asks the shop for something on a task the shop owns', () => {
+    for (const t of ALL_TASKS) if (t.who === 'salon') expect(t.needs).toBeUndefined();
   });
 });

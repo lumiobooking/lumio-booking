@@ -244,6 +244,12 @@ export interface RunWindow {
  * ever shows that as waste: those bookings appear in the campaign's results and
  * make it look successful.
  */
+/**
+ * Four days of seven is the most a fortnight's test can run and still be a
+ * schedule. Past that it is "always on", and nothing can be learned from it.
+ */
+const RUN_MAX = 4;
+
 export function runWindow(input: {
   quietWeekdays: number[];
   busyWeekdays: number[];
@@ -251,17 +257,43 @@ export function runWindow(input: {
 }): RunWindow {
   const lead = input.leadDays ?? 3;
   const shift = (wd: number, by: number) => ((wd - by) % 7 + 7) % 7;
-  const run = new Set<number>();
-  for (const wd of input.quietWeekdays.slice(0, 3)) {
-    run.add(shift(wd, lead));
-    run.add(shift(wd, lead + 1)); // a day either side, because the median is a middle
-    run.add(shift(wd, Math.max(0, lead - 1)));
+
+  /**
+   * THE WINDOW THAT SWALLOWED THE WEEK.
+   *
+   * Three quiet blocks each added three run days — lead, lead+1 and lead-1 — so
+   * a salon whose customers book ONE day ahead got six of seven days switched
+   * on and, because `pause` only ever took busy days that were not already in
+   * `run`, nothing switched off. The card then read "Bật Chủ nhật, Thứ 2, Thứ
+   * 3, Thứ 5, Thứ 6 và Thứ 7" with no off-day at all — an always-on campaign
+   * wearing a schedule's clothes, on the same card whose own reasoning says
+   * paying for a seat that was already sold is money thrown away.
+   *
+   * Two rules fix it, and both are things we would say out loud to an owner:
+   *   1. The ±1 hedge exists because a median is a middle. At a one-day lead
+   *      there is no middle to hedge — shifting by 0, 1 and 2 covers same-day
+   *      through the day after tomorrow, which is the entire decision window.
+   *      So the hedge only applies from a two-day lead, and it is ONE extra
+   *      day for the week, not one per quiet block.
+   *   2. A busy day is never a run day. It was allowed to be one whenever the
+   *      window happened to cover it, which is precisely the spend the card
+   *      promises not to make.
+   */
+  const core = new Set<number>();
+  for (const wd of input.quietWeekdays.slice(0, 3)) core.add(shift(wd, lead));
+  if (lead >= 2 && core.size < RUN_MAX && input.quietWeekdays.length) {
+    core.add(shift(input.quietWeekdays[0], lead + 1));
   }
+
+  // Busy days are protected first, so the run window can never contain one.
   const pause = new Set<number>();
-  for (const wd of input.busyWeekdays.slice(0, 2)) {
-    const d = shift(wd, lead);
-    if (!run.has(d)) pause.add(d);
-  }
+  for (const wd of input.busyWeekdays.slice(0, 2)) pause.add(shift(wd, lead));
+
+  const run = new Set<number>();
+  for (const d of core) if (!pause.has(d)) run.add(d);
+  // Everything protected must have been worth protecting: a "pause" day that
+  // was never going to run is noise on the card, not a decision.
+  for (const d of Array.from(pause)) if (!core.has(d) && run.size === 0) pause.delete(d);
   const runDays = Array.from(run).sort();
   const pauseDays = Array.from(pause).sort();
   return {

@@ -161,7 +161,33 @@ export class ContentController {
   async approveAds(@CurrentUser() user: AuthenticatedUser) {
     const pitch = await this.svc.adsPitchForSalon(user);
     if (!pitch?.request) throw new BadRequestException('Chưa có đề xuất ngân sách nào để duyệt.');
+    // File WHAT was agreed, not only that it was. The card promises a review on
+    // day 7 and day 14; without a record there is no day 7 to be seven days
+    // into, which is why that promise had never once been kept.
+    await this.svc.approveAdsCampaign(user);
     return this.suggestions.requestFromShop(user, pitch.request);
+  }
+
+  // ---- the campaign the shop agreed to, and the reviews it owes ----
+  // Team-side. The salon never calls these: it approved the budget and is, by
+  // the terms of the deal, not the one watching the campaign.
+
+  /** A person switched the campaign on. Every review date counts from here. */
+  @Post('ads-campaign/start')
+  @HttpCode(200)
+  startCampaign(@CurrentUser() user: AuthenticatedUser, @Body() dto?: { on?: unknown }) {
+    return this.svc.startAdsCampaign(user, typeof dto?.on === 'string' ? dto.on : undefined);
+  }
+
+  /** A review was sent, and what was changed because of it. */
+  @Post('ads-campaign/review/:day')
+  @HttpCode(200)
+  markReview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('day') day: string,
+    @Body() dto?: { note?: unknown },
+  ) {
+    return this.svc.markAdsReview(user, day, dto?.note);
   }
 
   /** "Run this one": a holiday programme by key, or one in the shop's own words. Lands in the team's inbox. */

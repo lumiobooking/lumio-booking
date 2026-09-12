@@ -45,6 +45,7 @@
  */
 
 import { bi, type Txt } from './i18n';
+import type { JobOwner } from './work-owner';
 
 /**
  * How crowded this shop's map is.
@@ -89,7 +90,31 @@ export interface RoadmapTask {
   track: Track;
   phase: number;
   title: Txt;
-  /** How to actually do it — concrete enough to hand to salon staff. */
+  /**
+   * WHOSE HANDS. See ./work-owner.
+   *
+   * There were 67 tasks here and one comment on `how` saying "concrete enough
+   * to hand to salon staff" — which pointed the whole catalogue at the client,
+   * including the 45 that are plainly ours: on-page work, citation cleanup,
+   * grid scans, the monthly report. A salon paying an agency to do nearly
+   * everything should not open a roadmap of 67 chores with her name on it.
+   *
+   * Eight of these genuinely cannot be done from another country: they are a
+   * camera in the room, a QR code on a counter, a sentence said to a customer.
+   * Those eight are the client's. The rest are ours.
+   */
+  who: JobOwner;
+  /**
+   * What has to come from the salon before we can start.
+   *
+   * Not the same as owning the task. We write the description, choose the
+   * categories and file the citations — but we cannot invent the real opening
+   * hours, authorise a Google account or spend the shop's money on a chamber
+   * membership. For a remote agency this field IS the client-chasing list, and
+   * it did not exist, so the chasing happened in someone's head or not at all.
+   */
+  needs?: Txt;
+  /** How to actually do it. */
   how: Txt;
   /** Why this one, before the tidier-looking things. */
   why: Txt;
@@ -262,7 +287,9 @@ const DENSE: Tier[] = ['high'];
 export const TASKS: RoadmapTask[] = [
   // ---- phase 0: measurement ------------------------------------------------
   {
-    id: 'verify-gbp', track: 'map', phase: 0, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 20,
+    id: 'verify-gbp', who: 'agency', track: 'map', phase: 0, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 20,
+    needs: bi('tiệm cho bên em quyền quản lý hồ sơ Google (hoặc đọc mã xác minh Google gửi về tiệm)',
+      'the shop grants us management on the Google profile, or reads us the verification code Google sends'),
     title: bi('Xác minh và nhận quyền sở hữu hồ sơ Google', 'Verify and claim the Google profile'),
     how: bi('Vào google.com/business, tìm tiệm, làm theo bước xác minh. Nếu hồ sơ đang do người khác giữ thì nộp yêu cầu lấy lại quyền.',
             'Go to google.com/business, find the shop, follow the steps. If somebody else holds it, file a request to reclaim ownership.'),
@@ -270,7 +297,9 @@ export const TASKS: RoadmapTask[] = [
             'Nothing below can be done until this is. Every other task starts here.'),
   },
   {
-    id: 'connect-gbp', track: 'map', phase: 0, kind: 'check', cadence: 'once', tiers: ALL, from: { key: 'keyword-match', doneOn: ['pass', 'warn'] },
+    id: 'connect-gbp', who: 'agency', track: 'map', phase: 0, kind: 'check', cadence: 'once', tiers: ALL, from: { key: 'keyword-match', doneOn: ['pass', 'warn'] },
+    needs: bi('tiệm bấm cho phép ở Cài đặt → Google Reviews',
+      'the shop presses allow under Settings → Google Reviews'),
     title: bi('Kết nối hồ sơ Google vào Lumio', 'Connect the Google profile to Lumio'),
     how: bi('Cài đặt → Google Reviews → kết nối. Sau khi kết nối, Google trả về danh sách từ khoá khách gõ để tìm tiệm.',
             'Settings → Google Reviews → connect. Google then returns the words people actually search to find the shop.'),
@@ -278,7 +307,7 @@ export const TASKS: RoadmapTask[] = [
             'Without knowing what people type, every optimisation after this is a guess.'),
   },
   {
-    id: 'baseline-grid', track: 'map', phase: 0, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 30,
+    id: 'baseline-grid', who: 'agency', track: 'map', phase: 0, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 30,
     title: bi('Đo lưới điểm "ngày số 0"', 'Take the day-zero geogrid'),
     how: bi('Local Falcon hoặc BrightLocal, lưới 3–5 từ khoá chính trong bán kính 3 dặm. Lưu ảnh kèm ngày.',
             'Local Falcon or BrightLocal, three to five core keywords across a three-mile radius. Save the image with the date.'),
@@ -286,7 +315,7 @@ export const TASKS: RoadmapTask[] = [
             'Without it, in three months there is no way to show the client what the work achieved.'),
   },
   {
-    id: 'set-tier', track: 'map', phase: 0, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 15,
+    id: 'set-tier', who: 'agency', track: 'map', phase: 0, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 15,
     title: bi('Đếm đối thủ và chọn đúng mức cạnh tranh', 'Count the rivals and set the competition tier'),
     how: bi('Mở Google Maps, tìm từ khoá chính, đếm số tiệm cùng ngành trong bán kính 5 dặm. Chọn mức ở đầu trang này.',
             'Open Google Maps, search the core keyword, count same-trade shops within five miles. Set the tier at the top of this board.'),
@@ -294,7 +323,7 @@ export const TASKS: RoadmapTask[] = [
             'The wrong tier means the wrong plan and the wrong promise about time. This decides everything after it.'),
   },
   {
-    id: 'baseline-bookings', track: 'map', phase: 0, kind: 'check', cadence: 'once', tiers: ALL, from: { key: 'search-share', doneOn: ['pass', 'warn'] },
+    id: 'baseline-bookings', who: 'agency', track: 'map', phase: 0, kind: 'check', cadence: 'once', tiers: ALL, from: { key: 'search-share', doneOn: ['pass', 'warn'] },
     title: bi('Ghi lại số booking đang đến từ tìm kiếm', 'Record how many bookings search brings today'),
     how: bi('Hệ thống tự đếm. Nếu ra 0% thì kiểm tra xem có phải chưa gắn theo dõi nguồn không, trước khi kết luận bản đồ không mang khách.',
             'The system counts this. If it reads 0%, check whether booking-source tracking is wired at all before concluding the map brings nobody.'),
@@ -304,7 +333,7 @@ export const TASKS: RoadmapTask[] = [
 
   // ---- phase 1: the profile -----------------------------------------------
   {
-    id: 'primary-category', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 5,
+    id: 'primary-category', who: 'agency', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 5,
     title: bi('Đặt đúng danh mục chính', 'Set the primary category correctly'),
     how: bi('Tiệm nail chọn "Nail salon", không chọn "Beauty salon" cho sang. Danh mục chính phải khớp dịch vụ ra tiền nhiều nhất.',
             'A nail shop picks "Nail salon", not the grander "Beauty salon". It must match the service that earns most.'),
@@ -312,7 +341,7 @@ export const TASKS: RoadmapTask[] = [
             'Called the single most important field in the profile. Get it wrong and nothing compensates.'),
   },
   {
-    id: 'secondary-categories', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 5,
+    id: 'secondary-categories', who: 'agency', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 5,
     title: bi('Thêm danh mục phụ cho dịch vụ khác', 'Add secondary categories for the other services'),
     how: bi('Waxing, nối mi, chăm sóc da… mỗi thứ một danh mục phụ. Chỉ thêm dịch vụ tiệm thật sự làm.',
             'Waxing, lashes, facials — one each. Only what the shop genuinely does.'),
@@ -320,7 +349,9 @@ export const TASKS: RoadmapTask[] = [
             'Eighth most important, and the only way to surface for anything but the main trade.'),
   },
   {
-    id: 'hours-exact', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 10,
+    id: 'hours-exact', who: 'agency', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 10,
+    needs: bi('giờ mở cửa thật, kể cả giờ nghỉ trưa và ngày lễ',
+      'the real opening hours, including any midday break and holidays'),
     title: bi('Khai đúng giờ mở cửa, kể cả giờ nghỉ', 'Get opening hours exactly right, breaks included'),
     how: bi('Khai đúng giờ thật. Tự tìm tiệm lúc 8 giờ tối xem Google hiện "Đang mở" hay "Đã đóng cửa" cho đúng.',
             'Enter the real hours. Search at eight in the evening and check Google says open or closed correctly.'),
@@ -328,7 +359,9 @@ export const TASKS: RoadmapTask[] = [
             'Fifth most important. People typing "nail salon open now" are the readiest to walk in of anyone.'),
   },
   {
-    id: 'services-prices', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 45,
+    id: 'services-prices', who: 'agency', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 45,
+    needs: bi('bảng giá hiện tại, đúng tên khách hay gọi',
+      'the current price list, with the names customers actually use'),
     title: bi('Điền đầy đủ dịch vụ kèm giá', 'Fill in every service, with prices'),
     how: bi('Mục Dịch vụ trong hồ sơ. Tên dịch vụ đúng như khách gọi, kèm giá thật.',
             'The Services section. Name each one the way customers do, with real prices.'),
@@ -336,7 +369,9 @@ export const TASKS: RoadmapTask[] = [
             'Profiles with prices get clicked far more, and clicks are behavioural signal, worth around nine percent.'),
   },
   {
-    id: 'attributes', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 10,
+    id: 'attributes', who: 'agency', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 10,
+    needs: bi('chỗ đậu xe, nhận khách vãng lai, nhận thẻ, wifi — trả lời có/không',
+      'parking, walk-ins, card payment, wifi — a yes or no on each'),
     title: bi('Bật hết thuộc tính đúng với tiệm', 'Switch on every attribute that is true'),
     how: bi('Chỗ đậu xe, nhận khách vãng lai, thanh toán thẻ, wifi, phù hợp trẻ em… chỉ bật cái đúng.',
             'Parking, walk-ins, card payment, wifi, good for kids — only the ones that are true.'),
@@ -344,7 +379,7 @@ export const TASKS: RoadmapTask[] = [
             'Attributes are how Google works out who the shop suits, and they show as labels in the results.'),
   },
   {
-    id: 'photos-20', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 60,
+    id: 'photos-20', who: 'salon', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 60,
     title: bi('Đăng tối thiểu 20 ảnh thật', 'Upload at least twenty real photos'),
     how: bi('Mặt tiền, biển hiệu, bên trong, chỗ ngồi, thợ đang làm, thành phẩm. Chụp tại tiệm, không ảnh kho.',
             'Storefront, sign, inside, seating, techs working, finished work. Shot in the shop — never stock.'),
@@ -352,7 +387,7 @@ export const TASKS: RoadmapTask[] = [
             'Photos decide which of the three shops side by side gets tapped.'),
   },
   {
-    id: 'description', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 20,
+    id: 'description', who: 'agency', track: 'map', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 20,
     title: bi('Viết mô tả có nhắc dịch vụ và khu vực', 'Write a description naming services and area'),
     how: bi('750 ký tự. Nhắc dịch vụ chính và tên khu vực tự nhiên. Không nhồi từ khoá.',
             '750 characters. Name the main services and the area naturally. No stuffing.'),
@@ -360,7 +395,9 @@ export const TASKS: RoadmapTask[] = [
             'Not a heavy factor, but where both Google and a reader learn what the shop sells.'),
   },
   {
-    id: 'holiday-hours', track: 'map', phase: 1, kind: 'manual', cadence: 'quarterly', tiers: ALL, minutes: 10,
+    id: 'holiday-hours', who: 'agency', track: 'map', phase: 1, kind: 'manual', cadence: 'quarterly', tiers: ALL, minutes: 10,
+    needs: bi('tiệm nghỉ những ngày nào trong quý tới',
+      'which days the shop is closed next quarter'),
     title: bi('Khai giờ đặc biệt cho các ngày lễ sắp tới', 'Set special hours for the holidays ahead'),
     how: bi('Khai trước ít nhất một tuần cho mỗi kỳ nghỉ trong quý tới.',
             'Enter them at least a week before each holiday in the coming quarter.'),
@@ -370,7 +407,7 @@ export const TASKS: RoadmapTask[] = [
 
   // ---- phase 2: reviews ----------------------------------------------------
   {
-    id: 'review-count', track: 'map', phase: 2, kind: 'check', cadence: 'once', tiers: ALL, from: { key: 'review-count', doneOn: ['pass'] },
+    id: 'review-count', who: 'salon', track: 'map', phase: 2, kind: 'check', cadence: 'once', tiers: ALL, from: { key: 'review-count', doneOn: ['pass'] },
     title: bi('Đạt nền đánh giá tối thiểu', 'Reach a working review base'),
     how: bi('Xin đánh giá ngay lúc thanh toán, đưa mã QR. Một khách vui mỗi ngày là đủ.',
             'Ask at checkout, with a QR code. One happy customer a day is enough.'),
@@ -378,7 +415,7 @@ export const TASKS: RoadmapTask[] = [
             'The heaviest single thing deciding whether the shop makes the three-result pack at all.'),
   },
   {
-    id: 'review-velocity', track: 'map', phase: 2, kind: 'check', cadence: 'once', tiers: ALL, from: { key: 'review-velocity', doneOn: ['pass'] },
+    id: 'review-velocity', who: 'salon', track: 'map', phase: 2, kind: 'check', cadence: 'once', tiers: ALL, from: { key: 'review-velocity', doneOn: ['pass'] },
     title: bi('Giữ nhịp tối thiểu 4 đánh giá mỗi tháng', 'Keep at least four new reviews a month'),
     how: bi('Tuần nào cũng phải có ít nhất một. Đừng dồn cục — 20 đánh giá trong một tuần trông như mua và bị lọc.',
             'At least one every week. Never in a batch — twenty in a week looks bought and gets filtered.'),
@@ -386,7 +423,7 @@ export const TASKS: RoadmapTask[] = [
             'Two hundred reviews and none this year loses to sixty that gains one every week.'),
   },
   {
-    id: 'review-replies', track: 'map', phase: 2, kind: 'check', cadence: 'once', tiers: ALL, from: { key: 'review-replies', doneOn: ['pass'] },
+    id: 'review-replies', who: 'agency', track: 'map', phase: 2, kind: 'check', cadence: 'once', tiers: ALL, from: { key: 'review-replies', doneOn: ['pass'] },
     title: bi('Trả lời từ 80% đánh giá trở lên', 'Reply to eighty percent of reviews or more'),
     how: bi('Đánh giá xấu trả lời trước, trong ngày. Ngắn, thật, không dùng mẫu copy dán.',
             'Bad ones first, same day. Short, real replies — never a template.'),
@@ -394,7 +431,7 @@ export const TASKS: RoadmapTask[] = [
             'Eighty percent shows a measurable effect. And whoever reads a bad review cares more about the reply.'),
   },
   {
-    id: 'review-qr', track: 'map', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 30,
+    id: 'review-qr', who: 'salon', track: 'map', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 30,
     title: bi('Đặt mã QR xin đánh giá tại quầy', 'Put a review QR code on the counter'),
     how: bi('In mã QR link thẳng tới ô viết đánh giá Google. Dán ở quầy thanh toán, không để trong ngăn kéo.',
             'Print a QR going straight to the Google review box. On the pay counter, not in a drawer.'),
@@ -402,7 +439,7 @@ export const TASKS: RoadmapTask[] = [
             'The gap between meaning to ask and asking is a QR within reach while she pays.'),
   },
   {
-    id: 'daily-review-ask', track: 'map', phase: 2, kind: 'manual', cadence: 'weekly', tiers: ALL, minutes: 35,
+    id: 'daily-review-ask', who: 'salon', track: 'map', phase: 2, kind: 'manual', cadence: 'weekly', tiers: ALL, minutes: 35,
     title: bi('Tuần này đã xin đủ đánh giá chưa', 'Did this week bring in its reviews'),
     how: bi('Mỗi ngày xin một khách vui nhất. Cuối tuần đếm: dưới 1 đánh giá mới là tuần thất bại, bù ngay tuần sau.',
             'Ask the happiest customer each day. Count on Friday: under one new review is a failed week — make it up next week.'),
@@ -410,7 +447,7 @@ export const TASKS: RoadmapTask[] = [
             'The one job here that must happen every week, forever. A broken rhythm is the first thing Google notices.'),
   },
   {
-    id: 'review-keywords', track: 'map', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 15,
+    id: 'review-keywords', who: 'salon', track: 'map', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 15,
     title: bi('Hướng khách nhắc tên dịch vụ trong đánh giá', 'Get service names into the review text'),
     how: bi('Nói với khách: "chị nhắc giúp em dịch vụ chị làm hôm nay nhé". Không đọc mẫu cho khách chép.',
             'Say: "would you mention which service you had today?" Never dictate words to copy.'),
@@ -418,7 +455,7 @@ export const TASKS: RoadmapTask[] = [
             'Words inside reviews teach Google what the shop sells, and surface as justification labels.'),
   },
   {
-    id: 'gbp-posts', track: 'map', phase: 2, kind: 'manual', cadence: 'weekly', tiers: ALL, minutes: 30,
+    id: 'gbp-posts', who: 'agency', track: 'map', phase: 2, kind: 'manual', cadence: 'weekly', tiers: ALL, minutes: 30,
     title: bi('Đăng 2–3 bài lên hồ sơ tuần này', 'Post two or three times on the profile this week'),
     how: bi('Bài nào cũng kèm ảnh. Bộ móng vừa làm xong là nguồn ảnh có sẵn mỗi ngày.',
             'Every post carries a photo. The set you just finished is a source that exists every day.'),
@@ -426,7 +463,7 @@ export const TASKS: RoadmapTask[] = [
             'Shops posting weekly gain an average of 2.3 positions over six months against shops posting nothing.'),
   },
   {
-    id: 'qna-seed', track: 'map', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 30,
+    id: 'qna-seed', who: 'agency', track: 'map', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 30,
     title: bi('Tự đặt và trả lời 5–7 câu hỏi thường gặp', 'Seed five to seven common questions and answer them'),
     how: bi('Mục Hỏi & Đáp. Giá, đậu xe, có nhận walk-in không, có làm cho trẻ em không, có nhận thẻ không.',
             'The Q&A section. Price, parking, walk-ins, children, card payment.'),
@@ -436,7 +473,7 @@ export const TASKS: RoadmapTask[] = [
 
   // ---- phase 3: beating the shops above you --------------------------------
   {
-    id: 'competitor-table', track: 'map', phase: 3, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 90,
+    id: 'competitor-table', who: 'agency', track: 'map', phase: 3, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 90,
     title: bi('Lập bảng đối chiếu với 3 tiệm đang đứng trên', 'Build the comparison table against the three above you'),
     how: bi('Tìm từ khoá chính ở chế độ ẩn danh, ghi 3 tiệm trong top. Đối chiếu 8 mục: danh mục chính, danh mục phụ, thuộc tính, số đánh giá, nhịp đánh giá/tháng, tỷ lệ trả lời, số ảnh và lần đăng gần nhất, nhịp đăng bài.',
             'Search the core keyword in incognito, note the three in the pack. Compare eight fields: primary category, secondary categories, attributes, review count, reviews per month, reply rate, photo count and last upload, posting frequency.'),
@@ -444,7 +481,7 @@ export const TASKS: RoadmapTask[] = [
             'Where it is crowded, "completing the checklist" means nothing because they completed it too. You need to know where you beat them, in numbers.'),
   },
   {
-    id: 'beat-categories', track: 'map', phase: 3, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 20,
+    id: 'beat-categories', who: 'agency', track: 'map', phase: 3, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 20,
     title: bi('Bằng hoặc hơn họ về số danh mục phụ', 'Match or beat their secondary category count'),
     how: bi('Lấy từ bảng đối chiếu: danh mục nào họ có mà mình không có, và tiệm mình thật sự làm dịch vụ đó thì thêm vào.',
             'From the table: which categories they have and you do not — add the ones the shop genuinely does.'),
@@ -452,7 +489,7 @@ export const TASKS: RoadmapTask[] = [
             'The cheapest and fastest item in this phase, and often where the gap is clearest.'),
   },
   {
-    id: 'beat-velocity', track: 'map', phase: 3, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 20,
+    id: 'beat-velocity', who: 'agency', track: 'map', phase: 3, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 20,
     title: bi('Tháng này nhịp đánh giá có hơn họ không', 'Did this month beat their review pace'),
     how: bi('Mở hồ sơ 2 đối thủ mạnh nhất, đếm đánh giá mới trong tháng của họ, so với mình. Ghi vào bảng.',
             'Open the two strongest rivals, count their new reviews this month against yours. Write it down.'),
@@ -460,7 +497,7 @@ export const TASKS: RoadmapTask[] = [
             'Your pace only means something next to theirs. Beating them monthly is winning; trailing is slipping even while your number rises.'),
   },
   {
-    id: 'hero-photos', track: 'map', phase: 3, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 120,
+    id: 'hero-photos', who: 'salon', track: 'map', phase: 3, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 120,
     title: bi('Chụp lại ảnh đại diện và ảnh bìa cho tử tế', 'Reshoot the profile and cover photos properly'),
     how: bi('Một buổi chụp có đèn, ảnh sáng và sắc nét. Đây là hai tấm được nhìn nhiều nhất trong cả hồ sơ.',
             'One session with proper light — bright and sharp. The two most-looked-at frames in the profile.'),
@@ -468,7 +505,7 @@ export const TASKS: RoadmapTask[] = [
             'By now all three have the basics right. The photo decides who gets tapped.'),
   },
   {
-    id: 'booking-link', track: 'map', phase: 3, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 30,
+    id: 'booking-link', who: 'agency', track: 'map', phase: 3, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 30,
     title: bi('Bật đặt lịch trực tiếp từ Google', 'Turn on booking straight from Google'),
     how: bi('Gắn link đặt lịch Lumio vào nút "Đặt lịch" trên hồ sơ. Rút đường từ tìm kiếm tới booking còn một cú bấm.',
             'Put the Lumio booking link on the profile booking button. Search-to-booking becomes one tap.'),
@@ -476,7 +513,7 @@ export const TASKS: RoadmapTask[] = [
             'The strongest behavioural signal available, and it turns ranking into a booking number you can count.'),
   },
   {
-    id: 'area-mentions', track: 'map', phase: 3, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 15,
+    id: 'area-mentions', who: 'salon', track: 'map', phase: 3, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 15,
     title: bi('Hướng đánh giá nhắc tên khu vực', 'Get the neighbourhood named in reviews'),
     how: bi('"Tiệm nail gần Main Street" — tên đường, tên khu, tên trung tâm thương mại gần đó.',
             'A street, a district, the mall nearby — "the nail place near Main Street".'),
@@ -484,7 +521,7 @@ export const TASKS: RoadmapTask[] = [
             'Raises relevance in the area you are trying to cover, within what proximity allows.'),
   },
   {
-    id: 'service-pages', track: 'map', phase: 3, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 240,
+    id: 'service-pages', who: 'agency', track: 'map', phase: 3, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 240,
     title: bi('Dựng trang riêng cho 3 dịch vụ giá cao nhất', 'Build a page for each of the three highest-value services'),
     how: bi('Mỗi dịch vụ một trang: mô tả, giá, ảnh thật, câu hỏi thường gặp, nút đặt lịch, schema LocalBusiness. Nhắc tên thành phố tự nhiên.',
             'One page each: description, price, real photos, FAQ, booking button, LocalBusiness schema. Name the city naturally.'),
@@ -492,7 +529,7 @@ export const TASKS: RoadmapTask[] = [
             'On-page is 15–19%. In a crowded area the top three usually have only a homepage — this is genuinely open ground.'),
   },
   {
-    id: 'spam-sweep', track: 'map', phase: 3, kind: 'manual', cadence: 'monthly', tiers: CROWDED, minutes: 30,
+    id: 'spam-sweep', who: 'agency', track: 'map', phase: 3, kind: 'manual', cadence: 'monthly', tiers: CROWDED, minutes: 30,
     title: bi('Rà và báo cáo hồ sơ vi phạm trong khu', 'Sweep and report policy-breaking profiles nearby'),
     how: bi('Tên nhồi từ khoá ("ABC Nails Best Nail Salon Kerrville"), hồ sơ ma không có mặt tiền, địa chỉ trùng nhà dân. Báo qua Business Redressal Form.',
             'Keyword-stuffed names, ghost listings with no storefront, addresses that are houses. Report via the Business Redressal Form.'),
@@ -502,7 +539,7 @@ export const TASKS: RoadmapTask[] = [
 
   // ---- phase 4: authority outside the profile ------------------------------
   {
-    id: 'citation-core', track: 'map', phase: 4, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 120,
+    id: 'citation-core', who: 'agency', track: 'map', phase: 4, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 120,
     title: bi('Sửa dữ liệu ở các nguồn gốc: Data Axle, Foursquare, Bing, Yelp', 'Fix the data at the source: Data Axle, Foursquare, Bing, Yelp'),
     how: bi('Sửa ở nguồn gốc trước — dữ liệu từ đó chảy xuống hàng trăm trang nhỏ. Tên, địa chỉ, số điện thoại phải giống nhau tuyệt đối, tới từng dấu chấm.',
             'Fix the aggregators first — their data flows down to hundreds of smaller sites. Name, address, phone identical everywhere, down to the punctuation.'),
@@ -510,7 +547,7 @@ export const TASKS: RoadmapTask[] = [
             'Inconsistency hurts more than absence: the algorithm cannot tell one business from two, and rankings become unstable.'),
   },
   {
-    id: 'citation-duplicates', track: 'map', phase: 4, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 90,
+    id: 'citation-duplicates', who: 'agency', track: 'map', phase: 4, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 90,
     title: bi('Tìm và gỡ hồ sơ trùng của chính tiệm', 'Find and remove your own duplicate listings'),
     how: bi('Tìm tên tiệm, số điện thoại cũ, địa chỉ cũ trên Google Maps, Yelp, Apple Maps. Hồ sơ trùng thì yêu cầu gộp hoặc gỡ.',
             'Search the name, the old phone, the old address on Google Maps, Yelp, Apple Maps. Request a merge or removal for each duplicate.'),
@@ -518,7 +555,9 @@ export const TASKS: RoadmapTask[] = [
             'Duplicates split the signal: reviews divide, rankings wobble. A shop that changed hands or moved almost always has this.'),
   },
   {
-    id: 'link-chamber', track: 'map', phase: 4, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 60,
+    id: 'link-chamber', who: 'agency', track: 'map', phase: 4, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 60,
+    needs: bi('tiệm duyệt khoản phí hội viên ~200–500 USD/năm',
+      'the shop approves the ~$200–500 a year membership fee'),
     title: bi('Vào phòng thương mại địa phương', 'Join the local chamber of commerce'),
     how: bi('Khoảng 200–500 USD/năm. Đăng ký, gửi thông tin tiệm, kiểm tra hồ sơ đã có link về website chưa.',
             'Roughly $200–500 a year. Join, submit the shop details, then check the listing actually links to the site.'),
@@ -526,7 +565,7 @@ export const TASKS: RoadmapTask[] = [
             'Widely called the easiest high-quality local link there is. One link, paid once a year, held indefinitely.'),
   },
   {
-    id: 'link-mentions', track: 'map', phase: 4, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 90,
+    id: 'link-mentions', who: 'agency', track: 'map', phase: 4, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 90,
     title: bi('Đòi link từ các bài đã nhắc tên tiệm', 'Reclaim links from pages that already mention the shop'),
     how: bi('Tìm tên tiệm trên Google, lọc trang nhắc tên mà không có link. Nhắn xin họ gắn link — tỷ lệ đồng ý cao vì họ đã nhắc rồi.',
             'Search the shop name, find pages mentioning it without a link. Ask them to link — conversion is high because the mention already exists.'),
@@ -534,7 +573,9 @@ export const TASKS: RoadmapTask[] = [
             'Free, and the easiest kind of link to get of any.'),
   },
   {
-    id: 'link-sponsor', track: 'map', phase: 4, kind: 'manual', cadence: 'monthly', tiers: DENSE, minutes: 120,
+    id: 'link-sponsor', who: 'agency', track: 'map', phase: 4, kind: 'manual', cadence: 'monthly', tiers: DENSE, minutes: 120,
+    needs: bi('tiệm duyệt ngân sách tài trợ ~100–1.000 USD',
+      'the shop approves a sponsorship budget of ~$100–1,000'),
     title: bi('Tài trợ một sự kiện địa phương tháng này', 'Sponsor one local event this month'),
     how: bi('Đội bóng trường, hội chợ khu phố, sự kiện từ thiện. Khoảng 100–1.000 USD. Yêu cầu trang cảm ơn có link về website.',
             'A school team, a neighbourhood fair, a charity night. Around $100–1,000. Ask for a thank-you page that links to the site.'),
@@ -542,7 +583,7 @@ export const TASKS: RoadmapTask[] = [
             'A locally relevant .org link, and one or two a month compounds fast. Five to ten a month is the safe pace — going from ten to a hundred in a month looks suspicious.'),
   },
   {
-    id: 'link-partners', track: 'map', phase: 4, kind: 'manual', cadence: 'once', tiers: DENSE, minutes: 90,
+    id: 'link-partners', who: 'agency', track: 'map', phase: 4, kind: 'manual', cadence: 'once', tiers: DENSE, minutes: 90,
     title: bi('Đổi link với 2–3 tiệm bổ trợ không cạnh tranh', 'Swap links with two or three complementary shops'),
     how: bi('Tiệm tóc, spa, studio chụp ảnh cưới, tiệm áo cưới. Trang "đối tác" trên web hai bên.',
             'A hair salon, a spa, a wedding photographer, a bridal shop. A partners page on each site.'),
@@ -550,7 +591,7 @@ export const TASKS: RoadmapTask[] = [
             'Genuinely relevant, and not penalised when the relationship is real. Beauty trades already refer to each other.'),
   },
   {
-    id: 'link-news', track: 'map', phase: 4, kind: 'manual', cadence: 'once', tiers: DENSE, minutes: 300,
+    id: 'link-news', who: 'agency', track: 'map', phase: 4, kind: 'manual', cadence: 'once', tiers: DENSE, minutes: 300,
     title: bi('Viết một bài cho báo hoặc blog địa phương', 'Write one piece for a local paper or blog'),
     how: bi('Chủ đề hữu ích, không quảng cáo: "chăm móng mùa đông", "chọn tiệm nail an toàn vệ sinh thế nào".',
             'Something useful, not an advert: winter nail care, how to tell a hygienic shop from a risky one.'),
@@ -560,7 +601,7 @@ export const TASKS: RoadmapTask[] = [
 
   // ---- phase 5: holding ----------------------------------------------------
   {
-    id: 'monthly-grid', track: 'map', phase: 5, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 30,
+    id: 'monthly-grid', who: 'agency', track: 'map', phase: 5, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 30,
     title: bi('Đo lưới điểm tháng này', 'Run this month\'s geogrid'),
     how: bi('Cùng bộ từ khoá, cùng bán kính, cùng ngày trong tháng. Lưu ảnh cạnh ảnh tháng trước.',
             'Same keywords, same radius, same date each month. Save beside last month\'s.'),
@@ -568,7 +609,7 @@ export const TASKS: RoadmapTask[] = [
             'First place slips quietly. Without a regular measurement, by the time anyone notices it has been gone three months.'),
   },
   {
-    id: 'monthly-report', track: 'map', phase: 5, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 45,
+    id: 'monthly-report', who: 'agency', track: 'map', phase: 5, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 45,
     title: bi('Gửi báo cáo tháng cho khách', 'Send the client the monthly report'),
     how: bi('Lưới điểm tháng này cạnh tháng trước, lượt gọi và chỉ đường trong Insights, và số booking đến từ Google.',
             'This month\'s grid beside last month\'s, calls and direction requests from Insights, bookings from Google.'),
@@ -576,7 +617,9 @@ export const TASKS: RoadmapTask[] = [
             'A client who cannot see progress leaves in month three, even when the work is going exactly to plan.'),
   },
   {
-    id: 'quarterly-audit', track: 'map', phase: 5, kind: 'manual', cadence: 'quarterly', tiers: ALL, minutes: 60,
+    id: 'quarterly-audit', who: 'agency', track: 'map', phase: 5, kind: 'manual', cadence: 'quarterly', tiers: ALL, minutes: 60,
+    needs: bi('bảng giá và giờ mở cửa mới nhất để đối chiếu',
+      'the latest price list and hours to check the profile against'),
     title: bi('Rà lại danh mục, giá và citation', 'Re-check categories, prices and citations'),
     how: bi('Google thêm danh mục mới liên tục — có thể đã có danh mục sát hơn. Đối chiếu giá hồ sơ với bảng giá thật, soát lại NAP.',
             'Google adds categories constantly — a closer one may exist now. Check profile prices against the real list, re-check NAP.'),
@@ -588,7 +631,9 @@ export const TASKS: RoadmapTask[] = [
 export const WEB_TASKS: RoadmapTask[] = [
   // ---- W0: free instruments ------------------------------------------------
   {
-    id: 'w-search-console', track: 'web', phase: 0, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 45,
+    id: 'w-search-console', who: 'agency', track: 'web', phase: 0, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 45,
+    needs: bi('quyền vào Search Console hoặc quyền sửa DNS của website',
+      'access to Search Console, or permission to edit the DNS for the site'),
     title: bi('Cài Google Search Console và xác minh sở hữu', 'Set up Google Search Console and verify the site'),
     how: bi('search.google.com/search-console → thêm tài sản → xác minh bằng thẻ HTML hoặc DNS. Nộp sitemap.xml ngay sau đó.',
             'search.google.com/search-console → add property → verify by HTML tag or DNS. Submit sitemap.xml straight after.'),
@@ -596,7 +641,9 @@ export const WEB_TASKS: RoadmapTask[] = [
             'Free, and the only source of what people actually typed to reach the site — more accurate than any paid tool, because it is Google\'s own number.'),
   },
   {
-    id: 'w-analytics', track: 'web', phase: 0, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 30,
+    id: 'w-analytics', who: 'agency', track: 'web', phase: 0, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 30,
+    needs: bi('quyền gắn mã đo lường vào website',
+      'permission to put the measurement tag on the website'),
     title: bi('Gắn Google Analytics và đánh dấu nút đặt lịch là chuyển đổi', 'Install Analytics and mark the booking button as a conversion'),
     how: bi('Cài GA4, đặt sự kiện chuyển đổi cho nút Đặt lịch và nút gọi. Trong Lumio: Cài đặt → Analytics.',
             'Install GA4, set a conversion event on the booking button and the call button. In Lumio: Settings → Analytics.'),
@@ -604,7 +651,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'Without a conversion event every report talks about visits, and visits do not pay the shop.'),
   },
   {
-    id: 'w-index-check', track: 'web', phase: 0, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 20,
+    id: 'w-index-check', who: 'agency', track: 'web', phase: 0, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 20,
     title: bi('Kiểm tra website đã được Google index chưa', 'Check the site is actually indexed'),
     how: bi('Gõ site:tenmiencuaban.com trên Google. Đếm số trang. Trang tiền không có trong đó thì dùng URL Inspection trong Search Console để yêu cầu index.',
             'Search site:yourdomain.com. Count the pages. Any money page missing gets a manual index request via URL Inspection.'),
@@ -614,7 +661,7 @@ export const WEB_TASKS: RoadmapTask[] = [
 
   // ---- W1: keyword map -----------------------------------------------------
   {
-    id: 'w-keyword-free-research', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 120,
+    id: 'w-keyword-free-research', who: 'agency', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 120,
     title: bi('Đào từ khóa bằng công cụ miễn phí — 6 nguồn, không tốn đồng nào',
               'Mine keywords with free tools — six sources, no budget'),
     how: bi('Làm đủ 6 nguồn, ghi hết vào một bảng: (1) gõ từ khóa chính vào Google, chép sạch ô gợi ý tự động, gõ thêm từng chữ cái a→z sau từ khóa để ra thêm; (2) cuộn xuống mục "Mọi người cũng hỏi" — bấm mở từng câu, mở xong nó đẻ thêm câu mới; (3) cuối trang, mục "Tìm kiếm có liên quan"; (4) mở 3 trang đang top 1–3, chép tiêu đề, H1 và toàn bộ H2 của họ; (5) Google Trends, so 2–3 từ với nhau để biết từ nào đang lên; (6) câu hỏi thật của khách trong tin nhắn Zalo/Facebook và bình luận của tiệm — đây là nguồn không đối thủ nào có.',
@@ -623,7 +670,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'The most skipped step and also the cheapest. No Ahrefs, no Semrush needed: those six are data Google itself emits, free, and enough to map keywords for one local shop. Skip it and everything downstream aims at terms you imagined.'),
   },
   {
-    id: 'w-keyword-list', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 90,
+    id: 'w-keyword-list', who: 'agency', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 90,
     title: bi('Chốt danh sách từ khóa mục tiêu cho tiệm này', 'Settle this shop\'s target keyword list'),
     how: bi('Lấy từ tab Quảng cáo & SEO — hệ thống đã dựng sẵn nhóm từ khóa theo nghề và thành phố của tiệm. Đối chiếu thêm với Search Console (nếu đã có dữ liệu) và ô gợi ý của Google khi gõ.',
             'Take it from the Ads & SEO tab — the system already built keyword groups for this trade and city. Cross-check against Search Console if there is data, and against Google autocomplete.'),
@@ -631,7 +678,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'Keywords must match what the shop really sells at the price it really charges. Ranking for a term that brings the wrong customer is worse than not ranking.'),
   },
   {
-    id: 'w-keyword-map', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 120,
+    id: 'w-keyword-map', who: 'agency', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 120,
     title: bi('Lập bảng từ khóa → trang đích, một từ một trang', 'Map keyword to page — one term, one page'),
     how: bi('Bảng ba cột: từ khóa chính · URL trang đích · ý định (đặt lịch / tìm hiểu / so sánh). Hai trang cùng nhắm một từ thì gộp lại hoặc đổi hướng một trang.',
             'Three columns: primary keyword, landing URL, intent (book, learn, compare). Two pages on one term get merged, or one gets re-pointed.'),
@@ -639,7 +686,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'The most common and most expensive mistake: two pages cannibalise each other, Google cannot pick, and neither ranks.'),
   },
   {
-    id: 'w-url-structure', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 60,
+    id: 'w-url-structure', who: 'agency', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 60,
     title: bi('Sửa cấu trúc URL theo bản đồ từ khóa (P1)', 'Fix URL structure to match the map (P1)'),
     how: bi('3–5 từ, gạch ngang, không dấu, không ID số, nằm đúng thư mục theo bản đồ chủ đề. Đổi URL thì phải chuyển hướng 301 từ URL cũ.',
             'Three to five words, hyphens, no accents, no numeric ids, in the right folder per the topical map. Any URL change needs a 301 from the old one.'),
@@ -648,7 +695,7 @@ export const WEB_TASKS: RoadmapTask[] = [
   },
 
   {
-    id: 'w-competitor-gap', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 90,
+    id: 'w-competitor-gap', who: 'agency', track: 'web', phase: 1, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 90,
     title: bi('Đọc 3 trang đang top và liệt kê thứ họ có mà mình thiếu',
               'Read the top three and list what they cover that you do not'),
     how: bi('Với mỗi từ khóa tiền: mở 3 kết quả đầu (ẩn danh, không đăng nhập), liệt kê mọi chủ đề con, bảng giá, câu hỏi, ảnh, và thực thể họ nhắc tới. Đối chiếu với trang của mình, đánh dấu phần thiếu. Bảng này là đầu vào của P8 ở giai đoạn sau.',
@@ -659,7 +706,7 @@ export const WEB_TASKS: RoadmapTask[] = [
 
   // ---- W2: on-page, P-series ----------------------------------------------
   {
-    id: 'w-p0-gate', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 60,
+    id: 'w-p0-gate', who: 'agency', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 60,
     title: bi('Qua cổng chất lượng nội dung P0 trước khi onpage', 'Pass the P0 content quality gate before any on-page'),
     how: bi('Mỗi trang tiền: đủ section theo dàn ý, mỗi H2 trả lời ngay câu hỏi của nó, có E-A-V thật, không placeholder, không mâu thuẫn, nguồn dẫn chuẩn.',
             'For each money page: sections complete, every H2 answers its own question first, real E-A-V, no placeholder, no contradictions, sources cited.'),
@@ -667,7 +714,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'On-paging a page whose content is not ready is wasted work. If P0 fails, stop and send it back to be rewritten.'),
   },
   {
-    id: 'w-p1-p5-meta', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 90,
+    id: 'w-p1-p5-meta', who: 'agency', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 90,
     title: bi('Nhóm Meta: Title, Meta, CTR, H1 (P2–P5)', 'The meta group: title, meta, CTR, H1 (P2–P5)'),
     how: bi('Title 50–60 ký tự, chứa main predicate, keyword trong 3 từ đầu, KHÁC H1 và KHÁC URL. Meta 150–160, có CTA. Title dùng hook → Meta kể chi tiết, không lặp ý nhau. H1 cùng predicate với Title, 60–70 ký tự, duy nhất một H1.',
             'Title 50–60 characters, carrying the main predicate, keyword in the first three words, different from both H1 and URL. Meta 150–160 with a CTA. Title hooks, meta details — never the same sentence twice. H1 shares the title\'s predicate, 60–70 characters, exactly one per page.'),
@@ -675,7 +722,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'P2 and P5 are foundation fails: while either is red, nothing deeper is worth touching.'),
   },
   {
-    id: 'w-p8-coverage', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 180,
+    id: 'w-p8-coverage', who: 'agency', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 180,
     title: bi('Phủ chủ đề ≥70% so với top 10 (P8)', 'Cover at least 70% of what the top ten cover (P8)'),
     how: bi('Mở 10 kết quả đầu cho từ khóa mục tiêu, liệt kê thực thể và fact họ nhắc. Bài mình phải cover ≥70% tập đó, đủ cả tên riêng lẫn thuật ngữ kỹ thuật.',
             'Open the first ten results, list the entities and facts they carry. Your page must cover at least seventy percent of that set, named entities and technical terms alike.'),
@@ -683,7 +730,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'The single strongest on-page factor in the whole checklist, by a clear margin. If only one on-page job gets done, this is the one.'),
   },
   {
-    id: 'w-p9-p13-body', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 150,
+    id: 'w-p9-p13-body', who: 'agency', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 150,
     title: bi('Thân bài: E-A-V, phân bố, quan hệ từ, n-gram (P9–P13)', 'The body: E-A-V, distribution, word relations, n-grams (P9–P13)'),
     how: bi('Mỗi đoạn ít nhất một câu E-A-V. Macro terms rải toàn bài, micro terms CHỈ trong section của nó. Đủ 5 loại quan hệ từ. Entity và attribute trong cùng câu. N-gram không lặp giữa các section.',
             'At least one E-A-V sentence per paragraph. Macro terms throughout, micro terms only inside their own section. All five relation types present. Entity and attribute in the same sentence. N-grams unique per section.'),
@@ -691,7 +738,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'Count E-A-V sentences absolutely, never as a density percentage — keyword density correlates with essentially nothing.'),
   },
   {
-    id: 'w-p14-p16-answer', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 60,
+    id: 'w-p14-p16-answer', who: 'agency', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 60,
     title: bi('Bold câu trả lời, Featured Snippet, vị trí từ khóa (P14–P16)', 'Bold the answer, snippet format, keyword positions (P14–P16)'),
     how: bi('Bold CÂU TRẢ LỜI chứ không bold từ khóa, khoảng 5–8 lần mỗi 1800 ký tự. Câu trả lời ~40 từ, đúng định dạng mà snippet hiện tại đang dùng. Keyword chính có trong 100 chữ đầu VÀ 100 chữ cuối.',
             'Bold the ANSWER, not the keyword — around five to eight per 1800 characters. A ~40-word answer in whatever format the current snippet uses. Primary keyword in both the first hundred words and the last hundred.'),
@@ -699,7 +746,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'How much you bold barely matters; bolding the right thing does. Bolding the keyword is doing the wrong job.'),
   },
   {
-    id: 'w-p17-p18-links', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 60,
+    id: 'w-p17-p18-links', who: 'agency', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 60,
     title: bi('Liên kết trong và ngoài bài (P17–P18)', 'Links in and out (P17–P18)'),
     how: bi('5–10 internal link mỗi bài, và phải NHẮC chủ đề trang đích 1–3 lần TRƯỚC khi đặt link. Anchor khớp Title trang đích. 2–4 external link tới .edu/.gov/Wikipedia, mở tab mới. TUYỆT ĐỐI không link ra đối thủ.',
             'Five to ten internal links per article, and mention the destination topic one to three times BEFORE the link appears. Anchor matches the destination title. Two to four external links to .edu/.gov/Wikipedia, new tab. Never link to a competitor.'),
@@ -707,7 +754,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'External links are the most commonly missed item on the whole checklist, because older versions only worried about internal ones.'),
   },
   {
-    id: 'w-p19-p23-tech', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 90,
+    id: 'w-p19-p23-tech', who: 'agency', track: 'web', phase: 2, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 90,
     title: bi('Ảnh và kỹ thuật (P19–P23)', 'Images and technical (P19–P23)'),
     how: bi('Tên file ảnh theo từ khóa, không dấu. Alt 8–15 từ = Thực thể + Thuộc tính + Hành động, caption khác alt. Ảnh .webp dưới 150KB, có width/height. Một <main> duy nhất, <article> tự đứng được. Mọi nút và form phải CHẠY.',
             'Image filenames from the keyword, unaccented. Alt of 8–15 words = entity + attribute + action; caption says something the alt does not. WebP under 150KB with explicit width and height. Exactly one <main>, a self-contained <article>. Every button and form must actually WORK.'),
@@ -717,7 +764,7 @@ export const WEB_TASKS: RoadmapTask[] = [
 
   // ---- W3: supporting content ---------------------------------------------
   {
-    id: 'w-cluster-plan', track: 'web', phase: 3, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 90,
+    id: 'w-cluster-plan', who: 'agency', track: 'web', phase: 3, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 90,
     title: bi('Lên cụm bài vệ tinh cho từng trang tiền', 'Plan the supporting cluster for each money page'),
     how: bi('Mỗi trang tiền cần 3–5 bài trả lời câu hỏi ĐỨNG TRƯỚC quyết định chọn tiệm: "gel-x là gì", "giữ được bao lâu", "có hại móng không". Tất cả trỏ về trang tiền.',
             'Each money page needs three to five articles answering the questions that come BEFORE choosing a shop: what is gel-x, how long does it last, does it damage the nail. All of them point back.'),
@@ -725,7 +772,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'A money page alone lacks topical authority. The cluster is how that authority is built without buying anything.'),
   },
   {
-    id: 'w-publish-cadence', track: 'web', phase: 3, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 240,
+    id: 'w-publish-cadence', who: 'agency', track: 'web', phase: 3, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 240,
     title: bi('Xuất bản 2–4 bài vệ tinh tháng này', 'Publish two to four supporting articles this month'),
     how: bi('Mỗi bài chạy đủ P0 rồi mới onpage. Đăng đều hơn đăng nhiều: 2 bài mỗi tháng suốt một năm thắng 20 bài trong một tháng rồi im.',
             'Each one passes P0 before any on-page work. Steady beats heavy: two a month for a year beats twenty in one month and then silence.'),
@@ -733,7 +780,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'This consumes most of the time on the website track, and is the one part that cannot be shortened.'),
   },
   {
-    id: 'w-internal-linking', track: 'web', phase: 3, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 60,
+    id: 'w-internal-linking', who: 'agency', track: 'web', phase: 3, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 60,
     title: bi('Rà lại mạng liên kết nội bộ tháng này', 'Re-thread the internal links this month'),
     how: bi('Bài mới phải trỏ về trang tiền, và các bài cũ liên quan phải được thêm link tới bài mới. Không để bài nào mồ côi.',
             'Every new article links back to its money page, and older related articles get a link to the new one. No orphans.'),
@@ -741,7 +788,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'An orphaned article receives no authority from the rest of the site — writing it and leaving it loses half its value.'),
   },
   {
-    id: 'w-refresh-old', track: 'web', phase: 3, kind: 'manual', cadence: 'monthly', tiers: CROWDED, minutes: 90,
+    id: 'w-refresh-old', who: 'agency', track: 'web', phase: 3, kind: 'manual', cadence: 'monthly', tiers: CROWDED, minutes: 90,
     title: bi('Cập nhật một bài cũ đang tụt hạng', 'Refresh one older article that is slipping'),
     how: bi('Mở Search Console, tìm trang có lượt hiển thị giảm hoặc thứ hạng trung bình tụt. So lại với top 10 hiện tại, bổ sung phần thiếu.',
             'Open Search Console, find a page losing impressions or average position. Compare it against today\'s top ten and fill what is missing.'),
@@ -751,7 +798,7 @@ export const WEB_TASKS: RoadmapTask[] = [
 
   // ---- W4: off-site, earned ------------------------------------------------
   {
-    id: 'w-link-chamber', track: 'web', phase: 4, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 60,
+    id: 'w-link-chamber', who: 'agency', track: 'web', phase: 4, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 60,
     title: bi('Vào phòng thương mại địa phương', 'Join the local chamber of commerce'),
     how: bi('Khoảng 200–500 USD/năm. Đăng ký, gửi thông tin, rồi KIỂM TRA hồ sơ đã thật sự có link về website chưa.',
             'Roughly $200–500 a year. Join, submit the details, then CHECK the listing actually links to the site.'),
@@ -759,7 +806,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'Widely called the easiest high-quality local link. This is a membership fee, not a purchased link.'),
   },
   {
-    id: 'w-link-mentions', track: 'web', phase: 4, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 60,
+    id: 'w-link-mentions', who: 'agency', track: 'web', phase: 4, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 60,
     title: bi('Đòi link từ các trang đã nhắc tên tiệm', 'Reclaim links from pages already mentioning the shop'),
     how: bi('Gõ tên tiệm trong ngoặc kép trên Google. Trang nào nhắc tên mà không có link thì nhắn xin gắn link.',
             'Search the shop name in quotes. Any page that mentions it without linking gets a polite ask.'),
@@ -767,7 +814,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'Free, and the highest conversion rate of any link ask, because the mention already exists.'),
   },
   {
-    id: 'w-link-sponsor', track: 'web', phase: 4, kind: 'manual', cadence: 'monthly', tiers: CROWDED, minutes: 120,
+    id: 'w-link-sponsor', who: 'agency', track: 'web', phase: 4, kind: 'manual', cadence: 'monthly', tiers: CROWDED, minutes: 120,
     title: bi('Tài trợ một sự kiện địa phương tháng này', 'Sponsor one local event this month'),
     how: bi('Đội bóng trường, hội chợ khu phố, sự kiện từ thiện. Yêu cầu trang cảm ơn có link về website.',
             'A school team, a neighbourhood fair, a charity night. Ask for a thank-you page that links back.'),
@@ -775,7 +822,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'A locally relevant .org link. Five to ten a month is the safe pace — going from ten to a hundred invites a manual review.'),
   },
   {
-    id: 'w-link-partners', track: 'web', phase: 4, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 90,
+    id: 'w-link-partners', who: 'agency', track: 'web', phase: 4, kind: 'manual', cadence: 'once', tiers: CROWDED, minutes: 90,
     title: bi('Đổi link với 2–3 tiệm bổ trợ không cạnh tranh', 'Swap links with complementary shops'),
     how: bi('Tiệm tóc, spa, studio ảnh cưới, tiệm áo cưới. Trang "đối tác" trên web hai bên.',
             'A hair salon, a spa, a wedding photographer, a bridal shop. A partners page on each site.'),
@@ -783,7 +830,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'Beauty trades already refer to each other — the link just records a relationship that exists.'),
   },
   {
-    id: 'w-link-news', track: 'web', phase: 4, kind: 'manual', cadence: 'once', tiers: DENSE, minutes: 300,
+    id: 'w-link-news', who: 'agency', track: 'web', phase: 4, kind: 'manual', cadence: 'once', tiers: DENSE, minutes: 300,
     title: bi('Viết một bài cho báo hoặc blog địa phương', 'Write one piece for a local paper or blog'),
     how: bi('Chủ đề hữu ích, không quảng cáo: "chăm móng mùa đông", "nhận biết tiệm nail sạch sẽ an toàn".',
             'Something useful, not an advert: winter nail care, how to spot a hygienic shop.'),
@@ -791,7 +838,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'Strong and relevant, and almost no nail shop does it.'),
   },
   {
-    id: 'w-link-gbp-web', track: 'web', phase: 4, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 45,
+    id: 'w-link-gbp-web', who: 'agency', track: 'web', phase: 4, kind: 'manual', cadence: 'once', tiers: ALL, minutes: 45,
     title: bi('Nối hai nhánh: hồ sơ bản đồ và website trỏ vào nhau',
               'Wire the two tracks together: map profile and website point at each other'),
     how: bi('Trong Google Business Profile, mỗi dịch vụ trỏ đúng về trang dịch vụ tương ứng chứ không trỏ hết về trang chủ. Trên website, nhúng bản đồ và để tên–địa chỉ–điện thoại giống hệt hồ sơ, từng dấu chấm phẩy.',
@@ -800,7 +847,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'Google does not see these as two separate things: the map profile borrows authority from the site, and the site borrows local signal from the profile. A name, address or phone that differs by one character is two entities, and the authority splits between them.'),
   },
   {
-    id: 'w-traffic-owned', track: 'web', phase: 4, kind: 'manual', cadence: 'weekly', tiers: ALL, minutes: 30,
+    id: 'w-traffic-owned', who: 'agency', track: 'web', phase: 4, kind: 'manual', cadence: 'weekly', tiers: ALL, minutes: 30,
     title: bi('Kéo người thật vào website bằng kênh mình có', 'Drive real people to the site from channels you own'),
     how: bi('Bài đăng Google Business trỏ về trang dịch vụ · link trong bio Instagram/Facebook · tin nhắn hậu mãi kèm link bài hướng dẫn chăm móng.',
             'Google Business posts pointing at a service page, the link in the Instagram and Facebook bio, and the post-visit message carrying a link to the aftercare guide.'),
@@ -810,7 +857,7 @@ export const WEB_TASKS: RoadmapTask[] = [
 
   // ---- W5: measure and hold ------------------------------------------------
   {
-    id: 'w-gsc-monthly', track: 'web', phase: 5, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 45,
+    id: 'w-gsc-monthly', who: 'agency', track: 'web', phase: 5, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 45,
     title: bi('Đọc Search Console tháng này', 'Read Search Console this month'),
     how: bi('Ba cột cần nhìn: từ khóa nào lên, từ khóa nào tụt, và từ khóa nào đang ở hạng 8–20. Nhóm cuối là nhóm dễ đẩy lên trang 1 nhất.',
             'Three things: which terms rose, which fell, and which sit at positions 8–20. That last group is the cheapest to push onto page one.'),
@@ -818,7 +865,7 @@ export const WEB_TASKS: RoadmapTask[] = [
             'A term at 8–20 often only needs more content to reach page one — far cheaper than starting a new term from nothing.'),
   },
   {
-    id: 'w-rank-check', track: 'web', phase: 5, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 30,
+    id: 'w-rank-check', who: 'agency', track: 'web', phase: 5, kind: 'manual', cadence: 'monthly', tiers: ALL, minutes: 30,
     title: bi('Kiểm tra thứ hạng bộ từ khóa mục tiêu', 'Check where the target keywords stand'),
     how: bi('Chế độ ẩn danh, hoặc dùng thứ hạng trung bình trong Search Console. Ghi vào bảng cùng chỗ với lưới điểm bản đồ.',
             'Incognito, or the average position in Search Console. Record it next to the map grid.'),

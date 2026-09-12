@@ -145,7 +145,7 @@ const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 
 export function channelReports(bookings: ChannelBooking[], now: number): {
   reports: ChannelReport[];
-  coverage: { total: number; attributed: number; pct: number; unknown: number };
+  coverage: { total: number; attributed: number; pct: number; unknown: number; ownedDoor: number };
   /** Said out loud whenever attribution is thin enough to mislead. */
   caveat: Txt | null;
 } {
@@ -217,8 +217,16 @@ export function channelReports(bookings: ChannelBooking[], now: number): {
       'There are no appointments yet to read a customer source from.')
     : coverage.pct < 60
       ? bi(
-        `${coverage.unknown}/${coverage.total} booking (${100 - coverage.pct}%) không ghi nhận được nguồn. Tỷ lệ bên dưới chỉ đúng trên phần đo được — đừng đọc như bức tranh toàn bộ. Cách sửa: gắn UTM vào mọi link đặt lịch chia sẻ trên Facebook/Google, và hỏi khách vãng lai "anh/chị biết tiệm từ đâu" rồi chọn nguồn khi tạo lịch.`,
-        `${coverage.unknown} of ${coverage.total} bookings (${100 - coverage.pct}%) carry no source at all. The rates below hold only for the part that could be measured — do not read them as the whole picture. The fix: put UTMs on every booking link you share on Facebook or Google, and ask a walk-in "how did you hear about us" and pick the source when you write the appointment.`)
+        `${coverage.unknown}/${coverage.total} booking (${100 - coverage.pct}%) chưa biết khách đến từ đâu. Tỷ lệ bên dưới chỉ đúng trên phần đo được.`
+        + (coverage.ownedDoor
+          ? `\nTrong đó ${coverage.ownedDoor} booking vào qua link/trang của tiệm — biết CỬA vào, không biết NGUỒN đưa họ tới cửa đó. Nhóm này chỉ cách việc đo được đúng một bước: mỗi nơi chia sẻ link dùng một link riêng (link /gbp gắn ở hồ sơ Google, link có utm cho Facebook).`
+          : '')
+        + `\nCòn lại là khách vào thẳng không mang dấu vết. Với khách vãng lai, hỏi "anh/chị biết tiệm từ đâu" rồi chọn nguồn lúc tạo lịch là đủ.`,
+        `${coverage.unknown} of ${coverage.total} bookings (${100 - coverage.pct}%) cannot say where the customer came from. The rates below hold only for the part that could be measured.`
+        + (coverage.ownedDoor
+          ? `\n${coverage.ownedDoor} of them came through your own link or site — we know the DOOR, not what sent them to it. That group is one step from being measurable: give each place you share the link its own link (the /gbp one on the Google profile, a utm'd one for Facebook).`
+          : '')
+        + `\nThe rest arrived carrying no trace at all. For a walk-in, asking "how did you hear about us" and picking the source on the appointment is enough.`)
       : null;
 
   return { reports, coverage, caveat };

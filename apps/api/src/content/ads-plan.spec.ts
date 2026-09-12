@@ -120,6 +120,31 @@ describe('ad days are derived from the booking lead time', () => {
     for (const d of w.pauseDays) expect(w.runDays).not.toContain(d);
   });
 
+  it('NEVER turns into an always-on campaign wearing a schedule', () => {
+    // A salon whose customers book one day ahead got six of seven days on and
+    // no off-day at all, on a card that sells switching off the busy days.
+    const w = runWindow({ quietWeekdays: [6, 1, 2], busyWeekdays: [3, 4], leadDays: 1 });
+    expect(w.runDays.length).toBeLessThanOrEqual(4);
+    expect(w.pauseDays.length).toBeGreaterThan(0);
+    expect(viOf(w.labels.run.map(viOf).join(' ') as never) || w.labels.run.map(viOf).join(' ')).not.toMatch(/Thứ 4/);
+  });
+
+  it('never buys a seat that was already sold', () => {
+    // A busy day could land in the run window whenever the ±1 hedge reached it.
+    for (const lead of [1, 2, 3, 4, 5]) {
+      const w = runWindow({ quietWeekdays: [6, 1, 2], busyWeekdays: [3, 4], leadDays: lead });
+      for (const d of w.pauseDays) expect(w.runDays).not.toContain(d);
+      expect(w.runDays.length).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it('does not hedge a one-day lead, because there is no middle to hedge', () => {
+    const one = runWindow({ quietWeekdays: [3], busyWeekdays: [], leadDays: 1 });
+    expect(one.runDays).toHaveLength(1);
+    const three = runWindow({ quietWeekdays: [3], busyWeekdays: [], leadDays: 3 });
+    expect(three.runDays.length).toBe(2); // the day, plus one hedge for the week
+  });
+
   it('admits the fallback when lead time is unknown', () => {
     const w = runWindow({ quietWeekdays: [6], busyWeekdays: [5], leadDays: null });
     expect(viOf(w.why)).toMatch(/tạm tính/);

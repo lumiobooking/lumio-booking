@@ -104,7 +104,17 @@ describe('unattributed bookings are declared, never quietly divided away', () =>
     const { coverage, caveat } = channelReports(rows, NOW);
     expect(coverage.pct).toBe(11);
     expect(viOf(caveat)).toMatch(/40\/45 booking/);
-    expect(viOf(caveat)).toMatch(/UTM/);
+    expect(viOf(caveat)).toMatch(/chưa biết khách đến từ đâu/);
+  });
+
+  it('tells the shop which half is one link away from being measurable', () => {
+    // "125 unknown" is bad news. "95 of them are one link away" is a job.
+    const rows = [...make('gmap', 5, { newOnes: 3 }), ...make('lumiolink', 30), ...make('online', 10)];
+    const { coverage, caveat } = channelReports(rows, NOW);
+    expect(coverage.ownedDoor).toBe(30);
+    expect(viOf(caveat)).toMatch(/30 booking vào qua link\/trang của tiệm/);
+    expect(viOf(caveat)).toMatch(/biết CỬA vào, không biết NGUỒN/);
+    expect(viOf(caveat)).toMatch(/\/gbp/);
   });
 
   it('stays quiet when attribution is good', () => {
@@ -274,7 +284,7 @@ describe('an English reader gets English', () => {
     expect(enOf(g.says)).toMatch(/BRINGING NEW CUSTOMERS/);
     expect(enOf(g.says)).not.toBe(viOf(g.says));
     expect(enOf(l.says)).toMatch(/EXISTING customers rebooking/);
-    expect(enOf(caveat)).toMatch(/carry no source at all/);
+    expect(enOf(caveat)).toMatch(/cannot say where the customer came from/);
     expect(enOf(caveat)).not.toBe(viOf(caveat));
   });
 

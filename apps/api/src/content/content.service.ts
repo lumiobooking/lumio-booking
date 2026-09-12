@@ -18,6 +18,7 @@ import { regionEvents, eventsToPrompt, type ResolvedRegion, type DatedEvent } fr
 import { resolveShopLocation, type ResolvedShopLocation } from './shop-location';
 import { trendLinks, trendLinksToPrompt } from './trend-sources';
 import { buildWeekPlan, weekPlanToPrompt } from './weekly-plan';
+import { estimateTicket, isEstimate } from './ticket-estimate';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
@@ -164,6 +165,15 @@ export class ContentService {
     firstVisitTicketCents: number | null;
     /** Minutes an average appointment takes here, from the service list. */
     avgServiceMinutes: number | null;
+    /**
+     * The salon's OWN price list, with prices and durations.
+     *
+     * `signals.services` next to it is a popularity count and carries no money,
+     * which is why the ad budget could not read it. This is the menu itself —
+     * the only statement about what a visit costs that exists before a single
+     * appointment has been booked here.
+     */
+    menu: { name: string; priceCents: number; durationMinutes: number }[];
     lead: ReturnType<typeof leadTime>;
     money: (c: number) => string;
   }> {
@@ -509,6 +519,7 @@ export class ContentService {
       avgServiceMinutes: services.length
         ? Math.max(15, Math.round(services.reduce((s2, x) => s2 + (x.durationMinutes || 0), 0) / services.length))
         : null,
+      menu: services,
       lead,
       // ZIPs, in order of authority, and never asked for twice: the field
       // someone filled, the extra ZIPs the team added, then the one the shop's
@@ -1090,7 +1101,18 @@ export class ContentService {
     const tenantId = this.tenantId(user);
     const ctx = await this.gather(tenantId);
     const regulars = ctx.audience.segments.find((sg) => sg.key === 'regular');
-    const ticket = ctx.firstVisitTicketCents ?? ctx.audience.segments[0]?.avgTicketCents ?? null;
+    // Measured first, the salon's own price list second. Without the fallback
+    // this screen says "not enough appointments yet" to a shop that has traded
+    // for nine years on somebody else's system, and to a shop that has not
+    // opened — the two cases where an ad budget is most wanted. See
+    // ticket-estimate.ts for why it is the median of the menu and not the mean.
+    const est = estimateTicket({
+      firstVisitCents: ctx.firstVisitTicketCents,
+      anySegmentCents: ctx.audience.segments[0]?.avgTicketCents ?? null,
+      anySegmentCount: ctx.audience.segments[0]?.n ?? null,
+      services: ctx.menu,
+    });
+    const ticket = est.cents;
     const margin = ctx.promo.margin.grossMarginPct;
     const ceiling = cpaCeiling({ avgTicketCents: ticket, grossMarginPct: margin, medianGapDays: regulars?.medianGapDays ?? null });
 
@@ -1144,6 +1166,7 @@ export class ContentService {
     const offerLine = advice && advice.discountPct > 0 ? advice.headline : null;
 
     return adsPitch({
+      ticketEstimated: isEstimate(est.source),
       ceilingCents: ceiling.strictCents,
       dailyCents: budget.dailyCents,
       days: budget.days,

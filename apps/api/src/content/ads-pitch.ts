@@ -212,6 +212,14 @@ export function adsPitch(input: {
   feasible: 'yes' | 'tight' | 'no' | 'unknown';
   /** Which of the two figures is missing, so "unknown" can name it. */
   missing?: 'ticket' | 'margin' | null;
+  /**
+   * True when the ticket came from the salon's PRICE LIST rather than from
+   * appointments booked here. The number is usable — it is the salon's own
+   * statement about what a visit costs — but it has not met reality yet, and a
+   * screen that shows an estimate as a measurement has spent trust it will
+   * need later. So it says so, in the same breath as the number.
+   */
+  ticketEstimated?: boolean;
 } & PitchPlanInput): AdsPitch {
   const { ceilingCents: ceiling, dailyCents: daily, days, totalCents: total } = input;
 
@@ -226,8 +234,12 @@ export function adsPitch(input: {
           'Bên em cần biết tiệm trả công thợ bao nhiêu phần trăm thì mới tính được một khách mới để lại bao nhiêu lãi. Chưa có con số đó thì mọi mức chi đều là đoán — bên em không đề xuất kiểu đó.',
           'We need to know what share of a ticket goes to the tech before we can say what a new customer leaves you. Without it any budget is a guess, and we do not put guesses on this screen.')
         : bi(
-          'Tiệm chưa đủ lịch hẹn để biết hoá đơn trung bình của khách mới. Chạy vài tuần nữa là bên em tính được, còn bây giờ mọi mức chi đều là đoán.',
-          'There are not enough appointments yet to know what a new customer spends. A few more weeks and we can work it out; until then any budget is a guess.'),
+          // Reaching here now means BOTH sources are empty: no appointments
+          // here and no priced menu either. That is not "wait a few weeks" —
+          // it is one afternoon of typing the price list in, and saying so
+          // turns a dead end into the next thing to do.
+          'Bên em chưa biết một lần khách tới tiệm thu khoảng bao nhiêu. Tiệm nhập bảng giá dịch vụ vào hệ thống là bên em tính được ngân sách ngay, không cần chờ có lịch hẹn.',
+          'We do not know yet what one visit is worth here. Enter your service price list and we can size a budget straight away — no need to wait for bookings.'),
       cta: null,
       request: null,
     };
@@ -261,10 +273,16 @@ export function adsPitch(input: {
     ],
     headline: bi('Muốn có khách ngay? Bên em đề xuất chạy thử', 'Want customers now? Here is what we suggest'),
     why: bi(
-      `Một khách mới, sau khi trả công thợ, để lại cho tiệm khoảng ${fmt(ceiling)}. Nên chừng nào mỗi khách tốn dưới ${fmt(ceiling)} thì tiệm lãi ngay từ lần đầu họ tới.`
+      (input.ticketEstimated
+        ? 'Con số dưới đây tính theo BẢNG GIÁ của tiệm, chưa phải từ lịch hẹn thật — đủ để bắt đầu, và bên em chỉnh lại sau vài tuần khi có số thật. '
+        : '')
+      + `Một khách mới, sau khi trả công thợ, để lại cho tiệm khoảng ${fmt(ceiling)}. Nên chừng nào mỗi khách tốn dưới ${fmt(ceiling)} thì tiệm lãi ngay từ lần đầu họ tới.`
       + (need ? ` Đợt này cần ${need} khách để lấy lại tiền${room ? `, mà khung giờ trống của tiệm còn chỗ cho ${room}` : ''}.` : '')
       + ' Bên em chạy, theo dõi từng ngày, và tự tắt nếu vượt ngưỡng.',
-      `A new customer leaves you about ${fmt(ceiling)} after the tech is paid. So as long as one costs less than ${fmt(ceiling)}, you are ahead on their very first visit.`
+      (input.ticketEstimated
+        ? 'The figures below come from your PRICE LIST, not from bookings yet — enough to start with, and we correct them once real numbers arrive. '
+        : '')
+      + `A new customer leaves you about ${fmt(ceiling)} after the tech is paid. So as long as one costs less than ${fmt(ceiling)}, you are ahead on their very first visit.`
       + (need ? ` This run needs ${need} of them to get the money back${room ? `, and your quiet hours have room for ${room}` : ''}.` : '')
       + ' We run it, watch it daily, and switch it off ourselves if it goes over the line.'),
     cta: bi(`Đồng ý — chạy thử ${days} ngày`, `Yes — run the ${days}-day test`),

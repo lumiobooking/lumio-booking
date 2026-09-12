@@ -42,8 +42,21 @@ describe('adsPitch', () => {
     expect(m.state).toBe('unknown');
     expect(m.cta).toBeNull();
     expect(viOf(m.why)).toMatch(/trả công thợ bao nhiêu phần trăm/);
+    // Reaching 'unknown' on the ticket now means BOTH sources are empty: no
+    // appointments here AND no priced menu. The old copy told the salon to wait
+    // a few weeks for bookings, which is false for a shop that has traded for
+    // years elsewhere and impossible for one that has not opened. It has to
+    // name the thing that would actually fix it.
     const t = adsPitch({ ...base, ceilingCents: null, missing: 'ticket' });
-    expect(viOf(t.why)).toMatch(/chưa đủ lịch hẹn để biết hoá đơn trung bình/);
+    expect(viOf(t.why)).toMatch(/bảng giá dịch vụ/);
+    expect(viOf(t.why)).not.toMatch(/chưa đủ lịch hẹn|vài tuần nữa/);
+
+    // And when the ceiling DID come from the price list, the screen says so
+    // rather than passing an estimate off as a measurement.
+    const est = adsPitch({ ...base, ticketEstimated: true });
+    expect(viOf(est.why)).toMatch(/BẢNG GIÁ/);
+    const measured = adsPitch({ ...base, ticketEstimated: false });
+    expect(viOf(measured.why)).not.toMatch(/BẢNG GIÁ/);
   });
 
   it('writes the line the team reads when the shop says yes', () => {

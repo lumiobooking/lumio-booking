@@ -1109,7 +1109,7 @@ export class ContentService {
     const est = estimateTicket({
       firstVisitCents: ctx.firstVisitTicketCents,
       anySegmentCents: ctx.audience.segments[0]?.avgTicketCents ?? null,
-      anySegmentCount: ctx.audience.segments[0]?.n ?? null,
+      anySegmentCount: ctx.audience.segments[0]?.count ?? null,
       services: ctx.menu,
     });
     const ticket = est.cents;

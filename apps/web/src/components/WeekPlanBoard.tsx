@@ -782,7 +782,17 @@ function JobRow({
       <span style={{ flex: '0 0 16px', fontSize: 11.5, color: 'var(--c475569)', paddingTop: 3, textAlign: 'right' }}>{index + 1}</span>
       <div style={{ minWidth: 0, flex: 1 }}>
         {/* the line */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+        {/* ONE CHARACTER PER LINE.
+            Three things shared one non-wrapping flex row: the kind picker, the
+            instruction, and four edit controls. The picker and the controls are
+            both flex:0 0 auto, so on a 390px phone they took everything and the
+            instruction — the only part anybody reads — was left about ten
+            pixels, which renders as a vertical column of single letters.
+            Wrapping, plus a floor of 200px on the text, means the controls drop
+            to their own line the moment the words would be squeezed. No
+            breakpoint and no JS: it is right at every width, including the ones
+            nobody thought to test. */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           {canEdit ? (
             <select
               value={job.kind} onChange={(e) => onPatch({ kind: e.target.value })}
@@ -794,7 +804,7 @@ function JobRow({
           ) : (
             <span style={{ flex: '0 0 auto', paddingTop: 1 }}>{ICON(job.kind)}</span>
           )}
-          <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ minWidth: 0, flex: '1 1 200px' }}>
             <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.5, fontWeight: 500, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
               <Inline
                 value={job.text} canEdit={canEdit} strong autoFocus={isNew}
@@ -824,7 +834,7 @@ function JobRow({
             )}
           </div>
           {canEdit && (
-            <div style={{ display: 'flex', gap: 3, alignItems: 'center', flex: '0 0 auto' }}>
+            <div style={{ display: 'flex', gap: 3, alignItems: 'center', flex: '0 0 auto', marginLeft: 'auto' }}>
               <button onClick={() => onMove(-1)} disabled={index === 0} title={T('Lên trên', 'Move up')} style={mini}>↑</button>
               <button onClick={() => onMove(1)} disabled={index === total - 1} title={T('Xuống dưới', 'Move down')} style={mini}>↓</button>
               <select

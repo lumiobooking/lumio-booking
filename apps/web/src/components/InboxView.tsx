@@ -1269,12 +1269,47 @@ export function InboxView() {
               on the screen spends most of the day saying nothing. The same
               space can answer the question a person actually opens an inbox
               with — is anyone waiting, and for how long. */}
-          {!detail && !loaded && (
+          {!detail && !openId && !loaded && (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c64748b)', fontSize: 13 }}>
               {vi ? 'Đang tải hộp thư…' : 'Loading the inbox…'}
             </div>
           )}
-          {!detail && loaded && (() => {
+
+          {/* A CONVERSATION IS PICKED AND HAS NOT ARRIVED YET.
+              This case had no branch of its own, so it fell into the "nothing
+              picked" board below: on a phone, where that panel IS the screen,
+              tapping a customer showed a page of statistics for half a second
+              and only then the messages. The person had just answered the
+              question that board asks, and it answered them back with it.
+              A conversation in the shape of a conversation instead — the frame
+              stays put and only the words arrive. */}
+          {!detail && openId && (
+            <div aria-busy="true" aria-label={vi ? 'Đang mở hội thoại' : 'Opening the conversation'}
+              style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderBottom: '1px solid var(--line)' }}>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--c1e293b)', flexShrink: 0 }} />
+                <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ height: 10, width: '45%', borderRadius: 4, background: 'var(--c1e293b)' }} />
+                  <div style={{ height: 8, width: '28%', borderRadius: 4, background: 'var(--c1e293b)' }} />
+                </div>
+              </div>
+              <div style={{ flex: 1, padding: 14, display: 'flex', flexDirection: 'column', gap: 12, justifyContent: 'flex-end' }}>
+                {[
+                  { w: '62%', mine: false },
+                  { w: '48%', mine: true },
+                  { w: '70%', mine: false },
+                ].map((b, i) => (
+                  <div key={i} style={{
+                    alignSelf: b.mine ? 'flex-end' : 'flex-start',
+                    width: b.w, height: 34, borderRadius: 14,
+                    background: 'var(--c1e293b)', opacity: 0.85 - i * 0.18,
+                  }} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!detail && !openId && loaded && (() => {
             const oldest = rows
               .filter((r) => stateOf(r) === 'unclaimed')
               .reduce((m, r) => Math.max(m, r.waitingMinutes ?? 0), 0);

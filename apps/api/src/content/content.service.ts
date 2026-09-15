@@ -26,7 +26,7 @@ import { pickAdServices } from './ad-service';
 import type { BankContext } from './no-media-content';
 import { dueReviews, nextReview, reviewReport, reviewJobText, type Campaign } from './ads-review';
 import { pickStage, weekIndex } from './roadmap';
-import { weekKey, weekStart, isPastWeek, weekLabel } from './week-key';
+import { weekKey, weekStart, isPastWeek, weekLabel, localParts } from './week-key';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
 import { scopeOf, knownTrades } from './trends/trend-feed';
 import { tradeKeywordsFor, fillKeyword } from './trends/trade-keywords';
@@ -625,14 +625,20 @@ export class ContentService {
    * daily ideas would have been written against a different week than the one
    * on screen. One plan, two readers.
    */
-  private async weekPlanFor(tenantId: string, ctx: Awaited<ReturnType<ContentService['gather']>>) {
+  /**
+   * `at` is the first day the plan covers. Today by default — and a date a
+   * week or more ahead for the 30-day grid, which needs the next four weeks
+   * drafted before their Monday arrives. Nothing else about the plan changes:
+   * the same signals, the same playbook, read as of now, laid out from `at`.
+   */
+  private async weekPlanFor(tenantId: string, ctx: Awaited<ReturnType<ContentService['gather']>>, at: Date = new Date()) {
     const loose = this.prisma as unknown as Record<string, {
       count?: (a: unknown) => Promise<number>;
       findFirst?: (a: unknown) => Promise<unknown>;
     }>;
     // Last week's archived outcome — the plan reads its own scorecard before
     // deciding how heavy this week should be.
-    const thisWeekKey = weekKey(new Date(), ctx.tz);
+    const thisWeekKey = weekKey(at, ctx.tz);
     const lastWeekRow = await loose.contentWeek?.findFirst?.({
       where: { tenantId, weekKey: { not: thisWeekKey }, outcome: { not: null } } as never,
       orderBy: { startDate: 'desc' },
@@ -669,8 +675,8 @@ export class ContentService {
     });
 
     return buildWeekPlan({
-      today: new Date(),
-      todayWeekday: this.localWeekday(ctx.tz),
+      today: at,
+      todayWeekday: this.localWeekday(ctx.tz, at),
       industry: ctx.industry,
       playbook: ctx.playbook,
       topics: await this.topicsFor(tenantId, ctx),
@@ -873,12 +879,13 @@ export class ContentService {
     tenantId: string,
     tz: string,
     plan: Awaited<ReturnType<ContentService['weekPlanFor']>>,
+    at: Date = new Date(),
   ): Promise<{
     weekKey: string; startDate: string; edited: boolean; editedByName: string | null; editedAt: Date | null;
     approvedAt: Date | null; approvedByName: string | null; ticks: Record<string, number[]>;
   }> {
-    const key = weekKey(new Date(), tz);
-    const start = weekStart(new Date(), tz);
+    const key = weekKey(at, tz);
+    const start = weekStart(at, tz);
     const loose = this.prisma as unknown as Record<string, {
       findFirst: (a: unknown) => Promise<unknown>;
       update: (a: unknown) => Promise<unknown>;
@@ -919,6 +926,54 @@ export class ContentService {
       approvedByName: row.approvedByName ?? null,
       ticks: row.ticks ?? {},
     };
+  }
+
+  /**
+   * THE NEXT THIRTY DAYS AS FIVE WEEK PLANS, DRAFTED NOW.
+   *
+   * The plan screen showed one week — this one — and the calendar of posts
+   * showed everything else. A person scheduling content for the 24th had to
+   * hold the plan for that week in their head, because it did not exist yet:
+   * every plan was generated on the Monday it started. So the grid asks for
+   * five weeks at once. Each is generated from the same reading of the salon
+   * (one `gather`, five layouts) and kept exactly the way this week's is, so
+   * a team edit or a tick on a future week survives to that week.
+   *
+   * Blocks are seven days each, starting today and every seventh day after —
+   * the same "seven days from today" shape the single-week plan has always
+   * had — so the thirty days tile without a gap or an overlap. `from` on each
+   * block is the salon-local date of its first day, which is the only thing a
+   * grid needs to place it.
+   */
+  async weeksAhead(user: AuthenticatedUser, blocks = 5) {
+    const tenantId = this.tenantId(user);
+    const ctx = await this.gather(tenantId);
+    const n = Math.max(1, Math.min(6, Math.floor(blocks)));
+    const out: unknown[] = [];
+    for (let i = 0; i < n; i++) {
+      const at = new Date(Date.now() + i * 7 * 86_400_000);
+      const generated = await this.weekPlanFor(tenantId, ctx, at);
+      const kept = await this.keepWeek(tenantId, ctx.tz, generated, at).catch(() => null);
+      const row = kept?.edited ? await this.weekAtRaw(user, kept.weekKey).catch(() => null) : null;
+      const plan = (row?.week as typeof generated) ?? generated;
+      const auto = i === 0 ? await this.autoTicksFor(tenantId, ctx.tz, plan).catch(() => ({})) : {};
+      const { y, m, d } = localParts(at, ctx.tz);
+      out.push({
+        weekKey: kept?.weekKey ?? weekKey(at, ctx.tz),
+        label: weekLabel(kept?.weekKey ?? weekKey(at, ctx.tz)),
+        from: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+        startDate: kept?.startDate ?? weekStart(at, ctx.tz),
+        week: plan,
+        edited: Boolean(kept?.edited),
+        editedByName: kept?.editedByName ?? null,
+        approvedAt: kept?.approvedAt ?? null,
+        approvedByName: kept?.approvedByName ?? null,
+        ticks: kept?.ticks ?? {},
+        auto,
+      });
+    }
+    const payload = { tz: ctx.tz, blocks: out };
+    return { ...localizeDeep(payload, 'vi'), en: localizeDeep(payload, 'en') };
   }
 
   /** Every week this salon has on file, newest first. */

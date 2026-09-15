@@ -28,10 +28,12 @@ import { notify } from '../../../lib/feedback';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
-import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz } from '../../../lib/datetime';
+import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz, salonTz } from '../../../lib/datetime';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
 import { MonthCalendar, IgGrid, PostPreview, MediaList, ChannelChips, CHANNEL_NAME, TONES, postTone, type MediaItem, type Channel } from '../../../components/PostStudio';
 import { WeekPlanBoard, type OfferForm } from '../../../components/WeekPlanBoard';
+import { PlanGrid, type AheadBlock } from '../../../components/PlanGrid';
+import { PostDetailModal } from '../../../components/PostDetailModal';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
 import { TrendsTab, type TrendCard } from '../../../components/TrendsTab';
@@ -317,6 +319,8 @@ interface QueuedPost {
   mediaPurged?: boolean;
   /** TikTok's per-post decisions, when the post goes there. */
   tiktok?: TikTokOpts | null;
+  /** The Google post's button, when the post goes there. */
+  google?: GbpOpts | null;
   /** The saved error is about a permission the connection now has. */
   errorIsStale: boolean;
   results: { channel: string; id: string | null; url: string | null; error: string | null }[];
@@ -344,6 +348,17 @@ interface QueuedPost {
   driveFolderUrl?: string | null;
 }
 /** TikTok's per-post decisions — mirrors api tiktok/tiktok.ts TikTokPostOptions. */
+/** The button on a Google Business Profile post — see api content/gbp-cta.ts. */
+type GbpButton = 'book' | 'call' | 'learn' | 'none';
+interface GbpOpts { button: GbpButton; url: string | null }
+const GBP_BUTTONS: { k: GbpButton; vi: string; en: string; hint: { vi: string; en: string } }[] = [
+  { k: 'book', vi: 'Đặt lịch', en: 'Book', hint: { vi: 'mở trang đặt lịch của tiệm', en: 'opens the shop’s booking page' } },
+  { k: 'call', vi: 'Gọi ngay', en: 'Call now', hint: { vi: 'gọi số điện thoại trên hồ sơ Google', en: 'dials the phone on the Google profile' } },
+  { k: 'learn', vi: 'Tìm hiểu thêm', en: 'Learn more', hint: { vi: 'mở website của tiệm', en: 'opens the shop’s website' } },
+  { k: 'none', vi: 'Không nút', en: 'No button', hint: { vi: 'chỉ đăng bài', en: 'just the post' } },
+];
+const httpsOk = (u: string) => /^https:\/\/[^/\s]+\.[a-z]{2,}(\/|$)/i.test(u.trim());
+
 interface TikTokOpts {
   privacy?: '' | 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'FOLLOWER_OF_CREATOR' | 'SELF_ONLY';
   allowComment?: boolean; allowDuet?: boolean; allowStitch?: boolean;
@@ -422,7 +437,11 @@ interface QueuePayload {
     publishGap?: { cause: 'declined' | 'not-offered' | 'not-requested' | 'stale' | 'unknown'; reconnectHelps: boolean } | null;
   } | null;
   /** The Google Business Profile location, when connected under Đánh giá Google. */
-  google?: { title: string | null } | null;
+  google?: {
+    title: string | null;
+    /** What the button points at unless the writer types a link. */
+    defaultButton?: GbpButton; bookingUrl?: string | null; website?: string | null;
+  } | null;
   /** The TikTok account, when connected: name and what it may post. */
   tiktok?: { displayName: string | null; username?: string | null; avatarUrl?: string | null; needsReconnect: boolean; creator: TikTokCreator | null } | null;
   posts: QueuedPost[];
@@ -655,6 +674,23 @@ function Inner() {
     [weeksRaw, vi],
   );
   const [viewWeek, setViewWeek] = useState<string | null>(null);
+  /**
+   * The plan as a week (the working sheet, one day at a time) or as the next
+   * thirty days on one grid. The grid is where scheduling happens; the week
+   * view is where the how of each job lives. Both read the same plans.
+   */
+  const [planView, setPlanView] = useState<'week' | 'grid'>('grid');
+  const [ahead, setAhead] = useState<AheadBlock[] | null>(null);
+  const [aheadTz, setAheadTz] = useState<string>('');
+  const [aheadBusy, setAheadBusy] = useState(false);
+  /** The post open in the reading view — never the editor — on the schedule. */
+  const [detailId, setDetailId] = useState<string | null>(null);
+  /**
+   * The zone the composer's digits belong to. Salon time by default — the
+   * one a shop owner means — and switchable, because a writer in Vietnam
+   * scheduling an Austin evening needs to see both and choose one.
+   */
+  const [postTz, setPostTz] = useState<string>('');
   const [past, setPast] = useState<{
     label: string; week: Plan['week']; editedByName: string | null;
     startDate?: string | null; edited?: boolean;
@@ -673,6 +709,7 @@ function Inner() {
     id?: string; channels: Channel[]; message: string; media: MediaItem[]; at: string;
     stage?: 'writing' | 'design' | 'ready'; writerName?: string; designerName?: string; teamNote?: string;
     tiktok?: TikTokOpts;
+    google?: GbpOpts;
   } | null>(null);
   /** The TikTok connection, as the connect/disconnect buttons need it. */
   /** The composer folded down to its title bar. A month plan is the thing
@@ -840,6 +877,29 @@ function Inner() {
     } catch { setQueue({ connected: null, posts: [], crowding: [] }); }
   }, [token]);
   useEffect(() => { if (tab === 'queue') loadQueue(); }, [tab, loadQueue]);
+  // The grid needs both halves: the plans (five weeks, drafted on demand) and
+  // the schedule (the same posts the queue tab shows). Loaded when the grid is
+  // first looked at, refreshed whenever a post is saved from it.
+  const loadAhead = useCallback(async () => {
+    if (!token) return;
+    setAheadBusy(true);
+    try {
+      const r = await apiFetch<{ tz: string; blocks: AheadBlock[] }>('/content/weeks-ahead?blocks=5', { token });
+      setAhead(r.blocks ?? []);
+      setAheadTz(r.tz ?? '');
+    } catch { setAhead([]); }
+    finally { setAheadBusy(false); }
+  }, [token]);
+  useEffect(() => {
+    if (tab === 'week' && planView === 'grid') {
+      // Refetched on every visit: a post scheduled from the grid is saved on
+      // the queue tab and must show on the grid the moment the person is back.
+      loadAhead();
+      loadQueue();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, planView]);
+  useEffect(() => { if (!postTz) setPostTz(salonTz() || (typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : '')); }, [postTz]);
 
   // Counted from the same payload the tab renders, so the badge and the list can
   // never disagree about how many things are wrong.
@@ -882,11 +942,12 @@ function Inner() {
           designerName: postDraft.designerName ?? '',
           teamNote: postDraft.teamNote ?? '',
           ...(postDraft.channels.includes('tiktok') && postDraft.tiktok ? { tiktok: postDraft.tiktok } : {}),
+          ...(postDraft.channels.includes('google') && postDraft.google ? { google: postDraft.google } : {}),
           // The picker gives a wall-clock string that means SALON time; the
           // server stores an instant. The conversion has to say whose wall the
           // digits belong to — an owner reading from Vietnam still schedules
           // the Austin evening, not their own.
-          scheduledAt: now ? new Date().toISOString() : wallToInstantISO(postDraft.at),
+          scheduledAt: now ? new Date().toISOString() : wallToInstantISO(postDraft.at, postTz || undefined),
           status,
         },
       });
@@ -1121,6 +1182,39 @@ function Inner() {
   }
 
   /** Open one queued post in the composer. */
+  /**
+   * A plan job becomes a post on the day it sits on — channels from the kind,
+   * the caption from the brief when there is one, the time a sensible default
+   * in salon time. The person still reads and sends; nothing is retyped.
+   */
+  function scheduleFromJob(job: { kind: string; text: string; brief?: { caption?: string; hashtags?: string[]; channel?: string } | null }, dayKey: string) {
+    const hasIg = Boolean(queue?.connected?.hasInstagram);
+    const hasFb = Boolean(queue?.connected);
+    const hasGg = Boolean(queue?.google);
+    let channels: Channel[] = job.kind === 'gbp'
+      ? ['google']
+      : job.kind === 'story'
+        ? ['instagram']
+        : ['facebook', 'instagram'];
+    channels = channels.filter((c) => (c === 'google' ? hasGg : c === 'instagram' ? hasIg : hasFb));
+    if (!channels.length) channels = hasFb ? ['facebook'] : hasGg ? ['google'] : ['facebook'];
+    const caption = job.brief?.caption?.trim();
+    const tags = job.brief?.hashtags?.length ? '\n\n' + job.brief.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ') : '';
+    setPostWhen('later');
+    setComposerOpen(true);
+    setPostDraft({
+      channels, message: (caption || job.text) + tags, media: [],
+      at: `${dayKey}T10:00`, stage: 'writing', writerName: '', designerName: '', teamNote: `Từ plan: ${job.text}`.slice(0, 200),
+    });
+    setTab('queue');
+  }
+  function newPostOn(dayKey: string) {
+    setPostWhen('later');
+    setComposerOpen(true);
+    setPostDraft({ channels: queue?.connected ? ['facebook'] : queue?.google ? ['google'] : ['facebook'], message: '', media: [], at: `${dayKey}T10:00`, stage: 'writing', writerName: '', designerName: '', teamNote: '' });
+    setTab('queue');
+  }
+
   function editPost(id: string) {
     // Opening a row that already has a slot is a scheduling act, whatever the
     // toggle was left on last time. Inheriting 'now' from a previous composer
@@ -1137,9 +1231,10 @@ function Inner() {
     setComposerOpen(true);
     setPostDraft({
       id: p.id, channels: p.channels, message: p.message, media: p.media,
-      at: instantToWall(p.scheduledAt),
+      at: instantToWall(p.scheduledAt, postTz || undefined),
       stage: p.stage ?? 'ready', writerName: p.writerName ?? '', designerName: p.designerName ?? '', teamNote: p.teamNote ?? '',
       tiktok: p.tiktok ?? undefined,
+      google: p.google ?? undefined,
     });
   }
 
@@ -1578,6 +1673,24 @@ function Inner() {
       {/* On a phone there is no sidebar to dock into, so the shared thread is
           a button that opens full screen. On a desktop it lives in the sidebar
           instead — see the aside below. */}
+      {/* The reading view of one post — opened from the grid and from the
+          schedule. The editor is a button inside it, never the door. */}
+      {detailId && (() => {
+        const p = queue?.posts.find((x) => x.id === detailId);
+        if (!p) return null;
+        return (
+          <PostDetailModal
+            post={p}
+            vi={vi}
+            salonTz={aheadTz || salonTz()}
+            busy={queueBusy}
+            onClose={() => setDetailId(null)}
+            onEdit={() => { setDetailId(null); editPost(p.id); }}
+            onPublish={() => { setDetailId(null); void postAction(p.id, 'publish'); }}
+            onCancel={() => { setDetailId(null); void postAction(p.id, 'cancel'); }}
+          />
+        );
+      })()}
       {isMobile && <TeamChatWindow token={token} unread={unread.total} vi={vi} />}
 
       <div style={{
@@ -2330,6 +2443,57 @@ function Inner() {
           )}
           {tab === 'week' && (
             <>
+              {/* ---- one plan, two ways of looking at it ----
+                   The grid is the next thirty days with the plan's jobs and
+                   the schedule's posts on the same squares — where scheduling
+                   happens. The week view is the working sheet: one day at a
+                   time, with the how. Same data underneath. */}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+                {([['grid', `▦ ${T('Lưới 30 ngày', '30-day grid')}`], ['week', `☰ ${T('Tuần · phiếu việc', 'Week · working sheet')}`]] as const).map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => setPlanView(k)}
+                    style={{
+                      minHeight: 36, padding: '0 14px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
+                      fontSize: 13, fontWeight: planView === k ? 700 : 500,
+                      border: `1px solid ${planView === k ? '#6366f1' : 'var(--c334155)'}`,
+                      background: planView === k ? 'rgba(99,102,241,.16)' : 'transparent',
+                      color: planView === k ? 'var(--ink-link)' : 'var(--c94a3b8)',
+                    }}
+                  >{label}</button>
+                ))}
+                {planView === 'grid' && (
+                  <button
+                    onClick={() => { loadAhead(); loadQueue(); }}
+                    disabled={aheadBusy}
+                    style={{ marginLeft: 'auto', minHeight: 36, padding: '0 12px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, cursor: aheadBusy ? 'wait' : 'pointer', fontFamily: 'inherit' }}
+                  >{aheadBusy ? T('↻ Đang tải…', '↻ Loading…') : T('↻ Tải lại', '↻ Refresh')}</button>
+                )}
+              </div>
+
+              {planView === 'grid' && (
+                <div style={{ ...ui.card, padding: isMobile ? 10 : 14, marginBottom: 14 }}>
+                  {!ahead || !queue ? (
+                    <div style={{ color: 'var(--c94a3b8)', fontSize: 13, padding: 8 }}>{T('Đang dựng 30 ngày tới từ số của tiệm…', 'Drafting the next 30 days from the shop’s numbers…')}</div>
+                  ) : (
+                    <PlanGrid
+                      blocks={ahead}
+                      posts={queue.posts}
+                      tz={aheadTz || salonTz()}
+                      vi={vi}
+                      onSchedule={scheduleFromJob}
+                      onNewPost={newPostOn}
+                      onOpenPost={(id) => { setDetailId(id); }}
+                      onOpenJob={(job, weekKey) => {
+                        setPlanView('week');
+                        setViewWeek(weekKey === plan?.weekMeta?.weekKey ? null : weekKey);
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {planView === 'week' && <>
               {/* ---- the week as work, not as advice ----
                    Days come from this salon's own book: it films on its quietest open
                    day and posts the offer two days before its emptiest block. When the
@@ -2572,8 +2736,10 @@ function Inner() {
                   )}
                 </div>
               )}
+                          </>}
             </>
           )}
+
           {tab === 'trends' && (
             <TrendsTab
               token={token}
@@ -3357,6 +3523,93 @@ function Inner() {
                     );
                   })()}
 
+                  {/* ---- The button on the Google post ----
+                       Google used to get a hard-wired Book button with a link
+                       the code chose, and refused the post when that link was
+                       missing — "A link is required for this button", hours
+                       later, in a scheduler run nobody watched. The writer now
+                       picks the button and sees the exact link it will carry;
+                       Book defaults to the shop's own booking page and can be
+                       overridden. Call never carries a link (Google dials the
+                       profile's phone); Book and Learn more never go without. */}
+                  {postDraft.channels.includes('google') && (() => {
+                    const gg = queue?.google ?? null;
+                    const o: GbpOpts = postDraft.google ?? { button: gg?.defaultButton ?? 'book', url: null };
+                    const set = (patch: Partial<GbpOpts>) => setPostDraft({ ...postDraft, google: { ...o, ...patch } });
+                    const fallback = o.button === 'book' ? (gg?.bookingUrl ?? null) : o.button === 'learn' ? (gg?.website ?? gg?.bookingUrl ?? null) : null;
+                    const typed = o.url?.trim() ?? '';
+                    const typedBad = typed !== '' && !httpsOk(typed);
+                    const effective = typed && !typedBad ? typed : fallback;
+                    const needsLink = o.button === 'book' || o.button === 'learn';
+                    const problem = typedBad
+                      ? T('Link phải bắt đầu bằng https:// và không có khoảng trắng.', 'The link must start with https:// and contain no spaces.')
+                      : needsLink && !effective
+                        ? T('Nút này cần link mà tiệm chưa có sẵn — dán link vào, hoặc chọn Gọi ngay.', 'This button needs a link and the shop has none on file — paste one, or choose Call now.')
+                        : null;
+                    return (
+                      <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 9, fontSize: 12.5, lineHeight: 1.55, background: 'var(--c1e293b)', border: `1px solid ${problem ? '#f59e0b' : 'var(--c334155)'}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                          <b style={{ color: 'var(--ce2e8f0)' }}>📍 {T('Nút trên bài Google', 'Button on the Google post')}</b>
+                          {gg?.title && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{gg.title}</span>}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                          {GBP_BUTTONS.map((b) => {
+                            const on = o.button === b.k;
+                            return (
+                              <button
+                                key={b.k}
+                                type="button"
+                                onClick={() => set({ button: b.k, url: b.k === 'call' || b.k === 'none' ? null : o.url })}
+                                title={vi ? b.hint.vi : b.hint.en}
+                                style={{
+                                  padding: '6px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+                                  border: `1px solid ${on ? '#34a853' : 'var(--c475569)'}`,
+                                  background: on ? 'rgba(52,168,83,.16)' : 'transparent',
+                                  color: on ? 'var(--ink-good)' : 'var(--ccbd5e1)',
+                                }}
+                              >
+                                {vi ? b.vi : b.en}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {needsLink && (
+                          <div style={{ marginTop: 9 }}>
+                            <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4 }}>
+                              {T('Link của nút', 'Button link')}
+                              {fallback && !typed && <span> · {T('mặc định', 'default')}: <span style={{ color: 'var(--ccbd5e1)', wordBreak: 'break-all' }}>{fallback}</span></span>}
+                            </div>
+                            <input
+                              id="gbp-cta-url"
+                              value={o.url ?? ''}
+                              onChange={(e) => set({ url: e.target.value || null })}
+                              placeholder={fallback ?? 'https://…'}
+                              spellCheck={false}
+                              style={{
+                                width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit',
+                                background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', border: `1px solid ${typedBad ? '#f59e0b' : 'var(--c334155)'}`,
+                              }}
+                            />
+                            {typed && !typedBad && fallback && (
+                              <button type="button" onClick={() => set({ url: null })} style={{ marginTop: 6, padding: 0, border: 'none', background: 'none', fontSize: 11.5, color: 'var(--ink-link)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                                {T('↺ Dùng lại link mặc định của tiệm', '↺ Use the shop’s default link')}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        <div style={{ marginTop: 8, fontSize: 12, color: problem ? 'var(--ink-warn)' : 'var(--c94a3b8)' }}>
+                          {problem
+                            ? problem
+                            : o.button === 'none'
+                              ? T('Bài đăng không có nút.', 'The post goes out without a button.')
+                              : o.button === 'call'
+                                ? T('Google sẽ gọi số điện thoại đang có trên hồ sơ — không cần link.', 'Google dials the number on the profile — no link needed.')
+                                : <>{T('Khách bấm nút sẽ mở', 'Tapping the button opens')}: <span style={{ color: 'var(--ccbd5e1)', wordBreak: 'break-all' }}>{effective}</span></>}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* ---- TikTok's decisions for this post ----
                        Everything TikTok's Content Sharing Guidelines require
                        an app to show before it may publish for a person: the
@@ -3766,17 +4019,55 @@ function Inner() {
                         </button>
                       ))}
                     </div>
-                    {postWhen === 'later' ? (
-                      <input
-                        type="datetime-local"
-                        value={postDraft.at}
-                        onChange={(e) => setPostDraft({ ...postDraft, at: e.target.value })}
-                        style={{
-                          minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5,
-                          border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
-                        }}
-                      />
-                    ) : (
+                    {postWhen === 'later' ? (() => {
+                      /* THE ZONE THE DIGITS BELONG TO, SAID OUT LOUD.
+                         The picker used to be a bare datetime box whose digits
+                         silently meant salon time. A writer in Vietnam typing
+                         "20:00" for a Texas shop had no way to see whether that
+                         was Texas 20:00 or Vietnam 20:00 — the difference is a
+                         post at 8 in the morning. So the zone is a control next
+                         to the digits, salon time by default, and the same
+                         instant is echoed in the other zone underneath. */
+                      const shopTz = salonTz();
+                      const mine = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : '';
+                      const options = Array.from(new Set([
+                        shopTz, mine, 'America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York', 'America/Phoenix', 'Pacific/Honolulu', 'Asia/Ho_Chi_Minh',
+                      ].filter(Boolean)));
+                      const zoneName = (z: string) => z === shopTz && z ? `${T('Giờ tiệm', 'Salon time')} · ${z}` : z === mine ? `${T('Giờ máy anh', 'Your time')} · ${z}` : z;
+                      const instant = postDraft.at && postDraft.at.length >= 16 ? wallToInstantISO(postDraft.at, postTz || undefined) : null;
+                      const echo = instant && shopTz && postTz !== shopTz ? `${instantToWall(instant, shopTz).replace('T', ' ')} ${T('giờ tiệm', 'salon time')}` : instant && mine && postTz !== mine ? `${instantToWall(instant, mine).replace('T', ' ')} ${T('giờ máy anh', 'your time')}` : null;
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <input
+                              id="post-at"
+                              type="datetime-local"
+                              value={postDraft.at}
+                              onChange={(e) => setPostDraft({ ...postDraft, at: e.target.value })}
+                              style={{
+                                minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5, fontFamily: 'inherit',
+                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                              }}
+                            />
+                            <select
+                              id="post-tz"
+                              value={postTz}
+                              onChange={(e) => setPostTz(e.target.value)}
+                              title={T('Múi giờ mà giờ bên trái được hiểu theo', 'The zone the time on the left is read in')}
+                              style={{
+                                minHeight: 42, padding: '0 10px', borderRadius: 9, fontSize: 13, fontFamily: 'inherit', maxWidth: '100%',
+                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                              }}
+                            >
+                              {options.map((z) => <option key={z} value={z}>{zoneName(z)}</option>)}
+                            </select>
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
+                            {echo ? <>= <b style={{ color: 'var(--ccbd5e1)', fontVariantNumeric: 'tabular-nums' }}>{echo}</b></> : T('Giờ đăng tính theo múi giờ đã chọn.', 'Posts at that time in the chosen zone.')}
+                          </div>
+                        </div>
+                      );
+                    })() : (
                       <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.55 }}>
                         {T('Bài sẽ lên trang ngay khi bấm. Vẫn được lưu vào lịch để xem lại sau.',
                            'Goes up the moment you press. Still recorded on the calendar afterwards.')}
@@ -4312,7 +4603,7 @@ function Inner() {
                         posts={(showPosted && workFilter === 'all' ? workPosts() : workPosts().filter((p) => p.status !== 'posted'))}
                         month={month}
                         onMonth={setMonth}
-                        onPick={editPost}
+                        onPick={(id) => setDetailId(id)}
                         onDrop={movePost}
                         onDelete={removePost}
                         vi={vi}
@@ -4416,7 +4707,7 @@ function Inner() {
                         .filter((p) => p.channels.includes('instagram') && p.media.length > 0)
                         .filter((p) => p.status !== 'cancelled' && p.status !== 'expired')
                         .sort((a, b) => (a.scheduledAt < b.scheduledAt ? 1 : -1))}
-                      onPick={editPost}
+                      onPick={(id) => setDetailId(id)}
                       vi={vi}
                     />
                   )}

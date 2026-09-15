@@ -16,6 +16,7 @@ import { GoogleDriveService } from '../uploads/google-drive.service';
 import { GoogleReviewsService } from '../google-reviews/google-reviews.service';
 import { TikTokService } from '../tiktok/tiktok.service';
 import { cleanTikTokOptions, type TikTokPostOptions, type TikTokTarget } from '../tiktok/tiktok';
+import { cleanGbpOptions, resolveGbpCta, gbpCtaProblem, DEFAULT_GBP_BUTTON, type GbpPostOptions, type GbpCtaContext } from './gbp-cta';
 import { checkGbpPost, gbpImageHeaderProblem, gbpSummary, type GbpCheck } from './gbp-policy';
 import { gbpScreenPrompt, parseScreenVerdict, screenRefusal, type ScreenVerdict } from './gbp-screen';
 import { createHash } from 'crypto';
@@ -41,6 +42,8 @@ interface PostRow {
   driveFolderUrl?: string | null;
   /** TikTok's per-post decisions (tiktok/tiktok.ts). Absent on rows that predate it. */
   tiktok?: unknown;
+  /** The Google post's button (gbp-cta.ts). Absent on rows that predate it → default Book. */
+  google?: unknown;
 }
 
 /** The client's own words, carried to the screen that has to act on them. */
@@ -355,6 +358,25 @@ export class SocialPublishService {
     return cleanTikTokOptions(row.tiktok);
   }
 
+  private googleOf(row: { google?: unknown }): GbpPostOptions | null {
+    return cleanGbpOptions(row.google);
+  }
+
+  /**
+   * What a Google button may point at for this shop: its own booking page and
+   * its website. Read from the tenant, never from the post — the same rule as
+   * every token and page id in this file.
+   */
+  private async gbpLinksFor(tenantId: string): Promise<GbpCtaContext> {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } }).catch(() => null) as { slug?: string } | null;
+    const ex = await this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }).catch(() => null) as { value?: unknown } | null;
+    const website = (ex?.value as { website?: string } | null)?.website ?? null;
+    return {
+      bookingUrl: t?.slug ? `${publicWebBase()}/book/${t.slug}` : null,
+      website: typeof website === 'string' && website.trim() ? website.trim() : null,
+    };
+  }
+
   /**
    * The post's media, normalised.
    *
@@ -402,6 +424,7 @@ export class SocialPublishService {
     const conn = await this.pageFor(tenantId);
     const gbp = await this.googleFor(tenantId);
     const tt = await this.tiktokFor(tenantId);
+    const gbpLinks = gbp ? await this.gbpLinksFor(tenantId) : { bookingUrl: null, website: null };
 
     // Can this connection publish at all? Asked before anything is attempted,
     // so the answer arrives on the screen rather than as a failed post — and so
@@ -474,6 +497,7 @@ export class SocialPublishService {
         teamNote: r.teamNote ?? null,
         driveFolderUrl: r.driveFolderUrl ?? null,
         tiktok: this.tiktokOf(r),
+        google: this.googleOf(r),
         // The files are gone from storage; the post itself is untouched on
         // Facebook. The screen draws a placeholder instead of a broken image.
         mediaPurged: Boolean(r.mediaPurgedAt),
@@ -520,7 +544,15 @@ export class SocialPublishService {
        * Đánh giá Google. Separate from `connected`: a shop can have Google
        * and no Facebook Page, and the composer offers whichever exists.
        */
-      google: gbp ? { title: gbp.title } : null,
+      google: gbp ? {
+        title: gbp.title,
+        // What the button points at unless the writer types a link. Sent so
+        // the composer can SHOW the default rather than leave the field blank
+        // — a blank field is what produced a Book button with no link.
+        defaultButton: DEFAULT_GBP_BUTTON,
+        bookingUrl: gbpLinks.bookingUrl,
+        website: gbpLinks.website,
+      } : null,
       /** The TikTok account, when connected: who it is and what it may post. */
       tiktok: tt ? { displayName: tt.displayName, username: tt.username, avatarUrl: tt.avatarUrl, needsReconnect: tt.needsReconnect, creator: tt.creator } : null,
       posts,
@@ -537,6 +569,7 @@ export class SocialPublishService {
     media?: { url?: string; kind?: string; driveUrl?: string }[]; scheduledAt?: string; status?: string;
     stage?: string; writerName?: string; designerName?: string; teamNote?: string;
     tiktok?: unknown;
+    google?: unknown;
   }) {
     const tenantId = this.tenantId(user);
     const channels = (body.channels ?? ['facebook']).filter((c) => (CHANNELS as unknown[]).includes(c));
@@ -551,8 +584,8 @@ export class SocialPublishService {
     // on a post still in design is a request to lock it — so the stage moves
     // to ready; a post explicitly kept in writing/design stays a draft.
     const prevRow = body.id
-      ? await this.posts?.findFirst({ where: { id: body.id, tenantId }, select: { id: true, status: true, media: true, stage: true, writerName: true, designerName: true, teamNote: true, tiktok: true } })
-        .catch(() => null) as { id: string; status: string; media: unknown; stage?: string | null; writerName?: string | null; designerName?: string | null; teamNote?: string | null; tiktok?: unknown } | null
+      ? await this.posts?.findFirst({ where: { id: body.id, tenantId }, select: { id: true, status: true, media: true, stage: true, writerName: true, designerName: true, teamNote: true, tiktok: true, google: true } })
+        .catch(() => null) as { id: string; status: string; media: unknown; stage?: string | null; writerName?: string | null; designerName?: string | null; teamNote?: string | null; tiktok?: unknown; google?: unknown } | null
       : null;
     let stage: Stage = cleanStage(body.stage, prevRow ? cleanStage(prevRow.stage) : 'ready');
     if (body.status === 'scheduled' && body.stage === undefined) stage = 'ready';
@@ -563,6 +596,11 @@ export class SocialPublishService {
     const tiktokOpts: TikTokPostOptions | null = body.tiktok !== undefined
       ? cleanTikTokOptions(body.tiktok)
       : (prevRow ? cleanTikTokOptions((prevRow as { tiktok?: unknown }).tiktok) : null);
+    // Same rule for the Google button: a save that does not mention it keeps
+    // what the row had, so moving a post cannot silently reset its button.
+    const googleOpts: GbpPostOptions | null = body.google !== undefined
+      ? cleanGbpOptions(body.google)
+      : (prevRow ? cleanGbpOptions((prevRow as { google?: unknown }).google) : null);
     const workflow = {
       stage,
       writerName: typeof body.writerName === 'string' ? body.writerName.trim().slice(0, 80) || null : prevRow?.writerName ?? null,
@@ -578,6 +616,10 @@ export class SocialPublishService {
       if (channels.includes('google')) {
         const g = await this.googleGate(tenantId, message, media);
         if (g) throw new BadRequestException(g);
+        // The button, checked while the writer is still looking. This is the
+        // refusal Google used to give hours later: a Book button needs a link.
+        const cta = gbpCtaProblem(googleOpts, await this.gbpLinksFor(tenantId));
+        if (cta) throw new BadRequestException(cta.vi);
       }
     }
 
@@ -585,7 +627,11 @@ export class SocialPublishService {
     // spec reads the create payload for anything token-shaped, and an empty
     // "tiktok: null" would trip it for nothing.
     const tiktokVal = tiktokOpts ?? (body.tiktok && typeof body.tiktok === 'object' ? body.tiktok : null);
-    const data = { channels, message, media, imageUrl: null, scheduledAt: when, status, ...workflow, ...(tiktokVal ? { tiktok: tiktokVal as never } : {}) };
+    const data = {
+      channels, message, media, imageUrl: null, scheduledAt: when, status, ...workflow,
+      ...(tiktokVal ? { tiktok: tiktokVal as never } : {}),
+      ...(googleOpts ? { google: googleOpts as never } : {}),
+    };
     if (body.id) {
       const owned = prevRow;
       if (!owned) throw new NotFoundException('Không tìm thấy bài này.');
@@ -924,7 +970,7 @@ export class SocialPublishService {
     const results: PublishResult[] = [];
     for (const p of plan.plans) {
       const r = p.channel === 'google'
-        ? await this.toGoogle(row.tenantId, row.message, media)
+        ? await this.toGoogle(row.tenantId, row.message, media, this.googleOf(row))
         : p.channel === 'tiktok'
           ? await this.toTikTok(row.tenantId, row.message, media, this.tiktokOf(row))
           : p.channel === 'facebook'
@@ -1108,12 +1154,15 @@ export class SocialPublishService {
    * grant and makes the call, so a post row can no more carry a Google token
    * than it can carry a Page token.
    */
-  private async toGoogle(tenantId: string, message: string, media: MediaItem[]): Promise<PublishResult> {
+  private async toGoogle(tenantId: string, message: string, media: MediaItem[], opts: GbpPostOptions | null = null): Promise<PublishResult> {
     const fail = (e: string): PublishResult => ({ channel: 'google', id: null, url: null, error: e });
     if (!this.google) return fail('Google Business chưa được bật trên máy chủ.');
     try {
-      const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } }).catch(() => null) as { slug?: string } | null;
-      const bookingUrl = t?.slug ? `${publicWebBase()}/book/${t.slug}` : null;
+      // The button the writer chose, resolved into what Google accepts — and
+      // a button that cannot be honoured (Book with no link anywhere) is
+      // dropped rather than sent, because a post without a button goes live
+      // and a post with a linkless button never does. See ./gbp-cta.
+      const cta = resolveGbpCta(opts, await this.gbpLinksFor(tenantId));
       const photo = media.find((m) => m.kind === 'image')?.url ?? null;
       // What Google receives is the caption minus the contact block — the
       // same text the composer previewed and the gate approved.
@@ -1122,7 +1171,7 @@ export class SocialPublishService {
         summary,
         languageCode: gbpLanguage(summary),
         photoUrl: photo,
-        cta: bookingUrl ? { actionType: 'BOOK', url: bookingUrl } : null,
+        cta,
       });
       return { channel: 'google', id: out.name, url: out.url, error: null };
     } catch (e) {

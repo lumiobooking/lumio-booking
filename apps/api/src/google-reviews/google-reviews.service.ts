@@ -542,7 +542,9 @@ export class GoogleReviewsService {
    */
   async createLocalPost(tenantId: string, body: {
     summary: string; languageCode: 'vi' | 'en'; photoUrl: string | null;
-    cta: { actionType: 'BOOK' | 'LEARN_MORE' | 'CALL' | 'ORDER' | 'SHOP' | 'SIGN_UP'; url: string } | null;
+    /** The button. CALL carries no url — Google dials the profile's own phone
+     *  and rejects a url on that action type. Every other type needs one. */
+    cta: { actionType: 'BOOK' | 'LEARN_MORE' | 'CALL' | 'ORDER' | 'SHOP' | 'SIGN_UP'; url?: string } | null;
   }): Promise<{ name: string | null; url: string | null }> {
     const s = await this.getSettings(tenantId);
     const where = await this.postingLocation(tenantId);
@@ -554,7 +556,11 @@ export class GoogleReviewsService {
       topicType: 'STANDARD',
     };
     if (body.photoUrl) payload.media = [{ mediaFormat: 'PHOTO', sourceUrl: body.photoUrl }];
-    if (body.cta) payload.callToAction = { actionType: body.cta.actionType, url: body.cta.url };
+    if (body.cta) {
+      payload.callToAction = body.cta.actionType === 'CALL' || !body.cta.url
+        ? { actionType: body.cta.actionType }
+        : { actionType: body.cta.actionType, url: body.cta.url };
+    }
     const res = await fetch(`https://mybusiness.googleapis.com/v4/${where.parent}/localPosts`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },

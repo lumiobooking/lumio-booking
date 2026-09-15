@@ -14,6 +14,10 @@ import {
   metaAttachments, imageUrls, describeMedia, visionRule, nonImageRule, imageMediaType, IMAGE_MAX_BYTES, type InboundMedia,
 } from './inbound-media';
 import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
+import {
+  sharedAiHealth, recordAiSuccess, recordAiFailure, shouldAlert, markAlerted, aiAlertLine,
+} from './ai-health';
+import { chat as llmChat, openAiEnabled, type ChatMessage, type ToolDef, type TextBlock } from '../common/llm';
 import { withBookingLink } from './booking-link';
 import { FbPageRow, FbPagesBody, walkFbPages } from './fb-pages';
 import { isSameVisit, servicesAsked, type OpenVisit } from './one-visit';
@@ -2754,8 +2758,17 @@ export class MessengerService implements OnModuleInit {
        *  sent whether or not the model remembers to include it. */
       booked?: OpenVisit } = { mode: 'booking', leadEmail: null },
   ): Promise<string> {
-    const key = process.env.ANTHROPIC_API_KEY || '';
-    if (!key) return fallbackText([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' '));
+    if (!process.env.ANTHROPIC_API_KEY && !openAiEnabled()) {
+      // THIS USED TO BE SILENT. A missing key returned the holding line to
+      // every customer of every salon and wrote nothing anywhere — the agency
+      // found out from a screenshot a customer sent. Now it is a failure like
+      // any other: counted, classified, and shouted once. See ./ai-health.
+      // With an OpenAI key on the instance the call goes ahead: common/llm
+      // treats a missing Anthropic key as one more reason to use the second
+      // door, so a shop is never left unanswered by a configuration slip.
+      this.noteAiFailure('no-key', 'ANTHROPIC_API_KEY is not set');
+      return fallbackText([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' '));
+    }
 
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true, businessType: true } });
     const persona = personaFor((tenant as unknown as { businessType?: string } | null)?.businessType);
@@ -2783,7 +2796,6 @@ Use the get_services tool for what's available. When you have name + phone + ser
 If they ask about an EXISTING appointment ("khi nào lịch của tôi", "đổi giờ được không", "dời sang thứ 7"), NEVER answer from memory: call find_appointment with their phone number first, then read back exactly what it returns. To move one, call reschedule_appointment with the appointment id from find_appointment, their phone, and the new local date & time. The tool decides whether the change is allowed and hands you the sentence to say — say THAT reason, do not invent a policy of your own and do not promise a change the tool refused. For cancelling, say a staff member will follow up shortly.
 CRITICAL: Only tell the customer the booking is confirmed if the create_booking tool result starts with "SUCCESS". If the tool returns an error, NEVER claim the booking was made — apologize, briefly explain the problem in plain words, and offer another time or ask for corrected details.
 As a kind final touch AFTER the booking is confirmed, mention the salon loves to send a little birthday treat and gently ask if they'd like to share their birthday (just the month and day) — make it clear this is entirely optional. If they share it, call save_birthday with their phone. If they decline, hesitate, or don't answer, that is completely fine — thank them warmly and never push or ask again.
-The salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.
 ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address, and contact info that are given to you here; never invent them. Do not book or promise a time outside business hours — if the customer asks for a closed day or time, tell them the salon is closed then and offer the nearest open time. If the customer is upset or asks for a human, tell them a staff member will follow up soon. Do not ask for payment.${aiInstruction ? `\nSalon owner's extra notes: ${aiInstruction}` : ''}`;
 
     const bookingTools = [
@@ -2978,7 +2990,6 @@ FLOW — four steps, do not add a fifth:
 - Ask for the phone at most TWICE in the whole conversation. If they still decline, stop asking, call save_lead with whatever you do have and note "khách chỉ muốn trao đổi qua tin nhắn, chưa cho số", and tell them warmly the team will reply right here in the chat. A named lead with a shop and a live thread is worth far more than a customer you pestered into leaving.
 - Only say the lead is saved if save_lead returns "SUCCESS". Then ONE warm closing line: the team checks the area and calls back shortly. Do not start a new topic afterwards; if they keep chatting, answer briefly and remind them the team will call.
 - If they ask for a human, want to negotiate, ask for a custom quote, or ask anything beyond the facts: promise a callback and call save_lead with note "wants a human". This is the correct answer far more often than a long explanation.
-The current time is ${nowLocal} (timezone ${tz}).
 FACTS — the only things you may state as fact:
 ${aiInstruction || '(no facts loaded yet — capture the lead and let the team answer)'}`;
 
@@ -3077,7 +3088,34 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const imageBlocks = await this.fetchImageBlocks(ctx.images ?? []);
     const mediaRule = (imageBlocks.length ? visionRule() : '') + nonImageRule(ctx.media ?? [])
       + ((ctx.images?.length ?? 0) > imageBlocks.length ? '\n(One of the customer\'s photos could not be loaded. Say you could not open it and ask them to send it again or describe it.)' : '');
-    const system = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + formatRule + channelRule + closingRule + memoryBlock + gapNote + dossier + mediaRule;
+    /**
+     * THE PROMPT IN TWO PIECES, SO THE BIG ONE IS PAID FOR ONCE.
+     *
+     * Every message on the platform resent the whole system prompt — the sales
+     * one is ~20k characters, the booking one carries the entire menu and staff
+     * list — and the API was charging full price for the same bytes every
+     * time, then again for every tool loop inside the same reply. Nothing in
+     * the prompt changed between calls except the clock, a per-thread memory
+     * block and the lead dossier.
+     *
+     * So the prompt is split. The first block is everything that is the same
+     * for this salon on every call, and it is marked cacheable: the API keeps
+     * it for a few minutes and charges about a tenth for a hit. The second
+     * block holds what genuinely varies. The clock line used to sit in the
+     * MIDDLE of the static text, which alone would have defeated the cache —
+     * it now lives here, in the dynamic block, where a changing minute costs a
+     * changing minute and nothing else. Tools sit before the system prompt in
+     * the API's prefix, so the one breakpoint below covers them as well.
+     */
+    const staticSystem = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + formatRule + channelRule + closingRule;
+    const clockLine = ctx.mode === 'sales'
+      ? `\nThe current time is ${nowLocal} (timezone ${tz}).`
+      : `\nThe salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.`;
+    const dynamicSystem = clockLine + memoryBlock + gapNote + dossier + mediaRule;
+    const system = [
+      { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: dynamicSystem },
+    ];
     const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
 
     const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.content }));
@@ -3119,25 +3157,41 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const customerWords = [...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' ');
 
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001', max_tokens: 500, system, tools, messages }),
-        signal: AbortSignal.timeout(30_000),
+      // One door to the model. Anthropic first; when it fails for a reason the
+      // account owns — no credit, a dead key, an outage — and an OpenAI key is
+      // on the instance, the same request goes there instead. See common/llm.
+      const out = await llmChat({
+        system: system as TextBlock[],
+        messages: messages as ChatMessage[],
+        tools: tools as ToolDef[],
+        max_tokens: 500,
+        timeoutMs: 30_000,
       });
-      if (!res.ok) {
-        this.logger.warn(`Anthropic ${res.status}: ${(await res.text().catch(() => '')).slice(0, 160)}`);
+      if (!out.ok) {
+        const shown = out.status ?? 'network';
+        this.logger.warn(`Anthropic ${shown}: ${out.body.slice(0, 160)}${out.fellBack ? ' (OpenAI fallback failed too)' : ''}`);
+        // Counted BEFORE the retry: a retry that succeeds resets the streak, a
+        // retry that fails should not need a third customer to prove it.
+        this.noteAiFailure(out.kind, `${shown} ${out.body.slice(0, 120)}`);
         // Overloaded/5xx is usually a moment, not an outage — one quiet retry
         // before the customer ever sees a holding line.
-        if (!apiRetried && isTransientStatus(res.status)) {
+        if (!apiRetried && out.status !== null && isTransientStatus(out.status)) {
           apiRetried = true;
           await new Promise((r) => setTimeout(r, 1500));
           loop -= 1;
           continue;
         }
-        throw new Error(`anthropic ${res.status}`);
+        throw new Error(`anthropic ${shown}`);
       }
-      const data = (await res.json()) as { stop_reason?: string; content?: AnthropicBlock[] };
+      const data = out.reply as { stop_reason?: string; content?: AnthropicBlock[] };
+      if (out.reply.firstFailure) {
+        // Served — by the second provider. The first one still failed, and the
+        // alarm must keep ringing until somebody fixes the account.
+        const f = out.reply.firstFailure;
+        this.noteAiFailure(f.kind, `${f.status ?? 'network'} ${f.body.slice(0, 120)} (served by OpenAI)`);
+      } else {
+        recordAiSuccess(sharedAiHealth());
+      }
       const blocks = data.content || [];
       if (data.stop_reason === 'tool_use') {
         messages.push({ role: 'assistant', content: blocks });
@@ -3697,6 +3751,19 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       .filter((f) => f && f.on && typeof f.value === 'string' && f.value.trim())
       .map((f) => `- ${String(f.label).trim()}: ${f.value.trim()}`)
       .join('\n');
+  }
+
+  /**
+   * One failure of the brain, counted — and, when it becomes an outage,
+   * shouted ONCE per half hour with a searchable marker rather than once per
+   * customer. See ./ai-health for the streak rule and why 'no-key' skips it.
+   */
+  private noteAiFailure(kind: Parameters<typeof recordAiFailure>[1], detail: string): void {
+    const h = recordAiFailure(sharedAiHealth(), kind, detail);
+    if (shouldAlert(h)) {
+      markAlerted(h);
+      this.logger.error(aiAlertLine(h, Boolean(process.env.ANTHROPIC_API_KEY), openAiEnabled()));
+    }
   }
 
   private async runTool(

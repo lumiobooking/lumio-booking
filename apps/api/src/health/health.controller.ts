@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Public } from '../auth/decorators/public.decorator';
+import { aiHealthReport, sharedAiHealth } from '../messenger/ai-health';
 
 // Health check must be reachable WITHOUT authentication so platform probes
 // (e.g. Render) get a 2xx instead of a 401.
@@ -85,6 +86,18 @@ export class HealthController {
       // mistake the whole split exists to prevent.
       market: (process.env.MARKET || 'US').toUpperCase(),
       db: dbFingerprint(),
+      /**
+       * WHETHER THE BRAIN IS ANSWERING.
+       *
+       * Every conversation on the platform runs through one API call, and this
+       * endpoint said nothing about it — so when the account ran out of credit,
+       * every bot on every channel sent a holding line for hours and the first
+       * person to notice was a customer. Reported here, on the public probe,
+       * so a free uptime monitor can watch `ai.ok` and ring a phone. A boolean
+       * for whether a key exists, never the key; the category, never the API
+       * body (it can quote a customer's message). See messenger/ai-health.
+       */
+      ai: aiHealthReport(sharedAiHealth(), Boolean(process.env.ANTHROPIC_API_KEY)),
       startedAt: START_TIME,
       timestamp: new Date().toISOString(),
     };

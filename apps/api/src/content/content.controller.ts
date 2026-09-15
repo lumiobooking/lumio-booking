@@ -442,6 +442,16 @@ export class ContentController {
    * Capped per tenant per day inside the service — every press costs a real API
    * call, and a button with no ceiling is a bill with no ceiling.
    */
+  /**
+   * The next thirty days as week plans — this week and the four after it,
+   * drafted now so the grid has something to place on every day. Team only,
+   * like the plan itself; the salon's screen keeps reading my-week.
+   */
+  @Get('weeks-ahead')
+  weeksAhead(@CurrentUser() user: AuthenticatedUser, @Query('blocks') blocks?: string) {
+    return this.svc.weeksAhead(user, Number(blocks) || 5);
+  }
+
   /** Every week this salon has on file — the archive the plan used to lack. */
   @Get('weeks')
   weeks(@CurrentUser() user: AuthenticatedUser) {

@@ -3074,6 +3074,10 @@ model ScheduledPost {
   /// commercial disclosure. Settings only; the account token lives on the
   /// tenant's Setting row and is read at send time, never stored here.
   tiktok       Json?
+  /// The Google Business Profile post's button — {button: 'book'|'call'|
+  /// 'learn'|'none', url}. Absent means the default: Book, on the shop's own
+  /// booking page. The link is resolved at send time (content/gbp-cta.ts).
+  google       Json?
 
   createdByName String?
   createdAt DateTime @default(now())

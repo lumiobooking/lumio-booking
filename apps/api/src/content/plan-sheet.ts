@@ -158,3 +158,15 @@ export function windowOf(sheet: PlanSheet, from: string, days: number): PlanShee
   }
   return out;
 }
+
+/**
+ * What the SHOP sees of a slot — rebuilt field by field, the client-view
+ * rule. The topic, the caption, the pillar, the networks, the format and
+ * the post it became: what the shop is going to be asked to approve. Not
+ * the media link (a folder in the agency's Drive) and not who typed it.
+ */
+export function entryForShop(e: PlanEntry): {
+  day: string; pillar: Pillar | ''; topic: string; detail: string; air: Air[]; format: Format | ''; postId: string | null; updatedAt: string | null;
+} {
+  return { day: e.day, pillar: e.pillar, topic: e.topic, detail: e.detail, air: e.air, format: e.format, postId: e.postId, updatedAt: e.updatedAt };
+}

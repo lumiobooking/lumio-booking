@@ -3,6 +3,15 @@
 import { useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { MonthBriefView, type MonthBriefData } from './MonthBrief';
+import { PlanSheet } from './PlanSheet';
+import { useIsMobile } from '../lib/responsive';
+import type { PlanEntry } from './plan-sheet';
+
+/** The 30-day plan as my-week sends it to the shop: slots rebuilt without the agency's working fields. */
+export interface ShopPlanSheet {
+  tz: string; today: string; from: string; days: number;
+  entries: Record<string, Omit<PlanEntry, 'mediaUrl' | 'updatedBy'>>;
+}
 import { Inline } from './WeekPlanBoard';
 import { ItemComments } from './ContentChat';
 
@@ -156,10 +165,12 @@ function dayLabelsFrom(jobs: ShopJob[]): string[] {
   return Array.from({ length: out.length }, (_, i) => out[i] ?? '');
 }
 
-export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsPlan, monthBrief, onSend, onChanged, onError }: {
+export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsPlan, monthBrief, planSheet, onSend, onChanged, onError }: {
   token: string | null; vi: boolean; week: ShopWeekData; weekKey: string | null; unread?: number;
   /** What this month is for, written by the team for the shop. Null until written. */
   monthBrief?: MonthBriefData | null;
+  /** The 30-day plan, read-only, once the team has planned anything. */
+  planSheet?: ShopPlanSheet | null;
   lastWeek?: LastWeek | null;
   /** This month's ad money and what came back. Null in a month with no spend. */
   ads?: AdsReceipt | null;
@@ -169,6 +180,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
   onSend?: () => void;
   onChanged: () => Promise<void> | void; onError: (m: string | null) => void;
 }) {
+  const mobile = useIsMobile(720);
   const T = (v: string, e: string) => (vi ? v : e);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState<{ dayIndex: number; kind: typeof SHOP_KINDS[number]; text: string } | null>(null);
@@ -214,6 +226,30 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
              First, before any number: what this month is for and what is
              asked of the shop. Written by the team on the plan screen. */}
       {monthBrief && <MonthBriefView brief={monthBrief} vi={vi} />}
+      {/* ---- 0b. the 30 days, as the team planned them ----
+             The same cards the team works on, with no inputs: what is coming,
+             which network, what kind of post, and whether it is on the
+             calendar yet. Tap a day to read the caption. */}
+      {planSheet && Object.keys(planSheet.entries).length > 0 && (
+        <div style={{ ...card, marginBottom: 12, background: 'var(--c0f172a)', borderColor: 'var(--c334155)' }}>
+          <PlanSheet
+            from={planSheet.from}
+            today={planSheet.today}
+            tz={planSheet.tz}
+            entries={Object.fromEntries(Object.entries(planSheet.entries).map(([k, e]) => [k, { ...e, mediaUrl: '', updatedBy: null }]))}
+            posts={[]}
+            postsKnown={false}
+            vi={vi}
+            canEdit={false}
+            isMobile={mobile}
+            connected={{ facebook: true, instagram: true, tiktok: true, google: true }}
+            onSave={async () => undefined}
+            onClear={async () => undefined}
+            onSchedule={() => undefined}
+            onOpenPost={() => undefined}
+          />
+        </div>
+      )}
       {/* ---- 1. what the shop GOT ----
              First, because it is the question the owner opened the app to ask.
              Every figure is her own row count; nothing here claims a booking

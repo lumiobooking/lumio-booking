@@ -28,7 +28,7 @@ import { dueReviews, nextReview, reviewReport, reviewJobText, type Campaign } fr
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel, localParts } from './week-key';
 import { MONTH_BRIEF_KEY, cleanBrief, briefForShop, monthKeyIn, isMonthKey, type MonthBrief } from './month-brief';
-import { PLAN_SHEET_KEY, cleanSheet, mergeEntry, entryHasContent, isDayKey, monthsCovering, monthOfDay, windowOf, type PlanSheet } from './plan-sheet';
+import { PLAN_SHEET_KEY, cleanSheet, mergeEntry, entryHasContent, entryForShop, isDayKey, monthsCovering, monthOfDay, windowOf, type PlanSheet } from './plan-sheet';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
 import { scopeOf, knownTrades } from './trends/trend-feed';
 import { tradeKeywordsFor, fillKeyword } from './trends/trade-keywords';
@@ -1069,6 +1069,20 @@ export class ContentService {
     const team = user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession);
     if (!team) for (const e of Object.values(entries)) e.updatedBy = null;
     return { tz, today, from, days, entries };
+  }
+
+  /**
+   * The SHOP's view of the plan: the same 35 days, each slot rebuilt with
+   * only what the shop is going to be asked to approve. Null when nothing
+   * has been planned yet — an empty grid says "nobody is working on you",
+   * which is worse than saying nothing.
+   */
+  async planSheetForShop(user: AuthenticatedUser) {
+    const { tz, today, from, days, entries } = await this.planSheet(user);
+    const out: Record<string, ReturnType<typeof entryForShop>> = {};
+    for (const [day, e] of Object.entries(entries)) out[day] = entryForShop(e);
+    if (!Object.keys(out).length) return null;
+    return { tz, today, from, days, entries: out };
   }
 
   /**

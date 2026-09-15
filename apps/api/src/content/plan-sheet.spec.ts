@@ -1,4 +1,4 @@
-import { cleanEntry, cleanSheet, emptyEntry, entryHasContent, isDayKey, mergeEntry, monthsCovering, windowOf, ENTRY_LIMITS } from './plan-sheet';
+import { cleanEntry, cleanSheet, emptyEntry, entryHasContent, entryForShop, isDayKey, mergeEntry, monthsCovering, windowOf, ENTRY_LIMITS } from './plan-sheet';
 
 const NOW = new Date('2026-09-15T10:00:00Z');
 
@@ -78,5 +78,15 @@ describe('the 35-day window', () => {
       '2026-10-19': cleanEntry({ topic: 'after' }, '2026-10-19'),
     };
     expect(Object.keys(windowOf(sheet, '2026-09-14', 35)).sort()).toEqual(['2026-09-14', '2026-10-18']);
+  });
+});
+
+describe('what the shop sees of a slot', () => {
+  it('is the post-to-be and nothing about how it was made', () => {
+    const e = mergeEntry(null, { topic: 't', detail: 'd', mediaUrl: 'https://drive.google.com/x', air: ['facebook'], pillar: 'promotion', format: 'poster' }, '2026-09-18', 'an@lumio', NOW);
+    const s = entryForShop(e);
+    expect(Object.keys(s).sort()).toEqual(['air', 'day', 'detail', 'format', 'pillar', 'postId', 'topic', 'updatedAt']);
+    expect(JSON.stringify(s)).not.toContain('drive.google.com');
+    expect(JSON.stringify(s)).not.toContain('an@lumio');
   });
 });

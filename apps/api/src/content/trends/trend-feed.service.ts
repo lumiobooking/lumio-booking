@@ -1,7 +1,8 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ContentService } from '../content.service';
+import { PinterestConnectService } from './pinterest-connect.service';
 import { AuthenticatedUser, resolveTenantScope } from '../../common/tenant/tenant-context';
 import { localizeDeep, bi, type Txt } from '../i18n';
 import { trendLinks } from '../trend-sources';
@@ -124,6 +125,8 @@ export class TrendFeedService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly content: ContentService,
+    /** The connected Pinterest account, when the Super Admin pressed the button. Optional for the specs. */
+    @Optional() private readonly pinterest?: PinterestConnectService,
   ) {}
 
   /** Loose access: the model exists on deploy but not in the local client. */
@@ -141,9 +144,13 @@ export class TrendFeedService {
     const pass = process.env.DATAFORSEO_PASSWORD || '';
     return login && pass ? Buffer.from(`${login}:${pass}`).toString('base64') : '';
   }
+  /** A refresh token from the connect button or the env var — the button's wins. */
+  private get pinterestRefresh(): string {
+    return this.pinterest?.refreshToken() || (process.env.PINTEREST_REFRESH_TOKEN || '').trim();
+  }
   private get pinterestConfigured() {
-    return Boolean(process.env.PINTEREST_ACCESS_TOKEN
-      || (process.env.PINTEREST_APP_ID && process.env.PINTEREST_APP_SECRET && process.env.PINTEREST_REFRESH_TOKEN));
+    return Boolean((process.env.PINTEREST_ACCESS_TOKEN || '').trim()
+      || (process.env.PINTEREST_APP_ID && process.env.PINTEREST_APP_SECRET && this.pinterestRefresh));
   }
 
   /** A refreshed Pinterest token, exchanged at most once an hour. */
@@ -156,7 +163,7 @@ export class TrendFeedService {
     if (this.pinCache && Date.now() < this.pinCache.until) return this.pinCache.token;
     const id = (process.env.PINTEREST_APP_ID || '').trim();
     const secret = (process.env.PINTEREST_APP_SECRET || '').trim();
-    const refresh = (process.env.PINTEREST_REFRESH_TOKEN || '').trim();
+    const refresh = this.pinterestRefresh;
     if (!id || !secret || !refresh) throw new Error('not_configured');
     // The two strings the code exchange returns look alike and get swapped:
     // access tokens start "pina_", refresh tokens "pinr_". Say so before
@@ -175,7 +182,7 @@ export class TrendFeedService {
     const token = (r.body as { access_token?: string })?.access_token;
     if (!r.ok || !token) {
       const hint = r.status === 401
-        ? ' — refresh token hết hiệu lực (đã Reset app secret sau khi lấy token?) hoặc dán sai; làm lại OAuth và dán chuỗi pinr_ mới'
+        ? ' — token hết hiệu lực (đã Reset app secret?). Super Admin → Pinterest → bấm "Kết nối lại".'
         : '';
       throw new Error(`pinterest token ${r.status}: ${JSON.stringify(r.body).slice(0, 160)}${hint}`);
     }

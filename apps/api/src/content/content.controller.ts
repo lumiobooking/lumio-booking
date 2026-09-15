@@ -111,9 +111,12 @@ export class ContentController {
     // with itself.
     const adsPlan = ads ? null : await this.svc.adsPitchForSalon(user).catch(() => null);
     const monthBrief = await this.svc.monthBriefForShop(user).catch(() => null);
+    const planSheet = await this.svc.planSheetForShop(user).catch(() => null);
     return {
       /** What this month is for, written by the team for the shop. Null until written. */
       monthBrief,
+      /** The 30-day plan, one slot per day, as the shop may read it. Null until planned. */
+      planSheet,
       week: flattenForClient(clientWeek(plan, { weekKey: weekKey ?? '', ticks, auto }), lang === 'en' ? 'en' : 'vi'),
       weekKey,
       // What the salon GOT last week — its own numbers, and the first thing

@@ -48,7 +48,7 @@ const STATUS: Record<string, { bg: string; ink: string; icon: string; vi: string
 const FORMAT_ICON: Record<string, string> = { poster: '🖼', album: '🎞', video: '▶', story: '📱' };
 
 export function PlanSheet({
-  from, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected,
+  from, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected, postsKnown,
 }: {
   from: string;
   today: string;
@@ -63,12 +63,19 @@ export function PlanSheet({
   onSchedule: (entry: PlanEntry) => void;
   onOpenPost: (id: string) => void;
   connected: Record<Air, boolean>;
+  /**
+   * False on the shop's screen, which gets no post list: a slot with a post
+   * id then reads "scheduled" rather than "post deleted", and the panel
+   * shows no post card. Default true — the team's screen knows its posts.
+   */
+  postsKnown?: boolean;
 }) {
   const T = (a: string, b: string) => (vi ? a : b);
   const weeks = useMemo(() => sheetWeeks(from, today), [from, today]);
   const postById = useMemo(() => new Map(posts.map((p) => [p.id, p])), [posts]);
   const progress = sheetProgress(weeks, entries);
   const posted = Object.values(entries).filter((e) => e.postId && postById.get(e.postId)?.status === 'posted').length;
+  const knowsPosts = postsKnown !== false;
 
   /** The day open in the panel. */
   const [open, setOpen] = useState<string | null>(null);
@@ -137,6 +144,8 @@ export function PlanSheet({
               {e.mediaUrl && <span title={T('Có link ảnh', 'Has a media link')} style={{ fontSize: 11 }}>🔗</span>}
               {st ? (
                 <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 800, padding: '2px 7px', borderRadius: 999, background: st.bg, color: st.ink, whiteSpace: 'nowrap' }}>{st.icon} {post!.status === 'scheduled' || post!.status === 'posted' ? hm : (vi ? st.vi : st.en)}</span>
+              ) : e.postId && postsKnown === false ? (
+                <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 800, padding: '2px 7px', borderRadius: 999, background: STATUS.scheduled.bg, color: STATUS.scheduled.ink, whiteSpace: 'nowrap' }}>🗓️ {T('đã lên lịch', 'scheduled')}</span>
               ) : e.postId ? (
                 <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--c64748b)' }}>{T('bài đã xoá', 'post deleted')}</span>
               ) : entryReady(e) ? (
@@ -174,7 +183,7 @@ export function PlanSheet({
             <div style={{ width: `${pct}%`, height: '100%', background: '#6366f1', borderRadius: 3 }} />
           </div>
           <span style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>
-            <b style={{ color: 'var(--cf1f5f9)' }}>{progress.filled}/{progress.days}</b> {T('ngày có bài', 'days planned')} · <b style={{ color: 'var(--ink-link)' }}>{progress.scheduled}</b> {T('đã lên lịch', 'scheduled')} · <b style={{ color: 'var(--ink-good)' }}>{posted}</b> {T('đã đăng', 'posted')}
+            <b style={{ color: 'var(--cf1f5f9)' }}>{progress.filled}/{progress.days}</b> {T('ngày có bài', 'days planned')} · <b style={{ color: 'var(--ink-link)' }}>{progress.scheduled}</b> {T('đã lên lịch', 'scheduled')}{knowsPosts ? <> · <b style={{ color: 'var(--ink-good)' }}>{posted}</b> {T('đã đăng', 'posted')}</> : null}
           </span>
         </div>
         {!isMobile && (
@@ -190,6 +199,11 @@ export function PlanSheet({
       {canEdit && (
         <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10 }}>
           {T('Bấm vào ngày để soạn · ← → chuyển ngày · tự lưu · xong thì "Lên lịch đăng"', 'Tap a day to write · ← → moves days · saves itself · then "Schedule"')}
+        </div>
+      )}
+      {!canEdit && (
+        <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10 }}>
+          {T('Bấm vào ngày để đọc nội dung dự kiến · ngày có 🗓️ là bài đã lên lịch, tiệm sẽ được hỏi duyệt trước khi đăng', 'Tap a day to read what is planned · 🗓️ means the post is scheduled; you will be asked to approve it before it goes out')}
         </div>
       )}
 

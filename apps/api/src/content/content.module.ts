@@ -14,6 +14,8 @@ import { UploadsService } from '../uploads/uploads.service';
 import { ContentController, ContentAdminController } from './content.controller';
 import { ContentScheduler } from './content.scheduler';
 import { TrendFeedService } from './trends/trend-feed.service';
+import { PinterestConnectService } from './trends/pinterest-connect.service';
+import { PinterestController } from './trends/pinterest.controller';
 import { SuggestionsService } from './suggestions.service';
 import { PlacesService } from './places.service';
 
@@ -21,9 +23,9 @@ import { PlacesService } from './places.service';
   // GoogleReviewsModule: the calendar posts to the Business Profile through
   // the same grant the reviews screen holds.
   imports: [SettingsModule, UploadsModule, GoogleReviewsModule, TikTokModule],
-  controllers: [ContentController, ContentAdminController, PublicReviewController],
+  controllers: [ContentController, ContentAdminController, PublicReviewController, PinterestController],
   providers: [
-    ContentService, ContentAdminService, ContentChatService, SocialPublishService, ContentScheduler, TrendFeedService, PostReviewService,
+    ContentService, ContentAdminService, ContentChatService, SocialPublishService, ContentScheduler, TrendFeedService, PinterestConnectService, PostReviewService,
     SuggestionsService,
     PlacesService,
     // The compiler checks here that UploadsService really satisfies the port,

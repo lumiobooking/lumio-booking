@@ -34,6 +34,8 @@ import { MonthCalendar, IgGrid, PostPreview, MediaList, ChannelChips, CHANNEL_NA
 import { WeekPlanBoard, type OfferForm } from '../../../components/WeekPlanBoard';
 import { PlanGrid, type AheadBlock } from '../../../components/PlanGrid';
 import { PostDetailModal } from '../../../components/PostDetailModal';
+import { PlanIdeas } from '../../../components/PlanIdeas';
+import { MonthBriefEditor, type MonthBriefData } from '../../../components/MonthBrief';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
 import { TrendsTab, type TrendCard } from '../../../components/TrendsTab';
@@ -679,7 +681,11 @@ function Inner() {
    * thirty days on one grid. The grid is where scheduling happens; the week
    * view is where the how of each job lives. Both read the same plans.
    */
-  const [planView, setPlanView] = useState<'week' | 'grid'>('grid');
+  /** On the Ideas tab: the suggestions list, or the full weekly working sheet. */
+  const [ideasView, setIdeasView] = useState<'ideas' | 'sheet'>('ideas');
+  /** The month brief the team writes and the shop reads. */
+  const [brief, setBrief] = useState<{ current: string; next: string; month: string; brief: MonthBriefData } | null>(null);
+  const [briefBusy, setBriefBusy] = useState(false);
   const [ahead, setAhead] = useState<AheadBlock[] | null>(null);
   const [aheadTz, setAheadTz] = useState<string>('');
   const [aheadBusy, setAheadBusy] = useState(false);
@@ -892,15 +898,28 @@ function Inner() {
     } catch { setAhead([]); }
     finally { setAheadBusy(false); }
   }, [token]);
+  const loadBrief = useCallback(async (month?: string) => {
+    if (!token) return;
+    try { setBrief(await apiFetch(`/content/month-brief${month ? `?month=${month}` : ''}`, { token })); } catch { /* card stays empty */ }
+  }, [token]);
   useEffect(() => {
-    if (tab === 'week' && planView === 'grid') {
-      // Refetched on every visit: a post scheduled from the grid is saved on
-      // the queue tab and must show on the grid the moment the person is back.
-      loadAhead();
-      loadQueue();
-    }
+    // Refetched on every visit: a post scheduled from the grid is saved on
+    // the queue tab and must show on the grid the moment the person is back.
+    if (tab === 'week') { loadQueue(); loadBrief(); }
+    if (tab === 'trends') loadAhead();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, planView]);
+  }, [tab]);
+  async function saveBrief(draft: { month: string; focus: string; goals: string; direction: string; needs: string[] }) {
+    if (!token) return;
+    setBriefBusy(true);
+    try {
+      await apiFetch('/content/month-brief', { method: 'POST', token, body: draft });
+      await loadBrief(draft.month);
+      notify('success', vi ? 'Đã lưu kế hoạch tháng — tiệm thấy ngay.' : 'Month plan saved — the shop sees it now.');
+    } catch (e) {
+      notify('error', e instanceof Error ? e.message : String(e));
+    } finally { setBriefBusy(false); }
+  }
   useEffect(() => { if (!postTz) setPostTz(salonTz() || (typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : '')); }, [postTz]);
 
   // Counted from the same payload the tab renders, so the badge and the list can
@@ -1628,7 +1647,7 @@ function Inner() {
   const TABS: { id: TabId; label: string; icon: string; group: 'content' | 'growth' }[] = [
     { id: 'today', label: T('Hôm nay', 'Today'), icon: '✍️', group: 'content' },
     { id: 'week', label: 'Plan', icon: '🗓️', group: 'content' },
-    { id: 'trends', label: T('Xu hướng', 'Trends'), icon: '📈', group: 'content' },
+    { id: 'trends', label: T('Ý tưởng', 'Ideas'), icon: '💡', group: 'content' },
     { id: 'calendar', label: T('Lịch lễ', 'Calendar'), icon: '📆', group: 'content' },
     { id: 'queue', label: T('Lịch đăng bài', 'Post schedule'), icon: '🚀', group: 'content' },
     { id: 'audience', label: T('Khách & ưu đãi', 'Customers & offers'), icon: '🎯', group: 'growth' },
@@ -2451,57 +2470,89 @@ function Inner() {
           )}
           {tab === 'week' && (
             <>
-              {/* ---- one plan, two ways of looking at it ----
-                   The grid is the next thirty days with the plan's jobs and
-                   the schedule's posts on the same squares — where scheduling
-                   happens. The week view is the working sheet: one day at a
-                   time, with the how. Same data underneath. */}
+              {/* ---- the month, in the owner's words ----
+                   Written here by the team; read verbatim on the shop's own
+                   screen. The calendar below is what the team schedules by
+                   hand; the system's suggestions moved to the Ideas tab. */}
+              {brief && (
+                <MonthBriefEditor
+                  brief={brief.brief}
+                  months={[brief.current, brief.next]}
+                  vi={vi}
+                  canEdit={Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN'}
+                  busy={briefBusy}
+                  onPickMonth={(m) => loadBrief(m)}
+                  onSave={saveBrief}
+                />
+              )}
+
+              <div style={{ ...ui.card, padding: isMobile ? 10 : 14, marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>🗓️ {T('Lịch 30 ngày', '30-day calendar')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{T('Bấm + trên ngày để lên bài · bấm bài để xem chi tiết · ý tưởng gợi ý ở tab Ý tưởng', 'Tap + on a day to schedule · tap a post for detail · suggestions live on the Ideas tab')}</div>
+                  <button onClick={() => loadQueue()} style={{ marginLeft: 'auto', minHeight: 32, padding: '0 11px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>↻</button>
+                </div>
+                {!queue ? (
+                  <div style={{ color: 'var(--c94a3b8)', fontSize: 13, padding: 8 }}>{T('Đang tải lịch…', 'Loading the calendar…')}</div>
+                ) : (
+                  <PlanGrid
+                    blocks={[]}
+                    posts={queue.posts}
+                    tz={aheadTz || salonTz()}
+                    vi={vi}
+                    onSchedule={scheduleFromJob}
+                    onNewPost={newPostOn}
+                    onOpenPost={(id) => { setDetailId(id); }}
+                  />
+                )}
+              </div>
+            </>
+          )}
+
+          {tab === 'trends' && (
+            <>
+              {/* ---- ideas: the system's suggestions, then the trends ----
+                   Two sources of raw material on one screen, both one tap
+                   from a scheduled post. The weekly working sheet (the how)
+                   stays reachable behind a toggle for the person doing it. */}
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-                {([['grid', `▦ ${T('Lưới 30 ngày', '30-day grid')}`], ['week', `☰ ${T('Tuần · phiếu việc', 'Week · working sheet')}`]] as const).map(([k, label]) => (
+                {([['ideas', `💡 ${T('Ý tưởng & xu hướng', 'Ideas & trends')}`], ['sheet', `📋 ${T('Phiếu việc tuần', 'Weekly sheet')}`]] as const).map(([k, label]) => (
                   <button
                     key={k}
-                    onClick={() => setPlanView(k)}
+                    onClick={() => setIdeasView(k)}
                     style={{
                       minHeight: 36, padding: '0 14px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
-                      fontSize: 13, fontWeight: planView === k ? 700 : 500,
-                      border: `1px solid ${planView === k ? '#6366f1' : 'var(--c334155)'}`,
-                      background: planView === k ? 'rgba(99,102,241,.16)' : 'transparent',
-                      color: planView === k ? 'var(--ink-link)' : 'var(--c94a3b8)',
+                      fontSize: 13, fontWeight: ideasView === k ? 700 : 500,
+                      border: `1px solid ${ideasView === k ? '#6366f1' : 'var(--c334155)'}`,
+                      background: ideasView === k ? 'rgba(99,102,241,.16)' : 'transparent',
+                      color: ideasView === k ? 'var(--ink-link)' : 'var(--c94a3b8)',
                     }}
                   >{label}</button>
                 ))}
-                {planView === 'grid' && (
-                  <button
-                    onClick={() => { loadAhead(); loadQueue(); }}
-                    disabled={aheadBusy}
-                    style={{ marginLeft: 'auto', minHeight: 36, padding: '0 12px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, cursor: aheadBusy ? 'wait' : 'pointer', fontFamily: 'inherit' }}
-                  >{aheadBusy ? T('↻ Đang tải…', '↻ Loading…') : T('↻ Tải lại', '↻ Refresh')}</button>
-                )}
               </div>
 
-              {planView === 'grid' && (
-                <div style={{ ...ui.card, padding: isMobile ? 10 : 14, marginBottom: 14 }}>
-                  {!ahead || !queue ? (
-                    <div style={{ color: 'var(--c94a3b8)', fontSize: 13, padding: 8 }}>{T('Đang dựng 30 ngày tới từ số của tiệm…', 'Drafting the next 30 days from the shop’s numbers…')}</div>
-                  ) : (
-                    <PlanGrid
-                      blocks={ahead}
-                      posts={queue.posts}
-                      tz={aheadTz || salonTz()}
-                      vi={vi}
-                      onSchedule={scheduleFromJob}
-                      onNewPost={newPostOn}
-                      onOpenPost={(id) => { setDetailId(id); }}
-                      onOpenJob={(job, weekKey) => {
-                        setPlanView('week');
-                        setViewWeek(weekKey === plan?.weekMeta?.weekKey ? null : weekKey);
-                      }}
-                    />
-                  )}
-                </div>
+              {ideasView === 'ideas' && (
+                <>
+                  <div style={{ ...ui.card, padding: isMobile ? 10 : 14, marginBottom: 14 }}>
+                    {!ahead ? (
+                      <div style={{ color: 'var(--c94a3b8)', fontSize: 13, padding: 8 }}>{aheadBusy ? T('Đang dựng gợi ý 30 ngày…', 'Drafting 30 days of suggestions…') : T('Chưa tải được gợi ý.', 'Suggestions not loaded.')}</div>
+                    ) : (
+                      <PlanIdeas blocks={ahead} tz={aheadTz || salonTz()} vi={vi} onSchedule={scheduleFromJob} onOpenSheet={() => setIdeasView('sheet')} />
+                    )}
+                  </div>
+                  <TrendsTab
+                    token={token}
+                    vi={vi}
+                    isMobile={isMobile}
+                    extraLinks={[...(plan?.videoFeeds ?? []), ...(plan?.productWatch ?? [])]}
+                    canRefresh={Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN'}
+                    onMakePost={postFromTrend}
+                    onSendToSalon={(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') ? setSending : null}
+                  />
+                </>
               )}
 
-              {planView === 'week' && <>
+              {ideasView === 'sheet' && <>
               {/* ---- the week as work, not as advice ----
                    Days come from this salon's own book: it films on its quietest open
                    day and posts the offer two days before its emptiest block. When the
@@ -2746,18 +2797,6 @@ function Inner() {
               )}
                           </>}
             </>
-          )}
-
-          {tab === 'trends' && (
-            <TrendsTab
-              token={token}
-              vi={vi}
-              isMobile={isMobile}
-              extraLinks={[...(plan?.videoFeeds ?? []), ...(plan?.productWatch ?? [])]}
-              canRefresh={Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN'}
-              onMakePost={postFromTrend}
-              onSendToSalon={(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') ? setSending : null}
-            />
           )}
 
           {/* Writing the line the shop will read, with the reference on screen.

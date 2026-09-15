@@ -110,7 +110,10 @@ export class ContentController {
     // when it is not. Never both — a busy owner skims a screen that argues
     // with itself.
     const adsPlan = ads ? null : await this.svc.adsPitchForSalon(user).catch(() => null);
+    const monthBrief = await this.svc.monthBriefForShop(user).catch(() => null);
     return {
+      /** What this month is for, written by the team for the shop. Null until written. */
+      monthBrief,
       week: flattenForClient(clientWeek(plan, { weekKey: weekKey ?? '', ticks, auto }), lang === 'en' ? 'en' : 'vi'),
       weekKey,
       // What the salon GOT last week — its own numbers, and the first thing
@@ -447,6 +450,17 @@ export class ContentController {
    * drafted now so the grid has something to place on every day. Team only,
    * like the plan itself; the salon's screen keeps reading my-week.
    */
+  /** The month brief — what this month is for, in the owner's words. Team writes, shop reads. */
+  @Get('month-brief')
+  monthBrief(@CurrentUser() user: AuthenticatedUser, @Query('month') month?: string) {
+    return this.svc.monthBriefs(user, month);
+  }
+
+  @Post('month-brief')
+  saveMonthBrief(@CurrentUser() user: AuthenticatedUser, @Body() dto: { month?: string; focus?: string; goals?: string; direction?: string; needs?: string[] | string }) {
+    return this.svc.saveMonthBrief(user, dto);
+  }
+
   @Get('weeks-ahead')
   weeksAhead(@CurrentUser() user: AuthenticatedUser, @Query('blocks') blocks?: string) {
     return this.svc.weeksAhead(user, Number(blocks) || 5);

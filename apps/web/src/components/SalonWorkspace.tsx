@@ -6,6 +6,7 @@ import { compactCount, ageOf } from '../lib/counts';
 import { useLive, fresh } from '../lib/live';
 import { enqueue, installOutbox, useOutbox, retryFailed, discardBatch, cancelBatch, takeLastDone, type BatchView } from '../lib/upload-queue';
 import { ShopWeek, HolidayOffers, type ShopWeekData, type HolidayIdea, type LastWeek, type AdsReceipt, type AdsPlan } from './ShopWeek';
+import type { MonthBriefData } from './MonthBrief';
 
 /**
  * The salon's whole screen: what to film, what Lumio asked for, what is waiting
@@ -70,6 +71,7 @@ export function SalonWorkspace({ token, vi, onCount }: {
   const [lastWeek, setLastWeek] = useState<LastWeek | null>(null);
   const [ads, setAds] = useState<AdsReceipt | null>(null);
   const [adsPlan, setAdsPlan] = useState<AdsPlan | null>(null);
+  const [monthBrief, setMonthBrief] = useState<MonthBriefData | null>(null);
   // The ask's one button opens the picker on the send box at the top of the tab.
   const askSend = useRef<(() => void) | null>(null);
   const [weekUnread, setWeekUnread] = useState(0);
@@ -79,12 +81,12 @@ export function SalonWorkspace({ token, vi, onCount }: {
     if (!token) return;
     const [s, w, h, u] = await Promise.all([
       apiFetch<SuggestionFeed>(fresh('/content/suggestions'), { token }).catch(() => null),
-      apiFetch<{ week: ClientWeek | null; weekKey: string | null; lastWeek: LastWeek | null; ads: AdsReceipt | null; adsPlan: AdsPlan | null }>(fresh(`/content/my-week?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
+      apiFetch<{ week: ClientWeek | null; weekKey: string | null; lastWeek: LastWeek | null; ads: AdsReceipt | null; adsPlan: AdsPlan | null; monthBrief?: MonthBriefData | null }>(fresh(`/content/my-week?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
       apiFetch<{ ideas: HolidayIdea[] }>(fresh(`/content/my-holidays?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
       apiFetch<{ bySubject?: Record<string, number> }>(fresh('/content/chat/unread'), { token }).catch(() => null),
     ]);
     if (s) { setSugg(s); onCount?.(s.waiting ?? s.open.length); }
-    if (w) { setWeek(w.week); setWeekKey(w.weekKey ?? null); setLastWeek(w.lastWeek ?? null); setAds(w.ads ?? null); setAdsPlan(w.adsPlan ?? null); }
+    if (w) { setWeek(w.week); setWeekKey(w.weekKey ?? null); setLastWeek(w.lastWeek ?? null); setAds(w.ads ?? null); setAdsPlan(w.adsPlan ?? null); setMonthBrief(w.monthBrief ?? null); }
     if (h) setHolidays(h.ideas ?? []);
     if (u && w?.weekKey) setWeekUnread(u.bySubject?.[`week:${w.weekKey}`] ?? 0);
   }, [token, vi, onCount]);
@@ -159,7 +161,7 @@ export function SalonWorkspace({ token, vi, onCount }: {
       {!!week?.jobs.length && (
         <ShopWeek
           token={token} vi={vi} week={week} weekKey={weekKey} unread={weekUnread}
-          lastWeek={lastWeek} ads={ads} adsPlan={adsPlan} onSend={() => askSend.current?.()}
+          lastWeek={lastWeek} ads={ads} adsPlan={adsPlan} monthBrief={monthBrief} onSend={() => askSend.current?.()}
           onChanged={load} onError={setErr}
         />
       )}

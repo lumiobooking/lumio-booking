@@ -27,6 +27,7 @@ import type { BankContext } from './no-media-content';
 import { dueReviews, nextReview, reviewReport, reviewJobText, type Campaign } from './ads-review';
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel, localParts } from './week-key';
+import { MONTH_BRIEF_KEY, cleanBrief, briefForShop, monthKeyIn, isMonthKey, type MonthBrief } from './month-brief';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
 import { scopeOf, knownTrades } from './trends/trend-feed';
 import { tradeKeywordsFor, fillKeyword } from './trends/trade-keywords';
@@ -974,6 +975,59 @@ export class ContentService {
     }
     const payload = { tz: ctx.tz, blocks: out };
     return { ...localizeDeep(payload, 'vi'), en: localizeDeep(payload, 'en') };
+  }
+
+  // ---- the month brief ------------------------------------------------------
+
+  /** The month the salon is in right now, "YYYY-MM". */
+  private async currentMonthFor(tenantId: string): Promise<{ month: string; tz: string }> {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    const tz = t?.timezone || 'America/New_York';
+    return { month: monthKeyIn(new Date(), tz), tz };
+  }
+
+  private async readBrief(tenantId: string, month: string): Promise<MonthBrief> {
+    const row = await this.prisma.setting
+      .findFirst({ where: { tenantId, key: `${MONTH_BRIEF_KEY}:${month}` }, select: { value: true } })
+      .catch(() => null);
+    return cleanBrief(row?.value ?? null, month);
+  }
+
+  /** The team's screen: this month and the next, so next month can be written before it starts. */
+  async monthBriefs(user: AuthenticatedUser, monthQ?: string) {
+    const tenantId = this.tenantId(user);
+    const { month: current } = await this.currentMonthFor(tenantId);
+    const [y, m] = current.split('-').map(Number);
+    const next = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}`;
+    const month = isMonthKey(monthQ) ? monthQ : current;
+    return { current, next, month, brief: await this.readBrief(tenantId, month) };
+  }
+
+  /**
+   * The team writes the month. Team only, like the week plan itself: the
+   * shop reads this and acts on the checklist; it does not rewrite the
+   * agency's stated aim for the month.
+   */
+  async saveMonthBrief(user: AuthenticatedUser, dto: { month?: unknown; focus?: unknown; goals?: unknown; direction?: unknown; needs?: unknown }) {
+    if (user.role !== UserRole.SUPER_ADMIN && !user.supportSession) {
+      throw new ForbiddenException('Chỉ team Lumio viết được kế hoạch tháng. Tiệm đọc và làm phần của tiệm.');
+    }
+    const tenantId = this.tenantId(user);
+    const { month: current } = await this.currentMonthFor(tenantId);
+    const month = isMonthKey(dto?.month) ? dto.month : current;
+    const value = { ...cleanBrief(dto, month), updatedAt: new Date().toISOString(), updatedBy: user.email ?? 'Lumio' };
+    const key = `${MONTH_BRIEF_KEY}:${month}`;
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key }, select: { id: true } }).catch(() => null);
+    if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: value as never } });
+    else await this.prisma.setting.create({ data: { tenantId, key, value: value as never } as never });
+    return { ok: true, month, brief: value };
+  }
+
+  /** What the SHOP sees of this month — null until the team has written it. */
+  async monthBriefForShop(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const { month } = await this.currentMonthFor(tenantId);
+    return briefForShop(await this.readBrief(tenantId, month));
   }
 
   /** Every week this salon has on file, newest first. */

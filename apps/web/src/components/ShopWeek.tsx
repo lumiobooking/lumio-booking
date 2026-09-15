@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { apiFetch } from '../lib/api';
+import { MonthBriefView, type MonthBriefData } from './MonthBrief';
 import { Inline } from './WeekPlanBoard';
 import { ItemComments } from './ContentChat';
 
@@ -155,8 +156,10 @@ function dayLabelsFrom(jobs: ShopJob[]): string[] {
   return Array.from({ length: out.length }, (_, i) => out[i] ?? '');
 }
 
-export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsPlan, onSend, onChanged, onError }: {
+export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsPlan, monthBrief, onSend, onChanged, onError }: {
   token: string | null; vi: boolean; week: ShopWeekData; weekKey: string | null; unread?: number;
+  /** What this month is for, written by the team for the shop. Null until written. */
+  monthBrief?: MonthBriefData | null;
   lastWeek?: LastWeek | null;
   /** This month's ad money and what came back. Null in a month with no spend. */
   ads?: AdsReceipt | null;
@@ -207,6 +210,10 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
 
   return (
     <section style={{ marginBottom: 18 }}>
+      {/* ---- 0. the month, in the owner's words ----
+             First, before any number: what this month is for and what is
+             asked of the shop. Written by the team on the plan screen. */}
+      {monthBrief && <MonthBriefView brief={monthBrief} vi={vi} />}
       {/* ---- 1. what the shop GOT ----
              First, because it is the question the owner opened the app to ask.
              Every figure is her own row count; nothing here claims a booking

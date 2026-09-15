@@ -149,13 +149,21 @@ export class TrendFeedService {
   /** A refreshed Pinterest token, exchanged at most once an hour. */
   private pinCache: { token: string; until: number } | null = null;
   private async pinterestToken(): Promise<string> {
-    const direct = process.env.PINTEREST_ACCESS_TOKEN || '';
+    // Trimmed: a value pasted into a dashboard can carry a trailing newline,
+    // and Pinterest answers that with the same 401 as a wrong token.
+    const direct = (process.env.PINTEREST_ACCESS_TOKEN || '').trim();
     if (direct) return direct;
     if (this.pinCache && Date.now() < this.pinCache.until) return this.pinCache.token;
-    const id = process.env.PINTEREST_APP_ID || '';
-    const secret = process.env.PINTEREST_APP_SECRET || '';
-    const refresh = process.env.PINTEREST_REFRESH_TOKEN || '';
+    const id = (process.env.PINTEREST_APP_ID || '').trim();
+    const secret = (process.env.PINTEREST_APP_SECRET || '').trim();
+    const refresh = (process.env.PINTEREST_REFRESH_TOKEN || '').trim();
     if (!id || !secret || !refresh) throw new Error('not_configured');
+    // The two strings the code exchange returns look alike and get swapped:
+    // access tokens start "pina_", refresh tokens "pinr_". Say so before
+    // asking Pinterest, whose answer is a bare "grant is invalid".
+    if (refresh.startsWith('pina_')) {
+      throw new Error('PINTEREST_REFRESH_TOKEN là access token (pina_…) — cần refresh token (pinr_…), hoặc đặt chuỗi này vào PINTEREST_ACCESS_TOKEN');
+    }
     const r = await this.getJson(`${PIN}/oauth/token`, {
       method: 'POST',
       headers: {
@@ -165,7 +173,12 @@ export class TrendFeedService {
       body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refresh)}`,
     });
     const token = (r.body as { access_token?: string })?.access_token;
-    if (!r.ok || !token) throw new Error(`pinterest token ${r.status}: ${JSON.stringify(r.body).slice(0, 160)}`);
+    if (!r.ok || !token) {
+      const hint = r.status === 401
+        ? ' — refresh token hết hiệu lực (đã Reset app secret sau khi lấy token?) hoặc dán sai; làm lại OAuth và dán chuỗi pinr_ mới'
+        : '';
+      throw new Error(`pinterest token ${r.status}: ${JSON.stringify(r.body).slice(0, 160)}${hint}`);
+    }
     const expires = Number((r.body as { expires_in?: number })?.expires_in ?? 3600);
     this.pinCache = { token, until: Date.now() + Math.min(expires - 300, 24 * 3600) * 1000 };
     return token;
@@ -389,9 +402,6 @@ export class TrendFeedService {
     ok: boolean;
     tag: string;
     items: unknown[];
-    /** The same cards with every bilingual label resolved to English. Mirrors
-     *  the `en` side of the nightly feed envelope — see the note on the return. */
-    en?: { items: unknown[] };
     error: { code: string; en: string; vi: string } | null;
   }> {
     const tenantId = resolveTenantScope(user);
@@ -417,27 +427,7 @@ export class TrendFeedService {
       // The same shaping the nightly feed gets, so a searched card and a fed
       // card are the same object on screen and in the composer.
       const cards = overlay(rankItems(found), { services: [], events: [] }, new Date());
-      // Resolve the bilingual labels before the cards leave the server.
-      //
-      // WHAT THIS COST
-      //
-      // growthLabel, perDayLabel and ageLabel each return a Txt — `{ vi, en }`,
-      // not a string. Every other endpoint in this module ends with the
-      // localizeDeep envelope that flattens those; this one did not, so a
-      // successful hashtag search handed React an object where it expected
-      // text. React refuses to render an object and throws #31 — "object with
-      // keys {vi, en}" — which does not break the panel, it kills the WHOLE
-      // /salon/content route. Pressing Search took the screen down.
-      //
-      // Shaped exactly like the feed (vi inline, en beside it) so the client
-      // picks a side the same way for both.
-      return {
-        ok: true,
-        tag,
-        items: localizeDeep(cards, 'vi') as unknown[],
-        en: { items: localizeDeep(cards, 'en') as unknown[] },
-        error: null,
-      };
+      return { ok: true, tag, items: cards, error: null };
     } catch (e) {
       const raw = e instanceof Error ? e.message : String(e);
       return { ok: false, tag, items: [], error: igSearchError(raw) };

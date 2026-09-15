@@ -316,12 +316,12 @@ function DayPanel({
   );
 
   const panel: CSSProperties = isMobile
-    ? { position: 'fixed', left: 0, right: 0, bottom: 0, top: 'max(48px, 8vh)', zIndex: 60, borderRadius: '16px 16px 0 0' }
-    : { position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(460px, 92vw)', zIndex: 60, borderLeft: '1px solid var(--c334155)' };
+    ? { position: 'fixed', left: 0, right: 0, bottom: 0, top: 'max(48px, 8vh)', zIndex: 75, borderRadius: '16px 16px 0 0' }
+    : { position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(460px, 92vw)', zIndex: 75, borderLeft: '1px solid var(--c334155)' };
 
   return (
     <>
-      <div onClick={() => { flush(); onClose(); }} style={{ position: 'fixed', inset: 0, zIndex: 59, background: 'rgba(2,6,23,.55)', backdropFilter: 'blur(2px)' }} />
+      <div onClick={() => { flush(); onClose(); }} style={{ position: 'fixed', inset: 0, zIndex: 74, background: 'rgba(2,6,23,.55)', backdropFilter: 'blur(2px)' }} />
       <div style={{ ...panel, background: 'var(--c111827)', boxShadow: '-12px 0 40px rgba(0,0,0,.35)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {/* header: the day, the arrows, the save state, the way out */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
@@ -348,16 +348,7 @@ function DayPanel({
                 <div style={{ fontSize: 11.5, opacity: .85 }}>{T('Bấm để xem bài, sửa giờ hoặc đăng ngay', 'Tap to open the post, move it or post now')}</div>
               </span>
             </button>
-          ) : !canEdit ? null : (
-            <button
-              type="button"
-              disabled={!ready}
-              onClick={() => { flush(); onSchedule(localRef.current); }}
-              style={{ padding: '11px 14px', borderRadius: 10, fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit', cursor: ready ? 'pointer' : 'default', border: `1px solid ${ready ? '#6366f1' : 'var(--c334155)'}`, background: ready ? '#6366f1' : 'transparent', color: ready ? '#fff' : 'var(--c64748b)' }}
-            >
-              {local.postId ? T('↻ Lên lịch lại (bài cũ đã xoá)', '↻ Schedule again (old post deleted)') : ready ? T('→ Lên lịch đăng ngày này', '→ Schedule this day') : T(`Cần thêm: ${missing.join(' · ')}`, `Needs: ${missing.join(' · ')}`)}
-            </button>
-          )}
+          ) : null}
 
           <div>
             <div style={labelStyle}>{T('Pillar · bài này để làm gì', 'Pillar · what this post is for')}</div>
@@ -418,12 +409,40 @@ function DayPanel({
           </div>
         </div>
 
+        {/* the footer: where the two things a person does next live —
+            keep it (saved already, but a button that says so is what
+            people look for) and turn it into a post */}
         {canEdit && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
-            {entry.updatedBy && <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('Sửa lần cuối', 'Last edited')}: {entry.updatedBy}</span>}
-            {entryHasContent(entry) && !post && (
-              <button type="button" onClick={() => { if (window.confirm(T('Xoá nội dung ngày này?', 'Clear this day?'))) void onClear(day.key); }} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-bad)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>{T('Xoá ngày này', 'Clear this day')}</button>
+          <div style={{ padding: '10px 14px', borderTop: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'grid', gap: 8 }}>
+            {!post && !ready && (
+              <div style={{ fontSize: 11.5, color: 'var(--ink-warn)' }}>{T(`Để lên lịch cần thêm: ${missing.join(' · ')}`, `To schedule, add: ${missing.join(' · ')}`)}</div>
             )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {entryHasContent(entry) && !post && (
+                <button type="button" onClick={() => { if (window.confirm(T('Xoá nội dung ngày này?', 'Clear this day?'))) void onClear(day.key); }} style={{ fontSize: 12, color: 'var(--ink-bad)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>{T('Xoá ngày', 'Clear')}</button>
+              )}
+              <button
+                type="button"
+                onClick={() => { flush(); onClose(); }}
+                style={{ marginLeft: 'auto', minHeight: 38, padding: '0 14px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--cf1f5f9)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+              >💾 {T('Lưu & đóng', 'Save & close')}</button>
+              {post ? (
+                <button type="button" onClick={() => onOpenPost(post.id)} style={{ minHeight: 38, padding: '0 14px', borderRadius: 9, border: '1px solid #6366f1', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {T('Xem bài đã lên lịch', 'Open the scheduled post')} ›
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!ready}
+                  onClick={() => { flush(); onSchedule(localRef.current); }}
+                  title={ready ? T('Mở khung soạn với nội dung và ngày này', 'Open the composer with this content and day') : T('Cần chủ đề hoặc nội dung, và một kênh', 'Needs a topic or detail, and a network')}
+                  style={{ minHeight: 38, padding: '0 14px', borderRadius: 9, fontSize: 13, fontWeight: 800, fontFamily: 'inherit', cursor: ready ? 'pointer' : 'default', border: `1px solid ${ready ? '#6366f1' : 'var(--c334155)'}`, background: ready ? '#6366f1' : 'transparent', color: ready ? '#fff' : 'var(--c64748b)' }}
+                >
+                  {local.postId ? T('↻ Lên lịch lại', '↻ Schedule again') : T('Lên lịch đăng', 'Schedule')} →
+                </button>
+              )}
+            </div>
+            {entry.updatedBy && <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{T('Sửa lần cuối', 'Last edited')}: {entry.updatedBy}</div>}
           </div>
         )}
       </div>

@@ -1,4 +1,4 @@
-import { addDays, daysBetween, mondayIndex, layoutGrid, type AheadBlock, type GridPost } from './PlanGrid';
+import { addDays, daysBetween, mondayIndex, layoutGrid, type AheadBlock, type GridPost } from './plan-grid';
 
 /**
  * The grid places two kinds of thing on calendar days: plan jobs, which come

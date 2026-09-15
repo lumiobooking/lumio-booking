@@ -827,6 +827,8 @@ function Inner() {
   const [linkDraft, setLinkDraft] = useState('');
   const [unread, setUnread] = useState<{ total: number; bySubject: Record<string, number> }>({ total: 0, bySubject: {} });
   const isMobile = useIsMobile(900);
+  /** Tabs that are a calendar: they get the full width, the sidebar folds. */
+  const wideTab = tab === 'week' || tab === 'queue';
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -1625,7 +1627,7 @@ function Inner() {
    */
   const TABS: { id: TabId; label: string; icon: string; group: 'content' | 'growth' }[] = [
     { id: 'today', label: T('Hôm nay', 'Today'), icon: '✍️', group: 'content' },
-    { id: 'week', label: T('Tuần này', 'This week'), icon: '🗓️', group: 'content' },
+    { id: 'week', label: 'Plan', icon: '🗓️', group: 'content' },
     { id: 'trends', label: T('Xu hướng', 'Trends'), icon: '📈', group: 'content' },
     { id: 'calendar', label: T('Lịch lễ', 'Calendar'), icon: '📆', group: 'content' },
     { id: 'queue', label: T('Lịch đăng bài', 'Post schedule'), icon: '🚀', group: 'content' },
@@ -1691,7 +1693,7 @@ function Inner() {
           />
         );
       })()}
-      {isMobile && <TeamChatWindow token={token} unread={unread.total} vi={vi} />}
+      {(isMobile || wideTab) && <TeamChatWindow token={token} unread={unread.total} vi={vi} />}
 
       <div style={{
         display: 'flex', gap: 12, alignItems: 'flex-start',
@@ -1819,9 +1821,15 @@ function Inner() {
           week's aim and the discount verdict never scroll out of sight. A phone
           has no room for two columns, so that summary folds back into the tabs
           it was drawn from. */}
+      {/* THE PLAN AND THE SCHEDULE TAKE THE WHOLE WIDTH.
+          Seven columns of days beside a 300px sidebar left each day the width
+          of a chip — the reason a job read as "Đăng bộ ảnh –…". On those two
+          tabs the sidebar folds away and the chat becomes the same floating
+          window a phone uses; the summary cards it carried are the plan's own
+          screen anyway. */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 300px',
+        gridTemplateColumns: isMobile || wideTab ? '1fr' : 'minmax(0, 1fr) 300px',
         gap: 16, alignItems: 'start',
       }}>
         <div style={{ minWidth: 0 }}>
@@ -5784,7 +5792,7 @@ function Inner() {
           )}
         </div>
 
-        {!isMobile && (
+        {!isMobile && !wideTab && (
           <aside style={{
             position: 'sticky', top: 8, display: 'flex', flexDirection: 'column', gap: 12,
             // Bounded to the viewport so the column cannot outgrow the screen —

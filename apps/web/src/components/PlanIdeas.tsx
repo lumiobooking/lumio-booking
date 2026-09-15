@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { Job } from './WeekPlanBoard';
 import { dayKeyInTz } from '../lib/datetime';
-import { layoutGrid, KIND_ICON, WD_VI, WD_EN, MONTH_VI, MONTH_EN, mondayIndex, type AheadBlock } from './plan-grid';
+import { layoutGrid, KIND_ICON, WD_VI, WD_EN, MONTH_VI, MONTH_EN, mondayIndex, daysBetween, type AheadBlock } from './plan-grid';
 
 /**
  * WHAT THE SYSTEM SUGGESTS FOR THE NEXT THIRTY DAYS — as ideas, not orders.
@@ -12,9 +12,16 @@ import { layoutGrid, KIND_ICON, WD_VI, WD_EN, MONTH_VI, MONTH_EN, mondayIndex, t
  * team worked around it. The agency's decision is that the calendar is the
  * team's, filled by hand, and the generator's output is raw material — read
  * next to the trends, picked from, and turned into a scheduled post with one
- * tap. So the suggestions live on the Ideas tab, grouped by the day they
- * were meant for (that day was chosen from the shop's own quiet hours, which
- * is the one thing worth keeping), each with the reason and the button.
+ * tap.
+ *
+ * LAID OUT AS A LIST, NOT AS CARDS
+ *
+ * The first version drew one card per day in a grid: twenty-odd boxes of
+ * different heights, each with its own header, chips and button. A person
+ * called it "quá rối" and was right — twenty cards is twenty places for the
+ * eye to start. A list has one place: the top. One row per idea, the date in
+ * a narrow left column so it reads like a diary, a week heading so a month
+ * has shape, and one button per row. The first two weeks open; the rest fold.
  */
 
 const KIND_LABEL: Record<string, { vi: string; en: string }> = {
@@ -36,72 +43,114 @@ export function PlanIdeas({
   const todayKey = dayKeyInTz(new Date(), tz);
   const days = useMemo(() => layoutGrid(blocks, [], todayKey, tz).filter((d) => d.inWindow && d.jobs.length > 0), [blocks, todayKey, tz]);
   const [kind, setKind] = useState<string>('all');
+  const [all, setAll] = useState(false);
   const kinds = useMemo(() => Array.from(new Set(days.flatMap((d) => d.jobs.map((j) => j.job.kind)))), [days]);
-  const shown = days.map((d) => ({ ...d, jobs: d.jobs.filter((j) => kind === 'all' || j.job.kind === kind) })).filter((d) => d.jobs.length);
+  const rows = days
+    .map((d) => ({ ...d, jobs: d.jobs.filter((j) => kind === 'all' || j.job.kind === kind) }))
+    .filter((d) => d.jobs.length);
   const total = days.reduce((n, d) => n + d.jobs.length, 0);
+  const todo = days.reduce((n, d) => n + d.jobs.filter((j) => !j.done && j.who !== 'salon').length, 0);
 
-  const label = (key: string) => {
+  // Weeks, counted from today: 0 = this week (the next 7 days), 1 = the next…
+  const weekOf = (key: string) => Math.floor(daysBetween(todayKey, key) / 7);
+  const weeks = Array.from(new Set(rows.map((d) => weekOf(d.key)))).sort((a, b) => a - b);
+  const visibleWeeks = all ? weeks : weeks.slice(0, 2);
+  const hidden = rows.filter((d) => !visibleWeeks.includes(weekOf(d.key))).reduce((n, d) => n + d.jobs.length, 0);
+
+  const dayLabel = (key: string) => {
     const [, m, d] = key.split('-').map(Number);
-    const wd = mondayIndex(key);
-    return `${vi ? WD_VI[wd] : WD_EN[wd]} ${d} ${vi ? MONTH_VI[m - 1] : MONTH_EN[m - 1]}`;
+    return { wd: (vi ? WD_VI : WD_EN)[mondayIndex(key)], d: String(d), m: vi ? MONTH_VI[m - 1] : MONTH_EN[m - 1] };
   };
+  const weekTitle = (w: number) => (w === 0 ? T('7 ngày tới', 'Next 7 days') : w === 1 ? T('Tuần sau', 'Next week') : T(`${w + 1} tuần nữa`, `${w + 1} weeks out`));
 
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>💡 {T('Hệ thống gợi ý cho 30 ngày tới', 'Suggested for the next 30 days')}</div>
-        <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{total} {T('ý tưởng · ngày gợi ý lấy từ giờ vắng của tiệm', 'ideas · days picked from the shop’s quiet hours')}</div>
+    <div>
+      {/* One line of context, one row of controls. Nothing else above the list. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>💡 {T('Gợi ý theo ngày', 'Suggested by day')}</div>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>
+            {T(`${todo} việc bên em có thể lên lịch · ngày lấy từ giờ vắng của tiệm`, `${todo} ideas we can schedule · days taken from the shop’s quiet hours`)}
+          </div>
+        </div>
         {onOpenSheet && (
-          <button type="button" onClick={onOpenSheet} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-link)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0, fontWeight: 600 }}>
-            📋 {T('Phiếu việc chi tiết theo tuần', 'Weekly working sheet')} →
+          <button type="button" onClick={onOpenSheet} style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--ink-link)', background: 'none', border: '1px solid var(--c334155)', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+            📋 {T('Phiếu việc tuần', 'Weekly sheet')}
           </button>
         )}
       </div>
 
       {kinds.length > 1 && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
           {['all', ...kinds].map((k) => (
-            <button key={k} type="button" onClick={() => setKind(k)} style={{ padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${kind === k ? '#6366f1' : 'var(--c334155)'}`, background: kind === k ? 'rgba(99,102,241,.16)' : 'transparent', color: kind === k ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>
-              {k === 'all' ? T('Tất cả', 'All') : `${KIND_ICON[k] ?? ''} ${vi ? KIND_LABEL[k]?.vi ?? k : KIND_LABEL[k]?.en ?? k}`}
+            <button key={k} type="button" onClick={() => setKind(k)} style={{ padding: '4px 11px', borderRadius: 999, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${kind === k ? '#6366f1' : 'var(--c334155)'}`, background: kind === k ? 'rgba(99,102,241,.16)' : 'transparent', color: kind === k ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>
+              {k === 'all' ? `${T('Tất cả', 'All')} · ${total}` : `${KIND_ICON[k] ?? ''} ${vi ? KIND_LABEL[k]?.vi ?? k : KIND_LABEL[k]?.en ?? k}`}
             </button>
           ))}
         </div>
       )}
 
-      {shown.length === 0 ? (
+      {rows.length === 0 ? (
         <div style={{ fontSize: 13, color: 'var(--c94a3b8)', padding: '10px 0' }}>{T('Chưa có gợi ý nào — hệ thống cần vài tuần lịch hẹn để biết tiệm vắng ngày nào.', 'No suggestions yet — the system needs a few weeks of bookings to know the quiet days.')}</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: 10 }}>
-          {shown.map((d) => (
-            <div key={d.key} style={{ borderRadius: 12, border: `1px solid ${d.today ? '#6366f1' : 'var(--c334155)'}`, background: 'var(--c0f172a)', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: d.today ? 'var(--ink-link)' : 'var(--ccbd5e1)' }}>{label(d.key)}</span>
-                {d.today && <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: .4, textTransform: 'uppercase', color: 'var(--ink-link)' }}>{T('hôm nay', 'today')}</span>}
+        <div style={{ display: 'grid', gap: 14 }}>
+          {visibleWeeks.map((w) => (
+            <div key={w}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--c64748b)', padding: '0 0 6px 2px', borderBottom: '1px solid var(--line)', marginBottom: 4 }}>
+                {weekTitle(w)}
               </div>
-              {d.jobs.map((j, i) => (
-                <div key={i} style={{ borderTop: i ? '1px solid var(--line)' : 'none', paddingTop: i ? 8 : 0, display: 'grid', gap: 5 }}>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: 14, flex: '0 0 auto' }}>{j.done ? '✅' : (KIND_ICON[j.job.kind] ?? '•')}</span>
+              {rows.filter((d) => weekOf(d.key) === w).map((d) => {
+                const L = dayLabel(d.key);
+                return d.jobs.map((j, i) => (
+                  <div
+                    key={`${d.key}-${i}`}
+                    style={{
+                      display: 'grid', gridTemplateColumns: '52px 1fr auto', gap: 10, alignItems: 'center',
+                      padding: '9px 6px', borderBottom: '1px solid var(--line)',
+                      background: d.today && i === 0 ? 'rgba(99,102,241,.06)' : 'transparent', borderRadius: 8,
+                    }}
+                  >
+                    {/* the date, once per day — blank on the second job of a day so the eye groups them */}
+                    <div style={{ textAlign: 'center', lineHeight: 1.05, visibility: i === 0 ? 'visible' : 'hidden' }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .4, color: d.today ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>{L.wd}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: d.today ? 'var(--ink-link)' : 'var(--cf1f5f9)', fontVariantNumeric: 'tabular-nums' }}>{L.d}</div>
+                      <div style={{ fontSize: 10, color: 'var(--c64748b)' }}>{L.m}</div>
+                    </div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 700, color: j.done ? 'var(--ink-faint)' : 'var(--cf1f5f9)', lineHeight: 1.4, textDecoration: j.done ? 'line-through' : 'none' }}>{j.job.text}</div>
-                      {j.job.why && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.45, marginTop: 2 }}>{j.job.why}</div>}
-                      {j.job.when && <div style={{ fontSize: 11.5, color: 'var(--ink-warn)', marginTop: 2 }}>⏰ {j.job.when}</div>}
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 700, color: j.done ? 'var(--ink-faint)' : 'var(--cf1f5f9)', lineHeight: 1.4, textDecoration: j.done ? 'line-through' : 'none' }}>
+                          {j.done ? '✅ ' : `${KIND_ICON[j.job.kind] ?? '•'} `}{j.job.text}
+                        </span>
+                        {j.who === 'salon' && <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ink-warn)' }}>{T('tiệm làm', 'shop does')}</span>}
+                      </div>
+                      {(j.job.why || j.job.when) && (
+                        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.45, marginTop: 2, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                          {j.job.when ? `⏰ ${j.job.when} · ` : ''}{j.job.why}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      {!j.done && j.who !== 'salon' ? (
+                        <button type="button" onClick={() => onSchedule(j.job, d.key)} title={T('Mở khung soạn với ngày này', 'Open the composer on this day')} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #6366f1', background: 'rgba(99,102,241,.14)', color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                          🗓️ {T('Lên lịch', 'Schedule')}
+                        </button>
+                      ) : <span style={{ display: 'inline-block', width: 84 }} />}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 7px', borderRadius: 999, background: j.who === 'salon' ? 'rgba(251,191,36,.14)' : 'rgba(99,102,241,.14)', color: j.who === 'salon' ? 'var(--ink-warn)' : 'var(--ink-link)' }}>
-                      {j.who === 'salon' ? T('tiệm làm', 'shop does') : T('bên em làm', 'we do')}
-                    </span>
-                    {!j.done && j.who !== 'salon' && (
-                      <button type="button" onClick={() => onSchedule(j.job, d.key)} style={{ marginLeft: 'auto', padding: '5px 11px', borderRadius: 8, border: '1px solid #6366f1', background: 'rgba(99,102,241,.14)', color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                        🗓️ {T('Lên lịch ngày này', 'Schedule this day')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                ));
+              })}
             </div>
           ))}
+          {hidden > 0 && (
+            <button type="button" onClick={() => setAll(true)} style={{ justifySelf: 'start', fontSize: 12.5, color: 'var(--ink-link)', background: 'none', border: '1px solid var(--c334155)', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+              {T(`Xem thêm ${hidden} ý tưởng các tuần sau`, `Show ${hidden} more from later weeks`)} ↓
+            </button>
+          )}
+          {all && weeks.length > 2 && (
+            <button type="button" onClick={() => setAll(false)} style={{ justifySelf: 'start', fontSize: 12.5, color: 'var(--c94a3b8)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>
+              {T('Thu gọn về 2 tuần', 'Back to 2 weeks')} ↑
+            </button>
+          )}
         </div>
       )}
     </div>

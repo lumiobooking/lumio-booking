@@ -28,6 +28,7 @@ import { dueReviews, nextReview, reviewReport, reviewJobText, type Campaign } fr
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel, localParts } from './week-key';
 import { MONTH_BRIEF_KEY, cleanBrief, briefForShop, monthKeyIn, isMonthKey, type MonthBrief } from './month-brief';
+import { PLAN_SHEET_KEY, cleanSheet, mergeEntry, entryHasContent, isDayKey, monthsCovering, monthOfDay, windowOf, type PlanSheet } from './plan-sheet';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
 import { scopeOf, knownTrades } from './trends/trend-feed';
 import { tradeKeywordsFor, fillKeyword } from './trends/trade-keywords';
@@ -78,7 +79,7 @@ const menuWithBookings = (
     bookings: seen.get(String(m.name ?? '').trim().toLowerCase()) ?? 0,
   }));
 };
-import { addDaysToKey, wallTimeToUtcTz as wallTimeToUtc } from '../common/salon-time';
+import { addDaysToKey, dayKeyTz, wallTimeToUtcTz as wallTimeToUtc } from '../common/salon-time';
 import { buildWeekOutcome, describeOutcome, describeDelta, type WeekOutcome } from './week-outcome';
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
 import { detectIndustry, pickTrade } from './industry-detect';
@@ -1028,6 +1029,71 @@ export class ContentService {
     const tenantId = this.tenantId(user);
     const { month } = await this.currentMonthFor(tenantId);
     return briefForShop(await this.readBrief(tenantId, month));
+  }
+
+  // ---- the plan sheet ---------------------------------------------------------
+  // One slot per day, six columns, filled before anything is posted. See plan-sheet.ts.
+
+  private async readSheetMonth(tenantId: string, month: string): Promise<PlanSheet> {
+    const row = await this.prisma.setting
+      .findFirst({ where: { tenantId, key: `${PLAN_SHEET_KEY}:${month}` }, select: { value: true } })
+      .catch(() => null);
+    return cleanSheet(row?.value ?? null, month);
+  }
+
+  private async writeSheetMonth(tenantId: string, month: string, sheet: PlanSheet) {
+    const key = `${PLAN_SHEET_KEY}:${month}`;
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key }, select: { id: true } }).catch(() => null);
+    if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: sheet as never } });
+    else await this.prisma.setting.create({ data: { tenantId, key, value: sheet as never } as never });
+  }
+
+  /**
+   * The sheet for a run of days — by default this week's Monday and the
+   * five weeks from it, the same window the calendar draws. Days are salon
+   * days; the client sends `from` when it pages, never a zone.
+   */
+  async planSheet(user: AuthenticatedUser, fromQ?: string, daysQ?: string) {
+    const tenantId = this.tenantId(user);
+    const { tz } = await this.currentMonthFor(tenantId);
+    const today = dayKeyTz(new Date(), tz);
+    const monday = addDaysToKey(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
+    const from = isDayKey(fromQ) ? fromQ : monday;
+    const days = Math.min(70, Math.max(7, Number(daysQ) || 35));
+    const months = monthsCovering(from, days);
+    const merged: PlanSheet = {};
+    for (const m of months) Object.assign(merged, await this.readSheetMonth(tenantId, m));
+    const entries = windowOf(merged, from, days);
+    // The shop may read the sheet; it does not learn which of our people
+    // typed which cell. Team members see the by-line.
+    const team = user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession);
+    if (!team) for (const e of Object.values(entries)) e.updatedBy = null;
+    return { tz, today, from, days, entries };
+  }
+
+  /**
+   * One day's slot, one person's change. Team only — the sheet is the
+   * agency's working document; the shop reads the calendar, the brief and
+   * the posts it is asked to approve, not the drafts behind them.
+   */
+  async savePlanEntry(user: AuthenticatedUser, dto: { day?: unknown; patch?: unknown; clear?: unknown }) {
+    if (user.role !== UserRole.SUPER_ADMIN && !user.supportSession) {
+      throw new ForbiddenException('Chỉ team Lumio sửa được plan. Tiệm xem lịch và duyệt bài.');
+    }
+    if (!isDayKey(dto?.day)) throw new BadRequestException('day must be YYYY-MM-DD');
+    const day = dto.day;
+    const tenantId = this.tenantId(user);
+    const month = monthOfDay(day);
+    const sheet = await this.readSheetMonth(tenantId, month);
+    if (dto.clear === true) {
+      delete sheet[day];
+      await this.writeSheetMonth(tenantId, month, sheet);
+      return { ok: true, day, entry: null };
+    }
+    const entry = mergeEntry(sheet[day] ?? null, dto.patch, day, user.email ?? 'Lumio', new Date());
+    if (entryHasContent(entry)) sheet[day] = entry; else delete sheet[day];
+    await this.writeSheetMonth(tenantId, month, sheet);
+    return { ok: true, day, entry: entryHasContent(entry) ? entry : null };
   }
 
   /** Every week this salon has on file, newest first. */

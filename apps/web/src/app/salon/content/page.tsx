@@ -32,9 +32,11 @@ import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz, salonTz } fro
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
 import { MonthCalendar, IgGrid, PostPreview, MediaList, ChannelChips, CHANNEL_NAME, TONES, postTone, type MediaItem, type Channel } from '../../../components/PostStudio';
 import { WeekPlanBoard, type OfferForm } from '../../../components/WeekPlanBoard';
-import { PlanGrid, type AheadBlock } from '../../../components/PlanGrid';
+import type { AheadBlock } from '../../../components/plan-grid';
 import { PostDetailModal } from '../../../components/PostDetailModal';
 import { PlanIdeas } from '../../../components/PlanIdeas';
+import { PlanSheet } from '../../../components/PlanSheet';
+import { entryToDraft, type PlanEntry, type PlanPatch } from '../../../components/plan-sheet';
 import { MonthBriefEditor, type MonthBriefData } from '../../../components/MonthBrief';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
@@ -682,11 +684,16 @@ function Inner() {
    * view is where the how of each job lives. Both read the same plans.
    */
   /** On the Ideas tab: the suggestions list, or the full weekly working sheet. */
-  const [ideasView, setIdeasView] = useState<'ideas' | 'sheet'>('ideas');
+  // The Ideas tab shows ONE thing at a time. Five sources of raw material
+  // stacked on one page was "quá rối"; a segmented control with five short
+  // labels puts each source on its own quiet screen.
+  const [ideasView, setIdeasView] = useState<'ideas' | 'videos' | 'keywords' | 'lookup' | 'sheet'>('ideas');
   /** The month brief the team writes and the shop reads. */
   const [brief, setBrief] = useState<{ current: string; next: string; month: string; brief: MonthBriefData } | null>(null);
   const [briefBusy, setBriefBusy] = useState(false);
   const [ahead, setAhead] = useState<AheadBlock[] | null>(null);
+  /** The plan sheet: one slot per day, the team's working document. */
+  const [sheet, setSheet] = useState<{ tz: string; today: string; from: string; days: number; entries: Record<string, PlanEntry> } | null>(null);
   const [aheadTz, setAheadTz] = useState<string>('');
   const [aheadBusy, setAheadBusy] = useState(false);
   /** The post open in the reading view — never the editor — on the schedule. */
@@ -716,6 +723,8 @@ function Inner() {
     stage?: 'writing' | 'design' | 'ready'; writerName?: string; designerName?: string; teamNote?: string;
     tiktok?: TikTokOpts;
     google?: GbpOpts;
+    /** The plan-sheet day this post came from — linked back once saved. */
+    planDay?: string;
   } | null>(null);
   /** The TikTok connection, as the connect/disconnect buttons need it. */
   /** The composer folded down to its title bar. A month plan is the thing
@@ -898,6 +907,10 @@ function Inner() {
     } catch { setAhead([]); }
     finally { setAheadBusy(false); }
   }, [token]);
+  const loadSheet = useCallback(async () => {
+    if (!token) return;
+    try { setSheet(await apiFetch('/content/plan-sheet', { token })); } catch { /* the sheet stays as it was */ }
+  }, [token]);
   const loadBrief = useCallback(async (month?: string) => {
     if (!token) return;
     try { setBrief(await apiFetch(`/content/month-brief${month ? `?month=${month}` : ''}`, { token })); } catch { /* card stays empty */ }
@@ -905,7 +918,7 @@ function Inner() {
   useEffect(() => {
     // Refetched on every visit: a post scheduled from the grid is saved on
     // the queue tab and must show on the grid the moment the person is back.
-    if (tab === 'week') { loadQueue(); loadBrief(); }
+    if (tab === 'week') { loadQueue(); loadBrief(); loadSheet(); }
     if (tab === 'trends') loadAhead();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
@@ -919,6 +932,37 @@ function Inner() {
     } catch (e) {
       notify('error', e instanceof Error ? e.message : String(e));
     } finally { setBriefBusy(false); }
+  }
+  /** One cell of the sheet, saved as the person leaves it. Throws so the cell can show "not saved". */
+  async function savePlanEntry(day: string, patch: PlanPatch) {
+    if (!token) return;
+    const r = await apiFetch<{ ok: boolean; day: string; entry: PlanEntry | null }>('/content/plan-sheet', { method: 'POST', token, body: { day, patch } });
+    setSheet((cur) => {
+      if (!cur) return cur;
+      const entries = { ...cur.entries };
+      if (r.entry) entries[day] = r.entry; else delete entries[day];
+      return { ...cur, entries };
+    });
+  }
+  /**
+   * A filled slot becomes a post on its day. The composer opens with the
+   * caption, the networks and the date from the sheet; the person reads,
+   * adds the picture, and schedules. Saving links the post back to the slot.
+   */
+  function scheduleFromEntry(e: PlanEntry) {
+    const d = entryToDraft(e, {
+      facebook: Boolean(queue?.connected),
+      instagram: Boolean(queue?.connected?.hasInstagram),
+      google: Boolean(queue?.google),
+      tiktok: Boolean(queue?.tiktok && !queue.tiktok.needsReconnect),
+    });
+    setPostWhen('later');
+    setComposerOpen(true);
+    setPostDraft({
+      channels: d.channels, message: d.message, media: [], at: d.at,
+      stage: 'writing', writerName: '', designerName: '', teamNote: d.teamNote, planDay: e.day,
+    });
+    setTab('queue');
   }
   useEffect(() => { if (!postTz) setPostTz(salonTz() || (typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : '')); }, [postTz]);
 
@@ -974,6 +1018,13 @@ function Inner() {
       });
       if (now && r?.id) {
         await apiFetch(`/content/posts/${r.id}/publish`, { method: 'POST', token });
+      }
+      // A post born on the plan sheet is written back onto its day, so the
+      // sheet shows "scheduled" where it showed a button. Best effort: the
+      // post is saved either way, and the sheet's own refresh will catch up.
+      if (postDraft.planDay && r?.id) {
+        await apiFetch('/content/plan-sheet', { method: 'POST', token, body: { day: postDraft.planDay, patch: { postId: r.id } } }).catch(() => null);
+        void loadSheet();
       }
       setPostDraft(null);
       await loadQueue();
@@ -1227,12 +1278,6 @@ function Inner() {
       channels, message: (caption || job.text) + tags, media: [],
       at: `${dayKey}T10:00`, stage: 'writing', writerName: '', designerName: '', teamNote: `Từ plan: ${job.text}`.slice(0, 200),
     });
-    setTab('queue');
-  }
-  function newPostOn(dayKey: string) {
-    setPostWhen('later');
-    setComposerOpen(true);
-    setPostDraft({ channels: queue?.connected ? ['facebook'] : queue?.google ? ['google'] : ['facebook'], message: '', media: [], at: `${dayKey}T10:00`, stage: 'writing', writerName: '', designerName: '', teamNote: '' });
     setTab('queue');
   }
 
@@ -2486,22 +2531,31 @@ function Inner() {
                 />
               )}
 
+              {/* ---- the plan sheet ----
+                   The agency's Google Sheet, kept: a band per week, six rows
+                   per day, typed in place. A filled day is one press from a
+                   scheduled post; a scheduled day shows the post's state. */}
               <div style={{ ...ui.card, padding: isMobile ? 10 : 14, marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>🗓️ {T('Lịch 30 ngày', '30-day calendar')}</div>
-                  <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{T('Bấm + trên ngày để lên bài · bấm bài để xem chi tiết · ý tưởng gợi ý ở tab Ý tưởng', 'Tap + on a day to schedule · tap a post for detail · suggestions live on the Ideas tab')}</div>
-                  <button onClick={() => loadQueue()} style={{ marginLeft: 'auto', minHeight: 32, padding: '0 11px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>↻</button>
-                </div>
-                {!queue ? (
-                  <div style={{ color: 'var(--c94a3b8)', fontSize: 13, padding: 8 }}>{T('Đang tải lịch…', 'Loading the calendar…')}</div>
+                {!sheet ? (
+                  <div style={{ color: 'var(--c94a3b8)', fontSize: 13, padding: 8 }}>{T('Đang tải plan…', 'Loading the plan…')}</div>
                 ) : (
-                  <PlanGrid
-                    blocks={[]}
-                    posts={queue.posts}
-                    tz={aheadTz || salonTz()}
+                  <PlanSheet
+                    from={sheet.from}
+                    today={sheet.today}
+                    tz={sheet.tz || salonTz()}
+                    entries={sheet.entries}
+                    posts={queue?.posts ?? []}
                     vi={vi}
-                    onSchedule={scheduleFromJob}
-                    onNewPost={newPostOn}
+                    isMobile={isMobile}
+                    canEdit={Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN'}
+                    connected={{
+                      facebook: Boolean(queue?.connected),
+                      instagram: Boolean(queue?.connected?.hasInstagram),
+                      google: Boolean(queue?.google),
+                      tiktok: Boolean(queue?.tiktok && !queue.tiktok.needsReconnect),
+                    }}
+                    onSave={savePlanEntry}
+                    onSchedule={scheduleFromEntry}
                     onOpenPost={(id) => { setDetailId(id); }}
                   />
                 )}
@@ -2511,45 +2565,53 @@ function Inner() {
 
           {tab === 'trends' && (
             <>
-              {/* ---- ideas: the system's suggestions, then the trends ----
-                   Two sources of raw material on one screen, both one tap
-                   from a scheduled post. The weekly working sheet (the how)
-                   stays reachable behind a toggle for the person doing it. */}
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-                {([['ideas', `💡 ${T('Ý tưởng & xu hướng', 'Ideas & trends')}`], ['sheet', `📋 ${T('Phiếu việc tuần', 'Weekly sheet')}`]] as const).map(([k, label]) => (
+              {/* ---- ideas: five sources of raw material, one at a time ----
+                   Suggestions by day, videos on the rise, keywords, the
+                   look-it-up tools, and the weekly working sheet. Each is one
+                   tap from a scheduled post; none shares a screen with another. */}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, overflowX: 'auto', paddingBottom: 2 }}>
+                {([
+                  ['ideas', '💡', T('Gợi ý theo ngày', 'By day')],
+                  ['videos', '📈', T('Video đang lên', 'Rising videos')],
+                  ['keywords', '🔑', T('Từ khoá', 'Keywords')],
+                  ['lookup', '🔎', T('Tra cứu', 'Look up')],
+                  ['sheet', '📋', T('Phiếu việc', 'Weekly sheet')],
+                ] as const).map(([k, icon, label]) => (
                   <button
                     key={k}
                     onClick={() => setIdeasView(k)}
                     style={{
-                      minHeight: 36, padding: '0 14px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
+                      minHeight: 36, padding: isMobile ? '0 10px' : '0 14px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
                       fontSize: 13, fontWeight: ideasView === k ? 700 : 500,
                       border: `1px solid ${ideasView === k ? '#6366f1' : 'var(--c334155)'}`,
                       background: ideasView === k ? 'rgba(99,102,241,.16)' : 'transparent',
                       color: ideasView === k ? 'var(--ink-link)' : 'var(--c94a3b8)',
                     }}
-                  >{label}</button>
+                  >{icon} {label}</button>
                 ))}
               </div>
 
               {ideasView === 'ideas' && (
-                <>
-                  <div style={{ ...ui.card, padding: isMobile ? 10 : 14, marginBottom: 14 }}>
-                    {!ahead ? (
-                      <div style={{ color: 'var(--c94a3b8)', fontSize: 13, padding: 8 }}>{aheadBusy ? T('Đang dựng gợi ý 30 ngày…', 'Drafting 30 days of suggestions…') : T('Chưa tải được gợi ý.', 'Suggestions not loaded.')}</div>
-                    ) : (
-                      <PlanIdeas blocks={ahead} tz={aheadTz || salonTz()} vi={vi} onSchedule={scheduleFromJob} onOpenSheet={() => setIdeasView('sheet')} />
-                    )}
-                  </div>
-                  <TrendsTab
-                    token={token}
-                    vi={vi}
-                    isMobile={isMobile}
-                    extraLinks={[...(plan?.videoFeeds ?? []), ...(plan?.productWatch ?? [])]}
-                    canRefresh={Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN'}
-                    onMakePost={postFromTrend}
-                    onSendToSalon={(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') ? setSending : null}
-                  />
-                </>
+                <div style={{ ...ui.card, padding: isMobile ? 10 : 14, marginBottom: 14 }}>
+                  {!ahead ? (
+                    <div style={{ color: 'var(--c94a3b8)', fontSize: 13, padding: 8 }}>{aheadBusy ? T('Đang dựng gợi ý 30 ngày…', 'Drafting 30 days of suggestions…') : T('Chưa tải được gợi ý.', 'Suggestions not loaded.')}</div>
+                  ) : (
+                    <PlanIdeas blocks={ahead} tz={aheadTz || salonTz()} vi={vi} onSchedule={scheduleFromJob} onOpenSheet={() => setIdeasView('sheet')} />
+                  )}
+                </div>
+              )}
+
+              {(ideasView === 'videos' || ideasView === 'keywords' || ideasView === 'lookup') && (
+                <TrendsTab
+                  section={ideasView}
+                  token={token}
+                  vi={vi}
+                  isMobile={isMobile}
+                  extraLinks={[...(plan?.videoFeeds ?? []), ...(plan?.productWatch ?? [])]}
+                  canRefresh={Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN'}
+                  onMakePost={postFromTrend}
+                  onSendToSalon={(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') ? setSending : null}
+                />
               )}
 
               {ideasView === 'sheet' && <>

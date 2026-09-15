@@ -67,6 +67,12 @@ interface Props {
   onSendToSalon?: ((card: TrendCard) => void) | null;
   /** The Lumio support session may pull again; a salon account may not. */
   canRefresh: boolean;
+  /**
+   * Which slice to draw. The whole feed on one screen — videos, three keyword
+   * strips, the picks, the tools — was the screen a person called "quá rối".
+   * The Ideas tab now shows one slice at a time; 'all' keeps the old page.
+   */
+  section?: 'all' | 'videos' | 'keywords' | 'lookup';
 }
 
 const SOURCE_LABEL: Record<TrendCard['source'], string> = { youtube: 'YouTube', instagram: 'Instagram', google: 'Google' };
@@ -92,7 +98,8 @@ function timeAgo(iso: string | null, vi: boolean): string | null {
   return vi ? `${d} ngày trước` : `${d}d ago`;
 }
 
-export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendToSalon, canRefresh }: Props) {
+export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendToSalon, canRefresh, section = 'all' }: Props) {
+  const show = (k: 'videos' | 'keywords' | 'lookup') => section === 'all' || section === k;
   const T = (v: string, e: string) => (vi ? v : e);
   const [raw, setRaw] = useState<Envelope | null>(null);
   const [loading, setLoading] = useState(true);
@@ -176,7 +183,9 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
   return (
     <>
       {/* ================= layer 1: the feeds ================= */}
+      {(show('videos') || show('keywords')) && (
       <div style={{ ...ui.card, marginBottom: 14, padding: isMobile ? 14 : 18 }}>
+        {show('videos') && (<>
         {sectionTitle(
           T('Đang lên trong ngành', 'Trending in your trade right now'),
           feed?.regionLabel
@@ -399,6 +408,20 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
           </div>
         )}
 
+        </>)}
+        {show('keywords') && (<>
+        {section === 'keywords' && sectionTitle(
+          T('Từ khoá đang lên', 'Rising keywords'),
+          T('Ba nguồn, ba câu hỏi: ngành đang nói về gì, khách gõ gì trước khi đặt, khách ghim gì trước khi đi làm.',
+            'Three sources, three questions: what the trade talks about, what people search before booking, what they pin before going.'),
+        )}
+        {section === 'keywords' && !feed?.mined?.length && !feed?.rising?.length && !feed?.pinterestRising?.length && (
+          <div style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+            {feed?.sources.pinterest?.error || feed?.sources.google.error
+              ? T('Chưa có từ khoá — nguồn Google Trends / Pinterest chưa kết nối được. Bên Lumio đang bật.', 'No keywords yet — the Google Trends / Pinterest sources are not connected. Lumio is switching them on.')
+              : T('Chưa có từ khoá — lần kéo tiếp theo sẽ có.', 'No keywords yet — the next pull will bring them.')}
+          </div>
+        )}
         {/* The trade's live vocabulary — mined from the posts already pulled.
             First of the three keyword strips because it is the only one that
             needs no key: a salon with nothing configured still gets this. */}
@@ -481,8 +504,11 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
             </div>
           </div>
         )}
+        </>)}
       </div>
+      )}
 
+      {show('lookup') && (<>
       {/* ================= layer 2: what Lumio picked ================= */}
       {!!feed?.picks?.length && (
         <div style={{ ...ui.card, marginBottom: 14, padding: isMobile ? 14 : 18 }}>
@@ -538,6 +564,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
           </div>
         </div>
       )}
+      </>)}
     </>
   );
 }

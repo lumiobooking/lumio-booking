@@ -461,6 +461,17 @@ export class ContentController {
     return this.svc.saveMonthBrief(user, dto);
   }
 
+  /** The plan sheet — one slot per day, six columns, the team's working document. */
+  @Get('plan-sheet')
+  planSheet(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('days') days?: string) {
+    return this.svc.planSheet(user, from, days);
+  }
+
+  @Post('plan-sheet')
+  savePlanEntry(@CurrentUser() user: AuthenticatedUser, @Body() dto: { day?: string; patch?: Record<string, unknown>; clear?: boolean }) {
+    return this.svc.savePlanEntry(user, dto);
+  }
+
   @Get('weeks-ahead')
   weeksAhead(@CurrentUser() user: AuthenticatedUser, @Query('blocks') blocks?: string) {
     return this.svc.weeksAhead(user, Number(blocks) || 5);

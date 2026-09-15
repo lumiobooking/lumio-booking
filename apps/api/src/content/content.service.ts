@@ -84,7 +84,7 @@ import { buildWeekOutcome, describeOutcome, describeDelta, type WeekOutcome } fr
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
 import { detectIndustry, pickTrade } from './industry-detect';
 import {
-  TRADE_PROFILE_KEY, cleanTradeProfile, playbookOf, feedsOf, profileFingerprint, tradeProfilePrompt, wantsTradeProfile,
+  TRADE_PROFILE_KEY, cleanTradeProfile, playbookOf, feedsOf, profileFingerprint, tradeProfilePrompt, wantsTradeProfile, customScope,
   type TradeProfile,
 } from './trade-profile';
 import type { Playbook } from './industry-playbook';
@@ -2114,7 +2114,11 @@ export class ContentService {
     //
     // Cached rows only — the trend feed pulls once a day on its own clock, so
     // this read costs nothing and never blocks drafting on an external API.
-    const scope = scopeOf(ctx.industry, ctx.region.market);
+    // The business's OWN trend scope when it has a profile of its own — the
+    // feed writes there (trend-feed.service scopeFor), and reading the trade's
+    // shared scope instead is how a shop with its own feed got the trade's
+    // trends in its ideas, identical to every other shop's.
+    const scope = ctx.tradeProfile ? customScope(tenantId, ctx.region.market) : scopeOf(ctx.industry, ctx.region.market);
     const looseTrend = this.prisma as unknown as { trendSnapshot?: { findMany: (a: unknown) => Promise<unknown> } };
     const trendRows = await looseTrend.trendSnapshot?.findMany({
       where: { scope, OR: [{ tenantId: null }, { tenantId }] },
@@ -2190,11 +2194,22 @@ ${langRule}
 9. ${SHOTLIST_RULES}
 10. ${CAPTION_RULES}
 11. ${REASON_RULES}
+12. PHÉP THỬ ĐỔI TÊN: mỗi ý phải dùng ít nhất một chi tiết CHỈ tiệm này có — tên dịch vụ và giá trong bảng giá của tiệm, câu tiệm tự mô tả (làm gì / phục vụ ai / khác biệt), tệp khách, hoặc ngày vắng của chính tiệm. Nếu đổi tên tiệm sang tiệm khác cùng ngành mà ý vẫn đúng y nguyên thì ý đó CHƯA ĐẠT — viết lại. Trong "reason" ghi rõ chi tiết riêng nào đã dùng.
 
 TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
 {"ideas":[{"rank":1,"formatName":"...","title":"...","hook":"...","shotList":"cảnh 1 · cảnh 2 · cảnh 3","caption":"...","hashtags":"#... #...","bestTime":"18:30","reason":"...","trendTitle":"chỉ điền khi phỏng theo một trend trong danh sách, sao chép đúng nguyên văn tiêu đề"}]}`;
 
     const week = await this.weekPlanFor(tenantId, ctx);
+
+    // What this draft is personalised FROM — one line in the log, so "every
+    // shop gets the same ideas" can be checked against facts: a shop with no
+    // declared profile, no services and no bookings HAS nothing of its own
+    // to draw on, and the fix is on the shop's settings, not in the prompt.
+    this.logger.log(
+      `draft basis ${tenantId}: declared=${ctx.identity.declared} services=${ctx.signals.services.length} `
+      + `keywords=${ctx.signals.keywords.length} thin=${ctx.signals.thin} trendScope=${scope} trendItems=${trendItems.length}/${trendRising.length} `
+      + `ownProfile=${Boolean(ctx.tradeProfile)} city=${ctx.city ? 'yes' : 'no'}`,
+    );
 
     const userMsg = [
       // First, and phrased as an override. The model will otherwise reason from

@@ -326,7 +326,16 @@ export class ContentController {
   /** The queue, plus whether each waiting post can still actually be sent. */
   @Get('posts')
   listPosts(@CurrentUser() user: AuthenticatedUser) {
-    return this.publisher.list(user);
+    // Opening the queue wakes the sweeper if the host slept through its
+    // minute timer; the age before that wake-up is what the screen reports.
+    const sweepWas = this.publisher.sweepIfStale();
+    return this.publisher.list(user, sweepWas);
+  }
+
+  /** The text every new post opens with, for this shop. Empty = back to the built block. */
+  @Post('post-footer')
+  saveFooter(@CurrentUser() user: AuthenticatedUser, @Body() dto: { text?: string }) {
+    return this.publisher.saveFooter(user, dto?.text);
   }
 
   /**

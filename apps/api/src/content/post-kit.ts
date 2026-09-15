@@ -70,6 +70,41 @@ export interface PostKit {
   starter: string;
   /** Fields the salon has not filled in, named so the screen can ask for them. */
   missing: ShopFactKey[];
+  /** True when the foot of the post is the shop's own saved text, not the built one. */
+  custom?: boolean;
+  /** The built starter, kept beside a custom one so "back to automatic" can show what it would restore. */
+  autoStarter?: string;
+}
+
+/** The Setting key holding a shop's own footer, when it has written one. */
+export const POST_FOOTER_KEY = 'post_footer';
+export const FOOTER_LIMIT = 1200;
+
+/** What a person typed as the footer, trimmed and capped. Empty means "use the built one". */
+export function cleanFooter(raw: unknown): string {
+  const v = raw && typeof raw === 'object' ? (raw as { text?: unknown }).text : raw;
+  return String(v ?? '').replace(/\r/g, '').trim().slice(0, FOOTER_LIMIT);
+}
+
+/**
+ * The shop's own footer, over the built one.
+ *
+ * The built block is right for a shop that never thinks about it. A shop that
+ * wants "Walk-ins welcome 💅" above the address, or its own hashtag set, edits
+ * the block once and saves it; from then on every new post opens with that
+ * text. The facts check (checkPost) still runs on whatever is posted, so a
+ * saved footer with the wrong phone is caught the same way a typed one is.
+ */
+export function applyFooter(kit: PostKit, footer: string): PostKit {
+  const text = cleanFooter(footer);
+  if (!text) return kit;
+  return {
+    ...kit,
+    contactBlock: text,
+    starter: `\n\n${text}`,
+    custom: true,
+    autoStarter: kit.starter,
+  };
 }
 
 export type ShopFactKey = 'phone' | 'address' | 'instagram' | 'website';

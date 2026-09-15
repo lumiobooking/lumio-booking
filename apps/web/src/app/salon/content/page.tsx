@@ -327,6 +327,8 @@ interface QueuedPost {
   google?: GbpOpts | null;
   /** The saved error is about a permission the connection now has. */
   errorIsStale: boolean;
+  /** Due, not sent, no error: why, in words. Null otherwise. */
+  waiting?: { vi: string; en: string } | null;
   results: { channel: string; id: string | null; url: string | null; error: string | null }[];
   postedAt: string | null;
   createdByName: string | null;
@@ -455,6 +457,8 @@ interface QueuePayload {
   canDeletePosted?: boolean;
   /** What a new post opens with, and the facts a draft is checked against. */
   postKit?: PostKit;
+  /** When the server last swept the queue; stale = it had been asleep. */
+  sweep?: { lastAt: string | null; stale: boolean };
 }
 
 interface ShopFacts {
@@ -466,6 +470,9 @@ interface PostKit {
   contactBlock: string;
   hashtags: string[];
   starter: string;
+  /** The shop saved its own footer; `starter` is that text. */
+  custom?: boolean;
+  autoStarter?: string;
   missing: ('phone' | 'address' | 'instagram' | 'website')[];
   shop: ShopFacts;
 }
@@ -737,6 +744,9 @@ function Inner() {
       caught here rather than by TikTok after the upload finishes. */
   const [ttClip, setTtClip] = useState<{ url: string; sec: number } | null>(null);
   const [mediaInput, setMediaInput] = useState('');
+  /** The footer editor under the caption: null = closed, else the text being edited. */
+  const [footerDraft, setFooterDraft] = useState<string | null>(null);
+  const [footerBusy, setFooterBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   /** "3/5" while a batch of photos is going up, so the wait has a shape. */
   const [uploadStep, setUploadStep] = useState<{ done: number; total: number } | null>(null);
@@ -933,6 +943,18 @@ function Inner() {
       notify('error', e instanceof Error ? e.message : String(e));
     } finally { setBriefBusy(false); }
   }
+  /** The shop's own footer — saved once, under every new post from then on. Empty = back to the built block. */
+  async function saveFooter(text: string) {
+    if (!token) return;
+    setFooterBusy(true);
+    try {
+      await apiFetch('/content/post-footer', { method: 'POST', token, body: { text } });
+      await loadQueue();
+      setFooterDraft(null);
+      notify('success', text.trim() ? (vi ? 'Đã lưu chân bài cho tiệm — bài mới sẽ mở sẵn với mẫu này.' : 'Footer saved — new posts open with it.') : (vi ? 'Đã về chân bài mặc định.' : 'Back to the built footer.'));
+    } catch (e) { notify('error', e instanceof Error ? e.message : String(e)); }
+    finally { setFooterBusy(false); }
+  }
   /** One cell of the sheet, saved as the person leaves it. Throws so the cell can show "not saved". */
   async function savePlanEntry(day: string, patch: PlanPatch) {
     if (!token) return;
@@ -943,6 +965,12 @@ function Inner() {
       if (r.entry) entries[day] = r.entry; else delete entries[day];
       return { ...cur, entries };
     });
+  }
+  /** Empty one day of the sheet. */
+  async function clearPlanEntry(day: string) {
+    if (!token) return;
+    await apiFetch('/content/plan-sheet', { method: 'POST', token, body: { day, clear: true } });
+    setSheet((cur) => { if (!cur) return cur; const entries = { ...cur.entries }; delete entries[day]; return { ...cur, entries }; });
   }
   /**
    * A filled slot becomes a post on its day. The composer opens with the
@@ -1013,7 +1041,12 @@ function Inner() {
           // digits belong to — an owner reading from Vietnam still schedules
           // the Austin evening, not their own.
           scheduledAt: now ? new Date().toISOString() : wallToInstantISO(postDraft.at, postTz || undefined),
-          status,
+          // "Post now" saves a DRAFT and then publishes it. Saved as
+          // 'scheduled' for this minute, the sweeper could take it in the gap
+          // before the publish call — and the press would answer "already
+          // being posted" for a post that was going out fine. publishNow
+          // itself moves the row to scheduled and claims it.
+          status: now ? 'draft' : status,
         },
       });
       if (now && r?.id) {
@@ -2555,6 +2588,7 @@ function Inner() {
                       tiktok: Boolean(queue?.tiktok && !queue.tiktok.needsReconnect),
                     }}
                     onSave={savePlanEntry}
+                    onClear={clearPlanEntry}
                     onSchedule={scheduleFromEntry}
                     onOpenPost={(id) => { setDetailId(id); }}
                   />
@@ -3523,7 +3557,60 @@ function Inner() {
                         }}
                       >＋ {T('Chèn lại thông tin tiệm', 'Re-insert shop details')}</button>
                     )}
+                    {kit && (
+                      <button
+                        onClick={() => setFooterDraft(footerDraft === null ? (kit.custom ? kit.contactBlock : kit.starter.trim()) : null)}
+                        title={T('Sửa phần chân bài (địa chỉ, SĐT, hashtag) và lưu làm mẫu cho tiệm', 'Edit the footer (address, phone, hashtags) and save it as this shop’s template')}
+                        style={{
+                          background: 'transparent', border: `1px solid ${footerDraft !== null ? '#6366f1' : 'var(--c334155)'}`, color: footerDraft !== null ? 'var(--ink-link)' : 'var(--c94a3b8)',
+                          borderRadius: 7, padding: '3px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit',
+                        }}
+                      >✎ {T('Chân bài', 'Footer')}{kit.custom ? ` · ${T('mẫu riêng', 'custom')}` : ''}</button>
+                    )}
                   </div>
+
+                  {/* ---- the footer, as a template ----
+                       The block under every post used to be built and only
+                       built: right for a shop that never thinks about it,
+                       wrong for one that wants "Walk-ins welcome" above the
+                       address or its own hashtags. Edited here once, saved
+                       for the shop; every new post opens with it. */}
+                  {footerDraft !== null && kit && (
+                    <div style={{ marginTop: 8, padding: 10, borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c0f172a)' }}>
+                      <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 6, lineHeight: 1.5 }}>
+                        {T('Mẫu chân bài của tiệm — dòng địa chỉ, SĐT, Instagram, web và hashtag. Lưu một lần, bài mới nào cũng mở sẵn với mẫu này. SĐT/handle lạ vẫn bị hệ thống chặn như thường.',
+                           'The shop’s footer template — address, phone, Instagram, site and hashtags. Save once; every new post opens with it. A foreign phone or handle is still caught.')}
+                      </div>
+                      <textarea
+                        value={footerDraft}
+                        onChange={(e) => setFooterDraft(e.target.value)}
+                        rows={7}
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 8, fontSize: 13, lineHeight: 1.6, fontFamily: 'inherit', border: '1px solid var(--c334155)', background: 'var(--c111827)', color: 'var(--ce2e8f0)', resize: 'vertical' }}
+                      />
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
+                        <button
+                          disabled={footerBusy || !footerDraft.trim()}
+                          onClick={() => saveFooter(footerDraft)}
+                          style={{ ...ui.primaryBtn, minHeight: 34, padding: '0 14px', fontSize: 12.5, opacity: footerBusy || !footerDraft.trim() ? .6 : 1 }}
+                        >💾 {T('Lưu làm mẫu cho tiệm', 'Save as the shop’s template')}</button>
+                        <button
+                          onClick={() => {
+                            const body = postDraft.message.replace(kit.contactBlock, '').trimEnd();
+                            setPostDraft({ ...postDraft, message: `${body}\n\n${footerDraft.trim()}` });
+                          }}
+                          style={{ minHeight: 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ca5b4fc)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}
+                        >↧ {T('Chỉ dùng cho bài này', 'Use on this post only')}</button>
+                        {kit.custom && (
+                          <button
+                            disabled={footerBusy}
+                            onClick={() => saveFooter('')}
+                            style={{ minHeight: 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}
+                          >↺ {T('Về mặc định (tự dựng)', 'Back to the built footer')}</button>
+                        )}
+                        <button onClick={() => setFooterDraft(null)} style={{ marginLeft: 'auto', minHeight: 34, padding: '0 10px', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--c64748b)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Đóng', 'Close')}</button>
+                      </div>
+                    </div>
+                  )}
 
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 11 }}>
                     {(['facebook', 'instagram', 'google', 'tiktok'] as const).map((c) => {
@@ -4959,6 +5046,14 @@ function Inner() {
                         {p.blockers.map((b) => (
                           <div key={b} style={{ fontSize: 12, color: 'var(--cfde68a)', lineHeight: 1.55 }}>⚠︎ {b}</div>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Due, no error, not sent: the reason, because "nothing"
+                        here reads as "the scheduler is broken". */}
+                    {p.waiting && !p.blockers.length && !p.lastError && (
+                      <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.55, color: 'var(--ink-warn)', fontWeight: 600 }}>
+                        ⏳ {vi ? p.waiting.vi : p.waiting.en}
                       </div>
                     )}
 

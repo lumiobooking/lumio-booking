@@ -27,6 +27,8 @@ export interface DetailPost {
   stage?: string | null;
   lastError?: string | null;
   fix?: string | null;
+  /** Due, not sent, no error: why. */
+  waiting?: { vi: string; en: string } | null;
   results?: { channel: string; id: string | null; url: string | null; error: string | null }[];
   postedAt?: string | null;
   writerName?: string | null;
@@ -183,6 +185,12 @@ export function PostDetailModal({
             )}
             {post.status === 'failed' && (post.fix || post.lastError) && (
               <Row k={T('Lỗi', 'Error')} v={<span style={{ color: 'var(--ink-bad)' }}>{post.fix ?? post.lastError}</span>} />
+            )}
+            {post.status === 'scheduled' && post.waiting && (
+              <Row k={T('Đang chờ', 'Waiting')} v={<span style={{ color: 'var(--ink-warn)' }}>⏳ {vi ? post.waiting.vi : post.waiting.en}</span>} />
+            )}
+            {post.status === 'scheduled' && post.lastError && (
+              <Row k={T('Lần thử trước', 'Last try')} v={<span style={{ color: 'var(--ink-bad)' }}>{post.fix ?? post.lastError}</span>} />
             )}
             {(post.writerName || post.designerName) && (
               <Row k={T('Người làm', 'Team')} v={[post.writerName && `✍️ ${post.writerName}`, post.designerName && `🎨 ${post.designerName}`].filter(Boolean).join(' · ')} />

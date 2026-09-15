@@ -408,6 +408,49 @@ export function releasesHold(ev: HoldEvent): boolean {
 
 /** Give up after this many tries rather than retrying a bad post forever. */
 export const MAX_ATTEMPTS = 3;
+
+// ---- never sending the same post to the same network twice ------------------
+
+/** What one network answered on one attempt — the stored shape of `results`. */
+export interface SentResult { channel: string; id: string | null; url: string | null; error: string | null; unsure?: boolean }
+
+/**
+ * The networks an earlier attempt already got through to.
+ *
+ * A post to Facebook + Instagram where Facebook succeeded and Instagram
+ * failed used to be retried WHOLE on the next sweep — and Facebook got it a
+ * second time, in front of every follower. The stored results say which
+ * half went out; a retry sends only the other half. A result with an id and
+ * no error is a live post, whatever the row's status says.
+ */
+export function priorSuccesses(results: unknown): SentResult[] {
+  if (!Array.isArray(results)) return [];
+  const out: SentResult[] = [];
+  for (const r of results as Partial<SentResult>[]) {
+    if (!r || typeof r !== 'object' || typeof r.channel !== 'string') continue;
+    if (typeof r.id === 'string' && r.id && !r.error) out.push({ channel: r.channel, id: r.id, url: r.url ?? null, error: null });
+  }
+  return out;
+}
+
+/** The plans still worth sending: those whose network has no live post yet. */
+export function stillDue<T extends { channel: string }>(plans: T[], prior: SentResult[]): T[] {
+  const done = new Set(prior.map((p) => p.channel));
+  return plans.filter((p) => !done.has(p.channel));
+}
+
+/**
+ * Whether a failed attempt may be retried on its own.
+ *
+ * "Unsure" is the answer a network gives by not answering: the request timed
+ * out, and the post may or may not be live. Retrying that automatically is
+ * how a post goes up twice. It stops here, marked failed with the reason,
+ * and a person looks at the Page before pressing "Post now" — which sends
+ * only the networks that have no recorded post.
+ */
+export function retryable(fresh: SentResult[]): boolean {
+  return !fresh.some((r) => r.error && r.unsure);
+}
 /**
  * How late a post may still go out.
  *
@@ -417,6 +460,51 @@ export const MAX_ATTEMPTS = 3;
  * nothing arrives on the wrong day.
  */
 export const LATE_GRACE_MS = 6 * 60 * 60 * 1000;
+
+/** A sweep older than this means the process that sends posts is not running (asleep, or restarting). */
+export const SWEEP_STALE_MS = 3 * 60 * 1000;
+
+/**
+ * Why a post whose time has come is still sitting there — in words.
+ *
+ * "Scheduled, no error, not posted" was reported as a bug three times and was
+ * three different things: the post was still at the "design" step, the client
+ * had an open request on it, and the server had gone to sleep between sweeps.
+ * None of them wrote anything into lastError because none of them is an error
+ * — they are the scheduler correctly waiting. The screen has to say WHICH, or
+ * every one of them looks like the sweeper is broken.
+ */
+export function whyWaiting(
+  p: Pick<QueuedPost, 'status' | 'scheduledAt' | 'attempts' | 'heldAt' | 'stage'>,
+  now: Date,
+  lastSweepAt: Date | null,
+): { vi: string; en: string } | null {
+  if (p.status !== 'scheduled') return null;
+  const late = now.getTime() - p.scheduledAt.getTime();
+  if (late < 0) return null;
+  if (p.heldAt) {
+    return { vi: 'Tiệm đang có yêu cầu chưa xử lý trên bài này — đóng yêu cầu thì bài mới đăng.', en: 'The shop has an open request on this post — close it and the post goes out.' };
+  }
+  if (p.stage != null && p.stage !== 'ready') {
+    const step = p.stage === 'writing' ? { vi: 'Viết', en: 'Writing' } : { vi: 'Thiết kế', en: 'Design' };
+    return { vi: `Bài còn ở bước "${step.vi}" — chuyển sang "Sẵn sàng" thì máy mới đăng.`, en: `Still at the "${step.en}" step — move it to "Ready" and the scheduler will send it.` };
+  }
+  if (p.attempts >= MAX_ATTEMPTS) {
+    return { vi: 'Đã thử tối đa số lần — bấm "Đăng ngay" để thử lại.', en: 'Out of retries — press "Post now" to try again.' };
+  }
+  if (late > LATE_GRACE_MS) {
+    return { vi: 'Đã quá 6 giờ so với giờ hẹn — lần quét tới sẽ đánh dấu quá hạn. Dời giờ để đăng.', en: 'More than 6 hours past its time — the next sweep marks it expired. Move it to post.' };
+  }
+  const sweepAge = lastSweepAt ? now.getTime() - lastSweepAt.getTime() : null;
+  if (sweepAge === null || sweepAge > SWEEP_STALE_MS) {
+    const mins = sweepAge === null ? null : Math.round(sweepAge / 60_000);
+    return {
+      vi: `Máy quét lịch chưa chạy${mins != null ? ` ${mins} phút` : ''} — server đang ngủ. Mở trang này đã đánh thức nó; bài sẽ đi trong ~1 phút.`,
+      en: `The scheduler has not run${mins != null ? ` for ${mins} min` : ''} — the server was asleep. Opening this page woke it; the post goes out in ~1 minute.`,
+    };
+  }
+  return { vi: 'Đến giờ rồi — sẽ đi trong lần quét tới (≤ 1 phút).', en: 'Due now — goes out on the next sweep (≤ 1 minute).' };
+}
 
 export function dueNow(posts: QueuedPost[], now: Date): { send: QueuedPost[]; expired: QueuedPost[] } {
   const send: QueuedPost[] = [];

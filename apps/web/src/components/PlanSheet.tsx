@@ -2,69 +2,54 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { instantToWall } from '../lib/datetime';
-import { WD_VI, WD_EN, MONTH_VI, MONTH_EN, mondayIndex } from './plan-grid';
+import { WD_VI, WD_EN, MONTH_VI, MONTH_EN, mondayIndex, addDays } from './plan-grid';
 import {
   PILLARS, FORMATS, AIR, pillarOf, formatOf, emptyEntry, entryHasContent, entryReady, sheetWeeks, sheetProgress,
   type PlanEntry, type PlanPatch, type Air, type SheetDay,
 } from './plan-sheet';
 
 /**
- * THE PLAN SHEET — the agency's Google Sheet, on the salon's own screen.
+ * THE PLAN SHEET — a month of posts, one card per day, one editor at a time.
  *
- * WHAT IT COPIES, AND WHY
+ * WHAT WAS WRONG WITH VERSION ONE
  *
- * The team planned every client in a spreadsheet: one band per week, one
- * column per day, and under each day the same six rows — Pillar, Topic,
- * Detail, Link pic, Air, Format. It worked because the whole month is
- * visible at once and every cell is typed straight into; there is no form
- * to open and no dialog to close. This keeps that: the same bands, the same
- * rows, the same colours for the pillar and format chips, typed in place and
- * saved as you leave the cell.
+ * It copied the agency's Google Sheet literally: six input rows under each
+ * of seven days, five weeks deep — two hundred and ten form fields on one
+ * screen, every one bordered and captioned, empty or not. A spreadsheet
+ * gets away with this because an empty cell is silent; a bordered input with
+ * a placeholder is not. The eye had no way to tell a planned day from a
+ * blank one, the caption boxes made each week six hundred pixels tall, and
+ * the shop — who reads this to see what its month looks like — was shown a
+ * form.
  *
- * WHAT IT ADDS
+ * WHAT THIS IS INSTEAD
  *
- * The sheet ended at "Format". Here a filled slot has one more row: a button
- * that turns it into a scheduled post on that day, with the caption, the
- * networks and the date already filled — and once it has, the row shows the
- * post's state instead (scheduled / posted / failed), so the sheet is also
- * the record of what happened to the plan.
+ * Reading and writing are separated. The grid READS: a card per day showing
+ * only what has been decided — the pillar as a coloured edge, the topic, the
+ * networks, the format, and what happened to it (drafted / scheduled /
+ * posted). An empty day is a quiet dashed cell with a plus. Writing happens
+ * in a panel that slides in from the right for ONE day, wide enough to write
+ * a caption in, with arrows to the day before and after so a week can be
+ * planned without touching the grid. The shop sees the same grid with no
+ * inputs at all and opens a card to read it.
  *
- * ON A PHONE
- *
- * Seven columns do not fit a phone. The same slots stack as cards, one per
- * day, in the same order, with the same rows — nothing is hidden on mobile,
- * it is only laid out one day at a time.
+ * Dates are the salon's calendar days; times on status chips are salon time.
  */
 
 export interface SheetPost { id: string; status: string; scheduledAt: string; stage?: string | null }
 
-const STATUS_TONE: Record<string, { bg: string; ink: string; vi: string; en: string }> = {
-  posted: { bg: 'rgba(34,197,94,.14)', ink: 'var(--ink-good)', vi: 'Đã đăng', en: 'Posted' },
-  failed: { bg: 'rgba(239,68,68,.14)', ink: 'var(--ink-bad)', vi: 'Lỗi đăng', en: 'Failed' },
-  publishing: { bg: 'rgba(56,189,248,.14)', ink: 'var(--ink-sky)', vi: 'Đang đăng', en: 'Publishing' },
-  scheduled: { bg: 'rgba(99,102,241,.14)', ink: 'var(--ink-link)', vi: 'Đã lên lịch', en: 'Scheduled' },
-  draft: { bg: 'rgba(148,163,184,.14)', ink: 'var(--c94a3b8)', vi: 'Bài nháp', en: 'Draft' },
+const STATUS: Record<string, { bg: string; ink: string; icon: string; vi: string; en: string }> = {
+  posted: { bg: 'rgba(34,197,94,.14)', ink: 'var(--ink-good)', icon: '✅', vi: 'Đã đăng', en: 'Posted' },
+  failed: { bg: 'rgba(239,68,68,.14)', ink: 'var(--ink-bad)', icon: '⚠️', vi: 'Lỗi đăng', en: 'Failed' },
+  publishing: { bg: 'rgba(56,189,248,.14)', ink: 'var(--ink-sky)', icon: '⏫', vi: 'Đang đăng', en: 'Publishing' },
+  scheduled: { bg: 'rgba(99,102,241,.14)', ink: 'var(--ink-link)', icon: '🗓️', vi: 'Đã lên lịch', en: 'Scheduled' },
+  draft: { bg: 'rgba(148,163,184,.14)', ink: 'var(--c94a3b8)', icon: '📝', vi: 'Bài nháp', en: 'Draft post' },
 };
-
-const ROW_LABELS: { key: 'pillar' | 'topic' | 'detail' | 'mediaUrl' | 'air' | 'format' | 'status'; vi: string; en: string }[] = [
-  { key: 'pillar', vi: 'Pillar', en: 'Pillar' },
-  { key: 'topic', vi: 'Chủ đề', en: 'Topic' },
-  { key: 'detail', vi: 'Nội dung', en: 'Detail' },
-  { key: 'mediaUrl', vi: 'Link ảnh', en: 'Link pic' },
-  { key: 'air', vi: 'Kênh', en: 'Air' },
-  { key: 'format', vi: 'Định dạng', en: 'Format' },
-  { key: 'status', vi: 'Đăng', en: 'Post' },
-];
-
-const field: CSSProperties = {
-  width: '100%', boxSizing: 'border-box', minHeight: 32, padding: '6px 8px', borderRadius: 7, fontSize: 12.5, fontFamily: 'inherit',
-  border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', outline: 'none',
-};
+const FORMAT_ICON: Record<string, string> = { poster: '🖼', album: '🎞', video: '▶', story: '📱' };
 
 export function PlanSheet({
-  from, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onSchedule, onOpenPost, connected,
+  from, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected,
 }: {
-  /** The Monday the bands start on, salon-local. */
   from: string;
   today: string;
   tz: string;
@@ -74,7 +59,7 @@ export function PlanSheet({
   canEdit: boolean;
   isMobile: boolean;
   onSave: (day: string, patch: PlanPatch) => Promise<void>;
-  /** Turn the slot into a post on that day. */
+  onClear: (day: string) => Promise<void>;
   onSchedule: (entry: PlanEntry) => void;
   onOpenPost: (id: string) => void;
   connected: Record<Air, boolean>;
@@ -82,300 +67,366 @@ export function PlanSheet({
   const T = (a: string, b: string) => (vi ? a : b);
   const weeks = useMemo(() => sheetWeeks(from, today), [from, today]);
   const postById = useMemo(() => new Map(posts.map((p) => [p.id, p])), [posts]);
-
-  // The cells are typed into directly; what is typed lives here until the
-  // cell is left, then goes to the server. A save that fails keeps the text
-  // on screen and marks the day, so nothing typed is lost to a bad connection.
-  const [local, setLocal] = useState<Record<string, PlanEntry>>(entries);
-  // The day a person is typing in right now. A save's reply for THAT day must
-  // not land on top of the cell they moved to: the topic's save returns while
-  // the detail is half-typed, and the server's copy of the detail is empty.
-  const activeRef = useRef<string | null>(null);
-  useEffect(() => {
-    setLocal((cur) => {
-      const next = { ...cur };
-      for (const [day, e] of Object.entries(entries)) if (day !== activeRef.current) next[day] = e;
-      return next;
-    });
-  }, [entries]);
-  const focusOn = (day: string) => { activeRef.current = day; };
-  const focusOff = (day: string) => { if (activeRef.current === day) activeRef.current = null; };
-  const [busy, setBusy] = useState<Record<string, 'saving' | 'saved' | 'error'>>({});
-  const [focusDetail, setFocusDetail] = useState<string | null>(null);
-
-  const get = (day: string): PlanEntry => local[day] ?? entries[day] ?? emptyEntry(day);
-  const set = (day: string, patch: PlanPatch) => setLocal((cur) => ({ ...cur, [day]: { ...(cur[day] ?? entries[day] ?? emptyEntry(day)), ...patch } }));
-  const commit = async (day: string, patch: PlanPatch) => {
-    if (!canEdit) return;
-    // Nothing changed against what the server has: no round trip.
-    const base = entries[day] ?? emptyEntry(day);
-    const changed = (Object.keys(patch) as (keyof PlanPatch)[]).some((k) => JSON.stringify(patch[k]) !== JSON.stringify(base[k]));
-    if (!changed) return;
-    setBusy((b) => ({ ...b, [day]: 'saving' }));
-    try {
-      await onSave(day, patch);
-      setBusy((b) => ({ ...b, [day]: 'saved' }));
-      setTimeout(() => setBusy((b) => { if (b[day] !== 'saved') return b; const n = { ...b }; delete n[day]; return n; }), 1500);
-    } catch {
-      setBusy((b) => ({ ...b, [day]: 'error' }));
-    }
-  };
-  const change = (day: string, patch: PlanPatch) => { set(day, patch); void commit(day, patch); };
-
   const progress = sheetProgress(weeks, entries);
-  const dateLabel = (key: string) => {
+  const posted = Object.values(entries).filter((e) => e.postId && postById.get(e.postId)?.status === 'posted').length;
+
+  /** The day open in the panel. */
+  const [open, setOpen] = useState<string | null>(null);
+  const dayOf = (key: string): SheetDay | null => { for (const w of weeks) for (const d of w) if (d.key === key) return d; return null; };
+  const label = (key: string) => {
     const [, m, d] = key.split('-').map(Number);
     return { wd: (vi ? WD_VI : WD_EN)[mondayIndex(key)], d, m: (vi ? MONTH_VI : MONTH_EN)[m - 1] };
   };
+  const postOf = (e: PlanEntry | undefined) => (e?.postId ? postById.get(e.postId) ?? null : null);
 
-  // ---- one cell per row ------------------------------------------------------
+  // ---- the card -------------------------------------------------------------
 
-  const pillarCell = (day: string, e: PlanEntry, dim: boolean) => {
-    const p = pillarOf(e.pillar);
+  const card = (d: SheetDay) => {
+    const e = entries[d.key];
+    const has = entryHasContent(e);
+    const p = pillarOf(e?.pillar ?? '');
+    const post = postOf(e);
+    const L = label(d.key);
+    const dim = d.past || !d.inWindow;
+    const selected = open === d.key;
+    const clickable = canEdit ? (d.inWindow || has) : has;
+    const st = post ? STATUS[post.status] ?? STATUS.draft : null;
+    const hm = post ? instantToWall(post.scheduledAt, tz).slice(11, 16) : '';
+
     return (
-      <select
-        value={e.pillar}
-        disabled={!canEdit}
-        onFocus={() => focusOn(day)}
-        onBlur={() => focusOff(day)}
-        onChange={(ev) => change(day, { pillar: ev.target.value as PlanEntry['pillar'] })}
-        style={{ ...field, fontWeight: 700, background: p ? p.bg : 'var(--c0f172a)', color: p ? p.ink : 'var(--c94a3b8)', borderColor: p ? p.bg : 'var(--c334155)', opacity: dim ? .6 : 1, cursor: canEdit ? 'pointer' : 'default' }}
-      >
-        <option value="">{T('— chọn —', '— pick —')}</option>
-        {PILLARS.map((x) => <option key={x.id} value={x.id}>{vi ? x.vi : x.en}</option>)}
-      </select>
-    );
-  };
-
-  const topicCell = (day: string, e: PlanEntry) => (
-    <input
-      value={e.topic}
-      readOnly={!canEdit}
-      placeholder={T('Chủ đề bài…', 'Topic…')}
-      onFocus={() => focusOn(day)}
-      onChange={(ev) => set(day, { topic: ev.target.value })}
-      onBlur={() => { focusOff(day); void commit(day, { topic: get(day).topic }); }}
-      style={{ ...field, fontWeight: 700 }}
-    />
-  );
-
-  const detailCell = (day: string, e: PlanEntry) => (
-    <textarea
-      value={e.detail}
-      readOnly={!canEdit}
-      rows={focusDetail === day ? 12 : isMobile ? 4 : 6}
-      placeholder={T('Caption / nội dung chi tiết…', 'Caption / detail…')}
-      onFocus={() => { focusOn(day); setFocusDetail(day); }}
-      onChange={(ev) => set(day, { detail: ev.target.value })}
-      onBlur={() => { focusOff(day); setFocusDetail(null); void commit(day, { detail: get(day).detail }); }}
-      style={{ ...field, resize: 'vertical', lineHeight: 1.45, fontSize: 12, transition: 'height .1s' }}
-    />
-  );
-
-  const mediaCell = (day: string, e: PlanEntry) => {
-    const isUrl = /^https?:\/\//i.test(e.mediaUrl);
-    return (
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        <input
-          value={e.mediaUrl}
-          readOnly={!canEdit}
-          placeholder={T('Dán link ảnh / Drive…', 'Paste a picture / Drive link…')}
-          onFocus={() => focusOn(day)}
-          onChange={(ev) => set(day, { mediaUrl: ev.target.value })}
-          onBlur={() => { focusOff(day); void commit(day, { mediaUrl: get(day).mediaUrl }); }}
-          style={{ ...field, fontSize: 12, minWidth: 0 }}
-        />
-        {isUrl && (
-          <a href={e.mediaUrl} target="_blank" rel="noreferrer" title={T('Mở link', 'Open link')} style={{ flex: '0 0 auto', width: 30, height: 32, borderRadius: 7, border: '1px solid var(--c334155)', display: 'grid', placeItems: 'center', color: 'var(--ink-link)', textDecoration: 'none', fontSize: 14 }}>🔗</a>
-        )}
-      </div>
-    );
-  };
-
-  const airCell = (day: string, e: PlanEntry) => (
-    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', minHeight: 32, alignItems: 'center' }}>
-      {AIR.map((a) => {
-        const on = e.air.includes(a.id);
-        const off = !connected[a.id];
-        return (
-          <button
-            key={a.id}
-            type="button"
-            disabled={!canEdit}
-            title={off ? T(`${a.short}: tiệm chưa kết nối`, `${a.short}: not connected`) : a.id}
-            onClick={() => change(day, { air: on ? e.air.filter((x) => x !== a.id) : [...e.air, a.id] })}
-            style={{
-              padding: '3px 8px', borderRadius: 999, fontSize: 11, fontWeight: 800, fontFamily: 'inherit', cursor: canEdit ? 'pointer' : 'default', lineHeight: 1.4,
-              border: `1px solid ${on ? a.bg : 'var(--c334155)'}`, background: on ? a.bg : 'transparent', color: on ? '#fff' : 'var(--c64748b)',
-              textDecoration: off && on ? 'line-through' : 'none', opacity: off && !on ? .55 : 1,
-            }}
-          >{a.short}</button>
-        );
-      })}
-    </div>
-  );
-
-  const formatCell = (day: string, e: PlanEntry) => {
-    const f = formatOf(e.format);
-    return (
-      <select
-        value={e.format}
-        disabled={!canEdit}
-        onFocus={() => focusOn(day)}
-        onBlur={() => focusOff(day)}
-        onChange={(ev) => change(day, { format: ev.target.value as PlanEntry['format'] })}
-        style={{ ...field, fontWeight: 700, background: f ? f.bg : 'var(--c0f172a)', color: f ? f.ink : 'var(--c94a3b8)', borderColor: f ? f.bg : 'var(--c334155)', cursor: canEdit ? 'pointer' : 'default' }}
-      >
-        <option value="">{T('— định dạng —', '— format —')}</option>
-        {FORMATS.map((x) => <option key={x.id} value={x.id}>{vi ? x.vi : x.en}</option>)}
-      </select>
-    );
-  };
-
-  const statusCell = (d: SheetDay, e: PlanEntry) => {
-    const post = e.postId ? postById.get(e.postId) : null;
-    if (post) {
-      const tone = STATUS_TONE[post.status] ?? STATUS_TONE.draft;
-      const hm = instantToWall(post.scheduledAt, tz).slice(11, 16);
-      return (
-        <button
-          type="button"
-          onClick={() => onOpenPost(post.id)}
-          title={T('Xem bài', 'Open the post')}
-          style={{ width: '100%', minHeight: 32, borderRadius: 7, border: `1px solid ${tone.ink}`, background: tone.bg, color: tone.ink, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-        >
-          <span>{post.status === 'posted' ? '✅' : post.status === 'failed' ? '⚠️' : '🗓️'}</span>
-          <span>{vi ? tone.vi : tone.en} · {hm}</span>
-        </button>
-      );
-    }
-    if (!canEdit || d.past) {
-      return <div style={{ minHeight: 32, display: 'flex', alignItems: 'center', fontSize: 11.5, color: 'var(--c64748b)' }}>{e.postId ? T('Bài đã xoá', 'Post deleted') : d.past ? '' : T('Chưa lên lịch', 'Not scheduled')}</div>;
-    }
-    const ready = entryReady(e);
-    return (
-      <button
-        type="button"
-        disabled={!ready}
-        onClick={() => onSchedule(e)}
-        title={ready ? T('Mở khung soạn với nội dung và ngày này', 'Open the composer with this content and day') : T('Cần chủ đề hoặc nội dung, và ít nhất một kênh', 'Needs a topic or detail, and at least one network')}
+      <div
+        key={d.key}
+        role={clickable ? 'button' : undefined}
+        tabIndex={clickable ? 0 : -1}
+        onClick={() => clickable && setOpen(d.key)}
+        onKeyDown={(ev) => { if (clickable && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); setOpen(d.key); } }}
         style={{
-          width: '100%', minHeight: 32, borderRadius: 7, fontSize: 12, fontWeight: 800, fontFamily: 'inherit', cursor: ready ? 'pointer' : 'default',
-          border: `1px solid ${ready ? '#6366f1' : 'var(--c334155)'}`, background: ready ? 'rgba(99,102,241,.16)' : 'transparent', color: ready ? 'var(--ink-link)' : 'var(--c64748b)',
+          position: 'relative', minHeight: isMobile ? 0 : 132, borderRadius: 12, padding: '9px 10px 9px 12px',
+          background: has ? 'var(--c0f172a)' : 'transparent',
+          border: `1px ${has ? 'solid' : 'dashed'} ${selected ? '#6366f1' : d.today && !has ? 'rgba(99,102,241,.6)' : 'var(--c334155)'}`,
+          boxShadow: selected ? '0 0 0 2px rgba(99,102,241,.35)' : 'none',
+          opacity: dim && !has ? .35 : dim ? .7 : 1,
+          cursor: clickable ? 'pointer' : 'default',
+          display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, outline: 'none',
+          transition: 'border-color .12s, box-shadow .12s',
         }}
       >
-        {e.postId ? T('↻ Lên lịch lại', '↻ Schedule again') : ready ? T('→ Lên lịch đăng', '→ Schedule') : T('Chưa đủ để đăng', 'Not enough yet')}
-      </button>
-    );
-  };
+        {/* the pillar, as a coloured edge — the one signal the sheet's colours carried */}
+        {p && <span style={{ position: 'absolute', left: 0, top: 10, bottom: 10, width: 4, borderRadius: 4, background: p.bg }} />}
 
-  const cellFor = (key: typeof ROW_LABELS[number]['key'], d: SheetDay, e: PlanEntry) => {
-    switch (key) {
-      case 'pillar': return pillarCell(d.key, e, d.past);
-      case 'topic': return topicCell(d.key, e);
-      case 'detail': return detailCell(d.key, e);
-      case 'mediaUrl': return mediaCell(d.key, e);
-      case 'air': return airCell(d.key, e);
-      case 'format': return formatCell(d.key, e);
-      default: return statusCell(d, e);
-    }
-  };
-
-  const dayHead = (d: SheetDay, wide: boolean) => {
-    const L = dateLabel(d.key);
-    const b = busy[d.key];
-    return (
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, padding: wide ? '6px 8px' : 0, borderRadius: 8, background: d.today ? 'rgba(99,102,241,.14)' : wide ? 'var(--c1e293b)' : 'transparent', minWidth: 0 }}>
-        <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: d.today ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>{L.wd}</span>
-        <span style={{ fontSize: 15, fontWeight: 800, color: d.today ? 'var(--ink-link)' : 'var(--cf1f5f9)', fontVariantNumeric: 'tabular-nums' }}>{L.d}</span>
-        <span style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{L.m}</span>
-        {d.today && <span style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--ink-link)', textTransform: 'uppercase', letterSpacing: .4 }}>{T('hôm nay', 'today')}</span>}
-        <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, color: b === 'error' ? 'var(--ink-bad)' : b === 'saved' ? 'var(--ink-good)' : 'var(--c64748b)' }}>
-          {b === 'saving' ? '…' : b === 'saved' ? '✓' : b === 'error' ? T('lỗi lưu', 'not saved') : ''}
-        </span>
-      </div>
-    );
-  };
-
-  // ---- the bands -------------------------------------------------------------
-
-  const weekTitle = (row: SheetDay[]) => {
-    const a = dateLabel(row[0].key), z = dateLabel(row[6].key);
-    return `${a.d} ${a.m} – ${z.d} ${z.m}`;
-  };
-
-  const wide = !isMobile;
-
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>🗓️ {T('Plan 30 ngày', '30-day plan')}</div>
-        <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
-          {T(`${progress.filled}/${progress.days} ngày đã có nội dung · ${progress.scheduled} đã lên lịch`, `${progress.filled}/${progress.days} days planned · ${progress.scheduled} scheduled`)}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: d.today ? 'var(--ink-link)' : 'var(--c64748b)' }}>{L.wd}</span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: d.today ? 'var(--ink-link)' : has ? 'var(--cf1f5f9)' : 'var(--c94a3b8)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{L.d}</span>
+          {d.today && <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--ink-link)', textTransform: 'uppercase', letterSpacing: .4, marginLeft: 2 }}>{T('hôm nay', 'today')}</span>}
+          {p && <span style={{ marginLeft: 'auto', fontSize: 9.5, fontWeight: 800, letterSpacing: .4, textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4, background: p.bg, color: p.ink, whiteSpace: 'nowrap' }}>{vi ? p.vi : p.en}</span>}
         </div>
-        {canEdit && (
-          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginLeft: 'auto' }}>
-            {T('Gõ thẳng vào ô · tự lưu khi rời ô · xong thì bấm "Lên lịch đăng"', 'Type into the cells · saved as you leave · then press "Schedule"')}
+
+        {has ? (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.35, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', wordBreak: 'break-word' }}>
+              {e.topic || <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}>{T('(chưa có chủ đề)', '(no topic yet)')}</span>}
+            </div>
+            {e.detail && !isMobile && (
+              <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', wordBreak: 'break-word' }}>{e.detail}</div>
+            )}
+            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', minWidth: 0 }}>
+              {e.format && <span title={formatOf(e.format)?.[vi ? 'vi' : 'en']} style={{ fontSize: 11, color: 'var(--c94a3b8)', fontWeight: 700 }}>{FORMAT_ICON[e.format]} {formatOf(e.format)?.[vi ? 'vi' : 'en']}</span>}
+              <span style={{ display: 'inline-flex', gap: 3 }}>
+                {AIR.filter((a) => e.air.includes(a.id)).map((a) => <span key={a.id} title={a.id} style={{ width: 9, height: 9, borderRadius: 5, background: a.bg, display: 'inline-block', border: '1px solid rgba(255,255,255,.25)' }} />)}
+              </span>
+              {e.mediaUrl && <span title={T('Có link ảnh', 'Has a media link')} style={{ fontSize: 11 }}>🔗</span>}
+              {st ? (
+                <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 800, padding: '2px 7px', borderRadius: 999, background: st.bg, color: st.ink, whiteSpace: 'nowrap' }}>{st.icon} {post!.status === 'scheduled' || post!.status === 'posted' ? hm : (vi ? st.vi : st.en)}</span>
+              ) : e.postId ? (
+                <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--c64748b)' }}>{T('bài đã xoá', 'post deleted')}</span>
+              ) : entryReady(e) ? (
+                <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, color: 'var(--ink-warn)', whiteSpace: 'nowrap' }}>● {T('chờ lên lịch', 'to schedule')}</span>
+              ) : (
+                <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>○ {T('đang soạn', 'drafting')}</span>
+              )}
+            </div>
+          </>
+        ) : (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 28 : 60 }}>
+            {canEdit && d.inWindow ? (
+              <span style={{ width: 28, height: 28, borderRadius: 14, border: '1px solid var(--c334155)', display: 'grid', placeItems: 'center', color: 'var(--c64748b)', fontSize: 17, lineHeight: 1 }}>+</span>
+            ) : (
+              <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>{d.past ? '' : T('trống', 'empty')}</span>
+            )}
           </div>
         )}
       </div>
+    );
+  };
 
-      <div style={{ display: 'grid', gap: 16 }}>
+  // ---- header + bands ----------------------------------------------------------
+
+  const weekTitle = (row: SheetDay[]) => { const a = label(row[0].key), z = label(row[6].key); return `${a.d} ${a.m} – ${z.d} ${z.m}`; };
+  const pct = progress.days ? Math.round((progress.filled / progress.days) * 100) : 0;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>🗓️ {T('Plan 30 ngày', '30-day plan')}</div>
+        {/* one bar says how far the month is planned; three numbers say what happened to it */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <div style={{ width: isMobile ? 90 : 140, height: 6, borderRadius: 3, background: 'var(--c1e293b)', overflow: 'hidden' }}>
+            <div style={{ width: `${pct}%`, height: '100%', background: '#6366f1', borderRadius: 3 }} />
+          </div>
+          <span style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>
+            <b style={{ color: 'var(--cf1f5f9)' }}>{progress.filled}/{progress.days}</b> {T('ngày có bài', 'days planned')} · <b style={{ color: 'var(--ink-link)' }}>{progress.scheduled}</b> {T('đã lên lịch', 'scheduled')} · <b style={{ color: 'var(--ink-good)' }}>{posted}</b> {T('đã đăng', 'posted')}
+          </span>
+        </div>
+        {!isMobile && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {PILLARS.map((p) => (
+              <span key={p.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--c94a3b8)' }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: p.bg, display: 'inline-block' }} />{vi ? p.vi : p.en}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      {canEdit && (
+        <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10 }}>
+          {T('Bấm vào ngày để soạn · ← → chuyển ngày · tự lưu · xong thì "Lên lịch đăng"', 'Tap a day to write · ← → moves days · saves itself · then "Schedule"')}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gap: 12 }}>
         {weeks.map((row, wi) => {
-          const inWindow = row.filter((d) => d.inWindow);
-          if (!inWindow.length) return null;
+          const shown = row.filter((d) => d.inWindow || entryHasContent(entries[d.key]));
+          if (!shown.length) return null;
+          const filled = row.filter((d) => entryHasContent(entries[d.key])).length;
           return (
-            <div key={wi} style={{ borderRadius: 12, border: '1px solid var(--c334155)', background: 'var(--c111827)', overflow: 'hidden' }}>
-              <div style={{ padding: '7px 12px', fontSize: 11.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--c94a3b8)', borderBottom: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
-                {T(`Tuần ${wi + 1}`, `Week ${wi + 1}`)} · {weekTitle(row)}
+            <div key={wi}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '0 2px 6px' }}>
+                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--c94a3b8)' }}>{T(`Tuần ${wi + 1}`, `Week ${wi + 1}`)}</span>
+                <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{weekTitle(row)}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: filled === 7 ? 'var(--ink-good)' : 'var(--c64748b)' }}>{filled}/7</span>
               </div>
-
-              {wide ? (
-                <div style={{ overflowX: 'auto' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '68px repeat(7, minmax(150px, 1fr))', gap: 0, minWidth: 1120 }}>
-                    <div style={{ padding: 6, borderBottom: '1px solid var(--line)' }} />
-                    {row.map((d) => (
-                      <div key={d.key} style={{ padding: 6, borderBottom: '1px solid var(--line)', borderLeft: '1px solid var(--line)', opacity: d.inWindow ? 1 : .45 }}>{dayHead(d, true)}</div>
-                    ))}
-                    {ROW_LABELS.map((r) => (
-                      <div key={r.key} style={{ display: 'contents' }}>
-                        <div style={{ padding: '8px 8px', fontSize: 11, fontWeight: 800, color: 'var(--c64748b)', textTransform: 'uppercase', letterSpacing: .4, borderBottom: '1px solid var(--line)', display: 'flex', alignItems: r.key === 'detail' ? 'flex-start' : 'center' }}>
-                          {vi ? r.vi : r.en}
-                        </div>
-                        {row.map((d) => (
-                          <div key={d.key} style={{ padding: 5, borderBottom: '1px solid var(--line)', borderLeft: '1px solid var(--line)', background: d.today ? 'rgba(99,102,241,.05)' : 'transparent', opacity: d.inWindow ? 1 : .45, minWidth: 0 }}>
-                            {d.inWindow || entryHasContent(get(d.key)) ? cellFor(r.key, d, get(d.key)) : null}
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              {isMobile ? (
+                <div style={{ display: 'grid', gap: 6 }}>{shown.map(card)}</div>
               ) : (
-                <div style={{ display: 'grid', gap: 10, padding: 10 }}>
-                  {inWindow.map((d) => {
-                    const e = get(d.key);
-                    return (
-                      <div key={d.key} style={{ borderRadius: 10, border: `1px solid ${d.today ? '#6366f1' : 'var(--c334155)'}`, background: 'var(--c0f172a)', padding: 10, display: 'grid', gap: 7 }}>
-                        {dayHead(d, false)}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                          {pillarCell(d.key, e, d.past)}
-                          {formatCell(d.key, e)}
-                        </div>
-                        {topicCell(d.key, e)}
-                        {detailCell(d.key, e)}
-                        {mediaCell(d.key, e)}
-                        {airCell(d.key, e)}
-                        {statusCell(d, e)}
-                      </div>
-                    );
-                  })}
-                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8 }}>{row.map(card)}</div>
               )}
             </div>
           );
         })}
       </div>
+
+      {open && dayOf(open) && (
+        <DayPanel
+          key={open}
+          day={dayOf(open)!}
+          entry={entries[open] ?? emptyEntry(open)}
+          post={postOf(entries[open])}
+          tz={tz}
+          vi={vi}
+          canEdit={canEdit}
+          isMobile={isMobile}
+          connected={connected}
+          onSave={onSave}
+          onClear={async (d) => { await onClear(d); setOpen(null); }}
+          onSchedule={onSchedule}
+          onOpenPost={onOpenPost}
+          onClose={() => setOpen(null)}
+          onMove={(n) => { const k = addDays(open, n); if (dayOf(k)?.inWindow || entryHasContent(entries[k])) setOpen(k); }}
+        />
+      )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The panel: one day, every field, wide enough to write in
+// ---------------------------------------------------------------------------
+
+const field: CSSProperties = {
+  width: '100%', boxSizing: 'border-box', minHeight: 38, padding: '9px 11px', borderRadius: 9, fontSize: 13.5, fontFamily: 'inherit',
+  border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', outline: 'none', lineHeight: 1.5,
+};
+const labelStyle: CSSProperties = { fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--c94a3b8)', marginBottom: 6 };
+
+function DayPanel({
+  day, entry, post, tz, vi, canEdit, isMobile, connected, onSave, onClear, onSchedule, onOpenPost, onClose, onMove,
+}: {
+  day: SheetDay; entry: PlanEntry; post: SheetPost | null; tz: string; vi: boolean; canEdit: boolean; isMobile: boolean;
+  connected: Record<Air, boolean>;
+  onSave: (day: string, patch: PlanPatch) => Promise<void>;
+  onClear: (day: string) => Promise<void>;
+  onSchedule: (entry: PlanEntry) => void;
+  onOpenPost: (id: string) => void;
+  onClose: () => void;
+  onMove: (n: number) => void;
+}) {
+  const T = (a: string, b: string) => (vi ? a : b);
+  const [local, setLocal] = useState<PlanEntry>(entry);
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  // What is typed lives here; the server copy arrives as `entry`. A reply
+  // for THIS day must not land on a field being typed in.
+  const typingRef = useRef(false);
+  useEffect(() => { if (!typingRef.current) setLocal(entry); }, [entry]);
+  const localRef = useRef(local); localRef.current = local;
+  const entryRef = useRef(entry); entryRef.current = entry;
+
+  const commit = async (patch: PlanPatch) => {
+    if (!canEdit) return;
+    const base = entryRef.current;
+    const changed = (Object.keys(patch) as (keyof PlanPatch)[]).some((k) => JSON.stringify(patch[k]) !== JSON.stringify(base[k]));
+    if (!changed) return;
+    setState('saving');
+    try { await onSave(day.key, patch); setState('saved'); setTimeout(() => setState((s) => (s === 'saved' ? 'idle' : s)), 1500); }
+    catch { setState('error'); }
+  };
+  const set = (patch: PlanPatch) => setLocal((c) => ({ ...c, ...patch }));
+  const change = (patch: PlanPatch) => { set(patch); void commit(patch); };
+  /** Text fields save when left; leaving the panel or the day saves them too. */
+  const flush = () => {
+    const l = localRef.current;
+    void commit({ topic: l.topic, detail: l.detail, mediaUrl: l.mediaUrl });
+  };
+
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') { flush(); onClose(); }
+      const tag = (ev.target as HTMLElement | null)?.tagName;
+      if ((ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') && tag !== 'INPUT' && tag !== 'TEXTAREA') { flush(); onMove(ev.key === 'ArrowLeft' ? -1 : 1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day.key]);
+
+  const L = (() => { const [, m, d] = day.key.split('-').map(Number); return { wd: (vi ? WD_VI : WD_EN)[mondayIndex(day.key)], d, m: (vi ? MONTH_VI : MONTH_EN)[m - 1] }; })();
+  const st = post ? STATUS[post.status] ?? STATUS.draft : null;
+  const ready = entryReady(local);
+  const missing = [!local.topic && !local.detail ? T('chủ đề hoặc nội dung', 'a topic or detail') : '', !local.air.length ? T('ít nhất một kênh', 'at least one network') : ''].filter(Boolean);
+
+  const chip = (on: boolean, bg: string, ink: string, label: string, onClick?: () => void, extra: CSSProperties = {}) => (
+    <button
+      type="button"
+      disabled={!canEdit || !onClick}
+      onClick={onClick}
+      style={{
+        padding: '6px 11px', borderRadius: 999, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: canEdit && onClick ? 'pointer' : 'default', lineHeight: 1.3,
+        border: `1px solid ${on ? bg : 'var(--c334155)'}`, background: on ? bg : 'transparent', color: on ? ink : 'var(--c94a3b8)', ...extra,
+      }}
+    >{label}</button>
+  );
+
+  const panel: CSSProperties = isMobile
+    ? { position: 'fixed', left: 0, right: 0, bottom: 0, top: 'max(48px, 8vh)', zIndex: 60, borderRadius: '16px 16px 0 0' }
+    : { position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(460px, 92vw)', zIndex: 60, borderLeft: '1px solid var(--c334155)' };
+
+  return (
+    <>
+      <div onClick={() => { flush(); onClose(); }} style={{ position: 'fixed', inset: 0, zIndex: 59, background: 'rgba(2,6,23,.55)', backdropFilter: 'blur(2px)' }} />
+      <div style={{ ...panel, background: 'var(--c111827)', boxShadow: '-12px 0 40px rgba(0,0,0,.35)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* header: the day, the arrows, the save state, the way out */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
+          <button type="button" onClick={() => { flush(); onMove(-1); }} title={T('Ngày trước (←)', 'Previous day (←)')} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>‹</button>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: day.today ? 'var(--ink-link)' : 'var(--cf1f5f9)' }}>
+              {L.wd} {L.d} {L.m}{day.today ? ` · ${T('hôm nay', 'today')}` : day.past ? ` · ${T('đã qua', 'past')}` : ''}
+            </div>
+            <div style={{ fontSize: 11, color: state === 'error' ? 'var(--ink-bad)' : state === 'saved' ? 'var(--ink-good)' : 'var(--c64748b)' }}>
+              {!canEdit ? T('Kế hoạch của tiệm — chỉ xem', 'Your plan — read only') : state === 'saving' ? T('Đang lưu…', 'Saving…') : state === 'saved' ? T('✓ Đã lưu', '✓ Saved') : state === 'error' ? T('Chưa lưu được — thử lại', 'Not saved — try again') : T('Tự lưu khi rời ô', 'Saves as you leave a field')}
+            </div>
+          </div>
+          <button type="button" onClick={() => { flush(); onMove(1); }} title={T('Ngày sau (→)', 'Next day (→)')} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>›</button>
+          <button type="button" onClick={() => { flush(); onClose(); }} title="Esc" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'grid', gap: 14, alignContent: 'start' }}>
+          {/* status first: the one thing a reader wants to know */}
+          {st && post ? (
+            <button type="button" onClick={() => onOpenPost(post.id)} style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: `1px solid ${st.ink}`, background: st.bg, color: st.ink, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <span style={{ fontSize: 18 }}>{st.icon}</span>
+              <span style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 800 }}>{vi ? st.vi : st.en} · {instantToWall(post.scheduledAt, tz).slice(11, 16)}</div>
+                <div style={{ fontSize: 11.5, opacity: .85 }}>{T('Bấm để xem bài, sửa giờ hoặc đăng ngay', 'Tap to open the post, move it or post now')}</div>
+              </span>
+            </button>
+          ) : !canEdit ? null : (
+            <button
+              type="button"
+              disabled={!ready}
+              onClick={() => { flush(); onSchedule(localRef.current); }}
+              style={{ padding: '11px 14px', borderRadius: 10, fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit', cursor: ready ? 'pointer' : 'default', border: `1px solid ${ready ? '#6366f1' : 'var(--c334155)'}`, background: ready ? '#6366f1' : 'transparent', color: ready ? '#fff' : 'var(--c64748b)' }}
+            >
+              {local.postId ? T('↻ Lên lịch lại (bài cũ đã xoá)', '↻ Schedule again (old post deleted)') : ready ? T('→ Lên lịch đăng ngày này', '→ Schedule this day') : T(`Cần thêm: ${missing.join(' · ')}`, `Needs: ${missing.join(' · ')}`)}
+            </button>
+          )}
+
+          <div>
+            <div style={labelStyle}>{T('Pillar · bài này để làm gì', 'Pillar · what this post is for')}</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {PILLARS.map((p) => chip(local.pillar === p.id, p.bg, p.ink, vi ? p.vi : p.en, canEdit ? () => change({ pillar: local.pillar === p.id ? '' : p.id }) : undefined))}
+            </div>
+          </div>
+
+          <div>
+            <div style={labelStyle}>{T('Chủ đề', 'Topic')}</div>
+            {canEdit ? (
+              <input value={local.topic} placeholder={T('Một dòng: bài này nói về gì', 'One line: what the post is about')} onFocus={() => { typingRef.current = true; }} onChange={(e) => set({ topic: e.target.value })} onBlur={() => { typingRef.current = false; void commit({ topic: localRef.current.topic }); }} style={{ ...field, fontWeight: 700, fontSize: 14.5 }} />
+            ) : <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.4 }}>{local.topic || '—'}</div>}
+          </div>
+
+          <div>
+            <div style={{ ...labelStyle, display: 'flex' }}>
+              <span>{T('Nội dung · caption', 'Detail · caption')}</span>
+              {canEdit && <span style={{ marginLeft: 'auto', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>{local.detail.length}</span>}
+            </div>
+            {canEdit ? (
+              <textarea value={local.detail} rows={isMobile ? 7 : 10} placeholder={T('Caption sẵn sàng để đăng — câu mở, nội dung, kêu gọi hành động', 'A caption ready to post — hook, body, call to action')} onFocus={() => { typingRef.current = true; }} onChange={(e) => set({ detail: e.target.value })} onBlur={() => { typingRef.current = false; void commit({ detail: localRef.current.detail }); }} style={{ ...field, resize: 'vertical', fontSize: 13.5 }} />
+            ) : <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{local.detail || '—'}</div>}
+          </div>
+
+          <div>
+            <div style={labelStyle}>{T('Link ảnh / clip', 'Picture / clip link')}</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {canEdit ? (
+                <input value={local.mediaUrl} placeholder={T('Dán link Drive, ảnh hoặc clip', 'Paste a Drive, picture or clip link')} onFocus={() => { typingRef.current = true; }} onChange={(e) => set({ mediaUrl: e.target.value })} onBlur={() => { typingRef.current = false; void commit({ mediaUrl: localRef.current.mediaUrl }); }} style={{ ...field, fontSize: 12.5, minWidth: 0 }} />
+              ) : <div style={{ fontSize: 13, color: 'var(--c94a3b8)', wordBreak: 'break-all', flex: 1 }}>{local.mediaUrl || '—'}</div>}
+              {/^https?:\/\//i.test(local.mediaUrl) && (
+                <a href={local.mediaUrl} target="_blank" rel="noreferrer" style={{ flex: '0 0 auto', width: 38, height: 38, borderRadius: 9, border: '1px solid var(--c334155)', display: 'grid', placeItems: 'center', color: 'var(--ink-link)', textDecoration: 'none' }}>↗</a>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
+            <div>
+              <div style={labelStyle}>{T('Kênh đăng', 'Networks')}</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {AIR.map((a) => {
+                  const on = local.air.includes(a.id);
+                  const off = !connected[a.id];
+                  return chip(on, a.bg, '#fff', a.short, canEdit ? () => change({ air: on ? local.air.filter((x) => x !== a.id) : [...local.air, a.id] }) : undefined, { opacity: off && !on ? .5 : 1, textDecoration: off && on ? 'line-through' : 'none' });
+                })}
+              </div>
+              {AIR.some((a) => local.air.includes(a.id) && !connected[a.id]) && (
+                <div style={{ fontSize: 11, color: 'var(--ink-warn)', marginTop: 5 }}>{T('Kênh gạch ngang: tiệm chưa kết nối — lúc lên lịch sẽ bỏ qua.', 'Struck-through: not connected — skipped when scheduling.')}</div>
+              )}
+            </div>
+            <div>
+              <div style={labelStyle}>{T('Định dạng', 'Format')}</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {FORMATS.map((f) => chip(local.format === f.id, f.bg, f.ink, `${FORMAT_ICON[f.id]} ${vi ? f.vi : f.en}`, canEdit ? () => change({ format: local.format === f.id ? '' : f.id }) : undefined))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {canEdit && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
+            {entry.updatedBy && <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('Sửa lần cuối', 'Last edited')}: {entry.updatedBy}</span>}
+            {entryHasContent(entry) && !post && (
+              <button type="button" onClick={() => { if (window.confirm(T('Xoá nội dung ngày này?', 'Clear this day?'))) void onClear(day.key); }} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-bad)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>{T('Xoá ngày này', 'Clear this day')}</button>
+            )}
+          </div>
+        )}
+      </div>
+    </>
   );
 }

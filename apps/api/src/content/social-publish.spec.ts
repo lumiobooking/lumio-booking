@@ -1,6 +1,6 @@
 import {
   planPublish, dueNow, usableMediaUrl, sharePageProblem, guessKind, shapeOf, crowding, igGrid, explainMetaError,
-  releasesHold, gbpLanguage,
+  releasesHold, gbpLanguage, priorSuccesses, stillDue, retryable, whyWaiting, SWEEP_STALE_MS,
   IG_CAPTION_MAX, IG_HASHTAG_MAX, IG_CAROUSEL_MAX, GBP_SUMMARY_MAX, MAX_ATTEMPTS, LATE_GRACE_MS, CROWDING_MS,
   type ConnectedPage, type PostDraft, type QueuedPost, type MediaItem, type Channel, type GoogleLocation,
 } from './social-publish';
@@ -510,5 +510,47 @@ describe('the Instagram error that names the wrong thing', () => {
 
   it('is matched case-insensitively, since Meta varies the wording', () => {
     expect(explainMetaError('MEDIA ID IS NOT AVAILABLE')).not.toBeNull();
+  });
+});
+
+describe('a retry never sends the same post to the same network twice', () => {
+  const stored = [
+    { channel: 'facebook', id: '1010_777', url: 'https://www.facebook.com/1010_777', error: null },
+    { channel: 'instagram', id: null, url: null, error: 'Media ID is not available' },
+  ];
+  it('reads the live posts out of the stored results', () => {
+    expect(priorSuccesses(stored).map((r) => r.channel)).toEqual(['facebook']);
+    expect(priorSuccesses(null)).toEqual([]);
+    expect(priorSuccesses([{ channel: 'facebook', id: '1', error: 'x' }])).toEqual([]);   // an id WITH an error is not a live post
+  });
+  it('sends only the network that has no post yet', () => {
+    const plans = [{ channel: 'facebook', targetId: '1010' }, { channel: 'instagram', targetId: '2020' }];
+    expect(stillDue(plans, priorSuccesses(stored)).map((p) => p.channel)).toEqual(['instagram']);
+    expect(stillDue(plans, [])).toHaveLength(2);
+  });
+  it('stops retrying on its own when a network did not answer', () => {
+    expect(retryable([{ channel: 'facebook', id: null, url: null, error: 'timeout', unsure: true }])).toBe(false);
+    expect(retryable([{ channel: 'facebook', id: null, url: null, error: '(#100) bad url' }])).toBe(true);
+    expect(retryable([])).toBe(true);
+  });
+});
+
+describe('why a due post is still waiting, in words', () => {
+  const now = new Date('2026-09-15T15:10:00Z');
+  const due = { status: 'scheduled', scheduledAt: new Date('2026-09-15T15:00:00Z'), attempts: 0, heldAt: null, stage: 'ready' as const };
+  const fresh = new Date(now.getTime() - 30_000);
+
+  it('says nothing about a post that is not due, or not scheduled', () => {
+    expect(whyWaiting({ ...due, scheduledAt: new Date('2026-09-15T16:00:00Z') }, now, fresh)).toBeNull();
+    expect(whyWaiting({ ...due, status: 'posted' }, now, fresh)).toBeNull();
+  });
+  it('names the step, the hold and the sleeping server — the three "no error" cases', () => {
+    expect(whyWaiting({ ...due, stage: 'design' }, now, fresh)!.vi).toMatch(/Thiết kế/);
+    expect(whyWaiting({ ...due, heldAt: new Date() }, now, fresh)!.vi).toMatch(/yêu cầu/);
+    expect(whyWaiting(due, now, new Date(now.getTime() - SWEEP_STALE_MS - 60_000))!.vi).toMatch(/server đang ngủ/);
+    expect(whyWaiting(due, now, null)!.vi).toMatch(/server đang ngủ/);
+  });
+  it('a due post with a live sweeper is simply next', () => {
+    expect(whyWaiting(due, now, fresh)!.vi).toMatch(/lần quét tới/);
   });
 });

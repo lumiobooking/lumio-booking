@@ -5,11 +5,12 @@ import { UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import {
   planPublish, dueNow, crowding, shapeOf, explainMetaError, gbpLanguage, MAX_ATTEMPTS, CHANNELS,
+  priorSuccesses, stillDue, retryable, whyWaiting, SWEEP_STALE_MS,
   type Channel, type ConnectedPage, type PublishPlan, type MediaItem, type GoogleLocation,
 } from './social-publish';
 import { planPurge, storagePathOf, DEFAULT_RETENTION_DAYS, type RetentionPost } from './media-retention';
 import { MEDIA_STORE, type MediaStore } from './media-store';
-import { buildPostKit, type ShopFacts } from './post-kit';
+import { buildPostKit, applyFooter, cleanFooter, POST_FOOTER_KEY, type ShopFacts } from './post-kit';
 import { publicWebBase } from '../common/public-url.util';
 import { explainPublishGap, type GapCause, type PublishGrant } from '../messenger/publish-grant';
 import { GoogleDriveService } from '../uploads/google-drive.service';
@@ -63,7 +64,11 @@ export interface HoldInfo {
  * public signature is a build error (TS4053) — and `tsc --noEmit` does NOT
  * emit declarations, so it does not catch it. The real build does.
  */
-export interface PublishResult { channel: Channel; id: string | null; url: string | null; error: string | null }
+export interface PublishResult {
+  channel: Channel; id: string | null; url: string | null; error: string | null;
+  /** The network did not answer; the post may be live. Never auto-retried. */
+  unsure?: boolean;
+}
 
 /**
  * Publishing the salon's approved posts to the salon's own Page and Instagram.
@@ -209,7 +214,7 @@ export class SocialPublishService {
    * anything typed that is not ours.
    */
   private async postKitFor(tenantId: string, igUsername: string | null) {
-    const [t, extraRow, profileRow] = await Promise.all([
+    const [t, extraRow, profileRow, footerRow] = await Promise.all([
       this.prisma.tenant.findUnique({
         where: { id: tenantId },
         // `contactPhone` lives on the tenant row, not in company_extra. Reading
@@ -220,6 +225,7 @@ export class SocialPublishService {
       }).catch(() => null),
       this.prisma.setting.findFirst({ where: { tenantId, key: 'company_extra' }, select: { value: true } }).catch(() => null),
       this.prisma.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } }).catch(() => null),
+      this.prisma.setting.findFirst({ where: { tenantId, key: POST_FOOTER_KEY }, select: { value: true } }).catch(() => null),
     ]);
     const tenant = (t ?? {}) as {
       name?: string; slug?: string; city?: string | null; market?: string;
@@ -244,7 +250,29 @@ export class SocialPublishService {
     // for every shop that never said otherwise, and generic salon hashtags on a
     // lash studio's post reach the wrong crowd.
     const industry = profile.trade || tenant.businessType || 'SALON';
-    return { shop, kit: buildPostKit(industry, tenant.market, shop) };
+    // The shop's own footer, when it has saved one, over the built block.
+    return { shop, kit: applyFooter(buildPostKit(industry, tenant.market, shop), cleanFooter(footerRow?.value)) };
+  }
+
+  /**
+   * Save the text every new post opens with, for this shop. Empty text puts
+   * the built block back. Anyone on the shop may do this: it is the shop's
+   * own address line, not the agency's method.
+   */
+  async saveFooter(user: AuthenticatedUser, text: unknown) {
+    const tenantId = this.tenantId(user);
+    const clean = cleanFooter(text);
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: POST_FOOTER_KEY }, select: { id: true } }).catch(() => null);
+    if (!clean) {
+      if (row?.id) await this.prisma.setting.delete({ where: { id: row.id } }).catch(() => undefined);
+    } else {
+      const value = { text: clean, updatedAt: new Date().toISOString(), updatedBy: user.email ?? null };
+      if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: value as never } });
+      else await this.prisma.setting.create({ data: { tenantId, key: POST_FOOTER_KEY, value: value as never } as never });
+    }
+    const conn = await this.pageFor(tenantId);
+    const { kit } = await this.postKitFor(tenantId, conn?.page.igUsername ?? null);
+    return { ok: true, custom: Boolean(kit.custom), postKit: kit };
   }
 
   private async pageFor(tenantId: string): Promise<{ page: ConnectedPage; token: string } | null> {
@@ -410,7 +438,14 @@ export class SocialPublishService {
    * unlinks Instagram — and a queue that still shows a green "scheduled" for a
    * post that can no longer be delivered is a queue that lies.
    */
-  async list(user: AuthenticatedUser) {
+  /**
+   * `sweepWas`: when the queue was last swept BEFORE this request woke it
+   * (the controller sweeps first, then lists). That age is what the screen
+   * reports, because it is the fact that explains a due post still sitting
+   * there. The sweep itself is not in here: every read in list() names the
+   * caller's tenant, and the sweep is the one job that must not.
+   */
+  async list(user: AuthenticatedUser, sweepWas: Date | null = this.lastSweepAt) {
     const tenantId = this.tenantId(user);
     // Lumio staff get the extra affordance; the screen must know before it
     // draws a button, not find out from an error afterwards.
@@ -462,6 +497,7 @@ export class SocialPublishService {
     // Only the held ones are looked up: a month of green posts must not cost a
     // second query over every conversation the salon ever had.
     const holds = await this.holdsFor(tenantId, (rows ?? []).filter((r) => r.heldAt).map((r) => r.id));
+    const now = new Date();
 
     const posts = (rows ?? []).map((r) => {
       const media = this.mediaOf(r);
@@ -516,6 +552,12 @@ export class SocialPublishService {
           by: holds.get(r.id)?.by ?? null,
           note: holds.get(r.id)?.note ?? null,
         } : null,
+        /**
+         * Due, not sent, and no error — the reason, in words. Null for a
+         * post that is not due or not scheduled. The screen shows this where
+         * it would otherwise show nothing at all.
+         */
+        waiting: whyWaiting({ status: r.status, scheduledAt: r.scheduledAt, attempts: r.attempts, heldAt: r.heldAt, stage: cleanStage(r.stage) }, now, sweepWas),
       };
     });
 
@@ -556,6 +598,8 @@ export class SocialPublishService {
       /** The TikTok account, when connected: who it is and what it may post. */
       tiktok: tt ? { displayName: tt.displayName, username: tt.username, avatarUrl: tt.avatarUrl, needsReconnect: tt.needsReconnect, creator: tt.creator } : null,
       posts,
+      /** When this process last swept the queue — null right after a restart. */
+      sweep: { lastAt: sweepWas, stale: !sweepWas || now.getTime() - sweepWas.getTime() > SWEEP_STALE_MS },
       /** True for a Lumio support session: may delete published rows too. */
       canDeletePosted: isLumio,
       crowding: crowding(live.map((p) => ({ id: p.id, scheduledAt: p.scheduledAt, channels: p.channels }))),
@@ -846,8 +890,30 @@ export class SocialPublishService {
 
   // ---- the scheduler --------------------------------------------------------
 
+  /** When the sweep last ran in THIS process. Null until the first tick. */
+  lastSweepAt: Date | null = null;
+  private sweeping = false;
+
+  /**
+   * Sweep now if the minute timer has not lately, and say when it last did.
+   *
+   * A page opening is the surest sign the process is awake. On a host that
+   * sleeps between requests the timer stops with it, and a due post sits
+   * until somebody looks — so looking is what sends it. Not awaited: the
+   * screen must not wait on Facebook. Claims make a double sweep harmless.
+   */
+  sweepIfStale(now = new Date()): Date | null {
+    const was = this.lastSweepAt;
+    if (this.sweeping) return was;
+    if (was && now.getTime() - was.getTime() < SWEEP_STALE_MS) return was;
+    this.sweeping = true;
+    this.runDue(now).catch(() => undefined).finally(() => { this.sweeping = false; });
+    return was;
+  }
+
   /** Called every minute. Cross-tenant by nature; each send re-reads its own tenant's page. */
   async runDue(now = new Date()): Promise<{ sent: number; failed: number; expired: number }> {
+    this.lastSweepAt = now;
     const rows = await this.posts?.findMany({
       where: { status: 'scheduled', scheduledAt: { lte: now } },
       orderBy: { scheduledAt: 'asc' },
@@ -967,8 +1033,12 @@ export class SocialPublishService {
     }).catch(() => ({ count: 0 })) as { count: number };
     if (!claimed?.count) return { ok: false, error: 'Bài đang được đăng ở tiến trình khác.', results: [] };
 
-    const results: PublishResult[] = [];
-    for (const p of plan.plans) {
+    // What an earlier attempt already got through to is not sent again. A
+    // Facebook post that went live on the try whose Instagram half failed
+    // stays exactly one Facebook post; only Instagram is tried now.
+    const prior = priorSuccesses(row.results) as PublishResult[];
+    const fresh: PublishResult[] = [];
+    for (const p of stillDue(plan.plans, prior)) {
       const r = p.channel === 'google'
         ? await this.toGoogle(row.tenantId, row.message, media, this.googleOf(row))
         : p.channel === 'tiktok'
@@ -976,15 +1046,16 @@ export class SocialPublishService {
           : p.channel === 'facebook'
             ? await this.toFacebook(p.targetId!, conn!.token, row.message, media)
             : await this.toInstagram(p.targetId!, conn!.token, media, row.message);
-      results.push(r);
+      fresh.push(r);
     }
+    const results = [...prior, ...fresh];
 
-    const bad = results.filter((r) => r.error);
+    const bad = fresh.filter((r) => r.error);
     if (bad.length) {
       // Partial delivery is recorded exactly as it happened. Rewriting it as a
       // clean failure would hide a post that really is live on Facebook.
       const error = bad.map((b) => `${b.channel}: ${b.error}`).join(' · ');
-      await this.fail(row, error, results);
+      await this.fail(row, error, results, !retryable(fresh));
       return { ok: false, error, results };
     }
 
@@ -995,7 +1066,7 @@ export class SocialPublishService {
     return { ok: true, error: null, results };
   }
 
-  private async fail(row: PostRow, error: string, results: PublishResult[] = []) {
+  private async fail(row: PostRow, error: string, results: PublishResult[] = [], stop = false) {
     const attempts = (row.attempts ?? 0) + 1;
     await this.posts?.update({
       where: { id: row.id },
@@ -1003,7 +1074,9 @@ export class SocialPublishService {
         // Back to 'scheduled' while retries remain, so the next sweep picks it
         // up; 'failed' only when we have stopped trying, so the word on screen
         // means "this needs you" rather than "it may still fix itself".
-        status: attempts >= MAX_ATTEMPTS ? 'failed' : 'scheduled',
+        // `stop` is the network-did-not-answer case: retrying blind is how a
+        // post goes up twice, so it waits for a person.
+        status: stop || attempts >= MAX_ATTEMPTS ? 'failed' : 'scheduled',
         lastError: error.slice(0, 500),
         results: results as never,
       },
@@ -1182,14 +1255,27 @@ export class SocialPublishService {
   // ---- Facebook -------------------------------------------------------------
 
   private async post(url: string, body: URLSearchParams, timeoutMs = 30_000) {
-    const res = await fetch(url, { method: 'POST', body, signal: AbortSignal.timeout(timeoutMs) });
-    const json = await res.json().catch(() => null) as
-      { id?: string; post_id?: string; error?: { message?: string } } | null;
-    return { ok: res.ok && !json?.error, status: res.status, json };
+    try {
+      const res = await fetch(url, { method: 'POST', body, signal: AbortSignal.timeout(timeoutMs) });
+      const json = await res.json().catch(() => null) as
+        { id?: string; post_id?: string; error?: { message?: string } } | null;
+      return { ok: res.ok && !json?.error, status: res.status, json, timedOut: false };
+    } catch (e) {
+      // No answer is not "no". Meta may have created the post and lost the
+      // reply; the caller marks the result unsure so nothing retries it blind.
+      const timedOut = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError');
+      return { ok: false, status: 0, json: null, timedOut, netError: e instanceof Error ? e.message : 'lỗi mạng' };
+    }
+  }
+
+  /** The error to record for a Graph reply — or for the absence of one. */
+  private graphError(r: { status: number; json: { error?: { message?: string } } | null; timedOut?: boolean; netError?: string }, network: string): string {
+    if (r.timedOut) return `${network} không trả lời kịp — bài CÓ THỂ đã lên trang. Mở trang kiểm tra trước khi bấm "Đăng ngay"; hệ thống sẽ chỉ gửi lại mạng chưa có bài.`;
+    return r.json?.error?.message ?? (r.status ? `${network} ${r.status}` : `${network}: ${r.netError ?? 'lỗi mạng'}`);
   }
 
   private async toFacebook(pageId: string, token: string, message: string, media: MediaItem[]): Promise<PublishResult> {
-    const fail = (e: string): PublishResult => ({ channel: 'facebook', id: null, url: null, error: e });
+    const fail = (e: string, unsure = false): PublishResult => ({ channel: 'facebook', id: null, url: null, error: e, ...(unsure ? { unsure: true } : {}) });
     const done = (id: string | null): PublishResult =>
       ({ channel: 'facebook', id, url: id ? `https://www.facebook.com/${id}` : null, error: null });
     try {
@@ -1198,13 +1284,13 @@ export class SocialPublishService {
         const r = await this.post(`${GRAPH}/${pageId}/videos`, new URLSearchParams({
           file_url: vid.url, description: message, access_token: token,
         }), 60_000);
-        if (!r.ok) return fail(r.json?.error?.message ?? `Facebook ${r.status}`);
+        if (!r.ok) return fail(this.graphError(r, 'Facebook'), r.timedOut);
         return done(r.json?.id ?? null);
       }
 
       if (media.length === 0) {
         const r = await this.post(`${GRAPH}/${pageId}/feed`, new URLSearchParams({ message, access_token: token }));
-        if (!r.ok) return fail(r.json?.error?.message ?? `Facebook ${r.status}`);
+        if (!r.ok) return fail(this.graphError(r, 'Facebook'), r.timedOut);
         return done(r.json?.post_id ?? r.json?.id ?? null);
       }
 
@@ -1214,7 +1300,7 @@ export class SocialPublishService {
         const r = await this.post(`${GRAPH}/${pageId}/photos`, new URLSearchParams({
           url: media[0].url, caption: message, access_token: token,
         }));
-        if (!r.ok) return fail(r.json?.error?.message ?? `Facebook ${r.status}`);
+        if (!r.ok) return fail(this.graphError(r, 'Facebook'), r.timedOut);
         return done(r.json?.post_id ?? r.json?.id ?? null);
       }
 
@@ -1226,13 +1312,13 @@ export class SocialPublishService {
         const r = await this.post(`${GRAPH}/${pageId}/photos`, new URLSearchParams({
           url: m.url, published: 'false', access_token: token,
         }));
-        if (!r.ok || !r.json?.id) return fail(r.json?.error?.message ?? `Facebook ${r.status}`);
+        if (!r.ok || !r.json?.id) return fail(this.graphError(r, 'Facebook'));   // unpublished upload: nothing is live yet
         ids.push(r.json.id);
       }
       const body = new URLSearchParams({ message, access_token: token });
       ids.forEach((id, i) => body.set(`attached_media[${i}]`, JSON.stringify({ media_fbid: id })));
       const r = await this.post(`${GRAPH}/${pageId}/feed`, body);
-      if (!r.ok) return fail(r.json?.error?.message ?? `Facebook ${r.status}`);
+      if (!r.ok) return fail(this.graphError(r, 'Facebook'), r.timedOut);
       return done(r.json?.post_id ?? r.json?.id ?? null);
     } catch (e) {
       return fail(e instanceof Error ? e.message : 'lỗi mạng');
@@ -1289,7 +1375,7 @@ export class SocialPublishService {
   }
 
   private async toInstagram(igId: string, token: string, media: MediaItem[], caption: string): Promise<PublishResult> {
-    const fail = (e: string): PublishResult => ({ channel: 'instagram', id: null, url: null, error: e });
+    const fail = (e: string, unsure = false): PublishResult => ({ channel: 'instagram', id: null, url: null, error: e, ...(unsure ? { unsure: true } : {}) });
     try {
       let creationId: string;
 
@@ -1334,7 +1420,8 @@ export class SocialPublishService {
       const p = await this.post(`${GRAPH}/${igId}/media_publish`, new URLSearchParams({
         creation_id: creationId, access_token: token,
       }), 60_000);
-      if (!p.ok || !p.json?.id) return fail(p.json?.error?.message ?? `Instagram publish ${p.status}`);
+      // The one call that makes the post live: no answer here is "unsure".
+      if (!p.ok || !p.json?.id) return fail(this.graphError(p, 'Instagram publish'), p.timedOut);
 
       // instagram.com/p/{...} takes the post's SHORTCODE, not this numeric
       // Graph id — a link built from the id opens "Post isn't available" even

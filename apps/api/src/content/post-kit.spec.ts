@@ -1,4 +1,4 @@
-import { buildPostKit, contactBlock, hashtagsFor, checkPost, phoneKey, DIVIDER, type ShopFacts } from './post-kit';
+import { buildPostKit, contactBlock, hashtagsFor, checkPost, phoneKey, applyFooter, cleanFooter, DIVIDER, FOOTER_LIMIT, type ShopFacts } from './post-kit';
 
 /**
  * One person writes posts for eight salons with eight tabs open. They copy last
@@ -204,5 +204,30 @@ describe('comparing two written phone numbers', () => {
   it('ignores punctuation and country code', () => {
     expect(phoneKey('(830) 257-8888')).toBe(phoneKey('+1 830.257.8888'));
     expect(phoneKey('0912 345 678')).toBe(phoneKey('0912-345-678'));
+  });
+});
+
+describe('the shop\'s own footer', () => {
+  const kit = buildPostKit('NAIL', 'US', LUX);
+
+  it('replaces the built block once the shop has written one, and keeps the built one to restore', () => {
+    const own = 'Walk-ins welcome 💅\n📞 (830) 257-8888\n#luxnailspa #kerrville';
+    const k = applyFooter(kit, own);
+    expect(k.custom).toBe(true);
+    expect(k.starter).toBe(`\n\n${own}`);
+    expect(k.contactBlock).toBe(own);          // the composer's "is the block still in the post" check reads this
+    expect(k.autoStarter).toBe(kit.starter);
+  });
+  it('an empty footer means the built block, unchanged', () => {
+    expect(applyFooter(kit, '   ')).toBe(kit);
+    expect(cleanFooter(null)).toBe('');
+    expect(cleanFooter({ text: ' x ' })).toBe('x');
+  });
+  it('is capped so a pasted essay cannot ride under every post', () => {
+    expect(cleanFooter('a'.repeat(5000))).toHaveLength(FOOTER_LIMIT);
+  });
+  it('a saved footer with another shop\'s number is still caught', () => {
+    const k = applyFooter(kit, '📞 (714) 892-3355');
+    expect(checkPost(`Bài mới${k.starter}`, LUX).findings.map((f) => f.kind)).toContain('phone');
   });
 });

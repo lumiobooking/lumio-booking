@@ -229,7 +229,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
               <span style={{ fontSize: 18, lineHeight: 1 }}>🗓️</span>
               <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--ccbd5e1)' }}>
                 <b style={{ color: 'var(--cf1f5f9)' }}>{T('Bên em đang lên plan tháng này.', 'We are planning this month.')}</b>{' '}
-                {T('Mỗi ngày có bài sẽ hiện ở đây: chủ đề, kênh đăng, dạng bài — chị bấm vào ngày để đọc nội dung.', 'Each planned day shows here: topic, network, kind of post — tap a day to read the caption.')}
+                {T('Mỗi ngày có bài sẽ hiện ở đây: chủ đề, kênh đăng, dạng bài — bấm vào ngày để đọc nội dung.', 'Each planned day shows here: topic, network, kind of post — tap a day to read the caption.')}
               </div>
             </div>
           )}

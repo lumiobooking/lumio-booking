@@ -93,6 +93,27 @@ export function PlanSheet({
   };
   const postOf = (e: PlanEntry | undefined) => (e?.postId ? postById.get(e.postId) ?? null : null);
 
+  // How wide one day is. The shop reads the plan in a 1000px column and
+  // the team in a full-width tab; the same seven cells are 130px in one and
+  // 180px in the other. Under ~128px a card goes COMPACT: the pillar chip
+  // and the caption preview go (the coloured edge and the panel still carry
+  // them), the format is its icon, and the day number never wraps — "16"
+  // broke into two lines in the shop's column before this.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [cellW, setCellW] = useState(160);
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      if (w) setCellW((w - 6 * 6) / 7);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isMobile]);
+  const compact = !isMobile && cellW < 128;
+  const gap = compact ? 6 : 8;
+
   // ---- the card -------------------------------------------------------------
 
   const card = (d: SheetDay) => {
@@ -114,55 +135,61 @@ export function PlanSheet({
         onClick={() => clickable && setOpen(d.key)}
         onKeyDown={(ev) => { if (clickable && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); setOpen(d.key); } }}
         style={{
-          position: 'relative', minHeight: isMobile ? 0 : 132, borderRadius: 12, padding: '9px 10px 9px 12px',
+          position: 'relative', minHeight: isMobile ? 0 : compact ? 108 : 132, borderRadius: compact ? 10 : 12, padding: compact ? '7px 7px 7px 10px' : '9px 10px 9px 12px',
           background: has ? 'var(--c0f172a)' : 'transparent',
           border: `1px ${has ? 'solid' : 'dashed'} ${selected ? '#6366f1' : d.today && !has ? 'rgba(99,102,241,.6)' : 'var(--c334155)'}`,
           boxShadow: selected ? '0 0 0 2px rgba(99,102,241,.35)' : 'none',
           opacity: d.past && !has ? .4 : d.past ? .75 : 1,
           cursor: clickable ? 'pointer' : 'default',
-          display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, outline: 'none',
+          display: 'flex', flexDirection: 'column', gap: compact ? 4 : 6, minWidth: 0, outline: 'none',
           transition: 'border-color .12s, box-shadow .12s',
         }}
       >
         {/* the pillar, as a coloured edge — the one signal the sheet's colours carried */}
         {p && <span style={{ position: 'absolute', left: 0, top: 10, bottom: 10, width: 4, borderRadius: 4, background: p.bg }} />}
 
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0 }}>
-          {isMobile && <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: d.today ? 'var(--ink-link)' : 'var(--c64748b)' }}>{L.wd}</span>}
-          <span style={{ fontSize: 16, fontWeight: 800, color: d.today ? 'var(--ink-link)' : has ? 'var(--cf1f5f9)' : 'var(--c94a3b8)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{L.d}</span>
-          {d.today && <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--ink-link)', textTransform: 'uppercase', letterSpacing: .4, marginLeft: 2 }}>{T('hôm nay', 'today')}</span>}
-          {p && <span style={{ marginLeft: 'auto', fontSize: 9.5, fontWeight: 800, letterSpacing: .4, textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4, background: p.bg, color: p.ink, whiteSpace: 'nowrap' }}>{vi ? p.vi : p.en}</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, whiteSpace: 'nowrap' }}>
+          {isMobile && <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: d.today ? 'var(--ink-link)' : 'var(--c64748b)', flexShrink: 0 }}>{L.wd}</span>}
+          {/* today: the number in a filled ring, which needs no word and cannot wrap */}
+          <span style={{
+            flexShrink: 0, fontSize: compact ? 14 : 16, fontWeight: 800, fontVariantNumeric: 'tabular-nums', lineHeight: 1,
+            color: d.today ? '#ffffff' : has ? 'var(--cf1f5f9)' : 'var(--c94a3b8)',
+            ...(d.today ? { background: '#6366f1', borderRadius: 999, minWidth: compact ? 24 : 26, height: compact ? 24 : 26, display: 'inline-grid', placeItems: 'center', padding: '0 5px', marginLeft: -3 } : {}),
+          }} title={d.today ? T('Hôm nay', 'Today') : undefined}>{L.d}</span>
+          {d.today && !compact && <span style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--ink-link)', textTransform: 'uppercase', letterSpacing: .4, flexShrink: 0 }}>{T('hôm nay', 'today')}</span>}
+          {p && !compact && <span style={{ marginLeft: 'auto', fontSize: 9.5, fontWeight: 800, letterSpacing: .4, textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4, background: p.bg, color: p.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{vi ? p.vi : p.en}</span>}
+          {p && compact && <span title={vi ? p.vi : p.en} style={{ marginLeft: 'auto', width: 10, height: 10, borderRadius: 3, background: p.bg, flexShrink: 0 }} />}
         </div>
 
         {has ? (
           <>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.35, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', wordBreak: 'break-word' }}>
+            <div style={{ fontSize: compact ? 12 : 13, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: compact ? 3 : 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>
               {e.topic || <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}>{T('(chưa có chủ đề)', '(no topic yet)')}</span>}
             </div>
-            {e.detail && !isMobile && (
-              <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', wordBreak: 'break-word' }}>{e.detail}</div>
+            {e.detail && !isMobile && !compact && (
+              <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>{e.detail}</div>
             )}
-            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', minWidth: 0 }}>
-              {e.format && <span title={formatOf(e.format)?.[vi ? 'vi' : 'en']} style={{ fontSize: 11, color: 'var(--c94a3b8)', fontWeight: 700 }}>{FORMAT_ICON[e.format]} {formatOf(e.format)?.[vi ? 'vi' : 'en']}</span>}
+            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: compact ? 4 : 5, flexWrap: 'wrap', minWidth: 0 }}>
+              {e.format && <span title={formatOf(e.format)?.[vi ? 'vi' : 'en']} style={{ fontSize: 11, color: 'var(--c94a3b8)', fontWeight: 700, whiteSpace: 'nowrap' }}>{FORMAT_ICON[e.format]}{compact ? '' : ` ${formatOf(e.format)?.[vi ? 'vi' : 'en']}`}</span>}
               <span style={{ display: 'inline-flex', gap: 3 }}>
                 {AIR.filter((a) => e.air.includes(a.id)).map((a) => <span key={a.id} title={a.id} style={{ width: 9, height: 9, borderRadius: 5, background: a.bg, display: 'inline-block', border: '1px solid rgba(255,255,255,.25)' }} />)}
               </span>
               {e.mediaUrl && <span title={T('Có link ảnh', 'Has a media link')} style={{ fontSize: 11 }}>🔗</span>}
               {st ? (
-                <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 800, padding: '2px 7px', borderRadius: 999, background: st.bg, color: st.ink, whiteSpace: 'nowrap' }}>{st.icon} {post!.status === 'scheduled' || post!.status === 'posted' ? hm : (vi ? st.vi : st.en)}</span>
+                <span style={{ marginLeft: 'auto', fontSize: compact ? 10 : 10.5, fontWeight: 800, padding: compact ? '1px 6px' : '2px 7px', borderRadius: 999, background: st.bg, color: st.ink, whiteSpace: 'nowrap' }}>{st.icon} {post!.status === 'scheduled' || post!.status === 'posted' ? hm : (vi ? st.vi : st.en)}</span>
               ) : e.postId && postsKnown === false ? (
-                <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 800, padding: '2px 7px', borderRadius: 999, background: STATUS.scheduled.bg, color: STATUS.scheduled.ink, whiteSpace: 'nowrap' }}>🗓️ {T('đã lên lịch', 'scheduled')}</span>
+                <span style={{ marginLeft: 'auto', fontSize: compact ? 10 : 10.5, fontWeight: 800, padding: compact ? '1px 6px' : '2px 7px', borderRadius: 999, background: STATUS.scheduled.bg, color: STATUS.scheduled.ink, whiteSpace: 'nowrap' }}>🗓️ {compact ? T('lên lịch', 'set') : T('đã lên lịch', 'scheduled')}</span>
               ) : e.postId ? (
                 <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--c64748b)' }}>{T('bài đã xoá', 'post deleted')}</span>
               ) : entryReady(e) ? (
-                <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 700, color: 'var(--ink-warn)', whiteSpace: 'nowrap' }}>● {T('chờ lên lịch', 'to schedule')}</span>
+                <span style={{ marginLeft: 'auto', fontSize: compact ? 10 : 10.5, fontWeight: 700, color: 'var(--ink-warn)', whiteSpace: 'nowrap' }}>● {compact ? T('chờ lịch', 'to set') : T('chờ lên lịch', 'to schedule')}</span>
               ) : (
                 <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>○ {T('đang soạn', 'drafting')}</span>
               )}
             </div>
           </>
         ) : (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 20 : 56 }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 20 : compact ? 40 : 56 }}>
             {/* an empty future day: a plus for the team, nothing at all for the shop — a blank square reads as "free", a word reads as a gap */}
             {canEdit && d.inWindow && !d.past && (
               <span style={{ width: 26, height: 26, borderRadius: 13, border: '1px dashed var(--c334155)', display: 'grid', placeItems: 'center', color: 'var(--c64748b)', fontSize: 16, lineHeight: 1 }}>+</span>
@@ -230,15 +257,15 @@ export function PlanSheet({
         </div>
       ) : (
         /* a real month calendar: one weekday header, then the rows */
-        <div style={{ borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c111827)', padding: 10 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8, marginBottom: 6 }}>
+        <div ref={gridRef} style={{ borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c111827)', padding: compact ? 8 : 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap, marginBottom: 6 }}>
             {WD.map((w, i) => (
               <div key={w} style={{ textAlign: 'center', fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: i >= 5 ? 'var(--ink-warn)' : 'var(--c64748b)' }}>{w}</div>
             ))}
           </div>
-          <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ display: 'grid', gap }}>
             {weeks.map((row, wi) => (
-              <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8 }}>
+              <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap }}>
                 {row.map((d) => (d.inWindow ? card(d) : <div key={d.key} aria-hidden style={{ minHeight: 0 }} />))}
               </div>
             ))}

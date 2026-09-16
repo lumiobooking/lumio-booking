@@ -5,9 +5,7 @@ import { apiFetch } from '../lib/api';
 import { compactCount, ageOf } from '../lib/counts';
 import { useLive, fresh } from '../lib/live';
 import { enqueue, installOutbox, useOutbox, retryFailed, discardBatch, cancelBatch, takeLastDone, type BatchView } from '../lib/upload-queue';
-import { ShopWeek, HolidayOffers, type ShopWeekData, type HolidayIdea, type LastWeek, type AdsReceipt, type AdsPlan, type ShopPlanSheet } from './ShopWeek';
-import type { MonthBriefData } from './MonthBrief';
-import { ItemComments } from './ContentChat';
+import { ShopWeek, HolidayOffers, type ShopWeekData, type HolidayIdea, type LastWeek, type AdsReceipt, type AdsPlan } from './ShopWeek';
 
 /**
  * The salon's whole screen: what to film, what Lumio asked for, what is waiting
@@ -58,6 +56,37 @@ interface Suggestion {
 interface SuggestionFeed { open: Suggestion[]; past: Suggestion[]; waiting: number }
 type ClientWeek = ShopWeekData;
 
+/**
+ * Placeholder rows for the seconds before /content/suggestions answers.
+ *
+ * Same shimmer as app/salon/loading.tsx, on purpose: a shop that taps through
+ * from the menu sees one continuous loading state rather than two different
+ * ones handing over to each other.
+ */
+function WorkSkeleton() {
+  const bar = (w: string, h = 14) => (
+    <div style={{
+      width: w, height: h, borderRadius: 8,
+      background: 'linear-gradient(90deg, var(--c1e293b) 25%, var(--c334155) 37%, var(--c1e293b) 63%)',
+      backgroundSize: '800px 100%', animation: 'lumio-shimmer 1.2s linear infinite',
+    }} />
+  );
+  return (
+    <div aria-busy style={{ display: 'grid', gap: 12 }}>
+      {[0, 1].map((i) => (
+        <div key={i} style={{
+          background: 'var(--c151f38)', border: '1px solid var(--c334155)',
+          borderRadius: 14, padding: 16, display: 'grid', gap: 10,
+        }}>
+          {bar('42%', 13)}
+          {bar('88%', 18)}
+          {bar('64%', 13)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function SalonWorkspace({ token, vi, onCount }: {
   token: string | null;
   vi: boolean;
@@ -72,39 +101,35 @@ export function SalonWorkspace({ token, vi, onCount }: {
   const [lastWeek, setLastWeek] = useState<LastWeek | null>(null);
   const [ads, setAds] = useState<AdsReceipt | null>(null);
   const [adsPlan, setAdsPlan] = useState<AdsPlan | null>(null);
-  const [monthBrief, setMonthBrief] = useState<MonthBriefData | null>(null);
-  const [planSheet, setPlanSheet] = useState<ShopPlanSheet | null>(null);
   // The ask's one button opens the picker on the send box at the top of the tab.
   const askSend = useRef<(() => void) | null>(null);
   const [weekUnread, setWeekUnread] = useState(0);
-  /** Unread on the shop's own line to the team — the thread that is always there. */
-  const [lumioUnread, setLumioUnread] = useState(0);
   const [err, setErr] = useState<string | null>(null);
+  // Has the first round of requests come back? Every piece of state above
+  // starts empty, which is indistinguishable from "this shop has nothing" —
+  // so without this flag the tab opens by telling the owner there is no work,
+  // then replaces that sentence with their actual jobs a second or two later.
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
     const [s, w, h, u] = await Promise.all([
       apiFetch<SuggestionFeed>(fresh('/content/suggestions'), { token }).catch(() => null),
-      apiFetch<{ week: ClientWeek | null; weekKey: string | null; lastWeek: LastWeek | null; ads: AdsReceipt | null; adsPlan: AdsPlan | null; monthBrief?: MonthBriefData | null; planSheet?: ShopPlanSheet | null }>(fresh(`/content/my-week?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
+      apiFetch<{ week: ClientWeek | null; weekKey: string | null; lastWeek: LastWeek | null; ads: AdsReceipt | null; adsPlan: AdsPlan | null }>(fresh(`/content/my-week?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
       apiFetch<{ ideas: HolidayIdea[] }>(fresh(`/content/my-holidays?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
       apiFetch<{ bySubject?: Record<string, number> }>(fresh('/content/chat/unread'), { token }).catch(() => null),
     ]);
     if (s) { setSugg(s); onCount?.(s.waiting ?? s.open.length); }
-    if (w) { setWeek(w.week); setWeekKey(w.weekKey ?? null); setLastWeek(w.lastWeek ?? null); setAds(w.ads ?? null); setAdsPlan(w.adsPlan ?? null); setMonthBrief(w.monthBrief ?? null); setPlanSheet(w.planSheet ?? null); }
+    if (w) { setWeek(w.week); setWeekKey(w.weekKey ?? null); setLastWeek(w.lastWeek ?? null); setAds(w.ads ?? null); setAdsPlan(w.adsPlan ?? null); }
     if (h) setHolidays(h.ideas ?? []);
     if (u && w?.weekKey) setWeekUnread(u.bySubject?.[`week:${w.weekKey}`] ?? 0);
-    if (u) setLumioUnread(u.bySubject?.general ?? 0);
+    // After the Promise.all, so it means "we asked and this is the answer",
+    // not "we have started asking". Each request already swallows its own
+    // failure, so a dead endpoint still ends the wait instead of hanging it.
+    setLoaded(true);
   }, [token, vi, onCount]);
 
   useEffect(() => { load(); }, [load]);
-
-  // The month chips on the plan: the brief and the calendar turn together,
-  // and only they refetch — the week, the receipt and the pitch stay put.
-  const pickMonth = useCallback(async (month: string) => {
-    if (!token) return;
-    const r = await apiFetch<{ monthBrief?: MonthBriefData | null; planSheet?: ShopPlanSheet | null }>(fresh(`/content/my-month?month=${encodeURIComponent(month)}`), { token }).catch(() => null);
-    if (r) { setMonthBrief(r.monthBrief ?? null); setPlanSheet(r.planSheet ?? null); }
-  }, [token]);
   // A suggestion the team sends at ten shows up at ten, not when the shop
   // next reloads: every 30s while visible, and the moment the app comes back.
   useLive(load, 30_000, Boolean(token));
@@ -119,13 +144,10 @@ export function SalonWorkspace({ token, vi, onCount }: {
   // for opens this and gets a sentence, not a blank rectangle — but the send
   // box stays: a shop with no card from Lumio yet is exactly the shop whose
   // first clip has to have somewhere to go.
-  const nothing = !sugg?.open.length && !sugg?.past.length && !week?.jobs.length;
+  const nothing = loaded && !sugg?.open.length && !sugg?.past.length && !week?.jobs.length;
 
-  // No column of its own: the page around it sets the width (the whole
-  // window, up to 1440). A 760px cap here once squeezed the month plan —
-  // seven days across — into 95px cells.
   return (
-    <div style={{ padding: '0 0 22px' }}>
+    <div style={{ maxWidth: 760, margin: '0 auto', padding: '0 0 22px' }}>
       {err && (
         <div style={{
           background: 'var(--c450a0a)', border: '1px solid #ef4444', color: 'var(--cfecaca)',
@@ -140,30 +162,11 @@ export function SalonWorkspace({ token, vi, onCount }: {
              is the top of the tab, one tap, no card to wait for. */}
       <SendAnything token={token} vi={vi} onDone={load} onError={setErr} openRef={askSend} />
 
-      {/* ---- 0b. the line to the team, always open ----
-             There WAS a thread for the shop — but it hung under the week plan
-             inside ShopWeek, which only draws when the team has filed jobs for
-             this week, and it was addressed `week:<key>`, so it started over
-             every Monday. A shop with no week that wanted to ask something
-             simply had nowhere to type, and the team only ever saw its own
-             side of a conversation the shop could not start.
-
-             This one is addressed `general`: one thread per salon, always
-             here, whatever else is or is not on the screen. It lands in the
-             same team inbox as everything else. */}
-      <div style={{ marginBottom: 16 }}>
-        <ItemComments
-          token={token}
-          subject="general"
-          unread={lumioUnread}
-          vi={vi}
-          labelVi={vi ? 'Nhắn cho team Lumio' : 'Message the Lumio team'}
-        />
-        <div style={{ fontSize: 12, color: 'var(--c64748b)', marginTop: 5, lineHeight: 1.5 }}>
-          {T('Cần đổi nội dung, hỏi về bài đăng, hay góp ý gì cho bên em — nhắn ở đây, team đọc và trả lời ngay trong ngày làm việc.',
-             'Anything you want changed, asked or told — write here and the team replies within the working day.')}
-        </div>
-      </div>
+      {/* The wait, shown as the shape of what is coming. The send box above
+          needs no data and is already usable, so only the part that depends on
+          the server is masked — and it is masked with the layout it will become,
+          which is why the page does not jump when the answer lands. */}
+      {!loaded && <WorkSkeleton />}
 
       {nothing && (
         <div style={{
@@ -202,7 +205,7 @@ export function SalonWorkspace({ token, vi, onCount }: {
       {!!week?.jobs.length && (
         <ShopWeek
           token={token} vi={vi} week={week} weekKey={weekKey} unread={weekUnread}
-          lastWeek={lastWeek} ads={ads} adsPlan={adsPlan} monthBrief={monthBrief} planSheet={planSheet} onPickMonth={pickMonth} onSend={() => askSend.current?.()}
+          lastWeek={lastWeek} ads={ads} adsPlan={adsPlan} onSend={() => askSend.current?.()}
           onChanged={load} onError={setErr}
         />
       )}

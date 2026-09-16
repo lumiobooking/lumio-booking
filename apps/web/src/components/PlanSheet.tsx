@@ -213,7 +213,10 @@ export function PlanSheet({
           <div style={{ display: 'flex', gap: 4 }}>
             {months.map((m) => (
               <button key={m} type="button" onClick={() => onMonth(m)} style={{ padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${m === month ? '#6366f1' : 'var(--c334155)'}`, background: m === month ? 'rgba(99,102,241,.16)' : 'transparent', color: m === month ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>
-                {monthTitle(m, vi).split(' · ')[0]}
+                {/* the year only when it differs from the month on screen: in
+                    December the chips read "Tháng 11 · Tháng 12 · Tháng 1 2027",
+                    so next January is never mistaken for last January */}
+                {m.slice(0, 4) === month.slice(0, 4) ? monthTitle(m, vi).split(' · ')[0] : monthTitle(m, vi).replace(' · ', ' ')}
               </button>
             ))}
           </div>

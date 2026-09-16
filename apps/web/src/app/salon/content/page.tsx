@@ -37,7 +37,7 @@ import { addDays, type AheadBlock } from '../../../components/plan-grid';
 import { PostDetailModal } from '../../../components/PostDetailModal';
 import { PlanIdeas } from '../../../components/PlanIdeas';
 import { PlanSheet } from '../../../components/PlanSheet';
-import { entryToDraft, entryFromIdea, mergeIdeaInto, entryHasContent, nextMonth, monthTitle, type PlanEntry, type PlanPatch } from '../../../components/plan-sheet';
+import { entryToDraft, entryFromIdea, mergeIdeaInto, entryHasContent, nextMonth, monthTitle, shiftMonth, monthInRange, type PlanEntry, type PlanPatch } from '../../../components/plan-sheet';
 import { MonthBriefEditor, type MonthBriefData } from '../../../components/MonthBrief';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
@@ -357,7 +357,18 @@ interface QueuedPost {
 /** TikTok's per-post decisions — mirrors api tiktok/tiktok.ts TikTokPostOptions. */
 /** The button on a Google Business Profile post — see api content/gbp-cta.ts. */
 type GbpButton = 'book' | 'call' | 'learn' | 'none';
-interface GbpOpts { button: GbpButton; url: string | null }
+interface GbpOpts {
+  button: GbpButton;
+  url: string | null;
+  /**
+   * Policy risks the team has read and accepted, by code. Google RESTRICTS a
+   * few things rather than forbidding them (medical services, alcohol
+   * pricing, politics); a licensed med-spa must be able to post about what
+   * it does, so the team accepts the risk once per post instead of being
+   * stopped for ever. The salon's own screen never shows this.
+   */
+  ack?: string[];
+}
 const GBP_BUTTONS: { k: GbpButton; vi: string; en: string; hint: { vi: string; en: string } }[] = [
   { k: 'book', vi: 'Đặt lịch', en: 'Book', hint: { vi: 'mở trang đặt lịch của tiệm', en: 'opens the shop’s booking page' } },
   { k: 'call', vi: 'Gọi ngay', en: 'Call now', hint: { vi: 'gọi số điện thoại trên hồ sơ Google', en: 'dials the phone on the Google profile' } },
@@ -429,9 +440,16 @@ function tiktokGate(
 interface GbpCheckResult {
   summary: string;
   removed: ('phone' | 'link' | 'email' | 'handle' | 'hashtag')[];
+  /** Words changed for the Google copy only — "sexy" → "gorgeous". */
+  softened?: { vi: string; en: string }[];
+  /** Forbidden. No override exists. */
   blockers: { code: string; vi: string; en: string; match?: string }[];
+  /** Restricted by Google — the team may accept them. */
+  risks?: { code: string; vi: string; en: string; match?: string }[];
   warnings: { code: string; vi: string; en: string; match?: string }[];
   ai: { ok: boolean; blockers: string[]; warnings: string[]; sawImage: boolean } | null;
+  /** The code to put in `ack` to accept the model's objection. */
+  aiCode?: string | null;
   aiOff: boolean;
 }
 
@@ -701,7 +719,7 @@ function Inner() {
   const [briefBusy, setBriefBusy] = useState(false);
   const [ahead, setAhead] = useState<AheadBlock[] | null>(null);
   /** The plan sheet: one slot per day, the team's working document. */
-  const [sheet, setSheet] = useState<{ tz: string; today: string; from: string; days: number; month: string; entries: Record<string, PlanEntry> } | null>(null);
+  const [sheet, setSheet] = useState<{ tz: string; today: string; from: string; days: number; month: string; ahead?: { month: string; filled: number }; entries: Record<string, PlanEntry> } | null>(null);
   /** The month the plan shows; empty = the salon's current month. */
   const [planMonth, setPlanMonth] = useState<string>('');
   /** The day the plan should open on next — set when an idea is sent there. */
@@ -822,16 +840,22 @@ function Inner() {
   const gbpWanted = Boolean(postDraft?.channels.includes('google'));
   const gbpMessage = postDraft?.message ?? '';
   const gbpMediaKey = JSON.stringify((postDraft?.media ?? []).map((m) => [m.url, m.kind]));
+  // Only the agency may accept a Google risk on a salon's behalf: it is the
+  // agency that knows whether the shop is licensed for what it wrote.
+  const canEditPlan = Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN';
+  const gbpAck = postDraft?.google?.ack ?? [];
+  const gbpAckKey = gbpAck.join(',');
   useEffect(() => {
     if (!token || !gbpWanted) { setGbp(null); return; }
     const media = JSON.parse(gbpMediaKey) as [string, string][];
     const timer = setTimeout(() => {
       apiFetch<GbpCheckResult>('/content/posts/google-check', {
-        method: 'POST', token, body: { message: gbpMessage, media: media.map(([url, kind]) => ({ url, kind })) },
+        method: 'POST', token, body: { message: gbpMessage, media: media.map(([url, kind]) => ({ url, kind })), ack: gbpAck },
       }).then(setGbp).catch(() => setGbp(null));
     }, 500);
     return () => clearTimeout(timer);
-  }, [token, gbpWanted, gbpMessage, gbpMediaKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, gbpWanted, gbpMessage, gbpMediaKey, gbpAckKey]);
   // The first photo's pixels, measured in the browser — Google wants 250×250
   // at least, and a link's headers never say.
   useEffect(() => {
@@ -849,7 +873,7 @@ function Inner() {
     setGbpAi('running');
     try {
       const r = await apiFetch<GbpCheckResult>('/content/posts/google-check', {
-        method: 'POST', token, body: { message: postDraft.message, media: postDraft.media.map((m) => ({ url: m.url, kind: m.kind })), ai: true },
+        method: 'POST', token, body: { message: postDraft.message, media: postDraft.media.map((m) => ({ url: m.url, kind: m.kind })), ai: true, ack: postDraft.google?.ack ?? [] },
       });
       setGbp(r);
       if (r.ai && r.ai.ok && r.blockers.length === 0) notify('success', T('Google Business: ảnh và chữ đạt policy.', 'Google Business: photo and text pass policy.'));
@@ -954,15 +978,29 @@ function Inner() {
   // chip row each, and a person who turned one to October read September's
   // plan under October's brief without noticing. Now the bar above both
   // turns both, and the shop's screen turns the same way (ShopWeek).
-  const planMonths: string[] = sheet
-    ? [sheet.today.slice(0, 7), nextMonth(sheet.today.slice(0, 7))]
-    : brief ? [brief.current, brief.next] : [];
+  //
+  // Arrows rather than two fixed chips: nothing carries from one month to the
+  // next, so on the 1st every salon starts at an empty calendar — and with
+  // two chips alone, the month that just ended became unreachable the moment
+  // it ended. A client asking "what did you post for us in November" had to
+  // be answered from memory.
+  const todayMonth = sheet?.today.slice(0, 7) || brief?.current || '';
   const shownMonth = sheet?.month || brief?.month || '';
+  const quickMonths: string[] = todayMonth ? [todayMonth, nextMonth(todayMonth)] : [];
+  const canStep = (n: number) => Boolean(sheet?.today && shownMonth && monthInRange(sheet.today, shiftMonth(shownMonth, n)));
   function pickMonth(m: string) {
     setPlanMonth(m);
     void loadBrief(m);
     void loadSheet(m);
   }
+  // The month after today's, wherever the person has browsed to: what the
+  // shop will be looking at on the 1st.
+  const monthAhead = sheet?.ahead ?? null;
+  const daysLeftInMonth = (() => {
+    if (!sheet?.today) return 99;
+    const [y, m, d] = sheet.today.split('-').map(Number);
+    return new Date(Date.UTC(y, m, 0)).getUTCDate() - d;
+  })();
   useEffect(() => {
     // Refetched on every visit: a post scheduled from the grid is saved on
     // the queue tab and must show on the grid the moment the person is back.
@@ -2598,21 +2636,53 @@ function Inner() {
                    Written here by the team; read verbatim on the shop's own
                    screen. The calendar below is what the team schedules by
                    hand; the system's suggestions moved to the Ideas tab. */}
-              {planMonths.length > 1 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--c94a3b8)' }}>
-                    {T('Tháng đang xem', 'Month')}
-                  </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {planMonths.map((m) => (
-                      <button key={m} type="button" onClick={() => pickMonth(m)} style={{ padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${m === shownMonth ? '#6366f1' : 'var(--c334155)'}`, background: m === shownMonth ? 'rgba(99,102,241,.16)' : 'transparent', color: m === shownMonth ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>
-                        {monthTitle(m, vi)}
+              {shownMonth && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--c94a3b8)' }}>
+                      {T('Tháng đang xem', 'Month')}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <button
+                        type="button" disabled={!canStep(-1)} onClick={() => pickMonth(shiftMonth(shownMonth, -1))}
+                        title={T('Tháng trước', 'Previous month')}
+                        style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', fontFamily: 'inherit', fontSize: 15, cursor: canStep(-1) ? 'pointer' : 'default', color: canStep(-1) ? 'var(--c94a3b8)' : 'var(--c475569)' }}
+                      >‹</button>
+                      <div style={{ minWidth: 132, textAlign: 'center', padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 800, border: '1px solid #6366f1', background: 'rgba(99,102,241,.16)', color: 'var(--ink-link)' }}>
+                        {monthTitle(shownMonth, vi)}
+                      </div>
+                      <button
+                        type="button" disabled={!canStep(1)} onClick={() => pickMonth(shiftMonth(shownMonth, 1))}
+                        title={T('Tháng sau', 'Next month')}
+                        style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', fontFamily: 'inherit', fontSize: 15, cursor: canStep(1) ? 'pointer' : 'default', color: canStep(1) ? 'var(--c94a3b8)' : 'var(--c475569)' }}
+                      >›</button>
+                    </div>
+                    {quickMonths.filter((m) => m !== shownMonth).map((m) => (
+                      <button key={m} type="button" onClick={() => pickMonth(m)} style={{ padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)' }}>
+                        {m === todayMonth ? T('Về tháng này', 'This month') : monthTitle(m, vi)}
                       </button>
                     ))}
+                    <div style={{ fontSize: 12, color: 'var(--c64748b)' }}>
+                      {T('Kế hoạch tháng và Plan bên dưới đổi cùng nhau.', 'The month plan and the calendar below turn together.')}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--c64748b)' }}>
-                    {T('Kế hoạch tháng và Plan bên dưới đổi cùng nhau.', 'The month plan and the calendar below turn together.')}
-                  </div>
+
+                  {/* The 1st of the month is a cliff: nothing carries over, so a
+                      salon whose next month nobody has touched wakes up to an
+                      empty calendar and "chưa viết". Said here while there is
+                      still time to do something about it. */}
+                  {monthAhead && monthAhead.filled === 0 && daysLeftInMonth <= 12 && (
+                    <div style={{ marginTop: 8, padding: '8px 11px', borderRadius: 9, fontSize: 12.5, lineHeight: 1.5, background: 'rgba(245,158,11,.12)', border: '1px solid #f59e0b', color: 'var(--cfde68a)' }}>
+                      ⚠ {T(
+                        `Còn ${daysLeftInMonth} ngày nữa sang ${monthTitle(monthAhead.month, true)} — tháng đó chưa có ngày nào và chưa có kế hoạch tháng. Sang ngày 1, tiệm sẽ mở app và thấy lịch trống.`,
+                        `${daysLeftInMonth} days until ${monthTitle(monthAhead.month, false)} — that month has no days planned and no month brief. On the 1st the shop opens the app to an empty calendar.`,
+                      )}
+                      {' '}
+                      <button type="button" onClick={() => pickMonth(monthAhead.month)} style={{ padding: 0, background: 'none', border: 'none', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: 'var(--ink-link)', cursor: 'pointer', textDecoration: 'underline' }}>
+                        {T('Lên plan tháng đó ngay', 'Plan it now')}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               {brief && (
@@ -3706,11 +3776,32 @@ function Inner() {
                     const pxProblem = gbpPx && (gbpPx.w < 250 || gbpPx.h < 250)
                       ? T(`Ảnh ${gbpPx.w}×${gbpPx.h} px — Google yêu cầu ít nhất 250×250 px (nên 720×720 trở lên).`, `Photo is ${gbpPx.w}×${gbpPx.h} px — Google needs at least 250×250 (720×720 or more is best).`)
                       : null;
-                    const blockers = [
+                    // Three kinds of finding, three different answers — see
+                    // api content/gbp-policy.ts. FORBIDDEN stops the post and
+                    // nothing unlocks it. RESTRICTED stops it until the team
+                    // says "we know, this shop really does that". The rest is
+                    // advice. The model's opinion is a restriction, never a
+                    // forbidding: a vision model is a second reader, not a court.
+                    const ackList = postDraft.google?.ack ?? [];
+                    const aiOpen = Boolean(gbp?.ai && !gbp.ai.ok && gbp.aiCode && !ackList.includes(gbp.aiCode));
+                    const forbidden = [
                       ...(gbp?.blockers ?? []).map((b) => ({ text: vi ? b.vi : b.en, match: b.match })),
                       ...(pxProblem ? [{ text: pxProblem, match: undefined }] : []),
-                      ...((gbp?.ai && !gbp.ai.ok ? gbp.ai.blockers : []).map((t) => ({ text: `🤖 ${t}`, match: undefined }))),
                     ];
+                    const restricted = [
+                      ...(gbp?.risks ?? []).filter((r) => !ackList.includes(r.code)).map((r) => ({ code: r.code, text: vi ? r.vi : r.en, match: r.match })),
+                      ...(aiOpen ? [{ code: gbp!.aiCode!, text: `🤖 ${gbp!.ai!.blockers.join(' ')}`, match: undefined }] : []),
+                    ];
+                    const accepted = (gbp?.risks ?? []).filter((r) => ackList.includes(r.code));
+                    const accept = (code: string) => setPostDraft({
+                      ...postDraft,
+                      google: { ...(postDraft.google ?? { button: queue?.google?.defaultButton ?? 'book', url: null }), ack: Array.from(new Set([...ackList, code])) },
+                    });
+                    const undoAccept = () => setPostDraft({
+                      ...postDraft,
+                      google: { ...(postDraft.google ?? { button: queue?.google?.defaultButton ?? 'book', url: null }), ack: [] },
+                    });
+                    const blockers = forbidden;
                     const warnings = [
                       ...(gbp?.warnings ?? []).map((w) => (vi ? w.vi : w.en)),
                       ...((gbp?.ai?.warnings ?? []).map((t) => `🤖 ${t}`)),
@@ -3722,18 +3813,20 @@ function Inner() {
                     return (
                       <div style={{
                         marginTop: 8, padding: '10px 12px', borderRadius: 9, fontSize: 12.5, lineHeight: 1.55,
-                        background: 'var(--c1e293b)', border: `1px solid ${blockers.length ? '#ef4444' : warnings.length ? '#f59e0b' : 'var(--c334155)'}`,
+                        background: 'var(--c1e293b)', border: `1px solid ${blockers.length ? '#ef4444' : restricted.length ? '#f59e0b' : warnings.length ? '#f59e0b' : 'var(--c334155)'}`,
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <b style={{ color: 'var(--ce2e8f0)' }}>📍 {T('Kiểm soát policy Google Business', 'Google Business policy check')}</b>
-                          <span style={{ fontSize: 11.5, color: blockers.length ? 'var(--cfca5a5)' : warnings.length ? 'var(--cfde68a)' : 'var(--ink-good)' }}>
+                          <span style={{ fontSize: 11.5, color: blockers.length ? 'var(--cfca5a5)' : restricted.length || warnings.length ? 'var(--cfde68a)' : 'var(--ink-good)' }}>
                             {!queue?.google
                               ? T('chưa kết nối', 'not connected')
                               : blockers.length
-                                ? T(`${blockers.length} lỗi — không chốt lịch được`, `${blockers.length} issue(s) — cannot schedule`)
-                                : warnings.length
-                                  ? T(`đạt, ${warnings.length} lưu ý`, `passes, ${warnings.length} note(s)`)
-                                  : gbp ? T('✓ chữ đạt policy', '✓ text passes policy') : T('đang kiểm…', 'checking…')}
+                                ? T(`${blockers.length} điều Google cấm — phải sửa`, `${blockers.length} forbidden — must change`)
+                                : restricted.length
+                                  ? T(`${restricted.length} mục cần xác nhận`, `${restricted.length} to confirm`)
+                                  : warnings.length
+                                    ? T(`đạt, ${warnings.length} lưu ý`, `passes, ${warnings.length} note(s)`)
+                                    : gbp ? T('✓ chữ đạt policy', '✓ text passes policy') : T('đang kiểm…', 'checking…')}
                           </span>
                           <button
                             onClick={runGbpAi}
@@ -3761,10 +3854,34 @@ function Inner() {
                             ⛔ {b.text}{b.match && <> — {T('từ', 'word')}: <code style={{ background: 'var(--c0f172a)', padding: '0 4px', borderRadius: 4 }}>{b.match}</code></>}
                           </div>
                         ))}
+                        {restricted.map((r, i) => (
+                          <div key={`r${i}`} style={{ marginTop: 6, color: 'var(--cfde68a)', display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                            <span style={{ flex: 1, minWidth: 220 }}>
+                              ⚠ {r.text}{r.match && <> — {T('từ', 'word')}: <code style={{ background: 'var(--c0f172a)', padding: '0 4px', borderRadius: 4 }}>{r.match}</code></>}
+                            </span>
+                            {canEditPlan && (
+                              <button type="button" onClick={() => accept(r.code)} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: '1px solid #f59e0b', background: 'transparent', color: 'var(--cfde68a)', whiteSpace: 'nowrap' }}>
+                                {T('Tôi hiểu, vẫn đăng', 'I understand — post anyway')}
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        {accepted.length > 0 && (
+                          <div style={{ marginTop: 6, color: 'var(--c94a3b8)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span>☑︎ {T('Team đã chấp nhận rủi ro', 'Team accepted the risk')}: {accepted.map((a) => a.match || a.code).join(', ')}</span>
+                            <button type="button" onClick={undoAccept} style={{ padding: 0, background: 'none', border: 'none', fontFamily: 'inherit', fontSize: 11.5, color: 'var(--ink-link)', cursor: 'pointer' }}>{T('bỏ', 'undo')}</button>
+                          </div>
+                        )}
                         {warnings.map((w, i) => (
-                          <div key={`w${i}`} style={{ marginTop: 6, color: 'var(--cfde68a)' }}>⚠ {w}</div>
+                          <div key={`w${i}`} style={{ marginTop: 6, color: 'var(--c94a3b8)' }}>💡 {w}</div>
                         ))}
 
+                        {gbp && (gbp.softened?.length ?? 0) > 0 && (
+                          <div style={{ marginTop: 6, color: 'var(--c94a3b8)' }}>
+                            ↻ {T('Bản gửi Google tự đổi từ', 'The Google copy swaps')}: {gbp.softened!.map((x) => (vi ? x.vi : x.en)).join(' · ')}
+                            {' — '}{T('Facebook/Instagram vẫn giữ nguyên chữ chị viết.', 'Facebook/Instagram keep the caption exactly as written.')}
+                          </div>
+                        )}
                         {gbp && gbp.removed.length > 0 && (
                           <div style={{ marginTop: 6, color: 'var(--c94a3b8)' }}>
                             ✂︎ {T('Bản gửi Google tự bỏ', 'The Google copy drops')}: {gbp.removed.map((r) => (vi ? removedLabel[r]?.[0] : removedLabel[r]?.[1]) ?? r).join(', ')}
@@ -3778,8 +3895,8 @@ function Inner() {
                         )}
 
                         <div style={{ marginTop: 7, fontSize: 11.5, color: 'var(--c64748b)' }}>
-                          {T('Quy tắc Google: tối đa 1.500 ký tự · chỉ 1 ảnh JPG/PNG (10 KB–5 MB, ≥250×250 px), không video · không số điện thoại · không quảng bá rượu bia, thuốc lá, cờ bạc, vũ khí, dược phẩm, y tế, tài chính, người lớn · không hứa chữa bệnh/giảm cân · không chính trị · ảnh thật, không filter quá đà, không ảnh stock/logo người khác. Khi chốt lịch và trước giờ đăng, hệ thống kiểm lại lần nữa (cả AI) — vi phạm thì bài dừng, không lên Google.',
-                             'Google rules: 1,500 characters max · one JPG/PNG photo (10 KB–5 MB, ≥250×250 px), no video · no phone number · no promotion of alcohol, tobacco, gambling, weapons, pharma, medical, financial or adult services · no cure/weight-loss promises · no politics · real photos, no heavy filters, no stock/others’ logos. The system re-checks (AI included) when you lock the post and again before sending — a violation stops the post from reaching Google.')}
+                          {T('⛔ Google CẤM (không có cách nào đăng): nội dung người lớn, thù ghét/đe doạ, vũ khí, chất cấm, cờ bạc ăn tiền, hứa chữa khỏi bệnh · ảnh không phải JPG/PNG. ⚠ Google HẠN CHẾ (team xác nhận là đăng được): y tế/tiêm, tài chính, chính trị, CBD, cam kết giảm cân, rượu bia + thuốc lá kèm giá. 💡 Còn lại chỉ là góp ý. Hệ thống tự bỏ số điện thoại/link/hashtag và tự đổi vài từ (sexy → gorgeous) cho bản gửi Google; trước giờ đăng chỉ kiểm lại file ảnh, không chặn bài vì AI đổi ý.',
+                             '⛔ Google FORBIDS (nothing unlocks these): adult content, hate or threats, weapons, illegal drugs, gambling for money, promises to cure · a photo that is not JPG/PNG. ⚠ Google RESTRICTS (the team may confirm and post): medical/injections, finance, politics, CBD, promised weight loss, alcohol and tobacco with a price. 💡 Everything else is advice. The system strips the phone number, links and hashtags and swaps a few words (sexy → gorgeous) in the Google copy; before sending it re-checks the photo file only, and never stops a post because the model changed its mind.')}
                         </div>
                       </div>
                     );

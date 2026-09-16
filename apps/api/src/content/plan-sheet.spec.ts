@@ -1,4 +1,4 @@
-import { cleanEntry, cleanSheet, emptyEntry, entryHasContent, entryForShop, isDayKey, mergeEntry, monthsCovering, windowOf, monthGrid, ENTRY_LIMITS } from './plan-sheet';
+import { cleanEntry, cleanSheet, emptyEntry, entryHasContent, entryForShop, isDayKey, mergeEntry, monthsCovering, shiftMonthKey, windowOf, monthGrid, ENTRY_LIMITS } from './plan-sheet';
 
 const NOW = new Date('2026-09-15T10:00:00Z');
 
@@ -96,5 +96,27 @@ describe('a month as a calendar grid', () => {
     expect(monthGrid('2026-09')).toEqual({ from: '2026-08-31', days: 35, first: '2026-09-01', last: '2026-09-30' });   // Sept 1st is a Tuesday
     expect(monthGrid('2026-11')).toEqual({ from: '2026-10-26', days: 42, first: '2026-11-01', last: '2026-11-30' });   // Nov 1st is a Sunday: six rows
     expect(monthGrid('2027-02')).toEqual({ from: '2027-02-01', days: 28, first: '2027-02-01', last: '2027-02-28' });   // a Monday-start February: four rows
+  });
+});
+
+describe('stepping a month', () => {
+  it('walks over the turn of the year in both directions', () => {
+    expect(shiftMonthKey('2026-09', 1)).toBe('2026-10');
+    expect(shiftMonthKey('2026-11', 1)).toBe('2026-12');
+    expect(shiftMonthKey('2026-12', 1)).toBe('2027-01');
+    expect(shiftMonthKey('2027-01', -1)).toBe('2026-12');
+    expect(shiftMonthKey('2026-01', -1)).toBe('2025-12');
+    expect(shiftMonthKey('2026-06', 0)).toBe('2026-06');
+    expect(shiftMonthKey('2026-12', 13)).toBe('2028-01');
+  });
+
+  it('every month it lands on is a calendar the sheet can draw', () => {
+    for (let n = -12; n <= 6; n += 1) {
+      const key = shiftMonthKey('2026-09', n);
+      const g = monthGrid(key);
+      expect([28, 35, 42]).toContain(g.days);
+      expect(g.first).toBe(`${key}-01`);
+      expect(monthsCovering(g.from, g.days)).toContain(key);
+    }
   });
 });

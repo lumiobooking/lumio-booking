@@ -32,6 +32,14 @@ export interface GbpPostOptions {
   button: GbpButton;
   /** The writer's own link, when they typed one. Null means "use the default". */
   url: string | null;
+  /**
+   * Policy risks the team has read and accepted, by code (see gbp-policy).
+   * Google RESTRICTS a handful of things rather than forbidding them —
+   * medical services, alcohol pricing, politics — and a licensed med-spa
+   * has to be able to post about what it does. Empty for a post nobody has
+   * had to accept anything for, which is almost all of them.
+   */
+  ack: string[];
 }
 
 /** What the composer starts from when the post has never said. */
@@ -57,11 +65,14 @@ export function usableCtaUrl(url: unknown): url is string {
 /** The row's stored decision, validated. Anything malformed reads as "never said". */
 export function cleanGbpOptions(raw: unknown): GbpPostOptions | null {
   if (!raw || typeof raw !== 'object') return null;
-  const o = raw as { button?: unknown; url?: unknown };
+  const o = raw as { button?: unknown; url?: unknown; ack?: unknown };
   const button = GBP_BUTTONS.includes(o.button as GbpButton) ? (o.button as GbpButton) : null;
   if (!button) return null;
   const url = usableCtaUrl(o.url) ? (o.url as string).trim() : null;
-  return { button, url };
+  const ack = Array.from(new Set((Array.isArray(o.ack) ? o.ack : [])
+    .filter((c): c is string => typeof c === 'string' && /^[a-z0-9-]{2,40}$/i.test(c))))
+    .slice(0, 12);
+  return { button, url, ack };
 }
 
 export interface GbpCtaContext {

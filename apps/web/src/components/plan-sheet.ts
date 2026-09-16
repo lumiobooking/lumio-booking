@@ -200,8 +200,36 @@ export function monthTitle(month: string, vi: boolean): string {
   return vi ? `Tháng ${m} · ${y}` : `${EN[m - 1]} ${y}`;
 }
 
-/** The month after "YYYY-MM". */
-export function nextMonth(month: string): string {
+/**
+ * "YYYY-MM" n months away, over the year boundary — December + 1 is next
+ * January, not month 13. Mirrors apps/api/src/content/plan-sheet.ts.
+ */
+export function shiftMonth(month: string, n: number): string {
   const [y, m] = month.split('-').map(Number);
-  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  const t = (y * 12 + (m - 1)) + n;
+  return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
+}
+
+/** The month after "YYYY-MM". */
+export const nextMonth = (month: string) => shiftMonth(month, 1);
+
+/**
+ * How far a person may wander from the month they are in: a year back, so a
+ * client asking "what did you do for us last spring" can be answered, and a
+ * quarter forward, which is as far ahead as anyone plans a salon.
+ */
+export const MONTHS_BACK = 12;
+export const MONTHS_AHEAD = 3;
+
+/** Months away from today's month — negative is the past. */
+export function monthOffset(from: string, to: string): number {
+  const [ay, am] = from.split('-').map(Number);
+  const [by, bm] = to.split('-').map(Number);
+  return (by * 12 + bm) - (ay * 12 + am);
+}
+
+/** Whether the arrows may step there at all. */
+export function monthInRange(today: string, month: string): boolean {
+  const off = monthOffset(today.slice(0, 7), month);
+  return off >= -MONTHS_BACK && off <= MONTHS_AHEAD;
 }

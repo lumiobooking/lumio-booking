@@ -5,8 +5,8 @@ import {
 
 const img = (url = 'https://cdn.lumio.app/p/1.jpg') => ({ url, kind: 'image' as const });
 
-const codes = (r: { blockers: { code: string }[]; warnings: { code: string }[] }) =>
-  ({ block: r.blockers.map((b) => b.code), warn: r.warnings.map((w) => w.code) });
+const codes = (r: { blockers: { code: string }[]; risks?: { code: string }[]; warnings: { code: string }[] }) =>
+  ({ block: r.blockers.map((b) => b.code), risk: (r.risks ?? []).map((x) => x.code), warn: r.warnings.map((w) => w.code) });
 
 describe('the caption Google receives — the contact block is stripped, not refused', () => {
   const caption = `✨ Simple, classy, and always in style 💅
@@ -48,48 +48,39 @@ Book your Tuesday slot!
   });
 });
 
-describe('restricted goods: a mention passes, a deal on the same line does not', () => {
+describe('restricted goods: a mention is advice, a deal on the same line is a risk', () => {
   it('lets a restaurant mention beer on the menu', () => {
     const r = gbpTextIssues('Phở bò, bún chả, và có bia Sài Gòn lạnh.');
-    expect(codes(r)).toEqual({ block: [], warn: ['alcohol'] });
+    expect(codes(r)).toEqual({ block: [], risk: [], warn: ['alcohol'] });
   });
 
-  it('refuses a beer promotion', () => {
+  it('holds a beer promotion until somebody accepts it — it is never forbidden', () => {
     const r = gbpTextIssues('Happy hour: bia Sài Gòn chỉ 20k!');
-    expect(codes(r).block).toEqual(['alcohol']);
+    expect(codes(r).block).toEqual([]);
+    expect(codes(r).risk).toEqual(['alcohol']);
   });
 
-  it('refuses a wine deal written in English with a dollar price', () => {
-    expect(codes(gbpTextIssues('Wine night — glasses only $5')).block).toEqual(['alcohol']);
+  it('holds a wine deal written in English with a dollar price', () => {
+    expect(codes(gbpTextIssues('Wine night — glasses only $5')).risk).toEqual(['alcohol']);
   });
 
-  it('refuses a discount on the same line as vape, not on another line', () => {
-    expect(codes(gbpTextIssues('Vape mới về.\nGiảm 20% dịch vụ nail tuần này.')).block).toEqual([]);
-    expect(codes(gbpTextIssues('Vape mới về giảm 20%')).block).toEqual(['tobacco']);
+  it('reads the line, not the post: a discount beside vape, not one further down', () => {
+    expect(codes(gbpTextIssues('Vape mới về.\nGiảm 20% dịch vụ nail tuần này.')).risk).toEqual([]);
+    expect(codes(gbpTextIssues('Vape mới về giảm 20%')).risk).toEqual(['tobacco']);
   });
 });
 
-describe('what is refused on the word alone', () => {
+describe('what is FORBIDDEN — the short list nobody may override', () => {
   it.each([
-    ['gambling', 'Tối nay có poker và casino night!'],
-    ['weapons', 'Tặng kèm pepper spray cho khách nữ'],
-    ['drugs', 'Sản phẩm CBD giúp thư giãn'],
-    ['medical', 'Tiêm filler môi giá tốt'],
-    ['medical', 'Botox specials this week'],
-    ['health-claim', 'Liệu trình thải độc, giảm 5kg trong 1 tuần'],
-    ['health-claim', 'Our massage cures back pain'],
-    ['adult', 'Sexy red nails for the weekend'],
-    ['finance', 'Cho vay nhanh trong ngày'],
-    ['political', 'Vote for Trump and get 10% off'],
-    ['hate', 'Thằng ngu nào cũng làm được'],
+    ['gambling', 'Tối nay có casino night, cá cược thoải mái!'],
+    ['weapons', 'Bán kèm súng ngắn cho khách'],
+    ['drugs', 'Sản phẩm cần sa giúp thư giãn'],
+    ['adult', 'Escort service available'],
+    ['hate', 'Con đĩ đó đừng quay lại'],
+    ['cure-claim', 'Liệu trình chữa khỏi viêm da'],
+    ['cure-claim', 'Our serum cures diabetes'],
   ])('%s: "%s"', (code, text) => {
     expect(codes(gbpTextIssues(text)).block).toContain(code);
-  });
-
-  it('tells the writer the word, so a harmless "sexy" can be swapped', () => {
-    const r = gbpTextIssues('Sexy red nails');
-    expect(r.blockers[0].match).toBe('Sexy');
-    expect(r.blockers[0].vi).toMatch(/quyến rũ/);
   });
 
   it('does not fire inside other words — "guns" is a weapon, "Gunsmoke Grey" gel is not', () => {
@@ -100,7 +91,67 @@ describe('what is refused on the word alone', () => {
 
   it('a normal nail post has nothing to say', () => {
     const r = gbpTextIssues('Bộ nail gel-x mới về, còn giờ trống thứ Ba sáng. Đặt lịch ngay nhé!');
-    expect(codes(r)).toEqual({ block: [], warn: [] });
+    expect(codes(r)).toEqual({ block: [], risk: [], warn: [] });
+  });
+});
+
+describe('what is merely RESTRICTED — a risk the team may accept, never a dead end', () => {
+  it.each([
+    ['medical', 'Tiêm filler môi giá tốt'],
+    ['medical', 'Botox specials this week'],
+    ['finance', 'Cho vay nhanh trong ngày'],
+    ['political', 'Mừng ngày bầu cử, giảm 10%'],
+    ['body-claim', 'Liệu trình giúp giảm 5kg trong 1 tuần'],
+    ['cbd', 'CBD oil massage add-on'],
+    ['weapon-minor', 'Tặng kèm pepper spray cho khách nữ'],
+  ])('%s is a risk, not a blocker: "%s"', (code, text) => {
+    const r = gbpTextIssues(text);
+    expect(codes(r).block).toEqual([]);
+    expect(codes(r).risk).toContain(code);
+  });
+
+  it('a risk the team has accepted stops refusing; a NEW one still does', () => {
+    const post = 'Tiêm filler môi — bác sĩ có chứng chỉ';
+    expect(gbpRefusal(post, [img()])).toMatch(/y khoa/);
+    expect(gbpRefusal(post, [img()], ['medical'])).toBeNull();
+    // the same shop later writes something else restricted: not covered
+    expect(gbpRefusal(`${post}. Cho vay trả góp tận nơi.`, [img()], ['medical'])).toMatch(/tài chính/);
+  });
+
+  it('accepting a risk never unlocks a forbidden one', () => {
+    expect(gbpRefusal('Casino night, tiêm filler miễn phí', [img()], ['medical', 'gambling'])).toMatch(/Cờ bạc/);
+  });
+});
+
+describe('the words a salon means innocently — swapped for Google, not refused', () => {
+  it('turns "sexy" and "nude" into words Google’s classifier does not flinch at', () => {
+    const { text, softened } = gbpSummary('Sexy red and nude almond set 💅');
+    expect(text).toBe('gorgeous red and neutral almond set 💅');
+    expect(softened.map((x) => x.vi).join(' ')).toMatch(/"sexy"/);
+    expect(codes(gbpTextIssues(text))).toEqual({ block: [], risk: [], warn: [] });
+  });
+
+  it('so the whole check passes a post that used to be refused outright', () => {
+    const c = checkGbpPost('Sexy nails for the weekend', [img()]);
+    expect(c.blockers).toEqual([]);
+    expect(c.risks).toEqual([]);
+    expect(gbpRefusal('Sexy nails for the weekend', [img()])).toBeNull();
+  });
+
+  it('but a genuinely adult word is not a spelling problem — it is refused', () => {
+    expect(codes(gbpTextIssues('Happy ending massage')).block).toContain('adult');
+  });
+});
+
+describe('words a spa uses every day that used to block the post', () => {
+  it.each([
+    'Detox body scrub 60 phút',
+    'Tiệm nhận thẻ tín dụng và Apple Pay',
+    'Vote for your favourite colour of the month!',
+    'This balm heals dry cuticles',
+    'Nude pink ombre — bộ mới',
+  ])('%s', (text) => {
+    expect(gbpRefusal(text, [img()])).toBeNull();
   });
 });
 
@@ -149,7 +200,7 @@ describe('the whole verdict, as the planner and the composer use it', () => {
   });
 
   it('refuses with the first blocker in Vietnamese, naming the word', () => {
-    expect(gbpRefusal('Sexy nails for the weekend', [img()])).toMatch(/^Google Business: .*"Sexy"/);
+    expect(gbpRefusal('Happy ending massage', [img()])).toMatch(/^Google Business: .*"Happy ending"/);
     expect(gbpRefusal('Bộ nail mới về', [img()])).toBeNull();
   });
 

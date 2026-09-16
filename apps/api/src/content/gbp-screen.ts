@@ -12,8 +12,23 @@
  * It is a gate, not an editor: it returns reasons, never rewrites. And it
  * fails OPEN on network trouble — the word list still stands, and a shop
  * whose post waits an hour because Anthropic was slow is worse served than
- * one whose post went out with only the word list checked. Fail closed only
- * on a verdict.
+ * one whose post went out with only the word list checked.
+ *
+ * HOW HARD IT BITES
+ *
+ * A model looking at a photo is a second opinion, not a court. It used to
+ * refuse outright, at save time AND again in the sweep — so a post that had
+ * already been read and approved could still fail at 5pm because the model
+ * decided, that run, that a ring light was a phone number. Now:
+ *
+ *   - while the writer is at the screen, a verdict is a RISK: it is shown,
+ *     and the team may accept it and go on;
+ *   - in the sweep, it is advisory only. The post has passed a human and the
+ *     word list; a model's second thought at send time is logged, never a
+ *     silent failure nobody is watching.
+ *
+ * The prompt asks for the same split, so the model stops putting its guesses
+ * where its certainties go.
  */
 
 export interface ScreenVerdict {
@@ -39,10 +54,16 @@ CHÍNH SÁCH GOOGLE BUSINESS PROFILE (tóm tắt đúng nguồn support.google.c
 7. Đúng doanh nghiệp: ảnh và chữ phải về chính tiệm này (${input.shopName}, ngành ${input.trade}) — không phải sản phẩm/tiệm khác.
 
 CÁCH CHẤM:
-- "blockers": vi phạm rõ theo mục 1-7 → bài KHÔNG được đăng. Mỗi lý do 1 câu tiếng Việt, nói rõ thấy gì và sửa thế nào.
-- "warnings": không vi phạm nhưng dễ bị Google từ chối hoặc trông thiếu chuyên nghiệp (ảnh tối/mờ, chữ chèn quá nhiều, giá to đùng, quá nhiều emoji, câu khẳng định "số 1"). Mỗi ý 1 câu.
+- "blockers": CHỈ khi bạn NHÌN THẤY RÕ vi phạm mục 1-7, không phải nghi ngờ. Mỗi lý do 1 câu tiếng Việt, nói rõ thấy gì và sửa thế nào.
+- "warnings": mọi thứ còn lại — nghi ngờ, không chắc, hoặc không vi phạm nhưng dễ bị Google từ chối / trông thiếu chuyên nghiệp (ảnh tối/mờ, chữ chèn quá nhiều, giá to đùng, quá nhiều emoji, câu khẳng định "số 1"). Mỗi ý 1 câu.
+- NGUYÊN TẮC VÀNG: không chắc thì cho vào "warnings", đừng cho vào "blockers". Chặn nhầm một bài sạch tốn của tiệm nhiều hơn là để lọt một bài hơi rủi ro.
 - Nếu không thấy vấn đề, cả hai mảng để trống. Đừng bịa vấn đề để cho có.
-- Hình ảnh nail/tóc/mi/spa bình thường (bàn tay, móng, tóc, bàn chân trong liệu trình pedicure) là HỢP LỆ, không phải nội dung người lớn.
+- HỢP LỆ, KHÔNG PHẢI VI PHẠM (đừng chặn những thứ này):
+  • Ảnh nail/tóc/mi/spa bình thường: bàn tay, móng, bàn chân trong liệu trình pedicure, lưng/vai trong massage mặc đồ kín, tóc, mi, chân mày.
+  • Khách hàng cười tạo dáng khoe móng/tóc — người ta đến tiệm và đồng ý chụp, đó là ảnh tiệm tự chụp.
+  • Tên màu và tên dịch vụ: "neutral", "French", "ombre", "detox scrub", "hot stone", "paraffin".
+  • Bảng giá dịch vụ của chính tiệm (nail, tóc, spa KHÔNG thuộc nhóm hàng hạn chế) — ghi giá dịch vụ của mình là hoàn toàn được phép.
+  • Ảnh có logo/tên của chính tiệm này.
 
 Trả lời đúng một object JSON, không giải thích ngoài JSON:
 {"ok": true|false, "blockers": ["..."], "warnings": ["..."]}`;
@@ -75,8 +96,26 @@ export function parseScreenVerdict(raw: string, sawImage: boolean): ScreenVerdic
   return { ok: parsed.ok !== false && blockers.length === 0, blockers, warnings, sawImage };
 }
 
-/** One line for the refusal, from a verdict. */
+/**
+ * One line from a verdict, for the writer. Null when the model saw nothing.
+ * This is shown as a RISK at the composer, never as the sweeper's refusal —
+ * see the file header.
+ */
 export function screenRefusal(v: ScreenVerdict | null): string | null {
   if (!v || v.ok) return null;
   return `Google Business (AI kiểm duyệt): ${v.blockers.join(' ')}`;
+}
+
+/**
+ * The code a team acceptance is filed under, so accepting the model's
+ * opinion once survives a caption edit the model would judge the same way.
+ * One code per verdict text — a NEW objection is a new code and stops the
+ * post again.
+ */
+export function screenAckCode(v: ScreenVerdict | null): string | null {
+  if (!v || v.ok || !v.blockers.length) return null;
+  const joined = v.blockers.join(' ').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 40);
+  let h = 0;
+  for (let i = 0; i < joined.length; i += 1) h = (h * 31 + joined.charCodeAt(i)) >>> 0;
+  return `ai-${h.toString(36)}`;
 }

@@ -10,7 +10,7 @@ import type { PlanEntry } from './plan-sheet';
 /** The 30-day plan as my-week sends it to the shop: slots rebuilt without the agency's working fields. */
 export interface ShopPlanSheet {
   tz: string; today: string; from: string; days: number; month: string;
-  /** This month and the next — the two the shop may turn between. */
+  /** Last month, this month and next — the three the shop may turn between. */
   months?: string[];
   entries: Record<string, Omit<PlanEntry, 'mediaUrl' | 'updatedBy'>>;
 }

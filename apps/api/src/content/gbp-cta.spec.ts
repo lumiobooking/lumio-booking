@@ -50,8 +50,10 @@ describe('what counts as a link', () => {
   });
 
   it('cleans a stored row: bad button or bad link read as "never said"', () => {
-    expect(cleanGbpOptions({ button: 'book', url: 'https://a.com/b' })).toEqual({ button: 'book', url: 'https://a.com/b' });
-    expect(cleanGbpOptions({ button: 'book', url: 'not a link' })).toEqual({ button: 'book', url: null });
+    expect(cleanGbpOptions({ button: 'book', url: 'https://a.com/b' })).toEqual({ button: 'book', url: 'https://a.com/b', ack: [] });
+    expect(cleanGbpOptions({ button: 'book', url: 'not a link' })).toEqual({ button: 'book', url: null, ack: [] });
+    // an accepted policy risk survives the round trip; junk in that list does not
+    expect(cleanGbpOptions({ button: 'call', url: null, ack: ['medical', 'medical', 'drop tables', 7] })).toEqual({ button: 'call', url: null, ack: ['medical'] });
     expect(cleanGbpOptions({ button: 'delete', url: null })).toBeNull();
     expect(cleanGbpOptions('BOOK')).toBeNull();
     expect(cleanGbpOptions(null)).toBeNull();

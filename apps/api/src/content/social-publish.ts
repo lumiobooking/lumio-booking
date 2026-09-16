@@ -96,6 +96,8 @@ export interface PostDraft {
   media: MediaItem[];
   /** TikTok's per-post decisions (privacy, toggles, disclosure) — see tiktok/tiktok.ts. */
   tiktok?: TikTokPostOptions | null;
+  /** Google policy risks the team has accepted for this post — see gbp-policy. */
+  gbpAck?: readonly string[] | null;
 }
 
 export interface ChannelPlan {
@@ -200,7 +202,7 @@ export function planPublish(draft: PostDraft, page: ConnectedPage | null, google
       continue;
     }
     if (channel === 'google') {
-      const refusal = refuseGoogle({ text, media, shape }, google);
+      const refusal = refuseGoogle({ text, media, shape }, google, draft.gbpAck ?? null);
       plans.push({ channel, ok: refusal === null, targetId: refusal === null ? google!.parent : null, refusal });
       continue;
     }
@@ -274,7 +276,7 @@ function refuse(channel: Channel, c: Checked, page: ConnectedPage | null): strin
  * the first one goes, and the composer says so — because a carousel written
  * for Facebook should not have to be split just to reach Google Maps.
  */
-function refuseGoogle(c: Checked, google: GoogleLocation | null): string | null {
+function refuseGoogle(c: Checked, google: GoogleLocation | null, gbpAck: readonly string[] | null): string | null {
   if (!google) return 'Tiệm chưa kết nối Google Business. Vào mục Trả lời đánh giá Google, kết nối tài khoản và chọn địa điểm rồi mới đăng được.';
   if (!c.text && !c.media.length) return 'Bài chưa có nội dung.';
   // Google Business does not take a photo-only post: the summary is required.
@@ -289,9 +291,9 @@ function refuseGoogle(c: Checked, google: GoogleLocation | null): string | null 
   if (share) return share;
   const bad = c.media.find((m) => !usableMediaUrl(m.url));
   if (bad) return 'Link ảnh phải là https công khai — Google tự tải file về từ link này.';
-  // Google's content policy — restricted goods, health claims, adult words,
-  // politics, photo format. A profile suspension is the cost of skipping it.
-  return gbpRefusal(c.text, c.media);
+  // Google's content policy. Only what Google FORBIDS refuses outright; what
+  // Google merely restricts refuses until the team accepts it (gbpAck).
+  return gbpRefusal(c.text, c.media, gbpAck);
 }
 
 /**

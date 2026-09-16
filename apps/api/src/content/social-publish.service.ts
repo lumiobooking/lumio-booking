@@ -18,8 +18,8 @@ import { GoogleReviewsService } from '../google-reviews/google-reviews.service';
 import { TikTokService } from '../tiktok/tiktok.service';
 import { cleanTikTokOptions, type TikTokPostOptions, type TikTokTarget } from '../tiktok/tiktok';
 import { cleanGbpOptions, resolveGbpCta, gbpCtaProblem, DEFAULT_GBP_BUTTON, type GbpPostOptions, type GbpCtaContext } from './gbp-cta';
-import { checkGbpPost, gbpImageHeaderProblem, gbpSummary, type GbpCheck } from './gbp-policy';
-import { gbpScreenPrompt, parseScreenVerdict, screenRefusal, type ScreenVerdict } from './gbp-screen';
+import { checkGbpPost, gbpImageHeaderProblem, gbpSummary, unacceptedRisks, type GbpCheck, type Issue } from './gbp-policy';
+import { gbpScreenPrompt, parseScreenVerdict, screenAckCode, screenRefusal, type ScreenVerdict } from './gbp-screen';
 import { createHash } from 'crypto';
 import {
   cleanStage, statusFor, keepDriveLinks, unarchived, postFolderName, mediaFileName, type Stage, type MediaRef,
@@ -664,10 +664,10 @@ export class SocialPublishService {
       // Refuse at write time, while the person who wrote it is still looking at
       // it, rather than failing in a scheduler run nobody is watching.
       const conn = await this.pageFor(tenantId);
-      const plan = planPublish({ channels, message, media, tiktok: tiktokOpts }, conn?.page ?? null, await this.googleFor(tenantId), await this.tiktokFor(tenantId));
+      const plan = planPublish({ channels, message, media, tiktok: tiktokOpts, gbpAck: googleOpts?.ack ?? null }, conn?.page ?? null, await this.googleFor(tenantId), await this.tiktokFor(tenantId));
       if (!plan.ready) throw new BadRequestException(plan.problems.join(' '));
       if (channels.includes('google')) {
-        const g = await this.googleGate(tenantId, message, media);
+        const g = await this.googleGate(tenantId, message, media, { ack: googleOpts?.ack ?? null, enforceAi: true });
         if (g) throw new BadRequestException(g);
         // The button, checked while the writer is still looking. This is the
         // refusal Google used to give hours later: a Book button needs a link.
@@ -728,10 +728,11 @@ export class SocialPublishService {
     let blockers: string[] = [];
     if (stage === 'ready') {
       const conn = await this.pageFor(tenantId);
-      const plan = planPublish({ channels: this.channelsOf(row), message: row.message, media: this.mediaOf(row), tiktok: this.tiktokOf(row) }, conn?.page ?? null, await this.googleFor(tenantId), await this.tiktokFor(tenantId));
+      const gOpts = cleanGbpOptions((row as { google?: unknown }).google);
+      const plan = planPublish({ channels: this.channelsOf(row), message: row.message, media: this.mediaOf(row), tiktok: this.tiktokOf(row), gbpAck: gOpts?.ack ?? null }, conn?.page ?? null, await this.googleFor(tenantId), await this.tiktokFor(tenantId));
       blockers = plan.ready ? [] : plan.problems;
       if (plan.ready && this.channelsOf(row).includes('google')) {
-        const g = await this.googleGate(tenantId, row.message, this.mediaOf(row));
+        const g = await this.googleGate(tenantId, row.message, this.mediaOf(row), { ack: gOpts?.ack ?? null, enforceAi: true });
         if (g) blockers = [g];
       }
       status = blockers.length === 0 ? 'scheduled' : 'draft';
@@ -1022,11 +1023,13 @@ export class SocialPublishService {
       await this.fail(row, error);
       return { ok: false, error, results: [] };
     }
-    // Google's policy gate runs again at send time — the picture's host may
-    // have changed the file, and a post edited after its screen is a post
-    // the screen never saw. Cached, so an unchanged post costs nothing.
+    // Google's file gate runs again at send time — the picture's host may
+    // have changed the file since a person last looked. The MODEL's opinion
+    // does not run again as a refusal: this post has already passed a person
+    // and the word list, and a second thought from a vision model at 5pm is
+    // not worth a silent failure nobody is watching (see gbp-screen).
     if (channels.includes('google')) {
-      const g = await this.googleGate(row.tenantId, row.message, media);
+      const g = await this.googleGate(row.tenantId, row.message, media, { ack: this.gbpOf(row)?.ack ?? null, enforceAi: false });
       if (g) { await this.fail(row, g); return { ok: false, error: g, results: [] }; }
     }
 
@@ -1103,20 +1106,35 @@ export class SocialPublishService {
    * cheap enough to call on every pause. `ai: true` adds the model's look at
    * the photo and the caption, for the "Kiểm duyệt" button.
    */
-  async googleCheck(user: AuthenticatedUser, body: { message?: string; media?: { url?: string; kind?: string }[]; ai?: boolean }): Promise<GbpCheck & { ai: ScreenVerdict | null; aiOff: boolean }> {
+  async googleCheck(
+    user: AuthenticatedUser,
+    body: { message?: string; media?: { url?: string; kind?: string }[]; ai?: boolean; ack?: unknown },
+  ): Promise<GbpCheck & { ai: ScreenVerdict | null; aiCode: string | null; openRisks: Issue[]; aiOff: boolean }> {
     const tenantId = this.tenantId(user);
     const media = this.mediaOf({ media: body.media ?? [] });
     const check = checkGbpPost(body.message ?? '', media);
+    const ack = Array.isArray(body.ack) ? body.ack.filter((c): c is string => typeof c === 'string') : [];
     let ai: ScreenVerdict | null = null;
     if (body.ai && check.blockers.length === 0) {
       const photo = media.find((m) => m.kind === 'image')?.url ?? null;
       if (photo) {
         const p = await this.googleImageProblem(photo);
-        if (p) check.blockers.push({ code: 'file', vi: p, en: p });
+        if (p) check.blockers.push({ code: 'file', level: 'hard', vi: p, en: p });
       }
       if (check.blockers.length === 0) ai = await this.googleScreen(tenantId, check.summary, photo);
     }
-    return { ...check, ai, aiOff: !process.env.ANTHROPIC_API_KEY };
+    // What still stands in the way, after what the team has already accepted.
+    const open = unacceptedRisks(check.risks, ack);
+    const aiCode = screenAckCode(ai);
+    return {
+      ...check,
+      ai,
+      /** The code to send back in `ack` to accept the model's objection. */
+      aiCode,
+      /** Risks nobody has accepted yet — what the composer must still ask about. */
+      openRisks: aiCode && !ack.includes(aiCode) ? [...open, { code: aiCode, level: 'risky' as const, vi: screenRefusal(ai) ?? '', en: screenRefusal(ai) ?? '' }] : open,
+      aiOff: !process.env.ANTHROPIC_API_KEY,
+    };
   }
 
   /**
@@ -1124,14 +1142,34 @@ export class SocialPublishService {
    * it is sent: the file's headers, then the model's look. The refusal, or
    * null. The word list ran already inside planPublish.
    */
-  private async googleGate(tenantId: string, message: string, media: MediaItem[]): Promise<string | null> {
+  private async googleGate(
+    tenantId: string,
+    message: string,
+    media: MediaItem[],
+    opts: { ack: readonly string[] | null; enforceAi: boolean },
+  ): Promise<string | null> {
     const photo = media.find((m) => m.kind === 'image')?.url ?? null;
     if (photo) {
       const p = await this.googleImageProblem(photo);
       if (p) return `Google Business: ${p}`;
     }
     const v = await this.googleScreen(tenantId, checkGbpPost(message, media).summary, photo);
-    return screenRefusal(v);
+    const said = screenRefusal(v);
+    if (!said) return null;
+    const code = screenAckCode(v);
+    if (code && (opts.ack ?? []).includes(code)) return null;
+    if (!opts.enforceAi) {
+      // Send time: the model's word is a note in the log, never the reason a
+      // salon's post did not go out while nobody was at the screen.
+      this.log.warn(`gbp screen at send time for ${tenantId} (not enforced): ${said}`);
+      return null;
+    }
+    return `${said} — team Lumio có thể bấm "Tôi hiểu, vẫn đăng" nếu bài này thật sự ổn.`;
+  }
+
+  /** The post's stored Google options, validated. */
+  private gbpOf(row: { google?: unknown }): GbpPostOptions | null {
+    return cleanGbpOptions(row.google);
   }
 
   /**

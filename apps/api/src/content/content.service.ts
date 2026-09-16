@@ -28,7 +28,7 @@ import { dueReviews, nextReview, reviewReport, reviewJobText, type Campaign } fr
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel, localParts } from './week-key';
 import { MONTH_BRIEF_KEY, cleanBrief, briefForShop, monthKeyIn, isMonthKey, type MonthBrief } from './month-brief';
-import { PLAN_SHEET_KEY, cleanSheet, mergeEntry, entryHasContent, entryForShop, isDayKey, monthsCovering, monthOfDay, windowOf, monthGrid, type PlanSheet } from './plan-sheet';
+import { PLAN_SHEET_KEY, cleanSheet, mergeEntry, entryHasContent, entryForShop, isDayKey, monthsCovering, monthOfDay, shiftMonthKey, windowOf, monthGrid, type PlanSheet } from './plan-sheet';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
 import { scopeOf, knownTrades } from './trends/trend-feed';
 import { tradeKeywordsFor, fillKeyword } from './trends/trade-keywords';
@@ -1027,11 +1027,9 @@ export class ContentService {
    * the two the shop may turn between. One month selector drives the brief
    * and the plan together, so both read the same pair.
    */
-  private async shopMonths(tenantId: string): Promise<{ current: string; next: string; tz: string }> {
+  private async shopMonths(tenantId: string): Promise<{ prev: string; current: string; next: string; tz: string }> {
     const { month: current, tz } = await this.currentMonthFor(tenantId);
-    const [y, m] = current.split('-').map(Number);
-    const next = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}`;
-    return { current, next, tz };
+    return { prev: shiftMonthKey(current, -1), current, next: shiftMonthKey(current, 1), tz };
   }
 
   /**
@@ -1042,9 +1040,19 @@ export class ContentService {
    */
   async monthBriefForShop(user: AuthenticatedUser, monthQ?: string) {
     const tenantId = this.tenantId(user);
-    const { current, next } = await this.shopMonths(tenantId);
-    const month = monthQ === next ? next : current;
+    const months = await this.shopMonths(tenantId);
+    const month = this.shopMonthPick(months, monthQ);
     return briefForShop(await this.readBrief(tenantId, month));
+  }
+
+  /**
+   * The three months a SHOP may turn between: last month (what was done),
+   * this month, and next month (what is coming). Anything else falls back to
+   * this month — a stray query cannot page a salon through years of settings
+   * rows, and there is nothing older worth showing an owner anyway.
+   */
+  private shopMonthPick(months: { prev: string; current: string; next: string }, monthQ?: string): string {
+    return monthQ === months.next || monthQ === months.prev ? monthQ : months.current;
   }
 
   // ---- the plan sheet ---------------------------------------------------------
@@ -1088,7 +1096,13 @@ export class ContentService {
     // typed which cell. Team members see the by-line.
     const team = user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession);
     if (!team) for (const e of Object.values(entries)) e.updatedBy = null;
-    return { tz, today, from, days, month, entries };
+    // How the month AFTER this one is doing, wherever the person has browsed
+    // to. Every month starts empty — nothing carries over — so on the 1st a
+    // salon with nobody on it shows a blank calendar and "chưa viết". The
+    // team's screen warns before that happens instead of after.
+    const soon = shiftMonthKey(monthKeyIn(new Date(), tz), 1);
+    const ahead = { month: soon, filled: Object.keys(await this.readSheetMonth(tenantId, soon)).length };
+    return { tz, today, from, days, month, ahead, entries };
   }
 
   /**
@@ -1101,12 +1115,12 @@ export class ContentService {
    * `months` is the pair the shop may turn between; `monthQ` picks one.
    */
   async planSheetForShop(user: AuthenticatedUser, monthQ?: string) {
-    const { current, next } = await this.shopMonths(this.tenantId(user));
-    const pick = monthQ === next ? next : current;
+    const months = await this.shopMonths(this.tenantId(user));
+    const pick = this.shopMonthPick(months, monthQ);
     const { tz, today, from, days, month, entries } = await this.planSheet(user, undefined, undefined, pick);
     const out: Record<string, ReturnType<typeof entryForShop>> = {};
     for (const [day, e] of Object.entries(entries)) out[day] = entryForShop(e);
-    return { tz, today, from, days, month, months: [current, next], entries: out };
+    return { tz, today, from, days, month, months: [months.prev, months.current, months.next], entries: out };
   }
 
   /**

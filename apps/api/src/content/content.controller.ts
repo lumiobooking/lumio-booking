@@ -366,7 +366,7 @@ export class ContentController {
   @HttpCode(200)
   googleCheck(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { message?: string; media?: { url?: string; kind?: string }[]; ai?: boolean },
+    @Body() body: { message?: string; media?: { url?: string; kind?: string }[]; ai?: boolean; ack?: string[] },
   ) {
     return this.publisher.googleCheck(user, body ?? {});
   }

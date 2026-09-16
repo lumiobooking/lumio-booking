@@ -1,4 +1,4 @@
-import { emptyEntry, entryReady, entryToDraft, sheetProgress, sheetWeeks, entryHasContent, entryFromIdea, mergeIdeaInto, monthWeeks, monthTitle, nextMonth } from './plan-sheet';
+import { emptyEntry, entryReady, entryToDraft, sheetProgress, sheetWeeks, entryHasContent, entryFromIdea, mergeIdeaInto, monthWeeks, monthTitle, nextMonth, shiftMonth, monthOffset, monthInRange } from './plan-sheet';
 
 const ALL = { facebook: true, instagram: true, tiktok: true, google: true };
 
@@ -81,5 +81,29 @@ describe('a month as calendar rows', () => {
     expect(monthTitle('2026-09', true)).toBe('Tháng 9 · 2026');
     expect(monthTitle('2026-12', false)).toBe('December 2026');
     expect(nextMonth('2026-12')).toBe('2027-01');
+  });
+
+  it('steps both ways over the turn of the year, and knows how far it may go', () => {
+    expect(shiftMonth('2026-11', 1)).toBe('2026-12');
+    expect(shiftMonth('2026-12', 1)).toBe('2027-01');
+    expect(shiftMonth('2027-01', -1)).toBe('2026-12');
+    expect(shiftMonth('2026-01', -2)).toBe('2025-11');
+    expect(monthOffset('2026-12', '2027-02')).toBe(2);
+    expect(monthOffset('2027-01', '2026-12')).toBe(-1);
+    // a year back and a quarter ahead of the day we are on, and no further
+    expect(monthInRange('2026-12-31', '2027-03')).toBe(true);
+    expect(monthInRange('2026-12-31', '2027-04')).toBe(false);
+    expect(monthInRange('2026-12-31', '2025-12')).toBe(true);
+    expect(monthInRange('2026-12-31', '2025-11')).toBe(false);
+  });
+
+  it('draws every month it can reach, including a six-row November and a January', () => {
+    for (let n = -12; n <= 3; n += 1) {
+      const m = shiftMonth('2026-09', n);
+      const w = monthWeeks(m, '2026-09-16');
+      expect([4, 5, 6]).toContain(w.length);
+      expect(w[0]).toHaveLength(7);
+      expect(w.flat().filter((d) => d.inWindow).length).toBe(new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5)), 0)).getUTCDate());
+    }
   });
 });

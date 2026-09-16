@@ -129,6 +129,17 @@ export function cleanSheet(raw: unknown, month: string): PlanSheet {
 /** "YYYY-MM" for a day key. */
 export const monthOfDay = (day: string) => day.slice(0, 7);
 
+/**
+ * "YYYY-MM" n months away, over the year boundary — December + 1 is next
+ * January, not month 13. Every place that steps a month uses this one
+ * function, so the turn of the year is written once and tested once.
+ */
+export function shiftMonthKey(month: string, n: number): string {
+  const [y, m] = month.split('-').map(Number);
+  const t = (y * 12 + (m - 1)) + n;
+  return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
+}
+
 /** The month keys a run of days touches, in order — two at a month edge, one otherwise. */
 export function monthsCovering(from: string, days: number): string[] {
   const [y, m, d] = from.split('-').map(Number);

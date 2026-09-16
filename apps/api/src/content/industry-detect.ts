@@ -224,7 +224,7 @@ export function configGaps(input: {
   if (!input.region) {
     gaps.push({
       key: 'region', severity: 'degraded',
-      message: 'Chưa biết bang. Lịch lễ và xu hướng đang chạy theo cả nước thay vì theo khu vực của tiệm.',
+      message: 'Chưa biết bang. Dịp lễ và xu hướng đang chạy theo cả nước thay vì theo khu vực của tiệm.',
     });
   }
   if (!input.postalCode) {

@@ -1810,7 +1810,11 @@ function Inner() {
     { id: 'today', label: T('Hôm nay', 'Today'), icon: '✍️', group: 'content' },
     { id: 'week', label: 'Plan', icon: '🗓️', group: 'content' },
     { id: 'trends', label: T('Ý tưởng', 'Ideas'), icon: '💡', group: 'content' },
-    { id: 'calendar', label: T('Lịch lễ', 'Calendar'), icon: '📆', group: 'content' },
+    // NOT "Calendar". Three things on this one screen were called that: this
+    // tab, the Post schedule tab, and the month view inside it — so "go to the
+    // calendar" meant nothing. This tab is the list of holidays worth posting
+    // about, and that is what it is now called.
+    { id: 'calendar', label: T('Dịp lễ', 'Holidays'), icon: '🎉', group: 'content' },
     { id: 'queue', label: T('Lịch đăng bài', 'Post schedule'), icon: '🚀', group: 'content' },
     { id: 'audience', label: T('Khách & ưu đãi', 'Customers & offers'), icon: '🎯', group: 'growth' },
     { id: 'ads', label: T('Quảng cáo & SEO', 'Ads & SEO'), icon: '📣', group: 'growth' },
@@ -6236,7 +6240,7 @@ function Inner() {
                   onClick={() => setTab('calendar')}
                   style={{ ...ui.primaryBtn, marginTop: 8, width: '100%', background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--c94a3b8)' }}
                 >
-                  {T('Xem lịch 6 tháng', 'Six-month calendar')}
+                  {T('Xem dịp lễ 6 tháng tới', 'Holidays — next six months')}
                 </button>
               </div>
             )}

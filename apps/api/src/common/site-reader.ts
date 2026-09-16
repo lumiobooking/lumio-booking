@@ -21,6 +21,8 @@
  *     "error 403" but the two things the person can actually do instead.
  */
 
+import { browserHeaders, urlVariants, wallMessage } from './browser-headers';
+
 export interface SiteText {
   text: string;
   /** Where it came from, for the screen. */
@@ -29,11 +31,9 @@ export interface SiteText {
 
 export class SiteReadError extends Error {}
 
-const BROWSER_HEADERS = {
-  'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-  accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
-};
+// The header set, the host variants and the wording all live in
+// common/browser-headers.ts — see that file for why a Chrome user-agent alone
+// was not enough to get past a bot wall.
 
 /**
  * True when a hostname must never be fetched from the server.
@@ -69,19 +69,22 @@ export async function readWebsite(url: string): Promise<SiteText> {
   const host = (() => { try { return new URL(clean).hostname; } catch { return ''; } })();
   if (isForbiddenHost(host)) throw new SiteReadError('Địa chỉ này không đọc được.');
 
-  let res = await fetch(clean, { redirect: 'follow', headers: BROWSER_HEADERS }).catch(() => null);
-  if (res && !res.ok && [403, 406, 503].includes(res.status)) {
-    res = await fetch(clean, {
-      redirect: 'follow',
-      headers: { 'user-agent': 'LumioBot/1.0 (+https://lumiobooking.com)', accept: 'text/html' },
-    }).catch(() => res);
+  // Try the address as given, then its www twin. The old code retried a 403
+  // as "LumioBot/1.0" — a self-declared crawler, which no wall that just
+  // refused a suspicious browser is going to admit. Trying the other host
+  // fixes a real class of failure; confessing to being a robot fixes none.
+  const headers = browserHeaders();
+  let res: Response | null = null;
+  let lastStatus: number | null = null;
+  for (const candidate of urlVariants(clean)) {
+    const r = await fetch(candidate, { redirect: 'follow', headers, signal: AbortSignal.timeout(20_000) }).catch(() => null);
+    if (r && r.ok) { res = r; break; }
+    if (r) lastStatus = r.status;
+    // A wall answers the same way on both hosts; a 404 might not. Either way
+    // the loop is two requests at most.
   }
   if (!res || !res.ok) {
-    throw new SiteReadError(
-      res && [403, 406, 503].includes(res.status)
-        ? `Website này chặn đọc tự động (${res.status}). Thử nút đọc từ Fanpage, hoặc mở website → chọn hết chữ (Ctrl+A, Ctrl+C) → dán vào ô mô tả.`
-        : `Không tải được trang${res ? ` (${res.status})` : ''}.`,
-    );
+    throw new SiteReadError(wallMessage(lastStatus, true));
   }
   const text = htmlToText((await res.text()).slice(0, 400_000));
   if (text.length < 40) throw new SiteReadError('Trang này không có đủ chữ để đọc.');

@@ -68,19 +68,40 @@ describe('a site that blocks bots gets a useful message, not a status code', () 
     await expect(readWebsite('https://example.com')).rejects.toThrow(/Ctrl\+A/);
   });
 
-  it('retries once with a plainer identity before giving up', async () => {
-    const calls: string[] = [];
-    jest.spyOn(globalThis, 'fetch' as never).mockImplementation((async (_u: string, init: { headers?: Record<string, string> }) => {
-      calls.push(String(init?.headers?.['user-agent'] ?? ''));
-      return calls.length === 1
+  it('tries the www twin when the bare host is walled, and never confesses to being a robot', async () => {
+    const urls: string[] = [];
+    const agents: string[] = [];
+    jest.spyOn(globalThis, 'fetch' as never).mockImplementation((async (u: string, init: { headers?: Record<string, string> }) => {
+      urls.push(String(u));
+      agents.push(String(init?.headers?.['user-agent'] ?? ''));
+      return urls.length === 1
         ? { ok: false, status: 403, text: async () => '' }
         : { ok: true, status: 200, text: async () => '<p>Chúng tôi làm dịch vụ marketing cho doanh nghiệp của người Việt tại Mỹ.</p>' };
     }) as never);
     const r = await readWebsite('https://example.com');
     expect(r.text).toContain('marketing');
-    expect(calls).toHaveLength(2);
-    expect(calls[0]).toMatch(/Chrome/);   // the customer's own browser first
-    expect(calls[1]).toMatch(/LumioBot/); // then honest about being us
+    expect(urls).toHaveLength(2);
+    expect(urls[0]).toContain('//example.com');
+    expect(urls[1]).toContain('//www.example.com');
+    // The old code retried as "LumioBot/1.0". Nothing that just refused a
+    // suspicious browser admits a self-declared crawler — both attempts are
+    // the same browser now.
+    for (const a of agents) {
+      expect(a).toMatch(/Chrome/);
+      expect(a).not.toMatch(/LumioBot/i);
+    }
+  });
+
+  it('sends the client-hint and Sec-Fetch headers whose absence was the 403', async () => {
+    let sent: Record<string, string> = {};
+    jest.spyOn(globalThis, 'fetch' as never).mockImplementation((async (_u: string, init: { headers?: Record<string, string> }) => {
+      sent = init?.headers ?? {};
+      return { ok: true, status: 200, text: async () => '<p>Chúng tôi làm dịch vụ marketing cho doanh nghiệp của người Việt tại Mỹ.</p>' };
+    }) as never);
+    await readWebsite('https://example.com');
+    expect(sent['sec-ch-ua']).toContain('Google Chrome');
+    expect(sent['sec-fetch-mode']).toBe('navigate');
+    expect(sent['upgrade-insecure-requests']).toBe('1');
   });
 
   it('rejects a page with almost no words rather than returning noise', async () => {

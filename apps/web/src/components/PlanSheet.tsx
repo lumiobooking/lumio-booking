@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { instantToWall } from '../lib/datetime';
 import { WD_VI, WD_EN, MONTH_VI, MONTH_EN, mondayIndex, addDays } from './plan-grid';
 import {
-  PILLARS, FORMATS, AIR, pillarOf, formatOf, emptyEntry, entryHasContent, entryReady, sheetWeeks, sheetProgress,
+  PILLARS, FORMATS, AIR, pillarOf, formatOf, emptyEntry, entryHasContent, entryReady, monthWeeks, monthTitle, sheetProgress,
   type PlanEntry, type PlanPatch, type Air, type SheetDay,
 } from './plan-sheet';
 
@@ -48,9 +48,13 @@ const STATUS: Record<string, { bg: string; ink: string; icon: string; vi: string
 const FORMAT_ICON: Record<string, string> = { poster: '🖼', album: '🎞', video: '▶', story: '📱' };
 
 export function PlanSheet({
-  from, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected, postsKnown, focusDay,
+  month, months, onMonth, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected, postsKnown, focusDay,
 }: {
-  from: string;
+  /** The calendar month the sheet shows, "YYYY-MM" — the shop's month, next to the month brief. */
+  month: string;
+  /** Months a person may switch to (this one and the next); with `onMonth`, drawn as chips. */
+  months?: string[];
+  onMonth?: (month: string) => void;
   today: string;
   tz: string;
   entries: Record<string, PlanEntry>;
@@ -73,7 +77,7 @@ export function PlanSheet({
   focusDay?: string | null;
 }) {
   const T = (a: string, b: string) => (vi ? a : b);
-  const weeks = useMemo(() => sheetWeeks(from, today), [from, today]);
+  const weeks = useMemo(() => monthWeeks(month, today), [month, today]);
   const postById = useMemo(() => new Map(posts.map((p) => [p.id, p])), [posts]);
   const progress = sheetProgress(weeks, entries);
   const posted = Object.values(entries).filter((e) => e.postId && postById.get(e.postId)?.status === 'posted').length;
@@ -97,7 +101,6 @@ export function PlanSheet({
     const p = pillarOf(e?.pillar ?? '');
     const post = postOf(e);
     const L = label(d.key);
-    const dim = d.past || !d.inWindow;
     const selected = open === d.key;
     const clickable = canEdit ? (d.inWindow || has) : has;
     const st = post ? STATUS[post.status] ?? STATUS.draft : null;
@@ -115,7 +118,7 @@ export function PlanSheet({
           background: has ? 'var(--c0f172a)' : 'transparent',
           border: `1px ${has ? 'solid' : 'dashed'} ${selected ? '#6366f1' : d.today && !has ? 'rgba(99,102,241,.6)' : 'var(--c334155)'}`,
           boxShadow: selected ? '0 0 0 2px rgba(99,102,241,.35)' : 'none',
-          opacity: dim && !has ? .35 : dim ? .7 : 1,
+          opacity: d.past && !has ? .4 : d.past ? .75 : 1,
           cursor: clickable ? 'pointer' : 'default',
           display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, outline: 'none',
           transition: 'border-color .12s, box-shadow .12s',
@@ -125,7 +128,7 @@ export function PlanSheet({
         {p && <span style={{ position: 'absolute', left: 0, top: 10, bottom: 10, width: 4, borderRadius: 4, background: p.bg }} />}
 
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0 }}>
-          <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: d.today ? 'var(--ink-link)' : 'var(--c64748b)' }}>{L.wd}</span>
+          {isMobile && <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: d.today ? 'var(--ink-link)' : 'var(--c64748b)' }}>{L.wd}</span>}
           <span style={{ fontSize: 16, fontWeight: 800, color: d.today ? 'var(--ink-link)' : has ? 'var(--cf1f5f9)' : 'var(--c94a3b8)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{L.d}</span>
           {d.today && <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--ink-link)', textTransform: 'uppercase', letterSpacing: .4, marginLeft: 2 }}>{T('hôm nay', 'today')}</span>}
           {p && <span style={{ marginLeft: 'auto', fontSize: 9.5, fontWeight: 800, letterSpacing: .4, textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4, background: p.bg, color: p.ink, whiteSpace: 'nowrap' }}>{vi ? p.vi : p.en}</span>}
@@ -159,11 +162,10 @@ export function PlanSheet({
             </div>
           </>
         ) : (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 28 : 60 }}>
-            {canEdit && d.inWindow ? (
-              <span style={{ width: 28, height: 28, borderRadius: 14, border: '1px solid var(--c334155)', display: 'grid', placeItems: 'center', color: 'var(--c64748b)', fontSize: 17, lineHeight: 1 }}>+</span>
-            ) : (
-              <span style={{ fontSize: 11, color: 'var(--ink-faint)' }}>{d.past ? '' : T('trống', 'empty')}</span>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 20 : 56 }}>
+            {/* an empty future day: a plus for the team, nothing at all for the shop — a blank square reads as "free", a word reads as a gap */}
+            {canEdit && d.inWindow && !d.past && (
+              <span style={{ width: 26, height: 26, borderRadius: 13, border: '1px dashed var(--c334155)', display: 'grid', placeItems: 'center', color: 'var(--c64748b)', fontSize: 16, lineHeight: 1 }}>+</span>
             )}
           </div>
         )}
@@ -173,13 +175,22 @@ export function PlanSheet({
 
   // ---- header + bands ----------------------------------------------------------
 
-  const weekTitle = (row: SheetDay[]) => { const a = label(row[0].key), z = label(row[6].key); return `${a.d} ${a.m} – ${z.d} ${z.m}`; };
   const pct = progress.days ? Math.round((progress.filled / progress.days) * 100) : 0;
+  const WD = vi ? WD_VI : WD_EN;
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>🗓️ {T('Plan 30 ngày', '30-day plan')}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--cf1f5f9)', letterSpacing: -.2 }}>🗓️ {T('Plan', 'Plan')} {monthTitle(month, vi)}</div>
+        {months && onMonth && months.length > 1 && (
+          <div style={{ display: 'flex', gap: 4 }}>
+            {months.map((m) => (
+              <button key={m} type="button" onClick={() => onMonth(m)} style={{ padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${m === month ? '#6366f1' : 'var(--c334155)'}`, background: m === month ? 'rgba(99,102,241,.16)' : 'transparent', color: m === month ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>
+                {monthTitle(m, vi).split(' · ')[0]}
+              </button>
+            ))}
+          </div>
+        )}
         {/* one bar says how far the month is planned; three numbers say what happened to it */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <div style={{ width: isMobile ? 90 : 140, height: 6, borderRadius: 3, background: 'var(--c1e293b)', overflow: 'hidden' }}>
@@ -210,27 +221,30 @@ export function PlanSheet({
         </div>
       )}
 
-      <div style={{ display: 'grid', gap: 12 }}>
-        {weeks.map((row, wi) => {
-          const shown = row.filter((d) => d.inWindow || entryHasContent(entries[d.key]));
-          if (!shown.length) return null;
-          const filled = row.filter((d) => entryHasContent(entries[d.key])).length;
-          return (
-            <div key={wi}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '0 2px 6px' }}>
-                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--c94a3b8)' }}>{T(`Tuần ${wi + 1}`, `Week ${wi + 1}`)}</span>
-                <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{weekTitle(row)}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 11, color: filled === 7 ? 'var(--ink-good)' : 'var(--c64748b)' }}>{filled}/7</span>
+      {isMobile ? (
+        /* a phone reads the month as a list: the days that carry something,
+           plus (for the team) the empty days still ahead, so there is
+           somewhere to tap */
+        <div style={{ display: 'grid', gap: 6 }}>
+          {weeks.flat().filter((d) => d.inWindow && (entryHasContent(entries[d.key]) || d.today || (canEdit && !d.past))).map(card)}
+        </div>
+      ) : (
+        /* a real month calendar: one weekday header, then the rows */
+        <div style={{ borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c111827)', padding: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8, marginBottom: 6 }}>
+            {WD.map((w, i) => (
+              <div key={w} style={{ textAlign: 'center', fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: i >= 5 ? 'var(--ink-warn)' : 'var(--c64748b)' }}>{w}</div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {weeks.map((row, wi) => (
+              <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8 }}>
+                {row.map((d) => (d.inWindow ? card(d) : <div key={d.key} aria-hidden style={{ minHeight: 0 }} />))}
               </div>
-              {isMobile ? (
-                <div style={{ display: 'grid', gap: 6 }}>{shown.map(card)}</div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8 }}>{row.map(card)}</div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {open && dayOf(open) && (
         <DayPanel

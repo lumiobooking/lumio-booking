@@ -1,4 +1,4 @@
-import { emptyEntry, entryReady, entryToDraft, sheetProgress, sheetWeeks, entryHasContent, entryFromIdea, mergeIdeaInto } from './plan-sheet';
+import { emptyEntry, entryReady, entryToDraft, sheetProgress, sheetWeeks, entryHasContent, entryFromIdea, mergeIdeaInto, monthWeeks, monthTitle, nextMonth } from './plan-sheet';
 
 const ALL = { facebook: true, instagram: true, tiktok: true, google: true };
 
@@ -64,5 +64,22 @@ describe('an idea becoming a plan slot', () => {
     expect(patch.air).toBeUndefined();
     expect(patch).toMatchObject({ pillar: 'inspiration', format: 'album', detail: 'c' });
     expect(mergeIdeaInto(undefined, idea)).toBe(idea);
+  });
+});
+
+describe('a month as calendar rows', () => {
+  it('starts on the Monday before the 1st, ends on the Sunday after the last day, marks the month', () => {
+    const w = monthWeeks('2026-09', '2026-09-16');
+    expect(w).toHaveLength(5);
+    expect(w[0][0]).toMatchObject({ key: '2026-08-31', inWindow: false, past: true });
+    expect(w[0][1]).toMatchObject({ key: '2026-09-01', inWindow: true });
+    expect(w[2][2]).toMatchObject({ key: '2026-09-16', today: true });
+    expect(w[4][6]).toMatchObject({ key: '2026-10-04', inWindow: false });
+    expect(sheetProgress(w, {}).days).toBe(30);
+  });
+  it('names months and steps to the next', () => {
+    expect(monthTitle('2026-09', true)).toBe('Tháng 9 · 2026');
+    expect(monthTitle('2026-12', false)).toBe('December 2026');
+    expect(nextMonth('2026-12')).toBe('2027-01');
   });
 });

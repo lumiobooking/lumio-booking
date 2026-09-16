@@ -93,7 +93,7 @@ export function entryToDraft(
   return { message, channels, at: `${e.day}T10:00`, teamNote: note.slice(0, 200) };
 }
 
-export interface SheetDay { key: string; past: boolean; today: boolean; inWindow: boolean }
+export interface SheetDay { key: string; past: boolean; today: boolean; /** Inside the month (or window) the sheet is about. */ inWindow: boolean }
 
 /** Five Monday-aligned weeks from a start Monday: the sheet's bands. */
 export function sheetWeeks(from: string, todayKey: string, weeks = 5): SheetDay[][] {
@@ -167,4 +167,41 @@ export function mergeIdeaInto(existing: PlanEntry | undefined, idea: PlanPatch):
   if (!existing.format && idea.format) out.format = idea.format;
   if (!existing.air.length && idea.air?.length) out.air = idea.air;
   return out;
+}
+
+/**
+ * One month as calendar rows: Monday on or before the 1st to Sunday on or
+ * after the last day. Days outside the month are on the grid (so the rows
+ * line up) but not "in window"; they draw as blanks.
+ */
+export function monthWeeks(month: string, todayKey: string): SheetDay[][] {
+  const [y, m] = month.split('-').map(Number);
+  const first = `${month}-01`;
+  const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  const start = addDays(first, -mondayIndex(first));
+  const rows = Math.ceil((daysBetween(start, last) + 1) / 7);
+  const out: SheetDay[][] = [];
+  for (let w = 0; w < rows; w++) {
+    const row: SheetDay[] = [];
+    for (let i = 0; i < 7; i++) {
+      const key = addDays(start, w * 7 + i);
+      const off = daysBetween(todayKey, key);
+      row.push({ key, past: off < 0, today: off === 0, inWindow: key.startsWith(month) });
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+/** "Tháng 9 · 2026" / "September 2026". */
+export function monthTitle(month: string, vi: boolean): string {
+  const [y, m] = month.split('-').map(Number);
+  const EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  return vi ? `Tháng ${m} · ${y}` : `${EN[m - 1]} ${y}`;
+}
+
+/** The month after "YYYY-MM". */
+export function nextMonth(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
 }

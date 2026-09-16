@@ -37,7 +37,7 @@ import { addDays, type AheadBlock } from '../../../components/plan-grid';
 import { PostDetailModal } from '../../../components/PostDetailModal';
 import { PlanIdeas } from '../../../components/PlanIdeas';
 import { PlanSheet } from '../../../components/PlanSheet';
-import { entryToDraft, entryFromIdea, mergeIdeaInto, entryHasContent, type PlanEntry, type PlanPatch } from '../../../components/plan-sheet';
+import { entryToDraft, entryFromIdea, mergeIdeaInto, entryHasContent, nextMonth, type PlanEntry, type PlanPatch } from '../../../components/plan-sheet';
 import { MonthBriefEditor, type MonthBriefData } from '../../../components/MonthBrief';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
@@ -701,7 +701,9 @@ function Inner() {
   const [briefBusy, setBriefBusy] = useState(false);
   const [ahead, setAhead] = useState<AheadBlock[] | null>(null);
   /** The plan sheet: one slot per day, the team's working document. */
-  const [sheet, setSheet] = useState<{ tz: string; today: string; from: string; days: number; entries: Record<string, PlanEntry> } | null>(null);
+  const [sheet, setSheet] = useState<{ tz: string; today: string; from: string; days: number; month: string; entries: Record<string, PlanEntry> } | null>(null);
+  /** The month the plan shows; empty = the salon's current month. */
+  const [planMonth, setPlanMonth] = useState<string>('');
   /** The day the plan should open on next — set when an idea is sent there. */
   const [planFocusDay, setPlanFocusDay] = useState<string | null>(null);
   const [aheadTz, setAheadTz] = useState<string>('');
@@ -939,10 +941,11 @@ function Inner() {
     } catch { setAhead([]); }
     finally { setAheadBusy(false); }
   }, [token]);
-  const loadSheet = useCallback(async () => {
+  const loadSheet = useCallback(async (month?: string) => {
     if (!token) return;
-    try { setSheet(await apiFetch('/content/plan-sheet', { token })); } catch { /* the sheet stays as it was */ }
-  }, [token]);
+    const m = month ?? planMonth;
+    try { setSheet(await apiFetch(`/content/plan-sheet${m ? `?month=${m}` : ''}`, { token })); } catch { /* the sheet stays as it was */ }
+  }, [token, planMonth]);
   const loadBrief = useCallback(async (month?: string) => {
     if (!token) return;
     try { setBrief(await apiFetch(`/content/month-brief${month ? `?month=${month}` : ''}`, { token })); } catch { /* card stays empty */ }
@@ -2603,7 +2606,9 @@ function Inner() {
                   <div style={{ color: 'var(--c94a3b8)', fontSize: 13, padding: 8 }}>{T('Đang tải plan…', 'Loading the plan…')}</div>
                 ) : (
                   <PlanSheet
-                    from={sheet.from}
+                    month={sheet.month}
+                    months={[sheet.today.slice(0, 7), nextMonth(sheet.today.slice(0, 7))]}
+                    onMonth={(m) => { setPlanMonth(m); void loadSheet(m); }}
                     today={sheet.today}
                     tz={sheet.tz || salonTz()}
                     entries={sheet.entries}

@@ -28,7 +28,7 @@ import { dueReviews, nextReview, reviewReport, reviewJobText, type Campaign } fr
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel, localParts } from './week-key';
 import { MONTH_BRIEF_KEY, cleanBrief, briefForShop, monthKeyIn, isMonthKey, type MonthBrief } from './month-brief';
-import { PLAN_SHEET_KEY, cleanSheet, mergeEntry, entryHasContent, entryForShop, isDayKey, monthsCovering, monthOfDay, windowOf, type PlanSheet } from './plan-sheet';
+import { PLAN_SHEET_KEY, cleanSheet, mergeEntry, entryHasContent, entryForShop, isDayKey, monthsCovering, monthOfDay, windowOf, monthGrid, type PlanSheet } from './plan-sheet';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
 import { scopeOf, knownTrades } from './trends/trend-feed';
 import { tradeKeywordsFor, fillKeyword } from './trends/trade-keywords';
@@ -1053,13 +1053,17 @@ export class ContentService {
    * five weeks from it, the same window the calendar draws. Days are salon
    * days; the client sends `from` when it pages, never a zone.
    */
-  async planSheet(user: AuthenticatedUser, fromQ?: string, daysQ?: string) {
+  async planSheet(user: AuthenticatedUser, fromQ?: string, daysQ?: string, monthQ?: string) {
     const tenantId = this.tenantId(user);
-    const { tz } = await this.currentMonthFor(tenantId);
+    const { tz, month: current } = await this.currentMonthFor(tenantId);
     const today = dayKeyTz(new Date(), tz);
+    // A month, as a calendar: the default. The plan is the shop's month —
+    // "September" — read next to the month brief, not a rolling window.
+    const month = isMonthKey(monthQ) ? monthQ : isDayKey(fromQ) ? null : current;
+    const grid = month ? monthGrid(month) : null;
     const monday = addDaysToKey(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
-    const from = isDayKey(fromQ) ? fromQ : monday;
-    const days = Math.min(70, Math.max(7, Number(daysQ) || 35));
+    const from = grid ? grid.from : isDayKey(fromQ) ? fromQ : monday;
+    const days = grid ? grid.days : Math.min(70, Math.max(7, Number(daysQ) || 35));
     const months = monthsCovering(from, days);
     const merged: PlanSheet = {};
     for (const m of months) Object.assign(merged, await this.readSheetMonth(tenantId, m));
@@ -1068,7 +1072,7 @@ export class ContentService {
     // typed which cell. Team members see the by-line.
     const team = user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession);
     if (!team) for (const e of Object.values(entries)) e.updatedBy = null;
-    return { tz, today, from, days, entries };
+    return { tz, today, from, days, month, entries };
   }
 
   /**
@@ -1078,11 +1082,11 @@ export class ContentService {
    * which is worse than saying nothing.
    */
   async planSheetForShop(user: AuthenticatedUser) {
-    const { tz, today, from, days, entries } = await this.planSheet(user);
+    const { tz, today, from, days, month, entries } = await this.planSheet(user);
     const out: Record<string, ReturnType<typeof entryForShop>> = {};
     for (const [day, e] of Object.entries(entries)) out[day] = entryForShop(e);
     if (!Object.keys(out).length) return null;
-    return { tz, today, from, days, entries: out };
+    return { tz, today, from, days, month, entries: out };
   }
 
   /**

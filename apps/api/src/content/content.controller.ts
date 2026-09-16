@@ -475,8 +475,8 @@ export class ContentController {
 
   /** The plan sheet — one slot per day, six columns, the team's working document. */
   @Get('plan-sheet')
-  planSheet(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('days') days?: string) {
-    return this.svc.planSheet(user, from, days);
+  planSheet(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('days') days?: string, @Query('month') month?: string) {
+    return this.svc.planSheet(user, from, days, month);
   }
 
   @Post('plan-sheet')

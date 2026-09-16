@@ -170,3 +170,29 @@ export function entryForShop(e: PlanEntry): {
 } {
   return { day: e.day, pillar: e.pillar, topic: e.topic, detail: e.detail, air: e.air, format: e.format, postId: e.postId, updatedAt: e.updatedAt };
 }
+
+/** "YYYY-MM-DD" + n days in plain calendar arithmetic. */
+function shift(day: string, n: number): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+/**
+ * The calendar grid of one month: from the Monday on or before the 1st to
+ * the Sunday on or after the last day — whole weeks, so the sheet is a
+ * proper month calendar (the shop reads "September", not "the 35 days
+ * from this Monday"). 28, 35 or 42 days.
+ */
+export function monthGrid(month: string): { from: string; days: number; first: string; last: string } {
+  const [y, m] = month.split('-').map(Number);
+  const first = `${month}-01`;
+  const lastDate = new Date(Date.UTC(y, m, 0));
+  const last = lastDate.toISOString().slice(0, 10);
+  const mondayIdx = (new Date(`${first}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const from = shift(first, -mondayIdx);
+  const sundayGap = (7 - ((lastDate.getUTCDay() + 6) % 7) - 1) % 7;
+  const to = shift(last, sundayGap);
+  const utc = (k: string) => { const [yy, mm, dd] = k.split('-').map(Number); return Date.UTC(yy, mm - 1, dd); };
+  const days = Math.round((utc(to) - utc(from)) / 86_400_000) + 1;
+  return { from, days, first, last };
+}

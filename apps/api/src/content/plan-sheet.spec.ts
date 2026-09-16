@@ -1,4 +1,4 @@
-import { cleanEntry, cleanSheet, emptyEntry, entryHasContent, entryForShop, isDayKey, mergeEntry, monthsCovering, windowOf, ENTRY_LIMITS } from './plan-sheet';
+import { cleanEntry, cleanSheet, emptyEntry, entryHasContent, entryForShop, isDayKey, mergeEntry, monthsCovering, windowOf, monthGrid, ENTRY_LIMITS } from './plan-sheet';
 
 const NOW = new Date('2026-09-15T10:00:00Z');
 
@@ -88,5 +88,13 @@ describe('what the shop sees of a slot', () => {
     expect(Object.keys(s).sort()).toEqual(['air', 'day', 'detail', 'format', 'pillar', 'postId', 'topic', 'updatedAt']);
     expect(JSON.stringify(s)).not.toContain('drive.google.com');
     expect(JSON.stringify(s)).not.toContain('an@lumio');
+  });
+});
+
+describe('a month as a calendar grid', () => {
+  it('runs from the Monday before the 1st to the Sunday after the last day', () => {
+    expect(monthGrid('2026-09')).toEqual({ from: '2026-08-31', days: 35, first: '2026-09-01', last: '2026-09-30' });   // Sept 1st is a Tuesday
+    expect(monthGrid('2026-11')).toEqual({ from: '2026-10-26', days: 42, first: '2026-11-01', last: '2026-11-30' });   // Nov 1st is a Sunday: six rows
+    expect(monthGrid('2027-02')).toEqual({ from: '2027-02-01', days: 28, first: '2027-02-01', last: '2027-02-28' });   // a Monday-start February: four rows
   });
 });

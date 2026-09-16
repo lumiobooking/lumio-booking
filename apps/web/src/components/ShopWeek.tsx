@@ -9,7 +9,7 @@ import type { PlanEntry } from './plan-sheet';
 
 /** The 30-day plan as my-week sends it to the shop: slots rebuilt without the agency's working fields. */
 export interface ShopPlanSheet {
-  tz: string; today: string; from: string; days: number;
+  tz: string; today: string; from: string; days: number; month: string;
   entries: Record<string, Omit<PlanEntry, 'mediaUrl' | 'updatedBy'>>;
 }
 import { Inline } from './WeekPlanBoard';
@@ -233,7 +233,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
       {planSheet && Object.keys(planSheet.entries).length > 0 && (
         <div style={{ ...card, marginBottom: 12, background: 'var(--c0f172a)', borderColor: 'var(--c334155)' }}>
           <PlanSheet
-            from={planSheet.from}
+            month={planSheet.month}
             today={planSheet.today}
             tz={planSheet.tz}
             entries={Object.fromEntries(Object.entries(planSheet.entries).map(([k, e]) => [k, { ...e, mediaUrl: '', updatedBy: null }]))}
@@ -491,8 +491,12 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
       )}
 
       {/* ---- 2. what LUMIO is doing ----
-             The service, visible. Named, dated and in full — a client who
-             cannot see the work assumes there is none. */}
+             Used to be a day-by-day list of the team's own jobs. Gone: the
+             month plan above shows what is coming, the month brief says what
+             it is for, and two lists of the same work read as two plans. The
+             list still draws for a shop with no plan yet, so a client is
+             never shown nothing. */}
+      {!(planSheet && Object.keys(planSheet.entries).length > 0) && (<>
       <h2 style={h2}>{T('Tuần này bên em làm cho tiệm', 'What we are doing for you this week')}</h2>
       <p style={lede}>{week.focus}</p>
 
@@ -542,6 +546,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
           </div>
         ))}
       </div>
+      </>)}
 
       {/* ---- 3. the ONE thing asked of the shop ----
              One ask, one deadline, one button. The shot list is folded away

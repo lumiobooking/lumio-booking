@@ -112,6 +112,26 @@ export default function ContentConsolePage() {
           an hour, an unanswered client cannot. */}
       <ContentInbox token={token} />
 
+      {/* Almost everything on this screen spends API credit, and the console
+          at Anthropic cannot say which salon or which feature spent it. */}
+      <a
+        href="/super-admin/ai-usage"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18, padding: '11px 14px',
+          borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)',
+          color: 'var(--ce2e8f0)', textDecoration: 'none', fontSize: 13.5,
+        }}
+      >
+        <span style={{ fontSize: 17 }}>📊</span>
+        <span style={{ flex: 1 }}>
+          <b>API đang tốn vào đâu</b>
+          <span style={{ display: 'block', fontSize: 12, color: 'var(--c64748b)', marginTop: 2 }}>
+            Theo mục, theo tiệm, theo giờ — và phần nào chạy tự động khi không ai mở máy.
+          </span>
+        </span>
+        <span style={{ color: 'var(--c64748b)' }}>→</span>
+      </a>
+
       {msg && <div style={{ ...banner, borderColor: '#22c55e', color: 'var(--ink-good)' }}>{msg}</div>}
       {err && <div style={{ ...banner, borderColor: '#ef4444', color: 'var(--cfca5a5)' }}>{err}</div>}
 

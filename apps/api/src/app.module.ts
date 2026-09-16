@@ -50,6 +50,7 @@ import { VoiceModule } from './voice/voice.module';
 import { ContentModule } from './content/content.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { FeaturePolicyModule } from './feature-policy/feature-policy.module';
+import { AiUsageModule } from './common/ai-usage.module';
 
 @Module({
   imports: [
@@ -136,6 +137,11 @@ import { FeaturePolicyModule } from './feature-policy/feature-policy.module';
     // Feature access policy: Super Admin decides per salon which features are
     // salon-managed vs platform-managed (hidden + write-blocked). Global.
     FeaturePolicyModule,
+    // Counts every model call — which salon, which feature, which hour — so
+    // "the balance is going down and nothing is running" has an answer.
+    // Global: injected by Messenger, Content, Google Reviews and whatever
+    // calls a model next. See common/ai-usage.ts.
+    AiUsageModule,
     ActivityModule,
     PushModule,
   ],

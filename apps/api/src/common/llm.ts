@@ -52,10 +52,27 @@ export interface ChatRequest {
   timeoutMs?: number;
 }
 
+/** What the provider says the call consumed. Absent when it did not say. */
+export interface ChatUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  /** The model that actually answered, as the provider named it. */
+  model: string;
+}
+
 export interface ChatReply {
   stop_reason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
   content: (TextBlock | ToolUseBlock)[];
   provider: 'anthropic' | 'openai';
+  /**
+   * The token counts, passed through so the caller can bill them to a salon
+   * and a feature (see common/ai-usage). Reading them here rather than
+   * guessing from string lengths is the difference between a report and a
+   * rumour.
+   */
+  usage?: ChatUsage;
   /**
    * Present when OpenAI answered because Anthropic could not. The customer
    * was served, but the account that failed still needs fixing — the caller
@@ -186,6 +203,24 @@ export const ANTHROPIC_DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
  */
 export const OPENAI_DEFAULT_MODEL = 'gpt-5.6-luna';
 
+/** Anthropic's four counters, normalised. Missing numbers read as zero, never as NaN. */
+export function anthropicUsage(
+  u: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined,
+  model: string,
+): ChatUsage {
+  const n = (v: unknown) => {
+    const x = Number(v);
+    return Number.isFinite(x) && x > 0 ? Math.round(x) : 0;
+  };
+  return {
+    input: n(u?.input_tokens),
+    output: n(u?.output_tokens),
+    cacheRead: n(u?.cache_read_input_tokens),
+    cacheWrite: n(u?.cache_creation_input_tokens),
+    model,
+  };
+}
+
 async function callAnthropic(req: ChatRequest): Promise<ChatResult> {
   const key = process.env.ANTHROPIC_API_KEY || '';
   if (!key) return { ok: false, status: null, body: 'ANTHROPIC_API_KEY is not set', kind: 'no-key', provider: 'anthropic', fellBack: false };
@@ -206,8 +241,21 @@ async function callAnthropic(req: ChatRequest): Promise<ChatResult> {
       const body = await res.text().catch(() => '');
       return { ok: false, status: res.status, body, kind: classifyAiFailure(res.status, body), provider: 'anthropic', fellBack: false };
     }
-    const data = await res.json() as { stop_reason?: ChatReply['stop_reason']; content?: (TextBlock | ToolUseBlock)[] };
-    return { ok: true, reply: { stop_reason: data.stop_reason ?? 'end_turn', content: data.content ?? [], provider: 'anthropic' } };
+    const data = await res.json() as {
+      stop_reason?: ChatReply['stop_reason'];
+      content?: (TextBlock | ToolUseBlock)[];
+      model?: string;
+      usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+    };
+    return {
+      ok: true,
+      reply: {
+        stop_reason: data.stop_reason ?? 'end_turn',
+        content: data.content ?? [],
+        provider: 'anthropic',
+        usage: anthropicUsage(data.usage, data.model || req.model || process.env.ANTHROPIC_AGENT_MODEL || ANTHROPIC_DEFAULT_MODEL),
+      },
+    };
   } catch (e) {
     const body = e instanceof Error ? e.message : String(e);
     return { ok: false, status: null, body, kind: classifyAiFailure(null, body), provider: 'anthropic', fellBack: false };
@@ -233,8 +281,30 @@ async function callOpenAI(req: ChatRequest): Promise<ChatResult> {
       const body = await res.text().catch(() => '');
       return { ok: false, status: res.status, body, kind: classifyAiFailure(res.status, body), provider: 'openai', fellBack: true };
     }
-    const data = await res.json() as { choices?: OaiChoice[] };
-    return { ok: true, reply: { ...fromOpenAI(data.choices?.[0]), provider: 'openai' } };
+    const data = await res.json() as {
+      choices?: OaiChoice[];
+      model?: string;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
+    };
+    const model = data.model || process.env.OPENAI_FALLBACK_MODEL || OPENAI_DEFAULT_MODEL;
+    const cached = Math.max(0, Number(data.usage?.prompt_tokens_details?.cached_tokens ?? 0));
+    return {
+      ok: true,
+      reply: {
+        ...fromOpenAI(data.choices?.[0]),
+        provider: 'openai',
+        usage: {
+          // OpenAI counts cached tokens INSIDE prompt_tokens; Anthropic counts
+          // them beside its input. Subtracted here so one number means one
+          // thing on both sides of the report.
+          input: Math.max(0, Number(data.usage?.prompt_tokens ?? 0) - cached),
+          output: Math.max(0, Number(data.usage?.completion_tokens ?? 0)),
+          cacheRead: cached,
+          cacheWrite: 0,
+          model,
+        },
+      },
+    };
   } catch (e) {
     const body = e instanceof Error ? e.message : String(e);
     return { ok: false, status: null, body, kind: classifyAiFailure(null, body), provider: 'openai', fellBack: true };

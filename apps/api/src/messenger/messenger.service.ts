@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { personaFor } from '../common/business-persona';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import {
@@ -37,6 +37,7 @@ import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { mergeBurst, alreadySaid, BURST_MS } from './burst';
 import { publishGrantFrom } from './publish-grant';
+import { AiUsageService } from '../common/ai-usage.service';
 
 // A blank/masked secret must never overwrite a stored Page token.
 function cleanSecret(v: unknown): string | null {
@@ -136,7 +137,30 @@ export class MessengerService implements OnModuleInit {
     private readonly notifications: NotificationsService,
     private readonly events: InboxEventsService,
     private readonly push: PushService,
+    // Optional on purpose: a meter that can break a customer's reply is
+    // worse than no meter at all.
+    @Optional() private readonly usage?: AiUsageService,
   ) {}
+
+  /**
+   * Count a call made with a bare fetch rather than through common/llm.
+   * Several of the bot's smaller jobs still talk to the API directly; they
+   * are a small share of the spend but leaving them uncounted would make the
+   * report a guess, and a report that is nearly right is the worst kind.
+   */
+  private meter(feature: 'chat-summary' | 'bot-facts' | 'greeting', tenantId: string | null, body: unknown, ok: boolean) {
+    const d = (body ?? {}) as { model?: string; usage?: Record<string, number> };
+    this.usage?.record({
+      feature,
+      tenantId,
+      model: d.model || process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5',
+      input: Number(d.usage?.input_tokens ?? 0) || 0,
+      output: Number(d.usage?.output_tokens ?? 0) || 0,
+      cacheRead: Number(d.usage?.cache_read_input_tokens ?? 0) || 0,
+      cacheWrite: Number(d.usage?.cache_creation_input_tokens ?? 0) || 0,
+      failed: !ok,
+    });
+  }
 
   // ---- config --------------------------------------------------------------
   private tenantId(user: AuthenticatedUser): string {
@@ -2276,11 +2300,13 @@ export class MessengerService implements OnModuleInit {
       signal: AbortSignal.timeout(30_000),
     }).catch(() => null);
     if (!res || !res.ok) {
+      this.meter('chat-summary', null, null, false);
       this.logger.warn(`memory distill unavailable (${res ? res.status : 'network'}) — banking turns raw`);
       await this.saveSummary(threadId, rawMemoryFallback(prev, dropped));
       return;
     }
     const json = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
+    this.meter('chat-summary', null, json, true);
     const text = (json.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
     // Distillation failed (overloaded, unpaid, malformed)? The turns still do
     // not get to vanish — bank them raw.
@@ -3167,6 +3193,17 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         max_tokens: 500,
         timeoutMs: 30_000,
       });
+      // Counted whether it worked or not: a failing call still burns a
+      // request, and a retry loop that costs money must be visible as one.
+      this.usage?.record({
+        feature: 'messenger', tenantId,
+        model: out.ok ? out.reply.usage?.model ?? 'unknown' : 'unknown',
+        input: out.ok ? out.reply.usage?.input ?? 0 : 0,
+        output: out.ok ? out.reply.usage?.output ?? 0 : 0,
+        cacheRead: out.ok ? out.reply.usage?.cacheRead ?? 0 : 0,
+        cacheWrite: out.ok ? out.reply.usage?.cacheWrite ?? 0 : 0,
+        failed: !out.ok,
+      });
       if (!out.ok) {
         const shown = out.status ?? 'network';
         this.logger.warn(`Anthropic ${shown}: ${out.body.slice(0, 160)}${out.fellBack ? ' (OpenAI fallback failed too)' : ''}`);
@@ -3491,8 +3528,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       }),
       signal: AbortSignal.timeout(30_000),
     });
-    if (!res.ok) throw new BadRequestException('The AI reader is busy — try again in a minute.');
+    if (!res.ok) { this.meter('bot-facts', null, null, false); throw new BadRequestException('The AI reader is busy — try again in a minute.'); }
     const data = (await res.json()) as { content?: { type: string; text?: string }[] };
+    this.meter('bot-facts', null, data, true);
     const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join(' ');
     const m = text.match(/\{[\s\S]*\}/);
     if (!m) throw new BadRequestException('Could not organize that content — try pasting plainer text.');
@@ -3524,8 +3562,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       }),
       signal: AbortSignal.timeout(30_000),
     });
-    if (!res.ok) throw new BadRequestException('The AI reader is busy — try again in a minute.');
+    if (!res.ok) { this.meter('bot-facts', null, null, false); throw new BadRequestException('The AI reader is busy — try again in a minute.'); }
     const data = (await res.json()) as { content?: { type: string; text?: string }[] };
+    this.meter('bot-facts', null, data, true);
     const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text || '').join(' ');
     const m = text.match(/\[[\s\S]*\]/);
     if (!m) throw new BadRequestException('Could not extract facts from that source.');
@@ -3612,6 +3651,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       signal: AbortSignal.timeout(30_000),
     });
     const json = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
+    this.meter('greeting', tenantId, json, res.ok);
     const text = (json.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
     const match = text.match(/\{[\s\S]*\}/);
     let options: string[] = [];

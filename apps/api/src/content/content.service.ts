@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { dueForRelease, localHourIn } from './auto-release';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -99,6 +99,7 @@ import { adsReceipt, type AdsReceipt } from './ads-receipt';
 import { adsPitch, type AdsPitch } from './ads-pitch';
 import { ticketHint, ticketAsk, dataRoadmap, confidenceOf } from './ads-starter';
 import { PlacesService } from './places.service';
+import { AiUsageService } from '../common/ai-usage.service';
 import { buildSeoReport } from './seo-local';
 import { resolveIdentity, identityToPrompt, type ResolvedIdentity } from './business-profile';
 import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
@@ -133,7 +134,30 @@ export class ContentService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly places: PlacesService,
+    // Optional so a spec can build the service bare — and so a missing
+    // meter can never be the reason a salon's work stops.
+    @Optional() private readonly usage?: AiUsageService,
   ) {}
+
+  /**
+   * Count a model call against the salon it was made for. The planner runs
+   * for every active salon on a timer, so without a tenant on the row the
+   * report could say "the ideas cost $18" but never "and $2 of it was this
+   * one salon nobody has opened since July".
+   */
+  private meter(feature: 'content-ideas' | 'trade-profile' | 'profile-scan', tenantId: string | null, body: unknown, ok: boolean) {
+    const d = (body ?? {}) as { model?: string; usage?: Record<string, number> };
+    this.usage?.record({
+      feature,
+      tenantId,
+      model: d.model || process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5',
+      input: Number(d.usage?.input_tokens ?? 0) || 0,
+      output: Number(d.usage?.output_tokens ?? 0) || 0,
+      cacheRead: Number(d.usage?.cache_read_input_tokens ?? 0) || 0,
+      cacheWrite: Number(d.usage?.cache_creation_input_tokens ?? 0) || 0,
+      failed: !ok,
+    });
+  }
 
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
@@ -2317,9 +2341,11 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       }).catch(() => null);
       if (res && res.ok) {
         const data = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
+        this.meter('content-ideas', tenantId, data, true);
         text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
         break;
       }
+      this.meter('content-ideas', tenantId, null, false);
       if (!retried && res && isTransientStatus(res.status)) { retried = true; await new Promise((r) => setTimeout(r, 2000)); continue; }
       this.logger.warn(`content draft failed for ${tenantId}: ${res ? res.status : 'network'}`);
       return { created: 0, skipped: 'ai-unavailable' };
@@ -2605,8 +2631,9 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       }),
       signal: AbortSignal.timeout(60_000),
     }).catch(() => null);
-    if (!res || !res.ok) { this.logger.warn(`trade profile: model call failed for ${tenantId} (${res ? res.status : 'network'})`); return cur; }
+    if (!res || !res.ok) { this.meter('trade-profile', tenantId, null, false); this.logger.warn(`trade profile: model call failed for ${tenantId} (${res ? res.status : 'network'})`); return cur; }
     const data = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
+    this.meter('trade-profile', tenantId, data, true);
     const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
     const braced = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
     let parsed: unknown = null;
@@ -3897,6 +3924,7 @@ TRẢ VỀ JSON THUẦN:
     }).catch(() => null);
 
     if (!res || !res.ok) {
+      this.meter('profile-scan', tenantId, null, false);
       return {
         draft: {}, sources, saved: false, locationSaved: null,
         warnings: [...warnings, bi(
@@ -3905,6 +3933,7 @@ TRẢ VỀ JSON THUẦN:
       };
     }
     const data = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
+    this.meter('profile-scan', tenantId, data, true);
     const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
     const braced = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
     let parsed: Record<string, unknown> = {};

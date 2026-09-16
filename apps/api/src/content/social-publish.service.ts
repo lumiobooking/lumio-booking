@@ -17,6 +17,7 @@ import { GoogleDriveService } from '../uploads/google-drive.service';
 import { GoogleReviewsService } from '../google-reviews/google-reviews.service';
 import { TikTokService } from '../tiktok/tiktok.service';
 import { cleanTikTokOptions, type TikTokPostOptions, type TikTokTarget } from '../tiktok/tiktok';
+import { AiUsageService } from '../common/ai-usage.service';
 import { cleanGbpOptions, resolveGbpCta, gbpCtaProblem, DEFAULT_GBP_BUTTON, type GbpPostOptions, type GbpCtaContext } from './gbp-cta';
 import { checkGbpPost, gbpImageHeaderProblem, gbpSummary, unacceptedRisks, type GbpCheck, type Issue } from './gbp-policy';
 import { gbpScreenPrompt, parseScreenVerdict, screenAckCode, screenRefusal, type ScreenVerdict } from './gbp-screen';
@@ -112,6 +113,9 @@ export class SocialPublishService {
     @Optional() private readonly google?: GoogleReviewsService,
     // The client's TikTok account — same shape of optionality as Google.
     @Optional() private readonly tiktok?: TikTokService,
+    // Optional for the same reason as the rest: the isolation specs build this
+    // service bare, and a missing meter must never stop a post going out.
+    @Optional() private readonly usage?: AiUsageService,
   ) {}
 
   /**
@@ -1234,10 +1238,23 @@ export class SocialPublishService {
       signal: AbortSignal.timeout(45_000),
     }).catch(() => null);
     if (!res || !res.ok) {
+      this.usage?.record({ feature: 'gbp-screen', tenantId, model: 'unknown', input: 0, output: 0, failed: true });
       this.log.warn(`gbp screen: model call failed for ${tenantId} (${res ? res.status : 'network'})`);
       return null;
     }
-    const data = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
+    const data = (await res.json().catch(() => ({}))) as {
+      content?: { type?: string; text?: string }[];
+      model?: string;
+      usage?: Record<string, number>;
+    };
+    this.usage?.record({
+      feature: 'gbp-screen', tenantId,
+      model: data.model || process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5',
+      input: Number(data.usage?.input_tokens ?? 0) || 0,
+      output: Number(data.usage?.output_tokens ?? 0) || 0,
+      cacheRead: Number(data.usage?.cache_read_input_tokens ?? 0) || 0,
+      cacheWrite: Number(data.usage?.cache_creation_input_tokens ?? 0) || 0,
+    });
     const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('');
     const v = parseScreenVerdict(text, Boolean(photoUrl));
     if (!v) { this.log.warn(`gbp screen: unusable answer for ${tenantId}`); return null; }

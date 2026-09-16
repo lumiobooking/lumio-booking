@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { NotificationChannel, Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AiUsageService } from '../common/ai-usage.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
 // Status is a Prisma enum ('NEW' | 'DRAFTED' | ...). We use plain string literals
@@ -178,6 +179,7 @@ export class GoogleReviewsService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly notifications: NotificationsService,
+    @Optional() private readonly usage?: AiUsageService,
   ) {}
 
   // ---- helpers -------------------------------------------------------------
@@ -595,7 +597,7 @@ export class GoogleReviewsService {
       return { ok: false, mode: 'template', sample, reply: tpl(), error: 'No ANTHROPIC_API_KEY set on the server.' };
     }
     try {
-      const ai = await this.aiReply(5, sample, s, salonName, 'Jessica');
+      const ai = await this.aiReply(5, sample, s, salonName, 'Jessica', tenantId);
       if (ai) return { ok: true, mode: 'ai', sample, reply: ai };
       return { ok: false, mode: 'template', sample, reply: tpl(), error: 'Anthropic returned no text — check the API key and that credits are funded.' };
     } catch (e) {
@@ -699,7 +701,7 @@ export class GoogleReviewsService {
         // The status does not change. NEEDS_ATTENTION still never auto-posts;
         // it now arrives with a starting point that a person edits and sends.
         const draft = (status === 'DRAFTED' || status === 'NEEDS_ATTENTION')
-          ? await this.generateReply(stars, r.comment || '', s, salonName, r.reviewer?.displayName || '')
+          ? await this.generateReply(stars, r.comment || '', s, salonName, r.reviewer?.displayName || '', tenantId)
           : null;
         const created = await this.prisma.googleReview.create({
           data: { tenantId, googleReviewId: gid, ...base, status, draftReply: draft, replyText: already ? r.reviewReply?.comment || null : null, repliedAt: repliedOn },
@@ -735,7 +737,7 @@ export class GoogleReviewsService {
         await this.prisma.googleReview.update({
           where: { id: existing.id },
           data: wantsDraft && room
-            ? { ...base, draftReply: await this.generateReply(stars, r.comment || '', s, salonName, r.reviewer?.displayName || '') }
+            ? { ...base, draftReply: await this.generateReply(stars, r.comment || '', s, salonName, r.reviewer?.displayName || '', tenantId) }
             : base,
         });
         if (wantsDraft && room) backfilled++;
@@ -844,15 +846,15 @@ export class GoogleReviewsService {
   }
 
   /** Generate a reply: AI (personalised, language-matched) with a template fallback. */
-  private async generateReply(stars: number, comment: string, s: GbrSettings, salonName: string, reviewerName: string): Promise<string> {
-    const ai = await this.aiReply(stars, comment, s, salonName, reviewerName).catch(() => null);
+  private async generateReply(stars: number, comment: string, s: GbrSettings, salonName: string, reviewerName: string, tenantId: string | null = null): Promise<string> {
+    const ai = await this.aiReply(stars, comment, s, salonName, reviewerName, tenantId).catch(() => null);
     return ai || this.draftReply(stars, comment, s.tone, salonName, this.firstName(reviewerName));
   }
 
   /** Ask Claude to write ONE short, genuine reply in the review's own language.
    *  Returns null when no API key is configured or the call fails (caller falls
    *  back to a template), so the feature always works. */
-  private async aiReply(stars: number, comment: string, s: GbrSettings, salonName: string, reviewerName: string): Promise<string | null> {
+  private async aiReply(stars: number, comment: string, s: GbrSettings, salonName: string, reviewerName: string, tenantId: string | null = null): Promise<string | null> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return null;
     const first = this.firstName(reviewerName);
@@ -889,8 +891,19 @@ Output ONLY the final reply text: no quotes, no preamble.${extra}`;
         messages: [{ role: 'user', content: userMsg }],
       }),
     });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { content?: { text?: string }[] };
+    if (!res.ok) {
+      this.usage?.record({ feature: 'review-reply', tenantId, model: 'unknown', input: 0, output: 0, failed: true });
+      return null;
+    }
+    const data = (await res.json()) as { content?: { text?: string }[]; model?: string; usage?: Record<string, number> };
+    this.usage?.record({
+      feature: 'review-reply', tenantId,
+      model: data.model || process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5',
+      input: Number(data.usage?.input_tokens ?? 0) || 0,
+      output: Number(data.usage?.output_tokens ?? 0) || 0,
+      cacheRead: Number(data.usage?.cache_read_input_tokens ?? 0) || 0,
+      cacheWrite: Number(data.usage?.cache_creation_input_tokens ?? 0) || 0,
+    });
     const text = data.content?.[0]?.text?.trim();
     return text || null;
   }
@@ -1076,7 +1089,7 @@ Output ONLY the final reply text: no quotes, no preamble.${extra}`;
     if (!row) throw new NotFoundException('Review not found');
     const s = await this.getSettings(tenantId);
     const salonName = await this.salonName(tenantId);
-    const draft = await this.generateReply(row.starRating, row.comment || '', s, salonName, row.reviewerName || '');
+    const draft = await this.generateReply(row.starRating, row.comment || '', s, salonName, row.reviewerName || '', tenantId);
     /**
      * A new suggestion does not change what kind of review this is.
      *

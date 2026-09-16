@@ -182,7 +182,7 @@ export class TrendFeedService {
     const token = (r.body as { access_token?: string })?.access_token;
     if (!r.ok || !token) {
       const hint = r.status === 401
-        ? ' — token hết hiệu lực (đã Reset app secret?). Super Admin → Pinterest → bấm "Kết nối lại".'
+        ? ' — token hết hiệu lực (đã Reset app secret?). Đội Lumio bấm "Kết nối lại" Pinterest ở trang cấu hình.'
         : '';
       throw new Error(`pinterest token ${r.status}: ${JSON.stringify(r.body).slice(0, 160)}${hint}`);
     }

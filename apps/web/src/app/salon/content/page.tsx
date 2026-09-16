@@ -24,6 +24,7 @@ import { checkPost, applyFix } from '../../../lib/post-check';
 import { uiMarket } from '../../../lib/ui-market';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch, apiUpload } from '../../../lib/api';
+import { swapFooter, hasFooter } from '../../../lib/post-footer';
 import { notify } from '../../../lib/feedback';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
@@ -948,7 +949,15 @@ function Inner() {
     if (!token) return;
     setFooterBusy(true);
     try {
-      await apiFetch('/content/post-footer', { method: 'POST', token, body: { text } });
+      const r = await apiFetch<{ ok: boolean; postKit?: { starter: string; contactBlock: string } }>('/content/post-footer', { method: 'POST', token, body: { text } });
+      // The post on screen still carries the OLD footer. Swap it in place —
+      // appending would send two addresses under one caption.
+      const oldKit = queue?.postKit;
+      if (postDraft && oldKit) {
+        const oldFooter = oldKit.custom ? oldKit.contactBlock : oldKit.starter;
+        const next = text.trim() || r?.postKit?.starter || '';
+        setPostDraft({ ...postDraft, message: swapFooter(postDraft.message, oldFooter, oldKit.contactBlock, next) });
+      }
       await loadQueue();
       setFooterDraft(null);
       notify('success', text.trim() ? (vi ? 'Đã lưu chân bài cho tiệm — bài mới sẽ mở sẵn với mẫu này.' : 'Footer saved — new posts open with it.') : (vi ? 'Đã về chân bài mặc định.' : 'Back to the built footer.'));
@@ -3548,9 +3557,9 @@ function Inner() {
                     </span>
                     {/* Deleting the block by accident is one keystroke; putting
                         it back by hand is where the wrong address comes from. */}
-                    {kit?.starter && !postDraft.message.includes(kit.contactBlock) && kit.contactBlock && (
+                    {kit?.starter && !hasFooter(postDraft.message, kit.contactBlock) && kit.contactBlock && (
                       <button
-                        onClick={() => setPostDraft({ ...postDraft, message: postDraft.message.trimEnd() + kit.starter })}
+                        onClick={() => setPostDraft({ ...postDraft, message: swapFooter(postDraft.message, kit.starter, kit.contactBlock, kit.starter) })}
                         style={{
                           background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--ca5b4fc)',
                           borderRadius: 7, padding: '3px 9px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit',
@@ -3595,8 +3604,9 @@ function Inner() {
                         >💾 {T('Lưu làm mẫu cho tiệm', 'Save as the shop’s template')}</button>
                         <button
                           onClick={() => {
-                            const body = postDraft.message.replace(kit.contactBlock, '').trimEnd();
-                            setPostDraft({ ...postDraft, message: `${body}\n\n${footerDraft.trim()}` });
+                            const oldFooter = kit.custom ? kit.contactBlock : kit.starter;
+                            setPostDraft({ ...postDraft, message: swapFooter(postDraft.message, oldFooter, kit.contactBlock, footerDraft) });
+                            setFooterDraft(null);
                           }}
                           style={{ minHeight: 34, padding: '0 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ca5b4fc)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}
                         >↧ {T('Chỉ dùng cho bài này', 'Use on this post only')}</button>

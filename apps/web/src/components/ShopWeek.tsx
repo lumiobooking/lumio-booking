@@ -10,6 +10,8 @@ import type { PlanEntry } from './plan-sheet';
 /** The 30-day plan as my-week sends it to the shop: slots rebuilt without the agency's working fields. */
 export interface ShopPlanSheet {
   tz: string; today: string; from: string; days: number; month: string;
+  /** This month and the next — the two the shop may turn between. */
+  months?: string[];
   entries: Record<string, Omit<PlanEntry, 'mediaUrl' | 'updatedBy'>>;
 }
 import { Inline } from './WeekPlanBoard';
@@ -165,12 +167,14 @@ function dayLabelsFrom(jobs: ShopJob[]): string[] {
   return Array.from({ length: out.length }, (_, i) => out[i] ?? '');
 }
 
-export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsPlan, monthBrief, planSheet, onSend, onChanged, onError }: {
+export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsPlan, monthBrief, planSheet, onPickMonth, onSend, onChanged, onError }: {
   token: string | null; vi: boolean; week: ShopWeekData; weekKey: string | null; unread?: number;
   /** What this month is for, written by the team for the shop. Null until written. */
   monthBrief?: MonthBriefData | null;
-  /** The 30-day plan, read-only, once the team has planned anything. */
+  /** The month's plan, read-only — the calendar even while the team is still filling it. */
   planSheet?: ShopPlanSheet | null;
+  /** Turn the brief and the plan to this month or the next, together. */
+  onPickMonth?: (month: string) => void;
   lastWeek?: LastWeek | null;
   /** This month's ad money and what came back. Null in a month with no spend. */
   ads?: AdsReceipt | null;
@@ -199,16 +203,6 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
     } finally { setBusy(false); }
   }
 
-  async function tick(job: ShopJob, step: number, done: boolean) {
-    if (!token || !weekKey) return;
-    try {
-      await apiFetch(`/content/weeks/${encodeURIComponent(weekKey)}/tick`, { method: 'POST', token, body: { jobId: job.id, step, done } });
-      await onChanged();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'error');
-    }
-  }
-
   // The seven labels, or — against an older API — the labels the jobs carry.
   const labels = week.days?.length ? week.days : dayLabelsFrom(week.jobs);
   // The three groups the screen is built from. An older API sends no `ask`,
@@ -217,8 +211,6 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
   const counterIds = new Set(week.counterIds ?? []);
   const askJobs = week.jobs.filter((j) => j.id && askIds.has(j.id));
   const counterJobs = week.jobs.filter((j) => j.id && counterIds.has(j.id));
-  const lumioJobs = week.jobs.filter((j) => !(j.id && (askIds.has(j.id) || counterIds.has(j.id))));
-  const byDay = labels.map((label, di) => ({ label, di, jobs: lumioJobs.filter((j) => j.dayIndex === di) }));
 
   return (
     <section style={{ marginBottom: 18 }}>
@@ -230,10 +222,21 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
              The same cards the team works on, with no inputs: what is coming,
              which network, what kind of post, and whether it is on the
              calendar yet. Tap a day to read the caption. */}
-      {planSheet && Object.keys(planSheet.entries).length > 0 && (
+      {planSheet && (
         <div style={{ ...card, marginBottom: 12, background: 'var(--c0f172a)', borderColor: 'var(--c334155)' }}>
+          {Object.keys(planSheet.entries).length === 0 && (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', marginBottom: 10, borderRadius: 10, background: 'rgba(99,102,241,.10)', border: '1px solid rgba(99,102,241,.35)' }}>
+              <span style={{ fontSize: 18, lineHeight: 1 }}>🗓️</span>
+              <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--ccbd5e1)' }}>
+                <b style={{ color: 'var(--cf1f5f9)' }}>{T('Bên em đang lên plan tháng này.', 'We are planning this month.')}</b>{' '}
+                {T('Mỗi ngày có bài sẽ hiện ở đây: chủ đề, kênh đăng, dạng bài — chị bấm vào ngày để đọc nội dung.', 'Each planned day shows here: topic, network, kind of post — tap a day to read the caption.')}
+              </div>
+            </div>
+          )}
           <PlanSheet
             month={planSheet.month}
+            months={planSheet.months}
+            onMonth={onPickMonth}
             today={planSheet.today}
             tz={planSheet.tz}
             entries={Object.fromEntries(Object.entries(planSheet.entries).map(([k, e]) => [k, { ...e, mediaUrl: '', updatedBy: null }]))}
@@ -491,62 +494,10 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
       )}
 
       {/* ---- 2. what LUMIO is doing ----
-             Used to be a day-by-day list of the team's own jobs. Gone: the
-             month plan above shows what is coming, the month brief says what
-             it is for, and two lists of the same work read as two plans. The
-             list still draws for a shop with no plan yet, so a client is
-             never shown nothing. */}
-      {!(planSheet && Object.keys(planSheet.entries).length > 0) && (<>
-      <h2 style={h2}>{T('Tuần này bên em làm cho tiệm', 'What we are doing for you this week')}</h2>
-      <p style={lede}>{week.focus}</p>
-
-      <div style={card}>
-        {byDay.map(({ label, di, jobs }) => (
-          <div key={di} style={{ padding: '9px 0', borderTop: di === 0 ? 'none' : '1px solid var(--line)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontSize: 11.5, color: di === 0 ? 'var(--ink-link)' : 'var(--c64748b)', fontWeight: 800, letterSpacing: '.4px' }}>
-                {di === 0 ? T('HÔM NAY', 'TODAY') : label.toUpperCase()}
-              </div>
-              {canEdit && (
-                <button
-                  onClick={() => setAdding({ dayIndex: di, kind: 'film', text: '' })}
-                  style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--c64748b)', fontSize: 12, cursor: 'pointer', padding: '2px 4px' }}
-                >＋ {T('thêm việc', 'add')}</button>
-              )}
-            </div>
-            {!jobs.length && !(adding?.dayIndex === di) && (
-              <div style={{ fontSize: 12.5, color: 'var(--ink-faint)', padding: '4px 0' }}>{T('Nghỉ', 'Rest')}</div>
-            )}
-            {jobs.map((j) => (
-              <JobLine key={j.id ?? `${di}:${j.text}`} j={j} vi={vi} canEdit={canEdit} busy={busy} days={labels}
-                onText={(text) => patch({ jobs: [{ id: j.id, text }] })}
-                onSteps={(steps) => patch({ jobs: [{ id: j.id, steps }] })}
-                onMove={(dayIndex) => patch({ jobs: [{ id: j.id, dayIndex }] })}
-                onRemove={() => { if (window.confirm(T('Bỏ việc này khỏi tuần?', 'Drop this job from the week?'))) void patch({ jobs: [{ id: j.id, remove: true }] }); }}
-                onTick={(step, done) => tick(j, step, done)}
-              />
-            ))}
-            {adding?.dayIndex === di && (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 6 }}>
-                <select value={adding.kind} onChange={(e) => setAdding({ ...adding, kind: e.target.value as typeof SHOP_KINDS[number] })} style={select}>
-                  <option value="film">🎬 {T('Quay', 'Film')}</option>
-                  <option value="photo">📷 {T('Chụp', 'Photos')}</option>
-                  <option value="engage">💚 {T('Tại quầy', 'At the counter')}</option>
-                </select>
-                <input
-                  autoFocus value={adding.text} onChange={(e) => setAdding({ ...adding, text: e.target.value })}
-                  placeholder={T('Việc gì? ví dụ: quay bộ móng cô dâu', 'What? e.g. film the bridal set')}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && adding.text.trim()) { void patch({ add: [adding] }); setAdding(null); } if (e.key === 'Escape') setAdding(null); }}
-                  style={{ ...input, flex: '1 1 200px' }}
-                />
-                <button disabled={!adding.text.trim() || busy} onClick={() => { void patch({ add: [adding] }); setAdding(null); }} style={smallPrimary}>{T('Thêm', 'Add')}</button>
-                <button onClick={() => setAdding(null)} style={smallGhost}>✕</button>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-      </>)}
+             Used to be a day-by-day list of the team's own jobs. Gone for
+             good: the month plan above shows what is coming, the month brief
+             says what it is for, and two lists of the same work read as two
+             plans. The one ask below is what the shop still has to DO. */}
 
       {/* ---- 3. the ONE thing asked of the shop ----
              One ask, one deadline, one button. The shot list is folded away

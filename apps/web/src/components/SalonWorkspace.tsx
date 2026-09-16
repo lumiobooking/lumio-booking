@@ -93,6 +93,14 @@ export function SalonWorkspace({ token, vi, onCount }: {
   }, [token, vi, onCount]);
 
   useEffect(() => { load(); }, [load]);
+
+  // The month chips on the plan: the brief and the calendar turn together,
+  // and only they refetch — the week, the receipt and the pitch stay put.
+  const pickMonth = useCallback(async (month: string) => {
+    if (!token) return;
+    const r = await apiFetch<{ monthBrief?: MonthBriefData | null; planSheet?: ShopPlanSheet | null }>(fresh(`/content/my-month?month=${encodeURIComponent(month)}`), { token }).catch(() => null);
+    if (r) { setMonthBrief(r.monthBrief ?? null); setPlanSheet(r.planSheet ?? null); }
+  }, [token]);
   // A suggestion the team sends at ten shows up at ten, not when the shop
   // next reloads: every 30s while visible, and the moment the app comes back.
   useLive(load, 30_000, Boolean(token));
@@ -162,7 +170,7 @@ export function SalonWorkspace({ token, vi, onCount }: {
       {!!week?.jobs.length && (
         <ShopWeek
           token={token} vi={vi} week={week} weekKey={weekKey} unread={weekUnread}
-          lastWeek={lastWeek} ads={ads} adsPlan={adsPlan} monthBrief={monthBrief} planSheet={planSheet} onSend={() => askSend.current?.()}
+          lastWeek={lastWeek} ads={ads} adsPlan={adsPlan} monthBrief={monthBrief} planSheet={planSheet} onPickMonth={pickMonth} onSend={() => askSend.current?.()}
           onChanged={load} onError={setErr}
         />
       )}

@@ -95,7 +95,7 @@ export class ContentController {
    * no stage, no numbers the week was decided from.
    */
   @Get('my-week')
-  async myWeek(@CurrentUser() user: AuthenticatedUser, @Query('lang') lang?: string) {
+  async myWeek(@CurrentUser() user: AuthenticatedUser, @Query('lang') lang?: string, @Query('month') month?: string) {
     // A week is generated for every tenant on the platform whether or not
     // anybody is running its marketing. Handing homework to a shop that bought
     // a booking system and nothing else is worse than showing it nothing, so
@@ -110,12 +110,12 @@ export class ContentController {
     // when it is not. Never both — a busy owner skims a screen that argues
     // with itself.
     const adsPlan = ads ? null : await this.svc.adsPitchForSalon(user).catch(() => null);
-    const monthBrief = await this.svc.monthBriefForShop(user).catch(() => null);
-    const planSheet = await this.svc.planSheetForShop(user).catch(() => null);
+    const monthBrief = await this.svc.monthBriefForShop(user, month).catch(() => null);
+    const planSheet = await this.svc.planSheetForShop(user, month).catch(() => null);
     return {
       /** What this month is for, written by the team for the shop. Null until written. */
       monthBrief,
-      /** The 30-day plan, one slot per day, as the shop may read it. Null until planned. */
+      /** The month's plan, one slot per day, as the shop may read it — the grid even while empty. */
       planSheet,
       week: flattenForClient(clientWeek(plan, { weekKey: weekKey ?? '', ticks, auto }), lang === 'en' ? 'en' : 'vi'),
       weekKey,
@@ -127,6 +127,22 @@ export class ContentController {
       ads: ads ? flattenForClient(ads, lang === 'en' ? 'en' : 'vi') : null,
       adsPlan: adsPlan ? flattenForClient(adsPlan, lang === 'en' ? 'en' : 'vi') : null,
     };
+  }
+
+  /**
+   * The shop turning the month: the brief and the plan for this month or
+   * the next, and nothing else — so the month chips on the shop's screen
+   * do not refetch the week, the receipt and the ads pitch behind them.
+   * Same gate as my-week: nothing for a shop the team is not on.
+   */
+  @Get('my-month')
+  async myMonth(@CurrentUser() user: AuthenticatedUser, @Query('month') month?: string) {
+    if (!(await this.suggestions.hasAgencyWork(user))) return { monthBrief: null, planSheet: null };
+    const [monthBrief, planSheet] = await Promise.all([
+      this.svc.monthBriefForShop(user, month).catch(() => null),
+      this.svc.planSheetForShop(user, month).catch(() => null),
+    ]);
+    return { monthBrief, planSheet };
   }
 
   /**

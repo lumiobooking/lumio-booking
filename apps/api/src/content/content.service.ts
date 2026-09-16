@@ -997,9 +997,7 @@ export class ContentService {
   /** The team's screen: this month and the next, so next month can be written before it starts. */
   async monthBriefs(user: AuthenticatedUser, monthQ?: string) {
     const tenantId = this.tenantId(user);
-    const { month: current } = await this.currentMonthFor(tenantId);
-    const [y, m] = current.split('-').map(Number);
-    const next = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}`;
+    const { current, next } = await this.shopMonths(tenantId);
     const month = isMonthKey(monthQ) ? monthQ : current;
     return { current, next, month, brief: await this.readBrief(tenantId, month) };
   }
@@ -1024,10 +1022,28 @@ export class ContentService {
     return { ok: true, month, brief: value };
   }
 
-  /** What the SHOP sees of this month — null until the team has written it. */
-  async monthBriefForShop(user: AuthenticatedUser) {
+  /**
+   * This month and the next, salon-local — the two the team may write and
+   * the two the shop may turn between. One month selector drives the brief
+   * and the plan together, so both read the same pair.
+   */
+  private async shopMonths(tenantId: string): Promise<{ current: string; next: string; tz: string }> {
+    const { month: current, tz } = await this.currentMonthFor(tenantId);
+    const [y, m] = current.split('-').map(Number);
+    const next = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}`;
+    return { current, next, tz };
+  }
+
+  /**
+   * What the SHOP sees of a month — null until the team has written it.
+   * `monthQ` may pick next month (the shop reads ahead); anything else
+   * falls back to the current one, so a stray query cannot page through
+   * years of settings rows.
+   */
+  async monthBriefForShop(user: AuthenticatedUser, monthQ?: string) {
     const tenantId = this.tenantId(user);
-    const { month } = await this.currentMonthFor(tenantId);
+    const { current, next } = await this.shopMonths(tenantId);
+    const month = monthQ === next ? next : current;
     return briefForShop(await this.readBrief(tenantId, month));
   }
 
@@ -1076,17 +1092,21 @@ export class ContentService {
   }
 
   /**
-   * The SHOP's view of the plan: the same 35 days, each slot rebuilt with
-   * only what the shop is going to be asked to approve. Null when nothing
-   * has been planned yet — an empty grid says "nobody is working on you",
-   * which is worse than saying nothing.
+   * The SHOP's view of the plan: one month as a calendar, each slot rebuilt
+   * with only what the shop is going to be asked to approve. The grid comes
+   * back even while it is empty — my-week already shows nothing to a shop
+   * the team is not on (hasAgencyWork), so for a shop that IS on the books
+   * an empty September reads "being planned", and the screen says so,
+   * rather than the section vanishing until the first cell is typed.
+   * `months` is the pair the shop may turn between; `monthQ` picks one.
    */
-  async planSheetForShop(user: AuthenticatedUser) {
-    const { tz, today, from, days, month, entries } = await this.planSheet(user);
+  async planSheetForShop(user: AuthenticatedUser, monthQ?: string) {
+    const { current, next } = await this.shopMonths(this.tenantId(user));
+    const pick = monthQ === next ? next : current;
+    const { tz, today, from, days, month, entries } = await this.planSheet(user, undefined, undefined, pick);
     const out: Record<string, ReturnType<typeof entryForShop>> = {};
     for (const [day, e] of Object.entries(entries)) out[day] = entryForShop(e);
-    if (!Object.keys(out).length) return null;
-    return { tz, today, from, days, month, entries: out };
+    return { tz, today, from, days, month, months: [current, next], entries: out };
   }
 
   /**

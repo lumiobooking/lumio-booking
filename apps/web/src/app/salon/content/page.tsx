@@ -37,7 +37,7 @@ import { addDays, type AheadBlock } from '../../../components/plan-grid';
 import { PostDetailModal } from '../../../components/PostDetailModal';
 import { PlanIdeas } from '../../../components/PlanIdeas';
 import { PlanSheet } from '../../../components/PlanSheet';
-import { entryToDraft, entryFromIdea, mergeIdeaInto, entryHasContent, nextMonth, type PlanEntry, type PlanPatch } from '../../../components/plan-sheet';
+import { entryToDraft, entryFromIdea, mergeIdeaInto, entryHasContent, nextMonth, monthTitle, type PlanEntry, type PlanPatch } from '../../../components/plan-sheet';
 import { MonthBriefEditor, type MonthBriefData } from '../../../components/MonthBrief';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
@@ -950,6 +950,19 @@ function Inner() {
     if (!token) return;
     try { setBrief(await apiFetch(`/content/month-brief${month ? `?month=${month}` : ''}`, { token })); } catch { /* card stays empty */ }
   }, [token]);
+  // ONE month for the whole tab. The brief and the plan used to carry a
+  // chip row each, and a person who turned one to October read September's
+  // plan under October's brief without noticing. Now the bar above both
+  // turns both, and the shop's screen turns the same way (ShopWeek).
+  const planMonths: string[] = sheet
+    ? [sheet.today.slice(0, 7), nextMonth(sheet.today.slice(0, 7))]
+    : brief ? [brief.current, brief.next] : [];
+  const shownMonth = sheet?.month || brief?.month || '';
+  function pickMonth(m: string) {
+    setPlanMonth(m);
+    void loadBrief(m);
+    void loadSheet(m);
+  }
   useEffect(() => {
     // Refetched on every visit: a post scheduled from the grid is saved on
     // the queue tab and must show on the grid the moment the person is back.
@@ -2585,14 +2598,31 @@ function Inner() {
                    Written here by the team; read verbatim on the shop's own
                    screen. The calendar below is what the team schedules by
                    hand; the system's suggestions moved to the Ideas tab. */}
+              {planMonths.length > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--c94a3b8)' }}>
+                    {T('Tháng đang xem', 'Month')}
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {planMonths.map((m) => (
+                      <button key={m} type="button" onClick={() => pickMonth(m)} style={{ padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${m === shownMonth ? '#6366f1' : 'var(--c334155)'}`, background: m === shownMonth ? 'rgba(99,102,241,.16)' : 'transparent', color: m === shownMonth ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>
+                        {monthTitle(m, vi)}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--c64748b)' }}>
+                    {T('Kế hoạch tháng và Plan bên dưới đổi cùng nhau.', 'The month plan and the calendar below turn together.')}
+                  </div>
+                </div>
+              )}
               {brief && (
                 <MonthBriefEditor
                   brief={brief.brief}
-                  months={[brief.current, brief.next]}
+                  months={[]}
                   vi={vi}
                   canEdit={Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN'}
                   busy={briefBusy}
-                  onPickMonth={(m) => loadBrief(m)}
+                  onPickMonth={pickMonth}
                   onSave={saveBrief}
                 />
               )}
@@ -2607,8 +2637,6 @@ function Inner() {
                 ) : (
                   <PlanSheet
                     month={sheet.month}
-                    months={[sheet.today.slice(0, 7), nextMonth(sheet.today.slice(0, 7))]}
-                    onMonth={(m) => { setPlanMonth(m); void loadSheet(m); }}
                     today={sheet.today}
                     tz={sheet.tz || salonTz()}
                     entries={sheet.entries}

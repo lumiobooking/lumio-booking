@@ -38,6 +38,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { mergeBurst, alreadySaid, BURST_MS } from './burst';
 import { publishGrantFrom } from './publish-grant';
 import { AiUsageService } from '../common/ai-usage.service';
+import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
 import { carouselTitles, packageFromPayload, packagePayload, tapAsCustomerLine } from './package-cards';
 
 // A blank/masked secret must never overwrite a stored Page token.
@@ -3516,6 +3517,14 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * text into Bot-facts rows. IMPORT, not live browsing: the AI proposes rows,
    * a human reviews and saves — the bot still only ever speaks from saved
    * facts, so speed and truthfulness stay under control.
+   *
+   * THE FETCHING LIVES IN common/site-reader.ts. DO NOT INLINE IT HERE AGAIN.
+   * It already did once: this method carried its own three-header fetch and its
+   * own "blocked" message, so every improvement made to the reader — the full
+   * browser fingerprint, the www fallback, JSON-LD business facts, the extra
+   * /services and /pricing pages — reached the content planner and left this
+   * screen still failing on the same sites, with the old wording. Two copies of
+   * one fetch is how that happens. There is now one.
    */
   async importFacts(user: AuthenticatedUser, dto: { source?: string; url?: string }) {
     const tenantId = this.tenantId(user);
@@ -3530,53 +3539,17 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       const firstPg = await this.prisma.messengerPage.findFirst({ where: { tenantId }, orderBy: { createdAt: 'asc' } });
       const src = (conn?.pageToken && conn.pageId) ? { pageId: conn.pageId, pageToken: conn.pageToken } : firstPg ? { pageId: firstPg.pageId, pageToken: firstPg.pageToken } : null;
       if (!src) throw new BadRequestException('Connect the Facebook Page first.');
-      const info = (await fetch(
-        `https://graph.facebook.com/v21.0/${src.pageId}?fields=name,about,description,category,website,phone,emails,single_line_address,hours&access_token=${encodeURIComponent(src.pageToken)}`,
-      ).then((r) => r.json())) as Record<string, unknown> & { error?: { message?: string } };
-      if (info.error) throw new BadRequestException(`Meta: ${info.error.message || 'could not read the page'}`);
-      const feed = (await fetch(
-        `https://graph.facebook.com/v21.0/${src.pageId}/feed?limit=10&fields=message&access_token=${encodeURIComponent(src.pageToken)}`,
-      ).then((r) => r.json()).catch(() => null)) as { data?: { message?: string }[] } | null;
-      const posts = (feed?.data || []).map((pp) => pp.message).filter(Boolean).slice(0, 10);
-      raw = JSON.stringify({ pageInfo: info, recentPosts: posts }).slice(0, 20000);
+      try {
+        raw = (await readFacebookPage(src.pageId, src.pageToken)).text;
+      } catch (e) {
+        throw new BadRequestException(e instanceof SiteReadError ? e.message : 'Không đọc được fanpage.');
+      }
     } else {
-      const url = String(dto.url || '').trim();
-      if (!/^https?:\/\//i.test(url)) throw new BadRequestException('Enter a full address starting with https://');
-      const host = (() => { try { return new URL(url).hostname; } catch { return ''; } })();
-      // No internal addresses: this fetch runs from OUR server.
-      if (!host || /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || /^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(':')) {
-        throw new BadRequestException('That address cannot be read.');
+      try {
+        raw = (await readWebsite(String(dto.url || '').trim())).text;
+      } catch (e) {
+        throw new BadRequestException(e instanceof SiteReadError ? e.message : 'Không đọc được website.');
       }
-      // Real-estate and restaurant template sites sit behind Cloudflare-style
-      // bot walls that 403 anything announcing itself as a bot. The owner of
-      // the site is our own customer asking us to read it, so present as the
-      // browser they would use themselves; fall back to a second, plainer
-      // identity before giving up.
-      const browserHeaders = {
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
-      };
-      let res = await fetch(url, { redirect: 'follow', headers: browserHeaders }).catch(() => null);
-      if (res && !res.ok && [403, 406, 503].includes(res.status)) {
-        res = await fetch(url, { redirect: 'follow', headers: { 'user-agent': 'LumioBot/1.0 (+https://lumiobooking.com)', accept: 'text/html' } }).catch(() => res);
-      }
-      if (!res || !res.ok) {
-        throw new BadRequestException(
-          res && [403, 406, 503].includes(res.status)
-            ? `Website này chặn đọc tự động (${res.status}). Dùng nút "Đọc từ Fanpage", hoặc mở website → chọn hết chữ (Ctrl+A, Ctrl+C) → dán vào ô bên dưới rồi bấm Phân loại tự động.`
-            : `Could not load that page${res ? ` (${res.status})` : ''}.`,
-        );
-      }
-      const html = (await res.text()).slice(0, 400000);
-      raw = html
-        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&[a-z#0-9]+;/gi, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 20000);
     }
     if (raw.length < 40) throw new BadRequestException('Nothing readable was found at that source.');
     return { facts: await this.distillFacts(raw) };
@@ -3630,8 +3603,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
-        max_tokens: 1500,
-        system: 'You turn raw business text into a compact fact sheet for a chat assistant. Reply with ONLY a JSON array of {"label": string, "value": string} — no prose. Up to 15 facts. Facts must be VERBATIM-faithful: prices, hours, addresses, links and names exactly as written in the source — never guess, never embellish, skip anything unclear. Prefer: what the business does/sells, plans & prices, key services, address, phone, links, hours, policies. label ≤ 30 chars, value ≤ 200 chars, in the same language as the source.',
+        max_tokens: 2600,
+        system: 'You turn raw business text into a compact fact sheet for a chat assistant. Reply with ONLY a JSON array of {"label": string, "value": string} — no prose. Up to 24 facts. If the text opens with a "THÔNG TIN DOANH NGHIỆP" block, that block came from the structured data published by the website itself — treat it as authoritative and put those rows first. Facts must be VERBATIM-faithful: prices, hours, addresses, links and names exactly as written in the source — never guess, never embellish, skip anything unclear. Prefer: what the business does/sells, plans & prices, key services, address, phone, links, hours, policies. label ≤ 30 chars, value ≤ 200 chars, in the same language as the source.',
         messages: [{ role: 'user', content: raw }],
       }),
       signal: AbortSignal.timeout(30_000),
@@ -3646,7 +3619,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       const arr = JSON.parse(m[0]) as { label?: unknown; value?: unknown }[];
       const facts = arr
         .filter((f) => typeof f?.label === 'string' && typeof f?.value === 'string' && (f.label as string).trim() && (f.value as string).trim())
-        .slice(0, 15)
+        .slice(0, 24)
         .map((f) => ({ label: (f.label as string).trim().slice(0, 40), value: (f.value as string).trim().slice(0, 300), on: true }));
       if (!facts.length) throw new Error('empty');
       return facts;

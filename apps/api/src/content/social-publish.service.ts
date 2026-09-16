@@ -64,6 +64,9 @@ export interface HoldInfo {
  * public signature is a build error (TS4053) — and `tsc --noEmit` does NOT
  * emit declarations, so it does not catch it. The real build does.
  */
+/** How far in the past a "scheduled" time may sit before it is refused — clock skew, a slow form, not a typo. */
+const PAST_GRACE_MS = 2 * 60 * 1000;
+
 export interface PublishResult {
   channel: Channel; id: string | null; url: string | null; error: string | null;
   /** The network did not answer; the post may be live. Never auto-retried. */
@@ -652,6 +655,12 @@ export class SocialPublishService {
       teamNote: typeof body.teamNote === 'string' ? body.teamNote.trim().slice(0, 2000) || null : prevRow?.teamNote ?? null,
     };
     if (status === 'scheduled') {
+      // A slot in the past is not a schedule. The sweeper would send it within
+      // the minute — "post at 09/09 10:00" chosen on the 16th means a typo,
+      // never "post it now". "Post now" has its own path (publishNow).
+      if (when.getTime() < Date.now() - PAST_GRACE_MS) {
+        throw new BadRequestException('Giờ đăng đã qua — chọn một giờ trong tương lai, hoặc bấm "Đăng ngay".');
+      }
       // Refuse at write time, while the person who wrote it is still looking at
       // it, rather than failing in a scheduler run nobody is watching.
       const conn = await this.pageFor(tenantId);
@@ -788,6 +797,9 @@ export class SocialPublishService {
     // moves day but stays a draft. Only a ready post is (re)armed.
     const cur = await this.posts?.findFirst({ where: { id, tenantId }, select: { stage: true } }).catch(() => null) as { stage?: string | null } | null;
     const ready = cleanStage(cur?.stage) === 'ready';
+    if (ready && when.getTime() < Date.now() - PAST_GRACE_MS) {
+      throw new BadRequestException('Giờ đăng đã qua — kéo bài sang một giờ trong tương lai.');
+    }
     const r = await this.posts?.updateMany({
       where: { id, tenantId, status: { in: ['draft', 'scheduled', 'failed', 'expired'] } },
       data: ready

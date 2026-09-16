@@ -2,6 +2,9 @@ import { SocialPublishService } from './social-publish.service';
 import type { AuthenticatedUser } from '../common/tenant/tenant-context';
 import type { MediaStore } from './media-store';
 
+/** A slot safely ahead of any calendar: the schedule guard refuses past times, and a fixed date would drift into the past. */
+const FUTURE = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
 /**
  * One salon must never publish to another salon's Facebook Page.
  *
@@ -93,7 +96,7 @@ describe('every read and write names the caller’s tenant', () => {
   it('scopes creating a post', async () => {
     const q: Query[] = [];
     await svc(q).save(user('T1'), {
-      channels: ['facebook'], message: 'hi', scheduledAt: '2026-09-05T09:00:00Z', status: 'scheduled',
+      channels: ['facebook'], message: 'hi', scheduledAt: FUTURE, status: 'scheduled',
     });
     const created = q.find((x) => x.model === 'scheduledPost' && x.op === 'create');
     expect((created!.args.data as { tenantId: string }).tenantId).toBe('T1');
@@ -132,7 +135,7 @@ describe('the Page is resolved from the tenant, never from the request', () => {
   it('does not persist the page token onto the post', async () => {
     const q: Query[] = [];
     await svc(q).save(user('T1'), {
-      channels: ['facebook'], message: 'hi', scheduledAt: '2026-09-05T09:00:00Z', status: 'scheduled',
+      channels: ['facebook'], message: 'hi', scheduledAt: FUTURE, status: 'scheduled',
     });
     const data = JSON.stringify(q.find((x) => x.op === 'create')!.args.data);
     expect(data).not.toContain('tok');
@@ -141,8 +144,17 @@ describe('the Page is resolved from the tenant, never from the request', () => {
 });
 
 describe('what the salon is stopped from queueing at all', () => {
+  it('refuses a scheduled time that has already passed — a typo, never "post it now"', async () => {
+    const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    await expect(svc([]).save(user('T1'), { channels: ['facebook'], message: 'hi', scheduledAt: past, status: 'scheduled' }))
+      .rejects.toThrow(/đã qua/);
+    // A draft may sit on any date: it is not going anywhere on its own.
+    await expect(svc([]).save(user('T1'), { channels: ['facebook'], message: 'hi', scheduledAt: past, status: 'draft' }))
+      .resolves.toBeDefined();
+  });
+
   it('rejects an empty post', async () => {
-    await expect(svc([]).save(user('T1'), { channels: ['facebook'], message: '  ', scheduledAt: '2026-09-05T09:00:00Z' }))
+    await expect(svc([]).save(user('T1'), { channels: ['facebook'], message: '  ', scheduledAt: FUTURE }))
       .rejects.toThrow(/chưa có nội dung/);
   });
 
@@ -152,7 +164,7 @@ describe('what the salon is stopped from queueing at all', () => {
   });
 
   it('rejects a post aimed nowhere', async () => {
-    await expect(svc([]).save(user('T1'), { channels: [], message: 'hi', scheduledAt: '2026-09-05T09:00:00Z' }))
+    await expect(svc([]).save(user('T1'), { channels: [], message: 'hi', scheduledAt: FUTURE }))
       .rejects.toThrow(/ít nhất một nơi/);
   });
 
@@ -160,20 +172,20 @@ describe('what the salon is stopped from queueing at all', () => {
     // The person who wrote it is still looking at the screen. Accepting it and
     // failing at 9am on Friday tells them nothing they can act on.
     await expect(svc([]).save(user('T1'), {
-      channels: ['instagram'], message: 'hi', scheduledAt: '2026-09-05T09:00:00Z', status: 'scheduled',
+      channels: ['instagram'], message: 'hi', scheduledAt: FUTURE, status: 'scheduled',
     })).rejects.toThrow(/ảnh hoặc video/);
   });
 
   it('lets the same post be SAVED as a draft, so work in progress is never lost', async () => {
     const q: Query[] = [];
     await expect(svc(q).save(user('T1'), {
-      channels: ['instagram'], message: 'hi', scheduledAt: '2026-09-05T09:00:00Z', status: 'draft',
+      channels: ['instagram'], message: 'hi', scheduledAt: FUTURE, status: 'draft',
     })).resolves.toMatchObject({ ok: true });
   });
 
   it('refuses to edit a post that has already gone out', async () => {
     await expect(svc([], { 'scheduledPost.findFirst': { id: 'p1', status: 'posted' } }).save(user('T1'), {
-      id: 'p1', channels: ['facebook'], message: 'hi', scheduledAt: '2026-09-05T09:00:00Z',
+      id: 'p1', channels: ['facebook'], message: 'hi', scheduledAt: FUTURE,
     })).rejects.toThrow(/đã đăng rồi/);
   });
 });

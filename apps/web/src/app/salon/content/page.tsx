@@ -13,7 +13,7 @@
  * back at them.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { SeoRoadmap } from '../../../components/SeoRoadmap';
 import { OnboardingReport } from '../../../components/OnboardingReport';
@@ -745,6 +745,25 @@ function Inner() {
       caught here rather than by TikTok after the upload finishes. */
   const [ttClip, setTtClip] = useState<{ url: string; sec: number } | null>(null);
   const [mediaInput, setMediaInput] = useState('');
+  /**
+   * The caption box. A NEW post opens with the shop's footer already typed
+   * at the bottom and the caret at the TOP — the writer's words go above the
+   * address, so the cursor must start there, not after the hashtags.
+   */
+  const captionRef = useRef<HTMLTextAreaElement | null>(null);
+  const openedDraftRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = postDraft ? (postDraft.id ?? 'new') : null;
+    if (key === openedDraftRef.current) return;
+    openedDraftRef.current = key;
+    if (key !== 'new' || !composerOpen) return;
+    const el = captionRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(0, 0);
+    el.scrollTop = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [postDraft, composerOpen]);
   /** The footer editor under the caption: null = closed, else the text being edited. */
   const [footerDraft, setFooterDraft] = useState<string | null>(null);
   const [footerBusy, setFooterBusy] = useState(false);
@@ -1025,6 +1044,16 @@ function Inner() {
    */
   async function savePost(status: 'draft' | 'scheduled', now = false, stageOverride?: 'writing' | 'design' | 'ready') {
     if (!postDraft || queueBusy) return;
+    // A slot in the past cannot be posted "on time" — the sweeper would send
+    // it the next minute, which is never what a person choosing a date meant.
+    // Said here, while they are looking at the picker, not by the server.
+    if (status === 'scheduled' && !now) {
+      const instant = postDraft.at && postDraft.at.length >= 16 ? wallToInstantISO(postDraft.at, postTz || undefined) : null;
+      if (!instant || new Date(instant).getTime() < Date.now() - 60_000) {
+        setPostErr(vi ? 'Giờ đăng đã qua — chọn một giờ trong tương lai, hoặc bấm "Đăng ngay".' : 'That time has passed — pick a future time, or press "Post now".');
+        return;
+      }
+    }
     setQueueBusy(true); setPostErr(null);
     try {
       // The stage travels with every save. "Schedule it" locks the post
@@ -3535,6 +3564,7 @@ function Inner() {
 
                   {composerOpen && (<>
                   <textarea
+                    ref={captionRef}
                     value={postDraft.message}
                     onChange={(e) => setPostDraft({ ...postDraft, message: e.target.value })}
                     rows={9}
@@ -4248,6 +4278,7 @@ function Inner() {
                             <input
                               id="post-at"
                               type="datetime-local"
+                              min={instantToWall(new Date(), postTz || undefined).slice(0, 16)}
                               value={postDraft.at}
                               onChange={(e) => setPostDraft({ ...postDraft, at: e.target.value })}
                               style={{

@@ -117,12 +117,11 @@ export function SalonWorkspace({ token, vi, onCount }: {
   // first clip has to have somewhere to go.
   const nothing = !sugg?.open.length && !sugg?.past.length && !week?.jobs.length;
 
-  // 1000, not the 760 a reading column wants: the month plan draws seven
-  // days across, and at 760 a day was 95px — the number wrapped and the
-  // topic was three ellipses. The text cards stretch a little; the
-  // calendar breathes.
+  // No column of its own: the page around it sets the width (the whole
+  // window, up to 1440). A 760px cap here once squeezed the month plan —
+  // seven days across — into 95px cells.
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto', padding: '0 0 22px' }}>
+    <div style={{ padding: '0 0 22px' }}>
       {err && (
         <div style={{
           background: 'var(--c450a0a)', border: '1px solid #ef4444', color: 'var(--cfecaca)',

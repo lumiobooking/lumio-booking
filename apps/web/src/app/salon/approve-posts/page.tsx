@@ -108,8 +108,11 @@ function Inner() {
     );
   };
 
+  // The shop's screen fills the window. It was a 760px reading column,
+  // which left a third of a laptop screen empty on each side and squeezed
+  // the month calendar (seven days across) into 95px cells.
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1440, margin: '0 auto' }}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {tabButton({ id: 'work', icon: '🎬', label: T('Việc của tiệm', 'Your jobs'), count: toDo })}
         {tabButton({ id: 'approve', icon: '✅', label: T('Duyệt bài', 'Approve posts'), count: toApprove })}

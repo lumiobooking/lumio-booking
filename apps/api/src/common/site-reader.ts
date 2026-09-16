@@ -22,6 +22,7 @@
  */
 
 import { browserHeaders, urlVariants, wallMessage } from './browser-headers';
+import { composeSiteText, internalLinks, pickPages, type PageRead } from './site-extract';
 
 export interface SiteText {
   text: string;
@@ -86,9 +87,31 @@ export async function readWebsite(url: string): Promise<SiteText> {
   if (!res || !res.ok) {
     throw new SiteReadError(wallMessage(lastStatus, true));
   }
-  const text = htmlToText((await res.text()).slice(0, 400_000));
+  const homeUrl = res.url || clean;
+  const homeHtml = (await res.text()).slice(0, 400_000);
+
+  // A home page is a poster. What the business DOES lives on /services, what
+  // it charges on /pricing, who it is on /about — so read up to three more,
+  // one per kind, behind one overall deadline. A site that answers slowly
+  // costs the reader a few seconds, never the whole import.
+  const pages: PageRead[] = [{ url: homeUrl, html: homeHtml }];
+  const extra = pickPages(internalLinks(homeHtml, homeUrl), homeUrl, 3);
+  const deadline = Date.now() + 15_000;
+  for (const link of extra) {
+    if (Date.now() >= deadline) break;
+    const r = await fetch(link, {
+      redirect: 'follow',
+      headers,
+      signal: AbortSignal.timeout(Math.max(1_000, deadline - Date.now())),
+    }).catch(() => null);
+    if (!r || !r.ok) continue;   // one page refusing is not the site refusing
+    pages.push({ url: r.url || link, html: (await r.text().catch(() => '')).slice(0, 400_000) });
+  }
+
+  const text = composeSiteText(pages);
   if (text.length < 40) throw new SiteReadError('Trang này không có đủ chữ để đọc.');
-  return { text, source: `Website ${host}` };
+  const more = pages.length > 1 ? ` (+${pages.length - 1} trang)` : '';
+  return { text, source: `Website ${host}${more}` };
 }
 
 export async function readFacebookPage(pageId: string, pageToken: string): Promise<SiteText> {

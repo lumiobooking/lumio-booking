@@ -120,3 +120,53 @@ describe('a site that blocks bots gets a useful message, not a status code', () 
     expect(r.source).toContain('lumiobooking.com');
   });
 });
+
+describe('reading the whole site, not just its front page', () => {
+  const HOME = `<html><head><title>Tu Nails</title>
+<script type="application/ld+json">{"@type":"BeautySalon","name":"Tu Nails & Spa","telephone":"+1 337-555-0100"}</script>
+</head><body><nav><a href="/services">Services</a><a href="/about">About</a></nav>
+<h1>Tu Nails &amp; Spa</h1><p>Chúng tôi làm nail và chăm sóc móng tại Lafayette.</p></body></html>`;
+
+  it('follows the key pages and labels each one', async () => {
+    const asked: string[] = [];
+    jest.spyOn(globalThis, 'fetch' as never).mockImplementation((async (u: string) => {
+      asked.push(String(u));
+      const p = new URL(String(u)).pathname;
+      const html = p === '/services' ? '<h2>Dịch vụ</h2><ul><li>Gel X</li><li>Pedicure</li></ul>'
+        : p === '/about' ? '<p>Tiệm mở từ 2015, chủ tiệm là chị Tú.</p>'
+          : HOME;
+      return { ok: true, status: 200, url: String(u), text: async () => html };
+    }) as never);
+
+    const r = await readWebsite('https://tunails.com');
+    expect(asked.length).toBeGreaterThan(1);
+    expect(r.text).toContain('--- Trang /services ---');
+    expect(r.text).toContain('- Gel X');
+    expect(r.text).toContain('chị Tú');
+    expect(r.source).toContain('+2 trang');
+  });
+
+  it('puts the phone from JSON-LD in front — it is nowhere in the prose', async () => {
+    jest.spyOn(globalThis, 'fetch' as never).mockImplementation((async (u: string) => ({
+      ok: true, status: 200, url: String(u), text: async () => HOME,
+    })) as never);
+    const r = await readWebsite('https://tunails.com');
+    expect(r.text).toContain('+1 337-555-0100');
+    expect(r.text.indexOf('+1 337-555-0100')).toBeLessThan(r.text.indexOf('Lafayette'));
+    // and the ampersand arrives as a character, not as "&amp;"
+    expect(r.text).toContain('Tu Nails & Spa');
+    expect(r.text).not.toContain('&amp;');
+  });
+
+  it('one inner page refusing does not lose the site', async () => {
+    jest.spyOn(globalThis, 'fetch' as never).mockImplementation((async (u: string) => {
+      const p = new URL(String(u)).pathname;
+      return p === '/'
+        ? { ok: true, status: 200, url: String(u), text: async () => HOME }
+        : { ok: false, status: 403, url: String(u), text: async () => '' };
+    }) as never);
+    const r = await readWebsite('https://tunails.com');
+    expect(r.text).toContain('Lafayette');
+    expect(r.source).not.toContain('trang)');
+  });
+});

@@ -33,11 +33,11 @@ import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz, salonTz } fro
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
 import { MonthCalendar, IgGrid, PostPreview, MediaList, ChannelChips, CHANNEL_NAME, TONES, postTone, type MediaItem, type Channel } from '../../../components/PostStudio';
 import { WeekPlanBoard, type OfferForm } from '../../../components/WeekPlanBoard';
-import type { AheadBlock } from '../../../components/plan-grid';
+import { addDays, type AheadBlock } from '../../../components/plan-grid';
 import { PostDetailModal } from '../../../components/PostDetailModal';
 import { PlanIdeas } from '../../../components/PlanIdeas';
 import { PlanSheet } from '../../../components/PlanSheet';
-import { entryToDraft, type PlanEntry, type PlanPatch } from '../../../components/plan-sheet';
+import { entryToDraft, entryFromIdea, mergeIdeaInto, entryHasContent, type PlanEntry, type PlanPatch } from '../../../components/plan-sheet';
 import { MonthBriefEditor, type MonthBriefData } from '../../../components/MonthBrief';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
@@ -702,6 +702,8 @@ function Inner() {
   const [ahead, setAhead] = useState<AheadBlock[] | null>(null);
   /** The plan sheet: one slot per day, the team's working document. */
   const [sheet, setSheet] = useState<{ tz: string; today: string; from: string; days: number; entries: Record<string, PlanEntry> } | null>(null);
+  /** The day the plan should open on next — set when an idea is sent there. */
+  const [planFocusDay, setPlanFocusDay] = useState<string | null>(null);
   const [aheadTz, setAheadTz] = useState<string>('');
   const [aheadBusy, setAheadBusy] = useState(false);
   /** The post open in the reading view — never the editor — on the schedule. */
@@ -993,6 +995,38 @@ function Inner() {
       if (r.entry) entries[day] = r.entry; else delete entries[day];
       return { ...cur, entries };
     });
+  }
+  /**
+   * An idea goes onto the PLAN, not into the composer. The team edits it
+   * there — pillar, topic, caption, networks — and schedules from there.
+   * The idea fills only what the day still lacks; a planned day is never
+   * overwritten by a suggestion.
+   */
+  async function sendIdeaToPlan(job: { kind: string; text: string; why?: string; brief?: { caption?: string; hashtags?: string[]; channel?: string } | null }, dayKey: string) {
+    if (!token) return;
+    try {
+      let cur = sheet;
+      if (!cur) { cur = await apiFetch('/content/plan-sheet', { token }); setSheet(cur); }
+      const patch = mergeIdeaInto(cur?.entries[dayKey], entryFromIdea(job));
+      if (Object.keys(patch).length) await savePlanEntry(dayKey, patch);
+      setPlanFocusDay(dayKey);
+      setTab('week');
+      notify('success', vi ? 'Đã đưa vào Plan — sửa lại rồi bấm "Lên lịch đăng" khi xong.' : 'On the plan — edit it, then "Schedule" when ready.');
+    } catch (e) { notify('error', e instanceof Error ? e.message : String(e)); }
+  }
+  /** A trend card goes onto the plan too — on the first empty day from today. */
+  async function sendTrendToPlan(card: TrendCard) {
+    if (!token) return;
+    let cur = sheet;
+    if (!cur) { try { cur = await apiFetch('/content/plan-sheet', { token }); setSheet(cur); } catch { return; } }
+    if (!cur) return;
+    let day = cur.today;
+    for (let i = 0; i < 30; i++) {
+      const k = addDays(cur.today, i);
+      if (!entryHasContent(cur.entries[k])) { day = k; break; }
+    }
+    const tag = card.via && card.via.startsWith('#') ? card.via : '';
+    await sendIdeaToPlan({ kind: 'film', text: card.title, brief: { caption: '', hashtags: tag ? [tag] : [] } }, day);
   }
   /** Empty one day of the sheet. */
   async function clearPlanEntry(day: string) {
@@ -1324,34 +1358,6 @@ function Inner() {
     }
   }
 
-  /** Open one queued post in the composer. */
-  /**
-   * A plan job becomes a post on the day it sits on — channels from the kind,
-   * the caption from the brief when there is one, the time a sensible default
-   * in salon time. The person still reads and sends; nothing is retyped.
-   */
-  function scheduleFromJob(job: { kind: string; text: string; brief?: { caption?: string; hashtags?: string[]; channel?: string } | null }, dayKey: string) {
-    const hasIg = Boolean(queue?.connected?.hasInstagram);
-    const hasFb = Boolean(queue?.connected);
-    const hasGg = Boolean(queue?.google);
-    let channels: Channel[] = job.kind === 'gbp'
-      ? ['google']
-      : job.kind === 'story'
-        ? ['instagram']
-        : ['facebook', 'instagram'];
-    channels = channels.filter((c) => (c === 'google' ? hasGg : c === 'instagram' ? hasIg : hasFb));
-    if (!channels.length) channels = hasFb ? ['facebook'] : hasGg ? ['google'] : ['facebook'];
-    const caption = job.brief?.caption?.trim();
-    const tags = job.brief?.hashtags?.length ? '\n\n' + job.brief.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ') : '';
-    setPostWhen('later');
-    setComposerOpen(true);
-    setPostDraft({
-      channels, message: (caption || job.text) + tags, media: [],
-      at: `${dayKey}T10:00`, stage: 'writing', writerName: '', designerName: '', teamNote: `Từ plan: ${job.text}`.slice(0, 200),
-    });
-    setTab('queue');
-  }
-
   function editPost(id: string) {
     // Opening a row that already has a slot is a scheduling act, whatever the
     // toggle was left on last time. Inheriting 'now' from a previous composer
@@ -1471,20 +1477,6 @@ function Inner() {
    * source link is deliberately not put in the message — a salon's post that
    * links to someone else's video is a post for someone else.
    */
-  function postFromTrend(card: TrendCard) {
-    const local = wallTomorrowAt('10:00'); // tomorrow morning AT THE SALON
-    const tag = card.via && card.via.startsWith('#') ? card.via : '';
-    setPostWhen('later');
-    setComposerOpen(true);
-    setPostDraft({
-      channels: ['facebook'],
-      message: [card.title, tag].filter(Boolean).join('\n\n'),
-      media: [],
-      at: local,
-    });
-    setTab('queue');
-  }
-
   /**
    * The shop sent footage; build the post from it.
    *
@@ -2627,6 +2619,7 @@ function Inner() {
                     }}
                     onSave={savePlanEntry}
                     onClear={clearPlanEntry}
+                    focusDay={planFocusDay}
                     onSchedule={scheduleFromEntry}
                     onOpenPost={(id) => { setDetailId(id); }}
                   />
@@ -2668,7 +2661,7 @@ function Inner() {
                   {!ahead ? (
                     <div style={{ color: 'var(--c94a3b8)', fontSize: 13, padding: 8 }}>{aheadBusy ? T('Đang dựng gợi ý 30 ngày…', 'Drafting 30 days of suggestions…') : T('Chưa tải được gợi ý.', 'Suggestions not loaded.')}</div>
                   ) : (
-                    <PlanIdeas blocks={ahead} tz={aheadTz || salonTz()} vi={vi} onSchedule={scheduleFromJob} onOpenSheet={() => setIdeasView('sheet')} />
+                    <PlanIdeas blocks={ahead} tz={aheadTz || salonTz()} vi={vi} onPlan={sendIdeaToPlan} onOpenSheet={() => setIdeasView('sheet')} />
                   )}
                 </div>
               )}
@@ -2681,7 +2674,7 @@ function Inner() {
                   isMobile={isMobile}
                   extraLinks={[...(plan?.videoFeeds ?? []), ...(plan?.productWatch ?? [])]}
                   canRefresh={Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN'}
-                  onMakePost={postFromTrend}
+                  onMakePost={sendTrendToPlan}
                   onSendToSalon={(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') ? setSending : null}
                 />
               )}

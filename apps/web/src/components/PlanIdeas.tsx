@@ -31,12 +31,13 @@ const KIND_LABEL: Record<string, { vi: string; en: string }> = {
 };
 
 export function PlanIdeas({
-  blocks, tz, vi, onSchedule, onOpenSheet,
+  blocks, tz, vi, onPlan, onOpenSheet,
 }: {
   blocks: AheadBlock[];
   tz: string;
   vi: boolean;
-  onSchedule: (job: Job, dayKey: string) => void;
+  /** Put the idea on the plan for that day — edited there, scheduled from there. */
+  onPlan: (job: Job, dayKey: string) => void;
   onOpenSheet?: () => void;
 }) {
   const T = (a: string, b: string) => (vi ? a : b);
@@ -70,7 +71,7 @@ export function PlanIdeas({
         <div>
           <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>💡 {T('Gợi ý theo ngày', 'Suggested by day')}</div>
           <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>
-            {T(`${todo} việc bên em có thể lên lịch · ngày lấy từ giờ vắng của tiệm`, `${todo} ideas we can schedule · days taken from the shop’s quiet hours`)}
+            {T(`${todo} gợi ý có thể đưa vào Plan · ngày lấy từ giờ vắng của tiệm · sửa lại trên Plan rồi mới lên lịch`, `${todo} ideas to put on the plan · days from the shop’s quiet hours · edit on the plan, schedule from there`)}
           </div>
         </div>
         {onOpenSheet && (
@@ -131,8 +132,8 @@ export function PlanIdeas({
                     </div>
                     <div>
                       {!j.done && j.who !== 'salon' ? (
-                        <button type="button" onClick={() => onSchedule(j.job, d.key)} title={T('Mở khung soạn với ngày này', 'Open the composer on this day')} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #6366f1', background: 'rgba(99,102,241,.14)', color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-                          🗓️ {T('Lên lịch', 'Schedule')}
+                        <button type="button" onClick={() => onPlan(j.job, d.key)} title={T('Đưa ý này vào Plan ngày đó — sửa lại trên Plan, xong mới lên lịch đăng', 'Put this on the plan for that day — edit it there, schedule from there')} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #6366f1', background: 'rgba(99,102,241,.14)', color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                          {T('→ Đưa vào Plan', '→ To plan')}
                         </button>
                       ) : <span style={{ display: 'inline-block', width: 84 }} />}
                     </div>

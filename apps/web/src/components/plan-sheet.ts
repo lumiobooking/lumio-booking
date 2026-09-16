@@ -123,3 +123,48 @@ export function sheetProgress(weeks: SheetDay[][], entries: Record<string, PlanE
   }
   return { filled, scheduled, days };
 }
+
+// ---------------------------------------------------------------------------
+// An idea becoming a plan slot
+// ---------------------------------------------------------------------------
+
+/**
+ * The system's suggestion, translated into the sheet's six columns — so a
+ * person edits it on the plan first and schedules it later, instead of the
+ * old path that dropped the idea straight into the composer. The pillar,
+ * format and networks are guesses from the kind of job; every one of them is
+ * a chip the person can change in the panel.
+ */
+export function entryFromIdea(
+  job: { kind: string; text: string; why?: string; brief?: { caption?: string; hashtags?: string[]; channel?: string } | null },
+): PlanPatch {
+  const kind = job.kind;
+  const pillar: Pillar =
+    kind === 'offer' ? 'promotion'
+      : kind === 'winback' ? 'cta'
+        : kind === 'engage' || kind === 'gbp' ? 'feedback'
+          : kind === 'story' ? 'behind'
+            : 'inspiration';
+  const format: Format = kind === 'film' ? 'video' : kind === 'photo' ? 'album' : kind === 'story' ? 'story' : 'poster';
+  const air: Air[] = kind === 'gbp' ? ['google'] : kind === 'story' ? ['instagram'] : ['facebook', 'instagram'];
+  const caption = job.brief?.caption?.trim() ?? '';
+  const tags = (job.brief?.hashtags ?? []).map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ');
+  const detail = [caption, tags].filter(Boolean).join('\n\n');
+  return { pillar, topic: job.text.trim().slice(0, 200), detail, air, format };
+}
+
+/**
+ * Lay an idea over what a day already holds: the person's own words win, the
+ * idea fills only what is still blank. Sending an idea to a planned day must
+ * never erase the plan.
+ */
+export function mergeIdeaInto(existing: PlanEntry | undefined, idea: PlanPatch): PlanPatch {
+  if (!existing || !entryHasContent(existing)) return idea;
+  const out: PlanPatch = {};
+  if (!existing.pillar && idea.pillar) out.pillar = idea.pillar;
+  if (!existing.topic && idea.topic) out.topic = idea.topic;
+  if (!existing.detail && idea.detail) out.detail = idea.detail;
+  if (!existing.format && idea.format) out.format = idea.format;
+  if (!existing.air.length && idea.air?.length) out.air = idea.air;
+  return out;
+}

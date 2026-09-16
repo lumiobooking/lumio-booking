@@ -48,7 +48,7 @@ const STATUS: Record<string, { bg: string; ink: string; icon: string; vi: string
 const FORMAT_ICON: Record<string, string> = { poster: '🖼', album: '🎞', video: '▶', story: '📱' };
 
 export function PlanSheet({
-  from, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected, postsKnown,
+  from, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected, postsKnown, focusDay,
 }: {
   from: string;
   today: string;
@@ -69,6 +69,8 @@ export function PlanSheet({
    * shows no post card. Default true — the team's screen knows its posts.
    */
   postsKnown?: boolean;
+  /** A day the page wants opened in the panel — an idea just landed on it. Changes open it; null does nothing. */
+  focusDay?: string | null;
 }) {
   const T = (a: string, b: string) => (vi ? a : b);
   const weeks = useMemo(() => sheetWeeks(from, today), [from, today]);
@@ -79,6 +81,7 @@ export function PlanSheet({
 
   /** The day open in the panel. */
   const [open, setOpen] = useState<string | null>(null);
+  useEffect(() => { if (focusDay) setOpen(focusDay); }, [focusDay]);
   const dayOf = (key: string): SheetDay | null => { for (const w of weeks) for (const d of w) if (d.key === key) return d; return null; };
   const label = (key: string) => {
     const [, m, d] = key.split('-').map(Number);

@@ -1,4 +1,4 @@
-import { emptyEntry, entryReady, entryToDraft, sheetProgress, sheetWeeks, entryHasContent } from './plan-sheet';
+import { emptyEntry, entryReady, entryToDraft, sheetProgress, sheetWeeks, entryHasContent, entryFromIdea, mergeIdeaInto } from './plan-sheet';
 
 const ALL = { facebook: true, instagram: true, tiktok: true, google: true };
 
@@ -45,5 +45,24 @@ describe('the bands', () => {
       '2026-09-17': { ...emptyEntry('2026-09-17'), pillar: 'cta' },
     });
     expect(p).toEqual({ filled: 2, scheduled: 1, days: 30 });
+  });
+});
+
+describe('an idea becoming a plan slot', () => {
+  it('translates the kind of job into pillar, format and networks, and the brief into the caption', () => {
+    const e = entryFromIdea({ kind: 'film', text: 'Đăng clip — Một ca khó hơn bình thường', brief: { caption: 'Hard set, done right.', hashtags: ['nailart', '#kerrville'] } });
+    expect(e).toMatchObject({ pillar: 'inspiration', format: 'video', air: ['facebook', 'instagram'], topic: 'Đăng clip — Một ca khó hơn bình thường' });
+    expect(e.detail).toBe('Hard set, done right.\n\n#nailart #kerrville');
+    expect(entryFromIdea({ kind: 'gbp', text: 'Xin đánh giá' })).toMatchObject({ pillar: 'feedback', air: ['google'] });
+    expect(entryFromIdea({ kind: 'offer', text: 'Ưu đãi' })).toMatchObject({ pillar: 'promotion', format: 'poster' });
+  });
+  it('fills only what the day still lacks — the plan is never overwritten by a suggestion', () => {
+    const planned = { ...emptyEntry('2026-09-17'), topic: 'Khách cũ nói về lần làm trước', air: ['facebook'] as const };
+    const idea = entryFromIdea({ kind: 'photo', text: 'Đăng bộ ảnh', brief: { caption: 'c' } });
+    const patch = mergeIdeaInto({ ...planned, air: [...planned.air] }, idea);
+    expect(patch.topic).toBeUndefined();
+    expect(patch.air).toBeUndefined();
+    expect(patch).toMatchObject({ pillar: 'inspiration', format: 'album', detail: 'c' });
+    expect(mergeIdeaInto(undefined, idea)).toBe(idea);
   });
 });

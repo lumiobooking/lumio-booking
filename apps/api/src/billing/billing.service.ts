@@ -11,6 +11,13 @@ import { StripeService } from './stripe.service';
 import { PaypalService } from './paypal.service';
 import { PlatformConfigService } from './platform-config.service';
 import { VoiceService } from '../voice/voice.service';
+import { cleanPlatformRates, resolveRate, usageLine } from './usage-rates';
+import { cleanChatPlan } from '../messenger/chat-billing';
+
+/** Where a salon's chat plan is stored (a Setting row — no migration). */
+export const CHAT_PLAN_KEY = 'chat_plan';
+/** Where the bot's reply counter lives: `chat_replies:YYYY-MM:<instance>`. */
+export const CHAT_COUNT_KEY = 'chat_replies';
 
 export interface SignupInput {
   salonName: string;
@@ -127,16 +134,58 @@ export class BillingService {
    * the plan allowance + AI Hotline minutes beyond the included bucket) + a
    * projected month-end total. Always available — never hidden by feature policy.
    */
+  /** Platform default prices, from platform_config. Missing stays missing. */
+  private async platformRates() {
+    const keys = ['sms_overage_cents', 'hotline_overage_cents_per_min', 'chat_overage_cents_per_reply'];
+    const rows = await this.prisma.platformConfig
+      .findMany({ where: { key: { in: keys } }, select: { key: true, value: true } })
+      .catch(() => [] as { key: string; value: string }[]);
+    const map: Record<string, string | undefined> = {};
+    for (const r of rows) map[r.key] = r.value;
+    for (const k of keys) if (map[k] === undefined) map[k] = process.env[k.toUpperCase()];
+    return cleanPlatformRates(map);
+  }
+
+  /**
+   * Bot replies this month, summed across the rows each API process writes.
+   *
+   * Counted here rather than from the AI-usage monitor on purpose: that store
+   * is pruned after sixty days and drops its per-salon dimension when a day
+   * gets large. An invoice may never depend on a number that is allowed to be
+   * approximate.
+   */
+  private async chatRepliesThisMonth(tenantId: string): Promise<number> {
+    const now = new Date();
+    const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+    const rows = await this.prisma.setting
+      .findMany({ where: { tenantId, key: { startsWith: `${CHAT_COUNT_KEY}:${month}` } }, select: { value: true } })
+      .catch(() => [] as { value: unknown }[]);
+    let total = 0;
+    for (const r of rows) {
+      const v = (r.value ?? {}) as { total?: unknown };
+      const n = Number(v.total);
+      if (Number.isFinite(n) && n > 0) total += Math.round(n);
+    }
+    return total;
+  }
+
   async usageSummary(user: AuthenticatedUser) {
     const tenantId = resolveTenantScope(user);
     if (!tenantId) return null;
-    const [tenant, line, u] = await Promise.all([
+    const [tenant, line, u, rates, chatPlanRow, chatReplies] = await Promise.all([
       this.prisma.tenant.findUnique({
         where: { id: tenantId },
         select: { plan: { select: { name: true, currency: true, priceMonthlyCents: true, priceCents: true, maxSmsPerMonth: true } } },
       }),
       this.prisma.voiceLine.findUnique({ where: { tenantId }, select: { enabled: true, monthlyCents: true } }),
       this.voice.usage(user),
+      // Platform default prices. Until these existed, an SMS overage price
+      // lived ONLY on VoiceLine — so a salon without the AI Hotline had no
+      // price for an SMS at all, was billed nothing for going over, and was
+      // told on its own invoice screen that overage is free. See usage-rates.
+      this.platformRates(),
+      this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_PLAN_KEY }, select: { value: true } }).catch(() => null),
+      this.chatRepliesThisMonth(tenantId).catch(() => 0),
     ]);
     const plan = tenant?.plan ?? null;
     const currency = plan?.currency ?? 'USD';
@@ -154,14 +203,25 @@ export class BillingService {
     // ---- SMS (reconciled with the plan allowance) ----
     // A per-tenant override (VoiceLine.includedSms) wins; otherwise the plan's monthly SMS.
     const smsIncluded = u.includedSms > 0 ? u.includedSms : (plan?.maxSmsPerMonth ?? 0);
-    const smsUsed = u.smsSent;
-    const smsOver = smsIncluded > 0 ? Math.max(0, smsUsed - smsIncluded) : 0;
-    const smsRate = u.overageCentsPerSms;
-    const smsOverageCents = smsOver * smsRate;
+    // A VoiceLine rate of 0 means "no VoiceLine row", not "agreed to be free",
+    // so it is passed as null and allowed to fall through to the platform
+    // default. A real free-of-charge arrangement is set on the plan itself.
+    const smsRateInfo = resolveRate(u.overageCentsPerSms > 0 ? u.overageCentsPerSms : null, rates.smsCents);
+    const smsLine = usageLine('sms', u.smsSent, smsIncluded, smsRateInfo);
+
+    // ---- AI Chatbot ----
+    const chatPlan = cleanChatPlan(chatPlanRow?.value);
+    const chatRateInfo = resolveRate(
+      chatPlan.active && chatPlan.overageCentsPerReply > 0 ? chatPlan.overageCentsPerReply : null,
+      rates.chatReplyCents,
+    );
+    const chatLine = usageLine('chat', chatReplies, chatPlan.includedReplies, chatPlan.hardCap ? { ...chatRateInfo, billable: false } : chatRateInfo);
+    const chatMonthlyCents = chatPlan.active ? chatPlan.monthlyCents : 0;
 
     // ---- Totals ----
-    const fixedCents = baseCents + hotlineMonthlyCents;
-    const overageCents = minOverageCents + smsOverageCents;
+    const fixedCents = baseCents + hotlineMonthlyCents + chatMonthlyCents;
+    const smsOverageCents = smsLine.overageCents;
+    const overageCents = minOverageCents + smsOverageCents + chatLine.overageCents;
     const grandTotalCents = fixedCents + overageCents;
 
     // Straight-line projection of the variable overage to month end.
@@ -188,11 +248,23 @@ export class BillingService {
         aiCalls: u.aiCalls,
       },
       sms: {
-        included: smsIncluded,
-        used: smsUsed,
-        overage: smsOver,
-        overageCentsPer: smsRate,
-        overageCents: smsOverageCents,
+        included: smsLine.included,
+        used: smsLine.used,
+        overage: smsLine.over,
+        overageCentsPer: smsLine.rate.centsPerUnit,
+        overageCents: smsLine.overageCents,
+        /** Which sentence the screen prints. Never let it improvise one. */
+        wording: smsLine.wording,
+      },
+      chat: {
+        enabled: chatPlan.active,
+        monthlyCents: chatMonthlyCents,
+        included: chatLine.included,
+        used: chatLine.used,
+        overage: chatLine.over,
+        overageCentsPer: chatLine.rate.centsPerUnit,
+        overageCents: chatLine.overageCents,
+        wording: chatLine.wording,
       },
       totals: { fixedCents, overageCents, grandTotalCents, projectedGrandTotalCents },
     };

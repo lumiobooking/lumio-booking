@@ -38,6 +38,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { mergeBurst, alreadySaid, BURST_MS } from './burst';
 import { publishGrantFrom } from './publish-grant';
 import { AiUsageService } from '../common/ai-usage.service';
+import { carouselTitles, packageFromPayload, packagePayload, tapAsCustomerLine } from './package-cards';
 
 // A blank/masked secret must never overwrite a stored Page token.
 function cleanSecret(v: unknown): string | null {
@@ -160,6 +161,72 @@ export class MessengerService implements OnModuleInit {
       cacheWrite: Number(d.usage?.cache_creation_input_tokens ?? 0) || 0,
       failed: !ok,
     });
+  }
+
+  /**
+   * THE BILLING COUNTER — deliberately separate from the AI usage meter.
+   *
+   * The meter in common/ai-usage answers "where did our API money go". It is
+   * pruned after sixty days and it drops its per-salon dimension on a day big
+   * enough to strain a config row. Both are fine for monitoring and fatal for
+   * an invoice, so what a salon is CHARGED is counted here, in its own durable
+   * Setting row, and never derived from the monitor.
+   *
+   * One row per (salon, month, PROCESS): four API services on Render would
+   * otherwise read-modify-write over each other and quietly lose replies —
+   * always downwards, always in the salon's favour, always invisible.
+   */
+  private replyBuffer = new Map<string, { total: number; days: Record<string, number> }>();
+  private replyTimer: NodeJS.Timeout | null = null;
+  private readonly instanceId = (process.env.RENDER_INSTANCE_ID || crypto.randomBytes(3).toString("hex")).slice(-6);
+
+  /** Count one billable reply. In memory, never throws, never blocks the send. */
+  private countBotReply(tenantId: string | null | undefined): void {
+    try {
+      if (!tenantId) return;
+      const now = new Date();
+      const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+      const day = now.toISOString().slice(0, 10);
+      const key = `${tenantId}|${month}`;
+      const acc = this.replyBuffer.get(key) ?? { total: 0, days: {} };
+      acc.total += 1;
+      acc.days[day] = (acc.days[day] ?? 0) + 1;
+      this.replyBuffer.set(key, acc);
+      if (!this.replyTimer) {
+        this.replyTimer = setInterval(() => { void this.flushReplyCounts(); }, 60_000);
+        this.replyTimer.unref?.();
+      }
+    } catch { /* a counter that throws must never cost a customer their answer */ }
+  }
+
+  /**
+   * Add what this process counted to its own row. Read-modify-write is safe
+   * because no other process writes this key, and a failed write puts the
+   * counts back so the next minute tries again rather than losing them.
+   */
+  private async flushReplyCounts(): Promise<void> {
+    if (!this.replyBuffer.size) return;
+    const taken = this.replyBuffer;
+    this.replyBuffer = new Map();
+    for (const [key, add] of taken) {
+      const [tenantId, month] = key.split('|');
+      const settingKey = `chat_replies:${month}:${this.instanceId}`;
+      try {
+        const row = await this.prisma.setting.findFirst({ where: { tenantId, key: settingKey }, select: { id: true, value: true } });
+        const cur = (row?.value ?? {}) as { total?: number; days?: Record<string, number> };
+        const days = { ...(cur.days ?? {}) };
+        for (const [d, n] of Object.entries(add.days)) days[d] = (Number(days[d]) || 0) + n;
+        const value = { total: (Number(cur.total) || 0) + add.total, days };
+        if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: value as never } });
+        else await this.prisma.setting.create({ data: { tenantId, key: settingKey, value: value as never } });
+      } catch {
+        const back = this.replyBuffer.get(key);
+        if (back) {
+          back.total += add.total;
+          for (const [d, n] of Object.entries(add.days)) back.days[d] = (back.days[d] ?? 0) + n;
+        } else this.replyBuffer.set(key, add);
+      }
+    }
   }
 
   // ---- config --------------------------------------------------------------
@@ -2107,16 +2174,18 @@ export class MessengerService implements OnModuleInit {
         if (!senderId) continue;
         // "Get Started" tap: the customer opened the chat but hasn't typed yet.
         // This is the salon's ONE chance to speak first — greet immediately.
+        // A package tap is read BEFORE the "and no message" guard. That guard
+        // belongs to Get Started alone; applied to a package button it threw
+        // away the one thing the tap was worth — which package — on any event
+        // that happened to carry a message as well.
+        const pkgTap = ev.postback?.payload ? packageFromPayload(ev.postback.payload) : null;
+        if (pkgTap) {
+          await this.handleMessage(entryId, senderId, tapAsCustomerLine(pkgTap), ev.timestamp, channel).catch((e) =>
+            this.logger.warn(`pkg postback failed: ${String(e).slice(0, 160)}`),
+          );
+          continue;
+        }
         if (ev.postback?.payload && !ev.message) {
-          const payload = ev.postback.payload;
-          if (payload.startsWith('ASK_PKG:')) {
-            // A package-card button tap = the customer saying "tell me about X".
-            const pkg = payload.slice('ASK_PKG:'.length);
-            await this.handleMessage(entryId, senderId, `Tôi muốn tư vấn ${pkg}`, ev.timestamp, channel).catch((e) =>
-              this.logger.warn(`pkg postback failed: ${String(e).slice(0, 160)}`),
-            );
-            continue;
-          }
           await this.handleGetStarted(entryId, senderId).catch((e) =>
             this.logger.warn(`greeting failed: ${String(e).slice(0, 160)}`),
           );
@@ -2693,6 +2762,11 @@ export class MessengerService implements OnModuleInit {
       }
     }
     const sent = await this.sendText(conn.pageToken, senderId, reply, freshCh === 'zalo' ? 'zalo' : freshCh === 'web' ? 'web' : undefined, conn.tenantId);
+    // The billable event, and the only one: a reply the ROBOT produced and the
+    // mouth accepted. A refused send is not work delivered, a canned greeting
+    // is not the robot thinking, and a line a person typed is the salon's own
+    // work — none of the three is charged. See messenger/chat-billing.ts.
+    if (sent.ok) this.countBotReply(conn.tenantId);
     // Inbound = Meta's own webhook timestamp (ms epoch); outbound = when we actually sent.
     const inAt = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
     const outAt = new Date().toISOString();
@@ -3943,11 +4017,17 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         // Checked in PARALLEL and behind one overall deadline, so cards never
         // add more than a moment to the reply.
         const images = await Promise.all(rowsToSend.map((f) => imgFor(f.label).catch(() => undefined)));
+        // Every button used to read "Tư vấn gói này". Messenger shows a tapped
+        // button in the thread AS ITS TITLE, so three identical titles meant
+        // Meta's own inbox showed three identical bubbles and nobody could see
+        // which package the lead had asked about. The titles are now distinct
+        // by construction — see package-cards.ts.
+        const titles = carouselTitles(rowsToSend.map((f) => f.label));
         const cards: { title: string; subtitle: string; image_url?: string; buttons: unknown[] }[] = rowsToSend.map((f, i) => ({
           title: f.label.slice(0, 80),
           subtitle: cardLine(f.value),
           image_url: images[i],
-          buttons: [{ type: 'postback', title: 'Tư vấn gói này', payload: `ASK_PKG:${f.label.slice(0, 80)}` }],
+          buttons: [{ type: 'postback', title: titles[i], payload: packagePayload(f.label) }],
         }));
         await this.sendCards(ctx.pageToken, ctx.senderId, cards);
         return `SUCCESS — ${cards.length} package card(s) sent. Now send ONE short line asking which fits (do NOT repeat the package details).`;

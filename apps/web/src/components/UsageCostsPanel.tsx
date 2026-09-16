@@ -18,7 +18,14 @@ interface Summary {
     includedMinutes: number; usedMinutes: number; overageMinutes: number;
     overageCentsPerMin: number; overageCents: number; aiCalls: number;
   };
-  sms: { included: number; used: number; overage: number; overageCentsPer: number; overageCents: number };
+  /** `wording` tells the screen WHICH sentence to print — see api billing/usage-rates.ts. */
+  sms: { included: number; used: number; overage: number; overageCentsPer: number; overageCents: number; wording?: 'priced' | 'free' | 'unset' | 'unlimited' };
+  /** The AI chatbot, once the salon is on a chat plan. Absent on an older server. */
+  chat?: {
+    enabled: boolean; included: number; used: number; overage: number;
+    overageCentsPer: number; overageCents: number; monthlyCents: number;
+    wording?: 'priced' | 'free' | 'unset' | 'unlimited';
+  };
   totals: { fixedCents: number; overageCents: number; grandTotalCents: number; projectedGrandTotalCents: number };
 }
 
@@ -62,18 +69,40 @@ const T = {
     en: 'Your plan is a fixed monthly fee that already includes {sms} SMS and {min} AI Hotline minutes each month.',
     vi: 'Gói của bạn là phí cố định mỗi tháng, đã bao gồm sẵn {sms} SMS và {min} phút AI Hotline mỗi tháng.',
   },
+  // One WHOLE sentence per state. The old template substituted a rate into
+  // "is charged {rate}", and when no rate was set it printed the word "free" —
+  // telling the salon in writing that going over costs nothing. A salon quotes
+  // that sentence back when the invoice arrives, and it is right to.
   howSms: {
     en: 'SMS — each message beyond your {sms} included is charged {rate}. Messages within the allowance are free.',
-    vi: 'SMS — mỗi tin vượt quá {sms} tin miễn phí tính {rate}. Tin trong hạn mức là miễn phí.',
+    vi: 'SMS — mỗi tin vượt quá {sms} tin trong gói tính {rate}. Tin trong hạn mức không mất phí.',
+  },
+  howSmsFree: {
+    en: 'SMS — your plan includes {sms}, and we do not charge you for going over.',
+    vi: 'SMS — gói của bạn có sẵn {sms} tin, và phần vượt bên mình không tính tiền.',
+  },
+  howSmsUnset: {
+    en: 'SMS — your plan includes {sms}. No price has been agreed for going over yet, so nothing over the allowance is being charged; we will tell you before that changes.',
+    vi: 'SMS — gói của bạn có sẵn {sms} tin. Phần vượt hiện chưa có đơn giá nên chưa tính tiền; bên mình sẽ báo trước nếu có thay đổi.',
   },
   howMin: {
     en: 'AI Hotline — each minute beyond your {min} included is charged {rate}. Minutes within the allowance are free.',
-    vi: 'AI Hotline — mỗi phút vượt quá {min} phút miễn phí tính {rate}. Phút trong hạn mức là miễn phí.',
+    vi: 'AI Hotline — mỗi phút vượt quá {min} phút trong gói tính {rate}. Phút trong hạn mức không mất phí.',
+  },
+  howChat: {
+    en: 'AI Chatbot — each reply beyond your {chat} included is charged {rate}. Replies within the allowance are free. Only replies the robot sent are counted; anything your staff typed is not.',
+    vi: 'Chatbot AI — mỗi tin trả lời vượt quá {chat} tin trong gói tính {rate}. Tin trong hạn mức không mất phí. Chỉ tính tin do robot trả lời; tin nhân viên tự nhắn không tính.',
   },
   howBill: {
     en: 'Usage charges add up through the month and are billed together with your plan fee at month end — we email you an invoice with a payment link.',
     vi: 'Phí phát sinh được cộng dồn trong tháng và chốt cùng phí gói vào cuối tháng — chúng tôi gởi email hoá đơn kèm link thanh toán.',
   },
+  chat: { en: 'AI Chatbot replies', vi: 'Tin chatbot AI trả lời' },
+  chatSub: { en: 'AI Chatbot (subscription)', vi: 'Chatbot AI (thuê bao)' },
+  chatOff: { en: 'AI Chatbot is not enabled', vi: 'Chatbot AI chưa bật' },
+  notPriced: { en: 'not priced yet', vi: 'chưa có đơn giá' },
+  noCharge: { en: 'not charged', vi: 'không tính phí' },
+  perReply: { en: ' / reply', vi: ' / tin' },
   perSms: { en: ' / SMS', vi: ' / SMS' },
   perMin: { en: ' / min', vi: ' / phút' },
   free: { en: 'free', vi: 'miễn phí' },
@@ -107,10 +136,22 @@ export function UsageCostsPanel() {
   })();
   const daysLeft = Math.max(0, sum.daysInMonth - sum.daysElapsed);
 
-  const smsRate = sum.sms.overageCentsPer > 0 ? money(sum.sms.overageCentsPer, cur) + t('perSms') : t('free');
-  const minRate = sum.hotline.overageCentsPerMin > 0 ? money(sum.hotline.overageCentsPerMin, cur) + t('perMin') : t('free');
+  // A rate of zero and a rate nobody has set are DIFFERENT, and only the
+  // server knows which this is (see api billing/usage-rates.ts). An older
+  // server that sends no `wording` is read as the safe case: say nothing is
+  // charged, never that overage is free for ever.
+  const smsWording = sum.sms.wording ?? (sum.sms.overageCentsPer > 0 ? 'priced' : 'unset');
+  const rateLabel = (cents: number, unit: string, wording: string) =>
+    wording === 'priced' && cents > 0 ? money(cents, cur) + unit
+      : wording === 'free' ? t('noCharge')
+        : t('notPriced');
+  const smsRate = rateLabel(sum.sms.overageCentsPer, t('perSms'), smsWording);
+  const minRate = rateLabel(sum.hotline.overageCentsPerMin, t('perMin'), sum.hotline.overageCentsPerMin > 0 ? 'priced' : 'unset');
   const fill = (s: string, m: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => m[k] ?? '');
 
+  const chatWording = sum.chat?.wording ?? ((sum.chat?.overageCentsPer ?? 0) > 0 ? 'priced' : 'unset');
+  const chatRate = rateLabel(sum.chat?.overageCentsPer ?? 0, t('perReply'), chatWording);
+  const chatIncLabel = (sum.chat?.included ?? 0) > 0 ? String(sum.chat!.included) : t('unlimited');
   const smsIncLabel = sum.sms.included > 0 ? String(sum.sms.included) : t('unlimited');
   const minIncLabel = sum.hotline.includedMinutes > 0 ? String(sum.hotline.includedMinutes) : t('unlimited');
 
@@ -159,6 +200,9 @@ export function UsageCostsPanel() {
         {sum.hotline.enabled && sum.hotline.monthlyCents > 0 && (
           <Row label={t('hotlineSub')} amount={`${money(sum.hotline.monthlyCents, cur)}${t('perMo')}`} />
         )}
+        {!!sum.chat?.enabled && sum.chat.monthlyCents > 0 && (
+          <Row label={t('chatSub')} amount={`${money(sum.chat.monthlyCents, cur)}${t('perMo')}`} />
+        )}
         <Row label={t('subFixed')} amount={money(sum.totals.fixedCents, cur)} subtotal />
 
         <div style={{ ...sectionHead, marginTop: 20 }}>{t('overageTitle')}</div>
@@ -167,7 +211,7 @@ export function UsageCostsPanel() {
           label={t('sms')}
           detail={`${sum.sms.used} ${t('used')} / ${smsIncLabel} ${t('included')}`}
           over={sum.sms.overage}
-          overText={`${sum.sms.overage} ${t('over')} × ${sum.sms.overageCentsPer > 0 ? money(sum.sms.overageCentsPer, cur) : t('free')}`}
+          overText={`${sum.sms.overage} ${t('over')} × ${smsRate}`}
           amount={money(sum.sms.overageCents, cur)}
           within={t('within')}
         />
@@ -177,13 +221,29 @@ export function UsageCostsPanel() {
             label={t('aiMin')}
             detail={`${sum.hotline.usedMinutes} ${t('used')} / ${minIncLabel} ${t('included')} · ${sum.hotline.aiCalls} calls`}
             over={sum.hotline.overageMinutes}
-            overText={`${sum.hotline.overageMinutes} ${t('over')} × ${sum.hotline.overageCentsPerMin > 0 ? money(sum.hotline.overageCentsPerMin, cur) : t('free')}`}
+  overText={`${sum.hotline.overageMinutes} ${t('over')} × ${minRate}`}
             amount={money(sum.hotline.overageCents, cur)}
             within={t('within')}
           />
         ) : (
           <div style={{ ...rowWrap, color: 'var(--c64748b)', fontSize: 13.5 }} className="muted">{t('hotOff')}</div>
         )}
+
+        {/* The chatbot. Absent entirely on an older server, and shown as "not
+            enabled" for a salon that has not bought it — never as a zero row,
+            which reads as "you are paying for something you do not have". */}
+        {sum.chat ? (sum.chat.enabled ? (
+          <UsageRow
+            label={t('chat')}
+            detail={`${sum.chat.used} ${t('used')} / ${chatIncLabel} ${t('included')}`}
+            over={sum.chat.overage}
+            overText={`${sum.chat.overage} ${t('over')} × ${chatRate}`}
+            amount={money(sum.chat.overageCents, cur)}
+            within={t('within')}
+          />
+        ) : (
+          <div style={{ ...rowWrap, color: 'var(--c64748b)', fontSize: 13.5 }} className="muted">{t('chatOff')}</div>
+        )) : null}
 
         <Row label={t('subOver')} amount={money(sum.totals.overageCents, cur)} subtotal />
 
@@ -201,8 +261,9 @@ export function UsageCostsPanel() {
         <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>💡 {t('howTitle')}</div>
         <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13.5, color: 'var(--ccbd5e1)' }} className="muted">
           <li>{fill(t('howPlan'), { sms: smsIncLabel, min: minIncLabel })}</li>
-          <li>{fill(t('howSms'), { sms: smsIncLabel, rate: smsRate })}</li>
+          <li>{fill(t(smsWording === 'free' ? 'howSmsFree' : smsWording === 'unset' ? 'howSmsUnset' : 'howSms'), { sms: smsIncLabel, rate: smsRate })}</li>
           {sum.hotline.enabled && <li>{fill(t('howMin'), { min: minIncLabel, rate: minRate })}</li>}
+          {sum.chat?.enabled && <li>{fill(t('howChat'), { chat: chatIncLabel, rate: chatRate })}</li>}
           <li>{t('howBill')}</li>
         </ul>
       </div>

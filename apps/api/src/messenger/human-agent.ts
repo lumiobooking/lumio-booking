@@ -29,9 +29,35 @@ export const RESPONSE_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** With the HUMAN_AGENT tag, a person at the business gets seven days. */
 export const HUMAN_AGENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * THE ONE DOOR THAT IS OPEN TO AN AUTOMATION PAST 24 HOURS.
+ *
+ * Most salon customers on Messenger never give a phone number or an email, so
+ * "text them instead" is not an answer for them — and the 24-hour window shuts
+ * long before a Tuesday appointment booked on Saturday comes round.
+ *
+ * Meta's CONFIRMED_EVENT_UPDATE tag exists for exactly this: a reminder about
+ * something the person actually booked. It is free, it needs no opt-in, and it
+ * works outside the window. It is also strictly NON-PROMOTIONAL — a reminder
+ * that carries a price, a discount or an offer is the violation the tag was
+ * written to prevent, and `promotionalProblem` below refuses to send one.
+ *
+ * What this tag is NOT is a way to market to people who never booked. That
+ * needs the paid Marketing Messages API and the customer's opt-in.
+ */
+export type OutboundPurpose =
+  /** An ordinary conversation: the 24h / 7d rules apply in full. */
+  | 'chat'
+  /** A reminder about a booking this person actually has. Non-promotional only. */
+  | 'appointment-reminder';
+
 export interface OutboundEnvelope {
   /** What goes in the Send API body, or null when nothing may be sent. */
-  body: { messaging_type: 'RESPONSE' } | { messaging_type: 'MESSAGE_TAG'; tag: 'HUMAN_AGENT' } | null;
+  body:
+    | { messaging_type: 'RESPONSE' }
+    | { messaging_type: 'MESSAGE_TAG'; tag: 'HUMAN_AGENT' }
+    | { messaging_type: 'MESSAGE_TAG'; tag: 'CONFIRMED_EVENT_UPDATE' }
+    | null;
   /** Why, in words a receptionist can act on. Null when the send may proceed. */
   refusal: string | null;
   /** True when this message will carry the tag — the inbox says so out loud. */
@@ -109,10 +135,35 @@ export function customerLastWroteAt(
  * send costs one error message that says exactly what happened.
  */
 export function outboundEnvelope(
-  opts: { lastInbound: string | null | undefined; byHuman: boolean; vi?: boolean },
+  opts: {
+    lastInbound: string | null | undefined;
+    byHuman: boolean;
+    vi?: boolean;
+    /** Default 'chat'. See OutboundPurpose. */
+    purpose?: OutboundPurpose;
+    /**
+     * The reminder's text. Required for 'appointment-reminder' so the
+     * promotional check can run — a reminder is allowed to say WHEN, never
+     * to sell. Passing nothing is treated as nothing to check, which is only
+     * safe because the caller that omits it is not sending a reminder.
+     */
+    text?: string;
+  },
   now: Date = new Date(),
 ): OutboundEnvelope {
   const vi = opts.vi !== false;
+
+  // A reminder about a real booking rides its own tag and ignores the window
+  // entirely — that is the whole point of the tag. The content check is what
+  // keeps it honest, and it runs BEFORE the window logic so a promotional
+  // "reminder" is refused even inside 24 hours, where it would have been
+  // legal but is still a lie about what the message is.
+  if (opts.purpose === 'appointment-reminder') {
+    const bad = promotionalProblem(opts.text ?? '', vi);
+    if (bad) return { body: null, refusal: bad, humanAgent: false };
+    return { body: { messaging_type: 'MESSAGE_TAG', tag: 'CONFIRMED_EVENT_UPDATE' }, refusal: null, humanAgent: false };
+  }
+
   const ms = opts.lastInbound ? Date.parse(opts.lastInbound) : NaN;
   if (!Number.isFinite(ms)) {
     return { body: { messaging_type: 'RESPONSE' }, refusal: null, humanAgent: false };
@@ -150,6 +201,34 @@ export function outboundEnvelope(
       ? 'Quá 7 ngày kể từ tin nhắn của khách — Meta đóng hẳn cửa sổ trả lời. Gọi điện hoặc nhắn SMS cho khách.'
       : 'More than 7 days since the customer wrote — Meta has closed the window for good. Call or text them instead.',
   };
+}
+
+/**
+ * Words that turn a reminder into an advertisement.
+ *
+ * Meta is explicit that a message tag may not carry "deals, offers, coupons
+ * and discounts". A reminder saying "your appointment is at 2pm tomorrow" is
+ * exactly what the tag is for; the same message with "— and 20% off today!"
+ * bolted on is a policy breach that costs the salon its Page. Staff will try
+ * it, because it is free reach and it looks harmless. This refuses it.
+ *
+ * Returns the refusal, or null when the text is a plain reminder.
+ */
+const PROMO_IN_REMINDER = [
+  /\b\d{1,3}\s*%/,                                   // 20%
+  /[$₫€£]\s*\d/,                                      // $40
+  /\b\d+\s*(?:k|nghìn|ngàn|đ|vnd|usd)\b/i,             // 200k
+  /(?:giảm giá|khuyến mãi|khuyến mại|ưu đãi|sale|deal|coupon|voucher|miễn phí|free\b|tặng|combo|off\b|special offer|discount|promo)/i,
+];
+
+export function promotionalProblem(text: string, vi = true): string | null {
+  const t = String(text ?? '');
+  if (!t.trim()) return null;
+  const hit = PROMO_IN_REMINDER.find((re) => re.test(t));
+  if (!hit) return null;
+  return vi
+    ? 'Tin nhắc lịch không được kèm giá, khuyến mãi hay ưu đãi — Meta cấm gắn nội dung quảng cáo vào thẻ nhắc lịch, vi phạm là khoá Page. Bỏ phần giá/ưu đãi, chỉ nhắc giờ hẹn.'
+    : 'An appointment reminder may not carry a price, a discount or an offer — Meta forbids promotional content on this tag, and a breach costs the Page. Say when the appointment is, nothing else.';
 }
 
 /**

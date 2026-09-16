@@ -71,3 +71,63 @@ describe('the window a reply is allowed to go out in', () => {
     expect(replyWindowState(ago(30 * 3_600_000), NOW).hoursLeft).toBe(138);
   });
 });
+
+describe('the reminder tag — the one door open to an automation past 24 hours', () => {
+  const NOW = new Date('2026-09-16T14:00:00Z');
+  const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86_400_000).toISOString();
+
+  it('sends a booking reminder three days later, with no phone number needed', () => {
+    const e = outboundEnvelope(
+      { lastInbound: daysAgo(3), byHuman: false, purpose: 'appointment-reminder', text: 'Dạ mai 2 giờ chiều chị có hẹn làm móng bên em nhé.' },
+      NOW,
+    );
+    expect(e.body).toEqual({ messaging_type: 'MESSAGE_TAG', tag: 'CONFIRMED_EVENT_UPDATE' });
+    expect(e.refusal).toBeNull();
+    expect(e.humanAgent).toBe(false);
+  });
+
+  it('works even past seven days — a booking made a fortnight ahead is still a booking', () => {
+    const e = outboundEnvelope(
+      { lastInbound: daysAgo(14), byHuman: false, purpose: 'appointment-reminder', text: 'Nhắc chị: 10h sáng thứ Bảy này ạ.' },
+      NOW,
+    );
+    expect(e.body).toEqual({ messaging_type: 'MESSAGE_TAG', tag: 'CONFIRMED_EVENT_UPDATE' });
+  });
+
+  it('REFUSES a reminder with a price or an offer bolted on — that is what costs the Page', () => {
+    for (const text of [
+      'Mai 2h chị có hẹn nhé — hôm nay giảm 20% cho bộ gel ạ!',
+      'Reminder: 2pm tomorrow. Also $40 off a full set this week!',
+      'Nhắc lịch 10h ạ. Tặng kèm vẽ móng miễn phí nha chị',
+      'See you at 3 — special offer on lashes today',
+    ]) {
+      const e = outboundEnvelope({ lastInbound: daysAgo(3), byHuman: false, purpose: 'appointment-reminder', text }, NOW);
+      expect(e.body).toBeNull();
+      expect(e.refusal).toMatch(/khuyến mãi|promotional/i);
+    }
+  });
+
+  it('refuses the promotional reminder even INSIDE 24h, where it would have been legal', () => {
+    // legal as a plain RESPONSE, but it is being sent as a reminder, and a
+    // reminder that sells is mislabelled whatever the window says
+    const e = outboundEnvelope(
+      { lastInbound: new Date(NOW.getTime() - 3_600_000).toISOString(), byHuman: false, purpose: 'appointment-reminder', text: 'Nhắc lịch 2h ạ, giảm 10% nhé' },
+      NOW,
+    );
+    expect(e.body).toBeNull();
+  });
+
+  it('lets an ordinary reminder through that merely mentions a number', () => {
+    const e = outboundEnvelope(
+      { lastInbound: daysAgo(2), byHuman: false, purpose: 'appointment-reminder', text: 'Dạ 2 giờ chiều mai chị nhé, thợ Anna làm cho chị ạ.' },
+      NOW,
+    );
+    expect(e.body).toEqual({ messaging_type: 'MESSAGE_TAG', tag: 'CONFIRMED_EVENT_UPDATE' });
+  });
+
+  it('changes nothing about ordinary chat: the bot is still shut out past 24h', () => {
+    const e = outboundEnvelope({ lastInbound: daysAgo(2), byHuman: false }, NOW);
+    expect(e.body).toBeNull();
+    expect(e.refusal).toMatch(/24 giờ/);
+  });
+});

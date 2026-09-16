@@ -58,3 +58,52 @@ export function wallTimeToUtc(dateStr: string, hm: string, tz: string): Date {
     return guess; // unknown timezone -> treat the wall clock as UTC
   }
 }
+
+
+// ---------------------------------------------------------------------------
+// Who does the second and third service of one visit
+// ---------------------------------------------------------------------------
+
+/**
+ * A customer books a manicure and a pedicure with Tuấn. The line-item
+ * assigner used to give the pedicure to somebody else ON PURPOSE — "prefer a
+ * specialist not yet used on this visit, so specialists spread across the
+ * services" — and the shop saw a two-technician booking for one person who
+ * asked for one technician. The old rule was written for a group; it ran on
+ * everyone.
+ *
+ * The rule now: ONE PERSON, ONE CHAIR. The services of a single visit happen
+ * one after another on the same chair, so the technician already on the visit
+ * (chosen by the customer, or picked by the engine for the first service)
+ * does every service they are able to do. Another technician steps in only
+ * when the first genuinely cannot do that service. A GROUP (partySize > 1)
+ * is different — several people served at once — and there the services are
+ * still spread across free technicians.
+ */
+export type LineTechPlan =
+  /** The line already names a technician; leave it. */
+  | 'keep'
+  /** Same technician as the rest of the visit. */
+  | 'primary'
+  /** Somebody else — the visit's technician cannot do this service, or it is a group. */
+  | 'other'
+  /** Leave it blank for a person to decide (manual mode, and the primary cannot do it). */
+  | 'leave';
+
+export function planLineTechnician(
+  line: { staffMemberId?: string | null },
+  ctx: {
+    partySize: number;
+    /** The technician on the visit's first service, if any. */
+    primaryStaffId: string | null;
+    /** Whether that technician is able to do THIS line's service. */
+    primaryCanDo: boolean;
+    /** May the engine pick somebody else on its own? (auto assignment mode) */
+    fillGaps: boolean;
+  },
+): LineTechPlan {
+  if (line.staffMemberId) return 'keep';
+  const group = (ctx.partySize ?? 1) > 1;
+  if (!group && ctx.primaryStaffId && ctx.primaryCanDo) return 'primary';
+  return ctx.fillGaps ? 'other' : 'leave';
+}

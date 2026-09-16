@@ -1,4 +1,4 @@
-import { addMinutes, rangesOverlap } from './booking.util';
+import { addMinutes, rangesOverlap, planLineTechnician } from './booking.util';
 
 describe('addMinutes', () => {
   it('adds minutes correctly', () => {
@@ -29,5 +29,29 @@ describe('rangesOverlap', () => {
 
   it('is symmetric', () => {
     expect(rangesOverlap(at(9, 30), at(10, 30), at(9), at(10))).toBe(true);
+  });
+});
+
+describe('who does the second service of a visit', () => {
+  const one = { partySize: 1, primaryStaffId: 'tuan', primaryCanDo: true, fillGaps: true };
+
+  it('one person, one chair: the technician on the visit does every service they can', () => {
+    expect(planLineTechnician({}, one)).toBe('primary');
+    expect(planLineTechnician({ staffMemberId: null }, one)).toBe('primary');
+  });
+  it('another technician only when the first cannot do that service', () => {
+    expect(planLineTechnician({}, { ...one, primaryCanDo: false })).toBe('other');
+    expect(planLineTechnician({}, { ...one, primaryCanDo: false, fillGaps: false })).toBe('leave');
+  });
+  it('a group is served at once, so its services spread', () => {
+    expect(planLineTechnician({}, { ...one, partySize: 2 })).toBe('other');
+    expect(planLineTechnician({}, { ...one, partySize: 3, fillGaps: false })).toBe('leave');
+  });
+  it('never overwrites a technician somebody already set on the line', () => {
+    expect(planLineTechnician({ staffMemberId: 'tiffany' }, one)).toBe('keep');
+  });
+  it('with nobody on the visit yet, the engine may fill or a person decides', () => {
+    expect(planLineTechnician({}, { ...one, primaryStaffId: null })).toBe('other');
+    expect(planLineTechnician({}, { ...one, primaryStaffId: null, fillGaps: false })).toBe('leave');
   });
 });

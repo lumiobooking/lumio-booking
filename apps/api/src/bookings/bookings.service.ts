@@ -39,7 +39,7 @@ import { TrashService } from '../maintenance/trash.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
-import { addMinutes, parseStartTime, BLOCKING_STATUSES, wallTimeToUtc } from './booking.util';
+import { addMinutes, parseStartTime, BLOCKING_STATUSES, wallTimeToUtc, planLineTechnician } from './booking.util';
 
 const BOOKING_INCLUDE = {
   customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
@@ -671,6 +671,20 @@ export class BookingsService {
       } catch {
         // engine unavailable / nobody eligible — keep the unassigned booking
       }
+    }
+
+    // The customer chose a technician: that technician also does the visit's
+    // other services (one person, one chair — see planLineTechnician). Done
+    // here, before the confirmation is written, so the mail names one
+    // technician for the whole visit instead of leaving the extra lines
+    // unowned for a later "auto assign" press to spread across the team.
+    if (hadStaffAtCreate && lineItems.some((l) => (l as { kind?: string }).kind === 'service')) {
+      try {
+        const rules = await this.settings.getBookingRules(tenantId);
+        await this.assignExtraServiceLines(tenantId, appointment.id, { fillGaps: rules.assignmentMode === 'auto' });
+        const refreshed = await this.prisma.appointment.findFirst({ where: { id: appointment.id, tenantId }, include: BOOKING_INCLUDE });
+        if (refreshed) finished = refreshed as typeof appointment;
+      } catch { /* the booking stands; the lines can be assigned by hand */ }
     }
 
     // Fire-and-forget confirmation; never block/fail the booking on it.
@@ -2739,29 +2753,72 @@ export class BookingsService {
   }
 
   /**
-   * For a multi-service appointment, give each extra service line the best free
-   * technician who can do THAT service — preferring someone not already used on this
-   * visit, so specialists spread across the services. Writes staffMemberId into the
-   * stored line items. Silent no-op for single-service visits.
+   * For a multi-service appointment, decide who does each extra service line
+   * and write staffMemberId into the stored line items. Silent no-op for
+   * single-service visits.
+   *
+   * ONE PERSON, ONE CHAIR. A single customer's services happen one after
+   * another on one chair, so the technician on the visit (chosen by the
+   * customer, or picked by the engine for the first service) does every line
+   * they are able to do; somebody else takes a line only when that technician
+   * genuinely cannot do it. This used to prefer "a specialist not yet used on
+   * this visit" for every line — a rule written for groups that ran on
+   * everyone, and how a customer who booked two services with Tuấn got a
+   * booking that named Tuấn and Tiffany.
+   *
+   * A GROUP (partySize > 1) is several people served at the same time, and
+   * there the lines are still spread across free technicians.
+   *
+   * `fillGaps` — may the engine pick somebody else on its own? True in auto
+   * assignment mode; in manual mode a line the visit's technician cannot do
+   * is left blank for the front desk.
    */
-  private async assignExtraServiceLines(tenantId: string, bookingId: string): Promise<void> {
+  private async assignExtraServiceLines(tenantId: string, bookingId: string, opts: { fillGaps?: boolean } = {}): Promise<void> {
+    const fillGaps = opts.fillGaps ?? true;
     const appt = await this.prisma.appointment.findFirst({
       where: { id: bookingId, tenantId },
-      select: { id: true, startTime: true, endTime: true, assignedStaffId: true, preferredStaffId: true, addons: true },
-    });
+      select: { id: true, startTime: true, endTime: true, assignedStaffId: true, preferredStaffId: true, addons: true, partySize: true } as never,
+    }) as { id: string; startTime: Date; endTime: Date; assignedStaffId: string | null; preferredStaffId: string | null; addons: unknown; partySize?: number } | null;
     if (!appt) return;
     const lines = Array.isArray(appt.addons) ? [...(appt.addons as unknown as Array<Record<string, unknown>>)] : [];
     const serviceLines = lines.filter((l) => l && l.kind === 'service');
     if (serviceLines.length === 0) return;
 
+    // What the visit's technician is able to do. Skills are read the way the
+    // engine reads them: a registered list means only those services; no list
+    // means anything.
+    const primaryId = appt.assignedStaffId;
+    const primary = primaryId
+      ? await this.prisma.staffMember.findFirst({
+          where: { id: primaryId, tenantId, isActive: true },
+          select: { id: true, staffServices: { select: { serviceId: true } } },
+        }).catch(() => null)
+      : null;
+    const primaryCanDo = (serviceId: string) =>
+      Boolean(primary && (primary.staffServices.length === 0 || primary.staffServices.some((x) => x.serviceId === serviceId)));
+
     const used = new Set<string>();
-    if (appt.assignedStaffId) used.add(appt.assignedStaffId);
+    if (primaryId) used.add(primaryId);
     let changed = false;
 
     for (const line of serviceLines) {
-      if (line.staffMemberId) { used.add(String(line.staffMemberId)); continue; } // already set
       const serviceId = String(line.id);
-      // Prefer a specialist not yet used on this visit; if none free, allow reuse.
+      const plan = planLineTechnician(line as { staffMemberId?: string | null }, {
+        partySize: appt.partySize ?? 1,
+        primaryStaffId: primary ? primary.id : null,
+        primaryCanDo: primaryCanDo(serviceId),
+        fillGaps,
+      });
+      if (plan === 'keep') { used.add(String(line.staffMemberId)); continue; }
+      if (plan === 'leave') continue;
+      if (plan === 'primary') {
+        line.staffMemberId = primary!.id;
+        changed = true;
+        continue;
+      }
+      // 'other': the best free technician who can do THIS service — for a
+      // group, preferring one not yet on the visit so the people are served
+      // at once; if nobody else is free, allow reuse.
       const pick = async (exclude: string[]) => {
         const { orderedStaffIds } = await this.assignment.rankEligibleStaff(
           tenantId,

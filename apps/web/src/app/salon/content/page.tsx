@@ -2636,6 +2636,22 @@ function Inner() {
                    Written here by the team; read verbatim on the shop's own
                    screen. The calendar below is what the team schedules by
                    hand; the system's suggestions moved to the Ideas tab. */}
+              {/* ---- the salon's own line to us ----
+                   The same `general` thread the shop sees at the top of its
+                   screen (SalonWorkspace). It is mirrored here so whoever is
+                   working on this salon's month answers in the place they are
+                   already standing, rather than in the Super Admin inbox with
+                   the plan on another tab. One thread, two doors. */}
+              <div style={{ ...ui.card, marginBottom: 12, padding: 14 }}>
+                <ItemComments
+                  token={token}
+                  subject="general"
+                  unread={unread.bySubject.general ?? 0}
+                  labelVi={vi ? 'Trao đổi với tiệm' : 'Talk to the shop'}
+                  vi={vi}
+                />
+              </div>
+
               {shownMonth && (
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

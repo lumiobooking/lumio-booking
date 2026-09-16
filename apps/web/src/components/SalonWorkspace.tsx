@@ -7,6 +7,7 @@ import { useLive, fresh } from '../lib/live';
 import { enqueue, installOutbox, useOutbox, retryFailed, discardBatch, cancelBatch, takeLastDone, type BatchView } from '../lib/upload-queue';
 import { ShopWeek, HolidayOffers, type ShopWeekData, type HolidayIdea, type LastWeek, type AdsReceipt, type AdsPlan, type ShopPlanSheet } from './ShopWeek';
 import type { MonthBriefData } from './MonthBrief';
+import { ItemComments } from './ContentChat';
 
 /**
  * The salon's whole screen: what to film, what Lumio asked for, what is waiting
@@ -76,6 +77,8 @@ export function SalonWorkspace({ token, vi, onCount }: {
   // The ask's one button opens the picker on the send box at the top of the tab.
   const askSend = useRef<(() => void) | null>(null);
   const [weekUnread, setWeekUnread] = useState(0);
+  /** Unread on the shop's own line to the team — the thread that is always there. */
+  const [lumioUnread, setLumioUnread] = useState(0);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -90,6 +93,7 @@ export function SalonWorkspace({ token, vi, onCount }: {
     if (w) { setWeek(w.week); setWeekKey(w.weekKey ?? null); setLastWeek(w.lastWeek ?? null); setAds(w.ads ?? null); setAdsPlan(w.adsPlan ?? null); setMonthBrief(w.monthBrief ?? null); setPlanSheet(w.planSheet ?? null); }
     if (h) setHolidays(h.ideas ?? []);
     if (u && w?.weekKey) setWeekUnread(u.bySubject?.[`week:${w.weekKey}`] ?? 0);
+    if (u) setLumioUnread(u.bySubject?.general ?? 0);
   }, [token, vi, onCount]);
 
   useEffect(() => { load(); }, [load]);
@@ -135,6 +139,31 @@ export function SalonWorkspace({ token, vi, onCount }: {
              The thing a shop does most often is send what it just made. That
              is the top of the tab, one tap, no card to wait for. */}
       <SendAnything token={token} vi={vi} onDone={load} onError={setErr} openRef={askSend} />
+
+      {/* ---- 0b. the line to the team, always open ----
+             There WAS a thread for the shop — but it hung under the week plan
+             inside ShopWeek, which only draws when the team has filed jobs for
+             this week, and it was addressed `week:<key>`, so it started over
+             every Monday. A shop with no week that wanted to ask something
+             simply had nowhere to type, and the team only ever saw its own
+             side of a conversation the shop could not start.
+
+             This one is addressed `general`: one thread per salon, always
+             here, whatever else is or is not on the screen. It lands in the
+             same team inbox as everything else. */}
+      <div style={{ marginBottom: 16 }}>
+        <ItemComments
+          token={token}
+          subject="general"
+          unread={lumioUnread}
+          vi={vi}
+          labelVi={vi ? 'Nhắn cho team Lumio' : 'Message the Lumio team'}
+        />
+        <div style={{ fontSize: 12, color: 'var(--c64748b)', marginTop: 5, lineHeight: 1.5 }}>
+          {T('Cần đổi nội dung, hỏi về bài đăng, hay góp ý gì cho bên em — nhắn ở đây, team đọc và trả lời ngay trong ngày làm việc.',
+             'Anything you want changed, asked or told — write here and the team replies within the working day.')}
+        </div>
+      </div>
 
       {nothing && (
         <div style={{

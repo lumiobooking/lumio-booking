@@ -1,3 +1,16 @@
+// FIRST, before anything that touches a decorated class.
+//
+// class-validator and class-transformer read decorator metadata through
+// Reflect.getMetadata, which does not exist until reflect-metadata has been
+// imported. The application loads it in main.ts, so the API never noticed —
+// but a unit spec that imports a DTO directly has no main.ts, and merely
+// IMPORTING the decorated class throws "TypeError: Reflect.getMetadata is not
+// a function" before a single test runs — and a suite that fails to LOAD fails
+// the build, which took all four Render services down with it.
+//
+// Nothing else in this repo imports a DTO from a spec, which is why no other
+// spec needed this line and why the gap was invisible until now.
+import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { SavePostDto } from './dto/save-post.dto';

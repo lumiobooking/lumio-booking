@@ -33,6 +33,9 @@
 export const AI_FEATURES = [
   /** The Messenger bot answering a customer. Per incoming message. */
   'messenger',
+  /** The phone agent answering the salon's hotline. Per TURN of the call,
+   *  not per call — a four-exchange conversation is four model calls. */
+  'voice',
   /** The daily idea drafts — the planner, once per salon per local day. */
   'content-ideas',
   /** Writing a business its own playbook, when no built-in trade fits. */
@@ -56,6 +59,7 @@ export type AiFeature = typeof AI_FEATURES[number];
 
 export const FEATURE_LABEL: Record<AiFeature, { vi: string; en: string }> = {
   'messenger': { vi: 'Chatbot Messenger trả lời khách', en: 'Messenger bot replies' },
+  'voice': { vi: 'Tổng đài AI nghe điện thoại', en: 'AI phone agent' },
   'content-ideas': { vi: 'Gợi ý ý tưởng hằng ngày', en: 'Daily content ideas' },
   'trade-profile': { vi: 'Viết hồ sơ ngành cho tiệm', en: 'Trade profile writing' },
   'profile-scan': { vi: 'Quét hồ sơ tiệm mới', en: 'New shop profile scan' },
@@ -70,6 +74,7 @@ export const FEATURE_LABEL: Record<AiFeature, { vi: string; en: string }> = {
 /** True when the feature runs on a timer rather than because somebody pressed something. */
 export const AUTOMATIC: Record<AiFeature, boolean> = {
   'messenger': false,
+  'voice': false,
   'content-ideas': true,
   'trade-profile': true,
   'profile-scan': true,

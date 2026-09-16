@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { personaFor } from '../common/business-persona';
 import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor } from './voice-lang';
 import { isTransientStatus } from '../messenger/agent-fallback';
@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { SettingsService } from '../settings/settings.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AiUsageService } from '../common/ai-usage.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { toE164 as normalizeE164, dialCodeFor } from '../common/phone';
@@ -117,7 +118,29 @@ export class VoiceService implements OnModuleInit {
     private readonly bookings: BookingsService,
     private readonly settings: SettingsService,
     private readonly notifications: NotificationsService,
+    // Optional like everywhere else the meter is injected: counting a call
+    // must never be able to drop one.
+    @Optional() private readonly aiUsage?: AiUsageService,
   ) {}
+
+  /**
+   * Count one turn of a phone call. A caller who says four things costs four
+   * model calls, not one — so the hotline is metered per TURN, and the report
+   * can tell a long conversation from a busy morning.
+   */
+  private meter(tenantId: string | null, body: unknown, ok: boolean) {
+    const d = (body ?? {}) as { model?: string; usage?: Record<string, number> };
+    this.aiUsage?.record({
+      feature: 'voice',
+      tenantId,
+      model: d.model || process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5',
+      input: Number(d.usage?.input_tokens ?? 0) || 0,
+      output: Number(d.usage?.output_tokens ?? 0) || 0,
+      cacheRead: Number(d.usage?.cache_read_input_tokens ?? 0) || 0,
+      cacheWrite: Number(d.usage?.cache_creation_input_tokens ?? 0) || 0,
+      failed: !ok,
+    });
+  }
 
   private apiBase(): string {
     return (process.env.PUBLIC_API_URL || process.env.RENDER_EXTERNAL_URL || 'https://lumio-api-uqm6.onrender.com').replace(/\/$/, '');
@@ -761,6 +784,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
         signal: AbortSignal.timeout(9_000),
       });
       if (!res.ok) {
+        this.meter(tenantId, null, false);
         this.logger.warn(`Anthropic voice ${res.status}: ${(await res.text().catch(() => '')).slice(0, 160)}`);
         if (!apiRetried && isTransientStatus(res.status)) {
           apiRetried = true;
@@ -770,7 +794,8 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
         }
         throw new Error(`anthropic ${res.status}`);
       }
-      const data = (await res.json()) as { stop_reason?: string; content?: AnthropicBlock[] };
+      const data = (await res.json()) as { stop_reason?: string; content?: AnthropicBlock[]; model?: string; usage?: Record<string, number> };
+      this.meter(tenantId, data, true);
       const blocks = data.content || [];
       if (data.stop_reason === 'tool_use') {
         messages.push({ role: 'assistant', content: blocks });
@@ -942,6 +967,9 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
         body: JSON.stringify({ model, max_tokens: 8, messages: [{ role: 'user', content: 'ping' }] }),
         signal: AbortSignal.timeout(10_000),
       });
+      // Eight tokens, pressed by hand — counted anyway, so the report never
+      // has to be read as "everything except the bits we forgot".
+      this.aiUsage?.record({ feature: 'other', tenantId: null, model, input: 1, output: 1, failed: !res.ok });
       const error = res.ok ? null : (await res.text().catch(() => '')).slice(0, 300);
       return { keyPresent: true, model, ok: res.ok, status: res.status, error };
     } catch (e) {

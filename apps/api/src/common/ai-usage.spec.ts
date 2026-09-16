@@ -158,3 +158,17 @@ describe('reading the provider’s own counters', () => {
     expect(costOf([u.input, u.output, u.cacheRead, u.cacheWrite, 1, 0], 'm')).toBe(0);
   });
 });
+
+describe('the phone agent is its own line on the bill', () => {
+  it('counts per turn and reads as caller-driven, not as something on a timer', () => {
+    const d = emptyDay('2026-09-16');
+    // one call, four exchanges — four model calls, one caller
+    for (let i = 0; i < 4; i += 1) addCall(d, { feature: 'voice', tenantId: 'demo', model: 'claude-haiku-4-5', input: 2_000, output: 150, cacheRead: i ? 1_800 : 0, hour: 14 });
+    const row = byFeature(d).find((f) => f.feature === 'voice')!;
+    expect(row.calls).toBe(4);
+    expect(row.automatic).toBe(false);
+    expect(row.label.vi).toMatch(/Tổng đài/);
+    // thirteen such calls is pennies, which is the point of being able to look
+    expect(row.usd * 13).toBeLessThan(0.5);
+  });
+});

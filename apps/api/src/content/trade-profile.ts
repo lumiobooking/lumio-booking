@@ -24,6 +24,91 @@ import type { TradeQueries } from './trends/trend-feed';
 
 export const TRADE_PROFILE_KEY = 'trade_profile';
 
+/**
+ * WHY A FAILED ATTEMPT HAS TO BE REMEMBERED
+ *
+ * Writing a business its own playbook is attempted by the hourly sweep for
+ * every active business that has a description and no playbook yet. Success
+ * stores the playbook, and the business is never picked again.
+ *
+ * FAILURE stored nothing at all. So a business the model could not answer for
+ * was picked again the next hour, and the next, and the next — the same call,
+ * the same failure, for ever. Sixteen days of that is most of a month's API
+ * bill spent on an answer nobody ever received. It looked exactly like "the
+ * system is idle but the balance keeps dropping", because it WAS idle: no
+ * person was involved at any point.
+ *
+ * So an attempt is now written down whether it worked or not. Three failures
+ * and the business is left alone until somebody edits its description (which
+ * changes the fingerprint) or presses the button by hand.
+ */
+export const TRADE_PROFILE_TRY_KEY = 'trade_profile_try';
+
+/**
+ * How long to wait after the Nth failure before trying again: a day, then
+ * three, then a week for ever after.
+ *
+ * Backoff rather than a permanent stop, and deliberately so. A permanent stop
+ * would need to know when the owner rewrote the description in order to lift
+ * itself, and the only cheap way to know that is a fingerprint the sweep
+ * cannot compute without loading every business's service list. A week's wait
+ * costs one model call per business per week — nothing — and needs to know
+ * nothing at all. The system heals on its own either way.
+ */
+export const TRADE_BACKOFF_HOURS = [24, 72, 168] as const;
+
+export function backoffHoursFor(tries: number): number {
+  const i = Math.min(Math.max(1, Math.round(tries)), TRADE_BACKOFF_HOURS.length) - 1;
+  return TRADE_BACKOFF_HOURS[i];
+}
+
+export interface TradeTryMark {
+  tries: number;
+  /** ISO of the last attempt. */
+  at: string;
+  /** The fingerprint that was attempted — a rewritten description deserves a fresh start. */
+  fp?: string;
+  /** Why it failed, for the log and for the screen. */
+  why?: string;
+}
+
+/** A stored attempt marker, validated. Junk reads as "never tried". */
+export function cleanTryMark(raw: unknown): TradeTryMark | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const tries = Number(o.tries);
+  const at = typeof o.at === 'string' ? o.at : '';
+  if (!Number.isFinite(tries) || tries < 1 || !at || Number.isNaN(Date.parse(at))) return null;
+  return {
+    tries: Math.min(99, Math.round(tries)),
+    at,
+    fp: typeof o.fp === 'string' ? o.fp.slice(0, 120) : undefined,
+    why: typeof o.why === 'string' ? o.why.slice(0, 200) : undefined,
+  };
+}
+
+/**
+ * Whether the hourly sweep may spend a model call on this business now.
+ * Never tried → yes. Otherwise: only once the backoff for its failure count
+ * has passed. Nothing here depends on the description, so the sweep can
+ * decide from one cheap read instead of loading every business.
+ */
+export function mayTryTradeProfile(mark: TradeTryMark | null, now: Date): boolean {
+  if (!mark) return true;
+  return now.getTime() - Date.parse(mark.at) >= backoffHoursFor(mark.tries) * 3_600_000;
+}
+
+/**
+ * The marker to store after an attempt that did not produce a playbook.
+ * A description rewritten since the last attempt starts the count over — the
+ * model is being asked a different question, so its last answer says nothing
+ * about this one.
+ */
+export function nextTryMark(mark: TradeTryMark | null, fp: string, why: string, now: Date): TradeTryMark {
+  const fresh = !mark || (mark.fp !== undefined && mark.fp !== fp);
+  return { tries: fresh ? 1 : mark!.tries + 1, at: now.toISOString(), fp, why: why.slice(0, 200) };
+}
+
 /** The trades whose built-in playbook is the real thing, not a stand-in. */
 const BUILT_IN = new Set(['SALON', 'NAIL', 'HAIR', 'LASH', 'BROW', 'SPA', 'MASSAGE', 'PMU', 'RESTAURANT', 'REAL_ESTATE']);
 

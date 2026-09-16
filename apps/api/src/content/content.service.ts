@@ -84,7 +84,8 @@ import { buildWeekOutcome, describeOutcome, describeDelta, type WeekOutcome } fr
 import { videoFeeds, productWatch, playbookFor } from './industry-playbook';
 import { detectIndustry, pickTrade } from './industry-detect';
 import {
-  TRADE_PROFILE_KEY, cleanTradeProfile, playbookOf, feedsOf, profileFingerprint, tradeProfilePrompt, wantsTradeProfile, customScope,
+  TRADE_PROFILE_KEY, TRADE_PROFILE_TRY_KEY, cleanTradeProfile, cleanTryMark, mayTryTradeProfile, nextTryMark,
+  playbookOf, feedsOf, profileFingerprint, tradeProfilePrompt, wantsTradeProfile, customScope,
   type TradeProfile,
 } from './trade-profile';
 import type { Playbook } from './industry-playbook';
@@ -2625,53 +2626,101 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001',
-        max_tokens: 3000,
+        // The answer is a bilingual JSON: six sources, five post types, three
+        // habits, four keyword lists, every field in Vietnamese AND English.
+        // At 3,000 it hit the ceiling EVERY time, which truncated the JSON,
+        // which made it unparseable, which meant nothing was ever stored —
+        // and the sweep asked again an hour later, for ever. The ceiling now
+        // has room, and a truncated answer is recognised rather than retried
+        // blindly (see stop_reason below).
+        max_tokens: 8000,
         system,
         messages: [{ role: 'user', content: user }],
       }),
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(90_000),
     }).catch(() => null);
-    if (!res || !res.ok) { this.meter('trade-profile', tenantId, null, false); this.logger.warn(`trade profile: model call failed for ${tenantId} (${res ? res.status : 'network'})`); return cur; }
-    const data = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[] };
+    if (!res || !res.ok) {
+      this.meter('trade-profile', tenantId, null, false);
+      await this.markTradeTry(tenantId, fp, `model call failed (${res ? res.status : 'network'})`);
+      this.logger.warn(`trade profile: model call failed for ${tenantId} (${res ? res.status : 'network'})`);
+      return cur;
+    }
+    const data = (await res.json().catch(() => ({}))) as { content?: { type?: string; text?: string }[]; stop_reason?: string };
     this.meter('trade-profile', tenantId, data, true);
     const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join('').trim();
     const braced = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
     let parsed: unknown = null;
     try { parsed = JSON.parse(braced); } catch { parsed = null; }
     const next = cleanTradeProfile({ ...((parsed ?? {}) as Record<string, unknown>), generatedFrom: fp, generatedAt: new Date().toISOString() });
-    if (!next) { this.logger.warn(`trade profile: unusable answer for ${tenantId}`); return cur; }
+    if (!next) {
+      // Say WHICH kind of unusable. "Truncated" and "the model wrote prose"
+      // are different bugs with different fixes, and a log that cannot tell
+      // them apart is how this one hid for a fortnight.
+      const why = data.stop_reason === 'max_tokens'
+        ? 'answer hit the token ceiling and was cut off mid-JSON'
+        : parsed === null ? 'answer was not JSON' : 'answer was JSON but missing required fields';
+      await this.markTradeTry(tenantId, fp, why);
+      this.logger.warn(`trade profile: unusable answer for ${tenantId} — ${why}`);
+      return cur;
+    }
     if (curRow?.id) await this.prisma.setting.update({ where: { id: curRow.id }, data: { value: next as never } }).catch(() => undefined);
     else await this.prisma.setting.create({ data: { tenantId, key: TRADE_PROFILE_KEY, value: next as never } }).catch(() => undefined);
+    await this.clearTradeTry(tenantId);
     this.logger.log(`trade profile written for ${tenantId}: ${next.trade.en}`);
     return next;
+  }
+
+  /** Write down that an attempt failed, so the hourly sweep stops repeating it. */
+  private async markTradeTry(tenantId: string, fp: string, why: string): Promise<void> {
+    const row = await this.prisma.setting
+      .findFirst({ where: { tenantId, key: TRADE_PROFILE_TRY_KEY }, select: { id: true, value: true } })
+      .catch(() => null);
+    const next = nextTryMark(cleanTryMark(row?.value), fp, why, new Date());
+    if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: next as never } }).catch(() => undefined);
+    else await this.prisma.setting.create({ data: { tenantId, key: TRADE_PROFILE_TRY_KEY, value: next as never } }).catch(() => undefined);
+  }
+
+  /** It worked — forget the failures. */
+  private async clearTradeTry(tenantId: string): Promise<void> {
+    await this.prisma.setting.deleteMany({ where: { tenantId, key: TRADE_PROFILE_TRY_KEY } }).catch(() => undefined);
   }
 
   /**
    * The businesses on the catch-all trade that have a description but no
    * playbook of their own yet — a few per tick, each one a model call.
    */
-  async writeMissingTradeProfiles(limit = 3): Promise<{ checked: number; written: number }> {
-    if (!process.env.ANTHROPIC_API_KEY) return { checked: 0, written: 0 };
-    const [profiles, existing, tenants] = await Promise.all([
+  async writeMissingTradeProfiles(limit = 3): Promise<{ checked: number; written: number; skipped: number }> {
+    if (!process.env.ANTHROPIC_API_KEY) return { checked: 0, written: 0, skipped: 0 };
+    const [profiles, existing, marks, tenants] = await Promise.all([
       this.prisma.setting.findMany({ where: { key: 'business_profile' }, select: { tenantId: true, value: true }, take: 2000 }).catch(() => []) as Promise<{ tenantId: string; value: unknown }[]>,
       this.prisma.setting.findMany({ where: { key: TRADE_PROFILE_KEY }, select: { tenantId: true }, take: 2000 }).catch(() => []) as Promise<{ tenantId: string }[]>,
+      this.prisma.setting.findMany({ where: { key: TRADE_PROFILE_TRY_KEY }, select: { tenantId: true, value: true }, take: 2000 }).catch(() => []) as Promise<{ tenantId: string; value: unknown }[]>,
       this.prisma.tenant.findMany({ where: { status: 'ACTIVE', deletedAt: null } as never, select: { id: true, businessType: true } as never, take: 2000 })
         .catch(() => []) as Promise<{ id: string; businessType?: string | null }[]>,
     ]);
     const has = new Set(existing.map((e) => e.tenantId));
+    const tried = new Map(marks.map((m) => [m.tenantId, cleanTryMark(m.value)]));
     const enumOf = new Map(tenants.map((t) => [t.id, String(t.businessType ?? 'SALON')]));
-    let checked = 0; let written = 0;
+    const now = new Date();
+    let checked = 0; let written = 0; let skipped = 0;
     for (const p of profiles) {
-      if (written >= limit) break;
+      // The cap counts ATTEMPTS, not successes. Counting successes meant that
+      // on a day when every call failed the cap never bound at all, and the
+      // sweep walked the whole table — every hour, all month.
+      if (checked >= limit) break;
       if (has.has(p.tenantId) || !enumOf.has(p.tenantId)) continue;
       const v = (p.value ?? {}) as Record<string, string>;
       const industry = knownTrades().includes(String(v.trade ?? '').toUpperCase()) ? String(v.trade).toUpperCase() : enumOf.get(p.tenantId)!;
-      if (!wantsTradeProfile(industry) || String(v.whatWeDo ?? '').trim().length < 15) continue;
+      const whatWeDo = String(v.whatWeDo ?? '').trim();
+      if (!wantsTradeProfile(industry) || whatWeDo.length < 15) continue;
+      // Failed recently: leave it alone until its backoff has passed. This
+      // one line is the difference between one call a week and 24 a day.
+      if (!mayTryTradeProfile(tried.get(p.tenantId) ?? null, now)) { skipped += 1; continue; }
       checked += 1;
       const r = await this.ensureTradeProfile(p.tenantId).catch(() => null);
       if (r) written += 1;
     }
-    return { checked, written };
+    return { checked, written, skipped };
   }
 
   /**

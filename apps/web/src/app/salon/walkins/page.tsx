@@ -738,11 +738,11 @@ function CompactServingCard({ w, currency, t, onOpen }: {
             <span style={{ fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</span>
             {w.station && <span style={stationChip}>{t('wi.stationShort')} {w.station}</span>}
           </div>
-          <span style={{ color: 'var(--c94a3b8)', fontSize: 11, whiteSpace: 'nowrap', flexShrink: 0 }}>{fullName(w.assignedStaff)}</span>
+          <span style={{ fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, color: 'var(--ink-warn)', background: 'var(--wash-amber-2)', borderRadius: 999, padding: '2px 9px' }}>✂ {fullName(w.assignedStaff)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 8, marginTop: 10 }}>
           <span style={{ color: 'var(--c94a3b8)', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{summary}</span>
-          <span style={{ color: '#fff', fontSize: 18, fontWeight: 800, flexShrink: 0 }}>{formatPrice(subtotal, currency)}</span>
+          <span style={{ color: 'var(--ink-good)', fontSize: 17, fontWeight: 800, flexShrink: 0 }}>{formatPrice(subtotal, currency)}</span>
         </div>
       </div>
       <div style={{ display: 'flex', borderTop: '1px solid var(--line)', marginTop: 'auto' }}>

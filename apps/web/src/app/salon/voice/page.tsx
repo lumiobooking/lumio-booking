@@ -120,7 +120,21 @@ const DICT: Record<string, { vi: string; en: string }> = {
     vi: '⚠ Quan trọng: số điện thoại mà Lumio gọi ra (ô “Số điện thoại đổ chuông” ở trên) KHÔNG được cài chuyển hướng về Lumio — nếu không cuộc gọi sẽ chạy vòng tròn. Dùng số cell của chủ/quản lý là an toàn nhất.',
     en: '⚠ Important: the numbers Lumio rings (“Phone numbers to ring” above) must NOT forward back to Lumio, or the call will loop. Mobile numbers are the safest choice.',
   },
-  forwardTitle: { vi: 'Cách chuyển hướng số tiệm sang tổng đài AI', en: 'How to forward your salon number to the AI hotline' },
+  forwardTitle: { vi: 'Cách để khách gọi SỐ TIỆM mà AI trả lời', en: 'How callers reach the AI by dialing YOUR salon number' },
+  fwKey: {
+    vi: 'Khách không cần biết số Lumio. Số tiệm giữ nguyên; anh chị cài “chuyển hướng cuộc gọi” ở nhà mạng của số tiệm trỏ về số Lumio bên dưới — nhà mạng đẩy cuộc gọi sang, AI nghe máy, và AI vẫn thấy đúng số của khách để nhắn tin xác nhận. Chọn MỘT trong hai cách:',
+    en: 'Callers never need the Lumio number. Keep your salon number; set “call forwarding” with your carrier to the Lumio number below — the carrier hands the call over, the AI answers, and it still sees the caller’s own number for text confirmations. Pick ONE of the two ways:',
+  },
+  fwA: { vi: 'Cách 1 — Nhân viên nghe trước, không ai bắt máy thì AI trả lời', en: 'Option 1 — Staff pick up first; the AI answers when nobody does' },
+  fwAWhen: { vi: 'Trong Lumio chọn “AI trả lời ngay” (việc đổ chuông cho tiệm do nhà mạng làm). Trên điện thoại đang giữ số tiệm, bấm:', en: 'In Lumio choose “AI answers right away” (the carrier does the ring-first part). On the phone that holds the salon number, dial:' },
+  fwB: { vi: 'Cách 2 — AI bắt máy LIỀN cho mọi cuộc gọi', en: 'Option 2 — The AI picks up EVERY call immediately' },
+  fwBWhen: { vi: 'Chuyển hết cuộc gọi sang Lumio. Trong Lumio chọn “AI trả lời ngay” — hoặc “Đổ chuông cho tiệm trước” và nhập số DI ĐỘNG của nhân viên (không nhập số tiệm: số đó đang chuyển về Lumio, gọi lại sẽ chạy vòng tròn). Trên điện thoại đang giữ số tiệm, bấm:', en: 'Forward all calls to Lumio. In Lumio choose “AI answers right away” — or “Ring the salon first” with staff MOBILE numbers (never the salon number itself: it now forwards to Lumio and would loop). On the phone that holds the salon number, dial:' },
+  fwCarrier: { vi: 'Nhà mạng', en: 'Carrier' },
+  fwLandline: { vi: 'Máy bàn (AT&T, Spectrum, Xfinity, Frontier…)', en: 'Landline (AT&T, Spectrum, Xfinity, Frontier…)' },
+  fwOff: { vi: 'Tắt', en: 'Off' },
+  fwAll: { vi: 'Chuyển TẤT CẢ cuộc gọi:', en: 'Forward ALL calls:' },
+  fwTest: { vi: 'Kiểm tra: gọi số tiệm từ một điện thoại khác. Cách 1 — đừng bắt máy, sau 4–5 hồi chuông phải nghe AI chào. Cách 2 — AI chào ngay.', en: 'Test it: call the salon number from another phone. Option 1 — don’t pick up; after 4–5 rings the AI should greet. Option 2 — the AI greets at once.' },
+  fwDial: { vi: 'Bấm xong nhấn gọi; nghe tiếng bíp hoặc thông báo là đã cài. Mã có thể khác một chút theo nhà mạng.', en: 'Dial it and press call; a beep or an announcement confirms it. Codes can differ slightly by carrier.' },
   forwardIntro: {
     vi: 'Cài “chuyển hướng khi không trả lời” trên số của tiệm để nhân viên vẫn bắt máy trước; sau vài hồi chuông không ai nghe thì mới sang AI.',
     en: 'Set “forward on no answer” on your salon line so staff still pick up first; after a few rings with no answer, calls go to the AI.',
@@ -137,8 +151,8 @@ const DICT: Record<string, { vi: string; en: string }> = {
     en: 'On a VoIP phone system (RingCentral, Ooma, Google Voice…)? Go to Call Settings → Forward on no-answer → enter the Lumio number above.',
   },
   forwardHelp: {
-    vi: 'Không chắc mã của nhà mạng? Gọi nhà mạng và nói “conditional call forwarding on no answer”, đưa số Lumio ở trên.',
-    en: 'Not sure of your carrier code? Call your carrier and ask for “conditional call forwarding on no answer” to the Lumio number above.',
+    vi: 'Không chắc mã của nhà mạng? Gọi nhà mạng và nói: Cách 1 — “conditional call forwarding on no answer and busy”; Cách 2 — “unconditional call forwarding”, rồi đưa số Lumio ở trên.',
+    en: 'Not sure of your carrier code? Call your carrier and say: Option 1 — “conditional call forwarding on no answer and busy”; Option 2 — “unconditional call forwarding”, then give the Lumio number above.',
   },
   behaviorTitle: { vi: 'Cách tổng đài trả lời', en: 'How the hotline behaves' },
   greeting: { vi: 'Lời chào (tùy chọn)', en: 'Greeting (optional)' },
@@ -452,20 +466,64 @@ function Inner() {
         </div>
       )}
 
-      {c.provisioned && c.mode !== 'ring_first' && (
-        <div style={{ ...ui.card, marginBottom: 16, fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.65 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 8 }}>{t('forwardTitle')}</div>
-          <p style={{ margin: '0 0 12px' }}>{t('forwardIntro')}</p>
-          <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('forwardCodes')}</div>
-          <ul style={{ margin: '0 0 12px', paddingLeft: 18 }}>
-            <li>{t('codeNoAnswer')} <code style={codeS}>*92 {c.lumioNumber}</code></li>
-            <li>{t('codeBusy')} <code style={codeS}>*90 {c.lumioNumber}</code></li>
-            <li>{t('codeOff')} <code style={codeS}>*93</code> / <code style={codeS}>*91</code></li>
-          </ul>
-          <p style={{ margin: '0 0 8px' }}>{t('forwardVoip')}</p>
-          <p style={{ margin: 0, color: 'var(--c94a3b8)' }}>{t('forwardHelp')}</p>
-        </div>
-      )}
+      {c.provisioned && (() => {
+        // The owner's question, verbatim: "how do customers call the SALON's
+        // number and get the AI — not the number you gave me?" and "which
+        // code makes the AI pick up straight away?". Two options, every
+        // carrier's codes, the Lumio number already filled in.
+        const n = String(c.lumioNumber || '').replace(/^\+/, '');
+        const rows: { who: string; noAnswer: string; busy: string; all: string; off: string }[] = [
+          { who: t('fwLandline'), noAnswer: `*92 ${n}`, busy: `*90 ${n}`, all: `*72 ${n}`, off: '*93 · *91 · *73' },
+          { who: 'Verizon', noAnswer: `*71 ${n}`, busy: `*71 ${n}`, all: `*72 ${n}`, off: '*73' },
+          { who: 'AT&T (di động / mobile)', noAnswer: `*61*${n}#`, busy: `*67*${n}#`, all: `*21*${n}#`, off: '##61# · ##67# · ##21#' },
+          { who: 'T-Mobile', noAnswer: `**61*${n}#`, busy: `**67*${n}#`, all: `**21*${n}#`, off: '##61# · ##67# · ##21#' },
+        ];
+        const th: CSSProperties = { textAlign: 'left', fontSize: 11.5, color: 'var(--c94a3b8)', fontWeight: 700, padding: '6px 8px', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap' };
+        const td: CSSProperties = { padding: '7px 8px', borderBottom: '1px solid var(--line)', verticalAlign: 'top', fontSize: 13, whiteSpace: 'nowrap' };
+        const table = (cols: ('noAnswer' | 'busy' | 'all')[]) => (
+          <div style={{ overflowX: 'auto', margin: '6px 0 10px' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 520 }}>
+              <thead><tr>
+                <th style={th}>{t('fwCarrier')}</th>
+                {cols.includes('noAnswer') && <th style={th}>{t('codeNoAnswer')}</th>}
+                {cols.includes('busy') && <th style={th}>{t('codeBusy')}</th>}
+                {cols.includes('all') && <th style={th}>{t('fwAll')}</th>}
+                <th style={th}>{t('fwOff')}</th>
+              </tr></thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.who}>
+                    <td style={{ ...td, color: 'var(--ce2e8f0)', fontWeight: 600, whiteSpace: 'normal', minWidth: 150 }}>{r.who}</td>
+                    {cols.includes('noAnswer') && <td style={td}><code style={codeS}>{r.noAnswer}</code></td>}
+                    {cols.includes('busy') && <td style={td}><code style={codeS}>{r.busy}</code></td>}
+                    {cols.includes('all') && <td style={td}><code style={codeS}>{r.all}</code></td>}
+                    <td style={{ ...td, color: 'var(--c94a3b8)', fontSize: 12 }}>{r.off}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        return (
+          <div style={{ ...ui.card, marginBottom: 16, fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.65 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 8 }}>{t('forwardTitle')}</div>
+            <p style={{ margin: '0 0 14px' }}>{t('fwKey')}</p>
+
+            <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>{t('fwA')}</div>
+            <p style={{ margin: '0 0 6px' }}>{t('fwAWhen')}</p>
+            {table(['noAnswer', 'busy'])}
+
+            <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', margin: '14px 0 4px' }}>{t('fwB')}</div>
+            <p style={{ margin: '0 0 6px' }}>{t('fwBWhen')}</p>
+            {table(['all'])}
+
+            <p style={{ margin: '0 0 8px', color: 'var(--c94a3b8)' }}>{t('fwDial')}</p>
+            <p style={{ margin: '0 0 8px' }}>{t('forwardVoip')}</p>
+            <p style={{ margin: '0 0 8px', color: 'var(--ink-good)' }}>✓ {t('fwTest')}</p>
+            <p style={{ margin: 0, color: 'var(--c94a3b8)' }}>{t('forwardHelp')}</p>
+          </div>
+        );
+      })()}
 
       {/* Behavior settings */}
       <div style={{ ...ui.card, marginBottom: 16 }}>

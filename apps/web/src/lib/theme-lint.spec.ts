@@ -126,6 +126,41 @@ test('no hard-coded text colour that disappears on a themed surface in light mod
 });
 
 /**
+ * THE SPREAD THAT HID THE SURFACE.
+ *
+ * The two checks above look for a `background: 'var(--c…)'` in the same style
+ * object. A card written as `{ ...ui.card, padding: 0 }` has its background
+ * INSIDE ui.card, so nothing in the object says "themed surface" and white
+ * text on it sailed through — the walk-in board's price, "139,00 US$",
+ * white on a white card, found by the owner in light mode. A spread of a
+ * themed token (ui.card, ui.input, ui.panel…) IS the surface: white or a
+ * hard-coded pale text colour inside the same object is the same bug.
+ */
+const THEMED_SPREAD = /\.\.\.ui\.(card|input|panel|surface|sheet)\b/;
+const PALE_TEXT = /(?<![a-zA-Z])color:\s*'(#fff(?:fff)?|white|#f8fafc|#f1f5f9|#e2e8f0)'/;
+
+test('no white / pale text inside a style object that spreads a themed surface', () => {
+  const offenders: string[] = [];
+  for (const file of walk(ROOT)) {
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      if (!PALE_TEXT.test(line) || ACCENT_SAMELINE.test(line)) return;
+      const obj = styleObjectAround(lines, i);
+      // An object with ANY background of its own — a literal, a variable, a
+      // conditional — paints itself, and its ink is its own business.
+      if (/background(?:Color)?:/.test(obj)) return;
+      // The spread is usually on the CARD a few lines up, not on the span
+      // that holds the price — so the surface is looked for in the element's
+      // own object first, then in the dozen lines above it.
+      const above = lines.slice(Math.max(0, i - 12), i + 1).join('\n');
+      if (!THEMED_SPREAD.test(obj) && !THEMED_SPREAD.test(above)) return;
+      offenders.push(`${path.relative(ROOT, file)}:${i + 1}`);
+    });
+  }
+  expect(offenders).toEqual([]);
+});
+
+/**
  * THE INVISIBLE DIVIDER.
  *
  * `#1e293b` does two jobs in the source: a raised chip's background, and a 1px

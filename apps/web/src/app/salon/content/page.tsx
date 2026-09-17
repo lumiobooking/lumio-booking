@@ -2140,7 +2140,16 @@ function Inner() {
                       <option value="SPA">{T('Spa / chăm sóc da', 'Spa / skincare')}</option>
                       <option value="MASSAGE">{T('Massage / gội đầu dưỡng sinh', 'Massage')}</option>
                       <option value="PMU">{T('Phun xăm thẩm mỹ', 'Permanent makeup')}</option>
-                      <option value="RESTAURANT">{T('Nhà hàng / quán ăn / cà phê', 'Restaurant / café')}</option>
+                      {/* Food is four trades, not one. A café and a bakery both
+                          used to answer "Nhà hàng", which sent the trends board
+                          and the keyword list looking for chefs plating dinner —
+                          and sent the AI hotline offering a table reservation to
+                          somebody who wanted a cake for Saturday. */}
+                      <option value="RESTAURANT">{T('Nhà hàng / quán ăn', 'Restaurant')}</option>
+                      <option value="CAFE">{T('Quán cà phê', 'Café / coffee shop')}</option>
+                      <option value="BAKERY">{T('Tiệm bánh / bánh mì', 'Bakery / banh mi')}</option>
+                      <option value="BUBBLE_TEA">{T('Trà sữa / đồ uống', 'Bubble tea / drinks')}</option>
+                      <option value="FAST_FOOD">{T('Quán ăn nhanh / mang đi', 'Takeaway / quick service')}</option>
                       <option value="REAL_ESTATE">{T('Bất động sản', 'Real estate')}</option>
                       <option value="SERVICE">{T('Dịch vụ / sửa chữa / bán hàng khác', 'Services / repairs / other retail')}</option>
                     </select>

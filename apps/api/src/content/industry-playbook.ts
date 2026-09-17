@@ -318,8 +318,27 @@ const PLAYBOOKS: Record<string, Playbook> = {
   NAIL, HAIR, LASH, BROW, SPA, MASSAGE, PMU,
 };
 
+/**
+ * A trade with no playbook of its own still needs a SENSIBLE stand-in.
+ *
+ * Everything unknown used to land on SALON, which is the nail playbook — so a
+ * coffee shop that had not yet approved its generated trade profile was told
+ * to film a gel set. Falling back to the nearest trade that IS written is not
+ * as good as a real playbook, and it is not embarrassing either.
+ *
+ * These four also ask for a profile of their own (see wantsTradeProfile), so
+ * this is what they see until the owner approves one — not what they keep.
+ */
+const STAND_IN: Record<string, string> = {
+  CAFE: 'RESTAURANT',
+  BAKERY: 'RESTAURANT',
+  BUBBLE_TEA: 'RESTAURANT',
+  FAST_FOOD: 'RESTAURANT',
+};
+
 export function playbookFor(industry?: string | null): Playbook {
-  return PLAYBOOKS[(industry || 'SALON').toUpperCase()] ?? SALON;
+  const key = (industry || 'SALON').toUpperCase();
+  return PLAYBOOKS[key] ?? PLAYBOOKS[STAND_IN[key] ?? ''] ?? SALON;
 }
 
 // ---- video feeds and product watch -----------------------------------------
@@ -342,6 +361,10 @@ const VIDEO_TAGS: Record<string, string[]> = {
   MASSAGE: ['massagetherapy', 'massagetok', 'bodywork'],
   PMU: ['pmuartist', 'permanentmakeup', 'lipblush'],
   RESTAURANT: ['foodtiktok', 'restaurant', 'chefsoftiktok'],
+  CAFE: ['coffeetok', 'latteart', 'cafevibes'],
+  BAKERY: ['bakerylife', 'cakedecorating', 'baketok'],
+  BUBBLE_TEA: ['bobatok', 'bubbletea', 'milktea'],
+  FAST_FOOD: ['foodtok', 'takeout', 'foodtruck'],
   REAL_ESTATE: ['realestate', 'housetour', 'realtorlife'],
   SERVICE: ['smallbusinesscheck', 'beforeandafter'],
 };

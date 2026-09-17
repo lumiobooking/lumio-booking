@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlatformConfigService } from '../billing/platform-config.service';
 import { resolveMime } from './media-mime';
+import { oauthBase } from '../common/public-url.util';
 
 /**
  * Google Drive as the archive of what salons send in.
@@ -95,7 +96,9 @@ export class GoogleDriveService {
     return (process.env.PUBLIC_WEB_URL || cors || 'https://lumiobooking.com').replace(/\/$/, '');
   }
   redirectUri(): string {
-    return `${this.apiBase()}/api/storage/gdrive/callback`;
+    // OAuth redirects follow what is REGISTERED with the provider, not where
+    // the API happens to live — see oauthBase().
+    return `${oauthBase()}/api/storage/gdrive/callback`;
   }
 
   /** Whether the archive is on at all. Cheap; asked before every mirror. */

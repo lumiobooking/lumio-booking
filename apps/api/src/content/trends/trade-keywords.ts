@@ -188,6 +188,33 @@ const VOCAB: Record<string, { US: Vocab; VN?: Vocab }> = {
     US: { shop: 'permanent makeup', alt: 'pmu artist', services: ['lip blush', 'powder brows', 'microblading', 'eyeliner tattoo', 'scalp micropigmentation'] },
     VN: { shop: 'phun xăm thẩm mỹ', alt: 'phun xăm', services: ['phun môi collagen', 'phun mày ombre', 'phun mí mắt', 'điêu khắc chân mày'] },
   },
+  // THE FOOD TRADES.
+  //
+  // RESTAURANT was missing from this table entirely, which meant it fell to
+  // SALON — so a restaurant asking the engine for ad groups got "gel x nails"
+  // and "russian manicure". The four below are split out rather than folded
+  // into RESTAURANT because the words a customer types are different: nobody
+  // searching for boba types "restaurant near me".
+  RESTAURANT: {
+    US: { shop: 'restaurant', alt: 'place to eat', services: ['dinner reservation', 'family dinner', 'lunch special', 'catering', 'private dining', 'takeout'] },
+    VN: { shop: 'nhà hàng', alt: 'quán ăn', services: ['đặt bàn', 'cơm trưa văn phòng', 'tiệc gia đình', 'đặt tiệc', 'phòng riêng', 'mang đi'] },
+  },
+  CAFE: {
+    US: { shop: 'coffee shop', alt: 'cafe', services: ['iced latte', 'cold brew', 'matcha latte', 'espresso', 'pastries', 'study spot'] },
+    VN: { shop: 'quán cà phê', alt: 'cafe', services: ['cà phê sữa đá', 'bạc xỉu', 'cold brew', 'trà đào', 'bánh ngọt', 'chỗ ngồi làm việc'] },
+  },
+  BAKERY: {
+    US: { shop: 'bakery', alt: 'cake shop', services: ['custom cakes', 'birthday cake', 'wedding cake', 'banh mi', 'croissants', 'party trays'] },
+    VN: { shop: 'tiệm bánh', alt: 'lò bánh', services: ['bánh sinh nhật', 'bánh kem đặt riêng', 'bánh cưới', 'bánh mì', 'bánh ngọt', 'đặt bánh số lượng lớn'] },
+  },
+  BUBBLE_TEA: {
+    US: { shop: 'boba shop', alt: 'bubble tea', services: ['brown sugar boba', 'milk tea', 'matcha latte', 'fruit tea', 'taro milk tea', 'catering drinks'] },
+    VN: { shop: 'quán trà sữa', alt: 'trà sữa', services: ['trà sữa trân châu đường đen', 'trà sữa khoai môn', 'trà trái cây', 'matcha latte', 'topping thạch', 'đặt số lượng lớn'] },
+  },
+  FAST_FOOD: {
+    US: { shop: 'takeout restaurant', alt: 'food near me', services: ['lunch combo', 'family meal', 'catering trays', 'delivery', 'pickup order', 'party platters'] },
+    VN: { shop: 'quán ăn nhanh', alt: 'đồ ăn mang đi', services: ['cơm hộp văn phòng', 'suất ăn gia đình', 'đặt tiệc', 'giao hàng', 'đặt mang đi', 'combo trưa'] },
+  },
   SALON: {
     US: { shop: 'beauty salon', alt: 'nail salon', services: ['manicure', 'pedicure', 'haircut', 'facial', 'eyelash extensions'] },
     VN: { shop: 'tiệm làm đẹp', alt: 'salon làm đẹp', services: ['làm nail', 'cắt tóc', 'nối mi', 'chăm sóc da'] },
@@ -333,6 +360,90 @@ const TOPICS: Record<string, { US: SeoTopic[]; VN?: SeoTopic[] }> = {
         targets: ['phun môi bao lâu lên màu', 'phun môi kiêng gì', 'phun môi có đau không'],
         why: bi('Đây là ba câu hỏi khách hỏi đi hỏi lại trong inbox. Viết một lần, dùng mãi.',
                 'These are the three questions asked over and over in the inbox. Write once, reuse forever.') },
+    ],
+  },
+  // Food trades. The three questions a hungry person actually types are the
+  // menu, the price, and whether the place suits the occasion they have in
+  // mind — so those are the pages, rather than the "10 tips" filler that every
+  // trade blog fills up with and nobody searches for.
+  RESTAURANT: {
+    US: [
+      { kind: 'money', title: bi('Thực đơn & giá {year} — {brand}', 'Menu & prices {year} — {brand}'),
+        targets: ['{brand} menu', 'menu prices', 'vietnamese restaurant {city} menu', 'how much is pho'],
+        why: bi('Khách xem menu trước khi quyết định đi hay không. Menu có giá, ảnh thật, cập nhật năm — Google đọc được, app giao đồ ăn thì không.',
+                'People read the menu before deciding to come. A menu page with prices, real photos and a year on it is readable by Google; a delivery app listing is not.') },
+      { kind: 'guide', title: bi('Đặt bàn cho nhóm đông ở {city}', 'Booking a large group in {city}'),
+        targets: ['large group restaurant {city}', 'private dining {city}', 'restaurant for birthday party'],
+        why: bi('Tiệc nhóm là hoá đơn lớn nhất trong tháng và gần như không nhà hàng nào viết trang riêng cho nó.',
+                'A group booking is the biggest bill of the month, and almost no restaurant writes a page for it.') },
+      { kind: 'service', title: bi('Đặt tiệc mang đi / catering {city}', 'Catering & party trays in {city}'),
+        targets: ['catering {city}', 'party trays', 'office lunch catering', 'food for 20 people'],
+        why: bi('Khách đặt catering tìm bằng Google chứ không lướt app — và họ đặt lại đều đặn.',
+                'Catering customers search Google rather than scroll an app, and they reorder.') },
+    ],
+  },
+  CAFE: {
+    US: [
+      { kind: 'money', title: bi('Menu & giá đồ uống {year} — {brand}', 'Drinks menu & prices {year} — {brand}'),
+        targets: ['{brand} menu', 'coffee shop {city} menu', 'latte price', 'matcha latte {city}'],
+        why: bi('Câu hỏi đầu tiên trước khi ghé. Đăng giá thật là chiếm trang mà app giao hàng không chiếm được.',
+                'The first question before dropping in. Publishing real prices takes a page no delivery app can hold.') },
+      { kind: 'guide', title: bi('Quán cà phê ngồi làm việc ở {city} — wifi, ổ điện, giờ yên tĩnh', 'Best {city} cafés to work from — wifi, outlets, quiet hours'),
+        targets: ['cafe to work {city}', 'coffee shop with wifi', 'study cafe near me', 'quiet coffee shop'],
+        why: bi('Người tìm chỗ ngồi làm việc ở lại lâu, quay lại đều, và gần như không quán nào viết trang này.',
+                'People looking for a place to work stay longer and come back, and almost no café writes this page.') },
+      { kind: 'service', title: bi('Đặt cà phê cho văn phòng / sự kiện ở {city}', 'Coffee catering for offices & events in {city}'),
+        targets: ['coffee catering {city}', 'office coffee delivery', 'event coffee cart'],
+        why: bi('Một đơn văn phòng bằng cả buổi sáng bán lẻ, và họ đặt lại hàng tuần.',
+                'One office order is worth a morning of retail, and they reorder weekly.') },
+    ],
+  },
+  BAKERY: {
+    US: [
+      { kind: 'money', title: bi('Giá bánh kem đặt riêng ở {city} — {year}', 'Custom cake prices in {city} — {year}'),
+        targets: ['custom cake price {city}', 'birthday cake cost', 'how much is a wedding cake', 'cake for 20 people'],
+        why: bi('Giá là câu khách hỏi đầu tiên và tiệm nào cũng né. Đăng khung giá theo cỡ bánh là gần như không có đối thủ.',
+                'Price is the first question and every shop dodges it. A size-by-size price range has almost no competition.') },
+      { kind: 'guide', title: bi('Đặt bánh trước bao lâu, và cần nói gì khi đặt', 'How far ahead to order a cake, and what to tell the baker'),
+        targets: ['how far in advance to order a cake', 'custom cake order', 'cake ordering guide'],
+        why: bi('Trang này biến người đang phân vân thành đơn hàng, và trả lời sẵn câu điện thoại hỏi nhiều nhất.',
+                'This page turns a hesitant reader into an order, and answers the call you take most often.') },
+      { kind: 'service', title: bi('Bánh mì & bánh ngọt ra lò mỗi ngày — giờ nào có gì', 'Fresh daily — what comes out of the oven, and when'),
+        targets: ['fresh bread {city}', 'banh mi {city}', 'bakery open now', 'croissant near me'],
+        why: bi('Khách mua bánh đi theo giờ ra lò. Trang này kéo được đúng nhóm đó mỗi sáng.',
+                'Bakery customers shop by what is fresh right now. This page pulls that crowd every morning.') },
+    ],
+  },
+  BUBBLE_TEA: {
+    US: [
+      { kind: 'money', title: bi('Menu & giá trà sữa {year} — {brand}', 'Boba menu & prices {year} — {brand}'),
+        targets: ['{brand} menu', 'boba {city} menu', 'bubble tea price', 'milk tea near me'],
+        why: bi('Khách trà sữa chọn theo menu và topping. Menu đầy đủ, có ảnh, là trang họ mở trước khi tới.',
+                'Boba customers choose by menu and toppings. A full menu with photos is the page they open before coming.') },
+      { kind: 'guide', title: bi('Chọn mức đường & đá, và topping nào hợp món nào', 'Sugar and ice levels, and which topping goes with what'),
+        targets: ['boba sugar level', 'what is brown sugar boba', 'best boba toppings', 'boba for beginners'],
+        why: bi('Khách mới ngại gọi vì không biết chọn. Giải thích xong là họ gọi được ngay — và nhớ tên quán.',
+                'New customers hesitate because they do not know how to order. Explain it and they order — and remember who explained.') },
+      { kind: 'service', title: bi('Đặt trà sữa số lượng lớn cho lớp học / công ty ở {city}', 'Bulk boba orders for classes & offices in {city}'),
+        targets: ['boba catering {city}', 'bulk milk tea order', 'drinks for a party'],
+        why: bi('Một đơn 30 ly bằng cả buổi chiều, và trường học với công ty đặt lại theo mùa.',
+                'One 30-cup order is worth an afternoon, and schools and offices reorder every season.') },
+    ],
+  },
+  FAST_FOOD: {
+    US: [
+      { kind: 'money', title: bi('Menu & giá combo {year} — {brand}', 'Menu & combo prices {year} — {brand}'),
+        targets: ['{brand} menu', 'lunch combo {city}', 'takeout menu prices', 'cheap lunch near me'],
+        why: bi('Người đói tìm giá và giờ mở cửa, không tìm bài blog. Trang menu là trang duy nhất họ cần.',
+                'A hungry person searches for prices and opening hours, not a blog post. The menu is the only page they need.') },
+      { kind: 'guide', title: bi('Cơm hộp văn phòng ở {city} — đặt theo tuần', 'Office lunch delivery in {city} — weekly orders'),
+        targets: ['office lunch delivery {city}', 'lunch catering near me', 'weekly meal order'],
+        why: bi('Khách văn phòng đặt lại mỗi tuần — giá trị gấp nhiều lần khách vãng lai.',
+                'Office customers reorder weekly, which is worth many times a walk-in.') },
+      { kind: 'service', title: bi('Đặt tiệc / khay lớn cho {city}', 'Party platters & large trays in {city}'),
+        targets: ['party trays {city}', 'food for 20 people', 'catering trays near me'],
+        why: bi('Đơn tiệc là hoá đơn lớn nhất, và người đặt luôn tìm bằng Google.',
+                'A party order is the biggest bill, and whoever places it searches Google.') },
     ],
   },
   SALON: {

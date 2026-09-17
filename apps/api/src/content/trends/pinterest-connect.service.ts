@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { oauthBase } from '../../common/public-url.util';
 
 /**
  * PINTEREST, CONNECTED ONCE — by a button, not by a terminal.
@@ -81,7 +82,7 @@ export class PinterestConnectService implements OnModuleInit {
   /** Where Pinterest sends the browser back. Must be listed, character for character, in the Pinterest app. */
   redirectUri(): string {
     const own = (process.env.PINTEREST_REDIRECT_URI || '').trim().replace(/\/+$/, '');
-    return own || `${this.apiBase()}/api/content/pinterest/callback`;
+    return own || `${oauthBase()}/api/content/pinterest/callback`;
   }
   private signingSecret(): string { return process.env.JWT_SECRET || process.env.APP_SECRET || 'lumio-pinterest-signing-dev'; }
   private signState(): string {

@@ -40,6 +40,7 @@ import { publishGrantFrom } from './publish-grant';
 import { AiUsageService } from '../common/ai-usage.service';
 import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
 import { carouselTitles, packageFromPayload, packagePayload, tapAsCustomerLine } from './package-cards';
+import { oauthBase } from '../common/public-url.util';
 
 // A blank/masked secret must never overwrite a stored Page token.
 function cleanSecret(v: unknown): string | null {
@@ -248,7 +249,9 @@ export class MessengerService implements OnModuleInit {
   }
   private appId(): string { return process.env.FB_APP_ID || ''; }
   private appSecret(): string { return process.env.FB_APP_SECRET || ''; }
-  private oauthRedirect(): string { return `${this.apiBase()}/api/messenger/oauth/callback`; }
+  // OAuth redirects follow what is REGISTERED with the provider, not where
+    // the API happens to live — see oauthBase().
+  private oauthRedirect(): string { return `${oauthBase()}/api/messenger/oauth/callback`; }
   private signSecret(): string { return process.env.JWT_SECRET || process.env.APP_SECRET || 'lumio-fb-signing'; }
   private signState(tenantId: string): string {
     const payload = Buffer.from(JSON.stringify({ t: tenantId, exp: Date.now() + 600_000 })).toString('base64url');
@@ -2872,7 +2875,18 @@ export class MessengerService implements OnModuleInit {
     }
 
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true, businessType: true } });
-    const persona = personaFor((tenant as unknown as { businessType?: string } | null)?.businessType);
+    // The AI's identity, goal and vocabulary follow the tenant's line of
+    // business — a real-estate caller must never be offered a gel set, and a
+    // coffee shop must not open by offering a table reservation. The declared
+    // trade refines the type where it has something to say; where it does not,
+    // the type answers alone and nothing changes.
+    const tradeRow = await this.prisma.setting
+      .findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } })
+      .catch(() => null);
+    const persona = personaFor(
+      (tenant as unknown as { businessType?: string } | null)?.businessType,
+      (tradeRow?.value as { trade?: string } | null)?.trade ?? null,
+    );
     const salonName = tenant?.name || 'our salon';
     const tz = tenant?.timezone || 'America/New_York';
     const infoBlock = await this.systemKnowledge(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);

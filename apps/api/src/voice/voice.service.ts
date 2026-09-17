@@ -775,8 +775,17 @@ export class VoiceService implements OnModuleInit {
       where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true, businessType: true },
     });
     // The AI's identity, goal and vocabulary follow the tenant's line of
-    // business — a real-estate caller must never be offered a gel set.
-    const persona = personaFor((tenant as unknown as { businessType?: string } | null)?.businessType);
+    // business — a real-estate caller must never be offered a gel set, and a
+    // coffee shop must not open by offering a table reservation. The declared
+    // trade refines the type where it has something to say; where it does not,
+    // the type answers alone and nothing changes.
+    const tradeRow = await this.prisma.setting
+      .findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } })
+      .catch(() => null);
+    const persona = personaFor(
+      (tenant as unknown as { businessType?: string } | null)?.businessType,
+      (tradeRow?.value as { trade?: string } | null)?.trade ?? null,
+    );
     const salonName = tenant?.name || 'our salon';
     const tz = tenant?.timezone || 'America/New_York';
     const infoBlock = await this.salonInfoBlock(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);

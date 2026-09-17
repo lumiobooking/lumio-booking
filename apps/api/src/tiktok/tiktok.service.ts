@@ -8,6 +8,7 @@ import {
   tiktokAuthorizeUrl, settingsFromToken, parseCreatorInfo, publicTikTok, accessStale, needsReconnect, targetOf,
   initBody, chunkPlan, explainTikTokError, tiktokPostUrl, readPublishStatus,
 } from './tiktok';
+import { oauthBase } from '../common/public-url.util';
 
 const OPEN = 'https://open.tiktokapis.com/v2';
 
@@ -48,7 +49,7 @@ export class TikTokService {
    */
   private redirectUri(): string {
     const own = (process.env.TIKTOK_REDIRECT_URI || '').trim().replace(/\/+$/, '');
-    return own || `${this.apiBase()}/api/tiktok/callback`;
+    return own || `${oauthBase()}/api/tiktok/callback`;
   }
   /** PULL_FROM_URL only works from a domain verified in the developer portal; off until it is. */
   private pullFromUrl(): boolean { return /^(1|true|yes)$/i.test(process.env.TIKTOK_PULL_FROM_URL || ''); }

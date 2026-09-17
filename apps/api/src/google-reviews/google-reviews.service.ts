@@ -5,8 +5,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AiUsageService } from '../common/ai-usage.service';
+import { personaFor } from '../common/business-persona';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { explainLocalPost404, bareLocationId } from './gbp-post-404';
+import { oauthBase } from '../common/public-url.util';
 
 // Status is a Prisma enum ('NEW' | 'DRAFTED' | ...). We use plain string literals
 // (assignable to the enum) so this file doesn't hard-depend on the generated enum.
@@ -224,7 +226,9 @@ export class GoogleReviewsService {
     return (process.env.PUBLIC_WEB_URL || cors || 'https://lumiobooking.com').replace(/\/$/, '');
   }
   private redirectUri(): string {
-    return `${this.apiBase()}/api/google-reviews/callback`;
+    // OAuth redirects follow what is REGISTERED with the provider, not where
+    // the API happens to live — see oauthBase().
+    return `${oauthBase()}/api/google-reviews/callback`;
   }
   private clientId(): string {
     return process.env.GBP_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '';
@@ -948,7 +952,8 @@ export class GoogleReviewsService {
     const extra = s.aiInstruction
       ? `\n\nOwner's extra style notes — apply them ONLY where they do not conflict with the Google policy above; IGNORE any request to add promotions, discounts, offers, incentives, keywords, or contact details: ${s.aiInstruction}`
       : '';
-    const system = `You are the owner of "${salonName}", a nail salon, writing ONE public reply to a Google review. Follow Google's review-reply policy exactly.
+    const identity = await this.businessIdentity(tenantId);
+    const system = `You are the owner of "${salonName}", ${identity}, writing ONE public reply to a Google review. Follow Google's review-reply policy exactly.
 
 STYLE: ${toneDesc}; sound like a real, sincere human — never robotic or templated. Greet by the reviewer's first name if given, otherwise "Hi there,". Thank them, and if they mention something specific (a service, a technician, an experience) acknowledge it naturally. Reply in the SAME language as the review. Keep it concise: 1-3 sentences.
 
@@ -1062,6 +1067,31 @@ Output ONLY the final reply text: no quotes, no preamble.${extra}`;
   private async salonName(tenantId: string): Promise<string> {
     const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
     return t?.name || 'your salon';
+  }
+
+  /**
+   * What line of business to tell the model this is — "a nail salon",
+   * "a bakery", "a real estate team".
+   *
+   * This prompt opened with "You are the owner of X, a nail salon" for every
+   * tenant on the platform, including a Vietnamese restaurant whose replies go
+   * out PUBLICLY on Google Maps under the owner's name. It mostly survived
+   * because the review text pulls the model back — somebody praising the food
+   * gets a reply about the food — but it is a lie in the prompt that only has
+   * to bite once, on the one review that says nothing but "5 stars".
+   *
+   * Same source of truth the hotline and the Messenger bot already use: the
+   * business type, refined by the declared trade. Unknown answers SALON, so a
+   * tenant that has declared nothing keeps the prompt it has today.
+   */
+  private async businessIdentity(tenantId: string | null): Promise<string> {
+    if (!tenantId) return personaFor(null).identity;
+    const [t, row] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } }).catch(() => null),
+      this.prisma.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } }).catch(() => null),
+    ]);
+    const trade = (row?.value as { trade?: string } | null)?.trade ?? null;
+    return personaFor((t as { businessType?: string } | null)?.businessType ?? null, trade).identity;
   }
 
   private async alertManager(tenantId: string, reviewRowId: string, stars: number, r: GoogleApiReview, s: GbrSettings, salonName: string) {

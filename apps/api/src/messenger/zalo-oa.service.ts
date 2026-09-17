@@ -9,6 +9,7 @@ import {
   pkcePair, zaloPermissionUrl, exchangeZaloCode, fetchZaloOaInfo,
   explainZaloSendError, ZALO_SEND_TRACE_KEY,
 } from './zalo-oa';
+import { oauthBase } from '../common/public-url.util';
 
 /**
  * Zalo OA ↔ the Messenger brain.
@@ -177,7 +178,9 @@ export class ZaloOaService {
     return (process.env.PUBLIC_WEB_URL || cors || 'https://lumiobooking.com').replace(/\/$/, '');
   }
   /** Where Zalo sends the OA admin back. Also what goes in the console's "Callback Url" box. */
-  oauthRedirect(): string { return `${this.apiBase()}/api/public/zalo/oauth/callback`; }
+  // OAuth redirects follow what is REGISTERED with the provider, not where
+    // the API happens to live — see oauthBase().
+  oauthRedirect(): string { return `${oauthBase()}/api/public/zalo/oauth/callback`; }
 
   private signSecret(): string { return process.env.JWT_SECRET || process.env.APP_SECRET || 'lumio-zalo-signing'; }
   private signState(tenantId: string): string {

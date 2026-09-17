@@ -312,6 +312,42 @@ const QUERIES: Record<string, TradeQueries> = {
     google: ['restaurant near me', 'food'],
     pinterestInterests: ['food_and_drink'],
   },
+  // THE FOOD TRADES, EACH WITH ITS OWN EYES.
+  //
+  // They were all RESTAURANT, and before that they were all SALON — a bubble
+  // tea shop asking the trend engine what to post got nail art. "Restaurant"
+  // is not wrong for a café, it is just far too wide: what a coffee shop wants
+  // to see is latte art and a new seasonal drink, not a chef plating a steak.
+  // Each entry is deliberately narrow, and `mustMatch` is what keeps a feed
+  // from drifting back into the generic food slop that outranks everything.
+  CAFE: {
+    mustMatch: /\b(coffee|cafe|café|latte|espresso|cold brew|matcha|barista|cà phê|cafe sữa)\b/i,
+    youtube: ['coffee shop vlog', 'latte art', 'cafe menu ideas'],
+    hashtags: ['coffeetok', 'latteart', 'cafevibes'],
+    google: ['coffee shop near me', 'best coffee'],
+    pinterestInterests: ['food_and_drink'],
+  },
+  BAKERY: {
+    mustMatch: /\b(bakery|bake|cake|pastry|bread|croissant|dessert|cupcake|bánh|bánh mì)\b/i,
+    youtube: ['bakery behind the scenes', 'cake decorating', 'bread baking'],
+    hashtags: ['bakerylife', 'cakedecorating', 'baketok'],
+    google: ['bakery near me', 'custom cakes'],
+    pinterestInterests: ['food_and_drink'],
+  },
+  BUBBLE_TEA: {
+    mustMatch: /\b(boba|bubble tea|milk tea|matcha|topping|brown sugar|trà sữa|tran chau)\b/i,
+    youtube: ['boba shop', 'milk tea recipe', 'bubble tea menu'],
+    hashtags: ['bobatok', 'bubbletea', 'milktea'],
+    google: ['boba near me', 'bubble tea'],
+    pinterestInterests: ['food_and_drink'],
+  },
+  FAST_FOOD: {
+    mustMatch: /\b(takeout|takeaway|to go|drive thru|fast food|combo|delivery|mang đi|cơm hộp)\b/i,
+    youtube: ['takeout restaurant', 'food truck day', 'quick service restaurant'],
+    hashtags: ['foodtok', 'takeout', 'foodtruck'],
+    google: ['food near me', 'takeout near me'],
+    pinterestInterests: ['food_and_drink'],
+  },
   REAL_ESTATE: {
     mustMatch: /\b(house|home|real estate|realtor|listing|mortgage|apartment|condo|property|buyers?|sellers?)\b/i,
     youtube: ['house tour', 'real estate tips', 'home buying'],

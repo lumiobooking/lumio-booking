@@ -460,6 +460,61 @@ export function MonthCalendar({
     </>
   );
 
+  /**
+   * A FAILED POST HAS TO SAY WHY, SOMEWHERE WITH ROOM FOR A SENTENCE.
+   *
+   * A card in a month cell is about 180px wide and one line tall. "Google 403:
+   * The caller does not have permission" arrives there as "Goo…", so for a long
+   * time the calendar could only ever say "Failed" — which is exactly the
+   * complaint that produced this strip.
+   *
+   * It sits above the grid, it is empty in most months, and when it is not it
+   * carries the whole reason plus the way in. Deliberately NOT inside a day
+   * cell: a post that failed at 16:50 is a post nobody was watching, and the
+   * one thing it must not do is wait quietly for somebody to hover it.
+   */
+  const failures = useMemo(() => posts.filter((p) => postTone(p) === 'failed'), [posts]);
+  const failedBanner = failures.length > 0 ? (
+    <div style={{
+      background: 'var(--c450a0a)', border: '1px solid #f87171', borderRadius: 12,
+      padding: '10px 12px', marginBottom: 10,
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--cfecaca)', marginBottom: failures.length ? 6 : 0 }}>
+        ⚠ {T(`${failures.length} bài không đăng được`, `${failures.length} post${failures.length > 1 ? 's' : ''} did not go out`)}
+      </div>
+      <div style={{ display: 'grid', gap: 6 }}>
+        {failures.slice(0, 6).map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => onPick(p.id)}
+            style={{
+              display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 8, alignItems: 'baseline',
+              textAlign: 'left', width: '100%', background: 'none', border: 'none',
+              padding: 0, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--cfecaca)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+              {fmtInTz(new Date(p.scheduledAt), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+            </span>
+            <span style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--cfecaca)', minWidth: 0 }}>
+              {/* The sentence that says what to do, when the server could work
+                  one out; otherwise the platform's own words, which are at
+                  least precise enough to search for. */}
+              {p.fix || p.lastError || T('Chưa rõ lý do — bấm để mở bài.', 'No reason recorded — open the post.')}
+              <span style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}> · {T('bấm để mở', 'open')} →</span>
+            </span>
+          </button>
+        ))}
+        {failures.length > 6 && (
+          <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
+            {T(`…và ${failures.length - 6} bài nữa`, `…and ${failures.length - 6} more`)}
+          </div>
+        )}
+      </div>
+    </div>
+  ) : null;
+
   /** The key, as one wrapping row. On a phone it hides behind a tap. */
   const legend = (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 12px', fontSize: 11, color: 'var(--c94a3b8)', alignItems: 'center' }}>
@@ -504,6 +559,7 @@ export function MonthCalendar({
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>{tallies}</div>
+        {failedBanner}
         <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 8 }}>
           {T('Chạm để mở bài · Nhấn giữ để sửa hoặc xoá', 'Tap to open · press and hold to edit or delete')}
         </div>
@@ -620,6 +676,8 @@ export function MonthCalendar({
           {T('Chuột phải vào bài để sửa hoặc xoá', 'Right-click a post to edit or delete it')}
         </div>
       </div>
+
+      {failedBanner}
 
       {/* The key sits ABOVE the grid now. Under it, nobody scrolled to it. */}
       <div style={{ marginBottom: 9 }}>{legend}</div>

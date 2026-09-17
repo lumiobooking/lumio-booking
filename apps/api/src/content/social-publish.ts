@@ -380,6 +380,15 @@ export function explainGbpError(raw: string | null | undefined): string | null {
   // Only speak about failures that came back from Google.
   if (!e.includes('google')) return null;
 
+  // The service may already have asked Google what a 404 meant and appended
+  // its verdict after "⟶" (gbp-post-404.ts). That sentence names the exact
+  // fix and the exact person; a generic guess must not paper over it.
+  const arrow = (raw ?? '').indexOf('⟶');
+  if (arrow >= 0) {
+    const verdict = (raw ?? '').slice(arrow + 1).trim();
+    if (verdict) return verdict;
+  }
+
   // The Cloud project has never been switched on for this API. Nothing about
   // the post or the salon is wrong, and no amount of retrying changes it.
   if (e.includes('has not been used in project') || e.includes('api is disabled') || e.includes('accessnotconfigured')) {

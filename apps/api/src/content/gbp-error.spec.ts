@@ -97,3 +97,15 @@ describe('explainGbpError', () => {
     }
   });
 });
+
+describe('explainGbpError — a diagnosed 404 wins over the generic guess', () => {
+  it('returns the verdict the service appended, not "chọn lại địa điểm"', () => {
+    const raw = 'Google 404: Requested entity was not found. ⟶ Hồ sơ này CHƯA ĐƯỢC XÁC MINH trên Google, nên Google không nhận bài đăng.';
+    const msg = explainGbpError(raw);
+    expect(msg).toContain('CHƯA ĐƯỢC XÁC MINH');
+    expect(msg).not.toContain('chọn lại địa điểm');
+  });
+  it('still guesses when no verdict was appended', () => {
+    expect(explainGbpError('Google 404: Requested entity was not found.')).toContain('chọn lại địa điểm');
+  });
+});

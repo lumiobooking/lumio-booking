@@ -6,6 +6,7 @@ import { SettingsService } from '../settings/settings.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AiUsageService } from '../common/ai-usage.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { explainLocalPost404, bareLocationId } from './gbp-post-404';
 
 // Status is a Prisma enum ('NEW' | 'DRAFTED' | ...). We use plain string literals
 // (assignable to the enum) so this file doesn't hard-depend on the generated enum.
@@ -563,21 +564,71 @@ export class GoogleReviewsService {
         ? { actionType: body.cta.actionType }
         : { actionType: body.cta.actionType, url: body.cta.url };
     }
-    const res = await fetch(`https://mybusiness.googleapis.com/v4/${where.parent}/localPosts`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(45_000),
-    });
-    const text = await res.text().catch(() => '');
-    if (!res.ok) {
+    const send = async (parent: string) => {
+      const res = await fetch(`https://mybusiness.googleapis.com/v4/${parent}/localPosts`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(45_000),
+      });
+      const text = await res.text().catch(() => '');
       let msg = text.slice(0, 200);
-      try { msg = (JSON.parse(text) as { error?: { message?: string } }).error?.message || msg; } catch { /* keep raw */ }
+      if (!res.ok) { try { msg = (JSON.parse(text) as { error?: { message?: string } }).error?.message || msg; } catch { /* keep raw */ } }
+      return { res, text, msg };
+    };
+
+    let { res, text, msg } = await send(where.parent);
+
+    // A 404 here is three different problems wearing one sentence (see
+    // gbp-post-404.ts). Ask Google which, repair the one that is ours, and
+    // hand the person the one that is theirs — instead of "Requested entity
+    // was not found", which sent a salon to reconnect an account that was
+    // never the problem.
+    if (res.status === 404) {
+      const verdict = await this.diagnoseLocalPost404(s, token).catch(() => null);
+      if (verdict?.kind === 'wrong-account') {
+        await this.writeSettings(tenantId, { accountId: verdict.fixAccount });
+        const fixedParent = `${verdict.fixAccount}/${bareLocationId(s.locationId)}`;
+        ({ res, text, msg } = await send(fixedParent));
+        if (!res.ok) throw new BadRequestException(`Google ${res.status}: ${msg} ⟶ ${verdict.message}`);
+      } else {
+        throw new BadRequestException(`Google 404: ${msg}${verdict ? ` ⟶ ${verdict.message}` : ''}`);
+      }
+    } else if (!res.ok) {
       throw new BadRequestException(`Google ${res.status}: ${msg}`);
     }
     let out: { name?: string; searchUrl?: string } = {};
     try { out = JSON.parse(text) as typeof out; } catch { /* empty body */ }
     return { name: out.name ?? null, url: out.searchUrl ?? null };
+  }
+
+  /**
+   * The facts behind a localPosts 404: does the saved location still exist,
+   * may it post at all, and which account really owns it. Three cheap reads
+   * on the newer APIs, run only after a failure — never on the happy path.
+   */
+  private async diagnoseLocalPost404(s: GbrSettings, token: string) {
+    const auth = { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) };
+    const locId = bareLocationId(s.locationId);
+    const r = await fetch(`https://mybusinessbusinessinformation.googleapis.com/v1/${locId}?readMask=name,title,metadata`, auth).catch(() => null);
+    if (!r || r.status === 404) return explainLocalPost404({ locationFound: false });
+    const loc = (r.ok ? await r.json().catch(() => ({})) : {}) as { metadata?: { canOperateLocalPost?: boolean; hasVoiceOfMerchant?: boolean } };
+    const meta = loc.metadata ?? {};
+    if (meta.canOperateLocalPost === false) {
+      return explainLocalPost404({ locationFound: true, canOperateLocalPost: false, hasVoiceOfMerchant: meta.hasVoiceOfMerchant });
+    }
+    // Which account lists this location? The connection flow took accounts[0];
+    // a listing that lives in a location group is under a different one.
+    let owner: string | null = null;
+    const accs = (await fetch('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', auth)
+      .then((x) => x.json()).catch(() => ({}))) as { accounts?: { name?: string }[] };
+    for (const a of (accs.accounts ?? []).slice(0, 10)) {
+      if (!a.name) continue;
+      const ls = (await fetch(`https://mybusinessbusinessinformation.googleapis.com/v1/${a.name}/locations?readMask=name&pageSize=100`, auth)
+        .then((x) => x.json()).catch(() => ({}))) as { locations?: { name?: string }[] };
+      if ((ls.locations ?? []).some((l) => l.name === locId)) { owner = a.name; break; }
+    }
+    return explainLocalPost404({ locationFound: true, canOperateLocalPost: meta.canOperateLocalPost, ownerAccount: owner, storedAccount: s.accountId });
   }
 
   async syncNow(user: AuthenticatedUser) {

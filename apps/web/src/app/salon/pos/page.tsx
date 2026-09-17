@@ -103,7 +103,17 @@ function Register() {
   const pilot = POS_V2_ALL
     || POS_V2_PILOT.includes((user?.email ?? '').toLowerCase())
     || POS_V2_PILOT.includes(user?.tenantId ?? '\u0000');
-  const wide = !isMobile && (uiPref ? uiPref === 'v2' : pilot);
+  // A TABLET IS NOT WIDE. The wide layout pins the ticket at 430px and gives
+  // the toolbar its own column under the catalog; on an iPad (~1024px, less
+  // the menu) that column is ~200px, every button wraps onto its own line, and
+  // the money block — taller than the screen once the customer box, promo,
+  // discount and gift card are in it — is clipped by overflow:hidden with the
+  // pay buttons below the fold. A cashier could not finish a sale. Under
+  // 1180px the register uses the older two-column layout, whose ticket scrolls
+  // and whose toolbar is a row along the top; ?ui=v2 does not override this,
+  // because there is no tablet on which v2 works.
+  const tablet = useIsMobile(1180);
+  const wide = !isMobile && !tablet && (uiPref ? uiPref === 'v2' : pilot);
   // When opened from a booking's "Checkout" button these are pre-filled.
   const [appointmentId] = useState<string | null>(() => params.get('appointmentId'));
   // Settling a whole party on one bill: every appointment in the group.
@@ -143,6 +153,13 @@ function Register() {
   // images, so one shared field showed the cashier the wrong code — or none.
   const [payDetails, setPayDetails] = useState<Record<string, { instructions?: string; qrUrl?: string }>>({});
   const [tab, setTab] = useState<'SERVICE' | 'ADDON' | 'PRODUCT'>('SERVICE');
+  // A phone does not draw an empty tab (see the tab row), so a tab that
+  // emptied out from under the cashier falls back to services rather than
+  // leaving them on a screen with no button to get off it.
+  useEffect(() => {
+    if (!isMobile) return;
+    if ((tab === 'ADDON' && addons.length === 0) || (tab === 'PRODUCT' && products.length === 0)) setTab('SERVICE');
+  }, [isMobile, tab, addons.length, products.length]);
   const [query, setQuery] = useState('');
   const [catFilter, setCatFilter] = useState<string | null>(null); // service category id, null = all
   const [cart, setCart] = useState<Line[]>([]);
@@ -1190,7 +1207,26 @@ function Register() {
     setTimeout(() => iframe.remove(), 60000);
   }
 
-  const headerBar = (
+  /**
+   * THE PHONE HEADER IS ONE ROW.
+   *
+   * The desktop toolbar (print toggle, hold, held, iPad, customer screen,
+   * fullscreen, manage products) wrapped to three rows on a 390px phone and
+   * pushed the first service card below the fold — the screen a cashier opens
+   * to ring somebody up began with five things that are not ringing anybody
+   * up. On a phone the header is the title and the two actions that belong to
+   * a sale in progress: hold this bill, open a held one. The print toggle
+   * moves to the ticket screen, where printing happens; "manage products" is
+   * a menu item, not a checkout control.
+   */
+  const phoneHeader = (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <h1 style={{ fontSize: 18, margin: 0, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t('po.title')}</h1>
+          <button onClick={park} disabled={cart.length === 0} title={lang === 'vi' ? 'Giữ bill hiện tại để phục vụ khách khác' : 'Hold the current ticket to serve someone else'} style={{ ...ghost, padding: '7px 10px', fontSize: 13, opacity: cart.length ? 1 : 0.5, cursor: cart.length ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>⏸ {lang === 'vi' ? 'Giữ' : 'Hold'}</button>
+          <button onClick={() => { loadHeld(); setShowHeld(true); }} style={{ ...ghost, padding: '7px 10px', fontSize: 13, whiteSpace: 'nowrap', ...(heldBills.length ? { borderColor: '#6366f1', color: 'var(--ink-link)' } : null) }}>🧾 {lang === 'vi' ? 'Bill chờ' : 'Held'}{heldBills.length ? ` ${heldBills.length}` : ''}</button>
+        </div>
+  );
+  const headerBar = isMobile ? phoneHeader : (
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, flexShrink: 0,
           marginBottom: wide ? 0 : 16,
@@ -1262,6 +1298,7 @@ function Register() {
         .pos-card { transition: border-color .12s ease, background .12s ease, transform .06s ease; }
         .pos-card:hover { border-color: #6366f1 !important; background: var(--c1e293b) !important; }
         .pos-card:active { transform: scale(.97); }
+        .pos-chips::-webkit-scrollbar { display: none; }
       `}</style>
       {!wide && headerBar}
       {!wide && banners}
@@ -1280,18 +1317,38 @@ function Register() {
         {(!isMobile || mobileView === 'catalog') && (
         <div style={{
           ...ui.card, display: 'flex', flexDirection: 'column',
+          // 20px of card padding on each side of a 390px screen is a tenth of
+          // the width spent on nothing; the cards inside need it more.
+          ...(isMobile ? { padding: 12 } : null),
           maxHeight: isMobile ? 'none' : (wide ? '100%' : 'calc(100dvh - 130px)'),
           ...(wide ? { height: '100%', minHeight: 0, overflow: 'hidden', gridColumn: 1, gridRow: 1 } : null),
         }}>
-          {/* Tabs with counts */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-            <button onClick={() => setTab('SERVICE')} style={tabBtn(tab === 'SERVICE')}>{t('po.tabServices')}<TabCount n={services.length} active={tab === 'SERVICE'} /></button>
-            <button onClick={() => setTab('ADDON')} style={tabBtn(tab === 'ADDON')}>{t('po.tabAddons')}<TabCount n={addons.length} active={tab === 'ADDON'} /></button>
-            <button onClick={() => setTab('PRODUCT')} style={tabBtn(tab === 'PRODUCT')}>{t('po.tabProducts')}<TabCount n={products.length} active={tab === 'PRODUCT'} /></button>
-          </div>
+          {/* Tabs with counts. On a phone an empty tab is a button that leads
+              nowhere — "Sản phẩm 0" took a third of the row to say the shop
+              sells no products — so empty tabs are not drawn there, and when
+              only services remain there is no row at all. */}
+          {(() => {
+            const all: { id: 'SERVICE' | 'ADDON' | 'PRODUCT'; label: string; n: number }[] = [
+              { id: 'SERVICE', label: t('po.tabServices'), n: services.length },
+              { id: 'ADDON', label: t('po.tabAddons'), n: addons.length },
+              { id: 'PRODUCT', label: t('po.tabProducts'), n: products.length },
+            ];
+            const tabs = all.filter((x) => !isMobile || x.id === 'SERVICE' || x.n > 0);
+            if (isMobile && tabs.length <= 1) return null;
+            return (
+              <div style={{ display: 'flex', gap: 6, marginBottom: isMobile ? 10 : 12 }}>
+                {tabs.map((x) => (
+                  <button key={x.id} onClick={() => setTab(x.id)} style={{ ...tabBtn(tab === x.id), ...(isMobile ? { fontSize: 13, padding: '8px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : null) }}>
+                    {x.label}<TabCount n={x.n} active={tab === x.id} />
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Barcode scan: a USB scanner types the code + Enter; the camera button
               opens a live scanner. Both match a product by barcode and add it. */}
+          {(!isMobile || tab === 'PRODUCT') && (
           <div style={{ display: 'flex', gap: 6, marginBottom: scanMsg ? 6 : 12 }}>
             <input
               value={scanInput}
@@ -1302,6 +1359,7 @@ function Register() {
             />
             <button type="button" onClick={() => setShowScanner(true)} style={{ ...ghost, padding: '8px 12px', whiteSpace: 'nowrap' }}>📷 {t('po.scanCamera')}</button>
           </div>
+          )}
           {scanMsg && (
             <div style={{ fontSize: 12, color: scanMsg.ok ? 'var(--ink-good)' : 'var(--ink-warn)', marginBottom: 10 }}>{scanMsg.text}</div>
           )}
@@ -1322,7 +1380,15 @@ function Register() {
 
           {/* Category quick-filter chips (services tab) */}
           {tab === 'SERVICE' && serviceCats.length > 0 && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div className={isMobile ? 'pos-chips' : undefined} style={{
+              display: 'flex', gap: 6, marginBottom: isMobile ? 10 : 12,
+              // Three rows of capitalised category names were most of the
+              // phone's first screen. One row that scrolls sideways is the
+              // same information in a fifth of the height.
+              ...(isMobile
+                ? { flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const, marginLeft: -12, marginRight: -12, paddingLeft: 12, paddingRight: 12, scrollbarWidth: 'none' as const }
+                : { flexWrap: 'wrap' }),
+            }}>
               <button onClick={() => setCatFilter(null)} style={chipSel(catFilter === null)}>{t('po.allCats')}</button>
               {serviceCats.map((c) => (
                 <button key={c.id} onClick={() => setCatFilter(catFilter === c.id ? null : c.id)} style={chipSel(catFilter === c.id)}>{c.name}</button>
@@ -1414,7 +1480,15 @@ function Register() {
             : { maxHeight: 'calc(100dvh - 96px)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }),
         }}>
           {isMobile && (
-            <button onClick={() => setMobileView('catalog')} style={{ ...ghost, marginBottom: 12, padding: '8px 12px', fontSize: 14 }}>← {t('po.backToCatalog')}</button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
+              <button onClick={() => setMobileView('catalog')} style={{ ...ghost, padding: '8px 12px', fontSize: 14 }}>← {t('po.backToCatalog')}</button>
+              {/* The print toggle lives here on a phone — next to the pay
+                  buttons, which is when anybody thinks about the receipt. */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ccbd5e1)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 16, height: 16 }} />
+                🖨️ {t('po.printReception')}
+              </label>
+            </div>
           )}
           {!wide && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 12px' }}>

@@ -222,9 +222,20 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // Sidebar collapsed? Remembered, so a cashier who works on the POS all day
   // keeps the wide screen instead of re-collapsing it on every page.
   const [navHidden, setNavHidden] = useState(false);
+  // An iPad in landscape is ~1024px. With the 230px menu open, the register
+  // has ~790px for a catalog AND a ticket AND a row of buttons, and it does
+  // not fit: the toolbar stacked one button per line and the pay buttons fell
+  // off the bottom of the screen — a cashier with a customer at the counter
+  // could not take the money. So on a tablet the register opens with the menu
+  // folded, unless the person has said otherwise. Their own choice, once made,
+  // is kept on every screen size as before.
+  const tablet = useIsMobile(1180);
   useEffect(() => {
-    try { setNavHidden(window.localStorage.getItem('lumio_nav_hidden') === '1'); } catch { /* ignore */ }
-  }, []);
+    let stored: string | null = null;
+    try { stored = window.localStorage.getItem('lumio_nav_hidden'); } catch { /* ignore */ }
+    if (stored === '1' || stored === '0') { setNavHidden(stored === '1'); return; }
+    setNavHidden(tablet && pathname.startsWith('/salon/pos'));
+  }, [tablet, pathname]);
   const toggleNav = useCallback(() => {
     setNavHidden((v) => {
       const next = !v;

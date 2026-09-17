@@ -8,6 +8,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useIsMobile } from '../../../lib/responsive';
 
 interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null }
 interface WalkIn {
@@ -43,6 +44,7 @@ function waitedMins(iso: string) {
 function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
+  const isMobile = useIsMobile();
   const t = (k: string) => tr(k, lang);
   const [board, setBoard] = useState<Board | null>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -384,8 +386,8 @@ function Inner() {
 
   return (
     <section>
-      <h2 style={{ fontSize: 18, margin: '0 0 2px' }}>{t('wi.title')}</h2>
-      <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>{t('wi.subtitle')}</p>
+      <h2 style={{ fontSize: 18, margin: isMobile ? '0 0 10px' : '0 0 2px' }}>{t('wi.title')}</h2>
+      {!isMobile && <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>{t('wi.subtitle')}</p>}
 
       {error && <div style={ui.banner}>{error}</div>}
 
@@ -516,14 +518,21 @@ function Inner() {
       {staff.length === 0 ? (
         <div style={{ ...ui.card, color: 'var(--c94a3b8)' }}>{t('wi.noStaff')}</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
+        // On a phone the board is a strip that scrolls sideways, not a grid.
+        // Six technicians as 2×3 tiles of 130px each is three screens of
+        // zeros before the waiting list — the part reception actually acts
+        // on. One row of small tiles keeps every name visible in a swipe and
+        // puts the queue directly under the thumb.
+        <div className={isMobile ? 'wi-strip' : undefined} style={isMobile
+          ? { display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16, paddingBottom: 4, marginBottom: 14, scrollbarWidth: 'none' }
+          : { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
           {staff.map((s) => {
             const isNext = s.nextUp;
             const border = isNext ? '#22c55e' : s.busy ? '#f59e0b' : 'var(--c334155)';
             return (
-              <div key={s.id} style={{ background: isNext ? 'rgba(34,197,94,0.10)' : 'var(--c1e293b)', border: `1.5px solid ${border}`, borderRadius: 14, padding: 14, textAlign: 'center' }}>
-                <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
-                <div style={{ fontSize: 34, fontWeight: 800, color: 'var(--cf8fafc)', lineHeight: 1.1, margin: '4px 0' }}>{s.turns}</div>
+              <div key={s.id} style={{ background: isNext ? 'rgba(34,197,94,0.10)' : 'var(--c1e293b)', border: `1.5px solid ${border}`, borderRadius: isMobile ? 12 : 14, padding: isMobile ? '10px 8px' : 14, textAlign: 'center', ...(isMobile ? { flex: '0 0 104px' } : null) }}>
+                <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: isMobile ? 13 : 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
+                <div style={{ fontSize: isMobile ? 24 : 34, fontWeight: 800, color: 'var(--cf8fafc)', lineHeight: 1.1, margin: '4px 0' }}>{s.turns}</div>
                 <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{t('wi.turns')}</div>
                 <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: isNext ? 'var(--ink-good)' : s.busy ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
                   {isNext ? t('wi.nextUp') : s.busy ? t('wi.serving') : t('wi.free')}
@@ -534,7 +543,7 @@ function Inner() {
         </div>
       )}
 
-      <style>{`.wi-serving{transition:border-color .12s ease, transform .06s ease}.wi-serving:hover{border-color: #6366f1}.wi-serving:active{transform:scale(.99)}`}</style>
+      <style>{`.wi-serving{transition:border-color .12s ease, transform .06s ease}.wi-serving:hover{border-color: #6366f1}.wi-serving:active{transform:scale(.99)}.wi-strip::-webkit-scrollbar{display:none}`}</style>
 
       {/* Waiting queue — full width, compact grid (usually short). */}
       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{t('wi.waiting')} ({board?.waiting.length ?? 0})</div>
@@ -941,9 +950,14 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
   }, [token]);
   useEffect(() => { if (open && !s) load(); }, [open, s, load]);
   const url = s ? s.displayUrl.replace(/\/display\/?$/, '/checkin') : '';
+  // On a phone the toolbar wraps and this button lands at the LEFT edge, so
+  // a panel hung off its right edge opened almost entirely off-screen — the
+  // owner saw a grey slab with the last few letters of each line. There the
+  // panel simply drops into the flow, full width, under the toolbar.
+  const isMobile = useIsMobile();
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={isMobile ? { width: '100%' } : { position: 'relative' }}>
       <button
         onClick={() => setOpen((v) => !v)}
         style={{
@@ -960,7 +974,12 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
         <span style={{ color: 'var(--c64748b)' }}>{open ? '▴' : '▾'}</span>
       </button>
       {open && (
-        <div style={{ ...ui.card, position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20, width: 'min(560px, 88vw)', display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{
+          ...ui.card, display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap',
+          ...(isMobile
+            ? { position: 'static', width: '100%', marginTop: 8, boxSizing: 'border-box' as const }
+            : { position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 20, width: 'min(560px, 88vw)' }),
+        }}>
           {/* The QR IS the link — a code to type is the fallback, not the point. */}
           <div style={{ textAlign: 'center' }}>
             {url ? (

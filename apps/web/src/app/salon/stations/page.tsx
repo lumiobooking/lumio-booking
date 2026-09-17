@@ -112,11 +112,11 @@ function Inner() {
           ? 'Dịch vụ có tên hoặc nhóm chứa một trong các "từ khóa" này sẽ TỰ ĐỘNG được xếp vào loại ghế đó — không cần gán tay từng dịch vụ. Chỉ sửa từ khóa khi có ngoại lệ (vd thêm "combo" vào Pedi).'
           : 'A service whose name or category contains any of these keywords is auto-seated at that chair type — no per-service setup. Edit the words only to fix exceptions.'}</p>
         <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr auto', gap: 8, fontSize: 11, color: 'var(--c64748b)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 150px) minmax(0, 1fr) auto', gap: 8, fontSize: 11, color: 'var(--c64748b)' }}>
             <span>{vi ? 'Tên loại' : 'Type name'}</span><span>{vi ? 'Từ khóa (cách nhau bằng dấu phẩy)' : 'Keywords (comma-separated)'}</span><span></span>
           </div>
           {types.map((t) => (
-            <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '150px 1fr auto', gap: 8, alignItems: 'center' }}>
+            <div key={t.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 150px) minmax(0, 1fr) auto', gap: 8, alignItems: 'center' }}>
               <input defaultValue={t.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.name) patchType(t.id, { name: v }); }} style={{ ...ui.input, padding: '7px 10px' }} />
               <input defaultValue={t.keywords ?? ''} onBlur={(e) => { const v = e.target.value; if (v !== (t.keywords ?? '')) patchType(t.id, { keywords: v }); }} placeholder={vi ? 'vd: pedi, chân, foot, spa' : 'e.g. pedi, foot, spa'} style={{ ...ui.input, padding: '7px 10px' }} />
               <button onClick={() => delType(t.id)} aria-label="delete type" style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 16, padding: '0 6px' }}>×</button>

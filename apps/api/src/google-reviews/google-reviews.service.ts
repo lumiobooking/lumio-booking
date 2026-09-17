@@ -94,6 +94,33 @@ export const AUTO_REPLY_DAILY_CAP = 20;
  */
 export const DRAFT_BACKFILL_PER_SYNC = 10;
 
+/**
+ * How old a review may be and still get a suggestion written for it by itself.
+ *
+ * Every suggestion is a model call, and on 17 September one day's meter read
+ * 1,713 of them — $1.49 — with nobody in any salon having asked for one. They
+ * were the first sync of freshly-connected locations: a salon that has never
+ * replied to anything arrives with hundreds of unanswered reviews going back
+ * years, and the "new row" path drafted a reply for every one of them, unbounded
+ * (only the backfill path had a cap). Nobody answers a review from 2023, and a
+ * suggestion nobody reads is money spent on nothing.
+ *
+ * So a review older than this gets its status and its place in the list, but no
+ * automatic draft. The "↻ Regenerate" button on the card still writes one on
+ * demand — one call, for one review, because a person asked.
+ */
+export const DRAFT_MAX_AGE_DAYS = 45;
+
+/** True when a review is recent enough to be worth a draft nobody asked for.
+ *  No creation date → no automatic draft: an age that cannot be checked is
+ *  treated as old, never as new (that is the direction the money flows). */
+export function draftWorthWriting(reviewCreatedAt: Date | null | undefined, now = new Date()): boolean {
+  if (!reviewCreatedAt) return false;
+  const t = reviewCreatedAt.getTime();
+  if (Number.isNaN(t)) return false;
+  return now.getTime() - t <= DRAFT_MAX_AGE_DAYS * 86_400_000;
+}
+
 /** What Google hands back in one page of reviews. Its own maximum is 50. */
 export const GBR_PAGE_SIZE = 50;
 
@@ -751,9 +778,17 @@ export class GoogleReviewsService {
         //
         // The status does not change. NEEDS_ATTENTION still never auto-posts;
         // it now arrives with a starting point that a person edits and sends.
-        const draft = (status === 'DRAFTED' || status === 'NEEDS_ATTENTION')
+        //
+        // Recent reviews only, and a bounded number per tick — see
+        // DRAFT_MAX_AGE_DAYS. The rest of a backlog is picked up by the
+        // backfill below on later ticks, and old ones on demand.
+        const wantsNew = (status === 'DRAFTED' || status === 'NEEDS_ATTENTION')
+          && draftWorthWriting(base.reviewCreatedAt)
+          && backfilled < DRAFT_BACKFILL_PER_SYNC;
+        const draft = wantsNew
           ? await this.generateReply(stars, r.comment || '', s, salonName, r.reviewer?.displayName || '', tenantId)
           : null;
+        if (wantsNew) backfilled++;
         const created = await this.prisma.googleReview.create({
           data: { tenantId, googleReviewId: gid, ...base, status, draftReply: draft, replyText: already ? r.reviewReply?.comment || null : null, repliedAt: repliedOn },
         });
@@ -780,7 +815,7 @@ export class GoogleReviewsService {
         const wantsDraft = needsDraftBackfill(
           existing as unknown as { status?: string | null; draftReply?: string | null; repliedAt?: Date | null },
           already,
-        );
+        ) && draftWorthWriting(base.reviewCreatedAt);
         // Bounded: a salon arriving with two hundred unanswered reviews would
         // otherwise fire two hundred model calls in one tick. The rest are
         // picked up fifteen minutes later, and the backlog drains on its own.

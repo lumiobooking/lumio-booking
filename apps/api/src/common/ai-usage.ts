@@ -79,7 +79,11 @@ export const AUTOMATIC: Record<AiFeature, boolean> = {
   'trade-profile': true,
   'profile-scan': true,
   'gbp-screen': true,
-  'review-reply': false,
+  // Drafts are written by the fifteen-minute review sync for every connected
+  // salon — the "↻ Regenerate" button is the rare exception. Listing this as
+  // "somebody pressed it" put $1.49 of a $1.81 day under "by the user" when
+  // no user had touched anything.
+  'review-reply': true,
   'chat-summary': false,
   'bot-facts': false,
   'greeting': false,

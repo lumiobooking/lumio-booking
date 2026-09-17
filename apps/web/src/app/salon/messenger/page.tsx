@@ -1080,7 +1080,7 @@ function Inner() {
             )}
           </>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10, marginBottom: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 10, marginBottom: 12 }}>
           <div>
             <label style={ui.label}>{lang === 'vi' ? 'Tên nhân viên (bot xưng tên này)' : 'Staff name (the bot goes by it)'}</label>
             <input value={c.agentName} placeholder={lang === 'vi' ? 'vd: Vy' : 'e.g. Amy'}

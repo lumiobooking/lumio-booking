@@ -1,10 +1,13 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, MessageEvent, Param, Patch, Post, Sse } from '@nestjs/common';
+import { Observable, interval, merge } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { liveEvents } from '../common/live-events';
 import { UserRole } from '@prisma/client';
 import { IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min, IsBoolean } from 'class-validator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthenticatedUser } from '../common/tenant/tenant-context';
+import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { WalkinsService } from './walkins.service';
 
 class AddWalkInDto {
@@ -65,6 +68,29 @@ export class WalkinsController {
     return this.walkins.board(user);
   }
 
+  /**
+   * A nudge stream for the board: one line whenever this salon's walk-ins
+   * change (a phone check-in, a "Giao", a "Huỷ"...), so the screen fetches
+   * the board NOW instead of on its next poll. Carries no data — see
+   * common/live-events.ts. A ping every 25s keeps proxies from closing an
+   * idle stream.
+   */
+  @Sse('events')
+  events(@CurrentUser() user: AuthenticatedUser): Observable<MessageEvent> {
+    const tenantId = resolveTenantScope(user) ?? '';
+    return merge(
+      liveEvents.stream(tenantId).pipe(map((e) => ({ data: e }))),
+      interval(25_000).pipe(map(() => ({ data: { topic: 'ping', at: Date.now() } }))),
+    );
+  }
+
+  /** Run a change, then tell every open board of this salon to look again. */
+  private async nudge<T>(user: AuthenticatedUser, id: string | null, work: Promise<T>): Promise<T> {
+    const r = await work;
+    liveEvents.emit(resolveTenantScope(user), 'walkins', id ?? undefined);
+    return r;
+  }
+
   @Get('my')
   myChair(@CurrentUser() user: AuthenticatedUser) {
     return this.walkins.myChair(user);
@@ -77,42 +103,42 @@ export class WalkinsController {
 
   @Post()
   add(@CurrentUser() user: AuthenticatedUser, @Body() dto: AddWalkInDto) {
-    return this.walkins.add(user, dto);
+    return this.nudge(user, null, this.walkins.add(user, dto));
   }
 
   @Patch(':id/assign')
   assign(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AssignDto) {
-    return this.walkins.assign(user, id, dto.staffId);
+    return this.nudge(user, id, this.walkins.assign(user, id, dto.staffId));
   }
 
   @Patch(':id/station')
   setStation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: StationDto) {
-    return this.walkins.setStation(user, id, dto.station);
+    return this.nudge(user, id, this.walkins.setStation(user, id, dto.station));
   }
 
   @Patch(':id/chair')
   moveToStation(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ChairDto) {
-    return this.walkins.moveToStation(user, id, dto.stationId);
+    return this.nudge(user, id, this.walkins.moveToStation(user, id, dto.stationId));
   }
 
   @Patch(':id/reactivate')
   reactivate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.walkins.reactivate(user, id);
+    return this.nudge(user, id, this.walkins.reactivate(user, id));
   }
 
   @Patch(':id/wait-payment')
   waitPayment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.walkins.waitPayment(user, id);
+    return this.nudge(user, id, this.walkins.waitPayment(user, id));
   }
 
   @Post('seat-appointment/:id')
   seatAppointment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.walkins.seatAppointment(user, id);
+    return this.nudge(user, id, this.walkins.seatAppointment(user, id));
   }
 
   @Post(':id/services')
   addService(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AddServiceDto) {
-    return this.walkins.addService(user, id, dto.serviceId, dto.staffId, dto.serviceIds, dto.extraMinutes);
+    return this.nudge(user, id, this.walkins.addService(user, id, dto.serviceId, dto.staffId, dto.serviceIds, dto.extraMinutes));
   }
 
   // Edit one line in place: service, price, minutes or tech.
@@ -123,26 +149,26 @@ export class WalkinsController {
     @Param('lineId') lineId: string,
     @Body() dto: UpdateLineDto,
   ) {
-    return this.walkins.updateService(user, id, lineId, dto);
+    return this.nudge(user, id, this.walkins.updateService(user, id, lineId, dto));
   }
 
   @Delete(':id/services/:lineId')
   removeService(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('lineId') lineId: string) {
-    return this.walkins.removeService(user, id, lineId);
+    return this.nudge(user, id, this.walkins.removeService(user, id, lineId));
   }
 
   @Patch(':id/done')
   done(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.walkins.done(user, id);
+    return this.nudge(user, id, this.walkins.done(user, id));
   }
 
   @Patch(':id/cancel')
   cancel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.walkins.cancel(user, id);
+    return this.nudge(user, id, this.walkins.cancel(user, id));
   }
 
   @Delete(':id')
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.walkins.remove(user, id);
+    return this.nudge(user, id, this.walkins.remove(user, id));
   }
 }

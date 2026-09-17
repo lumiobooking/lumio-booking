@@ -8,6 +8,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useLiveEvents } from '../../../lib/useLiveEvents';
 import { useIsMobile } from '../../../lib/responsive';
 
 interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null }
@@ -42,7 +43,7 @@ function waitedMins(iso: string) {
 }
 
 function Inner() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { lang } = useLang();
   const isMobile = useIsMobile();
   const t = (k: string) => tr(k, lang);
@@ -61,6 +62,14 @@ function Inner() {
   // both screens in step with no pairing, no login and no network.
   const [screenOn, setScreenOn] = useState(false);
   const chRef = useRef<BroadcastChannel | null>(null);
+  // Every message carries this salon's id: the channel is shared by every tab
+  // of the browser, and an agency keeps several salons open at once — the
+  // screen opened here for one salon used to greet customers as another.
+  const tenantRef = useRef(user?.tenantId ?? '');
+  tenantRef.current = user?.tenantId ?? '';
+  const post = useCallback((msg: Record<string, unknown>) => {
+    chRef.current?.postMessage(tenantRef.current ? { ...msg, tenant: tenantRef.current } : msg);
+  }, []);
   const winRef = useRef<Window | null>(null);
   const [pick, setPick] = useState<Record<string, string>>({});
   const [currency, setCurrency] = useState('USD');
@@ -104,6 +113,11 @@ function Inner() {
   // app and self check-ins from a phone — so it refreshes itself often enough
   // that nobody ever reaches for the reload button.
   useLiveRefresh(load, 5000);
+  // And it is told the moment something changes — a customer's phone
+  // check-in, a "Giao" from another desk — so it fetches NOW rather than up
+  // to five seconds later with the customer standing at the counter. The
+  // poll above stays as the safety net when the stream is down.
+  useLiveEvents('/walkins/events', token, () => { void load(); });
 
   // Keep the newest form state in a ref so the channel handler (registered once)
   // always reads current values instead of the ones captured at mount.
@@ -120,7 +134,7 @@ function Inner() {
 
   /** The salon's real welcome: cover image, logo, name and the review QR. */
   const sendWelcome = useCallback(() => {
-    chRef.current?.postMessage({
+    post({
       type: 'state',
       state: {
         status: 'idle', checkinExit: true, currency: 'USD', lines: [],
@@ -131,7 +145,7 @@ function Inner() {
         reviewUrl: reviewUrlRef.current || undefined,
       },
     });
-  }, []);
+  }, [post]);
   // True while this page is the one driving the customer screen, so it only
   // hands the screen back when it actually had it.
   const ownsScreenRef = useRef(false);
@@ -151,7 +165,7 @@ function Inner() {
     // wiped the salon's welcome image and the Google review QR. Tell the display
     // to restore the register's own view instead.
     if (mode === 'idle') {
-      chRef.current?.postMessage({
+      post({
         type: 'checkinRelease',
         // What to show if no register is open to replay its own state: the real
         // welcome screen, with the salon's image and the review QR — not the
@@ -168,7 +182,7 @@ function Inner() {
       return;
     }
     const { form: f, pickedIds: p } = liveRef.current;
-    chRef.current?.postMessage({
+    post({
       type: 'state',
       // Same envelope the register uses, so the customer display it is already
       // showing simply switches mode — no second window to open.
@@ -194,14 +208,16 @@ function Inner() {
         },
       },
     });
-  }, [salonName, salonLogo, services]);
+  }, [salonName, salonLogo, services, post]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
     const ch = new BroadcastChannel('lumio-pos-display');
     chRef.current = ch;
     ch.onmessage = (e: MessageEvent) => {
-      const msg = e.data as { type: string; payload?: unknown };
+      const msg = e.data as { type: string; payload?: unknown; tenant?: string };
+      // A screen or register of another salon in this same browser — not ours.
+      if (msg?.tenant && tenantRef.current && msg.tenant !== tenantRef.current) return;
       // The display asks for state when it loads (and the register answers the
       // same message) — only reply while our form is actually open.
       // A display that just loaded asks whoever is around for something to show.
@@ -265,11 +281,13 @@ function Inner() {
     setThanksName((fresh[0].customerName || '').split(' ')[0] || '');
   }, [board, qrOn]);
 
-  // Thank-you sits for a moment, then the QR closes itself and the screen goes
-  // back to the salon's welcome — ready for the next customer, no staff action.
+  // Thank-you sits for a moment, then the QR comes straight back for the next
+  // customer in line — no staff action. (It used to drop back to the welcome
+  // picture, so the second customer had nothing to scan until someone at the
+  // desk pressed the button again.)
   useEffect(() => {
     if (thanksName === null) return;
-    const id = window.setTimeout(() => { setThanksName(null); setQrOn(false); }, 6000);
+    const id = window.setTimeout(() => setThanksName(null), 6000);
     return () => window.clearTimeout(id);
   }, [thanksName]);
 
@@ -282,14 +300,14 @@ function Inner() {
 
   // Say hello on mount too: a display window opened before this page has already
   // sent its own 'request' and would otherwise never hear from us.
-  useEffect(() => { chRef.current?.postMessage({ type: 'request' }); }, []);
+  useEffect(() => { post({ type: 'request' }); }, [post]);
   useEffect(() => { checkinUrlRef.current = checkinUrl; }, [checkinUrl]);
   useEffect(() => { qrTextRef.current = { title: t('wi.qrScanTitle'), hint: t('wi.qrScanHint') }; }, [t]);
 
   // Leaving this page (to POS, calendar, anywhere) hands the customer screen
   // back to whoever else drives it. Without this the monitor would sit on the
   // check-in form while the cashier is ringing someone up.
-  useEffect(() => () => { chRef.current?.postMessage({ type: 'checkinRelease' }); }, []);
+  useEffect(() => () => { post({ type: 'checkinRelease' }); }, [post]);
 
   // The QR the customer scans comes from the salon's own display pairing code.
   useEffect(() => {
@@ -303,8 +321,16 @@ function Inner() {
   // already open on the second monitor instead of spawning another one.
   function openCustomerScreen() {
     if (typeof window === 'undefined') return;
-    winRef.current = window.open('/pos-display', 'lumioCustomerDisplay', 'width=1100,height=760');
+    // `?t=` binds the screen to THIS salon; same window name as the register,
+    // so an open screen is re-used (and re-bound) instead of a second one.
+    const q = tenantRef.current ? `?t=${encodeURIComponent(tenantRef.current)}` : '';
+    winRef.current = window.open(`/pos-display${q}`, 'lumioCustomerDisplay', 'width=1100,height=760');
     setScreenOn(true);
+    // Opened from the walk-in board, the screen is there for customers to
+    // check themselves in — so it opens ON the check-in QR, not on a welcome
+    // picture the owner then has to click past ("I opened the customer
+    // screen and saw nothing"). The form, when open, keeps priority.
+    if (!liveRef.current.formOpen && checkinUrl) setQrOn(true);
     // If the window was already open, window.open only focuses it and no
     // 'request' is sent — push the welcome so it is never left on the fallback.
     window.setTimeout(() => { if (!liveRef.current.formOpen && !liveRef.current.qrOn) sendWelcome(); }, 500);
@@ -1002,7 +1028,7 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
             <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 6 }}>{t('wi.kioskScan')}</div>
           </div>
           <div style={{ flex: 1, minWidth: 190 }}>
-            <div style={{ fontSize: 10.5, color: 'var(--c94a3b8)', letterSpacing: '0.1em', fontWeight: 700 }}>CODE</div>
+            <div style={{ fontSize: 10.5, color: 'var(--c94a3b8)', letterSpacing: '0.1em', fontWeight: 700 }}>{t('wi.kioskCodeLabel')}</div>
             <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 3, color: 'var(--cc7d2fe)', marginBottom: 8 }}>{s?.pairCode ?? '······'}</div>
             <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55, marginBottom: 10 }}>{t('wi.kioskHow')}</div>
             {url && <div style={{ fontSize: 12, color: 'var(--c818cf8)', wordBreak: 'break-all', fontWeight: 600, marginBottom: 10 }}>{url}</div>}
@@ -1019,7 +1045,7 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
             >🖥️ {qrOn ? t('wi.qrHide') : t('wi.qrOnScreen')}</button>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button
-                onClick={() => { if (url) printQr(url, t('wi.kioskScan')); }}
+                onClick={() => { if (url) printQr(url, t('wi.kioskScan'), { hint: t('wi.qrScanHint'), print: t('wi.kioskPrint'), close: t('wi.printClose') }); }}
                 disabled={!url}
                 style={{ border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: url ? 'pointer' : 'not-allowed', opacity: url ? 1 : 0.5 }}
               >🖨️ {t('wi.kioskPrint')}</button>
@@ -1032,7 +1058,9 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
                   if (!token) return;
                   const ok = window.confirm(t('wi.kioskNewConfirm'));
                   if (!ok) return;
-                  try { setS(await apiFetch('/display/rotate', { method: 'POST', token })); } catch { /* ignore */ }
+                  // The route is /display/session/rotate — the old '/display/rotate'
+                  // was a 404 swallowed by this catch, so the button did nothing.
+                  try { setS(await apiFetch('/display/session/rotate', { method: 'POST', token })); } catch { /* ignore */ }
                 }}
                 style={{ border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}
               >{t('wi.kioskNew')}</button>
@@ -1045,17 +1073,32 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
 }
 
 /** Open a clean print sheet with just the QR — for a counter card or door sign. */
-function printQr(url: string, title: string) {
+function printQr(url: string, title: string, labels: { hint: string; print: string; close: string }) {
   const src = `https://api.qrserver.com/v1/create-qr-code/?size=900x900&margin=2&data=${encodeURIComponent(url)}`;
   const w = window.open('', '_blank', 'width=620,height=780');
   if (!w) return;
-  w.document.write(`<!doctype html><meta charset="utf-8"><title>${title}</title>
-    <style>body{margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;
-      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color: var(--c0f172a);text-align:center}
-      h1{font-size:34px;margin:0 0 10px}p{font-size:17px;color: var(--c475569);margin:0 0 26px}
-      img{width:340px;height:340px}</style>
-    <h1>${title}</h1><p>Scan with your phone camera</p><img src="${src}" alt="">`);
+  // On a phone this opens as a full tab with no window chrome of its own, and
+  // iOS Safari's print dialog on top of it left the owner with no visible way
+  // out ("I pressed Print on my phone and could not get back"). So the sheet
+  // carries its own Print and Close buttons — hidden on paper — and only a
+  // desktop, where the dialog is a modal you can cancel, prints by itself.
+  const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+  const touch = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (window.matchMedia?.('(pointer: coarse)').matches ?? false);
+  w.document.write(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
+    <style>
+      body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#0f172a;text-align:center;background:#fff;padding:24px;box-sizing:border-box}
+      h1{font-size:clamp(24px,6vw,34px);margin:0 0 8px}p{font-size:clamp(14px,3.8vw,17px);color:#475569;margin:0 0 22px}
+      img{width:min(340px,78vw);height:auto;aspect-ratio:1/1}
+      .bar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:#fff;border-top:1px solid #e2e8f0}
+      .bar button{flex:1;font:inherit;font-size:16px;font-weight:700;padding:14px;border-radius:12px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;cursor:pointer}
+      .bar button.go{background:#4f46e5;border-color:#4f46e5;color:#fff}
+      @media print{.bar{display:none}body{padding:0}}
+    </style>
+    <h1>${esc(title)}</h1><p>${esc(labels.hint)}</p><img src="${src}" alt="">
+    <div class="bar"><button type="button" onclick="window.close()">✕ ${esc(labels.close)}</button><button type="button" class="go" onclick="window.print()">🖨️ ${esc(labels.print)}</button></div>`);
   w.document.close();
+  if (touch) return;
   const go = () => { try { w.focus(); w.print(); } catch { /* user cancelled */ } };
   w.onload = () => setTimeout(go, 200);
   setTimeout(go, 900);

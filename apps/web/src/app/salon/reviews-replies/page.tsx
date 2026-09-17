@@ -53,6 +53,11 @@ const DICT: Record<string, { vi: string; en: string }> = {
     vi: 'Đánh giá tốt: soạn sẵn rồi tự đăng sau 30 phút nếu bạn không sửa. Đánh giá xấu: cũng soạn sẵn câu tham khảo, nhưng chờ bạn duyệt — duyệt ngay tại đây, không cần mở Google.',
     en: 'Good reviews: drafted, then posted after 30 minutes unless you change them. Bad ones: also drafted, but they wait for you — approve right here, no need to open Google.',
   },
+  setup: { vi: 'Kết nối & cài đặt', en: 'Connection & settings' },
+  setupOk: { vi: 'đang chạy', en: 'running' },
+  setupTodo: { vi: 'cần hoàn tất', en: 'needs finishing' },
+  setupHint: { vi: 'Google, địa điểm, quy tắc tự trả lời, giọng văn', en: 'Google, location, auto-reply rule, tone' },
+  inboxEmptyHint: { vi: 'Không có gì cần bạn xử lý ở mục này.', en: 'Nothing waiting for you here.' },
   connectTitle: { vi: 'Kết nối Google Business Profile', en: 'Connect Google Business Profile' },
   connectDesc: { vi: 'Đăng nhập bằng tài khoản Google quản lý hồ sơ tiệm để hệ thống đọc và trả lời đánh giá.', en: 'Sign in with the Google account that manages this salon so we can read and reply to reviews.' },
   connectBtn: { vi: 'Kết nối Google', en: 'Connect Google' },
@@ -210,6 +215,11 @@ function Inner() {
     return () => clearInterval(id);
   }, []);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // THE WORK COMES FIRST. This screen used to open on two screens' worth of
+  // connection and settings, with the reviews — the reason anyone comes here
+  // every day — at the very bottom. Set-up is done once; it now folds away
+  // under the inbox and only opens itself while something is still missing.
+  const [setupOpen, setSetupOpen] = useState(false);
   /** Landed in the last day — what "mới" means on this screen. */
   const isFresh = (iso: string | null | undefined) =>
     Boolean(iso) && now - new Date(iso as string).getTime() < 24 * 3600 * 1000;
@@ -422,211 +432,6 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
       {!s.clientConfigured && <div style={{ ...ui.banner, background: 'var(--c78350f)', color: 'var(--cfed7aa)' }}>{t('notConfigured')}</div>}
 
-      {/* Connection */}
-      <div style={{ ...ui.card, marginBottom: 16 }}>
-        {!s.connected ? (
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('connectTitle')}</div>
-            <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5, margin: '0 0 14px', lineHeight: 1.5 }}>{t('connectDesc')}</p>
-            <button onClick={connect} disabled={!s.clientConfigured} style={{ ...ui.primaryBtn, opacity: s.clientConfigured ? 1 : 0.5 }}>{t('connectBtn')}</button>
-            <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '12px 0 0' }}>{t('pendingApproval')}</p>
-          </div>
-        ) : (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 14, color: 'var(--ce2e8f0)' }}>
-                <span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>● {t('connected')}</span>
-                {s.connectedEmail ? <span style={{ color: 'var(--c94a3b8)' }}> · {s.connectedEmail}</span> : null}
-              </div>
-              <button onClick={disconnect} style={ui.dangerBtn}>{t('disconnect')}</button>
-            </div>
-
-            {/* Location picker — always available (even after one is set) + searchable,
-                since an agency account can manage many salons. */}
-            <div style={{ marginTop: 14, borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 8 }}>
-                {t('pickLocation')}
-                {s.hasLocation && <span style={{ color: 'var(--ink-good)', fontWeight: 500, marginLeft: 8, fontSize: 12.5 }}>✓ {t('locSet')}</span>}
-              </div>
-              {s.hasLocation && s.locationTitle && (
-                <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginBottom: 10 }}>📍 <strong>{s.locationTitle}</strong>{saved && <span style={{ color: 'var(--ink-good)', marginLeft: 8, fontSize: 12 }}>{t('saved')}</span>}</div>
-              )}
-              {locations === null ? (
-                <button onClick={loadLocations} style={ui.primaryBtn}>{s.hasLocation ? t('changeLoc') : t('loadLocations')}</button>
-              ) : locations.length === 0 ? (
-                <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('noLocations')}</p>
-              ) : (
-                <div>
-                  <input value={locFilter} onChange={(e) => setLocFilter(e.target.value)} placeholder={t('filterLoc')} style={{ ...ui.input, marginBottom: 8, maxWidth: 420 }} />
-                  {/* Rows, not a <select>: a tap is a choice, the chosen row is
-                      the only highlighted one, and the button below names what
-                      it will save — three places that now all say the same thing. */}
-                  <div role="listbox" style={{ maxWidth: 560, maxHeight: 300, overflowY: 'auto', border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)' }}>
-                    {filteredLocs.length === 0 && (
-                      <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--c64748b)' }}>—</div>
-                    )}
-                    {filteredLocs.map((l) => {
-                      const on = l.name === pickLoc;
-                      return (
-                        <button
-                          key={l.name}
-                          type="button"
-                          role="option"
-                          aria-selected={on}
-                          onClick={() => setPickLoc(l.name)}
-                          style={{
-                            display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
-                            padding: '10px 14px', border: 'none', borderTop: '1px solid var(--line)',
-                            borderLeft: `4px solid ${on ? '#6366f1' : 'transparent'}`,
-                            background: on ? 'rgba(99,102,241,.16)' : 'transparent',
-                          }}
-                        >
-                          <div style={{ fontSize: 13.5, fontWeight: on ? 800 : 600, color: 'var(--ce2e8f0)' }}>{on ? '✓ ' : ''}{l.title}</div>
-                          {l.address && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>{l.address}</div>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-                    <button onClick={saveLocation} disabled={!pickLoc || saving} style={{ ...ui.primaryBtn, opacity: pickLoc ? 1 : 0.5 }}>
-                      {pickLoc ? `${t('saveLocation')}: ${pickedTitle}` : t('saveLocation')}
-                    </button>
-                    {!pickLoc && <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{t('pickFirst')}</span>}
-                  </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 6 }}>{filteredLocs.length}/{locations.length} {t('locCount')}</div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Rule + settings */}
-      <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('settingsTitle')}</div>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
-          <input type="checkbox" checked={s.enabled} onChange={(e) => saveSettings({ enabled: e.target.checked })} />
-          {t('enable')}
-        </label>
-
-        {/* Rule */}
-        <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.9 }}>
-          <div>
-            {t('ruleAuto')}{' '}
-            <select value={s.autoMinStars} onChange={(e) => saveSettings({ autoMinStars: Number(e.target.value) })} style={selStyle}>
-              <option value={4}>4</option><option value={5}>5</option>
-            </select>{' '}{t('ruleStarUp')}{' '}
-            <span style={{ color: 'var(--ink-good)' }}>→ {t(s.approveFirst ? 'fDraft' : 'ruleAutoPost')}</span>
-          </div>
-          <div>
-            {t('ruleAlert')}{' '}
-            <select value={s.alertMaxStars} onChange={(e) => saveSettings({ alertMaxStars: Number(e.target.value) })} style={selStyle}>
-              <option value={2}>2</option><option value={3}>3</option>
-            </select>{' '}{t('ruleStarDown')} <span style={{ color: 'var(--ink-warn)' }}>→ {t('fNeeds')}</span>
-          </div>
-        </div>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
-          <input type="checkbox" checked={s.approveFirst} onChange={(e) => saveSettings({ approveFirst: e.target.checked })} />
-          {t('approveFirst')}
-        </label>
-        <div style={{
-          fontSize: 12.5, lineHeight: 1.6, marginTop: -6, marginBottom: 12, paddingLeft: 24,
-          color: s.approveFirst ? 'var(--c94a3b8)' : 'var(--c6ee7b7)',
-        }}>
-          {t(s.approveFirst ? 'approveOn' : 'approveOff')}
-        </div>
-        {/* A switch that silently does nothing is worse than a missing switch.
-            The block is absent on older builds, which is exactly what makes it
-            a reliable test of what is answering. */}
-        {!s.autoReply?.live && (
-          <div style={{
-            fontSize: 12.5, lineHeight: 1.6, marginTop: -4, marginBottom: 12, padding: '10px 12px',
-            borderRadius: 9, background: 'var(--wash-amber)', border: '1px solid var(--cf59e0b)', color: 'var(--cfcd34d)',
-          }}>
-            ⚠ {t('apiOld')}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 220px' }}>
-            <label style={ui.label}>{t('tone')}</label>
-            <select value={s.tone} onChange={(e) => saveSettings({ tone: e.target.value })} style={ui.input}>
-              <option value="warm">{t('toneWarm')}</option>
-              <option value="professional">{t('tonePro')}</option>
-              <option value="short">{t('toneShort')}</option>
-            </select>
-          </div>
-          <div style={{ flex: '2 1 300px' }}>
-            <label style={ui.label}>{t('alertEmail')}</label>
-            <input value={s.alertEmail} placeholder={t('alertEmailPh')} onChange={(e) => setS({ ...s, alertEmail: e.target.value })}
-              onBlur={(e) => saveSettings({ alertEmail: e.target.value })} style={ui.input} />
-          </div>
-        </div>
-
-        <div style={{ marginTop: 14 }}>
-          <label style={ui.label}>
-            {t('aiInstr')}{' '}
-            {s.aiEnabled
-              ? <span style={{ color: 'var(--ink-good)' }}>· ✨ {t('aiOn')}</span>
-              : <span style={{ color: 'var(--ink-warn)' }}>· {t('aiOff')}</span>}
-          </label>
-          <textarea value={s.aiInstruction} placeholder={t('aiInstrPh')} rows={2}
-            onChange={(e) => setS({ ...s, aiInstruction: e.target.value })}
-            onBlur={(e) => saveSettings({ aiInstruction: e.target.value })}
-            style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
-          <div style={{ marginTop: 8 }}>
-            <button onClick={testAi} disabled={testing} style={{ ...ghostBtn, padding: '7px 12px', fontSize: 12.5 }}>{testing ? t('testingAi') : t('testAi')}</button>
-          </div>
-          {aiTest && (
-            <div style={{ marginTop: 10, background: 'var(--c0f172a)', border: `1px solid ${aiTest.ok ? 'var(--c14532d)' : 'var(--c7f1d1d)'}`, borderRadius: 10, padding: 12 }}>
-              <div style={{ fontSize: 12, color: aiTest.ok ? 'var(--ink-good)' : 'var(--ink-warn)', fontWeight: 700, marginBottom: 6 }}>
-                {aiTest.ok ? `✨ ${t('testOk')}` : `⚠️ ${t('testFallback')}`}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('testSample')}: &ldquo;{aiTest.sample}&rdquo;</div>
-              <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>💬 {aiTest.reply}</div>
-              {aiTest.error && <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', marginTop: 6 }}>{aiTest.error}</div>}
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
-          <button onClick={sync} disabled={syncing || !s.connected || !s.hasLocation} style={{ ...ui.primaryBtn, opacity: (s.connected && s.hasLocation) ? 1 : 0.5 }}>
-            {syncing ? t('syncing') : t('syncNow')}
-          </button>
-          <button onClick={resync} disabled={syncing || !s.connected || !s.hasLocation} title={t('resyncHint')}
-            style={{ ...ghostBtn, padding: '9px 12px', fontSize: 12.5, opacity: (s.connected && s.hasLocation) ? 1 : 0.5 }}>
-            {t('resyncFresh')}
-          </button>
-          {saving ? <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>…</span> : saved ? <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>{t('saved')}</span> : null}
-          <span style={{ color: 'var(--c64748b)', fontSize: 12, marginLeft: 'auto' }}>
-            {t('lastSync')}: {s.lastSyncAt ? fmtInTz(s.lastSyncAt, { dateStyle: 'short', timeStyle: 'short' }) : t('never')}
-          </span>
-        </div>
-        {/* A DEAD SYNC LOOKED EXACTLY LIKE A LIVE ONE.
-            The screen said "auto-syncs every 15 minutes" in green and printed a
-            timestamp next to it, and the timestamp had been fourteen hours old
-            for half a day. Nothing on the page connected those two facts, so
-            the honest reading of the screen was "it is working" — which is the
-            worst thing a status line can do. The green promise now only shows
-            while the promise is being kept. */}
-        {s.enabled && s.hasLocation && (() => {
-          const age = s.lastSyncAt ? Date.now() - new Date(s.lastSyncAt).getTime() : Infinity;
-          const stale = age > 60 * 60 * 1000;
-          return stale ? (
-            <div style={{
-              fontSize: 12.5, lineHeight: 1.6, marginTop: 10, padding: '10px 12px', borderRadius: 9,
-              background: 'var(--wash-red)', border: '1px solid var(--cf87171)', color: 'var(--cf87171)',
-            }}>
-              ⚠ {t('syncStale')}
-            </div>
-          ) : (
-            <div style={{ fontSize: 11.5, color: 'var(--ink-good)', marginTop: 8 }}>🔄 {t('autoSyncNote')}</div>
-          );
-        })()}
-      </div>
-
       {/* Inbox */}
       <div style={{ ...ui.card }}>
         {/* WHAT THE SALON ACTUALLY HAS, BEFORE ANY TAB COUNT.
@@ -718,7 +523,7 @@ function Inner() {
                         line under it says what leaving it alone will do. */}
                     {r.autoPostAt && countdown(r.autoPostAt) && (
                       <div style={{
-                        display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 4, marginBottom: 8,
+                        display: 'flex', alignItems: 'flex-start', gap: '4px 9px', marginTop: 4, marginBottom: 8, flexWrap: 'wrap',
                         padding: '10px 12px', borderRadius: 9,
                         background: 'var(--c1e1b4b)', border: '1px solid var(--c312e81)',
                       }}>
@@ -812,6 +617,242 @@ function Inner() {
           </>
         )}
       </div>
+
+      {/* Set-up: folded under the inbox once it is done. */}
+      {(() => {
+        const ready = Boolean(s.connected && s.hasLocation);
+        const open = setupOpen || !ready;
+        return (
+          <div style={{ marginTop: 16 }}>
+            <button
+              type="button"
+              onClick={() => setSetupOpen((v) => !v)}
+              disabled={!ready}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', cursor: ready ? 'pointer' : 'default',
+                background: 'var(--c111827)', border: '1px solid var(--c334155)', borderRadius: open ? '12px 12px 0 0' : 12,
+                padding: '12px 16px', color: 'var(--ce2e8f0)', fontFamily: 'inherit',
+              }}
+            >
+              <span style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap' }}>⚙️ {t('setup')}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, borderRadius: 999, padding: '2px 9px', whiteSpace: 'nowrap', flexShrink: 0, background: ready ? 'var(--c064e3b)' : 'var(--wash-amber)', color: ready ? 'var(--ink-good)' : 'var(--ink-warn)' }}>
+                {ready ? `● ${t('setupOk')}` : `⚠ ${t('setupTodo')}`}
+              </span>
+              <span style={{ fontSize: 12.5, color: 'var(--c64748b)', marginLeft: 4, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('setupHint')}</span>
+              {ready && <span style={{ marginLeft: 'auto', color: 'var(--c64748b)', fontSize: 12 }}>{open ? '▴' : '▾'}</span>}
+            </button>
+            {open && (
+              <div style={{ border: '1px solid var(--c334155)', borderTop: 'none', borderRadius: '0 0 12px 12px', padding: 16, background: 'var(--c0b1120)' }}>
+      {/* Connection */}
+              <div style={{ ...ui.card, marginBottom: 16 }}>
+                {!s.connected ? (
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('connectTitle')}</div>
+                    <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5, margin: '0 0 14px', lineHeight: 1.5 }}>{t('connectDesc')}</p>
+                    <button onClick={connect} disabled={!s.clientConfigured} style={{ ...ui.primaryBtn, opacity: s.clientConfigured ? 1 : 0.5 }}>{t('connectBtn')}</button>
+                    <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '12px 0 0' }}>{t('pendingApproval')}</p>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 14, color: 'var(--ce2e8f0)' }}>
+                        <span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>● {t('connected')}</span>
+                        {s.connectedEmail ? <span style={{ color: 'var(--c94a3b8)' }}> · {s.connectedEmail}</span> : null}
+                      </div>
+                      <button onClick={disconnect} style={ui.dangerBtn}>{t('disconnect')}</button>
+                    </div>
+
+                    {/* Location picker — always available (even after one is set) + searchable,
+                        since an agency account can manage many salons. */}
+                    <div style={{ marginTop: 14, borderTop: '1px solid var(--c334155)', paddingTop: 14 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 8 }}>
+                        {t('pickLocation')}
+                        {s.hasLocation && <span style={{ color: 'var(--ink-good)', fontWeight: 500, marginLeft: 8, fontSize: 12.5 }}>✓ {t('locSet')}</span>}
+                      </div>
+                      {s.hasLocation && s.locationTitle && (
+                        <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginBottom: 10 }}>📍 <strong>{s.locationTitle}</strong>{saved && <span style={{ color: 'var(--ink-good)', marginLeft: 8, fontSize: 12 }}>{t('saved')}</span>}</div>
+                      )}
+                      {locations === null ? (
+                        <button onClick={loadLocations} style={ui.primaryBtn}>{s.hasLocation ? t('changeLoc') : t('loadLocations')}</button>
+                      ) : locations.length === 0 ? (
+                        <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('noLocations')}</p>
+                      ) : (
+                        <div>
+                          <input value={locFilter} onChange={(e) => setLocFilter(e.target.value)} placeholder={t('filterLoc')} style={{ ...ui.input, marginBottom: 8, maxWidth: 420 }} />
+                          {/* Rows, not a <select>: a tap is a choice, the chosen row is
+                              the only highlighted one, and the button below names what
+                              it will save — three places that now all say the same thing. */}
+                          <div role="listbox" style={{ maxWidth: 560, maxHeight: 300, overflowY: 'auto', border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)' }}>
+                            {filteredLocs.length === 0 && (
+                              <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--c64748b)' }}>—</div>
+                            )}
+                            {filteredLocs.map((l) => {
+                              const on = l.name === pickLoc;
+                              return (
+                                <button
+                                  key={l.name}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={on}
+                                  onClick={() => setPickLoc(l.name)}
+                                  style={{
+                                    display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+                                    padding: '10px 14px', border: 'none', borderTop: '1px solid var(--line)',
+                                    borderLeft: `4px solid ${on ? '#6366f1' : 'transparent'}`,
+                                    background: on ? 'rgba(99,102,241,.16)' : 'transparent',
+                                  }}
+                                >
+                                  <div style={{ fontSize: 13.5, fontWeight: on ? 800 : 600, color: 'var(--ce2e8f0)' }}>{on ? '✓ ' : ''}{l.title}</div>
+                                  {l.address && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>{l.address}</div>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+                            <button onClick={saveLocation} disabled={!pickLoc || saving} style={{ ...ui.primaryBtn, opacity: pickLoc ? 1 : 0.5 }}>
+                              {pickLoc ? `${t('saveLocation')}: ${pickedTitle}` : t('saveLocation')}
+                            </button>
+                            {!pickLoc && <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{t('pickFirst')}</span>}
+                          </div>
+                          <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 6 }}>{filteredLocs.length}/{locations.length} {t('locCount')}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Rule + settings */}
+              <div style={{ ...ui.card, marginBottom: 16 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('settingsTitle')}</div>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
+                  <input type="checkbox" checked={s.enabled} onChange={(e) => saveSettings({ enabled: e.target.checked })} />
+                  {t('enable')}
+                </label>
+
+                {/* Rule */}
+                <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13.5, color: 'var(--ccbd5e1)', lineHeight: 1.9 }}>
+                  <div>
+                    {t('ruleAuto')}{' '}
+                    <select value={s.autoMinStars} onChange={(e) => saveSettings({ autoMinStars: Number(e.target.value) })} style={selStyle}>
+                      <option value={4}>4</option><option value={5}>5</option>
+                    </select>{' '}{t('ruleStarUp')}{' '}
+                    <span style={{ color: 'var(--ink-good)' }}>→ {t(s.approveFirst ? 'fDraft' : 'ruleAutoPost')}</span>
+                  </div>
+                  <div>
+                    {t('ruleAlert')}{' '}
+                    <select value={s.alertMaxStars} onChange={(e) => saveSettings({ alertMaxStars: Number(e.target.value) })} style={selStyle}>
+                      <option value={2}>2</option><option value={3}>3</option>
+                    </select>{' '}{t('ruleStarDown')} <span style={{ color: 'var(--ink-warn)' }}>→ {t('fNeeds')}</span>
+                  </div>
+                </div>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
+                  <input type="checkbox" checked={s.approveFirst} onChange={(e) => saveSettings({ approveFirst: e.target.checked })} />
+                  {t('approveFirst')}
+                </label>
+                <div style={{
+                  fontSize: 12.5, lineHeight: 1.6, marginTop: -6, marginBottom: 12, paddingLeft: 24,
+                  color: s.approveFirst ? 'var(--c94a3b8)' : 'var(--c6ee7b7)',
+                }}>
+                  {t(s.approveFirst ? 'approveOn' : 'approveOff')}
+                </div>
+                {/* A switch that silently does nothing is worse than a missing switch.
+                    The block is absent on older builds, which is exactly what makes it
+                    a reliable test of what is answering. */}
+                {!s.autoReply?.live && (
+                  <div style={{
+                    fontSize: 12.5, lineHeight: 1.6, marginTop: -4, marginBottom: 12, padding: '10px 12px',
+                    borderRadius: 9, background: 'var(--wash-amber)', border: '1px solid var(--cf59e0b)', color: 'var(--cfcd34d)',
+                  }}>
+                    ⚠ {t('apiOld')}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 220px' }}>
+                    <label style={ui.label}>{t('tone')}</label>
+                    <select value={s.tone} onChange={(e) => saveSettings({ tone: e.target.value })} style={ui.input}>
+                      <option value="warm">{t('toneWarm')}</option>
+                      <option value="professional">{t('tonePro')}</option>
+                      <option value="short">{t('toneShort')}</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: '2 1 300px' }}>
+                    <label style={ui.label}>{t('alertEmail')}</label>
+                    <input value={s.alertEmail} placeholder={t('alertEmailPh')} onChange={(e) => setS({ ...s, alertEmail: e.target.value })}
+                      onBlur={(e) => saveSettings({ alertEmail: e.target.value })} style={ui.input} />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 14 }}>
+                  <label style={ui.label}>
+                    {t('aiInstr')}{' '}
+                    {s.aiEnabled
+                      ? <span style={{ color: 'var(--ink-good)' }}>· ✨ {t('aiOn')}</span>
+                      : <span style={{ color: 'var(--ink-warn)' }}>· {t('aiOff')}</span>}
+                  </label>
+                  <textarea value={s.aiInstruction} placeholder={t('aiInstrPh')} rows={2}
+                    onChange={(e) => setS({ ...s, aiInstruction: e.target.value })}
+                    onBlur={(e) => saveSettings({ aiInstruction: e.target.value })}
+                    style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+                  <div style={{ marginTop: 8 }}>
+                    <button onClick={testAi} disabled={testing} style={{ ...ghostBtn, padding: '7px 12px', fontSize: 12.5 }}>{testing ? t('testingAi') : t('testAi')}</button>
+                  </div>
+                  {aiTest && (
+                    <div style={{ marginTop: 10, background: 'var(--c0f172a)', border: `1px solid ${aiTest.ok ? 'var(--c14532d)' : 'var(--c7f1d1d)'}`, borderRadius: 10, padding: 12 }}>
+                      <div style={{ fontSize: 12, color: aiTest.ok ? 'var(--ink-good)' : 'var(--ink-warn)', fontWeight: 700, marginBottom: 6 }}>
+                        {aiTest.ok ? `✨ ${t('testOk')}` : `⚠️ ${t('testFallback')}`}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('testSample')}: &ldquo;{aiTest.sample}&rdquo;</div>
+                      <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>💬 {aiTest.reply}</div>
+                      {aiTest.error && <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', marginTop: 6 }}>{aiTest.error}</div>}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
+                  <button onClick={sync} disabled={syncing || !s.connected || !s.hasLocation} style={{ ...ui.primaryBtn, opacity: (s.connected && s.hasLocation) ? 1 : 0.5 }}>
+                    {syncing ? t('syncing') : t('syncNow')}
+                  </button>
+                  <button onClick={resync} disabled={syncing || !s.connected || !s.hasLocation} title={t('resyncHint')}
+                    style={{ ...ghostBtn, padding: '9px 12px', fontSize: 12.5, opacity: (s.connected && s.hasLocation) ? 1 : 0.5 }}>
+                    {t('resyncFresh')}
+                  </button>
+                  {saving ? <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>…</span> : saved ? <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>{t('saved')}</span> : null}
+                  <span style={{ color: 'var(--c64748b)', fontSize: 12, marginLeft: 'auto' }}>
+                    {t('lastSync')}: {s.lastSyncAt ? fmtInTz(s.lastSyncAt, { dateStyle: 'short', timeStyle: 'short' }) : t('never')}
+                  </span>
+                </div>
+                {/* A DEAD SYNC LOOKED EXACTLY LIKE A LIVE ONE.
+                    The screen said "auto-syncs every 15 minutes" in green and printed a
+                    timestamp next to it, and the timestamp had been fourteen hours old
+                    for half a day. Nothing on the page connected those two facts, so
+                    the honest reading of the screen was "it is working" — which is the
+                    worst thing a status line can do. The green promise now only shows
+                    while the promise is being kept. */}
+                {s.enabled && s.hasLocation && (() => {
+                  const age = s.lastSyncAt ? Date.now() - new Date(s.lastSyncAt).getTime() : Infinity;
+                  const stale = age > 60 * 60 * 1000;
+                  return stale ? (
+                    <div style={{
+                      fontSize: 12.5, lineHeight: 1.6, marginTop: 10, padding: '10px 12px', borderRadius: 9,
+                      background: 'var(--wash-red)', border: '1px solid var(--cf87171)', color: 'var(--cf87171)',
+                    }}>
+                      ⚠ {t('syncStale')}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11.5, color: 'var(--ink-good)', marginTop: 8 }}>🔄 {t('autoSyncNote')}</div>
+                  );
+                })()}
+              </div>
+
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </section>
   );
 }

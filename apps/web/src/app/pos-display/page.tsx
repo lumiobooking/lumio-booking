@@ -79,6 +79,15 @@ export default function PosDisplayPage() {
   const [tall, setTall] = useState(false);
   const [menu, setMenu] = useState(false); // staff exit menu
   const chRef = useRef<BroadcastChannel | null>(null);
+  // The salon this screen was opened for (`/pos-display?t=<tenantId>`). The
+  // channel is shared by EVERY tab of this browser, and an agency working in
+  // several salons at once has registers of several salons open: the screen
+  // opened from "Lumio Salon" was greeting customers as "Glow nails and spa",
+  // because that salon's register answered first. Messages from another salon
+  // are ignored, and everything this screen sends is stamped with its salon
+  // so the other side can do the same.
+  const tenantRef = useRef('');
+  const send = (msg: Record<string, unknown>) => chRef.current?.postMessage(tenantRef.current ? { ...msg, tenant: tenantRef.current } : msg);
   const tipPanelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -97,6 +106,9 @@ export default function PosDisplayPage() {
     if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
     const ch = new BroadcastChannel('lumio-pos-display');
     chRef.current = ch;
+    try { tenantRef.current = new URLSearchParams(window.location.search).get('t') || ''; } catch { tenantRef.current = ''; }
+    const mine = tenantRef.current;
+    const hello = () => ch.postMessage(mine ? { type: 'request', tenant: mine } : { type: 'request' });
     let mode: 'mirror' | 'paid' | 'checkin' = 'mirror';
     let lastSig = '';
     // The register's own screen (welcome image, salon name, review QR). Kept so
@@ -111,10 +123,12 @@ export default function PosDisplayPage() {
       lastSig = '';
       setS(lastRegister ?? { ...EMPTY, ...(fallback ?? {}) });
       // Ask whichever register is open to replay its live state on top.
-      ch.postMessage({ type: 'request' });
+      hello();
     };
     ch.onmessage = (e) => {
       const d = e.data;
+      // Another salon's register (same browser, another tab) — not ours.
+      if (mine && d?.tenant && d.tenant !== mine) return;
       // The register just opened, or reception closed the check-in — either way
       // the screen goes back to what the register was showing.
       if (d?.type === 'claim' || d?.type === 'checkinRelease') { if (mode === 'checkin') restore(d.fallback); return; }
@@ -147,11 +161,11 @@ export default function PosDisplayPage() {
       if (mode === 'paid') return;
       setS({ ...EMPTY, ...d.state });
     };
-    ch.postMessage({ type: 'request' });
+    hello();
     return () => { ch.close(); chRef.current = null; };
   }, []);
 
-  const sendTipDirect = (amountCents: number) => { chRef.current?.postMessage({ type: 'tipDirect', amountCents: Math.max(0, Math.round(amountCents)) }); setTipped(true); setKeypad(false); setPad(''); };
+  const sendTipDirect = (amountCents: number) => { send({ type: 'tipDirect', amountCents: Math.max(0, Math.round(amountCents)) }); setTipped(true); setKeypad(false); setPad(''); };
 
   const cur = s.currency;
   const accent = s.salonAccent || '#6366f1';
@@ -203,7 +217,7 @@ export default function PosDisplayPage() {
 
   // Walk-in self check-in takes over the same monitor — no second window.
   if (s.status === 'checkin' && s.checkin) {
-    return <CheckInScreen st={s.checkin} salonName={s.salonName} logo={s.salonLogo} send={(type, payload) => chRef.current?.postMessage({ type, payload })} />;
+    return <CheckInScreen st={s.checkin} salonName={s.salonName} logo={s.salonLogo} send={(type, payload) => send({ type, payload })} />;
   }
 
   const imgWelcome = (s.status === 'idle' || (s.status === 'active' && s.lines.length === 0)) && !!s.salonWelcome;

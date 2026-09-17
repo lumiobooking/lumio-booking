@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { displayBaseUrl, displayPairUrl } from '../common/public-url.util';
 import { CustomersService } from '../customers/customers.service';
+import { liveEvents } from '../common/live-events';
 
 // Server-only split used to attribute the after-payment QR tip across the ticket's
 // technician(s). Never exposed to the paired device.
@@ -110,6 +111,9 @@ export class DisplayService {
       },
       select: { id: true },
     });
+    // The desk's board is polling; this makes it fetch now, while the
+    // customer is still looking up from their phone.
+    liveEvents.emit(tenantId, 'walkins', walkIn.id);
     return { ok: true, id: walkIn.id, queued: true };
   }
 

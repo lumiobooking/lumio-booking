@@ -13,6 +13,14 @@
 //
 // Designed for fingers on glass: 64px targets, no hover states, no tiny text,
 // one decision per screen.
+//
+// LIGHT, ON PURPOSE. This is the one page a salon's CUSTOMER sees on their own
+// phone, and it used to wear the dashboard's dark theme — a black form with
+// green prices, which reads as "back office", not "welcome". It now has its
+// own daylight palette (below), fixed, independent of the owner's theme
+// toggle: white cards, the salon's accent, ink text. No `var(--c…)` tokens
+// here — the customer never switches themes and the page must look the same
+// on every phone.
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useMemo, useState, CSSProperties } from 'react';
@@ -36,6 +44,21 @@ interface Menu {
 }
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+/** The customer page's own daylight palette. */
+const C = {
+  page: '#f5f6fa',
+  card: '#ffffff',
+  line: '#e5e7eb',
+  ink: '#0f172a',
+  ink2: '#334155',
+  muted: '#64748b',
+  faint: '#94a3b8',
+  field: '#ffffff',
+  price: '#15803d',
+  bad: '#b91c1c',
+  ok: '#16a34a',
+};
 
 export default function CheckInKiosk() {
   const [token, setToken] = useState<string | null>(null);
@@ -153,7 +176,7 @@ export default function CheckInKiosk() {
         <div style={{ ...panel, maxWidth: 520, textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>📱</div>
           <h1 style={{ fontSize: 28, margin: '0 0 8px' }}>Connect this iPad</h1>
-          <p style={{ color: 'var(--c94a3b8)', fontSize: 17, lineHeight: 1.5, margin: '0 0 24px' }}>
+          <p style={{ color: C.muted, fontSize: 17, lineHeight: 1.5, margin: '0 0 24px' }}>
             Enter the 6-character code from the salon dashboard.
           </p>
           <input
@@ -165,7 +188,7 @@ export default function CheckInKiosk() {
             autoCorrect="off"
             style={{ ...bigInput, textAlign: 'center', letterSpacing: 8, fontSize: 34, fontWeight: 800 }}
           />
-          {pairErr && <div style={{ color: 'var(--cf87171)', fontSize: 15, marginTop: 12 }}>{pairErr}</div>}
+          {pairErr && <div style={{ color: C.bad, fontSize: 15, marginTop: 12 }}>{pairErr}</div>}
           <button onClick={pair} disabled={pairInput.trim().length < 4} style={{ ...primary(accent), marginTop: 18, width: '100%', opacity: pairInput.trim().length < 4 ? 0.5 : 1 }}>
             Connect
           </button>
@@ -175,7 +198,7 @@ export default function CheckInKiosk() {
   }
 
   if (!menu) {
-    return <main style={screen}><div style={{ color: 'var(--c94a3b8)', fontSize: 20 }}>Loading…</div></main>;
+    return <main style={screen}><div style={{ color: C.muted, fontSize: 20 }}>Loading…</div></main>;
   }
 
   // ---- Thank you ----------------------------------------------------------
@@ -183,9 +206,9 @@ export default function CheckInKiosk() {
     return (
       <main style={screen}>
         <div style={{ ...panel, maxWidth: 620, textAlign: 'center' }}>
-          <div style={{ width: 108, height: 108, borderRadius: '50%', background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 56, margin: '0 auto 22px' }}>✓</div>
-          <h1 style={{ fontSize: 38, margin: '0 0 10px' }}>You&rsquo;re checked in</h1>
-          <p style={{ color: 'var(--ccbd5e1)', fontSize: 20, lineHeight: 1.55, margin: 0 }}>
+          <div style={{ width: 108, height: 108, borderRadius: '50%', background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 56, margin: '0 auto 22px', boxShadow: `0 14px 30px ${accent}55` }}>✓</div>
+          <h1 style={{ fontSize: 'clamp(28px, 7vw, 38px)', margin: '0 0 10px' }}>You&rsquo;re checked in</h1>
+          <p style={{ color: C.ink2, fontSize: 'clamp(17px, 4.6vw, 20px)', lineHeight: 1.55, margin: 0 }}>
             Thank you, {form.firstName}. Please take a seat — we&rsquo;ll call you shortly.
           </p>
           <button onClick={reset} style={{ ...ghostBtn, marginTop: 30 }}>Check in someone else</button>
@@ -197,26 +220,30 @@ export default function CheckInKiosk() {
   const canNext = step === 1 ? form.firstName.trim().length > 0 : true;
 
   return (
-    <main style={{ ...screen, alignItems: 'stretch', padding: 0, display: 'block' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', width: '100%' }}>
+    <main style={{ ...screen, alignItems: 'stretch', padding: 0, display: 'block', colorScheme: 'light' }}>
+      <style>{`html,body{background:#f5f6fa} .ck-chips::-webkit-scrollbar{display:none} .ck-page input[type=date]{-webkit-appearance:none;min-height:56px} .ck-page input::placeholder{color:#9ca3af}`}</style>
+      <div className="ck-page" style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', width: '100%' }}>
         {/* Header: who they are checking in with + how far along they are */}
         <header style={{
           display: 'flex', alignItems: 'center', gap: 12, padding: 'clamp(12px, 3.5vw, 18px) clamp(14px, 4vw, 24px)',
-          borderBottom: '1px solid var(--line)', flexShrink: 0,
-          position: 'sticky', top: 0, background: 'var(--c0b1120)', zIndex: 5,
+          borderBottom: `1px solid ${C.line}`, flexShrink: 0,
+          position: 'sticky', top: 0, background: C.card, zIndex: 5,
           paddingTop: 'max(clamp(12px, 3.5vw, 18px), env(safe-area-inset-top))',
         }}>
           {menu.logoUrl
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={menu.logoUrl} alt="" style={{ height: 40, width: 'auto', borderRadius: 8 }} />
-            : <span style={{ width: 40, height: 40, borderRadius: 12, background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>✦</span>}
+            : <span style={{ width: 40, height: 40, borderRadius: 12, background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>✦</span>}
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 20, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{menu.salonName}</div>
-            <div style={{ fontSize: 14, color: 'var(--c94a3b8)' }}>Welcome — check in below</div>
+            <div style={{ fontSize: 'clamp(17px, 4.6vw, 20px)', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: C.ink }}>{menu.salonName}</div>
+            <div style={{ fontSize: 13.5, color: C.muted }}>
+              {/* Where they are, in words — three grey bars said nothing. */}
+              Step {step} of 3 · {step === 1 ? 'Your details' : step === 2 ? 'Services' : 'Confirm'}
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 5 }}>
             {[1, 2, 3].map((n) => (
-              <span key={n} style={{ width: 44, height: 6, borderRadius: 3, background: n <= step ? accent : 'var(--c1e293b)' }} />
+              <span key={n} style={{ width: n === step ? 22 : 8, height: 8, borderRadius: 4, background: n <= step ? accent : C.line, transition: 'width .2s ease' }} />
             ))}
           </div>
         </header>
@@ -244,10 +271,10 @@ export default function CheckInKiosk() {
                   <input type="date" max={new Date().toISOString().slice(0, 10)} value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} style={bigInput} autoComplete="bday" />
                 </Field>
                 <Field label="How many of you?">
-                  <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
                     {[1, 2, 3, 4, 5].map((n) => (
                       <button key={n} onClick={() => setForm({ ...form, partySize: n })}
-                        style={{ ...pill, flex: 1, ...(form.partySize === n ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>
+                        style={{ ...pill, flex: 1, padding: '14px 0', ...(form.partySize === n ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>
                         {n}{n === 5 ? '+' : ''}
                       </button>
                     ))}
@@ -264,7 +291,7 @@ export default function CheckInKiosk() {
                 <h2 style={{ ...stepTitle, margin: 0 }}>What would you like today?</h2>
                 <span style={{
                   fontSize: 14.5, fontWeight: 800, borderRadius: 999, padding: '5px 12px',
-                  background: picked.length ? accent : 'var(--c1e293b)', color: picked.length ? '#fff' : 'var(--c94a3b8)',
+                  background: picked.length ? accent : C.line, color: picked.length ? '#fff' : C.muted,
                 }}>{picked.length} selected</span>
               </div>
               <p style={stepHint}>Tap everything you want — you can change it with us at the chair.</p>
@@ -272,17 +299,19 @@ export default function CheckInKiosk() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
                   {pickedList.map((s) => (
                     <button key={s.id} onClick={() => setPicked((v) => v.filter((x) => x !== s.id))}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'rgba(99,102,241,0.16)', border: `1px solid ${accent}`, color: 'var(--cc7d2fe)', borderRadius: 999, padding: '8px 13px', fontSize: 14.5, fontWeight: 700, cursor: 'pointer' }}>
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: `${accent}14`, border: `1px solid ${accent}`, color: accent, borderRadius: 999, padding: '8px 13px', fontSize: 14.5, fontWeight: 700, cursor: 'pointer' }}>
                       {s.name}<span style={{ fontSize: 16 }}>✕</span>
                     </button>
                   ))}
                 </div>
               )}
               {cats.length > 0 && (
-                <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 12, marginBottom: 4 }}>
-                  <button onClick={() => setCat(null)} style={{ ...pill, ...(cat === null ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>All</button>
+                // One row that scrolls sideways. Each chip keeps its width —
+                // "All" used to be squeezed into a two-line "A / ll" pill.
+                <div className="ck-chips" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12, marginBottom: 2, marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16, scrollbarWidth: 'none' }}>
+                  <button onClick={() => setCat(null)} style={{ ...chip, ...(cat === null ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>All</button>
                   {cats.map((c) => (
-                    <button key={c.id} onClick={() => setCat(c.id)} style={{ ...pill, whiteSpace: 'nowrap', ...(cat === c.id ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>{c.name}</button>
+                    <button key={c.id} onClick={() => setCat(c.id)} style={{ ...chip, ...(cat === c.id ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>{c.name}</button>
                   ))}
                 </div>
               )}
@@ -298,23 +327,23 @@ export default function CheckInKiosk() {
                       style={{
                         position: 'relative', textAlign: 'left', borderRadius: 16,
                         padding: 'clamp(12px, 3.4vw, 16px) clamp(13px, 3.6vw, 18px)', cursor: 'pointer',
-                        background: on ? accent : 'var(--c111827)',
-                        border: `2px solid ${on ? accent : 'var(--c1e293b)'}`,
-                        boxShadow: on ? '0 8px 20px rgba(79,70,229,0.3)' : 'none',
-                        color: 'var(--ce2e8f0)', minHeight: 96, display: 'flex', flexDirection: 'column', gap: 7,
+                        background: on ? `${accent}12` : C.card,
+                        border: `2px solid ${on ? accent : C.line}`,
+                        boxShadow: on ? `0 8px 20px ${accent}33` : '0 1px 2px rgba(15,23,42,0.05)',
+                        color: C.ink, minHeight: 96, display: 'flex', flexDirection: 'column', gap: 7,
                       }}
                     >
                       {on && (
                         <span style={{
                           position: 'absolute', top: -10, right: -8, width: 30, height: 30, borderRadius: '50%',
-                          background: '#22c55e', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 17, fontWeight: 900, border: '3px solid var(--c0b1120)',
+                          background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 17, fontWeight: 900, border: `3px solid ${C.page}`,
                         }}>✓</span>
                       )}
                       <span style={{ fontSize: 'clamp(15px, 4vw, 18px)', fontWeight: 700, lineHeight: 1.25 }}>{s.name}</span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 'auto', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 'clamp(16px, 4.2vw, 19px)', fontWeight: 800, color: on ? '#fff' : '#22c55e' }}>{money(s.priceCents)}</span>
-                        <span style={{ fontSize: 13.5, color: on ? 'rgba(255,255,255,0.78)' : 'var(--c94a3b8)' }}>{s.durationMinutes} min</span>
+                        <span style={{ fontSize: 'clamp(16px, 4.2vw, 19px)', fontWeight: 800, color: on ? accent : C.price }}>{money(s.priceCents)}</span>
+                        <span style={{ fontSize: 13.5, color: C.muted }}>{s.durationMinutes} min</span>
                       </span>
                     </button>
                   );
@@ -335,28 +364,28 @@ export default function CheckInKiosk() {
               </div>
               <div style={{ ...panel, padding: 0, maxWidth: 640 }}>
                 {pickedList.length === 0 ? (
-                  <div style={{ padding: 20, color: 'var(--c94a3b8)', fontSize: 17 }}>No services picked — that&rsquo;s fine, we&rsquo;ll ask at the chair.</div>
+                  <div style={{ padding: 20, color: C.muted, fontSize: 17 }}>No services picked — that&rsquo;s fine, we&rsquo;ll ask at the chair.</div>
                 ) : (
                   <>
                     {pickedList.map((s) => (
-                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--line)' }}>
-                        <span style={{ flex: 1, fontSize: 18, fontWeight: 600 }}>{s.name}</span>
-                        <span style={{ fontSize: 15, color: 'var(--c94a3b8)' }}>{s.durationMinutes} min</span>
-                        <span style={{ fontSize: 18, fontWeight: 700 }}>{money(s.priceCents)}</span>
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: `1px solid ${C.line}` }}>
+                        <span style={{ flex: 1, fontSize: 17, fontWeight: 600, color: C.ink }}>{s.name}</span>
+                        <span style={{ fontSize: 14.5, color: C.muted }}>{s.durationMinutes} min</span>
+                        <span style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{money(s.priceCents)}</span>
                       </div>
                     ))}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', background: 'var(--c0f172a)' }}>
-                      <span style={{ flex: 1, fontSize: 17, fontWeight: 700, color: 'var(--c94a3b8)' }}>Estimate</span>
-                      <span style={{ fontSize: 15, color: 'var(--c94a3b8)' }}>{totalMins} min</span>
-                      <span style={{ fontSize: 24, fontWeight: 800, color: '#22c55e' }}>{money(totalCents)}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', background: C.page, borderRadius: '0 0 18px 18px' }}>
+                      <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: C.muted }}>Estimate</span>
+                      <span style={{ fontSize: 14.5, color: C.muted }}>{totalMins} min</span>
+                      <span style={{ fontSize: 24, fontWeight: 800, color: C.price }}>{money(totalCents)}</span>
                     </div>
                   </>
                 )}
               </div>
-              <p style={{ color: 'var(--c64748b)', fontSize: 14.5, marginTop: 14, maxWidth: 640 }}>
+              <p style={{ color: C.muted, fontSize: 14.5, marginTop: 14, maxWidth: 640 }}>
                 Prices are a guide — your technician confirms the final price before starting.
               </p>
-              {err && <div style={{ color: 'var(--cf87171)', fontSize: 16, marginTop: 14 }}>{err}</div>}
+              {err && <div style={{ color: C.bad, fontSize: 16, marginTop: 14 }}>{err}</div>}
             </>
           )}
         </div>
@@ -366,15 +395,15 @@ export default function CheckInKiosk() {
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
           padding: 'clamp(12px, 3.5vw, 16px) clamp(14px, 4vw, 24px)',
           paddingBottom: 'max(clamp(12px, 3.5vw, 16px), env(safe-area-inset-bottom))',
-          borderTop: '1px solid var(--line)', background: 'var(--c0f172a)',
-          position: 'sticky', bottom: 0, zIndex: 5,
+          borderTop: `1px solid ${C.line}`, background: C.card,
+          position: 'sticky', bottom: 0, zIndex: 5, boxShadow: '0 -6px 20px rgba(15,23,42,0.05)',
         }}>
           {step > 1
             ? <button onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)} style={ghostBtn}>Back</button>
-            : <span style={{ fontSize: 15, color: 'var(--c64748b)' }}>Step {step} of 3</span>}
+            : <span style={{ fontSize: 14.5, color: C.muted }}>🔒 Seen only by the salon</span>}
           {step === 2 && picked.length > 0 && (
-            <span style={{ fontSize: 16, color: 'var(--ccbd5e1)', fontWeight: 600 }}>
-              {picked.length} selected · <span style={{ color: '#22c55e' }}>{money(totalCents)}</span>
+            <span style={{ fontSize: 16, color: C.ink2, fontWeight: 600 }}>
+              {picked.length} selected · <span style={{ color: C.price }}>{money(totalCents)}</span>
             </span>
           )}
           <span style={{ flex: 1 }} />
@@ -396,9 +425,9 @@ export default function CheckInKiosk() {
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label style={{ display: 'block' }}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 15, color: 'var(--ccbd5e1)', marginBottom: 8, fontWeight: 600 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14.5, color: C.ink2, marginBottom: 7, fontWeight: 600 }}>
         {label}
-        {required && <span style={{ color: 'var(--cf87171)' }}>*</span>}
+        {required && <span style={{ color: C.bad }}>*</span>}
       </span>
       {children}
     </label>
@@ -407,9 +436,9 @@ function Field({ label, required, children }: { label: string; required?: boolea
 
 function Row({ k, v }: { k: string; v: string }) {
   return (
-    <div style={{ display: 'flex', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--line)' }}>
-      <span style={{ color: 'var(--c94a3b8)', fontSize: 16, width: 110 }}>{k}</span>
-      <span style={{ fontSize: 17, fontWeight: 600 }}>{v}</span>
+    <div style={{ display: 'flex', gap: 12, padding: '14px 20px', borderBottom: `1px solid ${C.line}` }}>
+      <span style={{ color: C.muted, fontSize: 15.5, width: 100, flexShrink: 0 }}>{k}</span>
+      <span style={{ fontSize: 16.5, fontWeight: 600, color: C.ink, minWidth: 0, overflowWrap: 'anywhere' }}>{v}</span>
     </div>
   );
 }
@@ -418,32 +447,37 @@ function Row({ k, v }: { k: string; v: string }) {
 // locked 100dvh traps the focused field behind it. Let the page flow and keep the
 // action bar sticky instead — that behaves on iOS, Android and a 27" monitor.
 const screen: CSSProperties = {
-  minHeight: '100dvh', background: 'var(--c0b1120)', color: 'var(--ce2e8f0)',
+  minHeight: '100dvh', background: C.page, color: C.ink,
   fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   padding: 'clamp(14px, 4vw, 24px)',
   WebkitTapHighlightColor: 'transparent',
 };
 const panel: CSSProperties = {
-  background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 18, padding: 28, width: '100%',
+  background: C.card, border: `1px solid ${C.line}`, borderRadius: 18, padding: 28, width: '100%',
+  boxShadow: '0 4px 24px rgba(15,23,42,0.06)', overflow: 'hidden',
 };
 // 16px is the floor: anything smaller makes iOS Safari zoom the page on focus.
 const bigInput: CSSProperties = {
-  width: '100%', boxSizing: 'border-box', padding: 'clamp(14px, 4vw, 18px)', borderRadius: 14,
-  border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
-  fontSize: 'clamp(17px, 4.4vw, 20px)', minHeight: 58,
+  width: '100%', boxSizing: 'border-box', padding: 'clamp(13px, 3.6vw, 16px)', borderRadius: 14,
+  border: `1.5px solid ${C.line}`, background: C.field, color: C.ink,
+  fontSize: 'clamp(17px, 4.4vw, 19px)', minHeight: 56, outlineColor: '#6366f1',
 };
 const pill: CSSProperties = {
-  border: '2px solid var(--line)', background: 'var(--c111827)', color: 'var(--ccbd5e1)',
-  borderRadius: 999, padding: '14px 22px', fontSize: 17, fontWeight: 600, cursor: 'pointer', minHeight: 56,
+  border: `2px solid ${C.line}`, background: C.card, color: C.ink2,
+  borderRadius: 999, padding: '14px 22px', fontSize: 17, fontWeight: 600, cursor: 'pointer', minHeight: 54,
+};
+/** A category chip: one line, never squeezed, never wrapped. */
+const chip: CSSProperties = {
+  ...pill, padding: '10px 16px', minHeight: 44, fontSize: 15.5, whiteSpace: 'nowrap', flexShrink: 0,
 };
 const ghostBtn: CSSProperties = {
-  border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)',
-  borderRadius: 14, padding: '16px 26px', fontSize: 18, fontWeight: 600, cursor: 'pointer', minHeight: 60,
+  border: `1.5px solid ${C.line}`, background: C.card, color: C.ink,
+  borderRadius: 14, padding: '16px 26px', fontSize: 18, fontWeight: 600, cursor: 'pointer', minHeight: 58,
 };
 const primary = (accent: string): CSSProperties => ({
   border: 'none', background: accent, color: '#fff', borderRadius: 14,
   padding: '16px 34px', fontSize: 19, fontWeight: 700, cursor: 'pointer', minHeight: 60,
 });
-const stepTitle: CSSProperties = { fontSize: 'clamp(21px, 5.6vw, 28px)', fontWeight: 800, margin: '0 0 6px' };
-const stepHint: CSSProperties = { fontSize: 'clamp(14.5px, 3.8vw, 16.5px)', color: 'var(--c94a3b8)', margin: '0 0 18px', lineHeight: 1.5 };
+const stepTitle: CSSProperties = { fontSize: 'clamp(21px, 5.6vw, 28px)', fontWeight: 800, margin: '0 0 6px', color: C.ink };
+const stepHint: CSSProperties = { fontSize: 'clamp(14.5px, 3.8vw, 16.5px)', color: C.muted, margin: '0 0 18px', lineHeight: 1.5 };

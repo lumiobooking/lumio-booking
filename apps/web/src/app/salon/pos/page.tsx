@@ -775,8 +775,15 @@ function Register() {
 
   // ---- Customer-facing display (2nd monitor). Mirrors the live cart to the
   // /pos-display page via BroadcastChannel — same browser, no server, no internet. ----
+  // Every message on the channel carries the salon it comes from: the channel
+  // is shared by all tabs of the browser, and an agency has several salons'
+  // registers open at once. A display opened for one salon ignores the rest.
+  const tenantId = user?.tenantId ?? '';
+  const tenantRef = useRef(tenantId);
+  tenantRef.current = tenantId;
   const displayPayload = useMemo(() => ({
     type: 'state' as const,
+    tenant: tenantId || undefined,
     state: {
       status: (cart.length ? 'active' : 'idle') as 'active' | 'idle',
       currency,
@@ -799,7 +806,7 @@ function Register() {
       tipBaseCents: cart.filter((l) => l.kind === 'SERVICE').reduce((sum, l) => sum + l.unitPriceCents * l.quantity, 0),
       reviewUrl: reviewUrl ?? undefined,
     },
-  }), [cart, currency, money, cardSurchargePct, staff, salonName, salonLogo, salonAccent, salonWelcome, reviewUrl, tipsOn]);
+  }), [cart, currency, money, cardSurchargePct, staff, salonName, salonLogo, salonAccent, salonWelcome, reviewUrl, tipsOn, tenantId]);
   const displayChRef = useRef<BroadcastChannel | null>(null);
   const displayPayloadRef = useRef(displayPayload);
   displayPayloadRef.current = displayPayload;
@@ -809,6 +816,8 @@ function Register() {
     displayChRef.current = ch;
     ch.onmessage = (e) => {
       const d = e.data;
+      // A screen that belongs to another salon — not ours to answer.
+      if (d?.tenant && tenantRef.current && d.tenant !== tenantRef.current) return;
       // A freshly-opened display asks the register to replay the current ticket.
       if (d?.type === 'request') ch.postMessage(displayPayloadRef.current);
       // Channel 1 — customer tapped a tip ON THE BILL during checkout.
@@ -820,7 +829,7 @@ function Register() {
     // Opening the register claims the customer screen: if it is sitting on the
     // walk-in check-in form, it goes back to the register's own view. One system
     // owns the monitor at a time, and the last one opened wins.
-    ch.postMessage({ type: 'claim' });
+    ch.postMessage(tenantRef.current ? { type: 'claim', tenant: tenantRef.current } : { type: 'claim' });
     ch.postMessage(displayPayloadRef.current);
     return () => { ch.close(); displayChRef.current = null; };
   }, []);
@@ -897,7 +906,7 @@ function Register() {
       tipTechs: tipsOn ? tt.techs.map((t) => ({ name: t.name, qr: t.qr, handle: t.handle })) : [],
       reviewUrl: reviewUrl ?? undefined,
     };
-    displayChRef.current?.postMessage({ type: 'state', state: paidState });
+    displayChRef.current?.postMessage({ type: 'state', tenant: tenantRef.current || undefined, state: paidState });
     // Relay to a paired iPad, carrying the server-only tech split so a tapped tip is
     // logged to the right person(s). Hold this paid state on the server until a new sale.
     const idTechs = tt.techs.filter((t) => t.id);
@@ -909,7 +918,12 @@ function Register() {
     pushDisplayState(paidState as unknown as Record<string, unknown>, payTicket);
   }
   function openCustomerScreen() {
-    if (typeof window !== 'undefined') window.open('/pos-display', 'lumioCustomerDisplay', 'width=1100,height=760');
+    if (typeof window === 'undefined') return;
+    // `?t=` binds the screen to THIS salon (see displayPayload). Same window
+    // name as the walk-in board, so this re-uses an open screen instead of
+    // spawning a second one — and re-binds it if it was another salon's.
+    const q = tenantRef.current ? `?t=${encodeURIComponent(tenantRef.current)}` : '';
+    window.open(`/pos-display${q}`, 'lumioCustomerDisplay', 'width=1100,height=760');
   }
 
   // ---- Catalog search + grouping ------------------------------------------
@@ -1584,7 +1598,11 @@ function Register() {
       {!wide && banners}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : (wide ? 'minmax(0, 1fr) 430px' : 'minmax(0, 1.3fr) minmax(0, 1fr)'),
+        // minmax(0, 1fr), never a bare 1fr: a bare 1fr is minmax(auto, 1fr), and
+        // "auto" lets the track grow to the widest thing inside it. The
+        // sideways-scrolling category row is wider than any phone, so the
+        // whole catalog card used to spill off the right edge of the screen.
+        gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : (wide ? 'minmax(0, 1fr) 430px' : 'minmax(0, 1.3fr) minmax(0, 1fr)'),
         // Wide mode: row 1 is the catalog + ticket, row 2 is the toolbar strip
         // under the catalog only — the ticket spans both rows and keeps the
         // extra height for itself.
@@ -1599,7 +1617,7 @@ function Register() {
           ...ui.card, display: 'flex', flexDirection: 'column',
           // 20px of card padding on each side of a 390px screen is a tenth of
           // the width spent on nothing; the cards inside need it more.
-          ...(compact ? { padding: 12 } : null),
+          ...(compact ? { padding: 12, minWidth: 0 } : null),
           maxHeight: isMobile ? 'none' : (wide ? '100%' : 'calc(100dvh - 130px)'),
           ...(wide ? { height: '100%', minHeight: 0, overflow: 'hidden', gridColumn: 1, gridRow: 1 } : null),
         }}>
@@ -1661,7 +1679,7 @@ function Register() {
           {/* Category quick-filter chips (services tab) */}
           {tab === 'SERVICE' && serviceCats.length > 0 && (
             <div className={compact ? 'pos-chips' : undefined} style={{
-              display: 'flex', gap: 6, marginBottom: compact ? 10 : 12, flexShrink: 0,
+              display: 'flex', gap: 6, marginBottom: compact ? 10 : 12, flexShrink: 0, minWidth: 0,
               // Three rows of capitalised category names were most of the
               // phone's first screen. One row that scrolls sideways is the
               // same information in a fifth of the height.

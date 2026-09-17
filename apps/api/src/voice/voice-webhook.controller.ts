@@ -34,6 +34,15 @@ export class VoiceWebhookController {
     return this.svc.handleTurn(body || {}, miss || '0', lg);
   }
 
+  /** The answer the brain owed after a "one moment" filler (see FAST_REPLY_MS). */
+  @Public()
+  @Post('turn-result')
+  @HttpCode(200)
+  @Header('Content-Type', 'text/xml; charset=utf-8')
+  turnResult(@Body() body: Record<string, string>, @Query('id') id: string, @Query('lg') lg?: string) {
+    return this.svc.handleTurnResult(body || {}, String(id || ''), lg);
+  }
+
   /** Bilingual menu answer: press 1 / 2 (or speech) chooses the call's language. */
   @Public()
   @Post('lang')

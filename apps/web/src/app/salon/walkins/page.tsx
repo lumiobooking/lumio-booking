@@ -273,11 +273,15 @@ function Inner() {
 
   // While the QR is up, watch the queue: the phone posts straight to the API, so
   // the arrival of a new waiting ticket IS the signal that the customer is done.
+  // Both lists: a phone check-in now lands straight on a free technician
+  // (SERVING), so watching only the waiting queue would miss it and the
+  // customer's thank-you would never show.
   useEffect(() => {
-    if (!qrOn) { knownWaitingRef.current = new Set((board?.waiting ?? []).map((x) => x.id)); return; }
-    const fresh = (board?.waiting ?? []).filter((x) => !knownWaitingRef.current.has(x.id));
+    const all = [...(board?.waiting ?? []), ...(board?.serving ?? [])];
+    if (!qrOn) { knownWaitingRef.current = new Set(all.map((x) => x.id)); return; }
+    const fresh = all.filter((x) => !knownWaitingRef.current.has(x.id));
     if (fresh.length === 0) return;
-    knownWaitingRef.current = new Set((board?.waiting ?? []).map((x) => x.id));
+    knownWaitingRef.current = new Set(all.map((x) => x.id));
     setThanksName((fresh[0].customerName || '').split(' ')[0] || '');
   }, [board, qrOn]);
 
@@ -551,16 +555,21 @@ function Inner() {
         // puts the queue directly under the thumb.
         <div className={isMobile ? 'wi-strip' : undefined} style={isMobile
           ? { display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16, paddingBottom: 4, marginBottom: 14, scrollbarWidth: 'none' }
-          : { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
+          // Desktop: small tiles in a wrapping row. Seven 160px cards with a
+          // 34px zero each were a third of the screen saying "nobody has done
+          // anything yet" — the queue, which reception acts on, sat below the
+          // fold. Same information at a third of the height.
+          : { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
           {staff.map((s) => {
             const isNext = s.nextUp;
             const border = isNext ? '#22c55e' : s.busy ? '#f59e0b' : 'var(--c334155)';
             return (
-              <div key={s.id} style={{ background: isNext ? 'rgba(34,197,94,0.10)' : 'var(--c1e293b)', border: `1.5px solid ${border}`, borderRadius: isMobile ? 12 : 14, padding: isMobile ? '10px 8px' : 14, textAlign: 'center', ...(isMobile ? { flex: '0 0 104px' } : null) }}>
-                <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: isMobile ? 13 : 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
-                <div style={{ fontSize: isMobile ? 24 : 34, fontWeight: 800, color: 'var(--cf8fafc)', lineHeight: 1.1, margin: '4px 0' }}>{s.turns}</div>
-                <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{t('wi.turns')}</div>
-                <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: isNext ? 'var(--ink-good)' : s.busy ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
+              <div key={s.id} style={{ background: isNext ? 'rgba(34,197,94,0.10)' : 'var(--c1e293b)', border: `1.5px solid ${border}`, borderRadius: 12, padding: isMobile ? '10px 8px' : '8px 12px', textAlign: 'center', ...(isMobile ? { flex: '0 0 104px' } : { flex: '0 0 auto', minWidth: 108 }) }}>
+                <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--cf8fafc)', lineHeight: 1.1, margin: '3px 0 2px' }}>
+                  {s.turns}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--c94a3b8)', marginLeft: 4 }}>{t('wi.turns')}</span>
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: isNext ? 'var(--ink-good)' : s.busy ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
                   {isNext ? t('wi.nextUp') : s.busy ? t('wi.serving') : t('wi.free')}
                 </div>
               </div>
@@ -571,12 +580,17 @@ function Inner() {
 
       <style>{`.wi-serving{transition:border-color .12s ease, transform .06s ease}.wi-serving:hover{border-color: #6366f1}.wi-serving:active{transform:scale(.99)}.wi-strip::-webkit-scrollbar{display:none}`}</style>
 
-      {/* Waiting queue — full width, compact grid (usually short). */}
+      {/* Queue and floor side by side on a desk monitor — one glance says who
+          is waiting and who is in a chair, with no scrolling between the two.
+          The phone keeps them stacked. */}
+      <div style={isMobile ? undefined : { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 20, alignItems: 'start' }}>
+      <div>
+      {/* Waiting queue — compact grid (usually short). */}
       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{t('wi.waiting')} ({board?.waiting.length ?? 0})</div>
       {(!board || board.waiting.length === 0) ? (
         <div style={{ ...ui.card, color: 'var(--c64748b)', marginBottom: 20 }}>{t('wi.noWaiting')}</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(258px, 1fr))', gap: 10, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10, marginBottom: 20 }}>
           {board.waiting.map((w) => {
             const sel = pick[w.id] ?? nextUp ?? '';
             return (
@@ -624,19 +638,23 @@ function Inner() {
         </div>
       )}
 
-      {/* In service — full-width responsive grid of COMPACT cards. Tap a card to open
+      </div>
+      <div>
+      {/* In service — responsive grid of COMPACT cards. Tap a card to open
           the detail sheet (edit ticket / add services / checkout). Keeps the whole
           floor on one screen even when busy. */}
       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{t('wi.inService')} ({board?.serving.length ?? 0})</div>
       {(!board || board.serving.length === 0) ? (
         <div style={{ ...ui.card, color: 'var(--c64748b)' }}>{t('wi.noInService')}</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(268px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12, marginBottom: 20 }}>
           {board.serving.map((w) => (
             <CompactServingCard key={w.id} w={w} currency={currency} t={t} onOpen={() => setOpenId(w.id)} />
           ))}
         </div>
       )}
+      </div>
+      </div>
 
       {openId && board && (() => {
         const w = board.serving.find((x) => x.id === openId);

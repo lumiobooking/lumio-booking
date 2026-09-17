@@ -207,7 +207,10 @@ describe('the real runAgent under real failure', () => {
   it('529 overloaded: one quiet retry, then the reply — the caller never knows', async () => {
     const { svc } = makeSvc();
     fetchSpy.mockResolvedValueOnce(err(529) as never).mockResolvedValueOnce(okResponse as never);
-    const xml = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'hẹn thứ ba được không' }, '0', 'vi-VN');
+    const first = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'hẹn thứ ba được không' }, '0', 'vi-VN');
+    // The 1.2s retry pause is longer than the fast window, so the caller
+    // hears a filler first and the reply is collected from /turn-result.
+    const xml = await collect(svc, first, 'vi-VN');
     expect(xml).toContain('xếp lịch tư vấn');
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
@@ -265,5 +268,59 @@ describe('TwiML is valid XML — no naked ampersands, ever', () => {
     expect(menu).not.toMatch(NAKED_AMP);
     const en = await svc.handleLang({ CallSid: 'CA1', Digits: '1' }, '0');
     expect(en).not.toMatch(NAKED_AMP);
+  });
+});
+
+
+/** Follow a "one moment" filler to the answer it points at; pass a direct reply through. */
+async function collect(svc: { handleTurnResult: (b: Record<string, string>, id: string, lg?: string) => Promise<string> }, xml: string, lg?: string): Promise<string> {
+  const m = xml.match(/turn-result\?id=([^&"<]+)/);
+  if (!m) return xml;
+  return svc.handleTurnResult({ CallSid: 'CA1' }, decodeURIComponent(m[1]), lg);
+}
+
+// ---- the filler: a slow brain is heard as "one moment", never as silence ----
+describe('slow brain → filler now, answer next', () => {
+  const slowReply = { reply: 'Dạ, thứ ba lúc hai giờ còn trống ạ.', done: false, booked: false, appointmentId: null, langSwitch: null };
+
+  it('a fast brain answers directly — no filler, no redirect', async () => {
+    const { svc } = makeSvc();
+    (svc as unknown as { runAgent: unknown }).runAgent = async () => slowReply;
+    const xml = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'thứ ba được không' }, '0', 'vi-VN');
+    expect(xml).toContain('còn trống');
+    expect(xml).not.toContain('turn-result');
+  });
+
+  it('a slow brain gets a Vietnamese filler + a redirect, and the answer waits at /turn-result', async () => {
+    const { svc } = makeSvc();
+    (svc as unknown as { runAgent: unknown }).runAgent = () => new Promise((r) => setTimeout(() => r(slowReply), 1_700));
+    const first = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'thứ ba được không' }, '0', 'vi-VN');
+    expect(first).toContain('<Say');
+    expect(first).toMatch(/để em xem|chờ em một chút|em kiểm tra ngay/);
+    expect(first).not.toContain('<Gather');          // not asking anything yet
+    expect(first).toContain('/api/voice/turn-result?id=');
+    expect(first).toContain('lg=vi-VN');
+    const xml = await collect(svc, first, 'vi-VN');
+    expect(xml).toContain('còn trống');
+    expect(xml).toContain('<Gather');
+    expect(xml).toContain('language="vi-VN"');
+  });
+
+  it('an unknown result id (deploy mid-call) asks to repeat in the caller’s language — never a hangup', async () => {
+    const { svc } = makeSvc();
+    const xml = await svc.handleTurnResult({ CallSid: 'CA1' }, 'CA1-nope', 'vi-VN');
+    expect(xml).toContain('em xử lý hơi chậm');
+    expect(xml).toContain('<Gather');
+    expect(xml).not.toContain('<Hangup/>');
+  });
+
+  it('the English filler is English', async () => {
+    const { svc } = makeSvc({ line: { language: 'en-US' } });
+    (svc as unknown as { runAgent: unknown }).runAgent = () => new Promise((r) => setTimeout(() => r({ ...slowReply, reply: 'Tuesday at two is open.' }), 1_700));
+    const first = await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'is tuesday open' }, '0');
+    expect(first).toMatch(/one moment|Let me check|just a second/);
+    expect(first).not.toContain('vi-VN');
+    const xml = await collect(svc, first);
+    expect(xml).toContain('Tuesday at two');
   });
 });

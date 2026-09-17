@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { Prisma, WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { displayBaseUrl, displayPairUrl } from '../common/public-url.util';
 import { CustomersService } from '../customers/customers.service';
+import { WalkinsService } from '../walkins/walkins.service';
 import { liveEvents } from '../common/live-events';
 
 // Server-only split used to attribute the after-payment QR tip across the ticket's
@@ -23,6 +24,8 @@ export class DisplayService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customers: CustomersService,
+    // Optional so the unit tests can build the service with a bare prisma.
+    @Optional() private readonly walkins?: WalkinsService,
   ) {}
 
   /** Resolve a paired device's token to its tenant, or 404. */
@@ -111,10 +114,14 @@ export class DisplayService {
       },
       select: { id: true },
     });
+    // Straight onto the "up next" technician — the owner asked that a phone
+    // check-in not sit as a WAITING card until somebody presses "Giao". Best
+    // effort: if nobody is free, or the seating fails, the ticket simply waits.
+    const staffId = this.walkins ? await this.walkins.seatSelfCheckIn(tenantId, walkIn.id).catch(() => null) : null;
     // The desk's board is polling; this makes it fetch now, while the
     // customer is still looking up from their phone.
     liveEvents.emit(tenantId, 'walkins', walkIn.id);
-    return { ok: true, id: walkIn.id, queued: true };
+    return { ok: true, id: walkIn.id, queued: !staffId, seated: !!staffId };
   }
 
   private tid(user: AuthenticatedUser): string {

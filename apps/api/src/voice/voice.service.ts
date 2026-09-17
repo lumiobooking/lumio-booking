@@ -88,6 +88,31 @@ export interface TenantVoiceUsage extends VoiceUsage { tenantId: string; name: s
 const MAX_TURNS = 16;
 const MAX_TOOL_LOOPS = 5;
 const MAX_SILENCE = 2; // reprompts before we politely hang up
+/**
+ * THE PAUSE THAT SOUNDS LIKE A HANG-UP.
+ *
+ * A turn is: Twilio finishes transcribing, asks us, we ask the model (once,
+ * or three times when it reaches for a tool), we answer, Twilio turns the
+ * text into speech. Four to eight seconds of silence on a phone, and the
+ * caller says "hello? hello?" or hangs up. The owner's words: "phản hồi hơi
+ * chậm".
+ *
+ * So a turn now answers in one of two ways. If the brain is back within
+ * FAST_REPLY_MS the answer goes out as before. If not, the caller hears a
+ * short "one moment" straight away — a human receptionist says exactly that
+ * while she looks at the book — and Twilio is sent to /voice/turn-result,
+ * where the finished answer is waiting (or nearly). The work is never done
+ * twice: the same promise that missed the fast window is the one the result
+ * endpoint awaits. The filler also buys the brain more time than the old 9s:
+ * the deadline is now measured from the filler, at RESULT_WAIT_MS.
+ */
+const FAST_REPLY_MS = 1_200;
+/** How long /turn-result waits for the brain before asking the caller to repeat. */
+const RESULT_WAIT_MS = 12_000;
+/** The brain's own deadline per turn, filler included. Under Twilio's 15s. */
+const TURN_DEADLINE_MS = FAST_REPLY_MS + RESULT_WAIT_MS;
+/** A pending answer is forgotten after this — Twilio never came back for it. */
+const PENDING_TTL_MS = 60_000;
 
 @Injectable()
 export class VoiceService implements OnModuleInit {
@@ -112,6 +137,8 @@ export class VoiceService implements OnModuleInit {
   }
   /** Agent failures per active call — three strikes before we say goodbye. */
   private readonly turnFails = new Map<string, number>();
+  /** Answers still being computed while the caller hears a filler — see FAST_REPLY_MS. */
+  private readonly pendingTurns = new Map<string, { promise: Promise<string>; at: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -541,59 +568,129 @@ export class VoiceService implements OnModuleInit {
     }
 
     const history = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
-    let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null };
     const t0 = Date.now();
-    try {
-      // Twilio abandons a webhook after ~15 seconds and HANGS UP — the caller
-      // hears dead air, then nothing. The brain gets 11s; past that we ask
-      // them to repeat themselves and the CALL SURVIVES. A phone conversation
-      // that dies is worse than one that says "sorry, once more?".
-      result = await Promise.race([
-        this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang, biline),
-        new Promise<never>((_, rej) => { const tm = setTimeout(() => rej(new Error('turn-deadline')), 9_000); (tm as { unref?: () => void }).unref?.(); }),
-      ]);
-    } catch (e) {
-      const msg = String(e);
-      this.logger.warn(`agent error after ${Date.now() - t0}ms: ${msg.slice(0, 160)}`);
-      // ANY failure — deadline, model abort, tool crash — gets a polite
-      // "say that again?" and the call stays ALIVE. Goodbye is only earned by
-      // three failures in one call; one bad moment must not end a customer
-      // conversation in the wrong language ("Sorry… Goodbye" to a vi caller).
-      const fails = (this.turnFails.get(callSid) || 0) + 1;
-      if (this.turnFails.size > 500) this.turnFails.clear();
-      this.turnFails.set(callSid, fails);
-      if (fails < 3) return this.sayGather(canned.slowRetry, 0, lang, voice, lgFlag);
+
+    // Everything after "we have their words" — brain, transcript, next TwiML —
+    // runs here, once, whether it finishes inside the fast window or is
+    // collected later by /turn-result.
+    const work = (async (): Promise<string> => {
+      let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null };
+      let lang2 = lang; let lgFlag2 = lgFlag; let canned2 = canned;
+      try {
+        // Twilio abandons a webhook after ~15 seconds and HANGS UP — the caller
+        // hears dead air, then nothing. Past the deadline we ask them to repeat
+        // themselves and the CALL SURVIVES. A phone conversation that dies is
+        // worse than one that says "sorry, once more?".
+        result = await Promise.race([
+          this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang2, biline),
+          new Promise<never>((_, rej) => { const tm = setTimeout(() => rej(new Error('turn-deadline')), TURN_DEADLINE_MS); (tm as { unref?: () => void }).unref?.(); }),
+        ]);
+      } catch (e) {
+        const msg = String(e);
+        this.logger.warn(`agent error after ${Date.now() - t0}ms: ${msg.slice(0, 160)}`);
+        // ANY failure — deadline, model abort, tool crash — gets a polite
+        // "say that again?" and the call stays ALIVE. Goodbye is only earned by
+        // three failures in one call; one bad moment must not end a customer
+        // conversation in the wrong language ("Sorry… Goodbye" to a vi caller).
+        const fails = (this.turnFails.get(callSid) || 0) + 1;
+        if (this.turnFails.size > 500) this.turnFails.clear();
+        this.turnFails.set(callSid, fails);
+        if (fails < 3) return this.sayGather(canned2.slowRetry, 0, lang2, voice, lgFlag2);
+        this.turnFails.delete(callSid);
+        await this.finalize(call.id, 'error', null);
+        return this.sayHangup(canned2.trouble, voice, lang2);
+      }
       this.turnFails.delete(callSid);
-      await this.finalize(call.id, 'error', null);
-      return this.sayHangup(canned.trouble, voice, lang);
-    }
-    this.turnFails.delete(callSid);
-    // The agent may have DETECTED the caller's language mid-conversation (the
-    // menu's keypress can get lost on some carriers — this is the escape
-    // hatch). Speak this very reply, and listen from now on, in the new one.
-    if (biline && result.langSwitch && result.langSwitch !== lang) {
-      lang = result.langSwitch;
-      lgFlag = lang;
-      canned = cannedLines(lang);
-      await this.prisma.voiceCall.update({ where: { id: call.id }, data: { language: lang } as never }).catch(() => undefined);
-      this.logger.log(`voice lang switched mid-call → ${lang}`);
-    }
-    this.logger.log(`voice turn ${Date.now() - t0}ms lang=${lang}`);
+      // The agent may have DETECTED the caller's language mid-conversation (the
+      // menu's keypress can get lost on some carriers — this is the escape
+      // hatch). Speak this very reply, and listen from now on, in the new one.
+      if (biline && result.langSwitch && result.langSwitch !== lang2) {
+        lang2 = result.langSwitch;
+        lgFlag2 = lang2;
+        canned2 = cannedLines(lang2);
+        await this.prisma.voiceCall.update({ where: { id: call.id }, data: { language: lang2 } as never }).catch(() => undefined);
+        this.logger.log(`voice lang switched mid-call → ${lang2}`);
+      }
+      this.logger.log(`voice turn ${Date.now() - t0}ms lang=${lang2}`);
 
-    const nextHistory = [...history, { role: 'user', content: speech }, { role: 'assistant', content: result.reply }].slice(-MAX_TURNS);
-    await this.prisma.voiceCall.update({
-      where: { id: call.id },
-      data: {
-        transcript: nextHistory as unknown as Prisma.InputJsonValue,
-        ...(result.booked ? { outcome: 'booked', appointmentId: result.appointmentId } : {}),
-      },
-    }).catch(() => undefined);
+      const nextHistory = [...history, { role: 'user', content: speech }, { role: 'assistant', content: result.reply }].slice(-MAX_TURNS);
+      await this.prisma.voiceCall.update({
+        where: { id: call.id },
+        data: {
+          transcript: nextHistory as unknown as Prisma.InputJsonValue,
+          ...(result.booked ? { outcome: 'booked', appointmentId: result.appointmentId } : {}),
+        },
+      }).catch(() => undefined);
 
-    if (result.done) {
-      if (!result.booked) await this.finalize(call.id, call.outcome === 'booked' ? 'booked' : 'info', null);
-      return this.sayHangup(result.reply, voice, lang);
+      if (result.done) {
+        if (!result.booked) await this.finalize(call.id, call.outcome === 'booked' ? 'booked' : 'info', null);
+        return this.sayHangup(result.reply, voice, lang2);
+      }
+      return this.sayGather(result.reply, 0, lang2, voice, lgFlag2);
+    })();
+    // Never let a rejection go unobserved: the result endpoint (or nobody)
+    // reads it later, and the function above already answers every error.
+    work.catch(() => undefined);
+
+    // Fast enough → the answer itself. Otherwise a filler now, the answer next.
+    const quick = await Promise.race([
+      work,
+      new Promise<null>((res) => { const tm = setTimeout(() => res(null), FAST_REPLY_MS); (tm as { unref?: () => void }).unref?.(); }),
+    ]);
+    if (quick) return quick;
+
+    const id = `${callSid}-${t0.toString(36)}`;
+    if (this.pendingTurns.size > 500) this.sweepPending(true);
+    this.pendingTurns.set(id, { promise: work, at: Date.now() });
+    const filler = canned.thinking[Math.floor(Math.random() * canned.thinking.length)];
+    this.logger.log(`voice turn filler after ${Date.now() - t0}ms`);
+    return this.fillerRedirect(filler, id, lang, voice, lgFlag);
+  }
+
+  /** Twilio comes back here after the filler for the answer the brain owes. */
+  async handleTurnResult(body: Record<string, string>, id: string, lgParam?: string): Promise<string> {
+    const callSid = String(body.CallSid || '');
+    const pending = this.pendingTurns.get(id);
+    this.pendingTurns.delete(id);
+    this.sweepPending(false);
+    const call = callSid ? await this.prisma.voiceCall.findUnique({ where: { callSid } }).catch(() => null) : null;
+    const line = call ? await this.prisma.voiceLine.findUnique({ where: { tenantId: call.tenantId } }).catch(() => null) : null;
+    const savedLang = (call as unknown as { language?: string | null } | null)?.language || lgParam || null;
+    const lang = line ? effectiveLang(line.language, savedLang) : (lgParam || 'en-US');
+    const lgFlag = line && isBilingual(line.language) ? lang : null;
+    const voice = line?.voice || null;
+    const canned = cannedLines(lang);
+    // Unknown id: the process restarted between filler and result (Render
+    // deploy mid-call), or Twilio replayed the request. Ask again; the call lives.
+    if (!pending) return this.sayGather(canned.slowRetry, 0, lang, voice, lgFlag);
+    try {
+      return await Promise.race([
+        pending.promise,
+        new Promise<never>((_, rej) => { const tm = setTimeout(() => rej(new Error('result-wait')), RESULT_WAIT_MS); (tm as { unref?: () => void }).unref?.(); }),
+      ]);
+    } catch {
+      return this.sayGather(canned.slowRetry, 0, lang, voice, lgFlag);
     }
-    return this.sayGather(result.reply, 0, lang, voice, lgFlag);
+  }
+
+  private sweepPending(force: boolean): void {
+    const now = Date.now();
+    for (const [k, v] of this.pendingTurns) {
+      if (force || now - v.at > PENDING_TTL_MS) this.pendingTurns.delete(k);
+    }
+  }
+
+  /** "One moment" + a redirect to where the real answer will be. No <Gather>:
+   *  the caller is not being asked anything yet. */
+  private fillerRedirect(text: string, id: string, language: string, voice: string | null, lg: string | null): string {
+    const lgQ = lg ? `&lg=${encodeURIComponent(lg)}` : '';
+    const next = `${this.apiBase()}/api/voice/turn-result?id=${encodeURIComponent(id)}${lgQ}`;
+    const v = voiceFor(language, voice);
+    const langAttr = v.sayLanguage ? ` language="${xml(v.sayLanguage)}"` : '';
+    return this.twiml(
+      `<Say${this.sayAttr(v.voice)}${langAttr}>${xml(text)}</Say>` +
+      `<Redirect method="POST">${xml(next)}</Redirect>`,
+    );
   }
 
   private async finalize(callId: string, outcome: string, appointmentId: string | null): Promise<void> {

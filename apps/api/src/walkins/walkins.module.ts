@@ -9,5 +9,7 @@ import { SettingsModule } from '../settings/settings.module';
   imports: [CustomersModule, SettingsModule],
   controllers: [WalkinsController, MyChairController],
   providers: [WalkinsService],
+  // The display module seats a phone check-in through the same turn rotation.
+  exports: [WalkinsService],
 })
 export class WalkinsModule {}

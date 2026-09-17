@@ -199,6 +199,32 @@ export class WalkinsService {
     });
   }
 
+  /**
+   * A customer who checked in on their own phone lands on a technician by
+   * itself — the "up next" one, exactly as the desk's auto-assign does — so
+   * the board shows who has them the moment the ticket appears, instead of
+   * a WAITING card that needs a person to press "Giao". The owner can still
+   * move them: the card is a normal SERVING card. When every technician is
+   * busy nobody is picked and the ticket waits, same as the desk.
+   * Returns the technician's id, or null when it stayed in the queue.
+   */
+  async seatSelfCheckIn(tenantId: string, walkInId: string): Promise<string | null> {
+    const w = await this.prisma.walkIn.findFirst({
+      where: { id: walkInId, tenantId, status: WalkInStatus.WAITING, assignedStaffId: null },
+      include: { service: { select: { name: true, category: { select: { name: true } } } } },
+    });
+    if (!w) return null;
+    const staffId = await this.nextUpStaffId(tenantId);
+    if (!staffId) return null;
+    const stationId = await this.freeStationId(tenantId, this.svcMatchText(w.service?.name, w.service?.category?.name)).catch(() => null);
+    const items = (Array.isArray(w.items) ? (w.items as unknown as WalkInItem[]) : []).map((it) => ({ ...it, staffId }));
+    await this.prisma.walkIn.update({
+      where: { id: w.id },
+      data: { assignedStaffId: staffId, status: WalkInStatus.SERVING, assignedAt: new Date(), stationId, items: items as unknown as Prisma.InputJsonValue },
+    });
+    return staffId;
+  }
+
   /** The tech "up next" = currently free (not serving) with the fewest turns today. */
   private async nextUpStaffId(tenantId: string): Promise<string | null> {
     const today = await this.startOfToday(tenantId);

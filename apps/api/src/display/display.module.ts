@@ -3,9 +3,10 @@ import { DisplayService } from './display.service';
 import { DisplayController } from './display.controller';
 import { PublicDisplayController } from './public-display.controller';
 import { CustomersModule } from '../customers/customers.module';
+import { WalkinsModule } from '../walkins/walkins.module';
 
 @Module({
-  imports: [CustomersModule],
+  imports: [CustomersModule, WalkinsModule],
   controllers: [DisplayController, PublicDisplayController],
   providers: [DisplayService],
   exports: [DisplayService],

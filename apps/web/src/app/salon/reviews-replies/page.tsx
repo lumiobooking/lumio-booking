@@ -432,198 +432,15 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
       {!s.clientConfigured && <div style={{ ...ui.banner, background: 'var(--c78350f)', color: 'var(--cfed7aa)' }}>{t('notConfigured')}</div>}
 
-      {/* Inbox */}
-      <div style={{ ...ui.card }}>
-        {/* WHAT THE SALON ACTUALLY HAS, BEFORE ANY TAB COUNT.
-            The first question an owner asks this screen is "I have 187 reviews,
-            why does it say 53?" — and the honest answer is that those were two
-            different numbers all along. Both are printed, with the gap named. */}
-        {s.google && (
-          <div style={{
-            display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',
-            background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
-            borderRadius: 10, padding: '11px 13px', marginBottom: 12,
-          }}>
-            <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{t('onGoogle')}:</span>
-            {typeof s.google.rating === 'number' && (
-              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-warn)' }}>
-                ★ {s.google.rating.toFixed(1)}
-              </span>
-            )}
-            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
-              {typeof s.google.total === 'number' ? s.google.total : '—'} {t('grReviews')}
-            </span>
-            <span style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>
-              · {t('mirroredLine')} {s.google.mirrored} ({s.google.answered} {t('hasReply')}, {s.google.waiting} {t('noReply')})
-            </span>
-            {s.google.at && (
-              <span style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>
-                · {t('statsAt')} {fmtInTz(s.google.at, { dateStyle: 'short', timeStyle: 'short' })}
-              </span>
-            )}
-            {typeof s.google.total === 'number' && s.google.total > s.google.mirrored && (
-              <div style={{ flexBasis: '100%', fontSize: 12, color: 'var(--cfbbf24)', lineHeight: 1.55, marginTop: 2 }}>
-                {t('catchingUp')}
-              </div>
-            )}
-            <div style={{ flexBasis: '100%', fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5, marginTop: 2 }}>
-              {t('totalsNote')}
-            </div>
-          </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('inbox')}</div>
-          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
-            {([['DRAFTED', 'fDraft', c.DRAFTED], ['NEEDS_ATTENTION', 'fNeeds', c.NEEDS_ATTENTION], ['REPLIED', 'fReplied', c.REPLIED], ['ALL', 'fAll', undefined]] as const).map(([key, lbl, n]) => (
-              <button key={key} onClick={() => setFilter(key)}
-                style={{ ...tabStyle, ...(filter === key ? tabActive : {}) }}>
-                {t(lbl)}{typeof n === 'number' ? ` (${n})` : ''}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {reviews.length === 0 ? (
-          <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5, padding: '10px 0' }}>{t('empty')}</p>
-        ) : (
-          <>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {pgReviews.paged.map((r) => (
-              <div key={r.id} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                  <span style={{ color: r.starRating >= 4 ? 'var(--ink-good)' : 'var(--ink-warn)', fontSize: 16, letterSpacing: 1 }}>{stars(r.starRating)}</span>
-                  <span style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14 }}>{r.reviewerName || 'Google user'}</span>
-                  {r.reviewCreatedAt && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{fmtInTz(r.reviewCreatedAt, { dateStyle: 'short' })}</span>}
-                  {/* WHAT CHANGED SINCE YESTERDAY.
-                      Fifty-two answered reviews and two new ones look the same
-                      in a list sorted by date, and the two that matter are the
-                      two that moved. A review that arrived in the last day, and
-                      a reply that went out in the last day, each say so. */}
-                  {isFresh(r.reviewCreatedAt) && (
-                    <span style={{
-                      background: 'var(--c312e81)', color: 'var(--cc7d2fe)', fontSize: 10.5, fontWeight: 700,
-                      letterSpacing: '.06em', borderRadius: 6, padding: '2px 7px',
-                    }}>{t('newReview')}</span>
-                  )}
-                  {r.status === 'REPLIED' && isFresh(r.repliedAt) && (
-                    <span style={{
-                      background: 'var(--c064e3b)', color: 'var(--c6ee7b7)', fontSize: 10.5, fontWeight: 700,
-                      letterSpacing: '.06em', borderRadius: 6, padding: '2px 7px',
-                    }}>{t('justReplied')}</span>
-                  )}
-                </div>
-                {r.comment && <div style={{ color: 'var(--ccbd5e1)', fontSize: 13.5, lineHeight: 1.5, marginBottom: 10 }}>{r.comment}</div>}
-
-                {r.status === 'DRAFTED' && (
-                  <div>
-                    {/* THE SAME CARD USED TO MEAN TWO OPPOSITE THINGS.
-                        "A reply is drafted" reads identically whether it is
-                        waiting for the owner or thirty seconds from publishing
-                        in their name. The clock removes the ambiguity, and the
-                        line under it says what leaving it alone will do. */}
-                    {r.autoPostAt && countdown(r.autoPostAt) && (
-                      <div style={{
-                        display: 'flex', alignItems: 'flex-start', gap: '4px 9px', marginTop: 4, marginBottom: 8, flexWrap: 'wrap',
-                        padding: '10px 12px', borderRadius: 9,
-                        background: 'var(--c1e1b4b)', border: '1px solid var(--c312e81)',
-                      }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cc7d2fe)', whiteSpace: 'nowrap' }}>
-                          ⏱ {t('autoIn')} {countdown(r.autoPostAt)}
-                        </span>
-                        <span style={{ fontSize: 12.5, color: 'var(--ca5b4fc)', lineHeight: 1.55 }}>{t('autoNote')}</span>
-                      </div>
-                    )}
-                    {r.autoPostAt && !countdown(r.autoPostAt) && (
-                      <div style={{ fontSize: 12.5, color: 'var(--ink-good)', marginTop: 4, marginBottom: 8 }}>⏱ {t('autoNow')}</div>
-                    )}
-                    <div style={{ ...ui.label, marginTop: 4 }}>{t('draftLabel')}</div>
-                    <textarea value={drafts[r.id] ?? r.draftReply ?? ''} onChange={(e) => setDrafts({ ...drafts, [r.id]: e.target.value })}
-                      rows={3} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
-                    <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                      <button onClick={() => approve(r.id)} disabled={busyId === r.id} style={ui.primaryBtn}>{busyId === r.id ? t('posting') : t('approvePost')}</button>
-                      <button onClick={() => regenerate(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('regen')}</button>
-                      <button onClick={() => skip(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('skip')}</button>
-                    </div>
-                  </div>
-                )}
-
-                {r.status === 'NEEDS_ATTENTION' && (
-                  <div>
-                    <div style={{ color: 'var(--ink-warn)', fontSize: 12.5, marginBottom: 8 }}>⚠️ {t('needsHuman')}</div>
-                    {/* THE BOX IS ALWAYS HERE NOW, DRAFT OR NO DRAFT.
-                        It used to render only when the AI had written something,
-                        so the reviews with no suggestion — which is every review
-                        that came in before the drafting existed — offered nothing
-                        but a link to Google. The owner was sent to another site
-                        to do the one thing this screen is for. */}
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={{ ...ui.label, marginTop: 2 }}>{r.draftReply ? t('draftLabel') : t('writeYours')}</div>
-                      <textarea value={drafts[r.id] ?? r.draftReply ?? ''} onChange={(e) => setDrafts({ ...drafts, [r.id]: e.target.value })}
-                        rows={4} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
-                      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 6 }}>
-                        {r.draftReply ? t('badNote') : t('badEmpty')}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                      {/* Two taps, and only on this card.
-                          A drafted five-star reply is going out anyway, so its
-                          button is one press. This one is a public answer to an
-                          angry customer, typed seconds ago, and it cannot be
-                          taken back quietly — so the second press is the point
-                          at which the owner reads it once more. */}
-                      <button
-                        onClick={() => {
-                          if (confirmId !== r.id) { setConfirmId(r.id); return; }
-                          setConfirmId(null);
-                          approve(r.id);
-                        }}
-                        onBlur={() => setConfirmId((cur) => (cur === r.id ? null : cur))}
-                        disabled={busyId === r.id || !(drafts[r.id] ?? r.draftReply ?? '').trim()}
-                        style={{
-                          ...ui.primaryBtn,
-                          ...(confirmId === r.id ? { background: '#b45309' } : {}),
-                          opacity: (drafts[r.id] ?? r.draftReply ?? '').trim() ? 1 : 0.45,
-                        }}
-                      >
-                        {busyId === r.id ? t('posting') : confirmId === r.id ? t('postBadSure') : t('postBad')}
-                      </button>
-                      <button onClick={() => regenerate(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('regen')}</button>
-                      <button
-                        onClick={() => {
-                          const text = drafts[r.id] ?? r.draftReply ?? '';
-                          navigator.clipboard?.writeText(text)
-                            .then(() => { setCopiedId(r.id); setTimeout(() => setCopiedId(null), 1500); })
-                            .catch(() => undefined);
-                        }}
-                        style={{ ...ghostBtn, color: copiedId === r.id ? 'var(--ink-good)' : 'var(--ca5b4fc)' }}
-                      >{copiedId === r.id ? t('copied') : t('copyDraft')}</button>
-                      <button onClick={() => skip(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('markHandled')}</button>
-                      <a href="https://business.google.com/reviews" target="_blank" rel="noreferrer"
-                        style={{ fontSize: 12.5, color: 'var(--c64748b)', textDecoration: 'underline', marginLeft: 'auto' }}>{t('onGoogleInstead')}</a>
-                    </div>
-                  </div>
-                )}
-
-                {r.status === 'REPLIED' && r.replyText && (
-                  <div style={{ borderLeft: '3px solid #22c55e', paddingLeft: 10, marginTop: 4 }}>
-                    <div style={{ ...ui.label, marginBottom: 2 }}>{t('yourReply')}</div>
-                    <div style={{ color: 'var(--ccbd5e1)', fontSize: 13, lineHeight: 1.5 }}>{r.replyText}</div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <Pager paged={pgReviews} />
-          </>
-        )}
-      </div>
-
-      {/* Set-up: folded under the inbox once it is done. */}
+      {/* Set-up: one thin bar ABOVE the inbox. It sat under the inbox for a
+          day and the owner could not find "Connect Google" at all — forty
+          cards down is the same as gone. Folded when everything is set,
+          open by itself while something is missing. */}
       {(() => {
         const ready = Boolean(s.connected && s.hasLocation);
         const open = setupOpen || !ready;
         return (
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginBottom: 16 }}>
             <button
               type="button"
               onClick={() => setSetupOpen((v) => !v)}
@@ -638,7 +455,9 @@ function Inner() {
               <span style={{ fontSize: 12, fontWeight: 700, borderRadius: 999, padding: '2px 9px', whiteSpace: 'nowrap', flexShrink: 0, background: ready ? 'var(--c064e3b)' : 'var(--wash-amber)', color: ready ? 'var(--ink-good)' : 'var(--ink-warn)' }}>
                 {ready ? `● ${t('setupOk')}` : `⚠ ${t('setupTodo')}`}
               </span>
-              <span style={{ fontSize: 12.5, color: 'var(--c64748b)', marginLeft: 4, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('setupHint')}</span>
+              <span style={{ fontSize: 12.5, color: 'var(--c64748b)', marginLeft: 4, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {ready ? `${s.connectedEmail || 'Google'}${s.locationTitle ? ` · 📍 ${s.locationTitle}` : ''}` : t('setupHint')}
+              </span>
               {ready && <span style={{ marginLeft: 'auto', color: 'var(--c64748b)', fontSize: 12 }}>{open ? '▴' : '▾'}</span>}
             </button>
             {open && (
@@ -853,6 +672,192 @@ function Inner() {
           </div>
         );
       })()}
+      {/* Inbox */}
+      <div style={{ ...ui.card }}>
+        {/* WHAT THE SALON ACTUALLY HAS, BEFORE ANY TAB COUNT.
+            The first question an owner asks this screen is "I have 187 reviews,
+            why does it say 53?" — and the honest answer is that those were two
+            different numbers all along. Both are printed, with the gap named. */}
+        {s.google && (
+          <div style={{
+            display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',
+            background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
+            borderRadius: 10, padding: '11px 13px', marginBottom: 12,
+          }}>
+            <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{t('onGoogle')}:</span>
+            {typeof s.google.rating === 'number' && (
+              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-warn)' }}>
+                ★ {s.google.rating.toFixed(1)}
+              </span>
+            )}
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+              {typeof s.google.total === 'number' ? s.google.total : '—'} {t('grReviews')}
+            </span>
+            <span style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>
+              · {t('mirroredLine')} {s.google.mirrored} ({s.google.answered} {t('hasReply')}, {s.google.waiting} {t('noReply')})
+            </span>
+            {s.google.at && (
+              <span style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>
+                · {t('statsAt')} {fmtInTz(s.google.at, { dateStyle: 'short', timeStyle: 'short' })}
+              </span>
+            )}
+            {typeof s.google.total === 'number' && s.google.total > s.google.mirrored && (
+              <div style={{ flexBasis: '100%', fontSize: 12, color: 'var(--cfbbf24)', lineHeight: 1.55, marginTop: 2 }}>
+                {t('catchingUp')}
+              </div>
+            )}
+            <div style={{ flexBasis: '100%', fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5, marginTop: 2 }}>
+              {t('totalsNote')}
+            </div>
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('inbox')}</div>
+          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+            {([['DRAFTED', 'fDraft', c.DRAFTED], ['NEEDS_ATTENTION', 'fNeeds', c.NEEDS_ATTENTION], ['REPLIED', 'fReplied', c.REPLIED], ['ALL', 'fAll', undefined]] as const).map(([key, lbl, n]) => (
+              <button key={key} onClick={() => setFilter(key)}
+                style={{ ...tabStyle, ...(filter === key ? tabActive : {}) }}>
+                {t(lbl)}{typeof n === 'number' ? ` (${n})` : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {reviews.length === 0 ? (
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5, padding: '10px 0' }}>{t('empty')}</p>
+        ) : (
+          <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {pgReviews.paged.map((r) => (
+              <div key={r.id} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                  <span style={{ color: r.starRating >= 4 ? 'var(--ink-good)' : 'var(--ink-warn)', fontSize: 16, letterSpacing: 1 }}>{stars(r.starRating)}</span>
+                  <span style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14 }}>{r.reviewerName || 'Google user'}</span>
+                  {r.reviewCreatedAt && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{fmtInTz(r.reviewCreatedAt, { dateStyle: 'short' })}</span>}
+                  {/* WHAT CHANGED SINCE YESTERDAY.
+                      Fifty-two answered reviews and two new ones look the same
+                      in a list sorted by date, and the two that matter are the
+                      two that moved. A review that arrived in the last day, and
+                      a reply that went out in the last day, each say so. */}
+                  {isFresh(r.reviewCreatedAt) && (
+                    <span style={{
+                      background: 'var(--c312e81)', color: 'var(--cc7d2fe)', fontSize: 10.5, fontWeight: 700,
+                      letterSpacing: '.06em', borderRadius: 6, padding: '2px 7px',
+                    }}>{t('newReview')}</span>
+                  )}
+                  {r.status === 'REPLIED' && isFresh(r.repliedAt) && (
+                    <span style={{
+                      background: 'var(--c064e3b)', color: 'var(--c6ee7b7)', fontSize: 10.5, fontWeight: 700,
+                      letterSpacing: '.06em', borderRadius: 6, padding: '2px 7px',
+                    }}>{t('justReplied')}</span>
+                  )}
+                </div>
+                {r.comment && <div style={{ color: 'var(--ccbd5e1)', fontSize: 13.5, lineHeight: 1.5, marginBottom: 10 }}>{r.comment}</div>}
+
+                {r.status === 'DRAFTED' && (
+                  <div>
+                    {/* THE SAME CARD USED TO MEAN TWO OPPOSITE THINGS.
+                        "A reply is drafted" reads identically whether it is
+                        waiting for the owner or thirty seconds from publishing
+                        in their name. The clock removes the ambiguity, and the
+                        line under it says what leaving it alone will do. */}
+                    {r.autoPostAt && countdown(r.autoPostAt) && (
+                      <div style={{
+                        display: 'flex', alignItems: 'flex-start', gap: '4px 9px', marginTop: 4, marginBottom: 8, flexWrap: 'wrap',
+                        padding: '10px 12px', borderRadius: 9,
+                        background: 'var(--c1e1b4b)', border: '1px solid var(--c312e81)',
+                      }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cc7d2fe)', whiteSpace: 'nowrap' }}>
+                          ⏱ {t('autoIn')} {countdown(r.autoPostAt)}
+                        </span>
+                        <span style={{ fontSize: 12.5, color: 'var(--ca5b4fc)', lineHeight: 1.55 }}>{t('autoNote')}</span>
+                      </div>
+                    )}
+                    {r.autoPostAt && !countdown(r.autoPostAt) && (
+                      <div style={{ fontSize: 12.5, color: 'var(--ink-good)', marginTop: 4, marginBottom: 8 }}>⏱ {t('autoNow')}</div>
+                    )}
+                    <div style={{ ...ui.label, marginTop: 4 }}>{t('draftLabel')}</div>
+                    <textarea value={drafts[r.id] ?? r.draftReply ?? ''} onChange={(e) => setDrafts({ ...drafts, [r.id]: e.target.value })}
+                      rows={3} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                      <button onClick={() => approve(r.id)} disabled={busyId === r.id} style={ui.primaryBtn}>{busyId === r.id ? t('posting') : t('approvePost')}</button>
+                      <button onClick={() => regenerate(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('regen')}</button>
+                      <button onClick={() => skip(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('skip')}</button>
+                    </div>
+                  </div>
+                )}
+
+                {r.status === 'NEEDS_ATTENTION' && (
+                  <div>
+                    <div style={{ color: 'var(--ink-warn)', fontSize: 12.5, marginBottom: 8 }}>⚠️ {t('needsHuman')}</div>
+                    {/* THE BOX IS ALWAYS HERE NOW, DRAFT OR NO DRAFT.
+                        It used to render only when the AI had written something,
+                        so the reviews with no suggestion — which is every review
+                        that came in before the drafting existed — offered nothing
+                        but a link to Google. The owner was sent to another site
+                        to do the one thing this screen is for. */}
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ ...ui.label, marginTop: 2 }}>{r.draftReply ? t('draftLabel') : t('writeYours')}</div>
+                      <textarea value={drafts[r.id] ?? r.draftReply ?? ''} onChange={(e) => setDrafts({ ...drafts, [r.id]: e.target.value })}
+                        rows={4} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+                      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 6 }}>
+                        {r.draftReply ? t('badNote') : t('badEmpty')}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {/* Two taps, and only on this card.
+                          A drafted five-star reply is going out anyway, so its
+                          button is one press. This one is a public answer to an
+                          angry customer, typed seconds ago, and it cannot be
+                          taken back quietly — so the second press is the point
+                          at which the owner reads it once more. */}
+                      <button
+                        onClick={() => {
+                          if (confirmId !== r.id) { setConfirmId(r.id); return; }
+                          setConfirmId(null);
+                          approve(r.id);
+                        }}
+                        onBlur={() => setConfirmId((cur) => (cur === r.id ? null : cur))}
+                        disabled={busyId === r.id || !(drafts[r.id] ?? r.draftReply ?? '').trim()}
+                        style={{
+                          ...ui.primaryBtn,
+                          ...(confirmId === r.id ? { background: '#b45309' } : {}),
+                          opacity: (drafts[r.id] ?? r.draftReply ?? '').trim() ? 1 : 0.45,
+                        }}
+                      >
+                        {busyId === r.id ? t('posting') : confirmId === r.id ? t('postBadSure') : t('postBad')}
+                      </button>
+                      <button onClick={() => regenerate(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('regen')}</button>
+                      <button
+                        onClick={() => {
+                          const text = drafts[r.id] ?? r.draftReply ?? '';
+                          navigator.clipboard?.writeText(text)
+                            .then(() => { setCopiedId(r.id); setTimeout(() => setCopiedId(null), 1500); })
+                            .catch(() => undefined);
+                        }}
+                        style={{ ...ghostBtn, color: copiedId === r.id ? 'var(--ink-good)' : 'var(--ca5b4fc)' }}
+                      >{copiedId === r.id ? t('copied') : t('copyDraft')}</button>
+                      <button onClick={() => skip(r.id)} disabled={busyId === r.id} style={ghostBtn}>{t('markHandled')}</button>
+                      <a href="https://business.google.com/reviews" target="_blank" rel="noreferrer"
+                        style={{ fontSize: 12.5, color: 'var(--c64748b)', textDecoration: 'underline', marginLeft: 'auto' }}>{t('onGoogleInstead')}</a>
+                    </div>
+                  </div>
+                )}
+
+                {r.status === 'REPLIED' && r.replyText && (
+                  <div style={{ borderLeft: '3px solid #22c55e', paddingLeft: 10, marginTop: 4 }}>
+                    <div style={{ ...ui.label, marginBottom: 2 }}>{t('yourReply')}</div>
+                    <div style={{ color: 'var(--ccbd5e1)', fontSize: 13, lineHeight: 1.5 }}>{r.replyText}</div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <Pager paged={pgReviews} />
+          </>
+        )}
+      </div>
+
     </section>
   );
 }

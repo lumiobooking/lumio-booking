@@ -74,13 +74,16 @@ export function voiceFor(lang: string, configuredVoice: string | null | undefine
 }
 
 /** Canned lines, per language. English keeps today's exact wording. */
-export function cannedLines(lang: string): { didntCatch: string; lostYou: string; trouble: string; slowRetry: string; disclosure: (salonName: string) => string; defaultGreeting: string } {
+export function cannedLines(lang: string): { didntCatch: string; lostYou: string; trouble: string; slowRetry: string; thinking: string[]; disclosure: (salonName: string) => string; defaultGreeting: string } {
   if (lang === 'vi-VN') {
     return {
       didntCatch: 'Dạ xin lỗi, em chưa nghe rõ. Anh chị cần em hỗ trợ gì ạ?',
       lostYou: 'Hình như em bị mất tín hiệu rồi. Anh chị gọi lại bất cứ lúc nào nhé. Xin chào!',
       trouble: 'Dạ xin lỗi, hệ thống đang gặp trục trặc. Nhân viên sẽ gọi lại cho anh chị ngay ạ. Xin chào!',
       slowRetry: 'Dạ xin lỗi, em xử lý hơi chậm. Anh chị nói lại giúp em một lần nữa được không ạ?',
+      // Said while the brain is still working — dead air on a phone reads as
+      // "it hung up". Short, varied, and never a promise of an answer.
+      thinking: ['Dạ, để em xem ạ.', 'Dạ, anh chị chờ em một chút.', 'Dạ, em kiểm tra ngay ạ.'],
       disclosure: (salonName: string) => `Xin chào, cảm ơn anh chị đã gọi đến ${salonName}! Anh chị đang trò chuyện với trợ lý tự động của chúng tôi.`,
       defaultGreeting: 'Em có thể giúp gì cho anh chị hôm nay ạ?',
     };
@@ -90,6 +93,7 @@ export function cannedLines(lang: string): { didntCatch: string; lostYou: string
     lostYou: 'It looks like I lost you. Please call back any time to book. Goodbye!',
     trouble: 'Sorry, I am having trouble right now. A team member will call you back shortly. Goodbye.',
     slowRetry: 'So sorry, that took me a moment too long. Could you say that one more time?',
+    thinking: ['Sure, one moment.', 'Let me check that for you.', 'Okay, just a second.'],
     disclosure: (salonName: string) => `Hi, thanks for calling ${salonName}! Just so you know, you're speaking with our friendly automated booking assistant.`,
     defaultGreeting: 'How can I help you book an appointment today?',
   };

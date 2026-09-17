@@ -307,7 +307,13 @@ function Inner() {
     try {
       const r = await apiFetch<{ accountId: string; locations: { name: string; title: string; address: string }[] }>('/google-reviews/locations', { token });
       setLocations(r.locations); setPickAccount(r.accountId);
-      if (r.locations[0]) setPickLoc(r.locations[0].name);
+      // No silent default. The picker used to preselect locations[0] — on an
+      // agency account that is whichever of 59 salons sorts first, and it was
+      // saved for a shop whose owner had typed a different name into the
+      // filter and watched the right row light up. Start on the location
+      // already saved, or on nothing: a choice must be a tap.
+      const current = r.locations.find((l) => l.name === s?.locationId || (s?.locationId ?? '').endsWith(`/${l.name}`));
+      setPickLoc(current?.name ?? '');
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
   }
   async function saveLocation() {
@@ -392,6 +398,15 @@ function Inner() {
   const stars = (n: number) => '★'.repeat(Math.max(0, Math.min(5, n))) + '☆'.repeat(Math.max(0, 5 - n));
   // Filter the (possibly long) location list by name so the salon is easy to find.
   const filteredLocs = (locations ?? []).filter((l) => `${l.title} ${l.address}`.toLowerCase().includes(locFilter.trim().toLowerCase()));
+  // THE BUG THIS REPLACES: a controlled <select> whose value was filtered out
+  // of its options. The browser highlighted the first remaining row; React's
+  // state still held the old id; no change event fired; Save sent the old id.
+  // Now a pick that the filter has hidden is dropped, so what is highlighted
+  // and what gets saved cannot disagree.
+  useEffect(() => {
+    if (pickLoc && locations && !filteredLocs.some((l) => l.name === pickLoc)) setPickLoc('');
+  }, [locFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pickedTitle = (locations ?? []).find((l) => l.name === pickLoc)?.title ?? '';
 
   if (loading || !s) {
     return <section><h1 style={{ fontSize: 24, margin: 0 }}>{t('title')}</h1><p style={{ color: 'var(--c94a3b8)' }}>{t('loading')}</p></section>;
@@ -443,12 +458,40 @@ function Inner() {
               ) : (
                 <div>
                   <input value={locFilter} onChange={(e) => setLocFilter(e.target.value)} placeholder={t('filterLoc')} style={{ ...ui.input, marginBottom: 8, maxWidth: 420 }} />
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                    <select value={pickLoc} onChange={(e) => setPickLoc(e.target.value)} size={Math.min(8, Math.max(2, filteredLocs.length))}
-                      style={{ ...ui.input, width: 'auto', minWidth: 320, maxWidth: '100%', height: 'auto' }}>
-                      {filteredLocs.map((l) => <option key={l.name} value={l.name}>{l.title}{l.address ? ` — ${l.address}` : ''}</option>)}
-                    </select>
-                    <button onClick={saveLocation} style={ui.primaryBtn}>{t('saveLocation')}</button>
+                  {/* Rows, not a <select>: a tap is a choice, the chosen row is
+                      the only highlighted one, and the button below names what
+                      it will save — three places that now all say the same thing. */}
+                  <div role="listbox" style={{ maxWidth: 560, maxHeight: 300, overflowY: 'auto', border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)' }}>
+                    {filteredLocs.length === 0 && (
+                      <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--c64748b)' }}>—</div>
+                    )}
+                    {filteredLocs.map((l) => {
+                      const on = l.name === pickLoc;
+                      return (
+                        <button
+                          key={l.name}
+                          type="button"
+                          role="option"
+                          aria-selected={on}
+                          onClick={() => setPickLoc(l.name)}
+                          style={{
+                            display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+                            padding: '10px 14px', border: 'none', borderTop: '1px solid var(--line)',
+                            borderLeft: `4px solid ${on ? '#6366f1' : 'transparent'}`,
+                            background: on ? 'rgba(99,102,241,.16)' : 'transparent',
+                          }}
+                        >
+                          <div style={{ fontSize: 13.5, fontWeight: on ? 800 : 600, color: 'var(--ce2e8f0)' }}>{on ? '✓ ' : ''}{l.title}</div>
+                          {l.address && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>{l.address}</div>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+                    <button onClick={saveLocation} disabled={!pickLoc || saving} style={{ ...ui.primaryBtn, opacity: pickLoc ? 1 : 0.5 }}>
+                      {pickLoc ? `${t('saveLocation')}: ${pickedTitle}` : t('saveLocation')}
+                    </button>
+                    {!pickLoc && <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{t('pickFirst')}</span>}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 6 }}>{filteredLocs.length}/{locations.length} {t('locCount')}</div>
                 </div>

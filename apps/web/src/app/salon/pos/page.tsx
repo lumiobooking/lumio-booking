@@ -114,6 +114,28 @@ function Register() {
   // because there is no tablet on which v2 works.
   const tablet = useIsMobile(1180);
   const wide = !isMobile && !tablet && (uiPref ? uiPref === 'v2' : pilot);
+  /**
+   * WHAT THE BIG REGISTERS AGREE ON, AND WHAT THIS SCREEN NOW DOES ON A TABLET.
+   *
+   * Square, Toast, Clover, Lightspeed and the salon ones (Fresha, Mangomint,
+   * Boulevard) converge on the same iPad checkout, and it is not an accident:
+   *
+   *   - Two panes. Catalog ~58%, ticket ~42%, both full height.
+   *   - The catalog is ONE row of categories that scrolls sideways, one
+   *     search, then big tiles. No scanner box on screen: a USB scanner types
+   *     on its own; a camera scan hides behind an icon.
+   *   - The ticket is customer → line items (most of the height) → totals →
+   *     ONE big pay button. That is the whole panel.
+   *   - Discounts, promo codes, gift cards, split payment are one tap away,
+   *     never permanently on screen. An empty cart shows an empty cart, not
+   *     four input boxes for money that has not been rung up yet.
+   *
+   * `compact` is that layout: it applies to the phone AND the tablet, since
+   * both are screens where every extra row is paid for in scrolling.
+   */
+  const compact = isMobile || tablet;
+  /** The adjustments drawer (promo / discount / gift card) on a compact ticket. */
+  const [adjOpen, setAdjOpen] = useState(false);
   // When opened from a booking's "Checkout" button these are pre-filled.
   const [appointmentId] = useState<string | null>(() => params.get('appointmentId'));
   // Settling a whole party on one bill: every appointment in the group.
@@ -157,9 +179,9 @@ function Register() {
   // emptied out from under the cashier falls back to services rather than
   // leaving them on a screen with no button to get off it.
   useEffect(() => {
-    if (!isMobile) return;
+    if (!compact) return;
     if ((tab === 'ADDON' && addons.length === 0) || (tab === 'PRODUCT' && products.length === 0)) setTab('SERVICE');
-  }, [isMobile, tab, addons.length, products.length]);
+  }, [compact, tab, addons.length, products.length]);
   const [query, setQuery] = useState('');
   const [catFilter, setCatFilter] = useState<string | null>(null); // service category id, null = all
   const [cart, setCart] = useState<Line[]>([]);
@@ -1226,7 +1248,7 @@ function Register() {
           <button onClick={() => { loadHeld(); setShowHeld(true); }} style={{ ...ghost, padding: '7px 10px', fontSize: 13, whiteSpace: 'nowrap', ...(heldBills.length ? { borderColor: '#6366f1', color: 'var(--ink-link)' } : null) }}>🧾 {lang === 'vi' ? 'Bill chờ' : 'Held'}{heldBills.length ? ` ${heldBills.length}` : ''}</button>
         </div>
   );
-  const headerBar = isMobile ? phoneHeader : (
+  const headerBar = compact ? phoneHeader : (
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, flexShrink: 0,
           marginBottom: wide ? 0 : 16,
@@ -1304,7 +1326,7 @@ function Register() {
       {!wide && banners}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : (wide ? 'minmax(0, 1fr) 430px' : 'minmax(0, 1.3fr) minmax(0, 1fr)'),
+        gridTemplateColumns: isMobile ? '1fr' : (wide ? 'minmax(0, 1fr) 430px' : tablet ? 'minmax(0, 1.4fr) minmax(340px, 1fr)' : 'minmax(0, 1.3fr) minmax(0, 1fr)'),
         // Wide mode: row 1 is the catalog + ticket, row 2 is the toolbar strip
         // under the catalog only — the ticket spans both rows and keeps the
         // extra height for itself.
@@ -1319,7 +1341,7 @@ function Register() {
           ...ui.card, display: 'flex', flexDirection: 'column',
           // 20px of card padding on each side of a 390px screen is a tenth of
           // the width spent on nothing; the cards inside need it more.
-          ...(isMobile ? { padding: 12 } : null),
+          ...(compact ? { padding: 12 } : null),
           maxHeight: isMobile ? 'none' : (wide ? '100%' : 'calc(100dvh - 130px)'),
           ...(wide ? { height: '100%', minHeight: 0, overflow: 'hidden', gridColumn: 1, gridRow: 1 } : null),
         }}>
@@ -1333,12 +1355,12 @@ function Register() {
               { id: 'ADDON', label: t('po.tabAddons'), n: addons.length },
               { id: 'PRODUCT', label: t('po.tabProducts'), n: products.length },
             ];
-            const tabs = all.filter((x) => !isMobile || x.id === 'SERVICE' || x.n > 0);
-            if (isMobile && tabs.length <= 1) return null;
+            const tabs = all.filter((x) => !compact || x.id === 'SERVICE' || x.n > 0);
+            if (compact && tabs.length <= 1) return null;
             return (
-              <div style={{ display: 'flex', gap: 6, marginBottom: isMobile ? 10 : 12 }}>
+              <div style={{ display: 'flex', gap: 6, marginBottom: compact ? 10 : 12 }}>
                 {tabs.map((x) => (
-                  <button key={x.id} onClick={() => setTab(x.id)} style={{ ...tabBtn(tab === x.id), ...(isMobile ? { fontSize: 13, padding: '8px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : null) }}>
+                  <button key={x.id} onClick={() => setTab(x.id)} style={{ ...tabBtn(tab === x.id), ...(compact ? { fontSize: 13, padding: '8px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : null) }}>
                     {x.label}<TabCount n={x.n} active={tab === x.id} />
                   </button>
                 ))}
@@ -1348,7 +1370,7 @@ function Register() {
 
           {/* Barcode scan: a USB scanner types the code + Enter; the camera button
               opens a live scanner. Both match a product by barcode and add it. */}
-          {(!isMobile || tab === 'PRODUCT') && (
+          {(!compact || tab === 'PRODUCT') && (
           <div style={{ display: 'flex', gap: 6, marginBottom: scanMsg ? 6 : 12 }}>
             <input
               value={scanInput}
@@ -1380,12 +1402,12 @@ function Register() {
 
           {/* Category quick-filter chips (services tab) */}
           {tab === 'SERVICE' && serviceCats.length > 0 && (
-            <div className={isMobile ? 'pos-chips' : undefined} style={{
-              display: 'flex', gap: 6, marginBottom: isMobile ? 10 : 12,
+            <div className={compact ? 'pos-chips' : undefined} style={{
+              display: 'flex', gap: 6, marginBottom: compact ? 10 : 12,
               // Three rows of capitalised category names were most of the
               // phone's first screen. One row that scrolls sideways is the
               // same information in a fifth of the height.
-              ...(isMobile
+              ...(compact
                 ? { flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const, marginLeft: -12, marginRight: -12, paddingLeft: 12, paddingRight: 12, scrollbarWidth: 'none' as const }
                 : { flexWrap: 'wrap' }),
             }}>
@@ -1491,8 +1513,16 @@ function Register() {
             </div>
           )}
           {!wide && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 12px', flexWrap: 'wrap' }}>
             <h2 style={{ fontSize: 15, margin: 0 }}>{t('po.ticket')}</h2>
+            {/* The print toggle sits with the bill on a tablet — the phone
+                header dropped it, and the receipt is a ticket-side decision. */}
+            {tablet && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ccbd5e1)', cursor: 'pointer', whiteSpace: 'nowrap', marginRight: 'auto', marginLeft: 8 }}>
+                <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 15, height: 15 }} />
+                🖨️ {t('po.printReception')}
+              </label>
+            )}
             <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={() => { enableIpad(); setIpadPanel(true); }} title={t('po.ipadHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>📱 {t('po.ipad')}</button>
               <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>🖥️ {t('po.custScreen')}</button>
@@ -1509,7 +1539,18 @@ function Register() {
           />
 
           {cart.length === 0 ? (
-            <p style={{ color: 'var(--c94a3b8)', fontSize: 14, ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto' } : null) }}>{t('po.tapToAdd')}</p>
+            // An empty ticket on a tablet is an empty ticket: room, an arrow at
+            // the catalog, and nothing to fill in. The registers people already
+            // know all do this; a wall of promo/discount/gift inputs over a
+            // $0.00 bill was the single thing that made this screen read as
+            // "rối" on an iPad.
+            <div style={{
+              color: 'var(--c64748b)', fontSize: 14, textAlign: 'center',
+              ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto' } : null),
+              ...(tablet ? { flex: '1 1 0%', minHeight: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 12px' } : null),
+            }}>
+              {tablet ? <span>🧾<br />{t('po.tapToAdd')}</span> : t('po.tapToAdd')}
+            </div>
           ) : (
             <div style={{
               display: 'flex', flexDirection: 'column', gap: 10, marginBottom: wide ? 8 : 12,
@@ -1589,10 +1630,18 @@ function Register() {
           {/* Totals */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5, marginBottom: 9 }}>
             <Row label={t('po.subtotal')} value={formatPrice(money.subtotal, currency)} />
-            {/* Promo code + manual discount. One boxed group: both are "money
-                coming off this ticket", and both used to eat a full row each.
-                The discount takes either a flat amount or a percent — the
-                cashier picks with the $ / % switch instead of doing the math. */}
+            {/* On a compact ticket the money-off controls live behind one
+                chip until somebody needs them — see the note on `compact`.
+                They stay open once a promo or discount is actually applied,
+                because then they are showing a fact, not offering an input. */}
+            {compact && !adjOpen && !promo && !orderDiscount && !giftCard && (
+              <div style={{ display: 'flex', gap: 6, margin: '4px 0 6px', flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>🏷️ {t('po.promoCode')}</button>
+                <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>✂️ {t('po.discountLbl')}</button>
+                {online && <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>🎁 {t('po.gcBtn')}</button>}
+              </div>
+            )}
+            {(!compact || adjOpen || promo || orderDiscount) && (
             <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 10, padding: 7, display: 'flex', flexDirection: 'column', gap: 6, margin: '3px 0 5px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5, width: 72, flexShrink: 0 }}>🏷️ {t('po.promoCode')}</span>
@@ -1667,6 +1716,7 @@ function Register() {
                 </span>
               </div>
             </div>
+            )}
             {money.tax > 0 && <Row label={t('po.tax').replace('{r}', String(taxRate))} value={formatPrice(money.tax, currency)} />}
             {money.tip > 0 && <Row label={t('po.tips')} value={formatPrice(money.tip, currency)} />}
             {money.cardSurcharge > 0 && <Row label={t('po.cardFee').replace('{r}', String(cardSurchargePct))} value={formatPrice(money.cardSurcharge, currency)} />}
@@ -1696,8 +1746,9 @@ function Register() {
             </div>
           </div>
 
-          {/* Gift card redemption (online only — needs a live balance check) */}
-          {online && (
+          {/* Gift card redemption (online only — needs a live balance check).
+              On a compact ticket it lives in the same drawer as the discounts. */}
+          {online && (!compact || adjOpen || giftCard) && (
             <div style={{ marginBottom: 8 }}>
               {giftCard ? (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid #155e75', borderRadius: 8, padding: '8px 10px' }}>

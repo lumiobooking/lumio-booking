@@ -360,6 +360,66 @@ export function explainMetaError(raw: string | null | undefined): string | null 
   return null;
 }
 
+/**
+ * THE SAME JOB AS explainMetaError, FOR GOOGLE — and it was missing.
+ *
+ * toGoogle() keeps Google's own sentence ("Google 403: The caller does not
+ * have permission") because that string is the only thing anybody can search
+ * for when this reaches support. But it tells a salon owner nothing, and a
+ * scheduled Google post that fails at 16:50 is a post nobody is watching: the
+ * calendar turns red, the reason stays in English inside a modal, and the post
+ * is simply never made.
+ *
+ * So: Google's words are kept, and this adds the sentence that says what to DO.
+ * Ordered most specific first — several of these share an HTTP status, and the
+ * status alone is the least useful part.
+ */
+export function explainGbpError(raw: string | null | undefined): string | null {
+  const e = (raw ?? '').toLowerCase();
+  if (!e) return null;
+  // Only speak about failures that came back from Google.
+  if (!e.includes('google')) return null;
+
+  // The Cloud project has never been switched on for this API. Nothing about
+  // the post or the salon is wrong, and no amount of retrying changes it.
+  if (e.includes('has not been used in project') || e.includes('api is disabled') || e.includes('accessnotconfigured')) {
+    return 'Google Business Profile API chưa được bật cho dự án Google Cloud của Lumio. Đây là việc của bên em, không phải của tiệm — báo team Lumio, bài sẽ đăng lại được ngay sau khi bật.';
+  }
+  // Google's own daily ceiling. It is low by default and is raised only on request.
+  if (e.includes('quota') || e.includes('resource_exhausted') || e.includes('rate limit') || /google 429/.test(e)) {
+    return 'Google đã chạm giới hạn số lần đăng trong ngày của Lumio. Không phải lỗi nội dung bài — chờ sang ngày hôm sau rồi bấm "Đăng ngay", hoặc báo team Lumio để xin nâng hạn mức.';
+  }
+  // A listing that is not verified, or has been suspended, accepts nothing.
+  if (e.includes('not verified') || e.includes('unverified') || e.includes('suspend') || e.includes('disabled location')) {
+    return 'Hồ sơ Google của tiệm chưa được xác minh hoặc đang bị tạm khoá — Google không nhận bài nào cho tới khi hồ sơ hoạt động lại. Tiệm cần vào Google Business Profile kiểm tra trạng thái hồ sơ.';
+  }
+  // The token is gone: password change, access revoked, refresh token expired.
+  if (e.includes('invalid_grant') || e.includes('invalid credentials') || e.includes('unauthenticated') || /google 401/.test(e)) {
+    return 'Kết nối Google của tiệm đã hết hạn hoặc bị thu hồi. Vào Cài đặt → Đánh giá Google và bấm kết nối lại bằng tài khoản Google SỞ HỮU hồ sơ tiệm.';
+  }
+  // The account is connected but is not a manager of this location.
+  if (e.includes('caller does not have permission') || e.includes('permission_denied') || /google 403/.test(e)) {
+    return 'Tài khoản Google đang kết nối không có quyền đăng bài cho địa điểm này. Kết nối lại bằng tài khoản là CHỦ hoặc QUẢN LÝ hồ sơ tiệm trên Google Business Profile.';
+  }
+  // The saved location resource no longer resolves — usually because the
+  // listing was merged, moved or re-verified after it was picked here.
+  if (e.includes('requested entity was not found') || e.includes('not_found') || /google 404/.test(e)) {
+    return 'Địa điểm Google đã lưu không còn đúng (hồ sơ có thể đã bị gộp, đổi địa chỉ hoặc xác minh lại). Vào Cài đặt → Đánh giá Google và chọn lại địa điểm.';
+  }
+  // Google fetches the picture itself, from our URL, with no cookies.
+  if (e.includes('media') || e.includes('photo') || e.includes('image') || e.includes('sourceurl')) {
+    return 'Google không tải được ảnh của bài. Ảnh phải là JPG hoặc PNG và mở được công khai từ đường link — thử mở link ảnh ở tab ẩn danh; nếu phải đăng nhập mới xem được thì Google cũng không tải được. Đổi ảnh khác rồi bấm "Đăng ngay".';
+  }
+  if (e.includes('calltoaction') || e.includes('action_type') || (e.includes('url') && e.includes('invalid'))) {
+    return 'Google từ chối nút bấm của bài. Kiểm tra link của nút ở phần "Nút trên bài Google" — hoặc chọn "Không có nút" rồi đăng lại.';
+  }
+  if (e.includes('summary') || e.includes('too long')) {
+    return 'Google từ chối phần chữ của bài (thường do quá dài — tối đa 1.500 ký tự sau khi hệ thống bỏ số điện thoại và link). Rút ngắn caption rồi bấm "Đăng ngay".';
+  }
+  // Known to be Google, cause unknown: say that honestly rather than guess.
+  return 'Google từ chối bài này. Bấm "Đăng ngay" để thử lại một lần; nếu vẫn lỗi, gửi nguyên câu tiếng Anh ở trên cho team Lumio.';
+}
+
 // ---- when the scheduler should pick a post up ------------------------------
 
 export interface QueuedPost {

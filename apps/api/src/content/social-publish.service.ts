@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import {
-  planPublish, dueNow, crowding, shapeOf, explainMetaError, gbpLanguage, MAX_ATTEMPTS, CHANNELS,
+  planPublish, dueNow, crowding, shapeOf, explainMetaError, explainGbpError, gbpLanguage, MAX_ATTEMPTS, CHANNELS,
   priorSuccesses, stillDue, retryable, whyWaiting, SWEEP_STALE_MS,
   type Channel, type ConnectedPage, type PublishPlan, type MediaItem, type GoogleLocation,
 } from './social-publish';
@@ -526,7 +526,9 @@ export class SocialPublishService {
         // can search for when this reaches support.
         fix: permissionFixed && /pages_manage_posts|instagram_content_publish|#200/i.test(r.lastError ?? '')
           ? null
-          : explainMetaError(r.lastError),
+          // Meta first, then Google: one row can only have failed on one of them,
+          // and each explainer already refuses errors that are not its own.
+          : (explainMetaError(r.lastError) ?? explainGbpError(r.lastError)),
         /** True when the saved error is about a permission the token now has. */
         errorIsStale: permissionFixed && /pages_manage_posts|instagram_content_publish|#200/i.test(r.lastError ?? ''),
         results: Array.isArray(r.results) ? r.results : [],

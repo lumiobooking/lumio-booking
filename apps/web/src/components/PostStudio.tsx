@@ -106,6 +106,18 @@ export interface StudioPost {
   designerName?: string | null;
   teamNote?: string | null;
   driveFolderUrl?: string | null;
+  /**
+   * Why the last send failed, in Google's or Meta's own words, and the
+   * sentence that says what to do about it (api: explainMetaError /
+   * explainGbpError).
+   *
+   * The card used to show "⚠ Đăng lỗi" and nothing else. A scheduled post that
+   * fails at 16:50 is a post nobody is watching, so the one place the reason
+   * had to appear was the red card itself — a person who has to open a modal
+   * to learn that Google is out of quota will, most days, simply not open it.
+   */
+  lastError?: string | null;
+  fix?: string | null;
 }
 
 /**
@@ -160,6 +172,7 @@ export function postHint(p: StudioPost, vi: boolean): string {
   const t = TONES[tone];
   const lines = [`${t.icon} ${vi ? t.vi : t.en}`];
   if (p.held) lines.push(`${p.held.by ? `${p.held.by}: ` : ''}${(p.held.note ?? '').slice(0, 200)}`);
+  if (tone === 'failed' && (p.fix || p.lastError)) lines.push(`⚠ ${(p.fix ?? p.lastError ?? '').slice(0, 300)}`);
   const who = [p.writerName ? `✍ ${p.writerName}` : '', p.designerName ? `🎨 ${p.designerName}` : ''].filter(Boolean).join(' · ');
   if (who) lines.push(who);
   if (p.teamNote) lines.push(`📝 ${p.teamNote.slice(0, 200)}`);
@@ -294,8 +307,15 @@ export function MonthCalendar({
      * back to the caption when the answer is nothing. A caption cut at 24
      * characters was never the answer.
      */
+    // A red card has to carry its own reason. Order: what a person asked for,
+    // then why the send failed, then what is blocking it — most specific first.
+    const alarmWhy = p.held?.note
+      ? p.held.note
+      : tone === 'failed'
+        ? (p.fix || p.lastError || p.blockers[0] || '')
+        : (p.blockers[0] || '');
     const detail = t.alarm
-      ? `${t.icon} ${vi ? t.vi : t.en}${p.held?.note ? ` — ${p.held.note}` : p.blockers[0] ? ` — ${p.blockers[0]}` : ''}`
+      ? `${t.icon} ${vi ? t.vi : t.en}${alarmWhy ? ` — ${alarmWhy}` : ''}`
       : tone === 'writing' || tone === 'design'
         ? `${t.icon} ${vi ? t.vi : t.en}${owner ? ` · ${owner}` : ''}`
         : p.teamNote

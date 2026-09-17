@@ -45,6 +45,19 @@ export function PlanIdeas({
   const days = useMemo(() => layoutGrid(blocks, [], todayKey, tz).filter((d) => d.inWindow && d.jobs.length > 0), [blocks, todayKey, tz]);
   const [kind, setKind] = useState<string>('all');
   const [all, setAll] = useState(false);
+  /**
+   * The day a row will actually land on, when a person has chosen one.
+   *
+   * The generator picks the day from the shop's quiet hours, and that guess is
+   * right often enough to keep as the one-tap default — the point of this
+   * screen is triaging twenty ideas quickly, and asking for a date on every
+   * one of them would cost more than it saves. But the guess is only a guess:
+   * the team knows the shop is closed that Tuesday, or wants the offer out two
+   * days sooner. So the date is a chip under the button, and touching it is
+   * the only thing that overrides the default.
+   */
+  const [dayFor, setDayFor] = useState<Record<string, string>>({});
+  const [picking, setPicking] = useState<string | null>(null);
   const kinds = useMemo(() => Array.from(new Set(days.flatMap((d) => d.jobs.map((j) => j.job.kind)))), [days]);
   const rows = days
     .map((d) => ({ ...d, jobs: d.jobs.filter((j) => kind === 'all' || j.job.kind === kind) }))
@@ -58,6 +71,11 @@ export function PlanIdeas({
   const visibleWeeks = all ? weeks : weeks.slice(0, 2);
   const hidden = rows.filter((d) => !visibleWeeks.includes(weekOf(d.key))).reduce((n, d) => n + d.jobs.length, 0);
 
+  /** "T4 16/9" — for the chip that shows where an idea is about to land. */
+  const shortDay = (key: string) => {
+    const [, m, d] = key.split('-').map(Number);
+    return `${(vi ? WD_VI : WD_EN)[mondayIndex(key)]} ${d}/${m}`;
+  };
   const dayLabel = (key: string) => {
     const [, m, d] = key.split('-').map(Number);
     return { wd: (vi ? WD_VI : WD_EN)[mondayIndex(key)], d: String(d), m: vi ? MONTH_VI[m - 1] : MONTH_EN[m - 1] };
@@ -131,11 +149,60 @@ export function PlanIdeas({
                       )}
                     </div>
                     <div>
-                      {!j.done && j.who !== 'salon' ? (
-                        <button type="button" onClick={() => onPlan(j.job, d.key)} title={T('Đưa ý này vào Plan ngày đó — sửa lại trên Plan, xong mới lên lịch đăng', 'Put this on the plan for that day — edit it there, schedule from there')} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #6366f1', background: 'rgba(99,102,241,.14)', color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-                          {T('→ Đưa vào Plan', '→ To plan')}
-                        </button>
-                      ) : <span style={{ display: 'inline-block', width: 84 }} />}
+                      {!j.done && j.who !== 'salon' ? (() => {
+                        const rowId = `${d.key}-${i}`;
+                        const target = dayFor[rowId] ?? d.key;   // the guess, until someone changes it
+                        return (
+                          <div style={{ display: 'grid', gap: 4, justifyItems: 'stretch' }}>
+                            <button
+                              type="button"
+                              onClick={() => onPlan(j.job, target)}
+                              title={T(`Đưa ý này vào Plan ngày ${shortDay(target)} — sửa lại trên Plan, xong mới lên lịch đăng`, `Put this on the plan for ${shortDay(target)} — edit it there, schedule from there`)}
+                              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #6366f1', background: 'rgba(99,102,241,.14)', color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                            >
+                              {T('→ Đưa vào Plan', '→ To plan')}
+                            </button>
+                            {/* The date, spelled out under the button so nobody has to
+                                infer it from the column on the left — and editable,
+                                because the generator's day is a suggestion. Native
+                                date input: it is the one control every phone already
+                                knows how to open. */}
+                            {picking === rowId ? (
+                              <input
+                                type="date"
+                                autoFocus
+                                value={target}
+                                min={todayKey}
+                                onChange={(ev) => {
+                                  const v = ev.target.value;
+                                  if (v) setDayFor((m) => ({ ...m, [rowId]: v }));
+                                }}
+                                onBlur={() => setPicking(null)}
+                                onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === 'Escape') setPicking(null); }}
+                                style={{
+                                  width: '100%', padding: '4px 6px', borderRadius: 7,
+                                  border: '1px solid var(--c475569)', background: 'var(--c0f172a)',
+                                  color: 'var(--cf1f5f9)', fontSize: 11.5, fontFamily: 'inherit',
+                                }}
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setPicking(rowId)}
+                                title={T('Đổi ngày đưa vào Plan', 'Change the day this goes on the plan')}
+                                style={{
+                                  padding: '3px 6px', borderRadius: 7, border: '1px dashed var(--c475569)',
+                                  background: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                                  fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+                                  color: dayFor[rowId] ? 'var(--ink-link)' : 'var(--c94a3b8)',
+                                }}
+                              >
+                                📅 {shortDay(target)}{dayFor[rowId] ? ' ✎' : ''}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })() : <span style={{ display: 'inline-block', width: 96 }} />}
                     </div>
                   </div>
                 ));

@@ -50,6 +50,7 @@ const COMPARE: [string, [string, string, string, string][]][] = [
     ['Google review QR + tracking', '✓', '✓', '✓'], ['AI review replies + leaderboard', '—', '✓', '✓'],
     ['Loyalty rewards + installable app', 'Basic', '✓', '✓'], ['Referral program', '—', '✓', '✓'],
     ['Campaigns (birthday, email + SMS)', '—', '✓', '✓'], ['Messenger AI booking bot (FB/IG)', '—', '✓', '✓'],
+    ['Social scheduling (TikTok, Facebook, Instagram)', '—', '✓', '✓'],
     ['AI-SEO booking page', '✓', '✓', '✓'],
   ]],
   ['Communications', [
@@ -397,6 +398,14 @@ const FEATURES = [
   { icon: '👩‍🔧', title: 'Staff & smart assignment', desc: 'Manage technicians, working hours and let the system fairly auto-assign or honor client preferences.' },
   { icon: '📱', title: 'Installable app (PWA)', desc: 'Your booking page installs like a real app on iPhone, Android, Windows and Mac — no app store needed.' },
   { icon: '🔌', title: 'WordPress connector', desc: 'Embed the booking form on your existing WordPress site with a lightweight plugin and a license key.' },
+  // NAMED ON PURPOSE. TikTok's app reviewer visits this page to decide whether
+  // Lumio is a product other businesses buy, or a tool its own team uses
+  // internally — and an integration a product never advertises reads as the
+  // latter. Our first submission was refused on exactly that reading ("does
+  // not support personal or internal company use"), with a site that never
+  // said the word TikTok. Every social network a salon can connect is listed
+  // here, in public, where it can be checked.
+  { icon: '📣', title: 'Social posts on a schedule', desc: 'Each salon connects its OWN TikTok, Facebook and Instagram accounts, plans a month of posts with AI, approves them, and Lumio publishes on the day and time chosen — from one calendar.' },
 ];
 
 const STEPS = [

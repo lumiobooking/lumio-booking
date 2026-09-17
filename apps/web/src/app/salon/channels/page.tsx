@@ -99,8 +99,14 @@ function Inner() {
     finally { setBusy(null); }
   }
 
+  // WHOSE ACCOUNT THIS IS, SAID CAREFULLY.
+  // "Only the owner (or the Lumio team) can connect" is true — support can act
+  // inside a salon at the salon's request — but read cold by a platform
+  // reviewer it says "this vendor manages its clients' accounts", which is
+  // the exact sentence TikTok refused our app over. The salon owner is the
+  // one who authorizes; support only ever helps, when asked.
   const ownerOnly = !canConnect && (
-    <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }}>{T('Chỉ chủ tiệm (hoặc đội Lumio) kết nối/ngắt được.', 'Only the owner (or the Lumio team) can connect or disconnect.')}</div>
+    <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }}>{T('Chỉ chủ tiệm mới kết nối/ngắt được (nhân viên hỗ trợ Lumio chỉ thao tác khi tiệm yêu cầu).', 'Only the salon owner can connect or disconnect (Lumio support acts only when the salon asks).')}</div>
   );
 
   return (

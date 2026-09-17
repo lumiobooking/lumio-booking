@@ -136,6 +136,8 @@ function Register() {
   const compact = isMobile || tablet;
   /** The adjustments drawer (promo / discount / gift card) on a compact ticket. */
   const [adjOpen, setAdjOpen] = useState(false);
+  /** The payment sheet on a compact screen — see the note where it opens. */
+  const [payOpen, setPayOpen] = useState(false);
   // When opened from a booking's "Checkout" button these are pre-filled.
   const [appointmentId] = useState<string | null>(() => params.get('appointmentId'));
   // Settling a whole party on one bill: every appointment in the group.
@@ -185,6 +187,10 @@ function Register() {
   const [query, setQuery] = useState('');
   const [catFilter, setCatFilter] = useState<string | null>(null); // service category id, null = all
   const [cart, setCart] = useState<Line[]>([]);
+  // A sale that went through empties the cart; the compact payment sheet has
+  // nothing left to take and closes itself, so the next customer starts on
+  // the catalog. (payOpen is declared above, with the layout flags.)
+  useEffect(() => { if (cart.length === 0) setPayOpen(false); }, [cart.length]);
   const [heldBills, setHeldBills] = useState<{ id: string; label: string | null; totalCents: number; payload: unknown; createdAt: string }[]>([]);
   const [showHeld, setShowHeld] = useState(false);
   const [orderDiscount, setOrderDiscount] = useState('');
@@ -1305,476 +1311,9 @@ function Register() {
     </>
   );
 
-  if (loading) return <p style={{ color: 'var(--c94a3b8)' }}>{t('po.loadingReg')}</p>;
-
-  return (
-    <section style={{
-      paddingBottom: isMobile ? (mobileView === 'catalog' ? 96 : 24) : undefined,
-      // Wide mode: the register owns exactly one screen. Nothing below the fold,
-      // so the pay button can never be scrolled away.
-      ...(wide && !fullscreen ? { height: 'calc(100dvh - 92px)', marginBottom: -24, display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
-      // Full screen: cover the shell entirely — no sidebar, no page header.
-      ...(fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, margin: 0, padding: '12px 16px', background: 'var(--c0b1120)', display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
-    }}>
-      <style>{`
-        .pos-card { transition: border-color .12s ease, background .12s ease, transform .06s ease; }
-        .pos-card:hover { border-color: #6366f1 !important; background: var(--c1e293b) !important; }
-        .pos-card:active { transform: scale(.97); }
-        .pos-chips::-webkit-scrollbar { display: none; }
-      `}</style>
-      {!wide && headerBar}
-      {!wide && banners}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : (wide ? 'minmax(0, 1fr) 430px' : tablet ? 'minmax(0, 1.4fr) minmax(340px, 1fr)' : 'minmax(0, 1.3fr) minmax(0, 1fr)'),
-        // Wide mode: row 1 is the catalog + ticket, row 2 is the toolbar strip
-        // under the catalog only — the ticket spans both rows and keeps the
-        // extra height for itself.
-        ...(wide ? { gridTemplateRows: 'minmax(0, 1fr) auto', rowGap: 10 } : null),
-        gap: isMobile ? 12 : 16,
-        alignItems: wide ? 'stretch' : 'start',
-        ...(wide ? { flex: 1, minHeight: 0 } : null),
-      }}>
-        {/* Catalog */}
-        {(!isMobile || mobileView === 'catalog') && (
-        <div style={{
-          ...ui.card, display: 'flex', flexDirection: 'column',
-          // 20px of card padding on each side of a 390px screen is a tenth of
-          // the width spent on nothing; the cards inside need it more.
-          ...(compact ? { padding: 12 } : null),
-          maxHeight: isMobile ? 'none' : (wide ? '100%' : 'calc(100dvh - 130px)'),
-          ...(wide ? { height: '100%', minHeight: 0, overflow: 'hidden', gridColumn: 1, gridRow: 1 } : null),
-        }}>
-          {/* Tabs with counts. On a phone an empty tab is a button that leads
-              nowhere — "Sản phẩm 0" took a third of the row to say the shop
-              sells no products — so empty tabs are not drawn there, and when
-              only services remain there is no row at all. */}
-          {(() => {
-            const all: { id: 'SERVICE' | 'ADDON' | 'PRODUCT'; label: string; n: number }[] = [
-              { id: 'SERVICE', label: t('po.tabServices'), n: services.length },
-              { id: 'ADDON', label: t('po.tabAddons'), n: addons.length },
-              { id: 'PRODUCT', label: t('po.tabProducts'), n: products.length },
-            ];
-            const tabs = all.filter((x) => !compact || x.id === 'SERVICE' || x.n > 0);
-            if (compact && tabs.length <= 1) return null;
-            return (
-              <div style={{ display: 'flex', gap: 6, marginBottom: compact ? 10 : 12 }}>
-                {tabs.map((x) => (
-                  <button key={x.id} onClick={() => setTab(x.id)} style={{ ...tabBtn(tab === x.id), ...(compact ? { fontSize: 13, padding: '8px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : null) }}>
-                    {x.label}<TabCount n={x.n} active={tab === x.id} />
-                  </button>
-                ))}
-              </div>
-            );
-          })()}
-
-          {/* Barcode scan: a USB scanner types the code + Enter; the camera button
-              opens a live scanner. Both match a product by barcode and add it. */}
-          {(!compact || tab === 'PRODUCT') && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: scanMsg ? 6 : 12 }}>
-            <input
-              value={scanInput}
-              onChange={(e) => setScanInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); scanLookup(scanInput); } }}
-              placeholder={t('po.scanPlaceholder')}
-              style={{ ...ui.input, flex: 1, padding: '8px 10px' }}
-            />
-            <button type="button" onClick={() => setShowScanner(true)} style={{ ...ghost, padding: '8px 12px', whiteSpace: 'nowrap' }}>📷 {t('po.scanCamera')}</button>
-          </div>
-          )}
-          {scanMsg && (
-            <div style={{ fontSize: 12, color: scanMsg.ok ? 'var(--ink-good)' : 'var(--ink-warn)', marginBottom: 10 }}>{scanMsg.text}</div>
-          )}
-
-          {/* Search */}
-          <div style={{ position: 'relative', marginBottom: 12 }}>
-            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--c64748b)', pointerEvents: 'none' }}>🔍</span>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t('po.searchPh')}
-              style={{ ...ui.input, width: '100%', padding: '10px 34px', fontSize: 14, boxSizing: 'border-box' }}
-            />
-            {query && (
-              <button onClick={() => setQuery('')} aria-label="clear" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
-            )}
-          </div>
-
-          {/* Category quick-filter chips (services tab) */}
-          {tab === 'SERVICE' && serviceCats.length > 0 && (
-            <div className={compact ? 'pos-chips' : undefined} style={{
-              display: 'flex', gap: 6, marginBottom: compact ? 10 : 12,
-              // Three rows of capitalised category names were most of the
-              // phone's first screen. One row that scrolls sideways is the
-              // same information in a fifth of the height.
-              ...(compact
-                ? { flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const, marginLeft: -12, marginRight: -12, paddingLeft: 12, paddingRight: 12, scrollbarWidth: 'none' as const }
-                : { flexWrap: 'wrap' }),
-            }}>
-              <button onClick={() => setCatFilter(null)} style={chipSel(catFilter === null)}>{t('po.allCats')}</button>
-              {serviceCats.map((c) => (
-                <button key={c.id} onClick={() => setCatFilter(catFilter === c.id ? null : c.id)} style={chipSel(catFilter === c.id)}>{c.name}</button>
-              ))}
-            </div>
-          )}
-
-          {/* Scrollable results */}
-          <div style={{ overflowY: 'auto', flex: 1, minHeight: 220, paddingRight: 4 }}>
-            {/* Services, grouped by category */}
-            {tab === 'SERVICE' && (
-              serviceGroups.length === 0 ? (
-                <EmptyState text={services.length === 0 ? t('po.noServices') : `${t('po.noMatch')} "${query}"`} />
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {serviceGroups.map((grp) => (
-                    <div key={grp.id ?? '__none__'}>
-                      {(serviceCats.length > 0) && <GroupHeader label={grp.name} count={grp.items.length} />}
-                      <div style={catGrid}>
-                        {grp.items.map((s) => (
-                          <button key={s.id} onClick={() => addService(s)} className="pos-card" style={catBtn}>
-                            <span style={cardTitle}>{s.name}</span>
-                            <CatPrice priceCents={s.priceCents} discountPercent={s.discountPercent} currency={currency} />
-                            {s.durationMinutes > 0 && <span style={cardMeta}>⏱ {s.durationMinutes} {t('po.min')}</span>}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
-
-            {/* Add-ons, grouped by parent service */}
-            {tab === 'ADDON' && (
-              addons.length === 0 ? (
-                <p style={mutedP}>{t('po.noAddonsA')}<a href="/salon/services" style={{ color: 'var(--c818cf8)' }}>{t('po.servicesLink')}</a>.</p>
-              ) : addonGroups.length === 0 ? (
-                <EmptyState text={`${t('po.noMatch')} "${query}"`} />
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {addonGroups.map((grp) => (
-                    <div key={grp.service}>
-                      <GroupHeader label={grp.service} count={grp.items.length} />
-                      <div style={catGrid}>
-                        {grp.items.map((a) => (
-                          <button key={a.id} onClick={() => addAddon(a)} className="pos-card" style={{ ...catBtn, borderStyle: 'dashed' }}>
-                            <span style={cardTitle}>+ {a.name}</span>
-                            <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(a.priceCents, currency)}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
-
-            {/* Products */}
-            {tab === 'PRODUCT' && (
-              products.length === 0 ? (
-                <p style={mutedP}>{t('po.noProductsA')}<a href="/salon/products" style={{ color: 'var(--c818cf8)' }}>{t('po.addSome')}</a></p>
-              ) : productsF.length === 0 ? (
-                <EmptyState text={`${t('po.noMatch')} "${query}"`} />
-              ) : (
-                <div style={catGrid}>
-                  {productsF.map((p) => (
-                    <button key={p.id} onClick={() => addProduct(p)} className="pos-card" style={catBtn}>
-                      <span style={cardTitle}>{p.name}</span>
-                      <CatPrice priceCents={p.priceCents} discountPercent={p.discountPercent} currency={currency} />
-                      {p.trackStock && <span style={{ fontSize: 11, fontWeight: 600, color: p.stockQty > 0 ? 'var(--c94a3b8)' : 'var(--ink-bad)' }}>{t('po.stock')}: {p.stockQty}</span>}
-                    </button>
-                  ))}
-                </div>
-              )
-            )}
-          </div>
-        </div>
-        )}
-
-        {/* Ticket */}
-        {(!isMobile || mobileView === 'ticket') && (
-        <div style={{
-          ...ui.card,
-          position: (isMobile || wide) ? 'static' : 'sticky',
-          top: 12,
-          ...(isMobile ? {} : wide
-            ? { height: '100%', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gridColumn: 2, gridRow: '1 / -1' }
-            : { maxHeight: 'calc(100dvh - 96px)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }),
-        }}>
-          {isMobile && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
-              <button onClick={() => setMobileView('catalog')} style={{ ...ghost, padding: '8px 12px', fontSize: 14 }}>← {t('po.backToCatalog')}</button>
-              {/* The print toggle lives here on a phone — next to the pay
-                  buttons, which is when anybody thinks about the receipt. */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ccbd5e1)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 16, height: 16 }} />
-                🖨️ {t('po.printReception')}
-              </label>
-            </div>
-          )}
-          {!wide && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 12px', flexWrap: 'wrap' }}>
-            <h2 style={{ fontSize: 15, margin: 0 }}>{t('po.ticket')}</h2>
-            {/* The print toggle sits with the bill on a tablet — the phone
-                header dropped it, and the receipt is a ticket-side decision. */}
-            {tablet && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ccbd5e1)', cursor: 'pointer', whiteSpace: 'nowrap', marginRight: 'auto', marginLeft: 8 }}>
-                <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 15, height: 15 }} />
-                🖨️ {t('po.printReception')}
-              </label>
-            )}
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => { enableIpad(); setIpadPanel(true); }} title={t('po.ipadHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>📱 {t('po.ipad')}</button>
-              <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>🖥️ {t('po.custScreen')}</button>
-            </div>
-          </div>
-          )}
-          {ipadPanel && <IpadPairPanel session={displaySession} onRotate={rotateDisplay} onClose={() => setIpadPanel(false)} t={t} />}
-
-          <CustomerBox
-            token={token} t={t}
-            customerId={customerId} customerLabel={customerLabel} customerPoints={customerPoints}
-            onPick={(id, label, points) => { setCustomerId(id); setCustomerLabel(label); setCustomerPoints(points); }}
-            onClear={() => { setCustomerId(null); setCustomerLabel(null); setCustomerPoints(0); setRedeemInput(''); }}
-          />
-
-          {cart.length === 0 ? (
-            // An empty ticket on a tablet is an empty ticket: room, an arrow at
-            // the catalog, and nothing to fill in. The registers people already
-            // know all do this; a wall of promo/discount/gift inputs over a
-            // $0.00 bill was the single thing that made this screen read as
-            // "rối" on an iPad.
-            <div style={{
-              color: 'var(--c64748b)', fontSize: 14, textAlign: 'center',
-              ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto' } : null),
-              ...(tablet ? { flex: '1 1 0%', minHeight: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 12px' } : null),
-            }}>
-              {tablet ? <span>🧾<br />{t('po.tapToAdd')}</span> : t('po.tapToAdd')}
-            </div>
-          ) : (
-            <div style={{
-              display: 'flex', flexDirection: 'column', gap: 10, marginBottom: wide ? 8 : 12,
-              ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto', paddingRight: 4 } : null),
-            }}>
-              {cart.map((l) => (
-                <div key={l.uid} style={{ borderBottom: '1px solid var(--c334155)', paddingBottom: 7 }}>
-                  {/* Row 1: what it is + what it costs — the two things read together. */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.name}>
-                      {l.isAddon && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--c818cf8)', border: '1px solid #4f46e5', borderRadius: 5, padding: '1px 5px', marginRight: 6 }}>{t('po.addonBadge')}</span>}
-                      {l.name}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
-                      {l.discountPercent > 0 && (
-                        <>
-                          <span style={{ textDecoration: 'line-through', color: 'var(--c64748b)', fontSize: 12 }}>{formatPrice(l.origUnitPriceCents * l.quantity, currency)}</span>
-                          <span style={{ background: '#ef4444', color: '#fff', borderRadius: 5, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>-{l.discountPercent}%</span>
-                        </>
-                      )}
-                      <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>$</span>
-                      <input
-                        type="number" min={0} step="0.01" inputMode="decimal"
-                        title={t('po.editPriceHint')}
-                        value={fromMinorUnits(l.unitPriceCents, currency)}
-                        onChange={(e) => setLinePrice(l.uid, e.target.value)}
-                        onFocus={(e) => e.currentTarget.select()}
-                        style={{ ...ui.input, width: 74, padding: '4px 6px', fontSize: 13, textAlign: 'right', color: l.discountPercent > 0 ? 'var(--ink-good)' : 'var(--ce2e8f0)', fontWeight: 600 }}
-                      />
-                      {l.quantity > 1 && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>= {formatPrice(l.unitPriceCents * l.quantity, currency)}</span>}
-                      {catalogPrice(l) != null && catalogPrice(l) !== l.unitPriceCents && (
-                        <button onClick={() => resetLinePrice(l.uid)} title={t('po.resetPrice')} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 6, padding: '2px 6px', fontSize: 11, cursor: 'pointer' }}>↺</button>
-                      )}
-                      <button onClick={() => removeLine(l.uid)} title={t('po.clear')} style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 15, padding: '0 2px' }}>×</button>
-                    </div>
-                  </div>
-                  {/* Row 2: the controls, one line, no wrapping. */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-                      <button onClick={() => updateLine(l.uid, { quantity: Math.max(1, l.quantity - 1) })} style={qtyBtn}>−</button>
-                      <span style={{ minWidth: 18, textAlign: 'center', fontSize: 13 }}>{l.quantity}</span>
-                      <button onClick={() => updateLine(l.uid, { quantity: l.quantity + 1 })} style={qtyBtn}>+</button>
-                    </div>
-                    <select value={l.staffMemberId} onChange={(e) => updateLine(l.uid, { staffMemberId: e.target.value })} style={{ ...ui.input, padding: '4px 6px', fontSize: 12.5, flex: 1, minWidth: 0 }}>
-                      <option value="">{t('po.technician')}</option>
-                      {staff.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}
-                    </select>
-                    <input
-                      type="number" min={0} step="0.01" placeholder={t('po.tipPh')}
-                      value={l.tipCents ? fromMinorUnits(l.tipCents, currency) : ''}
-                      onChange={(e) => updateLine(l.uid, { tipCents: Math.max(0, toMinorUnits(e.target.value, currency)) })}
-                      style={{ ...ui.input, padding: '4px 6px', fontSize: 12.5, width: 68, flexShrink: 0 }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Money + tender + pay: pinned to the bottom of the ticket panel, so it
-              stays on screen no matter how many lines the bill has. */}
-          {/* The money block is darker than the card it sits in, so it has to
-              bleed out to the card's edges and carry its own inset — otherwise
-              the numbers and inputs run straight into its border and read as
-              clipped. ui.card padding is 20, hence the -20 bleed. */}
-          <div style={isMobile ? undefined : wide ? {
-            flex: '0 0 auto', marginTop: 'auto',
-            marginLeft: -20, marginRight: -20, marginBottom: -20,
-            paddingTop: 12, paddingLeft: 20, paddingRight: 20, paddingBottom: 14,
-            background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', borderRadius: '0 0 12px 12px',
-          } : {
-            position: 'sticky', bottom: -20, zIndex: 3, marginTop: 'auto',
-            marginLeft: -20, marginRight: -20, marginBottom: -20,
-            paddingTop: 12, paddingLeft: 20, paddingRight: 20, paddingBottom: 14,
-            background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', borderRadius: '0 0 12px 12px',
-          }}>
-          {/* Totals */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5, marginBottom: 9 }}>
-            <Row label={t('po.subtotal')} value={formatPrice(money.subtotal, currency)} />
-            {/* On a compact ticket the money-off controls live behind one
-                chip until somebody needs them — see the note on `compact`.
-                They stay open once a promo or discount is actually applied,
-                because then they are showing a fact, not offering an input. */}
-            {compact && !adjOpen && !promo && !orderDiscount && !giftCard && (
-              <div style={{ display: 'flex', gap: 6, margin: '4px 0 6px', flexWrap: 'wrap' }}>
-                <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>🏷️ {t('po.promoCode')}</button>
-                <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>✂️ {t('po.discountLbl')}</button>
-                {online && <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>🎁 {t('po.gcBtn')}</button>}
-              </div>
-            )}
-            {(!compact || adjOpen || promo || orderDiscount) && (
-            <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 10, padding: 7, display: 'flex', flexDirection: 'column', gap: 6, margin: '3px 0 5px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5, width: 72, flexShrink: 0 }}>🏷️ {t('po.promoCode')}</span>
-                {promo ? (
-                  <>
-                    <span style={{ flex: 1, minWidth: 0, color: 'var(--ink-good)', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${promo.code} · ${promo.label}`}>{promo.code} · {promo.label}</span>
-                    {money.promoCents > 0 && <span style={{ color: 'var(--ink-good)', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>−{formatPrice(money.promoCents, currency)}</span>}
-                    <button onClick={() => { setPromo(null); setPromoInput(''); setPromoErr(null); }} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>✕</button>
-                  </>
-                ) : (
-                  <>
-                    <input
-                      value={promoInput}
-                      onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoErr(null); }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyPromo(); } }}
-                      placeholder={t('po.promoPh')}
-                      style={{ ...ui.input, flex: 1, minWidth: 0, padding: '5px 8px', fontSize: 13, textTransform: 'uppercase' }}
-                    />
-                    <button
-                      disabled={!promoInput.trim() || promoBusy}
-                      onClick={applyPromo}
-                      style={{ ...ui.primaryBtn, padding: '5px 12px', fontSize: 12, flexShrink: 0, opacity: (!promoInput.trim() || promoBusy) ? 0.5 : 1 }}
-                    >
-                      {promoBusy ? '…' : t('po.promoApply')}
-                    </button>
-                  </>
-                )}
-              </div>
-              {promoErr && <div style={{ color: 'var(--cf87171)', fontSize: 12 }}>{promoErr}</div>}
-              {promo && !promo.appliesDiscount && (
-                <div style={{ color: 'var(--cfbbf24)', fontSize: 12 }}>{t('po.promoGift')}</div>
-              )}
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5, width: 72, flexShrink: 0 }}>✂️ {t('po.discountLbl')}</span>
-                <div style={{ display: 'flex', gap: 2, background: 'var(--c111827)', border: '1px solid var(--c223047)', borderRadius: 8, padding: 2, flexShrink: 0 }}>
-                  {([['AMOUNT', uiCurrencySymbol(), t('po.discByAmount')], ['PERCENT', '%', t('po.discByPercent')]] as const).map(([m, sym, hint]) => (
-                    <button
-                      key={m}
-                      title={hint}
-                      onClick={() => setDiscountMode(m as 'AMOUNT' | 'PERCENT')}
-                      style={{
-                        width: 30, padding: '4px 0', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                        border: '1px solid ' + (discountMode === m ? '#4f46e5' : 'transparent'),
-                        background: discountMode === m ? '#4f46e5' : 'transparent',
-                        color: discountMode === m ? '#fff' : 'var(--c94a3b8)',
-                      }}
-                    >{sym}</button>
-                  ))}
-                </div>
-                {/* The unit sits inside the field: "5" alone reads as five
-                    dollars OR five percent, and a cashier shouldn't have to
-                    check which switch is lit to know which one it is. */}
-                <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-                  <input
-                    type="number" min={0} step={discountMode === 'PERCENT' ? 1 : 0.01} max={discountMode === 'PERCENT' ? 100 : undefined}
-                    value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)}
-                    placeholder="0"
-                    style={{ ...ui.input, width: '100%', padding: discountMode === 'PERCENT' ? '5px 24px 5px 8px' : '5px 8px 5px 20px', fontSize: 13, textAlign: 'right' }}
-                  />
-                  <span style={{
-                    position: 'absolute', top: '50%', transform: 'translateY(-50%)',
-                    ...(discountMode === 'PERCENT' ? { right: 9 } : { left: 9 }),
-                    fontSize: 12.5, fontWeight: 700, color: orderDiscount ? 'var(--c94a3b8)' : 'var(--c475569)', pointerEvents: 'none',
-                  }}>{discountMode === 'PERCENT' ? '%' : uiCurrencySymbol()}</span>
-                </div>
-                <span
-                  title={discountMode === 'PERCENT' && money.typedDiscount > 0 ? `${orderDiscount}% × ${formatPrice(money.subtotal, currency)}` : undefined}
-                  style={{ width: 62, textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: money.typedDiscount > 0 ? 'var(--ink-good)' : 'var(--c475569)', flexShrink: 0 }}
-                >
-                  {money.typedDiscount > 0 ? `−${formatPrice(money.typedDiscount, currency)}` : '—'}
-                </span>
-              </div>
-            </div>
-            )}
-            {money.tax > 0 && <Row label={t('po.tax').replace('{r}', String(taxRate))} value={formatPrice(money.tax, currency)} />}
-            {money.tip > 0 && <Row label={t('po.tips')} value={formatPrice(money.tip, currency)} />}
-            {money.cardSurcharge > 0 && <Row label={t('po.cardFee').replace('{r}', String(cardSurchargePct))} value={formatPrice(money.cardSurcharge, currency)} />}
-            {loyalty.enabled && customerId && online && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: 'var(--ceab308)' }}>{t('po.redeemPoints').replace('{n}', String(customerPoints))}</span>
-                <input
-                  type="number" min={0} value={redeemInput} onChange={(e) => setRedeemInput(e.target.value)}
-                  placeholder={t('po.minPts').replace('{n}', String(loyalty.minRedeemPoints))}
-                  style={{ ...ui.input, width: 100, padding: '4px 7px', fontSize: 13, textAlign: 'right' }}
-                />
-              </div>
-            )}
-            {money.redeemDiscount > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ceab308)' }}>
-                <span>{t('po.pointsDiscount').replace('{n}', String(money.redeemPts))}</span><span>−{formatPrice(money.redeemDiscount, currency)}</span>
-              </div>
-            )}
-            {money.savings > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ink-good)', fontWeight: 600 }}>
-                <span>{t('po.youSaved')}</span><span>−{formatPrice(money.savings, currency)}</span>
-              </div>
-            )}
-            <div style={{ borderTop: '1px solid var(--c334155)', marginTop: 4, paddingTop: 7, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>{t('po.total')}</span>
-              <span style={{ color: 'var(--ink-good)', fontSize: 22, fontWeight: 800, letterSpacing: -0.4 }}>{formatPrice(money.total, currency)}</span>
-            </div>
-          </div>
-
-          {/* Gift card redemption (online only — needs a live balance check).
-              On a compact ticket it lives in the same drawer as the discounts. */}
-          {online && (!compact || adjOpen || giftCard) && (
-            <div style={{ marginBottom: 8 }}>
-              {giftCard ? (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid #155e75', borderRadius: 8, padding: '8px 10px' }}>
-                  <span style={{ fontSize: 13, color: 'var(--ca5f3fc)' }}>🎁 {giftCard.code} · {formatPrice(money.giftApplied, currency)}</span>
-                  <button onClick={() => setGiftCard(null)} style={{ ...ghost, padding: '4px 10px', fontSize: 12 }}>{t('po.gcRemove')}</button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input
-                    value={giftInput}
-                    onChange={(e) => setGiftInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyGift(); } }}
-                    placeholder={t('po.gcPlaceholder')}
-                    style={{ ...ui.input, flex: 1, padding: '7px 9px' }}
-                  />
-                  <button type="button" onClick={applyGift} style={{ ...ghost, padding: '7px 12px', fontSize: 13, whiteSpace: 'nowrap' }}>🎁 {t('po.gcApply')}</button>
-                </div>
-              )}
-            </div>
-          )}
-          {giftCard && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, fontSize: 16, fontWeight: 700 }}>
-              <span>{t('po.gcDue')}</span><span style={{ color: 'var(--ink-good)' }}>{formatPrice(money.due, currency)}</span>
-            </div>
-          )}
-
+  /** Tip, payment method, cash shortcuts, split, card recovery, the pay row. One place, drawn inline on a desktop and inside the payment sheet on a compact screen. */
+  const renderPayment = () => (
+    <>
           {/* Direct tip to the tech(s) on this ticket — opened on demand. */}
           {tipTechs.length > 0 && !tipOpen && (
             <button
@@ -2017,6 +1556,498 @@ function Register() {
               {submitting ? t('po.processing') : t('po.payPrint').replace('{x}', formatPrice(money.due, currency))}
             </button>
           </div>
+    </>
+  );
+
+  if (loading) return <p style={{ color: 'var(--c94a3b8)' }}>{t('po.loadingReg')}</p>;
+
+  return (
+    <section style={{
+      paddingBottom: isMobile ? (mobileView === 'catalog' ? 96 : 24) : undefined,
+      // Wide mode: the register owns exactly one screen. Nothing below the fold,
+      // so the pay button can never be scrolled away.
+      ...(wide && !fullscreen ? { height: 'calc(100dvh - 92px)', marginBottom: -24, display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
+      // Full screen: cover the shell entirely — no sidebar, no page header.
+      ...(fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, margin: 0, padding: '12px 16px', background: 'var(--c0b1120)', display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
+    }}>
+      <style>{`
+        .pos-card { transition: border-color .12s ease, background .12s ease, transform .06s ease; }
+        .pos-card:hover { border-color: #6366f1 !important; background: var(--c1e293b) !important; }
+        .pos-card:active { transform: scale(.97); }
+        .pos-chips::-webkit-scrollbar { display: none; }
+      `}</style>
+      {!wide && headerBar}
+      {!wide && banners}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : (wide ? 'minmax(0, 1fr) 430px' : tablet ? 'minmax(0, 1.4fr) minmax(340px, 1fr)' : 'minmax(0, 1.3fr) minmax(0, 1fr)'),
+        // Wide mode: row 1 is the catalog + ticket, row 2 is the toolbar strip
+        // under the catalog only — the ticket spans both rows and keeps the
+        // extra height for itself.
+        ...(wide ? { gridTemplateRows: 'minmax(0, 1fr) auto', rowGap: 10 } : null),
+        gap: isMobile ? 12 : 16,
+        alignItems: wide ? 'stretch' : 'start',
+        ...(wide ? { flex: 1, minHeight: 0 } : null),
+      }}>
+        {/* Catalog */}
+        {(!isMobile || mobileView === 'catalog') && (
+        <div style={{
+          ...ui.card, display: 'flex', flexDirection: 'column',
+          // 20px of card padding on each side of a 390px screen is a tenth of
+          // the width spent on nothing; the cards inside need it more.
+          ...(compact ? { padding: 12 } : null),
+          maxHeight: isMobile ? 'none' : (wide ? '100%' : 'calc(100dvh - 130px)'),
+          ...(wide ? { height: '100%', minHeight: 0, overflow: 'hidden', gridColumn: 1, gridRow: 1 } : null),
+        }}>
+          {/* Tabs with counts. On a phone an empty tab is a button that leads
+              nowhere — "Sản phẩm 0" took a third of the row to say the shop
+              sells no products — so empty tabs are not drawn there, and when
+              only services remain there is no row at all. */}
+          {(() => {
+            const all: { id: 'SERVICE' | 'ADDON' | 'PRODUCT'; label: string; n: number }[] = [
+              { id: 'SERVICE', label: t('po.tabServices'), n: services.length },
+              { id: 'ADDON', label: t('po.tabAddons'), n: addons.length },
+              { id: 'PRODUCT', label: t('po.tabProducts'), n: products.length },
+            ];
+            const tabs = all.filter((x) => !compact || x.id === 'SERVICE' || x.n > 0);
+            if (compact && tabs.length <= 1) return null;
+            return (
+              <div style={{ display: 'flex', gap: 6, marginBottom: compact ? 10 : 12 }}>
+                {tabs.map((x) => (
+                  <button key={x.id} onClick={() => setTab(x.id)} style={{ ...tabBtn(tab === x.id), ...(compact ? { fontSize: 13, padding: '8px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : null) }}>
+                    {x.label}<TabCount n={x.n} active={tab === x.id} />
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Barcode scan: a USB scanner types the code + Enter; the camera button
+              opens a live scanner. Both match a product by barcode and add it. */}
+          {(!compact || tab === 'PRODUCT') && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: scanMsg ? 6 : 12 }}>
+            <input
+              value={scanInput}
+              onChange={(e) => setScanInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); scanLookup(scanInput); } }}
+              placeholder={t('po.scanPlaceholder')}
+              style={{ ...ui.input, flex: 1, padding: '8px 10px' }}
+            />
+            <button type="button" onClick={() => setShowScanner(true)} style={{ ...ghost, padding: '8px 12px', whiteSpace: 'nowrap' }}>📷 {t('po.scanCamera')}</button>
+          </div>
+          )}
+          {scanMsg && (
+            <div style={{ fontSize: 12, color: scanMsg.ok ? 'var(--ink-good)' : 'var(--ink-warn)', marginBottom: 10 }}>{scanMsg.text}</div>
+          )}
+
+          {/* Search */}
+          <div style={{ position: 'relative', marginBottom: 12 }}>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--c64748b)', pointerEvents: 'none' }}>🔍</span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t('po.searchPh')}
+              style={{ ...ui.input, width: '100%', padding: '10px 34px', fontSize: 14, boxSizing: 'border-box' }}
+            />
+            {query && (
+              <button onClick={() => setQuery('')} aria-label="clear" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+            )}
+          </div>
+
+          {/* Category quick-filter chips (services tab) */}
+          {tab === 'SERVICE' && serviceCats.length > 0 && (
+            <div className={compact ? 'pos-chips' : undefined} style={{
+              display: 'flex', gap: 6, marginBottom: compact ? 10 : 12, flexShrink: 0,
+              // Three rows of capitalised category names were most of the
+              // phone's first screen. One row that scrolls sideways is the
+              // same information in a fifth of the height.
+              ...(compact
+                ? { flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const, marginLeft: -12, marginRight: -12, paddingLeft: 12, paddingRight: 12, scrollbarWidth: 'none' as const }
+                : { flexWrap: 'wrap' }),
+            }}>
+              <button onClick={() => setCatFilter(null)} style={chipSel(catFilter === null)}>{t('po.allCats')}</button>
+              {serviceCats.map((c) => (
+                <button key={c.id} onClick={() => setCatFilter(catFilter === c.id ? null : c.id)} style={chipSel(catFilter === c.id)}>{c.name}</button>
+              ))}
+            </div>
+          )}
+
+          {/* Scrollable results */}
+          <div style={{ overflowY: 'auto', flex: 1, minHeight: 220, paddingRight: 4 }}>
+            {/* Services, grouped by category */}
+            {tab === 'SERVICE' && (
+              serviceGroups.length === 0 ? (
+                <EmptyState text={services.length === 0 ? t('po.noServices') : `${t('po.noMatch')} "${query}"`} />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {serviceGroups.map((grp) => (
+                    <div key={grp.id ?? '__none__'}>
+                      {(serviceCats.length > 0) && <GroupHeader label={grp.name} count={grp.items.length} />}
+                      <div style={catGrid}>
+                        {grp.items.map((s) => (
+                          <button key={s.id} onClick={() => addService(s)} className="pos-card" style={catBtn}>
+                            <span style={cardTitle}>{s.name}</span>
+                            <CatPrice priceCents={s.priceCents} discountPercent={s.discountPercent} currency={currency} />
+                            {s.durationMinutes > 0 && <span style={cardMeta}>⏱ {s.durationMinutes} {t('po.min')}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+
+            {/* Add-ons, grouped by parent service */}
+            {tab === 'ADDON' && (
+              addons.length === 0 ? (
+                <p style={mutedP}>{t('po.noAddonsA')}<a href="/salon/services" style={{ color: 'var(--c818cf8)' }}>{t('po.servicesLink')}</a>.</p>
+              ) : addonGroups.length === 0 ? (
+                <EmptyState text={`${t('po.noMatch')} "${query}"`} />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {addonGroups.map((grp) => (
+                    <div key={grp.service}>
+                      <GroupHeader label={grp.service} count={grp.items.length} />
+                      <div style={catGrid}>
+                        {grp.items.map((a) => (
+                          <button key={a.id} onClick={() => addAddon(a)} className="pos-card" style={{ ...catBtn, borderStyle: 'dashed' }}>
+                            <span style={cardTitle}>+ {a.name}</span>
+                            <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(a.priceCents, currency)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+
+            {/* Products */}
+            {tab === 'PRODUCT' && (
+              products.length === 0 ? (
+                <p style={mutedP}>{t('po.noProductsA')}<a href="/salon/products" style={{ color: 'var(--c818cf8)' }}>{t('po.addSome')}</a></p>
+              ) : productsF.length === 0 ? (
+                <EmptyState text={`${t('po.noMatch')} "${query}"`} />
+              ) : (
+                <div style={catGrid}>
+                  {productsF.map((p) => (
+                    <button key={p.id} onClick={() => addProduct(p)} className="pos-card" style={catBtn}>
+                      <span style={cardTitle}>{p.name}</span>
+                      <CatPrice priceCents={p.priceCents} discountPercent={p.discountPercent} currency={currency} />
+                      {p.trackStock && <span style={{ fontSize: 11, fontWeight: 600, color: p.stockQty > 0 ? 'var(--c94a3b8)' : 'var(--ink-bad)' }}>{t('po.stock')}: {p.stockQty}</span>}
+                    </button>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+        </div>
+        )}
+
+        {/* Ticket */}
+        {(!isMobile || mobileView === 'ticket') && (
+        <div style={{
+          ...ui.card,
+          position: (isMobile || wide) ? 'static' : 'sticky',
+          top: 12,
+          ...(isMobile ? {} : wide
+            ? { height: '100%', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gridColumn: 2, gridRow: '1 / -1' }
+            : { maxHeight: 'calc(100dvh - 96px)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }),
+        }}>
+          {isMobile && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
+              <button onClick={() => setMobileView('catalog')} style={{ ...ghost, padding: '8px 12px', fontSize: 14 }}>← {t('po.backToCatalog')}</button>
+              {/* The print toggle lives here on a phone — next to the pay
+                  buttons, which is when anybody thinks about the receipt. */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ccbd5e1)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 16, height: 16 }} />
+                🖨️ {t('po.printReception')}
+              </label>
+            </div>
+          )}
+          {!wide && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 12px', flexWrap: 'wrap' }}>
+            <h2 style={{ fontSize: 15, margin: 0 }}>{t('po.ticket')}</h2>
+            {/* The print toggle sits with the bill on a tablet — the phone
+                header dropped it, and the receipt is a ticket-side decision. */}
+            {tablet && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ccbd5e1)', cursor: 'pointer', whiteSpace: 'nowrap', marginRight: 'auto', marginLeft: 8 }}>
+                <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 15, height: 15 }} />
+                🖨️ {t('po.printReception')}
+              </label>
+            )}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => { enableIpad(); setIpadPanel(true); }} title={t('po.ipadHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>📱 {t('po.ipad')}</button>
+              <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>🖥️ {t('po.custScreen')}</button>
+            </div>
+          </div>
+          )}
+          {ipadPanel && <IpadPairPanel session={displaySession} onRotate={rotateDisplay} onClose={() => setIpadPanel(false)} t={t} />}
+
+          <CustomerBox
+            token={token} t={t}
+            customerId={customerId} customerLabel={customerLabel} customerPoints={customerPoints}
+            onPick={(id, label, points) => { setCustomerId(id); setCustomerLabel(label); setCustomerPoints(points); }}
+            onClear={() => { setCustomerId(null); setCustomerLabel(null); setCustomerPoints(0); setRedeemInput(''); }}
+          />
+
+          {cart.length === 0 ? (
+            // An empty ticket on a tablet is an empty ticket: room, an arrow at
+            // the catalog, and nothing to fill in. The registers people already
+            // know all do this; a wall of promo/discount/gift inputs over a
+            // $0.00 bill was the single thing that made this screen read as
+            // "rối" on an iPad.
+            <div style={{
+              color: 'var(--c64748b)', fontSize: 14, textAlign: 'center',
+              ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto' } : null),
+              ...(tablet ? { flex: '1 1 0%', minHeight: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 12px' } : null),
+            }}>
+              {tablet ? <span>🧾<br />{t('po.tapToAdd')}</span> : t('po.tapToAdd')}
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 10, marginBottom: wide ? 8 : 12,
+              ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto', paddingRight: 4 } : null),
+            }}>
+              {cart.map((l) => (
+                <div key={l.uid} style={{ borderBottom: '1px solid var(--c334155)', paddingBottom: 7 }}>
+                  {/* Row 1: what it is + what it costs — the two things read together. */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.name}>
+                      {l.isAddon && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--c818cf8)', border: '1px solid #4f46e5', borderRadius: 5, padding: '1px 5px', marginRight: 6 }}>{t('po.addonBadge')}</span>}
+                      {l.name}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
+                      {l.discountPercent > 0 && (
+                        <>
+                          <span style={{ textDecoration: 'line-through', color: 'var(--c64748b)', fontSize: 12 }}>{formatPrice(l.origUnitPriceCents * l.quantity, currency)}</span>
+                          <span style={{ background: '#ef4444', color: '#fff', borderRadius: 5, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>-{l.discountPercent}%</span>
+                        </>
+                      )}
+                      <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>$</span>
+                      <input
+                        type="number" min={0} step="0.01" inputMode="decimal"
+                        title={t('po.editPriceHint')}
+                        value={fromMinorUnits(l.unitPriceCents, currency)}
+                        onChange={(e) => setLinePrice(l.uid, e.target.value)}
+                        onFocus={(e) => e.currentTarget.select()}
+                        style={{ ...ui.input, width: 74, padding: '4px 6px', fontSize: 13, textAlign: 'right', color: l.discountPercent > 0 ? 'var(--ink-good)' : 'var(--ce2e8f0)', fontWeight: 600 }}
+                      />
+                      {l.quantity > 1 && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>= {formatPrice(l.unitPriceCents * l.quantity, currency)}</span>}
+                      {catalogPrice(l) != null && catalogPrice(l) !== l.unitPriceCents && (
+                        <button onClick={() => resetLinePrice(l.uid)} title={t('po.resetPrice')} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 6, padding: '2px 6px', fontSize: 11, cursor: 'pointer' }}>↺</button>
+                      )}
+                      <button onClick={() => removeLine(l.uid)} title={t('po.clear')} style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 15, padding: '0 2px' }}>×</button>
+                    </div>
+                  </div>
+                  {/* Row 2: the controls, one line, no wrapping. */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                      <button onClick={() => updateLine(l.uid, { quantity: Math.max(1, l.quantity - 1) })} style={qtyBtn}>−</button>
+                      <span style={{ minWidth: 18, textAlign: 'center', fontSize: 13 }}>{l.quantity}</span>
+                      <button onClick={() => updateLine(l.uid, { quantity: l.quantity + 1 })} style={qtyBtn}>+</button>
+                    </div>
+                    <select value={l.staffMemberId} onChange={(e) => updateLine(l.uid, { staffMemberId: e.target.value })} style={{ ...ui.input, padding: '4px 6px', fontSize: 12.5, flex: 1, minWidth: 0 }}>
+                      <option value="">{t('po.technician')}</option>
+                      {staff.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}
+                    </select>
+                    <input
+                      type="number" min={0} step="0.01" placeholder={t('po.tipPh')}
+                      value={l.tipCents ? fromMinorUnits(l.tipCents, currency) : ''}
+                      onChange={(e) => updateLine(l.uid, { tipCents: Math.max(0, toMinorUnits(e.target.value, currency)) })}
+                      style={{ ...ui.input, padding: '4px 6px', fontSize: 12.5, width: 68, flexShrink: 0 }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Money + tender + pay: pinned to the bottom of the ticket panel, so it
+              stays on screen no matter how many lines the bill has. */}
+          {/* The money block is darker than the card it sits in, so it has to
+              bleed out to the card's edges and carry its own inset — otherwise
+              the numbers and inputs run straight into its border and read as
+              clipped. ui.card padding is 20, hence the -20 bleed. */}
+          <div style={isMobile ? undefined : wide ? {
+            flex: '0 0 auto', marginTop: 'auto',
+            marginLeft: -20, marginRight: -20, marginBottom: -20,
+            paddingTop: 12, paddingLeft: 20, paddingRight: 20, paddingBottom: 14,
+            background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', borderRadius: '0 0 12px 12px',
+          } : {
+            position: 'sticky', bottom: -20, zIndex: 3, marginTop: 'auto',
+            marginLeft: -20, marginRight: -20, marginBottom: -20,
+            paddingTop: 12, paddingLeft: 20, paddingRight: 20, paddingBottom: 14,
+            background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', borderRadius: '0 0 12px 12px',
+          }}>
+          {/* Totals */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5, marginBottom: 9 }}>
+            <Row label={t('po.subtotal')} value={formatPrice(money.subtotal, currency)} />
+            {/* On a compact ticket the money-off controls live behind one
+                chip until somebody needs them — see the note on `compact`.
+                They stay open once a promo or discount is actually applied,
+                because then they are showing a fact, not offering an input. */}
+            {compact && !adjOpen && !promo && !orderDiscount && !giftCard && (
+              <div style={{ display: 'flex', gap: 6, margin: '4px 0 6px', flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>🏷️ {t('po.promoCode')}</button>
+                <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>✂️ {t('po.discountLbl')}</button>
+                {online && <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>🎁 {t('po.gcApply')}</button>}
+              </div>
+            )}
+            {(!compact || adjOpen || promo || orderDiscount) && (
+            <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 10, padding: 7, display: 'flex', flexDirection: 'column', gap: 6, margin: '3px 0 5px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5, width: 72, flexShrink: 0 }}>🏷️ {t('po.promoCode')}</span>
+                {promo ? (
+                  <>
+                    <span style={{ flex: 1, minWidth: 0, color: 'var(--ink-good)', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${promo.code} · ${promo.label}`}>{promo.code} · {promo.label}</span>
+                    {money.promoCents > 0 && <span style={{ color: 'var(--ink-good)', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>−{formatPrice(money.promoCents, currency)}</span>}
+                    <button onClick={() => { setPromo(null); setPromoInput(''); setPromoErr(null); }} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      value={promoInput}
+                      onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoErr(null); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyPromo(); } }}
+                      placeholder={t('po.promoPh')}
+                      style={{ ...ui.input, flex: 1, minWidth: 0, padding: '5px 8px', fontSize: 13, textTransform: 'uppercase' }}
+                    />
+                    <button
+                      disabled={!promoInput.trim() || promoBusy}
+                      onClick={applyPromo}
+                      style={{ ...ui.primaryBtn, padding: '5px 12px', fontSize: 12, flexShrink: 0, opacity: (!promoInput.trim() || promoBusy) ? 0.5 : 1 }}
+                    >
+                      {promoBusy ? '…' : t('po.promoApply')}
+                    </button>
+                  </>
+                )}
+              </div>
+              {promoErr && <div style={{ color: 'var(--cf87171)', fontSize: 12 }}>{promoErr}</div>}
+              {promo && !promo.appliesDiscount && (
+                <div style={{ color: 'var(--cfbbf24)', fontSize: 12 }}>{t('po.promoGift')}</div>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5, width: 72, flexShrink: 0 }}>✂️ {t('po.discountLbl')}</span>
+                <div style={{ display: 'flex', gap: 2, background: 'var(--c111827)', border: '1px solid var(--c223047)', borderRadius: 8, padding: 2, flexShrink: 0 }}>
+                  {([['AMOUNT', uiCurrencySymbol(), t('po.discByAmount')], ['PERCENT', '%', t('po.discByPercent')]] as const).map(([m, sym, hint]) => (
+                    <button
+                      key={m}
+                      title={hint}
+                      onClick={() => setDiscountMode(m as 'AMOUNT' | 'PERCENT')}
+                      style={{
+                        width: 30, padding: '4px 0', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                        border: '1px solid ' + (discountMode === m ? '#4f46e5' : 'transparent'),
+                        background: discountMode === m ? '#4f46e5' : 'transparent',
+                        color: discountMode === m ? '#fff' : 'var(--c94a3b8)',
+                      }}
+                    >{sym}</button>
+                  ))}
+                </div>
+                {/* The unit sits inside the field: "5" alone reads as five
+                    dollars OR five percent, and a cashier shouldn't have to
+                    check which switch is lit to know which one it is. */}
+                <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                  <input
+                    type="number" min={0} step={discountMode === 'PERCENT' ? 1 : 0.01} max={discountMode === 'PERCENT' ? 100 : undefined}
+                    value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)}
+                    placeholder="0"
+                    style={{ ...ui.input, width: '100%', padding: discountMode === 'PERCENT' ? '5px 24px 5px 8px' : '5px 8px 5px 20px', fontSize: 13, textAlign: 'right' }}
+                  />
+                  <span style={{
+                    position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+                    ...(discountMode === 'PERCENT' ? { right: 9 } : { left: 9 }),
+                    fontSize: 12.5, fontWeight: 700, color: orderDiscount ? 'var(--c94a3b8)' : 'var(--c475569)', pointerEvents: 'none',
+                  }}>{discountMode === 'PERCENT' ? '%' : uiCurrencySymbol()}</span>
+                </div>
+                <span
+                  title={discountMode === 'PERCENT' && money.typedDiscount > 0 ? `${orderDiscount}% × ${formatPrice(money.subtotal, currency)}` : undefined}
+                  style={{ width: 62, textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: money.typedDiscount > 0 ? 'var(--ink-good)' : 'var(--c475569)', flexShrink: 0 }}
+                >
+                  {money.typedDiscount > 0 ? `−${formatPrice(money.typedDiscount, currency)}` : '—'}
+                </span>
+              </div>
+            </div>
+            )}
+            {money.tax > 0 && <Row label={t('po.tax').replace('{r}', String(taxRate))} value={formatPrice(money.tax, currency)} />}
+            {money.tip > 0 && <Row label={t('po.tips')} value={formatPrice(money.tip, currency)} />}
+            {money.cardSurcharge > 0 && <Row label={t('po.cardFee').replace('{r}', String(cardSurchargePct))} value={formatPrice(money.cardSurcharge, currency)} />}
+            {loyalty.enabled && customerId && online && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--ceab308)' }}>{t('po.redeemPoints').replace('{n}', String(customerPoints))}</span>
+                <input
+                  type="number" min={0} value={redeemInput} onChange={(e) => setRedeemInput(e.target.value)}
+                  placeholder={t('po.minPts').replace('{n}', String(loyalty.minRedeemPoints))}
+                  style={{ ...ui.input, width: 100, padding: '4px 7px', fontSize: 13, textAlign: 'right' }}
+                />
+              </div>
+            )}
+            {money.redeemDiscount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ceab308)' }}>
+                <span>{t('po.pointsDiscount').replace('{n}', String(money.redeemPts))}</span><span>−{formatPrice(money.redeemDiscount, currency)}</span>
+              </div>
+            )}
+            {money.savings > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ink-good)', fontWeight: 600 }}>
+                <span>{t('po.youSaved')}</span><span>−{formatPrice(money.savings, currency)}</span>
+              </div>
+            )}
+            <div style={{ borderTop: '1px solid var(--c334155)', marginTop: 4, paddingTop: 7, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>{t('po.total')}</span>
+              <span style={{ color: 'var(--ink-good)', fontSize: 22, fontWeight: 800, letterSpacing: -0.4 }}>{formatPrice(money.total, currency)}</span>
+            </div>
+          </div>
+
+          {/* Gift card redemption (online only — needs a live balance check).
+              On a compact ticket it lives in the same drawer as the discounts. */}
+          {online && (!compact || adjOpen || giftCard) && (
+            <div style={{ marginBottom: 8 }}>
+              {giftCard ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid #155e75', borderRadius: 8, padding: '8px 10px' }}>
+                  <span style={{ fontSize: 13, color: 'var(--ca5f3fc)' }}>🎁 {giftCard.code} · {formatPrice(money.giftApplied, currency)}</span>
+                  <button onClick={() => setGiftCard(null)} style={{ ...ghost, padding: '4px 10px', fontSize: 12 }}>{t('po.gcRemove')}</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    value={giftInput}
+                    onChange={(e) => setGiftInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyGift(); } }}
+                    placeholder={t('po.gcPlaceholder')}
+                    style={{ ...ui.input, flex: 1, padding: '7px 9px' }}
+                  />
+                  <button type="button" onClick={applyGift} style={{ ...ghost, padding: '7px 12px', fontSize: 13, whiteSpace: 'nowrap' }}>🎁 {t('po.gcApply')}</button>
+                </div>
+              )}
+            </div>
+          )}
+          {giftCard && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, fontSize: 16, fontWeight: 700 }}>
+              <span>{t('po.gcDue')}</span><span style={{ color: 'var(--ink-good)' }}>{formatPrice(money.due, currency)}</span>
+            </div>
+          )}
+
+          {/* WHERE THE MONEY IS TAKEN.
+              On a desktop the whole payment area sits under the totals, as it
+              always has. On a tablet or phone it is a separate sheet that
+              opens from one big button — the pattern every register people
+              already know (Square's "Charge", Toast's "Pay") uses, and for a
+              reason: method tabs, cash shortcuts, split, tips and the confirm
+              button together stand taller than an iPad screen, and pinned to
+              the bottom of the ticket they pushed the customer and the line
+              items clean out of view. The cashier saw a bill with no items. */}
+          {!compact && renderPayment()}
+          {compact && (
+            <button
+              onClick={() => setPayOpen(true)}
+              disabled={cart.length === 0}
+              style={{ ...ui.primaryBtn, width: '100%', padding: '14px 16px', fontSize: 16, fontWeight: 800, marginTop: 6, opacity: cart.length ? 1 : 0.5 }}
+            >
+              {lang === 'vi' ? `Thanh toán ${formatPrice(money.due, currency)} →` : `Charge ${formatPrice(money.due, currency)} →`}
+            </button>
+          )}
           </div>
         </div>
         )}
@@ -2050,6 +2081,25 @@ function Register() {
           onDetect={(code) => { setShowScanner(false); scanLookup(code); }}
           onClose={() => setShowScanner(false)}
         />
+      )}
+
+      {compact && payOpen && typeof document !== 'undefined' && createPortal(
+        <div onClick={() => setPayOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.72)', zIndex: 300, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            ...ui.card, width: isMobile ? '100%' : 'min(560px, 96vw)', maxHeight: isMobile ? '92dvh' : '90vh', overflowY: 'auto',
+            ...(isMobile ? { borderRadius: '16px 16px 0 0', paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))' } : null),
+          }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 700, letterSpacing: .4, textTransform: 'uppercase' }}>{lang === 'vi' ? 'Thanh toán' : 'Payment'}</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--ink-good)', letterSpacing: -0.4 }}>{formatPrice(money.due, currency)}</div>
+              </div>
+              <button onClick={() => setPayOpen(false)} aria-label="close" style={{ ...ghost, padding: '8px 12px' }}>✕ {lang === 'vi' ? 'Đóng' : 'Close'}</button>
+            </div>
+            {renderPayment()}
+          </div>
+        </div>,
+        document.body,
       )}
 
       {showHeld && typeof document !== 'undefined' && createPortal(

@@ -60,6 +60,31 @@ export interface Detection {
   agrees: boolean;
   /** One line for the operator, in their language. */
   summary: string;
+  /**
+   * The finer trade under `detected`, when the words say so clearly.
+   * Null means "nothing beyond the business type" — which is the honest
+   * answer for most shops and leaves the owner's own choice alone.
+   */
+  trade: FineTrade | null;
+  /** Verbatim quotes behind `trade`, kept apart from the industry evidence. */
+  tradeEvidence: string[];
+}
+
+/**
+ * A word boundary that speaks Vietnamese.
+ *
+ * `\b` is defined on [A-Za-z0-9_], so a term ending in a letter it does not
+ * recognise has no boundary after it: `/\bphở\b/` matches the word "phở" in
+ * no sentence ever written. Silently. Every accented term in the tables below
+ * — phở, cà phê, bánh mì, đặt cọc, chân mày — was dead code for exactly that
+ * reason, which is to say the detector read English and pretended to read
+ * Vietnamese, in a product whose owners write their menus in Vietnamese.
+ *
+ * Unicode lookarounds fix it: a match must not be glued to another LETTER or
+ * DIGIT, in any alphabet. Same intent as `\b`, correct in both languages.
+ */
+function term(alts: string): RegExp {
+  return new RegExp(`(?<![\\p{L}\\p{N}])(?:${alts})(?![\\p{L}\\p{N}])`, 'iu');
 }
 
 /**
@@ -72,20 +97,105 @@ export interface Detection {
  */
 const WORDS: Record<Industry, { re: RegExp; w: number; label: string }[]> = {
   SALON: [
-    { re: /\b(manicure|pedicure|gel[- ]?x|dipping|acrylic|nail|móng|nails)\b/i, w: 10, label: 'từ ngành nail' },
-    { re: /\b(lash|brow|wax|facial|massage|spa|hair|salon)\b/i, w: 4, label: 'từ ngành làm đẹp' },
+    { re: term('manicure|pedicure|gel[- ]?x|dipping|acrylic|nail|móng|nails'), w: 10, label: 'từ ngành nail' },
+    // Written as shops actually write them. `hair` never matched "Haircut"
+    // and `wax` never matched "Waxing", so a hair salon or a waxing bar
+    // could score zero on a service list that says nothing else.
+    { re: term('lash(es)?|brows?|wax(ing)?|facial|massage|spa|hair(cut|style|stylist)?|barber|balayage|salon|thẩm mỹ|làm đẹp'), w: 4, label: 'từ ngành làm đẹp' },
   ],
   RESTAURANT: [
-    { re: /\b(phở|bún|cơm|noodle|pho|appetizer|entree|dessert|beverage|combo|khai vị|tráng miệng|đồ uống)\b/i, w: 8, label: 'từ thực đơn' },
-    { re: /\b(restaurant|kitchen|bistro|cafe|café|grill|bbq|quán|nhà hàng|deli|bakery)\b/i, w: 5, label: 'từ ngành ăn uống' },
+    { re: term('phở|bún|cơm|noodle|pho|appetizer|entree|dessert|beverage|combo|khai vị|tráng miệng|đồ uống'), w: 8, label: 'từ thực đơn' },
+    { re: term('restaurant|kitchen|bistro|cafe|café|grill|bbq|quán|nhà hàng|deli|bakery'), w: 5, label: 'từ ngành ăn uống' },
   ],
   REAL_ESTATE: [
-    { re: /\b(listing|escrow|mls|open house|home valuation|property tour|buyer consultation|seller consultation|đặt cọc|ký gửi)\b/i, w: 10, label: 'từ nghiệp vụ bất động sản' },
-    { re: /\b(realty|real estate|realtor|broker|homes|property|properties|bất động sản|nhà đất|môi giới)\b/i, w: 5, label: 'từ ngành bất động sản' },
+    { re: term('listing|escrow|mls|open house|home valuation|property tour|buyer consultation|seller consultation|đặt cọc|ký gửi'), w: 10, label: 'từ nghiệp vụ bất động sản' },
+    { re: term('realty|real estate|realtor|broker|homes|property|properties|bất động sản|nhà đất|môi giới'), w: 5, label: 'từ ngành bất động sản' },
   ],
   SERVICE: [
-    { re: /\b(repair|cleaning|plumbing|hvac|install|maintenance|inspection|sửa chữa|vệ sinh|lắp đặt|bảo trì)\b/i, w: 8, label: 'từ ngành dịch vụ' },
+    { re: term('repair|cleaning|plumbing|hvac|install|maintenance|inspection|sửa chữa|vệ sinh|lắp đặt|bảo trì'), w: 8, label: 'từ ngành dịch vụ' },
   ],
+};
+
+/**
+ * THE TRADE UNDER THE INDUSTRY.
+ *
+ * `Industry` is the database column and has four values, which is the right
+ * size for a database column and far too coarse to write content with. Under
+ * SALON sit seven beauty trades; under RESTAURANT sit five food trades. A lash
+ * studio and a nail salon are both SALON and want completely different posts —
+ * and until this existed, the lash studio got nail advice, because SALON
+ * aliases to the nail playbook.
+ *
+ * Detected SEPARATELY and reported separately: `detected` stays the business
+ * type (it is written to a four-value enum), `trade` is the finer answer that
+ * goes to business_profile.trade. Nothing here widens the enum.
+ */
+export type FineTrade =
+  | 'NAIL' | 'HAIR' | 'LASH' | 'BROW' | 'SPA' | 'MASSAGE' | 'PMU'
+  | 'RESTAURANT' | 'CAFE' | 'BAKERY' | 'BUBBLE_TEA' | 'FAST_FOOD';
+
+/**
+ * The words that separate one trade from its neighbours — and ONLY those.
+ *
+ * The rule the coarse table above states is sharper here, because these trades
+ * genuinely overlap: a café sells croissants, a bubble tea shop sells a matcha
+ * latte, a bakery sells bánh mì and so does a phở restaurant. So a word earns
+ * its place only if it points at ONE trade more than the others; "drink",
+ * "fresh" and "combo" point nowhere and are absent on purpose.
+ *
+ * Where a word honestly belongs to two trades — microblading is both a brow
+ * service and permanent makeup — it is listed in both, and the clear-winner
+ * rule below then refuses to guess rather than picking the first one. A refusal
+ * leaves the owner's own choice in place, which is the safe direction.
+ */
+const FINE_WORDS: Record<FineTrade, { re: RegExp; w: number }[]> = {
+  // ---- under SALON ----
+  NAIL: [
+    { re: term('manicure|pedicure|gel[- ]?x|dip(ping)? powder|acrylic|nail art|nails?|móng'), w: 10 },
+  ],
+  HAIR: [
+    { re: term('haircut|balayage|highlights?|keratin|blowout|hair colou?r|perm|tóc|nhuộm|uốn tóc|ép tóc'), w: 10 },
+  ],
+  LASH: [
+    { re: term('lash(es)?|eyelash|volume lash|lash lift|classic set|nối mi'), w: 10 },
+  ],
+  BROW: [
+    { re: term('brows?|eyebrow|microblading|brow lamination|threading|chân mày|tỉa mày'), w: 9 },
+  ],
+  SPA: [
+    { re: term('facial|hydrafacial|skincare|chemical peel|extraction|chăm sóc da|trị mụn'), w: 10 },
+  ],
+  MASSAGE: [
+    { re: term('massage|deep tissue|hot stone|reflexology|body scrub|xoa bóp|gội đầu dưỡng sinh'), w: 10 },
+  ],
+  PMU: [
+    { re: term('permanent makeup|microblading|lip blush|powder brows|ombre brows|phun xăm|phun môi|phun mày'), w: 9 },
+  ],
+  // ---- under RESTAURANT ----
+  RESTAURANT: [
+    { re: term('phở|pho|bún|bun bo|cơm tấm|entr[ée]e|appetizer|main course|noodle soup|lẩu|nướng'), w: 10 },
+  ],
+  CAFE: [
+    { re: term('latte|espresso|cappuccino|americano|cold brew|macchiato|cà phê|ca phe|bạc xỉu'), w: 10 },
+  ],
+  BAKERY: [
+    { re: term('croissant|pastr(y|ies)|cupcakes?|sourdough|baguette|birthday cake|wedding cake|bánh kem|bánh ngọt|bánh mì'), w: 10 },
+  ],
+  BUBBLE_TEA: [
+    { re: term('boba|bubble tea|milk tea|brown sugar|trân châu|trà sữa|tapioca'), w: 10 },
+  ],
+  FAST_FOOD: [
+    { re: term('drive[- ]?thru|take ?out|take ?away|cơm hộp|mang đi|value meal|meal deal'), w: 9 },
+  ],
+};
+
+/** Which fine trades live under which business type. A café cannot be detected
+ *  under SALON, however the word "latte" got into the shop's name. */
+const FAMILY: Record<Industry, FineTrade[]> = {
+  SALON: ['NAIL', 'HAIR', 'LASH', 'BROW', 'SPA', 'MASSAGE', 'PMU'],
+  RESTAURANT: ['RESTAURANT', 'CAFE', 'BAKERY', 'BUBBLE_TEA', 'FAST_FOOD'],
+  REAL_ESTATE: [],
+  SERVICE: [],
 };
 
 const ZERO: Record<Industry, number> = { SALON: 0, RESTAURANT: 0, REAL_ESTATE: 0, SERVICE: 0 };
@@ -172,7 +282,62 @@ export function detectIndustry(input: DetectInput): Detection {
         ? `Đang đặt là ${current}, nhưng dữ liệu của tiệm chỉ rõ ngành ${TRADE_VI[detected]}.`
         : `Đang đặt là ${current}. Dữ liệu nghiêng về ${TRADE_VI[detected]} nhưng tín hiệu còn yếu — kiểm lại trước khi đổi.`;
 
-  return { detected, confidence, evidence: evidence.slice(0, 6), scores, current, agrees, summary };
+  const fine = detected ? detectFineTrade(fields, detected) : { trade: null, evidence: [] };
+
+  return {
+    detected, confidence, evidence: evidence.slice(0, 6), scores, current, agrees, summary,
+    trade: fine.trade, tradeEvidence: fine.evidence,
+  };
+}
+
+/**
+ * Which trade inside the family, from the same fields and the same weighting.
+ *
+ * Only ever asked about the family that already won, so the question is never
+ * "is this a café or a nail salon" — the coarse pass settled that — but "is
+ * this café a café or a bakery", which is where the real ambiguity lives.
+ *
+ * The clear-winner rule is stricter than the coarse one (1.5× the runner-up is
+ * not enough; it must be double) because the cost of being wrong is different:
+ * a wrong INDUSTRY is obvious the moment anyone looks at the screen, while a
+ * wrong TRADE quietly writes plausible content for the shop next door. Silence
+ * costs a generic-but-correct playbook. A confident mistake costs trust.
+ */
+function detectFineTrade(
+  fields: { text: string[]; mult: number; where: string }[],
+  family: Industry,
+): { trade: FineTrade | null; evidence: string[] } {
+  const candidates = FAMILY[family];
+  if (candidates.length < 2) return { trade: null, evidence: [] };
+
+  const score = new Map<FineTrade, number>(candidates.map((c) => [c, 0]));
+  const evidence: string[] = [];
+  const seen = new Set<string>();
+
+  for (const f of fields) {
+    for (const raw of f.text) {
+      if (!raw) continue;
+      for (const t of candidates) {
+        for (const rule of FINE_WORDS[t]) {
+          const m = rule.re.exec(raw);
+          if (!m) continue;
+          score.set(t, (score.get(t) ?? 0) + rule.w * f.mult);
+          const word = m[0].toLowerCase();
+          if (evidence.length < 6 && !seen.has(word)) {
+            seen.add(word);
+            evidence.push(`"${m[0]}" trong ${f.where}`);
+          }
+        }
+      }
+    }
+  }
+
+  const ranked = [...score.entries()].sort((a, b) => b[1] - a[1]);
+  const [top, second] = ranked;
+  // Double the runner-up, and enough of it to mean something. A shop scoring
+  // 30 to 24 has told us it sells both, which is true of most shops.
+  if (!top || top[1] < 20 || top[1] < (second?.[1] ?? 0) * 2) return { trade: null, evidence: [] };
+  return { trade: top[0], evidence };
 }
 
 // ---- the wider health check ------------------------------------------------
@@ -249,9 +414,12 @@ export function configGaps(input: {
  * non-salon trade. A person's own choice is never touched: that is what
  * `manual` is for.
  *
- * Returns null for "leave it as it is". The beauty sub-trades (NAIL, HAIR…)
- * are accepted from the model only; the detector cannot tell them apart and
- * would collapse every one of them into SALON.
+ * Returns null for "leave it as it is". Since the detector learned the fine
+ * trades it is a real second witness rather than a coarse one: it can now say
+ * LASH where it used to say only SALON. It is still the junior witness — the
+ * model read the shop's own website, the detector read a word list — so the
+ * model's answer is taken first and the detector's is used when the model has
+ * none, or nothing the engine knows.
  */
 export function pickTrade(args: {
   modelTrade?: string | null;
@@ -264,6 +432,12 @@ export function pickTrade(args: {
   const d = args.detection;
   const known = new Set(args.known.map((k) => k.toUpperCase()));
   const beauty = new Set(['SALON', 'NAIL', 'HAIR', 'LASH', 'BROW', 'SPA', 'MASSAGE', 'PMU']);
+  const food = new Set(['RESTAURANT', 'CAFE', 'BAKERY', 'BUBBLE_TEA', 'FAST_FOOD']);
+  // Which of the four business types a trade sits under. Without this, a model
+  // answer of "CAFE" was compared against the detected business type
+  // RESTAURANT, did not equal it, and was thrown away — so the moment the food
+  // trades existed, naming one correctly became the way to be ignored.
+  const familyOf = (t: string): string => (beauty.has(t) ? 'SALON' : food.has(t) ? 'RESTAURANT' : t);
   // Strength read from the raw scores, not from `confidence`: detectIndustry
   // demotes a clear result to 'low' when a declared description disagrees
   // with the CURRENT setting — the right caution for a health check that
@@ -273,9 +447,16 @@ export function pickTrade(args: {
   const strong = ranked[0].v >= 20 && ranked[0].v >= ranked[1].v * 2 ? ranked[0].k : null;
   if (model && known.has(model)) {
     // The words may veto only when they point clearly at a different family.
-    const family = beauty.has(model) ? 'SALON' : model;
+    const family = familyOf(model);
     if (strong && strong !== family) return null;
     return model;
+  }
+  // The detected FINE trade outranks the coarse family: "this shop sells boba"
+  // is a better answer than "this shop sells food", and it is the answer the
+  // content engine can actually write from. Still gated on the family agreeing,
+  // so a stray word cannot move a shop into another industry through here.
+  if (d.trade && known.has(d.trade)) {
+    if (!strong || strong === familyOf(d.trade)) return d.trade;
   }
   if (strong && strong !== 'SALON' && known.has(strong)) return strong;
   return null;

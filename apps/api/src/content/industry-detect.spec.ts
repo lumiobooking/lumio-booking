@@ -209,9 +209,12 @@ describe('pickTrade — what the profile scan may write', () => {
     expect(pickTrade({ modelTrade: 'RESTAURANT', detection: pho, manual: true, known })).toBeNull();
   });
 
-  it('takes a beauty sub-trade from the model, which the detector cannot tell apart', () => {
+  it('takes a beauty sub-trade from the model, and now also finds one on its own', () => {
     const lash = detectIndustry({ declaredWhatWeDo: 'Lash studio — nối mi, uốn mi', currentIndustry: 'SALON' });
     expect(pickTrade({ modelTrade: 'LASH', detection: lash, manual: false, known })).toBe('LASH');
+    // The detector used to collapse every beauty trade into SALON. See
+    // fine-trade-detect.spec.ts for the trade-by-trade cases.
+    expect(pickTrade({ modelTrade: '', detection: lash, manual: false, known })).toBe('LASH');
   });
 
   it('refuses a model answer the engine does not know, and a model answer the words contradict', () => {

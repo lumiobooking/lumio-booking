@@ -568,6 +568,19 @@ export interface BookingRules {
   selfRescheduleNoticeHours: number;
   /** One appointment moved five times is a no-show arriving slowly. */
   selfRescheduleMaxMoves: number;
+
+  /**
+   * Customer self-service CANCELLING, from the same two front doors.
+   *
+   * Kept apart from the reschedule numbers because the two are not the same
+   * favour: a move hands the slot back and takes another, a cancellation hands
+   * it back and keeps nothing. A salon may reasonably let the bot move an
+   * appointment and insist a person handles every cancellation — that is what
+   * turning this off means. An appointment with money already paid on it never
+   * takes this path whatever these say; the refund is a human decision.
+   */
+  selfCancelEnabled: boolean;
+  selfCancelNoticeHours: number;
 }
 
 const open9to6: DayHours = { closed: false, openMinutes: 9 * 60, closeMinutes: 18 * 60 };
@@ -579,6 +592,8 @@ export const DEFAULT_BOOKING_RULES: BookingRules = {
   selfRescheduleEnabled: true,
   selfRescheduleNoticeHours: 24,
   selfRescheduleMaxMoves: 2,
+  selfCancelEnabled: true,
+  selfCancelNoticeHours: 24,
   allowCustomerChooseStaff: true,
   assignmentMode: 'auto',
   currency: 'USD',

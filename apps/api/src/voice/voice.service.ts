@@ -848,6 +848,18 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
           required: ['appointmentId', 'localDateTime'],
         },
       },
+      {
+        name: 'cancel_appointment',
+        description: 'Cancel one of the caller’s appointments. ONLY call this after the caller has clearly confirmed they want it cancelled — read the day and time back to them and get a yes first, because this empties the salon’s chair and cannot be undone from this call. The tool checks the salon’s notice policy and hands back the exact reason when it refuses.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            appointmentId: { type: 'string', description: 'The id from find_appointment. Never guessed, never read aloud.' },
+            customerPhone: { type: 'string', description: 'Optional. Defaults to the number they are calling from.' },
+          },
+          required: ['appointmentId'],
+        },
+      },
       ...(bilingual ? [{
         name: 'switch_language',
         description: 'Switch this call to the given language when the caller speaks it or asks for it. All later replies MUST be in that language.',
@@ -996,6 +1008,24 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
           timeZone: tz, weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
         }).format(r.startTime as Date);
         return `SUCCESS. The appointment now sits at ${when} and the salon calendar is already updated. Warmly repeat the new day and time back, say a text confirmation is on the way, then ask if there is anything else — do not end the call yet.`;
+      }
+
+      if (name === 'cancel_appointment') {
+        const id = String(input.appointmentId || '').trim();
+        const { dial: cDial } = await this.localeInfo(tenantId);
+        const phone = toE164(String(input.customerPhone || ''), cDial) || toE164(callerPhone, cDial);
+        if (!id) return 'Missing the appointment; use find_appointment first.';
+        if (!phone) return 'No phone number available; ask the caller for the number they booked with.';
+        const r = await this.bookings.selfCancel({ tenantId, appointmentId: id, phone, by: 'hotline' });
+        if (!r.ok) {
+          // Same rule, same sentence, as the Messenger bot — one policy with two
+          // front doors must not develop two different explanations.
+          return `REFUSED (${r.code}). Tell the caller this, warmly and in your own words, and offer to have a staff member call back — do not invent a different reason: ${r.say}`;
+        }
+        const when = r.startTime ? new Intl.DateTimeFormat('en-US', {
+          timeZone: tz, weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
+        }).format(r.startTime) : 'that appointment';
+        return `SUCCESS. The appointment on ${when} is cancelled and the salon calendar is already updated. Confirm it warmly in one sentence, say they are welcome to book again any time, then ask if there is anything else — do not end the call yet.`;
       }
 
       if (name === 'end_call') {

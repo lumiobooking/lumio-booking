@@ -65,6 +65,11 @@ export class UpdateBookingRulesDto {
   // typo would silently switch self-service off for every customer.
   @IsOptional() @IsInt() @Min(0) @Max(168) selfRescheduleNoticeHours?: number;
   @IsOptional() @IsInt() @Min(0) @Max(10) selfRescheduleMaxMoves?: number;
+  // Cancelling has its own pair — see BookingRules. Same cap, same reason: a
+  // four-digit typo in the notice hours would switch self-service off for
+  // every customer without saying so.
+  @IsOptional() @IsBoolean() selfCancelEnabled?: boolean;
+  @IsOptional() @IsInt() @Min(0) @Max(168) selfCancelNoticeHours?: number;
 }
 
 export class UpdateBrandingDto {

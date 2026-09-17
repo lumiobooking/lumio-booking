@@ -2894,7 +2894,8 @@ To book you need ONLY: name, phone number, service, and a specific date & time. 
 Email is OPTIONAL: mention once that a confirmation email is possible; if they skip it, book without it and never bring it up again.
 Recap ONCE, in one short line ("Gel manicure, Friday 2:00 PM, for Anna — shall I book it?"). Any agreement at all — "yes", "ok", "sure", "thanks", a thumbs-up — means BOOK IT NOW. Never recap a second time and never ask a second confirming question; a customer who has to agree twice thinks the booking failed.
 Use the get_services tool for what's available. When you have name + phone + service + a specific date/time, call create_booking ONCE, listing EVERY service for that visit in the "services" array (id and name copied exactly from get_services; include email only if given). Two services in one visit is ONE call with two entries — never two calls, and never two start times: the salon lengthens the appointment for the extra services by itself, so one person sitting in one chair gets one appointment and one bill. After it succeeds, confirm warmly in one line and say a confirmation is on the way.
-If they ask about an EXISTING appointment ("khi nào lịch của tôi", "đổi giờ được không", "dời sang thứ 7"), NEVER answer from memory: call find_appointment with their phone number first, then read back exactly what it returns. To move one, call reschedule_appointment with the appointment id from find_appointment, their phone, and the new local date & time. The tool decides whether the change is allowed and hands you the sentence to say — say THAT reason, do not invent a policy of your own and do not promise a change the tool refused. For cancelling, say a staff member will follow up shortly.
+If they ask about an EXISTING appointment ("khi nào lịch của tôi", "đổi giờ được không", "dời sang thứ 7"), NEVER answer from memory: call find_appointment with their phone number first, then read back exactly what it returns. To move one, call reschedule_appointment with the appointment id from find_appointment, their phone, and the new local date & time. The tool decides whether the change is allowed and hands you the sentence to say — say THAT reason, do not invent a policy of your own and do not promise a change the tool refused.
+To CANCEL one, first read the day and time back and ask them to confirm in plain words ("anh/chị xác nhận huỷ lịch ... nhé?"); only after a clear yes, call cancel_appointment with the appointment id and their phone. Never cancel on a hint, on "maybe", or while they are still asking questions — an emptied chair cannot be undone from this chat. If the tool refuses, say ITS reason and offer to have a staff member call back. If they sound like they only want a different time, offer to move it instead — the salon keeps the customer and they keep their slot.
 CRITICAL: Only tell the customer the booking is confirmed if the create_booking tool result starts with "SUCCESS". If the tool returns an error, NEVER claim the booking was made — apologize, briefly explain the problem in plain words, and offer another time or ask for corrected details.
 As a kind final touch AFTER the booking is confirmed, mention the salon loves to send a little birthday treat and gently ask if they'd like to share their birthday (just the month and day) — make it clear this is entirely optional. If they share it, call save_birthday with their phone. If they decline, hesitate, or don't answer, that is completely fine — thank them warmly and never push or ask again.
 ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address, and contact info that are given to you here; never invent them. Do not book or promise a time outside business hours — if the customer asks for a closed day or time, tell them the salon is closed then and offer the nearest open time. If the customer is upset or asks for a human, tell them a staff member will follow up soon. Do not ask for payment.${aiInstruction ? `\nSalon owner's extra notes: ${aiInstruction}` : ''}`;
@@ -2951,6 +2952,18 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
             localDateTime: { type: 'string', description: 'The NEW salon-local time in ISO form, e.g. 2026-07-10T14:00' },
           },
           required: ['appointmentId', 'customerPhone', 'localDateTime'],
+        },
+      },
+      {
+        name: 'cancel_appointment',
+        description: 'Cancel an existing appointment. ONLY call this after the customer has clearly confirmed — repeat the day and time back and get a yes first, because this empties the salon’s chair and you cannot undo it from the chat. The tool checks the salon’s notice policy and returns the exact sentence to say, including when it refuses.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            appointmentId: { type: 'string', description: 'The id returned by find_appointment. Never guessed.' },
+            customerPhone: { type: 'string', description: 'The same phone the appointment was booked under — this is what proves it is theirs.' },
+          },
+          required: ['appointmentId', 'customerPhone'],
         },
       },
       {
@@ -4153,6 +4166,22 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           timeZone: tz, weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
         }).format(r.startTime as Date);
         return `SUCCESS. The appointment has been moved to ${when} and the salon calendar is already updated. Confirm the new day and time back warmly in one line, and say a new confirmation is on the way.`;
+      }
+
+      if (name === 'cancel_appointment') {
+        const id = String(input.appointmentId || '').trim();
+        const phone = String(input.customerPhone || '').trim();
+        if (!id || !phone) return 'Missing the appointment id or the phone; ask for what is missing.';
+        const r = await this.bookings.selfCancel({ tenantId, appointmentId: id, phone, by: 'messenger' });
+        if (!r.ok) {
+          // The refusal sentence is written by the rule, not by the model —
+          // same words the hotline says, for the same situation.
+          return `REFUSED (${r.code}). Say this to the customer, in their language, warmly and in your own voice — do not add a different reason: ${r.say}`;
+        }
+        const when = r.startTime ? new Intl.DateTimeFormat('vi-VN', {
+          timeZone: tz, weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+        }).format(r.startTime) : '';
+        return `SUCCESS. The appointment${when ? ` on ${when}` : ''} is cancelled and the salon calendar is already updated. Confirm it warmly in one line and say they are welcome to book again any time.`;
       }
 
       if (name === 'save_birthday') {

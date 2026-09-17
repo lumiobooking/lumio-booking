@@ -13,6 +13,7 @@ import { formatMoney, localeForCountry } from '../common/money';
 import { toE164, dialCodeFor } from '../common/phone';
 import { fitsBusinessHours, describeWindows } from '../settings/business-hours';
 import { canSelfReschedule } from './self-reschedule';
+import { canSelfCancel } from './self-cancel';
 import { AppointmentStatus, NotificationChannel, PaymentStatus, Prisma, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -889,6 +890,86 @@ export class BookingsService {
       }
       this.logger.warn(`self-reschedule failed (${by}) ${appointmentId}: ${msg.slice(0, 160)}`);
       return { ok: false, code: 'error', say: 'Em chưa đổi được lịch lúc này. Em nhờ nhân viên gọi lại cho anh/chị ngay nhé.' };
+    }
+  }
+
+  /**
+   * Cancel an appointment for the customer who booked it, from Messenger or
+   * the AI hotline. Same shape and same guarantees as selfReschedule: the
+   * phone proves ownership, the policy decides, and the sentence the customer
+   * hears comes back with the verdict so the two bots cannot drift apart.
+   *
+   * WHAT THIS DOES NOT DO: decide about money. An appointment with a paid
+   * payment is refused here (code `deposit`) and goes to a person, because
+   * cancelling settles payments and a deposit exists to make a late
+   * cancellation cost something.
+   */
+  async selfCancel(input: {
+    tenantId: string;
+    appointmentId: string;
+    /** Proof of ownership. Must match the appointment's customer. */
+    phone: string;
+    by: 'messenger' | 'hotline';
+  }): Promise<{ ok: boolean; code: string; say: string; startTime?: Date }> {
+    const { tenantId, appointmentId, by } = input;
+    const rules = await this.settings.getBookingRules(tenantId);
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId },
+      select: { id: true, startTime: true, status: true, customer: { select: { phone: true } } } as never,
+    }).catch(() => null) as unknown as {
+      id: string; startTime: Date; status: AppointmentStatus; customer: { phone: string | null } | null;
+    } | null;
+
+    if (!appt) {
+      return { ok: false, code: 'not-found', say: 'Em không tìm thấy lịch hẹn đó ạ. Anh/chị cho em xin lại số điện thoại đã dùng để đặt nhé.' };
+    }
+
+    // Ownership, checked against the phone rather than trusted from the model.
+    // Without this, a caller who guessed an id could cancel a stranger's visit —
+    // and unlike a bad reschedule, nothing about it is visible until the
+    // customer arrives to an appointment that is no longer there.
+    const given = (await this.normalizedPhone(tenantId, input.phone)) ?? String(input.phone ?? '').trim();
+    const owner = (await this.normalizedPhone(tenantId, appt.customer?.phone ?? '')) ?? (appt.customer?.phone ?? '');
+    const digits = (v: string) => v.replace(/\D/g, '');
+    const sameOwner = Boolean(given && owner)
+      && (given === owner || (digits(given).length >= 7 && digits(given).slice(-9) === digits(owner).slice(-9)));
+    if (!sameOwner) {
+      this.logger.warn(`self-cancel refused (${by}): phone does not match appointment ${appointmentId}`);
+      return { ok: false, code: 'not-owner', say: 'Số điện thoại này không khớp với lịch hẹn đó ạ. Anh/chị kiểm tra giúp em số đã dùng khi đặt nhé.' };
+    }
+
+    const paid = await this.prisma.payment.count({
+      where: { tenantId, appointmentId: appt.id, status: PaymentStatus.PAID },
+    }).catch(() => 0);
+
+    const verdict = canSelfCancel(
+      {
+        enabled: rules.selfCancelEnabled !== false,
+        noticeHours: rules.selfCancelNoticeHours ?? 24,
+      },
+      {
+        now: Date.now(),
+        startMs: appt.startTime.getTime(),
+        live: BookingsService.ACTIONABLE.includes(appt.status),
+        hasPaidDeposit: paid > 0,
+      },
+    );
+    if (!verdict.allowed) {
+      this.logger.log(`self-cancel refused (${by}) ${appointmentId}: ${verdict.detail}`);
+      return { ok: false, code: verdict.code, say: verdict.say };
+    }
+
+    try {
+      // `by: 'ai'` is not decoration — the calendar and the audit trail must say
+      // a bot did this, so the salon can tell a customer-cancelled slot from one
+      // its own front desk cleared.
+      await this.cancelForTenant(tenantId, appt.id, null, 'ai', by === 'hotline' ? 'AI hotline' : 'AI Messenger');
+      this.logger.log(`self-cancel OK (${by}) ${appt.id}: ${appt.startTime.toISOString()}`);
+      return { ok: true, code: 'ok', say: '', startTime: appt.startTime };
+    } catch (e) {
+      const msg = String((e as Error).message || e);
+      this.logger.warn(`self-cancel failed (${by}) ${appointmentId}: ${msg.slice(0, 160)}`);
+      return { ok: false, code: 'error', say: 'Em chưa huỷ được lịch lúc này. Em nhờ nhân viên gọi lại cho anh/chị ngay nhé.' };
     }
   }
 

@@ -13,6 +13,9 @@ import { TimezonePicker } from '../../../components/TimezonePicker';
 interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number; intervals?: { open: number; close: number }[] }
 interface Booking {
   slotStepMinutes: number; minLeadHours: number; maxAdvanceDays: number;
+  /** Customer self-service from the AI bots — see BookingRules on the API. */
+  selfRescheduleEnabled?: boolean; selfRescheduleNoticeHours?: number;
+  selfCancelEnabled?: boolean; selfCancelNoticeHours?: number;
   allowCustomerChooseStaff: boolean; assignmentMode: 'none' | 'auto'; groupPolicy?: 'strict' | 'flexible'; currency: string;
   currencySymbol: string; symbolPosition: 'before' | 'after'; priceDecimals: number; defaultPaymentMethod: 'online' | 'onsite';
   onlinePaymentEnabled: boolean; payLaterEnabled: boolean;
@@ -400,6 +403,42 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
       </div>
       <div style={{ marginTop: 10 }}>
         <Toggle on={f.allowCustomerChooseStaff} onChange={(v) => setF({ ...f, allowCustomerChooseStaff: v })} label={t('se.ru.chooseStaff')} />
+      </div>
+
+      {/* WHAT THE BOTS MAY DO TO A BOOKING THAT ALREADY EXISTS.
+          These two ran on their API defaults with nothing on any screen to
+          change them — which was survivable while the bots could only MOVE an
+          appointment, and is not now that they can cancel one. A salon that
+          wants every cancellation to pass a human turns the second switch off
+          here. An appointment with money already paid on it never takes this
+          path whatever these say: the refund goes to a person. */}
+      <div style={{ marginTop: 18, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>{t('se.ru.selfTitle')}</div>
+      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', margin: '3px 0 10px', lineHeight: 1.55 }}>{t('se.ru.selfHint')}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
+        <div>
+          <Toggle on={f.selfRescheduleEnabled !== false} onChange={(v) => setF({ ...f, selfRescheduleEnabled: v })} label={t('se.ru.selfMove')} />
+          {f.selfRescheduleEnabled !== false && (
+            <div style={{ marginTop: 8 }}>
+              <Field label={t('se.ru.selfNotice')}>
+                <input style={ui.input} type="number" min={0} max={168}
+                  value={f.selfRescheduleNoticeHours ?? 24}
+                  onChange={(e) => setF({ ...f, selfRescheduleNoticeHours: Number(e.target.value) })} />
+              </Field>
+            </div>
+          )}
+        </div>
+        <div>
+          <Toggle on={f.selfCancelEnabled !== false} onChange={(v) => setF({ ...f, selfCancelEnabled: v })} label={t('se.ru.selfCancel')} />
+          {f.selfCancelEnabled !== false && (
+            <div style={{ marginTop: 8 }}>
+              <Field label={t('se.ru.selfNotice')}>
+                <input style={ui.input} type="number" min={0} max={168}
+                  value={f.selfCancelNoticeHours ?? 24}
+                  onChange={(e) => setF({ ...f, selfCancelNoticeHours: Number(e.target.value) })} />
+              </Field>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* The badge at the top of the public booking page. Three states rather

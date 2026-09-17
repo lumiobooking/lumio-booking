@@ -949,7 +949,14 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
     catch { /* not fatal — the desk still works without a kiosk */ }
   }, [token]);
   useEffect(() => { if (open && !s) load(); }, [open, s, load]);
-  const url = s ? s.displayUrl.replace(/\/display\/?$/, '/checkin') : '';
+  // THE QR MUST CARRY THE SHOP'S CODE. The check-in page pairs itself from
+  // `?c=CODE` and shows a customer the menu straight away; without it, a
+  // customer who scanned the poster landed on "Enter the 6-character code" —
+  // a screen written for the salon's own iPad, not for a stranger with a
+  // phone. The link used to be built from the display's base URL alone, so
+  // every printed code was a link to that screen. Same code every time: it
+  // only changes when somebody presses "New code" below, on purpose.
+  const url = s ? `${s.displayUrl.replace(/\/display\/?$/, '')}/checkin?c=${encodeURIComponent(s.pairCode)}` : '';
   // On a phone the toolbar wraps and this button lands at the LEFT edge, so
   // a panel hung off its right edge opened almost entirely off-screen — the
   // owner saw a grey slab with the last few letters of each line. There the
@@ -1017,7 +1024,16 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
                 style={{ border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: url ? 'pointer' : 'not-allowed', opacity: url ? 1 : 0.5 }}
               >🖨️ {t('wi.kioskPrint')}</button>
               <button
-                onClick={async () => { if (!token) return; try { setS(await apiFetch('/display/rotate', { method: 'POST', token })); } catch { /* ignore */ } }}
+                // A new code retires the old one: every printed poster and every
+                // paired iPad stops working until it is replaced. That is what
+                // the button is for (a lost tablet), and it must never happen
+                // from a stray tap next to "Print".
+                onClick={async () => {
+                  if (!token) return;
+                  const ok = window.confirm(t('wi.kioskNewConfirm'));
+                  if (!ok) return;
+                  try { setS(await apiFetch('/display/rotate', { method: 'POST', token })); } catch { /* ignore */ }
+                }}
                 style={{ border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}
               >{t('wi.kioskNew')}</button>
             </div>

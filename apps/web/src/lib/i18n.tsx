@@ -277,6 +277,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'wi.kiosk': { en: 'Check-in QR', vi: 'QR check-in' },
   'wi.kioskHow': { en: 'One link for every way a customer can check themselves in: scan it here, print it for the counter, or set it up once on a tablet by the door. It keeps working until you issue a new code.', vi: 'Một link duy nhất cho mọi cách khách tự check-in: quét ngay tại đây, in ra để quầy, hoặc cài một lần lên máy tính bảng ở cửa. Dùng mãi tới khi anh đổi mã mới.' },
   'wi.kioskNew': { en: 'New code', vi: 'Đổi mã mới' },
+  'wi.kioskNewConfirm': { en: 'Issue a new code? Every printed QR and every paired tablet will stop working until you replace them. Only do this for a lost or stolen device.', vi: 'Đổi mã mới? Mọi mã QR đã in và mọi máy tính bảng đã ghép sẽ ngừng hoạt động cho tới khi thay mã. Chỉ nên làm khi mất thiết bị.' },
   'wi.kioskPrint': { en: 'Print', vi: 'In mã' },
   'wi.kioskScan': { en: 'Scan to check in', vi: 'Quét mã để check-in' },
   'wi.doneToday': { en: 'Finished today', vi: 'Đã xong hôm nay' },

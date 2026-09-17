@@ -7,6 +7,7 @@ import { assemble, dropChunks, dropPieces, getResult, haveChunks, putChunk, putR
 import { GoogleDriveService } from './google-drive.service';
 import { EXT_BY_MIME, resolveMime } from './media-mime';
 import { driveFileIdFrom, drivePublicDownloadUrl, importCheck, jobView, type ImportJob } from './drive-import';
+import { PROBE_PNG, probeName } from './storage-probe';
 import { Transform } from 'stream';
 
 interface FtpConfig {
@@ -612,8 +613,10 @@ export class UploadsService {
       lines.push(`✓ Vào được thư mục ${c.basePath}.`);
 
       // The half nobody checks: can the file be read back from the web?
-      probe = `lumio-check-${randomUUID()}.txt`;
-      await client.uploadFrom(Readable.from(Buffer.from('lumio storage check')), probe);
+      // A real image, because the read-back below checks for one — see
+      // storage-probe.ts for the false alarm a .txt probe produced.
+      probe = probeName(randomUUID());
+      await client.uploadFrom(Readable.from(PROBE_PNG), probe);
       lines.push('✓ Ghi file thử qua FTP thành công.');
     } catch (e) {
       return { ok: false, message: [...lines, `✕ ${e instanceof Error ? e.message : 'Kết nối thất bại'}`].join('\n') };

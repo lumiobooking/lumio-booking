@@ -284,6 +284,14 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'wi.kioskScan': { en: 'Scan to check in', vi: 'Quét mã để check-in' },
   'wi.doneToday': { en: 'Finished today', vi: 'Đã xong hôm nay' },
   'wi.reopen': { en: 'Reopen', vi: 'Mở lại' },
+  // Deleting a visit is not the same word as cancelling one, and the salon must
+  // not have to guess which is which: "Huỷ" keeps the row and its history for a
+  // customer who left; "Xoá" removes a row that should never have existed.
+  'wi.delete': { en: 'Delete', vi: 'Xoá' },
+  'wi.deleteAsk': {
+    en: 'Delete this visit for good? It disappears from the board and from today\u2019s turn counts. This cannot be undone.',
+    vi: 'Xoá hẳn lượt khách này? Nó biến khỏi bảng và khỏi số lượt hôm nay của thợ. Không khôi phục lại được.',
+  },
   'wi.editLine': { en: 'Edit', vi: 'Sửa' },
   'wi.lineSave': { en: 'Save', vi: 'Lưu' },
   'wi.lineCancel': { en: 'Cancel', vi: 'Huỷ' },

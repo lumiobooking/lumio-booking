@@ -167,6 +167,15 @@ export class WalkinsController {
     return this.nudge(user, id, this.walkins.cancel(user, id));
   }
 
+  /**
+   * Hard delete. Narrowed to SALON_ADMIN — which is the owner's own account and
+   * a Lumio support session (support tokens carry a normal SALON_ADMIN scope),
+   * and NOT a technician. Every other route on this controller is shared with
+   * STAFF because a tech needs to run their own chair; deleting a visit is not
+   * running a chair, and a tech who can delete a visit can delete the record of
+   * a visit they were paid for.
+   */
+  @Roles(UserRole.SALON_ADMIN)
   @Delete(':id')
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.nudge(user, id, this.walkins.remove(user, id));

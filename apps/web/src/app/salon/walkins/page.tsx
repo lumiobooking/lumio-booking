@@ -44,6 +44,9 @@ function waitedMins(iso: string) {
 
 function Inner() {
   const { token, user } = useAuth();
+  // The owner's own account, or a Lumio support session inside this salon.
+  // A technician signed in on the floor is excluded on purpose — see the API.
+  const canDelete = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN' || Boolean(user?.supportSession);
   const { lang } = useLang();
   const isMobile = useIsMobile();
   const t = (k: string) => tr(k, lang);
@@ -385,6 +388,23 @@ function Inner() {
     catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
   }
 
+  /**
+   * Remove a visit that should not be on the board — a test ticket, a row
+   * entered twice, somebody who walked out before sitting down.
+   *
+   * Deliberately NOT offered to a technician: the API refuses them too, and a
+   * button that appears and then fails is worse than no button. It is also not
+   * the same thing as "Huỷ" on a waiting customer, which keeps the row. This
+   * one asks first, because there is nothing to undo it with.
+   */
+  async function deleteWalkIn(id: string) {
+    if (!canDelete) return;
+    if (typeof window !== 'undefined' && !window.confirm(t('wi.deleteAsk'))) return;
+    setError(null);
+    try { await apiFetch(`/walkins/${id}`, { method: 'DELETE', token }); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
+  }
+
   async function addServiceLine(id: string, serviceId: string, staffId: string, extraMinutes?: number) {
     setError(null);
     try {
@@ -539,6 +559,12 @@ function Inner() {
                   </div>
                   <button onClick={() => act(`${d.id}/reactivate`)} style={{ border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', borderRadius: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>{t('wi.reopen')}</button>
                   <a href={href} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, textDecoration: 'none', whiteSpace: 'nowrap' }}>{t('wi.checkout')}</a>
+                  {/* Last, and quiet. Checkout is what this card is for; delete
+                      is the rare correction, so it does not compete for the eye. */}
+                  {canDelete && (
+                    <button onClick={() => deleteWalkIn(d.id)} title={t('wi.delete')} aria-label={t('wi.delete')}
+                      style={{ background: 'none', border: 'none', color: 'var(--c64748b)', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 2px' }}>🗑</button>
+                  )}
                 </div>
               );
             })}
@@ -638,6 +664,7 @@ function Inner() {
             w={w} staff={staff} services={services} t={t} currency={currency}
             onAdd={addServiceLine} onUpdateLine={updateServiceLine} onRemove={removeServiceLine} onStation={setStationFor}
             onDone={async () => { await act(`${w.id}/done`); setOpenId(null); }}
+            onDelete={canDelete ? async () => { await deleteWalkIn(w.id); setOpenId(null); } : null}
             onClose={() => setOpenId(null)}
           />
         );
@@ -800,13 +827,15 @@ const countPill = (n: number): CSSProperties => ({
 /** Full ticket editor for one in-service walk-in, in a focused overlay: service
  *  lines (each with its tech), add a service, edit station, checkout, done. Opened
  *  from a compact card so the board itself stays a clean overview. Portaled to body. */
-function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLine, onRemove, onStation, onDone, onClose }: {
+function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLine, onRemove, onStation, onDone, onDelete, onClose }: {
   w: WalkIn; staff: StaffTurn[]; services: Service[]; t: (k: string) => string; currency: string;
   onAdd: (id: string, serviceId: string, staffId: string, extraMinutes?: number) => Promise<void> | void;
   onUpdateLine: (id: string, lineId: string, patch: Record<string, unknown>) => Promise<void> | void;
   onRemove: (id: string, lineId: string) => Promise<void> | void;
   onStation: (id: string, station: string) => void;
   onDone: () => void;
+  /** Null for a technician, who may run this ticket but not erase it. */
+  onDelete: (() => void) | null;
   onClose: () => void;
 }) {
   const [svcId, setSvcId] = useState('');
@@ -894,6 +923,13 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
             <a href={checkoutHref}
               style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '12px 16px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{t('wi.checkout')} · {formatPrice(subtotal, currency)}</a>
             <button onClick={onDone} style={{ ...ui.primaryBtn, background: 'var(--c334155)', padding: '12px 14px' }}>{t('wi.done')}</button>
+            {/* An in-service row is the one that gets stuck: it is not filtered
+                by date, so a test ticket left here sits on the board tomorrow
+                and keeps its technician marked busy for good. */}
+            {onDelete && (
+              <button onClick={onDelete} title={t('wi.delete')} aria-label={t('wi.delete')}
+                style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 10, padding: '12px 14px', fontSize: 15, cursor: 'pointer' }}>🗑</button>
+            )}
           </div>
         </div>
       </div>

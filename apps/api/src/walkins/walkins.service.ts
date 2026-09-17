@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AppointmentStatus, Prisma, WalkInStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -580,8 +580,31 @@ export class WalkinsService {
     return this.prisma.walkIn.update({ where: { id: w.id }, data: { status: WalkInStatus.CANCELLED }, include: INCLUDE });
   }
 
+  /**
+   * Delete a walk-in outright — a test ticket, a double entry, somebody who
+   * walked back out before anything happened.
+   *
+   * REFUSED THE MOMENT MONEY EXISTS. An Order carries walkInId, and an order is
+   * revenue that has already been counted, printed on a receipt and possibly
+   * settled on a card terminal. Deleting the visit under it would leave that
+   * money with nothing to explain it: the day's takings and the day's visits
+   * would disagree, and the only person who could say which was right is
+   * whoever happened to press this button. So the invoice goes first, from the
+   * Orders screen, where the person doing it can see what they are deleting.
+   *
+   * Cancelling stays the normal move for a real customer who left — it keeps
+   * the row and the history. This is for rows that should never have existed.
+   */
   async remove(user: AuthenticatedUser, id: string) {
     const w = await this.mine(user, id);
+    const invoices = await this.prisma.order
+      .count({ where: { tenantId: w.tenantId, walkInId: w.id } })
+      .catch(() => 0);
+    if (invoices > 0) {
+      throw new ConflictException(
+        'Lượt khách này đã có hoá đơn. Xoá hoá đơn ở mục Đơn hàng trước, rồi mới xoá được lượt khách.',
+      );
+    }
     await this.prisma.walkIn.delete({ where: { id: w.id } });
     return { ok: true };
   }

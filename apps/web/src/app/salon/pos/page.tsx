@@ -72,7 +72,26 @@ function Register() {
   const { token, user } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const isMobile = useIsMobile();
+  /**
+   * A PHONE AND A TABLET SHARE ONE REGISTER.
+   *
+   * Two panes on an iPad were tried twice. The second attempt was the layout
+   * the big registers use, and it still lost: with a 230px menu, a toolbar,
+   * a header row and a money block, the one thing a ticket exists to show —
+   * the line items — had ~130px left on a landscape iPad and none in
+   * portrait. The owner asked for the phone flow instead, and the phone flow
+   * is the better trade on this screen size: the catalog gets the whole
+   * width (five tiles across, not two), and the ticket gets the whole
+   * height. One tap moves between them; the running total is always on the
+   * bar at the bottom.
+   *
+   *   phone    — a real phone (≤768px): also has the app's bottom tab bar.
+   *   tablet   — 769–1180px: same two-view flow, no tab bar to clear.
+   *   isMobile — either; this is the layout flag the rest of the file reads.
+   */
+  const phone = useIsMobile();
+  const tablet = useIsMobile(1180);
+  const isMobile = phone || tablet;
   const params = useSearchParams();
   const [uiPref, setUiPref] = useState<'v1' | 'v2' | null>(null);
   // Real browser full screen (same as the calendar): the register fills the
@@ -103,37 +122,23 @@ function Register() {
   const pilot = POS_V2_ALL
     || POS_V2_PILOT.includes((user?.email ?? '').toLowerCase())
     || POS_V2_PILOT.includes(user?.tenantId ?? '\u0000');
-  // A TABLET IS NOT WIDE. The wide layout pins the ticket at 430px and gives
-  // the toolbar its own column under the catalog; on an iPad (~1024px, less
-  // the menu) that column is ~200px, every button wraps onto its own line, and
-  // the money block — taller than the screen once the customer box, promo,
-  // discount and gift card are in it — is clipped by overflow:hidden with the
-  // pay buttons below the fold. A cashier could not finish a sale. Under
-  // 1180px the register uses the older two-column layout, whose ticket scrolls
-  // and whose toolbar is a row along the top; ?ui=v2 does not override this,
-  // because there is no tablet on which v2 works.
-  const tablet = useIsMobile(1180);
-  const wide = !isMobile && !tablet && (uiPref ? uiPref === 'v2' : pilot);
+  // Tablets are `isMobile` now (see the flags at the top), so `wide` is a
+  // desktop-only question: the pilot's two-pane register, or the older one.
+  const wide = !isMobile && (uiPref ? uiPref === 'v2' : pilot);
   /**
-   * WHAT THE BIG REGISTERS AGREE ON, AND WHAT THIS SCREEN NOW DOES ON A TABLET.
+   * WHAT THE BIG REGISTERS AGREE ON, AND WHAT THIS SCREEN KEEPS FROM THEM.
    *
    * Square, Toast, Clover, Lightspeed and the salon ones (Fresha, Mangomint,
-   * Boulevard) converge on the same iPad checkout, and it is not an accident:
-   *
-   *   - Two panes. Catalog ~58%, ticket ~42%, both full height.
-   *   - The catalog is ONE row of categories that scrolls sideways, one
-   *     search, then big tiles. No scanner box on screen: a USB scanner types
-   *     on its own; a camera scan hides behind an icon.
-   *   - The ticket is customer → line items (most of the height) → totals →
-   *     ONE big pay button. That is the whole panel.
-   *   - Discounts, promo codes, gift cards, split payment are one tap away,
-   *     never permanently on screen. An empty cart shows an empty cart, not
-   *     four input boxes for money that has not been rung up yet.
-   *
-   * `compact` is that layout: it applies to the phone AND the tablet, since
-   * both are screens where every extra row is paid for in scrolling.
+   * Boulevard) converge on the same checkout: a catalog that is one row of
+   * categories, one search and big tiles; a ticket that is customer → line
+   * items → totals → one pay button; discounts, promo codes and gift cards a
+   * tap away, never permanently on screen; and an empty cart that looks
+   * empty. Those rules apply on every screen size here. What differs by size
+   * is only whether the catalog and the ticket share the screen (desktop) or
+   * take turns (phone and tablet — `compact`), and whether payment is inline
+   * (desktop) or a sheet (compact).
    */
-  const compact = isMobile || tablet;
+  const compact = isMobile;
   /** The adjustments drawer (promo / discount / gift card) on a compact ticket. */
   const [adjOpen, setAdjOpen] = useState(false);
   /** The payment sheet on a compact screen — see the note where it opens. */
@@ -181,9 +186,8 @@ function Register() {
   // emptied out from under the cashier falls back to services rather than
   // leaving them on a screen with no button to get off it.
   useEffect(() => {
-    if (!compact) return;
     if ((tab === 'ADDON' && addons.length === 0) || (tab === 'PRODUCT' && products.length === 0)) setTab('SERVICE');
-  }, [compact, tab, addons.length, products.length]);
+  }, [tab, addons.length, products.length]);
   const [query, setQuery] = useState('');
   const [catFilter, setCatFilter] = useState<string | null>(null); // service category id, null = all
   const [cart, setCart] = useState<Line[]>([]);
@@ -1563,7 +1567,7 @@ function Register() {
 
   return (
     <section style={{
-      paddingBottom: isMobile ? (mobileView === 'catalog' ? 96 : 24) : undefined,
+      paddingBottom: isMobile ? (mobileView === 'catalog' ? (phone ? 96 : 84) : 24) : undefined,
       // Wide mode: the register owns exactly one screen. Nothing below the fold,
       // so the pay button can never be scrolled away.
       ...(wide && !fullscreen ? { height: 'calc(100dvh - 92px)', marginBottom: -24, display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
@@ -1580,7 +1584,7 @@ function Register() {
       {!wide && banners}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : (wide ? 'minmax(0, 1fr) 430px' : tablet ? 'minmax(0, 1.4fr) minmax(340px, 1fr)' : 'minmax(0, 1.3fr) minmax(0, 1fr)'),
+        gridTemplateColumns: isMobile ? '1fr' : (wide ? 'minmax(0, 1fr) 430px' : 'minmax(0, 1.3fr) minmax(0, 1fr)'),
         // Wide mode: row 1 is the catalog + ticket, row 2 is the toolbar strip
         // under the catalog only — the ticket spans both rows and keeps the
         // extra height for itself.
@@ -1609,8 +1613,8 @@ function Register() {
               { id: 'ADDON', label: t('po.tabAddons'), n: addons.length },
               { id: 'PRODUCT', label: t('po.tabProducts'), n: products.length },
             ];
-            const tabs = all.filter((x) => !compact || x.id === 'SERVICE' || x.n > 0);
-            if (compact && tabs.length <= 1) return null;
+            const tabs = all.filter((x) => x.id === 'SERVICE' || x.n > 0);
+            if (tabs.length <= 1) return null;
             return (
               <div style={{ display: 'flex', gap: 6, marginBottom: compact ? 10 : 12 }}>
                 {tabs.map((x) => (
@@ -1771,7 +1775,7 @@ function Register() {
             <h2 style={{ fontSize: 15, margin: 0 }}>{t('po.ticket')}</h2>
             {/* The print toggle sits with the bill on a tablet — the phone
                 header dropped it, and the receipt is a ticket-side decision. */}
-            {tablet && (
+            {false && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ccbd5e1)', cursor: 'pointer', whiteSpace: 'nowrap', marginRight: 'auto', marginLeft: 8 }}>
                 <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 15, height: 15 }} />
                 🖨️ {t('po.printReception')}
@@ -1801,9 +1805,9 @@ function Register() {
             <div style={{
               color: 'var(--c64748b)', fontSize: 14, textAlign: 'center',
               ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto' } : null),
-              ...(tablet ? { flex: '1 1 0%', minHeight: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 12px' } : null),
+              ...(isMobile ? { minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 12px' } : { padding: '18px 0' }),
             }}>
-              {tablet ? <span>🧾<br />{t('po.tapToAdd')}</span> : t('po.tapToAdd')}
+              <span>🧾<br />{t('po.tapToAdd')}</span>
             </div>
           ) : (
             <div style={{
@@ -1888,14 +1892,14 @@ function Register() {
                 chip until somebody needs them — see the note on `compact`.
                 They stay open once a promo or discount is actually applied,
                 because then they are showing a fact, not offering an input. */}
-            {compact && !adjOpen && !promo && !orderDiscount && !giftCard && (
+            {!adjOpen && !promo && !orderDiscount && !giftCard && (
               <div style={{ display: 'flex', gap: 6, margin: '4px 0 6px', flexWrap: 'wrap' }}>
                 <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>🏷️ {t('po.promoCode')}</button>
                 <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>✂️ {t('po.discountLbl')}</button>
                 {online && <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>🎁 {t('po.gcApply')}</button>}
               </div>
             )}
-            {(!compact || adjOpen || promo || orderDiscount) && (
+            {(adjOpen || promo || orderDiscount) && (
             <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 10, padding: 7, display: 'flex', flexDirection: 'column', gap: 6, margin: '3px 0 5px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5, width: 72, flexShrink: 0 }}>🏷️ {t('po.promoCode')}</span>
@@ -2002,7 +2006,7 @@ function Register() {
 
           {/* Gift card redemption (online only — needs a live balance check).
               On a compact ticket it lives in the same drawer as the discounts. */}
-          {online && (!compact || adjOpen || giftCard) && (
+          {online && (adjOpen || giftCard) && (
             <div style={{ marginBottom: 8 }}>
               {giftCard ? (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid #155e75', borderRadius: 8, padding: '8px 10px' }}>
@@ -2064,7 +2068,7 @@ function Register() {
 
       {/* Mobile: sticky total + go-to-ticket bar so checkout is one tap away. */}
       {isMobile && mobileView === 'catalog' && (
-        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))', zIndex: 45, background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 -4px 16px rgba(0,0,0,0.4)' }}>
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: phone ? 'calc(64px + env(safe-area-inset-bottom, 0px))' : 'env(safe-area-inset-bottom, 0px)', zIndex: 45, background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 -4px 16px rgba(0,0,0,0.4)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{cart.length} {t('po.itemsWord')}</div>
             <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--ink-good)' }}>{formatPrice(money.total, currency)}</div>
@@ -2084,10 +2088,10 @@ function Register() {
       )}
 
       {compact && payOpen && typeof document !== 'undefined' && createPortal(
-        <div onClick={() => setPayOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.72)', zIndex: 300, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 16 }}>
+        <div onClick={() => setPayOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.72)', zIndex: 300, display: 'flex', alignItems: phone ? 'flex-end' : 'center', justifyContent: 'center', padding: phone ? 0 : 16 }}>
           <div onClick={(e) => e.stopPropagation()} style={{
-            ...ui.card, width: isMobile ? '100%' : 'min(560px, 96vw)', maxHeight: isMobile ? '92dvh' : '90vh', overflowY: 'auto',
-            ...(isMobile ? { borderRadius: '16px 16px 0 0', paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))' } : null),
+            ...ui.card, width: phone ? '100%' : 'min(560px, 96vw)', maxHeight: phone ? '92dvh' : '90vh', overflowY: 'auto',
+            ...(phone ? { borderRadius: '16px 16px 0 0', paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))' } : null),
           }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
               <div>

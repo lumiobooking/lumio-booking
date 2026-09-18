@@ -25,6 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useState, CSSProperties } from 'react';
 import { apiFetch } from '../../lib/api';
+import { useHorizontalScroll } from '../../lib/useHorizontalScroll';
 
 const TOKEN_KEY = 'lumio_checkin_token';
 const IDLE_RESET_MS = 90_000; // abandoned half-filled form clears itself
@@ -32,7 +33,16 @@ const IDLE_RESET_MS = 90_000; // abandoned half-filled form clears itself
 interface Service {
   id: string;
   name: string;
+  /** List price. */
   priceCents: number;
+  /** The service's own discount, 0–90. Absent on an older server. */
+  discountPercent?: number;
+  /** Today's promotion for its category, 0–90. Absent on an older server. */
+  promoPercent?: number;
+  /** What the customer pays today — the SAME number the ticket will carry.
+   *  Absent on an older server, in which case the list price stands. */
+  netCents?: number;
+  isFeatured?: boolean;
   durationMinutes: number;
   category: { id: string; name: string } | null;
 }
@@ -41,7 +51,16 @@ interface Menu {
   logoUrl: string | null;
   accentColor: string;
   services: Service[];
+  /** Today's best offer, for the band at the top. Null when none runs. */
+  promo?: { percent: number; label: string | null; scope: 'all' | string } | null;
 }
+/** The two synthetic chips in front of the real categories. */
+const SALE = '__sale';
+const POPULAR = '__popular';
+const payCents = (s: Service) => (typeof s.netCents === 'number' ? s.netCents : s.priceCents);
+const offPct = (s: Service) => Math.min(90, Math.max(0, s.discountPercent ?? 0));
+const dealPct = (s: Service) => Math.min(90, Math.max(0, s.promoPercent ?? 0));
+const onSale = (s: Service) => payCents(s) < s.priceCents;
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -119,15 +138,27 @@ export default function CheckInKiosk() {
     for (const s of menu?.services ?? []) if (s.category) seen.set(s.category.id, s.category.name);
     return [...seen].map(([id, name]) => ({ id, name }));
   }, [menu]);
+  const hasSale = useMemo(() => (menu?.services ?? []).some(onSale), [menu]);
+  const hasPopular = useMemo(() => (menu?.services ?? []).some((s) => s.isFeatured), [menu]);
   const shown = useMemo(
-    () => (menu?.services ?? []).filter((s) => !cat || s.category?.id === cat),
+    () => (menu?.services ?? []).filter((s) =>
+      !cat ? true
+        : cat === SALE ? onSale(s)
+          : cat === POPULAR ? !!s.isFeatured
+            : s.category?.id === cat),
     [menu, cat],
   );
+  // The chip row: wheel scrolls it, arrows appear on a computer when it overflows.
+  const chips = useHorizontalScroll<HTMLDivElement>();
   const pickedList = useMemo(
     () => picked.map((id) => (menu?.services ?? []).find((s) => s.id === id)).filter(Boolean) as Service[],
     [picked, menu],
   );
-  const totalCents = pickedList.reduce((sum, s) => sum + s.priceCents, 0);
+  // What she pays and what she would have paid: the difference is the line
+  // that makes the offer real to her, and it is the number the ticket carries.
+  const totalCents = pickedList.reduce((sum, s) => sum + payCents(s), 0);
+  const fullCents = pickedList.reduce((sum, s) => sum + s.priceCents, 0);
+  const savedCents = Math.max(0, fullCents - totalCents);
   const totalMins = pickedList.reduce((sum, s) => sum + s.durationMinutes, 0);
 
   async function pair() {
@@ -221,7 +252,7 @@ export default function CheckInKiosk() {
 
   return (
     <main style={{ ...screen, alignItems: 'stretch', padding: 0, display: 'block', colorScheme: 'light' }}>
-      <style>{`html,body{background:#f5f6fa} .ck-chips::-webkit-scrollbar{display:none} .ck-page input[type=date]{-webkit-appearance:none;min-height:56px} .ck-page input::placeholder{color:#9ca3af}`}</style>
+      <style>{`html,body{background:#f5f6fa} .ck-chips::-webkit-scrollbar{display:none} .ck-arrow{display:none} @media (hover:hover) and (pointer:fine){.ck-arrow{display:flex}} .ck-page input[type=date]{-webkit-appearance:none;min-height:56px} .ck-page input::placeholder{color:#9ca3af}`}</style>
       <div className="ck-page" style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', width: '100%' }}>
         {/* Header: who they are checking in with + how far along they are */}
         <header style={{
@@ -305,14 +336,46 @@ export default function CheckInKiosk() {
                   ))}
                 </div>
               )}
-              {cats.length > 0 && (
+              {/* Today's offer, said once at the top in the salon's own words.
+                  The exact figure per service is on the service; this is the
+                  sentence that makes her look for it. */}
+              {menu?.promo && menu.promo.percent > 0 && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#fff7ed', border: '1.5px solid #fdba74', borderRadius: 14, padding: '11px 13px', marginBottom: 14 }}>
+                  <TagIcon color="#c2410c" size={22} />
+                  <div>
+                    <div style={{ fontSize: 14.5, fontWeight: 800, color: '#9a3412' }}>
+                      {menu.promo.label ? `${menu.promo.label} · ` : ''}{menu.promo.percent}% off {menu.promo.scope === 'all' ? 'today' : `${menu.promo.scope.toLowerCase()} today`}
+                    </div>
+                    <div style={{ fontSize: 12.5, color: '#c2410c', lineHeight: 1.45 }}>Applied automatically when you check in. Prices below already show it.</div>
+                  </div>
+                </div>
+              )}
+              {(cats.length > 0 || hasSale || hasPopular) && (
                 // One row that scrolls sideways. Each chip keeps its width —
                 // "All" used to be squeezed into a two-line "A / ll" pill.
-                <div className="ck-chips" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12, marginBottom: 2, marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16, scrollbarWidth: 'none' }}>
-                  <button onClick={() => setCat(null)} style={{ ...chip, ...(cat === null ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>All</button>
-                  {cats.map((c) => (
-                    <button key={c.id} onClick={() => setCat(c.id)} style={{ ...chip, ...(cat === c.id ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>{c.name}</button>
-                  ))}
+                // The scrollbar is hidden (right on a phone), so on a computer
+                // the wheel moves the row and two arrows appear at the edges —
+                // without them the row simply stopped at the screen edge and
+                // every category beyond it did not exist for that customer.
+                <div style={{ position: 'relative', marginLeft: -16, marginRight: -16, marginBottom: 2 }}>
+                  {chips.canLeft && <ChipArrow dir={-1} onClick={() => chips.nudge(-1)} />}
+                  <div ref={chips.ref} className="ck-chips" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12, paddingLeft: 16, paddingRight: 16, scrollbarWidth: 'none' }}>
+                    <button onClick={() => setCat(null)} style={{ ...chip, ...(cat === null ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>All</button>
+                    {hasSale && (
+                      <button onClick={() => setCat(SALE)} style={{ ...chip, display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: '#fdba74', background: cat === SALE ? '#ea580c' : '#fff7ed', color: cat === SALE ? '#fff' : '#9a3412', fontWeight: 700 }}>
+                        <TagIcon color="currentColor" size={16} />On sale
+                      </button>
+                    )}
+                    {hasPopular && (
+                      <button onClick={() => setCat(POPULAR)} style={{ ...chip, display: 'inline-flex', alignItems: 'center', gap: 6, ...(cat === POPULAR ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>
+                        <StarIcon size={16} />Popular
+                      </button>
+                    )}
+                    {cats.map((c) => (
+                      <button key={c.id} onClick={() => setCat(c.id)} style={{ ...chip, ...(cat === c.id ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>{c.name}</button>
+                    ))}
+                  </div>
+                  {chips.canRight && <ChipArrow dir={1} onClick={() => chips.nudge(1)} />}
                 </div>
               )}
               {/* Two columns on a phone, more as the screen grows — never a single
@@ -340,9 +403,20 @@ export default function CheckInKiosk() {
                           fontSize: 17, fontWeight: 900, border: `3px solid ${C.page}`,
                         }}>✓</span>
                       )}
+                      {/* One badge, the most useful one: her own-discount figure
+                          beats the day's promo (it is hers, not everyone's);
+                          Popular only when there is no money to mention. */}
+                      {offPct(s) > 0 ? (
+                        <span style={{ alignSelf: 'flex-start', background: '#fee2e2', color: '#b91c1c', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 800 }}>−{offPct(s)}%</span>
+                      ) : dealPct(s) > 0 ? (
+                        <span style={{ alignSelf: 'flex-start', background: '#fff7ed', color: '#9a3412', border: '1px solid #fdba74', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 800 }}>Today −{dealPct(s)}%</span>
+                      ) : s.isFeatured ? (
+                        <span style={{ alignSelf: 'flex-start', background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 800 }}>POPULAR</span>
+                      ) : null}
                       <span style={{ fontSize: 'clamp(15px, 4vw, 18px)', fontWeight: 700, lineHeight: 1.25 }}>{s.name}</span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 'auto', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 'clamp(16px, 4.2vw, 19px)', fontWeight: 800, color: on ? accent : C.price }}>{money(s.priceCents)}</span>
+                      <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 'clamp(16px, 4.2vw, 19px)', fontWeight: 800, color: on ? accent : C.price }}>{money(payCents(s))}</span>
+                        {onSale(s) && <span style={{ fontSize: 13.5, color: C.faint, textDecoration: 'line-through' }}>{money(s.priceCents)}</span>}
                         <span style={{ fontSize: 13.5, color: C.muted }}>{s.durationMinutes} min</span>
                       </span>
                     </button>
@@ -402,8 +476,13 @@ export default function CheckInKiosk() {
             ? <button onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)} style={ghostBtn}>Back</button>
             : <span style={{ fontSize: 14.5, color: C.muted }}>🔒 Seen only by the salon</span>}
           {step === 2 && picked.length > 0 && (
-            <span style={{ fontSize: 16, color: C.ink2, fontWeight: 600 }}>
-              {picked.length} selected · <span style={{ color: C.price }}>{money(totalCents)}</span>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 1, fontSize: 16, color: C.ink2, fontWeight: 600 }}>
+              <span>
+                {picked.length} selected ·{' '}
+                {savedCents > 0 && <span style={{ color: C.faint, textDecoration: 'line-through', fontWeight: 500, marginRight: 6 }}>{money(fullCents)}</span>}
+                <span style={{ color: C.price }}>{money(totalCents)}</span>
+              </span>
+              {savedCents > 0 && <span style={{ fontSize: 13, color: C.price, fontWeight: 700 }}>You save {money(savedCents)} today</span>}
             </span>
           )}
           <span style={{ flex: 1 }} />
@@ -467,6 +546,41 @@ const pill: CSSProperties = {
   border: `2px solid ${C.line}`, background: C.card, color: C.ink2,
   borderRadius: 999, padding: '14px 22px', fontSize: 17, fontWeight: 600, cursor: 'pointer', minHeight: 54,
 };
+function TagIcon({ color, size }: { color: string; size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden>
+      <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z" /><circle cx="7.5" cy="7.5" r="1.5" />
+    </svg>
+  );
+}
+function StarIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" strokeWidth={1.5} strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden>
+      <path d="m12 2 3 6.6 7.2.8-5.3 5 1.4 7.1L12 18l-6.3 3.5 1.4-7.1-5.3-5 7.2-.8Z" />
+    </svg>
+  );
+}
+/** The desktop-only nudge at either end of the chip row. Hidden on a phone,
+ *  where the row is swiped and a floating button would sit over the last chip. */
+function ChipArrow({ dir, onClick }: { dir: -1 | 1; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="ck-arrow" aria-label={dir < 0 ? 'Scroll categories left' : 'Scroll categories right'}
+      style={{
+        position: 'absolute', top: 2, [dir < 0 ? 'left' : 'right']: 6, zIndex: 2,
+        // `display` deliberately NOT set here: the stylesheet decides it, so
+        // an inline value cannot out-rank the hover-capable media query
+        // that hides these on a phone.
+        width: 40, height: 40, borderRadius: '50%', border: `1.5px solid ${C.line}`, background: C.card, color: C.ink2,
+        alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        boxShadow: '0 2px 8px rgba(15,23,42,0.12)',
+      }}>
+      <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d={dir < 0 ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6'} />
+      </svg>
+    </button>
+  );
+}
+
 /** A category chip: one line, never squeezed, never wrapped. */
 const chip: CSSProperties = {
   ...pill, padding: '10px 16px', minHeight: 44, fontSize: 15.5, whiteSpace: 'nowrap', flexShrink: 0,

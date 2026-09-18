@@ -54,9 +54,12 @@ const money = (c: number, cur = 'USD') => {
 
 type Lg = 'en' | 'vi';
 const T = {
+  // Names every metered thing, because a customer who reads "SMS + AI Hotline"
+  // and then finds a chatbot line below it has just been told, by us, that we
+  // charge for something we did not mention.
   subtitle: {
-    en: 'Exactly what you pay this month — your fixed plan fee plus any usage overage (SMS + AI Hotline). Updates in real time.',
-    vi: 'Chính xác số tiền bạn phải trả tháng này — phí gói cố định cộng phí phát sinh (SMS + AI Hotline). Cập nhật realtime.',
+    en: 'Exactly what you pay this month — your fixed plan fee plus any usage overage (SMS, AI Hotline and AI Chatbot replies). Updates in real time.',
+    vi: 'Chính xác số tiền bạn phải trả tháng này — phí gói cố định cộng phí phát sinh (SMS, AI Hotline và tin chatbot AI). Cập nhật realtime.',
   },
   print: { en: 'Print / Save', vi: 'In / Lưu' },
   refresh: { en: 'Refresh', vi: 'Làm mới' },

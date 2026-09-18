@@ -19,6 +19,7 @@ import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
 import { RestaurantReserve } from './RestaurantReserve';
 import { useIsMobile } from '../../../lib/responsive';
+import { useHorizontalScroll } from '../../../lib/useHorizontalScroll';
 import { InstallAppButton } from '../../../components/InstallAppButton';
 import { uiLocale } from '../../../lib/datetime';
 import { todayInZone } from '../../../lib/salon-clock';
@@ -1632,6 +1633,9 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
   const [q, setQ] = useState('');
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const tabsRef = useRef<HTMLDivElement | null>(null);
+  // The row hides its scrollbar, which on a computer left no way to reach the
+  // categories past the screen edge. See lib/useHorizontalScroll.
+  const tabsScroll = useHorizontalScroll<HTMLDivElement>();
 
   useEffect(() => { if (groups.length && !groups.some((g) => g.id === active)) setActive(groups[0].id); }, [groups, active]);
 
@@ -1700,12 +1704,23 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
 
   return (
     <div ref={pin.boxRef}>
-      <div ref={(node) => { tabsRef.current = node; pin.elRef.current = node; }} className="lumio-tabs" style={{
+      <div ref={(node) => { tabsRef.current = node; pin.elRef.current = node; tabsScroll.ref(node); }} className="lumio-tabs" style={{
         position: pinning ? 'relative' : 'sticky', top: pinning ? undefined : stickyTop, zIndex: 6, background: '#fff',
         display: 'flex', gap: 8, overflowX: 'auto', padding: '10px 0 12px',
         boxShadow: '0 10px 10px -10px rgba(15,42,82,0.08)',
         willChange: pinning ? 'transform' : undefined,
       }}>
+        {/* Pinned to the row's own edges with sticky, so they ride along
+            inside the scroller and need no wrapper around the sticky bar. */}
+        {/* Always in the row on a computer (hidden, not absent, when there is
+            nothing that way) so the chips do not jump 48px the first time
+            somebody scrolls. */}
+        {(
+          <button type="button" className="lumio-tab-arrow" aria-label={bt('Scroll categories left')} onClick={() => tabsScroll.nudge(-1)}
+            style={{ visibility: tabsScroll.canLeft ? 'visible' : 'hidden', position: 'sticky', left: 0, zIndex: 1, flexShrink: 0, width: 40, height: 40, borderRadius: '50%', border: '1.5px solid #e9edf4', background: '#fff', color: '#5b6b85', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 8px rgba(15,42,82,.14)' }}>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m15 18-6-6 6-6" /></svg>
+          </button>
+        )}
         {groups.map((g) => {
           const on = active === g.id && !search;
           return (
@@ -1719,6 +1734,12 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
             </button>
           );
         })}
+        {(
+          <button type="button" className="lumio-tab-arrow" aria-label={bt('Scroll categories right')} onClick={() => tabsScroll.nudge(1)}
+            style={{ visibility: tabsScroll.canRight ? 'visible' : 'hidden', position: 'sticky', right: 0, zIndex: 1, flexShrink: 0, width: 40, height: 40, borderRadius: '50%', border: '1.5px solid #e9edf4', background: '#fff', color: '#5b6b85', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 8px rgba(15,42,82,.14)' }}>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m9 18 6-6-6-6" /></svg>
+          </button>
+        )}
       </div>
 
       {services.length > 8 && (
@@ -2660,6 +2681,10 @@ const BOOK_CSS = `
   animation: lumioShine 2.6s ease-in-out .4s infinite;
 }
 .lumio-tabs::-webkit-scrollbar { height: 0; }
+/* The arrows exist for a mouse. A finger swipes; a button riding the edge of
+   a swiped row would sit over whichever chip was last. */
+.lumio-tab-arrow { display: none; }
+@media (hover: hover) and (pointer: fine) { .lumio-tab-arrow { display: flex; } }
 .lumio-scroll::-webkit-scrollbar { width: 6px; }
 .lumio-scroll::-webkit-scrollbar-thumb { background: #dfe5ef; border-radius: 99px; }
 

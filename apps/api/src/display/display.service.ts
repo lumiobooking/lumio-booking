@@ -7,6 +7,9 @@ import { displayBaseUrl, displayPairUrl } from '../common/public-url.util';
 import { CustomersService } from '../customers/customers.service';
 import { WalkinsService } from '../walkins/walkins.service';
 import { liveEvents } from '../common/live-events';
+import { dayKeyTz, weekdayTz } from '../common/salon-time';
+import { WEEKDAY_DISCOUNTS_KEY, DATE_DISCOUNTS_KEY } from '../settings/settings.constants';
+import { priceService, promoBanner, PromoSettings, SalonDay } from './checkin-pricing';
 
 // Server-only split used to attribute the after-payment QR tip across the ticket's
 // technician(s). Never exposed to the paired device.
@@ -42,21 +45,64 @@ export class DisplayService {
    */
   async checkInMenu(token: string) {
     const tenantId = await this.tenantOfToken(token);
-    const [tenant, services] = await Promise.all([
-      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, branding: true } }),
+    const [tenant, services, promos] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, branding: true, timezone: true } }),
       this.prisma.service.findMany({
         where: { tenantId, isActive: true },
-        select: { id: true, name: true, priceCents: true, durationMinutes: true, category: { select: { id: true, name: true } } },
+        select: { id: true, name: true, priceCents: true, discountPercent: true, isFeatured: true, durationMinutes: true, category: { select: { id: true, name: true } } },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       }),
+      this.promosOf(tenantId),
     ]);
     const b = (tenant?.branding ?? {}) as { logoUrl?: string; accentColor?: string };
+    // Priced for TODAY in the salon's own timezone — the same rule as the
+    // booking page and as the ticket selfCheckIn writes, see checkin-pricing.
+    const day = await this.salonDay(tenantId, tenant?.timezone);
+    const priced = services.map((sv) => priceService(sv, promos, day));
+    const cats = new Map<string, string>();
+    for (const sv of services) if (sv.category) cats.set(sv.category.id, sv.category.name);
     return {
       salonName: tenant?.name ?? '',
       logoUrl: b.logoUrl ?? null,
       accentColor: b.accentColor ?? '#6366f1',
-      services,
+      services: priced,
+      /** Today's promotion, for the band at the top. Null when none runs. */
+      promo: promoBanner(promos, day, [...cats].map(([id, name]) => ({ id, name }))),
     };
+  }
+
+  /** The salon's weekday and date promotions, read straight from settings. */
+  private async promosOf(tenantId: string): Promise<PromoSettings> {
+    // A promotion that cannot be read is a promotion that does not apply —
+    // never a reason to stop a customer who is standing at the kiosk. So the
+    // read is fenced whole, not just its promise: a client without this table
+    // throws synchronously, and .catch alone would not have caught it.
+    try {
+      const rows = await this.prisma.setting.findMany({
+        where: { tenantId, key: { in: [WEEKDAY_DISCOUNTS_KEY, DATE_DISCOUNTS_KEY] } },
+        select: { key: true, value: true },
+      });
+      const byKey = new Map<string, unknown>(rows.map((r) => [r.key, r.value] as [string, unknown]));
+      return {
+        weekday: (byKey.get(WEEKDAY_DISCOUNTS_KEY) ?? null) as PromoSettings['weekday'],
+        dates: (byKey.get(DATE_DISCOUNTS_KEY) ?? null) as PromoSettings['dates'],
+      };
+    } catch {
+      return {};
+    }
+  }
+
+  private async salonDay(tenantId: string, tz?: string | null): Promise<SalonDay> {
+    let zone = tz ?? null;
+    if (!zone) {
+      try {
+        const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+        zone = t?.timezone ?? null;
+      } catch { zone = null; }
+    }
+    const now = new Date();
+    const z = zone || 'America/Chicago';
+    return { dayKey: dayKeyTz(now, z), weekday: weekdayTz(now, z) };
   }
 
   /**
@@ -74,19 +120,27 @@ export class DisplayService {
 
     // Only services that really belong to this salon and are on the menu.
     const ids = [...new Set(dto.serviceIds ?? [])].filter(Boolean).slice(0, 12);
-    const svcs = ids.length
-      ? await this.prisma.service.findMany({
-          where: { id: { in: ids }, tenantId, isActive: true },
-          select: { id: true, name: true, priceCents: true, discountPercent: true, durationMinutes: true },
-        })
-      : [];
+    const [svcs, promos, day] = ids.length
+      ? await Promise.all([
+          this.prisma.service.findMany({
+            where: { id: { in: ids }, tenantId, isActive: true },
+            select: { id: true, name: true, priceCents: true, discountPercent: true, durationMinutes: true, category: { select: { id: true, name: true } } },
+          }),
+          this.promosOf(tenantId),
+          this.salonDay(tenantId),
+        ])
+      : [[], {} as PromoSettings, { dayKey: '', weekday: -1 } as SalonDay];
+    // The SAME price the kiosk just showed. Before this the screen printed the
+    // list price and the ticket applied the discount, so a customer read $65
+    // on the wall and $52 on the receipt; and the weekday promotion was never
+    // applied to a walk-in at all, only to online bookings.
     const items = svcs.map((sv) => {
-      const d = Math.min(90, Math.max(0, sv.discountPercent ?? 0));
+      const priced = priceService(sv, promos, day);
       return {
         lineId: randomBytes(12).toString('base64url'),
         serviceId: sv.id,
         name: sv.name,
-        priceCents: d > 0 ? Math.round((sv.priceCents * (100 - d)) / 100) : sv.priceCents,
+        priceCents: priced.netCents,
         durationMinutes: sv.durationMinutes,
         staffId: null as string | null,
       };

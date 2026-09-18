@@ -6,7 +6,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import {
   TIKTOK_KEY, TIKTOK_DEFAULTS, TIKTOK_FILE_MAX_BYTES, TIKTOK_WHOLE_FETCH_MAX, type TikTokSettings, type TikTokPostOptions, type CreatorInfo,
   tiktokAuthorizeUrl, settingsFromToken, parseCreatorInfo, publicTikTok, accessStale, needsReconnect, targetOf,
-  initBody, chunkPlan, explainTikTokError, tiktokPostUrl, readPublishStatus,
+  initBody, chunkPlan, explainTikTokError, tiktokViewLink, readPublishStatus,
 } from './tiktok';
 import { oauthBase } from '../common/public-url.util';
 
@@ -261,7 +261,17 @@ export class TikTokService {
       await this.writeSettings(tenantId, { lastError: msg });
       throw new BadRequestException(msg);
     }
-    await this.writeSettings(tenantId, { creator: info, lastError: null });
+    // The nickname rides along with the creator card. Saved onto the
+    // connection too, so the channels screen — which does not read the
+    // creator card — stops showing an account with no name.
+    const cur = await this.getSettings(tenantId);
+    await this.writeSettings(tenantId, {
+      creator: info,
+      lastError: null,
+      displayName: cur.displayName || info.nickname || '',
+      username: cur.username || info.username || '',
+      avatarUrl: cur.avatarUrl || info.avatarUrl || '',
+    });
     return info;
   }
 
@@ -290,7 +300,7 @@ export class TikTokService {
    * publish id is returned even when processing is still running: TikTok
    * finishes in the background and the post shows up minutes later.
    */
-  async publish(tenantId: string, input: { caption: string; videoUrl: string; opts: TikTokPostOptions }): Promise<{ publishId: string; postId: string | null; url: string | null; pending: boolean }> {
+  async publish(tenantId: string, input: { caption: string; videoUrl: string; opts: TikTokPostOptions }): Promise<{ publishId: string; postId: string | null; url: string | null; urlKind: 'post' | 'profile' | null; pending: boolean }> {
     const { token, s } = await this.accessToken(tenantId);
     const creator = await this.freshCreator(tenantId);
     if (creator && creator.privacyOptions.length && !creator.privacyOptions.includes(input.opts.privacy)) {
@@ -355,11 +365,15 @@ export class TikTokService {
       const read = readPublishStatus(st);
       if (read.ok) {
         const postId = read.postIds[0] ?? null;
-        return { publishId, postId, url: tiktokPostUrl(s.username || null, postId), pending: false };
+        // A private post has no public id and therefore no video link; the
+        // profile is where its owner can actually find it. See tiktokViewLink.
+        const handle = s.username || s.creator?.username || null;
+        const link = tiktokViewLink(handle, postId);
+        return { publishId, postId, url: link?.url ?? null, urlKind: link?.kind ?? null, pending: false };
       }
       if (read.done) throw new BadRequestException(explainTikTokError(read.failReason, `publish ${publishId}`));
     }
-    return { publishId, postId: null, url: null, pending: true };
+    return { publishId, postId: null, url: null, urlKind: null, pending: true };
   }
 
   /**

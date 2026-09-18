@@ -70,6 +70,22 @@ export interface CreatorInfo {
   duetDisabled: boolean;
   stitchDisabled: boolean;
   checkedAt: string;
+  /**
+   * WHO THIS ACCOUNT IS — and the reason it is read from HERE.
+   *
+   * creator_info/query comes with the Content Posting API and the
+   * `video.publish` scope this app already holds, and it answers with the
+   * creator's nickname, handle and avatar. The Display API's user/info,
+   * which the connect step was using, is a different product on a different
+   * scope and is not always available — in Sandbox it answers nothing at
+   * all, which is why a connected account showed no name.
+   *
+   * So the name now comes from the call that is made before every publish
+   * anyway. Empty strings when TikTok did not send them.
+   */
+  nickname: string;
+  username: string;
+  avatarUrl: string;
 }
 
 export interface TikTokSettings {
@@ -167,6 +183,7 @@ export function parseCreatorInfo(raw: unknown, now = new Date()): CreatorInfo | 
   if (!d || typeof d !== 'object') return null;
   const opts = Array.isArray(d.privacy_level_options) ? d.privacy_level_options : [];
   const privacyOptions = opts.filter((x): x is TikTokPrivacy => (TIKTOK_PRIVACY as string[]).includes(String(x)));
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
   return {
     privacyOptions,
     maxDurationSec: Number(d.max_video_post_duration_sec) || 0,
@@ -174,6 +191,9 @@ export function parseCreatorInfo(raw: unknown, now = new Date()): CreatorInfo | 
     duetDisabled: Boolean(d.duet_disabled),
     stitchDisabled: Boolean(d.stitch_disabled),
     checkedAt: now.toISOString(),
+    nickname: str(d.creator_nickname),
+    username: str(d.creator_username),
+    avatarUrl: str(d.creator_avatar_url),
   };
 }
 
@@ -236,7 +256,18 @@ export interface TikTokTarget {
 
 export function targetOf(s: TikTokSettings | null): TikTokTarget | null {
   if (!s || !s.connected || !s.refreshToken) return null;
-  return { connected: true, needsReconnect: needsReconnect(s), displayName: s.displayName || s.username || null, username: s.username || null, avatarUrl: s.avatarUrl || null, creator: s.creator };
+  // The name saved at connect time first, then the one creator_info brought
+  // back — whichever exists. A connection made before creator_info carried
+  // the nickname still shows a name after the next re-read.
+  const c = s.creator;
+  return {
+    connected: true,
+    needsReconnect: needsReconnect(s),
+    displayName: s.displayName || c?.nickname || s.username || c?.username || null,
+    username: s.username || c?.username || null,
+    avatarUrl: s.avatarUrl || c?.avatarUrl || null,
+    creator: c,
+  };
 }
 
 interface DraftLike { text: string; media: { url: string; kind: 'image' | 'video' }[] }
@@ -320,7 +351,12 @@ export function explainTikTokError(code: string | null | undefined, message?: st
   const raw = message ? ` (${message})` : '';
   switch (c) {
     case 'unaudited_client_can_only_post_to_private_accounts':
-      return 'App Lumio chưa được TikTok duyệt (Content Posting audit) nên chỉ đăng được ở chế độ "Chỉ mình tôi". Đổi quyền riêng tư sang Chỉ mình tôi để đăng, hoặc chờ TikTok duyệt app.';
+      // The code says "private ACCOUNTS", and it means it: choosing "Chỉ mình
+      // tôi" for the POST is not enough. Until the app is audited TikTok will
+      // only accept a post into an account that is itself set to private. The
+      // old text told people to do the thing they had already done, which is
+      // worse than no message at all.
+      return 'App Lumio chưa được TikTok duyệt, nên TikTok chỉ cho đăng vào TÀI KHOẢN đang để riêng tư. Mở app TikTok → Settings → Privacy → bật "Private account", rồi đăng lại. (Chọn "Chỉ mình tôi" cho bài là cần, nhưng chưa đủ.) Sau khi app được duyệt thì không cần nữa.';
     case 'spam_risk_too_many_posts':
       return 'TikTok chặn vì tài khoản này đã đăng quá số bài trong ngày qua API. Dời bài sang ngày mai.';
     case 'spam_risk_user_banned_from_posting':
@@ -348,10 +384,44 @@ export function explainTikTokError(code: string | null | undefined, message?: st
   }
 }
 
-/** The public link, once TikTok has told us the video's id. */
+/**
+ * Where to send someone who wants to SEE the post.
+ *
+ * TikTok returns `publicaly_available_post_id` — note the word public. A
+ * post published as "Only me", which is every post an unaudited app makes,
+ * has no public id because it has no public page, so there is simply no
+ * video link to give. Returning null there left the salon looking at a
+ * "Posted" badge with nowhere to go and no idea whether to believe it.
+ *
+ * So: the video's own link when TikTok gave us an id, and otherwise the
+ * account's profile — where a private post IS visible, to the one person
+ * allowed to see it, which is exactly who is holding the screen. The caller
+ * is told which of the two it got so the wording can be honest.
+ */
 export function tiktokPostUrl(username: string | null, videoId: string | null): string | null {
   if (!videoId) return null;
   return username ? `https://www.tiktok.com/@${username}/video/${videoId}` : `https://www.tiktok.com/video/${videoId}`;
+}
+
+/** The account's page. Null when the handle was never read. */
+export function tiktokProfileUrl(username: string | null): string | null {
+  const u = String(username ?? '').trim().replace(/^@/, '');
+  return u ? `https://www.tiktok.com/@${u}` : null;
+}
+
+/**
+ * The link to show for a finished TikTok post, and what it actually points
+ * at. `kind: 'profile'` means the post is private and the screen must say so
+ * rather than promise "view the post" and land on a profile.
+ */
+export function tiktokViewLink(
+  username: string | null,
+  videoId: string | null,
+): { url: string; kind: 'post' | 'profile' } | null {
+  const post = tiktokPostUrl(username, videoId);
+  if (post) return { url: post, kind: 'post' };
+  const profile = tiktokProfileUrl(username);
+  return profile ? { url: profile, kind: 'profile' } : null;
 }
 
 /** status/fetch: what it says and whether to keep waiting. */

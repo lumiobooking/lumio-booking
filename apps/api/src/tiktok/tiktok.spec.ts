@@ -1,6 +1,6 @@
 import {
   TIKTOK_DEFAULTS, accessStale, chunkPlan, cleanTikTokOptions, explainTikTokError, initBody, needsReconnect, parseCreatorInfo,
-  publicTikTok, readPublishStatus, settingsFromToken, targetOf, tiktokAuthorizeUrl, tiktokPostUrl, tiktokRefusal,
+  publicTikTok, readPublishStatus, settingsFromToken, targetOf, tiktokAuthorizeUrl, tiktokPostUrl, tiktokProfileUrl, tiktokViewLink, tiktokRefusal,
   type TikTokSettings, type TikTokTarget,
 } from './tiktok';
 
@@ -15,6 +15,74 @@ const target = targetOf(connected) as TikTokTarget;
 const vid = { url: 'https://cdn.lumio.app/v/1.mp4', kind: 'video' as const };
 const img = { url: 'https://cdn.lumio.app/p/1.jpg', kind: 'image' as const };
 const ok = cleanTikTokOptions({ privacy: 'PUBLIC_TO_EVERYONE', allowComment: true, allowDuet: false, allowStitch: true })!;
+
+// A "Posted" badge with nowhere to go is a claim the salon cannot check.
+// TikTok gives a post id only for PUBLIC posts, so every post an unaudited
+// app makes came back with no link at all.
+describe('where to send someone who wants to see the post', () => {
+  it('links the video when TikTok gave an id', () => {
+    expect(tiktokViewLink('lumioagency', '7412')).toEqual({
+      url: 'https://www.tiktok.com/@lumioagency/video/7412', kind: 'post',
+    });
+  });
+
+  it('falls back to the profile for a private post, and says that is what it did', () => {
+    expect(tiktokViewLink('lumioagency', null)).toEqual({
+      url: 'https://www.tiktok.com/@lumioagency', kind: 'profile',
+    });
+  });
+
+  it('gives nothing rather than a broken link when the handle is unknown too', () => {
+    expect(tiktokViewLink(null, null)).toBeNull();
+  });
+
+  it('tolerates a handle stored with its @', () => {
+    expect(tiktokProfileUrl('@lumioagency')).toBe('https://www.tiktok.com/@lumioagency');
+    expect(tiktokProfileUrl('')).toBeNull();
+  });
+});
+
+// The creator card is the ONE call that reliably says who this account is:
+// it ships with video.publish, and it is made before every publish anyway.
+// The Display API's user/info needs a scope this app does not hold and
+// answers nothing in Sandbox — which is how a connected account came to show
+// no name at all.
+describe('the creator card carries the account name', () => {
+  const raw = {
+    data: {
+      privacy_level_options: ['SELF_ONLY'],
+      max_video_post_duration_sec: 3600,
+      creator_nickname: 'Lumio Agency',
+      creator_username: 'lumioagency',
+      creator_avatar_url: 'https://p16.tiktokcdn.com/a.jpg',
+    },
+  };
+
+  it('reads nickname, handle and avatar out of creator_info', () => {
+    expect(parseCreatorInfo(raw, new Date(NOW))).toMatchObject({
+      nickname: 'Lumio Agency', username: 'lumioagency', avatarUrl: 'https://p16.tiktokcdn.com/a.jpg',
+    });
+  });
+
+  it('leaves them empty rather than undefined when TikTok omits them', () => {
+    const bare = parseCreatorInfo({ data: { privacy_level_options: ['SELF_ONLY'] } }, new Date(NOW))!;
+    expect(bare.nickname).toBe('');
+    expect(bare.username).toBe('');
+  });
+
+  it('gives the screens a name even when the connect step saved none', () => {
+    const noName = { ...connected, displayName: '', username: '', creator: parseCreatorInfo(raw, new Date(NOW)) };
+    expect(targetOf(noName)).toMatchObject({ displayName: 'Lumio Agency', username: 'lumioagency' });
+  });
+});
+
+describe('the unaudited-app refusal says what to actually do', () => {
+  it('names the ACCOUNT privacy setting, not the post privacy the person already picked', () => {
+    const m = explainTikTokError('unaudited_client_can_only_post_to_private_accounts');
+    expect(m).toMatch(/Private account/i);
+    expect(m).toMatch(/TÀI KHOẢN/);
+  });
+});
 
 // The name shown before publishing must be the ACCOUNT's, and when it is
 // missing the screen must say so rather than print "TikTok" where a nickname

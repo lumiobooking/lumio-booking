@@ -483,7 +483,7 @@ export const MAX_ATTEMPTS = 3;
 // ---- never sending the same post to the same network twice ------------------
 
 /** What one network answered on one attempt — the stored shape of `results`. */
-export interface SentResult { channel: string; id: string | null; url: string | null; error: string | null; unsure?: boolean }
+export interface SentResult { channel: string; id: string | null; url: string | null; error: string | null; unsure?: boolean; urlKind?: 'post' | 'profile' }
 
 /**
  * The networks an earlier attempt already got through to.
@@ -499,7 +499,11 @@ export function priorSuccesses(results: unknown): SentResult[] {
   const out: SentResult[] = [];
   for (const r of results as Partial<SentResult>[]) {
     if (!r || typeof r !== 'object' || typeof r.channel !== 'string') continue;
-    if (typeof r.id === 'string' && r.id && !r.error) out.push({ channel: r.channel, id: r.id, url: r.url ?? null, error: null });
+    if (typeof r.id === 'string' && r.id && !r.error) {
+      // urlKind travels with the link, or a retry would turn a "profile"
+      // link back into one the screen calls "view the post".
+      out.push({ channel: r.channel, id: r.id, url: r.url ?? null, error: null, ...(r.urlKind ? { urlKind: r.urlKind } : {}) });
+    }
   }
   return out;
 }

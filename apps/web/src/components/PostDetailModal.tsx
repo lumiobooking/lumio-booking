@@ -29,7 +29,12 @@ export interface DetailPost {
   fix?: string | null;
   /** Due, not sent, no error: why. */
   waiting?: { vi: string; en: string } | null;
-  results?: { channel: string; id: string | null; url: string | null; error: string | null }[];
+  results?: {
+    channel: string; id: string | null; url: string | null; error: string | null;
+    /** 'profile' when the link opens the account, not the post — a private
+     *  TikTok post has no public page. Absent on older rows: read as 'post'. */
+    urlKind?: 'post' | 'profile';
+  }[];
   postedAt?: string | null;
   writerName?: string | null;
   designerName?: string | null;
@@ -178,10 +183,40 @@ export function PostDetailModal({
           </div>
 
           <div style={{ display: 'grid', gap: 5 }}>
-            {post.status === 'posted' && (post.results ?? []).filter((r) => r.url).length > 0 && (
-              <Row k={T('Đã lên', 'Live at')} v={(post.results ?? []).filter((r) => r.url).map((r) => (
-                <a key={r.channel} href={r.url!} target="_blank" rel="noreferrer" style={{ color: 'var(--ink-link)', marginRight: 10 }}>{CH_NAME[r.channel] ?? r.channel} ↗</a>
-              ))} />
+            {/* WHERE IT WENT — one line per channel that was asked for, even
+                the ones with no link.
+                A list of links only looked complete: a post that reached
+                TikTok but came back without a URL simply vanished from this
+                panel, so the screen said "Posted" and then showed nothing,
+                and the only way to find out was to open TikTok and look.
+                Now every channel says what happened to it, and a link that
+                opens a profile rather than the post says so instead of
+                promising "view the post" and landing somewhere else. */}
+            {post.status === 'posted' && post.channels.length > 0 && (
+              <Row k={T('Đã lên', 'Live at')} v={
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {post.channels.map((c) => {
+                    const r = (post.results ?? []).find((x) => x.channel === c);
+                    const name = CH_NAME[c] ?? c;
+                    if (r?.url) {
+                      return (
+                        <a key={c} href={r.url} target="_blank" rel="noreferrer" style={{ color: 'var(--ink-link)' }}>
+                          {name} — {r.urlKind === 'profile'
+                            ? T('bài riêng tư, mở trang tài khoản', 'private post — open the profile')
+                            : T('xem bài', 'view the post')} ↗
+                        </a>
+                      );
+                    }
+                    if (r && !r.error) {
+                      return <span key={c} style={{ color: 'var(--ink-good)' }}>{name} — {T('đã đăng (không có link)', 'posted (no link)')}</span>;
+                    }
+                    if (r?.error) {
+                      return <span key={c} style={{ color: 'var(--ink-bad)' }}>{name} — {r.error}</span>;
+                    }
+                    return <span key={c} style={{ color: 'var(--c64748b)' }}>{name} — {T('chưa có kết quả', 'no result recorded')}</span>;
+                  })}
+                </span>
+              } />
             )}
             {post.status === 'failed' && (post.fix || post.lastError) && (
               <Row k={T('Lỗi', 'Error')} v={<span style={{ color: 'var(--ink-bad)' }}>{post.fix ?? post.lastError}</span>} />

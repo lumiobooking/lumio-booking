@@ -330,7 +330,7 @@ interface QueuedPost {
   errorIsStale: boolean;
   /** Due, not sent, no error: why, in words. Null otherwise. */
   waiting?: { vi: string; en: string } | null;
-  results: { channel: string; id: string | null; url: string | null; error: string | null }[];
+  results: { channel: string; id: string | null; url: string | null; error: string | null; urlKind?: 'post' | 'profile' }[];
   postedAt: string | null;
   createdByName: string | null;
   /** Why it cannot go out as it stands. Empty when it is fine. */
@@ -382,7 +382,7 @@ interface TikTokOpts {
   allowComment?: boolean; allowDuet?: boolean; allowStitch?: boolean;
   disclose?: boolean; yourBrand?: boolean; brandedContent?: boolean; aigc?: boolean;
 }
-interface TikTokCreator { privacyOptions: string[]; maxDurationSec: number; commentDisabled: boolean; duetDisabled: boolean; stitchDisabled: boolean; checkedAt: string }
+interface TikTokCreator { privacyOptions: string[]; maxDurationSec: number; commentDisabled: boolean; duetDisabled: boolean; stitchDisabled: boolean; checkedAt: string; nickname?: string; username?: string; avatarUrl?: string }
 const TT_PRIVACY: { k: NonNullable<TikTokOpts['privacy']>; vi: string; en: string }[] = [
   { k: 'PUBLIC_TO_EVERYONE', vi: 'Công khai', en: 'Everyone' },
   { k: 'MUTUAL_FOLLOW_FRIENDS', vi: 'Bạn bè (theo dõi lẫn nhau)', en: 'Friends' },
@@ -4069,9 +4069,17 @@ function Inner() {
                                   the person to see WHICH account is about to
                                   publish. "TikTok" answered that with the name
                                   of the platform, which answers nothing. */}
-                              <span style={{ fontSize: 12, color: tt.displayName ? 'var(--ce2e8f0)' : 'var(--ink-warn)', fontWeight: 700 }}>
-                                {tt.displayName ?? T('Chưa đọc được tên tài khoản', 'Account name unavailable')}
-                              </span>
+                              {/* displayName already prefers the creator card
+                                  server-side; this keeps working if an older
+                                  server sends only the card. */}
+                              {(() => {
+                                const who = tt.displayName || cr?.nickname || null;
+                                return (
+                                  <span style={{ fontSize: 12, color: who ? 'var(--ce2e8f0)' : 'var(--ink-warn)', fontWeight: 700 }}>
+                                    {who ?? T('Chưa đọc được tên tài khoản', 'Account name unavailable')}
+                                  </span>
+                                );
+                              })()}
                               {tt.username && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>@{tt.username}</span>}
                             </span>
                           ) : (
@@ -4882,7 +4890,9 @@ function Inner() {
                                     ? <span style={{ color: 'var(--c64748b)' }}>○ {name} — {T('không chọn đăng', 'not selected')}</span>
                                     : r?.url
                                       ? <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c60a5fa)' }}>
-                                        ✓ {name} — {T('xem bài', 'view the post')}
+                                        ✓ {name} — {r.urlKind === 'profile'
+                                          ? T('bài riêng tư, mở trang tài khoản', 'private post — open the profile')
+                                          : T('xem bài', 'view the post')}
                                       </a>
                                       : <span style={{ color: 'var(--ink-good)' }}>✓ {name}</span>}
                                 </div>

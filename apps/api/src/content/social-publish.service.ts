@@ -72,6 +72,14 @@ export interface PublishResult {
   channel: Channel; id: string | null; url: string | null; error: string | null;
   /** The network did not answer; the post may be live. Never auto-retried. */
   unsure?: boolean;
+  /**
+   * What `url` actually opens. 'post' is the post itself — the normal case.
+   * 'profile' is the account page, which is all TikTok can offer for a
+   * private post: it has no public page to link to. The screen needs the
+   * difference so it does not promise "view the post" and land somewhere
+   * else. Absent on results written before this existed; read as 'post'.
+   */
+  urlKind?: 'post' | 'profile';
 }
 
 /**
@@ -1280,7 +1288,10 @@ export class SocialPublishService {
     if (!video || !opts) return fail('Bài thiếu video hoặc chưa chọn quyền riêng tư TikTok.');
     try {
       const out = await this.tiktok.publish(tenantId, { caption: message, videoUrl: video.url, opts });
-      return { channel: 'tiktok', id: out.postId ?? out.publishId, url: out.url, error: null };
+      return {
+        channel: 'tiktok', id: out.postId ?? out.publishId, url: out.url, error: null,
+        ...(out.urlKind ? { urlKind: out.urlKind } : {}),
+      };
     } catch (e) {
       return fail(e instanceof Error ? e.message.replace(/^Bad Request Exception:?\s*/i, '') : 'lỗi mạng');
     }

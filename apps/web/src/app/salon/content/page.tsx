@@ -4030,7 +4030,13 @@ function Inner() {
                   {postDraft.channels.includes('tiktok') && (() => {
                     const tt = queue?.tiktok ?? null;
                     const cr = tt?.creator ?? null;
-                    const o: TikTokOpts = postDraft.tiktok ?? { privacy: '', allowComment: true, allowDuet: false, allowStitch: false, disclose: false, yourBrand: false, brandedContent: false };
+                    // Every interaction box starts UNTICKED. TikTok's Content
+                    // Sharing Guidelines say so in as many words — "none
+                    // checked by default" — and a reviewer watching the demo
+                    // sees a pre-ticked Comment box the moment the panel
+                    // opens. Comment used to default to on, which is the
+                    // friendlier default and the one that fails the audit.
+                    const o: TikTokOpts = postDraft.tiktok ?? { privacy: '', allowComment: false, allowDuet: false, allowStitch: false, disclose: false, yourBrand: false, brandedContent: false };
                     const set = (patch: Partial<TikTokOpts>) => setPostDraft({ ...postDraft, tiktok: { ...o, ...patch } });
                     const allowed = cr?.privacyOptions?.length ? cr.privacyOptions : TT_PRIVACY.map((x) => x.k);
                     const onlyPrivate = allowed.length === 1 && allowed[0] === 'SELF_ONLY';

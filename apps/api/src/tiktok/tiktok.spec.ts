@@ -16,6 +16,23 @@ const vid = { url: 'https://cdn.lumio.app/v/1.mp4', kind: 'video' as const };
 const img = { url: 'https://cdn.lumio.app/p/1.jpg', kind: 'image' as const };
 const ok = cleanTikTokOptions({ privacy: 'PUBLIC_TO_EVERYONE', allowComment: true, allowDuet: false, allowStitch: true })!;
 
+// TikTok's Content Sharing Guidelines: comment, duet and stitch all start
+// UNTICKED, and an app may not decide any of them for the creator. Comment
+// used to default to ON when the composer sent nothing, which reads as us
+// choosing on their behalf — and is what a reviewer sees first.
+describe('an interaction the creator never ticked stays off', () => {
+  it('treats a missing allowComment as off, exactly like duet and stitch', () => {
+    const o = cleanTikTokOptions({ privacy: 'PUBLIC_TO_EVERYONE' })!;
+    expect(o.allowComment).toBe(false);
+    expect(o.allowDuet).toBe(false);
+    expect(o.allowStitch).toBe(false);
+  });
+
+  it('still honours an explicit yes', () => {
+    expect(cleanTikTokOptions({ privacy: 'PUBLIC_TO_EVERYONE', allowComment: true })!.allowComment).toBe(true);
+  });
+});
+
 describe('the connection: what the screen sees and when it must be renewed', () => {
   it('never hands a token to the screen', () => {
     const p = publicTikTok(connected) as Record<string, unknown>;

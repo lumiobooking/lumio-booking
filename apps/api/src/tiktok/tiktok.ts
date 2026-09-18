@@ -207,7 +207,11 @@ export function cleanTikTokOptions(raw: unknown): TikTokPostOptions | null {
   const disclose = Boolean(r.disclose);
   return {
     privacy: privacy as TikTokPrivacy,
-    allowComment: r.allowComment !== false,
+    // Absent means the creator did not tick it, so it is OFF — the same
+    // rule as Duet and Stitch. `!== false` quietly turned "the composer sent
+    // nothing" into "comments allowed", which is TikTok deciding a creator's
+    // setting for them and the opposite of what the guidelines ask.
+    allowComment: Boolean(r.allowComment),
     allowDuet: Boolean(r.allowDuet),
     allowStitch: Boolean(r.allowStitch),
     disclose,

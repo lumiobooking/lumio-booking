@@ -149,7 +149,9 @@ export class TikTokService {
       const saved = await this.writeSettings(tenantId, {
         ...next,
         displayName: me?.display_name || cur.displayName || '',
-        username: me?.username || cur.username || '',
+        // Not asked for any more — see userInfo. Kept so a value saved by an
+        // older build survives a reconnect rather than being blanked.
+        username: cur.username || '',
         avatarUrl: me?.avatar_url || cur.avatarUrl || '',
       });
       await this.refreshCreatorInfo(tenantId, saved).catch(() => undefined);
@@ -177,12 +179,37 @@ export class TikTokService {
     return this.status(user);
   }
 
-  private async userInfo(accessToken: string): Promise<{ display_name?: string; username?: string; avatar_url?: string } | null> {
-    const res = await fetch(`${OPEN}/user/info/?fields=open_id,display_name,username,avatar_url`, {
+  /**
+   * Who this TikTok account is, for the name the guidelines want on screen.
+   *
+   * ONLY THE FIELDS `user.info.basic` ACTUALLY GRANTS.
+   *
+   * This asked for `username` as well, which belongs to `user.info.profile` —
+   * a scope this app does not hold and must not request, because TikTok's
+   * review penalises scopes the product cannot justify. Asking for one field
+   * outside the granted scope does not return the other fields minus that
+   * one: TikTok rejects the WHOLE call. So `display_name` never arrived
+   * either, the settings kept an empty name, and the channels card fell back
+   * to printing the literal word "TikTok" as though that were the account.
+   *
+   * Which is also an audit failure: Content Sharing Guidelines require the
+   * creator's nickname to be shown before publishing, and "TikTok" is not a
+   * nickname. The bug was invisible because the caller swallowed the error.
+   * It no longer does — a failure is logged with what TikTok said.
+   */
+  private async userInfo(accessToken: string): Promise<{ display_name?: string; avatar_url?: string } | null> {
+    const res = await fetch(`${OPEN}/user/info/?fields=open_id,display_name,avatar_url`, {
       headers: { authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(10_000),
     });
-    const j = (await res.json().catch(() => ({}))) as { data?: { user?: { display_name?: string; username?: string; avatar_url?: string } } };
-    return j.data?.user ?? null;
+    const j = (await res.json().catch(() => ({}))) as {
+      data?: { user?: { display_name?: string; avatar_url?: string } };
+      error?: { code?: string; message?: string };
+    };
+    const user = j.data?.user ?? null;
+    if (!user) {
+      this.logger.warn(`tiktok user/info returned no user (${res.status} ${j.error?.code ?? ''} ${j.error?.message ?? ''})`);
+    }
+    return user;
   }
 
   /** A live access token for this tenant, refreshed when its 24 hours are nearly up. */

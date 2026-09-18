@@ -16,6 +16,21 @@ const vid = { url: 'https://cdn.lumio.app/v/1.mp4', kind: 'video' as const };
 const img = { url: 'https://cdn.lumio.app/p/1.jpg', kind: 'image' as const };
 const ok = cleanTikTokOptions({ privacy: 'PUBLIC_TO_EVERYONE', allowComment: true, allowDuet: false, allowStitch: true })!;
 
+// The name shown before publishing must be the ACCOUNT's, and when it is
+// missing the screen must say so rather than print "TikTok" where a nickname
+// belongs. statusFor is what feeds both screens.
+describe('whose account is this', () => {
+  it('reports the display name when there is one', () => {
+    expect(targetOf(connected)).toMatchObject({ displayName: 'Lux Nail Spa', username: 'luxnailspa' });
+  });
+
+  it('reports null — not a placeholder — when the name was never read', () => {
+    // The screens turn null into "name unavailable"; a placeholder here would
+    // have them print something that looks like an account name and is not.
+    expect(targetOf({ ...connected, displayName: '', username: '' })?.displayName).toBeNull();
+  });
+});
+
 // TikTok's Content Sharing Guidelines: comment, duet and stitch all start
 // UNTICKED, and an app may not decide any of them for the creator. Comment
 // used to default to ON when the composer sent nothing, which reads as us

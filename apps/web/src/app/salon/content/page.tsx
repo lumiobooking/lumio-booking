@@ -4065,7 +4065,13 @@ function Inner() {
                               {tt.avatarUrl
                                 ? <img src={tt.avatarUrl} alt="" width={22} height={22} style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
                                 : <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--c334155)', display: 'inline-block' }} />}
-                              <span style={{ fontSize: 12, color: 'var(--ce2e8f0)', fontWeight: 700 }}>{tt.displayName ?? 'TikTok'}</span>
+                              {/* The creator's nickname — the guidelines want
+                                  the person to see WHICH account is about to
+                                  publish. "TikTok" answered that with the name
+                                  of the platform, which answers nothing. */}
+                              <span style={{ fontSize: 12, color: tt.displayName ? 'var(--ce2e8f0)' : 'var(--ink-warn)', fontWeight: 700 }}>
+                                {tt.displayName ?? T('Chưa đọc được tên tài khoản', 'Account name unavailable')}
+                              </span>
                               {tt.username && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>@{tt.username}</span>}
                             </span>
                           ) : (

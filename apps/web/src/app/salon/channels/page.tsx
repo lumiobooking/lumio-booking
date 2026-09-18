@@ -196,7 +196,14 @@ function Inner() {
                   <img src={tt.data.avatarUrl} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
                 )}
                 <span>
-                  <b>{tt.data.displayName ?? 'TikTok'}</b>{tt.data.username && <span style={{ color: 'var(--c94a3b8)' }}> · @{tt.data.username}</span>}
+                  {/* The account's own name, never the word "TikTok" dressed
+                      up as one. When the name could not be read, say that —
+                      a card that prints the platform's name where the
+                      account's name goes looks connected and tells the owner
+                      nothing about WHICH account it connected. */}
+                  {tt.data.displayName
+                    ? <><b>{tt.data.displayName}</b>{tt.data.username && <span style={{ color: 'var(--c94a3b8)' }}> · @{tt.data.username}</span>}</>
+                    : <span style={{ color: 'var(--ink-warn)' }}>{T('Đã kết nối, nhưng chưa đọc được tên tài khoản — bấm "Kết nối lại TikTok".', 'Connected, but the account name could not be read — press "Reconnect TikTok".')}</span>}
                   {tt.data.needsReconnect && <div style={{ color: 'var(--cfde68a)', fontSize: 12 }}>{T('Quyền đã hết hạn (TikTok cấp tối đa 1 năm) — kết nối lại.', 'Permission expired (TikTok grants at most a year) — reconnect.')}</div>}
                   {tt.data.creator && tt.data.creator.privacyOptions.length === 1 && tt.data.creator.privacyOptions[0] === 'SELF_ONLY' && (
                     <div style={{ color: 'var(--cfde68a)', fontSize: 12 }}>{T('App Lumio chưa được TikTok duyệt: bài chỉ đăng riêng tư cho tới khi duyệt xong.', 'Lumio’s app is not audited by TikTok yet: posts stay private until it is.')}</div>

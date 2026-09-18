@@ -1,8 +1,8 @@
-import { BadRequestException, Body, Controller, Get, Headers, Post, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, Post, Req } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { UserRole } from '@prisma/client';
-import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -23,6 +23,22 @@ class SignupDto {
   @IsOptional() @IsString() @MaxLength(64) timezone?: string;
   @IsOptional() @IsString() @MaxLength(200) website?: string;
   @IsOptional() @IsString() @MaxLength(3000) captchaToken?: string;
+}
+
+/**
+ * A chatbot plan as the Super Admin screen sends it.
+ *
+ * No upper bounds here on purpose: the ceiling depends on the salon's
+ * currency — 1,000 is a fortune in dollars and pocket change in đồng — so it
+ * is applied in the service, where the market is known. Validating it twice
+ * with two different answers is how a screen comes to disagree with a bill.
+ */
+class ChatPlanDto {
+  @IsOptional() @IsInt() @Min(0) monthlyCents?: number;
+  @IsOptional() @IsInt() @Min(0) includedReplies?: number;
+  @IsOptional() @IsInt() @Min(0) overageCentsPerReply?: number;
+  @IsOptional() @IsBoolean() hardCap?: boolean;
+  @IsOptional() @IsBoolean() active?: boolean;
 }
 
 @Controller()
@@ -69,6 +85,31 @@ export class BillingController {
   @Get('billing/config/test')
   testGateways() {
     return this.billing.testGateways();
+  }
+
+  /** Super Admin: the chatbot price ladder for every market. */
+  @Roles(UserRole.SUPER_ADMIN)
+  @Get('billing/chat-tiers')
+  chatTiers() {
+    return this.billing.chatTiers();
+  }
+
+  /** Super Admin: one salon's chatbot plan, its usage and its margin. */
+  @Roles(UserRole.SUPER_ADMIN)
+  @Get('billing/chat-plan/:tenantId')
+  chatPlan(@Param('tenantId') tenantId: string) {
+    return this.billing.chatPlanOf(tenantId);
+  }
+
+  /** Super Admin: set it. Returns what was actually stored, not what was sent. */
+  @Roles(UserRole.SUPER_ADMIN)
+  @Post('billing/chat-plan/:tenantId')
+  saveChatPlan(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Body() dto: ChatPlanDto,
+  ) {
+    return this.billing.saveChatPlan(tenantId, dto, user);
   }
 
   /** Salon admin: active plans available to upgrade to. */

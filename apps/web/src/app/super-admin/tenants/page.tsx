@@ -337,6 +337,7 @@ export default function TenantsPage() {
                 <tr>
                   <td colSpan={5} style={{ padding: 16, background: 'var(--c0f172a)' }}>
                     <TenantEditPanel token={token} tenant={t} usage={voiceUsage.find((u) => u.tenantId === t.id)} onSaved={loadData} />
+                    <ChatPlanPanel token={token} tenantId={t.id} />
                   </td>
                 </tr>
               )}
@@ -978,6 +979,184 @@ function AiDiagButton() {
       </button>
       {res && <span style={{ fontSize: 12.5, fontWeight: 700, color: ok ? 'var(--ink-good)' : 'var(--cfca5a5)', maxWidth: 520 }}>{res}</span>}
     </span>
+  );
+}
+
+// ---- the AI chatbot plan ----------------------------------------------------
+
+interface ChatTierRow {
+  id: string; vi: string; en: string; currency: string;
+  monthlyCents: number; includedReplies: number; overageCentsPerReply: number;
+}
+interface ChatPlanView {
+  tenantId: string; market: string; currency: string; costPerReply: number;
+  plan: { monthlyCents: number; includedReplies: number; overageCentsPerReply: number; hardCap: boolean; active: boolean };
+  tierId: string | null;
+  tiers: ChatTierRow[];
+  repliesThisMonth: number;
+  bill: { totalCents: number; overageReplies: number; overageCents: number };
+  margin: number;
+}
+
+/**
+ * Sell the chatbot to one salon.
+ *
+ * WHY THE MARGIN IS SHOWN AT THE SALON'S OWN VOLUME
+ *
+ * A price list says what a tier earns at its allowance. That is not the
+ * question being answered here. This screen is open because somebody is about
+ * to quote THIS salon, whose inbox is already running at some real number of
+ * replies a month, and the only figure that matters is what the deal earns at
+ * that number. A tier that looks comfortable on paper can be thin at three
+ * times its allowance, and nothing on a price list would say so.
+ *
+ * The cost per reply is deliberately the pessimistic one — the measured cost
+ * rounded well up — so the margin printed here is a floor rather than a hope.
+ */
+function ChatPlanPanel({ token, tenantId }: { token: string; tenantId: string }) {
+  const [v, setV] = useState<ChatPlanView | null>(null);
+  const [form, setForm] = useState({ monthlyCents: 0, includedReplies: 0, overageCentsPerReply: 0, hardCap: false, active: false });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await apiFetch<ChatPlanView>(`/billing/chat-plan/${tenantId}`, { token });
+      setV(r);
+      setForm({ ...r.plan });
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not load the chat plan'); }
+  }, [token, tenantId]);
+  useEffect(() => { void load(); }, [load]);
+
+  if (err && !v) return <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--cfca5a5)' }}>{err}</div>;
+  if (!v) return <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--c64748b)' }}>Loading chat plan…</div>;
+
+  const cur = v.currency;
+  const nf = new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: cur });
+  const digits = nf.resolvedOptions().maximumFractionDigits ?? 2;
+  // The đồng has no subunit, so the stored number IS the amount. Dividing it
+  // is the bug that printed a 2,690,000₫ plan as 26,900₫.
+  const money = (n: number) => nf.format(digits === 0 ? Math.round(n || 0) : (n || 0) / 10 ** digits);
+  const unit = digits === 0 ? '₫' : '¢';
+
+  // What THIS salon would pay on the numbers currently in the form, at the
+  // volume it is actually running — recomputed locally so the answer moves as
+  // the fields are typed, rather than only after a save.
+  const used = v.repliesThisMonth;
+  const over = form.includedReplies > 0 ? Math.max(0, used - form.includedReplies) : used;
+  const overCents = form.hardCap ? 0 : over * form.overageCentsPerReply;
+  const totalCents = form.active ? form.monthlyCents + overCents : 0;
+  const costCents = used * v.costPerReply;
+  const margin = totalCents > 0 ? (totalCents - costCents) / totalCents : 0;
+  const marginColor = margin >= 0.5 ? 'var(--ink-good)' : margin >= 0.25 ? 'var(--ink-warn)' : 'var(--ink-bad)';
+  const belowCost = form.active && form.overageCentsPerReply > 0 && form.overageCentsPerReply <= v.costPerReply;
+
+  async function save() {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const r = await apiFetch<ChatPlanView>(`/billing/chat-plan/${tenantId}`, { method: 'POST', token, body: form });
+      setV(r); setForm({ ...r.plan });
+      setMsg('Saved. The salon sees this on its own Billing → Usage screen.');
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Save failed'); }
+    finally { setBusy(false); }
+  }
+
+  const num = (label: string, key: 'monthlyCents' | 'includedReplies' | 'overageCentsPerReply', hint: string) => (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 140 }}>
+      <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{label}</span>
+      <input type="number" min={0} value={form[key]}
+        onChange={(e) => setForm({ ...form, [key]: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+        style={{ ...inp, padding: '6px 8px', fontSize: 13 }} />
+      <span style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{hint}</span>
+    </label>
+  );
+
+  return (
+    <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--c334155)' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>AI Messenger — gói &amp; tính tiền</span>
+        <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
+          {v.market} · {cur} · {used.toLocaleString()} tin bot trả lời tháng này · vốn {money(v.costPerReply)}/tin
+        </span>
+      </div>
+
+      {/* The ladder. One press fills the three fields; nothing is saved until
+          Save, so a mis-click is not a billing change. */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        {v.tiers.map((t) => {
+          const on = form.monthlyCents === t.monthlyCents && form.includedReplies === t.includedReplies && form.overageCentsPerReply === t.overageCentsPerReply;
+          return (
+            <button key={t.id}
+              onClick={() => setForm({ ...form, monthlyCents: t.monthlyCents, includedReplies: t.includedReplies, overageCentsPerReply: t.overageCentsPerReply, active: true })}
+              style={{
+                textAlign: 'left', cursor: 'pointer', borderRadius: 10, padding: '8px 11px',
+                border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`,
+                background: on ? 'rgba(99,102,241,0.14)' : 'transparent', color: 'var(--ce2e8f0)',
+              }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700 }}>{t.vi}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
+                {money(t.monthlyCents)} · {t.includedReplies.toLocaleString()} tin · vượt {money(t.overageCentsPerReply)}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start', marginBottom: 10 }}>
+        {num('Phí cứng / tháng', 'monthlyCents', `tính bằng ${digits === 0 ? 'đồng' : 'cent'}`)}
+        {num('Tin kèm trong gói', 'includedReplies', '0 = tính tiền mọi tin')}
+        {num(`Giá vượt / tin (${unit})`, 'overageCentsPerReply', `vốn ${money(v.costPerReply)}`)}
+      </div>
+
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ccbd5e1)' }}>
+          <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
+          Bật tính tiền cho tiệm này
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ccbd5e1)' }} title="Hết hạn mức thì KHÔNG tính tiền vượt — tiệm dùng tiếp miễn phí, phần chênh anh chịu.">
+          <input type="checkbox" checked={form.hardCap} onChange={(e) => setForm({ ...form, hardCap: e.target.checked })} />
+          Không tính tiền phần vượt
+        </label>
+      </div>
+
+      {/* What the deal earns at this salon's real volume. */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', padding: '9px 12px', borderRadius: 10, background: 'var(--c1e293b)', marginBottom: 10 }}>
+        <Fig label="Tiệm trả tháng này" value={money(totalCents)} />
+        <Fig label="Vượt" value={`${over.toLocaleString()} tin · ${money(overCents)}`} />
+        <Fig label="Vốn API" value={money(costCents)} />
+        <Fig label="Biên lợi nhuận" value={`${Math.round(margin * 100)}%`} color={totalCents > 0 ? marginColor : 'var(--c64748b)'} />
+      </div>
+
+      {belowCost && (
+        <div style={{ fontSize: 12, color: 'var(--ink-bad)', marginBottom: 8, lineHeight: 1.5 }}>
+          ⚠ Giá vượt {money(form.overageCentsPerReply)} thấp hơn hoặc bằng giá vốn {money(v.costPerReply)}/tin — mỗi tin vượt là một tin lỗ.
+        </div>
+      )}
+      {form.hardCap && form.active && (
+        <div style={{ fontSize: 12, color: 'var(--ink-warn)', marginBottom: 8, lineHeight: 1.5 }}>
+          Lưu ý: bot KHÔNG ngưng trả lời khi hết hạn mức — nó chạy tiếp và phần vượt không tính tiền, tức anh bao phần đó.
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button onClick={save} disabled={busy} style={{ ...primaryBtn, padding: '8px 16px', fontSize: 13, opacity: busy ? 0.6 : 1 }}>
+          {busy ? 'Đang lưu…' : 'Lưu gói'}
+        </button>
+        <button onClick={() => setForm({ ...v.plan })} style={{ ...ghostBtn, padding: '8px 14px', fontSize: 13 }}>Huỷ sửa</button>
+        {msg && <span style={{ fontSize: 12, color: 'var(--ink-good)' }}>{msg}</span>}
+        {err && <span style={{ fontSize: 12, color: 'var(--cfca5a5)' }}>{err}</span>}
+      </div>
+    </div>
+  );
+}
+
+function Fig({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10.5, color: 'var(--c64748b)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: color ?? 'var(--ce2e8f0)' }}>{value}</div>
+    </div>
   );
 }
 

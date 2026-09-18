@@ -30,20 +30,20 @@ describe('nothing is billed until somebody turns it on', () => {
 describe('a normal month on the Standard plan', () => {
   it('inside the allowance costs the monthly fee and nothing more', () => {
     const b = billFor(1_840, standard);
-    expect(b).toMatchObject({ overageReplies: 0, overageCents: 0, totalCents: 19900 });
+    expect(b).toMatchObject({ overageReplies: 0, overageCents: 0, totalCents: 16900 });
     expect(Math.round(b.used * 100)).toBe(61);
-    expect(money(b.totalCents)).toBe('$199.00');
+    expect(money(b.totalCents)).toBe('$169.00');
   });
 
   it('past the allowance charges only the replies past it', () => {
     const b = billFor(3_500, standard);
     expect(b.overageReplies).toBe(500);
-    expect(b.overageCents).toBe(500 * 4);
-    expect(money(b.totalCents)).toBe('$219.00');
+    expect(b.overageCents).toBe(500 * 3);
+    expect(money(b.totalCents)).toBe('$184.00');
   });
 
   it('a quiet month still costs the monthly fee — that is what a bundle is', () => {
-    expect(billFor(0, standard).totalCents).toBe(19900);
+    expect(billFor(0, standard).totalCents).toBe(16900);
   });
 });
 
@@ -53,7 +53,7 @@ describe('the hard cap, for a salon that must never be surprised', () => {
   it('bills no overage and stops the bot once the allowance is gone', () => {
     const b = billFor(3_500, capped);
     expect(b.overageCents).toBe(0);
-    expect(b.totalCents).toBe(19900);
+    expect(b.totalCents).toBe(16900);
     expect(b.stopped).toBe(true);
     expect(mayReply(3_500, capped)).toBe(false);
   });
@@ -101,10 +101,12 @@ describe('the prices are actually worth charging', () => {
   });
 
   it('still makes money on a heavy month that blows through the top tier', () => {
-    // the five-page client: ~30,000 replies a month
+    // the five-page client: ~30,000 replies a month. The overage came down
+    // from 3c to 2c when the ladder was rebuilt, so this is $749, not $999 —
+    // and the margin is still comfortable because the cost is a cent.
     const b = billFor(30_000, CHAT_TIERS[2].plan);
-    expect(money(b.totalCents)).toBe('$999.00');
-    expect(marginOf(30_000, CHAT_TIERS[2].plan)).toBeGreaterThan(0.6);
+    expect(money(b.totalCents)).toBe('$749.00');
+    expect(marginOf(30_000, CHAT_TIERS[2].plan)).toBeGreaterThan(0.55);
   });
 
   it('recommends the cheapest tier that fits, and the top one when nothing does', () => {

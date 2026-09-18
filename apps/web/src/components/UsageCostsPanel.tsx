@@ -25,12 +25,32 @@ interface Summary {
     enabled: boolean; included: number; used: number; overage: number;
     overageCentsPer: number; overageCents: number; monthlyCents: number;
     wording?: 'priced' | 'free' | 'unset' | 'unlimited';
+    /** The chat line is priced in the salon's MARKET currency, which can
+     *  differ from the subscription's. Absent on an older server. */
+    currency?: string;
+    /** 'basic' | 'standard' | 'pro', or null for a negotiated deal. */
+    tierId?: string | null;
+    /** Replies left before overage starts; null when there is no allowance. */
+    remaining?: number | null;
   };
   totals: { fixedCents: number; overageCents: number; grandTotalCents: number; projectedGrandTotalCents: number };
 }
 
-const money = (c: number, cur = 'USD') =>
-  new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: cur }).format((c || 0) / 100);
+/**
+ * The stored amount, written out.
+ *
+ * It divided by 100 unconditionally, which is right for the dollar and wrong
+ * for the đồng: the đồng has no subunit, so the stored number IS the amount
+ * and a 390,000₫ chatbot plan printed as "3.900 ₫" — a hundredth of the real
+ * price, on the invoice screen, to the person paying it. Ask the currency how
+ * many decimals it has instead of assuming two. Same rule as lib/money.ts.
+ */
+const money = (c: number, cur = 'USD') => {
+  const nf = new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: cur });
+  const digits = nf.resolvedOptions().maximumFractionDigits ?? 2;
+  const n = c || 0;
+  return nf.format(digits === 0 ? Math.round(n) : n / 10 ** digits);
+};
 
 type Lg = 'en' | 'vi';
 const T = {
@@ -98,6 +118,11 @@ const T = {
     vi: 'Phí phát sinh được cộng dồn trong tháng và chốt cùng phí gói vào cuối tháng — chúng tôi gởi email hoá đơn kèm link thanh toán.',
   },
   chat: { en: 'AI Chatbot replies', vi: 'Tin chatbot AI trả lời' },
+  tierBasic: { en: 'Basic', vi: 'Cơ bản' },
+  tierStandard: { en: 'Standard', vi: 'Tiêu chuẩn' },
+  tierPro: { en: 'Pro', vi: 'Cao cấp' },
+  tierCustom: { en: 'Agreed plan', vi: 'Gói thoả thuận' },
+  left: { en: 'left this month', vi: 'còn lại tháng này' },
   chatSub: { en: 'AI Chatbot (subscription)', vi: 'Chatbot AI (thuê bao)' },
   chatOff: { en: 'AI Chatbot is not enabled', vi: 'Chatbot AI chưa bật' },
   notPriced: { en: 'not priced yet', vi: 'chưa có đơn giá' },
@@ -141,8 +166,8 @@ export function UsageCostsPanel() {
   // server that sends no `wording` is read as the safe case: say nothing is
   // charged, never that overage is free for ever.
   const smsWording = sum.sms.wording ?? (sum.sms.overageCentsPer > 0 ? 'priced' : 'unset');
-  const rateLabel = (cents: number, unit: string, wording: string) =>
-    wording === 'priced' && cents > 0 ? money(cents, cur) + unit
+  const rateLabel = (cents: number, unit: string, wording: string, curOverride?: string) =>
+    wording === 'priced' && cents > 0 ? money(cents, curOverride ?? cur) + unit
       : wording === 'free' ? t('noCharge')
         : t('notPriced');
   const smsRate = rateLabel(sum.sms.overageCentsPer, t('perSms'), smsWording);
@@ -150,7 +175,14 @@ export function UsageCostsPanel() {
   const fill = (s: string, m: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => m[k] ?? '');
 
   const chatWording = sum.chat?.wording ?? ((sum.chat?.overageCentsPer ?? 0) > 0 ? 'priced' : 'unset');
-  const chatRate = rateLabel(sum.chat?.overageCentsPer ?? 0, t('perReply'), chatWording);
+  // The chatbot's own currency when the server sends one; the invoice's
+  // otherwise, which is what every older server means.
+  const chatCur = sum.chat?.currency || cur;
+  const chatRate = rateLabel(sum.chat?.overageCentsPer ?? 0, t('perReply'), chatWording, chatCur);
+  const tierName = sum.chat?.tierId === 'basic' ? t('tierBasic')
+    : sum.chat?.tierId === 'standard' ? t('tierStandard')
+      : sum.chat?.tierId === 'pro' ? t('tierPro')
+        : t('tierCustom');
   const chatIncLabel = (sum.chat?.included ?? 0) > 0 ? String(sum.chat!.included) : t('unlimited');
   const smsIncLabel = sum.sms.included > 0 ? String(sum.sms.included) : t('unlimited');
   const minIncLabel = sum.hotline.includedMinutes > 0 ? String(sum.hotline.includedMinutes) : t('unlimited');
@@ -201,7 +233,7 @@ export function UsageCostsPanel() {
           <Row label={t('hotlineSub')} amount={`${money(sum.hotline.monthlyCents, cur)}${t('perMo')}`} />
         )}
         {!!sum.chat?.enabled && sum.chat.monthlyCents > 0 && (
-          <Row label={t('chatSub')} amount={`${money(sum.chat.monthlyCents, cur)}${t('perMo')}`} />
+          <Row label={t('chatSub')} amount={`${money(sum.chat.monthlyCents, chatCur)}${t('perMo')}`} />
         )}
         <Row label={t('subFixed')} amount={money(sum.totals.fixedCents, cur)} subtotal />
 
@@ -234,11 +266,13 @@ export function UsageCostsPanel() {
             which reads as "you are paying for something you do not have". */}
         {sum.chat ? (sum.chat.enabled ? (
           <UsageRow
-            label={t('chat')}
-            detail={`${sum.chat.used} ${t('used')} / ${chatIncLabel} ${t('included')}`}
+            label={`${t('chat')} · ${tierName}`}
+            detail={typeof sum.chat.remaining === 'number'
+              ? `${sum.chat.used} ${t('used')} / ${chatIncLabel} ${t('included')} · ${sum.chat.remaining} ${t('left')}`
+              : `${sum.chat.used} ${t('used')} / ${chatIncLabel} ${t('included')}`}
             over={sum.chat.overage}
             overText={`${sum.chat.overage} ${t('over')} × ${chatRate}`}
-            amount={money(sum.chat.overageCents, cur)}
+            amount={money(sum.chat.overageCents, chatCur)}
             within={t('within')}
           />
         ) : (

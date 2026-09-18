@@ -12,7 +12,11 @@ import { PaypalService } from './paypal.service';
 import { PlatformConfigService } from './platform-config.service';
 import { VoiceService } from '../voice/voice.service';
 import { cleanPlatformRates, resolveRate, usageLine } from './usage-rates';
-import { cleanChatPlan } from '../messenger/chat-billing';
+import {
+  cleanChatPlan, tiersFor, tierIdOf, marginOf, apiCostPerReply, billFor, ChatPlan,
+  CHAT_TIERS_BY_MARKET,
+} from '../messenger/chat-billing';
+import { marketOf } from '../common/markets';
 
 /** Where a salon's chat plan is stored (a Setting row — no migration). */
 export const CHAT_PLAN_KEY = 'chat_plan';
@@ -175,7 +179,7 @@ export class BillingService {
     const [tenant, line, u, rates, chatPlanRow, chatReplies] = await Promise.all([
       this.prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { plan: { select: { name: true, currency: true, priceMonthlyCents: true, priceCents: true, maxSmsPerMonth: true } } },
+        select: { market: true, plan: { select: { name: true, currency: true, priceMonthlyCents: true, priceCents: true, maxSmsPerMonth: true } } },
       }),
       this.prisma.voiceLine.findUnique({ where: { tenantId }, select: { enabled: true, monthlyCents: true } }),
       this.voice.usage(user),
@@ -210,7 +214,12 @@ export class BillingService {
     const smsLine = usageLine('sms', u.smsSent, smsIncluded, smsRateInfo);
 
     // ---- AI Chatbot ----
-    const chatPlan = cleanChatPlan(chatPlanRow?.value);
+    // Priced in the MARKET's currency, not the subscription plan's. A shop in
+    // Vietnam is quoted in đồng, and đồng has no subunit — so validating its
+    // plan against dollar-shaped ceilings would trim 2,690,000₫ down to
+    // 100,000₫ and bill a twenty-seventh of what was agreed.
+    const chatCurrency = marketOf((tenant as { market?: string } | null)?.market).currency;
+    const chatPlan = cleanChatPlan(chatPlanRow?.value, chatCurrency);
     const chatRateInfo = resolveRate(
       chatPlan.active && chatPlan.overageCentsPerReply > 0 ? chatPlan.overageCentsPerReply : null,
       rates.chatReplyCents,
@@ -265,9 +274,100 @@ export class BillingService {
         overageCentsPer: chatLine.rate.centsPerUnit,
         overageCents: chatLine.overageCents,
         wording: chatLine.wording,
+        /** The chat line's own currency — see chatCurrency above. */
+        currency: chatCurrency,
+        /** Which listed tier this is, so the salon sees a name and not a sum. */
+        tierId: chatPlan.active ? tierIdOf(chatPlan, (tenant as { market?: string } | null)?.market) : null,
+        /** Replies left before overage starts. Null when there is no allowance. */
+        remaining: chatPlan.includedReplies > 0 ? Math.max(0, chatPlan.includedReplies - chatLine.used) : null,
       },
       totals: { fixedCents, overageCents, grandTotalCents, projectedGrandTotalCents },
     };
+  }
+
+  // ---- the chatbot plan, set by the agency, watched by the salon ----------
+
+  /**
+   * What the agency may sell, per market.
+   *
+   * Returned whole rather than filtered to one market, because the Super Admin
+   * screen shows one salon at a time but the person using it is pricing a
+   * portfolio and wants to see what the other markets pay.
+   */
+  chatTiers() {
+    return {
+      markets: Object.keys(CHAT_TIERS_BY_MARKET).map((m) => ({
+        market: m,
+        costPerReply: apiCostPerReply(tiersFor(m)[0].currency),
+        tiers: tiersFor(m).map((t) => ({
+          id: t.id, vi: t.vi, en: t.en, currency: t.currency,
+          monthlyCents: t.plan.monthlyCents,
+          includedReplies: t.plan.includedReplies,
+          overageCentsPerReply: t.plan.overageCentsPerReply,
+        })),
+      })),
+    };
+  }
+
+  /**
+   * One salon's chat plan, with the numbers needed to judge it.
+   *
+   * The margin is computed at the salon's CURRENT volume rather than at the
+   * allowance, because that is the question actually being asked: not "is this
+   * tier profitable in theory" but "is this client, this month, worth what we
+   * are charging". A tier that looks fine at its allowance can be thin at
+   * three times it.
+   */
+  async chatPlanOf(tenantId: string) {
+    const [tenant, row, replies] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, market: true } }),
+      this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_PLAN_KEY }, select: { value: true } }).catch(() => null),
+      this.chatRepliesThisMonth(tenantId).catch(() => 0),
+    ]);
+    if (!tenant) throw new BadRequestException('Tenant not found');
+    const market = String(tenant.market ?? 'US').toUpperCase();
+    const currency = marketOf(market).currency;
+    const plan = cleanChatPlan(row?.value, currency);
+    const bill = billFor(replies, plan, currency);
+    return {
+      tenantId, tenantName: tenant.name, market, currency,
+      costPerReply: apiCostPerReply(currency),
+      plan,
+      tierId: plan.active ? tierIdOf(plan, market) : null,
+      tiers: this.chatTiers().markets.find((m) => m.market === market)?.tiers ?? [],
+      repliesThisMonth: replies,
+      bill,
+      /** 0-1 at the volume this salon is actually running. */
+      margin: plan.active ? marginOf(replies, plan, currency) : 0,
+    };
+  }
+
+  /**
+   * Set it. Whatever arrives is validated against the market's own ceilings
+   * before it is stored, so a screen that sends dollars for a Vietnamese shop
+   * writes a trimmed number rather than a wrong bill — and the caller is told
+   * what was actually saved, not what it sent.
+   */
+  async saveChatPlan(tenantId: string, dto: Partial<ChatPlan>, user: AuthenticatedUser) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } });
+    if (!tenant) throw new BadRequestException('Tenant not found');
+    const currency = marketOf(tenant.market).currency;
+    const plan = cleanChatPlan(dto, currency);
+    const existing = await this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_PLAN_KEY }, select: { id: true } });
+    if (existing?.id) {
+      await this.prisma.setting.update({ where: { id: existing.id }, data: { value: plan as never } });
+    } else {
+      await this.prisma.setting.create({ data: { tenantId, key: CHAT_PLAN_KEY, value: plan as never } });
+    }
+    // Money changing hands leaves a trace. Who turned a client's chatbot into
+    // a billed service, and on what terms, is exactly the question asked six
+    // months later when the invoice is disputed.
+    await this.audit.log({
+      tenantId, userId: user?.userId ?? null,
+      action: 'chat_plan.save', resourceType: 'tenant', resourceId: tenantId,
+      metadata: { ...plan, currency },
+    }).catch(() => undefined);
+    return this.chatPlanOf(tenantId);
   }
 
   /** Super Admin: actually call Stripe/PayPal to confirm the keys work. */

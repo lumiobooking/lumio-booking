@@ -145,8 +145,13 @@ export class WalkinsService {
     // the walk-in to the "up next" tech (fewest turns today AND currently free). If
     // every tech is busy, nobody can start it -> it waits (front desk assigns when
     // a tech frees up). A specific requested tech always wins over auto.
+    // ...but never AHEAD of somebody already in the queue. Auto-assign used to
+    // hand the free tech to whoever was being typed in right now, so a customer
+    // who had been sitting for twenty minutes watched a newcomer walk into the
+    // chair. With anybody waiting, this ticket joins the back of the line and
+    // the queue is drained in order (seatWaitingQueue) instead.
     let assignedStaffId: string | null = staff?.id ?? null;
-    if (!assignedStaffId && dto.autoAssign) {
+    if (!assignedStaffId && dto.autoAssign && !(await this.anyoneWaiting(tenantId))) {
       assignedStaffId = await this.nextUpStaffId(tenantId);
     }
     const assigned = !!assignedStaffId;
@@ -209,20 +214,75 @@ export class WalkinsService {
    * Returns the technician's id, or null when it stayed in the queue.
    */
   async seatSelfCheckIn(tenantId: string, walkInId: string): Promise<string | null> {
-    const w = await this.prisma.walkIn.findFirst({
-      where: { id: walkInId, tenantId, status: WalkInStatus.WAITING, assignedStaffId: null },
-      include: { service: { select: { name: true, category: { select: { name: true } } } } },
+    // Not "seat THIS ticket": drain the queue from the front. When nobody is
+    // ahead, this ticket IS the front and lands on a tech exactly as before.
+    // When three people are already waiting, the free chair goes to the first
+    // of them and this customer keeps their place — which is the whole point
+    // of a queue, and was the one thing the old version got wrong.
+    await this.seatWaitingQueue(tenantId);
+    const after = await this.prisma.walkIn.findFirst({
+      where: { id: walkInId, tenantId },
+      select: { status: true, assignedStaffId: true },
     });
-    if (!w) return null;
-    const staffId = await this.nextUpStaffId(tenantId);
-    if (!staffId) return null;
-    const stationId = await this.freeStationId(tenantId, this.svcMatchText(w.service?.name, w.service?.category?.name)).catch(() => null);
-    const items = (Array.isArray(w.items) ? (w.items as unknown as WalkInItem[]) : []).map((it) => ({ ...it, staffId }));
-    await this.prisma.walkIn.update({
-      where: { id: w.id },
-      data: { assignedStaffId: staffId, status: WalkInStatus.SERVING, assignedAt: new Date(), stationId, items: items as unknown as Prisma.InputJsonValue },
-    });
-    return staffId;
+    return after?.status === WalkInStatus.SERVING ? after.assignedStaffId : null;
+  }
+
+  /** Is anybody already in the queue? */
+  private async anyoneWaiting(tenantId: string): Promise<boolean> {
+    const n = await this.prisma.walkIn.count({ where: { tenantId, status: WalkInStatus.WAITING } });
+    return n > 0;
+  }
+
+  /**
+   * Hand every free technician the customer who has waited longest, in order.
+   *
+   * Called wherever a chair opens up — a ticket finished at the desk, a ticket
+   * closed by the till — and wherever someone joins the queue. Before this, a
+   * tech finishing left the board frozen: five people waiting, a tech free, and
+   * nothing moved until somebody at the desk pressed "Giao" on a row they
+   * picked by eye. The rotation already knew who was up next; nothing was
+   * asking it.
+   *
+   * Order is arrival order (createdAt), never price or service. The loop is
+   * bounded: at most one pass per active technician, so a bad row can never
+   * spin it.
+   *
+   * Best effort by design — it runs after the work it follows has been saved,
+   * so a failure here leaves tickets in the queue rather than undoing a
+   * checkout. Returns the ids it seated.
+   */
+  async seatWaitingQueue(tenantId: string): Promise<string[]> {
+    const seated: string[] = [];
+    const rounds = await this.prisma.staffMember.count({ where: { tenantId, isActive: true, takesAppointments: true } });
+    for (let i = 0; i < rounds; i += 1) {
+      const staffId = await this.nextUpStaffId(tenantId);
+      if (!staffId) break;
+      const head = await this.prisma.walkIn.findFirst({
+        where: { tenantId, status: WalkInStatus.WAITING },
+        orderBy: { createdAt: 'asc' },
+        include: { service: { select: { name: true, category: { select: { name: true } } } } },
+      });
+      if (!head) break;
+      const stationId = await this
+        .freeStationId(tenantId, this.svcMatchText(head.service?.name, head.service?.category?.name))
+        .catch(() => null);
+      // A line the customer picked with no tech on it yet inherits the tech who
+      // takes the ticket; a line already given to somebody keeps them.
+      const items = (Array.isArray(head.items) ? (head.items as unknown as WalkInItem[]) : [])
+        .map((it) => ({ ...it, staffId: it.staffId ?? staffId }));
+      await this.prisma.walkIn.update({
+        where: { id: head.id },
+        data: {
+          assignedStaffId: staffId,
+          status: WalkInStatus.SERVING,
+          assignedAt: new Date(),
+          stationId,
+          items: items as unknown as Prisma.InputJsonValue,
+        },
+      });
+      seated.push(head.id);
+    }
+    return seated;
   }
 
   /** The tech "up next" = currently free (not serving) with the fewest turns today. */
@@ -568,10 +628,14 @@ export class WalkinsService {
     });
   }
 
-  /** Mark finished (counts as a completed turn). */
+  /** Mark finished (counts as a completed turn), then fill the chair it freed. */
   async done(user: AuthenticatedUser, id: string) {
     const w = await this.mine(user, id);
-    return this.prisma.walkIn.update({ where: { id: w.id }, data: { status: WalkInStatus.DONE, doneAt: new Date() }, include: INCLUDE });
+    const out = await this.prisma.walkIn.update({ where: { id: w.id }, data: { status: WalkInStatus.DONE, doneAt: new Date() }, include: INCLUDE });
+    // After the save, and swallowing its own failure: finishing a customer must
+    // succeed even if the queue cannot be drained this second.
+    await this.seatWaitingQueue(w.tenantId).catch(() => []);
+    return out;
   }
 
   /** Remove from the queue (left / mistake). */

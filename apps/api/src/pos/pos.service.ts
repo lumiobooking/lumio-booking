@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import {
   AppointmentStatus,
   OrderItemKind,
@@ -15,6 +15,7 @@ import { SettingsService } from '../settings/settings.service';
 import { ledgerProviderFor, bucketFor, methodsForSalon } from './payment-methods';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { TrashService } from '../maintenance/trash.service';
+import { WalkinsService } from '../walkins/walkins.service';
 import { GiftCardsService } from '../gift-cards/gift-cards.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
@@ -34,6 +35,9 @@ export class PosService {
     private readonly loyalty: LoyaltyService,
     private readonly giftCards: GiftCardsService,
     private readonly trash: TrashService,
+    // Optional so the unit tests can build the service without the walk-in
+    // board. Used only to fill the chair a checkout just freed.
+    @Optional() private readonly walkins?: WalkinsService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -429,6 +433,12 @@ export class PosService {
 
       return tx.order.findFirst({ where: { id: created.id, tenantId }, include: ORDER_INCLUDE });
     });
+
+    // Paying for a walk-in ends its turn, which frees a chair — so the person
+    // who has waited longest goes into it now, not when somebody at the desk
+    // notices. After the transaction and swallowing its own failure: a payment
+    // that is taken must stay taken.
+    if (dto.walkInId) await this.walkins?.seatWaitingQueue(tenantId).catch(() => []);
 
     await this.audit.log({
       tenantId,

@@ -7,9 +7,11 @@ import { HeldBillsService } from './held-bills.service';
 import { SettingsModule } from '../settings/settings.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { GiftCardsModule } from '../gift-cards/gift-cards.module';
+import { WalkinsModule } from '../walkins/walkins.module';
 
 @Module({
-  imports: [MaintenanceModule, SettingsModule, LoyaltyModule, GiftCardsModule], // tax/currency + loyalty + gift cards
+  // + walk-ins: a checkout closes the ticket, which opens a chair for the queue
+  imports: [MaintenanceModule, SettingsModule, LoyaltyModule, GiftCardsModule, WalkinsModule],
   controllers: [PosController, HeldBillsController],
   providers: [PosService, HeldBillsService],
   exports: [PosService],

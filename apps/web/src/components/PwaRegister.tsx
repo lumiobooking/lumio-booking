@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useLang } from '../lib/i18n';
+import { useIsMobile } from '../lib/responsive';
 
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? 'dev';
 
@@ -18,6 +20,13 @@ const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? 'dev';
  */
 export function PwaRegister() {
   const [stale, setStale] = useState(false);
+  // "Để sau" is not "never": the bar covers content, so it has to be
+  // dismissable, but a tab left on an old build is the thing this exists to
+  // stop — so it comes back in ten minutes.
+  const [snoozed, setSnoozed] = useState(false);
+  const { lang } = useLang();
+  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
@@ -78,27 +87,54 @@ export function PwaRegister() {
     };
   }, []);
 
-  if (!stale) return null;
+  if (!stale || snoozed) return null;
 
   return (
     <div
+      role="status"
       style={{
-        position: 'fixed', left: '50%', bottom: 18, transform: 'translateX(-50%)',
-        zIndex: 9999, display: 'flex', alignItems: 'center', gap: 12,
-        background: 'var(--c1e1b4b)', border: '1px solid #6366f1', borderRadius: 999,
-        padding: '9px 10px 9px 16px', boxShadow: '0 10px 30px rgba(0,0,0,.45)',
+        position: 'fixed', zIndex: 9999,
+        left: '50%', transform: 'translateX(-50%)',
+        // Above the mobile tab bar, not on top of it. The public booking pages
+        // keep their own fixed bar at the same edge, so the lift helps there too.
+        bottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom, 0px))' : 22,
+        width: 'max-content', maxWidth: 'calc(100vw - 24px)',
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '9px 8px 9px 14px',
+        borderRadius: 14,
+        background: 'var(--c1e1b4b)', border: '1px solid #4f46e5',
+        boxShadow: '0 12px 32px rgba(0,0,0,.45)',
         color: 'var(--ce0e7ff)', fontSize: 13.5, fontWeight: 600,
+        animation: 'lumio-toast-in .18s ease-out',
       }}
     >
-      <span>Đã có bản cập nhật mới · A new version is available</span>
+      <span aria-hidden style={{ fontSize: 15, lineHeight: 1, flexShrink: 0 }}>↻</span>
+      {/* One line, one language, ellipsis before it ever wraps — a three-line
+          lozenge with the word "Reload" broken in half was the old shape. */}
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {L('Đã có bản cập nhật', 'A new version is ready')}
+      </span>
       <button
         onClick={() => window.location.reload()}
         style={{
-          border: 'none', borderRadius: 999, padding: '7px 16px', cursor: 'pointer',
+          flexShrink: 0, whiteSpace: 'nowrap',
+          border: 'none', borderRadius: 10, padding: '7px 14px', cursor: 'pointer',
           background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700,
         }}
       >
-        Tải lại / Reload
+        {L('Tải lại', 'Reload')}
+      </button>
+      <button
+        onClick={() => { setSnoozed(true); window.setTimeout(() => setSnoozed(false), 10 * 60 * 1000); }}
+        aria-label={L('Để sau', 'Later')}
+        title={L('Để sau', 'Later')}
+        style={{
+          flexShrink: 0, width: 28, height: 28, borderRadius: 8,
+          border: 'none', background: 'transparent', color: 'var(--ca5b4fc)',
+          fontSize: 17, lineHeight: 1, cursor: 'pointer',
+        }}
+      >
+        ×
       </button>
     </div>
   );

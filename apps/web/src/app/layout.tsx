@@ -80,8 +80,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           color: 'var(--ce2e8f0)',
         }}
       >
-        <AuthProvider><LangProvider>{children}</LangProvider></AuthProvider>
-        <PwaRegister />
+        <AuthProvider><LangProvider>{children}<PwaRegister /></LangProvider></AuthProvider>
         <NavProgress />
         <FeedbackToasts />
       </body>

@@ -658,6 +658,49 @@ export class SupportService {
   }
 
   /**
+   * Set an employee's login password.
+   *
+   * The owner's copy of the "I forgot it" button — same shape as the one that
+   * resets a salon admin (TenantsService.resetAdminPassword), and scoped to
+   * SUPPORT rows for the same reason as everything else here: this must never
+   * become a way to take over a salon owner's login.
+   *
+   * `passwordChangedAt` is the part that matters. Without it, changing the
+   * password of somebody whose laptop walked off changes nothing for the
+   * session already open on it — the JWT stays valid until it expires, which
+   * for a setup session is eight hours. With it, sessionRefusal() reads the
+   * token as older than the change and every open session dies on its next
+   * request (see auth/session-check.ts).
+   *
+   * The new password is never logged: the audit row names WHO was changed and
+   * BY WHOM, and nothing else.
+   */
+  async setAccountPassword(actor: AuthenticatedUser, id: string, password: unknown) {
+    const pw = typeof password === 'string' ? password : '';
+    // Same floor as createAccount, so an account cannot be weakened after the
+    // fact past what it could have been created with.
+    if (pw.length < 8) throw new BadRequestException('Password must be at least 8 characters.');
+    const row = await this.prisma.user.findFirst({
+      where: { id, role: SUPPORT_ROLE },
+      select: { id: true, email: true },
+    });
+    if (!row) throw new NotFoundException('Support account not found');
+    await this.prisma.user.update({
+      where: { id: row.id },
+      data: { passwordHash: await hashSecret(pw), passwordChangedAt: new Date() },
+    });
+    await this.audit.log({
+      tenantId: null,
+      userId: actor.userId,
+      action: 'support.account_password_set',
+      resourceType: 'user',
+      resourceId: row.id,
+      metadata: { email: row.email, by: actor.email },
+    });
+    return { ok: true, email: row.email };
+  }
+
+  /**
    * Remove an employee's account for good.
    *
    * Restricted to role SUPPORT rows for the same reason as everything else on

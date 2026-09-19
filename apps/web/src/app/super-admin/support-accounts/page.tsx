@@ -113,6 +113,9 @@ export default function SupportAccountsPage() {
   // away from deleting the wrong colleague's account, and the two rows look
   // alike at a glance — so the second click has to name the person.
   const [confirming, setConfirming] = useState<string | null>(null);
+  /** Whose password row is open, and what is typed in it. */
+  const [pwFor, setPwFor] = useState<string | null>(null);
+  const [pw, setPw] = useState('');
   // The default is the middle level, not the widest: an account created in a
   // hurry should not be the one that can read the salon's takings.
   const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', supportLevel: 'setup' as SupportLevel });
@@ -233,6 +236,29 @@ export default function SupportAccountsPage() {
       setConfirming(null);
       await load();
     } catch (e2) { setError(e2 instanceof Error ? e2.message : 'Delete failed'); }
+    finally { setBusy(null); }
+  }
+
+  /**
+   * Set somebody's password for them.
+   *
+   * Typed here rather than mailed, because the owner is usually standing next
+   * to the person or on the phone with them — and a reset link needs a mail
+   * route this platform does not have for staff accounts.
+   *
+   * The field is cleared the moment it is sent: a password left sitting in a
+   * form is a password sitting on a screen in an office.
+   */
+  async function savePassword(a: Account) {
+    if (!token) return;
+    if (pw.length < 8) { setError('Mật khẩu phải từ 8 ký tự.'); return; }
+    setBusy(a.id); setError(null); setMsg(null);
+    try {
+      await apiFetch(`/support/accounts/${a.id}/password`, { method: 'POST', token, body: { password: pw } });
+      setPw('');
+      setPwFor(null);
+      setMsg(`Đã đổi mật khẩu cho ${a.email}. Bạn ấy phải đăng nhập lại — mọi phiên đang mở đều đứt.`);
+    } catch (e2) { setError(e2 instanceof Error ? e2.message : 'Đổi mật khẩu không thành công'); }
     finally { setBusy(null); }
   }
 
@@ -418,6 +444,13 @@ export default function SupportAccountsPage() {
                 style={{ background: 'transparent', border: '1px solid var(--c334155)', color: a.isActive ? 'var(--cf87171)' : 'var(--c4ade80)', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer', opacity: busy === a.id ? 0.5 : 1 }}>
                 {busy === a.id ? '…' : a.isActive ? 'Disable' : 'Enable'}
               </button>
+              <button
+                onClick={() => { setPwFor(pwFor === a.id ? null : a.id); setPw(''); setMsg(null); setError(null); }}
+                disabled={busy === a.id}
+                title="Đổi mật khẩu đăng nhập"
+                style={{ background: 'transparent', border: 'none', color: pwFor === a.id ? 'var(--ink-link)' : 'var(--c64748b)', borderRadius: 8, padding: '7px 8px', fontSize: 14, cursor: 'pointer' }}>
+                🔑
+              </button>
               {/* Quiet by default: Disable is the everyday answer, and the
                   destructive one should not compete with it for the eye. */}
               <button onClick={() => { setConfirming(a.id); setMsg(null); setError(null); }} disabled={busy === a.id}
@@ -426,6 +459,42 @@ export default function SupportAccountsPage() {
                 🗑
               </button>
             </div>
+            {pwFor === a.id && (
+              <div style={{ background: 'var(--c0f172a)', borderBottom: '1px solid var(--c1f2937)', padding: '14px 16px 16px' }}>
+                <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 700, marginBottom: 4 }}>
+                  Đặt mật khẩu mới cho {`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}
+                </div>
+                {/* Said before the field, not after: an owner who learns this
+                    afterwards has already locked somebody out mid-shift. */}
+                <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginBottom: 10 }}>
+                  Bạn ấy sẽ bị đăng xuất khỏi mọi thiết bị và phải đăng nhập lại bằng mật khẩu này.
+                  Lumio không gửi mật khẩu đi đâu cả — anh tự báo cho bạn ấy.
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={pw}
+                    onChange={(e) => setPw(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); savePassword(a); } }}
+                    placeholder="Mật khẩu mới (từ 8 ký tự)"
+                    autoComplete="off"
+                    style={{ flex: '1 1 240px', minWidth: 0, background: 'var(--c0b1120)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '9px 12px', fontSize: 13.5, fontFamily: 'inherit' }}
+                  />
+                  <button
+                    onClick={() => savePassword(a)}
+                    disabled={busy === a.id || pw.length < 8}
+                    style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: busy === a.id || pw.length < 8 ? 0.5 : 1 }}>
+                    {busy === a.id ? '…' : 'Đặt mật khẩu'}
+                  </button>
+                  <button
+                    onClick={() => { setPwFor(null); setPw(''); }}
+                    disabled={busy === a.id}
+                    style={{ background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '9px 14px', fontSize: 13, cursor: 'pointer' }}>
+                    Huỷ
+                  </button>
+                </div>
+              </div>
+            )}
             {editing === a.id && (
               <div style={{ background: 'var(--c0f172a)', borderBottom: '1px solid var(--c1f2937)', padding: '14px 16px 16px' }}>
                 <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 700, marginBottom: 4 }}>

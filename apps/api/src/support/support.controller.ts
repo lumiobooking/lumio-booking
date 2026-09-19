@@ -172,6 +172,17 @@ export class SupportController {
     return this.svc.deleteAccount(user, id);
   }
 
+  /**
+   * Set an employee's login password. Ends their open sessions — see
+   * SupportService.setAccountPassword.
+   */
+  @Roles(UserRole.SUPER_ADMIN)
+  @Post('accounts/:id/password')
+  @HttpCode(200)
+  setPassword(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { password?: string }) {
+    return this.svc.setAccountPassword(user, id, dto?.password);
+  }
+
   @Roles(UserRole.SUPER_ADMIN)
   @Post('accounts/:id/active')
   @HttpCode(200)

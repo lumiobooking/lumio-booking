@@ -24,6 +24,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
 import { PostReview, type ReviewApi, type ReviewFeed, type ReviewMsg } from '../../../components/PostReview';
+import { TeamChatWindow } from '../../../components/ContentChat';
 import { SalonWorkspace } from '../../../components/SalonWorkspace';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -49,6 +50,20 @@ function Inner() {
   const [picked, setPicked] = useState(false);
   const [toDo, setToDo] = useState<number | null>(null);
   const [toApprove, setToApprove] = useState<number | null>(null);
+  // The shop's way of reaching the team without a post to hang the question on.
+  // The thread already existed — both sides write to subject "general" — but
+  // only the agency's screen had a door to it, so the shop could answer a
+  // comment and never start one.
+  const [chatUnread, setChatUnread] = useState(0);
+
+  useEffect(() => {
+    if (!token) return;
+    let off = false;
+    apiFetch<{ bySubject?: Record<string, number> }>('/content/chat/unread', { token })
+      .then((u) => { if (!off) setChatUnread(u?.bySubject?.general ?? 0); })
+      .catch(() => { /* the button still opens; only the badge is missing */ });
+    return () => { off = true; };
+  }, [token]);
 
   // Open on whatever is waiting, once. Both counts have to be in before the
   // choice is made, or the tab jumps under the reader's thumb when the second
@@ -126,6 +141,10 @@ function Inner() {
       <div style={{ display: tab === 'approve' ? 'block' : 'none' }}>
         <PostReview api={api} vi={vi} onCount={setToApprove} />
       </div>
+
+      {/* Outside both tabs on purpose: a thread that disappears when the owner
+          switches to "Duyệt bài" is a thread she loses mid-sentence. */}
+      <TeamChatWindow token={token} unread={chatUnread} vi={vi} />
     </div>
   );
 }

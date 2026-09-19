@@ -6,6 +6,13 @@ import { compactCount, ageOf } from '../lib/counts';
 import { useLive, fresh } from '../lib/live';
 import { enqueue, installOutbox, useOutbox, retryFailed, discardBatch, cancelBatch, takeLastDone, type BatchView } from '../lib/upload-queue';
 import { ShopWeek, HolidayOffers, type ShopWeekData, type HolidayIdea, type LastWeek, type AdsReceipt, type AdsPlan } from './ShopWeek';
+import type { ShopPlanSheet } from './ShopWeek';
+import type { MonthBriefData } from './MonthBrief';
+
+/** A shop whose month is planned but whose week has no jobs yet still gets the
+ *  month brief and the calendar — the week section below them simply stays
+ *  empty rather than taking the plan down with it. */
+const EMPTY_WEEK: ShopWeekData = { focus: '', jobs: [], prep: [] };
 
 /**
  * The salon's whole screen: what to film, what Lumio asked for, what is waiting
@@ -101,6 +108,11 @@ export function SalonWorkspace({ token, vi, onCount }: {
   const [lastWeek, setLastWeek] = useState<LastWeek | null>(null);
   const [ads, setAds] = useState<AdsReceipt | null>(null);
   const [adsPlan, setAdsPlan] = useState<AdsPlan | null>(null);
+  // The month the team wrote for this shop, and the 30-day calendar behind it.
+  // The API has sent both on /content/my-week all along; this screen simply
+  // never read them, which is why the shop's side had no plan to follow.
+  const [monthBrief, setMonthBrief] = useState<MonthBriefData | null>(null);
+  const [planSheet, setPlanSheet] = useState<ShopPlanSheet | null>(null);
   // The ask's one button opens the picker on the send box at the top of the tab.
   const askSend = useRef<(() => void) | null>(null);
   const [weekUnread, setWeekUnread] = useState(0);
@@ -115,12 +127,12 @@ export function SalonWorkspace({ token, vi, onCount }: {
     if (!token) return;
     const [s, w, h, u] = await Promise.all([
       apiFetch<SuggestionFeed>(fresh('/content/suggestions'), { token }).catch(() => null),
-      apiFetch<{ week: ClientWeek | null; weekKey: string | null; lastWeek: LastWeek | null; ads: AdsReceipt | null; adsPlan: AdsPlan | null }>(fresh(`/content/my-week?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
+      apiFetch<{ week: ClientWeek | null; weekKey: string | null; lastWeek: LastWeek | null; ads: AdsReceipt | null; adsPlan: AdsPlan | null; monthBrief: MonthBriefData | null; planSheet: ShopPlanSheet | null }>(fresh(`/content/my-week?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
       apiFetch<{ ideas: HolidayIdea[] }>(fresh(`/content/my-holidays?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
       apiFetch<{ bySubject?: Record<string, number> }>(fresh('/content/chat/unread'), { token }).catch(() => null),
     ]);
     if (s) { setSugg(s); onCount?.(s.waiting ?? s.open.length); }
-    if (w) { setWeek(w.week); setWeekKey(w.weekKey ?? null); setLastWeek(w.lastWeek ?? null); setAds(w.ads ?? null); setAdsPlan(w.adsPlan ?? null); }
+    if (w) { setWeek(w.week); setWeekKey(w.weekKey ?? null); setLastWeek(w.lastWeek ?? null); setAds(w.ads ?? null); setAdsPlan(w.adsPlan ?? null); setMonthBrief(w.monthBrief ?? null); setPlanSheet(w.planSheet ?? null); }
     if (h) setHolidays(h.ideas ?? []);
     if (u && w?.weekKey) setWeekUnread(u.bySubject?.[`week:${w.weekKey}`] ?? 0);
     // After the Promise.all, so it means "we asked and this is the answer",
@@ -130,6 +142,19 @@ export function SalonWorkspace({ token, vi, onCount }: {
   }, [token, vi, onCount]);
 
   useEffect(() => { load(); }, [load]);
+
+  /** The two month chips on the plan: turn the brief and the calendar
+   *  together, without pulling the week, the receipt and the ads pitch
+   *  along behind them. */
+  const pickMonth = useCallback(async (month: string) => {
+    if (!token) return;
+    const r = await apiFetch<{ monthBrief: MonthBriefData | null; planSheet: ShopPlanSheet | null }>(
+      fresh(`/content/my-month?month=${encodeURIComponent(month)}`), { token },
+    ).catch(() => null);
+    if (!r) return;
+    setMonthBrief(r.monthBrief ?? null);
+    setPlanSheet(r.planSheet ?? null);
+  }, [token]);
   // A suggestion the team sends at ten shows up at ten, not when the shop
   // next reloads: every 30s while visible, and the moment the app comes back.
   useLive(load, 30_000, Boolean(token));
@@ -202,10 +227,11 @@ export function SalonWorkspace({ token, vi, onCount }: {
       {/* ---- 2. the week, as a thing the shop works on ----
              The whole plan, editable in place, with the thread under it —
              see ShopWeek. Then the holidays ahead with a programme each. */}
-      {!!week?.jobs.length && (
+      {(!!week?.jobs.length || !!planSheet || !!monthBrief) && (
         <ShopWeek
-          token={token} vi={vi} week={week} weekKey={weekKey} unread={weekUnread}
+          token={token} vi={vi} week={week ?? EMPTY_WEEK} weekKey={weekKey} unread={weekUnread}
           lastWeek={lastWeek} ads={ads} adsPlan={adsPlan} onSend={() => askSend.current?.()}
+          monthBrief={monthBrief} planSheet={planSheet} onPickMonth={pickMonth}
           onChanged={load} onError={setErr}
         />
       )}

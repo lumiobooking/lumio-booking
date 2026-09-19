@@ -9,7 +9,9 @@ import { isStaleBuild, reloadOnceForStaleBuild } from '../lib/stale-build';
  * Next's default is one generic English sentence pointing at a console no
  * phone user can open — which turns every real defect into "lỗi hệ thống"
  * with nothing to act on. This screen shows the actual message and stack
- * instead, so a screenshot from any device carries the diagnosis with it,
+ * instead — with the page it happened on, because a stack of minified
+ * chunk names does not name a screen — so a screenshot from any device
+ * carries the diagnosis with it,
  * and one tap tries again without hunting for a refresh gesture.
  *
  * One error is not a defect at all: a tab that outlived a deploy asking for
@@ -34,7 +36,7 @@ export default function PageError({ error, reset }: { error: Error & { digest?: 
           background: '#1e293b', border: '1px solid #334155', borderRadius: 10, padding: 12,
           maxHeight: 260, overflow: 'auto', color: '#fbbf24',
         }}>
-          {String(error?.message || error)}{error?.digest ? `\n\ndigest: ${error.digest}` : ''}{'\n\n'}{String(error?.stack || '').slice(0, 800)}
+          {typeof window !== 'undefined' ? `trang: ${window.location.pathname}${window.location.search}\n\n` : ''}{String(error?.message || error)}{error?.digest ? `\n\ndigest: ${error.digest}` : ''}{'\n\n'}{String(error?.stack || '').slice(0, 800)}
         </pre>
         <button onClick={() => (stale ? window.location.reload() : reset())} style={{
           marginTop: 14, width: '100%', padding: '12px 16px', borderRadius: 10, border: 'none',

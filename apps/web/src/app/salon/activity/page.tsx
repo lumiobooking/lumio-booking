@@ -25,7 +25,13 @@ const TYPE_META: Record<string, { bg: string; icon: string }> = {
   cancel: { bg: '#ef4444', icon: 'M3 4h18v17H3zM8 2v4M16 2v4M3 10h18M9.5 14l5 4M14.5 14l-5 4' },
   payment: { bg: '#10b981', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' },
   report: { bg: '#f59e0b', icon: 'M6 3h9l5 5v13H6zM14 3v6h6M9 13h6M9 17h4' },
+  // A scheduled post that did not go out. The API has sent this type since
+  // the queue started reporting failures; without a row here the whole screen
+  // threw on `m.bg` and the error boundary took over.
+  postFailed: { bg: '#ef4444', icon: 'M12 3L2 20h20zM12 9v5M12 17.3v.4' },
 };
+/** A type this build does not know yet must never white-screen the page. */
+const UNKNOWN_META = { bg: 'var(--c475569)', icon: 'M12 3L2 20h20zM12 9v5M12 17.3v.4' };
 
 function Inner() {
   const { token } = useAuth();
@@ -130,7 +136,7 @@ function Inner() {
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.6, color: 'var(--c64748b)', marginBottom: 8 }}>{day}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {list.map((i) => {
-                const m = TYPE_META[i.type];
+                const m = TYPE_META[i.type] ?? UNKNOWN_META;
                 const clickable = !!i.appointmentId || !!i.link;
                 const hovered = hoverId === i.id;
                 const open = () => { if (i.appointmentId) setOpenId(i.appointmentId); else if (i.link) router.push(i.link); };

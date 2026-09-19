@@ -10,7 +10,7 @@ import { useLang } from '../lib/i18n';
 import { useIsMobile } from '../lib/responsive';
 import { BookingDetailSheet } from './BookingDetailSheet';
 
-interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
+interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
 
 const ACT_SEEN_KEY = 'lumio_activity_seen';
 
@@ -19,7 +19,13 @@ const TYPE_META: Record<string, { bg: string; icon: string }> = {
   cancel: { bg: '#ef4444', icon: 'M3 4h18v17H3zM8 2v4M16 2v4M3 10h18M9.5 14l5 4M14.5 14l-5 4' },
   payment: { bg: '#10b981', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' },
   report: { bg: '#f59e0b', icon: 'M6 3h9l5 5v13H6zM14 3v6h6M9 13h6M9 17h4' },
+  // A scheduled post that did not go out. The API has sent this type since
+  // the queue started reporting failures; without a row here the whole screen
+  // threw on `m.bg` and the error boundary took over.
+  postFailed: { bg: '#ef4444', icon: 'M12 3L2 20h20zM12 9v5M12 17.3v.4' },
 };
+/** A type this build does not know yet must never white-screen the page. */
+const UNKNOWN_META = { bg: 'var(--c475569)', icon: 'M12 3L2 20h20zM12 9v5M12 17.3v.4' };
 
 /**
  * Top-bar notification bell shown in the corner on desktop and in the mobile
@@ -80,7 +86,7 @@ export function NotificationBell() {
     if (s < 86400) return Math.floor(s / 3600) + L(' giờ', 'h');
     return Math.floor(s / 86400) + L(' ngày', 'd');
   };
-  const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : t === 'report' ? '' : L('· TT', '· Paid');
+  const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : t === 'report' || t === 'postFailed' ? '' : L('· TT', '· Paid');
   // A month-end marketing report: the backend sends the raw status so each
   // language words it itself.
   const reportText = (status: string) => status === 'approved'
@@ -120,7 +126,7 @@ export function NotificationBell() {
               {recent.length === 0 ? (
                 <p style={{ color: 'var(--c64748b)', fontSize: 13.5, padding: '22px 15px', textAlign: 'center', margin: 0 }}>{L('Chưa có thông báo nào.', 'No notifications yet.')}</p>
               ) : recent.map((i) => {
-                const m = TYPE_META[i.type];
+                const m = TYPE_META[i.type] ?? UNKNOWN_META;
                 const clickable = !!i.appointmentId || !!i.link;
                 const hovered = hoverId === i.id;
                 const go = () => { setOpen(false); if (i.appointmentId) setOpenId(i.appointmentId); else if (i.link) router.push(i.link); else router.push('/salon/activity'); };

@@ -1082,6 +1082,30 @@ function Inner() {
     const tag = card.via && card.via.startsWith('#') ? card.via : '';
     await sendIdeaToPlan({ kind: 'film', text: card.title, brief: { caption: '', hashtags: tag ? [tag] : [] } }, day);
   }
+  /**
+   * Drag a slot to another day. The grid moves at once; the server's answer
+   * (which also handles a swap with a planned day) then replaces both days.
+   * On failure the two days go back to what they were, and the sheet says so.
+   */
+  async function movePlanEntry(from: string, to: string) {
+    if (!token || !sheet) return;
+    const before = { from: sheet.entries[from], to: sheet.entries[to] };
+    const place = (a: PlanEntry | null | undefined, b: PlanEntry | null | undefined) => setSheet((cur) => {
+      if (!cur) return cur;
+      const entries = { ...cur.entries };
+      if (a) entries[from] = a; else delete entries[from];
+      if (b) entries[to] = b; else delete entries[to];
+      return { ...cur, entries };
+    });
+    place(before.to ? { ...before.to, day: from } : null, before.from ? { ...before.from, day: to } : null);
+    try {
+      const r = await apiFetch<{ ok: boolean; from: PlanEntry | null; to: PlanEntry | null }>('/content/plan-sheet/move', { method: 'POST', token, body: { from, to } });
+      place(r.from, r.to);
+    } catch (e) {
+      place(before.from, before.to);
+      throw e;
+    }
+  }
   /** Empty one day of the sheet. */
   async function clearPlanEntry(day: string) {
     if (!token) return;
@@ -2751,6 +2775,7 @@ function Inner() {
                     }}
                     onSave={savePlanEntry}
                     onClear={clearPlanEntry}
+                    onMoveDay={movePlanEntry}
                     tags={sheet.tags}
                     onSaveTags={async (tags) => {
                       const r = await apiFetch<{ ok: boolean; tags: PlanTags }>('/content/plan-tags', { method: 'POST', token, body: tags });

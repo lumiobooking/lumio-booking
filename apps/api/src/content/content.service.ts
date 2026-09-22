@@ -29,7 +29,7 @@ import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel, localParts } from './week-key';
 import { MONTH_BRIEF_KEY, cleanBrief, briefForShop, monthKeyIn, isMonthKey, type MonthBrief } from './month-brief';
 import { PLAN_TAGS_KEY, readTags, cleanTags, type PlanTags } from './plan-tags';
-import { PLAN_SHEET_KEY, cleanSheet, mergeEntry, entryHasContent, entryForShop, isDayKey, monthsCovering, monthOfDay, shiftMonthKey, windowOf, monthGrid, type PlanSheet } from './plan-sheet';
+import { PLAN_SHEET_KEY, cleanSheet, mergeEntry, swapEntries, entryHasContent, entryForShop, isDayKey, monthsCovering, monthOfDay, shiftMonthKey, windowOf, monthGrid, type PlanSheet } from './plan-sheet';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
 import { scopeOf, knownTrades } from './trends/trend-feed';
 import { tradeKeywordsFor, fillKeyword } from './trends/trade-keywords';
@@ -1200,6 +1200,33 @@ export class ContentService {
     if (entryHasContent(entry)) sheet[day] = entry; else delete sheet[day];
     await this.writeSheetMonth(tenantId, month, sheet);
     return { ok: true, day, entry: entryHasContent(entry) ? entry : null };
+  }
+
+  /**
+   * Drag a slot to another day. An occupied day trades places with it, so
+   * nothing is overwritten; the two months are read and written together
+   * when the move crosses one. Team only, like every other edit.
+   */
+  async movePlanEntry(user: AuthenticatedUser, dto: { from?: unknown; to?: unknown }) {
+    if (user.role !== UserRole.SUPER_ADMIN && !user.supportSession) {
+      throw new ForbiddenException('Chỉ team Lumio sửa được plan. Tiệm xem lịch và duyệt bài.');
+    }
+    if (!isDayKey(dto?.from) || !isDayKey(dto?.to)) throw new BadRequestException('from and to must be YYYY-MM-DD');
+    const from = dto.from;
+    const to = dto.to;
+    if (from === to) return { ok: true, from: null, to: null, unchanged: true };
+    const tenantId = this.tenantId(user);
+    const mFrom = monthOfDay(from);
+    const mTo = monthOfDay(to);
+    const sheetFrom = await this.readSheetMonth(tenantId, mFrom);
+    const sheetTo = mTo === mFrom ? sheetFrom : await this.readSheetMonth(tenantId, mTo);
+    if (!sheetFrom[from]) throw new BadRequestException('Ngày này chưa có nội dung để dời.');
+    const r = swapEntries(sheetFrom[from] ?? null, sheetTo[to] ?? null, from, to, user.email ?? 'Lumio', new Date());
+    if (r.from) sheetFrom[from] = r.from; else delete sheetFrom[from];
+    if (r.to) sheetTo[to] = r.to; else delete sheetTo[to];
+    await this.writeSheetMonth(tenantId, mFrom, sheetFrom);
+    if (mTo !== mFrom) await this.writeSheetMonth(tenantId, mTo, sheetTo);
+    return { ok: true, from: r.from, to: r.to };
   }
 
   /** Every week this salon has on file, newest first. */

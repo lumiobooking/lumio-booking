@@ -500,6 +500,12 @@ export class ContentController {
     return this.svc.savePlanEntry(user, dto);
   }
 
+  /** Drag a slot to another day; an occupied day trades places. */
+  @Post('plan-sheet/move')
+  movePlanEntry(@CurrentUser() user: AuthenticatedUser, @Body() dto: { from?: string; to?: string }) {
+    return this.svc.movePlanEntry(user, dto);
+  }
+
   /** This salon's pillar and format chips on the plan — the team edits them. */
   @Post('plan-tags')
   savePlanTags(@CurrentUser() user: AuthenticatedUser, @Body() dto: { pillars?: unknown; formats?: unknown }) {

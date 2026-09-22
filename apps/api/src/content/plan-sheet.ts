@@ -123,6 +123,21 @@ export function mergeEntry(current: PlanEntry | null, patch: unknown, day: strin
   return { ...cleanEntry(next, day), updatedAt: now.toISOString(), updatedBy: who };
 }
 
+/**
+ * Move one day's slot to another day. If the other day already holds a
+ * slot, the two trade places — dragging onto a planned day must never
+ * swallow what was there. Each moved slot takes its new day and the mover's
+ * by-line; everything else (words, chips, the linked post) travels as is.
+ * Returns what each day holds afterwards; null means that day is now empty.
+ */
+export function swapEntries(
+  atFrom: PlanEntry | null, atTo: PlanEntry | null, from: string, to: string, who: string, now: Date,
+): { from: PlanEntry | null; to: PlanEntry | null } {
+  const land = (e: PlanEntry | null, day: string): PlanEntry | null =>
+    e && entryHasContent(e) ? { ...cleanEntry(e, day), updatedAt: now.toISOString(), updatedBy: who } : null;
+  return { from: land(atTo, from), to: land(atFrom, to) };
+}
+
 /** A stored month, validated, with empty and misfiled entries dropped. */
 export function cleanSheet(raw: unknown, month: string): PlanSheet {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;

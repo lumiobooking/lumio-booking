@@ -1,4 +1,4 @@
-import { cleanEntry, cleanSheet, emptyEntry, entryHasContent, entryForShop, isDayKey, mergeEntry, monthsCovering, shiftMonthKey, windowOf, monthGrid, ENTRY_LIMITS } from './plan-sheet';
+import { cleanEntry, cleanSheet, emptyEntry, entryHasContent, entryForShop, isDayKey, mergeEntry, monthsCovering, shiftMonthKey, windowOf, monthGrid, ENTRY_LIMITS, swapEntries } from './plan-sheet';
 
 const NOW = new Date('2026-09-15T10:00:00Z');
 
@@ -118,5 +118,27 @@ describe('stepping a month', () => {
       expect(g.first).toBe(`${key}-01`);
       expect(monthsCovering(g.from, g.days)).toContain(key);
     }
+  });
+});
+
+describe('moving a slot to another day', () => {
+  const now = new Date('2026-09-20T10:00:00Z');
+  const slot = (day: string, topic: string) => ({ ...cleanEntry({ topic, air: ['facebook'], pillar: 'cta' }, day) });
+
+  it('moves onto an empty day and leaves the old day empty', () => {
+    const r = swapEntries(slot('2026-09-06', 'banh mi'), null, '2026-09-06', '2026-09-09', 'an@lumio', now);
+    expect(r.from).toBeNull();
+    expect(r.to).toMatchObject({ day: '2026-09-09', topic: 'banh mi', pillar: 'cta', air: ['facebook'], updatedBy: 'an@lumio' });
+  });
+
+  it('trades places with a planned day instead of overwriting it', () => {
+    const r = swapEntries(slot('2026-09-06', 'A'), slot('2026-09-08', 'B'), '2026-09-06', '2026-09-08', 'an', now);
+    expect(r.from).toMatchObject({ day: '2026-09-06', topic: 'B' });
+    expect(r.to).toMatchObject({ day: '2026-09-08', topic: 'A' });
+  });
+
+  it('crosses a month and keeps the linked post', () => {
+    const r = swapEntries({ ...slot('2026-09-30', 'A'), postId: 'p1' }, null, '2026-09-30', '2026-10-02', 'an', now);
+    expect(r.to).toMatchObject({ day: '2026-10-02', postId: 'p1' });
   });
 });

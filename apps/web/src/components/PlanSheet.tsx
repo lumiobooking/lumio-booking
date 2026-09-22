@@ -50,7 +50,7 @@ const FORMAT_ICON: Record<string, string> = { poster: '🖼', album: '🎞', vid
 const iconOf = (id: string) => FORMAT_ICON[id] ?? '◆';
 
 export function PlanSheet({
-  month, months, onMonth, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected, postsKnown, focusDay, tags, onSaveTags,
+  month, months, onMonth, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected, postsKnown, focusDay, tags, onSaveTags, onMoveDay,
 }: {
   /** The calendar month the sheet shows, "YYYY-MM" — the shop's month, next to the month brief. */
   month: string;
@@ -81,6 +81,8 @@ export function PlanSheet({
   tags?: PlanTags | null;
   /** With canEdit, the team may reword, recolour, hide and add chips. Resolves with what the server kept. */
   onSaveTags?: (tags: PlanTags) => Promise<void>;
+  /** With canEdit: move a day's slot to another day (an occupied day trades places). Drag on desktop, "Dời sang" in the panel everywhere. */
+  onMoveDay?: (from: string, to: string) => Promise<void>;
 }) {
   const T = (a: string, b: string) => (vi ? a : b);
   const tagSet = useMemo(() => tagsOr(tags), [tags]);
@@ -104,6 +106,25 @@ export function PlanSheet({
     return { wd: (vi ? WD_VI : WD_EN)[mondayIndex(key)], d, m: (vi ? MONTH_VI : MONTH_EN)[m - 1] };
   };
   const postOf = (e: PlanEntry | undefined) => (e?.postId ? postById.get(e.postId) ?? null : null);
+
+  // ---- moving a slot ----------------------------------------------------------
+  // A slot whose post is already scheduled (or out) stays put: the post has
+  // its own date, and a plan that says the 14th while the post goes out on
+  // the 12th is worse than a plan that will not move. A draft post may move.
+  const canMove = canEdit && Boolean(onMoveDay);
+  const pinned = (e: PlanEntry | undefined) => { const p = postOf(e); return Boolean(p && p.status !== 'draft') || Boolean(e?.postId && !knowsPosts); };
+  const [dragFrom, setDragFrom] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false);
+  const [moveErr, setMoveErr] = useState('');
+  const moveDay = async (from: string, to: string) => {
+    if (!onMoveDay || from === to || pinned(entries[from]) || pinned(entries[to])) return;
+    setMoving(true); setMoveErr('');
+    try { await onMoveDay(from, to); if (open === from) setOpen(to); }
+    catch { setMoveErr(T('Chưa dời được — thử lại.', 'Could not move — try again.')); }
+    finally { setMoving(false); }
+  };
+  const moveTargets = useMemo(() => weeks.flat().filter((d) => d.inWindow).map((d) => d.key), [weeks]);
 
   // How wide one day is. The shop reads the plan in a 1000px column and
   // the team in a full-width tab; the same seven cells are 130px in one and
@@ -138,10 +159,20 @@ export function PlanSheet({
     const clickable = canEdit ? (d.inWindow || has) : has;
     const st = post ? STATUS[post.status] ?? STATUS.draft : null;
     const hm = post ? instantToWall(post.scheduledAt, tz).slice(11, 16) : '';
+    const draggable = canMove && !isMobile && has && !pinned(e) && !moving;
+    const dropOk = Boolean(dragFrom && dragFrom !== d.key && !pinned(e));
+    const over = dragOver === d.key && dropOk;
 
     return (
       <div
         key={d.key}
+        draggable={draggable}
+        onDragStart={draggable ? (ev) => { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', d.key); setDragFrom(d.key); } : undefined}
+        onDragEnd={() => { setDragFrom(null); setDragOver(null); }}
+        onDragOver={dragFrom ? (ev) => { if (!dropOk) return; ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; if (dragOver !== d.key) setDragOver(d.key); } : undefined}
+        onDragLeave={dragFrom ? () => setDragOver((k) => (k === d.key ? null : k)) : undefined}
+        onDrop={dragFrom ? (ev) => { ev.preventDefault(); const from = dragFrom; setDragFrom(null); setDragOver(null); if (from && dropOk) void moveDay(from, d.key); } : undefined}
+        title={draggable ? T('Kéo sang ngày khác để dời', 'Drag to another day to move it') : undefined}
         role={clickable ? 'button' : undefined}
         tabIndex={clickable ? 0 : -1}
         onClick={() => clickable && setOpen(d.key)}
@@ -149,10 +180,11 @@ export function PlanSheet({
         style={{
           position: 'relative', minHeight: isMobile ? 0 : compact ? 108 : 132, borderRadius: compact ? 10 : 12, padding: compact ? '7px 7px 7px 10px' : '9px 10px 9px 12px',
           background: has ? 'var(--c0f172a)' : 'transparent',
-          border: `1px ${has ? 'solid' : 'dashed'} ${selected ? '#6366f1' : d.today && !has ? 'rgba(99,102,241,.6)' : 'var(--c334155)'}`,
-          boxShadow: selected ? '0 0 0 2px rgba(99,102,241,.35)' : 'none',
-          opacity: d.past && !has ? .4 : d.past ? .75 : 1,
-          cursor: clickable ? 'pointer' : 'default',
+          border: `1px ${has || over ? 'solid' : 'dashed'} ${over || selected ? '#6366f1' : d.today && !has ? 'rgba(99,102,241,.6)' : 'var(--c334155)'}`,
+          boxShadow: over ? '0 0 0 3px rgba(99,102,241,.45)' : selected ? '0 0 0 2px rgba(99,102,241,.35)' : 'none',
+          ...(over ? { background: 'rgba(99,102,241,.12)' } : {}),
+          opacity: dragFrom === d.key ? .35 : d.past && !has ? .4 : d.past ? .75 : 1,
+          cursor: draggable ? 'grab' : clickable ? 'pointer' : 'default',
           display: 'flex', flexDirection: 'column', gap: compact ? 4 : 6, minWidth: 0, outline: 'none',
           transition: 'border-color .12s, box-shadow .12s',
         }}
@@ -254,7 +286,9 @@ export function PlanSheet({
       </div>
       {canEdit && (
         <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10 }}>
-          {T('Bấm vào ngày để soạn · ← → chuyển ngày · tự lưu · xong thì "Lên lịch đăng"', 'Tap a day to write · ← → moves days · saves itself · then "Schedule"')}
+          {T('Bấm vào ngày để soạn · kéo thả để dời ngày · tự lưu · xong thì "Lên lịch đăng"', 'Tap a day to write · drag to move it · saves itself · then "Schedule"')}
+          {moving && <span style={{ marginLeft: 8, color: 'var(--ink-link)' }}>{T('Đang dời…', 'Moving…')}</span>}
+          {moveErr && <span style={{ marginLeft: 8, color: 'var(--ink-bad)' }}>{moveErr}</span>}
         </div>
       )}
       {!canEdit && (
@@ -302,6 +336,9 @@ export function PlanSheet({
           pillars={pillars}
           formats={formats}
           onEditTags={canEditTags ? setEditing : undefined}
+          moveTargets={canMove && !pinned(entries[open]) && entryHasContent(entries[open]) ? moveTargets.filter((k) => k !== open && !pinned(entries[k])) : undefined}
+          filledDays={entries}
+          onMoveTo={(to) => moveDay(open, to)}
           onSave={onSave}
           onClear={async (d) => { await onClear(d); setOpen(null); }}
           onSchedule={onSchedule}
@@ -336,7 +373,7 @@ const labelStyle: CSSProperties = { fontSize: 10.5, fontWeight: 800, letterSpaci
 const editLink: CSSProperties = { marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 700, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-link)' };
 
 function DayPanel({
-  day, entry, post, tz, vi, canEdit, isMobile, connected, pillars, formats, onEditTags, onSave, onClear, onSchedule, onOpenPost, onClose, onMove,
+  day, entry, post, tz, vi, canEdit, isMobile, connected, pillars, formats, onEditTags, moveTargets, filledDays, onMoveTo, onSave, onClear, onSchedule, onOpenPost, onClose, onMove,
 }: {
   day: SheetDay; entry: PlanEntry; post: SheetPost | null; tz: string; vi: boolean; canEdit: boolean; isMobile: boolean;
   connected: Record<Air, boolean>;
@@ -344,6 +381,10 @@ function DayPanel({
   formats: TagView[];
   /** Present when this person may edit the chip lists. */
   onEditTags?: (kind: 'pillars' | 'formats') => void;
+  /** Days this slot may move to; absent when it may not move. */
+  moveTargets?: string[];
+  filledDays: Record<string, PlanEntry>;
+  onMoveTo: (to: string) => Promise<void>;
   onSave: (day: string, patch: PlanPatch) => Promise<void>;
   onClear: (day: string) => Promise<void>;
   onSchedule: (entry: PlanEntry) => void;
@@ -516,6 +557,21 @@ function DayPanel({
               <div style={{ fontSize: 11.5, color: 'var(--ink-warn)' }}>{T(`Để lên lịch cần thêm: ${missing.join(' · ')}`, `To schedule, add: ${missing.join(' · ')}`)}</div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {moveTargets && moveTargets.length > 0 && (
+                <select
+                  value=""
+                  onChange={(ev) => { const to = ev.target.value; if (to) { flush(); void onMoveTo(to); } }}
+                  title={T('Dời nội dung sang ngày khác (ngày đã có bài thì đổi chỗ)', 'Move to another day (a planned day trades places)')}
+                  style={{ minHeight: 32, maxWidth: 170, padding: '0 8px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 12, fontFamily: 'inherit', cursor: 'pointer' }}
+                >
+                  <option value="">↔ {T('Dời sang ngày…', 'Move to…')}</option>
+                  {moveTargets.map((k) => {
+                    const [, m, d] = k.split('-').map(Number);
+                    const taken = entryHasContent(filledDays[k]);
+                    return <option key={k} value={k}>{(vi ? WD_VI : WD_EN)[mondayIndex(k)]} {d}/{m}{taken ? T(' · đổi chỗ', ' · swap') : ''}</option>;
+                  })}
+                </select>
+              )}
               {entryHasContent(entry) && !post && (
                 <button type="button" onClick={() => { if (window.confirm(T('Xoá nội dung ngày này?', 'Clear this day?'))) void onClear(day.key); }} style={{ fontSize: 12, color: 'var(--ink-bad)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>{T('Xoá ngày', 'Clear')}</button>
               )}

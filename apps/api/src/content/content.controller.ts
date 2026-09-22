@@ -500,6 +500,12 @@ export class ContentController {
     return this.svc.savePlanEntry(user, dto);
   }
 
+  /** This salon's pillar and format chips on the plan — the team edits them. */
+  @Post('plan-tags')
+  savePlanTags(@CurrentUser() user: AuthenticatedUser, @Body() dto: { pillars?: unknown; formats?: unknown }) {
+    return this.svc.savePlanTags(user, dto);
+  }
+
   @Get('weeks-ahead')
   weeksAhead(@CurrentUser() user: AuthenticatedUser, @Query('blocks') blocks?: string) {
     return this.svc.weeksAhead(user, Number(blocks) || 5);

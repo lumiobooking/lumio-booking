@@ -43,7 +43,8 @@ export type Air = typeof AIR[number];
 export interface PlanEntry {
   /** "YYYY-MM-DD", salon-local. */
   day: string;
-  pillar: Pillar | '';
+  /** A built-in pillar id or one this salon added (see ./plan-tags). */
+  pillar: string;
   /** The headline the team writes first — "Jelly French Is Having a Moment". */
   topic: string;
   /** The caption body, ready to paste. */
@@ -51,7 +52,8 @@ export interface PlanEntry {
   /** A link to the picture / clip / Drive folder — a pointer, not an upload. */
   mediaUrl: string;
   air: Air[];
-  format: Format | '';
+  /** A built-in format id or one this salon added (see ./plan-tags). */
+  format: string;
   /** The scheduled post this entry became, once it did. */
   postId: string | null;
   updatedAt: string | null;
@@ -71,7 +73,14 @@ export function emptyEntry(day: string): PlanEntry {
 }
 
 const str = (v: unknown, max: number) => String(v ?? '').replace(/\r/g, '').trim().slice(0, max);
-const oneOf = <T extends string>(v: unknown, list: readonly T[]): T | '' => (typeof v === 'string' && (list as readonly string[]).includes(v) ? (v as T) : '');
+/**
+ * A pillar or format id. Built-in ids pass as before; a salon's own ones are
+ * minted by ./plan-tags as "c-" + a short random slug. Anything else — a
+ * label typed where an id belongs, a script — reads as empty, the same way an
+ * unknown built-in id always has.
+ */
+const tagId = (v: unknown, builtIn: readonly string[]): string =>
+  typeof v === 'string' && (builtIn.includes(v) || /^c-[a-z0-9]{4,24}$/.test(v)) ? v : '';
 
 /** A stored or submitted entry, validated. Never throws; junk reads as empty. */
 export function cleanEntry(raw: unknown, day: string): PlanEntry {
@@ -80,12 +89,12 @@ export function cleanEntry(raw: unknown, day: string): PlanEntry {
   const air = Array.from(new Set(airRaw.filter((a): a is Air => typeof a === 'string' && (AIR as readonly string[]).includes(a))));
   return {
     day,
-    pillar: oneOf(o.pillar, PILLARS),
+    pillar: tagId(o.pillar, PILLARS),
     topic: str(o.topic, ENTRY_LIMITS.topic),
     detail: str(o.detail, ENTRY_LIMITS.detail),
     mediaUrl: str(o.mediaUrl, ENTRY_LIMITS.mediaUrl),
     air,
-    format: oneOf(o.format, FORMATS),
+    format: tagId(o.format, FORMATS),
     postId: typeof o.postId === 'string' && o.postId ? o.postId.slice(0, 64) : null,
     updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : null,
     updatedBy: typeof o.updatedBy === 'string' ? o.updatedBy : null,
@@ -177,7 +186,7 @@ export function windowOf(sheet: PlanSheet, from: string, days: number): PlanShee
  * the media link (a folder in the agency's Drive) and not who typed it.
  */
 export function entryForShop(e: PlanEntry): {
-  day: string; pillar: Pillar | ''; topic: string; detail: string; air: Air[]; format: Format | ''; postId: string | null; updatedAt: string | null;
+  day: string; pillar: string; topic: string; detail: string; air: Air[]; format: string; postId: string | null; updatedAt: string | null;
 } {
   return { day: e.day, pillar: e.pillar, topic: e.topic, detail: e.detail, air: e.air, format: e.format, postId: e.postId, updatedAt: e.updatedAt };
 }

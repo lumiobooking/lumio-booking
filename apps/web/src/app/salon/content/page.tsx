@@ -37,7 +37,7 @@ import { addDays, type AheadBlock } from '../../../components/plan-grid';
 import { PostDetailModal } from '../../../components/PostDetailModal';
 import { PlanIdeas } from '../../../components/PlanIdeas';
 import { PlanSheet } from '../../../components/PlanSheet';
-import { entryToDraft, entryFromIdea, mergeIdeaInto, entryHasContent, nextMonth, monthTitle, shiftMonth, monthInRange, type PlanEntry, type PlanPatch } from '../../../components/plan-sheet';
+import { entryToDraft, entryFromIdea, mergeIdeaInto, entryHasContent, nextMonth, monthTitle, shiftMonth, monthInRange, type PlanEntry, type PlanPatch, type PlanTags } from '../../../components/plan-sheet';
 import { MonthBriefEditor, type MonthBriefData } from '../../../components/MonthBrief';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
@@ -719,7 +719,7 @@ function Inner() {
   const [briefBusy, setBriefBusy] = useState(false);
   const [ahead, setAhead] = useState<AheadBlock[] | null>(null);
   /** The plan sheet: one slot per day, the team's working document. */
-  const [sheet, setSheet] = useState<{ tz: string; today: string; from: string; days: number; month: string; ahead?: { month: string; filled: number }; entries: Record<string, PlanEntry> } | null>(null);
+  const [sheet, setSheet] = useState<{ tz: string; today: string; from: string; days: number; month: string; ahead?: { month: string; filled: number }; entries: Record<string, PlanEntry>; tags?: PlanTags } | null>(null);
   /** The month the plan shows; empty = the salon's current month. */
   const [planMonth, setPlanMonth] = useState<string>('');
   /** The day the plan should open on next — set when an idea is sent there. */
@@ -2751,6 +2751,11 @@ function Inner() {
                     }}
                     onSave={savePlanEntry}
                     onClear={clearPlanEntry}
+                    tags={sheet.tags}
+                    onSaveTags={async (tags) => {
+                      const r = await apiFetch<{ ok: boolean; tags: PlanTags }>('/content/plan-tags', { method: 'POST', token, body: tags });
+                      setSheet((cur) => (cur ? { ...cur, tags: r.tags } : cur));
+                    }}
                     focusDay={planFocusDay}
                     onSchedule={scheduleFromEntry}
                     onOpenPost={(id) => { setDetailId(id); }}

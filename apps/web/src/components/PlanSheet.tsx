@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { instantToWall } from '../lib/datetime';
 import { WD_VI, WD_EN, MONTH_VI, MONTH_EN, mondayIndex, addDays } from './plan-grid';
 import {
-  PILLARS, FORMATS, AIR, pillarOf, formatOf, emptyEntry, entryHasContent, entryReady, monthWeeks, monthTitle, sheetProgress,
-  type PlanEntry, type PlanPatch, type Air, type SheetDay,
+  AIR, TAG_COLORS, pillarOf, formatOf, emptyEntry, entryHasContent, entryReady, monthWeeks, monthTitle, sheetProgress, tagsOr, tagViews,
+  type PlanEntry, type PlanPatch, type Air, type SheetDay, type PlanTag, type PlanTags, type TagView,
 } from './plan-sheet';
 
 /**
@@ -46,9 +46,11 @@ const STATUS: Record<string, { bg: string; ink: string; icon: string; vi: string
   draft: { bg: 'rgba(148,163,184,.14)', ink: 'var(--c94a3b8)', icon: '📝', vi: 'Bài nháp', en: 'Draft post' },
 };
 const FORMAT_ICON: Record<string, string> = { poster: '🖼', album: '🎞', video: '▶', story: '📱' };
+/** A salon's own format has no icon of its own; a dot keeps the chip's rhythm. */
+const iconOf = (id: string) => FORMAT_ICON[id] ?? '◆';
 
 export function PlanSheet({
-  month, months, onMonth, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected, postsKnown, focusDay,
+  month, months, onMonth, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected, postsKnown, focusDay, tags, onSaveTags,
 }: {
   /** The calendar month the sheet shows, "YYYY-MM" — the shop's month, next to the month brief. */
   month: string;
@@ -75,8 +77,18 @@ export function PlanSheet({
   postsKnown?: boolean;
   /** A day the page wants opened in the panel — an idea just landed on it. Changes open it; null does nothing. */
   focusDay?: string | null;
+  /** This salon's pillar and format chips; missing → the built-in set. */
+  tags?: PlanTags | null;
+  /** With canEdit, the team may reword, recolour, hide and add chips. Resolves with what the server kept. */
+  onSaveTags?: (tags: PlanTags) => Promise<void>;
 }) {
   const T = (a: string, b: string) => (vi ? a : b);
+  const tagSet = useMemo(() => tagsOr(tags), [tags]);
+  const pillars = useMemo(() => tagViews(tagSet.pillars), [tagSet]);
+  const formats = useMemo(() => tagViews(tagSet.formats), [tagSet]);
+  /** Which list is open in the chip editor. */
+  const [editing, setEditing] = useState<'pillars' | 'formats' | null>(null);
+  const canEditTags = canEdit && Boolean(onSaveTags);
   const weeks = useMemo(() => monthWeeks(month, today), [month, today]);
   const postById = useMemo(() => new Map(posts.map((p) => [p.id, p])), [posts]);
   const progress = sheetProgress(weeks, entries);
@@ -119,7 +131,7 @@ export function PlanSheet({
   const card = (d: SheetDay) => {
     const e = entries[d.key];
     const has = entryHasContent(e);
-    const p = pillarOf(e?.pillar ?? '');
+    const p = pillarOf(e?.pillar ?? '', pillars);
     const post = postOf(e);
     const L = label(d.key);
     const selected = open === d.key;
@@ -170,7 +182,7 @@ export function PlanSheet({
               <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>{e.detail}</div>
             )}
             <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: compact ? 4 : 5, flexWrap: 'wrap', minWidth: 0 }}>
-              {e.format && <span title={formatOf(e.format)?.[vi ? 'vi' : 'en']} style={{ fontSize: 11, color: 'var(--c94a3b8)', fontWeight: 700, whiteSpace: 'nowrap' }}>{FORMAT_ICON[e.format]}{compact ? '' : ` ${formatOf(e.format)?.[vi ? 'vi' : 'en']}`}</span>}
+              {e.format && <span title={formatOf(e.format, formats)?.[vi ? 'vi' : 'en']} style={{ fontSize: 11, color: 'var(--c94a3b8)', fontWeight: 700, whiteSpace: 'nowrap' }}>{iconOf(e.format)}{compact ? '' : ` ${formatOf(e.format, formats)?.[vi ? 'vi' : 'en'] ?? ''}`}</span>}
               <span style={{ display: 'inline-flex', gap: 3 }}>
                 {AIR.filter((a) => e.air.includes(a.id)).map((a) => <span key={a.id} title={a.id} style={{ width: 9, height: 9, borderRadius: 5, background: a.bg, display: 'inline-block', border: '1px solid rgba(255,255,255,.25)' }} />)}
               </span>
@@ -232,7 +244,7 @@ export function PlanSheet({
         </div>
         {!isMobile && (
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {PILLARS.map((p) => (
+            {pillars.filter((p) => !p.hidden || Object.values(entries).some((e) => e.pillar === p.id)).map((p) => (
               <span key={p.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--c94a3b8)' }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: p.bg, display: 'inline-block' }} />{vi ? p.vi : p.en}
               </span>
@@ -287,12 +299,25 @@ export function PlanSheet({
           canEdit={canEdit}
           isMobile={isMobile}
           connected={connected}
+          pillars={pillars}
+          formats={formats}
+          onEditTags={canEditTags ? setEditing : undefined}
           onSave={onSave}
           onClear={async (d) => { await onClear(d); setOpen(null); }}
           onSchedule={onSchedule}
           onOpenPost={onOpenPost}
           onClose={() => setOpen(null)}
           onMove={(n) => { const k = addDays(open, n); if (dayOf(k)?.inWindow || entryHasContent(entries[k])) setOpen(k); }}
+        />
+      )}
+      {editing && onSaveTags && (
+        <TagEditor
+          kind={editing}
+          list={tagSet[editing]}
+          vi={vi}
+          isMobile={isMobile}
+          onClose={() => setEditing(null)}
+          onSave={async (list) => { await onSaveTags({ ...tagSet, [editing]: list }); setEditing(null); }}
         />
       )}
     </div>
@@ -308,12 +333,17 @@ const field: CSSProperties = {
   border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', outline: 'none', lineHeight: 1.5,
 };
 const labelStyle: CSSProperties = { fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--c94a3b8)', marginBottom: 6 };
+const editLink: CSSProperties = { marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 700, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-link)' };
 
 function DayPanel({
-  day, entry, post, tz, vi, canEdit, isMobile, connected, onSave, onClear, onSchedule, onOpenPost, onClose, onMove,
+  day, entry, post, tz, vi, canEdit, isMobile, connected, pillars, formats, onEditTags, onSave, onClear, onSchedule, onOpenPost, onClose, onMove,
 }: {
   day: SheetDay; entry: PlanEntry; post: SheetPost | null; tz: string; vi: boolean; canEdit: boolean; isMobile: boolean;
   connected: Record<Air, boolean>;
+  pillars: TagView[];
+  formats: TagView[];
+  /** Present when this person may edit the chip lists. */
+  onEditTags?: (kind: 'pillars' | 'formats') => void;
   onSave: (day: string, patch: PlanPatch) => Promise<void>;
   onClear: (day: string) => Promise<void>;
   onSchedule: (entry: PlanEntry) => void;
@@ -366,6 +396,7 @@ function DayPanel({
 
   const chip = (on: boolean, bg: string, ink: string, label: string, onClick?: () => void, extra: CSSProperties = {}) => (
     <button
+      key={label}
       type="button"
       disabled={!canEdit || !onClick}
       onClick={onClick}
@@ -412,9 +443,12 @@ function DayPanel({
           ) : null}
 
           <div>
-            <div style={labelStyle}>{T('Pillar · bài này để làm gì', 'Pillar · what this post is for')}</div>
+            <div style={{ ...labelStyle, display: 'flex', alignItems: 'center' }}>
+              <span>{T('Pillar · bài này để làm gì', 'Pillar · what this post is for')}</span>
+              {onEditTags && <button type="button" onClick={() => onEditTags('pillars')} style={editLink}>✎ {T('Sửa / thêm', 'Edit / add')}</button>}
+            </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {PILLARS.map((p) => chip(local.pillar === p.id, p.bg, p.ink, vi ? p.vi : p.en, canEdit ? () => change({ pillar: local.pillar === p.id ? '' : p.id }) : undefined))}
+              {pillars.filter((p) => !p.hidden || local.pillar === p.id).map((p) => chip(local.pillar === p.id, p.bg, p.ink, vi ? p.vi : p.en, canEdit ? () => change({ pillar: local.pillar === p.id ? '' : p.id }) : undefined))}
             </div>
           </div>
 
@@ -462,9 +496,12 @@ function DayPanel({
               )}
             </div>
             <div>
-              <div style={labelStyle}>{T('Định dạng', 'Format')}</div>
+              <div style={{ ...labelStyle, display: 'flex', alignItems: 'center' }}>
+                <span>{T('Định dạng', 'Format')}</span>
+                {onEditTags && <button type="button" onClick={() => onEditTags('formats')} style={editLink}>✎ {T('Sửa / thêm', 'Edit / add')}</button>}
+              </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {FORMATS.map((f) => chip(local.format === f.id, f.bg, f.ink, `${FORMAT_ICON[f.id]} ${vi ? f.vi : f.en}`, canEdit ? () => change({ format: local.format === f.id ? '' : f.id }) : undefined))}
+                {formats.filter((f) => !f.hidden || local.format === f.id).map((f) => chip(local.format === f.id, f.bg, f.ink, `${iconOf(f.id)} ${vi ? f.vi : f.en}`, canEdit ? () => change({ format: local.format === f.id ? '' : f.id }) : undefined))}
               </div>
             </div>
           </div>
@@ -506,6 +543,94 @@ function DayPanel({
             {entry.updatedBy && <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{T('Sửa lần cuối', 'Last edited')}: {entry.updatedBy}</div>}
           </div>
         )}
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The chip editor: this salon's pillars or formats
+// ---------------------------------------------------------------------------
+
+/**
+ * Reword, recolour, hide or add a chip. There is no delete: a chip in use on
+ * last month's plan would lose its label. "Ẩn" takes it off the choices for
+ * new days and keeps it drawn where it was used (the server enforces the
+ * same rule — a row left out comes back hidden).
+ */
+function TagEditor({ kind, list, vi, isMobile, onClose, onSave }: {
+  kind: 'pillars' | 'formats';
+  list: PlanTag[];
+  vi: boolean;
+  isMobile: boolean;
+  onClose: () => void;
+  onSave: (list: PlanTag[]) => Promise<void>;
+}) {
+  const T = (a: string, b: string) => (vi ? a : b);
+  const [rows, setRows] = useState<(PlanTag & { key: string })[]>(() => list.map((t, i) => ({ ...t, key: t.id || `n${i}` })));
+  const [palette, setPalette] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const edit = (key: string, patch: Partial<PlanTag>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const add = () => {
+    const used = new Set(rows.map((r) => r.color));
+    const color = TAG_COLORS.findIndex((_, i) => !used.has(i));
+    const key = `n${Date.now()}`;
+    setRows((rs) => [...rs, { id: '', vi: '', en: '', color: color < 0 ? rs.length % TAG_COLORS.length : color, key }]);
+  };
+  const save = async () => {
+    const out = rows
+      .map(({ key: _k, ...t }) => ({ ...t, vi: t.vi.trim(), en: t.en.trim() }))
+      .filter((t) => t.vi || t.en || t.id);
+    if (out.some((t) => !t.vi && !t.en)) { setErr(T('Chip nào cũng cần một tên.', 'Every chip needs a name.')); return; }
+    setBusy(true); setErr('');
+    try { await onSave(out); } catch { setErr(T('Chưa lưu được — thử lại.', 'Not saved — try again.')); } finally { setBusy(false); }
+  };
+  const title = kind === 'pillars' ? T('Pillar của tiệm', "This shop's pillars") : T('Định dạng của tiệm', "This shop's formats");
+  const box: CSSProperties = isMobile
+    ? { position: 'fixed', left: 0, right: 0, bottom: 0, top: 'max(48px, 8vh)', borderRadius: '16px 16px 0 0' }
+    : { position: 'fixed', top: '8vh', left: '50%', transform: 'translateX(-50%)', width: 'min(520px, 94vw)', maxHeight: '84vh', borderRadius: 14 };
+  const small: CSSProperties = { ...field, minHeight: 34, padding: '6px 9px', fontSize: 13 };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(2,6,23,.55)' }} />
+      <div style={{ ...box, zIndex: 81, background: 'var(--c111827)', border: '1px solid var(--c334155)', boxShadow: '0 20px 50px rgba(0,0,0,.4)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{title}</div>
+            <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('Chỉ áp dụng cho tiệm này · đổi tên thì các ngày cũ đổi theo', 'This shop only · renaming updates past days too')}</div>
+          </div>
+          <button type="button" onClick={onClose} title="Esc" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'grid', gap: 8, alignContent: 'start' }}>
+          {rows.map((r) => {
+            const c = TAG_COLORS[r.color] ?? TAG_COLORS[12];
+            return (
+              <div key={r.key} style={{ display: 'grid', gap: 6, opacity: r.hidden ? .55 : 1 }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <button type="button" onClick={() => setPalette(palette === r.key ? null : r.key)} title={T('Đổi màu', 'Colour')} style={{ flex: '0 0 auto', width: 34, height: 34, borderRadius: 8, border: '1px solid var(--c334155)', background: c.bg, color: c.ink, cursor: 'pointer', fontWeight: 800, fontFamily: 'inherit' }}>{kind === 'formats' ? iconOf(r.id) : 'A'}</button>
+                  <input value={r.vi} maxLength={30} placeholder={T('Tên tiếng Việt', 'Vietnamese name')} onChange={(e) => edit(r.key, { vi: e.target.value })} style={{ ...small, flex: 1, minWidth: 0 }} />
+                  <input value={r.en} maxLength={30} placeholder={T('Tên tiếng Anh', 'English name')} onChange={(e) => edit(r.key, { en: e.target.value })} style={{ ...small, flex: 1, minWidth: 0 }} />
+                  <button type="button" onClick={() => edit(r.key, { hidden: !r.hidden })} title={r.hidden ? T('Hiện lại', 'Show again') : T('Ẩn khỏi lựa chọn (ngày cũ vẫn giữ)', 'Hide from choices (past days keep it)')} style={{ flex: '0 0 auto', minWidth: 52, height: 34, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: r.hidden ? 'var(--ink-link)' : 'var(--c94a3b8)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700 }}>{r.hidden ? T('Hiện', 'Show') : T('Ẩn', 'Hide')}</button>
+                </div>
+                {palette === r.key && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 40 }}>
+                    {TAG_COLORS.map((pc, i) => (
+                      <button key={i} type="button" onClick={() => { edit(r.key, { color: i }); setPalette(null); }} style={{ width: 24, height: 24, borderRadius: 6, background: pc.bg, cursor: 'pointer', border: i === r.color ? '2px solid var(--cf1f5f9)' : '1px solid var(--c334155)' }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <button type="button" onClick={add} disabled={rows.length >= 24} style={{ justifySelf: 'start', marginTop: 4, minHeight: 34, padding: '0 12px', borderRadius: 8, border: '1px dashed var(--c334155)', background: 'transparent', color: 'var(--ink-link)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>+ {T('Thêm', 'Add')}</button>
+        </div>
+        <div style={{ padding: '10px 14px', borderTop: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {err && <span style={{ fontSize: 12, color: 'var(--ink-bad)' }}>{err}</span>}
+          <button type="button" onClick={onClose} style={{ marginLeft: 'auto', minHeight: 36, padding: '0 14px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--cf1f5f9)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Huỷ', 'Cancel')}</button>
+          <button type="button" disabled={busy} onClick={() => void save()} style={{ minHeight: 36, padding: '0 14px', borderRadius: 9, border: '1px solid #6366f1', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 800, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit' }}>{busy ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}</button>
+        </div>
       </div>
     </>
   );

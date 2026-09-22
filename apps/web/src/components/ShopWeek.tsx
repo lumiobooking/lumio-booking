@@ -5,7 +5,7 @@ import { apiFetch } from '../lib/api';
 import { MonthBriefView, type MonthBriefData } from './MonthBrief';
 import { PlanSheet } from './PlanSheet';
 import { useIsMobile } from '../lib/responsive';
-import type { PlanEntry } from './plan-sheet';
+import type { PlanEntry, PlanTags } from './plan-sheet';
 
 /** The 30-day plan as my-week sends it to the shop: slots rebuilt without the agency's working fields. */
 export interface ShopPlanSheet {
@@ -13,6 +13,8 @@ export interface ShopPlanSheet {
   /** Last month, this month and next — the three the shop may turn between. */
   months?: string[];
   entries: Record<string, Omit<PlanEntry, 'mediaUrl' | 'updatedBy'>>;
+  /** The salon's own pillar and format chips. */
+  tags?: PlanTags;
 }
 import { Inline } from './WeekPlanBoard';
 import { ItemComments } from './ContentChat';
@@ -242,6 +244,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
             entries={Object.fromEntries(Object.entries(planSheet.entries).map(([k, e]) => [k, { ...e, mediaUrl: '', updatedBy: null }]))}
             posts={[]}
             postsKnown={false}
+            tags={planSheet.tags}
             vi={vi}
             canEdit={false}
             isMobile={mobile}

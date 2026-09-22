@@ -10,8 +10,12 @@
 
 import { addDays, daysBetween, mondayIndex } from './plan-grid';
 
-export type Pillar = 'inspiration' | 'promotion' | 'feedback' | 'cta' | 'education' | 'behind';
-export type Format = 'poster' | 'album' | 'video' | 'story';
+/**
+ * A pillar or format id. The built-in ids ('inspiration', 'poster', …) and
+ * each salon's own ("c-…") — the lists are the salon's, see PlanTags.
+ */
+export type Pillar = string;
+export type Format = string;
 export type Air = 'facebook' | 'instagram' | 'tiktok' | 'google';
 
 export interface PlanEntry {
@@ -32,25 +36,67 @@ export type PlanPatch = Partial<Pick<PlanEntry, 'pillar' | 'topic' | 'detail' | 
 export const emptyEntry = (day: string): PlanEntry => ({ day, pillar: '', topic: '', detail: '', mediaUrl: '', air: [], format: '', postId: null, updatedAt: null, updatedBy: null });
 
 /**
- * The pillar swatches, lifted from the sheet: the colours the team already
- * reads at a glance. Backgrounds are fixed accents (they do not flip with the
- * theme) and each carries its own ink, so a chip is legible in both modes.
+ * Chip colours: a fixed palette, lifted from the agency's sheet. Backgrounds
+ * are fixed accents (they do not flip with the theme) and each carries its
+ * own ink, so a chip is legible in both modes. Same order as the API's
+ * TAG_COLORS — a tag stores an index into it.
  */
-export const PILLARS: { id: Pillar; vi: string; en: string; bg: string; ink: string }[] = [
-  { id: 'inspiration', vi: 'Cảm hứng', en: 'Inspiration', bg: '#fde68a', ink: '#78350f' },
-  { id: 'promotion', vi: 'Khuyến mãi', en: 'Promotion', bg: '#bbf7d0', ink: '#14532d' },
-  { id: 'feedback', vi: 'Feedback', en: 'Feedback', bg: '#7c3aed', ink: '#ffffff' },
-  { id: 'cta', vi: 'Kêu gọi đặt lịch', en: 'CTA', bg: '#bfdbfe', ink: '#1e3a8a' },
-  { id: 'education', vi: 'Kiến thức', en: 'Education', bg: '#c7d2fe', ink: '#312e81' },
-  { id: 'behind', vi: 'Hậu trường', en: 'Behind the scenes', bg: '#fbcfe8', ink: '#831843' },
+export const TAG_COLORS: { bg: string; ink: string }[] = [
+  { bg: '#fde68a', ink: '#78350f' },
+  { bg: '#bbf7d0', ink: '#14532d' },
+  { bg: '#7c3aed', ink: '#ffffff' },
+  { bg: '#bfdbfe', ink: '#1e3a8a' },
+  { bg: '#c7d2fe', ink: '#312e81' },
+  { bg: '#fbcfe8', ink: '#831843' },
+  { bg: '#1d4ed8', ink: '#ffffff' },
+  { bg: '#7dd3fc', ink: '#0c4a6e' },
+  { bg: '#bae6fd', ink: '#0c4a6e' },
+  { bg: '#fecdd3', ink: '#881337' },
+  { bg: '#fed7aa', ink: '#7c2d12' },
+  { bg: '#d9f99d', ink: '#365314' },
+  { bg: '#e2e8f0', ink: '#1e293b' },
+  { bg: '#0f766e', ink: '#ffffff' },
 ];
 
-export const FORMATS: { id: Format; vi: string; en: string; bg: string; ink: string }[] = [
-  { id: 'poster', vi: 'Poster', en: 'Poster', bg: '#1d4ed8', ink: '#ffffff' },
-  { id: 'album', vi: 'Album', en: 'Album', bg: '#7dd3fc', ink: '#0c4a6e' },
-  { id: 'video', vi: 'Video', en: 'Video', bg: '#bae6fd', ink: '#0c4a6e' },
-  { id: 'story', vi: 'Story', en: 'Story', bg: '#fecdd3', ink: '#881337' },
-];
+/** One chip as the salon stores it (apps/api/src/content/plan-tags.ts). An empty id is a new chip; the server mints it. */
+export interface PlanTag { id: string; vi: string; en: string; color: number; hidden?: boolean }
+export interface PlanTags { pillars: PlanTag[]; formats: PlanTag[] }
+
+export const DEFAULT_TAGS: PlanTags = {
+  pillars: [
+    { id: 'inspiration', vi: 'Cảm hứng', en: 'Inspiration', color: 0 },
+    { id: 'promotion', vi: 'Khuyến mãi', en: 'Promotion', color: 1 },
+    { id: 'feedback', vi: 'Feedback', en: 'Feedback', color: 2 },
+    { id: 'cta', vi: 'Kêu gọi đặt lịch', en: 'CTA', color: 3 },
+    { id: 'education', vi: 'Kiến thức', en: 'Education', color: 4 },
+    { id: 'behind', vi: 'Hậu trường', en: 'Behind the scenes', color: 5 },
+  ],
+  formats: [
+    { id: 'poster', vi: 'Poster', en: 'Poster', color: 6 },
+    { id: 'album', vi: 'Album', en: 'Album', color: 7 },
+    { id: 'video', vi: 'Video', en: 'Video', color: 8 },
+    { id: 'story', vi: 'Story', en: 'Story', color: 9 },
+  ],
+};
+
+/** A chip ready to draw. */
+export interface TagView { id: string; vi: string; en: string; bg: string; ink: string; hidden: boolean }
+
+export const tagViews = (list: PlanTag[]): TagView[] =>
+  list.map((t) => {
+    const c = TAG_COLORS[t.color] ?? TAG_COLORS[12];
+    return { id: t.id, vi: t.vi, en: t.en, bg: c.bg, ink: c.ink, hidden: Boolean(t.hidden) };
+  });
+
+/** What the server sent, or the built-in set when it sent nothing usable (an older API). */
+export function tagsOr(raw: unknown): PlanTags {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Partial<PlanTags>;
+  const ok = (l: unknown): l is PlanTag[] => Array.isArray(l) && l.length > 0 && l.every((t) => t && typeof t.id === 'string' && typeof t.vi === 'string');
+  return { pillars: ok(o.pillars) ? o.pillars : DEFAULT_TAGS.pillars, formats: ok(o.formats) ? o.formats : DEFAULT_TAGS.formats };
+}
+
+export const PILLARS: TagView[] = tagViews(DEFAULT_TAGS.pillars);
+export const FORMATS: TagView[] = tagViews(DEFAULT_TAGS.formats);
 
 export const AIR: { id: Air; short: string; bg: string }[] = [
   { id: 'facebook', short: 'Fb', bg: '#1877f2' },
@@ -59,8 +105,8 @@ export const AIR: { id: Air; short: string; bg: string }[] = [
   { id: 'google', short: 'GG', bg: '#34a853' },
 ];
 
-export const pillarOf = (id: string) => PILLARS.find((p) => p.id === id) ?? null;
-export const formatOf = (id: string) => FORMATS.find((f) => f.id === id) ?? null;
+export const pillarOf = (id: string, list: TagView[] = PILLARS) => list.find((p) => p.id === id) ?? null;
+export const formatOf = (id: string, list: TagView[] = FORMATS) => list.find((f) => f.id === id) ?? null;
 
 /** True when somebody has typed something into the slot. */
 export function entryHasContent(e: PlanEntry | null | undefined): boolean {

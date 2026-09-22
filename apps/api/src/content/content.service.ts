@@ -28,6 +28,7 @@ import { dueReviews, nextReview, reviewReport, reviewJobText, type Campaign } fr
 import { pickStage, weekIndex } from './roadmap';
 import { weekKey, weekStart, isPastWeek, weekLabel, localParts } from './week-key';
 import { MONTH_BRIEF_KEY, cleanBrief, briefForShop, monthKeyIn, isMonthKey, type MonthBrief } from './month-brief';
+import { PLAN_TAGS_KEY, readTags, cleanTags, type PlanTags } from './plan-tags';
 import { PLAN_SHEET_KEY, cleanSheet, mergeEntry, entryHasContent, entryForShop, isDayKey, monthsCovering, monthOfDay, shiftMonthKey, windowOf, monthGrid, type PlanSheet } from './plan-sheet';
 import { seasonFor, seasonToPrompt, pillarFor, pillarToPrompt, trendsToPrompt, type TrendForPrompt, type RisingForPrompt } from './season-pillars';
 import { scopeOf, knownTrades } from './trends/trend-feed';
@@ -1127,7 +1128,35 @@ export class ContentService {
     // team's screen warns before that happens instead of after.
     const soon = shiftMonthKey(monthKeyIn(new Date(), tz), 1);
     const ahead = { month: soon, filled: Object.keys(await this.readSheetMonth(tenantId, soon)).length };
-    return { tz, today, from, days, month, ahead, entries };
+    const tags = await this.readPlanTags(tenantId);
+    return { tz, today, from, days, month, ahead, entries, tags };
+  }
+
+  /** This salon's pillar and format chips — the built-in set until the team edits them. */
+  private async readPlanTags(tenantId: string): Promise<PlanTags> {
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: PLAN_TAGS_KEY }, select: { value: true } }).catch(() => null);
+    return readTags(row?.value);
+  }
+
+  /**
+   * The team rewords, recolours, hides or adds a chip. Team only, like the
+   * sheet itself. Nothing is deleted — see ./plan-tags — so old slots keep
+   * their label.
+   */
+  async savePlanTags(user: AuthenticatedUser, dto: { pillars?: unknown; formats?: unknown }) {
+    if (user.role !== UserRole.SUPER_ADMIN && !user.supportSession) {
+      throw new ForbiddenException('Chỉ team Lumio sửa được plan. Tiệm xem lịch và duyệt bài.');
+    }
+    const tenantId = this.tenantId(user);
+    const current = await this.readPlanTags(tenantId);
+    const tags = cleanTags(dto, current);
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: PLAN_TAGS_KEY }, select: { id: true } }).catch(() => null);
+    if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: tags as never } });
+    else await this.prisma.setting.create({ data: { tenantId, key: PLAN_TAGS_KEY, value: tags as never } as never });
+    await this.prisma.auditLog.create({
+      data: { tenantId, userId: user.userId ?? null, action: 'content.plan_tags_saved', resourceType: 'setting', resourceId: PLAN_TAGS_KEY } as never,
+    }).catch(() => undefined);
+    return { ok: true, tags };
   }
 
   /**
@@ -1142,10 +1171,10 @@ export class ContentService {
   async planSheetForShop(user: AuthenticatedUser, monthQ?: string) {
     const months = await this.shopMonths(this.tenantId(user));
     const pick = this.shopMonthPick(months, monthQ);
-    const { tz, today, from, days, month, entries } = await this.planSheet(user, undefined, undefined, pick);
+    const { tz, today, from, days, month, entries, tags } = await this.planSheet(user, undefined, undefined, pick);
     const out: Record<string, ReturnType<typeof entryForShop>> = {};
     for (const [day, e] of Object.entries(entries)) out[day] = entryForShop(e);
-    return { tz, today, from, days, month, months: [months.prev, months.current, months.next], entries: out };
+    return { tz, today, from, days, month, months: [months.prev, months.current, months.next], entries: out, tags };
   }
 
   /**

@@ -586,14 +586,43 @@ const screen: React.CSSProperties = { minHeight: '100dvh', display: 'grid', plac
  * flag; the screen only draws it. One place to change the window, and search
  * results and the grouped list can never disagree about which salons are new.
  */
-function NewTag() {
+/**
+ * Where a salon is in its life, on every row.
+ *
+ * The list used to show a status only when it was abnormal (a red KHOÁ), on the
+ * reasoning that fifty "ACTIVE" badges are texture. The team asked for all
+ * four, so everyone can see at a glance which shops are waiting on setup —
+ * which is a question about the whole list, not about the odd row. The
+ * compromise with the old reasoning is weight: "Đang chạy" is the quietest
+ * thing on the row, and only the states somebody has to act on stand out.
+ *
+ * Read-only on purpose. Changing a salon's status changes its access and its
+ * billing, so it stays on Super Admin → Tenants.
+ */
+const STATUS_LOOK: Record<string, { label: string; fg: string; bd: string; bg: string; strike?: boolean }> = {
+  PENDING: { label: 'Chờ setup', fg: 'var(--ink-warn)', bd: '#f59e0b', bg: 'rgba(245,158,11,.10)' },
+  ACTIVE: { label: 'Đang chạy', fg: 'var(--ink-good)', bd: 'rgba(34,197,94,.35)', bg: 'transparent' },
+  SUSPENDED: { label: 'Tạm ngưng', fg: 'var(--ink-bad)', bd: '#ef4444', bg: 'rgba(239,68,68,.10)' },
+  CANCELLED: { label: 'Ngưng hoàn toàn', fg: 'var(--c94a3b8)', bd: 'var(--c475569)', bg: 'transparent', strike: true },
+};
+
+function StatusPill({ status }: { status: string }) {
+  const look = STATUS_LOOK[status] ?? { label: status || '—', fg: 'var(--c94a3b8)', bd: 'var(--c334155)', bg: 'transparent' };
   return (
-    <span style={{
-      fontSize: 10, fontWeight: 800, background: '#22c55e', color: '#052e16',
-      borderRadius: 999, padding: '2px 7px', marginRight: 7, verticalAlign: 2,
-    }}>MỚI</span>
+    <span
+      title={status}
+      style={{
+        fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', flex: '0 0 auto',
+        color: look.fg, border: `1px solid ${look.bd}`, background: look.bg,
+        borderRadius: 999, padding: '2px 9px',
+        textDecoration: look.strike ? 'line-through' : 'none',
+      }}
+    >
+      {look.label}
+    </span>
   );
 }
+
 
 /**
  * One line in the left column: a team, or one of the two views that is not a
@@ -621,7 +650,6 @@ function SideItem({ item, active, onClick, tone }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
         <span style={{ fontWeight: 800, fontSize: 13.5, whiteSpace: 'nowrap' }}>{item.label}</span>
         {item.mine && <span style={{ fontSize: 9.5, fontWeight: 800, background: '#6366f1', color: '#fff', borderRadius: 999, padding: '1px 6px' }}>TÔI</span>}
-        {item.fresh > 0 && <span style={{ fontSize: 9.5, fontWeight: 800, background: '#22c55e', color: '#052e16', borderRadius: 999, padding: '1px 6px' }}>{item.fresh}&nbsp;MỚI</span>}
         <span style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 700, color: active ? 'var(--ce2e8f0)' : 'var(--c64748b)', paddingLeft: 8 }}>{item.count}</span>
       </div>
       {!!item.members?.length && (
@@ -698,7 +726,7 @@ function Row({
       )}
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontWeight: 700, fontSize: 14.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {fresh && <NewTag />}{t.name}
+          {t.name}
         </div>
         <div style={{ fontSize: 12, color: 'var(--c64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>/{t.slug}</div>
       </div>
@@ -718,10 +746,7 @@ function Row({
         >🤖 {t.bot === 'on' ? 'AI bật' : 'AI tắt'}</button>
       )}
 
-      {/* Only the abnormal status is worth a badge. */}
-      {suspended && (
-        <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ink-bad)', border: '1px solid #ef4444', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>KHOÁ</span>
-      )}
+      <StatusPill status={t.status} />
 
       {showTeam && !picking && (
         <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex' }}>

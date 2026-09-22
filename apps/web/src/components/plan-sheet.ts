@@ -27,13 +27,32 @@ export interface PlanEntry {
   air: Air[];
   format: Format | '';
   postId: string | null;
+  /** Which department is up next ('' = not started). Absent from the shop's copy. */
+  stage?: Stage | '';
   updatedAt: string | null;
   updatedBy: string | null;
 }
 
-export type PlanPatch = Partial<Pick<PlanEntry, 'pillar' | 'topic' | 'detail' | 'mediaUrl' | 'air' | 'format' | 'postId'>>;
+export type PlanPatch = Partial<Pick<PlanEntry, 'pillar' | 'topic' | 'detail' | 'mediaUrl' | 'air' | 'format' | 'postId' | 'stage'>>;
 
-export const emptyEntry = (day: string): PlanEntry => ({ day, pillar: '', topic: '', detail: '', mediaUrl: '', air: [], format: '', postId: null, updatedAt: null, updatedBy: null });
+/**
+ * Whose turn it is on a slot, set by hand by whoever finished their part.
+ * Same ids as the API (apps/api/src/content/plan-sheet.ts STAGES).
+ */
+export type Stage = 'content' | 'design' | 'review' | 'schedule' | 'done';
+export const STAGES: { id: Stage; vi: string; en: string; bg: string; ink: string; icon: string }[] = [
+  { id: 'content', vi: 'Content', en: 'Content', bg: '#fde68a', ink: '#78350f', icon: '✍️' },
+  { id: 'design', vi: 'Design', en: 'Design', bg: '#fbcfe8', ink: '#831843', icon: '🎨' },
+  { id: 'review', vi: 'Duyệt', en: 'Review', bg: '#c7d2fe', ink: '#312e81', icon: '👀' },
+  { id: 'schedule', vi: 'Lên lịch', en: 'Schedule', bg: '#bae6fd', ink: '#0c4a6e', icon: '🗓️' },
+  { id: 'done', vi: 'Xong', en: 'Done', bg: '#bbf7d0', ink: '#14532d', icon: '✅' },
+];
+/** A filled slot nobody has marked is waiting on Content. */
+export const stageOf = (e: PlanEntry | null | undefined): Stage | null =>
+  e && entryHasContent(e) ? (e.stage || 'content') : null;
+export const stageView = (id: Stage) => STAGES.find((s) => s.id === id)!;
+
+export const emptyEntry = (day: string): PlanEntry => ({ day, pillar: '', topic: '', detail: '', mediaUrl: '', air: [], format: '', postId: null, stage: '', updatedAt: null, updatedBy: null });
 
 /**
  * Chip colours: a fixed palette, lifted from the agency's sheet. Backgrounds

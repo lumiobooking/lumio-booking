@@ -1,4 +1,4 @@
-import { cleanEntry, cleanSheet, emptyEntry, entryHasContent, entryForShop, isDayKey, mergeEntry, monthsCovering, shiftMonthKey, windowOf, monthGrid, ENTRY_LIMITS, swapEntries } from './plan-sheet';
+import { cleanEntry, cleanSheet, emptyEntry, entryHasContent, entryForShop, isDayKey, mergeEntry, monthsCovering, shiftMonthKey, windowOf, monthGrid, ENTRY_LIMITS, swapEntries, stageQueue } from './plan-sheet';
 
 const NOW = new Date('2026-09-15T10:00:00Z');
 
@@ -140,5 +140,26 @@ describe('moving a slot to another day', () => {
   it('crosses a month and keeps the linked post', () => {
     const r = swapEntries({ ...slot('2026-09-30', 'A'), postId: 'p1' }, null, '2026-09-30', '2026-10-02', 'an', now);
     expect(r.to).toMatchObject({ day: '2026-10-02', postId: 'p1' });
+  });
+});
+
+describe('whose turn it is', () => {
+  it('keeps a known stage, drops junk, and a patch can move it on', () => {
+    expect(cleanEntry({ topic: 'a', stage: 'design' }, '2026-09-10').stage).toBe('design');
+    expect(cleanEntry({ topic: 'a', stage: 'boss' }, '2026-09-10').stage).toBe('');
+    const next = mergeEntry(cleanEntry({ topic: 'a', stage: 'design' }, '2026-09-10'), { stage: 'review' }, '2026-09-10', 'x', new Date());
+    expect(next).toMatchObject({ topic: 'a', stage: 'review' });
+  });
+
+  it('counts the queue per department from a day on, unmarked = Content, done and empty left out', () => {
+    const sheet = {
+      '2026-09-01': cleanEntry({ topic: 'old', stage: 'design' }, '2026-09-01'),
+      '2026-09-10': cleanEntry({ topic: 'a' }, '2026-09-10'),
+      '2026-09-11': cleanEntry({ topic: 'b', stage: 'design' }, '2026-09-11'),
+      '2026-09-12': cleanEntry({ topic: 'c', stage: 'design' }, '2026-09-12'),
+      '2026-09-13': cleanEntry({ topic: 'd', stage: 'done' }, '2026-09-13'),
+      '2026-09-14': cleanEntry({ stage: 'review' }, '2026-09-14'),
+    };
+    expect(stageQueue(sheet, '2026-09-05')).toEqual({ content: 1, design: 2, review: 0, schedule: 0 });
   });
 });

@@ -40,6 +40,17 @@ export type Format = typeof FORMATS[number];
 export const AIR = ['facebook', 'instagram', 'tiktok', 'google'] as const;
 export type Air = typeof AIR[number];
 
+/**
+ * Whose turn it is on a slot — set by hand by whoever just finished their
+ * part. Content writes, Design makes the picture or clip, someone reviews,
+ * someone schedules; 'done' means nobody owes it anything. '' is "not
+ * started", which reads the same as waiting for Content.
+ */
+export const STAGES = ['content', 'design', 'review', 'schedule', 'done'] as const;
+export type Stage = typeof STAGES[number];
+/** The stages that still owe work, in order. */
+export const OPEN_STAGES = ['content', 'design', 'review', 'schedule'] as const;
+
 export interface PlanEntry {
   /** "YYYY-MM-DD", salon-local. */
   day: string;
@@ -56,6 +67,8 @@ export interface PlanEntry {
   format: string;
   /** The scheduled post this entry became, once it did. */
   postId: string | null;
+  /** Which department is up next ('' = not started). See STAGES. */
+  stage: Stage | '';
   updatedAt: string | null;
   updatedBy: string | null;
 }
@@ -69,7 +82,7 @@ export function isDayKey(s: unknown): s is string {
 }
 
 export function emptyEntry(day: string): PlanEntry {
-  return { day, pillar: '', topic: '', detail: '', mediaUrl: '', air: [], format: '', postId: null, updatedAt: null, updatedBy: null };
+  return { day, pillar: '', topic: '', detail: '', mediaUrl: '', air: [], format: '', postId: null, stage: '', updatedAt: null, updatedBy: null };
 }
 
 const str = (v: unknown, max: number) => String(v ?? '').replace(/\r/g, '').trim().slice(0, max);
@@ -96,6 +109,7 @@ export function cleanEntry(raw: unknown, day: string): PlanEntry {
     air,
     format: tagId(o.format, FORMATS),
     postId: typeof o.postId === 'string' && o.postId ? o.postId.slice(0, 64) : null,
+    stage: typeof o.stage === 'string' && (STAGES as readonly string[]).includes(o.stage) ? (o.stage as Stage) : '',
     updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : null,
     updatedBy: typeof o.updatedBy === 'string' ? o.updatedBy : null,
   };
@@ -107,7 +121,7 @@ export function entryHasContent(e: PlanEntry): boolean {
 }
 
 /** The fields a client may send. Anything else in the body is ignored. */
-export const PATCHABLE = ['pillar', 'topic', 'detail', 'mediaUrl', 'air', 'format', 'postId'] as const;
+export const PATCHABLE = ['pillar', 'topic', 'detail', 'mediaUrl', 'air', 'format', 'postId', 'stage'] as const;
 
 /**
  * Merge what one person changed into what is stored. Only the keys PRESENT
@@ -230,4 +244,19 @@ export function monthGrid(month: string): { from: string; days: number; first: s
   const utc = (k: string) => { const [yy, mm, dd] = k.split('-').map(Number); return Date.UTC(yy, mm - 1, dd); };
   const days = Math.round((utc(to) - utc(from)) / 86_400_000) + 1;
   return { from, days, first, last };
+}
+
+/**
+ * How many planned slots are waiting on each department — the agency list's
+ * "who is up next" for a salon. A slot counts when it has content and is not
+ * done; a slot nobody has marked is waiting on Content. Days before `fromDay`
+ * are left out: last week's forgotten slot is not today's queue.
+ */
+export function stageQueue(sheet: PlanSheet, fromDay: string): Record<typeof OPEN_STAGES[number], number> {
+  const out = { content: 0, design: 0, review: 0, schedule: 0 };
+  for (const e of Object.values(sheet)) {
+    if (e.day < fromDay || !entryHasContent(e) || e.stage === 'done') continue;
+    out[(e.stage || 'content') as keyof typeof out] += 1;
+  }
+  return out;
 }

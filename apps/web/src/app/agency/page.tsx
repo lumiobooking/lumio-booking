@@ -28,6 +28,8 @@ interface TenantRow {
   bot?: 'on' | 'off' | 'none';
   /** The team's own label for where this shop is in the work. Not the access switch. */
   opsStage?: OpsStage;
+  /** Plan slots from today on (this month + next) waiting on each department. */
+  workQueue?: { content: number; design: number; review: number; schedule: number } | null;
 }
 /** One thing a shop sent that nobody has made a post from yet. */
 type InboxRow = InboxItem;
@@ -634,6 +636,30 @@ const STAGE_LOOK: Record<OpsStage, { label: string; fg: string; bd: string; bg: 
 };
 const STAGE_ORDER: OpsStage[] = ['setup', 'running', 'paused', 'stopped'];
 
+/**
+ * Whose turn it is on this salon's plan: one small chip per department that
+ * has something waiting, in the order the work flows. Nothing waiting → nothing
+ * drawn, so a quiet row means a salon nobody owes anything.
+ */
+const QUEUE_STEPS: { k: 'content' | 'design' | 'review' | 'schedule'; icon: string; vi: string; bg: string; ink: string }[] = [
+  { k: 'content', icon: '✍️', vi: 'Content', bg: '#fde68a', ink: '#78350f' },
+  { k: 'design', icon: '🎨', vi: 'Design', bg: '#fbcfe8', ink: '#831843' },
+  { k: 'review', icon: '👀', vi: 'Duyệt', bg: '#c7d2fe', ink: '#312e81' },
+  { k: 'schedule', icon: '🗓️', vi: 'Lên lịch', bg: '#bae6fd', ink: '#0c4a6e' },
+];
+function WorkQueue({ q }: { q?: TenantRow['workQueue'] }) {
+  if (!q) return null;
+  const steps = QUEUE_STEPS.filter((s) => q[s.k] > 0);
+  if (!steps.length) return null;
+  return (
+    <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }} title={steps.map((s) => `${q[s.k]} bài chờ ${s.vi}`).join(' · ')}>
+      {steps.map((s) => (
+        <span key={s.k} style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 7px', borderRadius: 999, background: s.bg, color: s.ink, whiteSpace: 'nowrap' }}>{s.icon} {s.vi} {q[s.k]}</span>
+      ))}
+    </span>
+  );
+}
+
 function StagePill({ stage, disabled, onChange }: { stage: OpsStage; disabled?: boolean; onChange: (s: OpsStage) => void }) {
   const look = STAGE_LOOK[stage] ?? STAGE_LOOK.running;
   return (
@@ -791,6 +817,7 @@ function Row({
         <span title="Tài khoản tiệm đang bị khoá đăng nhập — mở lại ở Super Admin"
           style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ink-bad)', border: '1px solid #ef4444', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>KHOÁ</span>
       )}
+      {!picking && <WorkQueue q={t.workQueue} />}
       <StagePill stage={t.opsStage ?? 'running'} disabled={picking} onChange={(st) => onStage(t, st)} />
 
       {showTeam && !picking && (

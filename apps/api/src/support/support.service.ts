@@ -8,6 +8,7 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { hashSecret } from '../auth/password.util';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { capsFor, cleanCaps, levelOf, type SupportLevel } from './support-scope';
+import { PLAN_SHEET_KEY, cleanSheet, stageQueue } from '../content/plan-sheet';
 import { crewJobs, splitCrew, groupByKind, crewCounts, type WeekRowLike, type CrewHold } from '../content/crew-board';
 import { SHOP } from '../content/client-view';
 import { cleanTeam, groupSalons, teamSummaries, isNewSalon } from './support-teams';
@@ -68,7 +69,25 @@ export class SupportService {
       select: { tenantId: true, value: true },
     }).catch(() => [] as { tenantId: string; value: unknown }[]);
     const byTenant = new Map(stored.map((x) => [x.tenantId, x.value]));
-    return rows.map((r) => ({ ...r, opsStage: opsStageOf(byTenant.get(r.id), r.status) }));
+    // Who is up next on each salon's plan: this month and next, from today
+    // (UTC — a day's slack either side does not change whose turn it is).
+    // Two setting rows per salon, one query; a failure leaves the counts off.
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const thisMonth = today.slice(0, 7);
+    const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 7);
+    const sheets = await this.prisma.setting.findMany({
+      where: { key: { in: [`${PLAN_SHEET_KEY}:${thisMonth}`, `${PLAN_SHEET_KEY}:${nextMonth}`] }, tenantId: { in: rows.map((r) => r.id) } },
+      select: { tenantId: true, key: true, value: true },
+    }).catch(() => [] as { tenantId: string; key: string; value: unknown }[]);
+    const queue = new Map<string, { content: number; design: number; review: number; schedule: number }>();
+    for (const sh of sheets) {
+      const q = stageQueue(cleanSheet(sh.value, sh.key.slice(PLAN_SHEET_KEY.length + 1)), today);
+      const acc = queue.get(sh.tenantId) ?? { content: 0, design: 0, review: 0, schedule: 0 };
+      for (const k of Object.keys(q) as (keyof typeof q)[]) acc[k] += q[k];
+      queue.set(sh.tenantId, acc);
+    }
+    return rows.map((r) => ({ ...r, opsStage: opsStageOf(byTenant.get(r.id), r.status), workQueue: queue.get(r.id) ?? null }));
   }
 
   /**

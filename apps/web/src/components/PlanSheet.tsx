@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { instantToWall } from '../lib/datetime';
 import { WD_VI, WD_EN, MONTH_VI, MONTH_EN, mondayIndex, addDays } from './plan-grid';
 import {
-  AIR, TAG_COLORS, pillarOf, formatOf, emptyEntry, entryHasContent, entryReady, monthWeeks, monthTitle, sheetProgress, tagsOr, tagViews, STAGES, stageOf, stageView,
-  type PlanEntry, type PlanPatch, type Air, type SheetDay, type PlanTag, type PlanTags, type TagView, type Stage,
+  AIR, TAG_COLORS, pillarOf, formatOf, emptyEntry, entryHasContent, entryReady, monthWeeks, monthTitle, sheetProgress, tagsOr, tagViews,
+  type PlanEntry, type PlanPatch, type Air, type SheetDay, type PlanTag, type PlanTags, type TagView,
 } from './plan-sheet';
 
 /**
@@ -124,13 +124,6 @@ export function PlanSheet({
     catch { setMoveErr(T('Chưa dời được — thử lại.', 'Could not move — try again.')); }
     finally { setMoving(false); }
   };
-  // ---- whose turn: the queue per department, and a filter to see only one ----
-  const [stageFilter, setStageFilter] = useState<Stage | null>(null);
-  const queue = useMemo(() => {
-    const out: Record<Stage, number> = { content: 0, design: 0, review: 0, schedule: 0, done: 0 };
-    for (const row of weeks) for (const d of row) { const st = d.inWindow ? stageOf(entries[d.key]) : null; if (st) out[st] += 1; }
-    return out;
-  }, [weeks, entries]);
   const moveTargets = useMemo(() => weeks.flat().filter((d) => d.inWindow).map((d) => d.key), [weeks]);
 
   // How wide one day is. The shop reads the plan in a 1000px column and
@@ -167,9 +160,6 @@ export function PlanSheet({
     const st = post ? STATUS[post.status] ?? STATUS.draft : null;
     const hm = post ? instantToWall(post.scheduledAt, tz).slice(11, 16) : '';
     const draggable = canMove && !isMobile && has && !pinned(e) && !moving;
-    const turn = canEdit ? stageOf(e) : null;
-    const tv = turn ? stageView(turn) : null;
-    const filteredOut = Boolean(stageFilter && turn !== stageFilter);
     const dropOk = Boolean(dragFrom && dragFrom !== d.key && !pinned(e));
     const over = dragOver === d.key && dropOk;
 
@@ -193,7 +183,7 @@ export function PlanSheet({
           border: `1px ${has || over ? 'solid' : 'dashed'} ${over || selected ? '#6366f1' : d.today && !has ? 'rgba(99,102,241,.6)' : 'var(--c334155)'}`,
           boxShadow: over ? '0 0 0 3px rgba(99,102,241,.45)' : selected ? '0 0 0 2px rgba(99,102,241,.35)' : 'none',
           ...(over ? { background: 'rgba(99,102,241,.12)' } : {}),
-          opacity: dragFrom === d.key || filteredOut ? .3 : d.past && !has ? .4 : d.past ? .75 : 1,
+          opacity: dragFrom === d.key ? .35 : d.past && !has ? .4 : d.past ? .75 : 1,
           cursor: draggable ? 'grab' : clickable ? 'pointer' : 'default',
           display: 'flex', flexDirection: 'column', gap: compact ? 4 : 6, minWidth: 0, outline: 'none',
           transition: 'border-color .12s, box-shadow .12s',
@@ -220,11 +210,6 @@ export function PlanSheet({
             <div style={{ fontSize: compact ? 12 : 13, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: compact ? 3 : 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>
               {e.topic || <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}>{T('(chưa có chủ đề)', '(no topic yet)')}</span>}
             </div>
-            {tv && (
-              <span title={T(`Đang chờ: ${tv.vi}`, `Waiting on: ${tv.en}`)} style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: compact ? 9.5 : 10.5, fontWeight: 800, padding: compact ? '1px 5px' : '2px 7px', borderRadius: 999, background: tv.bg, color: tv.ink, whiteSpace: 'nowrap', maxWidth: '100%', overflow: 'hidden' }}>
-                {tv.icon}{compact ? '' : turn === 'done' ? ` ${T('Xong', 'Done')}` : ` ${T('Chờ', 'To')} ${vi ? tv.vi : tv.en}`}
-              </span>
-            )}
             {e.detail && !isMobile && !compact && (
               <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>{e.detail}</div>
             )}
@@ -299,20 +284,6 @@ export function PlanSheet({
           </div>
         )}
       </div>
-      {canEdit && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: .4, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Đang chờ', 'Waiting on')}</span>
-          {STAGES.map((st) => {
-            const on = stageFilter === st.id;
-            return (
-              <button key={st.id} type="button" onClick={() => setStageFilter(on ? null : st.id)} title={on ? T('Bỏ lọc', 'Clear filter') : T('Chỉ hiện bài đang chờ bộ phận này', 'Show only this department')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${on ? st.bg : 'var(--c334155)'}`, background: on ? st.bg : 'transparent', color: on ? st.ink : queue[st.id] ? 'var(--cf1f5f9)' : 'var(--c64748b)' }}>
-                {st.icon} {vi ? st.vi : st.en} <b>{queue[st.id]}</b>
-              </button>
-            );
-          })}
-        </div>
-      )}
       {canEdit && (
         <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10 }}>
           {T('Bấm vào ngày để soạn · kéo thả để dời ngày · tự lưu · xong thì "Lên lịch đăng"', 'Tap a day to write · drag to move it · saves itself · then "Schedule"')}
@@ -511,16 +482,6 @@ function DayPanel({
               </span>
             </button>
           ) : null}
-
-          {canEdit && (
-            <div>
-              <div style={labelStyle}>{T('Chuyển cho · bộ phận làm tiếp', 'Hand to · who works on it next')}</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {STAGES.map((st) => chip((local.stage || (entryHasContent(local) ? 'content' : '')) === st.id, st.bg, st.ink, `${st.icon} ${vi ? st.vi : st.en}`, () => change({ stage: st.id })))}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 5 }}>{T('Làm xong phần mình thì bấm bộ phận tiếp theo — lịch sẽ hiện "Chờ …" cho người kế tiếp.', 'Finished your part? Pick who is next — the calendar shows "To …" for them.')}</div>
-            </div>
-          )}
 
           <div>
             <div style={{ ...labelStyle, display: 'flex', alignItems: 'center' }}>

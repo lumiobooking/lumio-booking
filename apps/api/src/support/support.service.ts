@@ -8,7 +8,7 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { hashSecret } from '../auth/password.util';
 import { JwtPayload } from '../auth/strategies/jwt.strategy';
 import { capsFor, cleanCaps, levelOf, type SupportLevel } from './support-scope';
-import { PLAN_SHEET_KEY, cleanSheet, stageQueue } from '../content/plan-sheet';
+import { WORK_NEXT_KEY, isWorkNext, workNextOf } from './work-next';
 import { crewJobs, splitCrew, groupByKind, crewCounts, type WeekRowLike, type CrewHold } from '../content/crew-board';
 import { SHOP } from '../content/client-view';
 import { cleanTeam, groupSalons, teamSummaries, isNewSalon } from './support-teams';
@@ -65,29 +65,12 @@ export class SupportService {
     // list. A failure here must not empty the list: every salon then simply
     // shows the label its access status implies. See ./ops-stage.
     const stored = await this.prisma.setting.findMany({
-      where: { key: OPS_STAGE_KEY, tenantId: { in: rows.map((r) => r.id) } },
-      select: { tenantId: true, value: true },
-    }).catch(() => [] as { tenantId: string; value: unknown }[]);
-    const byTenant = new Map(stored.map((x) => [x.tenantId, x.value]));
-    // Who is up next on each salon's plan: this month and next, from today
-    // (UTC — a day's slack either side does not change whose turn it is).
-    // Two setting rows per salon, one query; a failure leaves the counts off.
-    const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    const thisMonth = today.slice(0, 7);
-    const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 7);
-    const sheets = await this.prisma.setting.findMany({
-      where: { key: { in: [`${PLAN_SHEET_KEY}:${thisMonth}`, `${PLAN_SHEET_KEY}:${nextMonth}`] }, tenantId: { in: rows.map((r) => r.id) } },
+      where: { key: { in: [OPS_STAGE_KEY, WORK_NEXT_KEY] }, tenantId: { in: rows.map((r) => r.id) } },
       select: { tenantId: true, key: true, value: true },
     }).catch(() => [] as { tenantId: string; key: string; value: unknown }[]);
-    const queue = new Map<string, { content: number; design: number; review: number; schedule: number }>();
-    for (const sh of sheets) {
-      const q = stageQueue(cleanSheet(sh.value, sh.key.slice(PLAN_SHEET_KEY.length + 1)), today);
-      const acc = queue.get(sh.tenantId) ?? { content: 0, design: 0, review: 0, schedule: 0 };
-      for (const k of Object.keys(q) as (keyof typeof q)[]) acc[k] += q[k];
-      queue.set(sh.tenantId, acc);
-    }
-    return rows.map((r) => ({ ...r, opsStage: opsStageOf(byTenant.get(r.id), r.status), workQueue: queue.get(r.id) ?? null }));
+    const byTenant = new Map(stored.filter((x) => x.key === OPS_STAGE_KEY).map((x) => [x.tenantId, x.value]));
+    const nextBy = new Map(stored.filter((x) => x.key === WORK_NEXT_KEY).map((x) => [x.tenantId, x.value]));
+    return rows.map((r) => ({ ...r, opsStage: opsStageOf(byTenant.get(r.id), r.status), workNext: workNextOf(nextBy.get(r.id)) }));
   }
 
   /**
@@ -97,6 +80,27 @@ export class SupportService {
    * bill, which is exactly why the whole team may change it. See ./ops-stage.
    * Audited all the same, so "who marked this shop stopped" has an answer.
    */
+  /**
+   * Hand a salon to the next department — picked by hand on the agency list
+   * by whoever just finished their part. Any support account. See ./work-next.
+   */
+  async setTenantNext(user: AuthenticatedUser, tenantId: string, next: unknown) {
+    if (!isWorkNext(next)) throw new BadRequestException('next phải là content | design | review | schedule | done');
+    const tenant = await this.prisma.tenant.findFirst({ where: { id: tenantId, deletedAt: null }, select: { id: true } })
+      .catch(() => null);
+    if (!tenant) throw new NotFoundException('Salon not found');
+    const value = { next, at: new Date().toISOString(), by: user.email ?? null };
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: WORK_NEXT_KEY } },
+      create: { tenantId, key: WORK_NEXT_KEY, value: value as never },
+      update: { value: value as never },
+    });
+    await this.prisma.auditLog.create({
+      data: { tenantId, userId: user.userId ?? null, action: 'support.work_next_set', resourceType: 'tenant', resourceId: tenantId, metadata: { next, by: user.email ?? null } as never } as never,
+    }).catch(() => undefined);
+    return { ok: true, workNext: next };
+  }
+
   async setTenantStage(user: AuthenticatedUser, tenantId: string, stage: unknown) {
     if (!isOpsStage(stage)) throw new BadRequestException('stage phải là setup | running | paused | stopped');
     const tenant = await this.prisma.tenant.findFirst({ where: { id: tenantId, deletedAt: null }, select: { id: true } })

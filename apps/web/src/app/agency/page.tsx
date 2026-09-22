@@ -28,9 +28,10 @@ interface TenantRow {
   bot?: 'on' | 'off' | 'none';
   /** The team's own label for where this shop is in the work. Not the access switch. */
   opsStage?: OpsStage;
-  /** Plan slots from today on (this month + next) waiting on each department. */
-  workQueue?: { content: number; design: number; review: number; schedule: number } | null;
+  /** Which department is up next, picked by hand ('' = nobody picked). */
+  workNext?: WorkNext | '';
 }
+type WorkNext = 'content' | 'design' | 'review' | 'schedule' | 'done';
 /** One thing a shop sent that nobody has made a post from yet. */
 type InboxRow = InboxItem;
 
@@ -246,6 +247,20 @@ export default function AgencyPage() {
    * nobody outside the team sees, and a dialog on every relabel is how a list
    * stops being kept up to date.
    */
+  /** Hand a salon to the next department. Optimistic, like the stage pill. */
+  async function setNext(t: TenantRow, next: WorkNext | '') {
+    if (!token || next === (t.workNext ?? '')) return;
+    const before = t.workNext ?? '';
+    setError(null);
+    setRows((rs) => rs.map((r) => (r.id === t.id ? { ...r, workNext: next } : r)));
+    try {
+      await apiFetch(`/support/tenants/${encodeURIComponent(t.id)}/next`, { method: 'POST', token, body: { next } });
+    } catch (e) {
+      setRows((rs) => rs.map((r) => (r.id === t.id ? { ...r, workNext: before } : r)));
+      setError(e instanceof Error ? e.message : 'Không đổi được bộ phận tiếp theo');
+    }
+  }
+
   async function setStage(t: TenantRow, stage: OpsStage) {
     if (!token || stage === t.opsStage) return;
     const before = t.opsStage;
@@ -548,6 +563,7 @@ export default function AgencyPage() {
                   busy={busy}
                   onBot={setBot}
                   onStage={setStage}
+                  onNext={setNext}
                   onEnter={enter}
                   editing={editing}
                   setEditing={setEditing}
@@ -636,30 +652,6 @@ const STAGE_LOOK: Record<OpsStage, { label: string; fg: string; bd: string; bg: 
 };
 const STAGE_ORDER: OpsStage[] = ['setup', 'running', 'paused', 'stopped'];
 
-/**
- * Whose turn it is on this salon's plan: one small chip per department that
- * has something waiting, in the order the work flows. Nothing waiting → nothing
- * drawn, so a quiet row means a salon nobody owes anything.
- */
-const QUEUE_STEPS: { k: 'content' | 'design' | 'review' | 'schedule'; icon: string; vi: string; bg: string; ink: string }[] = [
-  { k: 'content', icon: '✍️', vi: 'Content', bg: '#fde68a', ink: '#78350f' },
-  { k: 'design', icon: '🎨', vi: 'Design', bg: '#fbcfe8', ink: '#831843' },
-  { k: 'review', icon: '👀', vi: 'Duyệt', bg: '#c7d2fe', ink: '#312e81' },
-  { k: 'schedule', icon: '🗓️', vi: 'Lên lịch', bg: '#bae6fd', ink: '#0c4a6e' },
-];
-function WorkQueue({ q }: { q?: TenantRow['workQueue'] }) {
-  if (!q) return null;
-  const steps = QUEUE_STEPS.filter((s) => q[s.k] > 0);
-  if (!steps.length) return null;
-  return (
-    <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }} title={steps.map((s) => `${q[s.k]} bài chờ ${s.vi}`).join(' · ')}>
-      {steps.map((s) => (
-        <span key={s.k} style={{ fontSize: 10.5, fontWeight: 800, padding: '2px 7px', borderRadius: 999, background: s.bg, color: s.ink, whiteSpace: 'nowrap' }}>{s.icon} {s.vi} {q[s.k]}</span>
-      ))}
-    </span>
-  );
-}
-
 function StagePill({ stage, disabled, onChange }: { stage: OpsStage; disabled?: boolean; onChange: (s: OpsStage) => void }) {
   const look = STAGE_LOOK[stage] ?? STAGE_LOOK.running;
   return (
@@ -687,6 +679,42 @@ function StagePill({ stage, disabled, onChange }: { stage: OpsStage; disabled?: 
   );
 }
 
+/**
+ * Who is up next on this salon — picked by hand by whoever just finished
+ * their part. Nothing fills it in automatically; an unpicked salon reads
+ * "— Chuyển cho —" so the empty state is an invitation, not a status.
+ */
+const NEXT_LOOK: Record<WorkNext, { label: string; bg: string; ink: string }> = {
+  content: { label: '✍️ Chờ Content', bg: '#fde68a', ink: '#78350f' },
+  design: { label: '🎨 Chờ Design', bg: '#fbcfe8', ink: '#831843' },
+  review: { label: '👀 Chờ Duyệt', bg: '#c7d2fe', ink: '#312e81' },
+  schedule: { label: '🗓️ Chờ Lên lịch', bg: '#bae6fd', ink: '#0c4a6e' },
+  done: { label: '✅ Xong', bg: '#bbf7d0', ink: '#14532d' },
+};
+const NEXT_ORDER: WorkNext[] = ['content', 'design', 'review', 'schedule', 'done'];
+function NextPill({ next, disabled, onChange }: { next: WorkNext | ''; disabled?: boolean; onChange: (n: WorkNext | '') => void }) {
+  const look = next ? NEXT_LOOK[next] : null;
+  return (
+    <select
+      value={next}
+      disabled={disabled}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onChange(e.target.value as WorkNext | '')}
+      title="Làm xong phần mình thì chọn bộ phận làm tiếp"
+      style={{
+        appearance: 'none', WebkitAppearance: 'none', cursor: disabled ? 'default' : 'pointer', fontFamily: 'inherit',
+        fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap',
+        border: `1px ${look ? 'solid' : 'dashed'} ${look ? look.bg : 'var(--c334155)'}`,
+        background: look ? look.bg : 'transparent', color: look ? look.ink : 'var(--c64748b)',
+      }}
+    >
+      <option value="" style={{ color: '#0f172a', background: '#fff' }}>— Chuyển cho —</option>
+      {NEXT_ORDER.map((k) => (
+        <option key={k} value={k} style={{ color: '#0f172a', background: '#fff' }}>{NEXT_LOOK[k].label}</option>
+      ))}
+    </select>
+  );
+}
 
 /**
  * One line in the left column: a team, or one of the two views that is not a
@@ -743,7 +771,7 @@ function SideItem({ item, active, onClick, tone }: {
  */
 function Row({
   t, fresh, team, showTeam, canAssign, teams, picking, checked, onCheck,
-  busy, onEnter, editing, setEditing, onTeam, onBot, onStage,
+  busy, onEnter, editing, setEditing, onTeam, onBot, onStage, onNext,
 }: {
   t: TenantRow;
   fresh?: boolean;
@@ -761,6 +789,7 @@ function Row({
   onTeam: (tenantId: string, team: string) => void;
   onBot: (t: TenantRow, on: boolean) => void;
   onStage: (t: TenantRow, stage: OpsStage) => void;
+  onNext: (t: TenantRow, next: WorkNext | '') => void;
 }) {
   const isEditing = editing === t.id;
   const suspended = t.status === 'SUSPENDED';
@@ -817,7 +846,7 @@ function Row({
         <span title="Tài khoản tiệm đang bị khoá đăng nhập — mở lại ở Super Admin"
           style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ink-bad)', border: '1px solid #ef4444', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>KHOÁ</span>
       )}
-      {!picking && <WorkQueue q={t.workQueue} />}
+      <NextPill next={t.workNext ?? ''} disabled={picking} onChange={(n) => onNext(t, n)} />
       <StagePill stage={t.opsStage ?? 'running'} disabled={picking} onChange={(st) => onStage(t, st)} />
 
       {showTeam && !picking && (

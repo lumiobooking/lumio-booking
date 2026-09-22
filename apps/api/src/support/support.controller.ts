@@ -65,6 +65,18 @@ export class SupportController {
     return this.svc.setTenantStage(user, tenantId, dto?.stage);
   }
 
+  /** Hand a salon to the next department (Content/Design/Duyệt/Lên lịch/Xong). Any support account. See ./work-next. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Post('tenants/:tenantId/next')
+  @HttpCode(200)
+  setTenantNext(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Body() dto: { next?: string },
+  ) {
+    return this.svc.setTenantNext(user, tenantId, dto?.next);
+  }
+
   /** Switch a salon's Messenger/Instagram AI on or off. Any support account: the same box is on the salon's Bot page. */
   @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
   @Post('tenants/:tenantId/bot')

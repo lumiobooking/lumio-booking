@@ -59,7 +59,7 @@ export class SupportService {
       select: { id: true, name: true, slug: true, status: true, createdAt: true, supportTeam: true } as never,
       orderBy: { name: 'asc' },
       take: 2000,
-    }) as unknown as { id: string; status: string }[];
+    }) as unknown as { id: string; name: string; slug: string; status: string; createdAt: Date; supportTeam: string | null }[];
     // The team's own label for each salon, read in one query for the whole
     // list. A failure here must not empty the list: every salon then simply
     // shows the label its access status implies. See ./ops-stage.

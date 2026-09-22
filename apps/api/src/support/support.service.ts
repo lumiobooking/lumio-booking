@@ -11,6 +11,7 @@ import { capsFor, cleanCaps, levelOf, type SupportLevel } from './support-scope'
 import { crewJobs, splitCrew, groupByKind, crewCounts, type WeekRowLike, type CrewHold } from '../content/crew-board';
 import { SHOP } from '../content/client-view';
 import { cleanTeam, groupSalons, teamSummaries, isNewSalon } from './support-teams';
+import { OPS_STAGE_KEY, isOpsStage, opsStageOf } from './ops-stage';
 
 /**
  * Lumio SUPPORT staff: one login that can set up ANY salon — without being a
@@ -53,12 +54,50 @@ export class SupportService {
     // place anyone sets up any more; it stays out of this list.
     // Likewise a cancelled one: it is reactivated from Super Admin, not set
     // up from here, and three hundred live salons do not need it in the way.
-    return this.prisma.tenant.findMany({
+    const rows = await this.prisma.tenant.findMany({
       where: { deletedAt: null, status: { not: TenantStatus.CANCELLED } },
       select: { id: true, name: true, slug: true, status: true, createdAt: true, supportTeam: true } as never,
       orderBy: { name: 'asc' },
       take: 2000,
+    }) as unknown as { id: string; status: string }[];
+    // The team's own label for each salon, read in one query for the whole
+    // list. A failure here must not empty the list: every salon then simply
+    // shows the label its access status implies. See ./ops-stage.
+    const stored = await this.prisma.setting.findMany({
+      where: { key: OPS_STAGE_KEY, tenantId: { in: rows.map((r) => r.id) } },
+      select: { tenantId: true, value: true },
+    }).catch(() => [] as { tenantId: string; value: unknown }[]);
+    const byTenant = new Map(stored.map((x) => [x.tenantId, x.value]));
+    return rows.map((r) => ({ ...r, opsStage: opsStageOf(byTenant.get(r.id), r.status) }));
+  }
+
+  /**
+   * Set where a salon is in the team's work. Any support account.
+   *
+   * Deliberately NOT Tenant.status: this label locks nobody out and touches no
+   * bill, which is exactly why the whole team may change it. See ./ops-stage.
+   * Audited all the same, so "who marked this shop stopped" has an answer.
+   */
+  async setTenantStage(user: AuthenticatedUser, tenantId: string, stage: unknown) {
+    if (!isOpsStage(stage)) throw new BadRequestException('stage phải là setup | running | paused | stopped');
+    const tenant = await this.prisma.tenant.findFirst({ where: { id: tenantId, deletedAt: null }, select: { id: true } })
+      .catch(() => null);
+    if (!tenant) throw new NotFoundException('Salon not found');
+    const value = { stage, at: new Date().toISOString(), by: user.email ?? null };
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: OPS_STAGE_KEY } },
+      create: { tenantId, key: OPS_STAGE_KEY, value: value as never },
+      update: { value: value as never },
     });
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId, userId: user.userId ?? null,
+        action: 'support.ops_stage_set',
+        resourceType: 'tenant', resourceId: tenantId,
+        metadata: { stage, by: user.email ?? null } as never,
+      },
+    }).catch(() => undefined);
+    return { ok: true, opsStage: stage };
   }
 
   /**

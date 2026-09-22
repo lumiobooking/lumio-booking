@@ -26,6 +26,8 @@ interface TenantRow {
   createdAt: string;
   /** Messenger/Instagram AI: on, off (Page connected for posting only), none (no Page). */
   bot?: 'on' | 'off' | 'none';
+  /** The team's own label for where this shop is in the work. Not the access switch. */
+  opsStage?: OpsStage;
 }
 /** One thing a shop sent that nobody has made a post from yet. */
 type InboxRow = InboxItem;
@@ -231,6 +233,27 @@ export default function AgencyPage() {
       setBoard(b);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Không đổi được trạng thái bot');
+    }
+  }
+
+  /**
+   * Relabel a salon's stage from the list.
+   *
+   * Optimistic: the pill changes the moment it is picked and snaps back if the
+   * server refuses. No confirm box — unlike the bot switch this changes a label
+   * nobody outside the team sees, and a dialog on every relabel is how a list
+   * stops being kept up to date.
+   */
+  async function setStage(t: TenantRow, stage: OpsStage) {
+    if (!token || stage === t.opsStage) return;
+    const before = t.opsStage;
+    setError(null);
+    setRows((rs) => rs.map((r) => (r.id === t.id ? { ...r, opsStage: stage } : r)));
+    try {
+      await apiFetch(`/support/tenants/${encodeURIComponent(t.id)}/stage`, { method: 'POST', token, body: { stage } });
+    } catch (e) {
+      setRows((rs) => rs.map((r) => (r.id === t.id ? { ...r, opsStage: before } : r)));
+      setError(e instanceof Error ? e.message : 'Không đổi được trạng thái');
     }
   }
 
@@ -522,6 +545,7 @@ export default function AgencyPage() {
                   onCheck={() => toggleChosen(t.id)}
                   busy={busy}
                   onBot={setBot}
+                  onStage={setStage}
                   onEnter={enter}
                   editing={editing}
                   setEditing={setEditing}
@@ -586,40 +610,54 @@ const screen: React.CSSProperties = { minHeight: '100dvh', display: 'grid', plac
  * flag; the screen only draws it. One place to change the window, and search
  * results and the grouped list can never disagree about which salons are new.
  */
-/**
- * Where a salon is in its life, on every row.
- *
- * The list used to show a status only when it was abnormal (a red KHOÁ), on the
- * reasoning that fifty "ACTIVE" badges are texture. The team asked for all
- * four, so everyone can see at a glance which shops are waiting on setup —
- * which is a question about the whole list, not about the odd row. The
- * compromise with the old reasoning is weight: "Đang chạy" is the quietest
- * thing on the row, and only the states somebody has to act on stand out.
- *
- * Read-only on purpose. Changing a salon's status changes its access and its
- * billing, so it stays on Super Admin → Tenants.
- */
-const STATUS_LOOK: Record<string, { label: string; fg: string; bd: string; bg: string; strike?: boolean }> = {
-  PENDING: { label: 'Chờ setup', fg: 'var(--ink-warn)', bd: '#f59e0b', bg: 'rgba(245,158,11,.10)' },
-  ACTIVE: { label: 'Đang chạy', fg: 'var(--ink-good)', bd: 'rgba(34,197,94,.35)', bg: 'transparent' },
-  SUSPENDED: { label: 'Tạm ngưng', fg: 'var(--ink-bad)', bd: '#ef4444', bg: 'rgba(239,68,68,.10)' },
-  CANCELLED: { label: 'Ngưng hoàn toàn', fg: 'var(--c94a3b8)', bd: 'var(--c475569)', bg: 'transparent', strike: true },
-};
+type OpsStage = 'setup' | 'running' | 'paused' | 'stopped';
 
-function StatusPill({ status }: { status: string }) {
-  const look = STATUS_LOOK[status] ?? { label: status || '—', fg: 'var(--c94a3b8)', bd: 'var(--c334155)', bg: 'transparent' };
+/**
+ * Where a salon is in the team's work, on every row, changeable in place.
+ *
+ * This is the team's own label (see api/src/support/ops-stage.ts), not the
+ * account's access status: picking "Tạm ngưng" here locks nobody out. The real
+ * lock, when there is one, is the separate red KHOÁ beside it.
+ *
+ * Weight follows who has to act: "Đang chạy" is the quietest thing on the row,
+ * because most shops are in it and fifty green pills would hide the three that
+ * are waiting on somebody.
+ *
+ * A native <select> dressed as a pill: it opens the phone's own picker, it is
+ * keyboard-reachable, and it needs no menu of its own to position or dismiss.
+ */
+const STAGE_LOOK: Record<OpsStage, { label: string; fg: string; bd: string; bg: string; strike?: boolean }> = {
+  setup: { label: 'Chờ setup', fg: 'var(--ink-warn)', bd: '#f59e0b', bg: 'rgba(245,158,11,.10)' },
+  running: { label: 'Đang chạy', fg: 'var(--ink-good)', bd: 'rgba(34,197,94,.35)', bg: 'transparent' },
+  paused: { label: 'Tạm ngưng', fg: 'var(--ink-sky)', bd: '#38bdf8', bg: 'rgba(56,189,248,.10)' },
+  stopped: { label: 'Ngưng hoàn toàn', fg: 'var(--c94a3b8)', bd: 'var(--c475569)', bg: 'transparent', strike: true },
+};
+const STAGE_ORDER: OpsStage[] = ['setup', 'running', 'paused', 'stopped'];
+
+function StagePill({ stage, disabled, onChange }: { stage: OpsStage; disabled?: boolean; onChange: (s: OpsStage) => void }) {
+  const look = STAGE_LOOK[stage] ?? STAGE_LOOK.running;
   return (
-    <span
-      title={status}
+    <select
+      value={stage}
+      disabled={disabled}
+      // The row itself opens a setup session on click; picking a stage must not.
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      onChange={(e) => onChange(e.target.value as OpsStage)}
+      title="Trạng thái công việc của tiệm — chỉ để nhóm theo dõi, không khoá tài khoản"
       style={{
+        appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
         fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', flex: '0 0 auto',
         color: look.fg, border: `1px solid ${look.bd}`, background: look.bg,
-        borderRadius: 999, padding: '2px 9px',
+        borderRadius: 999, padding: '2px 9px', fontFamily: 'inherit',
         textDecoration: look.strike ? 'line-through' : 'none',
+        cursor: disabled ? 'default' : 'pointer',
       }}
     >
-      {look.label}
-    </span>
+      {STAGE_ORDER.map((k) => (
+        <option key={k} value={k} style={{ color: '#0f172a', background: '#fff', textDecoration: 'none' }}>{STAGE_LOOK[k].label}</option>
+      ))}
+    </select>
   );
 }
 
@@ -679,7 +717,7 @@ function SideItem({ item, active, onClick, tone }: {
  */
 function Row({
   t, fresh, team, showTeam, canAssign, teams, picking, checked, onCheck,
-  busy, onEnter, editing, setEditing, onTeam, onBot,
+  busy, onEnter, editing, setEditing, onTeam, onBot, onStage,
 }: {
   t: TenantRow;
   fresh?: boolean;
@@ -696,6 +734,7 @@ function Row({
   setEditing: (id: string | null) => void;
   onTeam: (tenantId: string, team: string) => void;
   onBot: (t: TenantRow, on: boolean) => void;
+  onStage: (t: TenantRow, stage: OpsStage) => void;
 }) {
   const isEditing = editing === t.id;
   const suspended = t.status === 'SUSPENDED';
@@ -746,7 +785,13 @@ function Row({
         >🤖 {t.bot === 'on' ? 'AI bật' : 'AI tắt'}</button>
       )}
 
-      <StatusPill status={t.status} />
+      {/* The real lock, when there is one. It is the platform's (billing or
+          Super Admin), so it is shown, never edited, here. */}
+      {suspended && (
+        <span title="Tài khoản tiệm đang bị khoá đăng nhập — mở lại ở Super Admin"
+          style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ink-bad)', border: '1px solid #ef4444', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>KHOÁ</span>
+      )}
+      <StagePill stage={t.opsStage ?? 'running'} disabled={picking} onChange={(st) => onStage(t, st)} />
 
       {showTeam && !picking && (
         <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex' }}>

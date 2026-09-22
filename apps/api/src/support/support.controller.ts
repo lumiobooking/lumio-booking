@@ -49,6 +49,22 @@ export class SupportController {
     return this.svc.setTenantTeam(user, tenantId, dto?.team);
   }
 
+  /**
+   * Where a salon is in the team's work: setup / running / paused / stopped.
+   * Any support account — it is a label, not the access switch. See
+   * SupportService.setTenantStage and ./ops-stage.
+   */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Post('tenants/:tenantId/stage')
+  @HttpCode(200)
+  setTenantStage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Body() dto: { stage?: string },
+  ) {
+    return this.svc.setTenantStage(user, tenantId, dto?.stage);
+  }
+
   /** Switch a salon's Messenger/Instagram AI on or off. Any support account: the same box is on the salon's Bot page. */
   @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
   @Post('tenants/:tenantId/bot')

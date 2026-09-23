@@ -69,6 +69,12 @@ const cssFor = `
 .ag-side { display: flex; flex-direction: column; gap: 6px; position: sticky; top: 16px; }
 .ag-side-lbl { font-size: 10.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: var(--c64748b); padding: 0 4px 4px; }
 .ag-row:hover { background: var(--c162032) !important; }
+/* The salon's NAME is the row. It may shrink, never to nothing: without a
+   floor the chips beside it (AI, trạng thái, chuyển cho, nhóm) hold their
+   width and the name collapses to zero — which is exactly what a phone
+   showed. Below 880px the row wraps instead: name on its own line, chips
+   under it. */
+.ag-name { flex: 1 1 160px; min-width: 120px; }
 @media (max-width: 880px) {
   .ag-cols { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .ag-side { flex-direction: row; overflow-x: auto; position: static; padding-bottom: 4px; scrollbar-width: none; }
@@ -78,6 +84,12 @@ const cssFor = `
      are off-screen with nothing to say they exist. */
   .ag-side > * { flex: 0 0 auto; width: auto !important; }
   .ag-side-lbl { display: none; }
+  /* A phone is too narrow for name + four chips on one line. The name takes
+     the first line whole; everything else wraps under it, still in reading
+     order. */
+  .ag-row { flex-wrap: wrap; row-gap: 6px; }
+  .ag-name { flex: 1 0 100%; }
+  .ag-row [data-row-check] { flex: 0 0 auto; }
   .ag-side-members { display: none; }
 }
 `;
@@ -812,13 +824,14 @@ function Row({
       {picking && (
         <input
           type="checkbox"
+          data-row-check=""
           checked={checked}
           onChange={onCheck}
           onClick={(e) => e.stopPropagation()}
           style={{ width: 17, height: 17, accentColor: '#6366f1', cursor: 'pointer', flex: '0 0 auto' }}
         />
       )}
-      <div style={{ minWidth: 0, flex: 1 }}>
+      <div className="ag-name" style={{ minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 14.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {t.name}
         </div>

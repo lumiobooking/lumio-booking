@@ -95,11 +95,15 @@ describe('the nightly run covers every trade, not just nail', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('the scheduler no longer hardcodes a trade', () => {
+  it('the scheduler does not draft on a timer any more — and never for one trade', () => {
     // Read the source: this is a wiring bug, and only the call site proves it.
+    // The timer used to call generateAll() for every salon every morning; it
+    // no longer drafts at all (ideas are made on demand, ContentService
+    // .ideasForDay). What must never come back is the old hardcoded trade.
     const src = fs.readFileSync(path.join(__dirname, 'content.scheduler.ts'), 'utf8');
-    expect(src).toMatch(/generateAll\(\s*\)/);
+    expect(src).not.toMatch(/await this\.content\.generateAll\(/);
     expect(src).not.toMatch(/generateAll\(\s*['"]SALON['"]/);
+    expect(src).toMatch(/ideasForDay/);
   });
 });
 

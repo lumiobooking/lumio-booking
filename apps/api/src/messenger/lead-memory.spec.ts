@@ -83,3 +83,19 @@ describe('memory survives an AI outage', () => {
     expect(out.length).toBeLessThan(400);
   });
 });
+
+describe('the dossier follows the customer\'s language', () => {
+  const lead = { name: 'Anna', phone: '512-555-1234', salonName: null, city: null, interest: null, note: null } as never;
+
+  it('is written in English for an English customer — it sits closest to their message', () => {
+    const d = leadDossier(lead, 'en');
+    expect(d).toMatch(/WHAT THIS CUSTOMER HAS ALREADY TOLD US/);
+    expect(d).toMatch(/Customer name: Anna/);
+    expect(d).not.toMatch(/Tên khách/);
+  });
+
+  it('stays Vietnamese for a Vietnamese customer, and when nobody can tell', () => {
+    expect(leadDossier(lead, 'vi')).toMatch(/Tên khách: Anna/);
+    expect(leadDossier(lead)).toMatch(/Tên khách: Anna/);
+  });
+});

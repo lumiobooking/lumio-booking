@@ -23,6 +23,8 @@
  * and how memory survives when the AI distiller cannot run.
  */
 
+import type { ReplyLang } from '../common/reply-language';
+
 export interface LeadFacts {
   name?: string | null;
   phone?: string | null;
@@ -39,20 +41,30 @@ export interface LeadFacts {
  * Deterministic on purpose: this is a database row, not a model's recollection,
  * so it works even when the AI's memory pipeline is broken or unpaid.
  */
-export function leadDossier(lead: LeadFacts | null | undefined): string {
+export function leadDossier(lead: LeadFacts | null | undefined, lang: ReplyLang | null = null): string {
   if (!lead) return '';
   const rows: string[] = [];
-  const add = (label: string, v: string | null | undefined) => {
+  const en = lang === 'en';
+  const add = (viLabel: string, enLabel: string, v: string | null | undefined) => {
     const s = String(v ?? '').trim();
-    if (s) rows.push(`- ${label}: ${s}`);
+    if (s) rows.push(`- ${en ? enLabel : viLabel}: ${s}`);
   };
-  add('Tên khách', lead.name);
-  add('Số điện thoại', lead.phone);
-  add('Tên tiệm / doanh nghiệp', lead.salonName);
-  add('Thành phố / khu vực', lead.city);
-  add('Đang quan tâm', lead.interest);
-  add('Ghi chú', lead.note);
+  add('Tên khách', 'Customer name', lead.name);
+  add('Số điện thoại', 'Phone number', lead.phone);
+  add('Tên tiệm / doanh nghiệp', 'Business name', lead.salonName);
+  add('Thành phố / khu vực', 'City / area', lead.city);
+  add('Đang quan tâm', 'Interested in', lead.interest);
+  add('Ghi chú', 'Notes', lead.note);
   if (!rows.length) return '';
+  // This block is the LAST thing before the customer's message, so it is also
+  // the loudest hint about what language to answer in. Written in Vietnamese
+  // for everyone, it pulled English conversations into Vietnamese; it now
+  // follows the customer.
+  if (en) {
+    return '\nWHAT THIS CUSTOMER HAS ALREADY TOLD US (saved in the system — THIS IS FACT; never ask again for anything listed here, just use it):\n'
+      + rows.join('\n')
+      + '\nIf the customer now gives something DIFFERENT, the new answer wins — update it silently, never ask which one is right.';
+  }
   return '\nTHÔNG TIN KHÁCH ĐÃ CUNG CẤP (đã lưu trong hệ thống — ĐÂY LÀ SỰ THẬT, không được hỏi lại bất kỳ mục nào dưới đây; dùng thẳng khi cần):\n'
     + rows.join('\n')
     + '\nNếu khách đưa thông tin MỚI khác với trên, thông tin mới thắng — cập nhật im lặng, không hỏi khách cái nào đúng.';

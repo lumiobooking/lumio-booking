@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { personaFor } from '../common/business-persona';
-import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor } from './voice-lang';
+import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor, agentFallbackLines } from './voice-lang';
 import { isTransientStatus } from '../messenger/agent-fallback';
 import { Prisma, NotificationChannel, NotificationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -797,20 +797,28 @@ export class VoiceService implements OnModuleInit {
     // separate get_services round-trip — one Claude call per turn instead of two.
     const services = await this.prisma.service.findMany({
       where: { tenantId, isActive: true },
-      select: { id: true, name: true, priceCents: true, durationMinutes: true },
+      select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true },
       orderBy: { name: 'asc' }, take: 40,
     });
-    const price = (c: number) => `$${(c / 100).toFixed(c % 100 === 0 ? 0 : 2)}`;
+    // Prices are read ALOUD, so they are formatted in the salon's own money —
+    // the old "$" + divide-by-100 read a 200,000₫ service as "two thousand
+    // dollars". The count matters too: only the first forty fit here, and a
+    // longer menu is exactly how the assistant ends up booking the nearest
+    // thing it can see, so it is told to look the rest up with get_services.
+    const { locale: menuLocale } = await this.localeInfo(tenantId);
+    const svcCount = await this.prisma.service.count({ where: { tenantId, isActive: true } }).catch(() => services.length);
     const servicesBlock = services.length
       ? 'Bookable services (use the exact id when you call create_booking; never say the id out loud):\n' +
-        services.map((s) => `- ${s.name} — ${price(s.priceCents)}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''} (id: ${s.id})`).join('\n')
+        services.map((s) => `- ${s.name} — ${formatMoneyShort(s.priceCents, (s as { currency?: string }).currency ?? 'USD', menuLocale)}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''} (id: ${s.id})`).join('\n') +
+        (svcCount > services.length ? `\n(Only ${services.length} of this ${persona.venueNoun}'s ${svcCount} services are listed here. If the caller asks for something not on this list, call get_services and search the full menu before saying anything about it.)` : '')
       : 'No services are configured yet; take a message and tell them someone will call back.';
 
     const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
     const system = `You are the warm, professional phone receptionist for "${salonName}", ${persona.identity}. Your words are read aloud on a live call. Speak naturally like a friendly human receptionist — usually one relaxed sentence, occasionally two; concise and to the point, but never curt, robotic, or scripted. A little warmth ("Of course!", "Happy to help") is good; rambling is not. No lists, no emojis, no special characters, no URLs.
 The caller's phone number is ${callerPhone || 'unknown'}.${callerPhone ? ' You already have it — do NOT ask for their phone number; use it when booking.' : ' Politely ask for a good callback number if you need one.'}
 ${persona.voiceGoal}
-If the caller asks about a booking they already have ("when is my appointment", "can I move it"), call find_appointment first and read back what it returns — never answer from memory. To move it, call reschedule_appointment; that tool applies the salon's notice policy and hands you the reason when it refuses, so say THAT reason rather than inventing a policy. Once you have a first name, a service (use its id from the list below), and a specific date and time for the ${persona.bookableNoun}, call create_booking. After it succeeds, warmly repeat the day and time back to confirm, and let them know a text confirmation is on the way. Then ask if there is anything else you can help with, and wait for their reply. Do not hang up right after booking; ending the call the moment they book feels abrupt and disrespectful.
+If the caller asks about a booking they already have ("when is my appointment", "can I move it"), call find_appointment first and read back what it returns — never answer from memory. To move it, call reschedule_appointment; that tool applies the salon's notice policy and hands you the reason when it refuses, so say THAT reason rather than inventing a policy. BOOKING, STEP BY STEP — follow it exactly, one question per turn: (1) ask which service they would like, and if their words could mean more than one service on the menu, ask which one ("a regular manicure, or the gel manicure?") instead of choosing for them; if what they ask for is not on the menu, call get_services and look before you answer, and if it truly is not offered say so rather than booking the nearest thing; (2) ask for the day and time; (3) ask for their first name ("May I have your first name for the ${persona.bookableNoun}?") — never book without asking, and never invent, assume or reuse a name you were not given on this call; (4) read all three back in ONE short sentence and wait for a clear yes: "So that's a gel manicure, Friday at two thirty, for Anna — is that right?"; (5) only after they say yes, call create_booking with the service's exact id.
+Never call create_booking on a service the caller has not named back to you, and never guess between two services — a wrong service means a chair, a technician and a price the ${persona.venueNoun} did not agree to. After it succeeds, warmly repeat the day and time back to confirm, and let them know a text confirmation is on the way. Then ask if there is anything else you can help with, and wait for their reply. Do not hang up right after booking; ending the call the moment they book feels abrupt and disrespectful.
 Speak times naturally (for example, "two thirty PM on Friday"). The ${persona.venueNoun}'s local time right now is ${nowLocal} (timezone ${tz}); interpret "today/tomorrow/this Friday" in that timezone.
 Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours; if they ask for a closed time, tell them the ${persona.venueNoun} is closed then and offer the nearest open time.
 When the conversation is finished — they've booked and have nothing else, or they only had a question and it's answered, or they say goodbye — call end_call to say a warm goodbye and hang up. If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. Never ask for payment or card details.
@@ -820,8 +828,16 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
 
     const tools = [
       {
+        // The prompt carries the first forty services; a longer menu, or a
+        // caller asking for something by another name, needs the whole list.
+        // Without this the assistant could only pick from what it could see.
+        name: 'get_services',
+        description: 'Search the full service menu when the caller asks for something not in the list above, or when two services could match their words. Returns every active service with its id, name, price and length.',
+        input_schema: { type: 'object', properties: {}, required: [] as string[] },
+      },
+      {
         name: 'create_booking',
-        description: 'Create the appointment. Only call once you have the caller first name, a chosen service id, and a specific local date & time.',
+        description: 'Create the appointment. Only call after the caller has given their first name, named the service themselves, and said yes to the day, time and service read back to them.',
         input_schema: {
           type: 'object',
           properties: {
@@ -869,11 +885,15 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
           required: ['appointmentId'],
         },
       },
-      ...(bilingual ? [{
+      {
+        // Offered on EVERY line now, not only the bilingual ones. A line set
+        // to Vietnamese answered an English-speaking caller in Vietnamese and
+        // had no way out of it; a caller who plainly speaks the other language
+        // is answered in that language from the next sentence on.
         name: 'switch_language',
         description: 'Switch this call to the given language when the caller speaks it or asks for it. All later replies MUST be in that language.',
         input_schema: { type: 'object', properties: { language: { type: 'string', enum: ['vi-VN', 'en-US'] } }, required: ['language'] },
-      }] : []),
+      },
       {
         name: 'end_call',
         description: 'End the phone call after saying goodbye. Call this when the caller is done (booked and nothing else, question answered, or they said goodbye), or when handing off to a human.',
@@ -927,9 +947,9 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
         continue;
       }
       const text = blocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
-      return { reply: text || 'How else can I help you book?', done: acc.booked ? false : acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch };
+      return { reply: text || agentFallbackLines(acc.langSwitch || lang).keepGoing, done: acc.booked ? false : acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch };
     }
-    return { reply: 'Thanks for calling! A team member will follow up shortly. Goodbye.', done: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch };
+    return { reply: agentFallbackLines(acc.langSwitch || lang).handOff, done: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch };
   }
 
   private async runTool(

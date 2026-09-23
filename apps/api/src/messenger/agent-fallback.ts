@@ -17,6 +17,8 @@
  * and retries transient API errors before giving up at all.
  */
 
+import { detectLang } from '../common/reply-language';
+
 const VI_DIACRITICS = /[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
 
 // Unaccented Vietnamese is common on phones ("gia bao nhieu"). These stems are
@@ -34,6 +36,14 @@ const CLEARLY_EN = /\b(the|what|how much|price|hello|please|thanks|thank you|can
  */
 export function looksVietnamese(conversationText: string): boolean {
   const s = String(conversationText || '');
+  // The shared detector first (common/reply-language): it reads a whole
+  // English booking sentence, which the ten words below miss. Only when it
+  // has nothing to go on do we fall back to the old rule — and that rule's
+  // Vietnamese default is right HERE, for a holding line on a page whose
+  // other customers are Vietnamese, even though it was wrong as a general
+  // policy for the bot's replies.
+  const l = detectLang(s);
+  if (l) return l === 'vi';
   if (VI_DIACRITICS.test(s)) return true;
   if (VI_STEMS.test(s)) return true;
   return !CLEARLY_EN.test(s);

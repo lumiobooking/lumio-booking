@@ -14,6 +14,7 @@ import {
   metaAttachments, imageUrls, describeMedia, visionRule, nonImageRule, imageMediaType, IMAGE_MAX_BYTES, type InboundMedia,
 } from './inbound-media';
 import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
+import { conversationLang, localeForLang, replyLangRule, sayIn, type ReplyLang } from '../common/reply-language';
 import {
   sharedAiHealth, recordAiSuccess, recordAiFailure, shouldAlert, markAlerted, aiAlertLine,
 } from './ai-health';
@@ -2360,8 +2361,15 @@ export class MessengerService implements OnModuleInit {
       await this.saveSummary(threadId, rawMemoryFallback(prev, dropped));
       return;
     }
-    const lines = dropped.map((t) => `${t.role === 'user' ? 'KHACH' : 'SHOP'}: ${String(t.content).slice(0, 300)}`).join('\n');
-    const prompt = `Bạn giữ HỒ SƠ KHÁCH của một hội thoại Messenger dài hạn. Hồ sơ hiện tại:\n${prev || '(trống)'}\n\nCác tin nhắn cũ sắp bị xóa khỏi bộ nhớ ngắn hạn:\n${lines}\n\nViết lại hồ sơ MỚI: gộp cũ + mới, tối đa 120 từ, dạng gạch đầu dòng ngắn — tên khách, SĐT, ngành/tên tiệm, thành phố, gói/dịch vụ đã bàn, thông tin khách đã cung cấp, việc còn dang dở, thái độ/ý định. CHỈ ghi điều đã xuất hiện trong hội thoại, không suy diễn. Trả về đúng nội dung hồ sơ, không lời dẫn.`;
+    // The profile is written in the CUSTOMER's language. It used to be
+    // written in Vietnamese for every salon, and since it is fed back into
+    // the prompt as if it were the conversation, an English thread slowly
+    // turned itself Vietnamese one distillation at a time.
+    const lang = conversationLang(dropped.filter((t) => t.role === 'user').map((t) => String(t.content ?? '')));
+    const lines = dropped.map((t) => `${t.role === 'user' ? (lang === 'en' ? 'CUSTOMER' : 'KHACH') : 'SHOP'}: ${String(t.content).slice(0, 300)}`).join('\n');
+    const prompt = lang === 'en'
+      ? `You keep the CUSTOMER PROFILE for a long-running Messenger conversation. Current profile:\n${prev || '(empty)'}\n\nOlder messages about to fall out of short-term memory:\n${lines}\n\nWrite the NEW profile: merge old + new, 120 words maximum, short bullet lines — customer name, phone, trade / business name, city, services or packages discussed, details they gave, anything still unfinished, their mood or intent. Write ONLY what actually appeared in the conversation, never an inference. Write it in ENGLISH. Return the profile itself, with no preamble.`
+      : `Bạn giữ HỒ SƠ KHÁCH của một hội thoại Messenger dài hạn. Hồ sơ hiện tại:\n${prev || '(trống)'}\n\nCác tin nhắn cũ sắp bị xóa khỏi bộ nhớ ngắn hạn:\n${lines}\n\nViết lại hồ sơ MỚI: gộp cũ + mới, tối đa 120 từ, dạng gạch đầu dòng ngắn — tên khách, SĐT, ngành/tên tiệm, thành phố, gói/dịch vụ đã bàn, thông tin khách đã cung cấp, việc còn dang dở, thái độ/ý định. CHỈ ghi điều đã xuất hiện trong hội thoại, không suy diễn. Trả về đúng nội dung hồ sơ, không lời dẫn.`;
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
@@ -2795,7 +2803,7 @@ export class MessengerService implements OnModuleInit {
       }).catch(() => undefined);
       this.events.publish(conn.tenantId, 'message');
       const who = (fresh as unknown as { senderName?: string | null }).senderName ?? null;
-      void this.push.sendToTenant(conn.tenantId, escalationPush(who, true)).catch(() => undefined);
+      void this.push.sendToTenant(conn.tenantId, escalationPush(who, conversationLang([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), text]) !== 'en')).catch(() => undefined);
       await this.audit(conn.tenantId, 'messenger.agent_fallback');
     }
   }
@@ -2889,11 +2897,29 @@ export class MessengerService implements OnModuleInit {
     );
     const salonName = tenant?.name || 'our salon';
     const tz = tenant?.timezone || 'America/New_York';
+    // WHAT LANGUAGE IS THE CUSTOMER WRITING IN? Read from their own messages,
+    // the whole run of them (see common/reply-language). Everything else in
+    // this prompt — the dossier, the memory, half the examples — was written
+    // in Vietnamese for Vietnamese pages, and an American customer asking
+    // "Are you open Sunday?" was answered in Vietnamese because of it. This
+    // one value now decides the reply language, the dossier's labels and the
+    // date format in every tool result.
+    const customerLang = conversationLang([
+      ...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')),
+      userText,
+    ]);
     const infoBlock = await this.systemKnowledge(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-    const bookingSystem = `You are the booking assistant for "${salonName}", ${persona.identity}, chatting with a customer on Facebook Messenger. Your ONE job: make booking feel effortless. Write like a warm, real receptionist — natural and easy-going, never robotic, never salesy.
-Reply in the language the CONVERSATION is held in — judge by the customer's messages as a whole, never the last message alone. Vietnamese customers sprinkle English words ("thank you", "ok", "book") without switching language; one English word never flips a Vietnamese conversation into English. In Vietnamese, be politely warm: use "dạ" and "ạ", and address the customer as "anh/chị" when it fits. Once you know their name, use it naturally.
+    // WHERE this chat is happening. It said "Facebook Messenger" to everyone,
+    // including a customer typing into the salon's own website and one writing
+    // on Zalo — and the bot repeated it back at them.
+    const channelName = ctx.channel === 'web' ? "the salon's website chat"
+      : ctx.channel === 'zalo' ? 'Zalo'
+        : ctx.channel === 'instagram' ? 'Instagram'
+          : 'Facebook Messenger';
+    const bookingSystem = `You are the booking assistant for "${salonName}", ${persona.identity}, chatting with a customer on ${channelName}. Your ONE job: make booking feel effortless. Write like a warm, real receptionist — natural and easy-going, never robotic, never salesy.
+Reply in the language the CONVERSATION is held in — judge by the customer's messages as a whole, never the last message alone, and mirror it exactly: English in, English out; Vietnamese in, Vietnamese out. Never mix the two in one reply. A borrowed word switches nothing in either direction: a Vietnamese customer who types "thank you" or "ok" is still speaking Vietnamese, and an English-speaking customer who types "ok" is still speaking English. Parts of these instructions, the salon's saved notes and your own tool results may be written in the other language — translate what you need from them and answer only in the customer's. In Vietnamese, be politely warm: use "dạ" and "ạ", and address the customer as "anh/chị" when it fits. Once you know their name, use it naturally.
 KEEP IT SIMPLE — these rules beat everything else:
 - 1-2 short sentences per message (3 absolute max). A light emoji sometimes; never a wall of text.
 - Ask for exactly ONE thing per message. Never stack questions.
@@ -3048,7 +3074,7 @@ WHERE THEY ARE decides which contact details you give. If the customer names a c
 BANNED — these are not phrasings to use carefully, they must never appear in your reply at all:
   "không có" / "chưa có" about a service, a trade or a price · "chưa có kinh nghiệm" · "chưa rành" · "không rành" · "chỉ chuyên" / "chuyên … thôi" · "không bán riêng" / "không bán lẻ" / "không có giá riêng" · "không phục vụ" / "không hỗ trợ" · "không phải diện mạnh" · "không phải lựa chọn tốt nhất" · "đầu mối marketing khác" · "cứ tìm đơn vị chuyên … sẽ phù hợp hơn" · "chúc anh/chị tìm được đối tác phù hợp" · "we don't serve" · "no experience with" · "not sold separately" · "another agency might suit you better".
   If one of these is forming in your reply, you have taken the wrong move. Delete it and use the ONE move above.
-Reply in the language the CONVERSATION is held in — judge by the customer's messages as a whole, never the last message alone. Vietnamese customers sprinkle English ("thank you", "ok") without switching language; one English word never flips a Vietnamese conversation into English. In Vietnamese: xưng "em", gọi khách "anh/chị", dùng "dạ/ạ".
+Reply in the language the CONVERSATION is held in — judge by the customer's messages as a whole, never the last message alone, and mirror it exactly: English in, English out; Vietnamese in, Vietnamese out, never the two mixed. A borrowed word switches nothing either way ("thank you" from a Vietnamese customer, "ok" from an English one). These instructions and your tool results may be in the other language — translate, never quote them at the customer. In Vietnamese: xưng "em", gọi khách "anh/chị", dùng "dạ/ạ".
 KEEP IT SHORT — these rules beat everything else:
 - 1-2 short sentences per message (3 absolute max). Ask for exactly ONE thing per message.
 - Never explain more than they asked. Answer, then take ONE step toward the callback.
@@ -3176,8 +3202,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // thank you, say bye, or everything is done), close warmly — the owner can
     // set the spirit of that goodbye, the bot adapts it per language/moment.
     const closingRule = ctx.closing
-      ? `\nCLOSING: only when the CUSTOMER wraps up (they thank you, say goodbye, or everything is done) — never as a way to end a conversation yourself, and never with a lead you have not captured. Reply with ONE warm goodbye in the conversation's language and STOP. If a callback, audit or area check is pending, fold it into the goodbye ("Dạ, team sẽ kiểm tra khu vực rồi gọi lại anh/chị sớm ạ") so they leave knowing what happens next. NEVER answer thanks with a re-opener like "How else can I help?" — a goodbye closes, it does not reopen. Spirit of the goodbye: "${ctx.closing}" — adapt it naturally, never paste it robotically, never add a sales push.`
-      : `\nCLOSING: when the customer wraps up (thanks, goodbye, all done), reply with ONE warm goodbye in the conversation's language and STOP. If a callback, audit or area check is pending, fold it into the goodbye ("Dạ, team sẽ kiểm tra khu vực rồi gọi lại anh/chị sớm ạ") so they leave knowing what happens next. NEVER answer thanks with a re-opener like "How else can I help?" — a goodbye closes, it does not reopen. No sales push in the goodbye.`;
+      ? `\nCLOSING: only when the CUSTOMER wraps up (they thank you, say goodbye, or everything is done) — never as a way to end a conversation yourself, and never with a lead you have not captured. Reply with ONE warm goodbye in the conversation's language and STOP. If a callback, audit or area check is pending, fold it into the goodbye, in the customer's language ("Dạ, team sẽ kiểm tra khu vực rồi gọi lại anh/chị sớm ạ" in Vietnamese; "The team will check your area and call you shortly" in English) so they leave knowing what happens next. NEVER answer thanks with a re-opener like "How else can I help?" — a goodbye closes, it does not reopen. Spirit of the goodbye: "${ctx.closing}" — adapt it naturally, never paste it robotically, never add a sales push.`
+      : `\nCLOSING: when the customer wraps up (thanks, goodbye, all done), reply with ONE warm goodbye in the conversation's language and STOP. If a callback, audit or area check is pending, fold it into the goodbye, in the customer's language ("Dạ, team sẽ kiểm tra khu vực rồi gọi lại anh/chị sớm ạ" in Vietnamese; "The team will check your area and call you shortly" in English) so they leave knowing what happens next. NEVER answer thanks with a re-opener like "How else can I help?" — a goodbye closes, it does not reopen. No sales push in the goodbye.`;
 
     // Persona: the owner wants a named colleague, not "the assistant". The bot
     // introduces itself by name and never volunteers being automated; asked
@@ -3186,7 +3212,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const personaRule = `\nPERSONA: ${ctx.agentName ? `Your name is ${ctx.agentName}. Introduce yourself by name, like any team member would — never call yourself an assistant, AI or bot. ` : ''}Never volunteer that this chat is automated. If someone asks point-blank whether you are a bot, do not lie and do not argue: say the ${ctx.mode === 'sales' ? 'team' : 'salon team'} is right behind this chat and offer a quick call back${ctx.mode === 'sales' ? ' (capture the lead)' : ''}.`;
 
     // Vietnamese small talk is understated — the tell-tale AI openers must go.
-    const voiceRule = `\nVOICE: never open or pad replies with exclamations like "Tuyệt vời", "Rất tốt", "Dạ tốt lắm", "Tuyệt quá", "Hoàn hảo", "Chính xác", "Great", "Perfect", "Awesome", "Wonderful". Real Vietnamese chat acknowledges quietly — "Dạ vâng ạ", "Dạ", "Dạ được ạ", "Oke anh/chị" — then gets straight to the point. No hype words, no cheering.`;
+    const voiceRule = `\nVOICE: never open or pad replies with exclamations like "Tuyệt vời", "Rất tốt", "Dạ tốt lắm", "Tuyệt quá", "Hoàn hảo", "Chính xác", "Great", "Perfect", "Awesome", "Wonderful". Real chat acknowledges quietly and gets straight to the point — in Vietnamese "Dạ vâng ạ", "Dạ", "Dạ được ạ", "Oke anh/chị"; in English a plain "Sure", "Of course", "Got it". Use only the ones from the customer's own language. No hype words, no cheering.`;
 
     // A website visitor is a stranger with no profile: if they close the tab
     // before booking, the salon has nothing to call. So the bot asks for a
@@ -3196,7 +3222,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       ? `\nWEBSITE CHAT: this customer is chatting from the salon's website and is anonymous — no name, no phone, no profile. Answer their first question fully, then in that same reply or the next one ask ONCE, lightly, for their name and phone (or Zalo) "so the salon can reach you if this chat drops". If they decline or ignore it, continue normally and do not ask again until you book. Never make the contact details a condition for answering.`
       : '';
 
-    const formatRule = `\nFORMAT: Messenger shows PLAIN TEXT only — markdown is never rendered. Absolutely no **asterisks**, no # headers, no tables. Write prices and options inside natural sentences, not robotic bullet lists; if you must enumerate, short lines with "-" are the maximum.`;
+    const formatRule = `\nFORMAT: this chat shows PLAIN TEXT only — markdown is never rendered. Absolutely no **asterisks**, no # headers, no tables. Write prices and options inside natural sentences, not robotic bullet lists; if you must enumerate, short lines with "-" are the maximum.`;
 
     // Long-term memory: what we know about THIS customer from chats that may be
     // months old — plus, when they return after days away, an explicit order to
@@ -3209,7 +3235,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       : '';
     // The dossier goes LAST so it is the closest thing to the conversation:
     // exact facts, straight from the database, outranking any recollection.
-    const dossier = leadDossier(ctx.lead);
+    const dossier = leadDossier(ctx.lead, customerLang);
     // The picture, if any, fetched now: the platform's link is short-lived
     // and the model reads bytes, not URLs. A photo that cannot be fetched
     // becomes a sentence the model can act on instead of a silent gap.
@@ -3239,7 +3265,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const clockLine = ctx.mode === 'sales'
       ? `\nThe current time is ${nowLocal} (timezone ${tz}).`
       : `\nThe salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.`;
-    const dynamicSystem = clockLine + memoryBlock + gapNote + dossier + mediaRule;
+    // The language rule goes LAST — after the dossier, after the memory —
+    // because the closest instruction to the customer's message is the one a
+    // small model follows. Everything above it may be in the other language.
+    const dynamicSystem = clockLine + memoryBlock + gapNote + dossier + mediaRule + replyLangRule(customerLang);
     const system = [
       { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: dynamicSystem },
@@ -3337,7 +3366,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const results: unknown[] = [];
         for (const blk of blocks) {
           if (blk.type !== 'tool_use') continue;
-          const out = await this.runTool(tenantId, tz, blk.name || '', blk.input || {}, ctx);
+          const out = await this.runTool(tenantId, tz, blk.name || '', blk.input || {}, { ...ctx, lang: customerLang });
           results.push({ type: 'tool_result', tool_use_id: blk.id, content: out });
         }
         messages.push({ role: 'user', content: results });
@@ -3427,7 +3456,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         });
         continue;
       }
-      return withBookingLink(text || 'Got it! How else can I help you book?', ctx.booked?.url);
+      return withBookingLink(text || (customerLang === 'vi' ? 'Dạ em nghe ạ — em giúp gì thêm cho anh/chị không ạ?' : 'Got it! How else can I help you book?'), ctx.booked?.url);
     }
     return fallbackText(customerWords);
   }
@@ -3752,6 +3781,16 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * Follows the salon's country, the way the booking page does. Unset answers
    * en-US, which is what every salon running today already gets.
    */
+  /**
+   * The locale a TOOL RESULT is written in: the customer's own language when
+   * we can tell, else the salon's country. A date the model reads is a date
+   * the model repeats, so this is the customer's language, not the salon's.
+   */
+  private async toolLocale(tenantId: string, lang: ReplyLang | null): Promise<string> {
+    if (lang) return localeForLang(lang);
+    return this.customerLocale(tenantId).catch(() => 'en-US');
+  }
+
   private async customerLocale(tenantId: string): Promise<string> {
     try {
       const [t, extra] = await Promise.all([
@@ -3889,6 +3928,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null;
       agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; channel?: string;
       booked?: OpenVisit;
+      /** The customer's language, so dates and refusals are not read out in the wrong one. */
+      lang?: ReplyLang | null;
     },
   ): Promise<string> {
     try {
@@ -4144,8 +4185,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         if (!rows.length) {
           return 'No upcoming appointment found for that number. Ask gently whether they booked under a different number, and do NOT claim they have no booking — they may have used another one.';
         }
-        const fmt = (d: Date) => new Intl.DateTimeFormat('vi-VN', {
-          timeZone: tz, weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+        // The customer's own language, not Vietnamese by default: the model
+        // reads this string and repeats it, so "Thứ Sáu, 03/10, 14:00" landed
+        // in the middle of an English reply.
+        const loc = await this.toolLocale(tenantId, ctx?.lang ?? null);
+        const fmt = (d: Date) => new Intl.DateTimeFormat(loc, {
+          timeZone: tz, weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: loc !== 'vi-VN',
         }).format(d);
         return JSON.stringify(rows.map((r) => ({
           appointmentId: r.id,
@@ -4174,10 +4219,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           // The refusal sentence is written by the rule, not by the model. "It
           // is too close to your appointment" and "our policy does not allow
           // that" are different promises and only one of them is true.
-          return `REFUSED (${r.code}). Say this to the customer, in their language, warmly and in your own voice — do not add a different reason: ${r.say}`;
+          return `REFUSED (${r.code}).${sayIn(ctx?.lang ?? null)} Say this to the customer warmly and in your own voice — do not add a different reason: ${r.say}`;
         }
-        const when = new Intl.DateTimeFormat('vi-VN', {
-          timeZone: tz, weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+        const loc = await this.toolLocale(tenantId, ctx?.lang ?? null);
+        const when = new Intl.DateTimeFormat(loc, {
+          timeZone: tz, weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: loc !== 'vi-VN',
         }).format(r.startTime as Date);
         return `SUCCESS. The appointment has been moved to ${when} and the salon calendar is already updated. Confirm the new day and time back warmly in one line, and say a new confirmation is on the way.`;
       }
@@ -4190,10 +4236,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         if (!r.ok) {
           // The refusal sentence is written by the rule, not by the model —
           // same words the hotline says, for the same situation.
-          return `REFUSED (${r.code}). Say this to the customer, in their language, warmly and in your own voice — do not add a different reason: ${r.say}`;
+          return `REFUSED (${r.code}).${sayIn(ctx?.lang ?? null)} Say this to the customer warmly and in your own voice — do not add a different reason: ${r.say}`;
         }
-        const when = r.startTime ? new Intl.DateTimeFormat('vi-VN', {
-          timeZone: tz, weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+        const loc = await this.toolLocale(tenantId, ctx?.lang ?? null);
+        const when = r.startTime ? new Intl.DateTimeFormat(loc, {
+          timeZone: tz, weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: loc !== 'vi-VN',
         }).format(r.startTime) : '';
         return `SUCCESS. The appointment${when ? ` on ${when}` : ''} is cancelled and the salon calendar is already updated. Confirm it warmly in one line and say they are welcome to book again any time.`;
       }

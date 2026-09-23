@@ -99,10 +99,33 @@ export function cannedLines(lang: string): { didntCatch: string; lostYou: string
   };
 }
 
+/**
+ * The two lines the SERVICE falls back to when the model gives us nothing —
+ * spoken aloud, so they must be in the call's language. They were English
+ * for every call, including Vietnamese ones.
+ */
+export function agentFallbackLines(lang: string): { keepGoing: string; handOff: string } {
+  return lang === 'vi-VN'
+    ? {
+      keepGoing: 'Dạ em có thể giúp gì thêm cho anh chị ạ?',
+      handOff: 'Dạ cảm ơn anh chị đã gọi! Nhân viên bên em sẽ liên hệ lại ngay ạ. Em xin phép gác máy ạ.',
+    }
+    : {
+      keepGoing: 'How else can I help you book?',
+      handOff: 'Thanks for calling! A team member will follow up shortly. Goodbye.',
+    };
+}
+
 /** One line for the agent's system prompt so the BRAIN answers in the same
  *  language the MOUTH will speak. */
 export function agentLangRule(lang: string): string {
+  // Both halves end the same way, and that ending is the point: a line set to
+  // one language used to answer every caller in it, so an English-speaking
+  // customer of a Vietnamese-configured salon was answered in Vietnamese for
+  // the whole call with no way out. The caller's own language wins; the line's
+  // setting only decides which one we open in.
+  const escape = ' If the caller plainly speaks the OTHER language — they answer in it, ask for it, or their words read like the other language mis-transcribed — call switch_language for that language right away and speak only that language from then on. Never answer a caller in a language they are not speaking, and never mix the two in one sentence.';
   return lang === 'vi-VN'
-    ? '\nIMPORTANT: This call is in VIETNAMESE. Reply ONLY in Vietnamese — warm and polite ("dạ", "ạ", address the caller as "anh/chị").'
-    : '\nIMPORTANT: This call is in ENGLISH. Reply ONLY in English.';
+    ? '\nIMPORTANT: This call opens in VIETNAMESE. Reply in Vietnamese — warm and polite ("dạ", "ạ", address the caller as "anh/chị").' + escape
+    : '\nIMPORTANT: This call opens in ENGLISH. Reply in English.' + escape;
 }

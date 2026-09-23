@@ -84,6 +84,9 @@ function isValidPhoneNumber(v: string): boolean {
   return /^\+?[0-9\s().-]+$/.test(v) && digits.length >= 8 && digits.length <= 15;
 }
 
+/** How long a booking lasts when the service itself has no length set. */
+export const DEFAULT_SERVICE_MINUTES = 30;
+
 @Injectable()
 export class BookingsService {
   // Self-service reschedules are executed by a language model on behalf of the
@@ -342,11 +345,20 @@ export class BookingsService {
         orderBy: { createdAt: 'asc' },
       });
       if (existing) {
+        // A returning customer keeps the name already on file unless this
+        // booking carries a fuller one. The hotline hears one spoken word and
+        // the AI writes down what it heard, so "Trang" arrived as "Chang" and
+        // renamed a five-year customer — and passing lastName straight through
+        // wiped the surname a receptionist had typed in. A surname is only
+        // ever added here, never blanked.
+        const known = await tx.customer.findUnique({ where: { id: existing.id }, select: { firstName: true, lastName: true } });
+        const keepFirst = String(known?.firstName ?? '').trim();
+        const keepLast = String(known?.lastName ?? '').trim();
         return tx.customer.update({
           where: { id: existing.id },
           data: {
-            firstName: dto.customerFirstName,
-            lastName: dto.customerLastName ?? null,
+            firstName: keepFirst || dto.customerFirstName,
+            lastName: dto.customerLastName ?? (keepLast || null),
             phone,
             ...consent,
             ...birthData,
@@ -517,7 +529,14 @@ export class BookingsService {
     const extraPrice = extraItems.reduce((sum, x) => sum + x.priceCents, 0);
     const extraDuration = extraItems.reduce((sum, x) => sum + x.durationMinutes, 0);
 
-    const totalDuration = service.durationMinutes + extraDuration + addonDuration;
+    // A service with no length set — the field has no database default, and a
+    // blank box in the services form saves 0 — produced an appointment that
+    // started and ended at the same minute: "0 min" on the calendar, no block
+    // of time, nothing for the next booking to collide with. A booking always
+    // occupies time, so an unset length reads as the house default rather
+    // than as zero. Setting the real length on the service fixes it properly.
+    const primaryMinutes = service.durationMinutes > 0 ? service.durationMinutes : DEFAULT_SERVICE_MINUTES;
+    const totalDuration = primaryMinutes + extraDuration + addonDuration;
     const totalPrice = primaryFinal + extraPrice + addonPrice;
     // Snapshot stored on the appointment: extra services first, then add-ons.
     const lineItems = [...extraItems, ...addons];

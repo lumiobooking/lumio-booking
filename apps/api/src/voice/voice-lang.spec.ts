@@ -1,4 +1,4 @@
-import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor } from './voice-lang';
+import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor, agentFallbackLines } from './voice-lang';
 
 describe('which language a turn runs in', () => {
   it('monolingual lines ignore the call — nothing changes for existing tenants', () => {
@@ -93,5 +93,24 @@ describe('the brain matches the mouth', () => {
     expect(agentLangRule('vi-VN')).toContain('VIETNAMESE');
     expect(agentLangRule('vi-VN')).toContain('anh/chị');
     expect(agentLangRule('en-US')).toContain('ENGLISH');
+  });
+});
+
+describe('the caller\'s language beats the line\'s setting', () => {
+  it('opens in the line\'s language but tells the agent to follow the caller out of it', () => {
+    for (const lang of ['en-US', 'vi-VN']) {
+      const rule = agentLangRule(lang);
+      expect(rule).toMatch(/switch_language/);
+      expect(rule).toMatch(/Never answer a caller in a language they are not speaking/);
+    }
+    expect(agentLangRule('en-US')).toMatch(/opens in ENGLISH/);
+    expect(agentLangRule('vi-VN')).toMatch(/opens in VIETNAMESE/);
+  });
+
+  it('speaks its own fallback lines in the call\'s language', () => {
+    expect(agentFallbackLines('vi-VN').keepGoing).toMatch(/Dạ/);
+    expect(agentFallbackLines('vi-VN').handOff).toMatch(/cảm ơn/);
+    expect(agentFallbackLines('en-US').keepGoing).toMatch(/help you book/);
+    expect(agentFallbackLines('en-US').handOff).toMatch(/Thanks for calling/);
   });
 });

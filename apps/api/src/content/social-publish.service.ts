@@ -157,6 +157,7 @@ export class SocialPublishService {
       update: (a: unknown) => Promise<unknown>;
       updateMany: (a: unknown) => Promise<unknown>;
       deleteMany: (a: unknown) => Promise<unknown>;
+      count: (a: unknown) => Promise<number>;
     }>).scheduledPost;
   }
 

@@ -460,6 +460,19 @@ export class SocialPublishService {
    * there. The sweep itself is not in here: every read in list() names the
    * caller's tenant, and the sweep is the one job that must not.
    */
+  /**
+   * The number on the nav badge — and nothing else. The shell polled the
+   * full queue for it: three hundred rows, four connection lookups and a
+   * Meta Graph call, on every salon page, every five minutes, to draw one
+   * digit. This is two counts. "Blocked" drafts (a channel that is not
+   * connected) are not counted here; the queue screen still shows them.
+   */
+  async alertCount(user: AuthenticatedUser): Promise<{ alerts: number }> {
+    const tenantId = this.tenantId(user);
+    const n = await this.posts?.count({ where: { tenantId, status: { in: ['failed', 'expired'] } } }).catch(() => 0);
+    return { alerts: Number(n) || 0 };
+  }
+
   async list(user: AuthenticatedUser, sweepWas: Date | null = this.lastSweepAt) {
     const tenantId = this.tenantId(user);
     // Lumio staff get the extra affordance; the screen must know before it

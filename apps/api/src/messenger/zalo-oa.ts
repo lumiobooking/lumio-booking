@@ -152,6 +152,30 @@ export async function sendZaloText(accessToken: string, userId: string, text: st
   }
 }
 
+/**
+ * Send one picture from the OA. Zalo's consulting message takes a "media"
+ * template with an image element; the caption travels as the text of the
+ * next plain message, not inside this one.
+ */
+export async function sendZaloImage(accessToken: string, userId: string, url: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${OPENAPI}/message/cs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', access_token: accessToken },
+      body: JSON.stringify({
+        recipient: { user_id: userId },
+        message: { attachment: { type: 'template', payload: { template_type: 'media', elements: [{ media_type: 'image', url }] } } },
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    const out = (await res.json().catch(() => ({}))) as { error?: number; message?: string };
+    if (Number(out?.error ?? 0) === 0) return { ok: true };
+    return { ok: false, error: `Zalo ${out?.error}: ${out?.message ?? 'unknown'}` };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
 /** Name and picture of a Zalo user who wrote to the OA (User Detail API).
  *  Same contract as the Graph profile lookup: a failure is nulls plus the
  *  reason, never a failed message. Both fields sit behind Zalo's paywall

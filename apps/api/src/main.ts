@@ -69,7 +69,12 @@ async function bootstrap() {
   const corsOrigins = (config.get<string>('CORS_ORIGINS') ?? 'http://localhost:3005')
     .split(',')
     .map((origin) => origin.trim());
-  app.enableCors({ origin: corsOrigins, credentials: true });
+  // maxAge: the browser remembers the preflight answer for a day. Without
+  // it every authenticated call — GETs included, since the client sends
+  // Authorization — was two round trips: an OPTIONS the browser forgot after
+  // five seconds, then the real request. Half the requests on every salon
+  // screen were preflights.
+  app.enableCors({ origin: corsOrigins, credentials: true, maxAge: 86_400 });
 
   // Backend API listens on port 8005 (frontend dashboard uses 3005)
   const port = Number(config.get<string>('PORT') ?? 8005);

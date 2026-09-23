@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Headers, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, Headers, NotFoundException, Param, Post, Query, Req, Res } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { TenantStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
@@ -60,8 +61,13 @@ export class PublicSalonController {
    * re-resolving the slug and opening its own DB round-trip; this collapses them
    * into a single tenant lookup + one parallel batch, so the page loads fast.
    */
+  // Cacheable for half a minute, served stale for five while it refreshes:
+  // a customer opening a salon's link seconds after another one gets the
+  // page from the edge, and the salon's price change is live within a
+  // minute. Nothing in this payload is per-visitor.
   @Get(':slug/bootstrap')
-  async bootstrap(@Param('slug') slug: string) {
+  @Header('Cache-Control', 'public, max-age=30, stale-while-revalidate=300')
+  async bootstrap(@Param('slug') slug: string, @Req() req?: Request) {
     const tenant = await this.lookupOpenTenant(slug);
     const [salon, services, categories, staff] = await Promise.all([
       this.buildSalon(tenant),
@@ -69,7 +75,59 @@ export class PublicSalonController {
       this.bookings.publicCategories(tenant.id),
       this.bookings.publicStaff(tenant.id),
     ]);
-    return { salon, services, categories, staff };
+    // PICTURES LEAVE THE JSON. Service photos and staff avatars are stored
+    // as base64 data URIs when a salon has no file storage — up to 130 KB
+    // each — and they rode inline in this payload: thirty services and eight
+    // techs made the booking page's first request several megabytes that
+    // gzip cannot shrink. Each data URI is replaced by a URL the browser
+    // fetches on its own (and caches for a day); the JSON is back to a few KB.
+    const base = this.publicBase(req, slug);
+    const svc = (services as { id: string; imageUrl?: string | null }[]).map((x) => ({
+      ...x, imageUrl: x.imageUrl && x.imageUrl.startsWith('data:') ? `${base}/img/service/${x.id}` : x.imageUrl,
+    }));
+    const stf = (staff as { id: string; avatarUrl?: string | null }[]).map((x) => ({
+      ...x, avatarUrl: x.avatarUrl && x.avatarUrl.startsWith('data:') ? `${base}/img/staff/${x.id}` : x.avatarUrl,
+    }));
+    return { salon, services: svc, categories, staff: stf };
+  }
+
+  /** The absolute URL of this controller for one salon, as the browser sees it (behind Render's proxy). */
+  private publicBase(req: Request | undefined, slug: string): string {
+    const proto = String(req?.headers['x-forwarded-proto'] ?? req?.protocol ?? 'https').split(',')[0].trim() || 'https';
+    const host = String(req?.headers['x-forwarded-host'] ?? req?.headers.host ?? '').split(',')[0].trim();
+    const prefix = host ? `${proto}://${host}` : '';
+    return `${prefix}/api/public/salons/${encodeURIComponent(slug)}`;
+  }
+
+  /**
+   * One stored picture, as bytes. Only ever reached by the URLs bootstrap
+   * hands out, so it serves what is public on the booking page and nothing
+   * else: an active service's photo or an active technician's avatar of THIS
+   * salon. Cached a day by the browser and the edge; a changed picture gets
+   * the same URL, so it shows within a day or on a hard refresh.
+   */
+  @Get(':slug/img/:kind/:id')
+  async image(@Param('slug') slug: string, @Param('kind') kind: string, @Param('id') id: string, @Res() res: Response) {
+    const tenant = await this.lookupOpenTenant(slug);
+    let raw: string | null = null;
+    if (kind === 'service') {
+      const row = await this.prisma.service.findFirst({ where: { id, tenantId: tenant.id, isActive: true }, select: { imageUrl: true } }).catch(() => null);
+      raw = row?.imageUrl ?? null;
+    } else if (kind === 'staff') {
+      const row = await this.prisma.staffMember.findFirst({ where: { id, tenantId: tenant.id, isActive: true }, select: { avatarUrl: true } }).catch(() => null);
+      raw = row?.avatarUrl ?? null;
+    }
+    if (!raw) throw new NotFoundException('No image');
+    if (!raw.startsWith('data:')) { res.redirect(302, raw); return; }
+    const m = /^data:([a-z0-9.+/-]+);base64,(.+)$/i.exec(raw);
+    if (!m) throw new NotFoundException('No image');
+    const type = m[1].toLowerCase();
+    if (!/^image\/(png|jpe?g|webp|gif|avif)$/.test(type)) throw new NotFoundException('No image');
+    const buf = Buffer.from(m[2], 'base64');
+    res.setHeader('Content-Type', type);
+    res.setHeader('Content-Length', String(buf.length));
+    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    res.end(buf);
   }
 
   private async lookupOpenTenant(slug: string) {
@@ -170,6 +228,7 @@ export class PublicSalonController {
   // GET /api/public/salons/:slug/seo -> structured-data payload for the booking
   // page's server-rendered metadata + JSON-LD (search & AI-assistant visibility).
   @Get(':slug/seo')
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600')
   async seo(@Param('slug') slug: string) {
     const tenant = await this.prisma.tenant.findFirst({
       where: { slug, deletedAt: null },

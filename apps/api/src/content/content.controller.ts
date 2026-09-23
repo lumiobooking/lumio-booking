@@ -343,6 +343,12 @@ export class ContentController {
   // salon's Facebook Page would be a public, permanent mistake.
 
   /** The queue, plus whether each waiting post can still actually be sent. */
+  /** Just the badge number for the nav — see SocialPublishService.alertCount. */
+  @Get('posts/alerts')
+  postAlerts(@CurrentUser() user: AuthenticatedUser) {
+    return this.publisher.alertCount(user);
+  }
+
   @Get('posts')
   listPosts(@CurrentUser() user: AuthenticatedUser) {
     // Opening the queue wakes the sweeper if the host slept through its

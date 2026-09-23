@@ -99,3 +99,21 @@ describe('the dossier follows the customer\'s language', () => {
     expect(leadDossier(lead)).toMatch(/Tên khách: Anna/);
   });
 });
+
+describe('the salon’s own customer, for the booking bot', () => {
+  const { customerDossier } = jest.requireActual('./lead-memory') as typeof import('./lead-memory');
+  it('puts name, phone and the next appointment in front of the model, and forbids asking again', () => {
+    const d = customerDossier({ firstName: 'Anna', lastName: 'Le', phone: '+18052808824', upcoming: [{ service: 'Gel manicure', when: 'Fri, Oct 3, 2:00 PM', staff: 'Ivy' }], visits: 4 }, 'en');
+    expect(d).toMatch(/KNOWN CUSTOMER/);
+    expect(d).toMatch(/Customer name: Anna Le/);
+    expect(d).toMatch(/Phone number: \+18052808824/);
+    expect(d).toMatch(/Gel manicure · Fri, Oct 3, 2:00 PM · with Ivy/);
+    expect(d).toMatch(/do not ask for their phone number/);
+  });
+  it('is Vietnamese for a Vietnamese customer, falls back to the profile name, and is empty with nothing to say', () => {
+    expect(customerDossier({ firstName: 'Trang', phone: '0901' }, 'vi')).toMatch(/KHÁCH ĐÃ CÓ HỒ SƠ[\s\S]*Tên khách: Trang/);
+    expect(customerDossier({ displayName: 'Petty N.' })).toMatch(/Tên khách: Petty N\./);
+    expect(customerDossier({})).toBe('');
+    expect(customerDossier(null)).toBe('');
+  });
+});

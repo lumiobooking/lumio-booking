@@ -17,7 +17,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams } from 'next/navigation';
-import { RestaurantReserve } from './RestaurantReserve';
+import dynamic from 'next/dynamic';
+// The restaurant form (57 KB of source) rode along with every nail salon's
+// booking page. Loaded only when the salon is a restaurant.
+const RestaurantReserve = dynamic(() => import('./RestaurantReserve').then((m) => m.RestaurantReserve), { ssr: false, loading: () => null });
 import { useIsMobile } from '../../../lib/responsive';
 import { useHorizontalScroll } from '../../../lib/useHorizontalScroll';
 import { InstallAppButton } from '../../../components/InstallAppButton';
@@ -1195,6 +1198,10 @@ export default function PublicBookingPage() {
 // ---------------------------------------------------------------------------
 // Right column: the cart. Shop card on top, one row per pick, total, CTA.
 // ---------------------------------------------------------------------------
+/** A picture the page will show: served over TLS, inline, or from the dev API. */
+function okImageUrl(u: string): boolean {
+  return u.startsWith('https://') || u.startsWith('data:image/') || u.startsWith('http://localhost') || u.startsWith('http://127.0.0.1');
+}
 type Line = { id: string; name: string; durationMinutes: number; priceCents: number; fullCents: number; addon?: boolean; imageUrl?: string | null };
 
 /**
@@ -2330,7 +2337,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
 function Logo({ url, size, scale }: { url?: string | null; size: number; scale?: number }) {
   const clean = (url ?? '').trim();
   const zoom = Math.min(200, Math.max(50, scale ?? 100)) / 100;
-  if (clean.startsWith('https://') || clean.startsWith('data:image/')) {
+  if (okImageUrl(clean)) {
     // White frame by default (so transparent logos always show); the salon's
     // zoom setting lets a logo with its own background bleed edge-to-edge.
     return (
@@ -2364,8 +2371,8 @@ function Avatar({ name, url, size, accent }: { name: string; url: string | null;
 /** 40px thumbnail for the cart / confirm list. Hidden when there is no photo. */
 function CartThumb({ url }: { url?: string | null }) {
   const clean = (url ?? '').trim();
-  const [ok, setOk] = useState(clean.startsWith('https://') || clean.startsWith('data:image/'));
-  useEffect(() => { setOk(clean.startsWith('https://') || clean.startsWith('data:image/')); }, [clean]);
+  const [ok, setOk] = useState(okImageUrl(clean));
+  useEffect(() => { setOk(okImageUrl(clean)); }, [clean]);
   if (!ok) return null;
   return (
     <span style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', flexShrink: 0, background: 'var(--cf1f5f9)', display: 'block' }}>
@@ -2452,8 +2459,8 @@ function ServiceDescription({ text }: { text: string }) {
 
 function ServiceThumb({ url }: { url?: string | null }) {
   const clean = (url ?? '').trim();
-  const [ok, setOk] = useState(clean.startsWith('https://') || clean.startsWith('data:image/'));
-  useEffect(() => { setOk(clean.startsWith('https://') || clean.startsWith('data:image/')); }, [clean]);
+  const [ok, setOk] = useState(okImageUrl(clean));
+  useEffect(() => { setOk(okImageUrl(clean)); }, [clean]);
   if (!ok) return null;
   return (
     <span style={{ width: 56, height: 56, borderRadius: 12, overflow: 'hidden', flexShrink: 0, background: 'var(--cf1f5f9)', display: 'block' }}>

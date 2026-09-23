@@ -241,7 +241,24 @@ export async function apiFetch<T = unknown>(path: string, options: ApiOptions = 
   if (cacheable(method, path)) {
     const hit = getCache.get(key);
     if (hit.hit) return hit.data as T;
+    // The same GET already on the wire: share it. The shell asks for
+    // /me/tenant three times and /content/posts twice on one paint, and the
+    // cache only fills once an answer is back — so all of them went out.
+    const flying = inFlight.get(key);
+    if (flying) return flying as Promise<T>;
+    const p = fetchOnce<T>(path, options, key).finally(() => { if (inFlight.get(key) === p) inFlight.delete(key); });
+    inFlight.set(key, p);
+    return p;
   }
+  return fetchOnce<T>(path, options, key);
+}
+
+/** GETs in progress, by cache key, so parallel duplicates collapse into one request. */
+const inFlight = new Map<string, Promise<unknown>>();
+
+async function fetchOnce<T>(path: string, options: ApiOptions, key: string): Promise<T> {
+  const { method = 'GET', token, body } = options;
+  const branch = activeBranchId();
 
   // If the answer takes long enough that the app starts to look dead, say WHY.
   // Render spins the API down when idle; the first request of the morning can
@@ -253,7 +270,9 @@ export async function apiFetch<T = unknown>(path: string, options: ApiOptions = 
     res = await fetch(`${API_URL}${path}`, {
       method,
       headers: {
-        'Content-Type': 'application/json',
+        // Only with a body. A Content-Type on a GET made every request
+        // "non-simple", which cost a CORS preflight on each one.
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(branch ? { 'X-Branch-Id': branch } : {}),
       },

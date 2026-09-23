@@ -157,7 +157,11 @@ export function SalonWorkspace({ token, vi, onCount }: {
   }, [token]);
   // A suggestion the team sends at ten shows up at ten, not when the shop
   // next reloads: every 30s while visible, and the moment the app comes back.
-  useLive(load, 30_000, Boolean(token));
+  // Two minutes, not thirty seconds. Each pass is four requests, and my-week
+  // alone rebuilds the salon's whole picture on the server; a shop owner
+  // reading her plan does not need it redrawn twice a minute. The unread
+  // counter is the only thing that moves fast, and it has its own bell.
+  useLive(load, 120_000, Boolean(token));
 
   // The outbox runs whenever this page is open; a batch that finishes on the
   // server is what turns a card from "sending" into "sent", so reload then.

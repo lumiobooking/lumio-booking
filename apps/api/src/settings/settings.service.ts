@@ -922,7 +922,33 @@ export class SettingsService {
       select: { name: true, slug: true, contactEmail: true, contactPhone: true, timezone: true, branding: true, market: true },
     });
     if (!tenant) throw new NotFoundException('Tenant not found');
-    const extra = await this.readKey<CompanyExtra>(tenantId, COMPANY_EXTRA_KEY, DEFAULT_COMPANY_EXTRA);
+    // Nineteen independent reads, issued TOGETHER. They ran one after
+    // another — nineteen round trips to Neon in series on every open of
+    // any settings screen, and sixteen salon pages open this — so one
+    // request took as long as the slowest twenty queries stacked end to end.
+    const [
+      extra, booking, gateways, notifications, notificationTemplates, pos, loyalty, review,
+      weekdayDiscounts, firstVisitDiscount, groupDiscount, dateDiscounts, reminders, deposit,
+      analytics, businessProfile, rebooking,
+    ] = await Promise.all([
+      this.readKey<CompanyExtra>(tenantId, COMPANY_EXTRA_KEY, DEFAULT_COMPANY_EXTRA),
+      this.getBookingRules(tenantId),
+      this.getGateways(tenantId),
+      this.getNotificationSettings(tenantId),
+      this.getNotificationTemplates(tenantId),
+      this.posWithTillButtons(tenantId, tenant.market),
+      this.getLoyaltySettings(tenantId),
+      this.getReviewSettings(tenantId),
+      this.getWeekdayDiscounts(tenantId),
+      this.getFirstVisitDiscount(tenantId),
+      this.getGroupDiscount(tenantId),
+      this.getDateDiscounts(tenantId),
+      this.getReminderSettings(tenantId),
+      this.getDepositSettings(tenantId),
+      this.getAnalyticsSettings(tenantId),
+      this.getBusinessProfile(tenantId),
+      this.getRebookingSettings(tenantId),
+    ]);
     return {
       // The salon's real market, straight from the tenant row.
       //
@@ -947,27 +973,27 @@ export class SettingsService {
         website: extra.website,
         country: extra.country ?? '',
       },
-      booking: await this.getBookingRules(tenantId),
+      booking,
       branding: this.brandingFrom(tenant.branding),
-      gateways: this.sanitizeGateways(await this.getGateways(tenantId)),
-      notifications: this.sanitizeNotifications(await this.getNotificationSettings(tenantId)),
-      notificationTemplates: await this.getNotificationTemplates(tenantId),
+      gateways: this.sanitizeGateways(gateways),
+      notifications: this.sanitizeNotifications(notifications),
+      notificationTemplates,
       // The till's buttons are RESOLVED here rather than in the page: the rule
       // (salon's own choice, else the market's default) lives in one place, and
       // the POS screen just renders what it is handed. `paymentMethods` stays on
       // the object as the salon's raw choice — empty means "follow the market".
-      pos: await this.posWithTillButtons(tenantId, tenant.market),
-      loyalty: await this.getLoyaltySettings(tenantId),
-      review: await this.getReviewSettings(tenantId),
-      weekdayDiscounts: await this.getWeekdayDiscounts(tenantId),
-      firstVisitDiscount: await this.getFirstVisitDiscount(tenantId),
-      groupDiscount: await this.getGroupDiscount(tenantId),
-      dateDiscounts: await this.getDateDiscounts(tenantId),
-      reminders: await this.getReminderSettings(tenantId),
-      deposit: await this.getDepositSettings(tenantId),
-      analytics: await this.getAnalyticsSettings(tenantId),
-      businessProfile: await this.getBusinessProfile(tenantId),
-      rebooking: await this.getRebookingSettings(tenantId),
+      pos,
+      loyalty,
+      review,
+      weekdayDiscounts,
+      firstVisitDiscount,
+      groupDiscount,
+      dateDiscounts,
+      reminders,
+      deposit,
+      analytics,
+      businessProfile,
+      rebooking,
       gmailRedirectUri: this.gmailRedirectUri(),
     };
   }

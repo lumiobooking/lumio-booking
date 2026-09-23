@@ -96,14 +96,17 @@ export default function TenantsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [tenantList, planList, usageList] = await Promise.all([
+      // The table first; the hotline minutes after. /admin/voice/usage runs
+      // three queries per tenant in series and grew with every salon added,
+      // and the whole list used to wait on it to draw a column that is empty
+      // for most salons anyway.
+      const [tenantList, planList] = await Promise.all([
         apiFetch<Tenant[]>('/tenants', { token }),
         apiFetch<Plan[]>('/tenants/plans', { token }),
-        apiFetch<VoiceUsage[]>('/admin/voice/usage', { token }).catch(() => [] as VoiceUsage[]),
       ]);
       setTenants(tenantList);
       setPlans(planList);
-      setVoiceUsage(usageList);
+      void apiFetch<VoiceUsage[]>('/admin/voice/usage', { token }).then(setVoiceUsage).catch(() => undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tenants');
     } finally {

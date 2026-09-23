@@ -8,7 +8,7 @@ import {
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys } from './history-merge';
-import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY } from './zalo-oa';
+import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY, sendZaloImage } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
 import {
   metaAttachments, imageUrls, describeMedia, visionRule, nonImageRule, imageMediaType, IMAGE_MAX_BYTES, type InboundMedia,
@@ -22,7 +22,7 @@ import { chat as llmChat, openAiEnabled, type ChatMessage, type ToolDef, type Te
 import { withBookingLink } from './booking-link';
 import { FbPageRow, FbPagesBody, walkFbPages } from './fb-pages';
 import { isSameVisit, servicesAsked, type OpenVisit } from './one-visit';
-import { leadDossier, rawMemoryFallback, LeadFacts } from './lead-memory';
+import { leadDossier, rawMemoryFallback, LeadFacts, customerDossier, type KnownCustomer } from './lead-memory';
 import { InboxEventsService } from './inbox-events.service';
 import { PushService } from '../push/push.service';
 import { pushPayload } from '../notifications/push-payload';
@@ -1791,7 +1791,7 @@ export class MessengerService implements OnModuleInit {
       await this.prisma.messengerThread.update({
         where: { id: thread.id },
         data: {
-          history: [...hist0, { role: 'assistant', content: body, manual: true, at: wAt }].slice(-MAX_TURNS) as unknown as Prisma.InputJsonValue,
+          history: this.windowOf(thread.id, [...hist0, { role: 'assistant', content: body, manual: true, at: wAt }], (thread as unknown as { summary?: string | null }).summary ?? null) as unknown as Prisma.InputJsonValue,
           lastText: body.slice(0, 300), lastMessageAt: new Date(), readAt: new Date(),
           handoff: true, handoffAt: new Date(),
         } as never,
@@ -1815,7 +1815,7 @@ export class MessengerService implements OnModuleInit {
       await this.prisma.messengerThread.update({
         where: { id: thread.id },
         data: {
-          history: [...hist0, turn].slice(-MAX_TURNS) as unknown as Prisma.InputJsonValue,
+          history: this.windowOf(thread.id, [...hist0, turn as Turn], (thread as unknown as { summary?: string | null }).summary ?? null) as unknown as Prisma.InputJsonValue,
           lastText: body.slice(0, 300), lastMessageAt: new Date(), readAt: new Date(),
           handoff: true, handoffAt: new Date(),
         } as never,
@@ -1869,7 +1869,7 @@ export class MessengerService implements OnModuleInit {
         await this.prisma.messengerThread.update({
           where: { id: thread.id },
           data: {
-            history: [...hist0, { role: 'assistant', content: body, manual: true, failed: true, at: sendNow.toISOString() }].slice(-MAX_TURNS) as unknown as Prisma.InputJsonValue,
+            history: this.windowOf(thread.id, [...hist0, { role: 'assistant', content: body, manual: true, failed: true, at: sendNow.toISOString() }], (thread as unknown as { summary?: string | null }).summary ?? null) as unknown as Prisma.InputJsonValue,
           },
         }).catch(() => undefined);
       }
@@ -1901,7 +1901,7 @@ export class MessengerService implements OnModuleInit {
     if (!res.ok || out.error) {
       // Keep an auditable "Failed" row in the activity log, then surface the error.
       const hist = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
-      const failed = [...hist, { role: 'assistant', content: body, manual: true, failed: true, at: new Date().toISOString() }].slice(-MAX_TURNS);
+      const failed = this.windowOf(thread.id, [...hist, { role: 'assistant', content: body, manual: true, failed: true, at: new Date().toISOString() }], (thread as unknown as { summary?: string | null }).summary ?? null);
       await this.prisma.messengerThread.update({
         where: { id: thread.id },
         data: { history: failed as unknown as Prisma.InputJsonValue },
@@ -1910,7 +1910,7 @@ export class MessengerService implements OnModuleInit {
     }
     const sentAtIso = new Date().toISOString(); // single timestamp: history row === API response
     const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
-    const next = [...history, { role: 'assistant', content: body, manual: true, at: sentAtIso, messageId: out.message_id || null }].slice(-MAX_TURNS);
+    const next = this.windowOf(thread.id, [...history, { role: 'assistant', content: body, manual: true, at: sentAtIso, messageId: out.message_id || null }], (thread as unknown as { summary?: string | null }).summary ?? null);
     await this.prisma.messengerThread.update({
       where: { id: thread.id },
       // lastMessageAt is stamped HERE TOO, not only when the customer writes.
@@ -2266,7 +2266,7 @@ export class MessengerService implements OnModuleInit {
     }
     await this.sendText(page.pageToken, senderId, greeting);
     const history = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
-    const next = [...history, { role: 'assistant', content: greeting, at: new Date().toISOString() }].slice(-MAX_TURNS);
+    const next = this.windowOf(thread.id, [...history, { role: 'assistant', content: greeting, at: new Date().toISOString() }], (thread as unknown as { summary?: string | null }).summary ?? null);
     await this.prisma.messengerThread.update({
       where: { id: thread.id },
       // This path writes history directly rather than through appendTurns, so
@@ -2325,8 +2325,37 @@ export class MessengerService implements OnModuleInit {
    * into the thread's long-term CUSTOMER MEMORY, so a customer returning after
    * months still meets a bot that remembers them.
    */
+  /**
+   * The last MAX_TURNS of a history the caller is about to write itself, with
+   * the turns that fall off the end banked into long-term memory first. The
+   * manual-send and greeting paths used to slice the window in place, and
+   * every staff reply could push a customer's name or phone out of the
+   * twenty without ever distilling it — which is one of the ways the bot
+   * came to ask for a phone number it had been given.
+   */
+  private windowOf(threadId: string, full: Turn[], summary: string | null): Turn[] {
+    const next = full.slice(-MAX_TURNS);
+    const dropped = full.slice(0, full.length - next.length);
+    if (dropped.length) {
+      void this.distillThreadSummary(threadId, summary, dropped).catch((e) =>
+        this.logger.warn(`memory distill failed: ${String(e).slice(0, 120)}`),
+      );
+    }
+    return next;
+  }
+
   private async appendTurns(threadId: string, history: Turn[], summary: string | null, turns: Turn[]): Promise<void> {
-    const full = [...history, ...turns];
+    // The snapshot was read BEFORE the agent ran — up to 55 seconds ago. A
+    // staff echo, a second customer message or another instance's reply can
+    // have landed in between, and writing [...snapshot, ...turns] erased it.
+    // So the thread is read again here and the longer of the two is the base;
+    // the new turns are appended to what is actually there.
+    const live = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { history: true } }).catch(() => null);
+    const liveHist = (Array.isArray(live?.history) ? live!.history : null) as Turn[] | null;
+    const base = liveHist && liveHist.length > history.length ? liveHist : history;
+    const seen = new Set(base.map((t) => `${t.role}|${t.at ?? ''}|${t.content}`));
+    const fresh = turns.filter((t) => !seen.has(`${t.role}|${t.at ?? ''}|${t.content}`));
+    const full = [...base, ...fresh];
     const next = full.slice(-MAX_TURNS);
     const dropped = full.slice(0, full.length - next.length);
     await this.prisma.messengerThread.update({
@@ -2685,18 +2714,27 @@ export class MessengerService implements OnModuleInit {
       orderBy: { createdAt: 'desc' },
       select: { name: true, phone: true, salonName: true, city: true, interest: true, note: true },
     }).catch(() => null);
+    // The salon's own record of this person, for the booking bot: the row
+    // save_contact / create_booking stamped on the thread, plus what is on
+    // the calendar for them. Read every turn; it is what stops the bot
+    // asking a returning customer for a phone number it has on file.
+    const known = await this.knownCustomerFor(conn.tenantId, fresh as unknown as { customerId?: string | null; senderName?: string | null }).catch(() => null);
     const prevTurn = userAlready ? history[history.length - 2] : lastTurn;
     const prevAtMs = prevTurn?.at ? new Date(prevTurn.at).getTime() : 0;
     const gapDays = prevAtMs ? Math.floor((Date.now() - prevAtMs) / 86_400_000) : 0;
     let reply: string;
     let agentFailed = false;
+    // The context object the agent runs with, kept in scope: send_photos
+    // leaves the pictures it delivered on it, and they become a turn of
+    // their own below — after the customer's message, before the reply.
+    let agentCtx: { photos?: { urls: string[]; label: string }[] } | null = null;
     try {
       const instruction = [this.factsText(conn.botFacts), conn.aiInstruction || ''].filter(Boolean).join('\n');
       const cx = conn as unknown as { botMode?: string; leadEmail?: string | null };
       // Hard deadline over the WHOLE agent run (model + tools + card images).
       // Whatever stalls, the customer still gets an answer instead of silence.
-      reply = await this.withDeadline(this.runAgent(conn.tenantId, instruction, userAlready ? history.slice(0, -1) : history, text, {
-        mode: cx.botMode === 'sales' ? 'sales' : 'booking',
+      reply = await this.withDeadline(this.runAgent(conn.tenantId, instruction, userAlready ? history.slice(0, -1) : history, text, agentCtx = {
+        mode: (cx.botMode === 'sales' ? 'sales' : 'booking') as 'sales' | 'booking',
         leadEmail: cx.leadEmail ?? null,
         threadId,
         closing: (conn as unknown as { closing?: string | null }).closing ?? null,
@@ -2708,6 +2746,7 @@ export class MessengerService implements OnModuleInit {
         memory,
         gapDays,
         lead,
+        known,
         images: inImages,
         media: attach.media ?? [],
       }), 55_000, 'agent');
@@ -2786,9 +2825,12 @@ export class MessengerService implements OnModuleInit {
     // "Failed" instead of a "Sent" nobody received — and so the repeat guard
     // lets the bot try again when the customer writes the same thing.
     const outTurn: Turn = sent.ok ? { role: 'assistant', content: reply, at: outAt } : ({ role: 'assistant', content: reply, at: outAt, failed: true } as Turn);
+    const photoTurns: Turn[] = (agentCtx?.photos ?? []).map((p, i) => ({
+      role: 'assistant', content: `[Đã gửi ${p.urls.length} ảnh: ${p.label}]`, at: new Date(new Date(outAt).getTime() - (agentCtx!.photos!.length - i)).toISOString(), images: p.urls,
+    }));
     const newTurns: Turn[] = userAlready
-      ? [outTurn]
-      : [{ role: 'user', content: text, at: inAt, ...imgTurn }, outTurn];
+      ? [...photoTurns, outTurn]
+      : [{ role: 'user', content: text, at: inAt, ...imgTurn }, ...photoTurns, outTurn];
     await this.appendTurns(threadId, history, memory, newTurns);
 
     if (agentFailed) {
@@ -2861,6 +2903,8 @@ export class MessengerService implements OnModuleInit {
     history: Turn[],
     userText: string,
     ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number; channel?: string; lead?: LeadFacts | null;
+      /** The salon's own customer record for this thread (booking mode). */
+      known?: KnownCustomer | null;
       /** Photos on THIS turn, fetched and shown to the model. */
       images?: string[];
       /** Anything else attached (sticker, voice, file) — shapes the stage direction. */
@@ -2868,7 +2912,10 @@ export class MessengerService implements OnModuleInit {
       /** The visit created during THIS run, so a second service joins it
        *  instead of becoming a second bill, and so the confirmation link is
        *  sent whether or not the model remembers to include it. */
-      booked?: OpenVisit } = { mode: 'booking', leadEmail: null },
+      booked?: OpenVisit;
+      /** Pictures send_photos delivered during THIS run; replyAndRecord records them as turns. */
+      photos?: { urls: string[]; label: string }[];
+      lang?: ReplyLang | null } = { mode: 'booking', leadEmail: null },
   ): Promise<string> {
     if (!process.env.ANTHROPIC_API_KEY && !openAiEnabled()) {
       // THIS USED TO BE SILENT. A missing key returned the holding line to
@@ -2923,10 +2970,12 @@ Reply in the language the CONVERSATION is held in — judge by the customer's me
 KEEP IT SIMPLE — these rules beat everything else:
 - 1-2 short sentences per message (3 absolute max). A light emoji sometimes; never a wall of text.
 - Ask for exactly ONE thing per message. Never stack questions.
-- Never re-ask anything already answered in this conversation.
+- Never re-ask anything already answered in this conversation, in CUSTOMER MEMORY, or in the KNOWN CUSTOMER block below. Before asking for a name, a phone number, a service or a time, look there first — a returning customer who is asked for their phone number again feels like a stranger to a shop they have visited three times.
+- The moment you have a name and a phone number (from the customer or from the blocks below), call save_contact ONCE, so the salon's record and the next conversation both have them. Never call it twice.
 - Never read a detail back to be confirmed. If they just typed a name, a phone number or a time, accept it and move on to the next missing piece. "Just to confirm, is 512-555-1234 your number?" is exactly what NOT to do.
 - If a detail they give now differs from one you already had, the NEW one silently wins. Never ask the customer to choose between two versions of their own phone number, name or time.
 - When they don't know what they want, suggest 2-3 popular services — not the whole menu. Share the full list only if they ask.
+- PICTURES: when they ask what a service looks like, for samples/designs ("có mẫu nào không", "show me some designs"), for the price list, or where the shop is, call send_photos FIRST and then write one short line; the pictures arrive above your words. If it answers NONE, answer in words and say the salon will send photos shortly — never describe pictures that were not sent.
 - No jargon, no policies, no long explanations unless they ask.
 - Off-topic question? Answer in one friendly line, then gently return to the booking.
 If the conversation is just starting and the customer hasn't said what they need, greet briefly and ask which service they'd like (if a greeting was already sent, don't greet again — go straight to helping).
@@ -3028,6 +3077,19 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
             phone: { type: 'string', description: 'Phone or Zalo number, digits as they typed them.' },
           },
           required: ['phone'],
+        },
+      },
+      {
+        name: 'send_photos',
+        description: "Send the customer real pictures from this salon, in the chat, BEFORE your text reply. Use it when they ask what a service looks like or for samples/designs ('service'), for the price list ('price_list'), where the shop is or what it looks like ('storefront'), or for recent work/photos ('posts'). Sends up to 3 pictures. Never describe pictures you have not sent; if the tool says none exist, say the salon will send some shortly.",
+        input_schema: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['service', 'price_list', 'storefront', 'posts'] },
+            serviceName: { type: 'string', description: "For 'service': the service name as in get_services, or the customer's words for it." },
+            query: { type: 'string', description: "For 'posts': a word to look for in the salon's recent posts (a design, a colour, a service). Empty = the latest." },
+          },
+          required: ['kind'],
         },
       },
     ];
@@ -3235,7 +3297,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       : '';
     // The dossier goes LAST so it is the closest thing to the conversation:
     // exact facts, straight from the database, outranking any recollection.
-    const dossier = leadDossier(ctx.lead, customerLang);
+    const dossier = leadDossier(ctx.lead, customerLang) + customerDossier(ctx.known, customerLang);
     // The picture, if any, fetched now: the platform's link is short-lived
     // and the model reads bytes, not URLs. A photo that cannot be fetched
     // becomes a sentence the model can act on instead of a silent gap.
@@ -3366,7 +3428,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const results: unknown[] = [];
         for (const blk of blocks) {
           if (blk.type !== 'tool_use') continue;
-          const out = await this.runTool(tenantId, tz, blk.name || '', blk.input || {}, { ...ctx, lang: customerLang });
+          // The SAME object, not a copy: send_photos and create_booking leave
+          // what they did on it, and the caller reads that back afterwards.
+          const out = await this.runTool(tenantId, tz, blk.name || '', blk.input || {}, Object.assign(ctx, { lang: customerLang }));
           results.push({ type: 'tool_result', tool_use_id: blk.id, content: out });
         }
         messages.push({ role: 'user', content: results });
@@ -3791,6 +3855,47 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     return this.customerLocale(tenantId).catch(() => 'en-US');
   }
 
+  /**
+   * What the salon knows about the person on this thread: their Customer
+   * row (name, phone, email) and their calendar (next appointments, last
+   * visit). Cheap — three indexed reads — and only for a thread that has a
+   * customer stamped on it, or at least a profile name.
+   */
+  private async knownCustomerFor(tenantId: string, thread: { customerId?: string | null; senderName?: string | null }): Promise<KnownCustomer | null> {
+    const displayName = String(thread.senderName ?? '').trim() || null;
+    if (!thread.customerId) return displayName ? { displayName } : null;
+    const c = await this.prisma.customer.findFirst({
+      where: { id: thread.customerId, tenantId },
+      select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+    }).catch(() => null);
+    if (!c) return displayName ? { displayName } : null;
+    const now = new Date();
+    const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null))?.timezone || 'America/New_York';
+    const loc = await this.customerLocale(tenantId).catch(() => 'en-US');
+    const fmt = (d: Date) => new Intl.DateTimeFormat(loc, { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: loc !== 'vi-VN' }).format(d);
+    const [upcoming, last, visits] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where: { tenantId, customerId: c.id, startTime: { gte: now }, status: { notIn: ['CANCELLED', 'REJECTED', 'NO_SHOW'] as never } },
+        orderBy: { startTime: 'asc' }, take: 3,
+        select: { startTime: true, service: { select: { name: true } }, assignedStaff: { select: { firstName: true } } },
+      }).catch(() => []),
+      this.prisma.appointment.findFirst({
+        where: { tenantId, customerId: c.id, startTime: { lt: now }, status: { in: ['COMPLETED'] as never } },
+        orderBy: { startTime: 'desc' },
+        select: { startTime: true, service: { select: { name: true } } },
+      }).catch(() => null),
+      this.prisma.appointment.count({ where: { tenantId, customerId: c.id, status: { in: ['COMPLETED'] as never } } }).catch(() => 0),
+    ]);
+    return {
+      firstName: c.firstName, lastName: c.lastName, phone: c.phone, email: c.email, displayName,
+      upcoming: (upcoming as { startTime: Date; service?: { name: string } | null; assignedStaff?: { firstName: string } | null }[]).map((a) => ({
+        service: a.service?.name ?? '', when: fmt(a.startTime), staff: a.assignedStaff?.firstName ?? null,
+      })),
+      lastVisit: last ? { service: (last as { service?: { name: string } | null }).service?.name ?? '', when: fmt((last as { startTime: Date }).startTime) } : null,
+      visits,
+    };
+  }
+
   private async customerLocale(tenantId: string): Promise<string> {
     try {
       const [t, extra] = await Promise.all([
@@ -3928,6 +4033,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null;
       agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; channel?: string;
       booked?: OpenVisit;
+      photos?: { urls: string[]; label: string }[];
       /** The customer's language, so dates and refusals are not read out in the wrong one. */
       lang?: ReplyLang | null;
     },
@@ -4252,6 +4358,28 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         await this.prisma.customer.updateMany({ where: { tenantId, phone }, data: { birthDate: d } });
         return 'SUCCESS. Birthday saved — thank the customer warmly and wish them a great day.';
       }
+      if (name === 'send_photos') {
+        if (!ctx?.pageToken || !ctx.senderId) return 'Could not send pictures in this chat.';
+        const kind = String(input.kind || '');
+        const picked = await this.photosFor(tenantId, kind, String(input.serviceName || input.query || '').trim());
+        if (!picked.urls.length) {
+          return kind === 'price_list' ? 'NONE — the salon has not uploaded a price-list image. Give the prices in words from get_services instead.'
+            : kind === 'storefront' ? 'NONE — the salon has no storefront photo on file. Give the address in words instead.'
+              : `NONE — no photos on file for "${picked.label || kind}". Say the salon will send some shortly, and continue.`;
+        }
+        const ch = (ctx.channel === 'instagram' || ctx.channel === 'zalo' || ctx.channel === 'web' ? ctx.channel : 'messenger') as Channel;
+        let sent = 0;
+        for (const url of picked.urls) {
+          const r = await this.sendImage(ctx.pageToken, ctx.senderId, url, ch);
+          if (r.ok) sent += 1;
+        }
+        if (!sent) return 'ERROR — the pictures could not be delivered on this channel. Answer in words instead; do not mention pictures.';
+        // Recorded on the run's context; replyAndRecord writes the turn (so
+        // the inbox and the website widget show the pictures, and the next
+        // prompt knows they went out) in the right place in the history.
+        ctx.photos = [...(ctx.photos ?? []), { urls: picked.urls.slice(0, sent), label: picked.label || kind }];
+        return `SUCCESS — ${sent} picture(s) of "${picked.label || kind}" are now in the chat, above your reply. Write ONE short line to go with them (e.g. which service they show, or a question about what they like). Do not say "attached" or describe them in detail.`;
+      }
       if (name === 'save_contact') {
         // A name and a number, kept where the inbox reads them: the thread's
         // display name, and a Customer row linked to the thread (found by
@@ -4289,6 +4417,52 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * exact name, then a contains-match either way (case- and space-insensitive).
    * Returns null only when the salon genuinely has nothing resembling it.
    */
+  /**
+   * Which pictures answer this request — public https only, since the
+   * platforms fetch them from their side. In order of what the salon has:
+   *   service     the service's own photo, else posted posts that name it
+   *   price_list  branding.priceListImageUrl
+   *   storefront  branding.storefrontImageUrl, else the welcome hero if hosted
+   *   posts       the newest posted posts' first image, filtered by a word
+   * Posts older than the media-retention window are skipped: their files are
+   * gone (mediaPurgedAt).
+   */
+  private async photosFor(tenantId: string, kind: string, q: string): Promise<{ urls: string[]; label: string }> {
+    const https = (u: unknown): u is string => typeof u === 'string' && /^https:\/\//i.test(u) && !/\.svg(\?|$)/i.test(u);
+    const uniq = (arr: string[]) => Array.from(new Set(arr)).slice(0, 3);
+    if (kind === 'price_list' || kind === 'storefront') {
+      const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { branding: true } }).catch(() => null);
+      const b = this.settings.brandingFrom(t?.branding) as unknown as { priceListImageUrl?: string; storefrontImageUrl?: string; welcomeImageUrl?: string };
+      if (kind === 'price_list') return { urls: https(b.priceListImageUrl) ? [b.priceListImageUrl] : [], label: 'bảng giá' };
+      const u = https(b.storefrontImageUrl) ? b.storefrontImageUrl : https(b.welcomeImageUrl) ? b.welcomeImageUrl : null;
+      return { urls: u ? [u] : [], label: 'mặt tiền tiệm' };
+    }
+    const postsWith = async (word: string): Promise<string[]> => {
+      const rows = await this.prisma.scheduledPost.findMany({
+        where: { tenantId, status: 'posted', mediaPurgedAt: null, ...(word ? { message: { contains: word, mode: 'insensitive' } } : {}) },
+        orderBy: { postedAt: 'desc' }, take: 12,
+        select: { media: true, imageUrl: true },
+      }).catch(() => []) as { media?: unknown; imageUrl?: string | null }[];
+      const out: string[] = [];
+      for (const r of rows) {
+        const media = Array.isArray(r.media) ? r.media as { url?: string; kind?: string }[] : [];
+        const first = media.find((m) => m.kind === 'image' && https(m.url))?.url ?? (https(r.imageUrl) ? r.imageUrl : null);
+        if (first) out.push(first);
+      }
+      return out;
+    };
+    if (kind === 'posts') return { urls: uniq(await postsWith(q)), label: q ? `ảnh ${q}` : 'ảnh gần đây' };
+    if (kind === 'service') {
+      const id = q ? await this.resolveServiceId(tenantId, '', q) : null;
+      const svc = id ? await this.prisma.service.findFirst({ where: { id, tenantId }, select: { name: true, imageUrl: true } }).catch(() => null) : null;
+      const label = svc?.name || q || 'dịch vụ';
+      const own = svc && https(svc.imageUrl) ? [svc.imageUrl] : [];
+      const more = own.length < 3 ? await postsWith(svc?.name || q) : [];
+      return { urls: uniq([...own, ...more]), label };
+    }
+    return { urls: [], label: '' };
+  }
+
   private async resolveServiceId(tenantId: string, id: string, name: string): Promise<string | null> {
     const rows = await this.prisma.service.findMany({
       where: { tenantId, isActive: true },
@@ -4580,6 +4754,40 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * refusal (its API answers 200 with an error body); the Graph path keeps
    * its long-standing fire-and-forget contract and always reports ok.
    */
+  /**
+   * One picture to the customer. Messenger and Instagram take an image
+   * attachment by URL (Meta fetches it, so it must be public https); Zalo has
+   * its media template; the website widget reads the picture from the
+   * history turn the caller records, so there is nothing to send.
+   */
+  private async sendImage(pageToken: string, recipientId: string, url: string, channel?: Channel): Promise<{ ok: boolean; error?: string }> {
+    if (!/^https:\/\//i.test(url)) return { ok: false, error: 'not a public https url' };
+    if (channel === 'zalo') {
+      const r = await sendZaloImage(pageToken, recipientId, url);
+      if (!r.ok) this.logger.warn(`Zalo image send failed: ${String(r.error).slice(0, 120)}`);
+      return r;
+    }
+    if (channel === 'web') return { ok: true };
+    try {
+      const res = await fetch(`${GRAPH}/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          recipient: { id: recipientId }, messaging_type: 'RESPONSE',
+          message: { attachment: { type: 'image', payload: { url, is_reusable: true } }, metadata: 'LUMIO_BOT' },
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const out = (await res.json().catch(() => ({}))) as { message_id?: string; error?: { message?: string } };
+      if (out.error) { this.logger.warn(`image send refused: ${String(out.error.message).slice(0, 120)}`); return { ok: false, error: out.error.message }; }
+      this.rememberSentMid(out.message_id);
+      return { ok: true };
+    } catch (e) {
+      this.logger.warn(`image send failed: ${String(e).slice(0, 120)}`);
+      return { ok: false, error: String(e) };
+    }
+  }
+
   private async sendText(pageToken: string, recipientId: string, text: string, channel?: Channel, tenantId?: string): Promise<{ ok: boolean; error?: string }> {
     // Zalo is a different mouth entirely: its own endpoint, its own auth
     // header, no echo/mid machinery (Zalo webhooks do not echo our sends).

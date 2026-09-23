@@ -78,6 +78,8 @@ export class UpdateBrandingDto {
   @IsOptional() @IsString() @MaxLength(20) seasonalTheme?: string;
   @IsOptional() @IsInt() @Min(50) @Max(200) logoScale?: number;
   @IsOptional() @IsString() @MaxLength(2_000_000) welcomeImageUrl?: string;
+  @IsOptional() @IsString() @MaxLength(2000) priceListImageUrl?: string;
+  @IsOptional() @IsString() @MaxLength(2000) storefrontImageUrl?: string;
   // Rating badge on the booking page: 'auto' = live from in-app reviews,
   // 'manual' = the salon types in their own (e.g. Google) rating, 'off' = hidden.
   @IsOptional() @IsIn(['auto', 'manual', 'off']) ratingMode?: string;

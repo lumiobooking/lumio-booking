@@ -205,7 +205,35 @@ export class ContentService {
    * Everything the generator reasons from, pulled from data the platform
    * already holds. No new integrations, no scraping, nothing to break.
    */
-  async gather(tenantId: string): Promise<{
+  /**
+   * `gather` is the whole picture of a salon — fifteen queries, a year of
+   * appointments — and it was rebuilt from scratch on every plan-page open,
+   * every 30-second poll of the shop's screen, and three times inside one
+   * /my-week request. Nothing in it changes minute to minute, so the picture
+   * is kept for three minutes per salon, and callers arriving while it is
+   * being built share the one build instead of starting their own.
+   */
+  private readonly gatherCache = new Map<string, { at: number; value: Promise<Awaited<ReturnType<ContentService['gatherFresh']>>> }>();
+  private static readonly GATHER_TTL_MS = 3 * 60 * 1000;
+
+  async gather(tenantId: string): Promise<Awaited<ReturnType<ContentService['gatherFresh']>>> {
+    const hit = this.gatherCache.get(tenantId);
+    if (hit && Date.now() - hit.at < ContentService.GATHER_TTL_MS) return hit.value;
+    const value = this.gatherFresh(tenantId);
+    this.gatherCache.set(tenantId, { at: Date.now(), value });
+    // A failed build is not kept: the next caller tries again.
+    value.catch(() => { if (this.gatherCache.get(tenantId)?.value === value) this.gatherCache.delete(tenantId); });
+    if (this.gatherCache.size > 500) {
+      const cutoff = Date.now() - ContentService.GATHER_TTL_MS;
+      for (const [k, v] of this.gatherCache) if (v.at < cutoff) this.gatherCache.delete(k);
+    }
+    return value;
+  }
+
+  /** Forget a salon's picture — after a write the plan should reflect at once. */
+  forgetGathered(tenantId: string): void { this.gatherCache.delete(tenantId); }
+
+  private async gatherFresh(tenantId: string): Promise<{
     tenantName: string;
     /** 'vi' | 'en' | null — null means "decide from the market", the old default. */
     contentLang: string | null;
@@ -352,10 +380,15 @@ export class ContentService {
 
     // Weekday/hour as the SALON sees them, not as UTC sees them — an 8pm
     // booking in California is next-day UTC and would land in the wrong block.
+    // ONE formatter for the whole run. This built a new Intl.DateTimeFormat
+    // per row — up to twenty thousand of them on a busy salon's year — which
+    // was a second or two of CPU on every plan-page open.
+    let partsFmt: Intl.DateTimeFormat | null = null;
+    try { partsFmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', hour12: false }); } catch { partsFmt = null; }
     const parts = (d: Date) => {
       try {
-        const f = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', hour12: false });
-        const p = f.formatToParts(d);
+        if (!partsFmt) throw new Error('no tz');
+        const p = partsFmt.formatToParts(d);
         const wdName = p.find((x) => x.type === 'weekday')?.value ?? 'Sun';
         const hour = Number(p.find((x) => x.type === 'hour')?.value ?? 0);
         const idx = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wdName);
@@ -3165,7 +3198,8 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
     };
     const basisOf = async () => {
       const ctx = await this.gather(tenantId).catch(() => null);
-      return { trade: ctx?.playbook?.trade ?? null, city: ctx?.city ?? null, thin: Boolean(ctx?.signals?.thin) };
+      // `trade` is a bilingual label (Txt); the screen wants the Vietnamese word.
+      return { trade: ctx?.playbook?.trade ? viOf(ctx.playbook.trade) : null, city: ctx?.city ?? null, thin: Boolean(ctx?.signals?.thin) };
     };
     let skipped: string | undefined;
     let left: number | null = null;
@@ -4194,6 +4228,7 @@ TRẢ VỀ JSON THUẦN:
     const row = await this.prisma.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { id: true } }).catch(() => null);
     if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: merged as never } }).catch(() => undefined);
     else await this.prisma.setting.create({ data: { tenantId, key: 'business_profile', value: merged as never } }).catch(() => undefined);
+    this.forgetGathered(tenantId);
 
     // A business outside the built-in trades gets a playbook of its own,
     // written from the description just saved. Same scan, one more call.

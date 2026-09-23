@@ -141,7 +141,7 @@ export default function AgencyPage() {
     // monitor, and it has to be right when they glance at it.
     const pull = () => apiFetch<InboxRow[]>(fresh('/support/inbox'), { token }).then(setInbox).catch(() => undefined);
     pull();
-    const t = setInterval(pull, 60_000);
+    const t = setInterval(() => { if (document.visibilityState === 'visible') pull(); }, 60_000);
     return () => clearInterval(t);
   }, [ready, user, token, router]);
 

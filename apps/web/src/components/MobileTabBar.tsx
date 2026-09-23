@@ -67,9 +67,10 @@ export function MobileTabBar() {
       .then((r) => { if (alive && r && typeof r.waiting === 'number') setUnread(r.waiting); })
       .catch(() => undefined);
     load();
-    const iv = window.setInterval(load, 60000);
-    window.addEventListener('focus', load);
-    return () => { alive = false; window.clearInterval(iv); window.removeEventListener('focus', load); };
+    const iv = window.setInterval(() => { if (document.visibilityState === 'visible') load(); }, 120_000);
+    const onVis = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { alive = false; window.clearInterval(iv); document.removeEventListener('visibilitychange', onVis); };
   }, [token, pathname]);
 
   const onAlerts = pathname === '/salon/approve-posts';

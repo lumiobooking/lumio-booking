@@ -98,3 +98,56 @@ export function rawMemoryFallback(prev: string | null | undefined, dropped: { ro
   // conversation needs, and the oldest were already summarised once.
   return merged.length <= cap ? merged : merged.slice(merged.length - cap);
 }
+
+/**
+ * THE SALON'S OWN CUSTOMER, for the booking bot.
+ *
+ * The lead dossier above fixed write-only memory for the SALES bot. The
+ * booking bot had the same fault and no fix: save_contact and create_booking
+ * wrote a Customer row and stamped the thread with its id, and nothing read
+ * either back — so a returning customer was asked for their name and phone
+ * on every visit, and "when is my appointment?" meant asking for the phone
+ * again to look it up. This block is that record, straight from the
+ * database, in the customer's language.
+ */
+export interface KnownCustomer {
+  firstName?: string | null;
+  lastName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  /** Upcoming, soonest first: "Gel manicure · Fri 3 Oct, 2:00 PM · with Ivy". */
+  upcoming?: { service: string; when: string; staff?: string | null }[];
+  /** The most recent finished visit, if any. */
+  lastVisit?: { service: string; when: string } | null;
+  visits?: number | null;
+  /** The name the platform shows for this person (Facebook profile), when no record exists yet. */
+  displayName?: string | null;
+}
+
+export function customerDossier(c: KnownCustomer | null | undefined, lang: ReplyLang | null = null): string {
+  if (!c) return '';
+  const en = lang === 'en';
+  const rows: string[] = [];
+  const add = (viLabel: string, enLabel: string, v: string | null | undefined) => {
+    const s = String(v ?? '').trim();
+    if (s) rows.push(`- ${en ? enLabel : viLabel}: ${s}`);
+  };
+  const name = [c.firstName, c.lastName].map((x) => String(x ?? '').trim()).filter(Boolean).join(' ');
+  add('Tên khách', 'Customer name', name || c.displayName);
+  add('Số điện thoại', 'Phone number', c.phone);
+  add('Email', 'Email', c.email);
+  if (c.upcoming?.length) {
+    add('Lịch hẹn sắp tới', 'Upcoming appointment(s)', c.upcoming.map((a) => `${a.service} · ${a.when}${a.staff ? (en ? ` · with ${a.staff}` : ` · thợ ${a.staff}`) : ''}`).join(' | '));
+  }
+  if (c.lastVisit) add('Lần ghé gần nhất', 'Last visit', `${c.lastVisit.service} · ${c.lastVisit.when}`);
+  if (c.visits && c.visits > 1) add('Số lần đã ghé', 'Visits so far', String(c.visits));
+  if (!rows.length) return '';
+  if (en) {
+    return '\nKNOWN CUSTOMER — the salon\'s own record of this person (from the database; THIS IS FACT). Never ask for anything listed here; use it. To book, you still need only what is MISSING from this list plus the service and time. If they ask about their appointment, the upcoming one is right here — do not ask for their phone number to look it up:\n'
+      + rows.join('\n')
+      + '\nIf they now give a different name or phone, the new one wins — update silently, never ask which is right.';
+  }
+  return '\nKHÁCH ĐÃ CÓ HỒ SƠ — dữ liệu của chính tiệm về người này (từ database; ĐÂY LÀ SỰ THẬT). Không hỏi lại bất kỳ mục nào dưới đây; dùng thẳng. Để đặt lịch chỉ cần hỏi thứ CÒN THIẾU trong danh sách này cộng với dịch vụ và giờ. Khách hỏi về lịch hẹn thì lịch sắp tới ở ngay đây — không hỏi số điện thoại để tra:\n'
+    + rows.join('\n')
+    + '\nNếu khách đưa tên hoặc số mới khác với trên, thông tin mới thắng — cập nhật im lặng, không hỏi khách cái nào đúng.';
+}

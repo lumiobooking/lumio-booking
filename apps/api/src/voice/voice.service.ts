@@ -1264,8 +1264,14 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
   /** Per-tenant AI usage this month (Super Admin billing oversight). */
   async usageAll(): Promise<TenantVoiceUsage[]> {
     const tenants = await this.prisma.tenant.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+    // Ten salons at a time, not one after another: with three queries per
+    // salon in series this page grew slower with every tenant added.
     const rows: TenantVoiceUsage[] = [];
-    for (const t of tenants) rows.push({ tenantId: t.id, name: t.name, ...(await this.usageForTenant(t.id)) });
+    for (let i = 0; i < tenants.length; i += 10) {
+      const batch = tenants.slice(i, i + 10);
+      const got = await Promise.all(batch.map(async (t) => ({ tenantId: t.id, name: t.name, ...(await this.usageForTenant(t.id)) })));
+      rows.push(...got);
+    }
     return rows;
   }
 

@@ -108,6 +108,8 @@ export interface WidgetTurn {
   at: string;
   /** A person at the salon wrote it, not the bot. */
   human: boolean;
+  /** Pictures the salon sent (public https). Drawn as images; the text is the caption line. */
+  images?: string[];
 }
 
 /**
@@ -122,16 +124,23 @@ export function turnsSince(
   const rows = Array.isArray(history) ? history : [];
   const sinceMs = since ? Date.parse(since) : NaN;
   const out: WidgetTurn[] = [];
-  for (const r of rows as { role?: string; content?: unknown; at?: string; manual?: boolean; failed?: boolean }[]) {
+  for (const r of rows as { role?: string; content?: unknown; at?: string; manual?: boolean; failed?: boolean; images?: unknown }[]) {
     if (!r || (r.role !== 'user' && r.role !== 'assistant')) continue;
     if (r.failed) continue;
     const text = typeof r.content === 'string' ? r.content : '';
-    if (!text.trim()) continue;
+    // Only the salon's outbound pictures are shown; a visitor's own upload is
+    // theirs to see already, and its URL is not for the page to re-embed.
+    const images = r.role === 'assistant' && Array.isArray(r.images)
+      ? (r.images as unknown[]).filter((u): u is string => typeof u === 'string' && /^https:\/\//i.test(u)).slice(0, 3)
+      : [];
+    if (!text.trim() && !images.length) continue;
     const atMs = r.at ? Date.parse(r.at) : NaN;
     if (Number.isFinite(sinceMs)) {
       if (!Number.isFinite(atMs) || atMs <= sinceMs) continue;
     }
-    out.push({ role: r.role, text, at: Number.isFinite(atMs) ? new Date(atMs).toISOString() : '', human: Boolean(r.manual) });
+    // The stage direction "[Đã gửi 2 ảnh: …]" is for the inbox; the visitor sees the pictures.
+    const shown = images.length && /^\[Đã gửi \d+ ảnh/.test(text) ? '' : text;
+    out.push({ role: r.role, text: shown, at: Number.isFinite(atMs) ? new Date(atMs).toISOString() : '', human: Boolean(r.manual), ...(images.length ? { images } : {}) });
   }
   return out;
 }

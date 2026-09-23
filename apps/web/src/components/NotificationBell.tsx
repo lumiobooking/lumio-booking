@@ -63,11 +63,13 @@ export function NotificationBell() {
   useEffect(() => {
     if (!token) return;
     load();
-    const iv = window.setInterval(load, 45000);
+    // Every 90 s while the tab is visible; a hidden tab stops asking.
+    const iv = window.setInterval(() => { if (document.visibilityState === 'visible') load(); }, 90_000);
     const onSeen = () => setUnread(0);
+    const onVis = () => { if (document.visibilityState === 'visible') load(); };
     window.addEventListener('lumio-activity-seen', onSeen);
-    window.addEventListener('focus', load);
-    return () => { window.clearInterval(iv); window.removeEventListener('lumio-activity-seen', onSeen); window.removeEventListener('focus', load); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { window.clearInterval(iv); window.removeEventListener('lumio-activity-seen', onSeen); document.removeEventListener('visibilitychange', onVis); };
   }, [token, load]);
 
   // Opening the panel marks all as seen (clears the badge here + tab bar).

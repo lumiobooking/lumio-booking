@@ -36,7 +36,7 @@ interface SettingsData {
   market?: string;
   company: { name: string; slug: string; contactEmail: string | null; contactPhone: string | null; timezone: string; address: string; website: string; country?: string };
   booking: Booking;
-  branding: { accentColor: string; logoUrl: string; logoScale?: number; welcomeImageUrl?: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number };
+  branding: { accentColor: string; logoUrl: string; logoScale?: number; welcomeImageUrl?: string; priceListImageUrl?: string; storefrontImageUrl?: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number };
   rebooking?: { enabled: boolean; daysAfter: number; email: boolean; sms: boolean };
   gateways: Record<string, GatewayView>;
   notifications: {
@@ -1407,6 +1407,64 @@ async function compressPhoto(file: File, maxSide = 1400, quality = 0.82): Promis
   ctx.drawImage(img, 0, 0, w, h);
   return canvas.toDataURL('image/jpeg', quality);
 }
+/**
+ * One hosted picture for the chatbot to send. Unlike the logo and the
+ * welcome hero, there is no inline fallback here: a picture the platforms
+ * cannot fetch is a picture the bot cannot send, so without storage the
+ * field says so instead of quietly saving base64.
+ */
+function BotPhotoField({ label, hint, value, token, lang, onChange }: { label: string; hint: string; value: string; token: string; lang: string; onChange: (url: string) => void }) {
+  const ref = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const show = value.trim();
+  const ok = show.startsWith('https://');
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setErr(lang === 'vi' ? 'File không phải hình ảnh.' : 'That file is not an image.'); return; }
+    setErr(null); setBusy(true);
+    try {
+      if (!token || !(await logoStorageConfigured(token))) {
+        setErr(lang === 'vi' ? 'Chưa bật lưu trữ ảnh (Storage) — Lumio cần bật để bot gửi được ảnh. Hoặc dán link https của ảnh vào ô bên cạnh.' : 'Photo storage is not enabled — Lumio must enable it for the bot to send pictures. Or paste an https link in the box.');
+        return;
+      }
+      const out = await compressPhoto(file, 1400, 0.85);
+      const r = await apiFetch<{ url?: string }>('/uploads/service-photo', { method: 'POST', token, body: { dataUrl: out } });
+      if (r?.url && r.url.startsWith('https://')) onChange(r.url);
+      else setErr(lang === 'vi' ? 'Tải ảnh thất bại.' : 'Upload failed.');
+    } catch { setErr(lang === 'vi' ? 'Tải ảnh thất bại.' : 'Upload failed.'); }
+    finally { setBusy(false); }
+  }
+  return (
+    <Field label={label}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ width: 96, height: 54, borderRadius: 8, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', fontSize: 18 }}>
+          {ok
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={show} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            : <span>🖼</span>}
+        </span>
+        <button type="button" onClick={() => ref.current?.click()} disabled={busy}
+          style={{ ...ui.primaryBtn, padding: '9px 14px', fontSize: 13, whiteSpace: 'nowrap', flexShrink: 0, opacity: busy ? 0.6 : 1 }}>
+          {busy ? (lang === 'vi' ? 'Đang tải…' : 'Uploading…') : (lang === 'vi' ? '⬆ Tải ảnh lên' : '⬆ Upload image')}
+        </button>
+        <input ref={ref} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPick} />
+        {show && (
+          <button type="button" onClick={() => onChange('')}
+            style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}>
+            {lang === 'vi' ? 'Xoá' : 'Remove'}
+          </button>
+        )}
+        <input style={{ ...ui.input, fontSize: 12.5, flex: '1 1 200px', minWidth: 160 }} value={value}
+          onChange={(e) => onChange(e.target.value)} placeholder={lang === 'vi' ? 'hoặc dán URL https://…/anh.jpg' : 'or paste https://…/photo.jpg'} />
+      </div>
+      {err && <div style={{ color: 'var(--cf87171)', fontSize: 12, marginTop: 4 }}>{err}</div>}
+      <div style={{ color: 'var(--c64748b)', fontSize: 11.5, marginTop: 6 }}>{hint}</div>
+    </Field>
+  );
+}
+
 function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -1548,6 +1606,24 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           {wErr && <div style={{ color: 'var(--cf87171)', fontSize: 12, marginTop: 4 }}>{wErr}</div>}
           <div style={{ color: 'var(--c64748b)', fontSize: 11.5, marginTop: 6 }}>{lang === 'vi' ? 'Ảnh ngang, đẹp nhất ~16:9 (vd bàn tay/nail sang trọng). Hiện làm nền màn chào khách kèm logo + chữ "Welcome". Để trống thì dùng màn chào mặc định.' : 'Landscape image, best ~16:9 (e.g. an elegant nail/hand shot). Becomes the welcome-screen background with your logo + a "Welcome" title. Leave blank for the default welcome screen.'}</div>
         </Field>
+      </div>
+
+      {/* Two pictures the chatbot may send a customer. They MUST be hosted
+          (https) — Messenger, Instagram and Zalo fetch them from their side —
+          so these go to the platform's storage and never inline. */}
+      <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+        <BotPhotoField
+          label={lang === 'vi' ? 'Ảnh bảng giá (bot gửi khi khách hỏi giá)' : 'Price-list image (the chatbot sends it when asked for prices)'}
+          hint={lang === 'vi' ? 'Một ảnh bảng giá rõ, chụp thẳng. Khách nhắn "cho xem bảng giá" là bot gửi ảnh này kèm câu trả lời.' : 'One clear, straight-on photo of your price list. When a customer asks for prices, the bot sends it with its reply.'}
+          value={f.priceListImageUrl || ''} token={token ?? ''} lang={lang}
+          onChange={(u) => setF((prev) => ({ ...prev, priceListImageUrl: u }))}
+        />
+        <BotPhotoField
+          label={lang === 'vi' ? 'Ảnh mặt tiền tiệm (bot gửi khi khách hỏi đường)' : 'Storefront photo (the chatbot sends it when asked where you are)'}
+          hint={lang === 'vi' ? 'Ảnh mặt tiền ban ngày, thấy bảng hiệu. Khách hỏi "tiệm ở đâu" là bot gửi ảnh này kèm địa chỉ.' : 'A daytime shot of the front with the sign visible. When a customer asks where you are, the bot sends it with the address.'}
+          value={f.storefrontImageUrl || ''} token={token ?? ''} lang={lang}
+          onChange={(u) => setF((prev) => ({ ...prev, storefrontImageUrl: u }))}
+        />
       </div>
 
       <div style={{ marginTop: 12 }}>

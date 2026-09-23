@@ -15,8 +15,21 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
-import { SeoRoadmap } from '../../../components/SeoRoadmap';
-import { OnboardingReport } from '../../../components/OnboardingReport';
+import dynamic from 'next/dynamic';
+// TABS LOAD WHEN OPENED. This page statically imported every tab's component
+// — about 330 KB of source on top of its own 420 KB — so opening "Hôm nay"
+// downloaded the plan board, the trend feed, the SEO roadmap and the
+// onboarding report the person might never look at. Each is now its own
+// chunk, fetched the first time its tab is shown.
+const lazyTab = () => <div style={{ padding: 24, color: 'var(--c94a3b8)', fontSize: 13 }}>…</div>;
+const SeoRoadmap = dynamic(() => import('../../../components/SeoRoadmap').then((m) => m.SeoRoadmap), { ssr: false, loading: lazyTab });
+const OnboardingReport = dynamic(() => import('../../../components/OnboardingReport').then((m) => m.OnboardingReport), { ssr: false, loading: lazyTab });
+const WeekPlanBoard = dynamic(() => import('../../../components/WeekPlanBoard').then((m) => m.WeekPlanBoard), { ssr: false, loading: lazyTab });
+const PlanSheet = dynamic(() => import('../../../components/PlanSheet').then((m) => m.PlanSheet), { ssr: false, loading: lazyTab });
+const PlanIdeas = dynamic(() => import('../../../components/PlanIdeas').then((m) => m.PlanIdeas), { ssr: false, loading: lazyTab });
+const TrendsTab = dynamic(() => import('../../../components/TrendsTab').then((m) => m.TrendsTab), { ssr: false, loading: lazyTab });
+const SuggestionInbox = dynamic(() => import('../../../components/SuggestionInbox').then((m) => m.SuggestionInbox), { ssr: false, loading: lazyTab });
+const PostDetailModal = dynamic(() => import('../../../components/PostDetailModal').then((m) => m.PostDetailModal), { ssr: false, loading: () => null });
 import { Panel } from '../../../components/Panel';
 import { CardHead } from '../../../components/CardHead';
 import { isNorthAmerica } from '../../../lib/markets';
@@ -32,16 +45,14 @@ import { useIsMobile } from '../../../lib/responsive';
 import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz, salonTz } from '../../../lib/datetime';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
 import { MonthCalendar, IgGrid, PostPreview, MediaList, ChannelChips, CHANNEL_NAME, TONES, postTone, type MediaItem, type Channel } from '../../../components/PostStudio';
-import { WeekPlanBoard, type OfferForm } from '../../../components/WeekPlanBoard';
+import type { OfferForm } from '../../../components/WeekPlanBoard';
 import { addDays, type AheadBlock } from '../../../components/plan-grid';
-import { PostDetailModal } from '../../../components/PostDetailModal';
-import { PlanIdeas } from '../../../components/PlanIdeas';
-import { PlanSheet, type DayIdeas } from '../../../components/PlanSheet';
+import type { DayIdeas } from '../../../components/PlanSheet';
 import { entryToDraft, entryFromIdea, mergeIdeaInto, entryHasContent, nextMonth, monthTitle, shiftMonth, monthInRange, type PlanEntry, type PlanPatch, type PlanTags } from '../../../components/plan-sheet';
 import { MonthBriefEditor, type MonthBriefData } from '../../../components/MonthBrief';
-import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
+import type { TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
-import { TrendsTab, type TrendCard } from '../../../components/TrendsTab';
+import type { TrendCard } from '../../../components/TrendsTab';
 import { fitForSocial } from '../../../lib/image';
 
 interface Idea {

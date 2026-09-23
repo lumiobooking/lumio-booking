@@ -174,7 +174,7 @@ function Inner() {
       .then((b) => { if (alive) setWalkinNow((b.serving?.length ?? 0) + (b.waiting?.length ?? 0)); })
       .catch(() => {});
     tick();
-    const iv = window.setInterval(tick, 30000);
+    const iv = window.setInterval(() => { if (document.visibilityState === 'visible') tick(); }, 30000);
     return () => { alive = false; window.clearInterval(iv); };
   }, [token]);
   useLiveRefresh(load, 15000); // new bookings appear within ~15s, no reload needed

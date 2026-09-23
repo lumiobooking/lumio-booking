@@ -96,6 +96,7 @@ const WIDGET = `(function () {
       '.r{max-width:82%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}' +
       '.r.u{align-self:flex-end;background:' + color + ';color:#fff;border-bottom-right-radius:4px}' +
       '.r.a{align-self:flex-start;background:#fff;color:#111827;border:1px solid #e5e7eb;border-bottom-left-radius:4px}' +
+      '.r.a.p{padding:4px;max-width:70%}' +
       '.lk{color:' + color + ';text-decoration:underline;word-break:break-all}' +
       // The appointment link is the end of the sale, so it is a target, not a
       // sentence: full width, its own line, and big enough for a thumb.
@@ -199,7 +200,15 @@ const WIDGET = `(function () {
     for (var i = 0; i < turns.length; i++) {
       var x = turns[i];
       if (x.role === 'user') html += '<div class="r u">' + esc(x.text) + '</div>';
-      else html += '<div class="r a">' + rich(x.text) + '</div><div class="l">' + esc(x.human ? t('staff') : name) + '</div>';
+      else {
+        // Pictures the salon sent. Only https URLs reach here (the server
+        // filters), and the attribute is escaped like every other string.
+        if (x.images && x.images.length) {
+          for (var k = 0; k < x.images.length; k++) html += '<div class="r a p"><img src="' + esc(x.images[k]) + '" alt="" loading="lazy" style="max-width:100%;border-radius:10px;display:block"></div>';
+        }
+        if (x.text) html += '<div class="r a">' + rich(x.text) + '</div>';
+        html += '<div class="l">' + esc(x.human ? t('staff') : name) + '</div>';
+      }
     }
     if (waitingSince) html += '<div class="ty"><i></i><i></i><i></i></div>';
     // Same markup as last time: leave the DOM alone. A poll every 1.5 seconds
@@ -219,7 +228,7 @@ const WIDGET = `(function () {
       // The line we drew optimistically comes back with its server timestamp: replace, do not duplicate.
       var dup = false;
       for (var j = turns.length - 1; j >= 0 && j >= turns.length - 6; j--) {
-        if (turns[j].role === r.role && turns[j].text === r.text && !turns[j].at) { turns[j] = r; dup = true; break; }
+        if (turns[j].role === r.role && turns[j].text === r.text && !turns[j].at && !(r.images && r.images.length)) { turns[j] = r; dup = true; break; }
       }
       if (!dup) turns.push(r);
       if (r.at && r.at > lastAt) lastAt = r.at;

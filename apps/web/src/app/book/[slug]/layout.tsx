@@ -8,6 +8,10 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
+/** Just the scheme + host of the API, for the preconnect hint. */
+function apiOrigin(): string {
+  try { return new URL(API_URL).origin; } catch { return API_URL; }
+}
 const WEB_URL = (process.env.NEXT_PUBLIC_WEB_URL ?? 'https://lumiobooking.com').replace(/\/$/, '');
 
 interface Seo {
@@ -137,6 +141,11 @@ export default async function BookSlugLayout({ children, params }: { children: R
           it gets a real typeface, not the OS default. Plus Jakarta Sans is
           geometric, friendly and (unlike Poppins) ships a Vietnamese subset, so
           salon names with dấu render correctly. */}
+      {/* The API is on another origin: open its connection while the HTML
+          is still parsing, so the first data request does not pay DNS + TLS
+          on top of everything else. */}
+      <link rel="preconnect" href={apiOrigin()} crossOrigin="anonymous" />
+      <link rel="dns-prefetch" href={apiOrigin()} />
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       <link

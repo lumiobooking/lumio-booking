@@ -8,7 +8,7 @@
  *    old caches are purged on activate.
  *
  * Bump CACHE on every meaningful change to force old caches out. */
-const CACHE = 'lumio-cache-v6';
+const CACHE = 'lumio-cache-v7';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -32,6 +32,27 @@ self.addEventListener('fetch', (event) => {
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req).catch(() => caches.match(req).then((c) => c || caches.match('/'))),
+    );
+    return;
+  }
+
+  // Only this site's own files. The worker used to sit in front of EVERY
+  // GET — the API on another origin included — which added a hop to each
+  // call and copied private JSON (bookings, customers) into Cache Storage
+  // on the device. API traffic now goes straight to the network.
+  let url;
+  try { url = new URL(req.url); } catch { return; }
+  if (url.origin !== self.location.origin) return;
+
+  // Next's hashed build files never change under their name: cache-first,
+  // so a repeat visit paints from disk.
+  if (url.pathname.startsWith('/_next/static/')) {
+    event.respondWith(
+      caches.match(req).then((hit) => hit || fetch(req).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        return res;
+      })),
     );
     return;
   }

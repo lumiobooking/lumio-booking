@@ -79,3 +79,20 @@ describe('website chat — the pure parts', () => {
     expect(js).not.toMatch(/\$\{/);
   });
 });
+
+describe('pictures the salon sent reach the widget', () => {
+  const { turnsSince } = jest.requireActual('./web-chat') as typeof import('./web-chat');
+  it('carries https images on an assistant turn and hides the inbox stage direction', () => {
+    const rows = turnsSince([
+      { role: 'assistant', content: '[Đã gửi 2 ảnh: Gel manicure]', at: '2026-09-23T10:00:00Z', images: ['https://cdn/x.jpg', 'http://plain/y.jpg', 'https://cdn/z.jpg'] },
+      { role: 'assistant', content: 'Đây là hai mẫu gel bên em ạ', at: '2026-09-23T10:00:01Z' },
+    ], null);
+    expect(rows[0].images).toEqual(['https://cdn/x.jpg', 'https://cdn/z.jpg']);
+    expect(rows[0].text).toBe('');
+    expect(rows[1].images).toBeUndefined();
+  });
+  it('never re-embeds a visitor’s own upload', () => {
+    const rows = turnsSince([{ role: 'user', content: '[Khách gửi 1 ảnh]', at: '2026-09-23T10:00:00Z', images: ['https://cdn/mine.jpg'] }], null);
+    expect(rows[0].images).toBeUndefined();
+  });
+});

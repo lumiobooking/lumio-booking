@@ -650,6 +650,14 @@ export interface Branding {
   logoScale: number;
   /** Custom hero image for the customer-facing display's Welcome screen. */
   welcomeImageUrl: string;
+  /**
+   * Two pictures the CHATBOT may send a customer: the price list as an image
+   * ("có bảng giá không?") and the storefront ("tiệm ở đâu?"). Public https
+   * URLs only — Messenger, Instagram and Zalo fetch them from their side —
+   * so they come from the platform's file storage, never inline base64.
+   */
+  priceListImageUrl: string;
+  storefrontImageUrl: string;
 }
 
 export const DEFAULT_BRANDING: Branding = {
@@ -661,6 +669,8 @@ export const DEFAULT_BRANDING: Branding = {
   ratingCount: 0,
   logoScale: 100,
   welcomeImageUrl: '',
+  priceListImageUrl: '',
+  storefrontImageUrl: '',
 };
 
 // ===========================================================================

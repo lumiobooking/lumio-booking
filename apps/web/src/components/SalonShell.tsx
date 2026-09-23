@@ -355,13 +355,22 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       .catch(() => {});
   }, [token, hasSalonAccess]);
 
+  // Three minutes between checks, none while the tab is hidden, and one
+  // refresh (not two) when the person comes back: the old 45-second loop
+  // plus a focus AND a visibilitychange listener fired these three calls
+  // twice on every return to the tab and every 45 s all night in a
+  // background tab. A plan change made in Super Admin still shows within
+  // minutes, and at once on the next visit.
   useEffect(() => {
     refreshEntitlements();
-    const onFocus = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') refreshEntitlements(); };
-    const iv = window.setInterval(refreshEntitlements, 45000);
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    return () => { window.clearInterval(iv); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); };
+    let last = Date.now();
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - last > 20_000) { last = Date.now(); refreshEntitlements(); }
+    };
+    const iv = window.setInterval(() => { if (document.visibilityState === 'visible') { last = Date.now(); refreshEntitlements(); } }, 180_000);
+    document.addEventListener('visibilitychange', onVis);
+    return () => { window.clearInterval(iv); document.removeEventListener('visibilitychange', onVis); };
   }, [refreshEntitlements]);
 
   // Close the drawer whenever the route changes.
@@ -388,19 +397,14 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     if (!token) { setPostAlerts(0); return; }
     let alive = true;
     const load = () => {
-      apiFetch<{ posts: { status: string; blockers: string[] }[] }>('/content/posts', { token })
-        .then((q) => {
-          if (!alive) return;
-          setPostAlerts((q.posts ?? []).filter(
-            (p) => p.status === 'failed' || p.status === 'expired' || (p.blockers ?? []).length > 0,
-          ).length);
-        })
+      // Two database counts, not the whole queue plus a Meta call.
+      apiFetch<{ alerts: number }>('/content/posts/alerts', { token })
+        .then((q) => { if (alive) setPostAlerts(Number(q?.alerts) || 0); })
         .catch(() => undefined);
     };
     load();
-    const iv = window.setInterval(load, 5 * 60 * 1000);
-    window.addEventListener('focus', load);
-    return () => { alive = false; window.clearInterval(iv); window.removeEventListener('focus', load); };
+    const iv = window.setInterval(() => { if (document.visibilityState === 'visible') load(); }, 5 * 60 * 1000);
+    return () => { alive = false; window.clearInterval(iv); };
   }, [token]);
 
   if (!ready || !token || !user || !hasSalonAccess) {

@@ -806,7 +806,11 @@ export class VoiceService implements OnModuleInit {
     // longer menu is exactly how the assistant ends up booking the nearest
     // thing it can see, so it is told to look the rest up with get_services.
     const { locale: menuLocale } = await this.localeInfo(tenantId);
-    const svcCount = await this.prisma.service.count({ where: { tenantId, isActive: true } }).catch(() => services.length);
+    let svcCount = services.length;
+    if (services.length >= 40) {
+      // Only worth a query when the block is full; a short menu is complete.
+      try { svcCount = await this.prisma.service.count({ where: { tenantId, isActive: true } }); } catch { svcCount = services.length; }
+    }
     const servicesBlock = services.length
       ? 'Bookable services (use the exact id when you call create_booking; never say the id out loud):\n' +
         services.map((s) => `- ${s.name} — ${formatMoneyShort(s.priceCents, (s as { currency?: string }).currency ?? 'USD', menuLocale)}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''} (id: ${s.id})`).join('\n') +

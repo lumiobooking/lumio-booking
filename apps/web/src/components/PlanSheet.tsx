@@ -38,6 +38,15 @@ import {
 
 export interface SheetPost { id: string; status: string; scheduledAt: string; stage?: string | null }
 
+/** What /content/ideas/for-day answers. */
+export interface DayIdeas {
+  day: string;
+  ideas: { id: string; rank: number; formatName: string | null; title: string; hook: string | null; shotList: string | null; caption: string | null; hashtags: string | null; reason: string | null; trend: { title: string; thumbUrl: string | null; url: string | null } | null }[];
+  basis: { trade: string | null; city: string | null; thin: boolean };
+  left: number | null;
+  skipped?: string;
+}
+
 const STATUS: Record<string, { bg: string; ink: string; icon: string; vi: string; en: string }> = {
   posted: { bg: 'rgba(34,197,94,.14)', ink: 'var(--ink-good)', icon: '✅', vi: 'Đã đăng', en: 'Posted' },
   failed: { bg: 'rgba(239,68,68,.14)', ink: 'var(--ink-bad)', icon: '⚠️', vi: 'Lỗi đăng', en: 'Failed' },
@@ -50,7 +59,7 @@ const FORMAT_ICON: Record<string, string> = { poster: '🖼', album: '🎞', vid
 const iconOf = (id: string) => FORMAT_ICON[id] ?? '◆';
 
 export function PlanSheet({
-  month, months, onMonth, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected, postsKnown, focusDay, tags, onSaveTags, onMoveDay,
+  month, months, onMonth, today, tz, entries, posts, vi, canEdit, isMobile, onSave, onClear, onSchedule, onOpenPost, connected, postsKnown, focusDay, tags, onSaveTags, onMoveDay, onIdeas,
 }: {
   /** The calendar month the sheet shows, "YYYY-MM" — the shop's month, next to the month brief. */
   month: string;
@@ -83,6 +92,12 @@ export function PlanSheet({
   onSaveTags?: (tags: PlanTags) => Promise<void>;
   /** With canEdit: move a day's slot to another day (an occupied day trades places). Drag on desktop, "Dời sang" in the panel everywhere. */
   onMoveDay?: (from: string, to: string) => Promise<void>;
+  /**
+   * With canEdit: three ideas for a day, made when the person asks (never on
+   * a timer). `again` spends a fresh model call. Resolves with the ideas and
+   * what they were based on, so the panel can say "chưa khai báo khu vực".
+   */
+  onIdeas?: (day: string, again: boolean) => Promise<DayIdeas>;
 }) {
   const T = (a: string, b: string) => (vi ? a : b);
   const tagSet = useMemo(() => tagsOr(tags), [tags]);
@@ -339,6 +354,7 @@ export function PlanSheet({
           moveTargets={canMove && !pinned(entries[open]) && entryHasContent(entries[open]) ? moveTargets.filter((k) => k !== open && !pinned(entries[k])) : undefined}
           filledDays={entries}
           onMoveTo={(to) => moveDay(open, to)}
+          onIdeas={canEdit ? onIdeas : undefined}
           onSave={onSave}
           onClear={async (d) => { await onClear(d); setOpen(null); }}
           onSchedule={onSchedule}
@@ -373,7 +389,7 @@ const labelStyle: CSSProperties = { fontSize: 10.5, fontWeight: 800, letterSpaci
 const editLink: CSSProperties = { marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 700, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-link)' };
 
 function DayPanel({
-  day, entry, post, tz, vi, canEdit, isMobile, connected, pillars, formats, onEditTags, moveTargets, filledDays, onMoveTo, onSave, onClear, onSchedule, onOpenPost, onClose, onMove,
+  day, entry, post, tz, vi, canEdit, isMobile, connected, pillars, formats, onEditTags, moveTargets, filledDays, onMoveTo, onIdeas, onSave, onClear, onSchedule, onOpenPost, onClose, onMove,
 }: {
   day: SheetDay; entry: PlanEntry; post: SheetPost | null; tz: string; vi: boolean; canEdit: boolean; isMobile: boolean;
   connected: Record<Air, boolean>;
@@ -385,6 +401,7 @@ function DayPanel({
   moveTargets?: string[];
   filledDays: Record<string, PlanEntry>;
   onMoveTo: (to: string) => Promise<void>;
+  onIdeas?: (day: string, again: boolean) => Promise<DayIdeas>;
   onSave: (day: string, patch: PlanPatch) => Promise<void>;
   onClear: (day: string) => Promise<void>;
   onSchedule: (entry: PlanEntry) => void;
@@ -395,6 +412,25 @@ function DayPanel({
   const T = (a: string, b: string) => (vi ? a : b);
   const [local, setLocal] = useState<PlanEntry>(entry);
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  // Ideas for this day, fetched only when asked. Stuck for the day: a
+  // second press reads the cached rows, "gợi ý lại" is the only fresh call.
+  const [ideas, setIdeas] = useState<DayIdeas | null>(null);
+  const [ideasBusy, setIdeasBusy] = useState(false);
+  const [ideasErr, setIdeasErr] = useState('');
+  const askIdeas = async (again: boolean) => {
+    if (!onIdeas || ideasBusy) return;
+    setIdeasBusy(true); setIdeasErr('');
+    try { setIdeas(await onIdeas(day.key, again)); }
+    catch (e) { setIdeasErr(e instanceof Error ? e.message : T('Chưa lấy được gợi ý', 'Could not get ideas')); }
+    finally { setIdeasBusy(false); }
+  };
+  const applyIdea = (i: DayIdeas['ideas'][number]) => {
+    const cur = localRef.current;
+    if ((cur.topic.trim() || cur.detail.trim()) && !window.confirm(T('Thay chủ đề và nội dung đang có bằng ý này?', 'Replace the current topic and detail with this idea?'))) return;
+    const detail = [i.caption?.trim(), i.hashtags?.trim()].filter(Boolean).join('\n\n');
+    const fmt = /video|reel|clip/i.test(i.formatName ?? '') ? 'video' : /story/i.test(i.formatName ?? '') ? 'story' : /album|carousel|ảnh/i.test(i.formatName ?? '') ? 'album' : cur.format;
+    change({ topic: i.title.slice(0, 200), detail, format: fmt || cur.format });
+  };
   // What is typed lives here; the server copy arrives as `entry`. A reply
   // for THIS day must not land on a field being typed in.
   const typingRef = useRef(false);
@@ -482,6 +518,46 @@ function DayPanel({
               </span>
             </button>
           ) : null}
+
+          {onIdeas && (
+            <div style={{ borderRadius: 10, border: '1px dashed var(--c334155)', padding: '10px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{T('Bí ý tưởng cho ngày này?', 'Stuck for this day?')}</span>
+                <button type="button" disabled={ideasBusy} onClick={() => void askIdeas(false)} style={{ minHeight: 32, padding: '0 12px', borderRadius: 8, border: '1px solid #f59e0b', background: 'rgba(245,158,11,.12)', color: 'var(--cfde68a)', fontSize: 12.5, fontWeight: 800, cursor: ideasBusy ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                  {ideasBusy ? T('💡 Đang nghĩ… (10–20 giây)', '💡 Thinking… (10–20 s)') : ideas ? T('💡 Xem lại gợi ý', '💡 Show ideas') : T('💡 Gợi ý 3 ý tưởng', '💡 Suggest 3 ideas')}
+                </button>
+                {ideas && !ideasBusy && (
+                  <button type="button" onClick={() => void askIdeas(true)} title={T('Tốn một lần gọi AI — tối đa 5 lần/ngày cho tiệm này', 'Spends one AI call — at most 5 a day for this shop')} style={{ minHeight: 32, padding: '0 10px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    ↻ {T('Gợi ý lại', 'Again')}{ideas.left !== null ? ` (${ideas.left})` : ''}
+                  </button>
+                )}
+              </div>
+              {ideasErr && <div style={{ marginTop: 6, fontSize: 12, color: 'var(--ink-bad)' }}>{ideasErr}</div>}
+              {ideas && (
+                <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                  {(!ideas.basis.trade || !ideas.basis.city) && (
+                    <div style={{ fontSize: 11.5, color: 'var(--ink-warn)' }}>
+                      ⚠ {T(`Tiệm chưa khai báo ${[!ideas.basis.trade ? 'ngành nghề' : '', !ideas.basis.city ? 'khu vực' : ''].filter(Boolean).join(' và ')} — gợi ý sẽ chung chung. Bổ sung ở Hồ sơ tiệm rồi bấm "Gợi ý lại".`, `This shop has not declared its ${[!ideas.basis.trade ? 'trade' : '', !ideas.basis.city ? 'area' : ''].filter(Boolean).join(' and ')} — ideas will be generic. Fill the business profile, then "Again".`)}
+                    </div>
+                  )}
+                  {ideas.ideas.length === 0 && <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{T('Chưa có gợi ý — thử "Gợi ý lại".', 'No ideas yet — try "Again".')}{ideas.skipped ? ` (${ideas.skipped})` : ''}</div>}
+                  {ideas.ideas.map((i) => (
+                    <div key={i.id} style={{ borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', padding: '9px 11px', display: 'grid', gap: 4 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{i.rank}. {i.title}{i.formatName ? <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--c94a3b8)' }}>{i.formatName}</span> : null}</div>
+                          {i.hook && <div style={{ fontSize: 12, color: 'var(--ccbd5e1)', marginTop: 2 }}>{i.hook}</div>}
+                          {i.shotList && <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 2 }}>🎬 {i.shotList}</div>}
+                          {i.reason && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{T('Vì', 'Why')}: {i.reason}</div>}
+                        </div>
+                        <button type="button" onClick={() => applyIdea(i)} style={{ flex: '0 0 auto', minHeight: 30, padding: '0 10px', borderRadius: 8, border: '1px solid #6366f1', background: '#6366f1', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Dùng ý này', 'Use it')}</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <div style={{ ...labelStyle, display: 'flex', alignItems: 'center' }}>

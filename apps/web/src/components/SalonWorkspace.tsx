@@ -171,8 +171,13 @@ export function SalonWorkspace({ token, vi, onCount }: {
   // first clip has to have somewhere to go.
   const nothing = loaded && !sugg?.open.length && !sugg?.past.length && !week?.jobs.length;
 
+  // The page around this was widened to fill a laptop screen, but this
+  // column kept its old 760px cap and pinned everything to the middle with a
+  // third of the window empty each side — and squeezed the month calendar
+  // (seven days across) into narrow cells. 1100px is wide enough for seven
+  // readable day cards and still a comfortable line length.
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto', padding: '0 0 22px' }}>
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 0 22px' }}>
       {err && (
         <div style={{
           background: 'var(--c450a0a)', border: '1px solid #ef4444', color: 'var(--cfecaca)',

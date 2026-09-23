@@ -620,6 +620,12 @@ export class ContentController {
     return this.svc.refreshFor(user);
   }
 
+  /** Three ideas for one day of the plan, made when the team asks — never on a timer. */
+  @Post('ideas/for-day')
+  ideasForDay(@CurrentUser() user: AuthenticatedUser, @Body() dto: { day?: string; again?: boolean }) {
+    return this.svc.ideasForDay(user, dto?.day, dto?.again === true);
+  }
+
   /**
    * Read the business's own website and Facebook Page and propose the profile.
    *

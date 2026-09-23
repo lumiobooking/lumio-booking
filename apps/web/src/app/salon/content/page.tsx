@@ -36,7 +36,7 @@ import { WeekPlanBoard, type OfferForm } from '../../../components/WeekPlanBoard
 import { addDays, type AheadBlock } from '../../../components/plan-grid';
 import { PostDetailModal } from '../../../components/PostDetailModal';
 import { PlanIdeas } from '../../../components/PlanIdeas';
-import { PlanSheet } from '../../../components/PlanSheet';
+import { PlanSheet, type DayIdeas } from '../../../components/PlanSheet';
 import { entryToDraft, entryFromIdea, mergeIdeaInto, entryHasContent, nextMonth, monthTitle, shiftMonth, monthInRange, type PlanEntry, type PlanPatch, type PlanTags } from '../../../components/plan-sheet';
 import { MonthBriefEditor, type MonthBriefData } from '../../../components/MonthBrief';
 import { SuggestionInbox, type TeamSuggestion } from '../../../components/SuggestionInbox';
@@ -2339,8 +2339,8 @@ function Inner() {
                     {T('Hôm nay chưa có gợi ý', 'No plan for today yet')}
                   </div>
                   <div style={{ fontSize: 13.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
-                    {T('Gợi ý mỗi ngày tự lên sau 7:00 sáng giờ của tiệm. Nếu đã quá giờ mà vẫn trống, bấm "Cập nhật ngay" để soạn ngay bây giờ.',
-                       'Each day’s ideas appear on their own after 7:00 am your time. Past that and still empty? Press “Refresh now” to draft them right away.')}
+                    {T('Gợi ý không còn tự tạo mỗi ngày. Bí ý tưởng cho ngày nào, mở Plan, bấm vào ngày đó rồi bấm "💡 Gợi ý 3 ý tưởng" — hoặc bấm "Cập nhật ngay" để soạn cho hôm nay.',
+                       'Ideas are no longer drafted every day. Stuck for a day? Open the Plan, tap that day and press “💡 Suggest 3 ideas” — or press “Refresh now” to draft today’s.')}
                   </div>
                 </div>
               )}
@@ -2784,6 +2784,7 @@ function Inner() {
                     onSave={savePlanEntry}
                     onClear={clearPlanEntry}
                     onMoveDay={movePlanEntry}
+                    onIdeas={(day, again) => apiFetch<DayIdeas>('/content/ideas/for-day', { method: 'POST', token, body: { day, again } })}
                     tags={sheet.tags}
                     onSaveTags={async (tags) => {
                       const r = await apiFetch<{ ok: boolean; tags: PlanTags }>('/content/plan-tags', { method: 'POST', token, body: tags });

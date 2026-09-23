@@ -2206,14 +2206,18 @@ export class ContentService {
    * Draft one salon's ideas for a day. Idempotent per (tenant, date): running
    * the scheduler twice must not double a salon's workload.
    */
-  async generateForTenant(tenantId: string, opts: { force?: boolean } = {}): Promise<{ created: number; skipped?: string }> {
+  async generateForTenant(tenantId: string, opts: { force?: boolean; forDate?: string } = {}): Promise<{ created: number; skipped?: string }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) {
       this.logger.error('ANTHROPIC_API_KEY missing — cannot draft content ideas.');
       return { created: 0, skipped: 'no-api-key' };
     }
     const ctx = await this.gather(tenantId);
-    const forDate = this.localDay(ctx.tz);
+    // The day the ideas are FOR. Today unless the team asks for a day on the
+    // plan — the week's job, the pillar and the season all follow that day.
+    const forDate = isDayKey(opts.forDate) ? opts.forDate : this.localDay(ctx.tz);
+    const forAt = new Date(`${forDate}T12:00:00Z`);
+    const dayLabel = new Intl.DateTimeFormat(ctx.contentLang === 'en' ? 'en-US' : 'vi-VN', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'numeric' }).format(forAt);
 
     if (!opts.force) {
       const existing = await this.prisma.contentIdea.count({ where: { tenantId, forDate } }).catch(() => 0);
@@ -2275,7 +2279,7 @@ export class ContentService {
     trendItems.sort((a, b) => (b.perDay ?? 0) - (a.perDay ?? 0));
     const trendBlock = trendsToPrompt(trendItems, trendRising);
 
-    const monthNow = Number(this.localDay(ctx.tz).slice(5, 7));
+    const monthNow = Number(forDate.slice(5, 7));
     const season = seasonFor(ctx.industry, monthNow);
     const seasonBlock = seasonToPrompt(season, monthNow);
 
@@ -2310,7 +2314,7 @@ export class ContentService {
 
     const system = `Bạn là chuyên gia marketing cho doanh nghiệp địa phương tại Mỹ, đang lập kế hoạch nội dung cho "${ctx.tenantName}"${ctx.city ? ` ở ${ctx.city}` : ''}.
 
-NHIỆM VỤ: đề xuất ĐÚNG 3 ý tưởng nội dung cho hôm nay.
+NHIỆM VỤ: đề xuất ĐÚNG 3 ý tưởng nội dung cho ngày ${dayLabel} (${forDate}).
 - Ý 1 (rank 1): bài chính, video/reel, đáng công quay nhất.
 - Ý 2 (rank 2): video ngắn dễ làm, quay trong 2 phút giữa ca.
 - Ý 3 (rank 3): bài ảnh hoặc story đăng bù khi tiệm quá bận.
@@ -2322,7 +2326,8 @@ LUẬT BẮT BUỘC:
 ${langRule}
 5. Ngắn gọn, cụ thể, quay được ngay. Không sáo rỗng.
 6. Về khu vực: chỉ được nhắc tới địa phương nếu phần dữ liệu bên dưới nói rõ tiệm ở đâu. Nếu ghi "chưa rõ khu vực" thì viết trung lập, KHÔNG đoán tên thành phố, bang, trường học hay lễ hội địa phương nào.
-7. Ý tưởng hôm nay phải khớp với việc của hôm nay trong LỊCH TUẦN bên dưới — đừng bảo tiệm quay clip vào ngày lịch ghi là ngày đăng. Nếu việc hôm nay ghi CHỦ ĐỀ (sau dấu "—"), ý 1 phải làm đúng chủ đề đó.
+7. Ý tưởng phải khớp với việc của đúng ngày đó trong LỊCH TUẦN bên dưới — đừng bảo tiệm quay clip vào ngày lịch ghi là ngày đăng. Nếu việc ngày đó ghi CHỦ ĐỀ (sau dấu "—"), ý 1 phải làm đúng chủ đề đó.
+13. ĐÚNG NGÀNH, ĐÚNG NƠI: gọi đúng tên ngành của tiệm (nail, tóc, spa, nhà hàng, bất động sản…) và đúng khu vực đã cho; một tiệm phở không nhận ý tưởng về bộ móng, một tiệm ở Texas không nhận ý tưởng về tuyết rơi tháng 9. Nếu ngành hoặc khu vực chưa được khai báo, nói thẳng trong reason của ý 1 rằng gợi ý còn chung chung vì tiệm chưa khai báo, để team biết mà bổ sung hồ sơ.
 8. "title": một dòng ≤ 10 từ, nêu đúng chủ đề, không dùng dấu hai chấm để nối hai vế.
 9. ${SHOTLIST_RULES}
 10. ${CAPTION_RULES}
@@ -2332,7 +2337,7 @@ ${langRule}
 TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
 {"ideas":[{"rank":1,"formatName":"...","title":"...","hook":"...","shotList":"cảnh 1 · cảnh 2 · cảnh 3","caption":"...","hashtags":"#... #...","bestTime":"18:30","reason":"...","trendTitle":"chỉ điền khi phỏng theo một trend trong danh sách, sao chép đúng nguyên văn tiêu đề"}]}`;
 
-    const week = await this.weekPlanFor(tenantId, ctx);
+    const week = await this.weekPlanFor(tenantId, ctx, forAt);
 
     // What this draft is personalised FROM — one line in the log, so "every
     // shop gets the same ideas" can be checked against facts: a shop with no
@@ -3115,6 +3120,81 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
    *   - the cap counts ATTEMPTS, not successes. A failing model that is retried
    *     forty times costs exactly as much as a working one.
    */
+  /**
+   * Ideas for ONE day, on demand — the button on the plan.
+   *
+   * The daily draft used to run for every salon every morning whether anyone
+   * would read it or not: one model call per salon per day, most of them
+   * never opened, and a salon with a thin profile got the same three generic
+   * ideas as every other salon in its trade. Now nothing is drafted until a
+   * person planning a day asks. The answer is cached on the day (ContentIdea
+   * rows), so a second look costs nothing; "again" is a fresh call and is
+   * capped with the same daily counter as the old refresh button.
+   *
+   * Team only — this spends money on the agency's account, and the plan is
+   * the team's working document.
+   */
+  async ideasForDay(user: AuthenticatedUser, dayQ: unknown, again = false): Promise<{
+    day: string;
+    ideas: { id: string; rank: number; formatName: string | null; title: string; hook: string | null; shotList: string | null; caption: string | null; hashtags: string | null; reason: string | null; trend: { title: string; thumbUrl: string | null; url: string | null } | null }[];
+    basis: { trade: string | null; city: string | null; thin: boolean };
+    left: number | null;
+    skipped?: string;
+  }> {
+    if (user.role !== UserRole.SUPER_ADMIN && !user.supportSession) {
+      throw new ForbiddenException('Chỉ team Lumio xem gợi ý ý tưởng. Tiệm xem lịch và duyệt bài.');
+    }
+    if (!isDayKey(dayQ)) throw new BadRequestException('day must be YYYY-MM-DD');
+    const day = dayQ;
+    const tenantId = this.tenantId(user);
+    const LIMIT = 5;
+    const read = async () => {
+      const rows = await this.prisma.contentIdea.findMany({
+        where: { tenantId, forDate: day },
+        orderBy: { rank: 'asc' },
+        take: 3,
+        select: { id: true, rank: true, formatName: true, title: true, hook: true, shotList: true, caption: true, hashtags: true, reason: true, signals: true },
+      }).catch(() => []);
+      return rows.map((r) => {
+        const t = (r.signals as { trend?: { title?: string; thumbUrl?: string | null; url?: string | null } | null } | null)?.trend ?? null;
+        return {
+          id: r.id, rank: r.rank, formatName: r.formatName, title: r.title, hook: r.hook, shotList: r.shotList, caption: r.caption, hashtags: r.hashtags, reason: r.reason,
+          trend: t && t.title ? { title: String(t.title), thumbUrl: t.thumbUrl ?? null, url: t.url ?? null } : null,
+        };
+      });
+    };
+    const basisOf = async () => {
+      const ctx = await this.gather(tenantId).catch(() => null);
+      return { trade: ctx?.playbook?.trade ?? null, city: ctx?.city ?? null, thin: Boolean(ctx?.signals?.thin) };
+    };
+    let skipped: string | undefined;
+    let left: number | null = null;
+    const have = await read();
+    if (!have.length || again) {
+      // "Again" spends a fresh call: count it before running it, like refreshFor.
+      if (again && have.length) {
+        const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null))?.timezone || 'America/Los_Angeles';
+        const today = this.localDay(tz);
+        const row = await this.prisma.setting.findFirst({ where: { tenantId, key: 'content_manual_refresh' }, select: { id: true, value: true } }).catch(() => null);
+        const state = (row?.value ?? {}) as { date?: string; count?: number };
+        const used = state.date === today ? Number(state.count) || 0 : 0;
+        if (used >= LIMIT) throw new BadRequestException(`Đã gợi ý lại ${LIMIT} lần hôm nay — dùng ý đang có hoặc chờ tới mai.`);
+        const next = { date: today, count: used + 1 };
+        if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: next as never } }).catch(() => undefined);
+        else await this.prisma.setting.create({ data: { tenantId, key: 'content_manual_refresh', value: next as never } }).catch(() => undefined);
+        left = LIMIT - next.count;
+      }
+      const r = await this.generateForTenant(tenantId, { force: again && have.length > 0, forDate: day });
+      skipped = r.skipped;
+      // Ideas asked for on the plan are read at once — nobody is waiting for 07:00.
+      await this.prisma.contentIdea.updateMany({ where: { tenantId, forDate: day, status: 'draft' }, data: { status: 'published', publishedAt: new Date() } }).catch(() => undefined);
+      await this.prisma.auditLog.create({
+        data: { tenantId, userId: user.userId ?? null, action: 'content.ideas_for_day', resourceType: 'content_idea', resourceId: day, metadata: { again, created: r.created, skipped: r.skipped ?? null } as never } as never,
+      }).catch(() => undefined);
+    }
+    return { day, ideas: await read(), basis: await basisOf(), left, ...(skipped ? { skipped } : {}) };
+  }
+
   async refreshFor(user: AuthenticatedUser): Promise<{ created: number; left: number; skipped?: string }> {
     const tenantId = this.tenantId(user);
     const LIMIT = 5;

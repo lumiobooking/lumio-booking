@@ -140,10 +140,11 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
     if (this.running) return; // a slow run must not stack on itself
     this.running = true;
     try {
-      // Every industry, not just nail. Passing 'SALON' here is what silently
-      // starved every non-salon client of content for as long as this ran.
-      const r = await this.content.generateAll();
-      if (r.created) this.logger.log(`Drafted ${r.created} ideas across ${r.tenants} salons.`);
+      // THE DAILY DRAFT NO LONGER RUNS HERE. It called the model once for
+      // every salon every morning — most drafts never opened, and a salon
+      // with a thin profile got the same three ideas as every other salon in
+      // its trade. Ideas are now made when a person plans a day and asks
+      // (ContentService.ideasForDay); generateAll stays for the admin button.
       // Then put the drafted day on the salon's screen once its morning has
       // begun. "Drafts, never publishes" above was the rule while a person
       // released every day by hand; the rule now is that a person may hold a

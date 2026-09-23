@@ -20,7 +20,7 @@ import { cleanTikTokOptions, type TikTokPostOptions, type TikTokTarget } from '.
 import { AiUsageService } from '../common/ai-usage.service';
 import { cleanGbpOptions, resolveGbpCta, gbpCtaProblem, DEFAULT_GBP_BUTTON, type GbpPostOptions, type GbpCtaContext } from './gbp-cta';
 import { checkGbpPost, gbpImageHeaderProblem, gbpSummary, unacceptedRisks, type GbpCheck, type Issue } from './gbp-policy';
-import { gbpScreenPrompt, parseScreenVerdict, screenAckCode, screenRefusal, type ScreenVerdict } from './gbp-screen';
+import { gbpScreenPrompt, parseScreenVerdict, postAckCode, screenAckCode, screenRefusal, type ScreenVerdict } from './gbp-screen';
 import { createHash } from 'crypto';
 import {
   cleanStage, statusFor, keepDriveLinks, unarchived, postFolderName, mediaFileName, type Stage, type MediaRef,
@@ -1139,7 +1139,9 @@ export class SocialPublishService {
     }
     // What still stands in the way, after what the team has already accepted.
     const open = unacceptedRisks(check.risks, ack);
-    const aiCode = screenAckCode(ai);
+    // Filed under the POST, so the acceptance survives the model rewording
+    // its objection at lock and send time. See postAckCode.
+    const aiCode = ai && !ai.ok ? postAckCode(check.summary, media.find((m) => m.kind === 'image')?.url ?? null) : null;
     return {
       ...check,
       ai,
@@ -1167,11 +1169,17 @@ export class SocialPublishService {
       const p = await this.googleImageProblem(photo);
       if (p) return `Google Business: ${p}`;
     }
-    const v = await this.googleScreen(tenantId, checkGbpPost(message, media).summary, photo);
+    const summary = checkGbpPost(message, media).summary;
+    const ack = opts.ack ?? [];
+    // The team's acceptance is keyed to the post; skip the model entirely
+    // when it is already on file — asking again only produces a differently
+    // worded objection to a post somebody has already looked at.
+    if (ack.includes(postAckCode(summary, photo))) return null;
+    const v = await this.googleScreen(tenantId, summary, photo);
     const said = screenRefusal(v);
     if (!said) return null;
-    const code = screenAckCode(v);
-    if (code && (opts.ack ?? []).includes(code)) return null;
+    const legacy = screenAckCode(v);
+    if (legacy && ack.includes(legacy)) return null;
     if (!opts.enforceAi) {
       // Send time: the model's word is a note in the log, never the reason a
       // salon's post did not go out while nobody was at the screen.

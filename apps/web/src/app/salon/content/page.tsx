@@ -1211,7 +1211,14 @@ function Inner() {
       }
       setPostDraft(null);
       await loadQueue();
-    } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'error';
+      setPostErr(msg);
+      // Refused by the AI screen at lock time: bring the objection into the
+      // composer as a risk row, where "Tôi hiểu, vẫn đăng" lives, instead of
+      // leaving a message that names a button the person cannot see.
+      if (/AI kiểm duyệt/.test(msg) && gbpAi !== 'running') void runGbpAi();
+    }
     finally { setQueueBusy(false); }
   }
 

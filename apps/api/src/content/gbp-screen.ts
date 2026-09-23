@@ -114,8 +114,30 @@ export function screenRefusal(v: ScreenVerdict | null): string | null {
  */
 export function screenAckCode(v: ScreenVerdict | null): string | null {
   if (!v || v.ok || !v.blockers.length) return null;
-  const joined = v.blockers.join(' ').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 40);
+  return `ai-${hash36(v.blockers.join(' ').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 40))}`;
+}
+
+/**
+ * The code the team's "Tôi hiểu, vẫn đăng" is filed under — keyed to the
+ * POST, not to the model's wording.
+ *
+ * The wording-keyed code above looked stable and was not: the model is asked
+ * again at lock time and again at send time, and it phrases the same
+ * objection differently each time ("ảnh ghép từ nhiều nguồn" one minute,
+ * "collage không phải ảnh tự chụp" the next). Every rephrasing was a new
+ * code, so the acceptance the team had just clicked never matched, and the
+ * post was refused with a message telling them to click the button they had
+ * clicked. Keying the acceptance to the caption and the photo means it holds
+ * for as long as the post is the post, and lapses the moment either changes
+ * — which is exactly when the model should get another say.
+ */
+export function postAckCode(summary: string, photo: string | null): string {
+  const text = String(summary ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  return `ai-post-${hash36(`${text}|${photo ?? ''}`)}`;
+}
+
+function hash36(s: string): string {
   let h = 0;
-  for (let i = 0; i < joined.length; i += 1) h = (h * 31 + joined.charCodeAt(i)) >>> 0;
-  return `ai-${h.toString(36)}`;
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
 }

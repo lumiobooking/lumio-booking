@@ -34,3 +34,18 @@ describe('the model’s look at a Google post', () => {
     expect(v.blockers.length).toBe(6);
   });
 });
+
+describe('accepting the AI objection sticks to the post, not the wording', () => {
+  const { postAckCode } = jest.requireActual('./gbp-screen') as typeof import('./gbp-screen');
+  it('gives one code for one caption + photo, however the model phrases its objection', () => {
+    const a = postAckCode('Bộ nail mới cho mùa thu', 'https://cdn/x.jpg');
+    expect(a).toBe(postAckCode('Bộ nail mới cho mùa thu', 'https://cdn/x.jpg'));
+    expect(a).toMatch(/^ai-post-/);
+  });
+  it('lapses when the caption or the photo changes', () => {
+    const a = postAckCode('Bộ nail mới', 'https://cdn/x.jpg');
+    expect(postAckCode('Bộ nail mới!!', 'https://cdn/x.jpg')).toBe(a);
+    expect(postAckCode('Bộ nail cũ', 'https://cdn/x.jpg')).not.toBe(a);
+    expect(postAckCode('Bộ nail mới', 'https://cdn/y.jpg')).not.toBe(a);
+  });
+});

@@ -447,7 +447,8 @@ interface GbpCheckResult {
   /** Restricted by Google — the team may accept them. */
   risks?: { code: string; vi: string; en: string; match?: string }[];
   warnings: { code: string; vi: string; en: string; match?: string }[];
-  ai: { ok: boolean; blockers: string[]; warnings: string[]; sawImage: boolean } | null;
+  /** `hard`: the six findings nobody may accept — they also arrive inside `blockers` as ⛔ rows. */
+  ai: { ok: boolean; hard?: string[]; blockers: string[]; warnings: string[]; sawImage: boolean } | null;
   /** The code to put in `ack` to accept the model's objection. */
   aiCode?: string | null;
   aiOff: boolean;
@@ -3918,6 +3919,7 @@ function Inner() {
                         {blockers.map((b, i) => (
                           <div key={`b${i}`} style={{ marginTop: 6, color: 'var(--cfca5a5)' }}>
                             ⛔ {b.text}{b.match && <> — {T('từ', 'word')}: <code style={{ background: 'var(--c0f172a)', padding: '0 4px', borderRadius: 4 }}>{b.match}</code></>}
+                            {b.text.startsWith('🤖') && <span style={{ display: 'block', marginTop: 2, fontSize: 11.5, color: 'var(--c94a3b8)' }}>{T('Lỗi này không bỏ qua được — đổi ảnh hoặc sửa caption, hoặc bỏ chọn Google Business (Facebook/Instagram vẫn đăng bình thường).', 'This one cannot be waved through — change the photo or caption, or untick Google Business (Facebook/Instagram still post as usual).')}</span>}
                           </div>
                         ))}
                         {restricted.map((r, i) => (

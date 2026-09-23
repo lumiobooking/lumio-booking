@@ -20,7 +20,7 @@ import { cleanTikTokOptions, type TikTokPostOptions, type TikTokTarget } from '.
 import { AiUsageService } from '../common/ai-usage.service';
 import { cleanGbpOptions, resolveGbpCta, gbpCtaProblem, DEFAULT_GBP_BUTTON, type GbpPostOptions, type GbpCtaContext } from './gbp-cta';
 import { checkGbpPost, gbpImageHeaderProblem, gbpSummary, unacceptedRisks, type GbpCheck, type Issue } from './gbp-policy';
-import { gbpScreenPrompt, parseScreenVerdict, postAckCode, screenAckCode, screenRefusal, type ScreenVerdict } from './gbp-screen';
+import { gbpScreenPrompt, parseScreenVerdict, postAckCode, screenAckCode, screenHardRefusal, screenRefusal, type ScreenVerdict } from './gbp-screen';
 import { createHash } from 'crypto';
 import {
   cleanStage, statusFor, keepDriveLinks, unarchived, postFolderName, mediaFileName, type Stage, type MediaRef,
@@ -1137,18 +1137,22 @@ export class SocialPublishService {
       }
       if (check.blockers.length === 0) ai = await this.googleScreen(tenantId, check.summary, photo);
     }
+    // The six findings nobody may accept join the word list's hard blockers:
+    // same row, same ⛔, no button. See HARD_RULES in ./gbp-screen.
+    for (const h of ai?.hard ?? []) check.blockers.push({ code: 'ai-hard', level: 'hard', vi: `🤖 ${h}`, en: `🤖 ${h}` });
     // What still stands in the way, after what the team has already accepted.
     const open = unacceptedRisks(check.risks, ack);
     // Filed under the POST, so the acceptance survives the model rewording
-    // its objection at lock and send time. See postAckCode.
-    const aiCode = ai && !ai.ok ? postAckCode(check.summary, media.find((m) => m.kind === 'image')?.url ?? null) : null;
+    // its objection at lock and send time. See postAckCode. Only the
+    // acceptable objections get a code; a hard finding has nothing to accept.
+    const aiCode = ai && ai.blockers.length ? postAckCode(check.summary, media.find((m) => m.kind === 'image')?.url ?? null) : null;
     return {
       ...check,
       ai,
       /** The code to send back in `ack` to accept the model's objection. */
       aiCode,
       /** Risks nobody has accepted yet — what the composer must still ask about. */
-      openRisks: aiCode && !ack.includes(aiCode) ? [...open, { code: aiCode, level: 'risky' as const, vi: screenRefusal(ai) ?? '', en: screenRefusal(ai) ?? '' }] : open,
+      openRisks: aiCode && !ack.includes(aiCode) ? [...open, { code: aiCode, level: 'risky' as const, vi: `Google Business (AI kiểm duyệt): ${ai!.blockers.join(' ')}`, en: `Google Business (AI kiểm duyệt): ${ai!.blockers.join(' ')}` }] : open,
       aiOff: !process.env.ANTHROPIC_API_KEY,
     };
   }
@@ -1171,11 +1175,18 @@ export class SocialPublishService {
     }
     const summary = checkGbpPost(message, media).summary;
     const ack = opts.ack ?? [];
-    // The team's acceptance is keyed to the post; skip the model entirely
-    // when it is already on file — asking again only produces a differently
-    // worded objection to a post somebody has already looked at.
-    if (ack.includes(postAckCode(summary, photo))) return null;
     const v = await this.googleScreen(tenantId, summary, photo);
+    // A hard finding is refused before any acceptance is even looked at:
+    // there is no code that unlocks it, for any account. At send time it is
+    // still advisory (the post passed this same gate when it was locked; a
+    // model changing its mind at 5pm is a log line, not a silent failure).
+    const hard = screenHardRefusal(v);
+    if (hard && opts.enforceAi) return hard;
+    if (hard) this.log.warn(`gbp hard finding at send time for ${tenantId} (not enforced): ${hard}`);
+    if (!v || v.ok) return null;
+    // The team's acceptance is keyed to the post, so it survives the model
+    // rewording its objection at lock and send time.
+    if (ack.includes(postAckCode(summary, photo))) return null;
     const said = screenRefusal(v);
     if (!said) return null;
     const legacy = screenAckCode(v);

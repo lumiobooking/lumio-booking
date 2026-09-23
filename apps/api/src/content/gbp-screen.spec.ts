@@ -1,4 +1,4 @@
-import { gbpScreenPrompt, parseScreenVerdict, screenRefusal } from './gbp-screen';
+import { HARD_RULES, gbpScreenPrompt, parseScreenVerdict, screenHardRefusal, screenRefusal } from './gbp-screen';
 
 describe('the model’s look at a Google post', () => {
   it('names the policy, the shop and the trade, and says whether a photo is attached', () => {
@@ -12,7 +12,7 @@ describe('the model’s look at a Google post', () => {
 
   it('reads a clean verdict and a blocked one', () => {
     expect(parseScreenVerdict('{"ok":true,"blockers":[],"warnings":["Ảnh hơi tối."]}', true))
-      .toEqual({ ok: true, blockers: [], warnings: ['Ảnh hơi tối.'], sawImage: true });
+      .toEqual({ ok: true, hard: [], blockers: [], warnings: ['Ảnh hơi tối.'], sawImage: true });
     const v = parseScreenVerdict('Đây là kết quả: {"ok":false,"blockers":["Ảnh có chai bia với giá 20k."],"warnings":[]}', true)!;
     expect(v.ok).toBe(false);
     expect(screenRefusal(v)).toMatch(/AI kiểm duyệt.*chai bia/);
@@ -47,5 +47,29 @@ describe('accepting the AI objection sticks to the post, not the wording', () =>
     expect(postAckCode('Bộ nail mới!!', 'https://cdn/x.jpg')).toBe(a);
     expect(postAckCode('Bộ nail cũ', 'https://cdn/x.jpg')).not.toBe(a);
     expect(postAckCode('Bộ nail mới', 'https://cdn/y.jpg')).not.toBe(a);
+  });
+});
+
+describe('the six findings nobody may wave through', () => {
+  it('are named in the prompt, one by one, with the order to be certain', () => {
+    const p = gbpScreenPrompt({ summary: 'x', hasPhoto: true, shopName: 'L', trade: 'nail' });
+    for (const r of HARD_RULES) expect(p.system).toContain(r);
+    expect(p.system).toMatch(/"hard"/);
+    expect(p.system).toMatch(/CHẮC CHẮN/);
+  });
+
+  it('come back on their own list, fail the verdict, and read as a refusal with no way past it', () => {
+    const v = parseScreenVerdict('{"ok":false,"hard":["Ảnh là ô vuông màu vàng, không liên quan tiệm."],"blockers":[],"warnings":[]}', true)!;
+    expect(v.hard).toEqual(['Ảnh là ô vuông màu vàng, không liên quan tiệm.']);
+    expect(v.ok).toBe(false);
+    expect(screenHardRefusal(v)).toMatch(/KHÔNG thể bỏ qua.*ô vuông màu vàng.*bỏ Google Business/);
+    expect(screenRefusal(v)).toMatch(/ô vuông màu vàng/);
+  });
+
+  it('is absent from an ordinary objection, which the team may still accept', () => {
+    const v = parseScreenVerdict('{"ok":false,"blockers":["Ảnh ghép từ nhiều nguồn."],"warnings":[]}', true)!;
+    expect(v.hard).toEqual([]);
+    expect(screenHardRefusal(v)).toBeNull();
+    expect(screenHardRefusal(null)).toBeNull();
   });
 });

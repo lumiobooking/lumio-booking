@@ -33,13 +33,43 @@
 
 export interface ScreenVerdict {
   ok: boolean;
-  /** Policy lines the post breaks — refusals. Vietnamese. */
+  /**
+   * The six things nobody may wave through — see HARD_RULES. A post with one
+   * of these cannot be locked for Google by anyone; the only way forward is
+   * a different photo or caption, or dropping Google from the post.
+   */
+  hard: string[];
+  /** Policy lines the post breaks — refusals the team may accept. Vietnamese. */
   blockers: string[];
   /** Things a reviewer would raise an eyebrow at — said, not enforced. */
   warnings: string[];
   /** Whether a photo was actually looked at. */
   sawImage: boolean;
 }
+
+/**
+ * WHAT CANNOT BE WAVED THROUGH
+ *
+ * "Tôi hiểu, vẫn đăng" exists because a model's opinion of a photo is a second
+ * opinion, and a team that knows the shop should be able to overrule it. It
+ * was also, in practice, the button a person in a hurry pressed instead of
+ * fixing the post — and some of what went out that way is exactly what
+ * Google suspends a profile for. So six kinds of finding are hard: the model
+ * files them separately, the composer shows them without a button, and no
+ * account on the platform can accept them. Not the owner either: an approval
+ * queue is a delay, and the fix is always faster than the wait.
+ *
+ * The list is deliberately short. Everything the model is not certain of, and
+ * everything Google merely frowns at, stays a warning or an acceptable risk.
+ */
+export const HARD_RULES = [
+  'ảnh không liên quan đến tiệm này (placeholder, ảnh game, ảnh lạc đề, ảnh của ngành khác)',
+  'ảnh stock hoặc lấy từ nguồn khác một cách rõ ràng (watermark, ảnh quảng cáo của thương hiệu khác, ảnh chụp màn hình)',
+  'nội dung y khoa/dược phẩm hoặc lời hứa "chữa khỏi", "đảm bảo kết quả", giảm cân, thải độc',
+  'ảnh hở hang, gợi dục, bạo lực hoặc phản cảm',
+  'số điện thoại, email, link hoặc chữ quảng cáo dày đặc in trong ảnh',
+  'nêu tên hoặc nói xấu đối thủ, review/lời khen giả mạo',
+] as const;
 
 export function gbpScreenPrompt(input: { summary: string; hasPhoto: boolean; shopName: string; trade: string }): { system: string; user: string } {
   const system = `Bạn là người kiểm duyệt nội dung cho bài đăng "Cập nhật" trên Google Business Profile (Google Maps) của một doanh nghiệp nhỏ. Việc của bạn: đối chiếu ẢNH và CHỮ với chính sách của Google và trả lời CHỈ bằng JSON.
@@ -53,10 +83,13 @@ CHÍNH SÁCH GOOGLE BUSINESS PROFILE (tóm tắt đúng nguồn support.google.c
 6. Ảnh phải "phản ánh thực tế": không chỉnh sửa sai lệch, không filter quá đà, không ảnh AI giả cảnh tiệm, không ảnh stock có watermark, không ảnh chụp màn hình, không logo/thương hiệu của người khác, không meme. Rõ nét, đủ sáng.
 7. Đúng doanh nghiệp: ảnh và chữ phải về chính tiệm này (${input.shopName}, ngành ${input.trade}) — không phải sản phẩm/tiệm khác.
 
-CÁCH CHẤM:
-- "blockers": CHỈ khi bạn NHÌN THẤY RÕ vi phạm mục 1-7, không phải nghi ngờ. Mỗi lý do 1 câu tiếng Việt, nói rõ thấy gì và sửa thế nào.
+CÁCH CHẤM — ba mức, tách riêng:
+- "hard": CHỈ SÁU LOẠI SAU, và CHỈ khi bạn CHẮC CHẮN nhìn thấy, không phải suy đoán:
+${HARD_RULES.map((r, i) => `  (${i + 1}) ${r}`).join('\n')}
+  Đây là những thứ Google phạt hồ sơ, nên hệ thống sẽ KHÔNG cho ai đăng bài này lên Google cho tới khi sửa. Vì thế: thấy chắc chắn mới ghi vào "hard"; thấy giống giống, "có dấu hiệu", "có thể là" → đưa xuống "blockers" hoặc "warnings". Mỗi lý do 1 câu tiếng Việt, nói rõ thấy gì và sửa thế nào.
+- "blockers": các vi phạm mục 1-7 khác mà bạn NHÌN THẤY RÕ nhưng không thuộc sáu loại trên (ví dụ: rượu bia có giá, mặt khách chụp lén, ảnh ghép/collage, filter quá đà). Team có thể xem và quyết định vẫn đăng. Mỗi lý do 1 câu.
 - "warnings": mọi thứ còn lại — nghi ngờ, không chắc, hoặc không vi phạm nhưng dễ bị Google từ chối / trông thiếu chuyên nghiệp (ảnh tối/mờ, chữ chèn quá nhiều, giá to đùng, quá nhiều emoji, câu khẳng định "số 1"). Mỗi ý 1 câu.
-- NGUYÊN TẮC VÀNG: không chắc thì cho vào "warnings", đừng cho vào "blockers". Chặn nhầm một bài sạch tốn của tiệm nhiều hơn là để lọt một bài hơi rủi ro.
+- NGUYÊN TẮC VÀNG: không chắc thì hạ một bậc — "hard" nghi ngờ thành "blockers", "blockers" nghi ngờ thành "warnings". Chặn nhầm một bài sạch tốn của tiệm nhiều hơn là để lọt một bài hơi rủi ro.
 - Nếu không thấy vấn đề, cả hai mảng để trống. Đừng bịa vấn đề để cho có.
 - HỢP LỆ, KHÔNG PHẢI VI PHẠM (đừng chặn những thứ này):
   • Ảnh nail/tóc/mi/spa bình thường: bàn tay, móng, bàn chân trong liệu trình pedicure, lưng/vai trong massage mặc đồ kín, tóc, mi, chân mày.
@@ -66,7 +99,7 @@ CÁCH CHẤM:
   • Ảnh có logo/tên của chính tiệm này.
 
 Trả lời đúng một object JSON, không giải thích ngoài JSON:
-{"ok": true|false, "blockers": ["..."], "warnings": ["..."]}`;
+{"ok": true|false, "hard": ["..."], "blockers": ["..."], "warnings": ["..."]}`;
 
   const user = `Nội dung sẽ gửi lên Google (sau khi hệ thống đã tự bỏ số điện thoại, link, hashtag):
 """
@@ -82,18 +115,19 @@ export function parseScreenVerdict(raw: string, sawImage: boolean): ScreenVerdic
   const text = String(raw ?? '');
   const braced = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
   if (!braced) return null;
-  let parsed: { ok?: unknown; blockers?: unknown; warnings?: unknown };
+  let parsed: { ok?: unknown; hard?: unknown; blockers?: unknown; warnings?: unknown };
   try { parsed = JSON.parse(braced) as typeof parsed; } catch { return null; }
   const list = (v: unknown) => (Array.isArray(v) ? v : [])
     .map((x) => String(x ?? '').trim())
     .filter((x) => x.length > 3)
     .slice(0, 6)
     .map((x) => x.slice(0, 300));
+  const hard = list(parsed.hard);
   const blockers = list(parsed.blockers);
   const warnings = list(parsed.warnings);
-  // The boolean and the list must agree: a "true" with reasons attached is
+  // The boolean and the lists must agree: a "true" with reasons attached is
   // a model hedging, and the reasons are what the writer needs.
-  return { ok: parsed.ok !== false && blockers.length === 0, blockers, warnings, sawImage };
+  return { ok: parsed.ok !== false && blockers.length === 0 && hard.length === 0, hard, blockers, warnings, sawImage };
 }
 
 /**
@@ -103,7 +137,13 @@ export function parseScreenVerdict(raw: string, sawImage: boolean): ScreenVerdic
  */
 export function screenRefusal(v: ScreenVerdict | null): string | null {
   if (!v || v.ok) return null;
-  return `Google Business (AI kiểm duyệt): ${v.blockers.join(' ')}`;
+  return `Google Business (AI kiểm duyệt): ${[...v.hard, ...v.blockers].join(' ')}`;
+}
+
+/** The refusal nobody can accept — null when the verdict has no hard finding. */
+export function screenHardRefusal(v: ScreenVerdict | null): string | null {
+  if (!v || !v.hard.length) return null;
+  return `Google Business (AI kiểm duyệt — KHÔNG thể bỏ qua): ${v.hard.join(' ')} Sửa ảnh hoặc caption, hoặc bỏ Google Business khỏi bài này (Facebook/Instagram vẫn đăng bình thường).`;
 }
 
 /**

@@ -2727,14 +2727,14 @@ export class MessengerService implements OnModuleInit {
     // The context object the agent runs with, kept in scope: send_photos
     // leaves the pictures it delivered on it, and they become a turn of
     // their own below — after the customer's message, before the reply.
-    let agentCtx: { photos?: { urls: string[]; label: string }[] } | null = null;
+    let agentCtx: Parameters<MessengerService['runAgent']>[4] | null = null;
     try {
       const instruction = [this.factsText(conn.botFacts), conn.aiInstruction || ''].filter(Boolean).join('\n');
       const cx = conn as unknown as { botMode?: string; leadEmail?: string | null };
       // Hard deadline over the WHOLE agent run (model + tools + card images).
       // Whatever stalls, the customer still gets an answer instead of silence.
       reply = await this.withDeadline(this.runAgent(conn.tenantId, instruction, userAlready ? history.slice(0, -1) : history, text, agentCtx = {
-        mode: (cx.botMode === 'sales' ? 'sales' : 'booking') as 'sales' | 'booking',
+        mode: cx.botMode === 'sales' ? 'sales' : 'booking',
         leadEmail: cx.leadEmail ?? null,
         threadId,
         closing: (conn as unknown as { closing?: string | null }).closing ?? null,

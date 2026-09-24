@@ -1,6 +1,7 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import { UserRole } from '@prisma/client';
+import { ContentChatService } from './content-chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { clientStatusOf, makeReviewToken, parseReviewToken, tokenFresh } from './post-review';
@@ -23,6 +24,8 @@ export interface ClientPost {
   approvedAt: Date | null;
   approvedByName: string | null;
   heldAt: Date | null;
+  /** The team sent it back after a change — the salon sees "updated, please look again". */
+  reviewRequestedAt: Date | null;
   links: { channel: string; url: string | null }[];
 }
 
@@ -37,7 +40,10 @@ export interface ClientPost {
  */
 @Injectable()
 export class PostReviewService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly chat?: ContentChatService,
+  ) {}
 
   /** Loose access: rows exist on the deploy, not in the stale local client. */
   private get loose() {
@@ -104,6 +110,7 @@ export class PostReviewService {
         approvedAt: (r.approvedAt as Date | null) ?? null,
         approvedByName: (r.approvedByName as string | null) ?? null,
         heldAt: (r.heldAt as Date | null) ?? null,
+        reviewRequestedAt: (r.reviewRequestedAt as Date | null) ?? null,
         links: results.map((x) => ({ channel: String(x.channel ?? ''), url: x.url ?? null })),
       });
     }
@@ -130,7 +137,7 @@ export class PostReviewService {
       // too — the salon saying "actually it's OK" IS the answer — so a held
       // post that gets approved also releases its hold.
       where: { id: postId, tenantId, status: 'scheduled' },
-      data: { approvedAt: new Date(), approvedByName: who, heldAt: null },
+      data: { approvedAt: new Date(), approvedByName: who, heldAt: null, reviewRequestedAt: null },
     }).catch(() => ({ count: 0 })) as { count: number };
     if (!r?.count) throw new NotFoundException('Bài không còn ở trạng thái chờ duyệt.');
     return { ok: true, approvedByName: who };
@@ -233,6 +240,7 @@ export class PostReviewService {
       where: { id: postId, tenantId, status: 'scheduled' },
       data: { heldAt: new Date() },
     }).catch(() => undefined);
+    void this.chat?.alertTeam(tenantId, subject, text, who).catch(() => undefined);
     return row;
   }
 

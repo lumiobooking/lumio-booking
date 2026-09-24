@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
+import { PushService } from '../push/push.service';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -36,7 +37,28 @@ import { releasesHold, type HoldEvent } from './social-publish';
  */
 @Injectable()
 export class ContentChatService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // The team's phones. Optional: the specs build this service bare.
+    @Optional() private readonly push?: PushService,
+  ) {}
+
+  /**
+   * The team's half of "the shop asked for a change". Until now a note put
+   * the post on hold and… waited for somebody to open that salon's content
+   * page. Now every Lumio device is told, with the salon's name and the note.
+   */
+  async alertTeam(tenantId: string, subject: string, body: string, who: string): Promise<void> {
+    if (!this.push) return;
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }).catch(() => null);
+    const isPost = subject.startsWith('post:');
+    await this.push.sendToTeam({
+      title: `${t?.name ?? 'Tiệm'} — ${isPost ? 'yêu cầu sửa bài' : 'nhắn Lumio'}`,
+      body: `${who}: ${body.replace(/\s+/g, ' ').trim().slice(0, 120)}`,
+      url: '/agency',
+      tag: `content-note-${tenantId}`,
+    }).catch(() => undefined);
+  }
 
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
@@ -183,6 +205,7 @@ export class ContentChatService {
     }).catch(() => undefined);
 
     await this.applyHold(tenantId, key, side === 'salon' ? 'client-comment' : 'team-reply');
+    if (side === 'salon') void this.alertTeam(tenantId, key, body, this.displayName(user, 'salon')).catch(() => undefined);
 
     return row;
   }

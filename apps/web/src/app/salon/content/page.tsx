@@ -826,6 +826,10 @@ function Inner() {
    * and a month grid cannot answer it without hiding the rest.
    */
   const [workFilter, setWorkFilter] = useState<'all' | 'held' | 'problem' | 'writing' | 'design' | 'ready' | 'today'>('all');
+  // From the agency list's "✏️ N sửa bài" badge: land on the held posts only.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('work') === 'held') setWorkFilter('held');
+  }, []);
   /** The shop's raw files — folded away unless something new arrived. */
   const [inboxOpen, setInboxOpen] = useState<boolean | null>(null);
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
@@ -1410,12 +1414,26 @@ function Inner() {
    * that went green on it would hand the post back to the clock with the
    * client's correction still unmade. Pressing this says the work is done.
    */
+  /**
+   * "Đã sửa xong" is not a private tick — it hands the post BACK to the shop:
+   * the hold comes off, the earlier approval is cleared, the shop gets a push
+   * plus a bell entry and the post shows "updated, please review again" on
+   * their approve screen. The fallback (just resolving the thread) is for a
+   * post that is not scheduled, where there is nothing for the shop to re-approve.
+   */
   async function clearHold(id: string) {
     setQueueBusy(true); setPostErr(null);
     try {
-      await apiFetch('/content/chat/state', {
-        method: 'PATCH', token, body: { subject: `post:${id}`, resolved: true },
-      });
+      try {
+        const r = await apiFetch<{ ok: true; notified: boolean }>(`/content/posts/${id}/request-review`, { method: 'POST', token, body: {} });
+        notify('success', r.notified
+          ? T('Đã gửi tiệm duyệt lại — tiệm nhận thông báo đẩy và chuông.', 'Sent back to the shop — they got a push and a bell entry.')
+          : T('Đã gửi tiệm duyệt lại (tiệm chưa bật thông báo đẩy — họ sẽ thấy ở chuông).', 'Sent back to the shop (no push enabled — they will see it in the bell).'));
+      } catch {
+        await apiFetch('/content/chat/state', {
+          method: 'PATCH', token, body: { subject: `post:${id}`, resolved: true },
+        });
+      }
       await loadQueue();
     } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
     finally { setQueueBusy(false); }
@@ -3608,8 +3626,8 @@ function Inner() {
                       🔴 {held.length} {T('bài khách đang yêu cầu sửa', held.length === 1 ? 'post the client asked to change' : 'posts the client asked to change')}
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--cfca5a5)', lineHeight: 1.55, marginBottom: 9 }}>
-                      {T('Những bài này DỪNG lại, không tự đăng, cho tới khi bấm "Đã xử lý xong". Trả lời khách thôi thì bài vẫn đỏ — trả lời không phải là đã sửa.',
-                         'These posts are STOPPED — they will not publish until somebody presses “Handled”. Replying alone leaves them red: a reply is not a fix.')}
+                      {T('Những bài này DỪNG lại, không tự đăng. Sửa xong bấm "Đã sửa xong — gửi tiệm duyệt lại": tiệm nhận thông báo và duyệt lại, bài mới đăng. Trả lời khách thôi thì bài vẫn đỏ — trả lời không phải là đã sửa.',
+                         'These posts are STOPPED — they will not publish. When fixed, press “Fixed — send back for approval”: the shop is notified and approves again. Replying alone leaves them red: a reply is not a fix.')}
                     </div>
                     {held.map((p) => (
                       <div key={p.id} style={{
@@ -3647,7 +3665,7 @@ function Inner() {
                                 background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 700,
                               }}
                             >
-                              ✓ {T('Đã xử lý xong', 'Handled')}
+                              ✓ {T('Đã sửa xong — gửi tiệm duyệt lại', 'Fixed — send back for approval')}
                             </button>
                           )}
                         </div>

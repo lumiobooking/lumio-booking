@@ -26,6 +26,7 @@ import { SalonShell } from '../../../components/SalonShell';
 import { PostReview, type ReviewApi, type ReviewFeed, type ReviewMsg } from '../../../components/PostReview';
 import { TeamChatWindow } from '../../../components/ContentChat';
 import { SalonWorkspace } from '../../../components/SalonWorkspace';
+import { PushEnable } from '../../../components/PushEnable';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { useLang } from '../../../lib/i18n';
@@ -132,6 +133,11 @@ function Inner() {
         {tabButton({ id: 'work', icon: '🎬', label: T('Việc của tiệm', 'Your jobs'), count: toDo })}
         {tabButton({ id: 'approve', icon: '✅', label: T('Duyệt bài', 'Approve posts'), count: toApprove })}
       </div>
+
+      {/* The one place an owner opens on purpose, so the one place to ask for
+          push: "the team fixed your post" then reaches their phone. Renders
+          nothing once enabled or where push is unavailable. */}
+      <PushEnable about="posts" />
 
       {/* Both stay mounted: switching tabs must not refetch and must not lose a
           half-finished upload or a comment somebody is in the middle of. */}

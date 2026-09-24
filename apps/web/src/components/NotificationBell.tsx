@@ -10,7 +10,7 @@ import { useLang } from '../lib/i18n';
 import { useIsMobile } from '../lib/responsive';
 import { BookingDetailSheet } from './BookingDetailSheet';
 
-interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
+interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed' | 'postReview'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
 
 const ACT_SEEN_KEY = 'lumio_activity_seen';
 
@@ -23,6 +23,8 @@ const TYPE_META: Record<string, { bg: string; icon: string }> = {
   // the queue started reporting failures; without a row here the whole screen
   // threw on `m.bg` and the error boundary took over.
   postFailed: { bg: '#ef4444', icon: 'M12 3L2 20h20zM12 9v5M12 17.3v.4' },
+  // The team changed a post the shop asked about and wants a fresh yes.
+  postReview: { bg: '#8b5cf6', icon: 'M20 6L9 17l-5-5' },
 };
 /** A type this build does not know yet must never white-screen the page. */
 const UNKNOWN_META = { bg: 'var(--c475569)', icon: 'M12 3L2 20h20zM12 9v5M12 17.3v.4' };
@@ -88,7 +90,7 @@ export function NotificationBell() {
     if (s < 86400) return Math.floor(s / 3600) + L(' giờ', 'h');
     return Math.floor(s / 86400) + L(' ngày', 'd');
   };
-  const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : t === 'report' || t === 'postFailed' ? '' : L('· TT', '· Paid');
+  const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : t === 'report' || t === 'postFailed' || t === 'postReview' ? '' : L('· TT', '· Paid');
   // A month-end marketing report: the backend sends the raw status so each
   // language words it itself.
   const reportText = (status: string) => status === 'approved'
@@ -146,7 +148,7 @@ export function NotificationBell() {
                       </svg>
                     </span>
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: 13.5, color: '#e5e9f0', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail) : `${verb(i.type)} ${i.detail}`}</span>
+                      <span style={{ display: 'block', fontSize: 13.5, color: '#e5e9f0', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail) : i.type === 'postReview' ? L('— đã sửa xong, mời bạn duyệt lại', '— updated, please review again') : `${verb(i.type)} ${i.detail}`}</span>
                       <span style={{ display: 'block', fontSize: 11.5, color: 'var(--c64748b)', marginTop: 1 }}>{rel(i.at)}</span>
                     </span>
                     {clickable && (

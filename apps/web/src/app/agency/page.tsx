@@ -30,6 +30,8 @@ interface TenantRow {
   opsStage?: OpsStage;
   /** Which department is up next, picked by hand ('' = nobody picked). */
   workNext?: WorkNext | '';
+  /** Scheduled posts the shop sent back with a note — each one is waiting on us. */
+  heldPosts?: number;
 }
 type WorkNext = 'content' | 'design' | 'review' | 'schedule' | 'done';
 /** One thing a shop sent that nobody has made a post from yet. */
@@ -858,6 +860,17 @@ function Row({
       {suspended && (
         <span title="Tài khoản tiệm đang bị khoá đăng nhập — mở lại ở Super Admin"
           style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ink-bad)', border: '1px solid #ef4444', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>KHOÁ</span>
+      )}
+      {/* The shop asked for a change on a scheduled post. Red because the post
+          is frozen until somebody on our side answers — it is the one badge on
+          this row that means "a customer is waiting". Opens the content queue
+          filtered to those posts. */}
+      {!picking && (t.heldPosts ?? 0) > 0 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onEnter(t, '/salon/content?tab=queue&work=held'); }}
+          title="Tiệm yêu cầu sửa bài — bấm để mở danh sách và sửa"
+          style={{ background: 'rgba(239,68,68,.14)', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 800 }}
+        >✏️ {t.heldPosts} sửa bài</button>
       )}
       <NextPill next={t.workNext ?? ''} disabled={picking} onChange={(n) => onNext(t, n)} />
       <StagePill stage={t.opsStage ?? 'running'} disabled={picking} onChange={(st) => onStage(t, st)} />

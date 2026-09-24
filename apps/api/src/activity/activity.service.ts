@@ -3,7 +3,7 @@ import { formatMoneyShort } from '../common/money';
 import { AppointmentStatus, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-export type ActivityType = 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed';
+export type ActivityType = 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed' | 'postReview';
 
 export interface ActivityItem {
   id: string;
@@ -78,6 +78,17 @@ export class ActivityService {
       updatedAt: Date; scheduledAt: Date;
     }[];
 
+    // Posts the team sent back for the owner's approval — the bell entry
+    // behind "we changed it, please look again".
+    const reviewPosts = await (this.prisma as unknown as Record<string, {
+      findMany: (a: unknown) => Promise<unknown>;
+    }>).scheduledPost?.findMany({
+      where: { tenantId, status: 'scheduled', reviewRequestedAt: { gte: since } },
+      orderBy: { reviewRequestedAt: 'desc' },
+      take: 20,
+      select: { id: true, message: true, reviewRequestedAt: true, scheduledAt: true },
+    }).catch(() => []) as { id: string; message: string; reviewRequestedAt: Date; scheduledAt: Date }[];
+
     const pays = await this.prisma.payment.findMany({
       where: { tenantId, status: PaymentStatus.PAID, paidAt: { gte: since } },
       orderBy: { paidAt: 'desc' },
@@ -147,6 +158,20 @@ export class ActivityService {
         when: p.scheduledAt.toISOString(),
         appointmentId: null,
         link: '/salon/content?tab=queue',
+      });
+    }
+
+    for (const p of reviewPosts ?? []) {
+      if (!p.reviewRequestedAt) continue;
+      items.push({
+        id: 'pr_' + p.id,
+        type: 'postReview',
+        customer: (p.message || '').split('\n')[0].slice(0, 60),
+        detail: 'Bài đã sửa xong theo góp ý — mời bạn xem lại và duyệt.',
+        at: p.reviewRequestedAt.toISOString(),
+        when: p.scheduledAt.toISOString(),
+        appointmentId: null,
+        link: '/salon/approve-posts',
       });
     }
 

@@ -164,5 +164,4 @@ describe('what the salon\u2019s own profile decides about its ads', () => {
     expect(viOf(a!.doNext!)).toMatch(/Xin đánh giá/);
   });
 });
-});
 

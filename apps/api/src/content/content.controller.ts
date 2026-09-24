@@ -398,6 +398,12 @@ export class ContentController {
    * to somebody, or leave a note, without re-sending the caption and files.
    * See post-workflow.ts for the one rule this enforces.
    */
+  /** "Gửi tiệm duyệt lại": the post was fixed after the salon's note; tell the owner. Team only. */
+  @Post('posts/:id/request-review')
+  requestReview(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { note?: string }) {
+    return this.publisher.requestReview(user, id, dto?.note);
+  }
+
   @Patch('posts/:id/stage')
   setPostStage(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: SetStageDto) {
     return this.publisher.setStage(user, id, body);

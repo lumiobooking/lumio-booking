@@ -12,7 +12,7 @@ import { BookingDetailSheet } from '../../../components/BookingDetailSheet';
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { uiLocale, dayKeyInTz } from '../../../lib/datetime';
 
-interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
+interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed' | 'postReview'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
 
 const ACT_SEEN_KEY = 'lumio_activity_seen';
 
@@ -29,6 +29,7 @@ const TYPE_META: Record<string, { bg: string; icon: string }> = {
   // the queue started reporting failures; without a row here the whole screen
   // threw on `m.bg` and the error boundary took over.
   postFailed: { bg: '#ef4444', icon: 'M12 3L2 20h20zM12 9v5M12 17.3v.4' },
+  postReview: { bg: '#8b5cf6', icon: 'M20 6L9 17l-5-5' },
 };
 /** A type this build does not know yet must never white-screen the page. */
 const UNKNOWN_META = { bg: 'var(--c475569)', icon: 'M12 3L2 20h20zM12 9v5M12 17.3v.4' };
@@ -40,7 +41,7 @@ function Inner() {
   const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed'>('all');
+  const [filter, setFilter] = useState<'all' | 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed' | 'postReview'>('all');
   const [openId, setOpenId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [tz, setTz] = useState<string | undefined>(() => (typeof window !== 'undefined' ? (window.localStorage.getItem('lumio_tz') || undefined) : undefined));
@@ -87,7 +88,7 @@ function Inner() {
     if (day === yesterK) return L('HÔM QUA', 'YESTERDAY');
     return fmtInTz(at, { day: 'numeric', month: 'short', ...(tz ? { timeZone: tz } : {}) }).toUpperCase();
   };
-  const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : t === 'report' || t === 'postFailed' ? '' : L('· Thanh toán', '· Paid');
+  const verb = (t: Item['type']) => t === 'booking' ? L('đặt', 'booked') : t === 'cancel' ? L('huỷ', 'cancelled') : t === 'report' || t === 'postFailed' || t === 'postReview' ? '' : L('· Thanh toán', '· Paid');
   const reportText = (status: string) => status === 'approved'
     ? L('— báo cáo marketing đã duyệt', '— marketing report approved')
     : status === 'sent'
@@ -113,6 +114,7 @@ function Inner() {
     // its Page is being looked after. It gets its own filter so it can be found
     // on purpose, not only stumbled on.
     { k: 'postFailed', label: L('Bài đăng lỗi', 'Failed posts') },
+    { k: 'postReview', label: L('Chờ duyệt lại', 'Re-review') },
   ];
 
   return (
@@ -160,6 +162,7 @@ function Inner() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14.5, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail)
                         : i.type === 'postFailed' ? <span style={{ color: 'var(--cfca5a5)' }}>— {L('bài chưa đăng được', 'was not published')}</span>
+                        : i.type === 'postReview' ? <span style={{ color: '#c4b5fd' }}>— {L('đã sửa xong, mời bạn duyệt lại', 'updated — please review again')}</span>
                           : `${verb(i.type)} ${i.detail}`}</div>
                       {i.type === 'postFailed' && (
                         <div style={{ fontSize: 12.5, color: 'var(--cfca5a5)', marginTop: 2, lineHeight: 1.45 }}>{i.detail}</div>

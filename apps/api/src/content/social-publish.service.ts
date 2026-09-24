@@ -1,4 +1,5 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { PushService } from '../push/push.service';
 import { wallTimeToUtcTz } from '../common/salon-time';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '@prisma/client';
@@ -36,6 +37,7 @@ interface PostRow {
   mediaPurgedAt?: Date | null;
   /** An open client request nobody has closed out. Red on the calendar. */
   heldAt?: Date | null;
+  approvedAt?: Date | null;
   /** The team's workflow — see post-workflow.ts. Absent on rows that predate it. */
   stage?: string | null;
   writerName?: string | null;
@@ -124,6 +126,9 @@ export class SocialPublishService {
     // Optional for the same reason as the rest: the isolation specs build this
     // service bare, and a missing meter must never stop a post going out.
     @Optional() private readonly usage?: AiUsageService,
+    // The salon owner's phone, for "your post is ready to approve". Optional
+    // like the rest; without it the screen badge is still there.
+    @Optional() private readonly push?: PushService,
   ) {}
 
   /**
@@ -571,6 +576,11 @@ export class SocialPublishService {
         // Only meaningful while it is still waiting; a posted row's page state
         // says nothing about what already went out.
         blockers: r.status === 'draft' || r.status === 'scheduled' ? plan.problems : [],
+        // The salon's sign-off, so the team calendar can show ✅ — and when
+        // the post was last sent back for approval.
+        approvedAt: (r as { approvedAt?: Date | null }).approvedAt ?? null,
+        approvedByName: (r as { approvedByName?: string | null }).approvedByName ?? null,
+        reviewRequestedAt: (r as { reviewRequestedAt?: Date | null }).reviewRequestedAt ?? null,
         /**
          * The client asked for something and nobody has said it is done.
          *
@@ -659,8 +669,8 @@ export class SocialPublishService {
     // on a post still in design is a request to lock it — so the stage moves
     // to ready; a post explicitly kept in writing/design stays a draft.
     const prevRow = body.id
-      ? await this.posts?.findFirst({ where: { id: body.id, tenantId }, select: { id: true, status: true, media: true, stage: true, writerName: true, designerName: true, teamNote: true, tiktok: true, google: true } })
-        .catch(() => null) as { id: string; status: string; media: unknown; stage?: string | null; writerName?: string | null; designerName?: string | null; teamNote?: string | null; tiktok?: unknown; google?: unknown } | null
+      ? await this.posts?.findFirst({ where: { id: body.id, tenantId }, select: { id: true, status: true, media: true, stage: true, writerName: true, designerName: true, teamNote: true, tiktok: true, google: true, heldAt: true, approvedAt: true } })
+        .catch(() => null) as { id: string; status: string; media: unknown; stage?: string | null; writerName?: string | null; designerName?: string | null; teamNote?: string | null; tiktok?: unknown; google?: unknown; heldAt?: Date | null; approvedAt?: Date | null } | null
       : null;
     let stage: Stage = cleanStage(body.stage, prevRow ? cleanStage(prevRow.stage) : 'ready');
     if (body.status === 'scheduled' && body.stage === undefined) stage = 'ready';
@@ -727,6 +737,13 @@ export class SocialPublishService {
       // it. Leaving the thread open would keep the team inbox nagging about a
       // request that has already been carried out.
       await this.closeThread(tenantId, `post:${owned.id}`, user.email ?? null);
+      // The shop had a say on this post (a note, or a yes) and what they saw is
+      // no longer what will publish: tell them, so the re-approval is asked
+      // for, not hoped for. Only when the post is still on the calendar — a
+      // draft pulled back to writing has nothing for them to approve yet.
+      if (status === 'scheduled' && (owned.heldAt || owned.approvedAt)) {
+        await this.announceReview(tenantId, owned.id, message, user).catch(() => undefined);
+      }
       void this.archiveToDrive(owned.id).catch((e) => this.log.warn(`drive archive ${owned.id}: ${e instanceof Error ? e.message : e}`));
       return { ok: true, id: owned.id };
     }
@@ -746,6 +763,67 @@ export class SocialPublishService {
    * words the composer uses. Stepping back from ready pulls it out of the
    * sweep at once.
    */
+  /**
+   * "Gửi tiệm duyệt lại" — the team's half of the approval loop.
+   *
+   * The salon's note put the post on hold; the team fixed it. Until now the
+   * only way back was a silent side effect of saving (which reset approval
+   * and hoped the owner would notice the badge), and there was nothing that
+   * said "we changed it, please look again". This is that button: the hold
+   * lifts, the approval resets, the note thread gets a team reply and is
+   * closed, and the owner's phone is told with a link straight to the post.
+   */
+  async requestReview(user: AuthenticatedUser, id: string, note?: string): Promise<{ ok: true; notified: boolean }> {
+    const tenantId = this.tenantId(user);
+    const isLumio = user.role === UserRole.SUPER_ADMIN || Boolean(user.supportSession);
+    if (!isLumio) throw new BadRequestException('Chỉ team Lumio gửi bài cho tiệm duyệt.');
+    const row = await this.posts?.findFirst({ where: { id, tenantId } }).catch(() => null) as PostRow | null;
+    if (!row) throw new NotFoundException('Không tìm thấy bài này.');
+    if (row.status !== 'scheduled') throw new BadRequestException('Bài phải ở trạng thái đã lên lịch (giai đoạn Sẵn sàng) thì tiệm mới duyệt được.');
+    const notified = await this.announceReview(tenantId, id, row.message, user, note);
+    return { ok: true, notified };
+  }
+
+  /**
+   * The shared tail of "we changed it, please look again": approval and hold
+   * reset, a team line under the post, the thread settled, the audit row, and
+   * the owner's phone. Called by the button and by saving a held/approved post.
+   */
+  private async announceReview(tenantId: string, id: string, message: string, user: AuthenticatedUser, note?: string): Promise<boolean> {
+    const now = new Date();
+    await this.posts?.update({
+      where: { id },
+      data: { approvedAt: null, approvedByName: null, heldAt: null, reviewRequestedAt: now },
+    });
+    // The thread under the post: a team line the owner reads when they open
+    // it, and the thread marked settled so the inbox stops counting it.
+    const who = user.email ?? 'Lumio';
+    const text = (String(note ?? '').trim() || 'Đã sửa xong theo góp ý của tiệm — mời tiệm xem lại và bấm duyệt ạ.').slice(0, 2000);
+    const loose = this.prisma as unknown as Record<string, { create?: (a: unknown) => Promise<unknown>; upsert?: (a: unknown) => Promise<unknown> }>;
+    await loose.contentMessage?.create?.({
+      data: { tenantId, subject: `post:${id}`, side: 'lumio', authorId: user.userId ?? null, authorName: who, body: text, readByLumioAt: now },
+    }).catch(() => undefined);
+    await loose.contentThread?.upsert?.({
+      where: { tenantId_subject: { tenantId, subject: `post:${id}` } },
+      create: { tenantId, subject: `post:${id}`, lastMessageAt: now, lastSide: 'lumio', resolvedAt: now, resolvedByName: who },
+      update: { lastMessageAt: now, lastSide: 'lumio', resolvedAt: now, resolvedByName: who },
+    }).catch(() => undefined);
+    await this.prisma.auditLog.create({
+      data: { tenantId, userId: user.userId ?? null, action: 'content.review_requested', resourceType: 'scheduled_post', resourceId: id } as never,
+    }).catch(() => undefined);
+    let notified = false;
+    if (this.push) {
+      const title = message.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Bài đăng';
+      await this.push.sendToTenant(tenantId, {
+        title: 'Bài đã sửa xong — mời bạn duyệt',
+        body: title,
+        url: '/salon/approve-posts',
+        tag: `post-review-${id}`,
+      }, { exceptUserId: user.userId ?? null }).then(() => { notified = true; }).catch(() => undefined);
+    }
+    return notified;
+  }
+
   async setStage(user: AuthenticatedUser, id: string, body: { stage: string; writerName?: string; designerName?: string; teamNote?: string }) {
     const tenantId = this.tenantId(user);
     const row = await this.posts?.findFirst({ where: { id, tenantId } }).catch(() => null) as PostRow | null;

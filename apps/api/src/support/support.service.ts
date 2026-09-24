@@ -70,7 +70,13 @@ export class SupportService {
     }).catch(() => [] as { tenantId: string; key: string; value: unknown }[]);
     const byTenant = new Map(stored.filter((x) => x.key === OPS_STAGE_KEY).map((x) => [x.tenantId, x.value]));
     const nextBy = new Map(stored.filter((x) => x.key === WORK_NEXT_KEY).map((x) => [x.tenantId, x.value]));
-    return rows.map((r) => ({ ...r, opsStage: opsStageOf(byTenant.get(r.id), r.status), workNext: workNextOf(nextBy.get(r.id)) }));
+    // Posts a salon has asked to change and nobody has answered: the one
+    // number that says "this shop is waiting on us". Grouped in one query.
+    const held = await (this.prisma as unknown as Record<string, { groupBy: (a: unknown) => Promise<{ tenantId: string; _count: { _all: number } }[]> }>).scheduledPost
+      ?.groupBy({ by: ['tenantId'], where: { tenantId: { in: rows.map((r) => r.id) }, status: 'scheduled', heldAt: { not: null } }, _count: { _all: true } })
+      .catch(() => [] as { tenantId: string; _count: { _all: number } }[]) ?? [];
+    const heldBy = new Map(held.map((h) => [h.tenantId, h._count._all]));
+    return rows.map((r) => ({ ...r, opsStage: opsStageOf(byTenant.get(r.id), r.status), workNext: workNextOf(nextBy.get(r.id)), heldPosts: heldBy.get(r.id) ?? 0 }));
   }
 
   /**

@@ -29,6 +29,8 @@ export interface ReviewPost {
   scheduledAt: string;
   postedAt: string | null;
   clientStatus: 'held' | 'wait' | 'approved' | 'posted';
+  /** Set when the team changed the post after a note and wants a fresh yes. */
+  reviewRequestedAt?: string | null;
   approvedAt: string | null;
   approvedByName: string | null;
   links: { channel: string; url: string | null }[];
@@ -403,10 +405,17 @@ function Detail(props: {
             </div>
           )}
 
+          {/* the team fixed it after a note: say so, above the approve button */}
+          {p.clientStatus === 'wait' && p.reviewRequestedAt && !justApproved && (
+            <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.55, color: '#c4b5fd', background: '#2e1065', border: '1px solid #6d28d9', borderRadius: 10, padding: '10px 13px' }}>
+              🔄 {T('Team đã sửa bài theo góp ý của bạn — mời xem lại và bấm duyệt để bài được đăng.', 'The team updated this post after your note — please look again and approve so it can go out.')}
+            </div>
+          )}
+
           {/* held: say why the clock stopped */}
           {p.clientStatus === 'held' && (
             <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.55, color: '#fdba74', background: '#341505', border: '1px solid #9a3412', borderRadius: 10, padding: '10px 13px' }}>
-              ⏸ {T('Bài tạm giữ, sẽ không tự đăng cho tới khi team trả lời góp ý của bạn.', 'On hold — it will not auto-publish until the team answers your note.')}
+              ⏸ {T('Bài tạm giữ, sẽ không tự đăng. Team sẽ sửa rồi gửi lại cho bạn duyệt — bạn sẽ nhận thông báo.', 'On hold — it will not auto-publish. The team will fix it and send it back for your approval; you will be notified.')}
             </div>
           )}
 
@@ -444,7 +453,7 @@ function Detail(props: {
               </button>
             </div>
             <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 7, lineHeight: 1.5 }}>
-              {T('Gửi góp ý sẽ tạm giữ bài này cho tới khi team trả lời.', 'Sending a note holds this post until the team responds.')}
+              {T('Gửi góp ý sẽ tạm giữ bài này; team sửa xong sẽ gửi lại để bạn duyệt.', 'Sending a note holds this post; the team will send it back for your approval once fixed.')}
             </div>
           </div>
         </div>

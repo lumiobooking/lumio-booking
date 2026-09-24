@@ -3042,6 +3042,10 @@ model ScheduledPost {
   /// Set when the salon leaves a comment the team has not answered yet. A held
   /// post does NOT auto-publish — the one case where the calendar waits.
   heldAt         DateTime?
+  /// The team pressed "gửi tiệm duyệt lại": the post was changed after the
+  /// salon's note and is back in front of them. Shown to the salon as
+  /// "updated", cleared by their approval. Null on a post never re-sent.
+  reviewRequestedAt DateTime?
   attempts  Int     @default(0)
   lastError String?
 

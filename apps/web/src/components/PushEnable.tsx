@@ -21,7 +21,8 @@ function urlB64ToUint8Array(base64String: string): Uint8Array {
  * when the app is closed. Renders nothing when: unsupported, already enabled, or
  * the server hasn't been given VAPID keys (feature off).
  */
-export function PushEnable() {
+/** `about` only changes the sentence: the subscription is the same either way. */
+export function PushEnable({ about = 'bookings' }: { about?: 'bookings' | 'posts' } = {}) {
   const { token } = useAuth();
   const { lang } = useLang();
   const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
@@ -68,7 +69,7 @@ export function PushEnable() {
     return (
       <div style={box}>
         <span style={{ fontSize: 18 }}>🔕</span>
-        <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L('Thông báo đẩy đang bị chặn trong cài đặt trình duyệt. Hãy bật lại để nhận báo khi có booking mới.', 'Push is blocked in your browser settings. Re-enable it to get new-booking alerts.')}</div>
+        <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{about === 'posts' ? L('Thông báo đẩy đang bị chặn trong cài đặt trình duyệt. Hãy bật lại để biết khi team gửi bài cho bạn duyệt.', 'Push is blocked in your browser settings. Re-enable it to know when the team sends a post for your approval.') : L('Thông báo đẩy đang bị chặn trong cài đặt trình duyệt. Hãy bật lại để nhận báo khi có booking mới.', 'Push is blocked in your browser settings. Re-enable it to get new-booking alerts.')}</div>
       </div>
     );
   }
@@ -76,7 +77,7 @@ export function PushEnable() {
   return (
     <div style={box}>
       <span style={{ fontSize: 18 }}>🔔</span>
-      <div style={{ flex: 1, fontSize: 13, color: 'var(--ccbd5e1)' }}>{L('Nhận thông báo ngay khi có booking mới — kể cả khi đã đóng app.', 'Get alerted the moment a booking arrives — even with the app closed.')}</div>
+      <div style={{ flex: 1, fontSize: 13, color: 'var(--ccbd5e1)' }}>{about === 'posts' ? L('Nhận thông báo khi team gửi bài cho bạn duyệt hoặc trả lời góp ý — kể cả khi đã đóng app.', 'Get alerted when the team sends a post for your approval or answers your note — even with the app closed.') : L('Nhận thông báo ngay khi có booking mới — kể cả khi đã đóng app.', 'Get alerted the moment a booking arrives — even with the app closed.')}</div>
       <button onClick={enable} disabled={state === 'busy'} style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 700, fontSize: 13, cursor: state === 'busy' ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>{state === 'busy' ? L('Đang bật…', 'Enabling…') : L('Bật', 'Enable')}</button>
     </div>
   );

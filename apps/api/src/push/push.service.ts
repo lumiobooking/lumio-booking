@@ -65,6 +65,45 @@ export class PushService {
    * `tag` lets a caller decide what replaces what on the lock screen. Bookings
    * and inbox messages are different queues and should not overwrite each other.
    */
+  /**
+   * Wake the AGENCY's people, whichever salon their phone subscribed from.
+   *
+   * A support employee's device is filed under the salon they were inside
+   * when they said yes to notifications, so `sendToTenant` from a salon
+   * reaches the salon's own staff and, by luck, whoever last worked there.
+   * The team is a role, not a tenant: this sends to every device whose owner
+   * is a Lumio account (support or super admin), across every salon.
+   */
+  async sendToTeam(payload: { title: string; body: string; url?: string; tag?: string }): Promise<void> {
+    if (!this.configured) return;
+    type SubRow = { id: string; userId: string; endpoint: string; p256dh: string; auth: string };
+    // No relation from subscription to user in the schema: two reads.
+    const team = await this.prisma.user
+      .findMany({ where: { role: { in: ['SUPPORT', 'SUPER_ADMIN'] as never[] }, isActive: true } as never, select: { id: true }, take: 500 })
+      .catch(() => []) as { id: string }[];
+    if (!team.length) return;
+    const subs: SubRow[] = await this.prisma.pushSubscription
+      .findMany({
+        where: { userId: { in: team.map((u) => u.id) } },
+        select: { id: true, userId: true, endpoint: true, p256dh: true, auth: true },
+      })
+      .catch(() => []) as unknown as SubRow[];
+    const targets = pushAudience(subs, { exceptUserId: null });
+    const byEndpoint = new Map<string, SubRow>(subs.map((s: SubRow) => [s.endpoint, s]));
+    const data = JSON.stringify({ title: payload.title, body: payload.body, url: payload.url || '/agency', tag: payload.tag || 'lumio-team' });
+    await Promise.all(targets.map(async (t) => {
+      const s = byEndpoint.get(t.endpoint);
+      if (!s) return;
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, data);
+      } catch (err: any) {
+        if (isDeadEndpoint(err && err.statusCode)) {
+          await this.prisma.pushSubscription.deleteMany({ where: { endpoint: s.endpoint } }).catch(() => undefined);
+        }
+      }
+    }));
+  }
+
   async sendToTenant(
     tenantId: string,
     payload: { title: string; body: string; url?: string; tag?: string },

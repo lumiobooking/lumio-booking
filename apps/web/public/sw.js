@@ -8,7 +8,7 @@
  *    old caches are purged on activate.
  *
  * Bump CACHE on every meaningful change to force old caches out. */
-const CACHE = 'lumio-cache-v8'; // v8: new brand icons
+const CACHE = 'lumio-cache-v9'; // v9: never cache a failed response (see below)
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -46,13 +46,23 @@ self.addEventListener('fetch', (event) => {
 
   // Next's hashed build files never change under their name: cache-first,
   // so a repeat visit paints from disk.
+  // ---- only a GOOD response is ever kept ----
+  // This used to cache whatever came back. During a deploy the old server
+  // answers 404/502 for a chunk for a few seconds; that answer was stored
+  // under the chunk's name, and because the NEW build often keeps the same
+  // name for an unchanged file (the name is a content hash), every later
+  // load of that chunk was served the cached failure — the "Lumio was just
+  // updated" screen that a reload could not clear, until the cache version
+  // was bumped. A failure is never cached now, in either branch.
   if (url.pathname.startsWith('/_next/static/')) {
     event.respondWith(
-      caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+      caches.match(req).then((hit) => (hit && hit.ok ? hit : fetch(req).then((res) => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        }
         return res;
-      })),
+      }))),
     );
     return;
   }
@@ -61,8 +71,10 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(req)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        }
         return res;
       })
       .catch(() => caches.match(req)),

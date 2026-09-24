@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { isStaleBuild, reloadOnceForStaleBuild } from '../lib/stale-build';
+import { hardReload, isStaleBuild, reloadOnceForStaleBuild } from '../lib/stale-build';
 
 /**
  * What the person sees when a page throws.
@@ -38,7 +38,7 @@ export default function PageError({ error, reset }: { error: Error & { digest?: 
         }}>
           {typeof window !== 'undefined' ? `trang: ${window.location.pathname}${window.location.search}\n\n` : ''}{String(error?.message || error)}{error?.digest ? `\n\ndigest: ${error.digest}` : ''}{'\n\n'}{String(error?.stack || '').slice(0, 800)}
         </pre>
-        <button onClick={() => (stale ? window.location.reload() : reset())} style={{
+        <button onClick={() => (stale ? hardReload() : reset())} style={{
           marginTop: 14, width: '100%', padding: '12px 16px', borderRadius: 10, border: 'none',
           background: '#6366f1', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
         }}>

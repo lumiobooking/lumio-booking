@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { isStaleBuild, reloadOnceForStaleBuild } from '../lib/stale-build';
+import { hardReload, isStaleBuild, reloadOnceForStaleBuild } from '../lib/stale-build';
 
 /**
  * Same idea as error.tsx, for crashes in the root layout itself — which is
@@ -23,7 +23,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
           <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, lineHeight: 1.5, background: '#1e293b', border: '1px solid #334155', borderRadius: 10, padding: 12, maxHeight: 260, overflow: 'auto', color: '#fbbf24' }}>
             {String(error?.message || error)}{error?.digest ? `\n\ndigest: ${error.digest}` : ''}{'\n\n'}{String(error?.stack || '').slice(0, 800)}
           </pre>
-          <button onClick={() => (stale ? window.location.reload() : reset())} style={{ marginTop: 14, width: '100%', padding: '12px 16px', borderRadius: 10, border: 'none', background: '#6366f1', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+          <button onClick={() => (stale ? hardReload() : reset())} style={{ marginTop: 14, width: '100%', padding: '12px 16px', borderRadius: 10, border: 'none', background: '#6366f1', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
             {stale ? 'Tải lại · Reload' : 'Thử lại · Try again'}
           </button>
         </div>

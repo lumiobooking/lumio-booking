@@ -43,7 +43,13 @@ export const metadata = {
     statusBarStyle: 'black-translucent' as const,
   },
   icons: {
-    icon: '/icons/icon-192.png',
+    icon: [
+      { url: '/favicon.ico', sizes: '48x48' },
+      { url: '/icons/favicon-16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/icons/favicon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
     apple: '/icons/apple-touch-icon.png',
   },
 };
@@ -53,7 +59,9 @@ export const viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
-  themeColor: '#6366f1',
+  // The brand blue of the mark, so the phone's status bar and the install
+  // splash match the icon on the home screen.
+  themeColor: '#0a80f5',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -8,7 +8,7 @@
  *    old caches are purged on activate.
  *
  * Bump CACHE on every meaningful change to force old caches out. */
-const CACHE = 'lumio-cache-v7';
+const CACHE = 'lumio-cache-v8'; // v8: new brand icons
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -77,7 +77,7 @@ self.addEventListener('push', (event) => {
   const options = {
     body: data.body || '',
     icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
+    badge: '/icons/badge-96.png',
     // The sender decides what replaces what: bookings and inbox messages are
     // different queues and should not overwrite each other on a lock screen.
     tag: data.tag || 'lumio-booking',

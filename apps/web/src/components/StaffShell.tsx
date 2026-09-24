@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { ThemeToggle } from './ThemeToggle';
+import { LumioLogo } from './LumioLogo';
 
 /** Layout + auth guard for the Staff (technician) portal. */
 export function StaffShell({ children, title = 'My Bookings', wide = false }: { children: ReactNode; title?: string; wide?: boolean }) {
@@ -87,7 +88,7 @@ export function StaffShell({ children, title = 'My Bookings', wide = false }: { 
       {children}
       <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
         style={{ display: 'block', textAlign: 'center', marginTop: 28, fontSize: 11, color: 'var(--c64748b)', textDecoration: 'none' }}>
-        Powered by <span style={{ color: 'var(--c818cf8)', fontWeight: 600 }}>Lumio Booking</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>Powered by <LumioLogo size={14} wordmark={false} /> <span style={{ color: 'var(--c818cf8)', fontWeight: 600 }}>Lumio Booking</span></span>
       </a>
     </div>
   );

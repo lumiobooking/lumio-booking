@@ -17,6 +17,7 @@ import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
 import { fresh } from '../../lib/live';
 import { groupInbox, groupSummary, type InboxItem } from '../../lib/inbox-groups';
+import { LumioLogo } from '../../components/LumioLogo';
 import { TeamBell, noticesByTenant, noticeSummary, ago as agoShort, type RowNotice, type TeamNotice } from '../../components/TeamBell';
 
 interface TenantRow {
@@ -430,7 +431,7 @@ export default function AgencyPage() {
     <main style={{ minHeight: '100dvh', background: 'var(--c0b1120)', color: 'var(--ce2e8f0)', padding: '28px 16px' }}>
       <div style={{ maxWidth: 1060, margin: '0 auto', paddingBottom: 72 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-          <h1 style={{ fontSize: 22, margin: 0 }}>🛠 Lumio Support</h1>
+          <h1 style={{ fontSize: 22, margin: 0 }}><LumioLogo size={34} sub="Support" /></h1>
           <span style={{ marginLeft: 'auto' }} />
           <TeamBell items={notices} onOpen={openNotice} busy={Boolean(busy)} />
           <button onClick={() => { logout(); router.replace('/login'); }}

@@ -21,6 +21,7 @@ import { InstallAppButton } from './InstallAppButton';
 import { ShareBookingLink } from './ShareBookingLink';
 import { MobileTabBar } from './MobileTabBar';
 import { NotificationBell } from './NotificationBell';
+import { LumioLogo } from './LumioLogo';
 
 // `feature: 'pos'` items only show when the salon's plan unlocks the POS suite.
 //
@@ -559,7 +560,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       </div>
       <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
         style={{ display: 'block', textAlign: 'center', marginTop: 12, fontSize: 11, color: 'var(--c64748b)', textDecoration: 'none' }}>
-        Powered by <span style={{ color: 'var(--c818cf8)', fontWeight: 600 }}>Lumio Booking</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>Powered by <LumioLogo size={14} wordmark={false} /> <span style={{ color: 'var(--c818cf8)', fontWeight: 600 }}>Lumio Booking</span></span>
       </a>
     </div>
   );
@@ -568,7 +569,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     <div style={{ padding: '4px 10px 18px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--ce2e8f0)' }}>Lumio</span>
+          <LumioLogo size={30} />
           <MarketBadge compact />
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
@@ -591,7 +592,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       <div style={{ minHeight: '100dvh', background: 'var(--c0b1120)' }}>
         {/* Sticky top bar */}
         <header style={{ position: 'sticky', top: 0, zIndex: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: 'var(--c111827)', borderBottom: '1px solid var(--c1f2937)' }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ce2e8f0)' }}>Lumio</div>
+          <LumioLogo size={28} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <NotificationBell />
             <button onClick={() => setDrawerOpen(true)} aria-label="Menu"

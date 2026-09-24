@@ -14,11 +14,13 @@ export default function manifest(): MetadataRoute.Manifest {
     // A manifest is JSON the OS reads, not CSS the page reads: a var() here is
     // an invalid color that can break install/launch on the home screen.
     background_color: '#0f172a',
-    theme_color: '#6366f1',
+    theme_color: '#0a80f5',
     icons: [
       { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      // Android crops the maskable icon to a circle/squircle: this one keeps
+      // the mark inside the safe zone so the star is not cut off.
+      { src: '/icons/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
   };
 }

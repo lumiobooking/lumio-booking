@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth';
+import { LumioLogo } from '../../components/LumioLogo';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -58,7 +59,7 @@ export default function LoginPage() {
           padding: 28,
         }}
       >
-        <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>Lumio Booking</h1>
+        <h1 style={{ fontSize: 24, margin: '0 0 6px' }}><LumioLogo size={40} sub="Booking" /></h1>
         <p style={{ color: 'var(--c94a3b8)', marginTop: 0, fontSize: 14 }}>Sign in to the admin console</p>
 
         <label style={labelStyle}>Email</label>

@@ -5,6 +5,7 @@ import { fmtInTz } from '../lib/datetime';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
 import { useIsMobile } from '../lib/responsive';
+import { Linkified } from './Linkified';
 
 /**
  * Every marketing conversation, across every salon — the team's working queue.
@@ -282,7 +283,7 @@ export function ContentInbox({ token }: { token: string | null }) {
                         background: mine ? '#6366f1' : 'var(--c1e293b)',
                         color: mine ? 'var(--cf8fafc)' : 'var(--ce2e8f0)',
                         border: mine ? 'none' : '1px solid var(--c334155)',
-                      }}>{m.body}</div>
+                      }}><Linkified text={m.body} /></div>
                     </div>
                   </div>
                 );

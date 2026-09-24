@@ -95,7 +95,19 @@ export class SupportService {
       ?.groupBy({ by: ['tenantId'], where: { tenantId: { in: rows.map((r) => r.id) }, status: 'scheduled', heldAt: { not: null } }, _count: { _all: true } })
       .catch(() => [] as { tenantId: string; _count: { _all: number } }[]) ?? [];
     const heldBy = new Map(held.map((h) => [h.tenantId, h._count._all]));
-    return rows.map((r) => ({ ...r, opsStage: opsStageOf(byTenant.get(r.id), r.status), workNext: workNextOf(nextBy.get(r.id)), heldPosts: heldBy.get(r.id) ?? 0 }));
+    // Posts on the calendar the shop has not said yes to yet — the other
+    // waiting number, this time on the shop's side. Same shape, one query.
+    const pending = await (this.prisma as unknown as Record<string, { groupBy: (a: unknown) => Promise<{ tenantId: string; _count: { _all: number } }[]> }>).scheduledPost
+      ?.groupBy({ by: ['tenantId'], where: { tenantId: { in: rows.map((r) => r.id) }, status: 'scheduled', heldAt: null, approvedAt: null }, _count: { _all: true } })
+      .catch(() => [] as { tenantId: string; _count: { _all: number } }[]) ?? [];
+    const pendingBy = new Map(pending.map((h) => [h.tenantId, h._count._all]));
+    return rows.map((r) => ({
+      ...r,
+      opsStage: opsStageOf(byTenant.get(r.id), r.status),
+      workNext: workNextOf(nextBy.get(r.id)),
+      heldPosts: heldBy.get(r.id) ?? 0,
+      awaitingApproval: pendingBy.get(r.id) ?? 0,
+    }));
   }
 
   /**

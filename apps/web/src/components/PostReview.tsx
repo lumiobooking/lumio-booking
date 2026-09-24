@@ -20,6 +20,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Linkified } from './Linkified';
 
 export interface ReviewPost {
   id: string;
@@ -489,7 +490,7 @@ function Detail(props: {
                 </div>
                 <div style={{ background: m.side === 'lumio' ? 'var(--c1e1b4b)' : 'var(--c1e293b)', border: `1px solid ${m.side === 'lumio' ? '#312e81' : 'var(--c334155)'}`, borderRadius: 10, padding: '8px 12px', fontSize: 13.5, lineHeight: 1.5, minWidth: 0, wordBreak: 'break-word' }}>
                   <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 2 }}>{m.authorName}</div>
-                  <div style={{ whiteSpace: 'pre-line' }}>{m.body}</div>
+                  <div style={{ whiteSpace: 'pre-line', wordBreak: 'break-word' }}><Linkified text={m.body} /></div>
                 </div>
               </div>
             ))}

@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { apiFetch } from '../lib/api';
-import { fresh } from '../lib/live';
 
 /**
  * The team's bell on the agency list.
@@ -40,7 +38,42 @@ const KIND: Record<TeamNotice['kind'], { icon: string; label: string }> = {
   files: { icon: '📤', label: 'gửi file' },
 };
 
-function ago(iso: string): string {
+/**
+ * One salon's share of the bell, folded into the shape a list row can show:
+ * how many of each kind, how fresh, and the one link to open first.
+ */
+export interface RowNotice {
+  notes: number;
+  chats: number;
+  files: number;
+  held: boolean;
+  newest: TeamNotice;
+}
+
+export function noticesByTenant(items: TeamNotice[]): Map<string, RowNotice> {
+  const out = new Map<string, RowNotice>();
+  for (const it of items) {
+    const cur = out.get(it.tenantId) ?? { notes: 0, chats: 0, files: 0, held: false, newest: it };
+    if (it.kind === 'post') cur.notes += 1;
+    else if (it.kind === 'files') cur.files += 1;
+    else cur.chats += 1;
+    if (it.held) cur.held = true;
+    if (Date.parse(it.at) > Date.parse(cur.newest.at)) cur.newest = it;
+    out.set(it.tenantId, cur);
+  }
+  return out;
+}
+
+/** "2 góp ý · 1 tin · 3 file" — only the parts that are non-zero. */
+export function noticeSummary(n: RowNotice): string {
+  const parts: string[] = [];
+  if (n.notes) parts.push(`${n.notes} góp ý`);
+  if (n.chats) parts.push(`${n.chats} tin`);
+  if (n.files) parts.push(`${n.files} file`);
+  return parts.join(' · ');
+}
+
+export function ago(iso: string): string {
   const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
   if (m < 1) return 'vừa xong';
   if (m < 60) return `${m} phút`;
@@ -49,28 +82,15 @@ function ago(iso: string): string {
   return `${Math.round(h / 24)} ngày`;
 }
 
-export function TeamBell({ token, onOpen, busy }: {
-  token: string | null;
+export function TeamBell({ items, onOpen, busy }: {
+  /** The page owns the fetch — the same list feeds the pills on each row. */
+  items: TeamNotice[];
   /** Step into the salon and land on `link`. */
   onOpen: (n: TeamNotice) => void;
   busy?: boolean;
 }) {
-  const [items, setItems] = useState<TeamNotice[]>([]);
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!token) return;
-    let alive = true;
-    const pull = () => apiFetch<{ count: number; items: TeamNotice[] }>(fresh('/support/notifications'), { token })
-      .then((r) => { if (alive) setItems(r.items ?? []); })
-      .catch(() => undefined);
-    pull();
-    const t = setInterval(() => { if (document.visibilityState === 'visible') pull(); }, 60_000);
-    const onVis = () => { if (document.visibilityState === 'visible') pull(); };
-    document.addEventListener('visibilitychange', onVis);
-    return () => { alive = false; clearInterval(t); document.removeEventListener('visibilitychange', onVis); };
-  }, [token]);
 
   // Click outside closes; Escape too.
   useEffect(() => {

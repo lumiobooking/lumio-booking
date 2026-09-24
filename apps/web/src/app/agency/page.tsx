@@ -17,7 +17,7 @@ import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
 import { fresh } from '../../lib/live';
 import { groupInbox, groupSummary, type InboxItem } from '../../lib/inbox-groups';
-import { TeamBell, type TeamNotice } from '../../components/TeamBell';
+import { TeamBell, noticesByTenant, noticeSummary, ago as agoShort, type RowNotice, type TeamNotice } from '../../components/TeamBell';
 
 interface TenantRow {
   id: string;
@@ -33,6 +33,8 @@ interface TenantRow {
   workNext?: WorkNext | '';
   /** Scheduled posts the shop sent back with a note — each one is waiting on us. */
   heldPosts?: number;
+  /** Scheduled posts the shop has not approved yet — waiting on THEM. */
+  awaitingApproval?: number;
 }
 type WorkNext = 'content' | 'design' | 'review' | 'schedule' | 'done';
 /** One thing a shop sent that nobody has made a post from yet. */
@@ -92,6 +94,10 @@ const cssFor = `
      order. */
   .ag-row { flex-wrap: wrap; row-gap: 6px; }
   .ag-name { flex: 1 0 100%; }
+  /* The waiting pill is the reason to look at the row: on a phone it gets a
+     whole line right under the name, wide enough to read, before the chips. */
+  .ag-notice { flex: 1 0 100%; justify-content: flex-start; font-size: 13px !important; padding: 7px 12px !important; min-height: 36px; }
+  .ag-notice-soft { flex: 0 0 auto; }
   .ag-row [data-row-check] { flex: 0 0 auto; }
   .ag-side-members { display: none; }
 }
@@ -102,6 +108,10 @@ export default function AgencyPage() {
   const router = useRouter();
   const [rows, setRows] = useState<TenantRow[]>([]);
   const [inbox, setInbox] = useState<InboxRow[]>([]);
+  /** Everything a shop wrote that nobody answered — the bell, and a pill per row. */
+  const [notices, setNotices] = useState<TeamNotice[]>([]);
+  const noticeBy = useMemo(() => noticesByTenant(notices), [notices]);
+  const [waitingOnly, setWaitingOnly] = useState(false);
   const [allSalons, setAllSalons] = useState(false);
   const [board, setBoard] = useState<Board | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -142,10 +152,16 @@ export default function AgencyPage() {
     // What is waiting, across every salon. Refreshed each minute while the
     // picker is open — this is the screen somebody leaves up on a second
     // monitor, and it has to be right when they glance at it.
-    const pull = () => apiFetch<InboxRow[]>(fresh('/support/inbox'), { token }).then(setInbox).catch(() => undefined);
+    const pull = () => {
+      apiFetch<InboxRow[]>(fresh('/support/inbox'), { token }).then(setInbox).catch(() => undefined);
+      apiFetch<{ count: number; items: TeamNotice[] }>(fresh('/support/notifications'), { token })
+        .then((r) => setNotices(r.items ?? [])).catch(() => undefined);
+    };
     pull();
     const t = setInterval(() => { if (document.visibilityState === 'visible') pull(); }, 60_000);
-    return () => clearInterval(t);
+    const onVis = () => { if (document.visibilityState === 'visible') pull(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); };
   }, [ready, user, token, router]);
 
   // An employee lands on their own list; the owner, who has no team, lands on
@@ -180,8 +196,18 @@ export default function AgencyPage() {
         .map((sg) => byId.get(sg.id))
         .filter((t): t is TenantRow => Boolean(t));
     }
-    return newOnly ? out.filter((t) => newIds.has(t.id)) : out;
-  }, [rows, board, pick, q, newOnly, newIds]);
+    if (newOnly) out = out.filter((t) => newIds.has(t.id));
+    if (waitingOnly) out = out.filter((t) => noticeBy.has(t.id) || (t.heldPosts ?? 0) > 0);
+    // A salon that is waiting on us floats to the top of whatever list this
+    // is, newest wait first. The list is what somebody glances at; the
+    // salons that need a glance most should not be under the fold.
+    const waitAt = (t: TenantRow) => {
+      const n = noticeBy.get(t.id);
+      return n ? Date.parse(n.newest.at) : (t.heldPosts ?? 0) > 0 ? 1 : 0;
+    };
+    return [...out].sort((a, b) => waitAt(b) - waitAt(a));
+  }, [rows, board, pick, q, newOnly, newIds, waitingOnly, noticeBy]);
+  const waitingHere = useMemo(() => rows.filter((t) => noticeBy.has(t.id) || (t.heldPosts ?? 0) > 0).length, [rows, noticeBy]);
 
   /** How many of the salons on screen arrived this week. Decides the tags. */
   const newHere = useMemo(() => listed.filter((t) => newIds.has(t.id)).length, [listed, newIds]);
@@ -406,7 +432,7 @@ export default function AgencyPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
           <h1 style={{ fontSize: 22, margin: 0 }}>🛠 Lumio Support</h1>
           <span style={{ marginLeft: 'auto' }} />
-          <TeamBell token={token} onOpen={openNotice} busy={Boolean(busy)} />
+          <TeamBell items={notices} onOpen={openNotice} busy={Boolean(busy)} />
           <button onClick={() => { logout(); router.replace('/login'); }}
             style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer' }}>
             Sign out
@@ -563,6 +589,27 @@ export default function AgencyPage() {
               )}
             </div>
 
+            {/* The salons waiting on us, as one line that filters. Red so it is
+                the first thing read; gone when nobody is waiting. */}
+            {!q.trim() && waitingHere > 0 && (
+              <button
+                onClick={() => setWaitingOnly((v) => !v)}
+                style={{
+                  width: '100%', textAlign: 'left', cursor: 'pointer', marginBottom: 10,
+                  background: waitingOnly ? 'rgba(239,68,68,.16)' : 'rgba(239,68,68,.07)',
+                  border: `1px solid ${waitingOnly ? '#ef4444' : '#7f1d1d'}`, borderRadius: 10,
+                  padding: '9px 13px', color: 'var(--ce2e8f0)', fontSize: 13,
+                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                }}
+              >
+                <span style={{ fontSize: 15 }}>🔔</span>
+                <span><b style={{ color: 'var(--ink-bad)' }}>{waitingHere} tiệm đang chờ Lumio trả lời</b> — góp ý bài, tin nhắn, file gửi</span>
+                <span style={{ marginLeft: 'auto', color: waitingOnly ? 'var(--ink-bad)' : 'var(--c94a3b8)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  {waitingOnly ? 'Bỏ lọc ✕' : 'Chỉ xem các tiệm này →'}
+                </span>
+              </button>
+            )}
+
             {/* Too many arrivals to tag one by one: one line that filters. */}
             {!q.trim() && newHere > NEW_TAGS_MAX && (
               <button
@@ -606,6 +653,7 @@ export default function AgencyPage() {
                   checked={chosen.has(t.id)}
                   onCheck={() => toggleChosen(t.id)}
                   busy={busy}
+                  notice={noticeBy.get(t.id) ?? null}
                   onBot={setBot}
                   onStage={setStage}
                   onNext={setNext}
@@ -816,10 +864,12 @@ function SideItem({ item, active, onClick, tone }: {
  */
 function Row({
   t, fresh, team, showTeam, canAssign, teams, picking, checked, onCheck,
-  busy, onEnter, editing, setEditing, onTeam, onBot, onStage, onNext,
+  busy, notice, onEnter, editing, setEditing, onTeam, onBot, onStage, onNext,
 }: {
   t: TenantRow;
   fresh?: boolean;
+  /** What this shop wrote that nobody answered — null when nothing waits. */
+  notice?: RowNotice | null;
   team: string;
   showTeam: boolean;
   canAssign: boolean;
@@ -839,6 +889,7 @@ function Row({
   const isEditing = editing === t.id;
   const suspended = t.status === 'SUSPENDED';
   const opening = busy === t.id;
+  const waiting = Boolean(notice) || (t.heldPosts ?? 0) > 0;
   const open = () => { if (!suspended && !opening && !picking) onEnter(t); };
   return (
     <div
@@ -850,7 +901,10 @@ function Row({
       title={suspended ? 'Tiệm đang bị khoá — mở lại ở Super Admin' : 'Mở phiên setup 8 tiếng'}
       style={{
         display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
-        borderBottom: '1px solid var(--c1f2937)', background: 'var(--c111827)',
+        borderBottom: '1px solid var(--c1f2937)', background: waiting ? 'rgba(239,68,68,.05)' : 'var(--c111827)',
+        // The one mark that survives a squint: a red edge on the rows that
+        // are waiting on us, nothing on the rest.
+        boxShadow: waiting ? 'inset 4px 0 0 #ef4444' : 'none',
         cursor: suspended && !picking ? 'default' : 'pointer', opacity: opening ? 0.5 : 1,
       }}
     >
@@ -892,16 +946,43 @@ function Row({
         <span title="Tài khoản tiệm đang bị khoá đăng nhập — mở lại ở Super Admin"
           style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ink-bad)', border: '1px solid #ef4444', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>KHOÁ</span>
       )}
-      {/* The shop asked for a change on a scheduled post. Red because the post
-          is frozen until somebody on our side answers — it is the one badge on
-          this row that means "a customer is waiting". Opens the content queue
-          filtered to those posts. */}
-      {!picking && (t.heldPosts ?? 0) > 0 && (
+      {/* ---- what this shop is waiting for ----
+          One pill, red, that says WHAT is waiting (góp ý / tin / file) and
+          how long. It opens the newest item directly — the reason to look at
+          the row is the reason to open it. A grey pill beside it is the
+          other direction: posts waiting on the SHOP's yes, so somebody
+          knows to nudge. On a phone the pill takes its own line under the
+          name (see .ag-notice in the stylesheet). */}
+      {!picking && notice && (
         <button
+          className="ag-notice"
+          onClick={(e) => { e.stopPropagation(); onEnter(t, notice.newest.link); }}
+          title={`${notice.newest.who ? notice.newest.who + ': ' : ''}${notice.newest.preview || notice.newest.title} — bấm để mở`}
+          style={{
+            background: 'rgba(239,68,68,.14)', border: '1px solid #ef4444', color: 'var(--ink-bad)',
+            borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 800,
+            display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}
+        >
+          <span>{notice.held ? '✏️' : '🔔'}</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{noticeSummary(notice)}</span>
+          <span style={{ fontWeight: 600, opacity: 0.85 }}>· {agoShort(notice.newest.at)}</span>
+        </button>
+      )}
+      {!picking && !notice && (t.heldPosts ?? 0) > 0 && (
+        <button
+          className="ag-notice"
           onClick={(e) => { e.stopPropagation(); onEnter(t, '/salon/content?tab=queue&work=held'); }}
           title="Tiệm yêu cầu sửa bài — bấm để mở danh sách và sửa"
-          style={{ background: 'rgba(239,68,68,.14)', border: '1px solid #ef4444', color: '#fca5a5', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 800 }}
+          style={{ background: 'rgba(239,68,68,.14)', border: '1px solid #ef4444', color: 'var(--ink-bad)', borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 800 }}
         >✏️ {t.heldPosts} sửa bài</button>
+      )}
+      {!picking && (t.awaitingApproval ?? 0) > 0 && (
+        <span
+          className="ag-notice-soft"
+          title={`${t.awaitingApproval} bài đã lên lịch, tiệm chưa bấm duyệt`}
+          style={{ border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, whiteSpace: 'nowrap', fontWeight: 700 }}
+        >⏳ {t.awaitingApproval} chờ tiệm duyệt</span>
       )}
       <NextPill next={t.workNext ?? ''} disabled={picking} onChange={(n) => onNext(t, n)} />
       <StagePill stage={t.opsStage ?? 'running'} disabled={picking} onChange={(st) => onStage(t, st)} />

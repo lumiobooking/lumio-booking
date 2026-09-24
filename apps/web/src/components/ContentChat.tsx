@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Linkified } from './Linkified';
 import { fmtInTz } from '../lib/datetime';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
@@ -160,7 +161,7 @@ function Bubbles({ messages, mine, empty }: {
                 borderLeft: isMine ? 'none' : `3px solid ${color}`,
                 borderBottomRightRadius: isMine ? 3 : 12,
                 borderBottomLeftRadius: isMine ? 12 : 3,
-              }}>{m.body}</div>
+              }}><Linkified text={m.body} /></div>
               {!opensRun && (
                 <div style={{ fontSize: 9.5, color: 'var(--c64748b)', marginTop: 2, textAlign: isMine ? 'right' : 'left' }}>
                   {timeOf(m.createdAt)}

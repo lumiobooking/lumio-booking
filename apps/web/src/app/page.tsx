@@ -157,8 +157,10 @@ export default function HomePage() {
       {/* ---------------- Nav ---------------- */}
       <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #eef2f7' }}>
         <nav style={{ maxWidth: 1120, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 24 }}>
-          <Link href="/" style={{ fontSize: 20, fontWeight: 800, color: INK, textDecoration: 'none', letterSpacing: -0.5 }}>
-            Lumio<span style={{ color: INDIGO }}>Booking</span>
+          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontSize: 20, fontWeight: 800, color: INK, textDecoration: 'none', letterSpacing: -0.5 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo/lumio-mark.png" alt="" width={34} height={34} style={{ width: 34, height: 34, display: 'block' }} />
+            <span>Lumio<span style={{ color: INDIGO }}>Booking</span></span>
           </Link>
           {!mobile && (
             <div style={{ display: 'flex', gap: 22, marginLeft: 16 }}>
@@ -332,7 +334,11 @@ export default function HomePage() {
       <footer style={{ background: '#0b1120', color: '#94a3b8' }}>
         <div style={{ maxWidth: 1120, margin: '0 auto', padding: '40px 24px', display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: '#f8fafc' }}>Lumio<span style={{ color: INDIGO }}>Booking</span></div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 18, fontWeight: 800, color: '#f8fafc' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo/lumio-mark.png" alt="" width={28} height={28} style={{ width: 28, height: 28, display: 'block' }} />
+              <span>Lumio<span style={{ color: INDIGO }}>Booking</span></span>
+            </div>
             <p style={{ fontSize: 13, margin: '6px 0 0' }}>Booking &amp; salon management software.</p>
             <p style={{ fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.6, color: '#64748b' }}>
               Lumio Agency LLC · 5900 Balcones Drive STE 100, Austin, TX 78731, USA<br />

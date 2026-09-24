@@ -30,6 +30,13 @@ export class SupportController {
     return this.svc.inbox();
   }
 
+  /** The team's bell: every unanswered shop note/comment/file, with a link each. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Get('notifications')
+  notifications() {
+    return this.svc.notifications();
+  }
+
   /** The salon list grouped for THIS employee: their team open, the rest folded. */
   @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
   @Get('board')

@@ -830,6 +830,21 @@ function Inner() {
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('work') === 'held') setWorkFilter('held');
   }, []);
+  /**
+   * A bell row or a push said "the shop wrote on THIS": ?post=<id> opens the
+   * queue as a list with that post's thread unfolded and scrolled to;
+   * ?chat=<subject> unfolds that thread (general / ads / week:… / idea:…) on
+   * its tab. Read once; after that the page is the user's.
+   */
+  const [focusPost, setFocusPost] = useState<string | null>(null);
+  const [focusChat, setFocusChat] = useState<string | null>(null);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const post = q.get('post');
+    const chat = q.get('chat');
+    if (post) { setFocusPost(post); setView('list'); setWorkFilter('all'); }
+    if (chat) setFocusChat(chat);
+  }, []);
   /** The shop's raw files — folded away unless something new arrived. */
   const [inboxOpen, setInboxOpen] = useState<boolean | null>(null);
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
@@ -2697,6 +2712,7 @@ function Inner() {
                         subject={`idea:${idea.id}`}
                         unread={unread.bySubject[`idea:${idea.id}`] ?? 0}
                         vi={vi}
+                        defaultOpen={focusChat === `idea:${idea.id}`}
                       />
                     )}
                   </div>
@@ -2723,6 +2739,7 @@ function Inner() {
                   unread={unread.bySubject.general ?? 0}
                   labelVi={vi ? 'Trao đổi với tiệm' : 'Talk to the shop'}
                   vi={vi}
+                  defaultOpen={focusChat === 'general'}
                 />
               </div>
 
@@ -3068,6 +3085,7 @@ function Inner() {
                           unread={unread.bySubject[`week:${viewWeek ?? plan.weekMeta.weekKey}`] ?? 0}
                           labelVi={vi ? 'Trao đổi về tuần này' : 'Discuss this week'}
                           vi={vi}
+                          defaultOpen={focusChat === `week:${viewWeek ?? plan.weekMeta.weekKey}`}
                         />
                       </div>
                     )}
@@ -5427,7 +5445,7 @@ function Inner() {
                       </div>
                     )}
 
-                    <ItemComments token={token} subject={`post:${p.id}`} unread={unread.bySubject[`post:${p.id}`] ?? 0} vi={vi} />
+                    <ItemComments token={token} subject={`post:${p.id}`} unread={unread.bySubject[`post:${p.id}`] ?? 0} vi={vi} defaultOpen={focusPost === p.id} />
                   </div>
                 );
               })}
@@ -5937,6 +5955,7 @@ function Inner() {
                     unread={unread.bySubject.ads ?? 0}
                     labelVi={vi ? 'Trao đổi về quảng cáo' : 'Discuss the ads plan'}
                     vi={vi}
+                    defaultOpen={focusChat === 'ads'}
                   />
                   {plan.ads.plans.map((p) => {
                     const S: Record<string, { fg: string; text: string }> = {

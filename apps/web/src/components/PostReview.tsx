@@ -183,6 +183,65 @@ export function PostReview({ api, vi, onCount }: {
 }
 
 /* ---------------------------------------------------------------------------
+ * All of a post's pictures, one at a time, with a way to reach each.
+ * ------------------------------------------------------------------------- */
+function MediaGallery({ media, square, T }: {
+  media: { url: string; kind: 'image' | 'video' }[];
+  square: boolean;
+  T: (v: string, e: string) => string;
+}) {
+  const [i, setI] = useState(0);
+  const n = media.length;
+  const cur = media[Math.min(i, n - 1)];
+  const touch = useRef<number | null>(null);
+  const go = (d: number) => setI((x) => (x + d + n) % n);
+  // A different post arrives in the same modal: start from its cover again.
+  useEffect(() => { setI(0); }, [media]);
+  if (!cur) return null;
+  return (
+    <div>
+      <div
+        style={{ position: 'relative', background: '#000', userSelect: 'none' }}
+        onTouchStart={(e) => { touch.current = e.touches[0]?.clientX ?? null; }}
+        onTouchEnd={(e) => {
+          const x0 = touch.current; touch.current = null;
+          const x1 = e.changedTouches[0]?.clientX;
+          if (x0 == null || x1 == null || n < 2) return;
+          if (x1 - x0 > 40) go(-1); else if (x0 - x1 > 40) go(1);
+        }}
+      >
+        {cur.kind === 'video'
+          ? <video key={cur.url} src={cur.url} controls muted playsInline style={{ width: '100%', display: 'block', maxHeight: 460, objectFit: 'contain', aspectRatio: square ? '1/1' : undefined }} />
+          // eslint-disable-next-line @next/next/no-img-element
+          : <img key={cur.url} src={cur.url} alt="" style={{ width: '100%', display: 'block', objectFit: square ? 'cover' : 'contain', aspectRatio: square ? '1/1' : undefined, maxHeight: 460, background: '#000' }} />}
+        {n > 1 && (
+          <>
+            <span style={{ position: 'absolute', top: 8, right: 10, background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 12 }}>
+              {i + 1}/{n} ▤
+            </span>
+            <button aria-label={T('Ảnh trước', 'Previous')} onClick={() => go(-1)} style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(255,255,255,.88)', color: '#111', fontSize: 22, fontWeight: 800, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>‹</button>
+            <button aria-label={T('Ảnh sau', 'Next')} onClick={() => go(1)} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(255,255,255,.88)', color: '#111', fontSize: 22, fontWeight: 800, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>›</button>
+          </>
+        )}
+      </div>
+      {n > 1 && (
+        <div style={{ display: 'flex', gap: 6, padding: '8px 10px', overflowX: 'auto', background: '#f0f2f5', borderBottom: '1px solid #e4e6eb' }}>
+          {media.map((m, k) => (
+            <button key={m.url + k} onClick={() => setI(k)} aria-label={`${k + 1}/${n}`} style={{ flexShrink: 0, width: 56, height: 56, borderRadius: 8, overflow: 'hidden', padding: 0, cursor: 'pointer', border: `2px solid ${k === i ? '#6366f1' : 'transparent'}`, background: '#000', opacity: k === i ? 1 : 0.75 }}>
+              {m.kind === 'video'
+                ? <span style={{ display: 'grid', placeItems: 'center', width: '100%', height: '100%', color: '#fff', fontSize: 20 }}>▶</span>
+                // eslint-disable-next-line @next/next/no-img-element
+                : <img src={m.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+            </button>
+          ))}
+          <span style={{ alignSelf: 'center', fontSize: 12, color: '#65676b', whiteSpace: 'nowrap', paddingLeft: 4 }}>{T('Bấm từng ảnh để xem', 'Tap each to view')}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
  * One row of the agenda. The whole row is the tap target.
  * ------------------------------------------------------------------------- */
 function Row({ p, onOpen, fmtTime, T }: { p: ReviewPost; onOpen: () => void; fmtTime: (iso: string) => string; T: (v: string, e: string) => string }) {
@@ -302,7 +361,6 @@ function Detail(props: {
   const fold = mode === 'facebook' ? 250 : 125;
   const showApprove = (p.clientStatus === 'wait' || p.clientStatus === 'held') && !justApproved;
   const lines = p.message.split('\n');
-  const firstImg = p.media.find((m) => m.kind === 'image');
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column' }}>
@@ -362,18 +420,13 @@ function Detail(props: {
                 </div>
               )}
 
+              {/* ---- every picture, not the first one ----
+                   A carousel post was shown as its cover only, with a "1/10"
+                   badge the owner could not do anything with — so nine of the
+                   ten pictures were approved unseen. Arrows, a swipe, and a
+                   strip of thumbnails; the counter now says which one is up. */}
               {p.media.length > 0 && (
-                <div style={{ position: 'relative', background: '#000' }}>
-                  {p.media[0].kind === 'video'
-                    ? <video src={p.media[0].url} controls muted playsInline style={{ width: '100%', display: 'block', maxHeight: 460, objectFit: 'contain', aspectRatio: mode === 'instagram' ? '1/1' : undefined }} />
-                    // eslint-disable-next-line @next/next/no-img-element
-                    : <img src={(mode === 'instagram' && firstImg ? firstImg : p.media[0]).url} alt="" style={{ width: '100%', display: 'block', objectFit: 'cover', aspectRatio: mode === 'instagram' ? '1/1' : undefined, maxHeight: 460 }} />}
-                  {p.media.length > 1 && (
-                    <span style={{ position: 'absolute', top: 8, right: 10, background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 12 }}>
-                      1/{p.media.length} ▤
-                    </span>
-                  )}
-                </div>
+                <MediaGallery media={mode === 'instagram' ? [...p.media].sort((a, b) => (a.kind === 'image' ? 0 : 1) - (b.kind === 'image' ? 0 : 1)) : p.media} square={mode === 'instagram'} T={T} />
               )}
 
               {mode === 'facebook' ? (

@@ -13,6 +13,25 @@ import { crewJobs, splitCrew, groupByKind, crewCounts, type WeekRowLike, type Cr
 import { SHOP } from '../content/client-view';
 import { cleanTeam, groupSalons, teamSummaries, isNewSalon } from './support-teams';
 import { OPS_STAGE_KEY, isOpsStage, opsStageOf } from './ops-stage';
+import { kindOf, linkFor, titleFor, type NoticeKind } from './team-notices';
+
+/** One row of the team's bell. `link` is relative to the salon session. */
+export interface TeamNotice {
+  id: string;
+  kind: NoticeKind;
+  tenantId: string;
+  salon: string;
+  slug: string;
+  title: string;
+  when: Date | null;
+  held: boolean;
+  preview: string;
+  who: string | null;
+  unread: number;
+  at: Date;
+  assigneeName: string | null;
+  link: string;
+}
 
 /**
  * Lumio SUPPORT staff: one login that can set up ANY salon — without being a
@@ -503,6 +522,106 @@ export class SupportService {
         archived: media.filter((m) => Boolean(m.driveUrl || m.driveFileId)).length,
       };
     });
+  }
+
+  /**
+   * The team's bell: everything a shop wrote that nobody has answered, across
+   * every salon, each row with the link that opens the exact thing.
+   *
+   * A note under a post, a line in the general thread, a reply on the week
+   * plan, a file the shop sent — before this they lived on four different
+   * screens, one per salon, and a note typed at 11pm was found on Thursday.
+   * The rule for "waiting" is the thread's own: the shop spoke last and the
+   * thread is not resolved. Answering or resolving takes the row away.
+   */
+  async notifications(): Promise<{ count: number; items: TeamNotice[] }> {
+    const loose = this.prisma as unknown as Record<string, { findMany: (a: unknown) => Promise<unknown> }>;
+    const threads = await loose.contentThread?.findMany({
+      where: { resolvedAt: null, lastSide: 'salon', tenant: { deletedAt: null, status: { not: 'CANCELLED' } } },
+      orderBy: { lastMessageAt: 'desc' },
+      take: 120,
+      select: { tenantId: true, subject: true, lastMessageAt: true, assigneeName: true, tenant: { select: { name: true, slug: true } } },
+    }).catch(() => []) as { tenantId: string; subject: string; lastMessageAt: Date; assigneeName: string | null; tenant: { name: string; slug: string } | null }[];
+
+    const items: TeamNotice[] = [];
+    if (threads.length) {
+      // The shop's latest line per thread — the row shows what they said, not
+      // just that they said something.
+      const msgs = await loose.contentMessage?.findMany({
+        where: { side: 'salon', OR: threads.map((t) => ({ tenantId: t.tenantId, subject: t.subject })) },
+        orderBy: { createdAt: 'desc' },
+        take: 600,
+        select: { tenantId: true, subject: true, body: true, authorName: true, createdAt: true },
+      }).catch(() => []) as { tenantId: string; subject: string; body: string; authorName: string; createdAt: Date }[];
+      const latest = new Map<string, { body: string; who: string; n: number }>();
+      for (const m of msgs) {
+        const k = `${m.tenantId}|${m.subject}`;
+        const cur = latest.get(k);
+        if (cur) cur.n += 1;
+        else latest.set(k, { body: m.body, who: m.authorName, n: 1 });
+      }
+      const postIds = threads.filter((t) => t.subject.startsWith('post:')).map((t) => t.subject.slice(5));
+      const posts = postIds.length
+        ? await loose.scheduledPost?.findMany({
+          where: { id: { in: postIds } },
+          select: { id: true, message: true, scheduledAt: true, heldAt: true },
+        }).catch(() => []) as { id: string; message: string; scheduledAt: Date; heldAt: Date | null }[]
+        : [];
+      const postBy = new Map(posts.map((p) => [p.id, p]));
+      for (const t of threads) {
+        const kind = kindOf(t.subject);
+        const post = kind === 'post' ? postBy.get(t.subject.slice(5)) : undefined;
+        // A note on a post that no longer exists has nowhere to open.
+        if (kind === 'post' && !post) continue;
+        const m = latest.get(`${t.tenantId}|${t.subject}`);
+        items.push({
+          id: `${t.tenantId}|${t.subject}`,
+          kind,
+          tenantId: t.tenantId,
+          salon: t.tenant?.name ?? '—',
+          slug: t.tenant?.slug ?? '',
+          title: post ? (post.message.replace(/\s+/g, ' ').trim().slice(0, 70) || 'Bài đăng') : titleFor(t.subject),
+          when: post?.scheduledAt ?? null,
+          held: Boolean(post?.heldAt),
+          preview: (m?.body ?? '').slice(0, 160),
+          who: m?.who ?? null,
+          unread: m?.n ?? 0,
+          at: t.lastMessageAt,
+          assigneeName: t.assigneeName,
+          link: linkFor(t.subject),
+        });
+      }
+    }
+
+    // Files and clips the shop sent that nobody has started on.
+    const sent = await loose.contentSuggestion?.findMany({
+      where: { status: 'done', createdByName: 'shop', tenant: { deletedAt: null, status: { not: 'CANCELLED' } } },
+      orderBy: { doneAt: 'desc' },
+      take: 40,
+      select: { id: true, tenantId: true, title: true, note: true, doneAt: true, media: true, tenant: { select: { name: true, slug: true } } },
+    }).catch(() => []) as { id: string; tenantId: string; title: string; note: string | null; doneAt: Date | null; media: unknown; tenant: { name: string; slug: string } | null }[];
+    for (const r of sent) {
+      const n = Array.isArray(r.media) ? r.media.length : 0;
+      items.push({
+        id: `files|${r.id}`,
+        kind: 'files',
+        tenantId: r.tenantId,
+        salon: r.tenant?.name ?? '—',
+        slug: r.tenant?.slug ?? '',
+        title: r.title || (n ? `${n} file` : 'Tiệm gửi'),
+        when: null,
+        held: false,
+        preview: (r.note ?? '').slice(0, 160),
+        who: null,
+        unread: 1,
+        at: r.doneAt ?? new Date(0),
+        assigneeName: null,
+        link: '/salon/content?tab=queue',
+      });
+    }
+
+    items.sort((a, b) => b.at.getTime() - a.at.getTime());
+    return { count: items.length, items };
   }
 
   /**

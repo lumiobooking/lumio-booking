@@ -11,12 +11,13 @@
 // session is active, and restored on leave — so leaving never needs a re-login.
 // ---------------------------------------------------------------------------
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
 import { fresh } from '../../lib/live';
 import { groupInbox, groupSummary, type InboxItem } from '../../lib/inbox-groups';
+import { TeamBell, type TeamNotice } from '../../components/TeamBell';
 
 interface TenantRow {
   id: string;
@@ -367,6 +368,34 @@ export default function AgencyPage() {
     }
   }
 
+  /**
+   * A push or a bell row on another device said "open salon X at Y": the
+   * URL carries both, and once the salon rows are in we step in without a
+   * click. Read once, then cleared from the address bar so a reload does not
+   * step in again.
+   */
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (autoOpened.current || loading || !token) return;
+    const q = new URLSearchParams(window.location.search);
+    const id = q.get('open');
+    const to = q.get('to');
+    if (!id) return;
+    autoOpened.current = true;
+    window.history.replaceState({}, '', window.location.pathname);
+    const t = rows.find((x) => x.id === id);
+    if (!t) { setError('Không tìm thấy tiệm trong danh sách của bạn.'); return; }
+    void enter(t, to && to.startsWith('/salon') ? to : '/salon/content?tab=queue');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, token, rows]);
+
+  /** A bell row: step into that salon and land on the post/thread it names. */
+  function openNotice(n: TeamNotice) {
+    const t = rows.find((x) => x.id === n.tenantId)
+      ?? { id: n.tenantId, name: n.salon, slug: n.slug, status: 'ACTIVE', createdAt: '' };
+    void enter(t, n.link);
+  }
+
   if (!ready || loading) {
     return <main style={screen}><div style={{ color: 'var(--c94a3b8)' }}>Loading…</div></main>;
   }
@@ -376,8 +405,10 @@ export default function AgencyPage() {
       <div style={{ maxWidth: 1060, margin: '0 auto', paddingBottom: 72 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
           <h1 style={{ fontSize: 22, margin: 0 }}>🛠 Lumio Support</h1>
+          <span style={{ marginLeft: 'auto' }} />
+          <TeamBell token={token} onOpen={openNotice} busy={Boolean(busy)} />
           <button onClick={() => { logout(); router.replace('/login'); }}
-            style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer' }}>
+            style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer' }}>
             Sign out
           </button>
         </div>

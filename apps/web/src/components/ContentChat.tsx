@@ -304,15 +304,25 @@ function useThread(token: string | null, subject: string, open: boolean) {
 }
 
 /** The comment thread under one item. Collapsed until asked for. */
-export function ItemComments({ token, subject, unread, labelVi, vi }: {
+export function ItemComments({ token, subject, unread, labelVi, vi, defaultOpen }: {
   token: string | null; subject: string; unread?: number; labelVi?: string; vi: boolean;
+  /** A bell/push link landed here: unfold the thread and bring it into view. */
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(Boolean(defaultOpen));
   const { messages, side, sending, send } = useThread(token, subject, open);
   const count = open ? messages.length : (unread ?? 0);
+  const anchor = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!defaultOpen) return;
+    setOpen(true);
+    // After the surrounding list has rendered — the card may be far down.
+    const t = setTimeout(() => anchor.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250);
+    return () => clearTimeout(t);
+  }, [defaultOpen]);
 
   return (
-    <div style={{ marginTop: 8 }}>
+    <div ref={anchor} style={{ marginTop: 8 }}>
       {/* Big enough to see and to press.
           The first version was a 12px grey pill that read "Discuss" — on a busy
           card it disappeared entirely, and a comment box nobody notices is a

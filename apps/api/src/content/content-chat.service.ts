@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { PushService } from '../push/push.service';
+import { agencyLink, linkFor } from '../support/team-notices';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -55,7 +56,9 @@ export class ContentChatService {
     await this.push.sendToTeam({
       title: `${t?.name ?? 'Tiệm'} — ${isPost ? 'yêu cầu sửa bài' : 'nhắn Lumio'}`,
       body: `${who}: ${body.replace(/\s+/g, ' ').trim().slice(0, 120)}`,
-      url: '/agency',
+      // Opens the agency list, which steps into the salon and lands on the
+      // exact post or thread — see support/team-notices.
+      url: agencyLink(tenantId, linkFor(subject)),
       tag: `content-note-${tenantId}`,
     }).catch(() => undefined);
   }

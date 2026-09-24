@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { isNativeApp } from '../lib/native';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -24,7 +25,7 @@ export function InstallAppButton({ label = 'Install app' }: { label?: string }) 
     const standalone =
       window.matchMedia?.('(display-mode: standalone)').matches ||
       (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-    if (standalone) { setInstalled(true); return; }
+    if (standalone || isNativeApp()) { setInstalled(true); return; }
 
     const ua = window.navigator.userAgent.toLowerCase();
     const ios = /iphone|ipad|ipod/.test(ua) && !/crios|fxios/.test(ua);

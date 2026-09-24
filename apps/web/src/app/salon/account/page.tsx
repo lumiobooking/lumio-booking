@@ -86,6 +86,74 @@ function Inner() {
 
         <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, marginTop: 16 }}>{busy ? t('ac.saving') : t('ac.save')}</button>
       </form>
+
+      <DeleteAccount />
     </section>
+  );
+}
+
+/**
+ * Close your own login, from inside the app.
+ *
+ * Both app stores require it (Apple 5.1.1(v), Google Play's account-deletion
+ * rule): anyone who can sign in must be able to delete the account here,
+ * not by emailing support. The salon's bookings and payments stay — they
+ * are the business's records — the person's login and personal fields go.
+ * Two locks against a slip: the current password and the typed word.
+ */
+function DeleteAccount() {
+  const { token, logout } = useAuth();
+  const { lang } = useLang();
+  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const [open, setOpen] = useState(false);
+  const [pw, setPw] = useState('');
+  const [word, setWord] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function run(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null); setBusy(true);
+    try {
+      await apiFetch('/me/delete-account', { method: 'POST', token, body: { currentPassword: pw, confirm: word } });
+      logout();
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : L('Không xoá được', 'Could not delete'));
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ ...ui.card, marginTop: 22, borderColor: '#7f1d1d' }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--cfecaca)' }}>{L('Xoá tài khoản', 'Delete account')}</div>
+      <p style={{ fontSize: 13, color: 'var(--c94a3b8)', margin: '6px 0 10px', lineHeight: 1.55 }}>
+        {L('Đăng nhập của bạn bị xoá vĩnh viễn và không đăng nhập lại được. Lịch hẹn, thanh toán của tiệm vẫn được giữ vì là sổ sách của tiệm. Nếu bạn là admin duy nhất của tiệm, hãy thêm admin khác trước hoặc liên hệ support@lumiobooking.com để đóng tiệm.',
+           'Your login is deleted permanently and cannot be recovered. The salon\'s bookings and payments stay, as they are the business\'s records. If you are the salon\'s only admin, add another admin first or contact support@lumiobooking.com to close the salon.')}
+      </p>
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)} style={{ background: 'transparent', border: '1px solid #ef4444', color: 'var(--ink-bad)', borderRadius: 8, padding: '9px 14px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>
+          {L('Tôi muốn xoá tài khoản…', 'I want to delete my account…')}
+        </button>
+      ) : (
+        <form onSubmit={run}>
+          {err && <div style={ui.banner}>{err}</div>}
+          <label style={{ display: 'block', marginBottom: 10 }}>
+            <span style={ui.label}>{L('Mật khẩu hiện tại', 'Current password')}</span>
+            <input style={ui.input} type="password" value={pw} onChange={(e) => setPw(e.target.value)} required autoComplete="current-password" />
+          </label>
+          <label style={{ display: 'block', marginBottom: 12 }}>
+            <span style={ui.label}>{L('Gõ DELETE để xác nhận', 'Type DELETE to confirm')}</span>
+            <input style={ui.input} value={word} onChange={(e) => setWord(e.target.value)} placeholder="DELETE" autoCapitalize="characters" />
+          </label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="submit" disabled={busy || word.trim().toUpperCase() !== 'DELETE' || !pw} style={{ background: '#ef4444', border: 'none', color: '#fff', borderRadius: 8, padding: '10px 16px', fontSize: 14, fontWeight: 800, cursor: busy ? 'wait' : 'pointer', opacity: word.trim().toUpperCase() !== 'DELETE' || !pw ? 0.5 : 1 }}>
+              {busy ? L('Đang xoá…', 'Deleting…') : L('Xoá vĩnh viễn tài khoản của tôi', 'Permanently delete my account')}
+            </button>
+            <button type="button" onClick={() => { setOpen(false); setPw(''); setWord(''); setErr(null); }} style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '10px 14px', fontSize: 14, cursor: 'pointer' }}>
+              {L('Huỷ', 'Cancel')}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }

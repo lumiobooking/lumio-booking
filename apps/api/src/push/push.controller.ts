@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
-import { IsObject, IsString } from 'class-validator';
+import { IsIn, IsObject, IsString } from 'class-validator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { PushService } from './push.service';
@@ -13,6 +13,11 @@ class UnsubscribeDto {
   @IsString() endpoint!: string;
 }
 
+class NativeTokenDto {
+  @IsString() token!: string;
+  @IsIn(['ios', 'android']) platform!: 'ios' | 'android';
+}
+
 @Controller('push')
 export class PushController {
   constructor(private readonly push: PushService) {}
@@ -20,7 +25,21 @@ export class PushController {
   /** The client needs the VAPID public key to subscribe the browser. */
   @Get('public-key')
   key() {
-    return { key: this.push.publicKey(), enabled: this.push.enabled() };
+    return { key: this.push.publicKey(), enabled: this.push.enabled(), native: this.push.nativeEnabled() };
+  }
+
+  /** The store app's device token (FCM on both platforms). */
+  @Post('native')
+  async native(@CurrentUser() user: AuthenticatedUser, @Body() dto: NativeTokenDto) {
+    const tenantId = resolveTenantScope(user);
+    if (tenantId) await this.push.saveNativeToken(tenantId, user.userId, dto.token, dto.platform);
+    return { ok: true };
+  }
+
+  @Post('native/remove')
+  async nativeRemove(@Body() dto: { token: string }) {
+    await this.push.removeNativeToken(dto?.token);
+    return { ok: true };
   }
 
   @Post('subscribe')

@@ -50,7 +50,7 @@ describe('accepting the AI objection sticks to the post, not the wording', () =>
   });
 });
 
-describe('the six findings nobody may wave through', () => {
+describe('the findings nobody may wave through', () => {
   it('are named in the prompt, one by one, with the order to be certain', () => {
     const p = gbpScreenPrompt({ summary: 'x', hasPhoto: true, shopName: 'L', trade: 'nail' });
     for (const r of HARD_RULES) expect(p.system).toContain(r);
@@ -59,11 +59,24 @@ describe('the six findings nobody may wave through', () => {
   });
 
   it('come back on their own list, fail the verdict, and read as a refusal with no way past it', () => {
-    const v = parseScreenVerdict('{"ok":false,"hard":["Ảnh là ô vuông màu vàng, không liên quan tiệm."],"blockers":[],"warnings":[]}', true)!;
-    expect(v.hard).toEqual(['Ảnh là ô vuông màu vàng, không liên quan tiệm.']);
+    const v = parseScreenVerdict('{"ok":false,"hard":["Ảnh có watermark Shutterstock rõ ràng."],"blockers":[],"warnings":[]}', true)!;
+    expect(v.hard).toEqual(['Ảnh có watermark Shutterstock rõ ràng.']);
     expect(v.ok).toBe(false);
-    expect(screenHardRefusal(v)).toMatch(/KHÔNG thể bỏ qua.*ô vuông màu vàng.*bỏ Google Business/);
-    expect(screenRefusal(v)).toMatch(/ô vuông màu vàng/);
+    expect(screenHardRefusal(v)).toMatch(/KHÔNG thể bỏ qua.*watermark.*bỏ Google Business/);
+    expect(screenRefusal(v)).toMatch(/watermark/);
+  });
+
+  it('never lets "not about this shop" be hard — a bakery that sells pho is the team\'s call, so it becomes a blocker', () => {
+    const v = parseScreenVerdict('{"ok":false,"hard":["Ảnh không liên quan đến doanh nghiệp SUNNY Bakery, ảnh này là mì gà thuộc nhóm ngành khác."],"blockers":[],"warnings":[]}', true)!;
+    expect(v.hard).toEqual([]);
+    expect(v.blockers).toEqual(['Ảnh không liên quan đến doanh nghiệp SUNNY Bakery, ảnh này là mì gà thuộc nhóm ngành khác.']);
+    expect(screenHardRefusal(v)).toBeNull();
+    expect(screenRefusal(v)).toMatch(/SUNNY Bakery/);
+  });
+
+  it('keeps a relevance sentence hard when it also names a real hard category', () => {
+    const v = parseScreenVerdict('{"ok":false,"hard":["Ảnh không liên quan tiệm và có watermark của hãng khác."],"blockers":[],"warnings":[]}', true)!;
+    expect(v.hard).toHaveLength(1);
   });
 
   it('is absent from an ordinary objection, which the team may still accept', () => {

@@ -1,4 +1,7 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Patch } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Optional, Patch, Post } from '@nestjs/common';
+import { randomBytes } from 'crypto';
+import { AuditService } from '../audit/audit.service';
+import { PushService } from '../push/push.service';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -13,7 +16,11 @@ import { hashSecret, verifySecret } from '../auth/password.util';
  */
 @Controller('me')
 export class MeController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly audit?: AuditService,
+    @Optional() private readonly push?: PushService,
+  ) {}
 
   // GET /api/me/tenant -> the salon a SALON_ADMIN/STAFF belongs to.
   // SUPER_ADMIN has no tenant, so this is restricted to salon-side roles.
@@ -108,5 +115,71 @@ export class MeController {
     }
     // passwordChanged tells the client to log out immediately and re-login.
     return { ok: true, email: data.email ?? u.email, passwordChanged: !!data.passwordHash };
+  }
+
+  /**
+   * POST /api/me/delete-account -> the signed-in person closes their OWN login.
+   *
+   * Required by both stores (Apple 5.1.1(v), Google Play account-deletion
+   * policy): an app that lets you create or sign in to an account must let
+   * you delete it from inside the app, without emailing anyone.
+   *
+   * What "delete" means here, and why it is not `DELETE FROM users`:
+   * the salon's bookings, payments and audit rows reference this person and
+   * are the salon's business records, which the salon (and tax law) keeps.
+   * So the LOGIN is destroyed — email replaced by an unusable placeholder,
+   * password replaced by random bytes, account disabled, every push device
+   * dropped, sessions invalidated — while the rows the business owns stay.
+   * The person can never sign in again and nothing personal remains on the
+   * user row. Super Admin accounts cannot self-delete (that is a platform
+   * decision), and the last admin of a salon is told to hand over or close
+   * the salon through support first, so a shop is never left with no owner.
+   */
+  @Post('delete-account')
+  async deleteAccount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { currentPassword?: string; confirm?: string },
+  ) {
+    const u = await this.prisma.user.findUnique({ where: { id: user.userId } });
+    if (!u) throw new NotFoundException('Account not found');
+    if (u.role === UserRole.SUPER_ADMIN) throw new BadRequestException('A platform admin account cannot delete itself.');
+    if (!dto?.currentPassword || !(await verifySecret(dto.currentPassword, u.passwordHash))) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+    if (String(dto.confirm ?? '').trim().toUpperCase() !== 'DELETE') {
+      throw new BadRequestException('Type DELETE to confirm');
+    }
+    if (u.role === UserRole.SALON_ADMIN && u.tenantId) {
+      const admins = await this.prisma.user.count({ where: { tenantId: u.tenantId, role: UserRole.SALON_ADMIN, isActive: true } });
+      if (admins <= 1) {
+        throw new BadRequestException(
+          'You are the only admin of this salon. Add another admin first, or ask support@lumiobooking.com to close the salon — then this account can be deleted.',
+        );
+      }
+    }
+    const stamp = new Date();
+    const placeholder = `deleted+${u.id}@deleted.lumiobooking.com`;
+    await this.prisma.user.update({
+      where: { id: u.id },
+      data: {
+        email: placeholder,
+        passwordHash: await hashSecret(randomBytes(32).toString('hex')),
+        passwordChangedAt: stamp, // every existing session dies with this
+        isActive: false,
+        firstName: 'Deleted',
+        lastName: 'User',
+        phone: null,
+      } as never,
+    });
+    await this.push?.removeAllForUser(u.id);
+    await this.audit?.log({
+      tenantId: u.tenantId ?? null,
+      userId: u.id,
+      action: 'user.self_deleted',
+      resourceType: 'user',
+      resourceId: u.id,
+      metadata: { role: u.role, at: stamp.toISOString() },
+    }).catch(() => undefined);
+    return { ok: true, deleted: true };
   }
 }

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { pushAudience, isDeadEndpoint } from '../notifications/push-payload';
+import { FCM_PREFIX, FcmClient, isFcmEndpoint, loadServiceAccount } from './fcm';
 
 // `web-push` is declared in package.json and installed on Render. It's required
 // lazily (not `import`) so the sandbox typecheck — which can't reach the npm
@@ -22,7 +23,10 @@ export interface PushSub {
 @Injectable()
 export class PushService {
   private readonly logger = new Logger(PushService.name);
+  /** Web Push (VAPID) is set up. */
   private configured = false;
+  /** The store apps' channel; null until FCM_SERVICE_ACCOUNT_JSON is set. */
+  private readonly fcm: FcmClient | null;
 
   constructor(private readonly prisma: PrismaService) {
     const pub = process.env.VAPID_PUBLIC_KEY;
@@ -35,10 +39,68 @@ export class PushService {
         this.logger.warn('VAPID setup failed: ' + String(e));
       }
     }
+    const sa = loadServiceAccount();
+    this.fcm = sa ? new FcmClient(sa) : null;
+    if (!sa && process.env.FCM_SERVICE_ACCOUNT_JSON) this.logger.warn('FCM_SERVICE_ACCOUNT_JSON is set but unreadable — native push off');
   }
 
-  enabled(): boolean { return this.configured; }
+  /** True when at least one channel can deliver. */
+  enabled(): boolean { return this.configured || Boolean(this.fcm); }
+  nativeEnabled(): boolean { return Boolean(this.fcm); }
   publicKey(): string { return process.env.VAPID_PUBLIC_KEY || ''; }
+
+  /**
+   * A phone running the store app. Same table as a browser subscription so
+   * every audience rule applies unchanged; the endpoint carries the token
+   * behind a prefix and the key columns say which platform it is.
+   */
+  async saveNativeToken(tenantId: string, userId: string, token: string, platform: 'ios' | 'android'): Promise<void> {
+    const t = String(token || '').trim();
+    if (!t || t.length > 4096) return;
+    const endpoint = FCM_PREFIX + t;
+    await this.prisma.pushSubscription.upsert({
+      where: { endpoint },
+      create: { tenantId, userId, endpoint, p256dh: 'native', auth: platform },
+      update: { tenantId, userId, p256dh: 'native', auth: platform },
+    });
+  }
+
+  async removeNativeToken(token: string): Promise<void> {
+    const t = String(token || '').trim();
+    if (!t) return;
+    await this.prisma.pushSubscription.deleteMany({ where: { endpoint: FCM_PREFIX + t } });
+  }
+
+  /** Every device of one person, on every channel. */
+  async removeAllForUser(userId: string): Promise<void> {
+    await this.prisma.pushSubscription.deleteMany({ where: { userId } }).catch(() => undefined);
+  }
+
+  /**
+   * One device, whichever channel it lives on. A dead device (uninstalled
+   * app, expired browser subscription) is dropped; a transient failure is
+   * not, so nobody is silently unsubscribed by a bad minute at Google.
+   */
+  private async deliver(s: { endpoint: string; p256dh: string; auth: string }, data: { title: string; body: string; url: string; tag: string }): Promise<void> {
+    if (isFcmEndpoint(s.endpoint)) {
+      if (!this.fcm) return;
+      try {
+        const r = await this.fcm.send(s.endpoint.slice(FCM_PREFIX.length), data);
+        if (r.dead) await this.prisma.pushSubscription.deleteMany({ where: { endpoint: s.endpoint } }).catch(() => undefined);
+      } catch (e) {
+        this.logger.warn(`fcm send: ${e instanceof Error ? e.message : e}`);
+      }
+      return;
+    }
+    if (!this.configured) return;
+    try {
+      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(data));
+    } catch (err: any) {
+      if (isDeadEndpoint(err && err.statusCode)) {
+        await this.prisma.pushSubscription.deleteMany({ where: { endpoint: s.endpoint } }).catch(() => undefined);
+      }
+    }
+  }
 
   async saveSubscription(tenantId: string, userId: string, sub: PushSub): Promise<void> {
     if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) return;
@@ -75,7 +137,7 @@ export class PushService {
    * is a Lumio account (support or super admin), across every salon.
    */
   async sendToTeam(payload: { title: string; body: string; url?: string; tag?: string }): Promise<void> {
-    if (!this.configured) return;
+    if (!this.enabled()) return;
     type SubRow = { id: string; userId: string; endpoint: string; p256dh: string; auth: string };
     // No relation from subscription to user in the schema: two reads.
     const team = await this.prisma.user
@@ -90,17 +152,10 @@ export class PushService {
       .catch(() => []) as unknown as SubRow[];
     const targets = pushAudience(subs, { exceptUserId: null });
     const byEndpoint = new Map<string, SubRow>(subs.map((s: SubRow) => [s.endpoint, s]));
-    const data = JSON.stringify({ title: payload.title, body: payload.body, url: payload.url || '/agency', tag: payload.tag || 'lumio-team' });
+    const data = { title: payload.title, body: payload.body, url: payload.url || '/agency', tag: payload.tag || 'lumio-team' };
     await Promise.all(targets.map(async (t) => {
       const s = byEndpoint.get(t.endpoint);
-      if (!s) return;
-      try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, data);
-      } catch (err: any) {
-        if (isDeadEndpoint(err && err.statusCode)) {
-          await this.prisma.pushSubscription.deleteMany({ where: { endpoint: s.endpoint } }).catch(() => undefined);
-        }
-      }
+      if (s) await this.deliver(s, data);
     }));
   }
 
@@ -109,7 +164,7 @@ export class PushService {
     payload: { title: string; body: string; url?: string; tag?: string },
     opts: { exceptUserId?: string | null } = {},
   ): Promise<void> {
-    if (!this.configured) return;
+    if (!this.enabled()) return;
     // Typed explicitly rather than inferred: a `select` narrows the row type,
     // and the sandbox's generated Prisma client is old enough to infer `{}`
     // here — which compiles into implicit-any downstream and then fails on the
@@ -122,26 +177,16 @@ export class PushService {
     // Who to wake, and never the same device twice. See push-payload.spec.ts.
     const targets = pushAudience(subs, { exceptUserId: opts.exceptUserId ?? null });
     const byEndpoint = new Map<string, SubRow>(subs.map((s: SubRow) => [s.endpoint, s]));
-    const data = JSON.stringify({
+    const data = {
       title: payload.title,
       body: payload.body,
       url: payload.url || '/salon/activity',
       tag: payload.tag || 'lumio-booking',
-    });
+    };
 
     await Promise.all(targets.map(async (t) => {
       const s = byEndpoint.get(t.endpoint);
-      if (!s) return;
-      try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, data);
-      } catch (err: any) {
-        // 404/410 only. A 429 or a 500 is the push service having a bad
-        // minute, and deleting a device for that silently unsubscribes
-        // somebody who never asked to be unsubscribed.
-        if (isDeadEndpoint(err && err.statusCode)) {
-          await this.prisma.pushSubscription.deleteMany({ where: { endpoint: s.endpoint } }).catch(() => undefined);
-        }
-      }
+      if (s) await this.deliver(s, data);
     }));
   }
 }

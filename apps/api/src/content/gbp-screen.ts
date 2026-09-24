@@ -34,7 +34,7 @@
 export interface ScreenVerdict {
   ok: boolean;
   /**
-   * The six things nobody may wave through — see HARD_RULES. A post with one
+   * The things nobody may wave through — see HARD_RULES. A post with one
    * of these cannot be locked for Google by anyone; the only way forward is
    * a different photo or caption, or dropping Google from the post.
    */
@@ -54,16 +54,21 @@ export interface ScreenVerdict {
  * opinion, and a team that knows the shop should be able to overrule it. It
  * was also, in practice, the button a person in a hurry pressed instead of
  * fixing the post — and some of what went out that way is exactly what
- * Google suspends a profile for. So six kinds of finding are hard: the model
+ * Google suspends a profile for. So a few kinds of finding are hard: the model
  * files them separately, the composer shows them without a button, and no
  * account on the platform can accept them. Not the owner either: an approval
  * queue is a delay, and the fix is always faster than the wait.
  *
  * The list is deliberately short. Everything the model is not certain of, and
  * everything Google merely frowns at, stays a warning or an acceptable risk.
+ *
+ * "Not about this business" used to be on this list and came off it. It is
+ * the one judgement the model gets wrong most — a bakery that also sells
+ * pho, a spa that sells skincare, a nail salon posting its lash work — and
+ * a wrong hard refusal has no way out but rewriting a fine post. It is now
+ * a blocker: shown in red, but the team, who know the shop, can accept it.
  */
 export const HARD_RULES = [
-  'ảnh không liên quan đến tiệm này (placeholder, ảnh game, ảnh lạc đề, ảnh của ngành khác)',
   'ảnh stock hoặc lấy từ nguồn khác một cách rõ ràng (watermark, ảnh quảng cáo của thương hiệu khác, ảnh chụp màn hình)',
   'nội dung y khoa/dược phẩm hoặc lời hứa "chữa khỏi", "đảm bảo kết quả", giảm cân, thải độc',
   'ảnh hở hang, gợi dục, bạo lực hoặc phản cảm',
@@ -84,10 +89,10 @@ CHÍNH SÁCH GOOGLE BUSINESS PROFILE (tóm tắt đúng nguồn support.google.c
 7. Đúng doanh nghiệp: ảnh và chữ phải về chính tiệm này (${input.shopName}, ngành ${input.trade}) — không phải sản phẩm/tiệm khác.
 
 CÁCH CHẤM — ba mức, tách riêng:
-- "hard": CHỈ SÁU LOẠI SAU, và CHỈ khi bạn CHẮC CHẮN nhìn thấy, không phải suy đoán:
+- "hard": CHỈ ${HARD_RULES.length} LOẠI SAU, và CHỈ khi bạn CHẮC CHẮN nhìn thấy, không phải suy đoán:
 ${HARD_RULES.map((r, i) => `  (${i + 1}) ${r}`).join('\n')}
   Đây là những thứ Google phạt hồ sơ, nên hệ thống sẽ KHÔNG cho ai đăng bài này lên Google cho tới khi sửa. Vì thế: thấy chắc chắn mới ghi vào "hard"; thấy giống giống, "có dấu hiệu", "có thể là" → đưa xuống "blockers" hoặc "warnings". Mỗi lý do 1 câu tiếng Việt, nói rõ thấy gì và sửa thế nào.
-- "blockers": các vi phạm mục 1-7 khác mà bạn NHÌN THẤY RÕ nhưng không thuộc sáu loại trên (ví dụ: rượu bia có giá, mặt khách chụp lén, ảnh ghép/collage, filter quá đà). Team có thể xem và quyết định vẫn đăng. Mỗi lý do 1 câu.
+- "blockers": các vi phạm mục 1-7 khác mà bạn NHÌN THẤY RÕ nhưng không thuộc các loại trên (ví dụ: ảnh placeholder/ảnh game/ảnh rõ ràng của ngành khác không liên quan tiệm, rượu bia có giá, mặt khách chụp lén, ảnh ghép/collage, filter quá đà). Team có thể xem và quyết định vẫn đăng. Mỗi lý do 1 câu.
 - "warnings": mọi thứ còn lại — nghi ngờ, không chắc, hoặc không vi phạm nhưng dễ bị Google từ chối / trông thiếu chuyên nghiệp (ảnh tối/mờ, chữ chèn quá nhiều, giá to đùng, quá nhiều emoji, câu khẳng định "số 1"). Mỗi ý 1 câu.
 - NGUYÊN TẮC VÀNG: không chắc thì hạ một bậc — "hard" nghi ngờ thành "blockers", "blockers" nghi ngờ thành "warnings". Chặn nhầm một bài sạch tốn của tiệm nhiều hơn là để lọt một bài hơi rủi ro.
 - Nếu không thấy vấn đề, cả hai mảng để trống. Đừng bịa vấn đề để cho có.
@@ -97,6 +102,7 @@ ${HARD_RULES.map((r, i) => `  (${i + 1}) ${r}`).join('\n')}
   • Tên màu và tên dịch vụ: "neutral", "French", "ombre", "detox scrub", "hot stone", "paraffin".
   • Bảng giá dịch vụ của chính tiệm (nail, tóc, spa KHÔNG thuộc nhóm hàng hạn chế) — ghi giá dịch vụ của mình là hoàn toàn được phép.
   • Ảnh có logo/tên của chính tiệm này.
+  • Tiệm bán nhiều thứ: tiệm bánh bán thêm phở/cà phê, spa bán mỹ phẩm, tiệm nail làm thêm mi/tóc, nhà hàng có món mới — sản phẩm hay dịch vụ khác của CÙNG tiệm không phải "lạc đề". Chỉ coi là lạc đề khi ảnh rõ ràng không thể là của tiệm này (ảnh game, ảnh xe hơi cho tiệm nail, ảnh placeholder).
 
 Trả lời đúng một object JSON, không giải thích ngoài JSON:
 {"ok": true|false, "hard": ["..."], "blockers": ["..."], "warnings": ["..."]}`;
@@ -110,6 +116,11 @@ Chấm theo chính sách và trả JSON.`;
   return { system, user };
 }
 
+/** A finding that is only about relevance to the shop — the team's call, not a hard stop. */
+const RELEVANCE_ONLY = /không liên quan|lạc đề|ngành khác|không phải (?:của |về )?(?:tiệm|doanh nghiệp)|placeholder/i;
+/** Words that mark one of the real hard categories; a relevance sentence carrying one keeps its severity. */
+const HARD_KEYWORDS = /watermark|stock|chụp màn hình|screenshot|thương hiệu khác|chữa khỏi|đảm bảo kết quả|giảm cân|thải độc|dược|y khoa|hở hang|gợi dục|khiêu dâm|bạo lực|phản cảm|số điện thoại|email|link|đối thủ|giả mạo/i;
+
 /** Read the model's answer; anything unparseable is "could not tell", never "blocked". */
 export function parseScreenVerdict(raw: string, sawImage: boolean): ScreenVerdict | null {
   const text = String(raw ?? '');
@@ -122,8 +133,13 @@ export function parseScreenVerdict(raw: string, sawImage: boolean): ScreenVerdic
     .filter((x) => x.length > 3)
     .slice(0, 6)
     .map((x) => x.slice(0, 300));
-  const hard = list(parsed.hard);
-  const blockers = list(parsed.blockers);
+  // A relevance call ("not about this shop") is never hard, whatever the
+  // model filed it under — see the note above HARD_RULES. It stays visible
+  // as a blocker the team can accept.
+  const rawHard = list(parsed.hard);
+  const demoted = rawHard.filter((h) => RELEVANCE_ONLY.test(h) && !HARD_KEYWORDS.test(h));
+  const hard = rawHard.filter((h) => !demoted.includes(h));
+  const blockers = [...list(parsed.blockers), ...demoted].slice(0, 6);
   const warnings = list(parsed.warnings);
   // The boolean and the lists must agree: a "true" with reasons attached is
   // a model hedging, and the reasons are what the writer needs.

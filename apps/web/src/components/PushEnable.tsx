@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useLang } from '../lib/i18n';
+import { isNativeApp } from '../lib/native';
 
 // VAPID public key (base64url) -> Uint8Array for pushManager.subscribe.
 function urlB64ToUint8Array(base64String: string): Uint8Array {
@@ -31,6 +32,9 @@ export function PushEnable({ about = 'bookings' }: { about?: 'bookings' | 'posts
   useEffect(() => {
     let alive = true;
     (async () => {
+      // Inside the store app push is native (NativeBridge); this web prompt would
+      // point at a PushManager an iOS WebView does not have.
+      if (isNativeApp()) return;
       if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
       if (!token) return;
       let enabled = false;

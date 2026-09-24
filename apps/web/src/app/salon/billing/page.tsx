@@ -10,6 +10,7 @@ import { ui } from '../../../lib/ui';
 import { useLang, tr, Lang } from '../../../lib/i18n';
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { uiLocale } from '../../../lib/datetime';
+import { isNativeApp } from '../../../lib/native';
 
 type BillTab = 'plan' | 'usage' | 'invoices';
 interface InvoiceRow { id: string; number: string; type: string; status: string; totalCents: number; currency: string; periodStart: string | null; periodEnd: string | null; dueDate: string | null; token: string; createdAt: string }
@@ -41,6 +42,8 @@ function Inner() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [tab, setTab] = useState<BillTab>('plan');
+  const [native, setNative] = useState(false);
+  useEffect(() => { setNative(isNativeApp()); }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -125,7 +128,24 @@ function Inner() {
       {msg && <div style={{ background: 'var(--c064e3b)', color: 'var(--ca7f3d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
       {error && <div style={ui.banner}>{error}</div>}
 
-      {tab === 'plan' && (<>
+      {/* ---- the store app never sells the subscription ----
+           Apple 3.1.1 / Google Play: a plan bought inside the app has to go
+           through their billing (and their 15–30%). A salon buys Lumio on
+           the website, like any business tool; here the app only says so.
+           The rest of the page (usage, invoices, current plan) stays. */}
+      {tab === 'plan' && native && (
+        <div style={{ ...ui.card, marginBottom: 18 }}>
+          <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('bl.currentPlan')}</div>
+          <div style={{ fontSize: 22, fontWeight: 700 }}>{current?.planName ?? sum?.planName ?? '—'}</div>
+          <p style={{ fontSize: 13.5, color: 'var(--c94a3b8)', lineHeight: 1.55, margin: '10px 0 0' }}>
+            {lang === 'vi'
+              ? 'Gói dịch vụ và thanh toán được quản lý trên trang web Lumio Booking (đăng nhập bằng tài khoản này). Ứng dụng này dùng để vận hành tiệm.'
+              : 'Plans and payments are managed on the Lumio Booking website (sign in with this same account). This app is for running the salon.'}
+          </p>
+        </div>
+      )}
+
+      {tab === 'plan' && !native && (<>
       <div style={{ ...ui.card, marginBottom: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
           <div>

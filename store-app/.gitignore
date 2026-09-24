@@ -1,0 +1,13 @@
+node_modules/
+ios/App/Pods/
+ios/App/build/
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist
+*.keystore
+*.jks

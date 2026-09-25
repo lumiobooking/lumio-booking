@@ -326,3 +326,34 @@ describe('the same calendar reads in English', () => {
     expect(text).not.toContain('[object Object]');
   });
 });
+
+describe('Australia', () => {
+  it('reads a suburb, state and postcode', () => {
+    expect(parseAddress('12 John St, Cabramatta NSW 2166', 'AU')).toEqual({ city: 'Cabramatta', region: 'NSW', postalCode: '2166' });
+    expect(parseAddress('Shop 4, 100 Victoria St, Richmond VIC 3121, Australia', 'AU')).toEqual({ city: 'Richmond', region: 'VIC', postalCode: '3121' });
+    expect(parseAddress('1 Main Road Springfield QLD 4300', 'AU')).toEqual({ city: null, region: 'QLD', postalCode: '4300' });
+  });
+  it('keeps its state code as the region', () => {
+    expect(resolveRegion({ market: 'AU', region: 'vic' }).region).toBe('VIC');
+    expect(resolveRegion({ market: 'AU' }).market).toBe('AU');
+  });
+});
+
+describe("Australia's own calendar", () => {
+  it("puts Father's Day in September and never hands an Australian shop the Fourth of July", () => {
+    const names = regionEvents(d('2026-08-20'), { market: 'AU' }, { horizonDays: 30 }).events.map((e) => enOf(e.name));
+    expect(names).toContain("Father's Day");
+    const july = regionEvents(d('2026-06-25'), { market: 'AU' }, { horizonDays: 20 }).events.map((e) => enOf(e.name));
+    expect(july).not.toContain('Independence Day');
+    expect(july).toContain('End of financial year');
+  });
+  it('knows ANZAC Day, Australia Day and the Melbourne Cup', () => {
+    const jan = regionEvents(d('2026-01-10'), { market: 'AU' }, { horizonDays: 20 }).events.map((e) => enOf(e.name));
+    expect(jan).toContain('Australia Day');
+    const apr = regionEvents(d('2026-04-10'), { market: 'AU' }, { horizonDays: 20 }).events.map((e) => enOf(e.name));
+    expect(apr).toContain('ANZAC Day');
+    const cup = regionEvents(d('2026-10-20'), { market: 'AU', region: 'VIC' }, { horizonDays: 20 }).events.map((e) => enOf(e.name));
+    expect(cup).toContain('Melbourne Cup');
+    expect(cup).toContain('Melbourne Cup public holiday');
+  });
+});

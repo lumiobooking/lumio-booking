@@ -181,6 +181,7 @@ export function profileFor(industry?: string | null): TrendQueryProfile {
 export function trendsGeo(market: string, region: string | null): string {
   if (market === 'VN') return 'VN';
   if (market === 'CA') return region ? `CA-${region}` : 'CA';
+  if (market === 'AU') return region ? `AU-${region}` : 'AU';
   return region ? `US-${region}` : 'US';
 }
 
@@ -278,7 +279,7 @@ export function topicsFor(input: TrendInput, limit = 4): TrendTopic[] {
 export function trendLinks(input: TrendInput): {
   weekly: TrendLink[]; monthly: TrendLink[]; regionKnown: boolean;
 } {
-  const market = input.market === 'VN' ? 'VN' : input.market === 'CA' ? 'CA' : 'US';
+  const market = input.market === 'VN' ? 'VN' : input.market === 'CA' ? 'CA' : input.market === 'AU' ? 'AU' : 'US';
   const region = input.region?.trim().toUpperCase() || null;
   const p = profileFor(input.industry);
   const geo = trendsGeo(market, region);

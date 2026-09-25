@@ -30,8 +30,9 @@ export interface MarketOption {
 }
 
 export const MARKET_OPTIONS: MarketOption[] = [
-  { code: 'US', label: 'US / Canada', short: 'US', timezone: 'America/New_York' },
+  { code: 'US', label: 'United States', short: 'US', timezone: 'America/New_York' },
   { code: 'CA', label: 'Canada', short: 'CA', timezone: 'America/Toronto' },
+  { code: 'AU', label: 'Australia', short: 'AU', timezone: 'Australia/Sydney' },
   { code: 'VN', label: 'Việt Nam', short: 'VN', timezone: 'Asia/Ho_Chi_Minh' },
 ];
 
@@ -67,6 +68,11 @@ export function marketTag(code: string | null | undefined): string {
  */
 export function isVN(market: string | null | undefined): boolean {
   return String(market ?? '').trim().toUpperCase() === 'VN';
+}
+
+/** Is this salon in Australia? Same contract as isVN: the market, never the country. */
+export function isAU(market: string | null | undefined): boolean {
+  return String(market ?? '').trim().toUpperCase() === 'AU';
 }
 
 /** True when the salon trades in North America — the market that Twilio, the

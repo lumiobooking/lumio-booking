@@ -65,8 +65,24 @@ const VN_POLICY: SmsPolicy = {
   optOutLine: 'Soạn TU CHOI gửi lại để ngừng nhận tin.',
 };
 
+/**
+ * Australia — Spam Act 2003 and the ACMA rules: every commercial message
+ * must identify the sender and carry a working unsubscribe, honoured within
+ * five business days. No statutory hours, but 09:00–20:00 keeps a salon out
+ * of the complaints Telstra forwards. The daily cap is a courtesy, not law.
+ */
+const AU_POLICY: SmsPolicy = {
+  adHoursLocal: { fromMinutes: 9 * 60, toMinutes: 20 * 60 },
+  adPerDayCap: 2,
+  optOutKeywords: ['stop', 'unsubscribe', 'opt out', 'optout'],
+  optOutLine: 'Reply STOP to unsubscribe.',
+};
+
 export function smsPolicyFor(market: string | null | undefined): SmsPolicy {
-  return String(market ?? '').trim().toUpperCase() === 'VN' ? VN_POLICY : US_POLICY;
+  const m = String(market ?? '').trim().toUpperCase();
+  if (m === 'VN') return VN_POLICY;
+  if (m === 'AU') return AU_POLICY;
+  return US_POLICY;
 }
 
 /**
@@ -133,6 +149,29 @@ export function isOptOut(policy: SmsPolicy, text: string): boolean {
  * like a campaign with no eligible customers, and that ambiguity has cost this
  * project a whole afternoon before.
  */
+/**
+ * Why an advert was held, in the words of the law that held it. The row is
+ * read by the salon on its notification log, so a Sydney shop must not be
+ * told it broke a Vietnamese decree.
+ */
+export function heldReasonFor(
+  market: string | null | undefined,
+  reason: 'no-consent' | 'outside-hours' | 'daily-cap',
+): string {
+  const m = String(market ?? '').trim().toUpperCase();
+  const p = smsPolicyFor(m);
+  const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+  const win = p.adHoursLocal ? `${hhmm(p.adHoursLocal.fromMinutes)}-${hhmm(p.adHoursLocal.toMinutes)}` : '';
+  if (m === 'AU') {
+    if (reason === 'no-consent') return 'Giữ lại: khách chưa đồng ý (hoặc đã từ chối) nhận tin quảng cáo — Spam Act 2003. / Held: this customer has not consented to (or opted out of) marketing SMS — Spam Act 2003.';
+    if (reason === 'outside-hours') return `Giữ lại: ngoài khung giờ gửi quảng cáo (${win} giờ tiệm). / Held: outside the advertising window (${win} salon time).`;
+    return `Giữ lại: số này đã nhận đủ ${p.adPerDayCap} tin quảng cáo trong 24 giờ. / Held: this number reached the ${p.adPerDayCap}-ads-per-day limit.`;
+  }
+  if (reason === 'no-consent') return 'Giữ lại: khách chưa đồng ý (hoặc đã từ chối) nhận tin quảng cáo — Nghị định 91/2020. / Held: this customer has not consented to (or opted out of) marketing SMS.';
+  if (reason === 'outside-hours') return `Giữ lại: ngoài khung giờ quảng cáo cho phép (${win || '07:00-22:00'} giờ tiệm) — Nghị định 91/2020. / Held: outside the allowed advertising window.`;
+  return `Giữ lại: số này đã nhận đủ ${p.adPerDayCap ?? 3} tin quảng cáo trong 24 giờ — Nghị định 91/2020. / Held: this number reached the ${p.adPerDayCap ?? 3}-ads-per-day cap.`;
+}
+
 export function maySendSms(args: {
   market: string | null | undefined;
   kind: MessageKind;

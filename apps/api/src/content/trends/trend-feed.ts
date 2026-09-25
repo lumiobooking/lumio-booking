@@ -384,7 +384,7 @@ export function scopeOf(industry: string | null | undefined, market: string | nu
   // one place used to leave scopeOf silently bucketing it into SALON, which
   // looks like the feed working and is the wrong shop's data.
   const ind = QUERIES[String(industry ?? '').toUpperCase()] ? String(industry).toUpperCase() : 'SALON';
-  const mk = ['US', 'CA', 'VN'].includes(String(market ?? '').toUpperCase()) ? String(market).toUpperCase() : 'US';
+  const mk = ['US', 'CA', 'AU', 'VN'].includes(String(market ?? '').toUpperCase()) ? String(market).toUpperCase() : 'US';
   return `${ind}:${mk}`;
 }
 
@@ -392,6 +392,7 @@ export function scopeOf(industry: string | null | undefined, market: string | nu
 export function marketCodes(market: string | null | undefined): { region: string; dataforseoLocation: number; lang: string; pinterestRegion: string | null } {
   switch (String(market ?? '').toUpperCase()) {
     case 'CA': return { region: 'CA', dataforseoLocation: 2124, lang: 'en', pinterestRegion: 'CA' };
+    case 'AU': return { region: 'AU', dataforseoLocation: 2036, lang: 'en', pinterestRegion: 'AU' };
     // Pinterest Trends covers a short list of markets; VN is not on it, so the
     // source shows "not on" there instead of failing every morning.
     case 'VN': return { region: 'VN', dataforseoLocation: 2704, lang: 'vi', pinterestRegion: null };

@@ -26,7 +26,7 @@ export class CreateTenantDto {
    * field existed is, so the default has to be the old behaviour.
    */
   @IsOptional()
-  @IsIn(['US', 'CA', 'VN'])
+  @IsIn(['US', 'CA', 'AU', 'VN'])
   market?: string;
 
   /** Overrides the market's default timezone when the salon states its own. */

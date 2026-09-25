@@ -16,9 +16,13 @@
  */
 export function uiLocale(): string {
   try {
-    return typeof window !== 'undefined' && window.localStorage.getItem('lumio_lang') === 'vi'
-      ? 'vi-VN'
-      : 'en-US';
+    if (typeof window === 'undefined') return 'en-US';
+    if (window.localStorage.getItem('lumio_lang') === 'vi') return 'vi-VN';
+    // An Australian salon reads 25/09/2026 and "$45.00", not 9/25/2026 and
+    // "A$45.00". Same cached market the shell uses (lib/ui-market.ts); every
+    // other salon falls through to exactly what it had before.
+    if (window.localStorage.getItem('lumio_market') === 'AU') return 'en-AU';
+    return 'en-US';
   } catch {
     return 'en-US';
   }

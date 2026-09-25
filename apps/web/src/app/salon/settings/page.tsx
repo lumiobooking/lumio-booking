@@ -233,6 +233,7 @@ function Panel({ title, badge, hint, defaultOpen = false, children }: {
 const COUNTRY_PRESETS: Record<string, { timezone: string; currency: string; decimals: number; symbol: string; position: 'before' | 'after'; lang: 'en' | 'vi'; tips: boolean }> = {
   US: { timezone: 'America/Los_Angeles', currency: 'USD', decimals: 2, symbol: '$', position: 'before', lang: 'en', tips: true },
   CA: { timezone: 'America/Toronto', currency: 'CAD', decimals: 2, symbol: '$', position: 'before', lang: 'en', tips: true },
+  AU: { timezone: 'Australia/Sydney', currency: 'AUD', decimals: 2, symbol: '$', position: 'before', lang: 'en', tips: false },
   VN: { timezone: 'Asia/Ho_Chi_Minh', currency: 'VND', decimals: 0, symbol: '₫', position: 'after', lang: 'vi', tips: false },
 };
 
@@ -280,6 +281,7 @@ function CompanySection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
             <option value="">{t('se.co.countryAuto')}</option>
             <option value="US">United States (+1)</option>
             <option value="CA">Canada (+1)</option>
+            <option value="AU">Australia (+61)</option>
             <option value="VN">Việt Nam (+84)</option>
           </select>
         </Field>

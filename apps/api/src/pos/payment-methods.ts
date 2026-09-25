@@ -46,11 +46,11 @@ export interface PaymentMethodDef {
 }
 
 export const PAYMENT_METHODS: PaymentMethodDef[] = [
-  { code: 'CASH', labelEn: 'Cash', labelVi: 'Tiền mặt', bucket: 'cash', defaultFor: ['US', 'CA', 'VN'] },
-  { code: 'CARD', labelEn: 'Card', labelVi: 'Thẻ', bucket: 'card', defaultFor: ['US', 'CA', 'VN'] },
+  { code: 'CASH', labelEn: 'Cash', labelVi: 'Tiền mặt', bucket: 'cash', defaultFor: ['US', 'CA', 'AU', 'VN'] },
+  { code: 'CARD', labelEn: 'Card', labelVi: 'Thẻ', bucket: 'card', defaultFor: ['US', 'CA', 'AU', 'VN'] },
   // In the US this is Zelle or an Interac e-transfer; in Vietnam it is a plain
   // bank transfer, which is the ordinary way to pay for anything.
-  { code: 'TRANSFER', labelEn: 'Transfer', labelVi: 'Chuyển khoản', bucket: 'other', defaultFor: ['US', 'CA', 'VN'] },
+  { code: 'TRANSFER', labelEn: 'Transfer', labelVi: 'Chuyển khoản', bucket: 'other', defaultFor: ['US', 'CA', 'AU', 'VN'] },
   { code: 'VIETQR', labelEn: 'VietQR', labelVi: 'Quét mã VietQR', bucket: 'other', defaultFor: ['VN'] },
   { code: 'MOMO', labelEn: 'MoMo', labelVi: 'Ví MoMo', bucket: 'other', defaultFor: ['VN'] },
   { code: 'ZALOPAY', labelEn: 'ZaloPay', labelVi: 'Ví ZaloPay', bucket: 'other', defaultFor: ['VN'] },

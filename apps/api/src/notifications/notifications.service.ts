@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { maySendSms, smsPolicyFor, type MessageKind } from './sms-policy';
+import { heldReasonFor, maySendSms, smsPolicyFor, type MessageKind } from './sms-policy';
 import { dialCodeFor } from '../common/phone';
 import { NotificationChannel, NotificationStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -241,7 +241,7 @@ export class NotificationsService {
           body: input.body,
           status: NotificationStatus.FAILED,
           provider: 'sms-policy',
-          error: 'Giữ lại: khách chưa đồng ý (hoặc đã từ chối) nhận tin quảng cáo — Nghị định 91/2020. / Held: this customer has not consented to (or opted out of) marketing SMS.',
+          error: heldReasonFor(market, 'no-consent'),
           relatedType: input.relatedType ?? null,
           relatedId: input.relatedId ?? null,
           sentAt: null,
@@ -287,9 +287,7 @@ export class NotificationsService {
         body: input.body,
         status: NotificationStatus.FAILED,
         provider: 'sms-policy',
-        error: verdict.reason === 'outside-hours'
-          ? 'Giữ lại: ngoài khung giờ quảng cáo cho phép (07:00-22:00 giờ tiệm) — Nghị định 91/2020. / Held: outside the allowed advertising window.'
-          : 'Giữ lại: số này đã nhận đủ 3 tin quảng cáo trong 24 giờ — Nghị định 91/2020. / Held: this number reached the 3-ads-per-day cap.',
+        error: heldReasonFor(market, verdict.reason),
         relatedType: input.relatedType ?? null,
         relatedId: input.relatedId ?? null,
         sentAt: null,

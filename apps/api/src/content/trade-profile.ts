@@ -238,7 +238,7 @@ export function feedsOf(p: TradeProfile): FeedLink[] {
 
 /** Trend snapshots for a profiled business are its own, not a trade's. */
 export function customScope(tenantId: string, market: string | null | undefined): string {
-  const mk = ['US', 'CA', 'VN'].includes(String(market ?? '').toUpperCase()) ? String(market).toUpperCase() : 'US';
+  const mk = ['US', 'CA', 'AU', 'VN'].includes(String(market ?? '').toUpperCase()) ? String(market).toUpperCase() : 'US';
   return `CUSTOM-${tenantId}:${mk}`;
 }
 export function customTenantOf(scope: string): string | null {

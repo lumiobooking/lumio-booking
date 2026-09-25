@@ -87,3 +87,18 @@ describe('which dial code a salon gets', () => {
     expect(dialCodeForTimezone(undefined)).toBe('1');
   });
 });
+
+describe('Australian numbers', () => {
+  it('reads a mobile or landline written the local way', () => {
+    for (const written of ['0412 345 678', '0412345678', '+61412345678', '61412345678', '412345678']) {
+      expect(toE164(written, '61')).toBe('+61412345678');
+    }
+    expect(toE164('02 9876 5432', '61')).toBe('+61298765432');
+  });
+  it('picks +61 from the country or from any Australian timezone', () => {
+    expect(dialCodeFor('AU', null)).toBe('61');
+    expect(dialCodeForTimezone('Australia/Sydney')).toBe('61');
+    expect(dialCodeForTimezone('Australia/Perth')).toBe('61');
+    expect(dialCodeFor('', 'Australia/Brisbane')).toBe('61');
+  });
+});

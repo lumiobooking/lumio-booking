@@ -33,16 +33,20 @@ const RULES: Record<string, DialRule> = {
   // (0912 345 678 → 912345678); landlines are 10, because the area code is two
   // digits plus an eight-digit subscriber number (028 3823 4567 → 2838234567).
   '84': { code: '84', trunkPrefix: '0', nationalLengths: [9, 10] },
+  // Australia: local form starts with 0, nine national digits for both a
+  // mobile (0412 345 678 → 412345678) and a landline (02 9876 5432 → 298765432).
+  '61': { code: '61', trunkPrefix: '0', nationalLengths: [9] },
 };
 
 /** ISO country → calling code, for the countries the product is sold in. */
-const COUNTRY_DIAL: Record<string, string> = { US: '1', CA: '1', VN: '84' };
+const COUNTRY_DIAL: Record<string, string> = { US: '1', CA: '1', VN: '84', AU: '61' };
 
 /** Which dial code a salon's numbers should default to, read from its timezone.
  *  Used when no country has been stated. */
 export function dialCodeForTimezone(timezone?: string | null): string {
   const tz = String(timezone || '');
   if (tz === 'Asia/Ho_Chi_Minh' || tz === 'Asia/Saigon') return '84';
+  if (tz.startsWith('Australia/')) return '61';
   return '1'; // every existing salon keeps today's behaviour
 }
 

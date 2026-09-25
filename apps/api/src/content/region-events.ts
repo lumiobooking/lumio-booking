@@ -27,7 +27,7 @@
 
 import { bi, viOf, type Txt } from './i18n';
 
-export type Market = 'US' | 'CA' | 'VN';
+export type Market = 'US' | 'CA' | 'AU' | 'VN';
 export type Precision = 'exact' | 'approximate';
 export type Scope = 'national' | 'regional' | 'cultural';
 
@@ -166,7 +166,7 @@ export interface ResolvedRegion {
 const US_STATES = new Set(['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC']);
 
 export function resolveRegion(input: RegionInput): ResolvedRegion {
-  const market: Market = input.market === 'VN' ? 'VN' : input.market === 'CA' ? 'CA' : 'US';
+  const market: Market = input.market === 'VN' ? 'VN' : input.market === 'CA' ? 'CA' : input.market === 'AU' ? 'AU' : 'US';
   const city = input.city?.trim() || null;
   const raw = input.region?.trim().toUpperCase() || null;
   // A US salon whose "state" is not a real state code is treated as unknown.
@@ -269,7 +269,17 @@ export function parseAddress(address: string | null | undefined, market: Market 
 } {
   const none = { city: null, region: null, postalCode: null };
   let raw = (address ?? '').trim();
-  if (!raw || market !== 'US') return none;
+  if (!raw) return none;
+  // Australia: "12 John St, Cabramatta NSW 2166" — a state code and a four-digit
+  // postcode. The suburb before the state is what the calendar runs on.
+  if (market === 'AU') {
+    const au = /(?:^|,)\s*([A-Za-z][A-Za-z .'\-]{1,40}?)[,\s]+(NSW|VIC|QLD|WA|SA|TAS|ACT|NT)\s+(\d{4})\s*(?:,?\s*Australia)?\s*$/i.exec(raw);
+    if (au) return { city: au[1].trim(), region: au[2].toUpperCase(), postalCode: au[3] };
+    const auFlat = /\b(NSW|VIC|QLD|WA|SA|TAS|ACT|NT)\s+(\d{4})\s*(?:,?\s*Australia)?\s*$/i.exec(raw);
+    if (auFlat) return { city: null, region: auFlat[1].toUpperCase(), postalCode: auFlat[2] };
+    return none;
+  }
+  if (market !== 'US') return none;
 
   // Normalise before matching: drop the country, spell the state as a code, and
   // pull a comma out from between the state and its ZIP.
@@ -611,6 +621,50 @@ function caSeeds(y: number, r: ResolvedRegion): Seed[] {
   return S;
 }
 
+/**
+ * Australia's own year. Seasons are upside down — Christmas is midsummer,
+ * the school year starts in late January — and the family days fall on
+ * different dates: Mother's Day matches North America, Father's Day does not
+ * (first Sunday of September). State codes: NSW, VIC, QLD, WA, SA, TAS, ACT, NT.
+ */
+function auSeeds(y: number, r: ResolvedRegion): Seed[] {
+  const S: Seed[] = [
+    { name: bi('Năm mới', "New Year's Day"), ts: utc(y, 1, 1), note: bi('Giữa hè — móng chân, màu sáng, khách đi biển. Đặt lịch từ 26-30/12', 'Midsummer — pedicures, bright colours, beach days. Customers book from 26-30 December'), scope: 'national' },
+    { name: bi('Ngày Úc 26/1', 'Australia Day'), ts: utc(y, 1, 26), note: bi('Nghỉ toàn quốc, cuối tuần dài — tuần trước bận, đúng ngày vắng', 'A national day off and long weekend — busy the week before, quiet on the day'), scope: 'national' },
+    { name: bi('Valentine', "Valentine's Day"), ts: utc(y, 2, 14), note: bi('Tông hồng đỏ, nail art trái tim, khách đi đôi', 'Pinks and reds, heart nail art, couples come in together'), scope: 'national' },
+    { name: bi('Thứ Sáu Tuần Thánh', 'Good Friday'), ts: easter(y) - 2 * DAY, note: bi('Cuối tuần dài bốn ngày — hầu hết tiệm đóng cửa, khách dồn vào thứ Tư, thứ Năm', 'A four-day weekend — most shops close, so bookings pile into Wednesday and Thursday'), scope: 'national' },
+    { name: bi('Phục sinh', 'Easter'), ts: easter(y), note: bi('Tông pastel, ảnh gia đình, mùa thu bắt đầu', 'Pastels, family photos, the start of autumn'), scope: 'national' },
+    { name: bi('ANZAC Day 25/4', 'ANZAC Day'), ts: utc(y, 4, 25), note: bi('Ngày tưởng niệm — nhiều bang cấm mở cửa buổi sáng; không đăng khuyến mãi trước 1 giờ chiều', 'A day of remembrance — several states bar trading in the morning; nothing promotional before 1 pm'), scope: 'national' },
+    { name: bi('Ngày của Mẹ', "Mother's Day"), ts: nthWeekday(y, 5, 0, 2), note: bi('Cao điểm gift card. Mẹ và con gái đi cùng — đẩy gói đôi', 'Peak gift card week. Mums and daughters come in together — push the two-person package'), scope: 'national' },
+    { name: bi("Sinh nhật Nhà vua", "King's Birthday"), ts: nthWeekday(y, 6, 1, 2), note: bi('Cuối tuần dài tháng 6 ở hầu hết các bang (QLD tháng 10, WA cuối tháng 9)', 'The June long weekend in most states (October in QLD, late September in WA)'), scope: 'national' },
+    { name: bi('Cuối năm tài chính 30/6', 'End of financial year'), ts: utc(y, 6, 30), note: bi('Mùa "EOFY sale" — gói trả trước, gift card cho doanh nghiệp', 'EOFY sale season — prepaid packages and gift cards bought by businesses'), scope: 'national' },
+    { name: bi('Ngày của Cha', "Father's Day"), ts: nthWeekday(y, 9, 0, 1), note: bi('Chủ nhật đầu tháng 9 — không phải tháng 6 như Mỹ. Pedicure cho nam, gift card', 'The first Sunday of September — not June as in the US. Men’s pedicures and gift cards'), scope: 'national' },
+    { name: bi('Melbourne Cup', 'Melbourne Cup'), ts: nthWeekday(y, 11, 2, 1), note: bi('Thứ Ba đầu tháng 11 — cả nước ăn mặc đẹp đi tiệc, đặt lịch dồn vào thứ Hai và sáng thứ Ba', 'The first Tuesday of November — the whole country dresses up; bookings pile into Monday and Tuesday morning'), scope: 'national' },
+    { name: 'Black Friday', ts: nthWeekday(y, 11, 4, 4) + DAY, note: bi('Đã thành mùa mua sắm lớn ở Úc — bán gift card Giáng sinh', 'Now a major shopping weekend in Australia — sell Christmas gift cards'), scope: 'national' },
+    { name: bi('Giáng sinh', 'Christmas'), ts: utc(y, 12, 25), note: bi('Cao điểm nhất năm và giữa mùa hè — tiệc công ty từ đầu tháng 12, mở đặt lịch sớm', 'The busiest stretch of the year, in high summer — office parties from early December; open the book early'), scope: 'national' },
+    { name: bi('Boxing Day 26/12', 'Boxing Day'), ts: utc(y, 12, 26), note: bi('Ngày mua sắm lớn nhất năm — gift card, gói tháng 1', 'The biggest shopping day of the year — gift cards and January packages'), scope: 'national' },
+    { name: bi('Mùa tựu trường', 'Back to school'), ts: utc(y, 1, 27), spanDays: 7, note: bi('Cuối tháng 1 — mẹ rảnh tay trở lại, tuần đầu tháng 2 đông', 'Late January — mums get their days back; the first week of February fills up'), scope: 'national' },
+  ];
+  if (r.regionKnown) {
+    const st = r.region as string;
+    if (st === 'VIC') {
+      S.push({ name: bi('Ngày Melbourne Cup (nghỉ VIC)', 'Melbourne Cup public holiday'), ts: nthWeekday(y, 11, 2, 1), scope: 'regional', note: bi('Nghỉ lễ toàn bang — tiệm đóng hoặc mở nửa ngày', 'A state public holiday — shops close or open a half day') });
+      S.push({ name: bi('Thứ Sáu trước AFL Grand Final', 'AFL Grand Final Friday'), ts: lastWeekday(y, 9, 5), scope: 'regional', note: bi('Nghỉ lễ VIC — cuối tuần dài, khách đi xem bóng', 'A Victorian holiday — long weekend, everyone is at the footy') });
+    }
+    if (st === 'QLD') {
+      S.push({ name: bi('Ngày Lao động QLD', 'Labour Day (QLD)'), ts: nthWeekday(y, 5, 1, 1), scope: 'regional', note: bi('Thứ Hai đầu tháng 5 — cuối tuần dài', 'The first Monday of May — a long weekend') });
+      S.push({ name: bi('Ekka (Brisbane)', 'Ekka show holiday'), ts: nthWeekday(y, 8, 3, 2), scope: 'regional', note: bi('Thứ Tư nghỉ giữa tháng 8 ở Brisbane', 'The Wednesday off in mid-August in Brisbane') });
+    }
+    if (st === 'WA') {
+      S.push({ name: bi('Ngày Tây Úc', 'Western Australia Day'), ts: nthWeekday(y, 6, 1, 1), scope: 'regional', note: bi('Thứ Hai đầu tháng 6 — cuối tuần dài của WA', 'The first Monday of June — WA’s long weekend') });
+    }
+    if (st === 'NSW' || st === 'ACT' || st === 'SA' || st === 'TAS' || st === 'NT') {
+      S.push({ name: bi('Ngày Lao động (bang)', 'Labour Day (state)'), ts: st === 'NSW' || st === 'ACT' || st === 'SA' ? nthWeekday(y, 10, 1, 1) : st === 'TAS' ? nthWeekday(y, 3, 1, 2) : nthWeekday(y, 5, 1, 1), scope: 'regional', note: bi('Thứ Hai nghỉ của bang — cuối tuần dài', 'The state’s Monday off — a long weekend') });
+    }
+  }
+  return S;
+}
+
 function vnSeeds(y: number): Seed[] {
   // A Vietnamese public holiday has a settled English name in the English-language
   // press — 'Quốc khánh 2/9' is National Day — and the date is kept in the name
@@ -680,7 +734,9 @@ export function regionEvents(
     ? [...vnSeeds(y), ...vnSeeds(y + 1)]
     : r.market === 'CA'
       ? [...caSeeds(y, r), ...caSeeds(y + 1, r)]
-      : [...usSeeds(y, r), ...usSeeds(y + 1, r)];
+      : r.market === 'AU'
+        ? [...auSeeds(y, r), ...auSeeds(y + 1, r)]
+        : [...usSeeds(y, r), ...usSeeds(y + 1, r)];
 
   const seen = new Set<string>();
   const events: DatedEvent[] = [];

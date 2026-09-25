@@ -49,9 +49,12 @@ const GROUPS: { label: string; zones: { tz: string; name: string }[] }[] = [
     { tz: 'Asia/Dubai', name: 'Dubai' },
   ]},
   { label: 'Australia', zones: [
-    { tz: 'Australia/Sydney', name: 'Sydney' },
-    { tz: 'Australia/Brisbane', name: 'Brisbane' },
-    { tz: 'Australia/Perth', name: 'Perth' },
+    { tz: 'Australia/Sydney', name: 'Sydney / NSW / ACT' },
+    { tz: 'Australia/Melbourne', name: 'Melbourne / VIC / TAS' },
+    { tz: 'Australia/Brisbane', name: 'Brisbane / QLD (no daylight saving)' },
+    { tz: 'Australia/Adelaide', name: 'Adelaide / SA' },
+    { tz: 'Australia/Perth', name: 'Perth / WA (no daylight saving)' },
+    { tz: 'Australia/Darwin', name: 'Darwin / NT (no daylight saving)' },
   ]},
   { label: 'Other', zones: [{ tz: 'UTC', name: 'UTC' }] },
 ];

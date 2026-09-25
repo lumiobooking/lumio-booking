@@ -68,7 +68,7 @@ const firstZip = (s: string | null | undefined): string | null => {
 };
 
 export function resolveShopLocation(i: LocationInput): ResolvedShopLocation {
-  const market: Market = i.market === 'VN' ? 'VN' : i.market === 'CA' ? 'CA' : 'US';
+  const market: Market = i.market === 'VN' ? 'VN' : i.market === 'CA' ? 'CA' : i.market === 'AU' ? 'AU' : 'US';
   const fromAddress = parseAddress(i.address, market);
   const fromArea = parseAddress(i.serviceArea, market);
 

@@ -150,3 +150,30 @@ describe('the dropdown', () => {
     );
   });
 });
+
+describe('Australia', () => {
+  it('is its own market: AUD with a plain dollar sign, no tips, Sydney, English', () => {
+    const p = presetFor('AU');
+    expect(p.market).toBe('AU');
+    expect(p.bookingRules).toEqual({ currency: 'AUD', currencySymbol: '$', symbolPosition: 'before', priceDecimals: 2 });
+    expect(p.posSettings.tipsEnabled).toBe(false);
+    expect(p.tenant.timezone).toBe('Australia/Sydney');
+    expect(p.companyExtra.country).toBe('AU');
+    expect(p.lang).toBe('en');
+  });
+  it('is not offered the US phone bot or the North American card readers', () => {
+    expect(featureAvailableInMarket('AU', 'voiceAi')).toBe(false);
+    expect(featureAvailableInMarket('AU', 'terminals')).toBe(false);
+    expect(featureAvailableInMarket('AU', 'messenger')).toBe(true);
+  });
+  it('sits in the dropdown after Canada and before Vietnam, and lower-case works', () => {
+    expect(marketList().map((m) => m.code)).toEqual(['US', 'CA', 'AU', 'VN']);
+    expect(isMarketCode('au')).toBe(true);
+    expect(marketOf('au').code).toBe('AU');
+  });
+  it('did not move the US preset', () => {
+    expect(MARKETS.US.currency).toBe('USD');
+    expect(MARKETS.US.tipsEnabled).toBe(true);
+    expect(MARKETS.US.timezone).toBe('America/Los_Angeles');
+  });
+});

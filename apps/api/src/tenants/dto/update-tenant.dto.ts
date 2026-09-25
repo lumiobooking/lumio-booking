@@ -13,7 +13,7 @@ export class UpdateTenantDto {
    * purpose: set the market, then adjust money under Settings if it is wrong.
    */
   @IsOptional()
-  @IsIn(['US', 'CA', 'VN'])
+  @IsIn(['US', 'CA', 'AU', 'VN'])
   market?: string;
 
   @IsOptional()

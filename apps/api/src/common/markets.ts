@@ -30,7 +30,7 @@
  * as "this change is not safe", not as "the test needs updating".
  */
 
-export type MarketCode = 'US' | 'CA' | 'VN';
+export type MarketCode = 'US' | 'CA' | 'AU' | 'VN';
 
 export interface MarketDef {
   code: MarketCode;
@@ -73,7 +73,7 @@ export interface MarketDef {
 
 export const MARKETS: Record<MarketCode, MarketDef> = {
   US: {
-    code: 'US', label: 'US / Canada', short: 'US',
+    code: 'US', label: 'United States', short: 'US',
     country: 'US', timezone: 'America/Los_Angeles',
     // '' means "derive from the currency code" — the shipped default. Writing
     // '$' here would be a change to every existing salon, not a preset.
@@ -87,6 +87,20 @@ export const MARKETS: Record<MarketCode, MarketDef> = {
     currency: 'CAD', currencySymbol: '', symbolPosition: 'before', priceDecimals: 2,
     tipsEnabled: true, lang: 'en',
     unavailableFeatures: [],
+  },
+  AU: {
+    code: 'AU', label: 'Australia', short: 'AU',
+    country: 'AU', timezone: 'Australia/Sydney',
+    // '$' written out: derived from 'AUD' under the US locale it would print
+    // "A$45", which no Australian customer has ever seen on a price list.
+    currency: 'AUD', currencySymbol: '$', symbolPosition: 'before', priceDecimals: 2,
+    // Tipping is not a custom in Australia; a till that suggests 18% reads as
+    // a US import. The salon can switch it on.
+    tipsEnabled: false, lang: 'en',
+    // The phone bot runs on a US Twilio number and the card readers are North
+    // American hardware. Everything else — booking, Messenger, reviews,
+    // content — is the same product.
+    unavailableFeatures: ['voiceAi', 'terminals'],
   },
   VN: {
     code: 'VN', label: 'Việt Nam', short: 'VN',
@@ -151,5 +165,5 @@ export function featureAvailableInMarket(code: string | null | undefined, featur
 
 /** For the Super Admin dropdown and filter, in the order they should appear. */
 export function marketList(): MarketDef[] {
-  return [MARKETS.US, MARKETS.CA, MARKETS.VN];
+  return [MARKETS.US, MARKETS.CA, MARKETS.AU, MARKETS.VN];
 }

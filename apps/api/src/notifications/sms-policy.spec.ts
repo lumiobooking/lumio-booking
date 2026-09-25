@@ -1,5 +1,5 @@
 import {
-  smsPolicyFor, allowedAtThisHour, underDailyCap, isOptOut, maySendSms,
+  smsPolicyFor, allowedAtThisHour, underDailyCap, isOptOut, maySendSms, heldReasonFor,
 } from './sms-policy';
 
 const VN = smsPolicyFor('VN');
@@ -137,5 +137,24 @@ describe('maySendSms says WHY it refused', () => {
 
   it('lets a legitimate Vietnamese campaign through', () => {
     expect(maySendSms({ market: 'VN', kind: 'marketing', nowMinutesLocal: at(10) })).toEqual({ ok: true });
+  });
+});
+
+describe('Australia (Spam Act 2003)', () => {
+  it('has its own window, cap and opt-out line — and US stays unrestricted', () => {
+    const au = smsPolicyFor('AU');
+    expect(au.adHoursLocal).toEqual({ fromMinutes: 540, toMinutes: 1200 });
+    expect(au.adPerDayCap).toBe(2);
+    expect(au.optOutLine).toMatch(/STOP/);
+    expect(smsPolicyFor('US').adHoursLocal).toBeNull();
+  });
+  it('tells an Australian salon the Australian reason, never the Vietnamese decree', () => {
+    expect(heldReasonFor('AU', 'no-consent')).toMatch(/Spam Act/);
+    expect(heldReasonFor('AU', 'outside-hours')).toMatch(/09:00-20:00/);
+    expect(heldReasonFor('AU', 'daily-cap')).not.toMatch(/91\/2020/);
+    expect(heldReasonFor('VN', 'outside-hours')).toMatch(/07:00-22:00.*91\/2020/);
+  });
+  it('booking reminders are never held, only adverts', () => {
+    expect(maySendSms({ market: 'AU', kind: 'transactional', nowMinutesLocal: 23 * 60 }).ok).toBe(true);
   });
 });

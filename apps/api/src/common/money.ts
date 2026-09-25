@@ -89,7 +89,10 @@ export function formatMoneyShort(minorUnits: number, currency = 'USD', locale = 
 export function localeForCountry(country?: string | null, timezone?: string | null): string {
   const c = String(country || '').trim().toUpperCase();
   if (c === 'VN') return 'vi-VN';
+  // Day before month, and "$45.00" rather than "A$45.00".
+  if (c === 'AU') return 'en-AU';
   if (c) return 'en-US';
   const tz = String(timezone || '');
+  if (tz.startsWith('Australia/')) return 'en-AU';
   return tz === 'Asia/Ho_Chi_Minh' || tz === 'Asia/Saigon' ? 'vi-VN' : 'en-US';
 }

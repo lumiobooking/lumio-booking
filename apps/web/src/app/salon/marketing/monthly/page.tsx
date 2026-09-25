@@ -1388,7 +1388,7 @@ function GbpCard({ g, T }: { g: GbpData; T: (v: string, e: string) => string }) 
         {Stat(T('\u0110\u1eb7t l\u1ecbch', 'Bookings'), g.bookings, v.bookings)}
         {Stat(T('Nh\u1eafn tin', 'Messages'), g.conversations, v.conversations)}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 14, marginTop: 10 }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 2 }}>{T('Ngu\u1ed3n hi\u1ec3n th\u1ecb', 'Where seen')}</div>
           {bar(T('T\u00ecm ki\u1ebfm', 'Search'), g.searchImpr, '#4285F4')}

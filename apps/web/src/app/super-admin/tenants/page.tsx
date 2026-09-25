@@ -389,7 +389,7 @@ function AccountPanel({ token, currentEmail }: { token: string; currentEmail: st
       <p style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 0 }}>Change your own Super Admin login email and/or password.</p>
       {err && <Banner>{err}</Banner>}
       {msg && <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '8px 12px', borderRadius: 8, fontSize: 13, margin: '8px 0' }}>{msg}</div>}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 12 }}>
         <Field label="Login email"><input style={inp} type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} /></Field>
         <Field label="New password (leave blank to keep)"><input style={inp} type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="min 8 chars" /></Field>
         <Field label="Current password (required to confirm)"><input style={inp} type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} /></Field>
@@ -829,7 +829,7 @@ function CreateTenantForm({
       }}
     >
       <h2 style={{ fontSize: 16, marginTop: 0 }}>Create a new salon</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 12 }}>
         <Field label="Salon name">
           <input style={inp} value={form.name} onChange={(e) => update('name', e.target.value)} required />
         </Field>

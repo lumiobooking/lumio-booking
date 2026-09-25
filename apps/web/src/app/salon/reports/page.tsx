@@ -488,7 +488,7 @@ function Empty({ vi }: { vi: boolean }) {
 }
 
 /* ---------------------------------------------------------------- styles --- */
-const grid2: CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 };
+const grid2: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 16 };
 const track: CSSProperties = { flex: 1, height: 18, background: 'var(--c0f172a)', borderRadius: 6, overflow: 'hidden' };
 const hint: CSSProperties = { color: 'var(--c64748b)', fontSize: 13, lineHeight: 1.6, margin: 0 };
 const btn: CSSProperties = { padding: '7px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer' };

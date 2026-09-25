@@ -73,6 +73,23 @@ optgroup {
   opacity: 1;
 }
 
+/* iPhone in landscape: with viewport-fit=cover the page reaches under the
+ * notch and the rounded corners. Keep content clear of both. Zero everywhere
+ * else, so desktop and Android are untouched. */
+body {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Long words, links and codes never push a card wider than the phone. */
+@media (max-width: 768px) {
+  pre,
+  code {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
 /* Comfortable, tappable controls + no iOS auto-zoom (needs >= 16px font). */
 @media (max-width: 768px) {
   input,
@@ -83,6 +100,14 @@ optgroup {
 
   button {
     min-height: 40px;
+  }
+
+  /* A customer or booking name inside a table row is a link a thumb has to
+   * hit. 19px of text height is not a target; the padding makes it ~31px
+   * without changing how the row reads. */
+  td a {
+    display: inline-block;
+    padding: 6px 0;
   }
 
   /* Wide data tables (bookings, payroll, payments, orders, reports…) scroll

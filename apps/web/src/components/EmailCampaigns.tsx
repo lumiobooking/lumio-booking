@@ -566,7 +566,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             <input value={d.imageUrl} onChange={(e) => setD({ ...d, imageUrl: e.target.value })}
               placeholder="https://…/promo.jpg" style={{ ...ui.input, width: '100%' }} />)}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 10 }}>
             {field(t('Chữ trên nút', 'Button label'), null,
               <input value={d.ctaLabel} onChange={(e) => setD({ ...d, ctaLabel: e.target.value })}
                 placeholder={t('Đặt lịch ngay', 'Book now')} style={{ ...ui.input, width: '100%' }} />)}
@@ -931,7 +931,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
 
         <div style={{ ...ui.card, marginBottom: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('Cài đặt', 'Settings')}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 12 }}>
             <div>
               <label style={ui.label}>{t('Cách nhau bao nhiêu ngày', 'Days between letters')}</label>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

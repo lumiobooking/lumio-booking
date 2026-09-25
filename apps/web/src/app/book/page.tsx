@@ -129,7 +129,7 @@ export default function BookPage() {
         production). The raw system response is shown on the right.
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginTop: 20, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 20, marginTop: 20, alignItems: 'start' }}>
         {/* LEFT: the customer form */}
         <div style={card}>
           {!connected ? (

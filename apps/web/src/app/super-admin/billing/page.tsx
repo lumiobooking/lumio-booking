@@ -185,7 +185,7 @@ export default function GatewaysPage() {
           <span style={{ fontSize: 13 }}>{st ? dot(st.paypal.hasClient && st.paypal.hasWebhook) : '…'}{st ? ` · ${(st.paypal.env || 'live').toUpperCase()}` : ''}</span>
         </div>
         <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '8px 0 12px' }}>From developer.paypal.com → your REST app (Client ID + Secret) and Webhooks (Webhook ID).</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 10 }}>
           <div><label style={lbl}>Client ID {st?.paypal.hasClient && <span style={savedTag}>saved</span>}</label>
             <input style={inp} value={ppId} onChange={(e) => setPpId(e.target.value)} placeholder={st?.paypal.hasClient ? '•••• (keep)' : 'AY…'} /></div>
           <div><label style={lbl}>Secret</label>
@@ -218,7 +218,7 @@ export default function GatewaysPage() {
           Verify your sender address in Brevo first (Senders &amp; IP → Senders), and authenticate your domain (SPF/DKIM) or your campaigns will land in spam.
           A personal @gmail.com address cannot be used as the sender for bulk mail — use an address on your own domain.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 10 }}>
           <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Brevo API key {st?.email?.hasKey && <span style={savedTag}>saved</span>}</label>
             <input style={inp} type="password" value={brevoKey} onChange={(e) => setBrevoKey(e.target.value)} placeholder={st?.email?.hasKey ? '•••••••• (leave blank to keep)' : 'xkeysib-…'} /></div>
           <div><label style={lbl}>Sender email (verified in Brevo)</label>
@@ -293,7 +293,7 @@ export default function GatewaysPage() {
           forwarded to your real inbox so nothing is lost.
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 10 }}>
           <div>
             <label style={lbl}>Reply subdomain</label>
             <input style={inp} value={inDomain} onChange={(e) => setInDomain(e.target.value)} placeholder="reply.lumioagency.com" />
@@ -341,7 +341,7 @@ export default function GatewaysPage() {
           Optional. Point uploads at your own Hostinger space so photos are served from your domain instead of the database.
           Leave empty to keep small photos stored inline.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 10 }}>
           <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Public URL of the upload folder</label>
             <input style={inp} value={stPublic} onChange={(e) => setStPublic(e.target.value)} placeholder="https://lumioagency.com/uploads" />
             <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: -6, marginBottom: 8 }}>Where the folder below is reachable on the web. A photo becomes &lt;this&gt;/&lt;salon&gt;/&lt;file&gt;.jpg.</div>

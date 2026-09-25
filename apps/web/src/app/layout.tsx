@@ -41,7 +41,11 @@ export const metadata = {
   appleWebApp: {
     capable: true,
     title: 'Lumio',
-    statusBarStyle: 'black-translucent' as const,
+    // 'default' = iOS draws its own opaque status bar and the app starts
+    // BELOW it. 'black-translucent' laid the page under the clock and notch,
+    // and nothing on the ~100 screens pads for that, so an installed app's
+    // header sat behind the status bar.
+    statusBarStyle: 'default' as const,
   },
   icons: {
     icon: [
@@ -60,6 +64,10 @@ export const viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
+  // Lets env(safe-area-inset-*) report the iPhone home indicator and the
+  // landscape notch, so the bottom tab bar and page edges can pad for them
+  // (MobileTabBar, SalonShell, StaffShell and globals.css already do).
+  viewportFit: 'cover' as const,
   // The brand blue of the mark, so the phone's status bar and the install
   // splash match the icon on the home screen.
   themeColor: '#0a80f5',

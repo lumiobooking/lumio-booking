@@ -161,8 +161,8 @@ describe('Australia', () => {
     expect(p.companyExtra.country).toBe('AU');
     expect(p.lang).toBe('en');
   });
-  it('is not offered the US phone bot or the North American card readers', () => {
-    expect(featureAvailableInMarket('AU', 'voiceAi')).toBe(false);
+  it('gets the AI hotline (on a +61 number) but not the North American card readers', () => {
+    expect(featureAvailableInMarket('AU', 'voiceAi')).toBe(true);
     expect(featureAvailableInMarket('AU', 'terminals')).toBe(false);
     expect(featureAvailableInMarket('AU', 'messenger')).toBe(true);
   });

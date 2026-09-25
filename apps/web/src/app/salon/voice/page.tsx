@@ -164,6 +164,7 @@ const DICT: Record<string, { vi: string; en: string }> = {
   language: { vi: 'Ngôn ngữ nghe & nói', en: 'Listening & speaking language' },
   langBi: { vi: 'Song ngữ — khách chọn đầu cuộc gọi (For English press 1 · Tiếng Việt nhấn 2)', en: 'Bilingual — caller chooses at the start (press 1 EN / 2 VI)' },
   langEn: { vi: 'Tiếng Anh (US)', en: 'English (US)' },
+  langEnAu: { vi: 'Tiếng Anh (Úc)', en: 'English (Australia)' },
   langVi: { vi: 'Tiếng Việt', en: 'Vietnamese' },
   aiInstruction: { vi: 'Ghi chú thêm cho trợ lý (tùy chọn)', en: 'Extra notes for the assistant (optional)' },
   aiInstructionPh: { vi: 'vd: luôn mời khách thử dịch vụ dip; cuối tuần rất đông.', en: 'e.g. always suggest dip powder; weekends are very busy.' },
@@ -536,6 +537,7 @@ function Inner() {
         <label style={ui.label}>{t('language')}</label>
         <select value={c.language} onChange={(e) => setC({ ...c, language: e.target.value })} style={{ ...ui.input, marginBottom: 14 }}>
           <option value="en-US">{t('langEn')}</option>
+          <option value="en-AU">{t('langEnAu')}</option>
           <option value="vi-VN">{t('langVi')}</option>
           <option value="bilingual">{t('langBi')}</option>
         </select>

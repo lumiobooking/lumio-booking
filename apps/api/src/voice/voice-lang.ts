@@ -70,6 +70,8 @@ export function voiceFor(lang: string, configuredVoice: string | null | undefine
   // Neural defaults: Wavenet vi / Polly Neural en — the closest to a human
   // that plain TwiML <Say> offers, still one line of config per call.
   if (lang === 'vi-VN') return { voice: 'Google.vi-VN-Wavenet-A', sayLanguage: 'vi-VN' };
+  // An Australian line sounds Australian: Polly's en-AU neural voice.
+  if (lang === 'en-AU') return { voice: 'Polly.Olivia-Neural', sayLanguage: null };
   return { voice: 'Polly.Joanna-Neural', sayLanguage: null };
 }
 
@@ -125,7 +127,7 @@ export function agentLangRule(lang: string): string {
   // the whole call with no way out. The caller's own language wins; the line's
   // setting only decides which one we open in.
   const escape = ' If the caller plainly speaks the OTHER language — they answer in it, ask for it, or their words read like the other language mis-transcribed — call switch_language for that language right away and speak only that language from then on. Never answer a caller in a language they are not speaking, and never mix the two in one sentence.';
-  return lang === 'vi-VN'
-    ? '\nIMPORTANT: This call opens in VIETNAMESE. Reply in Vietnamese — warm and polite ("dạ", "ạ", address the caller as "anh/chị").' + escape
-    : '\nIMPORTANT: This call opens in ENGLISH. Reply in English.' + escape;
+  if (lang === 'vi-VN') return '\nIMPORTANT: This call opens in VIETNAMESE. Reply in Vietnamese — warm and polite ("dạ", "ạ", address the caller as "anh/chị").' + escape;
+  if (lang === 'en-AU') return '\nIMPORTANT: This call opens in ENGLISH, for a salon in AUSTRALIA. Reply in natural Australian English; say dates day-first ("Friday the 26th of September") and prices in Australian dollars.' + escape;
+  return '\nIMPORTANT: This call opens in ENGLISH. Reply in English.' + escape;
 }

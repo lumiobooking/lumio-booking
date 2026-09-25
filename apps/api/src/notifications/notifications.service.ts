@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { heldReasonFor, maySendSms, smsPolicyFor, type MessageKind } from './sms-policy';
+import { heldReasonFor, isOptOut, maySendSms, smsPolicyFor, type MessageKind } from './sms-policy';
 import { dialCodeFor } from '../common/phone';
 import { NotificationChannel, NotificationStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -8,7 +8,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { EmailProvider, SmsProvider } from './providers/notification-provider.interface';
 import { createEmailProvider, createSmsProvider } from './providers/notification-provider.factory';
 import { ESmsProvider } from './providers/esms.provider';
-import { routeSmsFor } from './providers/sms-routing';
+import { routeSmsFor, twilioSenderFor } from './providers/sms-routing';
 import { readEsmsCallback } from './providers/esms-callback';
 import { ZnsProvider } from './providers/zns.provider';
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
@@ -162,6 +162,22 @@ export class NotificationsService {
    * Never throws: any failure returns null and the existing Twilio path runs,
    * which is what every salon does today.
    */
+  /** Market + hotline number, for choosing the Twilio sender. Never throws. */
+  private async twilioSenderForTenant(tenantId: string) {
+    try {
+      const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } as never }) as { market?: string | null } | null;
+      const market = String(t?.market ?? 'US').toUpperCase();
+      if (market !== 'AU' && market !== 'VN') return { kind: 'default' as const };
+      const line = market === 'AU'
+        ? await (this.prisma as unknown as { voiceLine?: { findUnique: (a: unknown) => Promise<{ lumioNumber?: string | null } | null> } })
+          .voiceLine?.findUnique({ where: { tenantId }, select: { lumioNumber: true } }).catch(() => null)
+        : null;
+      return twilioSenderFor({ market, lineNumber: line?.lumioNumber ?? null, auFallback: process.env.TWILIO_FROM_NUMBER_AU ?? null });
+    } catch {
+      return { kind: 'default' as const };
+    }
+  }
+
   private async esmsForTenant(tenantId: string): Promise<{ apiKey: string; secretKey: string; brandname: string; callbackUrl: string; oaid: string; znsBookingTempId: string; znsReminderTempId: string } | null> {
     try {
       const [t, row] = await Promise.all([
@@ -362,6 +378,16 @@ export class NotificationsService {
       ? await this.esmsForTenant(input.tenantId)
       : null;
 
+    // Outside North America the platform's +1 number is the wrong sender —
+    // see twilioSenderFor. Looked up only for an SMS that is going to the
+    // platform Twilio account (no eSMS, no salon-owned credentials).
+    const ownTwilio = !!(input.twilio?.accountSid && input.twilio?.authToken && (input.twilio.fromNumber || input.twilio.messagingServiceSid));
+    // Only when the platform really sends through Twilio: the mock provider
+    // used in development and tests keeps accepting everything.
+    const sender = input.channel === NotificationChannel.SMS && !vnKeys && !ownTwilio && this.sms.name === 'twilio'
+      ? await this.twilioSenderForTenant(input.tenantId)
+      : { kind: 'default' as const };
+
     const smsProvider: SmsProvider = ((): SmsProvider => {
       if (input.channel !== NotificationChannel.SMS) return this.sms;
       if (vnKeys) return new ESmsProvider(vnKeys);
@@ -374,6 +400,16 @@ export class NotificationsService {
           fromNumber: t.fromNumber || undefined,
           messagingServiceSid: t.messagingServiceSid || undefined,
         });
+      }
+      if (sender.kind === 'refuse') {
+        const error = sender.error;
+        return { name: 'sms-routing', sendSms: async () => ({ success: false, error }) };
+      }
+      if (sender.kind === 'from') {
+        const sid = (process.env.TWILIO_ACCOUNT_SID ?? '').trim();
+        const tok = (process.env.TWILIO_AUTH_TOKEN ?? '').trim();
+        if (sid && tok) return new TwilioSmsProvider({ accountSid: sid, authToken: tok, fromNumber: sender.from });
+        return { name: 'sms-routing', sendSms: async () => ({ success: false, error: 'Twilio platform credentials are not configured' }) };
       }
       return this.sms;
     })();
@@ -522,6 +558,41 @@ export class NotificationsService {
    * Transactional messages (booking receipts, reminders) are untouched —
    * refusing adverts is not refusing your own appointment confirmation.
    */
+  /**
+   * A text that came in on one of our Twilio numbers. Only opt-out words do
+   * anything; everything else is ignored. The salon is the one whose hotline
+   * number was texted; on the shared Australian number (TWILIO_FROM_NUMBER_AU)
+   * it is every Australian salon that has this customer.
+   */
+  async handleInboundSms(body: Record<string, string>): Promise<{ optedOut: number }> {
+    const from = String(body.From ?? '').trim();
+    const to = String(body.To ?? '').trim();
+    const text = String(body.Body ?? '');
+    if (!from || !to || !text.trim()) return { optedOut: 0 };
+    const loose = this.prisma as unknown as {
+      voiceLine?: { findFirst: (a: unknown) => Promise<{ tenantId: string } | null> };
+    };
+    const line = await loose.voiceLine?.findFirst({ where: { lumioNumber: to }, select: { tenantId: true } }).catch(() => null);
+    let tenants: { id: string; market: string | null }[] = [];
+    if (line?.tenantId) {
+      const t = await this.prisma.tenant.findUnique({ where: { id: line.tenantId }, select: { id: true, market: true } as never }).catch(() => null) as { id: string; market?: string | null } | null;
+      if (t) tenants = [{ id: t.id, market: t.market ?? null }];
+    } else if (to === String(process.env.TWILIO_FROM_NUMBER_AU ?? '').trim()) {
+      const rows = await this.prisma.customer.findMany({
+        where: { phone: from, tenant: { market: 'AU' } as never },
+        select: { tenantId: true },
+        take: 50,
+      }).catch(() => [] as { tenantId: string }[]);
+      tenants = [...new Set(rows.map((r) => r.tenantId))].map((id) => ({ id, market: 'AU' }));
+    }
+    let optedOut = 0;
+    for (const t of tenants) {
+      if (!isOptOut(smsPolicyFor(t.market), text)) continue;
+      optedOut += await this.recordSmsOptOut(t.id, from).catch(() => 0);
+    }
+    return { optedOut };
+  }
+
   async recordSmsOptOut(tenantId: string, phone: string): Promise<number> {
     const p = String(phone ?? '').trim();
     if (!p) return 0;

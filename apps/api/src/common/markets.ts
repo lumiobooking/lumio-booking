@@ -97,10 +97,10 @@ export const MARKETS: Record<MarketCode, MarketDef> = {
     // Tipping is not a custom in Australia; a till that suggests 18% reads as
     // a US import. The salon can switch it on.
     tipsEnabled: false, lang: 'en',
-    // The phone bot runs on a US Twilio number and the card readers are North
-    // American hardware. Everything else — booking, Messenger, reviews,
-    // content — is the same product.
-    unavailableFeatures: ['voiceAi', 'terminals'],
+    // The hotline runs on the salon's own +61 Twilio number (en-AU voice and
+    // recognition). The card readers are North American hardware, so those
+    // stay off.
+    unavailableFeatures: ['terminals'],
   },
   VN: {
     code: 'VN', label: 'Việt Nam', short: 'VN',

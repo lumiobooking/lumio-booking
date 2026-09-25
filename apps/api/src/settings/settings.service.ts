@@ -75,6 +75,7 @@ import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
 import { GmailOAuthProvider } from '../notifications/providers/gmail-oauth.provider';
 import { TwilioSmsProvider } from '../notifications/providers/twilio.provider';
 import { createSmsProvider } from '../notifications/providers/notification-provider.factory';
+import { twilioSenderFor } from '../notifications/providers/sms-routing';
 import {
   UpdateBookingRulesDto,
   UpdateBrandingDto,
@@ -785,10 +786,24 @@ export class SettingsService {
     if (!hasTenant && !hasEnv) {
       return { ok: false, error: 'Enter your Twilio Account SID, Auth token and From number, then Save before testing.' };
     }
-    const provider = hasTenant
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, market: true } as never }) as { name?: string; market?: string | null } | null;
+    // The test must go out the way the real messages will — for an Australian
+    // salon that is its +61 number, never the platform's US one.
+    let provider = hasTenant
       ? new TwilioSmsProvider({ accountSid: t.accountSid, authToken: t.authToken, fromNumber: t.fromNumber })
       : createSmsProvider();
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+    if (!hasTenant) {
+      const market = String(tenant?.market ?? 'US').toUpperCase();
+      if (market === 'AU') {
+        const line = await (this.prisma as unknown as { voiceLine?: { findUnique: (a: unknown) => Promise<{ lumioNumber?: string | null } | null> } })
+          .voiceLine?.findUnique({ where: { tenantId }, select: { lumioNumber: true } }).catch(() => null);
+        const sender = twilioSenderFor({ market, lineNumber: line?.lumioNumber ?? null, auFallback: process.env.TWILIO_FROM_NUMBER_AU ?? null });
+        if (sender.kind === 'refuse') return { ok: false, error: sender.error };
+        if (sender.kind === 'from') {
+          provider = new TwilioSmsProvider({ accountSid: String(process.env.TWILIO_ACCOUNT_SID), authToken: String(process.env.TWILIO_AUTH_TOKEN), fromNumber: sender.from });
+        }
+      }
+    }
     const salon = n.senderName || tenant?.name || 'Lumio Booking';
     const res = await provider.sendSms({ to: target, body: `[TEST] ${salon}: your SMS is working. Reply STOP to opt out.` });
     return res.success ? { ok: true } : { ok: false, error: res.error || 'Send failed' };

@@ -1142,12 +1142,15 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
     const tenantId = this.tenantId(user);
     const line = await this.prisma.voiceLine.findUnique({ where: { tenantId } });
     const calls = await this.prisma.voiceCall.count({ where: { tenantId } });
+    // A salon with no line yet opens the settings on its own English.
+    const market = line ? null : await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } as never }).catch(() => null) as { market?: string | null } | null;
+    const defaultLang = String(market?.market ?? '').toUpperCase() === 'AU' ? 'en-AU' : 'en-US';
     return {
       provisioned: Boolean(line?.lumioNumber),
       lumioNumber: line?.lumioNumber ?? '',
       enabled: line?.enabled ?? false,
       greeting: line?.greeting ?? '',
-      language: line?.language ?? 'en-US',
+      language: line?.language ?? defaultLang,
       aiInstruction: line?.aiInstruction ?? '',
       mode: line?.mode ?? 'ai',
       forwardNumbers: line?.forwardNumbers ?? '',
@@ -1247,15 +1250,20 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
   async provision(tenantId: string, lumioNumber: string) {
     const num = normNum(lumioNumber);
     if (!tenantId) throw new BadRequestException('tenantId required');
-    if (!num) throw new BadRequestException('Enter the Lumio number in E.164 form, e.g. +14085551234');
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+    // Twilio always sends `To` with its "+"; a number saved without one never
+    // matches an incoming call, so the line looks set up and never answers.
+    if (!num || !/^\+\d{8,15}$/.test(num)) throw new BadRequestException('Enter the Lumio number in E.164 form with the "+", e.g. +14085551234 or +61412345678');
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true, market: true } as never }) as { id: string; market?: string | null } | null;
     if (!tenant) throw new NotFoundException('Tenant not found');
     const clash = await this.prisma.voiceLine.findFirst({ where: { lumioNumber: num, NOT: { tenantId } } });
     if (clash) throw new BadRequestException('That number is already assigned to another salon.');
+    const isAu = String(tenant.market ?? '').toUpperCase() === 'AU';
     await this.prisma.voiceLine.upsert({
       where: { tenantId },
       update: { lumioNumber: num },
-      create: { tenantId, lumioNumber: num, enabled: false },
+      // A new Australian line starts in Australian English; a salon can
+      // still switch it to Vietnamese or bilingual in its settings.
+      create: { tenantId, lumioNumber: num, enabled: false, ...(isAu ? { language: 'en-AU' } : {}) },
     });
     await this.audit(tenantId, 'voice.provisioned');
     return { tenantId, lumioNumber: num };

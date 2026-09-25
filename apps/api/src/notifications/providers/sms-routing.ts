@@ -58,3 +58,55 @@ export function routeSmsFor(args: {
   }
   return { provider: 'esms', reason: 'vn-salon-with-credentials' };
 }
+
+/**
+ * Which Twilio sender a salon's SMS goes out from — the second decision,
+ * after routeSmsFor has said "not eSMS".
+ *
+ * The platform's +1 number is right for the US and Canada and wrong
+ * everywhere else: Vietnamese carriers block it outright (Twilio error 21408
+ * or a silent drop), and an Australian customer gets a text from an American
+ * number they cannot reply STOP to for free. So:
+ *
+ *   US / CA / unknown → exactly what happens today (platform default).
+ *   AU → the platform's shared Australian number (TWILIO_FROM_NUMBER_AU),
+ *        the same one-number-for-everyone model the US runs on. Only if that
+ *        is not set, the salon's own +61 hotline number. Else refuse with a
+ *        reason the salon can act on.
+ *   VN without eSMS → refuse with a reason, instead of paying Twilio to
+ *        send a message the carrier will drop.
+ *
+ * A salon that brought its OWN Twilio credentials is never re-routed here:
+ * that path is checked before this one and stays the salon's choice.
+ */
+export type TwilioSender =
+  | { kind: 'default' }
+  | { kind: 'from'; from: string }
+  | { kind: 'refuse'; error: string };
+
+export function twilioSenderFor(args: {
+  market: string | null | undefined;
+  /** The salon's hotline number (VoiceLine.lumioNumber), if any. */
+  lineNumber?: string | null;
+  /** Platform-wide Australian sender (env TWILIO_FROM_NUMBER_AU). */
+  auFallback?: string | null;
+}): TwilioSender {
+  const market = String(args.market ?? '').trim().toUpperCase();
+  if (market === 'AU') {
+    const shared = String(args.auFallback ?? '').trim();
+    if (/^\+61\d{9}$/.test(shared)) return { kind: 'from', from: shared };
+    const line = String(args.lineNumber ?? '').trim();
+    if (/^\+61\d{9}$/.test(line)) return { kind: 'from', from: line };
+    return {
+      kind: 'refuse',
+      error: 'Chưa gửi: chưa có số SMS Úc (+61) — đặt TWILIO_FROM_NUMBER_AU trên Render. / Not sent: no Australian (+61) SMS number is configured (TWILIO_FROM_NUMBER_AU).',
+    };
+  }
+  if (market === 'VN') {
+    return {
+      kind: 'refuse',
+      error: 'Chưa gửi: tiệm ở Việt Nam cần brandname eSMS (Cài đặt → SMS). Nhà mạng VN chặn tin từ số nước ngoài. / Not sent: a Vietnamese salon needs an eSMS brandname — VN carriers block foreign numbers.',
+    };
+  }
+  return { kind: 'default' };
+}

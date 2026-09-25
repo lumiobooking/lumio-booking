@@ -114,3 +114,18 @@ describe('the caller\'s language beats the line\'s setting', () => {
     expect(agentFallbackLines('en-US').handOff).toMatch(/Thanks for calling/);
   });
 });
+
+describe('an Australian line', () => {
+  it('speaks with the en-AU neural voice unless the salon picked one', () => {
+    expect(voiceFor('en-AU', null)).toEqual({ voice: 'Polly.Olivia-Neural', sayLanguage: null });
+    expect(voiceFor('en-AU', 'Polly.Nicole')).toEqual({ voice: 'Polly.Nicole', sayLanguage: null });
+  });
+  it('keeps its language through effectiveLang and gets English canned lines', () => {
+    expect(effectiveLang('en-AU', null)).toBe('en-AU');
+    expect(cannedLines('en-AU').defaultGreeting).toBe(cannedLines('en-US').defaultGreeting);
+  });
+  it('tells the agent to talk like an Australian salon, and US lines are unchanged', () => {
+    expect(agentLangRule('en-AU')).toMatch(/AUSTRALIA/);
+    expect(agentLangRule('en-US')).not.toMatch(/AUSTRALIA/);
+  });
+});

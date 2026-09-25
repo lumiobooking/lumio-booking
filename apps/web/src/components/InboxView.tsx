@@ -28,6 +28,7 @@ import { useAuth } from '../lib/auth';
 import { apiFetch, apiStream, apiImage, apiImageCached } from '../lib/api';
 import { wallToInstantISO, instantToWall, dayKeyInTz } from '../lib/datetime';
 import { ui } from '../lib/ui';
+import { Linkified } from './Linkified';
 import { useLang } from '../lib/i18n';
 import { uiLocale } from '../lib/datetime';
 import {
@@ -479,6 +480,36 @@ export function InboxView() {
     }
   }, [token]);
 
+  /**
+   * Every conversation already seen, kept for the session.
+   *
+   * Switching rows used to wait for a server round trip before the pane
+   * changed at all — the old customer stayed on screen for most of a second
+   * after the click, which reads as "slow". Now a conversation seen before
+   * paints from memory on the click and is refreshed underneath; one never
+   * seen paints its header from the list row at once, with the messages
+   * following. Hovering a row fetches it ahead of the click.
+   */
+  const threadCache = useRef(new Map<string, ThreadDetail>());
+  const prefetching = useRef(new Set<string>());
+  const remember = useCallback((d: ThreadDetail) => {
+    const m = threadCache.current;
+    m.delete(d.id);
+    m.set(d.id, d);
+    // Newest last; forty conversations is plenty and bounds the memory.
+    while (m.size > 40) { const k = m.keys().next().value; if (k === undefined) break; m.delete(k); }
+  }, []);
+  const rowsRef = useRef<InboxRow[]>([]);
+  rowsRef.current = rows;
+  const prefetchThread = useCallback((id: string) => {
+    if (!token || threadCache.current.has(id) || prefetching.current.has(id)) return;
+    prefetching.current.add(id);
+    void apiFetch<ThreadDetail>(`/messenger/threads/${id}?full=0`, { token })
+      .then((d) => { if (!threadCache.current.has(id)) remember(d); })
+      .catch(() => undefined)
+      .finally(() => prefetching.current.delete(id));
+  }, [token, remember]);
+
   const loadThread = useCallback(async (id: string, markRead = true, background = false) => {
     if (!token) return;
     // Being called IS the declaration that this conversation is now open.
@@ -510,9 +541,20 @@ export function InboxView() {
       // visibly vanishing and returning. That is the other half of the blink,
       // and the half that happens in the middle of reading a customer.
       if (!background) {
-        const quick = await apiFetch<ThreadDetail>(`/messenger/threads/${id}?full=0`, { token });
-        // Same rule as the list: only write when it differs.
-        if (openRef.current === id) setDetail((cur) => (cur && same(cur, quick) ? cur : quick));
+        const cached = threadCache.current.get(id);
+        if (cached) {
+          // Seen before: the pane changes on the click.
+          setDetail((cur) => (cur && cur.id === id ? cur : cached));
+        } else {
+          // Never seen: switch the header now from the list row, so the old
+          // customer is not left on screen while the messages load.
+          const row = rowsRef.current.find((r) => r.id === id);
+          if (row) setDetail((cur) => (cur && cur.id === id ? cur : { ...row, history: [], historySource: 'partial', customer: null }));
+          const quick = await apiFetch<ThreadDetail>(`/messenger/threads/${id}?full=0`, { token });
+          remember(quick);
+          // Same rule as the list: only write when it differs.
+          if (openRef.current === id) setDetail((cur) => (cur && same(cur, quick) ? cur : quick));
+        }
       }
       // Reading is a person's act, not the page's.
       //
@@ -522,9 +564,10 @@ export function InboxView() {
       // until a human clicks the row.
       if (markRead) void apiFetch(`/messenger/threads/${id}/read`, { method: 'POST', token }).catch(() => undefined);
       const fullD = await apiFetch<ThreadDetail>(`/messenger/threads/${id}`, { token });
+      remember(fullD);
       if (openRef.current === id) setDetail((cur) => (cur && same(cur, fullD) ? cur : fullD));
     } catch (e) { setErr(String(e)); }
-  }, [token]);
+  }, [token, remember]);
 
   const loadLabels = useCallback(async () => {
     if (!token) return;
@@ -1148,6 +1191,7 @@ export function InboxView() {
                 + (r.labels?.length ?? 0);
               return (
                 <button key={r.id} onClick={() => { keepUnreadRef.current = null; setOpenId(r.id); void loadThread(r.id); }}
+                  onMouseEnter={() => prefetchThread(r.id)} onTouchStart={() => prefetchThread(r.id)}
                   aria-current={on ? 'true' : undefined}
                   // TWO SIGNALS, TWO CHANNELS, NEVER COMPETING.
                   //
@@ -1538,6 +1582,11 @@ export function InboxView() {
                   <button onClick={() => void loadThread(detail.id)} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--c818cf8)', fontWeight: 700, cursor: 'pointer', fontSize: 11.5 }}>{vi ? 'Thử lại' : 'Retry'}</button>
                 </div>
               )}
+              {detail.historySource === 'partial' && detail.history.length === 0 && (
+                <div style={{ alignSelf: 'center', fontSize: 12, color: 'var(--c94a3b8)', padding: '18px 0' }}>
+                  {vi ? 'Đang tải tin nhắn…' : 'Loading messages…'}
+                </div>
+              )}
               {detail.history.map((t, i) => {
                 const mine = t.role === 'assistant';
                 // A divider whenever the calendar day changes — and before the
@@ -1584,7 +1633,8 @@ export function InboxView() {
                         border: mine ? '1px solid transparent' : '1px solid var(--line)',
                         borderRadius: 16, padding: narrow ? '9px 13px' : '7px 11px',
                         fontSize: narrow ? 15 : 13, lineHeight: 1.4, whiteSpace: 'pre-wrap',
-                      }}>{t.content}</div>
+                        overflowWrap: 'anywhere',
+                      }}><Linkified text={t.content} /></div>
                     )}
                     <p style={{ margin: '3px 2px 0', fontSize: 11, color: 'var(--c64748b)', textAlign: mine ? 'right' : 'left' }}>
                       {/* Who said it. A staff reply and a bot reply looking

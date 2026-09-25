@@ -144,6 +144,33 @@ function channelGlyph(raw: unknown, px: number) {
   );
 }
 
+/**
+ * The OFFICIAL channel icon, when the shop's owner has put one in the app.
+ *
+ * We do not draw Meta's or Zalo's marks ourselves (see channelGlyph). The
+ * owner may drop the icon files the platforms publish for exactly this use —
+ * "this conversation came from Messenger" — into
+ * public/icons/channels/{messenger,instagram,zalo}.png. When the file is
+ * there it is used; when it is not, the first 404 is remembered for the whole
+ * session and every badge falls back to the generic glyph without asking again.
+ */
+const missingOfficialIcon = new Set<string>();
+function OfficialChannelIcon({ raw, size, fallback }: { raw: unknown; size: number; fallback: React.ReactNode }) {
+  const key = channelOf(raw);
+  const [failed, setFailed] = useState(() => key === 'web' || missingOfficialIcon.has(key));
+  if (failed) return <>{fallback}</>;
+  return (
+    <img
+      src={`/icons/channels/${key}.png`}
+      alt=""
+      width={size}
+      height={size}
+      style={{ width: size, height: size, borderRadius: '50%', display: 'block', objectFit: 'cover' }}
+      onError={() => { missingOfficialIcon.add(key); setFailed(true); }}
+    />
+  );
+}
+
 const Avatar = memo(function Avatar(
   { row, size = 34, token, vi, mark = true }: { row: InboxRow; size?: number; token: string | null; vi: boolean; mark?: boolean },
 ) {
@@ -212,7 +239,13 @@ const Avatar = memo(function Avatar(
               boxShadow: '0 0 0 2px var(--c0b1220)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
-          >{channelGlyph(row.channel, Math.round(d * 0.66))}</span>
+          >
+            <OfficialChannelIcon
+              raw={row.channel}
+              size={d}
+              fallback={channelGlyph(row.channel, Math.round(d * 0.66))}
+            />
+          </span>
         );
       })()}
     </span>

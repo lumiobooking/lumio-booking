@@ -12,11 +12,13 @@ import { ZaloController, ZaloWebhookController } from './zalo.controller';
 import { SiteVerificationController } from './site-verification.controller';
 import { WebChatService } from './web-chat.service';
 import { WebChatAdminController, WebChatPublicController } from './web-chat.controller';
+import { ChatTurnsService } from './chat-turns.service';
+import { ChatTurnsController } from './chat-turns.controller';
 
 @Module({
   imports: [BookingsModule, SettingsModule, NotificationsModule, PushModule],
-  controllers: [MessengerController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController, WebChatAdminController, WebChatPublicController],
-  providers: [InboxEventsService, MessengerService, ZaloOaService, WebChatService],
-  exports: [InboxEventsService, MessengerService],
+  controllers: [MessengerController, ChatTurnsController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController, WebChatAdminController, WebChatPublicController],
+  providers: [InboxEventsService, ChatTurnsService, MessengerService, ZaloOaService, WebChatService],
+  exports: [InboxEventsService, MessengerService, ChatTurnsService],
 })
 export class MessengerModule {}

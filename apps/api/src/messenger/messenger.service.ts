@@ -26,7 +26,7 @@ import { leadDossier, rawMemoryFallback, LeadFacts, customerDossier, type KnownC
 import { InboxEventsService } from './inbox-events.service';
 import { PushService } from '../push/push.service';
 import { pushPayload } from '../notifications/push-payload';
-import { pickAgent, isOnShift } from './chat-assignment';
+import { ChatTurnsService, settingsOf as turnSettingsOf } from './chat-turns.service';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -144,6 +144,9 @@ export class MessengerService implements OnModuleInit {
     // Optional on purpose: a meter that can break a customer's reply is
     // worse than no meter at all.
     @Optional() private readonly usage?: AiUsageService,
+    // Chat turns: who in the salon follows up a conversation. Optional so a
+    // routing problem can never stop the bot answering.
+    @Optional() private readonly turns?: ChatTurnsService,
   ) {}
 
   /**
@@ -945,6 +948,7 @@ export class MessengerService implements OnModuleInit {
     const tenantId = this.tenantId(user);
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
     const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15;
+    const botFirst = turnSettingsOf(conn as never).botFirst;
     const rows = await this.prisma.messengerThread.findMany({
       where: { tenantId }, orderBy: { updatedAt: 'desc' }, take: 50,
       select: {
@@ -986,7 +990,7 @@ export class MessengerService implements OnModuleInit {
 
     const now = new Date();
     return rows.map((r) => {
-      const view = ownershipOf(r as never, { now, activeMins });
+      const view = ownershipOf(r as never, { now, activeMins, botFirst });
       const row = r as unknown as { readAt?: Date | null; updatedAt: Date; assignedUser?: { firstName?: string | null; lastName?: string | null } | null };
       const who = [row.assignedUser?.firstName, row.assignedUser?.lastName].filter(Boolean).join(' ').trim();
       return {
@@ -999,7 +1003,7 @@ export class MessengerService implements OnModuleInit {
         lastMessageAt: (r as unknown as { lastMessageAt?: Date | null }).lastMessageAt ?? row.updatedAt,
         labels: ((r as unknown as { threadLabels?: { label: { id: string; name: string; color: string } }[] }).threadLabels ?? []).map((t) => t.label),
         assignedName: who || null,
-        waitingMinutes: waitingMinutes(r as never, now),
+        waitingMinutes: waitingMinutes(r as never, now, botFirst),
         replyWindow: replyWindow(r as never, now),
         // Unread means nobody has opened it since the last MESSAGE.
         //
@@ -1071,95 +1075,6 @@ export class MessengerService implements OnModuleInit {
       }
   }
 
-  /**
-   * Route a conversation to a member of staff, if the salon asked for that.
-   *
-   * Returns the chosen user id, or null meaning "the bot keeps it" — which is
-   * a real answer, not a failure. Nobody on shift, everybody at their limit, or
-   * the feature switched off all end up here, and in each case an immediate bot
-   * reply beats a customer queued behind a person who cannot answer.
-   *
-   * Never throws. An assignment that fails must not stop the customer getting
-   * a reply, so every step degrades to "the bot keeps it".
-   */
-  private async routeToStaff(tenantId: string, conn: unknown, customerId: string | null): Promise<string | null> {
-    try {
-      const c = conn as {
-        chatAssignMode?: string; chatMaxOpenPerAgent?: number;
-        chatPreferUsualTech?: boolean; chatLastAssignedId?: string | null;
-      };
-      if ((c.chatAssignMode ?? 'off') !== 'round-robin') return null;
-
-      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
-      // The salon's clock decides who is on shift. A server in Oregon reading
-      // "is Hà working now" off its own hours is the same bug that told a
-      // Vietnamese salon its Sunday hours on a Saturday.
-      const tz = tenant?.timezone || 'America/Los_Angeles';
-      const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
-      }).formatToParts(new Date());
-      const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-      const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday'));
-      const minutesLocal = Number(get('hour')) * 60 + Number(get('minute'));
-      if (weekday < 0 || !Number.isFinite(minutesLocal)) return null;
-
-      const staff = await this.prisma.staffMember.findMany({
-        where: { tenantId, isActive: true, userId: { not: null } },
-        select: { userId: true, firstName: true, workingHours: { select: { dayOfWeek: true, startTime: true, endTime: true, isActive: true } } },
-      } as never) as unknown as {
-        userId: string; firstName: string;
-        workingHours: { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[];
-      }[];
-      if (!staff.length) return null;
-
-      const openCounts = await this.prisma.messengerThread.groupBy({
-        by: ['assignedUserId'], where: { tenantId, status: 'open', assignedUserId: { not: null } }, _count: true,
-      } as never).catch(() => [] as { assignedUserId: string | null; _count: number }[]) as { assignedUserId: string | null; _count: number }[];
-      const openBy = new Map(openCounts.map((r) => [r.assignedUserId ?? '', Number(r._count) || 0]));
-
-      const agents = staff.map((s) => ({
-        userId: s.userId,
-        name: s.firstName,
-        onShift: isOnShift(s.workingHours, weekday, minutesLocal),
-        openThreads: openBy.get(s.userId) ?? 0,
-      }));
-
-      // The rule a generic inbox cannot have: send her back to the technician
-      // who did her last set.
-      let usualUserId: string | null = null;
-      if ((c.chatPreferUsualTech ?? true) && customerId) {
-        const last = await this.prisma.appointment.findFirst({
-          where: { tenantId, customerId, assignedStaffId: { not: null } },
-          orderBy: { startTime: 'desc' },
-          select: { assignedStaff: { select: { userId: true } } },
-        } as never).catch(() => null) as { assignedStaff?: { userId: string | null } | null } | null;
-        usualUserId = last?.assignedStaff?.userId ?? null;
-      }
-
-      const pick = pickAgent({
-        rules: {
-          mode: 'round-robin',
-          maxOpenPerAgent: c.chatMaxOpenPerAgent ?? 5,
-          preferUsualTech: c.chatPreferUsualTech ?? true,
-        },
-        agents,
-        usualUserId,
-        lastAssignedUserId: c.chatLastAssignedId ?? null,
-      });
-
-      if (pick.userId) {
-        // Move the rotation pointer so two idle people do not both sit at zero
-        // while one of them takes everything.
-        await this.prisma.messengerConnection.update({
-          where: { tenantId }, data: { chatLastAssignedId: pick.userId } as never,
-        }).catch(() => undefined);
-      }
-      return pick.userId;
-    } catch (e) {
-      this.logger.warn(`chat routing failed, bot keeps the thread: ${String(e).slice(0, 120)}`);
-      return null;
-    }
-  }
 
   /**
    * One conversation, in full, for the inbox.
@@ -1199,7 +1114,8 @@ export class MessengerService implements OnModuleInit {
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
     const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15;
     const now = new Date();
-    const view = ownershipOf(row as never, { now, activeMins });
+    const botFirst = turnSettingsOf(conn as never).botFirst;
+    const view = ownershipOf(row as never, { now, activeMins, botFirst });
 
     // Backfill the customer's name when we never got one.
     //
@@ -1340,7 +1256,7 @@ export class MessengerService implements OnModuleInit {
         .map((t) => ({ role: t.role, content: t.content, at: t.at ?? null, manual: !!t.manual, messageId: (t as { messageId?: string | null }).messageId ?? null, ...(t.images?.length ? { images: t.images } : {}) })),
       state: view.state,
       stateReason: view.reason,
-      waitingMinutes: waitingMinutes(row as never, now),
+      waitingMinutes: waitingMinutes(row as never, now, botFirst),
       // The composer has to know BEFORE someone types a long answer. Finding
       // out after pressing send is how a reply is lost silently.
       replyWindow: replyWindow(row as never, now),
@@ -2514,16 +2430,14 @@ export class MessengerService implements OnModuleInit {
     // this whole piece of work exists to stop.
     const owner = (thread as unknown as { assignedUserId?: string | null }).assignedUserId ?? null;
     if (!owner && !thread.handoff) {
-      const assignTo = await this.routeToStaff(page.tenantId, conn, null);
-      if (assignTo) {
-        await this.prisma.messengerThread.update({
-          where: { id: thread.id }, data: { assignedUserId: assignTo } as never,
-        }).catch(() => undefined);
-        // Assigned to a person = the bot does not answer. The customer is now
-        // 'unclaimed' in the inbox, with a timer running, which is honest: a
-        // human owes them a reply and has not sent one yet.
-        return;
-      }
+      const assignTo = this.turns
+        ? await this.turns.route(page.tenantId, thread.id, (thread as unknown as { customerId?: string | null }).customerId ?? null)
+        : null;
+      // Bot first (the default): the person follows up, the bot still answers
+      // now — the customer never waits on somebody finishing a fill. With it
+      // off, the conversation is the person's and the bot stays quiet; the
+      // reassignment rules pass it on if they do not answer in time.
+      if (assignTo && !turnSettingsOf(conn as never).botFirst) return;
     }
 
     if (thread.handoff) {

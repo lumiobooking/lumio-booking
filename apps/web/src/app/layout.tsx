@@ -8,6 +8,7 @@ import { themeCss } from '../lib/theme';
 import { FeedbackToasts } from '../components/FeedbackToasts';
 import { NavProgress } from '../components/NavProgress';
 import { NativeBridge } from '../components/NativeBridge';
+import { ChatHeartbeat } from '../components/ChatHeartbeat';
 
 /**
  * THE TYPEFACE.
@@ -97,7 +98,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           color: 'var(--ce2e8f0)',
         }}
       >
-        <AuthProvider><LangProvider>{children}<PwaRegister /><NativeBridge /></LangProvider></AuthProvider>
+        <AuthProvider><LangProvider>{children}<PwaRegister /><NativeBridge /><ChatHeartbeat /></LangProvider></AuthProvider>
         <NavProgress />
         <FeedbackToasts />
       </body>

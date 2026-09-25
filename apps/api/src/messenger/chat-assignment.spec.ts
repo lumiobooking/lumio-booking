@@ -180,3 +180,94 @@ describe('who is working right now', () => {
     expect(isOnShift(hours as never, 4, 13 * 60)).toBe(false);
   });
 });
+
+import { isOnDuty, reassignDue } from './chat-assignment';
+
+describe('strict turns: A → B → C → A', () => {
+  const STRICT = { mode: 'round-robin' as const, rotation: 'strict' as const, maxOpenPerAgent: 0, preferUsualTech: false };
+  const team = [agent('a', 3), agent('b', 0), agent('c', 9)];
+
+  it('goes to the person after the last one served, whatever their load', () => {
+    expect(pickAgent({ rules: STRICT, agents: team, lastAssignedUserId: 'a' }).userId).toBe('b');
+    expect(pickAgent({ rules: STRICT, agents: team, lastAssignedUserId: 'b' }).userId).toBe('c');
+    expect(pickAgent({ rules: STRICT, agents: team, lastAssignedUserId: 'c' }).userId).toBe('a');
+  });
+
+  it('starts at the top of the list when nobody has had a turn yet', () => {
+    expect(pickAgent({ rules: STRICT, agents: team }).userId).toBe('a');
+  });
+
+  it('skips someone who is away and keeps the order for the rest', () => {
+    const t = [agent('a'), agent('b', 0, false), agent('c')];
+    expect(pickAgent({ rules: STRICT, agents: t, lastAssignedUserId: 'a' }).userId).toBe('c');
+  });
+
+  it('skips someone who is full', () => {
+    const t = [agent('a'), agent('b', 5), agent('c')];
+    expect(pickAgent({ rules: { ...STRICT, maxOpenPerAgent: 5 }, agents: t, lastAssignedUserId: 'a' }).userId).toBe('c');
+  });
+
+  it('never passes a conversation back to the person it is being taken from', () => {
+    expect(pickAgent({ rules: STRICT, agents: [agent('a'), agent('b')], lastAssignedUserId: 'a', excludeUserId: 'b' }).userId).toBe('a');
+    expect(pickAgent({ rules: STRICT, agents: [agent('a')], excludeUserId: 'a' }).userId).toBeNull();
+  });
+
+  it('still sends a returning customer to her own technician first', () => {
+    expect(pickAgent({ rules: { ...STRICT, preferUsualTech: true }, agents: team, lastAssignedUserId: 'a', usualUserId: 'c' })).toEqual({ userId: 'c', reason: 'usual-technician' });
+  });
+});
+
+describe('who is taking turns right now', () => {
+  const now = new Date('2026-09-25T10:00:00Z');
+  const seen = new Date('2026-09-25T09:55:00Z');
+  const ALL = { needStatus: true, needShift: true, needOnline: true, onlineMins: 10 };
+
+  it('needs every test the salon switched on', () => {
+    expect(isOnDuty({ status: 'available', onShift: true, lastSeenAt: seen }, ALL, now)).toBe(true);
+    expect(isOnDuty({ status: 'away', onShift: true, lastSeenAt: seen }, ALL, now)).toBe(false);
+    expect(isOnDuty({ status: 'available', onShift: false, lastSeenAt: seen }, ALL, now)).toBe(false);
+    expect(isOnDuty({ status: 'available', onShift: true, lastSeenAt: new Date('2026-09-25T09:40:00Z') }, ALL, now)).toBe(false);
+    expect(isOnDuty({ status: 'available', onShift: true, lastSeenAt: null }, ALL, now)).toBe(false);
+  });
+
+  it('ignores a test that is switched off', () => {
+    expect(isOnDuty({ status: 'away', onShift: false, lastSeenAt: null }, { needStatus: false, needShift: false, needOnline: false, onlineMins: 10 }, now)).toBe(true);
+  });
+
+  it('does not fail someone with no schedule on the shift test', () => {
+    expect(isOnDuty({ status: 'available', onShift: null, lastSeenAt: seen }, ALL, now)).toBe(true);
+  });
+});
+
+describe('passing a conversation on', () => {
+  const now = new Date('2026-09-25T10:00:00Z');
+  const given = new Date('2026-09-25T09:50:00Z');
+  const base = { status: 'open', assignedUserId: 'a', assignedAt: given, readAt: null, handoffAt: null, handoffMode: 'auto', assignHops: 0 };
+  const R = { unreadMins: 5, unrepliedMins: 8, maxHops: 3 };
+
+  it('passes it on when nobody opened it in time', () => {
+    expect(reassignDue(base, R, now)).toBe('reassign-unread');
+  });
+
+  it('passes it on when it was opened but nobody answered in time', () => {
+    expect(reassignDue({ ...base, readAt: new Date('2026-09-25T09:51:00Z') }, R, now)).toBe('reassign-unreplied');
+  });
+
+  it('leaves it once somebody answered', () => {
+    expect(reassignDue({ ...base, readAt: new Date('2026-09-25T09:51:00Z'), handoffAt: new Date('2026-09-25T09:52:00Z') }, R, now)).toBeNull();
+  });
+
+  it('waits until the time is up', () => {
+    expect(reassignDue({ ...base, assignedAt: new Date('2026-09-25T09:57:00Z') }, R, now)).toBeNull();
+  });
+
+  it('never moves a conversation someone took over, a closed one, or one passed on enough', () => {
+    expect(reassignDue({ ...base, handoffMode: 'locked' }, R, now)).toBeNull();
+    expect(reassignDue({ ...base, status: 'done' }, R, now)).toBeNull();
+    expect(reassignDue({ ...base, assignHops: 3 }, R, now)).toBeNull();
+  });
+
+  it('does nothing when the salon set no time (0 = never)', () => {
+    expect(reassignDue(base, { unreadMins: 0, unrepliedMins: 0, maxHops: 3 }, now)).toBeNull();
+  });
+});

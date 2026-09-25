@@ -159,6 +159,26 @@ export class PushService {
     }));
   }
 
+  /**
+   * Wake ONE person's devices in this salon — "you have a chat turn".
+   * Scoped by tenant AND user, so a person who also works at another salon is
+   * only woken by the salon the turn belongs to.
+   */
+  async sendToUser(
+    tenantId: string,
+    userId: string,
+    payload: { title: string; body: string; url?: string; tag?: string },
+  ): Promise<void> {
+    if (!this.enabled() || !tenantId || !userId) return;
+    type SubRow = { id: string; userId: string; endpoint: string; p256dh: string; auth: string };
+    const subs: SubRow[] = await this.prisma.pushSubscription
+      .findMany({ where: { tenantId, userId }, select: { id: true, userId: true, endpoint: true, p256dh: true, auth: true } })
+      .catch(() => []) as unknown as SubRow[];
+    const seen = new Set<string>();
+    const data = { title: payload.title, body: payload.body, url: payload.url || '/salon/inbox', tag: payload.tag || 'lumio-chat-turn' };
+    await Promise.all(subs.filter((s) => !seen.has(s.endpoint) && seen.add(s.endpoint)).map((s) => this.deliver(s, data)));
+  }
+
   async sendToTenant(
     tenantId: string,
     payload: { title: string; body: string; url?: string; tag?: string },

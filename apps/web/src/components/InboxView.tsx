@@ -29,6 +29,7 @@ import { apiFetch, apiStream, apiImage, apiImageCached } from '../lib/api';
 import { wallToInstantISO, instantToWall, dayKeyInTz } from '../lib/datetime';
 import { ui } from '../lib/ui';
 import { Linkified } from './Linkified';
+import type { TurnsView } from './ChatTurnsPanel';
 import { useLang } from '../lib/i18n';
 import { uiLocale } from '../lib/datetime';
 import {
@@ -404,6 +405,27 @@ export function InboxView() {
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  /** Chat turns: the team, my own Available/Away, and whether turns are on. */
+  const [turns, setTurns] = useState<TurnsView | null>(null);
+  const loadTurns = useCallback(async () => {
+    if (!token) return;
+    try { setTurns(await apiFetch<TurnsView>('/messenger/turns', { token })); } catch { /* the inbox works without it */ }
+  }, [token]);
+  useEffect(() => {
+    void loadTurns();
+    const id = window.setInterval(() => { void loadTurns(); }, 60_000);
+    return () => window.clearInterval(id);
+  }, [loadTurns]);
+  const turnsOn = turns?.settings.mode === 'round-robin';
+  const myStatus = turns?.me?.status ?? 'available';
+  async function toggleMyStatus() {
+    if (!token) return;
+    const next = myStatus === 'available' ? 'away' : 'available';
+    try {
+      await apiFetch('/messenger/turns/status', { method: 'POST', token, body: { status: next } });
+      await loadTurns();
+    } catch (e) { setErr(String(e)); }
+  }
   /**
    * Has the conversation list come back from the server even once?
    *
@@ -687,6 +709,16 @@ export function InboxView() {
     try {
       await apiFetch(`/messenger/threads/${openId}/${path}`, { method: 'POST', token, body });
       await Promise.all([loadList(), loadThread(openId)]);
+    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+  }
+
+  /** Give the open conversation to someone (or to nobody). */
+  async function assignTo(userId: string) {
+    if (!openId || !token) return;
+    setBusy(true); setErr(null);
+    try {
+      await apiFetch(`/messenger/threads/${openId}/assign`, { method: 'POST', token, body: { userId: userId || null } });
+      await Promise.all([loadList(), loadThread(openId), loadTurns()]);
     } catch (e) { setErr(String(e)); } finally { setBusy(false); }
   }
 
@@ -1029,6 +1061,19 @@ export function InboxView() {
               // 16px on the phone is not a taste choice: anything smaller and
               // iOS zooms the page the moment the field is tapped.
               style={{ ...ui.input, flex: 1, minWidth: 0, fontSize: narrow ? 16 : 12, padding: narrow ? '10px 13px' : '6px 9px', borderRadius: narrow ? 12 : 8 }} />
+            {/* My chat-turn status. Away = no new turns come to me; the
+                conversations I already hold stay mine. */}
+            {turnsOn && turns?.me && (
+              <button onClick={() => void toggleMyStatus()}
+                title={myStatus === 'available'
+                  ? (vi ? 'Đang nhận turn — bấm để tạm vắng' : 'Taking turns — tap to go away')
+                  : (vi ? 'Đang vắng, không nhận turn mới — bấm để sẵn sàng' : 'Away, no new turns — tap to be available')}
+                style={{ ...ghostBtn, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: narrow ? '9px 11px' : '5px 9px', fontSize: narrow ? 13 : 11.5, borderRadius: 999,
+                  borderColor: myStatus === 'available' ? '#22c55e' : 'var(--c334155)' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: myStatus === 'available' ? '#22c55e' : 'var(--c64748b)' }} />
+                {myStatus === 'available' ? (vi ? 'Sẵn sàng' : 'Available') : (vi ? 'Vắng' : 'Away')}
+              </button>
+            )}
             {/* Clears the whole blue pile. Only offered when there IS one —
                 a button that does nothing is a button people learn to ignore. */}
             {unreadCount > 0 && (
@@ -1498,6 +1543,26 @@ export function InboxView() {
                 {/* The status stays on the phone too — the owner asked for it
                     by name. Who holds this conversation is the one fact a
                     person needs before typing. */}
+                {turns && turns.agents.length > 0 && (() => {
+                  const mine = detail.assignedUserId === turns.me?.userId;
+                  // Staff may move their own conversation or pick up a free
+                  // one; the admin may move any. The server checks the same.
+                  const may = turns.canEdit || !detail.assignedUserId || mine;
+                  return (
+                    <select value={detail.assignedUserId ?? ''} disabled={busy || !may}
+                      onChange={(e) => void assignTo(e.target.value)}
+                      title={vi ? 'Người phụ trách hội thoại này' : 'Who follows up this conversation'}
+                      aria-label={vi ? 'Giao cho' : 'Assign to'}
+                      style={{ ...ui.input, width: 'auto', maxWidth: narrow ? 130 : 170, padding: narrow ? '8px 8px' : '4px 8px', fontSize: narrow ? 13 : 11.5, borderRadius: 999 }}>
+                      <option value="">{vi ? '👤 Chưa giao' : '👤 Unassigned'}</option>
+                      {turns.agents.map((a) => (
+                        <option key={a.userId} value={a.userId}>
+                          {'👤 '}{a.name}{a.userId === turns.me?.userId ? (vi ? ' (tôi)' : ' (me)') : ''}{turnsOn && !a.onDuty ? (vi ? ' · vắng' : ' · away') : ''}
+                        </option>
+                      ))}
+                    </select>
+                  );
+                })()}
                 {pill(stateLabel(detail, vi).tone, stateLabel(detail, vi).text)}
                 {(state === 'human' || state === 'unclaimed')
                   ? <button disabled={busy} onClick={() => void act('handoff', { handoff: false })} style={{ ...ghostBtn, ...(narrow ? { padding: '9px 13px', fontSize: 13.5, borderRadius: 10 } : {}) }}>{vi ? 'Trả bot' : 'To bot'}</button>

@@ -11,6 +11,7 @@ import { WebChatPanel } from '../../../components/WebChatPanel';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { ChatTurnsPanel } from '../../../components/ChatTurnsPanel';
 import { useLang } from '../../../lib/i18n';
 import { uiLocale } from '../../../lib/datetime';
 
@@ -1112,43 +1113,14 @@ function Inner() {
               onBlur={() => save({})} style={ui.input} />
           </div>
         </div>
-        {/* Auto-distribution. Off unless the salon asks for it: switching it on
-            changes who answers customers, which is not a behaviour anyone should
-            acquire by taking an update. */}
+        {/* Chat turns ("chia turn"): the rules for handing each new
+            conversation to one person. Its own panel and its own endpoint —
+            see components/ChatTurnsPanel. */}
         <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)', marginBottom: 8 }}>
-            {lang === 'vi' ? 'Chia hội thoại cho nhân viên' : 'Share conversations with staff'}
+            {lang === 'vi' ? 'Chia turn hội thoại cho nhân viên' : 'Chat turns for the team'}
           </div>
-          <select
-            value={c.chatAssignMode ?? 'off'}
-            onChange={(e) => { const v = e.target.value as 'off' | 'round-robin'; setC({ ...c, chatAssignMode: v }); void save({ chatAssignMode: v }); }}
-            style={{ ...ui.input, maxWidth: 420 }}
-          >
-            <option value="off">{lang === 'vi' ? 'Tắt — bot trả lời, ai muốn thì tự nhận' : 'Off — the bot answers, staff take over by hand'}</option>
-            <option value="round-robin">{lang === 'vi' ? 'Bật — tự chia cho nhân viên đang trong ca' : 'On — share out to whoever is on shift'}</option>
-          </select>
-          {c.chatAssignMode === 'round-robin' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10, maxWidth: 460 }}>
-              <div>
-                <label style={ui.label}>{lang === 'vi' ? 'Tối đa hội thoại mỗi người (0 = không giới hạn)' : 'Max open per person (0 = no limit)'}</label>
-                <input type="number" min={0} max={50} value={c.chatMaxOpenPerAgent ?? 5}
-                  onChange={(e) => setC({ ...c, chatMaxOpenPerAgent: Math.min(50, Math.max(0, Number(e.target.value) || 0)) })}
-                  onBlur={() => save({})} style={ui.input} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 6 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={c.chatPreferUsualTech ?? true}
-                    onChange={(e) => { const v = e.target.checked; setC({ ...c, chatPreferUsualTech: v }); void save({ chatPreferUsualTech: v }); }} />
-                  {lang === 'vi' ? 'Ưu tiên thợ quen của khách' : 'Prefer her usual technician'}
-                </label>
-              </div>
-            </div>
-          )}
-          <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '10px 0 0', lineHeight: 1.5 }}>
-            {lang === 'vi'
-              ? 'Khi bật: khách nhắn tới sẽ được giao cho một nhân viên đang trong ca — ưu tiên thợ đã làm cho khách lần trước, sau đó chia cho người đang ít việc nhất. Không ai trong ca, hoặc ai cũng đã đầy, thì bot vẫn trả lời ngay chứ không để khách chờ.'
-              : 'When on, an incoming message is given to someone on shift — her usual technician first, then whoever is holding the fewest. If nobody is on shift, or everyone is at their limit, the bot answers immediately rather than leaving the customer waiting.'}
-          </p>
+          <ChatTurnsPanel token={token} vi={lang === 'vi'} />
         </div>
 
         <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-4px 0 12px', lineHeight: 1.5 }}>

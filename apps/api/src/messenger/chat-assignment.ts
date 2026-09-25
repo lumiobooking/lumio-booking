@@ -38,6 +38,12 @@ export interface ChatAgent {
 export interface ChatAssignmentRules {
   /** 'off' = every conversation stays with the bot until a human takes it. */
   mode: 'off' | 'round-robin';
+  /**
+   * 'strict' = turns in a fixed order, A → B → C → A, skipping whoever is away
+   * or full — the salon's own idea of "turn". 'least-busy' = whoever holds the
+   * fewest open conversations, ties rotating.
+   */
+  rotation?: 'strict' | 'least-busy';
   /** 0 = no limit. Above this, a person is skipped. */
   maxOpenPerAgent: number;
   /** Send a returning customer back to the technician they know. */
@@ -81,11 +87,13 @@ export function pickAgent(args: {
   usualUserId?: string | null;
   /** Who got the previous conversation — the rotation point for ties. */
   lastAssignedUserId?: string | null;
+  /** Never this person (passing a conversation ON must not hand it back). */
+  excludeUserId?: string | null;
 }): Pick {
   const rules: ChatAssignmentRules = { ...DEFAULT_CHAT_RULES, ...(args.rules ?? {}) };
   if (rules.mode !== 'round-robin') return { userId: null, reason: 'rules-off' };
 
-  const onShift = (args.agents ?? []).filter((a) => a && a.onShift && a.userId);
+  const onShift = (args.agents ?? []).filter((a) => a && a.onShift && a.userId && a.userId !== args.excludeUserId);
   if (!onShift.length) return { userId: null, reason: 'nobody-on-shift' };
 
   const available = onShift.filter((a) => hasRoom(a, rules.maxOpenPerAgent));
@@ -97,6 +105,22 @@ export function pickAgent(args: {
   if (rules.preferUsualTech && args.usualUserId) {
     const usual = available.find((a) => a.userId === args.usualUserId);
     if (usual) return { userId: usual.userId, reason: 'usual-technician' };
+  }
+
+  // Strict turns: walk the WHOLE team in a fixed order from the person after
+  // the last one served, and give it to the first who can take it. The order
+  // is the full list, not the available one, so somebody who was away keeps
+  // their place in the queue instead of shuffling everyone behind them.
+  if ((rules.rotation ?? 'least-busy') === 'strict') {
+    // The caller's order IS the queue (the salon's list, or by name).
+    const order = [...(args.agents ?? [])].filter((a) => a && a.userId);
+    const can = new Set(available.map((a) => a.userId));
+    const lastIdx = args.lastAssignedUserId ? order.findIndex((a) => a.userId === args.lastAssignedUserId) : -1;
+    for (let i = 1; i <= order.length; i += 1) {
+      const cand = order[(lastIdx + i + order.length) % order.length];
+      if (cand && can.has(cand.userId)) return { userId: cand.userId, reason: 'round-robin' };
+    }
+    return { userId: null, reason: 'everyone-at-capacity' };
   }
 
   // Fewest open conversations first — that is the fairness that matters, since
@@ -143,4 +167,66 @@ export function isOnShift(
     if (open === null || close === null || close <= open) return false;
     return minutesLocal >= open && minutesLocal < close;
   });
+}
+
+/**
+ * Is this person taking turns right now?
+ *
+ * Up to three tests, each switched on or off by the salon: they said they are
+ * Available, they are inside their working hours, and they have Lumio open.
+ * A person must pass every test that is on. Someone with no schedule at all
+ * (an owner who is not on the roster) is not failed by the shift test — the
+ * test has nothing to say about them.
+ */
+export interface DutyRules { needStatus: boolean; needShift: boolean; needOnline: boolean; onlineMins: number }
+export const DEFAULT_DUTY: DutyRules = { needStatus: true, needShift: true, needOnline: true, onlineMins: 10 };
+
+export function isOnDuty(p: {
+  status?: string | null;
+  /** null = no schedule on file. */
+  onShift: boolean | null;
+  lastSeenAt?: Date | string | null;
+}, rules: Partial<DutyRules> | null | undefined, now: Date = new Date()): boolean {
+  const r = { ...DEFAULT_DUTY, ...(rules ?? {}) };
+  if (r.needStatus && String(p.status ?? 'available') === 'away') return false;
+  if (r.needShift && p.onShift === false) return false;
+  if (r.needOnline) {
+    const t = p.lastSeenAt ? new Date(p.lastSeenAt).getTime() : NaN;
+    if (!Number.isFinite(t)) return false;
+    if (now.getTime() - t > Math.max(1, r.onlineMins) * 60_000) return false;
+  }
+  return true;
+}
+
+/**
+ * Should this conversation be passed to the next person?
+ *
+ * Only a conversation that is open, was GIVEN to someone (assignedAt), has not
+ * already been passed on the maximum number of times, and whose person has
+ * not done the thing the salon asked for in time:
+ *   - unread: nobody opened it since it was given (readAt before assignedAt);
+ *   - unreplied: no human answered since it was given (handoffAt before it).
+ * Someone who pressed Take over holds it for good — never passed on.
+ */
+export interface ReassignRules { unreadMins: number; unrepliedMins: number; maxHops: number }
+
+export function reassignDue(t: {
+  status?: string | null;
+  assignedUserId?: string | null;
+  assignedAt?: Date | string | null;
+  readAt?: Date | string | null;
+  handoffAt?: Date | string | null;
+  handoffMode?: string | null;
+  assignHops?: number | null;
+}, rules: ReassignRules, now: Date = new Date()): null | 'reassign-unread' | 'reassign-unreplied' {
+  if (String(t.status ?? 'open') !== 'open' || !t.assignedUserId || !t.assignedAt) return null;
+  if (String(t.handoffMode ?? '') === 'locked') return null;
+  if ((t.assignHops ?? 0) >= Math.max(0, rules.maxHops)) return null;
+  const at = new Date(t.assignedAt).getTime();
+  if (!Number.isFinite(at)) return null;
+  const age = now.getTime() - at;
+  const after = (v: Date | string | null | undefined) => (v ? new Date(v).getTime() >= at : false);
+  if (rules.unreadMins > 0 && age >= rules.unreadMins * 60_000 && !after(t.readAt)) return 'reassign-unread';
+  if (rules.unrepliedMins > 0 && age >= rules.unrepliedMins * 60_000 && !after(t.handoffAt)) return 'reassign-unreplied';
+  return null;
 }

@@ -194,3 +194,28 @@ describe('Meta closes the door 24 hours after the customer last wrote', () => {
     expect(replyWindow({ lastCustomerAt: hoursAgo(30) }, NOW).unknown).toBe(false);
   });
 });
+
+describe('chat turns with "bot answers first"', () => {
+  const routed = { assignedUserId: 'staff-ha', lastCustomerAt: minsAgo(6) };
+
+  it('lets the bot keep answering a conversation given to a person', () => {
+    const v = ownershipOf(routed, { now: NOW, botFirst: true });
+    expect(v.botMaySpeak).toBe(true);
+    expect(v.state).toBe('bot');
+    // The person is still recorded as the one following up.
+    expect(v.assignedUserId).toBe('staff-ha');
+  });
+
+  it('shows no waiting timer — the customer already has an answer', () => {
+    expect(waitingMinutes(routed, NOW, true)).toBeNull();
+  });
+
+  it('still yields to the person the moment they write', () => {
+    const v = ownershipOf({ ...routed, handoff: true, handoffAt: minsAgo(1) }, { now: NOW, botFirst: true });
+    expect(v.botMaySpeak).toBe(false);
+  });
+
+  it('without it, the old rule stands: the bot waits for the person', () => {
+    expect(ownershipOf(routed, { now: NOW, botFirst: false }).botMaySpeak).toBe(false);
+  });
+});

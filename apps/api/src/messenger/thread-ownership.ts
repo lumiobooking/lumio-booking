@@ -90,6 +90,12 @@ export function handoffModeOf(raw: unknown): HandoffMode {
 export function ownershipOf(thread: ThreadLike | null | undefined, opts?: {
   now?: Date;
   activeMins?: number;
+  /**
+   * The salon's chat-turn rule "bot answers first": a conversation given to a
+   * person is still answered by the bot until that person writes. Off (the
+   * old behaviour) = given to a person means the bot waits for them.
+   */
+  botFirst?: boolean;
 }): OwnershipView {
   const assignedUserId = thread?.assignedUserId ? String(thread.assignedUserId) : null;
   const base = { assignedUserId };
@@ -133,7 +139,7 @@ export function ownershipOf(thread: ThreadLike | null | undefined, opts?: {
 
   // Routed to somebody who has not taken it yet. The customer is waiting and
   // nobody is reading — the state the old flag had no way to express.
-  if (assignedUserId) {
+  if (assignedUserId && !opts?.botFirst) {
     return { ...base, state: 'unclaimed', botMaySpeak: false, reason: 'waiting-for-assignee' };
   }
 
@@ -147,8 +153,8 @@ export function ownershipOf(thread: ThreadLike | null | undefined, opts?: {
  * thread the bot is handling — a number there would be read as a problem when
  * the bot has already replied.
  */
-export function waitingMinutes(thread: ThreadLike | null | undefined, now: Date = new Date()): number | null {
-  const view = ownershipOf(thread, { now });
+export function waitingMinutes(thread: ThreadLike | null | undefined, now: Date = new Date(), botFirst = false): number | null {
+  const view = ownershipOf(thread, { now, botFirst });
   if (view.state !== 'unclaimed' && view.state !== 'human') return null;
   const at = asTime(thread?.lastCustomerAt);
   if (at === null) return null;

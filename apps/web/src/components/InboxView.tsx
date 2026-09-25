@@ -165,10 +165,16 @@ function OfficialChannelIcon({ raw, size, fallback }: { raw: unknown; size: numb
       alt=""
       width={size}
       height={size}
-      style={{ width: size, height: size, borderRadius: '50%', display: 'block', objectFit: 'cover' }}
+      style={{ width: size, height: size, display: 'block', objectFit: 'contain', flexShrink: 0 }}
       onError={() => { missingOfficialIcon.add(key); setFailed(true); }}
     />
   );
+}
+
+/** The channel's icon for chips, the rail and headers — the official file when
+ *  present, the typographic mark when not. */
+function ChannelIcon({ raw, size }: { raw: unknown; size: number }) {
+  return <OfficialChannelIcon raw={raw} size={size} fallback={<span aria-hidden>{channelMark(raw)}</span>} />;
 }
 
 const Avatar = memo(function Avatar(
@@ -237,6 +243,8 @@ const Avatar = memo(function Avatar(
               // Page has a chip of its own when there is more than one; the
               // badge does one job.
               boxShadow: '0 0 0 2px var(--c0b1220)',
+              // Clips a square official icon (Instagram) to the round badge.
+              overflow: 'hidden',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >
@@ -878,7 +886,7 @@ export function InboxView() {
                   background: pageColor(src.key.split('|')[0]).bg, color: pageColor(src.key.split('|')[0]).fg,
                   borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 600,
                 }}>
-                {channelMark(src.channel)}
+                <ChannelIcon raw={src.channel} size={14} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{src.label}</span>
                 {src.waiting > 0 && (
                   <span style={{ background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>{src.waiting}</span>
@@ -956,7 +964,7 @@ export function InboxView() {
                   color: on ? 'var(--cc7d2fe)' : 'var(--c64748b)', fontSize: 16, lineHeight: 1,
                 }}>
                 <span style={{ position: 'absolute', left: 3, top: 7, bottom: 7, width: 3, borderRadius: 2, background: pageColor(src.key.split('|')[0]).bg }} />
-                {channelMark(src.channel)}
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}><ChannelIcon raw={src.channel} size={20} /></span>
                 {src.waiting > 0 && (
                   <span style={{ position: 'absolute', top: -4, right: -5, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '0 4px', minWidth: 15 }}>{src.waiting}</span>
                 )}
@@ -1021,7 +1029,8 @@ export function InboxView() {
                       background: on ? look.bg : 'transparent',
                       color: on ? look.fg : 'var(--c94a3b8)',
                     }}>
-                    {look.text}
+                    <ChannelIcon raw={c.key} size={narrow ? 16 : 13} />
+                    {look.text.replace(/^\S+\s/, '')}
                     <span style={{ opacity: .7 }}>{c.total}</span>
                     {/* Waiting is the only number that earns a colour here. */}
                     {c.waiting > 0 && (
@@ -1405,7 +1414,10 @@ export function InboxView() {
                   {!detail.senderName && <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}> ✎</span>}
                 </p>
                 <p style={{ margin: 0, fontSize: 11, color: 'var(--c64748b)', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                  <span>{channelLabel(detail.channel).text.replace(/^\S+\s/, '')}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <ChannelIcon raw={detail.channel} size={13} />
+                    {channelLabel(detail.channel).text.replace(/^\S+\s/, '')}
+                  </span>
                   {detail.pageName && (
                     <span style={{ background: pageColor(detail.pageId).bg, color: pageColor(detail.pageId).fg, borderRadius: 5, padding: '1px 6px', fontWeight: 600 }}>{detail.pageName}</span>
                   )}

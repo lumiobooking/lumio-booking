@@ -184,6 +184,57 @@ export function PostReview({ api, vi, onCount }: {
 }
 
 /* ---------------------------------------------------------------------------
+ * One clip to approve.
+ *
+ * The file comes straight off the media host, and a 30-second clip is tens of
+ * megabytes: on a slow line the player showed a bare spinner for a minute and
+ * the shop concluded the post was broken. So: fetch only the header until
+ * someone presses play, SAY that it is loading and how long it has been, and
+ * always offer the file itself in a new tab — the browser's own player and
+ * the phone's video app both cope better with a big file than an inline one.
+ * ------------------------------------------------------------------------- */
+function ReviewVideo({ url, square, T }: { url: string; square: boolean; T: (v: string, e: string) => string }) {
+  const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    if (state !== 'loading') return undefined;
+    const id = window.setInterval(() => setSecs((x) => x + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [state]);
+  return (
+    <div style={{ position: 'relative' }}>
+      <video
+        src={url}
+        controls
+        muted
+        playsInline
+        preload="metadata"
+        onPlay={() => setState((s) => (s === 'ready' ? s : 'loading'))}
+        onWaiting={() => setState('loading')}
+        onCanPlay={() => { setState('ready'); setSecs(0); }}
+        onPlaying={() => { setState('ready'); setSecs(0); }}
+        onError={() => setState('error')}
+        style={{ width: '100%', display: 'block', maxHeight: 460, objectFit: 'contain', aspectRatio: square ? '1/1' : undefined, background: '#000' }}
+      />
+      {(state === 'loading' || state === 'error') && (
+        <div style={{ position: 'absolute', left: 8, right: 8, top: 8, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+          <span style={{ background: 'rgba(0,0,0,.72)', color: '#fff', fontSize: 12.5, padding: '6px 11px', borderRadius: 999, lineHeight: 1.35, textAlign: 'center' }}>
+            {state === 'error'
+              ? T('Trình duyệt không phát được video này — bấm "Mở video" bên dưới.', 'This browser could not play the clip — use "Open video" below.')
+              : T(`Đang tải video… ${secs}s — video dài có thể mất một lúc`, `Loading video… ${secs}s — long clips can take a while`)}
+          </span>
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 8px', background: '#000' }}>
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', fontSize: 12.5, fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 2 }}>
+          ↗ {T('Mở video', 'Open video')}
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
  * All of a post's pictures, one at a time, with a way to reach each.
  * ------------------------------------------------------------------------- */
 function MediaGallery({ media, square, T }: {
@@ -212,7 +263,7 @@ function MediaGallery({ media, square, T }: {
         }}
       >
         {cur.kind === 'video'
-          ? <video key={cur.url} src={cur.url} controls muted playsInline style={{ width: '100%', display: 'block', maxHeight: 460, objectFit: 'contain', aspectRatio: square ? '1/1' : undefined }} />
+          ? <ReviewVideo key={cur.url} url={cur.url} square={square} T={T} />
           // eslint-disable-next-line @next/next/no-img-element
           : <img key={cur.url} src={cur.url} alt="" style={{ width: '100%', display: 'block', objectFit: square ? 'cover' : 'contain', aspectRatio: square ? '1/1' : undefined, maxHeight: 460, background: '#000' }} />}
         {n > 1 && (
@@ -258,7 +309,11 @@ function Row({ p, onOpen, fmtTime, T }: { p: ReviewPost; onOpen: () => void; fmt
         {first
           // eslint-disable-next-line @next/next/no-img-element
           ? (first.kind === 'video'
-            ? <video src={first.url} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            // A clip in a LIST is a play tile, not a <video>: every row that
+            // mounted a player opened its own download of the whole file,
+            // and on the media host those downloads queued up behind each
+            // other — the open post's player then sat spinning.
+            ? <span aria-label={T('Video', 'Video')} style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', background: '#0b1120', color: '#fff', fontSize: 20 }}>▶</span>
             // eslint-disable-next-line @next/next/no-img-element
             : <img src={first.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />)
           : <span style={{ fontSize: 20 }}>📝</span>}

@@ -389,6 +389,14 @@ export class ServicesService {
       this.prisma.serviceCategory.findMany({ where: { tenantId }, select: { id: true, name: true } }),
       this.prisma.service.findMany({ where: { tenantId }, select: { name: true } }),
     ]);
+    // The salon's own currency, read here rather than trusted from the client.
+    // This used to write 'USD' on every imported row, so a Vietnamese or
+    // Australian menu came in labelled as dollars.
+    const rules: { value: unknown } | null = await this.prisma.setting
+      .findUnique({ where: { tenantId_key: { tenantId, key: 'booking_rules' } }, select: { value: true } })
+      .catch(() => null);
+    const rawCur = String((rules?.value as { currency?: string } | null)?.currency ?? '').toUpperCase();
+    const currency = /^[A-Z]{3}$/.test(rawCur) ? rawCur : 'USD';
     const catByName = new Map(cats.map((c) => [c.name.toLowerCase(), c.id]));
     const have = new Set(svcs.map((s) => s.name.toLowerCase()));
     let sort = cats.length;
@@ -423,7 +431,7 @@ export class ServicesService {
           priceCents: Math.max(0, Math.round(Number(raw.priceCents) || 0)),
           priceFrom: !!raw.priceFrom,
           imageUrl: cleanImageUrl(raw.imageUrl),
-          categoryId, sortOrder: order, isActive: true, currency: 'USD',
+          categoryId, sortOrder: order, isActive: true, currency,
         },
       });
       have.add(name.toLowerCase());

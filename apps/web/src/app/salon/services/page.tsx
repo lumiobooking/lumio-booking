@@ -10,6 +10,7 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { useRowDrag } from '../../../lib/useRowDrag';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
+import { ServiceImport } from '../../../components/ServiceImport';
 import { SearchBox, matchesQuery } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
@@ -193,7 +194,7 @@ function ServicesInner() {
 
       {error && <div style={ui.banner}>{error}</div>}
 
-      {showImport && <ImportPanel token={token!} currency={money.code} onDone={async () => { setShowImport(false); await load(); }} />}
+      {showImport && <ServiceImport token={token!} currency={money.code} vi={lang === 'vi'} existingNames={services.map((x) => x.name)} onDone={async () => { setShowImport(false); await load(); }} />}
 
       <CategoryManager token={token!} categories={categories} onChanged={load} />
 
@@ -1257,88 +1258,6 @@ function DateDiscountCard({ token, categories }: { token: string; categories: Ca
           <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('sv.dateHint')}</p>
         </div>
       )}
-    </div>
-  );
-}
-
-// ---- Bulk menu import ------------------------------------------------------
-const IMPORT_EXAMPLE = `# Acrylic
-New Set | 62+ | 60
-Refill | 50 | 45
-
-# Waxing
-Eyebrows | 10+
-Full Legs | 45+ | 40`;
-
-interface ParsedItem { category: string; name: string; priceCents: number; durationMinutes: number; priceFrom: boolean }
-
-/** Parse a pasted menu: "# Category" lines + "Name | price | minutes" rows. */
-function parseMenu(text: string, currency = 'USD'): ParsedItem[] {
-  const items: ParsedItem[] = [];
-  let category = '';
-  for (const rawLine of text.split('\n')) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    if (line.startsWith('#')) { category = line.replace(/^#+/, '').trim(); continue; }
-    const parts = line.split('|').map((p) => p.trim());
-    const name = parts[0];
-    if (!name) continue;
-    const priceStr = parts[1] || '';
-    const priceFrom = priceStr.includes('+');
-    const dollars = parseFloat((priceStr.match(/[\d.]+/) || ['0'])[0]) || 0;
-    const dur = parseInt((((parts[2] || '').match(/\d+/)) || ['30'])[0], 10) || 30;
-    items.push({ category, name, priceCents: toMinorUnits(dollars, currency), durationMinutes: dur, priceFrom });
-  }
-  return items;
-}
-
-function ImportPanel({ token, onDone, currency = 'USD' }: { token: string; onDone: () => void; currency?: string }) {
-  const { lang } = useLang();
-  const t = (k: string) => tr(k, lang);
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const items = parseMenu(text, currency);
-  const ok = msg?.startsWith('✓');
-
-  async function run() {
-    if (items.length === 0) { setMsg(t('sv.importPasteFirst')); return; }
-    setBusy(true); setMsg(null);
-    try {
-      const r = await apiFetch<{ createdCategories: number; createdServices: number; skipped: number }>(
-        '/services/import', { method: 'POST', token, body: { items } },
-      );
-      setMsg(t('sv.importedMsg').replace('{svc}', String(r.createdServices)).replace('{cat}', String(r.createdCategories)).replace('{skip}', String(r.skipped)));
-      setTimeout(onDone, 1000);
-    } catch (e) { setMsg(e instanceof Error ? e.message : t('sv.importFailed')); setBusy(false); }
-  }
-
-  return (
-    <div style={{ ...ui.card, marginBottom: 16 }}>
-      <div style={{ fontWeight: 700, marginBottom: 6 }}>{t('sv.importMenu')}</div>
-      <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 10px' }}>
-        {lang === 'vi' ? (
-          <>Dán bảng giá của bạn bên dưới. Bắt đầu một nhóm bằng <code style={{ color: 'var(--ccbd5e1)' }}># Danh mục</code>, rồi mỗi dòng một dịch vụ:
-          {' '}<code style={{ color: 'var(--ccbd5e1)' }}>Tên | giá | phút</code>. Dấu <code style={{ color: 'var(--ccbd5e1)' }}>+</code> sau giá = giá &ldquo;từ&rdquo;; số phút không bắt buộc (mặc định 30).</>
-        ) : (
-          <>Paste your price list below. Start a group with <code style={{ color: 'var(--ccbd5e1)' }}># Category</code>, then one service per line:
-          {' '}<code style={{ color: 'var(--ccbd5e1)' }}>Name | price | minutes</code>. A <code style={{ color: 'var(--ccbd5e1)' }}>+</code> after the price = &ldquo;from&rdquo; pricing; minutes is optional (defaults to 30).</>
-        )}
-      </p>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={12}
-        placeholder={IMPORT_EXAMPLE}
-        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: '1px solid var(--c475569)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14, fontFamily: 'ui-monospace, Menlo, monospace', resize: 'vertical' }}
-      />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
-        <button onClick={run} disabled={busy || items.length === 0} style={ui.primaryBtn}>
-          {busy ? t('sv.importing') : `${t('sv.importVerb')} ${items.length || ''} ${t('sv.serviceWord')}`}
-        </button>
-        {items.length > 0 && !msg && <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('sv.rowsDetected').replace('{n}', String(items.length))}</span>}
-        {msg && <span style={{ color: ok ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
-      </div>
     </div>
   );
 }

@@ -118,6 +118,12 @@ export interface StudioPost {
    */
   lastError?: string | null;
   fix?: string | null;
+  /**
+   * The client pressed "approve" on this post. Cleared by the server whenever
+   * the team edits it, so a teal card always means "approved AS IT IS NOW".
+   */
+  approvedAt?: string | null;
+  approvedByName?: string | null;
 }
 
 /**
@@ -127,8 +133,8 @@ export interface StudioPost {
  * — the post cannot go out as it stands — is the team's own problem and can
  * wait behind the client's. Green is history.
  */
-export type Tone = 'held' | 'failed' | 'blocked' | 'posted' | 'writing' | 'design' | 'ready' | 'plain';
-export function postTone(p: { held?: unknown; blockers: string[]; status: string; stage?: Stage }): Tone {
+export type Tone = 'held' | 'failed' | 'blocked' | 'posted' | 'writing' | 'design' | 'approved' | 'ready' | 'plain';
+export function postTone(p: { held?: unknown; blockers: string[]; status: string; stage?: Stage; approvedAt?: string | null }): Tone {
   if (p.held) return 'held';
   if (p.status === 'failed' || p.status === 'expired') return 'failed';
   if (p.status === 'posted') return 'posted';
@@ -137,6 +143,9 @@ export function postTone(p: { held?: unknown; blockers: string[]; status: string
   if (p.stage === 'writing') return 'writing';
   if (p.stage === 'design') return 'design';
   if (p.blockers.length) return 'blocked';
+  // Scheduled and signed off by the client: the one state the team can stop
+  // watching. Scheduled without it is still waiting on the client.
+  if (p.status === 'scheduled' && p.approvedAt) return 'approved';
   if (p.status === 'scheduled') return 'ready';
   return 'plain';
 }
@@ -161,16 +170,25 @@ export const TONES: Record<Tone, { bg: string; border: string; fg: string; bar: 
   blocked: { bg: 'var(--c451a03)', border: '#f59e0b', fg: 'var(--ce2e8f0)', bar: '#f59e0b', alarm: true,  icon: '⚠', vi: 'Thiếu điều kiện đăng', en: 'Cannot publish as is' },
   writing: { bg: 'var(--c1e293b)', border: '#60a5fa', fg: 'var(--ce2e8f0)', bar: '#60a5fa', alarm: false, icon: '✍', vi: 'Đang viết content', en: 'Writing' },
   design:  { bg: 'var(--c1e293b)', border: '#c084fc', fg: 'var(--ce2e8f0)', bar: '#c084fc', alarm: false, icon: '🎨', vi: 'Đang thiết kế', en: 'In design' },
-  ready:   { bg: 'var(--c1e293b)', border: '#22c55e', fg: 'var(--ce2e8f0)', bar: '#22c55e', alarm: false, icon: '📅', vi: 'Đã chốt lịch', en: 'Scheduled' },
+  ready:   { bg: 'var(--c1e293b)', border: '#22c55e', fg: 'var(--ce2e8f0)', bar: '#22c55e', alarm: false, icon: '📅', vi: 'Đã chốt lịch · chờ khách duyệt', en: 'Scheduled · awaiting client' },
+  approved: { bg: 'var(--c1e293b)', border: '#14b8a6', fg: 'var(--ce2e8f0)', bar: '#14b8a6', alarm: false, icon: '✅', vi: 'Khách đã duyệt', en: 'Client approved' },
   posted:  { bg: 'var(--c14532d)', border: '#22c55e', fg: 'var(--ce2e8f0)', bar: 'var(--c475569)', alarm: false, icon: '✓', vi: 'Đã đăng', en: 'Published' },
   plain:   { bg: 'var(--c1e293b)', border: 'var(--c334155)', fg: 'var(--ce2e8f0)', bar: 'var(--c475569)', alarm: false, icon: '', vi: 'Nháp', en: 'Draft' },
 };
+
+/** " · Lan · 26/9 09:12" — who approved and when, for the card and the tooltip. */
+export function approvedLine(p: { approvedAt?: string | null; approvedByName?: string | null }, vi: boolean): string {
+  if (!p.approvedAt) return '';
+  const d = new Date(p.approvedAt);
+  const when = Number.isNaN(d.getTime()) ? '' : d.toLocaleString(vi ? 'vi-VN' : 'en-US', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return [p.approvedByName, when].filter(Boolean).map((x) => ` · ${x}`).join('');
+}
 
 /** The calendar's tooltip: state, owners, the team note — what the hover has to answer. */
 export function postHint(p: StudioPost, vi: boolean): string {
   const tone = postTone(p);
   const t = TONES[tone];
-  const lines = [`${t.icon} ${vi ? t.vi : t.en}`];
+  const lines = [`${t.icon} ${vi ? t.vi : t.en}${tone === 'approved' ? approvedLine(p, vi) : ''}`];
   if (p.held) lines.push(`${p.held.by ? `${p.held.by}: ` : ''}${(p.held.note ?? '').slice(0, 200)}`);
   if (tone === 'failed' && (p.fix || p.lastError)) lines.push(`⚠ ${(p.fix ?? p.lastError ?? '').slice(0, 300)}`);
   const who = [p.writerName ? `✍ ${p.writerName}` : '', p.designerName ? `🎨 ${p.designerName}` : ''].filter(Boolean).join(' · ');
@@ -278,15 +296,16 @@ export function MonthCalendar({
 
   /** The month at a glance: how much work is waiting, and how much is bleeding. */
   const totals = useMemo(() => {
-    let alarm = 0; let doing = 0; let locked = 0; let done = 0;
+    let alarm = 0; let doing = 0; let locked = 0; let approved = 0; let done = 0;
     for (const p of posts) {
       const t = postTone(p);
       if (TONES[t].alarm) alarm += 1;
       else if (t === 'writing' || t === 'design') doing += 1;
       else if (t === 'posted') done += 1;
+      else if (t === 'approved') approved += 1;
       else locked += 1;
     }
-    return { alarm, doing, locked, done };
+    return { alarm, doing, locked, approved, done };
   }, [posts]);
 
   /**
@@ -318,6 +337,8 @@ export function MonthCalendar({
       ? `${t.icon} ${vi ? t.vi : t.en}${alarmWhy ? ` — ${alarmWhy}` : ''}`
       : tone === 'writing' || tone === 'design'
         ? `${t.icon} ${vi ? t.vi : t.en}${owner ? ` · ${owner}` : ''}`
+        : tone === 'approved'
+          ? `${t.icon} ${vi ? t.vi : t.en}${approvedLine(p, vi)}`
         : p.teamNote
           ? `📝 ${p.teamNote}`
           : (p.message.trim() || T('(chưa có caption)', '(no caption yet)'));
@@ -455,7 +476,8 @@ export function MonthCalendar({
     <>
       <Tally n={totals.alarm} bar="#ef4444" label={T('cần xử lý', 'need attention')} loud />
       <Tally n={totals.doing} bar="#c084fc" label={T('đang làm', 'in progress')} />
-      <Tally n={totals.locked} bar="#22c55e" label={T('chờ đăng', 'waiting to go')} />
+      <Tally n={totals.locked} bar="#22c55e" label={T('chờ khách duyệt', 'awaiting client')} />
+      <Tally n={totals.approved} bar="#14b8a6" label={T('khách đã duyệt', 'client approved')} />
       <Tally n={totals.done} bar="var(--c475569)" label={T('đã đăng', 'published')} />
     </>
   );
@@ -518,7 +540,7 @@ export function MonthCalendar({
   /** The key, as one wrapping row. On a phone it hides behind a tap. */
   const legend = (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 12px', fontSize: 11, color: 'var(--c94a3b8)', alignItems: 'center' }}>
-      {(['held', 'failed', 'blocked', 'writing', 'design', 'ready', 'posted'] as Tone[]).map((k) => (
+      {(['held', 'failed', 'blocked', 'writing', 'design', 'ready', 'approved', 'posted'] as Tone[]).map((k) => (
         <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: k === 'posted' ? 'var(--c64748b)' : 'var(--c94a3b8)' }}>
           <span style={{
             width: 13, height: 11, borderRadius: 3,

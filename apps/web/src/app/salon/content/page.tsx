@@ -44,7 +44,7 @@ import { useLang } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { wallToInstantISO, instantToWall, wallTomorrowAt, fmtInTz, salonTz } from '../../../lib/datetime';
 import { ItemComments, TeamChatDock, TeamChatWindow } from '../../../components/ContentChat';
-import { MonthCalendar, IgGrid, PostPreview, MediaList, ChannelChips, CHANNEL_NAME, TONES, postTone, type MediaItem, type Channel } from '../../../components/PostStudio';
+import { MonthCalendar, IgGrid, PostPreview, MediaList, ChannelChips, CHANNEL_NAME, TONES, postTone, approvedLine, type MediaItem, type Channel } from '../../../components/PostStudio';
 import type { OfferForm } from '../../../components/WeekPlanBoard';
 import { addDays, type AheadBlock } from '../../../components/plan-grid';
 import type { DayIdeas } from '../../../components/PlanSheet';
@@ -364,6 +364,9 @@ interface QueuedPost {
   teamNote?: string | null;
   /** Where this post's files were filed on Drive, for reuse on Google Business / TikTok. */
   driveFolderUrl?: string | null;
+  /** The client's sign-off — cleared by the server whenever the post is edited. */
+  approvedAt?: string | null;
+  approvedByName?: string | null;
 }
 /** TikTok's per-post decisions — mirrors api tiktok/tiktok.ts TikTokPostOptions. */
 /** The button on a Google Business Profile post — see api content/gbp-cta.ts. */
@@ -825,10 +828,11 @@ function Inner() {
    * "Show me what is stuck" is the question a person opens this tab with,
    * and a month grid cannot answer it without hiding the rest.
    */
-  const [workFilter, setWorkFilter] = useState<'all' | 'held' | 'problem' | 'writing' | 'design' | 'ready' | 'today'>('all');
+  const [workFilter, setWorkFilter] = useState<'all' | 'held' | 'problem' | 'writing' | 'design' | 'ready' | 'approved' | 'today'>('all');
   // From the agency list's "✏️ N sửa bài" badge: land on the held posts only.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('work') === 'held') setWorkFilter('held');
+    const w = new URLSearchParams(window.location.search).get('work');
+    if (w === 'held' || w === 'approved' || w === 'ready') setWorkFilter(w);
   }, []);
   /**
    * A bell row or a push said "the shop wrote on THIS": ?post=<id> opens the
@@ -1482,7 +1486,8 @@ function Inner() {
       case 'problem': return all.filter((p) => open(p) && !p.held && (p.status === 'failed' || p.status === 'expired' || p.blockers.length > 0));
       case 'writing': return all.filter((p) => open(p) && p.stage === 'writing');
       case 'design': return all.filter((p) => open(p) && p.stage === 'design');
-      case 'ready': return all.filter((p) => p.status === 'scheduled' && !p.held);
+      case 'ready': return all.filter((p) => p.status === 'scheduled' && !p.held && !p.approvedAt);
+      case 'approved': return all.filter((p) => p.status === 'scheduled' && !p.held && Boolean(p.approvedAt));
       case 'today': return all.filter((p) => instantToWall(p.scheduledAt).slice(0, 10) === todayKey);
       default: return all;
     }
@@ -3346,7 +3351,8 @@ function Inner() {
                   problem: all.filter((p) => open(p) && !p.held && (p.status === 'failed' || p.status === 'expired' || p.blockers.length > 0)).length,
                   writing: all.filter((p) => open(p) && p.stage === 'writing').length,
                   design: all.filter((p) => open(p) && p.stage === 'design').length,
-                  ready: all.filter((p) => p.status === 'scheduled' && !p.held).length,
+                  ready: all.filter((p) => p.status === 'scheduled' && !p.held && !p.approvedAt).length,
+                  approved: all.filter((p) => p.status === 'scheduled' && !p.held && Boolean(p.approvedAt)).length,
                   today: all.filter((p) => instantToWall(p.scheduledAt).slice(0, 10) === todayKey).length,
                 };
                 const chips: { k: typeof workFilter; icon: string; label: string; n: number; color: string }[] = [
@@ -3354,7 +3360,8 @@ function Inner() {
                   { k: 'problem', icon: '⚠', label: T('Lỗi / thiếu điều kiện', 'Failed / blocked'), n: counts.problem, color: 'var(--ink-warn)' },
                   { k: 'writing', icon: '✍', label: T('Đang viết', 'Writing'), n: counts.writing, color: '#60a5fa' },
                   { k: 'design', icon: '🎨', label: T('Đang thiết kế', 'In design'), n: counts.design, color: '#c084fc' },
-                  { k: 'ready', icon: '📅', label: T('Đã chốt, chờ giờ', 'Locked, waiting'), n: counts.ready, color: 'var(--ink-good)' },
+                  { k: 'ready', icon: '⏳', label: T('Chờ khách duyệt', 'Awaiting client'), n: counts.ready, color: 'var(--ink-good)' },
+                  { k: 'approved', icon: '✅', label: T('Khách đã duyệt', 'Client approved'), n: counts.approved, color: '#14b8a6' },
                   { k: 'today', icon: '⏰', label: T('Đăng hôm nay', 'Going out today'), n: counts.today, color: 'var(--ca5b4fc)' },
                 ];
                 return (
@@ -5194,6 +5201,11 @@ function Inner() {
                                   )}
                                   {!p.held && p.blockers.length > 0 && tone !== 'writing' && tone !== 'design' && (
                                     <div style={{ fontSize: 11, color: 'var(--cfde68a)', marginTop: 4 }}>⚠ {p.blockers[0]}</div>
+                                  )}
+                                  {p.status === 'scheduled' && !p.held && (
+                                    p.approvedAt
+                                      ? <div style={{ fontSize: 11.5, color: '#14b8a6', fontWeight: 700, marginTop: 4 }}>✅ {T('Khách đã duyệt', 'Client approved')}{approvedLine(p, vi)}</div>
+                                      : <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 4 }}>⏳ {T('Chờ khách duyệt', 'Awaiting client approval')}</div>
                                   )}
                                   {p.teamNote && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 4 }}>📝 {p.teamNote}</div>}
                                   <div style={{ display: 'flex', gap: 6, marginTop: 7, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>

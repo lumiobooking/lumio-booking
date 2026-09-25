@@ -31,6 +31,7 @@ import {
   LEGACY_TEMPLATE_DEFAULTS,
   NotificationSettings,
   NotificationTemplates,
+  NotifTemplate,
   PAYMENT_GATEWAYS_KEY,
   PaymentGateways,
   POS_SETTINGS_KEY,
@@ -75,7 +76,7 @@ import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
 import { GmailOAuthProvider } from '../notifications/providers/gmail-oauth.provider';
 import { TwilioSmsProvider } from '../notifications/providers/twilio.provider';
 import { createSmsProvider } from '../notifications/providers/notification-provider.factory';
-import { twilioSenderFor } from '../notifications/providers/sms-routing';
+import { twilioSenderFor, vnEsmsFor, platformEsmsFromEnv } from '../notifications/providers/sms-routing';
 import {
   UpdateBookingRulesDto,
   UpdateBrandingDto,
@@ -440,6 +441,22 @@ export class SettingsService {
     }
   }
 
+  /** Lumio's shared Zalo OA / brandname is configured on the server — every
+   *  VN salon then sends through it without touching a setting. */
+  private sharedVnChannel(): { active: boolean; zns: boolean; sms: boolean } {
+    const c = vnEsmsFor({ market: 'VN', platform: platformEsmsFromEnv() });
+    return { active: !!c, zns: !!(c && c.oaid && (c.znsBookingTempId || c.znsReminderTempId)), sms: !!(c && c.brandname) };
+  }
+
+  /** The raw stored object for a key, without defaults — to tell "never set"
+   *  from "set to the default value". */
+  private async rawKey(tenantId: string, key: string): Promise<Record<string, unknown>> {
+    try {
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key } } });
+      return ((row?.value as Record<string, unknown> | null) ?? {});
+    } catch { return {}; }
+  }
+
   async getNotificationSettings(tenantId: string): Promise<NotificationSettings> {
     const merged = await this.readKey<NotificationSettings>(tenantId, NOTIFICATION_SETTINGS_KEY, DEFAULT_NOTIFICATION_SETTINGS);
     const smtp = { ...DEFAULT_NOTIFICATION_SETTINGS.smtp, ...(merged.smtp ?? {}) };
@@ -462,6 +479,13 @@ export class SettingsService {
     // Vietnamese out of the box; a customised field — any market — is never
     // touched; US/CA salons take the (market !== 'VN') early exit unchanged.
     out.market = await this.marketOf(tenantId);
+    // Set up once for the whole of Vietnam: with Lumio's shared Zalo/SMS
+    // channel live, a VN salon that never touched the switch confirms
+    // bookings to customers by default. An explicit "off" is kept.
+    if (out.market === 'VN' && this.sharedVnChannel().active) {
+      const raw = await this.rawKey(tenantId, NOTIFICATION_SETTINGS_KEY);
+      if (raw.smsCustomerOnBooking === undefined) out.smsCustomerOnBooking = true;
+    }
     if (out.market === 'VN') {
       for (const [k, vnText] of Object.entries(VN_NOTIFICATION_TEXTS)) {
         const key = k as keyof NotificationSettings;
@@ -529,6 +553,9 @@ export class SettingsService {
         znsReminderTempId: n.esms?.znsReminderTempId ?? '',
         connected: (n.esms?.secretKey ?? '').length > 0,
       },
+      // Whether Lumio's shared VN channel is live — no keys, just the fact,
+      // so a VN salon is told it has nothing to set up.
+      sharedVn: n.market === 'VN' ? this.sharedVnChannel() : null,
     };
   }
 
@@ -639,6 +666,11 @@ export class SettingsService {
     // fields still equal to the English default are translated, so a salon's
     // edits always win and non-VN salons are untouched.
     if ((await this.marketOf(tenantId)) === 'VN') {
+      // Same default as getNotificationSettings: the confirmation goes out
+      // over the shared Zalo/SMS channel unless the salon switched it off.
+      const conf = out['customer_booking_confirmed'];
+      const storedConf = (stored as Record<string, Partial<NotifTemplate> | undefined>)['customer_booking_confirmed'];
+      if (conf && storedConf?.sms === undefined && this.sharedVnChannel().active) conf.sms = true;
       for (const [id, vn] of Object.entries(VN_TEMPLATE_TEXTS)) {
         const def = DEFAULT_NOTIFICATION_TEMPLATES[id];
         if (!def || !out[id]) continue;

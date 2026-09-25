@@ -110,3 +110,74 @@ export function twilioSenderFor(args: {
   }
   return { kind: 'default' };
 }
+
+/**
+ * Which eSMS account a Vietnamese salon's messages go out through.
+ *
+ * Two sources, the same shape as the US/AU "one number for everyone" model:
+ *
+ *   1. The salon's OWN eSMS keys + brandname (Cài đặt → SMS), when complete.
+ *      A salon that set this up keeps exactly what it has today.
+ *   2. Otherwise Lumio's SHARED account from the environment — one Zalo OA
+ *      and one brandname sending for every VN salon (the salon's name rides
+ *      in the ZNS salon_name parameter):
+ *        ESMS_API_KEY, ESMS_SECRET_KEY            — required
+ *        ESMS_ZNS_OAID + ESMS_ZNS_BOOKING_TEMP_ID / ESMS_ZNS_REMINDER_TEMP_ID
+ *        ESMS_BRANDNAME                            — optional SMS fallback
+ *      The shared account counts only when it can deliver SOMETHING: a
+ *      brandname, or an OA with at least one ZNS template. Keys alone are
+ *      not a channel.
+ *
+ * Never for a salon outside VN, whatever the environment holds.
+ */
+export interface VnEsmsSource {
+  apiKey?: string | null;
+  secretKey?: string | null;
+  brandname?: string | null;
+  oaid?: string | null;
+  znsBookingTempId?: string | null;
+  znsReminderTempId?: string | null;
+}
+
+export interface VnEsmsConfig {
+  apiKey: string;
+  secretKey: string;
+  /** Empty for a ZNS-only shared account: SMS fallback is then refused, not sent to error 104. */
+  brandname: string;
+  oaid: string;
+  znsBookingTempId: string;
+  znsReminderTempId: string;
+  source: 'salon' | 'platform';
+}
+
+const s = (v: unknown) => String(v ?? '').trim();
+
+function pack(c: VnEsmsSource, source: VnEsmsConfig['source']): VnEsmsConfig {
+  return {
+    apiKey: s(c.apiKey), secretKey: s(c.secretKey), brandname: s(c.brandname),
+    oaid: s(c.oaid), znsBookingTempId: s(c.znsBookingTempId), znsReminderTempId: s(c.znsReminderTempId),
+    source,
+  };
+}
+
+/** Lumio's shared eSMS/ZNS account, read from the environment. */
+export function platformEsmsFromEnv(env: Record<string, string | undefined> = process.env): VnEsmsSource {
+  return {
+    apiKey: env.ESMS_API_KEY, secretKey: env.ESMS_SECRET_KEY, brandname: env.ESMS_BRANDNAME,
+    oaid: env.ESMS_ZNS_OAID, znsBookingTempId: env.ESMS_ZNS_BOOKING_TEMP_ID, znsReminderTempId: env.ESMS_ZNS_REMINDER_TEMP_ID,
+  };
+}
+
+export function vnEsmsFor(args: {
+  market: string | null | undefined;
+  salon?: VnEsmsSource | null;
+  platform?: VnEsmsSource | null;
+}): VnEsmsConfig | null {
+  if (s(args.market).toUpperCase() !== 'VN') return null;
+  if (args.salon && hasESmsCredentials(args.salon)) return pack(args.salon, 'salon');
+  const p = args.platform;
+  if (!p || !s(p.apiKey) || !s(p.secretKey)) return null;
+  const canZns = !!s(p.oaid) && (!!s(p.znsBookingTempId) || !!s(p.znsReminderTempId));
+  if (!s(p.brandname) && !canZns) return null;
+  return pack(p, 'platform');
+}

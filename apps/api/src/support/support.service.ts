@@ -101,12 +101,21 @@ export class SupportService {
       ?.groupBy({ by: ['tenantId'], where: { tenantId: { in: rows.map((r) => r.id) }, status: 'scheduled', heldAt: null, approvedAt: null }, _count: { _all: true } })
       .catch(() => [] as { tenantId: string; _count: { _all: number } }[]) ?? [];
     const pendingBy = new Map(pending.map((h) => [h.tenantId, h._count._all]));
+    // Posts the shop has SIGNED OFF and that are still to go out — the good
+    // news the team can stop chasing. With the newest sign-off time, so the
+    // list can say "2 giờ" the way it does for comments.
+    const approved = await (this.prisma as unknown as Record<string, { groupBy: (a: unknown) => Promise<{ tenantId: string; _count: { _all: number }; _max?: { approvedAt?: Date | null } }[]> }>).scheduledPost
+      ?.groupBy({ by: ['tenantId'], where: { tenantId: { in: rows.map((r) => r.id) }, status: 'scheduled', heldAt: null, approvedAt: { not: null } }, _count: { _all: true }, _max: { approvedAt: true } })
+      .catch(() => [] as { tenantId: string; _count: { _all: number }; _max?: { approvedAt?: Date | null } }[]) ?? [];
+    const approvedBy = new Map(approved.map((h) => [h.tenantId, { n: h._count._all, at: h._max?.approvedAt ?? null }]));
     return rows.map((r) => ({
       ...r,
       opsStage: opsStageOf(byTenant.get(r.id), r.status),
       workNext: workNextOf(nextBy.get(r.id)),
       heldPosts: heldBy.get(r.id) ?? 0,
       awaitingApproval: pendingBy.get(r.id) ?? 0,
+      approvedPosts: approvedBy.get(r.id)?.n ?? 0,
+      lastApprovedAt: approvedBy.get(r.id)?.at ?? null,
     }));
   }
 

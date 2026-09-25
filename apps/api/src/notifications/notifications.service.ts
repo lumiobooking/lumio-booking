@@ -8,7 +8,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { EmailProvider, SmsProvider } from './providers/notification-provider.interface';
 import { createEmailProvider, createSmsProvider } from './providers/notification-provider.factory';
 import { ESmsProvider } from './providers/esms.provider';
-import { routeSmsFor, twilioSenderFor } from './providers/sms-routing';
+import { twilioSenderFor, vnEsmsFor, platformEsmsFromEnv } from './providers/sms-routing';
 import { readEsmsCallback } from './providers/esms-callback';
 import { ZnsProvider } from './providers/zns.provider';
 import { SmtpConfig, SmtpEmailProvider } from './providers/smtp.provider';
@@ -186,17 +186,20 @@ export class NotificationsService {
       ]);
       const market = (t as unknown as { market?: string } | null)?.market ?? 'US';
       const esms = (row?.value as unknown as { esms?: { apiKey?: string; secretKey?: string; brandname?: string; oaid?: string; znsBookingTempId?: string; znsReminderTempId?: string } } | null)?.esms;
-      if (routeSmsFor({ market, esms }).provider !== 'esms' || !esms) return null;
+      // The salon's own eSMS when complete, else Lumio's shared Zalo OA /
+      // brandname from the environment — see vnEsmsFor.
+      const cfg = vnEsmsFor({ market, salon: esms ?? null, platform: platformEsmsFromEnv() });
+      if (!cfg) return null;
       return {
-        apiKey: String(esms.apiKey ?? ''),
-        secretKey: String(esms.secretKey ?? ''),
-        brandname: String(esms.brandname ?? ''),
+        apiKey: cfg.apiKey,
+        secretKey: cfg.secretKey,
+        brandname: cfg.brandname,
         // CodeResult 100 only means "accepted" — the real delivery outcome
         // arrives HERE, so every send carries the address of our callback.
         callbackUrl: `${apiBase()}/api/public/esms/callback`,
-        oaid: String(esms.oaid ?? ''),
-        znsBookingTempId: String(esms.znsBookingTempId ?? ''),
-        znsReminderTempId: String(esms.znsReminderTempId ?? ''),
+        oaid: cfg.oaid,
+        znsBookingTempId: cfg.znsBookingTempId,
+        znsReminderTempId: cfg.znsReminderTempId,
       };
     } catch {
       return null;
@@ -390,7 +393,32 @@ export class NotificationsService {
 
     const smsProvider: SmsProvider = ((): SmsProvider => {
       if (input.channel !== NotificationChannel.SMS) return this.sms;
-      if (vnKeys) return new ESmsProvider(vnKeys);
+      if (vnKeys) {
+        // Vietnamese law keeps adverts and customer care apart: a CSKH
+        // brandname (what this adapter sends on) may not carry promotions,
+        // and an advert on it can get the brandname — shared by every VN
+        // salon — suspended by the carriers. Adverts need a QC brandname and
+        // carrier-approved content; until that channel exists, hold them.
+        if (input.kind === 'marketing') {
+          return {
+            name: 'sms-policy',
+            sendSms: async () => ({
+              success: false,
+              error: 'Chưa gửi: tin quảng cáo ở Việt Nam phải đi brandname quảng cáo (QC) đã duyệt nội dung — không được gửi bằng brandname CSKH. / Not sent: Vietnamese adverts need an approved advertising (QC) brandname.',
+            }),
+          };
+        }
+        if (vnKeys.brandname) return new ESmsProvider(vnKeys);
+        // Lumio's shared account may be Zalo-only. Without a brandname an
+        // SMS is eSMS error 104 every time — say so instead of paying for it.
+        return {
+          name: 'esms',
+          sendSms: async () => ({
+            success: false,
+            error: 'Chưa gửi: Zalo ZNS không tới được số này và hệ thống chưa có brandname SMS (ESMS_BRANDNAME). / Not sent: Zalo could not reach this number and no SMS brandname is set.',
+          }),
+        };
+      }
 
       const t = input.twilio;
       if (t?.accountSid && t?.authToken && (t.fromNumber || t.messagingServiceSid)) {
@@ -572,18 +600,23 @@ export class NotificationsService {
     const loose = this.prisma as unknown as {
       voiceLine?: { findFirst: (a: unknown) => Promise<{ tenantId: string } | null> };
     };
-    const line = await loose.voiceLine?.findFirst({ where: { lumioNumber: to }, select: { tenantId: true } }).catch(() => null);
     let tenants: { id: string; market: string | null }[] = [];
-    if (line?.tenantId) {
-      const t = await this.prisma.tenant.findUnique({ where: { id: line.tenantId }, select: { id: true, market: true } as never }).catch(() => null) as { id: string; market?: string | null } | null;
-      if (t) tenants = [{ id: t.id, market: t.market ?? null }];
-    } else if (to === String(process.env.TWILIO_FROM_NUMBER_AU ?? '').trim()) {
+    // The shared number is checked FIRST: it may also be one salon's hotline
+    // (a demo line, say), and a STOP sent to it is about every Australian
+    // salon that texts from it — not just the one whose hotline it is.
+    if (to === String(process.env.TWILIO_FROM_NUMBER_AU ?? '').trim()) {
       const rows = await this.prisma.customer.findMany({
         where: { phone: from, tenant: { market: 'AU' } as never },
         select: { tenantId: true },
         take: 50,
       }).catch(() => [] as { tenantId: string }[]);
       tenants = [...new Set(rows.map((r) => r.tenantId))].map((id) => ({ id, market: 'AU' }));
+    } else {
+      const line = await loose.voiceLine?.findFirst({ where: { lumioNumber: to }, select: { tenantId: true } }).catch(() => null);
+      if (line?.tenantId) {
+        const t = await this.prisma.tenant.findUnique({ where: { id: line.tenantId }, select: { id: true, market: true } as never }).catch(() => null) as { id: string; market?: string | null } | null;
+        if (t) tenants = [{ id: t.id, market: t.market ?? null }];
+      }
     }
     let optedOut = 0;
     for (const t of tenants) {

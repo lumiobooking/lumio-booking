@@ -52,6 +52,8 @@ interface SettingsData {
     gmail: { clientId: string; senderEmail: string; connected: boolean };
     twilio: { accountSid: string; fromNumber: string; connected: boolean };
     esms?: { apiKey: string; brandname: string; oaid?: string; znsBookingTempId?: string; znsReminderTempId?: string; connected: boolean };
+    /** Lumio's shared VN Zalo/SMS channel is live on the server — nothing to set up. */
+    sharedVn?: { active: boolean; zns: boolean; sms: boolean } | null;
   };
   pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }> };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
@@ -1310,7 +1312,22 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
           Vietnamese number is a silent failure — accepted with an id, dropped by
           the carrier — so this panel only appears for a VN salon, and Twilio
           above is the only path for everyone else. */}
-      {isVN && (
+      {/* Set up once for all of Vietnam: when Lumio's shared Zalo OA / brandname
+          is live and this salon has no eSMS of its own, there is nothing to
+          configure — say so instead of showing key fields. */}
+      {isVN && n.sharedVn?.active && !n.esms?.connected && (
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
+            Tin nhắn Việt Nam · Zalo &amp; SMS{' '}
+            <span style={{ color: 'var(--ink-good)', fontSize: 12 }}>Lumio đã cài sẵn</span>
+          </div>
+          <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 0', lineHeight: 1.5 }}>
+            Tin xác nhận và nhắc lịch được gửi qua {n.sharedVn.zns ? 'Zalo Official Account của Lumio' : ''}{n.sharedVn.zns && n.sharedVn.sms ? ', khách không dùng Zalo thì nhận ' : ''}{n.sharedVn.sms ? 'SMS brandname' : ''} — tên tiệm hiện trong nội dung tin.
+            Tiệm không cần đăng ký hay nhập gì — tin xác nhận được bật sẵn; muốn tắt thì tắt công tắc gửi SMS cho khách.
+          </p>
+        </div>
+      )}
+      {isVN && !(n.sharedVn?.active && !n.esms?.connected) && (
         <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
             SMS Việt Nam · eSMS.vn{' '}

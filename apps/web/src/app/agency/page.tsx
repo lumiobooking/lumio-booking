@@ -36,6 +36,10 @@ interface TenantRow {
   heldPosts?: number;
   /** Scheduled posts the shop has not approved yet — waiting on THEM. */
   awaitingApproval?: number;
+  /** Scheduled posts the shop has approved, still to go out — done on both sides. */
+  approvedPosts?: number;
+  /** The newest of those sign-offs. */
+  lastApprovedAt?: string | null;
 }
 type WorkNext = 'content' | 'design' | 'review' | 'schedule' | 'done';
 /** One thing a shop sent that nobody has made a post from yet. */
@@ -984,6 +988,14 @@ function Row({
           title={`${t.awaitingApproval} bài đã lên lịch, tiệm chưa bấm duyệt`}
           style={{ border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, whiteSpace: 'nowrap', fontWeight: 700 }}
         >⏳ {t.awaitingApproval} chờ tiệm duyệt</span>
+      )}
+      {!picking && (t.approvedPosts ?? 0) > 0 && (
+        <button
+          className="ag-notice-soft"
+          onClick={(e) => { e.stopPropagation(); onEnter(t, '/salon/content?tab=queue&work=approved'); }}
+          title={`${t.approvedPosts} bài tiệm đã bấm duyệt, đang chờ tới giờ đăng — bấm để xem`}
+          style={{ background: 'rgba(20,184,166,.12)', border: '1px solid #14b8a6', color: 'var(--ink-good)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, whiteSpace: 'nowrap', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+        >✅ {t.approvedPosts} đã duyệt{t.lastApprovedAt ? ` · ${agoShort(t.lastApprovedAt)}` : ''}</button>
       )}
       <NextPill next={t.workNext ?? ''} disabled={picking} onChange={(n) => onNext(t, n)} />
       <StagePill stage={t.opsStage ?? 'running'} disabled={picking} onChange={(st) => onStage(t, st)} />

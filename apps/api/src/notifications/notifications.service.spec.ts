@@ -83,6 +83,15 @@ describe('a customer texts STOP to an Australian number', () => {
     delete process.env.TWILIO_FROM_NUMBER_AU;
   });
 
+  it('when the shared number is ALSO a demo hotline, STOP still reaches every Australian salon', async () => {
+    process.env.TWILIO_FROM_NUMBER_AU = '+61400000000';
+    const { svc, updateMany } = inbound({ line: { tenantId: 'demo' }, customers: [{ tenantId: 'real-salon' }, { tenantId: 'demo' }] });
+    const r = await svc.handleInboundSms({ From: '+61412345678', To: '+61400000000', Body: 'stop' });
+    delete process.env.TWILIO_FROM_NUMBER_AU;
+    expect(r.optedOut).toBe(2);
+    expect(JSON.stringify(updateMany.mock.calls)).toContain('real-salon');
+  });
+
   it('an unknown number does nothing', async () => {
     const { svc, updateMany } = inbound({ line: null });
     expect((await svc.handleInboundSms({ From: '+61412345678', To: '+61499999999', Body: 'STOP' })).optedOut).toBe(0);

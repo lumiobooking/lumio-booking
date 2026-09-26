@@ -585,7 +585,7 @@ export default function AgencyPage() {
               active={pick === ''}
               onClick={() => { setPick(''); setNewOnly(false); }}
             />
-            {/* Which market. Combines with the team: "Team 2 · Úc". */}
+            {/* Which market. Picking one jumps to all teams; picking a team afterwards narrows it ("Team 2 · Úc"). */}
             <div className="ag-side-lbl" style={{ marginTop: 14 }}>Thị trường</div>
             <SideItem item={{ key: 'mkt-all', label: 'Mọi thị trường', count: rows.length, fresh: 0 }} active={!mkt} onClick={() => setMkt('')} />
             {MARKET_ORDER.filter((code) => (marketCounts.get(code) ?? 0) > 0).map((code) => (
@@ -594,7 +594,12 @@ export default function AgencyPage() {
                 item={{ key: `mkt-${code}`, label: `${MARKET_LOOK[code].name}`, count: marketCounts.get(code) ?? 0, fresh: 0 }}
                 badge={<MarketChip code={code} />}
                 active={mkt === code}
-                onClick={() => setMkt(mkt === code ? '' : code)}
+                onClick={() => {
+                  // Picking a market shows that market across every team:
+                  // "Úc 1" must never open onto an empty Team 2 list.
+                  if (mkt === code) { setMkt(''); return; }
+                  setMkt(code); setPick(ALL); setNewOnly(false);
+                }}
               />
             ))}
           </aside>
@@ -668,7 +673,15 @@ export default function AgencyPage() {
             <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden' }}>
               {listed.length === 0 && (
                 <div style={{ padding: 18, color: 'var(--c64748b)', fontSize: 14 }}>
-                  {q.trim() ? 'Không có tiệm nào khớp.' : 'Nhóm này chưa có tiệm nào.'}
+                  {q.trim()
+                    ? 'Không có tiệm nào khớp.'
+                    : mkt && (marketCounts.get(mkt) ?? 0) > 0
+                      ? <>Nhóm này chưa có tiệm {MARKET_LOOK[mkt]?.name ?? mkt}.{' '}
+                          <button type="button" onClick={() => { setPick(ALL); setNewOnly(false); }}
+                            style={{ background: 'none', border: 'none', padding: 0, color: 'var(--c60a5fa)', cursor: 'pointer', fontSize: 14, textDecoration: 'underline' }}>
+                            Xem tất cả nhóm ({marketCounts.get(mkt)})
+                          </button></>
+                      : 'Nhóm này chưa có tiệm nào.'}
                 </div>
               )}
               {listed.map((t) => (

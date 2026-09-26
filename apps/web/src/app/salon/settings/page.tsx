@@ -1042,6 +1042,8 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
   // Same source the payments panel uses, so the two panels can never disagree
   // about whether this is a Vietnamese salon.
   const isVN = marketIsVN(data.market);
+  // The sender and test boxes show the salon's own country code.
+  const dialHint = String(data.market ?? '').toUpperCase() === 'AU' ? '+61…' : isVN ? '+84…' : '+1…';
   const n = data.notifications;
   const [f, setF] = useState({
     mailService: n.mailService, replyTo: n.replyTo,
@@ -1129,7 +1131,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 12 }}>
         <Field label={t('se.no.adminEmail')}><input style={ui.input} value={f.adminEmail} onChange={(e) => setF({ ...f, adminEmail: e.target.value })} placeholder="owner@salon.com" /></Field>
-        <Field label={t('se.no.adminPhone')}><input style={ui.input} value={f.adminPhone} onChange={(e) => setF({ ...f, adminPhone: e.target.value })} placeholder="+1…" /></Field>
+        <Field label={t('se.no.adminPhone')}><input style={ui.input} value={f.adminPhone} onChange={(e) => setF({ ...f, adminPhone: e.target.value })} placeholder={dialHint} /></Field>
       </div>
 
       <div style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1304,7 +1306,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
           <Field label={t('se.no.accountSid')}><input style={ui.input} value={tw.accountSid} onChange={(e) => setTw({ ...tw, accountSid: e.target.value })} placeholder="AC…" /></Field>
           <Field label={t('se.no.authToken')}><input style={ui.input} type="password" value={tw.authToken} onChange={(e) => setTw({ ...tw, authToken: e.target.value })} placeholder={n.twilio.connected ? t('se.no.saved') : t('se.no.authToken')} /></Field>
-          <Field label={t('se.no.fromNumber')}><input style={ui.input} value={tw.fromNumber} onChange={(e) => setTw({ ...tw, fromNumber: e.target.value })} placeholder="+1…" /></Field>
+          <Field label={t('se.no.fromNumber')}><input style={ui.input} value={tw.fromNumber} onChange={(e) => setTw({ ...tw, fromNumber: e.target.value })} placeholder={dialHint} /></Field>
         </div>
       </>)}
 
@@ -1368,7 +1370,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       )}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 10 }}>
-        <Field label={t('se.no.smsTestTo')}><input style={ui.input} value={smsTo} onChange={(e) => setSmsTo(e.target.value)} placeholder="+1…" /></Field>
+        <Field label={t('se.no.smsTestTo')}><input style={ui.input} value={smsTo} onChange={(e) => setSmsTo(e.target.value)} placeholder={dialHint} /></Field>
         <button
           style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}
           disabled={smsTest.kind === 'sending'}

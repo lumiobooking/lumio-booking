@@ -35,7 +35,17 @@ export class TwilioSmsProvider implements SmsProvider {
     params.set('To', to);
     params.set('Body', message.body);
     if (this.config.messagingServiceSid) params.set('MessagingServiceSid', this.config.messagingServiceSid);
-    else if (this.config.fromNumber) params.set('From', this.config.fromNumber);
+    else if (this.config.fromNumber) {
+      // Outside North America a sender typed the local way ("0485 085 339")
+      // is not a number Twilio knows. Put it in +61… form with the salon's
+      // own dial code. North America (dial code 1) is sent exactly as typed,
+      // as it always has been.
+      const dial = String(message.defaultDialCode ?? '1');
+      const from = dial !== '1' && !this.config.fromNumber.trim().startsWith('+')
+        ? (toE164(this.config.fromNumber, dial) ?? this.config.fromNumber)
+        : this.config.fromNumber;
+      params.set('From', from);
+    }
     else return { success: false, error: 'No Twilio sender (set TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_NUMBER)' };
 
     const auth = Buffer.from(`${this.config.accountSid}:${this.config.authToken}`).toString('base64');

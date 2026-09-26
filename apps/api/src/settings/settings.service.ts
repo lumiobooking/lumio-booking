@@ -1,3 +1,4 @@
+import { dialCodeFor } from '../common/phone';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
@@ -837,7 +838,11 @@ export class SettingsService {
       }
     }
     const salon = n.senderName || tenant?.name || 'Lumio Booking';
-    const res = await provider.sendSms({ to: target, body: `[TEST] ${salon}: your SMS is working. Reply STOP to opt out.` });
+    // A local number ("0412 345 678") means the salon's own country, the same
+    // way the real booking texts read it — not the US.
+    const tz = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    const defaultDialCode = dialCodeFor(tenant?.market ?? null, tz?.timezone ?? null);
+    const res = await provider.sendSms({ to: target, defaultDialCode, body: `[TEST] ${salon}: your SMS is working. Reply STOP to opt out.` });
     return res.success ? { ok: true } : { ok: false, error: res.error || 'Send failed' };
   }
 

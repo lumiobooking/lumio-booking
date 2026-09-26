@@ -76,10 +76,10 @@ export class SupportService {
     // up from here, and three hundred live salons do not need it in the way.
     const rows = await this.prisma.tenant.findMany({
       where: { deletedAt: null, status: { not: TenantStatus.CANCELLED } },
-      select: { id: true, name: true, slug: true, status: true, createdAt: true, supportTeam: true } as never,
+      select: { id: true, name: true, slug: true, status: true, createdAt: true, supportTeam: true, market: true } as never,
       orderBy: { name: 'asc' },
       take: 2000,
-    }) as unknown as { id: string; name: string; slug: string; status: string; createdAt: Date; supportTeam: string | null }[];
+    }) as unknown as { id: string; name: string; slug: string; status: string; createdAt: Date; supportTeam: string | null; market?: string | null }[];
     // The team's own label for each salon, read in one query for the whole
     // list. A failure here must not empty the list: every salon then simply
     // shows the label its access status implies. See ./ops-stage.

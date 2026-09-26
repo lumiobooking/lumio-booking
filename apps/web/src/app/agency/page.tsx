@@ -25,6 +25,8 @@ interface TenantRow {
   name: string;
   slug: string;
   status: string;
+  /** Which market the salon is in: US | CA | AU | VN. */
+  market?: string | null;
   createdAt: string;
   /** Messenger/Instagram AI: on, off (Page connected for posting only), none (no Page). */
   bot?: 'on' | 'off' | 'none';
@@ -130,6 +132,10 @@ export default function AgencyPage() {
   /** Which team's list is on screen. Null until the board says which is mine. */
   const [pick, setPick] = useState<string | null>(null);
   const [newOnly, setNewOnly] = useState(false);
+  /** Market filter: '' = every market. Remembered on this device. */
+  const [mkt, setMktState] = useState<string>('');
+  useEffect(() => { try { setMktState(window.localStorage.getItem('lumio_agency_market') || ''); } catch { /* private mode */ } }, []);
+  const setMkt = (m: string) => { setMktState(m); try { window.localStorage.setItem('lumio_agency_market', m); } catch { /* ignore */ } };
   /** Bulk mode: the tick boxes are showing, and these are the salons ticked. */
   const [picking, setPicking] = useState(false);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
@@ -190,7 +196,8 @@ export default function AgencyPage() {
    */
   const listed = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (needle) return rows.filter((r) => `${r.name} ${r.slug}`.toLowerCase().includes(needle));
+    const inMkt = (r: TenantRow) => !mkt || marketOf(r) === mkt;
+    if (needle) return rows.filter((r) => inMkt(r) && `${r.name} ${r.slug}`.toLowerCase().includes(needle));
     let out: TenantRow[];
     if (!board || pick === null || pick === ALL) {
       out = [...rows].sort((a, b) =>
@@ -201,6 +208,7 @@ export default function AgencyPage() {
         .map((sg) => byId.get(sg.id))
         .filter((t): t is TenantRow => Boolean(t));
     }
+    if (mkt) out = out.filter(inMkt);
     if (newOnly) out = out.filter((t) => newIds.has(t.id));
     if (waitingOnly) out = out.filter((t) => noticeBy.has(t.id) || (t.heldPosts ?? 0) > 0);
     // A salon that is waiting on us floats to the top of whatever list this
@@ -211,7 +219,13 @@ export default function AgencyPage() {
       return n ? Date.parse(n.newest.at) : (t.heldPosts ?? 0) > 0 ? 1 : 0;
     };
     return [...out].sort((a, b) => waitAt(b) - waitAt(a));
-  }, [rows, board, pick, q, newOnly, newIds, waitingOnly, noticeBy]);
+  }, [rows, board, pick, q, newOnly, newIds, waitingOnly, noticeBy, mkt]);
+  /** How many salons each market has, for the filter. */
+  const marketCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of rows) m.set(marketOf(r), (m.get(marketOf(r)) ?? 0) + 1);
+    return m;
+  }, [rows]);
   const waitingHere = useMemo(() => rows.filter((t) => noticeBy.has(t.id) || (t.heldPosts ?? 0) > 0).length, [rows, noticeBy]);
 
   /** How many of the salons on screen arrived this week. Decides the tags. */
@@ -571,6 +585,18 @@ export default function AgencyPage() {
               active={pick === ''}
               onClick={() => { setPick(''); setNewOnly(false); }}
             />
+            {/* Which market. Combines with the team: "Team 2 · Úc". */}
+            <div className="ag-side-lbl" style={{ marginTop: 14 }}>Thị trường</div>
+            <SideItem item={{ key: 'mkt-all', label: 'Mọi thị trường', count: rows.length, fresh: 0 }} active={!mkt} onClick={() => setMkt('')} />
+            {MARKET_ORDER.filter((code) => (marketCounts.get(code) ?? 0) > 0).map((code) => (
+              <SideItem
+                key={code}
+                item={{ key: `mkt-${code}`, label: `${MARKET_LOOK[code].name}`, count: marketCounts.get(code) ?? 0, fresh: 0 }}
+                badge={<MarketChip code={code} />}
+                active={mkt === code}
+                onClick={() => setMkt(mkt === code ? '' : code)}
+              />
+            ))}
           </aside>
 
           <div style={{ minWidth: 0 }}>
@@ -819,11 +845,40 @@ function NextPill({ next, disabled, onChange }: { next: WorkNext | ''; disabled?
  * team. The count is what makes it a decision — "Team 2 · 1" says more about
  * where the work is than any label could.
  */
-function SideItem({ item, active, onClick, tone }: {
+/**
+ * The salon's market, as two letters in its own colour.
+ *
+ * Letters, not flags: Windows has no glyph for a flag emoji and Chrome there
+ * draws the raw letters anyway ("us US"). A coloured code reads the same on
+ * every machine and is learnt in a day.
+ */
+const MARKET_ORDER = ['US', 'CA', 'AU', 'VN'] as const;
+const MARKET_LOOK: Record<string, { name: string; fg: string; bg: string; border: string }> = {
+  US: { name: 'Mỹ', fg: 'var(--c93c5fd)', bg: 'rgba(59,130,246,.14)', border: '#3b82f6' },
+  CA: { name: 'Canada', fg: 'var(--cfca5a5)', bg: 'rgba(239,68,68,.12)', border: '#ef4444' },
+  AU: { name: 'Úc', fg: 'var(--cfcd34d)', bg: 'rgba(245,158,11,.14)', border: '#f59e0b' },
+  VN: { name: 'Việt Nam', fg: 'var(--c86efac)', bg: 'rgba(34,197,94,.13)', border: '#22c55e' },
+};
+function marketOf(t: { market?: string | null }): string {
+  const m = String(t.market ?? 'US').trim().toUpperCase();
+  return (MARKET_ORDER as readonly string[]).includes(m) ? m : 'US';
+}
+function MarketChip({ code }: { code: string }) {
+  const look = MARKET_LOOK[code] ?? MARKET_LOOK.US;
+  return (
+    <span title={`Thị trường: ${look.name}`} style={{
+      flexShrink: 0, fontSize: 10, fontWeight: 800, letterSpacing: 0.4, lineHeight: 1,
+      padding: '3px 6px', borderRadius: 6, color: look.fg, background: look.bg, border: `1px solid ${look.border}`,
+    }}>{code}</span>
+  );
+}
+
+function SideItem({ item, active, onClick, tone, badge }: {
   item: { key: string; label: string; count: number; fresh: number; mine?: boolean; members?: string[] };
   active: boolean;
   onClick: () => void;
   tone?: 'warn';
+  badge?: React.ReactNode;
 }) {
   const accent = tone === 'warn' ? '#f59e0b' : '#6366f1';
   return (
@@ -838,6 +893,7 @@ function SideItem({ item, active, onClick, tone }: {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        {badge}
         <span style={{ fontWeight: 800, fontSize: 13.5, whiteSpace: 'nowrap' }}>{item.label}</span>
         {item.mine && <span style={{ fontSize: 9.5, fontWeight: 800, background: '#6366f1', color: '#fff', borderRadius: 999, padding: '1px 6px' }}>TÔI</span>}
         <span style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 700, color: active ? 'var(--ce2e8f0)' : 'var(--c64748b)', paddingLeft: 8 }}>{item.count}</span>
@@ -924,8 +980,9 @@ function Row({
         />
       )}
       <div className="ag-name" style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 14.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {t.name}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+          <MarketChip code={marketOf(t)} />
+          <span style={{ fontWeight: 700, fontSize: 14.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{t.name}</span>
         </div>
         <div style={{ fontSize: 12, color: 'var(--c64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>/{t.slug}</div>
       </div>

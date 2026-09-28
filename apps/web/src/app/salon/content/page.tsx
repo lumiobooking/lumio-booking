@@ -344,7 +344,7 @@ interface QueuedPost {
   errorIsStale: boolean;
   /** Due, not sent, no error: why, in words. Null otherwise. */
   waiting?: { vi: string; en: string } | null;
-  results: { channel: string; id: string | null; url: string | null; error: string | null; urlKind?: 'post' | 'profile' }[];
+  results: { channel: string; id: string | null; url: string | null; error: string | null; urlKind?: 'post' | 'profile'; note?: string }[];
   postedAt: string | null;
   createdByName: string | null;
   /** Why it cannot go out as it stands. Empty when it is fine. */
@@ -4348,7 +4348,7 @@ function Inner() {
                     <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 5 }}>
                       {T('Ảnh & video (link https công khai)', 'Photos & video (public https links)')}
                       {postDraft.channels.includes('instagram') && ` — ${T('Instagram bắt buộc có ít nhất 1', 'Instagram needs at least one')}`}
-                      {postDraft.channels.includes('google') && ` — ${T('Google Business chỉ nhận ảnh', 'Google Business takes photos only')}`}
+                      {postDraft.channels.includes('google') && ` — ${T('Google Business: video được thêm vào mục Ảnh & video của hồ sơ, bài đăng lên kèm chữ (và ảnh nếu có)', 'Google Business: a video goes to the profile\u2019s Photos & videos; the post goes out with the text (and a photo if there is one)')}`}
                       {postDraft.channels.includes('tiktok') && ` — ${T('TikTok cần 1 video .mp4', 'TikTok needs one .mp4 video')}`}
                     </div>
 
@@ -4999,6 +4999,7 @@ function Inner() {
                                           : T('xem bài', 'view the post')}
                                       </a>
                                       : <span style={{ color: 'var(--ink-good)' }}>✓ {name}</span>}
+                                  {asked && r?.note && <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.45 }}>ⓘ {r.note}</div>}
                                 </div>
                               );
                             })}

@@ -191,9 +191,9 @@ describe('Google Business Profile is a third place, with Google’s own rules', 
     expect(p.problems[0]).toMatch(/đánh giá Google/);
   });
 
-  it('refuses video — Google local posts take photos only', () => {
+  it('accepts a video for Google — it goes to the profile\'s Photos & videos, the text goes out as the post', () => {
     const p = planPublish(draft({ channels: ['google'], media: [vid()] }), PAGE, GBP);
-    expect(p.problems[0]).toMatch(/không nhận video/);
+    expect(p.ready).toBe(true);
   });
 
   it('refuses a caption past 1,500 characters and a photo with no words', () => {
@@ -207,7 +207,8 @@ describe('Google Business Profile is a third place, with Google’s own rules', 
   });
 
   it('holds the whole post when Google cannot take it but Facebook can', () => {
-    const p = planPublish(draft({ channels: ['facebook', 'google'], media: [vid()] }), PAGE, GBP);
+    // A video with no words: Facebook posts it, Google needs text.
+    const p = planPublish(draft({ channels: ['facebook', 'google'], message: '', media: [vid()] }), PAGE, GBP);
     expect(p.ready).toBe(false);
     expect(p.plans.find((x) => x.channel === 'facebook')!.ok).toBe(true);
   });

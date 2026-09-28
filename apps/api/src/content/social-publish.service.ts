@@ -82,6 +82,8 @@ export interface PublishResult {
    * else. Absent on results written before this existed; read as 'post'.
    */
   urlKind?: 'post' | 'profile';
+  /** Something the person should know about how it went out (shown under the result). */
+  note?: string;
 }
 
 /**
@@ -1428,6 +1430,7 @@ export class SocialPublishService {
       // and a post with a linkless button never does. See ./gbp-cta.
       const cta = resolveGbpCta(opts, await this.gbpLinksFor(tenantId));
       const photo = media.find((m) => m.kind === 'image')?.url ?? null;
+      const video = media.find((m) => m.kind === 'video')?.url ?? null;
       // What Google receives is the caption minus the contact block — the
       // same text the composer previewed and the gate approved.
       const summary = gbpSummary(message).text;
@@ -1435,9 +1438,22 @@ export class SocialPublishService {
         summary,
         languageCode: gbpLanguage(summary),
         photoUrl: photo,
+        videoUrl: video,
         cta,
       });
-      return { channel: 'google', id: out.name, url: out.url, error: null };
+      // The post is live. A video Google would not take inside it goes on the
+      // profile's Photos & videos, where Google's API does accept video. That
+      // step failing never fails the post — it is said in the note instead.
+      let note: string | undefined;
+      if (video && !out.videoInPost) {
+        try {
+          await this.google.addLocationVideo(tenantId, video);
+          note = 'Video đã được thêm vào mục Ảnh & video của hồ sơ Google (Google không cho gắn video vào bài đăng qua API); bài đăng lên kèm chữ' + (photo ? ' và ảnh.' : '.');
+        } catch (e) {
+          note = `Bài đã lên Google, nhưng chưa thêm được video vào hồ sơ: ${e instanceof Error ? e.message.replace(/^Bad Request Exception:?\s*/i, '') : 'lỗi mạng'}`;
+        }
+      }
+      return { channel: 'google', id: out.name, url: out.url, error: null, ...(note ? { note } : {}) };
     } catch (e) {
       return fail(e instanceof Error ? e.message.replace(/^Bad Request Exception:?\s*/i, '') : 'lỗi mạng');
     }

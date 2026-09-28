@@ -574,12 +574,46 @@ export class GoogleReviewsService {
    * moment the post is due. Returns the post's resource name and the Maps
    * link Google hands back, or throws with Google's own words.
    */
+  /**
+   * Add a video to the profile's "Photos & videos".
+   *
+   * The one place Google's API still takes a video. A local post cannot carry
+   * one (see createLocalPost), so a post with a video puts the video HERE —
+   * it shows on Maps and Search under the business — and the text goes out
+   * as the post. Google fetches the file from the URL itself.
+   */
+  async addLocationVideo(tenantId: string, videoUrl: string): Promise<{ name: string | null }> {
+    const s = await this.getSettings(tenantId);
+    const where = await this.postingLocation(tenantId);
+    if (!where) throw new BadRequestException('Tiệm chưa kết nối Google Business hoặc chưa chọn địa điểm.');
+    const token = await this.accessToken(s);
+    const res = await fetch(`https://mybusiness.googleapis.com/v4/${where.parent}/media`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ mediaFormat: 'VIDEO', locationAssociation: { category: 'ADDITIONAL' }, sourceUrl: videoUrl }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const text = await res.text().catch(() => '');
+    if (!res.ok) {
+      let msg = text.slice(0, 200);
+      try { msg = (JSON.parse(text) as { error?: { message?: string } }).error?.message || msg; } catch { /* keep raw */ }
+      throw new BadRequestException(`Google ${res.status}: ${msg}`);
+    }
+    let out: { name?: string } = {};
+    try { out = JSON.parse(text) as typeof out; } catch { /* empty body */ }
+    return { name: out.name ?? null };
+  }
+
   async createLocalPost(tenantId: string, body: {
     summary: string; languageCode: 'vi' | 'en'; photoUrl: string | null;
+    /** A video to TRY in the post itself. Google's post API has refused video
+     *  for years; if it still does, the post goes out without it and the
+     *  caller adds the video to the profile instead (videoInPost: false). */
+    videoUrl?: string | null;
     /** The button. CALL carries no url — Google dials the profile's own phone
      *  and rejects a url on that action type. Every other type needs one. */
     cta: { actionType: 'BOOK' | 'LEARN_MORE' | 'CALL' | 'ORDER' | 'SHOP' | 'SIGN_UP'; url?: string } | null;
-  }): Promise<{ name: string | null; url: string | null }> {
+  }): Promise<{ name: string | null; url: string | null; videoInPost?: boolean }> {
     const s = await this.getSettings(tenantId);
     const where = await this.postingLocation(tenantId);
     if (!where) throw new BadRequestException('Tiệm chưa kết nối Google Business hoặc chưa chọn địa điểm.');
@@ -589,7 +623,14 @@ export class GoogleReviewsService {
       summary: body.summary,
       topicType: 'STANDARD',
     };
-    if (body.photoUrl) payload.media = [{ mediaFormat: 'PHOTO', sourceUrl: body.photoUrl }];
+    const photoMedia = body.photoUrl ? [{ mediaFormat: 'PHOTO', sourceUrl: body.photoUrl }] : null;
+    let videoInPost = false;
+    if (body.videoUrl) {
+      payload.media = [{ mediaFormat: 'VIDEO', sourceUrl: body.videoUrl }];
+      videoInPost = true;
+    } else if (photoMedia) {
+      payload.media = photoMedia;
+    }
     if (body.cta) {
       payload.callToAction = body.cta.actionType === 'CALL' || !body.cta.url
         ? { actionType: body.cta.actionType }
@@ -609,6 +650,16 @@ export class GoogleReviewsService {
     };
 
     let { res, text, msg } = await send(where.parent);
+
+    // Google refused the video inside the post (the usual answer): send the
+    // same post without it — with the photo when there is one — and let the
+    // caller put the video on the profile. The post itself must not be lost
+    // over the one part Google will not take.
+    if (videoInPost && res.status === 400) {
+      if (photoMedia) payload.media = photoMedia; else delete payload.media;
+      videoInPost = false;
+      ({ res, text, msg } = await send(where.parent));
+    }
 
     // A 404 here is three different problems wearing one sentence (see
     // gbp-post-404.ts). Ask Google which, repair the one that is ours, and
@@ -630,7 +681,7 @@ export class GoogleReviewsService {
     }
     let out: { name?: string; searchUrl?: string } = {};
     try { out = JSON.parse(text) as typeof out; } catch { /* empty body */ }
-    return { name: out.name ?? null, url: out.searchUrl ?? null };
+    return { name: out.name ?? null, url: out.searchUrl ?? null, videoInPost };
   }
 
   /**

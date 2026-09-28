@@ -272,7 +272,7 @@ function refuse(channel: Channel, c: Checked, page: ConnectedPage | null): strin
 
 /**
  * Google Business Profile: connected under Đánh giá Google, a location chosen,
- * text within 1,500 characters, photos only. A second photo is not refused —
+ * text within 1,500 characters; a video goes to the profile's Photos & videos. A second photo is not refused —
  * the first one goes, and the composer says so — because a carousel written
  * for Facebook should not have to be split just to reach Google Maps.
  */
@@ -286,7 +286,11 @@ function refuseGoogle(c: Checked, google: GoogleLocation | null, gbpAck: readonl
   // refused for the footer.
   const summary = gbpSummary(c.text).text;
   if (String(c.text).replace(/\s+/g, '').length > 0 && summary.length > GBP_SUMMARY_MAX) return `Nội dung dài ${summary.length} ký tự, quá giới hạn ${GBP_SUMMARY_MAX} của Google Business.`;
-  if (c.media.some((m) => m.kind === 'video')) return 'Google Business chỉ nhận ảnh, không nhận video. Bỏ video, hoặc bỏ Google Business khỏi bài này.';
+  // A video is NOT refused any more. Google's post API has not taken video
+  // for years (the Business Profile screen does, the API does not), but the
+  // profile's own "Photos & videos" section does — so the sender posts the
+  // text (with the photo, if there is one) and adds the video to the profile.
+  // See toGoogle in social-publish.service.
   const share = c.media.map((m) => sharePageProblem(m.url)).find(Boolean);
   if (share) return share;
   const bad = c.media.find((m) => !usableMediaUrl(m.url));

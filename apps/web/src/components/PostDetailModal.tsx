@@ -34,6 +34,8 @@ export interface DetailPost {
     /** 'profile' when the link opens the account, not the post — a private
      *  TikTok post has no public page. Absent on older rows: read as 'post'. */
     urlKind?: 'post' | 'profile';
+    /** How it went out, when that needs saying (e.g. Google: video added to the profile). */
+    note?: string;
   }[];
   postedAt?: string | null;
   writerName?: string | null;
@@ -200,11 +202,14 @@ export function PostDetailModal({
                     const name = CH_NAME[c] ?? c;
                     if (r?.url) {
                       return (
-                        <a key={c} href={r.url} target="_blank" rel="noreferrer" style={{ color: 'var(--ink-link)' }}>
-                          {name} — {r.urlKind === 'profile'
-                            ? T('bài riêng tư, mở trang tài khoản', 'private post — open the profile')
-                            : T('xem bài', 'view the post')} ↗
-                        </a>
+                        <span key={c} style={{ display: 'flex', flexDirection: 'column' }}>
+                          <a href={r.url} target="_blank" rel="noreferrer" style={{ color: 'var(--ink-link)' }}>
+                            {name} — {r.urlKind === 'profile'
+                              ? T('bài riêng tư, mở trang tài khoản', 'private post — open the profile')
+                              : T('xem bài', 'view the post')} ↗
+                          </a>
+                          {r.note && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>ⓘ {r.note}</span>}
+                        </span>
                       );
                     }
                     if (r && !r.error) {

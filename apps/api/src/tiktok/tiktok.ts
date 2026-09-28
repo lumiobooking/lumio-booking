@@ -356,7 +356,11 @@ export function explainTikTokError(code: string | null | undefined, message?: st
       // only accept a post into an account that is itself set to private. The
       // old text told people to do the thing they had already done, which is
       // worse than no message at all.
-      return 'App Lumio chưa được TikTok duyệt, nên TikTok chỉ cho đăng vào TÀI KHOẢN đang để riêng tư. Mở app TikTok → Settings → Privacy → bật "Private account", rồi đăng lại. (Chọn "Chỉ mình tôi" cho bài là cần, nhưng chưa đủ.) Sau khi app được duyệt thì không cần nữa.';
+      // "Live" in the developer portal is NOT this. Going live is the app
+      // review; posting publicly needs the separate Direct Post audit of the
+      // Content Posting API. Said plainly, because the portal showing a green
+      // "Live" badge is exactly what makes this error look like a bug.
+      return 'App Lumio chưa được TikTok duyệt phần ĐĂNG CÔNG KHAI (audit "Direct Post" của Content Posting API — khác với việc app đã "Live"). Trong lúc chờ, TikTok chỉ cho đăng vào TÀI KHOẢN đang để riêng tư: mở app TikTok → Settings → Privacy → bật "Private account", chọn "Chỉ mình tôi" cho bài, rồi đăng lại. Qua audit rồi thì không cần nữa.';
     case 'spam_risk_too_many_posts':
       return 'TikTok chặn vì tài khoản này đã đăng quá số bài trong ngày qua API. Dời bài sang ngày mai.';
     case 'spam_risk_user_banned_from_posting':

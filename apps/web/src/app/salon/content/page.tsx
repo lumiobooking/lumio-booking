@@ -784,6 +784,17 @@ function Inner() {
   /** The attached clip, measured in the browser, so a too-long video is
       caught here rather than by TikTok after the upload finishes. */
   const [ttClip, setTtClip] = useState<{ url: string; sec: number } | null>(null);
+  // TikTok's rule: read the LATEST creator info whenever the Post-to-TikTok
+  // screen is shown — privacy options, max length, interaction settings and
+  // whether the account may post right now. Once per post opened with
+  // TikTok ticked (and again when TikTok is ticked later), not on every key.
+  const ttPanelKey = postDraft && postDraft.channels.includes('tiktok') && queue?.tiktok && !queue.tiktok.needsReconnect
+    ? `${postDraft.id ?? 'new'}` : null;
+  useEffect(() => {
+    if (!ttPanelKey) return;
+    void refreshTikTokCreator();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ttPanelKey]);
   const [mediaInput, setMediaInput] = useState('');
   /**
    * The caption box. A NEW post opens with the shop's footer already typed
@@ -4263,7 +4274,7 @@ function Inner() {
                                 >
                                   <option value="">{T('— Chọn (TikTok bắt buộc tự chọn) —', '— Choose (TikTok requires a choice) —')}</option>
                                   {TT_PRIVACY.filter((x) => allowed.includes(x.k)).map((x) => (
-                                    <option key={x.k} value={x.k} disabled={x.k === 'SELF_ONLY' && Boolean(o.brandedContent)}>
+                                    <option key={x.k} value={x.k} disabled={x.k === 'SELF_ONLY' && Boolean(o.brandedContent)} title={x.k === 'SELF_ONLY' && o.brandedContent ? 'Branded content visibility cannot be set to private' : undefined}>
                                       {vi ? x.vi : x.en}{x.k === 'SELF_ONLY' && o.brandedContent ? T(' — không dùng được với nội dung tài trợ', ' — not available for branded content') : ''}
                                     </option>
                                   ))}
@@ -4293,12 +4304,24 @@ function Inner() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 7, paddingLeft: 4 }}>
                               <label style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 7, fontSize: 12.5, color: 'var(--ce2e8f0)', cursor: 'pointer' }}>
                                 <input type="checkbox" checked={Boolean(o.yourBrand)} onChange={(e) => set({ yourBrand: e.target.checked })} style={{ width: 15, height: 15, accentColor: '#69c9d0', marginTop: 2 }} />
-                                <span>{T('Thương hiệu của tiệm', 'Your brand')}<br /><span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{T('Video sẽ được gắn nhãn "Promotional content".', 'Your video will be labeled "Promotional content".')}</span></span>
+                                <span>{T('Thương hiệu của tiệm', 'Your brand')}<br /><span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{T('Video sẽ được gắn nhãn "Promotional content".', 'Your video will be labeled as "Promotional content".')}</span></span>
                               </label>
-                              <label style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 7, fontSize: 12.5, color: 'var(--ce2e8f0)', cursor: 'pointer' }}>
-                                <input type="checkbox" checked={Boolean(o.brandedContent)} onChange={(e) => set({ brandedContent: e.target.checked, ...(e.target.checked && o.privacy === 'SELF_ONLY' ? { privacy: '' as TikTokOpts['privacy'] } : {}) })} style={{ width: 15, height: 15, accentColor: '#69c9d0', marginTop: 2 }} />
-                                <span>{T('Nội dung được tài trợ', 'Branded content')}<br /><span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{T('Video sẽ được gắn nhãn "Paid partnership". Không đặt "Chỉ mình tôi" được.', 'Your video will be labeled "Paid partnership". Cannot be "Only me".')}</span></span>
+                              <label
+                                title={o.privacy === 'SELF_ONLY' ? T('Nội dung được tài trợ không đặt được ở chế độ riêng tư.', 'Branded content visibility cannot be set to private') : undefined}
+                                style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 7, fontSize: 12.5, color: o.privacy === 'SELF_ONLY' ? 'var(--c64748b)' : 'var(--ce2e8f0)', cursor: o.privacy === 'SELF_ONLY' ? 'not-allowed' : 'pointer' }}
+                              >
+                                <input type="checkbox" disabled={o.privacy === 'SELF_ONLY'} checked={Boolean(o.brandedContent)} onChange={(e) => set({ brandedContent: e.target.checked })} style={{ width: 15, height: 15, accentColor: '#69c9d0', marginTop: 2 }} />
+                                <span>{T('Nội dung được tài trợ', 'Branded content')}<br /><span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
+                                  {o.privacy === 'SELF_ONLY'
+                                    ? T('Nội dung được tài trợ không đặt được ở chế độ riêng tư ("Chỉ mình tôi").', 'Branded content visibility cannot be set to private.')
+                                    : T('Video sẽ được gắn nhãn "Paid partnership".', 'Your video will be labeled as "Paid partnership".')}
+                                </span></span>
                               </label>
+                              {!o.yourBrand && !o.brandedContent && (
+                                <div style={{ fontSize: 11.5, color: 'var(--cfde68a)' }}>
+                                  {T('Cần chọn video quảng bá cho tiệm, cho bên thứ ba, hay cả hai.', 'You need to indicate if your content promotes yourself, a third party, or both.')}
+                                </div>
+                              )}
                               {(o.yourBrand || o.brandedContent) && (
                                 <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
                                   {T('Nhãn hiện trên TikTok:', 'The label shown on TikTok:')}{' '}

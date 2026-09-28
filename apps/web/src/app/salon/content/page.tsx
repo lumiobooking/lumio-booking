@@ -4165,6 +4165,10 @@ function Inner() {
                         <input type="checkbox" disabled={off} checked={!off && Boolean(o[k])} onChange={(e) => set({ [k]: e.target.checked } as Partial<TikTokOpts>)} style={{ width: 15, height: 15, accentColor: '#69c9d0' }} />
                         {label}{off && ` (${T('đã tắt trong TikTok', 'off in TikTok')})`}
                       </label>
+                      // Called as a function, not rendered as <Toggle/>: a component
+                      // defined inside render is a NEW type every render, so React
+                      // threw the checkbox away and remounted it on each click.
+
                     );
                     return (
                       <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 9, fontSize: 12.5, lineHeight: 1.55, background: 'var(--c1e293b)', border: `1px solid ${gate.length ? '#f59e0b' : 'var(--c334155)'}` }}>
@@ -4283,9 +4287,9 @@ function Inner() {
                               <div>
                                 <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 4 }}>{T('Cho phép người xem', 'Allow viewers to')}</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                                  <Toggle k="allowComment" label={T('Bình luận', 'Comment')} off={Boolean(cr?.commentDisabled)} />
-                                  <Toggle k="allowDuet" label="Duet" off={Boolean(cr?.duetDisabled)} />
-                                  <Toggle k="allowStitch" label="Stitch" off={Boolean(cr?.stitchDisabled)} />
+                                  {Toggle({ k: 'allowComment', label: T('Bình luận', 'Comment'), off: Boolean(cr?.commentDisabled) })}
+                                  {Toggle({ k: 'allowDuet', label: 'Duet', off: Boolean(cr?.duetDisabled) })}
+                                  {Toggle({ k: 'allowStitch', label: 'Stitch', off: Boolean(cr?.stitchDisabled) })}
                                 </div>
                               </div>
                             </div>

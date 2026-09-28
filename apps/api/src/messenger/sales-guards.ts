@@ -173,7 +173,19 @@ const STATES_A_PRICE = /([$₫€£]\s?\d|\d+\s?(usd|cad|aud|vnd|đ|k\/tháng)|\
  * prevented by refusing anybody — it is prevented by asking who they are
  * first, which a real buyer answers without hesitating.
  */
-export function disclosesBeforeQualifying(customerWords: string, reply: string): boolean {
+/** Does this text say which shop it is (a link, a phone, a named shop, a street)? */
+export function hasIdentitySignal(text: string): boolean {
+  return IDENTITY_SIGNAL.test(String(text || ''));
+}
+
+export function disclosesBeforeQualifying(customerWords: string, reply: string, identityKnown = false): boolean {
+  // Already known from somewhere other than the words typed in this window:
+  // a lead saved earlier, or a photo the customer sent of their shop's card
+  // or Google Maps listing. The gate used to read ONLY typed words, so a
+  // customer who sent a business card and then said "Yes" was blocked and
+  // asked for the shop name and city again — the exact thing it exists to
+  // prevent, pointed at the customer instead of at a stranger.
+  if (identityKnown) return false;
   if (IDENTITY_SIGNAL.test(String(customerWords || ''))) return false;
   return STATES_A_PRICE.test(String(reply || ''));
 }

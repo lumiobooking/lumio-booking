@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { personaFor } from '../common/business-persona';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import {
-  killsTheLead, dodgesTheQuestion, guessesGender, disclosesBeforeQualifying,
+  killsTheLead, dodgesTheQuestion, guessesGender, disclosesBeforeQualifying, hasIdentitySignal,
   claimsFreshStart, safeHandoffReply,
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
@@ -82,7 +82,20 @@ type Turn = {
   images?: string[];
   /** What else came with it (sticker, voice, file), for the stage direction. */
   media?: InboundMedia[];
+  /**
+   * What the customer's photo SAID, read once when it arrived: the text on a
+   * business card, the name and address on a Maps screenshot, the prices on a
+   * menu. The model sees a picture only on the turn it lands; without this,
+   * one message later the bot had forgotten a card it had just read aloud.
+   */
+  note?: string;
 };
+
+/** Marker the photo reader puts in front of a business it can identify. */
+const PHOTO_SHOP = 'DOANH NGHIỆP:';
+/** A turn as the model reads it: the photo's note rides with the words. */
+const withNote = (t: { content: string; note?: string }) =>
+  (t.note ? `${t.content}\n[Nội dung ảnh khách gửi (hệ thống đã đọc): ${t.note}]` : t.content);
 type Channel = 'messenger' | 'instagram' | 'zalo' | 'web';
 export interface BotFact { label: string; value: string; on: boolean }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
@@ -2268,7 +2281,11 @@ export class MessengerService implements OnModuleInit {
     // the new turns are appended to what is actually there.
     const live = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { history: true } }).catch(() => null);
     const liveHist = (Array.isArray(live?.history) ? live!.history : null) as Turn[] | null;
-    const base = liveHist && liveHist.length > history.length ? liveHist : history;
+    // The row as it is NOW is the base whenever it could be read. "The longer
+    // of the two" stopped working once the window was full: both are twenty
+    // turns long, the stale snapshot won, and a reply another run had just
+    // written was erased — one of the ways the bot forgot what it had said.
+    const base = liveHist ?? history;
     const seen = new Set(base.map((t) => `${t.role}|${t.at ?? ''}|${t.content}`));
     const fresh = turns.filter((t) => !seen.has(`${t.role}|${t.at ?? ''}|${t.content}`));
     const full = [...base, ...fresh];
@@ -2303,7 +2320,7 @@ export class MessengerService implements OnModuleInit {
     // No key / no credit: keep the turns RAW rather than dropping them. A
     // clumsy profile beats a bot that asks for a phone number twice.
     if (!key) {
-      await this.saveSummary(threadId, rawMemoryFallback(prev, dropped));
+      await this.saveSummary(threadId, rawMemoryFallback(prev, dropped.map((t) => ({ ...t, content: withNote(t) }))));
       return;
     }
     // The profile is written in the CUSTOMER's language. It used to be
@@ -2311,7 +2328,7 @@ export class MessengerService implements OnModuleInit {
     // the prompt as if it were the conversation, an English thread slowly
     // turned itself Vietnamese one distillation at a time.
     const lang = conversationLang(dropped.filter((t) => t.role === 'user').map((t) => String(t.content ?? '')));
-    const lines = dropped.map((t) => `${t.role === 'user' ? (lang === 'en' ? 'CUSTOMER' : 'KHACH') : 'SHOP'}: ${String(t.content).slice(0, 300)}`).join('\n');
+    const lines = dropped.map((t) => `${t.role === 'user' ? (lang === 'en' ? 'CUSTOMER' : 'KHACH') : 'SHOP'}: ${String(t.role === 'user' ? withNote(t) : t.content).slice(0, 500)}`).join('\n');
     const prompt = lang === 'en'
       ? `You keep the CUSTOMER PROFILE for a long-running Messenger conversation. Current profile:\n${prev || '(empty)'}\n\nOlder messages about to fall out of short-term memory:\n${lines}\n\nWrite the NEW profile: merge old + new, 120 words maximum, short bullet lines — customer name, phone, trade / business name, city, services or packages discussed, details they gave, anything still unfinished, their mood or intent. Write ONLY what actually appeared in the conversation, never an inference. Write it in ENGLISH. Return the profile itself, with no preamble.`
       : `Bạn giữ HỒ SƠ KHÁCH của một hội thoại Messenger dài hạn. Hồ sơ hiện tại:\n${prev || '(trống)'}\n\nCác tin nhắn cũ sắp bị xóa khỏi bộ nhớ ngắn hạn:\n${lines}\n\nViết lại hồ sơ MỚI: gộp cũ + mới, tối đa 120 từ, dạng gạch đầu dòng ngắn — tên khách, SĐT, ngành/tên tiệm, thành phố, gói/dịch vụ đã bàn, thông tin khách đã cung cấp, việc còn dang dở, thái độ/ý định. CHỈ ghi điều đã xuất hiện trong hội thoại, không suy diễn. Trả về đúng nội dung hồ sơ, không lời dẫn.`;
@@ -2609,8 +2626,12 @@ export class MessengerService implements OnModuleInit {
       return;
     }
     const history = (Array.isArray(fresh.history) ? fresh.history : []) as Turn[];
-    const imgTurn = attach;
     const inImages = attach.images ?? [];
+    // Read the photo ONCE, now, into words that stay in the history. Never
+    // blocks the reply for long and never fails it: no note is the old
+    // behaviour, not an error.
+    const photoNote = inImages.length ? await this.photoNote(conn.tenantId, inImages).catch(() => null) : null;
+    const imgTurn: Partial<Turn> = photoNote ? { ...attach, note: photoNote } : attach;
     // The customer turn may already be in history (recorded on arrival during a
     // human-handled stretch) — never store it twice. Two photos in a row carry
     // the same placeholder text, so a turn WITH a picture is never "already".
@@ -2663,6 +2684,7 @@ export class MessengerService implements OnModuleInit {
         known,
         images: inImages,
         media: attach.media ?? [],
+        photoNote,
       }), 55_000, 'agent');
     } catch (e) {
       this.logger.warn(`agent error: ${String(e).slice(0, 160)}`);
@@ -2767,6 +2789,53 @@ export class MessengerService implements OnModuleInit {
   // ---- the customer's photos, as the model sees them ------------------------
 
   /**
+   * Read a customer's photo into a few lines of text, once, when it arrives.
+   *
+   * The reply model looks at the picture on that turn only. Everything after
+   * it saw "[Khách gửi 1 ảnh]" — so a business card read aloud one message
+   * earlier was gone the next, and the bot asked for the shop's name again.
+   * This note is kept on the turn, fed into every later prompt, into the
+   * memory distiller, and into the check that decides whether we already know
+   * which shop we are talking to. Bounded: 20 seconds, a few hundred tokens,
+   * and on any failure the reply simply goes ahead without it.
+   */
+  private async photoNote(tenantId: string, urls: string[]): Promise<string | null> {
+    const blocks = await this.fetchImageBlocks(urls);
+    if (!blocks.length) return null;
+    const out = await llmChat({
+      system: 'You read photos customers send to a business over chat. Output plain text in Vietnamese, at most 5 short lines, no markdown.',
+      messages: [{
+        role: 'user',
+        content: [
+          ...(blocks as never[]),
+          {
+            type: 'text',
+            text: 'Ghi lại những gì ảnh cho biết, ngắn gọn:\n'
+              + `- Nếu ảnh cho thấy MỘT doanh nghiệp/cửa tiệm (danh thiếp, Google Maps, biển hiệu, trang web, menu): một dòng bắt đầu đúng bằng "${PHOTO_SHOP}" rồi tên | địa chỉ | thành phố, bang | số điện thoại | giờ mở cửa (bỏ mục không thấy).\n`
+              + '- Chữ quan trọng khác trong ảnh (giá, dịch vụ, ngày giờ, số tiền), chép đúng.\n'
+              + '- Nếu là mẫu móng/tóc/mi hoặc ảnh khác: mô tả ngắn thứ nhìn thấy.\n'
+              + 'Không đoán, không thêm gì không có trong ảnh.',
+          },
+        ],
+      }] as ChatMessage[],
+      max_tokens: 300,
+      timeoutMs: 20_000,
+    });
+    this.usage?.record({
+      feature: 'messenger', tenantId,
+      model: out.ok ? out.reply.usage?.model ?? 'unknown' : 'unknown',
+      input: out.ok ? out.reply.usage?.input ?? 0 : 0,
+      output: out.ok ? out.reply.usage?.output ?? 0 : 0,
+      cacheRead: 0, cacheWrite: 0,
+      failed: !out.ok,
+    });
+    if (!out.ok) return null;
+    const text = ((out.reply as { content?: AnthropicBlock[] }).content ?? [])
+      .filter((b) => b.type === 'text').map((b) => b.text || '').join('\n').trim();
+    return text ? text.replace(/\n{2,}/g, '\n').slice(0, 600) : null;
+  }
+
+  /**
    * Download each photo and hand it over as bytes. Messenger and Zalo both
    * re-encode what a customer sends (a phone photo comes out well under a
    * megabyte), so the API's 5 MB ceiling is rarely met — but it is checked,
@@ -2823,6 +2892,8 @@ export class MessengerService implements OnModuleInit {
       images?: string[];
       /** Anything else attached (sticker, voice, file) — shapes the stage direction. */
       media?: InboundMedia[];
+      /** What this turn's photo says, read once on arrival (see Turn.note). */
+      photoNote?: string | null;
       /** The visit created during THIS run, so a second service joins it
        *  instead of becoming a second bill, and so the confirmation link is
        *  sent whether or not the model remembers to include it. */
@@ -3126,7 +3197,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const salesTools = [
       {
         name: 'save_lead',
-        description: "Save a sales lead for the human team; they are alerted by email immediately. Call it as soon as you have the person's name and phone. If they have refused twice to give a number, call it anyway with the name and an empty phone — a named lead in a live thread still reaches the team.",
+        description: "Save a sales lead for the human team; they are alerted by email immediately. Call it as soon as you have the person's name and phone — OR as soon as their shop is identified (typed, a link, or a photo of their card / Maps listing that they confirmed), so it is saved and never asked for again. If they have refused twice to give a number, call it anyway with the name and an empty phone — a named lead in a live thread still reaches the team.",
         input_schema: {
           type: 'object',
           properties: {
@@ -3244,14 +3315,21 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // The language rule goes LAST — after the dossier, after the memory —
     // because the closest instruction to the customer's message is the one a
     // small model follows. Everything above it may be in the other language.
-    const dynamicSystem = clockLine + memoryBlock + gapNote + dossier + mediaRule + replyLangRule(customerLang);
+    // Every photo read in this window, pinned where the model cannot miss it.
+    // A card sent eight messages ago is still the shop this person runs.
+    const photoFacts = [...history.filter((h) => h.role === 'user' && h.note).map((h) => h.note as string), ...(ctx.photoNote ? [ctx.photoNote] : [])];
+    const photoBlock = photoFacts.length
+      ? `\nWHAT THE CUSTOMER'S PHOTOS SHOWED (read by the system when they arrived — treat as information the customer GAVE you; never ask again for a name, address, phone or city that appears here; if you are not sure it is THEIR shop, ask one short yes/no question, and once they confirm, it is settled):\n${photoFacts.map((n) => `- ${n}`).join('\n')}`
+        + (ctx.mode === 'sales' ? '\nWhen a photo shows their shop and they confirm (or simply carry on), call save_lead with salonName, city and phone taken from the photo — use their Facebook name as the name if they have not typed one.' : '')
+      : '';
+    const dynamicSystem = clockLine + memoryBlock + gapNote + photoBlock + dossier + mediaRule + replyLangRule(customerLang);
     const system = [
       { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: dynamicSystem },
     ];
     const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
 
-    const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.content }));
+    const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.role === 'user' ? withNote(h) : h.content }));
     // The API needs the first turn to be the customer's. When our greeting is
     // first we must pin something in front of it — but WHAT we pin is read by
     // the model as fact, and it used to always say the chat had just opened.
@@ -3275,7 +3353,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     }
     const messages: { role: string; content: unknown }[] = [
       ...hist,
-      { role: 'user', content: imageBlocks.length ? [...imageBlocks, { type: 'text', text: userText }] : userText },
+      { role: 'user', content: imageBlocks.length ? [...imageBlocks, { type: 'text', text: withNote({ content: userText, note: ctx.photoNote ?? undefined }) }] : withNote({ content: userText, note: ctx.photoNote ?? undefined }) },
     ];
 
     // One rewrite only: a gate that can loop is a gate that can hang a reply.
@@ -3287,7 +3365,13 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     let freshRetried = false;
     // Only what the CUSTOMER wrote counts as evidence of who they are — our own
     // earlier guesses must never become the reason to keep guessing.
-    const customerWords = [...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' ');
+    const customerWords = [...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? withNote(h) : '')), withNote({ content: userText, note: ctx.photoNote ?? undefined })].join(' ');
+    // Who they are may already be settled somewhere other than the words in
+    // this window: a lead saved earlier, a photo of their shop's card or Maps
+    // listing, or the long-term memory of an older stretch of this chat.
+    const identityKnown = Boolean(String(ctx.lead?.salonName ?? '').trim() || String(ctx.lead?.phone ?? '').trim())
+      || customerWords.includes(PHOTO_SHOP)
+      || hasIdentitySignal(String(ctx.memory ?? ''));
 
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
       // One door to the model. Anthropic first; when it fails for a reason the
@@ -3369,7 +3453,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         });
         continue;
       }
-      if (ctx.mode === 'sales' && text && !qualifyRetried && disclosesBeforeQualifying(customerWords, text)) {
+      if (ctx.mode === 'sales' && text && !qualifyRetried && disclosesBeforeQualifying(customerWords, text, identityKnown)) {
         qualifyRetried = true;
         this.logger.warn(`Sales reply blocked (priced before qualifying): ${text.slice(0, 140)}`);
         messages.push({ role: 'assistant', content: blocks });

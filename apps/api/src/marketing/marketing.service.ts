@@ -11,7 +11,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { SettingsService } from '../settings/settings.service';
 import { publicWebBase } from '../common/public-url.util';
-import { linkedCredsFor, LinkedCreds, LINKABLE_PLATFORMS } from './linked-channels';
+import { linkedCredsFor, LinkedCreds, LINKABLE_PLATFORMS, credsSource, type SyncAllLine } from './linked-channels';
 
 /**
  * Marketing module — Phase 0 (read-only).
@@ -913,18 +913,23 @@ export class MarketingService {
       // No explicit connection? Check whether another screen already covers it,
       // and SAY SO — the green tick must explain where it came from, and the
       // page must stop asking the owner to connect a thing they connected.
-      const linked = (!c || c.status === 'REVOKED') ? await this.linkedCreds(tenantId, p.platform) : null;
+      const linkedRaw = c?.status === 'ACTIVE' ? null : await this.linkedCreds(tenantId, p.platform);
+      const src = credsSource(c?.status ?? null, Boolean(linkedRaw));
+      const linked = src === 'linked' ? linkedRaw : null;
+      const own = src === 'explicit' ? c : null;
       out.push({
         ...p,
-        connected: (!!c && c.status === 'ACTIVE') || !!linked,
-        status: c?.status ?? (linked ? 'ACTIVE' : null),
-        accountName: c?.accountName ?? linked?.accountName ?? null,
-        externalAccountId: c?.externalAccountId ?? linked?.creds.externalAccountId ?? null,
+        connected: (!!own && own.status === 'ACTIVE') || !!linked,
+        status: own?.status ?? (linked ? 'ACTIVE' : null),
+        accountName: own?.accountName ?? linked?.accountName ?? null,
+        externalAccountId: own?.externalAccountId ?? linked?.creds.externalAccountId ?? null,
         // 'LINKED:<source>' — the UI keys off this to show "đang dùng kết nối
-        // Messenger AI / Google Reviews" instead of a token form.
-        keyHint: c?.keyHint ?? (linked ? `LINKED:${linked.source}` : null),
+        // ở Kết nối kênh social" instead of a token form.
+        keyHint: own?.keyHint ?? (linked ? `LINKED:${linked.source}` : null),
         lastSyncedAt: c?.lastSyncedAt ?? null,
-        lastError: c?.lastError ?? null,
+        // A linked channel's last failure is still worth showing (it is stored
+        // on the old row), but only when that row is the one in use.
+        lastError: own?.lastError ?? null,
       });
     }
     return out;
@@ -969,9 +974,9 @@ export class MarketingService {
 
   async testChannel(user: AuthenticatedUser, platform: string, tenantParam?: string) {
     const tenantId = this.tenantId(user, tenantParam);
-    const creds = await this.loadChannelCreds(tenantId, platform);
+    const { creds, linked } = await this.resolveCreds(tenantId, platform);
     const r = await this.social.get(platform).verify(creds);
-    await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { status: r.ok ? 'ACTIVE' : 'ERROR', lastError: r.ok ? null : (r.error ?? 'error') } });
+    if (!linked) await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { status: r.ok ? 'ACTIVE' : 'ERROR', lastError: r.ok ? null : (r.error ?? 'error') } });
     return r;
   }
 
@@ -1055,7 +1060,7 @@ export class MarketingService {
     const tenantId = this.tenantId(user, tenantParam);
     if (!/^\d{4}-\d{2}$/.test(month || '')) throw new BadRequestException('month must be YYYY-MM');
     const connector = this.social.get(platform);
-    const creds = await this.loadChannelCreds(tenantId, platform);
+    const { creds, linked } = await this.resolveCreds(tenantId, platform);
     try {
       const m = await connector.fetchMonthly(creds, month);
       // Map platform metrics onto the manual spend row (source='api'), so a synced
@@ -1090,11 +1095,14 @@ export class MarketingService {
           update: gdata,
         });
       }
-      await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { lastSyncedAt: new Date(), status: 'ACTIVE', lastError: null } });
+      // A sync that ran on the LINKED connection must not mark an old,
+      // failing row on this page ACTIVE — that row would then win next time
+      // and fail again. It only records when the numbers last came in.
+      await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: linked ? { lastSyncedAt: new Date(), lastError: null } : { lastSyncedAt: new Date(), status: 'ACTIVE', lastError: null } });
       await this.audit(tenantId, user.userId, 'marketing.channel.sync', { platform, month });
       return { ok: true, platform, month, metrics: m };
     } catch (e) {
-      await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { status: 'ERROR', lastError: String((e as Error).message).slice(0, 300) } });
+      await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: linked ? { lastError: String((e as Error).message).slice(0, 300) } : { status: 'ERROR', lastError: String((e as Error).message).slice(0, 300) } });
       throw new BadRequestException(String((e as Error).message));
     }
   }
@@ -1110,7 +1118,7 @@ export class MarketingService {
     if (!/^\d{4}-\d{2}$/.test(month || '')) throw new BadRequestException('month must be YYYY-MM');
     const connector = this.social.get(platform);
     if (!connector.fetchOrganic) throw new BadRequestException(`${platform} does not support organic insights`);
-    const creds = await this.loadChannelCreds(tenantId, platform);
+    const { creds, linked } = await this.resolveCreds(tenantId, platform);
     try {
       const res = await connector.fetchOrganic(creds, month);
       const rows: Array<{ ch: string; m: any }> = [];
@@ -1136,40 +1144,82 @@ export class MarketingService {
           update: data,
         });
       }
-      await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { lastSyncedAt: new Date(), status: 'ACTIVE', lastError: null } });
+      // A sync that ran on the LINKED connection must not mark an old,
+      // failing row on this page ACTIVE — that row would then win next time
+      // and fail again. It only records when the numbers last came in.
+      await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: linked ? { lastSyncedAt: new Date(), lastError: null } : { lastSyncedAt: new Date(), status: 'ACTIVE', lastError: null } });
       await this.audit(tenantId, user.userId, 'marketing.channel.syncOrganic', { platform, month, channels: rows.map((r) => r.ch) });
       return { ok: true, platform, month, channels: rows.map((r) => ({ platform: r.ch, ...r.m })) };
     } catch (e) {
-      await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { status: 'ERROR', lastError: String((e as Error).message).slice(0, 300) } });
+      await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: linked ? { lastError: String((e as Error).message).slice(0, 300) } : { status: 'ERROR', lastError: String((e as Error).message).slice(0, 300) } });
       throw new BadRequestException(String((e as Error).message));
     }
   }
 
-  /** Sync every ACTIVE, enabled channel for a tenant/month. Best-effort. */
-  async syncAllChannels(user: AuthenticatedUser, tenantId: string, month: string) {
-    const conns = (await this.prisma.marketingChannelConnection.findMany({ where: { tenantId, status: 'ACTIVE' } })) as any[];
-    const platforms = new Set<string>(conns.map((c: any) => String(c.platform)));
-    // Linked channels have no row here, but they sync all the same — that is
-    // the point of linking them. Without this, the auto-report would only
-    // include a linked channel after somebody pressed a manual sync button,
-    // which quietly reintroduces the double-connect this removes.
-    for (const p of LINKABLE_PLATFORMS) {
-      if (!platforms.has(p) && (await this.linkedCreds(tenantId, p))) platforms.add(p);
-    }
+  /**
+   * "Đồng bộ tất cả": every channel this salon has connected anywhere in the
+   * product, for one month, in one go. Best-effort — a failing channel is
+   * reported and recorded on its connection, never blocks the others — and a
+   * channel that was never connected is skipped, not an error.
+   */
+  async syncAllChannels(user: AuthenticatedUser, tenantId: string, month: string): Promise<{ synced: number; lines: SyncAllLine[]; reviews: boolean }> {
+    if (!/^\d{4}-\d{2}$/.test(month || '')) throw new BadRequestException('month must be YYYY-MM');
+    const conns = (await this.prisma.marketingChannelConnection.findMany({ where: { tenantId } })) as any[];
+    const byPlatform = new Map<string, any>(conns.map((c: any) => [String(c.platform), c]));
+    const lines: SyncAllLine[] = [];
     let synced = 0;
-    for (const platform of platforms) {
-      const meta = this.social.list().find((x) => x.platform === platform);
-      if (!meta || !meta.enabled) continue;
+    for (const meta of this.social.list()) {
+      if (!meta.enabled) continue;
+      const c = byPlatform.get(meta.platform);
+      const linked = c?.status === 'ACTIVE' ? null : await this.linkedCreds(tenantId, meta.platform);
+      if (credsSource(c?.status ?? null, Boolean(linked)) === 'none') {
+        lines.push({ platform: meta.platform, label: meta.label, state: 'skipped', message: 'not-connected' });
+        continue;
+      }
       try {
-        if (platform === 'meta_social') await this.syncOrganic(user, platform, month, tenantId);
-        else await this.syncChannel(user, platform, month, tenantId);
+        if (meta.platform === 'meta_social' || meta.platform === 'tiktok') await this.syncOrganic(user, meta.platform, month, tenantId);
+        else await this.syncChannel(user, meta.platform, month, tenantId);
         synced++;
-      } catch { /* recorded on the connection */ }
+        lines.push({ platform: meta.platform, label: meta.label, state: 'synced', message: null });
+      } catch (e) {
+        lines.push({ platform: meta.platform, label: meta.label, state: 'error', message: String((e as Error)?.message ?? e).slice(0, 200) });
+      }
     }
     // Reviews live in their own module (own OAuth), so refresh them whether or
     // not the GBP Performance channel is connected.
-    await this.refreshGbpReviews(tenantId, month).catch(() => undefined);
-    return { synced };
+    const reviews = await this.refreshGbpReviews(tenantId, month).then((r) => r.updated).catch(() => false);
+    return { synced, lines, reviews };
+  }
+
+  /** The button on the report screen: this salon, this month. */
+  async syncAllForUser(user: AuthenticatedUser, month: string, tenantParam?: string) {
+    const tenantId = this.tenantId(user, tenantParam);
+    const r = await this.syncAllChannels(user, tenantId, month);
+    await this.audit(tenantId, user.userId, 'marketing.channel.syncAll', { month, synced: r.synced });
+    return { month, ...r, at: new Date().toISOString() };
+  }
+
+  /**
+   * Every active salon, one month — the daily background run and the agency's
+   * "sync the whole system" action. Salons with nothing connected cost one
+   * query each and are skipped.
+   */
+  async syncAllTenants(month?: string): Promise<{ month: string; tenants: number; synced: number; failed: number }> {
+    const m = month && /^\d{4}-\d{2}$/.test(month) ? month : new Date().toISOString().slice(0, 7);
+    const tenants = await this.prisma.tenant.findMany({ where: { status: TenantStatus.ACTIVE, deletedAt: null }, select: { id: true } });
+    const sys: AuthenticatedUser = { userId: 'system', email: 'system@lumio.local', role: UserRole.SUPER_ADMIN, tenantId: null };
+    let synced = 0, failed = 0;
+    for (const t of tenants) {
+      try {
+        const r = await this.syncAllChannels(sys, t.id, m);
+        synced += r.synced;
+        failed += r.lines.filter((l) => l.state === 'error').length;
+      } catch (e) {
+        failed++;
+        this.logger.warn(`sync-all ${t.id} ${m}: ${String((e as Error)?.message ?? e)}`);
+      }
+    }
+    return { month: m, tenants: tenants.length, synced, failed };
   }
 
   /**
@@ -1289,25 +1339,29 @@ export class MarketingService {
   }
 
   private async loadChannelCreds(tenantId: string, platform: string): Promise<ChannelCreds> {
+    return (await this.resolveCreds(tenantId, platform)).creds;
+  }
+
+  /** The credentials to use, and whether they are the linked ones. */
+  private async resolveCreds(tenantId: string, platform: string): Promise<{ creds: ChannelCreds; linked: boolean }> {
     const conn = await this.prisma.marketingChannelConnection.findUnique({ where: { tenantId_platform: { tenantId, platform } } });
-    if (!conn || conn.status === 'REVOKED') {
-      // Nothing connected HERE — but another screen may already hold what this
-      // platform needs. An explicit connection on this page always wins over a
-      // linked one (checked first, above); the link is only ever a fallback.
-      const linked = await this.linkedCreds(tenantId, platform);
-      if (linked) return linked.creds;
-      throw new NotFoundException('Channel not connected');
-    }
+    // Precedence lives in credsSource (linked-channels.ts): an ACTIVE row here
+    // wins; otherwise the connection made on "Kết nối kênh social"; a failing
+    // row here is only retried when nothing else exists.
+    const linked = conn?.status === 'ACTIVE' ? null : await this.linkedCreds(tenantId, platform);
+    const src = credsSource(conn?.status ?? null, Boolean(linked));
+    if (src === 'linked' && linked) return { creds: linked.creds, linked: true };
+    if (src === 'none' || !conn) throw new NotFoundException('Channel not connected');
     // No per-tenant secret stored -> the connection rides on the agency token.
     if (!conn.credentialEnc) {
       const shared = this.agencyCreds(platform);
       if (!shared) throw new NotFoundException('Channel not connected (agency token missing on server)');
-      return { ...shared, externalAccountId: conn.externalAccountId ?? undefined } as ChannelCreds;
+      return { creds: { ...shared, externalAccountId: conn.externalAccountId ?? undefined } as ChannelCreds, linked: false };
     }
     const stored = JSON.parse(decryptSecret(conn.credentialEnc)) as ChannelCreds;
     // TikTok stores only the salon refresh token; backfill the agency app key/secret from env.
     const shared = this.agencyCreds(platform);
-    return { ...(shared ?? {}), ...stored } as ChannelCreds;
+    return { creds: { ...(shared ?? {}), ...stored } as ChannelCreds, linked: false };
   }
 
   private channelView(c: any) {

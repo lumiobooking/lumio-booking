@@ -118,6 +118,17 @@ export class MarketingController {
   syncChannel(@CurrentUser() user: AuthenticatedUser, @Body() dto: { platform: string; month: string; tenantId?: string }) {
     return this.marketing.syncChannel(user, dto.platform, dto.month, dto.tenantId);
   }
+  /** "Đồng bộ tất cả" — every channel this salon has connected, one month. */
+  @Post('channels/sync-all')
+  syncAll(@CurrentUser() user: AuthenticatedUser, @Body() dto: { month: string; tenantId?: string }) {
+    return this.marketing.syncAllForUser(user, dto?.month, dto?.tenantId);
+  }
+  /** Every active salon at once (the daily job does this on its own). */
+  @Post('sync-all-tenants')
+  @Roles(UserRole.SUPER_ADMIN)
+  syncAllTenants(@Body() dto: { month?: string }) {
+    return this.marketing.syncAllTenants(dto?.month);
+  }
   @Delete('channels/:platform')
   disconnectChannel(@CurrentUser() user: AuthenticatedUser, @Param('platform') platform: string) {
     return this.marketing.disconnectChannel(user, platform);

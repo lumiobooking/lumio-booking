@@ -121,7 +121,7 @@ function Inner() {
         {/* ---- Facebook + Instagram ---- */}
         <Card
           icon="📘" title="Facebook · Instagram"
-          uses={[T('Đăng bài & lịch đăng', 'Posts & schedule'), T('Bot trả lời Messenger / Instagram DM', 'Messenger / Instagram DM bot'), T('Hộp thư', 'Inbox')]}
+          uses={[T('Đăng bài & lịch đăng', 'Posts & schedule'), T('Bot trả lời Messenger / Instagram DM', 'Messenger / Instagram DM bot'), T('Hộp thư', 'Inbox'), T('Báo cáo tháng (tự đồng bộ)', 'Monthly report (auto-sync)')]}
           status={meta.state === 'ok' ? (meta.data.pages.length ? 'ok' : 'off') : meta.state === 'error' ? 'error' : 'loading'}
           vi={vi}
         >
@@ -156,7 +156,7 @@ function Inner() {
         {/* ---- Google Business Profile ---- */}
         <Card
           icon="📍" title="Google Business Profile"
-          uses={[T('Trả lời đánh giá Google (AI)', 'Google review replies (AI)'), T('Đăng bài lên Google Maps', 'Posts on Google Maps')]}
+          uses={[T('Trả lời đánh giá Google (AI)', 'Google review replies (AI)'), T('Đăng bài lên Google Maps', 'Posts on Google Maps'), T('Báo cáo tháng (tự đồng bộ)', 'Monthly report (auto-sync)')]}
           status={gbp.state === 'ok' ? (gbp.data.connected ? (gbp.data.hasLocation ? 'ok' : 'warn') : 'off') : gbp.state === 'error' ? 'error' : 'loading'}
           vi={vi}
         >

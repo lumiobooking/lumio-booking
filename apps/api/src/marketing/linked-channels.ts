@@ -103,3 +103,36 @@ export function linkedCredsFor(
 
 /** The platforms worth attempting a linked sync for, in syncAllChannels. */
 export const LINKABLE_PLATFORMS = ['meta_social', 'gbp'] as const;
+
+/**
+ * Which credentials a platform should use, given what this page and the rest
+ * of the product hold.
+ *
+ *   explicit ACTIVE  → explicit. Someone connected it here on purpose.
+ *   linked available → linked. A connection made on "Kết nối kênh social"
+ *                      beats an old one on this page that is failing: the
+ *                      owner connected once, and that connection must be the
+ *                      one that works. (Before, a single ERROR row here hid a
+ *                      healthy Messenger connection and the report asked the
+ *                      salon to connect Facebook again.)
+ *   explicit ERROR   → explicit, so a sync retries it and can recover.
+ *   nothing          → none; the channel is skipped, never an error.
+ */
+export function credsSource(
+  explicitStatus: string | null | undefined,
+  hasLinked: boolean,
+): 'explicit' | 'linked' | 'none' {
+  if (explicitStatus === 'ACTIVE') return 'explicit';
+  if (hasLinked) return 'linked';
+  if (explicitStatus && explicitStatus !== 'REVOKED') return 'explicit';
+  return 'none';
+}
+
+/** One line of the "Đồng bộ tất cả" result, per platform. */
+export interface SyncAllLine {
+  platform: string;
+  label: string;
+  state: 'synced' | 'skipped' | 'error';
+  /** Why it was skipped or what failed — shown as is. */
+  message: string | null;
+}

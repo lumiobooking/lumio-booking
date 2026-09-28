@@ -36,7 +36,28 @@ export class MarketingScheduler implements OnModuleInit, OnModuleDestroy {
     if (this.timer) clearInterval(this.timer);
   }
 
+  private lastDailySync: string | null = null;
+
+  /**
+   * Once a day, pull this month's numbers for every salon from whatever it has
+   * connected. This is what makes the report screen's sync button optional:
+   * opening a report shows yesterday's numbers without anyone pressing
+   * anything, and a salon with nothing connected is skipped.
+   */
+  private async dailySync() {
+    const day = new Date().toISOString().slice(0, 10);
+    if (this.lastDailySync === day) return;
+    this.lastDailySync = day;
+    try {
+      const r = await this.marketing.syncAllTenants();
+      this.logger.log(`Daily sync ${r.month}: ${r.synced} channel(s) across ${r.tenants} salon(s), ${r.failed} failed.`);
+    } catch (e) {
+      this.logger.warn(`Daily sync failed: ${(e as Error).message}`);
+    }
+  }
+
   private async tick() {
+    await this.dailySync();
     // Only act in the first 5 days of a month (draft the month that just ended),
     // and only once per calendar month per process.
     const now = new Date();

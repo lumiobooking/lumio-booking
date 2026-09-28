@@ -104,6 +104,10 @@ function Inner() {
   const [tt, setTt] = useState<{ followers: string; newFollowers: string; views: string; engagement: string; postsCount: string }>({ followers: '', newFollowers: '', views: '', engagement: '', postsCount: '' });
   const [gr, setGr] = useState<{ rating: string; totalReviews: string; newReviews: string; badReviews: string }>({ rating: '', totalReviews: '', newReviews: '', badReviews: '' });
   const money = (c: number) => formatPrice(c, currency);
+  // "Đồng bộ tất cả": one button for every connected channel. The result is
+  // kept so the owner sees what came in and what was skipped.
+  const [syncRes, setSyncRes] = useState<SyncAllResult | null>(null);
+  const [chKey, setChKey] = useState(0);
 
   // "Tải Word" — the same report as the print view, as a real .docx the owner
   // can rebalance freely. Charts are painted on canvas at click time; the docx
@@ -176,6 +180,23 @@ function Inner() {
     const gp = data?.gbp?.reviews;
     setGr(gp ? { rating: gp.rating?.toString() ?? '', totalReviews: gp.count?.toString() ?? '', newReviews: gp.newThisMonth?.toString() ?? '', badReviews: gp.badCount?.toString() ?? '' } : { rating: '', totalReviews: '', newReviews: '', badReviews: '' });
   }, [data]);
+  async function syncAll() {
+    if (!token || busy) return;
+    setBusy('syncall'); setMsg(null); setError(null);
+    try {
+      const r = await apiFetch<SyncAllResult>('/marketing/channels/sync-all', { method: 'POST', token, body: { month } });
+      setSyncRes(r);
+      const ok = r.lines.filter((l) => l.state === 'synced').length;
+      const bad = r.lines.filter((l) => l.state === 'error').length;
+      setMsg(bad
+        ? T(`Đã đồng bộ ${ok} kênh · ${bad} kênh lỗi (xem bên dưới).`, `Synced ${ok} channel(s) · ${bad} failed (see below).`)
+        : ok
+          ? T(`Đã đồng bộ ${ok} kênh cho tháng ${month}.${report ? ' Bấm "Tạo lại" ở phần báo cáo để AI viết theo số mới.' : ''}`, `Synced ${ok} channel(s) for ${month}.${report ? ' Press "Regenerate" in the report to rewrite it with the new numbers.' : ''}`)
+          : T('Chưa có kênh nào kết nối — kết nối ở mục "Kết nối kênh social".', 'Nothing is connected yet — connect channels under "Social channels".'));
+      setChKey((k) => k + 1);
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); }
+  }
   async function saveManualTt() {
     setBusy('ttmanual'); setMsg(null); setError(null);
     try {
@@ -241,9 +262,15 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div>
           <h2 style={{ fontSize: 18, margin: 0 }}>{T('Báo cáo marketing tháng', 'Monthly marketing report')}</h2>
-          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 13 }}>{T('Nhập chi phí + công việc → AI viết nháp → duyệt → gửi khách.', 'Enter spend + work → AI drafts it → review → send to the client.')}</p>
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 13 }}>{T('Số liệu tự đồng bộ mỗi ngày từ các kênh đã kết nối. Chỉ cần: kiểm tra → nhập chi phí quảng cáo (nếu có) → duyệt báo cáo.', 'Numbers sync daily from connected channels. All you do: check → enter ad spend (if any) → approve the report.')}</p>
         </div>
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={dateInput} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input type="month" value={month} onChange={(e) => { setMonth(e.target.value); setSyncRes(null); }} style={dateInput} />
+          <button onClick={syncAll} disabled={busy === 'syncall'} style={{ ...ui.primaryBtn, whiteSpace: 'nowrap' }}
+            title={T('Kéo số liệu tháng này từ mọi kênh đã kết nối. Kênh chưa kết nối tự bỏ qua.', 'Pull this month from every connected channel. Unconnected ones are skipped.')}>
+            {busy === 'syncall' ? T('Đang đồng bộ…', 'Syncing…') : T('🔄 Đồng bộ tất cả', '🔄 Sync everything')}
+          </button>
+        </div>
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
@@ -251,7 +278,7 @@ function Inner() {
 
       <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3, marginBottom: 16 }}>
         <button onClick={() => setMode('view')} style={segBtn(mode === 'view')}>{T('Xem báo cáo', 'View report')}</button>
-        <button onClick={() => setMode('edit')} style={segBtn(mode === 'edit')}>{T('Chỉnh sửa', 'Edit')}</button>
+        <button onClick={() => setMode('edit')} style={segBtn(mode === 'edit')}>{T('Chuẩn bị & duyệt', 'Prepare & approve')}</button>
       </div>
 
       {mode === 'view' && <ReportView data={data} content={report?.content ?? null} vi={vi} money={money} onEdit={() => setMode('edit')} onPrint={() => openPrint(data, report?.content ?? {}, vi, money, salonName)} onWord={exportWord} wordBusy={wordBusy} T={T} />}
@@ -270,9 +297,16 @@ function Inner() {
            'Blended metrics: total spend ÷ real outcome. We cannot yet attribute a specific ad to a specific booking — that needs UTM (Phase 2).')}
       </p>
 
-      {/* Connected channels (Phase 3) */}
-      <ChannelsSection token={token} vi={vi} month={month} onSynced={load} />
+      <StepTitle n={1} text={T('Số liệu từ các kênh', 'Numbers from the channels')} />
+      <DataSources key={chKey} token={token} vi={vi} month={month} syncRes={syncRes} onSyncAll={syncAll} syncing={busy === 'syncall'} reviews={data?.gbp?.reviews ?? null} onChanged={load} />
 
+      {/* Typed-in numbers — only for a channel that cannot be connected. Folded
+          away: when everything is connected nobody needs to see these. */}
+      <details style={{ ...ui.card, marginBottom: 16, padding: '12px 16px' }}>
+        <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' }}>
+          ✍️ {T('Nhập số tay (chỉ khi kênh chưa kết nối được: TikTok, đánh giá Google)', 'Type numbers in (only for channels that cannot connect: TikTok, Google reviews)')}
+        </summary>
+        <div style={{ marginTop: 12 }}>
       {/* TikTok manual entry — until the TikTok API is connected */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={cardTitle}>{T('TikTok — nhập số liệu tay', 'TikTok — manual numbers')}</div>
@@ -324,6 +358,10 @@ function Inner() {
         )}
       </div>
 
+        </div>
+      </details>
+
+      <StepTitle n={2} text={T('Chi phí quảng cáo & công việc đã làm', 'Ad spend & work done')} />
       {/* Spend entry */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -333,7 +371,7 @@ function Inner() {
             {T('Thêm reach / click / lead', 'Add reach / clicks / leads')}
           </label>
         </div>
-        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '2px 0 10px' }}>{T('Chỉ cần nhập chi phí. Kênh nào không chạy thì để trống.', 'Just enter spend. Leave channels you did not run blank.')}</p>
+        <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '2px 0 10px' }}>{T('Chỉ cần nhập chi phí. Kênh nào không chạy thì để trống. Quảng cáo Facebook đã kết nối thì số tự điền khi đồng bộ.', 'Just enter spend. Leave channels you did not run blank. Connected Facebook ads fill in on sync.')}</p>
 
         {/* What the system says this salon SHOULD spend.
             Sits beside the field and is never typed into it: a recommendation
@@ -350,7 +388,12 @@ function Inner() {
           </div>
         )}
         {budget && (
+          <details style={{ marginBottom: 12 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: 'var(--ink-link)' }}>
+            💡 {T('Đề xuất ngân sách', 'Suggested budget')}{budget.ceilingCents ? `: ${budget.daily}/${T('ngày', 'day')}` : ''}
+          </summary>
           <div style={{
+            marginTop: 8,
             border: `1px solid ${budget.feasible === 'no' ? '#ef4444' : budget.ceilingCents ? '#6366f1' : 'var(--c334155)'}`,
             background: budget.ceilingCents ? 'rgba(99,102,241,.08)' : 'var(--c0f172a)',
             borderRadius: 11, padding: '11px 13px', marginBottom: 12,
@@ -379,6 +422,7 @@ function Inner() {
                  'This is what to spend. The field below is what was actually spent — read it off Google Ads / Meta Ads Manager. Do not copy the suggestion in: the client\u2019s own screen divides by exactly that figure.')}
             </div>
           </div>
+          </details>
         )}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: showMetrics ? 520 : 260 }}>
@@ -430,14 +474,14 @@ function Inner() {
         )}
       </div>
 
-      {auto && <AutoReportCard auto={auto} vi={vi} T={T} onOpen={(m) => setMonth(m)} />}
-
+      <StepTitle n={3} text={T('Viết & duyệt báo cáo', 'Write & approve the report')} />
       {/* Report */}
       <ReportEditor
         report={report} vi={vi} T={T} busy={busy}
         onGenerate={generate} onSave={saveReport} onApprove={approve}
         printData={data} money={money}
       />
+      {auto && <AutoReportCard auto={auto} vi={vi} T={T} onOpen={(m) => setMonth(m)} />}
       </>)}
     </section>
   );
@@ -1101,7 +1145,110 @@ function Kpi({ label, value, hint, accent }: { label: string; value: string; hin
   );
 }
 
-function ChannelsSection({ token, vi, month, onSynced }: { token: string | null; vi: boolean; month: string; onSynced: () => void }) {
+interface SyncAllResult { month: string; synced: number; reviews: boolean; at: string; lines: { platform: string; label: string; state: 'synced' | 'skipped' | 'error'; message: string | null }[] }
+
+function StepTitle({ n, text }: { n: number; text: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '6px 0 10px' }}>
+      <span style={{ width: 24, height: 24, borderRadius: 999, background: '#6366f1', color: '#fff', fontSize: 12.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{n}</span>
+      <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{text}</span>
+    </div>
+  );
+}
+
+/**
+ * Where this month's numbers come from — read-only.
+ *
+ * Connecting happens ONCE, on "Kết nối kênh social". This card only says what
+ * is connected, what was pulled, and what will be skipped; the one action is
+ * "Đồng bộ tất cả". The token forms that used to sit on every row (and made a
+ * salon connect Facebook a second time) live under "Nâng cao" for the team.
+ */
+function DataSources({ token, vi, month, syncRes, onSyncAll, syncing, reviews, onChanged }: {
+  token: string | null; vi: boolean; month: string; syncRes: SyncAllResult | null; onSyncAll: () => void; syncing: boolean;
+  reviews: GbpData['reviews'] | null; onChanged: () => void;
+}) {
+  const T = (v: string, e: string) => (vi ? v : e);
+  interface Ch { platform: string; label: string; enabled: boolean; hasSpend: boolean; connected: boolean; status: string | null; accountName: string | null; externalAccountId: string | null; keyHint: string | null; lastSyncedAt: string | null; lastError: string | null; }
+  const [chs, setChs] = useState<Ch[] | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<Ch[]>('/marketing/channels', { token }).then(setChs).catch(() => setChs([]));
+  }, [token]);
+  const NAME: Record<string, [string, string]> = {
+    meta_social: ['Facebook & Instagram — bài đăng, follower, tương tác', 'Facebook & Instagram — posts, followers, engagement'],
+    gbp: ['Google Maps — lượt xem, gọi, chỉ đường', 'Google Maps — views, calls, directions'],
+    meta: ['Quảng cáo Facebook/Instagram — chi phí ads', 'Facebook/Instagram ads — spend'],
+    tiktok: ['TikTok', 'TikTok'],
+  };
+  const ORDER = ['meta_social', 'gbp', 'meta', 'tiktok'];
+  const rows = (chs ?? []).filter((c) => c.enabled).sort((a, b) => ORDER.indexOf(a.platform) - ORDER.indexOf(b.platform));
+  const lineOf = (p: string) => syncRes?.lines.find((l) => l.platform === p) ?? null;
+
+  const pill = (color: string, text: string) => (
+    <span style={{ fontSize: 11, fontWeight: 700, color, border: `1px solid ${color}`, borderRadius: 999, padding: '1px 9px', whiteSpace: 'nowrap' }}>{text}</span>
+  );
+
+  return (
+    <div style={{ ...ui.card, marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+        <div style={cardTitle}>{T('Nguồn số liệu tháng ', 'Sources for ')}{month}</div>
+        <button onClick={onSyncAll} disabled={syncing} style={{ ...miniBtn, borderColor: '#6366f1', color: 'var(--ink-link)', fontWeight: 700 }}>
+          {syncing ? T('Đang đồng bộ…', 'Syncing…') : T('🔄 Đồng bộ tất cả', '🔄 Sync everything')}
+        </button>
+      </div>
+      <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '0 0 8px', lineHeight: 1.5 }}>
+        {T('Kết nối 1 lần ở ', 'Connect once under ')}<a href="/salon/channels" style={{ color: 'var(--ink-link)' }}>{T('Kết nối kênh social', 'Social channels')}</a>
+        {T(' — báo cáo tự dùng các kết nối đó và tự đồng bộ mỗi ngày. Kênh chưa kết nối sẽ được bỏ qua.', ' — the report uses those connections and syncs every day on its own. Channels that are not connected are skipped.')}
+      </p>
+      {chs === null && <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>…</div>}
+      {rows.map((c) => {
+        const l = lineOf(c.platform);
+        const err = l?.state === 'error' ? l.message : (!l && c.status === 'ERROR' ? c.lastError : null);
+        const optionalAds = c.platform === 'meta';
+        return (
+          <div key={c.platform} style={{ borderTop: '1px solid var(--line)', padding: '8px 0', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)' }}>{NAME[c.platform] ? T(NAME[c.platform][0], NAME[c.platform][1]) : c.label}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 1 }}>
+                {c.connected
+                  ? <>{c.accountName || c.externalAccountId}{c.keyHint?.startsWith('LINKED:') ? T(' · dùng kết nối ở Kết nối kênh social', ' · using the Social channels connection') : ''}{c.lastSyncedAt ? ' · ' + T('đồng bộ ', 'synced ') + fmtInTz(c.lastSyncedAt, { dateStyle: 'short', timeStyle: 'short' }) : ''}</>
+                  : optionalAds
+                    ? T('Chỉ cần khi tiệm chạy quảng cáo. Không chạy thì bỏ qua; có chạy: mở "Nâng cao" để nhập ID tài khoản quảng cáo.', 'Only if the salon runs ads. Otherwise ignore; if it does, open "Advanced" to add the ad account ID.')
+                    : c.platform === 'tiktok'
+                      ? T('Chưa kết nối — nhập số tay ở mục bên dưới, hoặc bỏ qua.', 'Not connected — type the numbers in below, or skip it.')
+                      : <>{T('Chưa kết nối — ', 'Not connected — ')}<a href="/salon/channels" style={{ color: 'var(--ink-link)' }}>{T('kết nối ở đây →', 'connect here →')}</a></>}
+              </div>
+              {err && <div style={{ fontSize: 11.5, color: 'var(--ink-bad)', marginTop: 2 }}>⚠ {err}</div>}
+            </div>
+            {l?.state === 'synced' ? pill('#22c55e', T('✓ vừa đồng bộ', '✓ synced'))
+              : l?.state === 'error' ? pill('#ef4444', T('lỗi', 'error'))
+              : c.connected ? pill('#22c55e', T('đã kết nối', 'connected'))
+              : pill('var(--c64748b)', optionalAds ? T('không bắt buộc', 'optional') : T('bỏ qua', 'skipped'))}
+          </div>
+        );
+      })}
+      <div style={{ borderTop: '1px solid var(--line)', padding: '8px 0 0', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 260px', fontSize: 13.5, color: 'var(--ce2e8f0)' }}>
+          {T('Đánh giá Google', 'Google reviews')}
+          <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
+            {reviews ? `${reviews.rating ?? '—'}★ · ${reviews.count ?? '—'} ${T('đánh giá', 'reviews')}${reviews.newThisMonth != null ? ` · ${reviews.newThisMonth} ${T('mới', 'new')}` : ''}` : T('Tự lấy từ mục Đánh giá Google khi đã kết nối.', 'Taken from Google reviews once connected.')}
+          </div>
+        </div>
+        {reviews ? pill(reviews.manual ? '#f59e0b' : '#22c55e', reviews.manual ? T('nhập tay', 'manual') : T('tự động', 'automatic')) : pill('var(--c64748b)', T('bỏ qua', 'skipped'))}
+      </div>
+
+      <details style={{ marginTop: 10 }}>
+        <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 700 }}>⚙ {T('Nâng cao (đội Lumio): tài khoản quảng cáo, token riêng, kiểm tra từng kênh', 'Advanced (Lumio team): ad account, own tokens, test one channel')}</summary>
+        <div style={{ marginTop: 8 }}>
+          <ChannelsSection token={token} vi={vi} month={month} onSynced={onChanged} bare />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function ChannelsSection({ token, vi, month, onSynced, bare }: { token: string | null; vi: boolean; month: string; onSynced: () => void; bare?: boolean }) {
   const T = (v: string, e: string) => (vi ? v : e);
   interface Ch { platform: string; label: string; enabled: boolean; hasSpend: boolean; connected: boolean; status: string | null; accountName: string | null; externalAccountId: string | null; keyHint: string | null; lastSyncedAt: string | null; lastError: string | null; }
   const [chs, setChs] = useState<Ch[]>([]);
@@ -1128,8 +1275,8 @@ function ChannelsSection({ token, vi, month, onSynced }: { token: string | null;
   async function disconnect(platform: string) { if (!confirm(T('Ngắt kết nối kênh này?', 'Disconnect this channel?'))) return; setBusy(platform); try { await apiFetch(`/marketing/channels/${platform}`, { method: 'DELETE', token }); await load(); } catch (e) { setErr(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); } }
 
   return (
-    <div style={{ ...ui.card, marginBottom: 16 }}>
-      <div style={cardTitle}>{T('Kênh kết nối (tự đồng bộ chi phí)', 'Connected channels (auto-sync spend)')}</div>
+    <div style={bare ? undefined : { ...ui.card, marginBottom: 16 }}>
+      {!bare && <div style={cardTitle}>{T('Kênh kết nối (tự đồng bộ chi phí)', 'Connected channels (auto-sync spend)')}</div>}
       <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '4px 0 12px', lineHeight: 1.5 }}>
         {T('Chỉ cần ID tài khoản (act_… / locations/…) — token để trống nếu Lumio đã cấu hình token chung của agency trên server. Dán token riêng chỉ khi tiệm tự quản lý quảng cáo.', 'Just the account ID (act_… / locations/…) — leave the token blank if the agency-wide token is configured on the server. Paste a token only when the salon runs its own ads.')}
       </p>

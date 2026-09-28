@@ -11,6 +11,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { SettingsService } from '../settings/settings.service';
 import { publicWebBase } from '../common/public-url.util';
+import { jsonSafe } from '../common/json-safe';
 import { linkedCredsFor, LinkedCreds, LINKABLE_PLATFORMS, credsSource, type SyncAllLine } from './linked-channels';
 
 /**
@@ -1046,11 +1047,11 @@ export class MarketingService {
     if (raw?.gbp?.reviews?.manual === true) return { updated: false };
     raw.gbp = raw.gbp ?? {};
     raw.gbp.reviews = auto;
-    await this.prisma.socialInsight.upsert({
+    await this.prisma.socialInsight.upsert(jsonSafe({
       where: { tenantId_platform_periodMonth: { tenantId, platform: 'gbp', periodMonth: month } },
       create: { tenantId, platform: 'gbp', periodMonth: month, raw, source: 'api', syncedAt: new Date() },
       update: { raw },
-    });
+    }));
     return { updated: true };
   }
 
@@ -1089,11 +1090,11 @@ export class MarketingService {
           reach: g.impressions ?? null, views: g.websiteClicks ?? null, engagement: actions,
           raw: { gbp: g } as any, syncedAt: new Date(),
         };
-        await this.prisma.socialInsight.upsert({
+        await this.prisma.socialInsight.upsert(jsonSafe({
           where: { tenantId_platform_periodMonth: { tenantId, platform: 'gbp', periodMonth: month } },
           create: { tenantId, platform: 'gbp', periodMonth: month, ...gdata },
           update: gdata,
-        });
+        }));
       }
       // A sync that ran on the LINKED connection must not mark an old,
       // failing row on this page ACTIVE — that row would then win next time
@@ -1138,11 +1139,11 @@ export class MarketingService {
           source: 'api',
           syncedAt: new Date(),
         };
-        await this.prisma.socialInsight.upsert({
+        await this.prisma.socialInsight.upsert(jsonSafe({
           where: { tenantId_platform_periodMonth: { tenantId, platform: ch, periodMonth: month } },
           create: { tenantId, platform: ch, periodMonth: month, ...data },
           update: data,
-        });
+        }));
       }
       // A sync that ran on the LINKED connection must not mark an old,
       // failing row on this page ACTIVE — that row would then win next time
@@ -1240,11 +1241,11 @@ export class MarketingService {
       raw: { manual: true, notes: dto.notes ?? null } as any,
       source: 'manual', syncedAt: new Date(),
     };
-    const saved = await this.prisma.socialInsight.upsert({
+    const saved = await this.prisma.socialInsight.upsert(jsonSafe({
       where: { tenantId_platform_periodMonth: { tenantId, platform: dto.platform, periodMonth: dto.month } },
       create: { tenantId, platform: dto.platform, periodMonth: dto.month, ...data },
       update: data,
-    });
+    }));
     await this.audit(tenantId, user.userId, 'marketing.social.manual', { platform: dto.platform, month: dto.month });
     return { ok: true, platform: dto.platform, month: dto.month, id: (saved as any).id };
   }
@@ -1269,11 +1270,11 @@ export class MarketingService {
     } else {
       raw.gbp.reviews = { rating: vals[0], count: vals[1], newThisMonth: vals[2], badCount: vals[3], manual: true };
     }
-    await this.prisma.socialInsight.upsert({
+    await this.prisma.socialInsight.upsert(jsonSafe({
       where: { tenantId_platform_periodMonth: { tenantId, platform: 'gbp', periodMonth: dto.month } },
       create: { tenantId, platform: 'gbp', periodMonth: dto.month, raw, source: 'manual', syncedAt: new Date() },
       update: { raw },
-    });
+    }));
     await this.audit(tenantId, user.userId, 'marketing.gbp.reviews', { month: dto.month });
     return { ok: true, month: dto.month };
   }

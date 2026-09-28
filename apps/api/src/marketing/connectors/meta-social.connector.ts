@@ -1,3 +1,4 @@
+import { clip } from '../../common/json-safe';
 import {
   ChannelCreds,
   MonthlyMetrics,
@@ -187,7 +188,7 @@ export class MetaSocialConnector implements SocialConnector {
         timestamp: m.timestamp ?? null,
         permalink: m.permalink ?? null,
         thumbnail: m.thumbnail_url || m.media_url || null,
-        caption: m.caption ? String(m.caption).replace(/\s+/g, ' ').slice(0, 120) : null,
+        caption: m.caption ? clip(String(m.caption).replace(/\s+/g, ' '), 120) : null,
         likes,
         comments,
         reach: ins.reach ?? null,
@@ -300,7 +301,7 @@ export class MetaSocialConnector implements SocialConnector {
         timestamp: m.created_time ?? m.updated_time ?? null,
         permalink: m.permalink_url ?? null,
         thumbnail: m.full_picture ?? null,
-        caption: cap ? String(cap).replace(/\s+/g, ' ').slice(0, 120) : null,
+        caption: cap ? clip(String(cap).replace(/\s+/g, ' '), 120) : null,
         likes,
         comments,
         reach: null,

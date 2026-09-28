@@ -1351,7 +1351,12 @@ export class MarketingService {
     // row here is only retried when nothing else exists.
     const linked = conn?.status === 'ACTIVE' ? null : await this.linkedCreds(tenantId, platform);
     const src = credsSource(conn?.status ?? null, Boolean(linked));
-    if (src === 'linked' && linked) return { creds: linked.creds, linked: true };
+    if (src === 'linked' && linked) {
+      // Riding on the Messenger Page token: it reads the Page, but insights
+      // may need the agency token's permissions — offered as a second try.
+      const agency = platform === 'meta_social' ? this.agencyCreds(platform)?.token : undefined;
+      return { creds: { ...linked.creds, ...(agency ? { fallbackToken: agency } : {}) }, linked: true };
+    }
     if (src === 'none' || !conn) throw new NotFoundException('Channel not connected');
     // No per-tenant secret stored -> the connection rides on the agency token.
     if (!conn.credentialEnc) {

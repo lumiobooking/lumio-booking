@@ -19,6 +19,13 @@ export interface ChannelCreds {
   developerToken?: string; // Google Ads
   /** Ad account / location / advertiser / customer id. */
   externalAccountId?: string;
+  /**
+   * A second token to try when the first cannot read something. Used when the
+   * Facebook/Instagram report rides on the Messenger connection: that Page
+   * token reads the Page and follower counts, but may lack the insights
+   * permission the agency's system-user token has.
+   */
+  fallbackToken?: string;
 }
 
 export interface MonthlyMetrics {

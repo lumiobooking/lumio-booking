@@ -84,12 +84,18 @@ export class MetaSocialConnector implements SocialConnector {
     until: string,
     token: string,
     totalValue: boolean,
+    errs?: string[],
   ): Promise<number | null> {
     const tv = totalValue ? '&metric_type=total_value' : '';
     const url = `${GRAPH}/${encodeURIComponent(id)}/insights?metric=${encodeURIComponent(metric)}&period=day${tv}&since=${since}&until=${until}&access_token=${encodeURIComponent(token)}`;
     try {
       const r = await getJson(url);
-      if (!r.ok || !Array.isArray(r.json?.data) || !r.json.data.length) return null;
+      if (!r.ok || !Array.isArray(r.json?.data) || !r.json.data.length) {
+        // Kept, not swallowed: "why is this number blank" must be answerable
+        // from the stored sync without anyone reproducing the call.
+        errs?.push(`${metric}${totalValue ? '(total)' : ''}: ${String(r.json?.error?.message || (r.ok ? 'no data' : `HTTP ${r.status}`)).slice(0, 140)}`);
+        return null;
+      }
       const d = r.json.data[0];
       if (d?.total_value && d.total_value.value != null) return numOrNull(d.total_value.value);
       if (Array.isArray(d?.values)) {
@@ -115,11 +121,18 @@ export class MetaSocialConnector implements SocialConnector {
     until: string,
     token: string,
     shapes: boolean[],
+    errs?: string[],
+    fallbackToken?: string,
   ): Promise<number | null> {
-    for (const m of metrics) {
-      for (const tv of shapes) {
-        const v = await this.insight(id, m, since, until, token, tv);
-        if (v != null) return v;
+    // The second token only when it is a different one: trying the same
+    // token twice doubles the calls and changes nothing.
+    const tokens = fallbackToken && fallbackToken !== token ? [token, fallbackToken] : [token];
+    for (const tk of tokens) {
+      for (const m of metrics) {
+        for (const tv of shapes) {
+          const v = await this.insight(id, m, since, until, tk, tv, errs);
+          if (v != null) return v;
+        }
       }
     }
     return null;
@@ -128,9 +141,9 @@ export class MetaSocialConnector implements SocialConnector {
   private fb(id: string, metrics: string[], since: string, until: string, token: string) {
     return this.firstInsight(id, metrics, since, until, token, [false]);
   }
-  private ig(id: string, metrics: string[], since: string, until: string, token: string) {
+  private ig(id: string, metrics: string[], since: string, until: string, token: string, errs?: string[], fallbackToken?: string) {
     // Newer IG metrics REQUIRE metric_type=total_value; older ones reject it.
-    return this.firstInsight(id, metrics, since, until, token, [true, false]);
+    return this.firstInsight(id, metrics, since, until, token, [true, false], errs, fallbackToken);
   }
 
   /** Best-effort count of objects on a time-bounded edge (paged, capped at 100). */
@@ -330,7 +343,14 @@ export class MetaSocialConnector implements SocialConnector {
     if (!token) throw new Error('Thiếu agency token trên server (META_AGENCY_TOKEN)');
     const ref = this.pageRef(creds);
     if (!ref) throw new Error('Thiếu Facebook Page ID/username');
-    const { since, until } = monthBounds(month);
+    const bounds = monthBounds(month);
+    const since = bounds.since;
+    // The month is not over yet? Ask up to TODAY. Instagram refuses an insights
+    // range that ends in the future, and it refused it silently — the report
+    // showed a blank reach, views and engagement for the current month.
+    const today = new Date().toISOString().slice(0, 10);
+    const until = bounds.until > today && since <= today ? today : bounds.until;
+    const fallback = creds.fallbackToken;
 
     const page = await this.node(ref, 'id,name,followers_count,fan_count,instagram_business_account', token);
     if (!page || !page.id) {
@@ -376,24 +396,33 @@ export class MetaSocialConnector implements SocialConnector {
     // --- Instagram (organic), resolved from the linked business account. ---
     const igId: string | undefined = page.instagram_business_account?.id;
     if (igId) {
-      const igNode = await this.node(igId, 'followers_count,media_count,username', token);
-      const [igReach, igViews, igEngagement, igNewFollowers, igProfileViews, igPostList, igSeries, igAud] = await Promise.all([
-        this.ig(igId, ['reach'], since, until, token),
-        this.ig(igId, ['views', 'impressions'], since, until, token),
-        this.ig(igId, ['total_interactions', 'accounts_engaged'], since, until, token),
-        this.ig(igId, ['follower_count'], since, until, token),
-        this.ig(igId, ['profile_views'], since, until, token),
+      const igNode = (await this.node(igId, 'followers_count,media_count,username', token))
+        ?? (fallback ? await this.node(igId, 'followers_count,media_count,username', fallback) : null);
+      const igErrs: string[] = [];
+      const [igReach, igViews, igEngagement, igNewFollowers, igProfileViews, igPostList0, igSeries, igAud] = await Promise.all([
+        this.ig(igId, ['reach'], since, until, token, igErrs, fallback),
+        this.ig(igId, ['views', 'impressions'], since, until, token, igErrs, fallback),
+        this.ig(igId, ['total_interactions', 'accounts_engaged'], since, until, token, igErrs, fallback),
+        this.ig(igId, ['follower_count'], since, until, token, igErrs, fallback),
+        this.ig(igId, ['profile_views'], since, until, token, undefined, fallback),
         this.igMediaBreakdown(igId, since, until, token),
         this.igFollowerSeries(igId, since, until, token),
         this.igAudience(igId, token),
       ]);
+      // The post list with the second token when the first one read nothing.
+      const igPostList = igPostList0.length || !fallback ? igPostList0 : await this.igMediaBreakdown(igId, since, until, fallback);
+      // Account-level numbers missing, but the month's posts were read? Sum
+      // what the posts say, exactly as the Facebook side already does. Reach
+      // is NOT summed: the same person reached by two posts is one person.
+      const igEngSum = igPostList.length ? igPostList.reduce((acc, p) => acc + (p.interactions ?? 0), 0) : null;
+      const igViewsSum = igPostList.some((p) => p.views != null) ? igPostList.reduce((acc, p) => acc + (p.views ?? 0), 0) : null;
       out.instagram = {
         accountName: igNode?.username ? `@${igNode.username}` : null,
         followers: numOrNull(igNode?.followers_count),
         newFollowers: igNewFollowers,
         reach: igReach,
-        views: igViews,
-        engagement: igEngagement,
+        views: igViews ?? igViewsSum,
+        engagement: igEngagement ?? igEngSum,
         profileViews: igProfileViews,
         // Zero posts this month is a real answer and it prints as 0. The old
         // fallback swapped in media_count — the account's LIFETIME total — the
@@ -403,7 +432,7 @@ export class MetaSocialConnector implements SocialConnector {
         posts: igPostList,
         series: igSeries,
         audience: igAud,
-        raw: { igId, username: igNode?.username ?? null },
+        raw: { igId, username: igNode?.username ?? null, igDebug: { until, posts: igPostList.length, errors: igErrs.slice(0, 8) } },
       };
     }
 

@@ -261,7 +261,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
     <Shell accent={accent}>
       <div className="lumio-book" style={{ width: '100%', maxWidth: 1120, margin: '0 auto', ['--accent' as string]: accent } as React.CSSProperties}>
         {/* Header — gradient, sticky on a real viewport. */}
-        <div style={{ position: 'sticky', top: 0, zIndex: 30,
+        <div style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 30,
           background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`,
           color: '#fff', borderRadius: '18px 18px 0 0', padding: isMobile ? '12px 14px' : '16px 20px',
           display: 'flex', alignItems: 'center', gap: 13,

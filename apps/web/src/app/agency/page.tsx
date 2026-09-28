@@ -78,35 +78,47 @@ const ALL = '*';
 
 const cssFor = `
 .ag-cols { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 16px; align-items: start; }
-.ag-side { display: flex; flex-direction: column; gap: 6px; position: sticky; top: 16px; }
+.ag-side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: calc(16px + env(safe-area-inset-top, 0px)); }
+.ag-group { display: flex; flex-direction: column; gap: 6px; }
 .ag-side-lbl { font-size: 10.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: var(--c64748b); padding: 0 4px 4px; }
+.ag-row { display: flex; align-items: center; gap: 10px; }
 .ag-row:hover { background: var(--c162032) !important; }
 /* The salon's NAME is the row. It may shrink, never to nothing: without a
-   floor the chips beside it (AI, trạng thái, chuyển cho, nhóm) hold their
-   width and the name collapses to zero — which is exactly what a phone
-   showed. Below 880px the row wraps instead: name on its own line, chips
-   under it. */
+   floor the chips beside it hold their width and the name collapses to zero. */
 .ag-name { flex: 1 1 160px; min-width: 120px; }
+.ag-chips { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.ag-chip { display: inline-flex; align-items: center; gap: 4px; line-height: 1.2; box-sizing: border-box; }
+.ag-pillsel:focus-within { outline: 2px solid #6366f1; outline-offset: 1px; }
+.ag-go { flex: 0 0 auto; }
+.ag-row [data-row-check] { flex: 0 0 auto; }
 @media (max-width: 880px) {
+  .ag-intro { display: none; }
+  .ag-today-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ag-inbox-status { flex: 1 0 100%; text-align: left !important; margin-left: 0 !important; }
   .ag-cols { grid-template-columns: minmax(0, 1fr); gap: 10px; }
-  .ag-side { flex-direction: row; overflow-x: auto; position: static; padding-bottom: 4px; scrollbar-width: none; }
-  .ag-side::-webkit-scrollbar { display: none; }
-  /* The items carry width:100% for the column; on a phone they have to shrink
-     to their own content or the first chip eats the row and the other teams
-     are off-screen with nothing to say they exist. */
-  .ag-side > * { flex: 0 0 auto; width: auto !important; }
+  /* The two filters (team, market) each become ONE line of chips that
+     scrolls sideways — teams on top, markets under them — instead of one
+     long line where the markets were off-screen. */
+  .ag-side { position: static; gap: 8px; }
+  .ag-group { flex-direction: row; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .ag-group::-webkit-scrollbar { display: none; }
+  .ag-group > * { flex: 0 0 auto; width: auto !important; }
   .ag-side-lbl { display: none; }
-  /* A phone is too narrow for name + four chips on one line. The name takes
-     the first line whole; everything else wraps under it, still in reading
-     order. */
-  .ag-row { flex-wrap: wrap; row-gap: 6px; }
-  .ag-name { flex: 1 0 100%; }
-  /* The waiting pill is the reason to look at the row: on a phone it gets a
-     whole line right under the name, wide enough to read, before the chips. */
-  .ag-notice { flex: 1 0 100%; justify-content: flex-start; font-size: 13px !important; padding: 7px 12px !important; min-height: 36px; }
-  .ag-notice-soft { flex: 0 0 auto; }
-  .ag-row [data-row-check] { flex: 0 0 auto; }
   .ag-side-members { display: none; }
+  /* A phone row is a small card, always the same three layers:
+       1. market · NAME ·························· →
+       2. /slug
+       3. one line of small chips (the red "đang chờ" pill, when there is
+          one, takes a whole line above them).
+     Before, every chip wrapped onto its own line at 40px tall and one salon
+     filled half the screen. */
+  .ag-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "check name go" "check chips chips"; column-gap: 0; row-gap: 8px; padding: 12px 14px !important; align-items: center; }
+  .ag-row [data-row-check] { grid-area: check; margin-right: 10px; align-self: start; margin-top: 3px; }
+  .ag-name { grid-area: name; min-width: 0; }
+  .ag-go { grid-area: go; padding-left: 10px; font-size: 18px !important; }
+  .ag-chips { grid-area: chips; justify-content: flex-start; gap: 6px; }
+  .ag-row .ag-chip { min-height: 30px; font-size: 12px !important; padding: 4px 9px !important; }
+  .ag-row .ag-notice { flex: 1 0 100%; order: -1; justify-content: flex-start; font-size: 13px !important; padding: 7px 12px !important; min-height: 36px !important; }
 }
 `;
 
@@ -457,7 +469,7 @@ export default function AgencyPage() {
             Sign out
           </button>
         </div>
-        <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: '0 0 12px' }}>
+        <p className="ag-intro" style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: '0 0 12px' }}>
           Pick a salon to set it up. Each visit opens an 8-hour working session and is logged.
         </p>
 
@@ -474,11 +486,11 @@ export default function AgencyPage() {
           <span style={{ fontSize: 20 }}>🛠</span>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>Việc hôm nay — mọi tiệm, gộp theo loại</div>
-            <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 1 }}>
+            <div className="ag-today-desc" style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 1 }}>
               Đăng bài, story, ưu đãi, hồ sơ Google… của tất cả khách trong một hàng đợi. Nhận việc, thấy ai đang làm gì.
             </div>
           </div>
-          <span style={{ marginLeft: 'auto', color: 'var(--ink-link)', fontWeight: 800, fontSize: 14 }}>Mở →</span>
+          <span style={{ marginLeft: 'auto', color: 'var(--ink-link)', fontWeight: 800, fontSize: 14, whiteSpace: 'nowrap', flex: '0 0 auto', paddingLeft: 6 }}>Mở →</span>
         </a>
 
         {error && <div style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{error}</div>}
@@ -500,15 +512,15 @@ export default function AgencyPage() {
           border: `1.5px solid ${inbox.length ? '#f59e0b' : 'var(--c1f2937)'}`, borderRadius: 14, padding: '12px 14px', marginBottom: 18,
           background: inbox.length ? 'rgba(245,158,11,.06)' : 'var(--c111827)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: inbox.length ? 8 : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 4, marginBottom: inbox.length ? 8 : 0 }}>
             <span style={{ fontSize: 18 }}>📥</span>
-            <div style={{ fontWeight: 800, fontSize: 15 }}>
+            <div style={{ fontWeight: 800, fontSize: 15, whiteSpace: 'nowrap' }}>
               Tiệm vừa gửi
               {inbox.length > 0 && (
                 <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 800, background: '#f59e0b', color: '#1c1917', borderRadius: 999, padding: '1px 8px' }}>{inbox.length}</span>
               )}
             </div>
-            <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c64748b)', textAlign: 'right' }}>
+            <span className="ag-inbox-status" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c64748b)', textAlign: 'right' }}>
               {inbox.length
                 ? `${groups.length} tiệm · ${inbox.filter((r) => !r.working).length} mới · ${inbox.filter((r) => r.working).length} đang làm`
                 : 'Không có gì đang chờ — mọi thứ tiệm gửi đã được xử lý.'}
@@ -574,6 +586,7 @@ export default function AgencyPage() {
              into a row of chips that scrolls sideways — same idea, one line. */}
         <div className="ag-cols">
           <aside className="ag-side">
+            <div className="ag-group">
             <div className="ag-side-lbl">Nhóm phụ trách</div>
             <SideItem item={sideItems.all} active={pick === ALL} onClick={() => { setPick(ALL); setNewOnly(false); }} />
             {sideItems.teams.map((it) => (
@@ -585,8 +598,10 @@ export default function AgencyPage() {
               active={pick === ''}
               onClick={() => { setPick(''); setNewOnly(false); }}
             />
+            </div>
+            <div className="ag-group">
             {/* Which market. Picking one jumps to all teams; picking a team afterwards narrows it ("Team 2 · Úc"). */}
-            <div className="ag-side-lbl" style={{ marginTop: 14 }}>Thị trường</div>
+            <div className="ag-side-lbl">Thị trường</div>
             <SideItem item={{ key: 'mkt-all', label: 'Mọi thị trường', count: rows.length, fresh: 0 }} active={!mkt} onClick={() => setMkt('')} />
             {MARKET_ORDER.filter((code) => (marketCounts.get(code) ?? 0) > 0).map((code) => (
               <SideItem
@@ -602,6 +617,7 @@ export default function AgencyPage() {
                 }}
               />
             ))}
+          </div>
           </aside>
 
           <div style={{ minWidth: 0 }}>
@@ -728,7 +744,7 @@ export default function AgencyPage() {
           <div style={{
             position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40,
             background: 'var(--c111827)', borderTop: '1.5px solid #6366f1',
-            boxShadow: '0 -8px 24px rgba(0,0,0,.45)', padding: '11px 16px',
+            boxShadow: '0 -8px 24px rgba(0,0,0,.45)', padding: '11px 16px', paddingBottom: 'calc(11px + env(safe-area-inset-bottom, 0px))',
           }}>
             <div style={{ maxWidth: 1060, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 800, fontSize: 14 }}>Đã chọn {chosen.size} tiệm</span>
@@ -789,30 +805,67 @@ const STAGE_LOOK: Record<OpsStage, { label: string; fg: string; bd: string; bg: 
 };
 const STAGE_ORDER: OpsStage[] = ['setup', 'running', 'paused', 'stopped'];
 
+/**
+ * A small coloured pill that opens the phone's own picker.
+ *
+ * The <select> is laid over the pill, invisible, at 16px. Phones zoom the
+ * whole page into any select smaller than 16px, and the global mobile rule
+ * that stops that also blew every 11px pill up to 16px text at 40px tall —
+ * which is what made one salon fill half the screen. Here the pill keeps its
+ * size and the select underneath keeps the 16px iOS needs.
+ */
+function PillSelect({ value, disabled, onChange, title, label, style, children }: {
+  value: string; disabled?: boolean; onChange: (v: string) => void; title: string;
+  label: React.ReactNode; style: React.CSSProperties; children: React.ReactNode;
+}) {
+  return (
+    <span
+      className="ag-chip ag-pillsel"
+      title={title}
+      onClick={(e) => e.stopPropagation()}
+      style={{ position: 'relative', whiteSpace: 'nowrap', flex: '0 0 auto', cursor: disabled ? 'default' : 'pointer', ...style }}
+    >
+      <span>{label}</span>
+      {!disabled && <span aria-hidden style={{ fontSize: 9, opacity: 0.7 }}>▾</span>}
+      <select
+        value={value}
+        disabled={disabled}
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0,
+          fontSize: 16, border: 0, margin: 0, padding: 0, appearance: 'none', WebkitAppearance: 'none',
+          cursor: disabled ? 'default' : 'pointer',
+        }}
+      >
+        {children}
+      </select>
+    </span>
+  );
+}
+
 function StagePill({ stage, disabled, onChange }: { stage: OpsStage; disabled?: boolean; onChange: (s: OpsStage) => void }) {
   const look = STAGE_LOOK[stage] ?? STAGE_LOOK.running;
   return (
-    <select
+    <PillSelect
       value={stage}
       disabled={disabled}
-      // The row itself opens a setup session on click; picking a stage must not.
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => e.stopPropagation()}
-      onChange={(e) => onChange(e.target.value as OpsStage)}
+      onChange={(v) => onChange(v as OpsStage)}
       title="Trạng thái công việc của tiệm — chỉ để nhóm theo dõi, không khoá tài khoản"
+      label={look.label}
       style={{
-        appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
-        fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', flex: '0 0 auto',
+        fontSize: 11, fontWeight: 700,
         color: look.fg, border: `1px solid ${look.bd}`, background: look.bg,
-        borderRadius: 999, padding: '2px 9px', fontFamily: 'inherit',
+        borderRadius: 999, padding: '2px 9px',
         textDecoration: look.strike ? 'line-through' : 'none',
-        cursor: disabled ? 'default' : 'pointer',
       }}
     >
       {STAGE_ORDER.map((k) => (
         <option key={k} value={k} style={{ color: '#0f172a', background: '#fff', textDecoration: 'none' }}>{STAGE_LOOK[k].label}</option>
       ))}
-    </select>
+    </PillSelect>
   );
 }
 
@@ -832,15 +885,14 @@ const NEXT_ORDER: WorkNext[] = ['content', 'design', 'review', 'schedule', 'done
 function NextPill({ next, disabled, onChange }: { next: WorkNext | ''; disabled?: boolean; onChange: (n: WorkNext | '') => void }) {
   const look = next ? NEXT_LOOK[next] : null;
   return (
-    <select
+    <PillSelect
       value={next}
       disabled={disabled}
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => onChange(e.target.value as WorkNext | '')}
+      onChange={(v) => onChange(v as WorkNext | '')}
       title="Làm xong phần mình thì chọn bộ phận làm tiếp"
+      label={look ? look.label : '↪ Chuyển cho'}
       style={{
-        appearance: 'none', WebkitAppearance: 'none', cursor: disabled ? 'default' : 'pointer', fontFamily: 'inherit',
-        fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap',
+        fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: '3px 10px',
         border: `1px ${look ? 'solid' : 'dashed'} ${look ? look.bg : 'var(--c334155)'}`,
         background: look ? look.bg : 'transparent', color: look ? look.ink : 'var(--c64748b)',
       }}
@@ -849,7 +901,7 @@ function NextPill({ next, disabled, onChange }: { next: WorkNext | ''; disabled?
       {NEXT_ORDER.map((k) => (
         <option key={k} value={k} style={{ color: '#0f172a', background: '#fff' }}>{NEXT_LOOK[k].label}</option>
       ))}
-    </select>
+    </PillSelect>
   );
 }
 
@@ -974,7 +1026,7 @@ function Row({
       onKeyDown={(e) => { if (e.key === 'Enter') (picking ? onCheck() : open()); }}
       title={suspended ? 'Tiệm đang bị khoá — mở lại ở Super Admin' : 'Mở phiên setup 8 tiếng'}
       style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
+        padding: '9px 12px',
         borderBottom: '1px solid var(--c1f2937)', background: waiting ? 'rgba(239,68,68,.05)' : 'var(--c111827)',
         // The one mark that survives a squint: a red edge on the rows that
         // are waiting on us, nothing on the rest.
@@ -1000,6 +1052,7 @@ function Row({
         <div style={{ fontSize: 12, color: 'var(--c64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>/{t.slug}</div>
       </div>
 
+      <div className="ag-chips">
       {/* The AI chat switch, only for salons that have a Page: a posting-only
           client is filed here in one click instead of a session. Grey = off. */}
       {!picking && t.bot && t.bot !== 'none' && (
@@ -1012,13 +1065,14 @@ function Row({
             color: t.bot === 'on' ? 'var(--ink-good)' : 'var(--c64748b)',
             borderRadius: 999, padding: '2px 9px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 700,
           }}
+          className="ag-chip"
         >🤖 {t.bot === 'on' ? 'AI bật' : 'AI tắt'}</button>
       )}
 
       {/* The real lock, when there is one. It is the platform's (billing or
           Super Admin), so it is shown, never edited, here. */}
       {suspended && (
-        <span title="Tài khoản tiệm đang bị khoá đăng nhập — mở lại ở Super Admin"
+        <span className="ag-chip" title="Tài khoản tiệm đang bị khoá đăng nhập — mở lại ở Super Admin"
           style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ink-bad)', border: '1px solid #ef4444', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>KHOÁ</span>
       )}
       {/* ---- what this shop is waiting for ----
@@ -1030,7 +1084,7 @@ function Row({
           name (see .ag-notice in the stylesheet). */}
       {!picking && notice && (
         <button
-          className="ag-notice"
+          className="ag-notice ag-chip"
           onClick={(e) => { e.stopPropagation(); onEnter(t, notice.newest.link); }}
           title={`${notice.newest.who ? notice.newest.who + ': ' : ''}${notice.newest.preview || notice.newest.title} — bấm để mở`}
           style={{
@@ -1046,7 +1100,7 @@ function Row({
       )}
       {!picking && !notice && (t.heldPosts ?? 0) > 0 && (
         <button
-          className="ag-notice"
+          className="ag-notice ag-chip"
           onClick={(e) => { e.stopPropagation(); onEnter(t, '/salon/content?tab=queue&work=held'); }}
           title="Tiệm yêu cầu sửa bài — bấm để mở danh sách và sửa"
           style={{ background: 'rgba(239,68,68,.14)', border: '1px solid #ef4444', color: 'var(--ink-bad)', borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 800 }}
@@ -1054,14 +1108,14 @@ function Row({
       )}
       {!picking && (t.awaitingApproval ?? 0) > 0 && (
         <span
-          className="ag-notice-soft"
+          className="ag-notice-soft ag-chip"
           title={`${t.awaitingApproval} bài đã lên lịch, tiệm chưa bấm duyệt`}
           style={{ border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, whiteSpace: 'nowrap', fontWeight: 700 }}
         >⏳ {t.awaitingApproval} chờ tiệm duyệt</span>
       )}
       {!picking && (t.approvedPosts ?? 0) > 0 && (
         <button
-          className="ag-notice-soft"
+          className="ag-notice-soft ag-chip"
           onClick={(e) => { e.stopPropagation(); onEnter(t, '/salon/content?tab=queue&work=approved'); }}
           title={`${t.approvedPosts} bài tiệm đã bấm duyệt, đang chờ tới giờ đăng — bấm để xem`}
           style={{ background: 'rgba(20,184,166,.12)', border: '1px solid #14b8a6', color: 'var(--ink-good)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, whiteSpace: 'nowrap', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
@@ -1073,7 +1127,7 @@ function Row({
       {showTeam && !picking && (
         <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex' }}>
           {!canAssign ? (
-            team ? <span style={{ color: 'var(--c94a3b8)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, whiteSpace: 'nowrap' }}>{team}</span> : null
+            team ? <span className="ag-chip" style={{ color: 'var(--c94a3b8)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, whiteSpace: 'nowrap' }}>{team}</span> : null
           ) : isEditing ? (
             <select
               autoFocus
@@ -1087,6 +1141,7 @@ function Row({
             </select>
           ) : (
             <button
+              className="ag-chip"
               onClick={() => setEditing(t.id)}
               title="Đổi nhóm phụ trách"
               style={{ background: 'transparent', border: '1px dashed var(--c334155)', color: team ? 'var(--c94a3b8)' : 'var(--ink-warn)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}
@@ -1095,8 +1150,10 @@ function Row({
         </span>
       )}
 
+      </div>
+
       {!picking && (
-        <span style={{ color: suspended ? 'var(--c475569)' : 'var(--ink-link)', fontWeight: 800, fontSize: 15, flex: '0 0 auto' }}>
+        <span className="ag-go" style={{ color: suspended ? 'var(--c475569)' : 'var(--ink-link)', fontWeight: 800, fontSize: 15 }}>
           {opening ? '…' : '→'}
         </span>
       )}

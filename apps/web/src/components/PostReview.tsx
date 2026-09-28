@@ -419,7 +419,7 @@ function Detail(props: {
   const lines = p.message.split('\n');
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
         <button onClick={onClose} style={{ font: 'inherit', fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 10px 8px 4px', minHeight: 44 }}>

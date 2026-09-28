@@ -526,7 +526,7 @@ export function TeamChatWindow({ token, unread, vi }: {
           position: 'fixed', zIndex: 70,
           // Phone: the whole screen. Desktop: a panel in the corner.
           ...(isMobile
-            ? { inset: 0, borderRadius: 0 }
+            ? { inset: 0, borderRadius: 0, paddingTop: 'env(safe-area-inset-top, 0px)' }
             : { right: 18, bottom: 18, width: 380, height: 560, borderRadius: 14 }),
           display: 'flex', flexDirection: 'column',
           background: 'var(--c0f172a)', border: '1px solid var(--c334155)',

@@ -591,7 +591,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     return (
       <div style={{ minHeight: '100dvh', background: 'var(--c0b1120)' }}>
         {/* Sticky top bar */}
-        <header style={{ position: 'sticky', top: 0, zIndex: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: 'var(--c111827)', borderBottom: '1px solid var(--c1f2937)' }}>
+        <header style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: 'var(--c111827)', borderBottom: '1px solid var(--c1f2937)' }}>
           <LumioLogo size={28} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <NotificationBell />
@@ -611,7 +611,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
                 menu was still showing. 70/71 puts the menu and its backdrop
                 over everything, which is what a modal drawer means. */}
             <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 70 }} />
-            <aside style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 'min(82vw, 300px)', background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)', padding: '18px 14px', paddingBottom: 'calc(18px + env(safe-area-inset-bottom, 0px))', display: 'flex', flexDirection: 'column', overflowY: 'auto', WebkitOverflowScrolling: 'touch', zIndex: 71, boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}>
+            <aside style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 'min(82vw, 300px)', background: 'var(--c111827)', borderRight: '1px solid var(--c1f2937)', padding: '18px 14px', paddingTop: 'calc(18px + env(safe-area-inset-top, 0px))', paddingBottom: 'calc(18px + env(safe-area-inset-bottom, 0px))', display: 'flex', flexDirection: 'column', overflowY: 'auto', WebkitOverflowScrolling: 'touch', zIndex: 71, boxShadow: '4px 0 24px rgba(0,0,0,0.4)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 {brand}
                 <button onClick={() => setDrawerOpen(false)} aria-label="Close" style={{ width: 36, height: 36, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer' }}>✕</button>
@@ -641,7 +641,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         </aside>
       )}
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <header style={{ position: 'sticky', top: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '10px 32px', background: 'var(--glass)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', borderBottom: '1px solid var(--c1f2937)' }}>
+        <header style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '10px 32px', background: 'var(--glass)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', borderBottom: '1px solid var(--c1f2937)' }}>
           <button
             onClick={toggleNav}
             title={navHidden ? (lang === 'vi' ? 'Hiện menu' : 'Show menu') : (lang === 'vi' ? 'Thu menu — màn hình rộng hơn' : 'Collapse menu — wider screen')}

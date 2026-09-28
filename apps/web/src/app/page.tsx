@@ -155,7 +155,7 @@ export default function HomePage() {
   return (
     <div style={{ background: '#fff', color: INK, minHeight: '100vh', fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
       {/* ---------------- Nav ---------------- */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #eef2f7' }}>
+      <header style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 50, background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #eef2f7' }}>
         <nav style={{ maxWidth: 1120, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 24 }}>
           <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontSize: 20, fontWeight: 800, color: INK, textDecoration: 'none', letterSpacing: -0.5 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -1586,7 +1586,7 @@ function Register() {
       // so the pay button can never be scrolled away.
       ...(wide && !fullscreen ? { height: 'calc(100dvh - 92px)', marginBottom: -24, display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
       // Full screen: cover the shell entirely — no sidebar, no page header.
-      ...(fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, margin: 0, padding: '12px 16px', background: 'var(--c0b1120)', display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
+      ...(fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, margin: 0, padding: '12px 16px', paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))', background: 'var(--c0b1120)', display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
     }}>
       <style>{`
         .pos-card { transition: border-color .12s ease, background .12s ease, transform .06s ease; }

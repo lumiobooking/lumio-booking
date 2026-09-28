@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
-import { formatMoneyShort, localeForCountry } from '../common/money';
+import { formatMoneyShort, localeForCountry, minorUnitDigits } from '../common/money';
 import { marketOf } from '../common/markets';
 import { bookingChannel, PLATFORM_OF } from '../common/booking-channel';
 import { channelReports, platformPlans, CAMPAIGN_DAYS, type ChannelBooking } from './channel-plan';
@@ -92,6 +92,7 @@ import {
 import type { Playbook } from './industry-playbook';
 import { buildAudienceProfile, audienceToPrompt, type VisitRow, type AudienceProfile } from './audience-signals';
 import { promoAdvice, promoToPrompt, capAdvice, type PromoAdvice } from './promo-playbook';
+import { buildPromoStrategy, strategyApplies, strategyToPrompt, type PromoStrategy } from './promo-strategy';
 import { fetchCensus, describeArea, normaliseZips, type CensusResult } from './census';
 import { fetchAreaAudience, type AreaAudience } from './census-audience';
 import { buildMarketPlan } from './market-target';
@@ -256,6 +257,8 @@ export class ContentService {
     revenue: RevenueProfile;
     audience: AudienceProfile;
     promo: PromoAdvice;
+    /** This salon's own promotion plan — null for trades it does not speak for. */
+    strategy: PromoStrategy | null;
     identity: ResolvedIdentity;
     nearbyZips: string | null;
     sourceCounts: Record<string, number>;
@@ -297,7 +300,7 @@ export class ContentService {
       // city/region/postalCode may be absent on a database that has not run the
       // location migration yet; the catch below keeps the whole engine alive
       // rather than blanking a salon's screen over a missing column.
-      select: { name: true, timezone: true, businessType: true, market: true, city: true, region: true, postalCode: true, commissionPct: true, nearbyZips: true, contentLang: true },
+      select: { name: true, timezone: true, businessType: true, market: true, city: true, region: true, postalCode: true, commissionPct: true, nearbyZips: true, contentLang: true, createdAt: true },
     }).catch(() => this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { name: true, timezone: true, businessType: true, market: true },
@@ -594,6 +597,53 @@ export class ContentService {
       proposedDiscountPct: revenue.advice.discountPct || null,
     });
 
+    // ---- this salon's own promotion plan ----
+    // Everything it reads is already in memory except two cached rows: the
+    // census around the shop (never fetched from here) and last month's Google
+    // scan of competing shops. See ./promo-strategy for the reasoning.
+    let strategy: PromoStrategy | null = null;
+    if (strategyApplies(industry)) {
+      const zipsForArea = [
+        (tenant as { postalCode?: string | null } | null)?.postalCode ?? '',
+        (tenant as { nearbyZips?: string | null } | null)?.nearbyZips ?? '',
+        loc.postalCode ?? '',
+      ].filter(Boolean).join(',') || null;
+      const areaCached = await this.areaFor(tenantId, zipsForArea, { allowFetch: false }).catch(() => null);
+      const scanRow = await this.prisma.setting.findFirst({ where: { tenantId, key: 'competition_scan' }, select: { value: true } }).catch(() => null);
+      const scanned = ((scanRow?.value as { places?: { name?: string }[] } | null)?.places ?? []);
+      const flat = (x?: string | null) => String(x ?? '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+      const createdAt = (tenant as { createdAt?: Date } | null)?.createdAt;
+      strategy = buildPromoStrategy({
+        market: t.market ?? ex.country,
+        unit: 10 ** minorUnitDigits(currency),
+        money,
+        industry,
+        commission: { pct: promo.margin.commissionPct, source: promo.margin.source },
+        menu: services,
+        popular: tally(recent),
+        visits: visitRows.map((v) => ({ customerId: v.customerId, at: v.at, priceCents: v.priceCents })),
+        now: now.getTime(),
+        loads: revenue.loads,
+        bookedMinutes4w: bookingRows.reduce((a, r) => a + r.minutes, 0),
+        bookings4w: bookingRows.length,
+        chairs,
+        openMinutesPerWeek: openWeek,
+        areaMedianIncomeUsd: areaCached?.ok ? areaCached.weightedMedianIncomeUsd : null,
+        rivals: scanned.length ? scanned.filter((pl) => flat(pl.name) !== flat(tenant?.name)).length : null,
+        events,
+        salonAgeDays: createdAt ? Math.floor((now.getTime() - new Date(createdAt).getTime()) / 86_400_000) : null,
+        walkInShare: history.length ? (sourceCounts.walkin ?? 0) / history.length : null,
+      });
+      // One ceiling on every screen. The plan counts supplies and card fees,
+      // which the older margin card did not, so its limit is the stricter —
+      // and the weekly offer, the holiday cards and the prompt all read
+      // promo.ceiling. Lowering it here keeps them from quoting a deeper cut
+      // than the plan calls safe.
+      if (strategy.maxSafePct >= 5 && promo.ceiling !== null && strategy.maxSafePct < promo.ceiling) {
+        promo.ceiling = strategy.maxSafePct;
+      }
+    }
+
     // Capped at the source, before the number reaches a prompt or a screen.
     // The rule itself lives in promo-playbook next to the arithmetic it depends
     // on, so it can be tested without standing up a whole booking book.
@@ -647,6 +697,7 @@ export class ContentService {
       revenue,
       audience: buildAudienceProfile(visitRows, now.getTime()),
       promo,
+      strategy,
       identity,
       sourceCounts,
       channelBookings,
@@ -2399,6 +2450,8 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       '',
       promoToPrompt(ctx.promo),
       '',
+      strategyToPrompt(ctx.strategy, ctx.money),
+      '',
       weekPlanToPrompt(week),
       '',
       pillarBlock,
@@ -3075,6 +3128,9 @@ TRẢ VỀ JSON THUẦN, không markdown, không lời dẫn:
       // reading the same numbers.
       audience: ctx.audience,
       promo: ctx.promo,
+      // This salon's own promotion plan: the screen shows it instead of the
+      // generic list whenever it exists.
+      strategy: ctx.strategy,
       // Cache only: a salon opening this page must not wait on the Census.
       area,
       // Who is out there, before anything about who has already been in.

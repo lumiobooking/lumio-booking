@@ -79,6 +79,30 @@ optgroup {
 body {
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
+  /* Installed on an iPhone home screen the page can start UNDER the clock
+   * and the notch (an app added while the status bar was translucent keeps
+   * that until it is re-added). The inset is 0 in a normal browser tab, on
+   * Android and on desktop, so this only ever moves the page when iOS says
+   * it is under the status bar. */
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* The strip behind the clock. Without it the page scrolls up under the
+ * status bar and the time sits on top of salon names. Same colour as the
+ * page (inherits the body background), never catches a tap, 0px tall
+ * wherever the inset is 0. Sticky headers stick BELOW it
+ * (top: env(safe-area-inset-top)); full-screen sheets and drawers sit above
+ * it and pad their own top. */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top, 0px);
+  background: inherit;
+  z-index: 64;
+  pointer-events: none;
 }
 
 /* Long words, links and codes never push a card wider than the phone. */

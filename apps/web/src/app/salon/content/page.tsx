@@ -54,6 +54,7 @@ import type { TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
 import type { TrendCard } from '../../../components/TrendsTab';
 import { fitForSocial } from '../../../lib/image';
+import { PromoStrategyCard, type StrategyView } from '../../../components/PromoStrategyCard';
 
 interface Idea {
   id: string;
@@ -284,6 +285,8 @@ interface Plan {
   trends: { weekly: TrendLink[]; monthly: TrendLink[]; regionKnown: boolean };
   audience: { totalCustomers: number; segments: Segment[]; targets: AudienceTarget[]; thin: boolean; basis: string };
   promo: Promo;
+  /** This shop's own promotion plan; null for trades it does not cover. */
+  strategy?: StrategyView | null;
   area: { ok: boolean; lines: string[]; year: number | null; totalPopulation: number | null; error?: string } | null;
   market: MarketPlan | null;
   ads: Ads | null;
@@ -3170,6 +3173,9 @@ function Inner() {
           )}
           {tab === 'audience' && (
             <>
+              {/* First on the tab: "what promotion should we run?" is the
+                  question a salon asks, and this is the answer for THIS shop. */}
+              {plan?.strategy && <PromoStrategyCard s={plan.strategy} vi={vi} />}
               {/* ---- who the customers actually are ----
                   Read from the salon's own book, because the people in it are
                   the ones who live within the catchment and chose this shop.
@@ -3226,7 +3232,11 @@ function Inner() {
                   does it. Without the commission rate it says so instead of
                   guessing: an assumed margin makes a fake break-even, and a
                   fake break-even looks exactly like a real one. */}
-              {plan?.promo && (
+              {/* The shop's own plan (top of this tab) replaces the generic
+                  list of plays: the same eight plays for every salon was
+                  exactly what the team could not hand to a client. This card
+                  stays only for trades the plan does not cover. */}
+              {plan?.promo && !plan?.strategy && (
                 <div style={{
                   ...ui.card, marginBottom: 14, padding: 16,
                   borderColor: plan.promo.proposed?.impossible ? '#ef4444' : 'var(--c334155)',

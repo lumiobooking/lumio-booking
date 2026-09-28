@@ -210,7 +210,7 @@ function FullScreenTip({ name, avatar, qr, handle, onClose }: { name: string; av
   }, [onClose]);
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'linear-gradient(160deg, #2e1065 0%, var(--c1e1b4b) 45%, var(--c0b1120) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
-      <button onClick={onClose} aria-label="Close" style={{ position: 'fixed', top: 16, right: 16, width: 40, height: 40, borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
+      <button onClick={onClose} aria-label="Close" style={{ position: 'fixed', top: 'calc(16px + env(safe-area-inset-top, 0px))', right: 16, width: 40, height: 40, borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
       <div style={{ width: '100%', maxWidth: 440 }}>
         <TipCard name={name} avatar={avatar} qr={qr} handle={handle} big />
       </div>

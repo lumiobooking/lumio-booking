@@ -258,8 +258,7 @@ export default function CheckInKiosk() {
         <header style={{
           display: 'flex', alignItems: 'center', gap: 12, padding: 'clamp(12px, 3.5vw, 18px) clamp(14px, 4vw, 24px)',
           borderBottom: `1px solid ${C.line}`, flexShrink: 0,
-          position: 'sticky', top: 0, background: C.card, zIndex: 5,
-          paddingTop: 'max(clamp(12px, 3.5vw, 18px), env(safe-area-inset-top))',
+          position: 'sticky', top: 'env(safe-area-inset-top, 0px)', background: C.card, zIndex: 5,
         }}>
           {menu.logoUrl
             // eslint-disable-next-line @next/next/no-img-element

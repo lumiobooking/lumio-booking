@@ -286,7 +286,7 @@ function Inner() {
 
   if (mode === 'floor') {
     return (
-      <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: 'var(--c0b1120)', padding: '14px 18px', overflow: 'auto' } : undefined}>
+      <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: 'var(--c0b1120)', padding: '14px 18px', paddingTop: 'calc(14px + env(safe-area-inset-top, 0px))', overflow: 'auto' } : undefined}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
           <h1 style={{ fontSize: isMobile ? 20 : 24, margin: 0 }}>{t('cal.title')}</h1>
           <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3, ...(isMobile ? { flex: '1 1 100%' } : {}) }}>
@@ -302,7 +302,7 @@ function Inner() {
   }
 
   return (
-    <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: 'var(--c0b1120)', padding: '14px 18px', overflow: 'auto' } : undefined}>
+    <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: 'var(--c0b1120)', padding: '14px 18px', paddingTop: 'calc(14px + env(safe-area-inset-top, 0px))', overflow: 'auto' } : undefined}>
       {/* Row 1: title + view toggle (toggle is full-width on phones) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <h1 style={{ fontSize: isMobile ? 20 : 24, margin: 0 }}>{t('cal.title')}</h1>
@@ -846,7 +846,7 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
           64px of the drawer, which is exactly where the actions are. */}
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 70 }} />
       {/* right drawer */}
-      <div style={{ position: 'fixed', top: 0, right: 0, height: '100dvh', width: 380, maxWidth: '90vw', background: 'var(--c111827)', borderLeft: '1px solid var(--c1f2937)', zIndex: 71, padding: 24, paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))', overflowY: 'auto', WebkitOverflowScrolling: 'touch', boxShadow: '-8px 0 30px rgba(0,0,0,0.4)' }}>
+      <div style={{ position: 'fixed', top: 0, right: 0, height: '100dvh', width: 380, maxWidth: '90vw', background: 'var(--c111827)', borderLeft: '1px solid var(--c1f2937)', zIndex: 71, padding: 24, paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))', paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))', overflowY: 'auto', WebkitOverflowScrolling: 'touch', boxShadow: '-8px 0 30px rgba(0,0,0,0.4)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ fontSize: 18, margin: 0 }}>{t('cal.detailsTitle')}</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>

@@ -11,14 +11,15 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch, ApiError } from '../../../lib/api';
 import { cacheCatalog, readCachedCatalog, genClientRef, queueOrder, queueCount, syncQueue } from '../../../lib/offlinePos';
 import { ui, formatPrice, toMinorUnits, fromMinorUnits } from '../../../lib/ui';
+import { useHorizontalScroll } from '../../../lib/useHorizontalScroll';
 import { currencySymbolFor } from '../../../lib/money';
 import { setUiCurrency, uiCurrencySymbol } from '../../../lib/ui-currency';
 import { useLang, tr, setUiCurrencySymbol } from '../../../lib/i18n';
 import { BarcodeScanner } from '../../../components/BarcodeScanner';
 import { uiLocale } from '../../../lib/datetime';
 
-interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; category?: { id: string; name: string } | null }
-interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null }
+interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
+interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null; imageUrl?: string | null }
 interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string; service: { name: string } | null }
 interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean; tipQrUrl?: string | null; tipHandle?: string | null }
 interface CustomerHit { id: string; firstName: string; lastName?: string | null; phone?: string | null; loyaltyPoints?: number }
@@ -50,6 +51,33 @@ interface Line {
 }
 
 let uidSeq = 1;
+
+/**
+ * Money on the till, written the way the salon's OWN currency is written.
+ *
+ * The dashboard formats money by the UI language, so a US salon whose owner
+ * reads the app in Vietnamese saw "44,00 US$" on every tile, total and
+ * receipt. Nobody in that salon writes a dollar that way — the till and the
+ * receipt the client takes home say "$44.00". A Vietnamese salon still gets
+ * "200.000 ₫". Only the register uses this; the rest of the app is unchanged.
+ */
+const MONEY_LOCALE: Record<string, string> = { USD: 'en-US', CAD: 'en-CA', AUD: 'en-AU', NZD: 'en-NZ', GBP: 'en-GB', VND: 'vi-VN', EUR: 'de-DE', SGD: 'en-SG' };
+function posMoney(minorUnits: number, currency?: string): string {
+  if (!currency) return formatPrice(minorUnits);
+  try {
+    const nf = new Intl.NumberFormat(MONEY_LOCALE[currency] ?? 'en-US', { style: 'currency', currency });
+    const digits = nf.resolvedOptions().maximumFractionDigits ?? 2;
+    return nf.format(digits === 0 ? minorUnits : minorUnits / 10 ** digits);
+  } catch {
+    return formatPrice(minorUnits, currency);
+  }
+}
+
+/** "GEL – POLISH PEDICURE" reads as shouting on a chip; show it as "Gel – Polish Pedicure". Mixed-case names are left exactly as typed. */
+function niceName(n: string): string {
+  if (n.length < 4 || n !== n.toUpperCase() || n === n.toLowerCase()) return n;
+  return n.toLowerCase().replace(/(^|[\s\-–/(&+])(\p{L})/gu, (_m, a: string, b: string) => a + b.toUpperCase());
+}
 
 // Full-screen register layout ("wide"). Live for every salon. A cashier can
 // still force either layout for their own browser with ?ui=v2 / ?ui=v1 — kept
@@ -1205,22 +1233,22 @@ function Register() {
     const sep = '-'.repeat(W);
     const items = cart
       .map((l) => {
-        let s = row(`${l.quantity}x ${l.name}`, formatPrice(l.unitPriceCents * l.quantity, currency));
+        let s = row(`${l.quantity}x ${l.name}`, posMoney(l.unitPriceCents * l.quantity, currency));
         if (l.staffMemberId) s += `\n  ${staffName(l.staffMemberId)}`;
-        if (l.tipCents) s += `\n  Tip: ${formatPrice(l.tipCents, currency)}`;
+        if (l.tipCents) s += `\n  Tip: ${posMoney(l.tipCents, currency)}`;
         return s;
       })
       .join('\n');
     let o = center('RECEIPT') + '\n' + center(`Order #${orderNumber}`) + '\n' + center(fmtInTz(new Date(), { dateStyle: 'short', timeStyle: 'short' })) + '\n' + sep + '\n';
     o += items + '\n' + sep + '\n';
-    o += row('Subtotal', formatPrice(money.subtotal, currency)) + '\n';
-    if (money.discount) o += row('Discount', '-' + formatPrice(money.discount, currency)) + '\n';
-    if (money.tax) o += row('Tax', formatPrice(money.tax, currency)) + '\n';
-    if (money.tip) o += row('Tip', formatPrice(money.tip, currency)) + '\n';
-    if (money.cardSurcharge) o += row(`Card fee (${cardSurchargePct}%)`, formatPrice(money.cardSurcharge, currency)) + '\n';
-    o += row('TOTAL', formatPrice(money.total + money.cardSurcharge, currency)) + '\n';
-    for (const pl of paidLines()) o += row(`Paid · ${pl.label}`, formatPrice(pl.cents, currency)) + '\n';
-    if (money.change) o += row('Change', formatPrice(money.change, currency)) + '\n';
+    o += row('Subtotal', posMoney(money.subtotal, currency)) + '\n';
+    if (money.discount) o += row('Discount', '-' + posMoney(money.discount, currency)) + '\n';
+    if (money.tax) o += row('Tax', posMoney(money.tax, currency)) + '\n';
+    if (money.tip) o += row('Tip', posMoney(money.tip, currency)) + '\n';
+    if (money.cardSurcharge) o += row(`Card fee (${cardSurchargePct}%)`, posMoney(money.cardSurcharge, currency)) + '\n';
+    o += row('TOTAL', posMoney(money.total + money.cardSurcharge, currency)) + '\n';
+    for (const pl of paidLines()) o += row(`Paid · ${pl.label}`, posMoney(pl.cents, currency)) + '\n';
+    if (money.change) o += row('Change', posMoney(money.change, currency)) + '\n';
     o += sep + '\n' + center('Thank you!') + '\n';
     return o;
   }
@@ -1228,11 +1256,11 @@ function Register() {
   function buildReceiptHtml(orderNumber: number | string): string {
     const rows = cart
       .map((l) => {
-        const lt = formatPrice(l.unitPriceCents * l.quantity, currency);
+        const lt = posMoney(l.unitPriceCents * l.quantity, currency);
         const tech = l.staffMemberId ? `<div style="font-size:11px;color: #555">${staffName(l.staffMemberId)}</div>` : '';
-        const tip = l.tipCents ? `<div style="font-size:11px;color: #555">Tip: ${formatPrice(l.tipCents, currency)}</div>` : '';
+        const tip = l.tipCents ? `<div style="font-size:11px;color: #555">Tip: ${posMoney(l.tipCents, currency)}</div>` : '';
         const disc = l.discountPercent > 0
-          ? `<div style="font-size:11px;color: #777"><s>${formatPrice(l.origUnitPriceCents * l.quantity, currency)}</s> &nbsp;-${l.discountPercent}%</div>`
+          ? `<div style="font-size:11px;color: #777"><s>${posMoney(l.origUnitPriceCents * l.quantity, currency)}</s> &nbsp;-${l.discountPercent}%</div>`
           : '';
         const addon = l.isAddon ? `<span style="font-size:10px;color: #777"> (add-on)</span>` : '';
         return `<tr><td>${l.quantity}× ${escapeHtml(l.name)}${addon}${disc}${tech}${tip}</td><td style="text-align:right;vertical-align:top">${lt}</td></tr>`;
@@ -1249,15 +1277,15 @@ function Register() {
       <div class="center">Order #${orderNumber} · ${fmtInTz(new Date(), { dateStyle: 'short', timeStyle: 'short' })}</div><hr>
       <table>${rows}</table><hr>
       <table>
-        ${line('Subtotal', formatPrice(money.subtotal, currency))}
-        ${money.discount ? line('Order discount', '-' + formatPrice(money.discount, currency)) : ''}
-        ${money.tax ? line('Tax', formatPrice(money.tax, currency)) : ''}
-        ${money.tip ? line('Tip', formatPrice(money.tip, currency)) : ''}
-        ${money.cardSurcharge ? line(`Card fee (${cardSurchargePct}%)`, formatPrice(money.cardSurcharge, currency)) : ''}
-        ${money.savings ? line('You saved', '-' + formatPrice(money.savings, currency)) : ''}
-        ${line('TOTAL', formatPrice(money.total + money.cardSurcharge, currency), true)}
-        ${paidLines().map((pl) => line('Paid · ' + pl.label, formatPrice(pl.cents, currency))).join('')}
-        ${money.change ? line('Change', formatPrice(money.change, currency)) : ''}
+        ${line('Subtotal', posMoney(money.subtotal, currency))}
+        ${money.discount ? line('Order discount', '-' + posMoney(money.discount, currency)) : ''}
+        ${money.tax ? line('Tax', posMoney(money.tax, currency)) : ''}
+        ${money.tip ? line('Tip', posMoney(money.tip, currency)) : ''}
+        ${money.cardSurcharge ? line(`Card fee (${cardSurchargePct}%)`, posMoney(money.cardSurcharge, currency)) : ''}
+        ${money.savings ? line('You saved', '-' + posMoney(money.savings, currency)) : ''}
+        ${line('TOTAL', posMoney(money.total + money.cardSurcharge, currency), true)}
+        ${paidLines().map((pl) => line('Paid · ' + pl.label, posMoney(pl.cents, currency))).join('')}
+        ${money.change ? line('Change', posMoney(money.change, currency)) : ''}
       </table><hr>
       <div class="center">Thank you!</div>
       </body></html>`;
@@ -1318,6 +1346,9 @@ function Register() {
   const [tipMode, setTipMode] = useState<string | null>(null);
   const [ipadModal, setIpadModal] = useState(false);
   const [waiting, setWaiting] = useState<WaitingTicket[]>([]);
+  const catScroll = useHorizontalScroll<HTMLDivElement>();
+  const measureCats = catScroll.measure;
+  useEffect(() => { const id = window.setTimeout(measureCats, 50); return () => window.clearTimeout(id); }, [services, tab, layout, measureCats]);
 
   // Clients on the floor whose ticket is open — the ones waiting to pay first.
   // Read from the walk-in board (a checked-in booking is a floor ticket too).
@@ -1361,7 +1392,7 @@ function Register() {
   }, [tillMethods, payMethod]);
 
   const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
-  const fmt = (c: number) => formatPrice(c, currency);
+  const fmt = (c: number) => posMoney(c, currency);
   /** Buttons: $140 rather than $140.00 when the amount is whole. */
   const fmtShort = (c: number) => fmt(c).replace(/[.,]00(?=\D*$)/, '');
   const staffIdx = (id: string) => staff.findIndex((s) => s.id === id);
@@ -1474,6 +1505,8 @@ function Register() {
   const tabs = tabsAll.filter((x) => x.id === 'SERVICE' || x.n > 0);
   const flatServices = serviceGroups.flatMap((g) => g.items);
   const tileMin = layout === 'phone' ? 150 : 200;
+  // Every tile the same height, as drawn — a photo or a two-line name never makes one row taller than the next.
+  const tileRow = layout === 'phone' ? 92 : layout === 'wide' && !tightTop ? 112 : 104;
 
   const iconBtn = (label: string, onClick: () => void, icon: React.ReactNode, extra?: React.CSSProperties) => (
     <button type="button" aria-label={label} title={label} onClick={onClick} style={{ width: 44, height: 44, flexShrink: 0, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--ce2e8f0)', ...extra }}>{icon}</button>
@@ -1616,34 +1649,49 @@ function Register() {
     </div>
   );
 
+  const catArrow = (dir: -1 | 1, show: boolean) => (
+    <button type="button" aria-label={dir < 0 ? L('Danh mục trước', 'Previous categories') : L('Danh mục sau', 'More categories')} onClick={() => catScroll.nudge(dir)}
+      style={{ position: 'absolute', top: 0, bottom: 0, [dir < 0 ? 'left' : 'right']: 0, width: 56, border: 'none', padding: 0, cursor: 'pointer', display: show ? 'flex' : 'none', alignItems: 'center', justifyContent: dir < 0 ? 'flex-start' : 'flex-end',
+        background: `linear-gradient(to ${dir < 0 ? 'right' : 'left'}, var(--c0b1120) 45%, transparent)`, color: 'var(--ccbd5e1)' }}>
+      <span style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(15,23,42,.12)' }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">{dir < 0 ? <path d="M15 18l-6-6 6-6" /> : <path d="M9 18l6-6-6-6" />}</svg>
+      </span>
+    </button>
+  );
   const catRow = tab === 'SERVICE' && serviceCats.length > 0 && (
-    <div className="pos-noscroll" style={{ display: 'flex', gap: layout === 'phone' ? 6 : 8, overflowX: 'auto', flexShrink: 0, scrollbarWidth: 'none', margin: layout === 'phone' ? '0 -12px' : 0, padding: layout === 'phone' ? '0 12px' : 0 }}>
+    <div style={{ position: 'relative', flexShrink: 0, margin: layout === 'phone' ? '0 -12px' : 0 }}>
+    <div ref={catScroll.ref} className="pos-noscroll" style={{ display: 'flex', gap: layout === 'phone' ? 6 : 8, overflowX: 'auto', scrollbarWidth: 'none', padding: layout === 'phone' ? '0 12px' : '0 1px', scrollSnapType: 'x proximity' }}>
       {[{ id: null as string | null, name: t('po.allCats') }, ...serviceCats].map((c) => {
         const on = catFilter === c.id;
         return (
           <button key={c.id ?? 'all'} type="button" onClick={() => setCatFilter(c.id)} style={{ height: layout === 'phone' ? 38 : 40, flexShrink: 0, padding: '0 14px', borderRadius: 999, border: '1px solid ' + (on ? 'var(--ce2e8f0)' : 'var(--line)'), background: on ? 'var(--ce2e8f0)' : 'var(--c0f172a)', color: on ? 'var(--c0f172a)' : 'var(--ccbd5e1)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             {c.id && <span style={{ width: 8, height: 8, borderRadius: '50%', background: catHue.get(c.id) }} />}
-            {c.name}
+            {niceName(c.name)}
           </button>
         );
       })}
     </div>
+    {layout !== 'phone' && catArrow(-1, catScroll.canLeft)}
+    {layout !== 'phone' && catArrow(1, catScroll.canRight)}
+    </div>
   );
 
-  const tile = (key: string, name: string, meta: string, price: React.ReactNode, count: number, onClick: () => void, dot?: string, dashed?: boolean) => (
+  const tile = (key: string, name: string, meta: string, price: React.ReactNode, count: number, onClick: () => void, dot?: string, dashed?: boolean, img?: string | null) => (
     <button key={key} type="button" onClick={onClick} className="pos-tile" style={{
-      position: 'relative', boxSizing: 'border-box', minHeight: layout === 'phone' ? 92 : layout === 'wide' && !tightTop ? 112 : 100,
+      position: 'relative', boxSizing: 'border-box', height: '100%', minHeight: tileRow,
       padding: layout === 'phone' ? '10px 12px' : '14px 14px 12px', borderRadius: layout === 'phone' ? 12 : 14,
       border: count ? '2px solid #4f46e5' : `1px ${dashed ? 'dashed' : 'solid'} var(--line)`, background: 'var(--c0f172a)',
       display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8, textAlign: 'left', cursor: 'pointer', boxShadow: '0 1px 2px rgba(15,23,42,.05)',
     }}>
-      <span style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-        {dot && <span style={{ width: 8, height: 8, marginTop: 7, flexShrink: 0, borderRadius: '50%', background: dot }} />}
-        <span style={{ fontSize: layout === 'phone' ? 14.5 : 15, fontWeight: 700, lineHeight: 1.3, color: 'var(--cf1f5f9)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{name}</span>
+      <span style={{ display: 'flex', alignItems: img ? 'center' : 'flex-start', gap: img ? 10 : 8, minWidth: 0 }}>
+        {img
+          ? <img src={img} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} style={{ width: layout === 'phone' ? 40 : 48, height: layout === 'phone' ? 40 : 48, flexShrink: 0, borderRadius: 10, objectFit: 'cover', background: 'var(--c1e293b)' }} />
+          : dot && <span style={{ width: 8, height: 8, marginTop: 7, flexShrink: 0, borderRadius: '50%', background: dot }} />}
+        <span style={{ fontSize: layout === 'phone' ? 14.5 : 15, fontWeight: 700, lineHeight: 1.3, color: 'var(--cf1f5f9)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' }}>{niceName(name)}</span>
       </span>
-      <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 6, rowGap: 2 }}>
-        <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{meta}</span>
-        <span style={{ marginLeft: 'auto', fontSize: layout === 'phone' ? 16 : 17, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{price}</span>
+      <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, minWidth: 0 }}>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{meta}</span>
+        <span style={{ flexShrink: 0, fontSize: layout === 'phone' ? 16 : 17, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{price}</span>
       </span>
       {count > 0 && (
         <span style={{ position: 'absolute', top: -8, right: -8, minWidth: 26, height: 26, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, background: '#4f46e5', color: '#fff', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--c0b1120)' }}>{count}</span>
@@ -1655,24 +1703,24 @@ function Register() {
     const netC = d > 0 ? Math.round((cents * (100 - d)) / 100) : cents;
     return (
       <>
-        {d > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c64748b)', textDecoration: 'line-through', marginRight: 5 }}>{fmt(cents)}</span>}
-        {from ? `${L('từ', 'from')} ` : ''}{fmt(netC)}
+        {d > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c64748b)', textDecoration: 'line-through', marginRight: 5 }}>{fmtShort(cents)}</span>}
+        {from ? <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c94a3b8)', marginRight: 3 }}>{L('từ', 'from')}</span> : null}{fmtShort(netC)}
       </>
     );
   };
 
   const grid = (
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', margin: '0 -8px', padding: '10px 8px 12px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`, gap: layout === 'phone' ? 8 : layout === 'wide' && !tightTop ? 12 : 10, alignContent: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`, gridAutoRows: tileRow, gap: layout === 'phone' ? 8 : layout === 'wide' && !tightTop ? 12 : 10, alignContent: 'start' }}>
         {tab === 'SERVICE' && flatServices.map((s) => tile(
-          s.id, s.name, s.durationMinutes > 0 ? `${s.durationMinutes} ${L('phút', 'min')}` : '', priceTag(s.priceCents, s.discountPercent, s.priceFrom),
-          qtyInCart.get(s.id) || 0, () => addService(s), s.category ? catHue.get(s.category.id) : undefined,
+          s.id, s.name, s.durationMinutes > 0 ? `${s.durationMinutes} ${L('phút', 'min')}` : (s.category && catFilter === null ? niceName(s.category.name) : ''), priceTag(s.priceCents, s.discountPercent, s.priceFrom),
+          qtyInCart.get(s.id) || 0, () => addService(s), s.category ? catHue.get(s.category.id) : undefined, false, s.imageUrl,
         ))}
         {tab === 'ADDON' && addonGroups.flatMap((g) => g.items).map((a) => tile(
           a.id, `+ ${a.name}`, a.service?.name ?? '', fmt(a.priceCents), qtyInCart.get(a.id) || 0, () => addAddon(a), undefined, true,
         ))}
         {tab === 'PRODUCT' && productsF.map((p) => tile(
-          p.id, p.name, p.trackStock ? `${t('po.stock')}: ${p.stockQty}` : '', priceTag(p.priceCents, p.discountPercent), qtyInCart.get(p.id) || 0, () => addProduct(p),
+          p.id, p.name, p.trackStock ? `${t('po.stock')}: ${p.stockQty}` : '', priceTag(p.priceCents, p.discountPercent), qtyInCart.get(p.id) || 0, () => addProduct(p), undefined, false, p.imageUrl,
         ))}
       </div>
       {tab === 'SERVICE' && flatServices.length === 0 && <EmptyState text={services.length === 0 ? t('po.noServices') : `${t('po.noMatch')} "${query}"`} />}
@@ -1735,7 +1783,7 @@ function Register() {
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button type="button" onClick={() => setEditUid(open ? null : l.uid)} style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer', fontSize: dense ? 14.5 : 15, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}>
               {l.isAddon && <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ce0e7ff)', background: 'var(--c1e1b4b)', borderRadius: 5, padding: '1px 6px', marginRight: 6, verticalAlign: 'middle' }}>{t('po.addonBadge')}</span>}
-              {l.name}{l.quantity > 1 ? <span style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}> × {l.quantity}</span> : null}
+              {niceName(l.name)}{l.quantity > 1 ? <span style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}> × {l.quantity}</span> : null}
             </button>
             {(l.kind === 'SERVICE' && staff.length > 0) && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
@@ -2478,12 +2526,12 @@ function IpadPairPanel({ session, onRotate, onClose, t }: {
 
 function CatPrice({ priceCents, discountPercent, currency }: { priceCents: number; discountPercent?: number; currency: string }) {
   const d = discountPercent ?? 0;
-  if (d <= 0) return <span style={{ color: 'var(--ink-good)' }}>{formatPrice(priceCents, currency)}</span>;
+  if (d <= 0) return <span style={{ color: 'var(--ink-good)' }}>{posMoney(priceCents, currency)}</span>;
   const netP = Math.round((priceCents * (100 - d)) / 100);
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-      <span style={{ textDecoration: 'line-through', color: 'var(--c64748b)', fontSize: 11 }}>{formatPrice(priceCents, currency)}</span>
-      <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(netP, currency)}</span>
+      <span style={{ textDecoration: 'line-through', color: 'var(--c64748b)', fontSize: 11 }}>{posMoney(priceCents, currency)}</span>
+      <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{posMoney(netP, currency)}</span>
       <span style={{ background: '#ef4444', color: '#fff', borderRadius: 4, padding: '0 4px', fontSize: 10, fontWeight: 700 }}>-{d}%</span>
     </span>
   );

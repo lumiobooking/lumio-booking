@@ -160,3 +160,58 @@ export async function shrinkForUpload(file: File, maxSide = 2048): Promise<File>
     return file;
   }
 }
+
+/**
+ * A still frame of a video file, as a JPEG data URL — or null when the
+ * browser cannot decode it in time.
+ *
+ * Read from the LOCAL file (an object URL), never from the uploaded copy: a
+ * frame drawn from another origin taints the canvas and cannot be exported.
+ * The frame is taken a moment in (10% of the clip, at most 1 s) because the
+ * very first frame of a phone video is often black.
+ */
+export function videoPosterDataUrl(file: File, maxWidth = 1200, timeoutMs = 8000): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (typeof document === 'undefined') { resolve(null); return; }
+    const src = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    let done = false;
+    const finish = (out: string | null) => {
+      if (done) return;
+      done = true;
+      window.clearTimeout(timer);
+      try { v.removeAttribute('src'); v.load(); } catch { /* ignore */ }
+      URL.revokeObjectURL(src);
+      resolve(out);
+    };
+    const timer = window.setTimeout(() => finish(null), timeoutMs);
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    v.onerror = () => finish(null);
+    v.onloadeddata = () => {
+      const d = Number.isFinite(v.duration) ? v.duration : 0;
+      const at = Math.min(1, d * 0.1);
+      if (at > 0.01) { v.currentTime = at; } else { draw(); }
+    };
+    v.onseeked = () => draw();
+    function draw() {
+      try {
+        const w = v.videoWidth, h = v.videoHeight;
+        if (!w || !h) { finish(null); return; }
+        const scale = Math.min(1, maxWidth / w);
+        const c = document.createElement('canvas');
+        c.width = Math.round(w * scale);
+        c.height = Math.round(h * scale);
+        const ctx = c.getContext('2d');
+        if (!ctx) { finish(null); return; }
+        ctx.drawImage(v, 0, 0, c.width, c.height);
+        finish(c.toDataURL('image/jpeg', 0.85));
+      } catch {
+        finish(null);
+      }
+    }
+    v.src = src;
+  });
+}
+

@@ -44,7 +44,7 @@ export const STAGE_LABEL: Record<Stage, { vi: string; en: string }> = {
   ready: { vi: 'Đã chốt lịch', en: 'Ready' },
 };
 
-export interface MediaRef { url: string; kind: 'image' | 'video'; driveUrl?: string }
+export interface MediaRef { url: string; kind: 'image' | 'video'; driveUrl?: string; poster?: string }
 
 /**
  * Keep the Drive link of every file the new media list still contains. The

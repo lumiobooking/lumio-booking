@@ -324,3 +324,34 @@ describe('slow brain → filler now, answer next', () => {
     expect(xml).toContain('Tuesday at two');
   });
 });
+
+// ---- the owner's own instructions reach the assistant as rules ---------------
+// "When a customer wants a full set, say acrylic full set is $60 and up and ask
+// design or solid color" — written in the salon's hotline settings and never
+// asked on a call, because the note sat at the end of the prompt as a loose
+// "notes:" line. It is now a named block the assistant is told to follow.
+describe('the salon owner\'s instructions on the hotline', () => {
+  let fetchSpy: jest.SpyInstance;
+  beforeEach(() => { process.env.ANTHROPIC_API_KEY = 'test-key'; fetchSpy = jest.spyOn(globalThis, 'fetch' as never); });
+  afterEach(() => { fetchSpy.mockRestore(); delete process.env.ANTHROPIC_API_KEY; });
+
+  it('are sent as instructions to follow on every call, word for word', async () => {
+    const rule = 'When a customer wants a full set, say acrylic full set is $60 and up, then ask: design or solid color this time?';
+    const { svc } = makeSvc({ line: { aiInstruction: rule } });
+    fetchSpy.mockResolvedValue({ ok: true, json: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Sure! Acrylic full set is $60 and up — design or solid color this time?' }] }) } as never);
+    await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'I want a full set' }, '0', 'en-US');
+    const body = JSON.parse(String((fetchSpy.mock.calls[0][1] as { body: string }).body));
+    const system = Array.isArray(body.system) ? body.system.map((b: { text: string }) => b.text).join('\n') : String(body.system);
+    expect(system).toContain("OWNER'S INSTRUCTIONS");
+    expect(system).toContain(rule);
+  });
+
+  it('a salon with no instructions gets no empty rules block', async () => {
+    const { svc } = makeSvc();
+    fetchSpy.mockResolvedValue({ ok: true, json: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Hi!' }] }) } as never);
+    await svc.handleTurn({ CallSid: 'CA1', SpeechResult: 'hello' }, '0', 'en-US');
+    const body = JSON.parse(String((fetchSpy.mock.calls[0][1] as { body: string }).body));
+    const system = Array.isArray(body.system) ? body.system.map((b: { text: string }) => b.text).join('\n') : String(body.system);
+    expect(system).not.toContain("OWNER'S INSTRUCTIONS");
+  });
+});

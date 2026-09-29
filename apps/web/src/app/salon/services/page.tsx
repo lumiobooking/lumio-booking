@@ -241,6 +241,10 @@ function ServicesInner() {
       ) : (
         <div {...drag.containerProps}>
           <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/services/${id}`, { method: 'DELETE', token }), load)} />
+          {bulk.count > 0 && (
+            <BulkServiceEdit ids={bulk.sel} services={rows} categories={categories} currency={money.code} token={token!} vi={lang === 'vi'}
+              onDone={async () => { await load(); bulk.clear(); }} />
+          )}
           <DragHint saved={drag.saved} lang={lang} />
           <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
@@ -355,8 +359,10 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
           {s.description && <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{s.description}</div>}
         </td>
         <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{catName(s.categoryId)}</td>
-        <td style={ui.td}>{s.durationMinutes} {t('sv.min')}</td>
-        <td style={ui.td}>
+        <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>{s.durationMinutes > 0
+          ? `${s.durationMinutes} ${t('sv.min')}`
+          : <span title={lang === 'vi' ? 'Chưa đặt thời lượng — lịch hẹn sẽ không chặn giờ của thợ' : 'No duration set — bookings will not block the technician\'s time'} style={{ color: 'var(--ink-warn)' }}>{lang === 'vi' ? 'Chưa đặt' : 'Not set'}</span>}</td>
+        <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
           {s.discountPercent && s.discountPercent > 0 ? (
             <span>
               <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{fmt(s.priceCents)}</span>
@@ -364,7 +370,7 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
               <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{s.discountPercent}%</span>
             </span>
           ) : (
-            fmt(s.priceCents)
+            <>{fmt(s.priceCents)}{s.priceFrom ? <span title={lang === 'vi' ? 'Giá từ (trở lên)' : 'From price (and up)'} style={{ color: 'var(--c94a3b8)', fontWeight: 700 }}>+</span> : null}</>
           )}
         </td>
         <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
@@ -1258,6 +1264,130 @@ function DateDiscountCard({ token, categories }: { token: string; categories: Ca
           <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('sv.dateHint')}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Edit many services at once — the ticked rows.
+ *
+ * Every field starts on "keep as is"; only what the person changes is sent,
+ * one PATCH per service through the same endpoint the single-row editor uses
+ * (so the same tenant check and validation apply). Price can be set to one
+ * amount or moved by a percent or an amount, which is how a salon actually
+ * reprices ("everything +$5", "acrylics +10%").
+ */
+function BulkServiceEdit({ ids, services, categories, currency, token, vi, onDone }: {
+  ids: string[]; services: Service[]; categories: Category[]; currency: string; token: string; vi: boolean; onDone: () => Promise<void> | void;
+}) {
+  const T = (v: string, e: string) => (vi ? v : e);
+  const KEEP = '__keep__';
+  const [cat, setCat] = useState<string>(KEEP);
+  const [dur, setDur] = useState('');
+  const [priceMode, setPriceMode] = useState<'keep' | 'set' | 'pct' | 'add'>('keep');
+  const [priceVal, setPriceVal] = useState('');
+  const [from, setFrom] = useState<'keep' | 'on' | 'off'>('keep');
+  const [active, setActive] = useState<'keep' | 'on' | 'off'>('keep');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const picked = services.filter((s) => ids.includes(s.id));
+  const durN = dur.trim() === '' ? null : Math.max(0, Math.round(Number(dur)));
+  const pv = priceVal.trim() === '' ? null : Number(priceVal);
+  const priceOk = priceMode === 'keep' || (pv != null && Number.isFinite(pv) && (priceMode !== 'set' || pv >= 0));
+  const nothing = cat === KEEP && durN == null && priceMode === 'keep' && from === 'keep' && active === 'keep';
+
+  const newPrice = (cents: number): number => {
+    if (priceMode === 'set' && pv != null) return toMinorUnits(String(pv), currency);
+    if (priceMode === 'pct' && pv != null) return Math.max(0, Math.round(cents * (1 + pv / 100)));
+    if (priceMode === 'add' && pv != null) return Math.max(0, cents + toMinorUnits(String(Math.abs(pv)), currency) * (pv < 0 ? -1 : 1));
+    return cents;
+  };
+
+  async function apply() {
+    if (nothing || !priceOk || busy) return;
+    if (!confirm(T(`Áp dụng thay đổi cho ${picked.length} dịch vụ đã chọn?`, `Apply these changes to the ${picked.length} selected services?`))) return;
+    setBusy(true); setMsg(null);
+    let failed = 0;
+    for (const s of picked) {
+      const body: Record<string, unknown> = {};
+      if (cat !== KEEP) body.categoryId = cat === '' ? null : cat;
+      if (durN != null && Number.isFinite(durN)) body.durationMinutes = durN;
+      if (priceMode !== 'keep') body.priceCents = newPrice(s.priceCents);
+      if (from !== 'keep') body.priceFrom = from === 'on';
+      if (active !== 'keep') body.isActive = active === 'on';
+      try { await apiFetch(`/services/${s.id}`, { method: 'PATCH', token, body }); } catch { failed += 1; }
+    }
+    setBusy(false);
+    if (failed) { setMsg(T(`${failed} dịch vụ chưa lưu được — thử lại.`, `${failed} services could not be saved — try again.`)); return; }
+    setCat(KEEP); setDur(''); setPriceMode('keep'); setPriceVal(''); setFrom('keep'); setActive('keep');
+    await onDone();
+  }
+
+  const field: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, minWidth: 150 };
+  const lbl: React.CSSProperties = { fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 700 };
+  return (
+    <div style={{ border: '1px solid #6366f1', background: 'rgba(99,102,241,.08)', borderRadius: 12, padding: '12px 14px', marginBottom: 10 }}>
+      <div style={{ fontWeight: 800, color: 'var(--ce2e8f0)', marginBottom: 8 }}>
+        ✏️ {T(`Sửa hàng loạt ${picked.length} dịch vụ`, `Edit ${picked.length} services at once`)}
+        <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--c94a3b8)', marginLeft: 8 }}>{T('Ô nào để trống / "Giữ nguyên" thì không đổi.', 'Anything left blank / "Keep" stays as it is.')}</span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+        <label style={field}>
+          <span style={lbl}>{T('Danh mục', 'Category')}</span>
+          <select value={cat} onChange={(e) => setCat(e.target.value)} style={ui.input}>
+            <option value={KEEP}>{T('Giữ nguyên', 'Keep')}</option>
+            <option value="">{T('(Không danh mục)', '(No category)')}</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+        <label style={{ ...field, minWidth: 120 }}>
+          <span style={lbl}>{T('Thời lượng (phút)', 'Duration (min)')}</span>
+          <input type="number" min={0} step={5} inputMode="numeric" value={dur} placeholder={T('Giữ nguyên', 'Keep')} onChange={(e) => setDur(e.target.value)} style={ui.input} />
+        </label>
+        <label style={field}>
+          <span style={lbl}>{T('Giá', 'Price')}</span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <select value={priceMode} onChange={(e) => setPriceMode(e.target.value as typeof priceMode)} style={{ ...ui.input, minWidth: 130 }}>
+              <option value="keep">{T('Giữ nguyên', 'Keep')}</option>
+              <option value="set">{T('Đặt bằng', 'Set to')}</option>
+              <option value="add">{T('Tăng/giảm số tiền', 'Add / subtract')}</option>
+              <option value="pct">{T('Tăng/giảm %', 'Change by %')}</option>
+            </select>
+            {priceMode !== 'keep' && (
+              <input type="number" inputMode="decimal" value={priceVal} onChange={(e) => setPriceVal(e.target.value)}
+                placeholder={priceMode === 'pct' ? T('vd 10 hoặc -10', 'e.g. 10 or -10') : priceMode === 'add' ? T('vd 5 hoặc -5', 'e.g. 5 or -5') : T('vd 45', 'e.g. 45')}
+                style={{ ...ui.input, width: 110 }} />
+            )}
+          </div>
+        </label>
+        <label style={{ ...field, minWidth: 130 }}>
+          <span style={lbl}>{T('Giá "từ" (và trở lên)', '"From" price (and up)')}</span>
+          <select value={from} onChange={(e) => setFrom(e.target.value as typeof from)} style={ui.input}>
+            <option value="keep">{T('Giữ nguyên', 'Keep')}</option>
+            <option value="on">{T('Bật', 'On')}</option>
+            <option value="off">{T('Tắt', 'Off')}</option>
+          </select>
+        </label>
+        <label style={{ ...field, minWidth: 130 }}>
+          <span style={lbl}>{T('Trạng thái', 'Status')}</span>
+          <select value={active} onChange={(e) => setActive(e.target.value as typeof active)} style={ui.input}>
+            <option value="keep">{T('Giữ nguyên', 'Keep')}</option>
+            <option value="on">{T('Đang bật', 'Active')}</option>
+            <option value="off">{T('Tắt', 'Off')}</option>
+          </select>
+        </label>
+        <button type="button" onClick={apply} disabled={nothing || !priceOk || busy}
+          style={{ ...ui.primaryBtn, opacity: nothing || !priceOk || busy ? 0.5 : 1, whiteSpace: 'nowrap' }}>
+          {busy ? T('Đang lưu…', 'Saving…') : T('Áp dụng', 'Apply')}
+        </button>
+      </div>
+      {priceMode !== 'keep' && priceOk && picked.length > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 8 }}>
+          {T('Xem trước', 'Preview')}: {picked.slice(0, 3).map((s) => `${s.name} ${fromMinorUnits(s.priceCents, currency)} → ${fromMinorUnits(newPrice(s.priceCents), currency)}`).join(' · ')}{picked.length > 3 ? ' …' : ''}
+        </div>
+      )}
+      {msg && <div style={{ fontSize: 12.5, color: 'var(--ink-bad)', marginTop: 8 }}>{msg}</div>}
     </div>
   );
 }

@@ -62,6 +62,20 @@ export interface MediaItem {
   /** Public https URL. Meta's servers fetch it themselves. */
   url: string;
   kind: MediaKind;
+  /** Video only: a still frame (https JPEG) for channels that cannot take the video itself. */
+  poster?: string;
+}
+
+/**
+ * The one picture a Google Business post carries: the first photo, or — for a
+ * video post — the video's still frame. Google's post API takes no video, and
+ * a post with no picture at all is what "only the text went up" looks like.
+ */
+export function gbpPhotoOf(media: MediaItem[]): string | null {
+  const photo = media.find((m) => m.kind === 'image')?.url;
+  if (photo) return photo;
+  const poster = media.find((m) => m.kind === 'video' && typeof m.poster === 'string' && /^https:\/\//i.test(m.poster))?.poster;
+  return poster ?? null;
 }
 
 /** What the post IS, derived from its media rather than stored separately. */

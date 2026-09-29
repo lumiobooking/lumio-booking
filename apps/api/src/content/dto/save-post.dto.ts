@@ -12,6 +12,11 @@ export class PostMediaDto {
   /** The archive copy on Drive, sent back as received; the server keeps it either way. */
   @IsOptional() @IsString() @MaxLength(400)
   driveUrl?: string;
+
+  /** A still frame of a video (JPEG, made in the browser at upload). Google's
+   *  post API takes no video, so this is the picture a Google post shows. */
+  @IsOptional() @IsString() @MaxLength(2000)
+  poster?: string;
 }
 
 /**

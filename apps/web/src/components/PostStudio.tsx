@@ -80,7 +80,7 @@ export function ChannelChips({ channels }: { channels: Channel[] }) {
 }
 
 export type MediaKind = 'image' | 'video';
-export interface MediaItem { url: string; kind: MediaKind; /** The archive copy on Drive, once filed. */ driveUrl?: string }
+export interface MediaItem { url: string; kind: MediaKind; /** The archive copy on Drive, once filed. */ driveUrl?: string; /** Video only: a still frame, the picture a Google post shows. */ poster?: string }
 export type Stage = 'writing' | 'design' | 'ready';
 
 export interface StudioPost {

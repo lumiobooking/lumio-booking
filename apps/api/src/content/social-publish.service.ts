@@ -4,7 +4,7 @@ import { wallTimeToUtcTz } from '../common/salon-time';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
-import {
+import { gbpPhotoOf,
   planPublish, dueNow, crowding, shapeOf, explainMetaError, explainGbpError, gbpLanguage, MAX_ATTEMPTS, CHANNELS,
   priorSuccesses, stillDue, retryable, whyWaiting, SWEEP_STALE_MS,
   type Channel, type ConnectedPage, type PublishPlan, type MediaItem, type GoogleLocation,
@@ -438,12 +438,14 @@ export class SocialPublishService {
   private mediaOf(row: { media: unknown; imageUrl?: string | null }): MediaRef[] {
     const raw = Array.isArray(row.media) ? row.media : [];
     const out = raw
-      .filter((m): m is { url: string; kind?: string; driveUrl?: string } => Boolean(m) && typeof (m as { url?: unknown }).url === 'string')
+      .filter((m): m is { url: string; kind?: string; driveUrl?: string; poster?: string } => Boolean(m) && typeof (m as { url?: unknown }).url === 'string')
       .map((m) => ({
         url: m.url.trim(),
         kind: m.kind === 'video' ? 'video' as const : 'image' as const,
         // The archive copy rides along; the sweep and the screen both read it.
         ...(typeof m.driveUrl === 'string' && m.driveUrl.trim() ? { driveUrl: m.driveUrl.trim() } : {}),
+        // A video's still frame — https only, and only on a video.
+        ...(m.kind === 'video' && typeof m.poster === 'string' && /^https:\/\//i.test(m.poster.trim()) ? { poster: m.poster.trim() } : {}),
       }))
       .filter((m) => m.url);
     if (out.length) return out;
@@ -653,7 +655,7 @@ export class SocialPublishService {
 
   async save(user: AuthenticatedUser, body: {
     id?: string; ideaId?: string | null; channels?: Channel[]; message?: string;
-    media?: { url?: string; kind?: string; driveUrl?: string }[]; scheduledAt?: string; status?: string;
+    media?: { url?: string; kind?: string; driveUrl?: string; poster?: string }[]; scheduledAt?: string; status?: string;
     stage?: string; writerName?: string; designerName?: string; teamNote?: string;
     tiktok?: unknown;
     google?: unknown;
@@ -1262,7 +1264,7 @@ export class SocialPublishService {
     media: MediaItem[],
     opts: { ack: readonly string[] | null; enforceAi: boolean },
   ): Promise<string | null> {
-    const photo = media.find((m) => m.kind === 'image')?.url ?? null;
+    const photo = gbpPhotoOf(media);
     if (photo) {
       const p = await this.googleImageProblem(photo);
       if (p) return `Google Business: ${p}`;
@@ -1429,7 +1431,8 @@ export class SocialPublishService {
       // dropped rather than sent, because a post without a button goes live
       // and a post with a linkless button never does. See ./gbp-cta.
       const cta = resolveGbpCta(opts, await this.gbpLinksFor(tenantId));
-      const photo = media.find((m) => m.kind === 'image')?.url ?? null;
+      // A video post carries the video's still frame as its picture.
+      const photo = gbpPhotoOf(media);
       const video = media.find((m) => m.kind === 'video')?.url ?? null;
       // What Google receives is the caption minus the contact block — the
       // same text the composer previewed and the gate approved.
@@ -1448,7 +1451,8 @@ export class SocialPublishService {
       if (video && !out.videoInPost) {
         try {
           await this.google.addLocationVideo(tenantId, video);
-          note = 'Video đã được thêm vào mục Ảnh & video của hồ sơ Google (Google không cho gắn video vào bài đăng qua API); bài đăng lên kèm chữ' + (photo ? ' và ảnh.' : '.');
+          const fromFrame = Boolean(photo) && !media.some((m) => m.kind === 'image');
+          note = 'Video đã được thêm vào mục Ảnh & video của hồ sơ Google (Google không cho gắn video vào bài đăng qua API); bài đăng lên kèm chữ' + (fromFrame ? ' và ảnh bìa lấy từ video.' : photo ? ' và ảnh.' : '.');
         } catch (e) {
           note = `Bài đã lên Google, nhưng chưa thêm được video vào hồ sơ: ${e instanceof Error ? e.message.replace(/^Bad Request Exception:?\s*/i, '') : 'lỗi mạng'}`;
         }

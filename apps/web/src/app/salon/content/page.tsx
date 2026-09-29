@@ -53,7 +53,7 @@ import { MonthBriefEditor, type MonthBriefData } from '../../../components/Month
 import type { TeamSuggestion } from '../../../components/SuggestionInbox';
 import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSuggestion';
 import type { TrendCard } from '../../../components/TrendsTab';
-import { fitForSocial } from '../../../lib/image';
+import { fitForSocial, videoPosterDataUrl } from '../../../lib/image';
 import { PromoStrategyCard, type StrategyView } from '../../../components/PromoStrategyCard';
 
 interface Idea {
@@ -888,7 +888,8 @@ function Inner() {
   const [gbpPx, setGbpPx] = useState<{ url: string; w: number; h: number } | null>(null);
   const gbpWanted = Boolean(postDraft?.channels.includes('google'));
   const gbpMessage = postDraft?.message ?? '';
-  const gbpMediaKey = JSON.stringify((postDraft?.media ?? []).map((m) => [m.url, m.kind]));
+  // The video's still frame is part of what Google gets, so it is part of what is checked.
+  const gbpMediaKey = JSON.stringify((postDraft?.media ?? []).map((m) => [m.url, m.kind, m.poster ?? '']));
   // Only the agency may accept a Google risk on a salon's behalf: it is the
   // agency that knows whether the shop is licensed for what it wrote.
   const canEditPlan = Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN';
@@ -896,10 +897,10 @@ function Inner() {
   const gbpAckKey = gbpAck.join(',');
   useEffect(() => {
     if (!token || !gbpWanted) { setGbp(null); return; }
-    const media = JSON.parse(gbpMediaKey) as [string, string][];
+    const media = JSON.parse(gbpMediaKey) as [string, string, string][];
     const timer = setTimeout(() => {
       apiFetch<GbpCheckResult>('/content/posts/google-check', {
-        method: 'POST', token, body: { message: gbpMessage, media: media.map(([url, kind]) => ({ url, kind })), ack: gbpAck },
+        method: 'POST', token, body: { message: gbpMessage, media: media.map(([url, kind, poster]) => ({ url, kind, ...(poster ? { poster } : {}) })), ack: gbpAck },
       }).then(setGbp).catch(() => setGbp(null));
     }, 500);
     return () => clearTimeout(timer);
@@ -922,7 +923,7 @@ function Inner() {
     setGbpAi('running');
     try {
       const r = await apiFetch<GbpCheckResult>('/content/posts/google-check', {
-        method: 'POST', token, body: { message: postDraft.message, media: postDraft.media.map((m) => ({ url: m.url, kind: m.kind })), ai: true, ack: postDraft.google?.ack ?? [] },
+        method: 'POST', token, body: { message: postDraft.message, media: postDraft.media.map((m) => ({ url: m.url, kind: m.kind, ...(m.poster ? { poster: m.poster } : {}) })), ai: true, ack: postDraft.google?.ack ?? [] },
       });
       setGbp(r);
       if (r.ai && r.ai.ok && r.blockers.length === 0) notify('success', T('Google Business: ảnh và chữ đạt policy.', 'Google Business: photo and text pass policy.'));
@@ -1363,7 +1364,18 @@ function Inner() {
     setVideoPct(0); setPostErr(null);
     try {
       const { url } = await apiUpload('/uploads/post-video', file, token, setVideoPct);
-      setPostDraft((d) => (d ? { ...d, media: [...d.media, { url, kind: 'video' }] } : d));
+      // A still frame for Google: its post API takes no video, and without a
+      // picture the Google post goes up as bare text. Best effort — a video
+      // whose frame cannot be read still uploads and posts everywhere else.
+      let poster: string | undefined;
+      try {
+        const frame = await videoPosterDataUrl(file);
+        if (frame) {
+          const up = await apiFetch<{ url: string }>('/uploads/service-photo', { method: 'POST', token, body: { dataUrl: frame } });
+          if (up?.url) poster = up.url;
+        }
+      } catch { /* no poster — the video itself is fine */ }
+      setPostDraft((d) => (d ? { ...d, media: [...d.media, { url, kind: 'video', ...(poster ? { poster } : {}) }] } : d));
       setFitNote(null);
     } catch (e) {
       const raw = e instanceof Error ? e.message : '';

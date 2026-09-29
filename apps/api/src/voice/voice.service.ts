@@ -791,13 +791,23 @@ export class VoiceService implements OnModuleInit {
     const infoBlock = await this.salonInfoBlock(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
     const facts = await this.factsFor(tenantId);
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    const extra = [facts, aiInstruction].filter(Boolean).join('\n');
+    // The owner's own instructions used to be appended to the FAQ facts as
+    // "notes" at the very end of the prompt, where the step-by-step booking
+    // script above outweighed them: a salon wrote "when they want a full set,
+    // say acrylic full set is $60 and up and ask design or solid color" and
+    // the assistant never asked. They are now a named block the model is told
+    // to follow on every call — still one question per turn, and still never
+    // a price or service the salon did not give.
+    const ownerNote = String(aiInstruction ?? '').trim().slice(0, 2000);
+    const ownerRules = ownerNote
+      ? `\nTHE ${persona.venueNoun.toUpperCase()} OWNER'S INSTRUCTIONS — follow these on every call. They are this ${persona.venueNoun}'s own rules: when one says to quote a price a certain way or to ask a question for a certain service, do exactly that at that point in the booking steps (one question per turn), in the caller's language:\n${ownerNote}\n`
+      : '';
 
     // Inject the services directly into the prompt so the agent NEVER needs a
     // separate get_services round-trip — one Claude call per turn instead of two.
     const services = await this.prisma.service.findMany({
       where: { tenantId, isActive: true },
-      select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true },
+      select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true },
       orderBy: { name: 'asc' }, take: 40,
     });
     // Prices are read ALOUD, so they are formatted in the salon's own money —
@@ -813,7 +823,7 @@ export class VoiceService implements OnModuleInit {
     }
     const servicesBlock = services.length
       ? 'Bookable services (use the exact id when you call create_booking; never say the id out loud):\n' +
-        services.map((s) => `- ${s.name} — ${formatMoneyShort(s.priceCents, (s as { currency?: string }).currency ?? 'USD', menuLocale)}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''} (id: ${s.id})`).join('\n') +
+        services.map((s) => `- ${s.name} — ${formatMoneyShort(s.priceCents, (s as { currency?: string }).currency ?? 'USD', menuLocale)}${(s as { priceFrom?: boolean }).priceFrom ? ' and up (a starting price — say it that way)' : ''}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''} (id: ${s.id})`).join('\n') +
         (svcCount > services.length ? `\n(Only ${services.length} of this ${persona.venueNoun}'s ${svcCount} services are listed here. If the caller asks for something not on this list, call get_services and search the full menu before saying anything about it.)` : '')
       : 'No services are configured yet; take a message and tell them someone will call back.';
 
@@ -828,7 +838,7 @@ Only state hours, prices, services, address and contact details that are given t
 When the conversation is finished — they've booked and have nothing else, or they only had a question and it's answered, or they say goodbye — call end_call to say a warm goodbye and hang up. If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. Never ask for payment or card details.
 Warmth and pace: sound like a caring human, not a script. Use the caller's name once you know it and react naturally ("Great choice!", "Perfect."). When it is time to end, give an unhurried, friendly goodbye: thank them by name, wish them a great day, and invite them to call back anytime. Never clip the goodbye or hang up mid-thought.
 ${servicesBlock}
-${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: ' + extra : ''}${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
+${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: ' + facts + '\n' : ''}${ownerRules}${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
 
     const tools = [
       {
@@ -969,7 +979,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
       if (name === 'get_services') {
         const services = await this.prisma.service.findMany({
           where: { tenantId, isActive: true },
-          select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true },
+          select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true },
           orderBy: { name: 'asc' }, take: 250,
         });
         if (!services.length) return 'No services are configured.';
@@ -978,7 +988,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${extra ? cap(persona.venueNoun) + ' notes: 
         // The take was also 40, which quietly hid the rest of a long menu —
         // the same cut that once made the bot say a service did not exist.
         const { locale: svcLocale } = await this.localeInfo(tenantId);
-        return JSON.stringify(services.map((s) => ({ id: s.id, name: s.name, price: formatMoneyShort(s.priceCents, s.currency, svcLocale), minutes: s.durationMinutes })));
+        return JSON.stringify(services.map((s) => ({ id: s.id, name: s.name, price: formatMoneyShort(s.priceCents, s.currency, svcLocale) + ((s as { priceFrom?: boolean }).priceFrom ? ' and up' : ''), minutes: s.durationMinutes })));
       }
       if (name === 'create_booking') {
         const firstName = String(input.customerFirstName || '').trim();

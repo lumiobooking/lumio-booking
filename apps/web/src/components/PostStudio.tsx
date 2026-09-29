@@ -938,7 +938,11 @@ export function PostPreview({ channel, message, media, pageName, igUsername, vi 
   const head = cut ? text.slice(0, fold) : text;
   // Google takes one photo and no video: the preview shows exactly what Maps
   // will, so a carousel's second picture is not promised where it will not go.
-  const first = channel === 'google' ? media.find((m) => m.kind === 'image') : channel === 'tiktok' ? media.find((m) => m.kind === 'video') : media[0];
+  // A video post goes to Google with the video's still frame as its picture.
+  const gVideo = channel === 'google' ? media.find((m) => m.kind === 'video') : undefined;
+  const gPoster = gVideo?.poster ? { url: gVideo.poster, kind: 'image' as MediaKind } : undefined;
+  const first = channel === 'google' ? (media.find((m) => m.kind === 'image') ?? gPoster) : channel === 'tiktok' ? media.find((m) => m.kind === 'video') : media[0];
+  const gNoFrame = channel === 'google' && Boolean(gVideo) && !first;
   const name = channel === 'instagram'
     ? (igUsername ? `@${igUsername}` : 'instagram')
     : (pageName ?? (channel === 'google' ? T('Hồ sơ doanh nghiệp', 'Business Profile') : channel === 'tiktok' ? 'TikTok' : 'Facebook Page'));
@@ -987,6 +991,13 @@ export function PostPreview({ channel, message, media, pageName, igUsername, vi 
       {channel !== 'instagram' && text && (
         <div style={{ padding: '0 11px 9px', fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
           {head}{cut && <span style={{ color: 'var(--c64748b)' }}>… {T('Xem thêm', 'See more')}</span>}
+        </div>
+      )}
+
+      {gNoFrame && (
+        <div style={{ margin: '0 11px 9px', padding: '7px 9px', borderRadius: 8, border: '1px dashed var(--c475569)', fontSize: 11.5, color: 'var(--ink-warn)', lineHeight: 1.45 }}>
+          {T('Video này chưa có ảnh bìa nên bài Google sẽ chỉ có chữ. Xoá video rồi bấm "Tải video lên" lại để hệ thống tạo ảnh bìa.',
+             'This video has no cover frame, so the Google post will be text only. Remove it and upload it again to make one.')}
         </div>
       )}
 

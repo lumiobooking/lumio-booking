@@ -17,7 +17,7 @@ import { useLang, tr, setUiCurrencySymbol } from '../../../lib/i18n';
 import { BarcodeScanner } from '../../../components/BarcodeScanner';
 import { uiLocale } from '../../../lib/datetime';
 
-interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; category?: { id: string; name: string } | null }
+interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; category?: { id: string; name: string } | null }
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null }
 interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string; service: { name: string } | null }
 interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean; tipQrUrl?: string | null; tipHandle?: string | null }
@@ -144,10 +144,12 @@ function Register() {
   /** The payment sheet on a compact screen — see the note where it opens. */
   const [payOpen, setPayOpen] = useState(false);
   // When opened from a booking's "Checkout" button these are pre-filled.
-  const [appointmentId] = useState<string | null>(() => params.get('appointmentId'));
+  const [appointmentId, setAppointmentId] = useState<string | null>(() => params.get('appointmentId'));
+  // A party's bill: read from the URL once, cleared when the till starts a new bill.
+  const [groupId, setGroupId] = useState<string | null>(() => params.get('groupId'));
   // Settling a whole party on one bill: every appointment in the group.
   const [groupApptIds, setGroupApptIds] = useState<string[]>([]);
-  const [walkInId] = useState<string | null>(() => params.get('walkInId'));
+  const [walkInId, setWalkInId] = useState<string | null>(() => params.get('walkInId'));
   // Attached CRM customer: pre-filled from a booking/walk-in checkout, or picked
   // on the register via the customer box. Drives loyalty earn + redeem.
   const [customerId, setCustomerId] = useState<string | null>(() => params.get('customerId') || null);
@@ -238,6 +240,20 @@ function Register() {
     if (typeof window === 'undefined') return false;
     try { return localStorage.getItem('lumio_print_to_reception') === '1'; } catch { return false; }
   });
+  // Per-device: print a receipt at all when a sale completes. On by default —
+  // it is what the till always did — and switchable on the payment screen.
+  const [printOn, setPrintOn] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try { return localStorage.getItem('lumio_pos_print') !== '0'; } catch { return true; }
+  });
+  const togglePrint = (v: boolean) => {
+    setPrintOn(v);
+    try { localStorage.setItem('lumio_pos_print', v ? '1' : '0'); } catch { /* ignore */ }
+  };
+  /** The sale that just went through — drives the "Hoàn tất" screen. */
+  const [done, setDone] = useState<null | { label: string; offline: boolean; paidCents: number; changeCents: number; method: string; customer: string | null; printed: boolean }>(null);
+  /** The last receipt, kept whole so "In lại" prints the same paper after the bill is cleared. */
+  const lastReceiptRef = useRef<{ orderNumber: number | string; text: string; html: string } | null>(null);
   const toggleReception = (v: boolean) => {
     setPrintToReception(v);
     try { localStorage.setItem('lumio_print_to_reception', v ? '1' : '0'); } catch { /* ignore */ }
@@ -474,7 +490,7 @@ function Register() {
           // Group ticket: pull every member of the party and lay their lines out
           // one person after another, each prefixed with the name, so the
           // cashier reads a bill and not a jumble of forty services.
-          const gid = params.get('groupId');
+          const gid = groupId;
           if (gid) {
             const all = await apiFetch<Array<{
               id: string; groupId?: string | null; priceCents?: number;
@@ -575,7 +591,7 @@ function Register() {
       setPrefilled(true);
     })();
     return () => { alive = false; };
-  }, [services, prefilled, params, token, walkInId]);
+  }, [services, prefilled, params, token, walkInId, appointmentId, groupId]);
 
   const net = (priceCents: number, discountPercent?: number) =>
     discountPercent && discountPercent > 0
@@ -1061,7 +1077,9 @@ function Register() {
     const saveOffline = () => {
       queueOrder({ clientRef, payload: { ...payload, redeemPoints: undefined }, at: Date.now(), totalCents: money.total });
       setPendingSync(queueCount());
-      printReceipt(`OFF-${clientRef.slice(0, 5).toUpperCase()}`);
+      const offRef = `OFF-${clientRef.slice(0, 5).toUpperCase()}`;
+      printReceipt(offRef);
+      setDone({ label: offRef, offline: true, paidCents: money.due, changeCents: money.change, method: split ? (lang === 'vi' ? 'Chia bill' : 'Split') : payLabel(payMethod, lang), customer: customerLabel, printed: printOn });
       setOkMsg(t('po.savedOffline'));
       broadcastPaid(clientRef);
       clearCart();
@@ -1113,6 +1131,7 @@ function Register() {
       try {
         const order = await apiFetch<{ orderNumber: number }>('/pos/orders', { method: 'POST', token, body: payload });
         printReceipt(order.orderNumber);
+        setDone({ label: `#${order.orderNumber}`, offline: false, paidCents: money.due, changeCents: money.change, method: split ? (lang === 'vi' ? 'Chia bill' : 'Split') : payLabel(payMethod, lang), customer: customerLabel, printed: printOn });
         setOkMsg(t('po.paidOk').replace('{n}', String(order.orderNumber)));
         broadcastPaid(clientRef);
         clearCart();
@@ -1132,18 +1151,27 @@ function Register() {
   }
 
   function printReceipt(orderNumber: number | string) {
+    // The receipt is built NOW, while the bill is still on the till, and kept
+    // whole: the "Hoàn tất" screen's "In lại" prints this same paper after the
+    // bill has been cleared. Whether anything prints at all is the device's
+    // "In hoá đơn" switch (on by default, which is what the till always did).
+    const snap = { orderNumber, text: buildReceiptText(orderNumber), html: buildReceiptHtml(orderNumber) };
+    lastReceiptRef.current = snap;
+    if (printOn) printSnapshot(snap);
+  }
+  /** Send a built receipt to the printer this device uses. */
+  function printSnapshot(snap: { orderNumber: number | string; text: string; html: string }) {
     // Route to the reception-desk printer (via the print agent) when enabled on
     // this device; otherwise print locally on the phone. If sending to reception
     // fails (offline / agent down), fall back to local print so the receipt is
     // never lost.
     if (printToReception) {
-      const text = buildReceiptText(orderNumber);
-      apiFetch('/print-jobs', { method: 'POST', token, body: { title: `Receipt #${orderNumber}`, text } })
-        .then(() => setOkMsg(t('po.sentToReception').replace('{n}', String(orderNumber))))
-        .catch(() => localPrint(orderNumber));
+      apiFetch('/print-jobs', { method: 'POST', token, body: { title: `Receipt #${snap.orderNumber}`, text: snap.text } })
+        .then(() => setOkMsg(t('po.sentToReception').replace('{n}', String(snap.orderNumber))))
+        .catch(() => printHtml(snap.html));
       return;
     }
-    localPrint(orderNumber);
+    printHtml(snap.html);
   }
 
   // What actually paid the bill, line by line — so a split (part cash, part card)
@@ -1197,7 +1225,7 @@ function Register() {
     return o;
   }
 
-  function localPrint(orderNumber: number | string) {
+  function buildReceiptHtml(orderNumber: number | string): string {
     const rows = cart
       .map((l) => {
         const lt = formatPrice(l.unitPriceCents * l.quantity, currency);
@@ -1233,6 +1261,10 @@ function Register() {
       </table><hr>
       <div class="center">Thank you!</div>
       </body></html>`;
+    return html;
+  }
+
+  function printHtml(html: string) {
     // Print via a hidden same-page iframe. Reliable on iOS Safari + Android Chrome
     // (window.open popups are blocked on mobile) and uses the phone's built-in
     // print (AirPrint / Android Print) — staff can print or save/share a PDF.
@@ -1253,847 +1285,1046 @@ function Register() {
     setTimeout(() => iframe.remove(), 60000);
   }
 
-  /**
-   * THE PHONE HEADER IS ONE ROW.
+  /* ==========================================================================
+   * THE REGISTER — as drawn in the approved mockup ("Lumio POS Redesign").
    *
-   * The desktop toolbar (print toggle, hold, held, iPad, customer screen,
-   * fullscreen, manage products) wrapped to three rows on a 390px phone and
-   * pushed the first service card below the fold — the screen a cashier opens
-   * to ring somebody up began with five things that are not ringing anybody
-   * up. On a phone the header is the title and the two actions that belong to
-   * a sale in progress: hold this bill, open a held one. The print toggle
-   * moves to the ticket screen, where printing happens; "manage products" is
-   * a menu item, not a checkout control.
-   */
-  const phoneHeader = (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          <h1 style={{ fontSize: 18, margin: 0, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t('po.title')}</h1>
-          <button onClick={park} disabled={cart.length === 0} title={lang === 'vi' ? 'Giữ bill hiện tại để phục vụ khách khác' : 'Hold the current ticket to serve someone else'} style={{ ...ghost, padding: '7px 10px', fontSize: 13, opacity: cart.length ? 1 : 0.5, cursor: cart.length ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>⏸ {lang === 'vi' ? 'Giữ' : 'Hold'}</button>
-          <button onClick={() => { loadHeld(); setShowHeld(true); }} style={{ ...ghost, padding: '7px 10px', fontSize: 13, whiteSpace: 'nowrap', ...(heldBills.length ? { borderColor: '#6366f1', color: 'var(--ink-link)' } : null) }}>🧾 {lang === 'vi' ? 'Bill chờ' : 'Held'}{heldBills.length ? ` ${heldBills.length}` : ''}</button>
-        </div>
-  );
-  const headerBar = compact ? phoneHeader : (
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, flexShrink: 0,
-          marginBottom: wide ? 0 : 16,
-          ...(wide ? { borderTop: '1px solid var(--c334155)', paddingTop: 10 } : null),
-        }}>
-          <h1 style={{ fontSize: wide ? 16 : 22, margin: 0 }}>{t('po.title')}</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: wide ? 8 : 14, flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--ccbd5e1)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 16, height: 16 }} />
-              🖨️ {t('po.printReception')}
-            </label>
-            <button onClick={park} disabled={cart.length === 0} title={lang === 'vi' ? 'Giữ bill hiện tại để phục vụ khách khác' : 'Hold the current ticket to serve someone else'} style={{ ...ghost, opacity: cart.length ? 1 : 0.5, cursor: cart.length ? 'pointer' : 'default' }}>⏸️ {lang === 'vi' ? 'Giữ bill' : 'Hold'}</button>
-            <button onClick={() => { loadHeld(); setShowHeld(true); }} style={{ ...ghost }}>🧾 {lang === 'vi' ? 'Bill chờ' : 'Held'}{heldBills.length ? ` (${heldBills.length})` : ''}</button>
-            {wide && (
-              <>
-                <button onClick={() => { enableIpad(); setIpadPanel(true); }} title={t('po.ipadHint')} style={ghost}>📱 {t('po.ipad')}</button>
-                <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={ghost}>🖥️ {t('po.custScreen')}</button>
-              </>
-            )}
-            {!isMobile && (
-              <button onClick={toggleFull} title={t('po.fullHint')} style={{ ...ghost, ...(fullscreen ? { borderColor: '#4f46e5', color: 'var(--cc7d2fe)' } : null) }}>
-                {fullscreen ? `✕ ${t('po.fullOff')}` : `⛶ ${t('po.fullOn')}`}
-              </button>
-            )}
-            <a href="/salon/products" style={{ ...ghost, textDecoration: 'none' }}>{t('po.manageProducts')}</a>
-          </div>
-        </div>
-  );
-  const banners = (
-    <>
-        {appointmentId && (
-          <div style={{ background: 'var(--c1e293b)', border: '1px solid #4f46e5', color: 'var(--cc7d2fe)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
-            {t('po.checkoutBanner').replace('{for}', bookingCustomer ? t('po.checkoutFor').replace('{name}', bookingCustomer) : '')}
-          </div>
-        )}
-        {!appointmentId && customerId && bookingCustomer && (
-          <div style={{ background: 'var(--c1e293b)', border: '1px solid #4f46e5', color: 'var(--cc7d2fe)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>
-            {t('po.newSaleA')}<strong>{bookingCustomer}</strong>{t('po.newSaleB')}
-          </div>
-        )}
-        {error && <div style={ui.banner}>{error}</div>}
-        {okMsg && <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{okMsg}</div>}
-        {!online && (
-          <div style={{ background: 'var(--c78350f)', color: 'var(--cfde68a)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>📴</span> {t('po.offlineMode')}
-          </div>
-        )}
-        {pendingSync > 0 && (
-          <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c475569)', color: 'var(--ccbd5e1)', padding: '8px 14px', borderRadius: 8, fontSize: 13, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-            <span>⏳ {t('po.pendingSync').replace('{n}', String(pendingSync))}</span>
-            {online && <button onClick={syncPending} style={{ ...ghost, padding: '6px 12px', fontSize: 13 }}>{t('po.syncNow')}</button>}
-          </div>
-        )}
-    </>
-  );
+   * The register is its own mode: it covers the admin shell (the ☰ button
+   * brings the menu back), so the whole screen is the till. Three layouts, one
+   * look, chosen by the width of the screen:
+   *
+   *   wide  (≥1024px — computers, iPad held sideways): catalog on the left,
+   *         the bill on the right.
+   *   dock  (700–1023px — iPad held upright): catalog on top, the bill docked
+   *         at the bottom where the thumb is.
+   *   phone (<700px): three steps — pick services, the bill, payment — with
+   *         the running total always on a bar at the bottom.
+   *
+   * Payment is its own screen on every size (method, cash keypad, change, tip
+   * split by technician), and a finished sale shows a "Hoàn tất" screen.
+   * Everything the old register did is still here: held bills, promo codes,
+   * discounts, gift cards, points, split tender, the card terminal, transfer
+   * QR codes, the customer screen and iPad, receipt printing, offline sales,
+   * checkout from a booking or a walk-in ticket, add-ons and products.
+   * ======================================================================== */
+  const narrow = useIsMobile(699);
+  const midW = useIsMobile(1023);
+  const tightTop = useIsMobile(1279);
+  const layout: 'wide' | 'dock' | 'phone' = narrow ? 'phone' : midW ? 'dock' : 'wide';
+  const [step, setStep] = useState<'register' | 'pay'>('register');
+  const [menuOpen, setMenuOpen] = useState<'nav' | 'more' | null>(null);
+  const [editUid, setEditUid] = useState<string | null>(null);
+  const [adj, setAdj] = useState<'discount' | 'promo' | 'gift' | 'points' | null>(null);
+  const [customTip, setCustomTip] = useState('');
+  const [tipMode, setTipMode] = useState<string | null>(null);
+  const [ipadModal, setIpadModal] = useState(false);
+  const [waiting, setWaiting] = useState<WaitingTicket[]>([]);
 
-  /** Tip, payment method, cash shortcuts, split, card recovery, the pay row. One place, drawn inline on a desktop and inside the payment sheet on a compact screen. */
-  const renderPayment = () => (
-    <>
-          {/* Direct tip to the tech(s) on this ticket — opened on demand. */}
-          {tipTechs.length > 0 && !tipOpen && (
-            <button
-              onClick={() => setTipOpen(true)}
-              style={{ marginBottom: 12, width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px dashed var(--c334155)', background: 'transparent', color: 'var(--c64748b)', fontSize: 12, cursor: 'pointer', textAlign: 'left' }}
-            >
-              💸 {t('po.tipTitle')}
-            </button>
-          )}
-          {tipTechs.length > 0 && tipOpen && (
-            <div style={{ marginBottom: 12, border: '1px solid #155e75', borderRadius: 10, padding: 10, background: 'var(--c0f172a)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ca5f3fc)' }}>💸 {t('po.tipTitle')}</div>
-                <button onClick={() => setTipOpen(false)} aria-label="close" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--c64748b)', fontSize: 15, cursor: 'pointer', lineHeight: 1 }}>×</button>
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 8 }}>{t('po.tipQrAfterNote')}</div>
-              <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 8 }}>
-                {t('po.tipSuggest')}: 15% {formatPrice(Math.round(money.subtotal * 0.15), currency)} · 18% {formatPrice(Math.round(money.subtotal * 0.18), currency)} · 20% {formatPrice(Math.round(money.subtotal * 0.2), currency)}
-              </div>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                {tipTechs.map((s) => (
-                  <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 3, width: 150 }}>
-                    <span style={{ fontSize: 13, color: 'var(--ce2e8f0)', textAlign: 'center', fontWeight: 600 }}>{s.firstName} {s.lastName ?? ''}</span>
-                    {s.tipHandle && <span style={{ fontSize: 11, color: 'var(--c64748b)', textAlign: 'center' }}>{s.tipHandle}</span>}
-                    <div style={{ display: 'flex', gap: 4, marginTop: 4, width: '100%' }}>
-                      <input
-                        type="number" min={0} step="0.01" placeholder="$"
-                        value={tipLogInput[s.id] || ''}
-                        onChange={(e) => setTipLogInput((m) => ({ ...m, [s.id]: e.target.value }))}
-                        style={{ ...ui.input, width: 60, padding: '4px 6px', fontSize: 12, textAlign: 'right' }}
-                      />
-                      <button onClick={() => logDirectTip(s.id)} disabled={tipBusy === s.id} style={{ flex: 1, padding: '4px 6px', fontSize: 11, borderRadius: 6, border: '1px solid #0e7490', background: '#155e75', color: '#e0f2fe', cursor: 'pointer', fontWeight: 600 }}>
-                        {tipBusy === s.id ? '…' : t('po.tipLogBtn')}
-                      </button>
-                    </div>
-                    {tipLogged[s.id] > 0 && (
-                      <span style={{ fontSize: 11, color: '#34d399', fontWeight: 600 }}>✓ {formatPrice(tipLogged[s.id], currency)}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 8 }}>{t('po.tipLogHint')}</div>
-            </div>
-          )}
+  // Clients on the floor whose ticket is open — the ones waiting to pay first.
+  // Read from the walk-in board (a checked-in booking is a floor ticket too).
+  // A salon without the walk-in board gets a 403 here and simply no strip.
+  const loadWaiting = useCallback(async () => {
+    if (!token || !online) return;
+    try {
+      const b = await apiFetch<{ serving?: Array<Record<string, unknown>> }>('/walkins/board', { token });
+      const rows = Array.isArray(b?.serving) ? b.serving : [];
+      const list: WaitingTicket[] = rows.map((w) => {
+        const items = Array.isArray(w.items) ? (w.items as Array<{ name?: string; staffId?: string | null }>) : [];
+        const svc = w.service as { name?: string } | null | undefined;
+        const tech = w.assignedStaff as { id?: string; firstName?: string } | null | undefined;
+        const names = items.length ? items.map((it) => it.name || '').filter(Boolean) : (svc?.name ? [svc.name] : []);
+        const techIds = new Set<string>();
+        for (const it of items) if (it.staffId) techIds.add(it.staffId);
+        if (!techIds.size && tech?.id) techIds.add(tech.id);
+        const techNames = [...techIds].map((id) => staff.find((s) => s.id === id)?.firstName || (tech?.id === id ? tech?.firstName : '') || '').filter(Boolean);
+        return {
+          id: String(w.id),
+          customerId: (w.customerId as string | null) ?? null,
+          name: (w.customerName as string | null) || '',
+          what: [names.join(' + '), techNames.join(', ')].filter(Boolean).join(' · '),
+          awaitingPayment: Boolean(w.awaitingPayment),
+        };
+      });
+      list.sort((a, b2) => Number(b2.awaitingPayment) - Number(a.awaitingPayment));
+      setWaiting(list);
+    } catch { setWaiting([]); }
+  }, [token, online, staff]);
+  useEffect(() => {
+    if (step !== 'register' || done) return;
+    loadWaiting();
+    const h = setInterval(loadWaiting, 30000);
+    return () => clearInterval(h);
+  }, [loadWaiting, step, done]);
 
-          {/* Payment method: one segmented control, three equal thirds — the
-              cashier's most-used control should never reflow or wrap. Split
-              sits underneath as a quiet option, not a fourth competing button. */}
-          <div style={{ marginBottom: 10 }}>
-            {!split && (
-              <div style={{
-                // Was fixed at three. A Vietnamese till has six methods, and six
-                // squeezed into one row is six buttons nobody can hit correctly
-                // in a hurry — so it wraps into rows of three instead.
-                display: 'grid', gridTemplateColumns: `repeat(${Math.min(tillMethods.length, 3)}, 1fr)`,
-                gap: 6, background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 12, padding: 4,
-              }}>
-                {tillMethods.map((m) => [
-                  m,
-                  m === 'CARD'
-                    ? `${payLabel(m, lang)}${cardSurchargeOn && cardSurchargePct > 0 ? ` +${cardSurchargePct}%` : ''}`
-                    : payLabel(m, lang),
-                ] as const).map(([m, label]) => (
-                  <button key={m} onClick={() => setPayMethod(m as typeof payMethod)} style={payTab(payMethod === m)}>{label}</button>
-                ))}
-              </div>
-            )}
-            {split && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 2px' }}>
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cc7d2fe)' }}>➗ {t('po.splitTitle')}</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
-              {!split && cardSurchargeOn && cardSurchargePct > 0 && payMethod === 'CARD' && money.cardSurcharge > 0 && (
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cfbbf24)' }}>{t('po.cardFee').replace('{r}', String(cardSurchargePct))}: +{formatPrice(money.cardSurcharge, currency)}</span>
-              )}
-              <button
-                onClick={() => {
-                  if (split) { setSplit(false); setParts([]); }
-                  else {
-                    setSplit(true);
-                    // Seed two parts: the whole due on cash, 0 on card — the cashier edits.
-                    setParts([{ method: 'CASH', amount: fromMinorUnits(money.due, currency) }, { method: 'CARD', amount: '' }]);
-                  }
-                }}
-                style={{ marginLeft: 'auto', background: 'none', border: 'none', color: split ? 'var(--cc7d2fe)' : 'var(--c64748b)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: '2px 4px', textDecoration: 'underline', textUnderlineOffset: 3 }}>
-                {split ? t('po.splitOff') : `➗ ${t('po.splitOn')}`}
-              </button>
-            </div>
-          </div>
+  // The till's methods decide the default: a salon without cash starts on its first method.
+  useEffect(() => {
+    if (tillMethods.length && !tillMethods.includes(payMethod)) setPayMethod(tillMethods[0]);
+  }, [tillMethods, payMethod]);
 
-          {split && (
-            <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, padding: 10, marginBottom: 10 }}>
-              {parts.map((p, i) => (
-                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                  <select value={p.method} onChange={(e) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, method: e.target.value as PayMethod } : x))}
-                    style={{ ...ui.input, width: 130, padding: '7px 8px' }}>
-                    {tillMethods.map((m) => (
-                      <option key={m} value={m}>{payLabel(m, lang)}</option>
-                    ))}
-                  </select>
-                  <input type="number" min={0} step="0.01" value={p.amount} placeholder="0.00"
-                    onChange={(e) => setParts((ps) => ps.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
-                    style={{ ...ui.input, flex: 1, padding: '7px 8px', textAlign: 'right' }} />
-                  {/* Fill this part with whatever is still owed */}
-                  <button onClick={() => {
-                    const others = parts.reduce((a, x, j) => a + (j === i ? 0 : toMinorUnits(x.amount, currency)), 0);
-                    const rest = Math.max(0, money.due - others);
-                    setParts((ps) => ps.map((x, j) => j === i ? { ...x, amount: fromMinorUnits(rest, currency) } : x));
-                  }} style={{ ...chip, whiteSpace: 'nowrap' }}>{t('po.splitRest')}</button>
-                  {parts.length > 2 && <button onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))} style={{ ...chip, color: 'var(--cf87171)', borderColor: 'var(--c7f1d1d)' }}>✕</button>}
-                </div>
-              ))}
-              {parts.length < 4 && (
-                <button onClick={() => setParts((ps) => [...ps, { method: 'CARD', amount: '' }])} style={{ ...chip, marginBottom: 8 }}>+ {t('po.splitAdd')}</button>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, borderTop: '1px solid var(--c334155)', paddingTop: 8 }}>
-                <span style={{ color: 'var(--c94a3b8)' }}>{money.splitRemaining > 0 ? t('po.splitRemaining') : t('po.change')}</span>
-                <span style={{ color: money.splitRemaining > 0 ? 'var(--ink-warn)' : 'var(--ink-good)' }}>
-                  {formatPrice(Math.abs(money.splitRemaining), currency)}
-                </span>
-              </div>
-            </div>
-          )}
+  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const fmt = (c: number) => formatPrice(c, currency);
+  /** Buttons: $140 rather than $140.00 when the amount is whole. */
+  const fmtShort = (c: number) => fmt(c).replace(/[.,]00(?=\D*$)/, '');
+  const staffIdx = (id: string) => staff.findIndex((s) => s.id === id);
+  const staffHue = (id: string) => STAFF_COLORS[(Math.max(0, staffIdx(id))) % STAFF_COLORS.length];
+  const catHue = useMemo(() => {
+    const m = new Map<string, string>();
+    serviceCats.forEach((c, i) => m.set(c.id, CAT_COLORS[i % CAT_COLORS.length]));
+    return m;
+  }, [serviceCats]);
+  const qtyInCart = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of cart) m.set(l.refId, (m.get(l.refId) || 0) + l.quantity);
+    return m;
+  }, [cart]);
+  const cashDue = money.due - money.cardSurcharge;
+  const dualPrice = cardSurchargeOn && cardSurchargePct > 0 && tillMethods.includes('CARD');
+  const cardDue = cashDue + Math.round((Math.max(0, cashDue - money.tip) * cardSurchargePct) / 100);
+  const missingTech = staff.length > 0 && cart.some((l) => l.kind === 'SERVICE' && !l.staffMemberId);
+  const svcBase = cart.filter((l) => l.kind === 'SERVICE').reduce((s2, l) => s2 + l.unitPriceCents * l.quantity, 0);
+  const custName = (customerLabel || bookingCustomer || '').split(' · ')[0].trim();
+  const custPhone = (customerLabel || '').split(' · ').slice(1).join(' · ');
+  const initials = (n: string) => (n.trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2) || '?').toUpperCase();
 
-          {!split && (<>
+  // Tip per technician: what each tech's service lines carry.
+  const techTips = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of cart) if (l.kind === 'SERVICE') m.set(l.staffMemberId || '', (m.get(l.staffMemberId || '') || 0) + l.tipCents);
+    return m;
+  }, [cart]);
+  const techsOnBill = useMemo(() => {
+    const seen: string[] = [];
+    for (const l of cart) if (l.kind === 'SERVICE' && !seen.includes(l.staffMemberId || '')) seen.push(l.staffMemberId || '');
+    return seen;
+  }, [cart]);
+  /** Set one technician's share of the tip, spread over that tech's lines by value. */
+  function setTechTip(staffId: string, cents: number) {
+    const amt = Math.max(0, Math.round(cents));
+    setCart((c) => {
+      const mine = c.filter((l) => l.kind === 'SERVICE' && (l.staffMemberId || '') === staffId);
+      if (!mine.length) return c;
+      const base = mine.reduce((a, l) => a + l.unitPriceCents * l.quantity, 0);
+      const lastUid = mine[mine.length - 1].uid;
+      let given = 0;
+      return c.map((l) => {
+        if (l.kind !== 'SERVICE' || (l.staffMemberId || '') !== staffId) return l;
+        if (l.uid === lastUid) return { ...l, tipCents: Math.max(0, amt - given) };
+        const share = base > 0 ? Math.round((amt * l.unitPriceCents * l.quantity) / base) : 0;
+        given += share;
+        return { ...l, tipCents: share };
+      });
+    });
+  }
 
-          {payMethod === 'CASH' && (
-            <>
-              <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => setTendered(fromMinorUnits(money.due, currency))} style={chip}>{t('po.exact')}</button>
-                {quickCash(money.due).map((amt) => (
-                  <button key={amt} onClick={() => setTendered(fromMinorUnits(amt, currency))} style={chip}>{formatPrice(amt, currency)}</button>
-                ))}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ color: 'var(--c94a3b8)' }}>{t('po.cashReceived')}</span>
-                <input type="number" min={0} step="0.01" value={tendered} onChange={(e) => setTendered(e.target.value)} style={{ ...ui.input, width: 120, padding: '6px 8px', textAlign: 'right' }} />
-              </div>
-              {money.tenderedCents > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontWeight: 600 }}>
-                  <span>{t('po.change')}</span><span style={{ color: money.change >= 0 ? 'var(--ink-good)' : 'var(--ink-bad)' }}>{formatPrice(money.change, currency)}</span>
-                </div>
-              )}
-            </>
-          )}
-          {payMethod === 'CARD' && (
-            <div style={{ marginBottom: 10 }}>
-              <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: 0 }}>{t('po.cardHint').replace('{x}', formatPrice(money.due, currency))}</p>
-              {hubConn && (
-                <div style={{ marginTop: 8, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 10, fontSize: 13, color: 'var(--ce2e8f0)' }}>
-                  {hubReaders.length > 1 ? (
-                    <span>💳 <select value={hubReader} onChange={(e) => setHubReader(e.target.value)} style={{ background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', border: '1px solid var(--c334155)', borderRadius: 6, padding: '4px 8px' }}>
-                      {hubReaders.map((r) => <option key={r.id} value={r.externalReaderId}>{(r.label || r.externalReaderId) + ' (' + r.status + ')'}</option>)}
-                    </select></span>
-                  ) : (
-                    <span>💳 {hubReaders.find((r) => r.externalReaderId === hubReader)?.label || 'Terminal'} {hubReader ? '● ready' : '— no reader'}</span>
-                  )}
-                  <div style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 4 }}>The charge is sent to this reader when you press Pay.</div>
-                </div>
-              )}
-            </div>
-          )}
-          {/* The QR and bank details belong to every method the customer pays by
-              scanning or transferring, not just the one called "Transfer".
-              VietQR IS a bank transfer with a QR code — showing the button but
-              not the code would leave the cashier with nothing to hold up. */}
-          {(payMethod === 'TRANSFER' || payMethod === 'VIETQR' || payMethod === 'MOMO' || payMethod === 'ZALOPAY') && (
-            <div style={{ marginBottom: 10 }}>
-              {/* The details for the method the cashier actually pressed. A
-                  MoMo QR is not a VietQR is not a bank QR; showing the wrong
-                  one is worse than showing none, because the customer scans it
-                  and pays the wrong place. Falls back to the single legacy pair
-                  so a US salon's Zelle details keep working untouched. */}
-              {(() => {
-                const d = payDetails[payMethod] ?? {};
-                const info = d.instructions ?? (payMethod === 'TRANSFER' ? transferInfo : '');
-                const qr = d.qrUrl ?? (payMethod === 'TRANSFER' ? transferQr : '');
-                return info || qr ? (
-                <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>{t('po.transferShow').replace('{x}', formatPrice(money.due, currency))}</div>
-                  {info && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: 'var(--ce2e8f0)', margin: 0 }}>{info}</pre>}
-                  {qr && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={qr} alt={`${payMethod} QR`} style={{ width: 140, height: 140, objectFit: 'contain', marginTop: 10, background: '#fff', borderRadius: 8, padding: 4 }} />
-                  )}
-                  <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 8 }}>{t('po.transferAfter')}</div>
-                </div>
-                ) : (
-                <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>
-                  {t('po.transferNoneA')}<a href="/salon/settings" style={{ color: 'var(--c818cf8)' }}>{t('po.transferSettingsLink')}</a>{t('po.transferNoneB')}
-                </p>
-                );
-              })()}
-            </div>
-          )}
-
-          </>)}
-
-          {charging && (
-            <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20, textAlign: 'center' }}>
-              <div style={{ fontSize: 46 }}>💳</div>
-              <div style={{ color: 'var(--ce2e8f0)', fontSize: 18, marginTop: 12 }}>{t('po.cardWaiting')}</div>
-              <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 6 }}>{t('po.cardFollow')}</div>
-              {cardWait > 0 && <div style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{cardWait}s</div>}
-            </div>
-          )}
-
-          {/* Unresolved card payment. Blocking by design: the safest thing a
-              cashier can do here is look at the terminal, not press pay again. */}
-          {cardStuck && (
-            <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.94)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 24 }}>
-              <div style={{ maxWidth: 460, background: 'var(--c0f172a)', border: '1px solid #f59e0b', borderRadius: 14, padding: 22 }}>
-                <div style={{ color: 'var(--cfbbf24)', fontWeight: 700, fontSize: 17 }}>{t('po.cardUnknownTitle')}</div>
-                <p style={{ color: 'var(--ce2e8f0)', fontSize: 14, lineHeight: 1.6, marginTop: 10 }}>{t('po.cardUnknownBody')}</p>
-                {cardStuck.note && <p style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{cardStuck.note}</p>}
-                <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const r = await apiFetch<{ status: string }>(`/payments-hub/intents/${cardStuck.intentId}`, { token });
-                        if (r.status === 'SUCCEEDED') { setCardStuck(null); setOkMsg(t('po.cardNowPaid')); }
-                        else if (r.status === 'PROCESSING' || r.status === 'REQUIRES_PAYMENT') setCardStuck({ ...cardStuck, note: t('po.cardStillWaiting') });
-                        else { setCardStuck(null); setError(t('po.cardNotCharged').replace('{s}', r.status)); }
-                      } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
-                    }}
-                    style={ui.primaryBtn}
-                  >{t('po.cardRecheck')}</button>
-                  <button onClick={() => setCardStuck(null)} style={ghost}>{t('po.close')}</button>
-                </div>
-              </div>
-            </div>
-          )}
-          <div style={{
-            display: 'flex', gap: 8, paddingBottom: 2,
-            ...(wide ? { paddingTop: 8 } : null),
-          }}>
-            <button onClick={clearCart} disabled={cart.length === 0} style={{ ...ghost, flex: 1 }}>{t('po.clear')}</button>
-            <button onClick={pay} disabled={submitting || cart.length === 0} style={{ ...ui.primaryBtn, flex: 2, padding: '12px', fontSize: 15 }}>
-              {submitting ? t('po.processing') : t('po.payPrint').replace('{x}', formatPrice(money.due, currency))}
-            </button>
-          </div>
-    </>
-  );
+  /** Start a clean bill: nothing from the last sale — customer, booking, promo — carries over. */
+  function newBill() {
+    clearCart();
+    setAppointmentId(null); setWalkInId(null); setGroupId(null); setGroupApptIds([]);
+    setCustomerId(null); setCustomerLabel(null); setCustomerPoints(0);
+    setPromo(null); setPromoInput(''); setPromoErr(null); setBookedOffer(null);
+    setTendered(''); setSplit(false); setParts([]); setCustomTip(''); setTipMode(null);
+    setAdj(null); setEditUid(null); setOkMsg(null); setError(null);
+    setDone(null); setStep('register'); setMobileView('catalog'); setPrefilled(true);
+    try { window.history.replaceState(null, '', '/salon/pos'); } catch { /* ignore */ }
+  }
+  /** Open a waiting client's floor ticket on this till. */
+  function openWaiting(w: WaitingTicket) {
+    if (walkInId === w.id && cart.length) { if (layout === 'phone') setMobileView('ticket'); return; }
+    if (cart.length > 0 && !window.confirm(L('Thay bill đang mở bằng bill của khách này?', 'Replace the open bill with this client’s?'))) return;
+    newBill();
+    setWalkInId(w.id);
+    setCustomerId(w.customerId);
+    setCustomerLabel(w.name || null);
+    setPrefilled(false);
+    if (layout === 'phone') setMobileView('ticket');
+    try {
+      const q = new URLSearchParams({ walkInId: w.id, ...(w.customerId ? { customerId: w.customerId } : {}), ...(w.name ? { customer: w.name } : {}) });
+      window.history.replaceState(null, '', `/salon/pos?${q.toString()}`);
+    } catch { /* ignore */ }
+  }
+  function goPay() {
+    if (cart.length === 0) { setError(t('po.addItem')); return; }
+    setError(null); setOkMsg(null); setEditUid(null);
+    setStep('pay');
+  }
+  /** The cash keypad types into "khách đưa" the way a register does: digits fill from the right. */
+  function keypad(k: string) {
+    const cur = money.tenderedCents;
+    let next = cur;
+    if (k === 'back') next = Math.floor(cur / 10);
+    else if (k === '00') next = cur * 100;
+    else next = cur * 10 + Number(k);
+    if (next > 99999999) return;
+    setTendered(next > 0 ? fromMinorUnits(next, currency) : '');
+  }
+  function searchEnter() {
+    const code = query.trim();
+    if (!code) return;
+    const hit = products.find((p) => (p.barcode ?? '').trim().toLowerCase() === code.toLowerCase());
+    if (hit) { addProduct(hit); setQuery(''); setScanMsg({ ok: true, text: t('po.scanAdded').replace('{name}', hit.name) }); setTimeout(() => setScanMsg(null), 2500); }
+  }
 
   if (loading) return <p style={{ color: 'var(--c94a3b8)' }}>{t('po.loadingReg')}</p>;
 
-  return (
-    <section style={{
-      paddingBottom: isMobile ? (mobileView === 'catalog' ? (phone ? 96 : 84) : 24) : undefined,
-      // Wide mode: the register owns exactly one screen. Nothing below the fold,
-      // so the pay button can never be scrolled away.
-      ...(wide && !fullscreen ? { height: 'calc(100dvh - 92px)', marginBottom: -24, display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
-      // Full screen: cover the shell entirely — no sidebar, no page header.
-      ...(fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, margin: 0, padding: '12px 16px', paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))', background: 'var(--c0b1120)', display: 'flex', flexDirection: 'column', overflow: 'hidden' } : null),
-    }}>
-      <style>{`
-        .pos-card { transition: border-color .12s ease, background .12s ease, transform .06s ease; }
-        .pos-card:hover { border-color: #6366f1 !important; background: var(--c1e293b) !important; }
-        .pos-card:active { transform: scale(.97); }
-        .pos-chips::-webkit-scrollbar { display: none; }
-      `}</style>
-      {!wide && headerBar}
-      {!wide && banners}
-      <div style={{
-        display: 'grid',
-        // minmax(0, 1fr), never a bare 1fr: a bare 1fr is minmax(auto, 1fr), and
-        // "auto" lets the track grow to the widest thing inside it. The
-        // sideways-scrolling category row is wider than any phone, so the
-        // whole catalog card used to spill off the right edge of the screen.
-        gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : (wide ? 'minmax(0, 1fr) 430px' : 'minmax(0, 1.3fr) minmax(0, 1fr)'),
-        // Wide mode: row 1 is the catalog + ticket, row 2 is the toolbar strip
-        // under the catalog only — the ticket spans both rows and keeps the
-        // extra height for itself.
-        ...(wide ? { gridTemplateRows: 'minmax(0, 1fr) auto', rowGap: 10 } : null),
-        gap: isMobile ? 12 : 16,
-        alignItems: wide ? 'stretch' : 'start',
-        ...(wide ? { flex: 1, minHeight: 0 } : null),
-      }}>
-        {/* Catalog */}
-        {(!isMobile || mobileView === 'catalog') && (
-        <div style={{
-          ...ui.card, display: 'flex', flexDirection: 'column',
-          // 20px of card padding on each side of a 390px screen is a tenth of
-          // the width spent on nothing; the cards inside need it more.
-          ...(compact ? { padding: 12, minWidth: 0 } : null),
-          maxHeight: isMobile ? 'none' : (wide ? '100%' : 'calc(100dvh - 130px)'),
-          ...(wide ? { height: '100%', minHeight: 0, overflow: 'hidden', gridColumn: 1, gridRow: 1 } : null),
-        }}>
-          {/* Tabs with counts. On a phone an empty tab is a button that leads
-              nowhere — "Sản phẩm 0" took a third of the row to say the shop
-              sells no products — so empty tabs are not drawn there, and when
-              only services remain there is no row at all. */}
-          {(() => {
-            const all: { id: 'SERVICE' | 'ADDON' | 'PRODUCT'; label: string; n: number }[] = [
-              { id: 'SERVICE', label: t('po.tabServices'), n: services.length },
-              { id: 'ADDON', label: t('po.tabAddons'), n: addons.length },
-              { id: 'PRODUCT', label: t('po.tabProducts'), n: products.length },
-            ];
-            const tabs = all.filter((x) => x.id === 'SERVICE' || x.n > 0);
-            if (tabs.length <= 1) return null;
-            return (
-              <div style={{ display: 'flex', gap: 6, marginBottom: compact ? 10 : 12 }}>
-                {tabs.map((x) => (
-                  <button key={x.id} onClick={() => setTab(x.id)} style={{ ...tabBtn(tab === x.id), ...(compact ? { fontSize: 13, padding: '8px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : null) }}>
-                    {x.label}<TabCount n={x.n} active={tab === x.id} />
-                  </button>
+  /* ---------------------------------------------------------------- pieces */
+  const tabsAll: { id: 'SERVICE' | 'ADDON' | 'PRODUCT'; label: string; n: number }[] = [
+    { id: 'SERVICE', label: t('po.tabServices'), n: services.length },
+    { id: 'ADDON', label: t('po.tabAddons'), n: addons.length },
+    { id: 'PRODUCT', label: t('po.tabProducts'), n: products.length },
+  ];
+  const tabs = tabsAll.filter((x) => x.id === 'SERVICE' || x.n > 0);
+  const flatServices = serviceGroups.flatMap((g) => g.items);
+  const tileMin = layout === 'phone' ? 150 : 200;
+
+  const iconBtn = (label: string, onClick: () => void, icon: React.ReactNode, extra?: React.CSSProperties) => (
+    <button type="button" aria-label={label} title={label} onClick={onClick} style={{ width: 44, height: 44, flexShrink: 0, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--ce2e8f0)', ...extra }}>{icon}</button>
+  );
+  const textBtn: React.CSSProperties = { height: 44, padding: '0 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, textDecoration: 'none' };
+  const heldCount = (
+    <span style={{ minWidth: 22, height: 22, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, background: 'var(--c1e1b4b)', color: 'var(--ce0e7ff)', fontSize: 12, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{heldBills.length}</span>
+  );
+
+  const topBar = (
+    <div style={{ height: layout === 'wide' && !tightTop ? 64 : 56, flexShrink: 0, boxSizing: 'border-box', padding: layout === 'phone' ? '0 12px' : '0 16px', display: 'flex', alignItems: 'center', gap: layout === 'phone' ? 10 : 12, background: 'var(--c0f172a)', borderBottom: '1px solid var(--line)', position: 'relative' }}>
+      {iconBtn(L('Menu quản lý', 'Admin menu'), () => setMenuOpen(menuOpen === 'nav' ? null : 'nav'), <IcoMenu />, layout === 'phone' ? { border: 'none', background: 'transparent' } : undefined)}
+      {layout === 'phone' ? (
+        <span style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{L('Thu ngân', 'Checkout')}</span>
+      ) : layout === 'wide' && !tightTop ? (
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, minWidth: 0 }}>
+          <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{salonName || t('po.title')}</span>
+          <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{L('Quầy thu ngân', 'Checkout')}{user?.firstName ? ` · ${L('Thu ngân', 'Cashier')}: ${user.firstName}` : ''}</span>
+        </div>
+      ) : (
+        <span style={{ minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--cf1f5f9)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{salonName || t('po.title')}</span>
+          <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>· {L('Quầy thu ngân', 'Checkout')}</span>
+        </span>
+      )}
+      {layout !== 'phone' && <div style={{ flex: 1 }} />}
+      {layout === 'wide' && !tightTop && (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 12px', borderRadius: 999, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', background: online ? 'var(--c052e16)' : 'rgba(245,158,11,.14)', color: online ? 'var(--ink-good)' : 'var(--ink-warn)' }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: online ? '#16a34a' : '#f59e0b' }} />
+          {online ? L('Đang kết nối', 'Online') : L('Mất mạng — lưu tạm', 'Offline — saving locally')}
+        </span>
+      )}
+      {layout === 'wide' && (tightTop
+        ? iconBtn(t('po.custScreen'), openCustomerScreen, <IcoScreen />)
+        : <button type="button" onClick={openCustomerScreen} title={t('po.custScreenHint')} style={textBtn}><IcoScreen />{L('Màn hình khách', 'Customer screen')}</button>)}
+      {layout === 'wide' && !tightTop && (
+        <button type="button" onClick={() => togglePrint(!printOn)} title={L('In hoá đơn khi thanh toán xong', 'Print a receipt when a sale completes')} style={textBtn}><IcoPrint />{L('In bill', 'Print')}: {printOn ? L('Bật', 'On') : L('Tắt', 'Off')}</button>
+      )}
+      <button type="button" onClick={() => { loadHeld(); setShowHeld(true); }} style={{ ...textBtn, ...(layout === 'phone' ? { height: 40, padding: '0 10px', fontSize: 13 } : null) }}>
+        {L('Bill chờ', 'Held')} {heldCount}
+      </button>
+      {layout !== 'phone' && iconBtn(L('Thêm tuỳ chọn', 'More'), () => setMenuOpen(menuOpen === 'more' ? null : 'more'), <IcoMore />)}
+      {menuOpen && (
+        <>
+          <div onClick={() => setMenuOpen(null)} style={{ position: 'fixed', inset: 0, zIndex: 5 }} />
+          <div style={{ position: 'absolute', top: '100%', marginTop: 6, zIndex: 6, ...(menuOpen === 'nav' ? { left: 12 } : { right: 12 }), width: 280, background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 14, boxShadow: '0 16px 40px rgba(15,23,42,.18)', padding: 6, display: 'flex', flexDirection: 'column' }}>
+            {menuOpen === 'nav' ? (
+              <>
+                {[
+                  ['/salon', L('Tổng quan', 'Dashboard')],
+                  ['/salon/calendar', L('Lịch hẹn', 'Calendar')],
+                  ['/salon/walkins', L('Khách vãng lai · Lượt', 'Walk-ins')],
+                  ['/salon/orders', L('Đơn hàng', 'Orders')],
+                  ['/salon/services', L('Dịch vụ', 'Services')],
+                  ['/salon/products', t('po.manageProducts')],
+                ].map(([href, label]) => (
+                  <a key={href} href={href} style={menuItem}>{label}</a>
                 ))}
-              </div>
-            );
-          })()}
-
-          {/* Barcode scan: a USB scanner types the code + Enter; the camera button
-              opens a live scanner. Both match a product by barcode and add it. */}
-          {(!compact || tab === 'PRODUCT') && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: scanMsg ? 6 : 12 }}>
-            <input
-              value={scanInput}
-              onChange={(e) => setScanInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); scanLookup(scanInput); } }}
-              placeholder={t('po.scanPlaceholder')}
-              style={{ ...ui.input, flex: 1, padding: '8px 10px' }}
-            />
-            <button type="button" onClick={() => setShowScanner(true)} style={{ ...ghost, padding: '8px 12px', whiteSpace: 'nowrap' }}>📷 {t('po.scanCamera')}</button>
-          </div>
-          )}
-          {scanMsg && (
-            <div style={{ fontSize: 12, color: scanMsg.ok ? 'var(--ink-good)' : 'var(--ink-warn)', marginBottom: 10 }}>{scanMsg.text}</div>
-          )}
-
-          {/* Search */}
-          <div style={{ position: 'relative', marginBottom: 12 }}>
-            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--c64748b)', pointerEvents: 'none' }}>🔍</span>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t('po.searchPh')}
-              style={{ ...ui.input, width: '100%', padding: '10px 34px', fontSize: 14, boxSizing: 'border-box' }}
-            />
-            {query && (
-              <button onClick={() => setQuery('')} aria-label="clear" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => { setMenuOpen(null); enableIpad(); setIpadModal(true); }} style={menuItem}>{t('po.ipad')}</button>
+                {layout !== 'wide' && <button type="button" onClick={() => { setMenuOpen(null); openCustomerScreen(); }} style={menuItem}>{t('po.custScreen')}</button>}
+                <button type="button" onClick={() => togglePrint(!printOn)} style={menuItem}>{L('In hoá đơn khi xong', 'Print receipts')}: <b style={{ marginLeft: 'auto' }}>{printOn ? L('Bật', 'On') : L('Tắt', 'Off')}</b></button>
+                <button type="button" onClick={() => toggleReception(!printToReception)} style={menuItem}>{t('po.printReception')}: <b style={{ marginLeft: 'auto' }}>{printToReception ? L('Bật', 'On') : L('Tắt', 'Off')}</b></button>
+                <button type="button" onClick={() => { setMenuOpen(null); toggleFull(); }} style={menuItem}>{fullscreen ? t('po.fullOff') : t('po.fullOn')}</button>
+                <button type="button" onClick={() => { setMenuOpen(null); park(); }} disabled={cart.length === 0} style={{ ...menuItem, opacity: cart.length ? 1 : 0.45 }}>{L('Giữ bill này', 'Hold this bill')}</button>
+              </>
             )}
           </div>
+        </>
+      )}
+    </div>
+  );
 
-          {/* Category quick-filter chips (services tab) */}
-          {tab === 'SERVICE' && serviceCats.length > 0 && (
-            <div className={compact ? 'pos-chips' : undefined} style={{
-              display: 'flex', gap: 6, marginBottom: compact ? 10 : 12, flexShrink: 0, minWidth: 0,
-              // Three rows of capitalised category names were most of the
-              // phone's first screen. One row that scrolls sideways is the
-              // same information in a fifth of the height.
-              ...(compact
-                ? { flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const, marginLeft: -12, marginRight: -12, paddingLeft: 12, paddingRight: 12, scrollbarWidth: 'none' as const }
-                : { flexWrap: 'wrap' }),
-            }}>
-              <button onClick={() => setCatFilter(null)} style={chipSel(catFilter === null)}>{t('po.allCats')}</button>
-              {serviceCats.map((c) => (
-                <button key={c.id} onClick={() => setCatFilter(catFilter === c.id ? null : c.id)} style={chipSel(catFilter === c.id)}>{c.name}</button>
-              ))}
-            </div>
-          )}
-
-          {/* Scrollable results */}
-          <div style={{ overflowY: 'auto', flex: 1, minHeight: 220, paddingRight: 4 }}>
-            {/* Services, grouped by category */}
-            {tab === 'SERVICE' && (
-              serviceGroups.length === 0 ? (
-                <EmptyState text={services.length === 0 ? t('po.noServices') : `${t('po.noMatch')} "${query}"`} />
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {serviceGroups.map((grp) => (
-                    <div key={grp.id ?? '__none__'}>
-                      {(serviceCats.length > 0) && <GroupHeader label={grp.name} count={grp.items.length} />}
-                      <div style={catGrid}>
-                        {grp.items.map((s) => (
-                          <button key={s.id} onClick={() => addService(s)} className="pos-card" style={catBtn}>
-                            <span style={cardTitle}>{s.name}</span>
-                            <CatPrice priceCents={s.priceCents} discountPercent={s.discountPercent} currency={currency} />
-                            {s.durationMinutes > 0 && <span style={cardMeta}>⏱ {s.durationMinutes} {t('po.min')}</span>}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
-
-            {/* Add-ons, grouped by parent service */}
-            {tab === 'ADDON' && (
-              addons.length === 0 ? (
-                <p style={mutedP}>{t('po.noAddonsA')}<a href="/salon/services" style={{ color: 'var(--c818cf8)' }}>{t('po.servicesLink')}</a>.</p>
-              ) : addonGroups.length === 0 ? (
-                <EmptyState text={`${t('po.noMatch')} "${query}"`} />
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {addonGroups.map((grp) => (
-                    <div key={grp.service}>
-                      <GroupHeader label={grp.service} count={grp.items.length} />
-                      <div style={catGrid}>
-                        {grp.items.map((a) => (
-                          <button key={a.id} onClick={() => addAddon(a)} className="pos-card" style={{ ...catBtn, borderStyle: 'dashed' }}>
-                            <span style={cardTitle}>+ {a.name}</span>
-                            <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(a.priceCents, currency)}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
-
-            {/* Products */}
-            {tab === 'PRODUCT' && (
-              products.length === 0 ? (
-                <p style={mutedP}>{t('po.noProductsA')}<a href="/salon/products" style={{ color: 'var(--c818cf8)' }}>{t('po.addSome')}</a></p>
-              ) : productsF.length === 0 ? (
-                <EmptyState text={`${t('po.noMatch')} "${query}"`} />
-              ) : (
-                <div style={catGrid}>
-                  {productsF.map((p) => (
-                    <button key={p.id} onClick={() => addProduct(p)} className="pos-card" style={catBtn}>
-                      <span style={cardTitle}>{p.name}</span>
-                      <CatPrice priceCents={p.priceCents} discountPercent={p.discountPercent} currency={currency} />
-                      {p.trackStock && <span style={{ fontSize: 11, fontWeight: 600, color: p.stockQty > 0 ? 'var(--c94a3b8)' : 'var(--ink-bad)' }}>{t('po.stock')}: {p.stockQty}</span>}
-                    </button>
-                  ))}
-                </div>
-              )
-            )}
-          </div>
+  const notices = (
+    <>
+      {error && <div style={{ ...noticeBox, background: 'rgba(239,68,68,.10)', color: 'var(--ink-bad)' }}>{error}</div>}
+      {okMsg && !done && <div style={{ ...noticeBox, background: 'var(--c052e16)', color: 'var(--ink-good)' }}>{okMsg}</div>}
+      {!online && (layout !== 'wide' || tightTop) && <div style={{ ...noticeBox, background: 'rgba(245,158,11,.12)', color: 'var(--ink-warn)' }}>{t('po.offlineMode')}</div>}
+      {pendingSync > 0 && (
+        <div style={{ ...noticeBox, background: 'var(--c1e293b)', color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ flex: 1 }}>{t('po.pendingSync').replace('{n}', String(pendingSync))}</span>
+          {online && <button type="button" onClick={syncPending} style={{ ...textBtn, height: 32, fontSize: 13 }}>{t('po.syncNow')}</button>}
         </div>
-        )}
+      )}
+      {scanMsg && <div style={{ ...noticeBox, background: scanMsg.ok ? 'var(--c052e16)' : 'rgba(245,158,11,.12)', color: scanMsg.ok ? 'var(--ink-good)' : 'var(--ink-warn)' }}>{scanMsg.text}</div>}
+    </>
+  );
 
-        {/* Ticket */}
-        {(!isMobile || mobileView === 'ticket') && (
-        <div style={{
-          ...ui.card,
-          position: (isMobile || wide) ? 'static' : 'sticky',
-          top: 12,
-          ...(isMobile ? {} : wide
-            ? { height: '100%', minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gridColumn: 2, gridRow: '1 / -1' }
-            : { maxHeight: 'calc(100dvh - 96px)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }),
-        }}>
-          {isMobile && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
-              <button onClick={() => setMobileView('catalog')} style={{ ...ghost, padding: '8px 12px', fontSize: 14 }}>← {t('po.backToCatalog')}</button>
-              {/* The print toggle lives here on a phone — next to the pay
-                  buttons, which is when anybody thinks about the receipt. */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ccbd5e1)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 16, height: 16 }} />
-                🖨️ {t('po.printReception')}
-              </label>
-            </div>
-          )}
-          {!wide && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 12px', flexWrap: 'wrap' }}>
-            <h2 style={{ fontSize: 15, margin: 0 }}>{t('po.ticket')}</h2>
-            {/* The print toggle sits with the bill on a tablet — the phone
-                header dropped it, and the receipt is a ticket-side decision. */}
-            {false && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ccbd5e1)', cursor: 'pointer', whiteSpace: 'nowrap', marginRight: 'auto', marginLeft: 8 }}>
-                <input type="checkbox" checked={printToReception} onChange={(e) => toggleReception(e.target.checked)} style={{ width: 15, height: 15 }} />
-                🖨️ {t('po.printReception')}
-              </label>
-            )}
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => { enableIpad(); setIpadPanel(true); }} title={t('po.ipadHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>📱 {t('po.ipad')}</button>
-              <button onClick={openCustomerScreen} title={t('po.custScreenHint')} style={{ ...ghost, padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}>🖥️ {t('po.custScreen')}</button>
-            </div>
-          </div>
-          )}
-          {ipadPanel && <IpadPairPanel session={displaySession} onRotate={rotateDisplay} onClose={() => setIpadPanel(false)} t={t} />}
-
-          <CustomerBox
-            token={token} t={t}
-            customerId={customerId} customerLabel={customerLabel} customerPoints={customerPoints}
-            onPick={(id, label, points) => { setCustomerId(id); setCustomerLabel(label); setCustomerPoints(points); }}
-            onClear={() => { setCustomerId(null); setCustomerLabel(null); setCustomerPoints(0); setRedeemInput(''); }}
-          />
-
-          {cart.length === 0 ? (
-            // An empty ticket on a tablet is an empty ticket: room, an arrow at
-            // the catalog, and nothing to fill in. The registers people already
-            // know all do this; a wall of promo/discount/gift inputs over a
-            // $0.00 bill was the single thing that made this screen read as
-            // "rối" on an iPad.
-            <div style={{
-              color: 'var(--c64748b)', fontSize: 14, textAlign: 'center',
-              ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto' } : null),
-              ...(isMobile ? { minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 12px' } : { padding: '18px 0' }),
+  const waitingStrip = waiting.length > 0 && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+      {layout === 'wide' && <div style={sectionLabel}>{L('KHÁCH CHỜ THANH TOÁN', 'READY TO CHECK OUT')}</div>}
+      <div className="pos-noscroll" style={{ display: 'flex', gap: layout === 'phone' ? 8 : 10, overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {waiting.slice(0, 12).map((w) => {
+          const on = walkInId === w.id;
+          const nm = w.name || L('Khách vãng lai', 'Walk-in');
+          return (
+            <button key={w.id} type="button" onClick={() => openWaiting(w)} style={{
+              flex: layout === 'phone' || waiting.length > 3 ? '0 0 auto' : '1 1 0', minWidth: layout === 'phone' ? 0 : 200, maxWidth: layout === 'phone' ? 220 : undefined,
+              height: layout === 'wide' ? (tightTop ? 56 : 64) : (layout === 'dock' ? 52 : 48), boxSizing: 'border-box', padding: '0 12px', borderRadius: 12,
+              border: on ? '2px solid #4f46e5' : '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', cursor: 'pointer',
             }}>
-              <span>🧾<br />{t('po.tapToAdd')}</span>
-            </div>
-          ) : (
-            <div style={{
-              display: 'flex', flexDirection: 'column', gap: 10, marginBottom: wide ? 8 : 12,
-              ...(wide ? { flex: '1 1 0%', minHeight: 0, overflowY: 'auto', paddingRight: 4 } : null),
-            }}>
-              {cart.map((l) => (
-                <div key={l.uid} style={{ borderBottom: '1px solid var(--c334155)', paddingBottom: 7 }}>
-                  {/* Row 1: what it is + what it costs — the two things read together. */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.name}>
-                      {l.isAddon && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--c818cf8)', border: '1px solid #4f46e5', borderRadius: 5, padding: '1px 5px', marginRight: 6 }}>{t('po.addonBadge')}</span>}
-                      {l.name}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
-                      {l.discountPercent > 0 && (
-                        <>
-                          <span style={{ textDecoration: 'line-through', color: 'var(--c64748b)', fontSize: 12 }}>{formatPrice(l.origUnitPriceCents * l.quantity, currency)}</span>
-                          <span style={{ background: '#ef4444', color: '#fff', borderRadius: 5, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>-{l.discountPercent}%</span>
-                        </>
-                      )}
-                      <span style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>$</span>
-                      <input
-                        type="number" min={0} step="0.01" inputMode="decimal"
-                        title={t('po.editPriceHint')}
-                        value={fromMinorUnits(l.unitPriceCents, currency)}
-                        onChange={(e) => setLinePrice(l.uid, e.target.value)}
-                        onFocus={(e) => e.currentTarget.select()}
-                        style={{ ...ui.input, width: 74, padding: '4px 6px', fontSize: 13, textAlign: 'right', color: l.discountPercent > 0 ? 'var(--ink-good)' : 'var(--ce2e8f0)', fontWeight: 600 }}
-                      />
-                      {l.quantity > 1 && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>= {formatPrice(l.unitPriceCents * l.quantity, currency)}</span>}
-                      {catalogPrice(l) != null && catalogPrice(l) !== l.unitPriceCents && (
-                        <button onClick={() => resetLinePrice(l.uid)} title={t('po.resetPrice')} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 6, padding: '2px 6px', fontSize: 11, cursor: 'pointer' }}>↺</button>
-                      )}
-                      <button onClick={() => removeLine(l.uid)} title={t('po.clear')} style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 15, padding: '0 2px' }}>×</button>
-                    </div>
-                  </div>
-                  {/* Row 2: the controls, one line, no wrapping. */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-                      <button onClick={() => updateLine(l.uid, { quantity: Math.max(1, l.quantity - 1) })} style={qtyBtn}>−</button>
-                      <span style={{ minWidth: 18, textAlign: 'center', fontSize: 13 }}>{l.quantity}</span>
-                      <button onClick={() => updateLine(l.uid, { quantity: l.quantity + 1 })} style={qtyBtn}>+</button>
-                    </div>
-                    <select value={l.staffMemberId} onChange={(e) => updateLine(l.uid, { staffMemberId: e.target.value })} style={{ ...ui.input, padding: '4px 6px', fontSize: 12.5, flex: 1, minWidth: 0 }}>
-                      <option value="">{t('po.technician')}</option>
-                      {staff.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}
-                    </select>
-                    <input
-                      type="number" min={0} step="0.01" placeholder={t('po.tipPh')}
-                      value={l.tipCents ? fromMinorUnits(l.tipCents, currency) : ''}
-                      onChange={(e) => updateLine(l.uid, { tipCents: Math.max(0, toMinorUnits(e.target.value, currency)) })}
-                      style={{ ...ui.input, padding: '4px 6px', fontSize: 12.5, width: 68, flexShrink: 0 }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Money + tender + pay: pinned to the bottom of the ticket panel, so it
-              stays on screen no matter how many lines the bill has. */}
-          {/* The money block is darker than the card it sits in, so it has to
-              bleed out to the card's edges and carry its own inset — otherwise
-              the numbers and inputs run straight into its border and read as
-              clipped. ui.card padding is 20, hence the -20 bleed. */}
-          <div style={isMobile ? undefined : wide ? {
-            flex: '0 0 auto', marginTop: 'auto',
-            marginLeft: -20, marginRight: -20, marginBottom: -20,
-            paddingTop: 12, paddingLeft: 20, paddingRight: 20, paddingBottom: 14,
-            background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', borderRadius: '0 0 12px 12px',
-          } : {
-            position: 'sticky', bottom: -20, zIndex: 3, marginTop: 'auto',
-            marginLeft: -20, marginRight: -20, marginBottom: -20,
-            paddingTop: 12, paddingLeft: 20, paddingRight: 20, paddingBottom: 14,
-            background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', borderRadius: '0 0 12px 12px',
-          }}>
-          {/* Totals */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13.5, marginBottom: 9 }}>
-            <Row label={t('po.subtotal')} value={formatPrice(money.subtotal, currency)} />
-            {/* On a compact ticket the money-off controls live behind one
-                chip until somebody needs them — see the note on `compact`.
-                They stay open once a promo or discount is actually applied,
-                because then they are showing a fact, not offering an input. */}
-            {!adjOpen && !promo && !orderDiscount && !giftCard && (
-              <div style={{ display: 'flex', gap: 6, margin: '4px 0 6px', flexWrap: 'wrap' }}>
-                <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>🏷️ {t('po.promoCode')}</button>
-                <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>✂️ {t('po.discountLbl')}</button>
-                {online && <button type="button" onClick={() => setAdjOpen(true)} style={{ ...chip, fontSize: 12 }}>🎁 {t('po.gcApply')}</button>}
-              </div>
-            )}
-            {(adjOpen || promo || orderDiscount) && (
-            <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 10, padding: 7, display: 'flex', flexDirection: 'column', gap: 6, margin: '3px 0 5px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5, width: 72, flexShrink: 0 }}>🏷️ {t('po.promoCode')}</span>
-                {promo ? (
-                  <>
-                    <span style={{ flex: 1, minWidth: 0, color: 'var(--ink-good)', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${promo.code} · ${promo.label}`}>{promo.code} · {promo.label}</span>
-                    {money.promoCents > 0 && <span style={{ color: 'var(--ink-good)', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>−{formatPrice(money.promoCents, currency)}</span>}
-                    <button onClick={() => { setPromo(null); setPromoInput(''); setPromoErr(null); }} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>✕</button>
-                  </>
-                ) : (
-                  <>
-                    <input
-                      value={promoInput}
-                      onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoErr(null); }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyPromo(); } }}
-                      placeholder={t('po.promoPh')}
-                      style={{ ...ui.input, flex: 1, minWidth: 0, padding: '5px 8px', fontSize: 13, textTransform: 'uppercase' }}
-                    />
-                    <button
-                      disabled={!promoInput.trim() || promoBusy}
-                      onClick={applyPromo}
-                      style={{ ...ui.primaryBtn, padding: '5px 12px', fontSize: 12, flexShrink: 0, opacity: (!promoInput.trim() || promoBusy) ? 0.5 : 1 }}
-                    >
-                      {promoBusy ? '…' : t('po.promoApply')}
-                    </button>
-                  </>
+              <span style={{ width: layout === 'wide' ? 36 : 30, height: layout === 'wide' ? 36 : 30, flexShrink: 0, borderRadius: '50%', background: 'var(--c1e1b4b)', color: 'var(--ce0e7ff)', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials(nm)}</span>
+              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.3 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nm}</span>
+                {layout !== 'phone' && layout !== 'dock' && (
+                  <span style={{ fontSize: 12.5, color: w.awaitingPayment ? 'var(--ink-good)' : 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.awaitingPayment ? `${L('Chờ trả tiền', 'Ready to pay')} · ` : ''}{w.what}</span>
                 )}
-              </div>
-              {promoErr && <div style={{ color: 'var(--cf87171)', fontSize: 12 }}>{promoErr}</div>}
-              {promo && !promo.appliesDiscount && (
-                <div style={{ color: 'var(--cfbbf24)', fontSize: 12 }}>{t('po.promoGift')}</div>
-              )}
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ color: 'var(--c94a3b8)', fontSize: 12.5, width: 72, flexShrink: 0 }}>✂️ {t('po.discountLbl')}</span>
-                <div style={{ display: 'flex', gap: 2, background: 'var(--c111827)', border: '1px solid var(--c223047)', borderRadius: 8, padding: 2, flexShrink: 0 }}>
-                  {([['AMOUNT', uiCurrencySymbol(), t('po.discByAmount')], ['PERCENT', '%', t('po.discByPercent')]] as const).map(([m, sym, hint]) => (
-                    <button
-                      key={m}
-                      title={hint}
-                      onClick={() => setDiscountMode(m as 'AMOUNT' | 'PERCENT')}
-                      style={{
-                        width: 30, padding: '4px 0', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                        border: '1px solid ' + (discountMode === m ? '#4f46e5' : 'transparent'),
-                        background: discountMode === m ? '#4f46e5' : 'transparent',
-                        color: discountMode === m ? '#fff' : 'var(--c94a3b8)',
-                      }}
-                    >{sym}</button>
-                  ))}
-                </div>
-                {/* The unit sits inside the field: "5" alone reads as five
-                    dollars OR five percent, and a cashier shouldn't have to
-                    check which switch is lit to know which one it is. */}
-                <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-                  <input
-                    type="number" min={0} step={discountMode === 'PERCENT' ? 1 : 0.01} max={discountMode === 'PERCENT' ? 100 : undefined}
-                    value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)}
-                    placeholder="0"
-                    style={{ ...ui.input, width: '100%', padding: discountMode === 'PERCENT' ? '5px 24px 5px 8px' : '5px 8px 5px 20px', fontSize: 13, textAlign: 'right' }}
-                  />
-                  <span style={{
-                    position: 'absolute', top: '50%', transform: 'translateY(-50%)',
-                    ...(discountMode === 'PERCENT' ? { right: 9 } : { left: 9 }),
-                    fontSize: 12.5, fontWeight: 700, color: orderDiscount ? 'var(--c94a3b8)' : 'var(--c475569)', pointerEvents: 'none',
-                  }}>{discountMode === 'PERCENT' ? '%' : uiCurrencySymbol()}</span>
-                </div>
-                <span
-                  title={discountMode === 'PERCENT' && money.typedDiscount > 0 ? `${orderDiscount}% × ${formatPrice(money.subtotal, currency)}` : undefined}
-                  style={{ width: 62, textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: money.typedDiscount > 0 ? 'var(--ink-good)' : 'var(--c475569)', flexShrink: 0 }}
-                >
-                  {money.typedDiscount > 0 ? `−${formatPrice(money.typedDiscount, currency)}` : '—'}
-                </span>
-              </div>
-            </div>
-            )}
-            {money.tax > 0 && <Row label={t('po.tax').replace('{r}', String(taxRate))} value={formatPrice(money.tax, currency)} />}
-            {money.tip > 0 && <Row label={t('po.tips')} value={formatPrice(money.tip, currency)} />}
-            {money.cardSurcharge > 0 && <Row label={t('po.cardFee').replace('{r}', String(cardSurchargePct))} value={formatPrice(money.cardSurcharge, currency)} />}
-            {loyalty.enabled && customerId && online && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: 'var(--ceab308)' }}>{t('po.redeemPoints').replace('{n}', String(customerPoints))}</span>
-                <input
-                  type="number" min={0} value={redeemInput} onChange={(e) => setRedeemInput(e.target.value)}
-                  placeholder={t('po.minPts').replace('{n}', String(loyalty.minRedeemPoints))}
-                  style={{ ...ui.input, width: 100, padding: '4px 7px', fontSize: 13, textAlign: 'right' }}
-                />
-              </div>
-            )}
-            {money.redeemDiscount > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ceab308)' }}>
-                <span>{t('po.pointsDiscount').replace('{n}', String(money.redeemPts))}</span><span>−{formatPrice(money.redeemDiscount, currency)}</span>
-              </div>
-            )}
-            {money.savings > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ink-good)', fontWeight: 600 }}>
-                <span>{t('po.youSaved')}</span><span>−{formatPrice(money.savings, currency)}</span>
-              </div>
-            )}
-            <div style={{ borderTop: '1px solid var(--c334155)', marginTop: 4, paddingTop: 7, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>{t('po.total')}</span>
-              <span style={{ color: 'var(--ink-good)', fontSize: 22, fontWeight: 800, letterSpacing: -0.4 }}>{formatPrice(money.total, currency)}</span>
-            </div>
-          </div>
-
-          {/* Gift card redemption (online only — needs a live balance check).
-              On a compact ticket it lives in the same drawer as the discounts. */}
-          {online && (adjOpen || giftCard) && (
-            <div style={{ marginBottom: 8 }}>
-              {giftCard ? (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid #155e75', borderRadius: 8, padding: '8px 10px' }}>
-                  <span style={{ fontSize: 13, color: 'var(--ca5f3fc)' }}>🎁 {giftCard.code} · {formatPrice(money.giftApplied, currency)}</span>
-                  <button onClick={() => setGiftCard(null)} style={{ ...ghost, padding: '4px 10px', fontSize: 12 }}>{t('po.gcRemove')}</button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <input
-                    value={giftInput}
-                    onChange={(e) => setGiftInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyGift(); } }}
-                    placeholder={t('po.gcPlaceholder')}
-                    style={{ ...ui.input, flex: 1, padding: '7px 9px' }}
-                  />
-                  <button type="button" onClick={applyGift} style={{ ...ghost, padding: '7px 12px', fontSize: 13, whiteSpace: 'nowrap' }}>🎁 {t('po.gcApply')}</button>
-                </div>
-              )}
-            </div>
-          )}
-          {giftCard && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, fontSize: 16, fontWeight: 700 }}>
-              <span>{t('po.gcDue')}</span><span style={{ color: 'var(--ink-good)' }}>{formatPrice(money.due, currency)}</span>
-            </div>
-          )}
-
-          {/* WHERE THE MONEY IS TAKEN.
-              On a desktop the whole payment area sits under the totals, as it
-              always has. On a tablet or phone it is a separate sheet that
-              opens from one big button — the pattern every register people
-              already know (Square's "Charge", Toast's "Pay") uses, and for a
-              reason: method tabs, cash shortcuts, split, tips and the confirm
-              button together stand taller than an iPad screen, and pinned to
-              the bottom of the ticket they pushed the customer and the line
-              items clean out of view. The cashier saw a bill with no items. */}
-          {!compact && renderPayment()}
-          {compact && (
-            <button
-              onClick={() => setPayOpen(true)}
-              disabled={cart.length === 0}
-              style={{ ...ui.primaryBtn, width: '100%', padding: '14px 16px', fontSize: 16, fontWeight: 800, marginTop: 6, opacity: cart.length ? 1 : 0.5 }}
-            >
-              {lang === 'vi' ? `Thanh toán ${formatPrice(money.due, currency)} →` : `Charge ${formatPrice(money.due, currency)} →`}
+              </span>
             </button>
-          )}
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const searchBox = (
+    <label style={{ flex: layout === 'phone' ? '0 0 auto' : '1 1 0', minWidth: 0, height: layout === 'wide' && !tightTop ? 52 : 48, boxSizing: 'border-box', padding: '0 14px', borderRadius: 12, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <IcoSearch />
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); searchEnter(); } }}
+        placeholder={layout === 'phone' ? L('Tìm dịch vụ', 'Search services') : products.length ? L('Tìm dịch vụ, sản phẩm — hoặc quét mã vạch', 'Search services, products — or scan a barcode') : L('Tìm dịch vụ', 'Search services')}
+        style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', fontSize: 16, fontFamily: 'inherit', background: 'transparent', color: 'var(--cf1f5f9)' }}
+      />
+      {query && <button type="button" onClick={() => setQuery('')} aria-label={L('Xoá tìm kiếm', 'Clear search')} style={{ border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 20, cursor: 'pointer', padding: 4 }}>×</button>}
+      {products.length > 0 && (
+        <button type="button" onClick={() => setShowScanner(true)} aria-label={t('po.scanCamera')} title={t('po.scanCamera')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, display: 'flex', color: 'var(--c94a3b8)' }}><IcoBarcode /></button>
+      )}
+    </label>
+  );
+
+  const tabSwitch = tabs.length > 1 && (
+    <div style={{ height: layout === 'wide' && !tightTop ? 52 : 48, boxSizing: 'border-box', padding: 4, borderRadius: 12, background: 'var(--c1e293b)', display: 'flex', gap: 4, flexShrink: 0 }}>
+      {tabs.map((x) => (
+        <button key={x.id} type="button" onClick={() => setTab(x.id)} style={{ height: '100%', padding: layout === 'phone' ? '0 10px' : '0 16px', borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: tab === x.id ? 700 : 600, background: tab === x.id ? 'var(--c0f172a)' : 'transparent', color: tab === x.id ? 'var(--cf1f5f9)' : 'var(--c94a3b8)', boxShadow: tab === x.id ? '0 1px 2px rgba(15,23,42,.12)' : 'none', whiteSpace: 'nowrap' }}>{x.label}</button>
+      ))}
+    </div>
+  );
+
+  const catRow = tab === 'SERVICE' && serviceCats.length > 0 && (
+    <div className="pos-noscroll" style={{ display: 'flex', gap: layout === 'phone' ? 6 : 8, overflowX: 'auto', flexShrink: 0, scrollbarWidth: 'none', margin: layout === 'phone' ? '0 -12px' : 0, padding: layout === 'phone' ? '0 12px' : 0 }}>
+      {[{ id: null as string | null, name: t('po.allCats') }, ...serviceCats].map((c) => {
+        const on = catFilter === c.id;
+        return (
+          <button key={c.id ?? 'all'} type="button" onClick={() => setCatFilter(c.id)} style={{ height: layout === 'phone' ? 38 : 40, flexShrink: 0, padding: '0 14px', borderRadius: 999, border: '1px solid ' + (on ? 'var(--ce2e8f0)' : 'var(--line)'), background: on ? 'var(--ce2e8f0)' : 'var(--c0f172a)', color: on ? 'var(--c0f172a)' : 'var(--ccbd5e1)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            {c.id && <span style={{ width: 8, height: 8, borderRadius: '50%', background: catHue.get(c.id) }} />}
+            {c.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const tile = (key: string, name: string, meta: string, price: React.ReactNode, count: number, onClick: () => void, dot?: string, dashed?: boolean) => (
+    <button key={key} type="button" onClick={onClick} className="pos-tile" style={{
+      position: 'relative', boxSizing: 'border-box', minHeight: layout === 'phone' ? 92 : layout === 'wide' && !tightTop ? 112 : 100,
+      padding: layout === 'phone' ? '10px 12px' : '14px 14px 12px', borderRadius: layout === 'phone' ? 12 : 14,
+      border: count ? '2px solid #4f46e5' : `1px ${dashed ? 'dashed' : 'solid'} var(--line)`, background: 'var(--c0f172a)',
+      display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8, textAlign: 'left', cursor: 'pointer', boxShadow: '0 1px 2px rgba(15,23,42,.05)',
+    }}>
+      <span style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        {dot && <span style={{ width: 8, height: 8, marginTop: 7, flexShrink: 0, borderRadius: '50%', background: dot }} />}
+        <span style={{ fontSize: layout === 'phone' ? 14.5 : 15, fontWeight: 700, lineHeight: 1.3, color: 'var(--cf1f5f9)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{name}</span>
+      </span>
+      <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 6, rowGap: 2 }}>
+        <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{meta}</span>
+        <span style={{ marginLeft: 'auto', fontSize: layout === 'phone' ? 16 : 17, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{price}</span>
+      </span>
+      {count > 0 && (
+        <span style={{ position: 'absolute', top: -8, right: -8, minWidth: 26, height: 26, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, background: '#4f46e5', color: '#fff', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--c0b1120)' }}>{count}</span>
+      )}
+    </button>
+  );
+  const priceTag = (cents: number, disc?: number, from?: boolean) => {
+    const d = disc ?? 0;
+    const netC = d > 0 ? Math.round((cents * (100 - d)) / 100) : cents;
+    return (
+      <>
+        {d > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c64748b)', textDecoration: 'line-through', marginRight: 5 }}>{fmt(cents)}</span>}
+        {from ? `${L('từ', 'from')} ` : ''}{fmt(netC)}
+      </>
+    );
+  };
+
+  const grid = (
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', margin: '0 -8px', padding: '10px 8px 12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`, gap: layout === 'phone' ? 8 : layout === 'wide' && !tightTop ? 12 : 10, alignContent: 'start' }}>
+        {tab === 'SERVICE' && flatServices.map((s) => tile(
+          s.id, s.name, s.durationMinutes > 0 ? `${s.durationMinutes} ${L('phút', 'min')}` : '', priceTag(s.priceCents, s.discountPercent, s.priceFrom),
+          qtyInCart.get(s.id) || 0, () => addService(s), s.category ? catHue.get(s.category.id) : undefined,
+        ))}
+        {tab === 'ADDON' && addonGroups.flatMap((g) => g.items).map((a) => tile(
+          a.id, `+ ${a.name}`, a.service?.name ?? '', fmt(a.priceCents), qtyInCart.get(a.id) || 0, () => addAddon(a), undefined, true,
+        ))}
+        {tab === 'PRODUCT' && productsF.map((p) => tile(
+          p.id, p.name, p.trackStock ? `${t('po.stock')}: ${p.stockQty}` : '', priceTag(p.priceCents, p.discountPercent), qtyInCart.get(p.id) || 0, () => addProduct(p),
+        ))}
+      </div>
+      {tab === 'SERVICE' && flatServices.length === 0 && <EmptyState text={services.length === 0 ? t('po.noServices') : `${t('po.noMatch')} "${query}"`} />}
+      {tab === 'ADDON' && addonGroups.length === 0 && <EmptyState text={addons.length === 0 ? L('Chưa có add-on nào.', 'No add-ons yet.') : `${t('po.noMatch')} "${query}"`} />}
+      {tab === 'PRODUCT' && productsF.length === 0 && <EmptyState text={products.length === 0 ? L('Chưa có sản phẩm nào.', 'No products yet.') : `${t('po.noMatch')} "${query}"`} />}
+    </div>
+  );
+
+  /* ------------------------------------------------------------- the bill */
+  const custRow = (compactRow: boolean) => (
+    <div style={{ padding: compactRow ? '10px 16px' : '16px 20px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
+      {customerId || custName ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ width: compactRow ? 40 : 44, height: compactRow ? 40 : 44, flexShrink: 0, borderRadius: '50%', background: 'rgba(219,39,119,.14)', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials(custName || '?')}</span>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
+            <span style={{ fontSize: compactRow ? 15 : 16, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{custName || t('po.custAttached')}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[custPhone, loyalty.enabled && customerId ? `${customerPoints} ${L('điểm', 'points')}` : ''].filter(Boolean).join(' · ') || (walkInId ? L('Khách tại tiệm', 'In the salon') : '')}</span>
+          </div>
+          <button type="button" onClick={() => { setCustomerId(null); setCustomerLabel(null); setCustomerPoints(0); setRedeemInput(''); }} style={{ height: 36, padding: '0 12px', borderRadius: 9, border: '1px solid var(--line)', background: 'var(--c0f172a)', fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', cursor: 'pointer' }}>{L('Đổi', 'Change')}</button>
+        </div>
+      ) : (
+        <CustomerBox
+          token={token} t={t}
+          customerId={customerId} customerLabel={customerLabel} customerPoints={customerPoints}
+          onPick={(id, label, points) => { setCustomerId(id); setCustomerLabel(label); setCustomerPoints(points); }}
+          onClear={() => { setCustomerId(null); setCustomerLabel(null); setCustomerPoints(0); setRedeemInput(''); }}
+        />
+      )}
+    </div>
+  );
+
+  const techChip = (l: Line) => {
+    const st = l.staffMemberId ? staff.find((x) => x.id === l.staffMemberId) : null;
+    const nm = st ? st.firstName : L('Chọn thợ', 'Pick tech');
+    const warn = !st && l.kind === 'SERVICE' && staff.length > 0;
+    return (
+      <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px 0 4px', borderRadius: 999, border: '1px solid ' + (warn ? 'rgba(217,119,6,.55)' : 'var(--line)'), background: warn ? 'rgba(245,158,11,.12)' : 'var(--c1e293b)', color: warn ? 'var(--ink-warn)' : 'var(--cf1f5f9)', fontSize: 13, fontWeight: 700, flexShrink: 0, maxWidth: 170 }}>
+        <span style={{ width: 24, height: 24, flexShrink: 0, borderRadius: '50%', background: st ? staffHue(st.id) : '#c2410c', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{st ? (st.firstName[0] || '?').toUpperCase() : '?'}</span>
+        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nm}</span>
+        {/* The real control: a native picker laid over the chip — one tap, works with touch and mouse alike. */}
+        <select
+          aria-label={t('po.technician')}
+          value={l.staffMemberId}
+          onChange={(e) => updateLine(l.uid, { staffMemberId: e.target.value })}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', fontSize: 16 }}
+        >
+          <option value="">{t('po.technician')}</option>
+          {staff.map((s2) => <option key={s2.id} value={s2.id}>{s2.firstName} {s2.lastName ?? ''}</option>)}
+        </select>
+      </span>
+    );
+  };
+
+  const lineRow = (l: Line, dense: boolean) => {
+    const open = editUid === l.uid;
+    const cat = catalogPrice(l);
+    return (
+      <div key={l.uid} style={{ borderBottom: '1px solid var(--line)', padding: dense ? '10px 4px' : '12px 8px' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button type="button" onClick={() => setEditUid(open ? null : l.uid)} style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer', fontSize: dense ? 14.5 : 15, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}>
+              {l.isAddon && <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ce0e7ff)', background: 'var(--c1e1b4b)', borderRadius: 5, padding: '1px 6px', marginRight: 6, verticalAlign: 'middle' }}>{t('po.addonBadge')}</span>}
+              {l.name}{l.quantity > 1 ? <span style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}> × {l.quantity}</span> : null}
+            </button>
+            {(l.kind === 'SERVICE' && staff.length > 0) && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
+                {techChip(l)}
+                {!dense && (() => { const sv = services.find((x) => x.id === l.refId); return sv && sv.durationMinutes > 0 ? <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{sv.durationMinutes} {L('phút', 'min')}</span> : null; })()}
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+            <button type="button" onClick={() => setEditUid(open ? null : l.uid)} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'right' }}>
+              {l.discountPercent > 0 && <span style={{ display: 'block', fontSize: 12, color: 'var(--c64748b)', textDecoration: 'line-through' }}>{fmt(l.origUnitPriceCents * l.quantity)}</span>}
+              <span style={{ fontSize: dense ? 15 : 16, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{fmt(l.unitPriceCents * l.quantity)}</span>
+            </button>
+            {!dense && (
+              <button type="button" onClick={() => removeLine(l.uid)} aria-label={L('Bỏ dòng này', 'Remove line')} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--c94a3b8)' }}><IcoX /></button>
+            )}
           </div>
         </div>
-        )}
-
-        {/* Toolbar + page banners live under the catalog only, so the ticket
-            column can run the full height of the screen beside them. */}
-        {wide && (
-          <div style={{ gridColumn: 1, gridRow: 2, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {banners}
-            {headerBar}
+        {open && (
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: 'var(--c1e293b)', display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{L('Giá', 'Price')}</span>
+            <input
+              type="number" min={0} step="0.01" inputMode="decimal" autoFocus
+              value={fromMinorUnits(l.unitPriceCents, currency)}
+              onChange={(e) => setLinePrice(l.uid, e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              style={{ width: 110, height: 40, boxSizing: 'border-box', padding: '0 10px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 16, fontWeight: 700, textAlign: 'right' }}
+            />
+            {cat != null && cat !== l.unitPriceCents && <button type="button" onClick={() => resetLinePrice(l.uid)} style={smallBtn}>{t('po.resetPrice')}</button>}
+            {l.kind === 'PRODUCT' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
+                <button type="button" onClick={() => updateLine(l.uid, { quantity: Math.max(1, l.quantity - 1) })} style={{ ...smallBtn, width: 40, padding: 0 }}>−</button>
+                <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 700, color: 'var(--cf1f5f9)' }}>{l.quantity}</span>
+                <button type="button" onClick={() => updateLine(l.uid, { quantity: l.quantity + 1 })} style={{ ...smallBtn, width: 40, padding: 0 }}>+</button>
+              </span>
+            )}
+            <span style={{ flex: 1 }} />
+            <button type="button" onClick={() => { removeLine(l.uid); setEditUid(null); }} style={{ ...smallBtn, color: 'var(--ink-bad)' }}>{L('Xoá', 'Remove')}</button>
+            <button type="button" onClick={() => setEditUid(null)} style={smallBtn}>{L('Xong', 'Done')}</button>
           </div>
         )}
       </div>
+    );
+  };
 
-      {/* Mobile: sticky total + go-to-ticket bar so checkout is one tap away. */}
-      {isMobile && mobileView === 'catalog' && (
-        <div style={{ position: 'fixed', left: 0, right: 0, bottom: phone ? 'calc(64px + env(safe-area-inset-bottom, 0px))' : 'env(safe-area-inset-bottom, 0px)', zIndex: 45, background: 'var(--c111827)', borderTop: '1px solid var(--c334155)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 -4px 16px rgba(0,0,0,0.4)' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{cart.length} {t('po.itemsWord')}</div>
-            <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--ink-good)' }}>{formatPrice(money.total, currency)}</div>
+  const adjButtons = (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      <button type="button" onClick={() => setAdj(adj === 'discount' ? null : 'discount')} style={adjBtn(adj === 'discount' || !!orderDiscount)}>{orderDiscount ? `${L('Giảm giá', 'Discount')} −${fmt(money.typedDiscount)}` : `+ ${L('Giảm giá', 'Discount')}`}</button>
+      <button type="button" onClick={() => setAdj(adj === 'promo' ? null : 'promo')} style={adjBtn(adj === 'promo' || !!promo)}>{promo ? `${promo.code}${money.promoCents ? ` −${fmt(money.promoCents)}` : ''}` : `+ ${L('Mã ưu đãi', 'Promo code')}`}</button>
+      {online && <button type="button" onClick={() => setAdj(adj === 'gift' ? null : 'gift')} style={adjBtn(adj === 'gift' || !!giftCard)}>{giftCard ? `${L('Thẻ quà', 'Gift card')} −${fmt(money.giftApplied)}` : `+ ${L('Thẻ quà', 'Gift card')}`}</button>}
+      {loyalty.enabled && customerId && online && customerPoints >= loyalty.minRedeemPoints && (
+        <button type="button" onClick={() => setAdj(adj === 'points' ? null : 'points')} style={adjBtn(adj === 'points' || money.redeemPts > 0)}>{money.redeemPts > 0 ? `${money.redeemPts} ${L('điểm', 'pts')} −${fmt(money.redeemDiscount)}` : `+ ${L(`Dùng ${customerPoints} điểm`, `Use ${customerPoints} pts`)}`}</button>
+      )}
+    </div>
+  );
+
+  const adjPanel = adj && (
+    <div style={{ padding: 10, borderRadius: 12, background: 'var(--c1e293b)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {adj === 'discount' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--line)', flexShrink: 0 }}>
+            {([['AMOUNT', uiCurrencySymbol()], ['PERCENT', '%']] as const).map(([m, sym]) => (
+              <button key={m} type="button" onClick={() => setDiscountMode(m)} style={discountMode === m ? { width: 38, height: 34, borderRadius: 8, border: 'none', background: '#4f46e5', color: '#fff', fontWeight: 800, cursor: 'pointer' } : { width: 38, height: 34, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontWeight: 800, cursor: 'pointer' }}>{sym}</button>
+            ))}
           </div>
-          <button onClick={() => setMobileView('ticket')} style={{ ...ui.primaryBtn, padding: '12px 20px', fontSize: 15, whiteSpace: 'nowrap' }}>{t('po.viewTicket')} →</button>
+          <input type="number" min={0} step={discountMode === 'PERCENT' ? 1 : 0.01} autoFocus value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)} placeholder="0" style={adjInput} />
+          {orderDiscount && <button type="button" onClick={() => setOrderDiscount('')} style={smallBtn}>{L('Bỏ', 'Clear')}</button>}
         </div>
       )}
+      {adj === 'promo' && (promo ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: 'var(--ink-good)', fontWeight: 600 }}>
+          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{promo.code} · {promo.label}</span>
+          <button type="button" onClick={() => { setPromo(null); setPromoInput(''); setPromoErr(null); }} style={smallBtn}>{L('Bỏ', 'Remove')}</button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input value={promoInput} autoFocus onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoErr(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyPromo(); } }} placeholder={t('po.promoPh')} style={{ ...adjInput, textAlign: 'left', textTransform: 'uppercase' }} />
+          <button type="button" disabled={!promoInput.trim() || promoBusy} onClick={applyPromo} style={{ height: 40, padding: '0 14px', borderRadius: 10, border: 'none', background: '#4f46e5', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: !promoInput.trim() || promoBusy ? 0.5 : 1 }}>{promoBusy ? '…' : t('po.promoApply')}</button>
+        </div>
+      ))}
+      {adj === 'promo' && promoErr && <div style={{ fontSize: 12.5, color: 'var(--ink-bad)' }}>{promoErr}</div>}
+      {adj === 'promo' && promo && !promo.appliesDiscount && <div style={{ fontSize: 12.5, color: 'var(--ink-warn)' }}>{t('po.promoGift')}</div>}
+      {adj === 'gift' && (giftCard ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: 'var(--ccbd5e1)' }}>
+          <span style={{ flex: 1 }}>{giftCard.code} · {fmt(money.giftApplied)}</span>
+          <button type="button" onClick={() => setGiftCard(null)} style={smallBtn}>{t('po.gcRemove')}</button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input value={giftInput} autoFocus onChange={(e) => setGiftInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyGift(); } }} placeholder={t('po.gcPlaceholder')} style={{ ...adjInput, textAlign: 'left' }} />
+          <button type="button" onClick={applyGift} style={{ height: 40, padding: '0 14px', borderRadius: 10, border: 'none', background: '#4f46e5', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>{t('po.gcApply')}</button>
+        </div>
+      ))}
+      {adj === 'points' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{t('po.redeemPoints').replace('{n}', String(customerPoints))}</span>
+          <input type="number" min={0} autoFocus value={redeemInput} onChange={(e) => setRedeemInput(e.target.value)} placeholder={t('po.minPts').replace('{n}', String(loyalty.minRedeemPoints))} style={adjInput} />
+        </div>
+      )}
+    </div>
+  );
+
+  const totalsBlock = (big: number) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div style={totRow}><span>{t('po.subtotal')}</span><span>{fmt(money.subtotal)}</span></div>
+      {money.discount > 0 && <div style={totRow}><span>{L('Giảm giá', 'Discount')}</span><span>−{fmt(money.discount)}</span></div>}
+      {money.redeemDiscount > 0 && <div style={totRow}><span>{t('po.pointsDiscount').replace('{n}', String(money.redeemPts))}</span><span>−{fmt(money.redeemDiscount)}</span></div>}
+      {money.tax > 0 && <div style={totRow}><span>{t('po.tax').replace('{r}', String(taxRate))}</span><span>{fmt(money.tax)}</span></div>}
+      {tipsOn && svcBase > 0 && <div style={totRow}><span>Tip</span><span>{money.tip > 0 ? fmt(money.tip) : L('Khách chọn khi thanh toán', 'Chosen at payment')}</span></div>}
+      {money.giftApplied > 0 && <div style={totRow}><span>{L('Thẻ quà', 'Gift card')}</span><span>−{fmt(money.giftApplied)}</span></div>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4, gap: 10 }}>
+        <span style={{ fontSize: big > 28 ? 16 : 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{dualPrice ? L('Tổng · tiền mặt', 'Total · cash') : t('po.total')}</span>
+        <span style={{ fontSize: big, fontWeight: 800, letterSpacing: -0.5, color: 'var(--cf1f5f9)' }}>{fmt(cashDue)}</span>
+      </div>
+      {dualPrice && <div style={{ ...totRow, fontSize: 13.5 }}><span>{L(`Trả thẻ (+${cardSurchargePct}%)`, `By card (+${cardSurchargePct}%)`)}</span><b style={{ color: 'var(--ccbd5e1)' }}>{fmt(cardDue)}</b></div>}
+    </div>
+  );
+
+  const missingNote = missingTech && (
+    <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(245,158,11,.12)', color: 'var(--ink-warn)', fontSize: 13, fontWeight: 600 }}>
+      {L('Còn dịch vụ chưa chọn thợ — chạm “Chọn thợ” để tính tip và hoa hồng đúng người.', 'Some services have no technician — tap “Pick tech” so tips and commission go to the right person.')}
+    </div>
+  );
+
+  const emptyBill = (
+    <div style={{ flex: 1, minHeight: 160, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, textAlign: 'center', padding: 16 }}>
+      <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{L('Bill đang trống', 'The bill is empty')}</span>
+      <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{waiting.length ? L('Chạm dịch vụ, hoặc chọn khách đang chờ', 'Tap a service, or pick a waiting client') : L('Chạm dịch vụ để thêm vào bill', 'Tap a service to add it')}</span>
+    </div>
+  );
+
+  const payBtn = (h: number, label?: string) => (
+    <button type="button" onClick={goPay} disabled={cart.length === 0} style={cart.length
+      ? { flex: 1, height: h, borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', fontSize: h >= 60 ? 18 : 17, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }
+      : { flex: 1, height: h, borderRadius: 14, border: 'none', background: '#a5b4fc', color: '#fff', fontSize: h >= 60 ? 18 : 17, fontWeight: 800, cursor: 'default', whiteSpace: 'nowrap' }}>
+      {label ?? `${L('Thanh toán', 'Charge')} · ${fmt(cashDue)}`}
+    </button>
+  );
+  const holdBtn = (h: number, short?: boolean) => (
+    <button type="button" onClick={park} disabled={cart.length === 0} style={{ height: h, padding: '0 16px', borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 700, color: 'var(--ccbd5e1)', cursor: cart.length ? 'pointer' : 'default', opacity: cart.length ? 1 : 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}>{short ? L('Giữ', 'Hold') : L('Giữ bill', 'Hold')}</button>
+  );
+
+  /** The bill on the right of a wide screen. */
+  const sideTicket = (
+    <div style={{ width: tightTop ? 380 : 440, flexShrink: 0, boxSizing: 'border-box', background: 'var(--c0f172a)', borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {custRow(tightTop)}
+      {!tightTop && (
+        <div style={{ padding: '12px 20px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexShrink: 0 }}>
+          <span style={sectionLabel}>{L('BILL', 'BILL')} · {cart.length} {L('DÒNG', cart.length === 1 ? 'ITEM' : 'ITEMS')}</span>
+          {cart.length > 0 && <button type="button" onClick={() => { if (window.confirm(L('Xoá toàn bộ bill?', 'Clear the whole bill?'))) clearCart(); }} style={{ border: 'none', background: 'transparent', fontSize: 13, fontWeight: 600, color: 'var(--c94a3b8)', cursor: 'pointer', padding: '6px 0' }}>{L('Xoá bill', 'Clear bill')}</button>}
+        </div>
+      )}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: tightTop ? '4px 12px' : '0 12px', display: 'flex', flexDirection: 'column' }}>
+        {cart.length === 0 ? emptyBill : cart.map((l) => lineRow(l, tightTop))}
+      </div>
+      <div style={{ padding: tightTop ? '8px 16px' : '10px 20px', borderTop: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+        {adjButtons}
+        {adjPanel}
+      </div>
+      <div style={{ padding: tightTop ? '8px 16px' : '12px 20px 8px', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+        {totalsBlock(tightTop ? 26 : 30)}
+        {missingNote}
+      </div>
+      <div style={{ padding: tightTop ? '8px 16px 16px' : '8px 20px 20px', display: 'flex', gap: 10, flexShrink: 0 }}>
+        {holdBtn(tightTop ? 56 : 60, tightTop)}
+        {payBtn(tightTop ? 56 : 60)}
+      </div>
+    </div>
+  );
+
+  /** The bill docked under the catalog on an upright iPad. */
+  const dockTicket = (
+    <div style={{ height: 'clamp(300px, 40dvh, 440px)', flexShrink: 0, boxSizing: 'border-box', background: 'var(--c0f172a)', borderTop: '1px solid var(--line)', borderRadius: '20px 20px 0 0', boxShadow: '0 -8px 24px rgba(15,23,42,.08)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 8 }}><span style={{ width: 44, height: 5, borderRadius: 999, background: 'var(--c334155)' }} /></div>
+      {custRow(true)}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 16px', display: 'flex', flexDirection: 'column' }}>
+        {cart.length === 0 ? emptyBill : cart.map((l) => lineRow(l, true))}
+      </div>
+      <div style={{ padding: '8px 16px 0', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+        {adjButtons}
+        {adjPanel}
+        {missingNote}
+      </div>
+      <div style={{ padding: '10px 20px calc(16px + env(safe-area-inset-bottom, 0px))', display: 'flex', alignItems: 'center', gap: 14, borderTop: '1px solid var(--line)', marginTop: 8, flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, minWidth: 0 }}>
+          <span style={{ fontSize: 13, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{dualPrice ? `${L('Tiền mặt · thẻ', 'Cash · card')} ${fmt(cardDue)}` : t('po.total')}</span>
+          <span style={{ fontSize: 28, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{fmt(cashDue)}</span>
+        </div>
+        <div style={{ flex: 1 }} />
+        {holdBtn(56)}
+        <div style={{ width: 260, display: 'flex' }}>{payBtn(56, L('Thanh toán', 'Charge'))}</div>
+      </div>
+    </div>
+  );
+
+  /** The bill as its own screen on a phone. */
+  const phoneTicket = (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--c0f172a)' }}>
+      <div style={{ height: 56, flexShrink: 0, boxSizing: 'border-box', padding: '0 8px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--line)' }}>
+        <button type="button" onClick={() => setMobileView('catalog')} style={{ height: 44, padding: '0 8px', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', gap: 4, fontSize: 15, fontWeight: 700, color: 'var(--ink-link)', cursor: 'pointer' }}><IcoBack />{L('Thêm dịch vụ', 'Add services')}</button>
+        <span style={{ flex: 1, textAlign: 'right', paddingRight: 8, fontSize: 14, fontWeight: 700, color: 'var(--c94a3b8)' }}>{L('Bill', 'Bill')} · {cart.length}</span>
+      </div>
+      {custRow(true)}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 16px', display: 'flex', flexDirection: 'column' }}>
+        {cart.length === 0 ? emptyBill : cart.map((l) => lineRow(l, false))}
+        {cart.length > 0 && <span style={{ display: 'block', padding: '10px 0', fontSize: 12.5, color: 'var(--c94a3b8)' }}>{L('Chạm vào một dòng để sửa giá, số lượng hoặc xoá.', 'Tap a line to change its price, quantity or remove it.')}</span>}
+      </div>
+      <div style={{ padding: '10px 16px 0', borderTop: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+        {adjButtons}
+        {adjPanel}
+      </div>
+      <div style={{ padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+        {totalsBlock(28)}
+        {missingNote}
+      </div>
+      <div style={{ padding: '8px 16px calc(16px + env(safe-area-inset-bottom, 0px))', display: 'flex', gap: 8, flexShrink: 0 }}>
+        {holdBtn(56, true)}
+        {payBtn(56)}
+      </div>
+    </div>
+  );
+
+  /** The bar at the bottom of the phone catalog: the running bill, one tap away. */
+  const phoneBar = (
+    <div style={{ flexShrink: 0, boxSizing: 'border-box', padding: '10px 12px calc(12px + env(safe-area-inset-bottom, 0px))', background: 'var(--c0f172a)', borderTop: '1px solid var(--line)' }}>
+      <button type="button" onClick={() => setMobileView('ticket')} style={{ width: '100%', height: 60, boxSizing: 'border-box', padding: '0 16px', borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', textAlign: 'left' }}>
+        <span style={{ minWidth: 28, height: 28, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, background: '#ffffff', color: '#3730a3', fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{cart.reduce((a, l) => a + l.quantity, 0)}</span>
+        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+          <span style={{ fontSize: 15, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{L('Xem bill', 'View bill')}{custName ? ` · ${custName}` : ''}</span>
+          {missingTech && <span style={{ fontSize: 12, opacity: 0.9 }}>{L('Có dịch vụ chưa chọn thợ', 'A service has no technician')}</span>}
+        </span>
+        <span style={{ fontSize: 18, fontWeight: 800 }}>{fmt(cashDue)}</span>
+      </button>
+    </div>
+  );
+
+  /* ------------------------------------------------------------- payment */
+  const methodSub = (m: PayMethod) => (m === 'CARD' && dualPrice ? `${fmt(cardDue)} · +${cardSurchargePct}%` : fmt(m === 'CARD' ? cardDue : cashDue));
+  const selectMethod = (m: PayMethod) => { setSplit(false); setParts([]); setPayMethod(m); };
+  const startSplit = () => { setSplit(true); setParts([{ method: tillMethods.includes('CASH') ? 'CASH' : tillMethods[0], amount: fromMinorUnits(cashDue, currency) }, { method: tillMethods.includes('CARD') ? 'CARD' : (tillMethods[1] ?? tillMethods[0]), amount: '' }]); };
+  const payNarrow = layout !== 'wide';
+
+  const methodTiles = (
+    <div className={payNarrow ? 'pos-noscroll' : undefined} style={payNarrow
+      ? { display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none', flexShrink: 0 }
+      : { display: 'grid', gridTemplateColumns: `repeat(${Math.min(tillMethods.length + 1, 6)}, minmax(0, 1fr))`, gap: 10 }}>
+      {[...tillMethods.map((m) => ({ id: m as string, label: payLabel(m, lang), sub: methodSub(m), on: !split && payMethod === m, go: () => selectMethod(m) })),
+        { id: 'SPLIT', label: L('Chia bill', 'Split'), sub: L('Nhiều cách trả', 'Several ways'), on: split, go: () => (split ? selectMethod(payMethod) : startSplit()) }]
+        .map((x) => (payNarrow ? (
+          <button key={x.id} type="button" onClick={x.go} style={x.on
+            ? { height: 44, flexShrink: 0, padding: '0 14px', borderRadius: 10, border: '2px solid #4f46e5', background: 'var(--c1e1b4b)', fontSize: 14, fontWeight: 800, color: 'var(--ce0e7ff)', cursor: 'pointer', whiteSpace: 'nowrap' }
+            : { height: 44, flexShrink: 0, padding: '0 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', fontSize: 14, fontWeight: 700, color: 'var(--cf1f5f9)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            {x.id === 'CARD' && dualPrice ? `${x.label} +${cardSurchargePct}%` : x.id === 'SPLIT' ? L('Chia', 'Split') : x.label}
+          </button>
+        ) : (
+          <button key={x.id} type="button" onClick={x.go} style={{ height: 84, borderRadius: 14, border: x.on ? '2px solid #4f46e5' : '1px solid var(--line)', background: x.on ? 'var(--c1e1b4b)' : 'var(--c0f172a)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', padding: '0 6px' }}>
+            <span style={{ fontSize: 16, fontWeight: 800, color: x.on ? 'var(--ce0e7ff)' : 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{x.label}</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: x.on ? 'var(--ce0e7ff)' : 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{x.sub}</span>
+          </button>
+        )))}
+    </div>
+  );
+
+  const keyRow = payNarrow ? (layout === 'phone' ? 50 : 60) : tightTop ? 62 : 72;
+  const short = money.tenderedCents > 0 && money.tenderedCents < money.due;
+  const changeBox = (
+    <div style={{ marginTop: payNarrow ? 0 : 'auto', flexShrink: 0, padding: payNarrow ? '10px 14px' : tightTop ? '14px 16px' : '18px 20px', borderRadius: 14, background: short ? 'rgba(245,158,11,.12)' : 'var(--c052e16)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+      <span style={{ fontSize: payNarrow || tightTop ? 15 : 17, fontWeight: 800, color: short ? 'var(--ink-warn)' : 'var(--ink-good)' }}>{short ? L('Còn thiếu', 'Still owed') : L('Tiền thừa trả khách', 'Change due')}</span>
+      <span style={{ fontSize: payNarrow ? 26 : tightTop ? 30 : 40, fontWeight: 800, whiteSpace: 'nowrap', color: short ? 'var(--ink-warn)' : 'var(--ink-good)' }}>{fmt(short ? money.due - money.tenderedCents : money.change)}</span>
+    </div>
+  );
+  const cashPanel = (
+    <div style={payNarrow
+      ? { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gridAutoRows: 'max-content', gap: 12 }
+      : { display: 'flex', gap: tightTop ? 16 : 24, flex: 1, minHeight: 0 }}>
+      <div style={{ flex: payNarrow ? undefined : 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: payNarrow ? 10 : 14 }}>
+        {!payNarrow && <span style={sectionLabel}>{L('KHÁCH ĐƯA', 'CASH RECEIVED')}</span>}
+        <div
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (/^[0-9]$/.test(e.key)) { e.preventDefault(); keypad(e.key); }
+            else if (e.key === 'Backspace') { e.preventDefault(); keypad('back'); }
+            else if (e.key === 'Enter') { e.preventDefault(); pay(); }
+          }}
+          style={{ height: payNarrow ? 56 : 76, boxSizing: 'border-box', padding: '0 18px', borderRadius: 14, border: '2px solid var(--ce2e8f0)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, outline: 'none', background: 'var(--c0f172a)' }}>
+          {payNarrow && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--c94a3b8)' }}>{L('Khách đưa', 'Received')}</span>}
+          <span style={{ marginLeft: 'auto', fontSize: payNarrow ? 28 : tightTop ? 32 : 40, fontWeight: 800, whiteSpace: 'nowrap', color: money.tenderedCents ? 'var(--cf1f5f9)' : 'var(--c64748b)' }}>{fmt(money.tenderedCents)}</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: tightTop && !payNarrow ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: payNarrow ? 6 : 10 }}>
+          {[{ k: 'exact', label: t('po.exact'), cents: money.due }, ...quickCash(money.due).map((c) => ({ k: String(c), label: fmtShort(c), cents: c }))].slice(0, 4).map((q2) => {
+            const on = money.tenderedCents === q2.cents && money.tenderedCents > 0;
+            return <button key={q2.k} type="button" onClick={() => setTendered(fromMinorUnits(q2.cents, currency))} style={{ height: payNarrow ? 44 : 56, borderRadius: 12, border: on ? '2px solid var(--ce2e8f0)' : '1px solid var(--line)', background: on ? 'var(--c1e293b)' : 'var(--c0f172a)', fontSize: 15, fontWeight: on ? 800 : 700, color: 'var(--cf1f5f9)', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q2.label}</button>;
+          })}
+        </div>
+        {!payNarrow && changeBox}
+      </div>
+      <div style={{ width: payNarrow ? '100%' : tightTop ? 240 : 330, flexShrink: 0, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gridAutoRows: keyRow, gap: payNarrow ? 6 : 10, alignContent: 'start' }}>
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', 'back'].map((k) => (
+          <button key={k} type="button" onClick={() => keypad(k)} aria-label={k === 'back' ? L('Xoá một số', 'Delete a digit') : undefined} style={{ borderRadius: payNarrow ? 12 : 14, border: payNarrow ? 'none' : '1px solid var(--line)', background: 'var(--c1e293b)', fontSize: payNarrow ? 21 : 24, fontWeight: 700, color: 'var(--cf1f5f9)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {k === 'back' ? <IcoBackspace /> : k}
+          </button>
+        ))}
+      </div>
+      {payNarrow && changeBox}
+    </div>
+  );
+
+  const cardPanel = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 16, borderRadius: 14, background: 'var(--c1e293b)' }}>
+      <span style={{ fontSize: 15, color: 'var(--ccbd5e1)' }}>{t('po.cardHint').replace('{x}', fmt(money.due))}</span>
+      {hubConn && (
+        <div style={{ fontSize: 14, color: 'var(--ce2e8f0)' }}>
+          {hubReaders.length > 1 ? (
+            <select value={hubReader} onChange={(e) => setHubReader(e.target.value)} style={{ height: 44, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', padding: '0 10px', fontSize: 15 }}>
+              {hubReaders.map((r) => <option key={r.id} value={r.externalReaderId}>{(r.label || r.externalReaderId) + ' (' + r.status + ')'}</option>)}
+            </select>
+          ) : (
+            <span>{hubReaders.find((r) => r.externalReaderId === hubReader)?.label || L('Máy quẹt thẻ', 'Card reader')} {hubReader ? L('· sẵn sàng', '· ready') : L('— chưa có máy', '— no reader')}</span>
+          )}
+          <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 4 }}>{L('Bấm Hoàn tất để gửi số tiền tới máy quẹt.', 'Press Complete to send the amount to the reader.')}</div>
+        </div>
+      )}
+    </div>
+  );
+
+  const transferPanel = (() => {
+    const d = payDetails[payMethod] ?? {};
+    const info = d.instructions ?? (payMethod === 'TRANSFER' ? transferInfo : '');
+    const qr = d.qrUrl ?? (payMethod === 'TRANSFER' ? transferQr : '');
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 16, borderRadius: 14, background: 'var(--c1e293b)' }}>
+        {info || qr ? (
+          <>
+            <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('po.transferShow').replace('{x}', fmt(money.due))}</span>
+            {info && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 14, color: 'var(--ce2e8f0)', margin: 0 }}>{info}</pre>}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {qr && <img src={qr} alt={`${payMethod} QR`} style={{ width: 160, height: 160, objectFit: 'contain', background: '#fff', borderRadius: 10, padding: 6 }} />}
+            <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('po.transferAfter')}</span>
+          </>
+        ) : (
+          <span style={{ fontSize: 14, color: 'var(--c94a3b8)' }}>{t('po.transferNoneA')}<a href="/salon/settings" style={{ color: 'var(--ink-link)' }}>{t('po.transferSettingsLink')}</a>{t('po.transferNoneB')}</span>
+        )}
+      </div>
+    );
+  })();
+
+  const splitPanel = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 14, borderRadius: 14, background: 'var(--c1e293b)' }}>
+      {parts.map((p, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select value={p.method} onChange={(e) => setParts((ps) => ps.map((x, j) => (j === i ? { ...x, method: e.target.value as PayMethod } : x)))} style={{ height: 44, width: 140, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', padding: '0 8px', fontSize: 15 }}>
+            {tillMethods.map((m) => <option key={m} value={m}>{payLabel(m, lang)}</option>)}
+          </select>
+          <input type="number" min={0} step="0.01" inputMode="decimal" value={p.amount} placeholder="0.00" onChange={(e) => setParts((ps) => ps.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} style={{ ...adjInput, height: 44 }} />
+          <button type="button" onClick={() => {
+            const others = parts.reduce((a, x, j) => a + (j === i ? 0 : toMinorUnits(x.amount, currency)), 0);
+            setParts((ps) => ps.map((x, j) => (j === i ? { ...x, amount: fromMinorUnits(Math.max(0, money.due - others), currency) } : x)));
+          }} style={smallBtn}>{t('po.splitRest')}</button>
+          {parts.length > 2 && <button type="button" onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))} aria-label={L('Bỏ phần này', 'Remove part')} style={{ ...smallBtn, color: 'var(--ink-bad)' }}>×</button>}
+        </div>
+      ))}
+      {parts.length < 4 && <button type="button" onClick={() => setParts((ps) => [...ps, { method: tillMethods.includes('CARD') ? 'CARD' : tillMethods[0], amount: '' }])} style={{ ...smallBtn, alignSelf: 'flex-start' }}>+ {t('po.splitAdd')}</button>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 800, paddingTop: 6, borderTop: '1px solid var(--line)' }}>
+        <span style={{ color: 'var(--c94a3b8)' }}>{money.splitRemaining > 0 ? t('po.splitRemaining') : t('po.change')}</span>
+        <span style={{ color: money.splitRemaining > 0 ? 'var(--ink-warn)' : 'var(--ink-good)' }}>{fmt(Math.abs(money.splitRemaining))}</span>
+      </div>
+    </div>
+  );
+
+  const tipOptions = [
+    { k: 'none', label: layout === 'phone' || (tightTop && !payNarrow) ? L('Không', 'None') : L('Không tip', 'No tip'), cents: 0 },
+    ...[15, 18, 20].map((p) => ({ k: String(p), label: `${p}%`, cents: Math.round((svcBase * p) / 100) })),
+  ];
+  const tipBlock = tipsOn && svcBase > 0 && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: payNarrow ? 12 : 16, borderRadius: 14, background: 'var(--c1e293b)', border: '1px solid var(--line)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--cf1f5f9)', flexShrink: 0 }}>Tip</span>
+        <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', textAlign: 'right' }}>{L('Khách chọn trên màn hình khách, hoặc bấm ở đây', 'The client picks it on their screen, or tap here')}</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
+        {tipOptions.map((o) => {
+          const on = tipMode === o.k || (tipMode === null && o.k === 'none' && money.tip === 0);
+          return <button key={o.k} type="button" onClick={() => { setTipMode(o.k); setCustomTip(''); applyCustomerTip(o.cents); }} style={{ height: payNarrow ? 48 : 54, minWidth: 0, padding: '0 2px', borderRadius: 10, border: on ? '2px solid #4f46e5' : '1px solid var(--line)', background: on ? 'var(--c1e1b4b)' : 'var(--c0f172a)', color: on ? 'var(--ce0e7ff)' : 'var(--cf1f5f9)', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+            <span>{o.label}</span>{o.cents > 0 && <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.8, whiteSpace: 'nowrap' }}>{fmt(o.cents)}</span>}
+          </button>;
+        })}
+        <input type="number" min={0} step="0.01" inputMode="decimal" placeholder={L('Khác', 'Other')} value={customTip}
+          onChange={(e) => { setCustomTip(e.target.value); setTipMode('custom'); applyCustomerTip(Math.max(0, toMinorUnits(e.target.value || '0', currency))); }}
+          style={{ height: payNarrow ? 48 : 54, minWidth: 0, boxSizing: 'border-box', borderRadius: 10, border: tipMode === 'custom' ? '2px solid #4f46e5' : '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 14, fontWeight: 700, textAlign: 'center', padding: '0 4px' }} />
+      </div>
+      {money.tip > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 2 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--cf1f5f9)', flexShrink: 0, whiteSpace: 'nowrap' }}>{L('Chia tip theo thợ', 'Tip by technician')}</span>
+            <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', textAlign: 'right' }}>{L('Tự chia theo giá dịch vụ · sửa được', 'Split by service value · editable')}</span>
+          </div>
+          {techsOnBill.map((sid) => {
+            const st = sid ? staff.find((x) => x.id === sid) : null;
+            return (
+              <div key={sid || 'none'} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ width: 32, height: 32, flexShrink: 0, borderRadius: '50%', background: st ? staffHue(st.id) : '#c2410c', color: '#fff', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{st ? (st.firstName[0] || '?').toUpperCase() : '?'}</span>
+                <span style={{ flex: 1, fontSize: 15, fontWeight: 600, color: st ? 'var(--cf1f5f9)' : 'var(--ink-warn)' }}>{st ? `${st.firstName} ${st.lastName ?? ''}`.trim() : L('Chưa chọn thợ', 'No technician')}</span>
+                <input type="number" min={0} step="0.01" inputMode="decimal" value={fromMinorUnits(techTips.get(sid) || 0, currency)}
+                  onChange={(e) => setTechTip(sid, toMinorUnits(e.target.value || '0', currency))}
+                  onFocus={(e) => e.currentTarget.select()}
+                  style={{ width: 110, height: 40, boxSizing: 'border-box', padding: '0 12px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 15, fontWeight: 700, textAlign: 'right' }} />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const directTip = tipTechs.length > 0 && (
+    <details style={{ borderRadius: 14, background: 'var(--c1e293b)', padding: '10px 14px' }}>
+      <summary style={{ cursor: 'pointer', fontSize: 13.5, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{t('po.tipTitle')}</summary>
+      <div style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '8px 0' }}>{t('po.tipQrAfterNote')}</div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        {tipTechs.map((s2) => (
+          <div key={s2.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 160 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{s2.firstName} {s2.lastName ?? ''}</span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input type="number" min={0} step="0.01" placeholder={uiCurrencySymbol()} value={tipLogInput[s2.id] || ''} onChange={(e) => setTipLogInput((m) => ({ ...m, [s2.id]: e.target.value }))} style={{ ...adjInput, height: 36, width: 70, flex: 'none' }} />
+              <button type="button" onClick={() => logDirectTip(s2.id)} disabled={tipBusy === s2.id} style={{ ...smallBtn, height: 36 }}>{tipBusy === s2.id ? '…' : t('po.tipLogBtn')}</button>
+            </div>
+            {tipLogged[s2.id] > 0 && <span style={{ fontSize: 12, color: 'var(--ink-good)', fontWeight: 700 }}>✓ {fmt(tipLogged[s2.id])}</span>}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+
+  const printCheck = (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, fontWeight: 600, color: 'var(--ccbd5e1)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+      <input type="checkbox" checked={printOn} onChange={(e) => togglePrint(e.target.checked)} style={{ width: 22, height: 22 }} />
+      {L('In hoá đơn', 'Print receipt')}
+    </label>
+  );
+  const completeLabel = submitting ? t('po.processing') : `${L('Hoàn tất · Thu', 'Complete · Take')} ${fmt(money.due)}`;
+  const completeBtn = (h: number, w?: number) => (
+    <button type="button" onClick={pay} disabled={submitting || cart.length === 0} style={{ width: w ?? '100%', height: h, borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', fontSize: h >= 64 ? 19 : 17, fontWeight: 800, cursor: submitting ? 'default' : 'pointer', opacity: submitting ? 0.7 : 1, whiteSpace: 'nowrap' }}>{completeLabel}</button>
+  );
+  const methodBody = money.due === 0
+    ? <div style={{ padding: 16, borderRadius: 14, background: 'var(--c052e16)', color: 'var(--ink-good)', fontWeight: 700 }}>{L('Thẻ quà đã trả đủ — bấm Hoàn tất.', 'The gift card covers it — press Complete.')}</div>
+    : split ? splitPanel
+      : payMethod === 'CASH' ? cashPanel
+        : payMethod === 'CARD' ? cardPanel
+          : transferPanel;
+
+  const payHeader = (
+    <div style={{ height: layout === 'phone' ? 56 : 64, flexShrink: 0, boxSizing: 'border-box', padding: layout === 'phone' ? '0 8px' : '0 20px', display: 'flex', alignItems: 'center', gap: 16, background: 'var(--c0f172a)', borderBottom: '1px solid var(--line)' }}>
+      <button type="button" onClick={() => setStep('register')} style={layout === 'phone'
+        ? { height: 44, padding: '0 8px', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', gap: 4, fontSize: 15, fontWeight: 700, color: 'var(--ink-link)', cursor: 'pointer' }
+        : { ...textBtn, fontWeight: 700 }}>
+        <IcoBack />{layout === 'phone' ? L('Bill', 'Bill') : L('Quay lại bill', 'Back to bill')}
+      </button>
+      <span style={{ flex: layout === 'phone' ? 1 : undefined, textAlign: layout === 'phone' ? 'right' : undefined, paddingRight: layout === 'phone' ? 8 : 0, fontSize: layout === 'phone' ? 14 : 16, fontWeight: layout === 'phone' ? 700 : 800, color: layout === 'phone' ? 'var(--c94a3b8)' : 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {L('Thanh toán', 'Payment')}{custName ? ` · ${custName}` : ''}
+      </span>
+    </div>
+  );
+
+  const dueHead = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: payNarrow ? 'center' : 'flex-start', textAlign: payNarrow ? 'center' : 'left' }}>
+      <span style={sectionLabel}>{L('CẦN THU', 'AMOUNT DUE')}</span>
+      <span style={{ fontSize: payNarrow ? 40 : 52, fontWeight: 800, letterSpacing: -1, lineHeight: 1.1, color: 'var(--cf1f5f9)' }}>{fmt(money.due)}</span>
+      <span style={{ fontSize: payNarrow ? 12.5 : 14, color: 'var(--c94a3b8)' }}>
+        {`${L('Dịch vụ', 'Services')} ${fmt(money.subtotal - money.discount - money.redeemDiscount + money.tax)}`}
+        {money.tip > 0 && ` + tip ${fmt(money.tip)}`}
+        {money.cardSurcharge > 0 && ` + ${L('phí thẻ', 'card fee')} ${fmt(money.cardSurcharge)}`}
+        {money.giftApplied > 0 && ` − ${L('thẻ quà', 'gift card')} ${fmt(money.giftApplied)}`}
+      </span>
+    </div>
+  );
+
+  const payLines = (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {cart.map((l) => {
+        const st = l.staffMemberId ? staff.find((x) => x.id === l.staffMemberId) : null;
+        return (
+          <div key={l.uid} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '10px 0', borderTop: '1px solid var(--line)', fontSize: 15, color: 'var(--cf1f5f9)' }}>
+            <span style={{ minWidth: 0 }}>{l.name}{l.quantity > 1 ? ` × ${l.quantity}` : ''}{st && <span style={{ color: 'var(--c94a3b8)' }}> · {st.firstName}</span>}</span>
+            <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(l.unitPriceCents * l.quantity)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const payScreen = payNarrow ? (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--c0f172a)' }}>
+      {payHeader}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', boxSizing: 'border-box', padding: layout === 'phone' ? '14px 16px' : '20px 24px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gridAutoRows: 'max-content', alignContent: 'start', gap: 12, width: '100%', maxWidth: 720, margin: '0 auto' }}>
+        {notices}
+        {dueHead}
+        {tipBlock}
+        {money.due > 0 && methodTiles}
+        {methodBody}
+        {directTip}
+        {layout !== 'phone' && payLines}
+      </div>
+      <div style={{ padding: `10px 16px calc(16px + env(safe-area-inset-bottom, 0px))`, display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid var(--line)', width: '100%', maxWidth: 720, margin: '0 auto', boxSizing: 'border-box' }}>
+        {printCheck}
+        {completeBtn(58)}
+      </div>
+    </div>
+  ) : (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      {payHeader}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: tightTop ? 16 : 24, padding: tightTop ? 16 : 24, boxSizing: 'border-box' }}>
+        <div style={{ width: tightTop ? 380 : 520, flexShrink: 0, boxSizing: 'border-box', padding: tightTop ? 20 : 24, borderRadius: 18, background: 'var(--c0f172a)', border: '1px solid var(--line)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gridAutoRows: 'max-content', alignContent: 'start', gap: 18, overflowY: 'auto' }}>
+          {dueHead}
+          {payLines}
+          {tipBlock}
+          {directTip}
+        </div>
+        <div style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', padding: 24, borderRadius: 18, background: 'var(--c0f172a)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto' }}>
+          {notices}
+          {money.due > 0 && methodTiles}
+          <div style={{ flex: '1 0 auto', display: 'flex', flexDirection: 'column' }}>{methodBody}</div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            {printCheck}
+            <div style={{ flex: 1 }} />
+            {completeBtn(64, 420)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  /* ---------------------------------------------------------------- done */
+  const doneScreen = done && (
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', alignItems: layout === 'phone' ? 'stretch' : 'center', justifyContent: 'center', padding: layout === 'phone' ? 0 : 40, boxSizing: 'border-box' }}>
+      <div style={{ width: layout === 'phone' ? '100%' : 'min(680px, 100%)', boxSizing: 'border-box', padding: layout === 'phone' ? '32px 20px calc(20px + env(safe-area-inset-bottom, 0px))' : 40, borderRadius: layout === 'phone' ? 0 : 22, background: 'var(--c0f172a)', border: layout === 'phone' ? 'none' : '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 26 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
+          <span style={{ width: 72, height: 72, borderRadius: '50%', background: done.offline ? 'rgba(245,158,11,.14)' : 'var(--c052e16)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: done.offline ? 'var(--ink-warn)' : 'var(--ink-good)' }}><IcoCheck /></span>
+          <span style={{ fontSize: 30, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{done.offline ? L('Đã lưu tạm', 'Saved offline') : L('Đã thu', 'Paid')} {fmt(done.paidCents)}</span>
+          <span style={{ fontSize: 16, color: 'var(--c94a3b8)' }}>
+            {done.method}{done.changeCents > 0 && <> · {L('Trả lại khách', 'Change')} <b style={{ color: 'var(--ink-good)' }}>{fmt(done.changeCents)}</b></>} · {L('Đơn', 'Order')} {done.label}
+          </span>
+          {done.offline && <span style={{ fontSize: 13.5, color: 'var(--ink-warn)' }}>{t('po.savedOffline')}</span>}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <span style={sectionLabel}>{L('HOÁ ĐƠN CHO KHÁCH', 'RECEIPT')}</span>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ flex: 1, minWidth: 180, fontSize: 15, color: 'var(--ccbd5e1)' }}>{done.printed ? (printToReception ? L('Đã gửi tới máy in quầy lễ tân', 'Sent to the reception printer') : L('Đã in hoá đơn', 'Receipt printed')) : L('Không in hoá đơn', 'No receipt printed')}</span>
+            <button type="button" onClick={() => { const s2 = lastReceiptRef.current; if (s2) { printSnapshot(s2); setDone({ ...done, printed: true }); } }} disabled={!lastReceiptRef.current} style={{ height: 56, padding: '0 22px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)', cursor: 'pointer' }}>{done.printed ? L('In lại', 'Print again') : L('In hoá đơn', 'Print receipt')}</button>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 12, marginTop: 'auto' }}>
+          <a href="/salon/orders" style={{ height: 60, padding: '0 22px', borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 700, color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', textDecoration: 'none', whiteSpace: 'nowrap' }}>{L('Xem đơn hàng', 'Orders')}</a>
+          <button type="button" onClick={newBill} style={{ flex: 1, height: 60, borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 18, fontWeight: 800, cursor: 'pointer' }}>{L('Bill mới', 'New bill')}</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  /* -------------------------------------------------------------- catalog */
+  const catalog = (
+    <div style={{ flex: 1, minWidth: 0, minHeight: 0, boxSizing: 'border-box', padding: layout === 'phone' ? 12 : layout === 'wide' && !tightTop ? '20px 20px 0 24px' : '16px 16px 0', display: 'flex', flexDirection: 'column', gap: layout === 'phone' ? 10 : layout === 'wide' && !tightTop ? 16 : 12 }}>
+      {notices}
+      {layout === 'phone' ? <>{searchBox}{waitingStrip}</> : <>{waitingStrip}<div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>{searchBox}{tabSwitch}</div></>}
+      {layout === 'phone' && tabSwitch}
+      {catRow}
+      {grid}
+    </div>
+  );
+
+  /* ------------------------------------------------------------- the page */
+  let body: React.ReactNode;
+  if (done) body = doneScreen;
+  else if (step === 'pay') body = payScreen;
+  else if (layout === 'wide') body = <><div style={{ flex: 1, minHeight: 0, display: 'flex' }}>{catalog}{sideTicket}</div></>;
+  else if (layout === 'dock') body = <><div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{catalog}</div>{dockTicket}</>;
+  else body = mobileView === 'ticket' ? phoneTicket : <><div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{catalog}</div>{phoneBar}</>;
+
+  const showTop = !done && (step === 'register') && !(layout === 'phone' && mobileView === 'ticket');
+
+  return (
+    <section style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column', background: 'var(--c0b1120)', paddingTop: 'env(safe-area-inset-top, 0px)', fontVariantNumeric: 'tabular-nums', color: 'var(--cf1f5f9)' }}>
+      <style>{`
+        .pos-tile { transition: border-color .12s ease, transform .06s ease; }
+        .pos-tile:hover { border-color: #6366f1 !important; }
+        .pos-tile:active { transform: scale(.97); }
+        .pos-noscroll::-webkit-scrollbar { display: none; }
+      `}</style>
+      {showTop && topBar}
+      {body}
 
       {showScanner && (
         <BarcodeScanner
@@ -2105,42 +2336,69 @@ function Register() {
         />
       )}
 
-      {compact && payOpen && typeof document !== 'undefined' && createPortal(
-        <div onClick={() => setPayOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.72)', zIndex: 300, display: 'flex', alignItems: phone ? 'flex-end' : 'center', justifyContent: 'center', padding: phone ? 0 : 16 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{
-            ...ui.card, width: phone ? '100%' : 'min(560px, 96vw)', maxHeight: phone ? '92dvh' : '90vh', overflowY: 'auto',
-            ...(phone ? { borderRadius: '16px 16px 0 0', paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))' } : null),
-          }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
-              <div>
-                <div style={{ fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 700, letterSpacing: .4, textTransform: 'uppercase' }}>{lang === 'vi' ? 'Thanh toán' : 'Payment'}</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--ink-good)', letterSpacing: -0.4 }}>{formatPrice(money.due, currency)}</div>
-              </div>
-              <button onClick={() => setPayOpen(false)} aria-label="close" style={{ ...ghost, padding: '8px 12px' }}>✕ {lang === 'vi' ? 'Đóng' : 'Close'}</button>
-            </div>
-            {renderPayment()}
-          </div>
-        </div>,
-        document.body,
+      {charging && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20, textAlign: 'center' }}>
+          <div style={{ fontSize: 46 }}>💳</div>
+          <div style={{ color: '#e2e8f0', fontSize: 18, marginTop: 12 }}>{t('po.cardWaiting')}</div>
+          <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 6 }}>{t('po.cardFollow')}</div>
+          {cardWait > 0 && <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 10 }}>{cardWait}s</div>}
+        </div>
       )}
+
+      {/* Unresolved card payment. Blocking by design: the safest thing a
+          cashier can do here is look at the terminal, not press pay again. */}
+      {cardStuck && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.94)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 24 }}>
+          <div style={{ maxWidth: 460, background: 'var(--c0f172a)', border: '1px solid #f59e0b', borderRadius: 14, padding: 22 }}>
+            <div style={{ color: 'var(--ink-warn)', fontWeight: 700, fontSize: 17 }}>{t('po.cardUnknownTitle')}</div>
+            <p style={{ color: 'var(--ce2e8f0)', fontSize: 14, lineHeight: 1.6, marginTop: 10 }}>{t('po.cardUnknownBody')}</p>
+            {cardStuck.note && <p style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{cardStuck.note}</p>}
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const r = await apiFetch<{ status: string }>(`/payments-hub/intents/${cardStuck.intentId}`, { token });
+                    if (r.status === 'SUCCEEDED') { setCardStuck(null); setOkMsg(t('po.cardNowPaid')); }
+                    else if (r.status === 'PROCESSING' || r.status === 'REQUIRES_PAYMENT') setCardStuck({ ...cardStuck, note: t('po.cardStillWaiting') });
+                    else { setCardStuck(null); setError(t('po.cardNotCharged').replace('{s}', r.status)); }
+                  } catch (e) { setError(e instanceof Error ? e.message : 'error'); }
+                }}
+                style={ui.primaryBtn}
+              >{t('po.cardRecheck')}</button>
+              <button type="button" onClick={() => setCardStuck(null)} style={ghost}>{t('po.close')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ipadModal && typeof document !== 'undefined' && createPortal(
+        <div onClick={() => setIpadModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(520px, 96vw)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <IpadPairPanel session={displaySession} onRotate={rotateDisplay} onClose={() => setIpadModal(false)} t={t} />
+          </div>
+        </div>, document.body)}
 
       {showHeld && typeof document !== 'undefined' && createPortal(
         <div onClick={() => setShowHeld(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(460px, 96vw)', maxHeight: '85vh', overflowY: 'auto', padding: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? 'Bill đang giữ' : 'Held bills'} {heldBills.length ? `(${heldBills.length})` : ''}</div>
-              <button onClick={() => setShowHeld(false)} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer' }}>×</button>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{L('Bill đang giữ', 'Held bills')} {heldBills.length ? `(${heldBills.length})` : ''}</div>
+              <button type="button" onClick={() => setShowHeld(false)} aria-label={t('po.close')} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer' }}>×</button>
             </div>
             <div style={{ padding: 12 }}>
-              {heldBills.length === 0 ? <div style={{ color: 'var(--c64748b)', fontSize: 13, padding: 8 }}>{lang === 'vi' ? 'Chưa có bill nào được giữ.' : 'No held bills.'}</div>
+              {cart.length > 0 && (
+                <button type="button" onClick={() => { park(); setShowHeld(false); }} style={{ ...ui.primaryBtn, width: '100%', marginBottom: 10 }}>{L('Giữ bill đang mở', 'Hold the open bill')}</button>
+              )}
+              {heldBills.length === 0 ? <div style={{ color: 'var(--c64748b)', fontSize: 13, padding: 8 }}>{L('Chưa có bill nào được giữ.', 'No held bills.')}</div>
                 : heldBills.map((h) => (
                   <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 8px', borderBottom: '1px solid var(--line)' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.label || 'Walk-in'}</div>
-                      <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{formatPrice(h.totalCents, currency)} · {fmtInTz(h.createdAt, { hour: 'numeric', minute: '2-digit' })}</div>
+                      <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{fmt(h.totalCents)} · {fmtInTz(h.createdAt, { hour: 'numeric', minute: '2-digit' })}</div>
                     </div>
-                    <button onClick={() => recall(h)} style={{ ...ui.primaryBtn, padding: '7px 14px' }}>{lang === 'vi' ? 'Mở lại' : 'Recall'}</button>
-                    <button onClick={() => deleteHeld(h.id)} aria-label="delete" style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', fontSize: 18, cursor: 'pointer' }}>×</button>
+                    <button type="button" onClick={() => { recall(h); setStep('register'); }} style={{ ...ui.primaryBtn, padding: '7px 14px' }}>{L('Mở lại', 'Recall')}</button>
+                    <button type="button" onClick={() => deleteHeld(h.id)} aria-label={L('Xoá', 'Delete')} style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', fontSize: 18, cursor: 'pointer' }}>×</button>
                   </div>
                 ))}
             </div>
@@ -2149,6 +2407,32 @@ function Register() {
     </section>
   );
 }
+
+interface WaitingTicket { id: string; customerId: string | null; name: string; what: string; awaitingPayment: boolean }
+
+/** Category dots and technician avatars: accents, the same in light and dark. */
+const CAT_COLORS = ['#db2777', '#0891b2', '#7c3aed', '#ea580c', '#2563eb', '#059669', '#ca8a04', '#64748b'];
+const STAFF_COLORS = ['#be185d', '#0e7490', '#6d28d9', '#c2410c', '#1d4ed8', '#047857', '#a16207', '#475569'];
+
+const sectionLabel: React.CSSProperties = { fontSize: 12, fontWeight: 800, letterSpacing: 0.8, color: 'var(--c94a3b8)' };
+const noticeBox: React.CSSProperties = { padding: '10px 14px', borderRadius: 10, fontSize: 14, fontWeight: 600, flexShrink: 0 };
+const menuItem: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, minHeight: 44, padding: '0 12px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 14.5, fontWeight: 600, textAlign: 'left', cursor: 'pointer', textDecoration: 'none', fontFamily: 'inherit' };
+const smallBtn: React.CSSProperties = { height: 40, padding: '0 12px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' };
+const adjInput: React.CSSProperties = { flex: 1, minWidth: 0, height: 40, boxSizing: 'border-box', padding: '0 12px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 16, fontWeight: 600, textAlign: 'right', fontFamily: 'inherit' };
+const totRow: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 14, color: 'var(--c94a3b8)' };
+const adjBtn = (on: boolean): React.CSSProperties => ({ height: 36, flexShrink: 0, padding: '0 12px', borderRadius: 9, border: on ? '1px solid #4f46e5' : '1px dashed var(--c475569)', background: on ? 'var(--c1e1b4b)' : 'var(--c0f172a)', color: on ? 'var(--ce0e7ff)' : 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' });
+
+const svgProps = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+function IcoMenu() { return <svg width="20" height="20" viewBox="0 0 24 24" {...svgProps}><path d="M4 6h16M4 12h16M4 18h16" /></svg>; }
+function IcoMore() { return <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>; }
+function IcoScreen() { return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></svg>; }
+function IcoPrint() { return <svg width="18" height="18" viewBox="0 0 24 24" {...svgProps}><path d="M6 3h12v6H6zM6 17H4a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2" /><path d="M7 14h10v7H7z" /></svg>; }
+function IcoSearch() { return <svg width="20" height="20" viewBox="0 0 24 24" {...svgProps} style={{ color: 'var(--c94a3b8)', flexShrink: 0 }}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>; }
+function IcoBarcode() { return <svg width="22" height="22" viewBox="0 0 24 24" {...svgProps}><path d="M4 6v12M7 6v12M11 6v12M14 6v12M18 6v12M20 6v12" /></svg>; }
+function IcoX() { return <svg width="16" height="16" viewBox="0 0 24 24" {...svgProps} strokeWidth={2.2}><path d="M6 6l12 12M18 6 6 18" /></svg>; }
+function IcoBack() { return <svg width="20" height="20" viewBox="0 0 24 24" {...svgProps} strokeWidth={2.4}><path d="M15 18l-6-6 6-6" /></svg>; }
+function IcoBackspace() { return <svg width="26" height="26" viewBox="0 0 24 24" {...svgProps}><path d="M21 5H9l-6 7 6 7h12z" /><path d="m17 9-6 6M11 9l6 6" /></svg>; }
+function IcoCheck() { return <svg width="36" height="36" viewBox="0 0 24 24" {...svgProps} strokeWidth={2.6}><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>; }
 
 // Pairing panel: link a wireless iPad as the customer screen. Scan the QR (or open
 // the short link and type the code) ONCE on the iPad — it then mirrors this register

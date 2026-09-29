@@ -61,12 +61,14 @@ export class PublicSalonController {
    * re-resolving the slug and opening its own DB round-trip; this collapses them
    * into a single tenant lookup + one parallel batch, so the page loads fast.
    */
-  // Cacheable for half a minute, served stale for five while it refreshes:
-  // a customer opening a salon's link seconds after another one gets the
-  // page from the edge, and the salon's price change is live within a
-  // minute. Nothing in this payload is per-visitor.
+  // Cacheable for half a minute, served stale for one more while it
+  // refreshes: a customer opening a salon's link seconds after another one
+  // gets the page from the edge. The stale window was five minutes, and a
+  // salon that ticked "from" price and reloaded its booking page saw the old
+  // menu and read it as a bug; a menu edit now shows within about a minute
+  // and a half. Nothing in this payload is per-visitor.
   @Get(':slug/bootstrap')
-  @Header('Cache-Control', 'public, max-age=30, stale-while-revalidate=300')
+  @Header('Cache-Control', 'public, max-age=30, stale-while-revalidate=60')
   async bootstrap(@Param('slug') slug: string, @Req() req?: Request) {
     const tenant = await this.lookupOpenTenant(slug);
     const [salon, services, categories, staff] = await Promise.all([

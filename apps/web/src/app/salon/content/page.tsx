@@ -4387,7 +4387,7 @@ function Inner() {
                     <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 5 }}>
                       {T('Ảnh & video (link https công khai)', 'Photos & video (public https links)')}
                       {postDraft.channels.includes('instagram') && ` — ${T('Instagram bắt buộc có ít nhất 1', 'Instagram needs at least one')}`}
-                      {postDraft.channels.includes('google') && ` — ${T('Google Business: video được thêm vào mục Ảnh & video của hồ sơ, bài đăng lên kèm chữ (và ảnh nếu có)', 'Google Business: a video goes to the profile\u2019s Photos & videos; the post goes out with the text (and a photo if there is one)')}`}
+                      {postDraft.channels.includes('google') && ` — ${T('Google Business: Google không cho gắn video vào bài qua hệ thống — bài lên kèm chữ + ảnh bìa cắt từ video, còn video được thêm vào mục Ảnh & video của hồ sơ', 'Google Business: Google does not let apps attach a video to a post — the post goes out with the text and a cover frame from the video, and the video is added to the profile\u2019s Photos & videos')}`}
                       {postDraft.channels.includes('tiktok') && ` — ${T('TikTok cần 1 video .mp4', 'TikTok needs one .mp4 video')}`}
                     </div>
 

@@ -13,7 +13,7 @@ import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileC
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { uiLocale } from '../../../lib/datetime';
 
-interface ReviewSettings { enabled: boolean; reviewMode: 'direct' | 'rate_first'; googlePlaceId: string; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number; staffPointsPerSend: number; sendDailyCap: number; sendDedupHours: number; anchorToVisits: boolean; visitBuffer: number; onlyBusinessHours: boolean; postVisitEnabled: boolean; postVisitDelayMinutes: number; postVisitEmail: boolean; postVisitSms: boolean; postVisitCooldownDays: number }
+interface ReviewSettings { enabled: boolean; reviewMode: 'direct' | 'rate_first'; googlePlaceId: string; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number; staffPointsPerSend: number; sendDailyCap: number; sendDedupHours: number; anchorToVisits: boolean; visitBuffer: number; onlyBusinessHours: boolean; postVisitEnabled: boolean; postVisitDelayMinutes: number; postVisitEmail: boolean; postVisitSms: boolean; postVisitCooldownDays: number; googleAuto?: { url: string; placeId: string; locationTitle: string } | null }
 interface LeaderRow { id: string; name: string; avatarUrl: string | null; balance: number; earnedMonth: number; sendsMonth: number; blockedMonth: number; feedbackMonth: number; avgMonth: number; flagged: boolean }
 interface SendRow { id: string; createdAt: string; counted: boolean; reason: string | null; staff: string; device: string }
 interface FeedbackRow { id: string; rating: number; comment: string | null; createdAt: string; invitedToGoogle: boolean; verified: boolean; staff: { firstName: string; lastName: string | null } | null; customer: { firstName: string; phone: string | null } | null }
@@ -106,7 +106,7 @@ function Inner() {
       {settings && <SettingsCard token={token!} initial={settings} onSaved={load} />}
 
       {settings && slug && (
-        <AdminReviewQr slug={slug} enabled={settings.enabled} hasGoogle={!!(settings.googlePlaceId || settings.googleReviewUrl)} />
+        <AdminReviewQr slug={slug} enabled={settings.enabled} hasGoogle={!!(settings.googlePlaceId || settings.googleReviewUrl || settings.googleAuto)} />
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, margin: '24px 0 10px' }}>
@@ -431,9 +431,20 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
         </div>
       )}
 
+      {initial.googleAuto && !f.googlePlaceId.trim() && !f.googleReviewUrl.trim() && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 10, background: 'var(--c14532d)', border: '1px solid #22c55e', marginBottom: 10, fontSize: 13, lineHeight: 1.5 }}>
+          <span>✅</span>
+          <div style={{ color: 'var(--cbbf7d0)' }}>
+            <b>{lang === 'vi' ? 'Link đánh giá Google đã có sẵn' : 'Google review link is ready'}</b>
+            {' — '}{lang === 'vi' ? 'lấy tự động từ Google Business Profile đã kết nối' : 'taken automatically from your connected Google Business Profile'}
+            {initial.googleAuto.locationTitle ? <> (<b>{initial.googleAuto.locationTitle}</b>)</> : null}.{' '}
+            {lang === 'vi' ? 'Không cần điền Place ID. Chỉ điền bên dưới nếu muốn dùng link khác.' : 'No Place ID needed. Only fill in below to use a different link.'}
+          </div>
+        </div>
+      )}
       <label style={{ display: 'block', marginBottom: 6 }}>
-        <span style={ui.label}>{t('rv.placeId')}</span>
-        <input style={ui.input} value={f.googlePlaceId} onChange={(e) => setF({ ...f, googlePlaceId: e.target.value })} placeholder={t('rv.placeIdPh')} />
+        <span style={ui.label}>{t('rv.placeId')}{initial.googleAuto ? <span style={{ fontWeight: 400, color: 'var(--c64748b)' }}> · {lang === 'vi' ? 'không bắt buộc' : 'optional'}</span> : null}</span>
+        <input style={ui.input} value={f.googlePlaceId} onChange={(e) => setF({ ...f, googlePlaceId: e.target.value })} placeholder={initial.googleAuto ? (lang === 'vi' ? 'Để trống để dùng link từ Google Business Profile' : 'Leave empty to use the link from your Google Business Profile') : t('rv.placeIdPh')} />
       </label>
       <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 6px' }}>
         {lang === 'vi'

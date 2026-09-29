@@ -57,6 +57,14 @@ export interface GbrSettings {
   googleTotal: number | null;
   googleRating: number | null;
   googleStatsAt: string | null;
+  /**
+   * The chosen location's Place ID and Google's own "write a review" link,
+   * read from the Business Profile the salon connected. This is what makes
+   * the review QR on the customer screen work WITHOUT the owner pasting a
+   * Place ID by hand: connecting Google once is enough.
+   */
+  placeId: string;
+  newReviewUri: string;
 }
 
 const DEFAULTS: GbrSettings = {
@@ -64,6 +72,7 @@ const DEFAULTS: GbrSettings = {
   connectedEmail: '', autoMinStars: 4, alertMaxStars: 3, approveFirst: false,
   alertEmail: '', tone: 'warm', aiInstruction: '', lastSyncAt: null,
   googleTotal: null, googleRating: null, googleStatsAt: null,
+  placeId: '', newReviewUri: '',
 };
 
 /**
@@ -304,6 +313,8 @@ export class GoogleReviewsService {
       locationId: s.locationId,
       locationTitle: s.locationTitle,
       hasLocation: Boolean(s.accountId && s.locationId),
+      /** Google's own review link for the chosen location — feeds the review QR. */
+      reviewLink: s.newReviewUri || (s.placeId ? `https://search.google.com/local/writereview?placeid=${encodeURIComponent(s.placeId)}` : ''),
       autoMinStars: s.autoMinStars,
       alertMaxStars: s.alertMaxStars,
       approveFirst: s.approveFirst,
@@ -520,7 +531,38 @@ export class GoogleReviewsService {
       { headers: { authorization: `Bearer ${token}` } },
     ).then((r) => r.json()).catch(() => ({}));
     const loc = (locRes as { locations?: { name?: string }[] }).locations?.[0]?.name || '';
-    if (accountId && loc) await this.writeSettings(tenantId, { accountId, locationId: loc });
+    if (accountId && loc) {
+      await this.writeSettings(tenantId, { accountId, locationId: loc });
+      await this.learnReviewLink(tenantId, token);
+    }
+  }
+
+  /**
+   * Read the location's Place ID + Google's "write a review" link and keep
+   * them with the connection. Best-effort: a failure leaves the fields empty
+   * and the next sync tries again. With `force` the values are refreshed
+   * even when already known (a location switch).
+   */
+  async learnReviewLink(tenantId: string, token?: string, force = false): Promise<{ placeId: string; newReviewUri: string } | null> {
+    try {
+      const s = await this.getSettings(tenantId);
+      if (!s.connected || !s.locationId) return null;
+      if (!force && (s.placeId || s.newReviewUri)) return { placeId: s.placeId, newReviewUri: s.newReviewUri };
+      const tok = token ?? (await this.accessToken(s));
+      const r = await fetch(`https://mybusinessbusinessinformation.googleapis.com/v1/${bareLocationId(s.locationId)}?readMask=name,metadata`, {
+        headers: { authorization: `Bearer ${tok}` }, signal: AbortSignal.timeout(15_000),
+      });
+      if (!r.ok) return null;
+      const loc = (await r.json().catch(() => ({}))) as { metadata?: { placeId?: string; newReviewUri?: string } };
+      const placeId = (loc.metadata?.placeId ?? '').trim();
+      const newReviewUri = (loc.metadata?.newReviewUri ?? '').trim();
+      if (!placeId && !newReviewUri) return null;
+      await this.writeSettings(tenantId, { placeId, newReviewUri });
+      return { placeId, newReviewUri };
+    } catch (e) {
+      this.logger.warn(`Could not read the review link for tenant ${tenantId}: ${String(e).slice(0, 120)}`);
+      return null;
+    }
   }
 
   async setLocation(user: AuthenticatedUser, accountId: string, locationId: string, locationTitle?: string) {
@@ -529,8 +571,9 @@ export class GoogleReviewsService {
     const changed = cur.locationId !== locationId.trim();
     await this.writeSettings(tenantId, {
       accountId: accountId.trim(), locationId: locationId.trim(), locationTitle: (locationTitle || '').trim(),
-      ...(changed ? { lastSyncAt: null } : {}),
+      ...(changed ? { lastSyncAt: null, placeId: '', newReviewUri: '' } : {}),
     });
+    await this.learnReviewLink(tenantId, undefined, changed);
     if (changed) {
       // Switched to a DIFFERENT Google location: drop the previous location's
       // mirrored reviews so the inbox shows only the newly-selected salon.
@@ -785,6 +828,7 @@ export class GoogleReviewsService {
     if (!s.accountId || !s.locationId) throw new BadRequestException('Choose which Google location this salon is, then sync.');
     const token = await this.accessToken(s);
     const parent = this.reviewsParent(s);
+    if (!s.placeId && !s.newReviewUri) await this.learnReviewLink(tenantId, token);
 
     // The first page carries the two numbers the whole screen hangs on:
     // how many reviews this location really has, and its star average.

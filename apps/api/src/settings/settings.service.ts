@@ -192,6 +192,55 @@ export class SettingsService {
     return this.readKey<ReviewSettings>(tenantId, REVIEW_SETTINGS_KEY, DEFAULT_REVIEW_SETTINGS);
   }
 
+  /**
+   * The "write a Google review" link the connected Business Profile gave us —
+   * or null when no profile is connected / no location chosen yet.
+   *
+   * Read straight from the connection's own settings row so this module does
+   * not depend on the Google Reviews module (which depends on this one).
+   */
+  async googleProfileReviewLink(tenantId: string): Promise<{ url: string; placeId: string; locationTitle: string } | null> {
+    const g = await this.readKey<{ connected?: boolean; locationId?: string; locationTitle?: string; placeId?: string; newReviewUri?: string }>(tenantId, 'googleReviews', {});
+    if (!g.connected || !g.locationId) return null;
+    const placeId = (g.placeId ?? '').trim();
+    const url = (g.newReviewUri ?? '').trim() || (placeId ? `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}` : '');
+    return url ? { url, placeId, locationTitle: (g.locationTitle ?? '').trim() } : null;
+  }
+
+  /**
+   * Build the customer-facing "write a Google review" link.
+   *
+   * Prefers the salon's Google Place ID, which produces the official
+   * `search.google.com/local/writereview` link. On a phone this hands off to
+   * the Google Maps app — where the customer is almost always already signed in —
+   * instead of a browser that may demand a login they don't remember. Falls back
+   * to a manually-pasted URL when no Place ID is configured.
+   */
+  googleReviewUrlFrom(settings: { googlePlaceId?: string; googleReviewUrl?: string }): string | null {
+    const raw = (settings.googlePlaceId ?? '').trim();
+    if (raw) {
+      // If a full URL was pasted (e.g. g.page/r/…/review, maps.google, search.google),
+      // use it as-is — it already opens the right review sheet or Maps listing.
+      if (/^https?:\/\//i.test(raw)) return raw;
+      // Otherwise treat it as a real Place ID (ChIJ… / 0x… / numeric CID) and build
+      // the official write-review link, which opens the Maps app where the customer
+      // is already signed in instead of a browser that may demand a login.
+      return `https://search.google.com/local/writereview?placeid=${encodeURIComponent(raw)}`;
+    }
+    const url = (settings.googleReviewUrl ?? '').trim();
+    return url || null;
+  }
+
+  /**
+   * The link the review program actually uses: what the owner typed, else what
+   * the connected Google Business Profile knows. Connecting Google once is
+   * enough — nobody should have to go and find their Place ID a second time.
+   */
+  async effectiveGoogleReviewUrl(tenantId: string, settings?: { googlePlaceId?: string; googleReviewUrl?: string }): Promise<string | null> {
+    const s = settings ?? (await this.getReviewSettings(tenantId));
+    return this.googleReviewUrlFrom(s) ?? (await this.googleProfileReviewLink(tenantId))?.url ?? null;
+  }
+
   async getAnalyticsSettings(tenantId: string): Promise<AnalyticsSettings> {
     return this.readKey<AnalyticsSettings>(tenantId, ANALYTICS_SETTINGS_KEY, DEFAULT_ANALYTICS_SETTINGS);
   }
@@ -980,7 +1029,7 @@ export class SettingsService {
     // request took as long as the slowest twenty queries stacked end to end.
     const [
       extra, booking, gateways, notifications, notificationTemplates, pos, loyalty, review,
-      weekdayDiscounts, firstVisitDiscount, groupDiscount, dateDiscounts, reminders, deposit,
+      weekdayDiscounts, googleReviewLink, firstVisitDiscount, groupDiscount, dateDiscounts, reminders, deposit,
       analytics, businessProfile, rebooking,
     ] = await Promise.all([
       this.readKey<CompanyExtra>(tenantId, COMPANY_EXTRA_KEY, DEFAULT_COMPANY_EXTRA),
@@ -992,6 +1041,7 @@ export class SettingsService {
       this.getLoyaltySettings(tenantId),
       this.getReviewSettings(tenantId),
       this.getWeekdayDiscounts(tenantId),
+      this.googleProfileReviewLink(tenantId),
       this.getFirstVisitDiscount(tenantId),
       this.getGroupDiscount(tenantId),
       this.getDateDiscounts(tenantId),
@@ -1036,7 +1086,10 @@ export class SettingsService {
       // the object as the salon's raw choice — empty means "follow the market".
       pos,
       loyalty,
-      review,
+      // `googleAuto`: the review link the connected Business Profile supplies, so
+      // the screen can say "taken from your Google connection" instead of
+      // asking for a Place ID the salon already gave Google.
+      review: { ...review, googleAuto: googleReviewLink },
       weekdayDiscounts,
       firstVisitDiscount,
       groupDiscount,

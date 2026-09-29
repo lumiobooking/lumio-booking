@@ -130,7 +130,7 @@ export function PostReview({ api, vi, onCount }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <h1 style={{ fontSize: 19, margin: 0 }}>📋 {T('Bài sắp đăng', 'Upcoming posts')}</h1>
           {feed.waiting > 0 && (
-            <span style={{ background: '#451a03', border: '1px solid #92400e', color: '#fcd34d', fontSize: 12.5, fontWeight: 700, padding: '3px 10px', borderRadius: 20 }}>
+            <span style={{ background: '#451a03', border: '1px solid #92400e', color: '#fcd34d', fontSize: 12.5, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>
               {T(`${feed.waiting} bài chờ bạn duyệt`, `${feed.waiting} awaiting your review`)}
             </span>
           )}
@@ -149,7 +149,7 @@ export function PostReview({ api, vi, onCount }: {
       )}
       {groups.map(([day, posts]) => (
         <div key={day} style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: day === dayKeyOf(new Date().toISOString()) ? 'var(--ink-warn)' : 'var(--c64748b)', padding: '0 2px 7px' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: day === dayKeyOf(new Date().toISOString()) ? 'var(--ink-warn)' : 'var(--c64748b)', padding: '0 2px 7px' }}>
             {day === dayKeyOf(new Date().toISOString()) ? T('Hôm nay', 'Today') + ' · ' : ''}{fmtDay(posts[0].scheduledAt)}
           </div>
           {posts.map((p) => <Row key={p.id} p={p} onOpen={() => setOpenId(p.id)} fmtTime={fmtTime} T={T} />)}
@@ -159,7 +159,7 @@ export function PostReview({ api, vi, onCount }: {
       {/* history, folded */}
       {posted.length > 0 && (
         <div style={{ marginTop: 22 }}>
-          <button onClick={() => setShowPosted((s) => !s)} style={{ font: 'inherit', fontSize: 13.5, fontWeight: 700, color: 'var(--c94a3b8)', background: 'none', border: 'none', cursor: 'pointer', padding: '10px 2px', minHeight: 44 }}>
+          <button onClick={() => setShowPosted((s) => !s)} style={{ font: 'inherit', fontSize: 13.5, fontWeight: 600, color: 'var(--c94a3b8)', background: 'none', border: 'none', cursor: 'pointer', padding: '10px 2px', minHeight: 44 }}>
             {showPosted ? '▾' : '▸'} {T(`Đã đăng gần đây (${posted.length})`, `Recently posted (${posted.length})`)}
           </button>
           {showPosted && posted.map((p) => <Row key={p.id} p={p} onOpen={() => setOpenId(p.id)} fmtTime={(iso) => `${fmtDay(iso)} · ${fmtTime(iso)}`} T={T} />)}
@@ -226,7 +226,7 @@ function ReviewVideo({ url, square, T }: { url: string; square: boolean; T: (v: 
         </div>
       )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 8px', background: '#000' }}>
-        <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', fontSize: 12.5, fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 2 }}>
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', fontSize: 12.5, fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 2 }}>
           ↗ {T('Mở video', 'Open video')}
         </a>
       </div>
@@ -268,11 +268,11 @@ function MediaGallery({ media, square, T }: {
           : <img key={cur.url} src={cur.url} alt="" style={{ width: '100%', display: 'block', objectFit: square ? 'cover' : 'contain', aspectRatio: square ? '1/1' : undefined, maxHeight: 460, background: '#000' }} />}
         {n > 1 && (
           <>
-            <span style={{ position: 'absolute', top: 8, right: 10, background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 12 }}>
+            <span style={{ position: 'absolute', top: 8, right: 10, background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 12, fontWeight: 600, padding: '2px 9px', borderRadius: 12 }}>
               {i + 1}/{n} ▤
             </span>
-            <button aria-label={T('Ảnh trước', 'Previous')} onClick={() => go(-1)} style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(255,255,255,.88)', color: '#111', fontSize: 22, fontWeight: 800, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>‹</button>
-            <button aria-label={T('Ảnh sau', 'Next')} onClick={() => go(1)} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(255,255,255,.88)', color: '#111', fontSize: 22, fontWeight: 800, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>›</button>
+            <button aria-label={T('Ảnh trước', 'Previous')} onClick={() => go(-1)} style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(255,255,255,.88)', color: '#111', fontSize: 22, fontWeight: 700, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>‹</button>
+            <button aria-label={T('Ảnh sau', 'Next')} onClick={() => go(1)} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 40, height: 40, borderRadius: 20, border: 'none', background: 'rgba(255,255,255,.88)', color: '#111', fontSize: 22, fontWeight: 700, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>›</button>
           </>
         )}
       </div>
@@ -320,8 +320,8 @@ function Row({ p, onOpen, fmtTime, T }: { p: ReviewPost; onOpen: () => void; fmt
       </div>
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginBottom: 3, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12.5, fontWeight: 800 }}>{fmtTime(p.scheduledAt)}</span>
-          <span style={{ fontSize: 11, fontWeight: 700, background: st.bg, border: `1px solid ${st.bd}`, color: st.fg, padding: '1px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700 }}>{fmtTime(p.scheduledAt)}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, background: st.bg, border: `1px solid ${st.bd}`, color: st.fg, padding: '1px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>
             {st.dot} {T(st.vi, st.en)}
           </span>
         </div>
@@ -422,10 +422,10 @@ function Detail(props: {
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
-        <button onClick={onClose} style={{ font: 'inherit', fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 10px 8px 4px', minHeight: 44 }}>
+        <button onClick={onClose} style={{ font: 'inherit', fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 10px 8px 4px', minHeight: 44 }}>
           ‹ {T('Quay lại', 'Back')}
         </button>
-        <span style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 700, background: st.bg, border: `1px solid ${st.bd}`, color: st.fg, padding: '3px 10px', borderRadius: 20 }}>
+        <span style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 600, background: st.bg, border: `1px solid ${st.bd}`, color: st.fg, padding: '3px 10px', borderRadius: 20 }}>
           {st.dot} {T(st.vi, st.en)}
         </span>
       </div>
@@ -438,7 +438,7 @@ function Detail(props: {
             <div style={{ display: 'flex', background: 'var(--c151f38)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 3, marginBottom: 12 }}>
               {(['facebook', 'instagram'] as const).map((m) => (
                 <button key={m} onClick={() => setMode(m)} style={{
-                  flex: 1, font: 'inherit', fontSize: 13.5, fontWeight: 700, minHeight: 40, border: 'none', borderRadius: 8, cursor: 'pointer',
+                  flex: 1, font: 'inherit', fontSize: 13.5, fontWeight: 600, minHeight: 40, border: 'none', borderRadius: 8, cursor: 'pointer',
                   background: mode === m ? 'var(--c6366f1, #6366f1)' : 'transparent',
                   color: mode === m ? '#fff' : 'var(--c94a3b8)',
                 }}>
@@ -455,13 +455,13 @@ function Detail(props: {
                 <div style={{
                   width: mode === 'facebook' ? 40 : 32, height: mode === 'facebook' ? 40 : 32, borderRadius: '50%', flexShrink: 0,
                   background: 'linear-gradient(135deg,#6366f1,#a855f7)', color: '#fff', display: 'grid', placeItems: 'center',
-                  fontWeight: 800, fontSize: mode === 'facebook' ? 17 : 14,
+                  fontWeight: 700, fontSize: mode === 'facebook' ? 17 : 14,
                   outline: mode === 'instagram' ? '2px solid #e1306c' : 'none', outlineOffset: 2,
                 }}>
                   {(feedMeta.pageName || 'L').slice(0, 1).toUpperCase()}
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {mode === 'facebook' ? feedMeta.pageName : (feedMeta.igUsername || feedMeta.pageName)}
                   </div>
                   {mode === 'facebook' && (
@@ -507,7 +507,7 @@ function Detail(props: {
           {p.clientStatus === 'posted' && (
             <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {p.links.filter((l) => l.url).map((l) => (
-                <a key={l.channel} href={l.url!} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--c60a5fa, #60a5fa)', textDecoration: 'none', padding: '10px 4px', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>
+                <a key={l.channel} href={l.url!} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--c60a5fa, #60a5fa)', textDecoration: 'none', padding: '10px 4px', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>
                   🔗 {T('Xem bài trên', 'View on')} {l.channel === 'facebook' ? 'Facebook' : 'Instagram'}
                 </a>
               ))}
@@ -530,7 +530,7 @@ function Detail(props: {
 
           {/* comments */}
           <div style={{ marginTop: 20 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c94a3b8)', marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--c94a3b8)', marginBottom: 10 }}>
               💬 {T('Góp ý cho team', 'Notes for the team')}
             </div>
             {msgs.length === 0 && (
@@ -540,11 +540,11 @@ function Detail(props: {
             )}
             {msgs.map((m) => (
               <div key={m.id} style={{ display: 'flex', gap: 9, marginBottom: 10 }}>
-                <div style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800, color: '#fff', background: m.side === 'lumio' ? '#6366f1' : '#d97706' }}>
+                <div style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, color: '#fff', background: m.side === 'lumio' ? '#6366f1' : '#d97706' }}>
                   {(m.authorName || '?').slice(0, 1).toUpperCase()}
                 </div>
                 <div style={{ background: m.side === 'lumio' ? 'var(--c1e1b4b)' : 'var(--c1e293b)', border: `1px solid ${m.side === 'lumio' ? '#312e81' : 'var(--c334155)'}`, borderRadius: 10, padding: '8px 12px', fontSize: 13.5, lineHeight: 1.5, minWidth: 0, wordBreak: 'break-word' }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 2 }}>{m.authorName}</div>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--c94a3b8)', marginBottom: 2 }}>{m.authorName}</div>
                   <div style={{ whiteSpace: 'pre-line', wordBreak: 'break-word' }}><Linkified text={m.body} /></div>
                 </div>
               </div>
@@ -557,7 +557,7 @@ function Detail(props: {
                 placeholder={T('Viết góp ý…', 'Write a note…')}
                 style={{ flex: 1, font: 'inherit', fontSize: 16, background: 'var(--c151f38)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '12px 13px', color: 'var(--ce2e8f0)', minWidth: 0 }}
               />
-              <button onClick={send} disabled={busy || !draft.trim()} style={{ font: 'inherit', fontSize: 14, fontWeight: 700, background: '#6366f1', color: '#fff', border: 'none', borderRadius: 10, padding: '0 18px', cursor: 'pointer', opacity: busy || !draft.trim() ? 0.5 : 1, minHeight: 48 }}>
+              <button onClick={send} disabled={busy || !draft.trim()} style={{ font: 'inherit', fontSize: 14, fontWeight: 600, background: '#6366f1', color: '#fff', border: 'none', borderRadius: 10, padding: '0 18px', cursor: 'pointer', opacity: busy || !draft.trim() ? 0.5 : 1, minHeight: 48 }}>
                 {T('Gửi', 'Send')}
               </button>
             </div>
@@ -578,12 +578,12 @@ function Detail(props: {
                   ⏰ {T(`Bài sẽ tự đăng ${fmtDay(p.scheduledAt)} lúc ${fmtTime(p.scheduledAt)} nếu bạn không có ý kiến.`,
                         `Publishes automatically ${fmtDay(p.scheduledAt)} at ${fmtTime(p.scheduledAt)} unless you say otherwise.`)}
                 </div>
-                <button onClick={doApprove} disabled={busy} style={{ width: '100%', font: 'inherit', fontSize: 16, fontWeight: 800, background: '#22c55e', color: '#fff', border: 'none', borderRadius: 12, padding: 15, cursor: 'pointer', opacity: busy ? 0.6 : 1, minHeight: 52 }}>
+                <button onClick={doApprove} disabled={busy} style={{ width: '100%', font: 'inherit', fontSize: 16, fontWeight: 700, background: '#22c55e', color: '#fff', border: 'none', borderRadius: 12, padding: 15, cursor: 'pointer', opacity: busy ? 0.6 : 1, minHeight: 52 }}>
                   ✓ {T('Duyệt đăng bài này', 'Approve this post')}
                 </button>
               </>
             ) : (
-              <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 700, color: 'var(--ink-good)', padding: '12px 0' }}>
+              <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 600, color: 'var(--ink-good)', padding: '12px 0' }}>
                 🟢 {T('Đã duyệt', 'Approved')}{(justApproved || p.approvedByName) ? ` — ${justApproved || p.approvedByName}` : ''} · {T('bài sẽ đăng đúng lịch', 'publishing on schedule')}
               </div>
             )}
@@ -595,7 +595,7 @@ function Detail(props: {
       {askName && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 210, background: 'rgba(2,6,23,.8)', display: 'grid', placeItems: 'center', padding: 20 }}>
           <div style={{ background: 'var(--c151f38)', border: '1px solid var(--c334155)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 340 }}>
-            <div style={{ fontSize: 15.5, fontWeight: 800, marginBottom: 4 }}>{T('Ai đang duyệt vậy ạ?', 'Who is reviewing?')}</div>
+            <div style={{ fontSize: 15.5, fontWeight: 700, marginBottom: 4 }}>{T('Ai đang duyệt vậy ạ?', 'Who is reviewing?')}</div>
             <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginBottom: 12, lineHeight: 1.5 }}>
               {T('Chỉ hỏi một lần — để team biết ai đã xem và duyệt bài.', 'Asked once — so the team knows who reviewed.')}
             </div>
@@ -608,10 +608,10 @@ function Detail(props: {
               style={{ width: '100%', font: 'inherit', fontSize: 16, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '12px 13px', color: 'var(--ce2e8f0)', marginBottom: 10 }}
             />
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => { setAskName(false); pendingAction.current = null; }} style={{ flex: 1, font: 'inherit', fontSize: 14, fontWeight: 700, background: 'transparent', color: 'var(--c94a3b8)', border: '1px solid var(--c475569)', borderRadius: 10, padding: 12, cursor: 'pointer' }}>
+              <button onClick={() => { setAskName(false); pendingAction.current = null; }} style={{ flex: 1, font: 'inherit', fontSize: 14, fontWeight: 600, background: 'transparent', color: 'var(--c94a3b8)', border: '1px solid var(--c475569)', borderRadius: 10, padding: 12, cursor: 'pointer' }}>
                 {T('Để sau', 'Not now')}
               </button>
-              <button onClick={submitName} disabled={!nameDraft.trim()} style={{ flex: 2, font: 'inherit', fontSize: 14, fontWeight: 800, background: '#6366f1', color: '#fff', border: 'none', borderRadius: 10, padding: 12, cursor: 'pointer', opacity: nameDraft.trim() ? 1 : 0.5 }}>
+              <button onClick={submitName} disabled={!nameDraft.trim()} style={{ flex: 2, font: 'inherit', fontSize: 14, fontWeight: 700, background: '#6366f1', color: '#fff', border: 'none', borderRadius: 10, padding: 12, cursor: 'pointer', opacity: nameDraft.trim() ? 1 : 0.5 }}>
                 {T('Tiếp tục', 'Continue')}
               </button>
             </div>

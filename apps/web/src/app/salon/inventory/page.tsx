@@ -105,13 +105,13 @@ function Inner() {
             {pg.paged.map((i) => (
               <Fragment key={i.id}>
                 <MCard>
-                  <MHead right={i.lowStock ? <span style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>{t('iv.low')}</span> : null}>
+                  <MHead right={i.lowStock ? <span style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 7px', fontSize: 10, fontWeight: 600 }}>{t('iv.low')}</span> : null}>
                     <span style={{ opacity: i.isActive ? 1 : 0.5 }}>{i.name}</span>
                   </MHead>
                   <MRow label={t('iv.colStock')}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <button onClick={() => adjust(i.id, -1)} style={qtyBtn}>−</button>
-                      <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 700, color: i.lowStock ? 'var(--ink-warn)' : 'var(--ce2e8f0)' }}>{i.stockQty} <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
+                      <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 600, color: i.lowStock ? 'var(--ink-warn)' : 'var(--ce2e8f0)' }}>{i.stockQty} <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
                       <button onClick={() => adjust(i.id, 1)} style={qtyBtn}>+</button>
                     </span>
                   </MRow>
@@ -156,12 +156,12 @@ function Inner() {
                     <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(i.id)} onChange={() => bulk.toggle(i.id)} /></td>
                     <td style={ui.td}>
                       {i.name}{' '}
-                      {i.lowStock && <span style={{ marginLeft: 4, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>{t('iv.low')}</span>}
+                      {i.lowStock && <span style={{ marginLeft: 4, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 7px', fontSize: 10, fontWeight: 600 }}>{t('iv.low')}</span>}
                     </td>
                     <td style={ui.td}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <button onClick={() => adjust(i.id, -1)} style={qtyBtn}>−</button>
-                        <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 700, color: i.lowStock ? 'var(--ink-warn)' : 'var(--ce2e8f0)' }}>{i.stockQty} <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
+                        <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 600, color: i.lowStock ? 'var(--ink-warn)' : 'var(--ce2e8f0)' }}>{i.stockQty} <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}>{i.unit}</span></span>
                         <button onClick={() => adjust(i.id, 1)} style={qtyBtn}>+</button>
                       </div>
                     </td>
@@ -291,7 +291,7 @@ function MovePanel({ token, item, dir, onDone, onCancel, currency = 'USD' }: { t
 
   return (
     <form onSubmit={submit}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: dir === 'IN' ? 'var(--ink-good)' : 'var(--ink-warn)', marginBottom: 10 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: dir === 'IN' ? 'var(--ink-good)' : 'var(--ink-warn)', marginBottom: 10 }}>
         {dir === 'IN' ? t('iv.stockIn') : t('iv.stockOut')} — {item.name} <span style={{ color: 'var(--c64748b)', fontWeight: 400 }}>({t('iv.mNow')}: {item.stockQty} {item.unit})</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end' }}>
@@ -333,14 +333,14 @@ function HistoryPanel({ token, item }: { token: string; item: Supply }) {
   }, [item.id, token]);
   return (
     <div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 8 }}>{t('iv.history')} — {item.name}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 8 }}>{t('iv.history')} — {item.name}</div>
       {rows === null ? <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{t('iv.loading')}</p>
         : rows.length === 0 ? <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('iv.noHistory')}</p>
         : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 280, overflowY: 'auto' }}>
             {rows.map((m) => (
               <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '5px 8px', background: 'var(--c1e293b)', borderRadius: 6 }}>
-                <span style={{ width: 56, fontWeight: 700, textAlign: 'right', color: m.delta >= 0 ? 'var(--ink-good)' : 'var(--ink-warn)' }}>{m.delta >= 0 ? '+' : ''}{m.delta}</span>
+                <span style={{ width: 56, fontWeight: 600, textAlign: 'right', color: m.delta >= 0 ? 'var(--ink-good)' : 'var(--ink-warn)' }}>{m.delta >= 0 ? '+' : ''}{m.delta}</span>
                 <span style={{ color: 'var(--ccbd5e1)', minWidth: 120 }}>{t(REASON_KEY[m.reason] ?? 'iv.rAdjust')}</span>
                 <span style={{ color: 'var(--c94a3b8)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.note || ''}</span>
                 <span style={{ color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{fmtInTz(m.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</span>

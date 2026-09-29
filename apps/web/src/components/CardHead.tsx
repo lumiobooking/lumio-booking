@@ -30,7 +30,7 @@ export function CardHead({
   return (
     <div style={{ marginBottom: note || alsoIn ? 12 : 10 }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', lineHeight: 1.35, minWidth: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.35, minWidth: 0 }}>
           {icon ? <span style={{ marginRight: 7 }}>{icon}</span> : null}{title}
         </div>
         {right}

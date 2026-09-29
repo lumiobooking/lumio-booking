@@ -219,7 +219,7 @@ export default function BookPage() {
               </div>
               <div style={{ marginBottom: 8 }}>
                 HTTP status:{' '}
-                <span style={{ fontWeight: 700, color: lastCall.status < 400 ? '#22c55e' : '#ef4444' }}>
+                <span style={{ fontWeight: 600, color: lastCall.status < 400 ? '#22c55e' : '#ef4444' }}>
                   {lastCall.status}
                 </span>
                 {lastCall.method === 'POST' && lastCall.status < 400 && (

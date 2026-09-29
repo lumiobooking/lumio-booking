@@ -124,13 +124,13 @@ function DeleteAccount() {
 
   return (
     <div style={{ ...ui.card, marginTop: 22, borderColor: '#7f1d1d' }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--cfecaca)' }}>{L('Xoá tài khoản', 'Delete account')}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--cfecaca)' }}>{L('Xoá tài khoản', 'Delete account')}</div>
       <p style={{ fontSize: 13, color: 'var(--c94a3b8)', margin: '6px 0 10px', lineHeight: 1.55 }}>
         {L('Đăng nhập của bạn bị xoá vĩnh viễn và không đăng nhập lại được. Lịch hẹn, thanh toán của tiệm vẫn được giữ vì là sổ sách của tiệm. Nếu bạn là admin duy nhất của tiệm, hãy thêm admin khác trước hoặc liên hệ support@lumiobooking.com để đóng tiệm.',
            'Your login is deleted permanently and cannot be recovered. The salon\'s bookings and payments stay, as they are the business\'s records. If you are the salon\'s only admin, add another admin first or contact support@lumiobooking.com to close the salon.')}
       </p>
       {!open ? (
-        <button type="button" onClick={() => setOpen(true)} style={{ background: 'transparent', border: '1px solid #ef4444', color: 'var(--ink-bad)', borderRadius: 8, padding: '9px 14px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>
+        <button type="button" onClick={() => setOpen(true)} style={{ background: 'transparent', border: '1px solid #ef4444', color: 'var(--ink-bad)', borderRadius: 8, padding: '9px 14px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
           {L('Tôi muốn xoá tài khoản…', 'I want to delete my account…')}
         </button>
       ) : (
@@ -145,7 +145,7 @@ function DeleteAccount() {
             <input style={ui.input} value={word} onChange={(e) => setWord(e.target.value)} placeholder="DELETE" autoCapitalize="characters" />
           </label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="submit" disabled={busy || word.trim().toUpperCase() !== 'DELETE' || !pw} style={{ background: '#ef4444', border: 'none', color: '#fff', borderRadius: 8, padding: '10px 16px', fontSize: 14, fontWeight: 800, cursor: busy ? 'wait' : 'pointer', opacity: word.trim().toUpperCase() !== 'DELETE' || !pw ? 0.5 : 1 }}>
+            <button type="submit" disabled={busy || word.trim().toUpperCase() !== 'DELETE' || !pw} style={{ background: '#ef4444', border: 'none', color: '#fff', borderRadius: 8, padding: '10px 16px', fontSize: 14, fontWeight: 700, cursor: busy ? 'wait' : 'pointer', opacity: word.trim().toUpperCase() !== 'DELETE' || !pw ? 0.5 : 1 }}>
               {busy ? L('Đang xoá…', 'Deleting…') : L('Xoá vĩnh viễn tài khoản của tôi', 'Permanently delete my account')}
             </button>
             <button type="button" onClick={() => { setOpen(false); setPw(''); setWord(''); setErr(null); }} style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '10px 14px', fontSize: 14, cursor: 'pointer' }}>

@@ -244,14 +244,14 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                   style={{ width: colW, flexShrink: 0, borderRight: '1px solid var(--c1f2937)', background: isTarget ? 'rgba(99,102,241,0.12)' : un ? 'rgba(99,102,241,0.05)' : 'transparent', outline: isTarget ? '2px dashed #6366f1' : 'none', outlineOffset: -2 }}>
                   <div style={{ height: headH, display: 'flex', alignItems: 'center', gap: 7, padding: '0 8px', borderBottom: '1px solid var(--c1f2937)', boxSizing: 'border-box' }}>
                     {un ? (
-                      <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: 'var(--c334155)', color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>?</div>
+                      <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: 'var(--c334155)', color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>?</div>
                     ) : c.avatar ? (
                       <img src={c.avatar} alt="" style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, objectFit: 'cover', border: '1px solid var(--c334155)' }} />
                     ) : (
-                      <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: AVATAR_BG[ci % AVATAR_BG.length], color: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>{c.name.charAt(0).toUpperCase()}</div>
+                      <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: AVATAR_BG[ci % AVATAR_BG.length], color: '#0b1220', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>{c.name.charAt(0).toUpperCase()}</div>
                     )}
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
                       <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{load} {t('cal.apptWord')}</div>
                     </div>
                   </div>
@@ -273,15 +273,15 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                           onClick={() => onOpen(b)} title={`${fmtT(b.startTime)} · ${b.customer?.firstName ?? ''} · ${b.service?.name ?? ''}`}
                           style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: dim ? 'var(--c18202f)' : `${cc}22`, border: `1px solid ${cc}66`, borderRadius: 8, padding: '3px 7px', overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dim ? 0.7 : dragId === b.id ? 0.4 : 1 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 4 }}>
-                            <span style={{ fontSize: 10.5, fontWeight: 700, color: cc, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
-                            <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</span>
+                            <span style={{ fontSize: 10.5, fontWeight: 600, color: cc, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
+                            <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
                               {b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—'}
                             </span>
                             <span style={{ display: 'flex', gap: 3, alignItems: 'center', flexShrink: 0 }}>
-                              {b.partySize != null && b.partySize > 1 && <span title={t('cal.dParty')} style={{ fontSize: 9, fontWeight: 700, color: 'var(--ce2e8f0)', background: 'var(--c475569)', borderRadius: 4, padding: '0 3px', lineHeight: '13px' }}>×{b.partySize}</span>}
+                              {b.partySize != null && b.partySize > 1 && <span title={t('cal.dParty')} style={{ fontSize: 9, fontWeight: 600, color: 'var(--ce2e8f0)', background: 'var(--c475569)', borderRadius: 4, padding: '0 3px', lineHeight: '13px' }}>×{b.partySize}</span>}
                               {paid > 0 && <span title={`${dep} · ${formatPrice(paid, b.currency)}`} style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />}
                               <SourceDot b={b} vi={true} />
                             </span>

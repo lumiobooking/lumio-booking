@@ -51,7 +51,7 @@ export default function AdminInvoicesPage() {
   }
 
   const badge = (s: Row['status']) => (
-    <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
+    <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
       background: s === 'PAID' ? 'var(--c064e3b)' : s === 'VOID' ? 'var(--c334155)' : 'var(--c78350f)',
       color: s === 'PAID' ? '#a7f3d0' : s === 'VOID' ? 'var(--ccbd5e1)' : 'var(--cfde68a)' }}>
       {s === 'PAID' ? 'Paid' : s === 'VOID' ? 'Void' : 'Open'}
@@ -96,7 +96,7 @@ export default function AdminInvoicesPage() {
                     <td style={td}><span style={{ fontFamily: 'monospace' }}>{r.number}</span></td>
                     <td style={td}>{r.salonName ?? '—'}</td>
                     <td style={td}>{r.type === 'RENEWAL' ? 'Renewal' : 'Overage'}</td>
-                    <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{money(r.totalCents, r.currency)}</td>
+                    <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{money(r.totalCents, r.currency)}</td>
                     <td style={td}>{badge(r.status)}</td>
                     <td style={td}>{fmt(r.sentAt)}</td>
                     <td style={td}>{fmt(r.paidAt)}</td>

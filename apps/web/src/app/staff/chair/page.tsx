@@ -120,7 +120,7 @@ function Inner() {
 
       {others.length > 0 && (
         <div style={{ marginTop: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 4px' }}>{t('sc.others')}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', margin: '0 0 4px' }}>{t('sc.others')}</div>
           <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 10px' }}>{t('sc.moved')}</p>
           <div style={{ display: 'grid', gap: 10 }}>
             {others.map((o) => (
@@ -142,7 +142,7 @@ function Inner() {
             {vi ? 'Đã xong' : 'Finished'}: <b>{undo.name}</b>
           </span>
           <button onClick={() => undoDone(undo.id)}
-            style={{ flexShrink: 0, padding: '10px 18px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)', fontWeight: 700, cursor: 'pointer' }}>
+            style={{ flexShrink: 0, padding: '10px 18px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)', fontWeight: 600, cursor: 'pointer' }}>
             {vi ? '↩ Hoàn tác' : '↩ Undo'}
           </button>
         </div>
@@ -194,7 +194,7 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
     <div style={{ ...ui.card, padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 17, color: 'var(--ce2e8f0)' }}>{name}</div>
+          <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--ce2e8f0)' }}>{name}</div>
           {mins > 0 && <div style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 2 }}>{mins}m {t('sc.inChair')}</div>}
         </div>
         {w.phone && <a href={`tel:${w.phone}`} style={{ color: 'var(--c818cf8)', fontSize: 13, textDecoration: 'none', whiteSpace: 'nowrap' }}>{w.phone}</a>}
@@ -234,14 +234,14 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
         ) : items.map((it) => (
           <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderBottom: '1px solid var(--line)' }}>
             <div style={{ flex: 1, minWidth: 0, color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
-            <div style={{ color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 700 }}>{formatPrice(it.priceCents, currency)}</div>
+            <div style={{ color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 600 }}>{formatPrice(it.priceCents, currency)}</div>
             <button onClick={() => onRemove(w.id, it.lineId)} aria-label={t('wi.removeLine')}
               style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 22, lineHeight: 1, padding: '0 4px' }}>&times;</button>
           </div>
         ))}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: 'var(--c0f172a)' }}>
-          <span style={{ color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 700 }}>{t('wi.subtotal')}</span>
-          <span style={{ color: 'var(--cf8fafc)', fontSize: 18, fontWeight: 800 }}>{formatPrice(subtotal, currency)}</span>
+          <span style={{ color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 600 }}>{t('wi.subtotal')}</span>
+          <span style={{ color: 'var(--cf8fafc)', fontSize: 18, fontWeight: 700 }}>{formatPrice(subtotal, currency)}</span>
         </div>
       </div>
 
@@ -267,7 +267,7 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
             </button>
           ) : (
             <button onClick={() => { setConfirm(false); onDone(w.id, name); }} disabled={busy}
-              style={{ flex: 1, padding: '12px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+              style={{ flex: 1, padding: '12px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
               {vi ? 'Chắc chắn xong?' : 'Confirm finish?'}
             </button>
           )}
@@ -295,7 +295,7 @@ function OtherClientRow({ c, services, currency, t, busy, onAdd }: {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
         <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.customerName || t('sc.walkin')}</span>
-          {c.station && <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--cc7d2fe)', background: 'var(--c312e81)', borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>{t('wi.stationShort')} {c.station}</span>}
+          {c.station && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--cc7d2fe)', background: 'var(--c312e81)', borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>{t('wi.stationShort')} {c.station}</span>}
         </div>
         {!adding && <button onClick={() => setAdding(true)} style={{ ...ui.primaryBtn, padding: '8px 14px', flexShrink: 0 }}>{t('sc.addMine')}</button>}
       </div>

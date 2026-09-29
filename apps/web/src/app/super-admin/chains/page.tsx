@@ -109,7 +109,7 @@ export default function ChainsPage() {
           <div key={g.id} style={{ ...card, marginBottom: 16 }}>
             <GroupHeader name={g.name} onRename={(n) => renameGroup(g.id, n)} onDelete={() => deleteGroup(g.id)} />
 
-            <div style={{ fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 700, marginBottom: 6 }}>CHI NHÁNH ({g.tenants.length})</div>
+            <div style={{ fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 600, marginBottom: 6 }}>CHI NHÁNH ({g.tenants.length})</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
               {g.tenants.map((t) => (
                 <span key={t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '5px 6px 5px 12px', fontSize: 13 }}>
@@ -126,7 +126,7 @@ export default function ChainsPage() {
               </select>
             </div>
 
-            <div style={{ fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 700, marginBottom: 6 }}>TÀI KHOẢN CHỦ CHUỖI</div>
+            <div style={{ fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 600, marginBottom: 6 }}>TÀI KHOẢN CHỦ CHUỖI</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
               {g.users.map((u) => (
                 <span key={u.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--c312e81)', border: '1px solid #4f46e5', borderRadius: 999, padding: '5px 6px 5px 12px', fontSize: 13 }}>
@@ -158,7 +158,7 @@ function GroupHeader({ name, onRename, onDelete }: { name: string; onRename: (na
   }
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 10 }}>
-      <div style={{ fontSize: 17, fontWeight: 700 }}>🏢 {name}</div>
+      <div style={{ fontSize: 17, fontWeight: 600 }}>🏢 {name}</div>
       <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
         <button onClick={() => { setVal(name); setEditing(true); }} style={ghost}>Sửa tên</button>
         <button onClick={onDelete} style={{ ...ghost, borderColor: 'var(--c7f1d1d)', color: 'var(--cfca5a5)' }}>Xoá</button>

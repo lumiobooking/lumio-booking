@@ -85,10 +85,10 @@ export function PlanGrid({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-          <span style={{ fontSize: mobile ? 13.5 : 14, fontWeight: 800, color: d.today ? 'var(--ink-link)' : 'var(--cf1f5f9)', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: mobile ? 13.5 : 14, fontWeight: 700, color: d.today ? 'var(--ink-link)' : 'var(--cf1f5f9)', fontVariantNumeric: 'tabular-nums' }}>
             {mobile ? `${vi ? WD_VI[mondayIndex(d.key)] : WD_EN[mondayIndex(d.key)]} ${label(d.key)}` : label(d.key)}
           </span>
-          {d.today && <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: .4, color: 'var(--ink-link)', textTransform: 'uppercase' }}>{T('hôm nay', 'today')}</span>}
+          {d.today && <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .4, color: 'var(--ink-link)', textTransform: 'uppercase' }}>{T('hôm nay', 'today')}</span>}
           {!d.past && d.inWindow && (
             <button
               type="button"
@@ -118,7 +118,7 @@ export function PlanGrid({
             <span style={{ fontSize: 11.5, lineHeight: 1.35, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
               {j.job.text}
             </span>
-            {j.who === 'salon' && <span style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--ink-warn)', flex: '0 0 auto' }}>{T('tiệm', 'shop')}</span>}
+            {j.who === 'salon' && <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--ink-warn)', flex: '0 0 auto' }}>{T('tiệm', 'shop')}</span>}
           </button>
         ))}
 
@@ -139,7 +139,7 @@ export function PlanGrid({
               <span style={{ display: 'inline-flex', gap: 2, flex: '0 0 auto' }}>
                 {p.channels.map((c) => <i key={c} style={{ width: 7, height: 7, borderRadius: '50%', background: CH_DOT[c] ?? '#94a3b8', display: 'inline-block' }} />)}
               </span>
-              <span style={{ fontSize: 11, fontWeight: 800, fontVariantNumeric: 'tabular-nums', flex: '0 0 auto' }}>{hm}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flex: '0 0 auto' }}>{hm}</span>
               <span style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{p.message.replace(/\s+/g, ' ')}</span>
               {p.held ? <span style={{ fontSize: 10, flex: '0 0 auto' }}>🔴</span> : null}
             </button>
@@ -157,7 +157,7 @@ export function PlanGrid({
                 onClick={() => { setOpen(null); onSchedule(j.job, d.key); }}
                 style={{
                   textAlign: 'left', padding: '6px 8px', borderRadius: 7, border: '1px solid #6366f1', background: 'rgba(99,102,241,.14)',
-                  color: 'var(--ink-link)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  color: 'var(--ink-link)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                 }}
               >
                 🗓️ {T('Lên lịch đăng', 'Schedule')}: {(KIND_ICON[j.job.kind] ?? '')} {j.job.text.slice(0, 40)}{j.job.text.length > 40 ? '…' : ''}
@@ -190,7 +190,7 @@ export function PlanGrid({
           [String(empty), T('ngày còn trống', 'empty days'), empty > 10 ? 'var(--ink-warn)' : 'var(--c94a3b8)'],
         ].map(([n, l, c], i) => (
           <div key={i} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '8px 12px' }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: c, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{n}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: c, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{n}</div>
             <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 2 }}>{l}</div>
           </div>
         ))}
@@ -205,7 +205,7 @@ export function PlanGrid({
           <div style={{ minWidth: 760 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 6, marginBottom: 6 }}>
               {(vi ? WD_VI : WD_EN).map((w, i) => (
-                <div key={w} style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: i >= 5 ? 'var(--ink-warn)' : 'var(--c94a3b8)', padding: '0 4px' }}>{w}</div>
+                <div key={w} style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: i >= 5 ? 'var(--ink-warn)' : 'var(--c94a3b8)', padding: '0 4px' }}>{w}</div>
               ))}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 6 }}>

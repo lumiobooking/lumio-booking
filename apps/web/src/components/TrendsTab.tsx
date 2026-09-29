@@ -173,7 +173,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
   const sectionTitle = (text: string, sub: string, right?: ReactNode) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{text}</div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{text}</div>
         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 3 }}>{sub}</div>
       </div>
       {right}
@@ -215,7 +215,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
           {([['all', T('Tất cả', 'All sources')], ['youtube', 'YouTube'], ['instagram', 'Instagram']] as const).map(([k, label]) => (
             <button key={k} onClick={() => setFilter(k)} style={{
-              padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer',
               border: `1px solid ${filter === k ? '#6366f1' : 'var(--c334155)'}`,
               background: filter === k ? '#6366f1' : 'transparent', color: filter === k ? '#fff' : 'var(--c94a3b8)',
             }}>{label}</button>
@@ -234,7 +234,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
             Business account. Nothing is stored — the posts are shown, one can
             become a post of the salon's own, and that is all. */}
         <div style={{ marginBottom: 12, padding: '11px 12px', borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 3 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 3 }}>
             {T('Tra hashtag trên Instagram', 'Search a hashtag on Instagram')}
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 8, lineHeight: 1.5 }}>
@@ -301,7 +301,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
                       {T('không có ảnh', 'no picture')}
                     </div>
                   )}
-                  <span style={{ position: 'absolute', top: 8, left: 8, padding: '3px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, background: SOURCE_CHIP[c.source].bg, color: SOURCE_CHIP[c.source].fg }}>
+                  <span style={{ position: 'absolute', top: 8, left: 8, padding: '3px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 600, background: SOURCE_CHIP[c.source].bg, color: SOURCE_CHIP[c.source].fg }}>
                     {SOURCE_LABEL[c.source]}{c.via && c.via.startsWith('#') ? ` · ${c.via}` : ''}
                   </span>
                   {fmtDuration(c.durationSec) && (
@@ -311,15 +311,15 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
                   )}
                 </a>
                 <div style={{ padding: '11px 12px 12px', display: 'flex', flexDirection: 'column', gap: 8, flexGrow: 1 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)', lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{c.title}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{c.title}</div>
                   {/* Count, pace, age — and a percent ONLY when the same clip
                       was seen yesterday. A percent from one snapshot is a
                       made-up number, and the first build printed one. */}
                   <div style={{ display: 'flex', gap: '4px 8px', alignItems: 'baseline', flexWrap: 'wrap', fontSize: 12, lineHeight: 1.4 }}>
                     {c.countLabel && <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{c.countLabel} {c.source === 'youtube' ? T('lượt xem', 'views') : T('lượt thích', 'likes')}</span>}
-                    {c.perDayLabel && <span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>{c.perDayLabel}</span>}
+                    {c.perDayLabel && <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{c.perDayLabel}</span>}
                     {c.ageLabel && <span style={{ color: 'var(--c64748b)' }}>{c.ageLabel}</span>}
-                    {c.growthLabel && <span style={{ color: (c.growthLabel.startsWith('-') || c.growthLabel.startsWith('−')) ? 'var(--c94a3b8)' : 'var(--ink-good)', fontWeight: 700, width: '100%' }}>{c.growthLabel}</span>}
+                    {c.growthLabel && <span style={{ color: (c.growthLabel.startsWith('-') || c.growthLabel.startsWith('−')) ? 'var(--c94a3b8)' : 'var(--ink-good)', fontWeight: 600, width: '100%' }}>{c.growthLabel}</span>}
                   </div>
                   {(c.matchesService || c.matchesEvent) && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -442,11 +442,11 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
                   background: 'var(--c0f172a)', border: `1px solid ${q.matchesService ? '#22c55e' : 'var(--c334155)'}`,
                 }}>
                   <span style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{q.query}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c64748b)' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c64748b)' }}>
                     {T(`${q.posts} bài`, `${q.posts} posts`)}
                   </span>
                   {q.growthPct != null && (
-                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-good)' }}>+{q.growthPct}%</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-good)' }}>+{q.growthPct}%</span>
                   )}
                 </div>
               ))}
@@ -470,7 +470,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
                   background: 'var(--c0f172a)', border: `1px solid ${q.matchesService ? '#22c55e' : 'var(--c334155)'}`,
                 }}>
                   <span style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{q.query}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-good)' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-good)' }}>
                     {q.breakout ? T('đột biến', 'breakout') : q.growthPct != null ? `+${q.growthPct}%` : ''}
                   </span>
                 </div>
@@ -496,7 +496,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
                   background: 'var(--c0f172a)', border: `1px solid ${q.matchesService ? '#22c55e' : 'var(--c334155)'}`,
                 }}>
                   <span style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{q.query}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#e60023' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#e60023' }}>
                     {q.growthPct != null ? `+${q.growthPct}%` : ''}
                   </span>
                 </div>
@@ -520,7 +520,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
             {feed.picks.map((p) => (
               <div key={p.id} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{p.title}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{p.title}</div>
                 <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{p.body}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>Lumio · {fmtInTz(p.at, { month: 'short', day: 'numeric' })}</div>
               </div>
@@ -557,7 +557,7 @@ export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendT
                 display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderRadius: 9, textDecoration: 'none',
                 background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
               }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ca5b4fc)', lineHeight: 1.3 }}>{l.title} ↗</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ca5b4fc)', lineHeight: 1.3 }}>{l.title} ↗</div>
                 <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{l.what}</div>
               </a>
             ))}

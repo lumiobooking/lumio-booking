@@ -13,7 +13,7 @@ export function Linkified({ text, linkStyle }: { text: string; linkStyle?: CSSPr
           rel="noopener noreferrer"
           title={r.url}
           onClick={(e) => e.stopPropagation()}
-          style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 700, wordBreak: 'break-all', ...linkStyle }}
+          style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: 2, fontWeight: 600, wordBreak: 'break-all', ...linkStyle }}
         >
           🔗 {r.label}
         </a>

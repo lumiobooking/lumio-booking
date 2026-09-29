@@ -37,7 +37,7 @@ function Hub() {
   const [tab, setTab] = useTabState<'performance' | 'payroll'>('performance');
   const tabBtn = (id: 'performance' | 'payroll', label: string, icon: string) => (
     <button onClick={() => setTab(id)} style={{
-      padding: '10px 18px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 700,
+      padding: '10px 18px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600,
       background: tab === id ? '#6366f1' : 'var(--c1e293b)', color: tab === id ? '#fff' : 'var(--c94a3b8)',
     }}>{icon} {label}</button>
   );
@@ -136,7 +136,7 @@ function Inner() {
               {techs.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('pr.empty')}</p>}
               {techs.map((r) => (
                 <MCard key={r.staffId}>
-                  <MHead right={<span style={{ color: 'var(--ink-good)', fontWeight: 800, fontSize: 16 }}>{formatPrice(r.totalPayCents)}</span>}>
+                  <MHead right={<span style={{ color: 'var(--ink-good)', fontWeight: 700, fontSize: 16 }}>{formatPrice(r.totalPayCents)}</span>}>
                     {r.name}
                   </MHead>
                   <MRow label={t('pr.cCount')}>{r.serviceCount}</MRow>
@@ -172,7 +172,7 @@ function Inner() {
                     <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{r.baseCents > 0 ? formatPrice(r.baseCents) : '—'}</td>
                     <td style={{ ...ui.td, color: '#a855f7' }}>{formatPrice(r.tipsCents)}</td>
                     <td style={{ ...ui.td, color: '#34d399' }}>{(r.directTipsCents ?? 0) > 0 ? formatPrice(r.directTipsCents!) : '—'}</td>
-                    <td style={{ ...ui.td, fontWeight: 800, color: 'var(--ink-good)', fontSize: 15 }}>{formatPrice(r.totalPayCents)}</td>
+                    <td style={{ ...ui.td, fontWeight: 700, color: 'var(--ink-good)', fontSize: 15 }}>{formatPrice(r.totalPayCents)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -193,7 +193,7 @@ function MethodChip({ icon, label, cents, color }: { icon: string; label: string
       <span style={{ fontSize: 18 }}>{icon}</span>
       <div>
         <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{label}</div>
-        <div style={{ fontSize: 17, fontWeight: 800, color }}>{formatPrice(cents)}</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color }}>{formatPrice(cents)}</div>
       </div>
     </div>
   );
@@ -203,7 +203,7 @@ function Kpi({ label, value, accent, big }: { label: string; value: string; acce
   return (
     <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 16, borderLeft: `3px solid ${accent}` }}>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{label}</div>
-      <div style={{ fontSize: big ? 30 : 24, fontWeight: 800, marginTop: 4, color: big ? 'var(--ink-good)' : '#fff' }}>{value}</div>
+      <div style={{ fontSize: big ? 30 : 24, fontWeight: 700, marginTop: 4, color: big ? 'var(--ink-good)' : '#fff' }}>{value}</div>
     </div>
   );
 }
@@ -288,7 +288,7 @@ function Performance() {
 
   const sortChip = (k: typeof sortKey, label: string) => (
     <button onClick={() => setSortKey(k)} style={{
-      padding: '6px 13px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
+      padding: '6px 13px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
       border: `1px solid ${sortKey === k ? '#6366f1' : 'var(--c334155)'}`,
       background: sortKey === k ? 'rgba(99,102,241,0.15)' : 'transparent', color: sortKey === k ? 'var(--cc7d2fe)' : 'var(--c94a3b8)',
     }}>{label}</button>
@@ -323,7 +323,7 @@ function Performance() {
             <MList>
               {rows.map((r, i) => (
                 <MCard key={r.staffId}>
-                  <MHead right={<span style={{ color: 'var(--ink-good)', fontWeight: 800 }}>{formatPrice(money(r))}</span>}>
+                  <MHead right={<span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>{formatPrice(money(r))}</span>}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{medal(i)}<Ava r={r} />{r.name}</span>
                   </MHead>
                   <MRow label={t('pf.cVisits')}>{r.completed}</MRow>
@@ -333,7 +333,7 @@ function Performance() {
                   <MRow label={t('pf.cTop')}>{r.topService ? `${r.topService.name} ×${r.topService.count}` : '—'}</MRow>
                   {r.recent.length > 0 && (
                     <div style={{ marginTop: 6 }}>
-                      <button onClick={() => setOpen(open === r.staffId ? null : r.staffId)} style={{ background: 'none', border: 'none', color: 'var(--c818cf8)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+                      <button onClick={() => setOpen(open === r.staffId ? null : r.staffId)} style={{ background: 'none', border: 'none', color: 'var(--c818cf8)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
                         {open === r.staffId ? t('pf.hideCustomers') : `${t('pf.showCustomers')} (${r.recent.length})`}
                       </button>
                       {open === r.staffId && <RecentList recent={r.recent} />}
@@ -363,14 +363,14 @@ function Performance() {
                         <td style={{ ...ui.td, color: 'var(--c64748b)' }}>{medal(i) || i + 1}</td>
                         <td style={ui.td}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}><Ava r={r} /><b>{r.name}</b>{!r.isActive && <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>({t('pf.inactive')})</span>}</span></td>
                         <td style={ui.td}>{r.completed}</td>
-                        <td style={{ ...ui.td, fontWeight: 800, color: money(r) === best.revenue && best.revenue > 0 ? 'var(--ink-good)' : 'var(--ce2e8f0)' }}>{formatPrice(money(r))}</td>
+                        <td style={{ ...ui.td, fontWeight: 700, color: money(r) === best.revenue && best.revenue > 0 ? 'var(--ink-good)' : 'var(--ce2e8f0)' }}>{formatPrice(money(r))}</td>
                         <td style={{ ...ui.td, color: r.tipsCents === best.tips && best.tips > 0 ? '#a855f7' : 'var(--ccbd5e1)', fontWeight: r.tipsCents === best.tips && best.tips > 0 ? 700 : 400 }}>{formatPrice(r.tipsCents)}</td>
                         <td style={ui.td}>{r.reviewCount ? <span style={{ color: r.reviewCount === best.reviews && best.reviews > 0 ? 'var(--ink-warn)' : 'var(--ce2e8f0)', fontWeight: 600 }}>⭐ {r.rating} <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>({r.reviewCount})</span></span> : <span style={{ color: 'var(--ink-faint)' }}>—</span>}</td>
                         <td style={{ ...ui.td, color: r.points === best.points && best.points > 0 ? '#eab308' : 'var(--ccbd5e1)', fontWeight: r.points === best.points && best.points > 0 ? 700 : 400 }}>{r.points || '—'}</td>
                         <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{r.topService ? <>{r.topService.name} <span style={{ color: 'var(--c64748b)' }}>×{r.topService.count}</span></> : '—'}</td>
                         <td style={ui.td}>
                           {r.recent.length > 0
-                            ? <button onClick={() => setOpen(open === r.staffId ? null : r.staffId)} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c818cf8)', fontSize: 12, fontWeight: 700, cursor: 'pointer', borderRadius: 8, padding: '4px 10px' }}>{open === r.staffId ? t('pf.hide') : `${r.recent.length} ▾`}</button>
+                            ? <button onClick={() => setOpen(open === r.staffId ? null : r.staffId)} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c818cf8)', fontSize: 12, fontWeight: 600, cursor: 'pointer', borderRadius: 8, padding: '4px 10px' }}>{open === r.staffId ? t('pf.hide') : `${r.recent.length} ▾`}</button>
                             : <span style={{ color: 'var(--ink-faint)' }}>—</span>}
                         </td>
                       </tr>
@@ -399,7 +399,7 @@ function Ava({ r }: { r: PerfRow }) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={r.avatarUrl} alt="" width={26} height={26} style={{ borderRadius: '50%', objectFit: 'cover' }} />;
   }
-  return <span style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--cc7d2fe)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700 }}>{initials || '?'}</span>;
+  return <span style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--cc7d2fe)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600 }}>{initials || '?'}</span>;
 }
 function medal(i: number): string { return i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : ''; }
 
@@ -408,7 +408,7 @@ function RecentList({ recent }: { recent: { name: string; date: string; service:
   const t = (k: string) => tr(k, lang);
   return (
     <div>
-      <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 6, fontWeight: 700 }}>{t('pf.recentTitle')}</div>
+      <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 6, fontWeight: 600 }}>{t('pf.recentTitle')}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {recent.map((x, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, borderBottom: '1px solid var(--line)', paddingBottom: 5 }}>

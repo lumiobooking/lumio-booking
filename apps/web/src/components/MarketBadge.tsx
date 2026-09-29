@@ -53,7 +53,7 @@ export default function MarketBadge({ compact = false }: { compact?: boolean }) 
         display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
         padding: compact ? '2px 8px' : '4px 11px',
         borderRadius: 999, border: `1px solid ${m.border}`, background: m.bg, color: m.fg,
-        fontSize: compact ? 10.5 : 11.5, fontWeight: 800, letterSpacing: 0.4, whiteSpace: 'nowrap',
+        fontSize: compact ? 10.5 : 11.5, fontWeight: 700, letterSpacing: 0.4, whiteSpace: 'nowrap',
       }}
     >
       {m.label}

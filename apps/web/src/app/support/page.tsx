@@ -10,7 +10,7 @@ export default function SupportPage() {
     <main style={wrap}>
       <div style={card}>
         <div style={{ textAlign: 'center', marginBottom: 6 }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--c0f172a)', letterSpacing: -0.5 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--c0f172a)', letterSpacing: -0.5 }}>
             Lumio<span style={{ color: INDIGO }}>Booking</span>
           </div>
           <h1 style={h1}>Support &amp; Help Center</h1>

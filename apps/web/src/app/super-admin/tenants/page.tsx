@@ -670,7 +670,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
                   <option value="on">Force ON</option>
                   <option value="off">Force OFF</option>
                 </select>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: effOn ? 'var(--c4ade80)' : 'var(--cf87171)' }}>{effOn ? 'ENABLED' : 'OFF'}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: effOn ? 'var(--c4ade80)' : 'var(--cf87171)' }}>{effOn ? 'ENABLED' : 'OFF'}</span>
               </div>
             );
           })}
@@ -697,7 +697,7 @@ function TenantEditPanel({ token, tenant, usage, onSaved }: { token: string; ten
           </p>
         )}
 
-        <div style={{ marginTop: 12, fontSize: 12, color: 'var(--c818cf8)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>AI plan limits (0 = unlimited)</div>
+        <div style={{ marginTop: 12, fontSize: 12, color: 'var(--c818cf8)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>AI plan limits (0 = unlimited)</div>
         <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
           <label style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>AI Hotline fee $ / mo
             <input type="number" min={0} step={1} value={(lim.monthlyCents / 100) || 0} onChange={(e) => setLim({ ...lim, monthlyCents: Math.round((Number(e.target.value) || 0) * 100) })} style={{ ...inp, marginTop: 4 }} />
@@ -980,7 +980,7 @@ function AiDiagButton() {
       <button onClick={run} disabled={busy} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12.5, cursor: busy ? 'wait' : 'pointer' }}>
         {busy ? 'Đang kiểm tra…' : '🧠 Kiểm tra não AI'}
       </button>
-      {res && <span style={{ fontSize: 12.5, fontWeight: 700, color: ok ? 'var(--ink-good)' : 'var(--cfca5a5)', maxWidth: 520 }}>{res}</span>}
+      {res && <span style={{ fontSize: 12.5, fontWeight: 600, color: ok ? 'var(--ink-good)' : 'var(--cfca5a5)', maxWidth: 520 }}>{res}</span>}
     </span>
   );
 }
@@ -1078,7 +1078,7 @@ function ChatPlanPanel({ token, tenantId }: { token: string; tenantId: string })
   return (
     <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--c334155)' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>AI Messenger — gói &amp; tính tiền</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>AI Messenger — gói &amp; tính tiền</span>
         <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
           {v.market} · {cur} · {used.toLocaleString()} tin bot trả lời tháng này · vốn {money(v.costPerReply)}/tin
         </span>
@@ -1097,7 +1097,7 @@ function ChatPlanPanel({ token, tenantId }: { token: string; tenantId: string })
                 border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`,
                 background: on ? 'rgba(99,102,241,0.14)' : 'transparent', color: 'var(--ce2e8f0)',
               }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700 }}>{t.vi}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>{t.vi}</div>
               <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
                 {money(t.monthlyCents)} · {t.includedReplies.toLocaleString()} tin · vượt {money(t.overageCentsPerReply)}
               </div>
@@ -1158,7 +1158,7 @@ function Fig({ label, value, color }: { label: string; value: string; color?: st
   return (
     <div>
       <div style={{ fontSize: 10.5, color: 'var(--c64748b)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 700, color: color ?? 'var(--ce2e8f0)' }}>{value}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: color ?? 'var(--ce2e8f0)' }}>{value}</div>
     </div>
   );
 }

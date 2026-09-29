@@ -739,7 +739,7 @@ function TipsConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
           <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: on ? '#6366f1' : 'var(--c334155)', borderRadius: 24, transition: '.2s' }} />
           <span style={{ position: 'absolute', height: 18, width: 18, left: on ? 21 : 3, top: 3, background: '#fff', borderRadius: '50%', transition: '.2s' }} />
         </label>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? 'Hỏi khách tiền tip' : 'Ask the customer for a tip'}</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? 'Hỏi khách tiền tip' : 'Ask the customer for a tip'}</div>
       </div>
       <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 8px', lineHeight: 1.5, maxWidth: 640 }}>
         {lang === 'vi'
@@ -763,7 +763,7 @@ function CardSurcharge({ data, onSave }: { data: SettingsData; onSave: SaveFn })
           <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: on ? '#6366f1' : 'var(--c334155)', borderRadius: 24, transition: '.2s' }} />
           <span style={{ position: 'absolute', height: 18, width: 18, left: on ? 21 : 3, top: 3, background: '#fff', borderRadius: '50%', transition: '.2s' }} />
         </label>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? 'Phụ phí khi khách trả bằng thẻ (giá Cash/Card)' : 'Card surcharge (Cash/Card pricing)'}</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? 'Phụ phí khi khách trả bằng thẻ (giá Cash/Card)' : 'Card surcharge (Cash/Card pricing)'}</div>
       </div>
       <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 8px', lineHeight: 1.5, maxWidth: 640 }}>
         {lang === 'vi'
@@ -862,7 +862,7 @@ function MethodDetails({
     <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 10, padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <strong style={{ color: 'var(--ce2e8f0)', fontSize: 14 }}>{label}</strong>
-        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: filled ? 'var(--ink-good)' : 'var(--ink-warn)', border: `1px solid ${filled ? 'var(--c166534)' : 'var(--c78350f)'}` }}>
+        <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, color: filled ? 'var(--ink-good)' : 'var(--ink-warn)', border: `1px solid ${filled ? 'var(--c166534)' : 'var(--c78350f)'}` }}>
           {filled ? (lang === 'vi' ? 'Đã đặt' : 'Set') : (lang === 'vi' ? 'Chưa đặt' : 'Not set')}
         </span>
       </div>
@@ -1685,9 +1685,9 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
                 ? <img src={logoShow} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }} />
                 : <span style={{ fontSize: 17 }}>🏪</span>}
             </span>
-            <span style={{ color: '#fff', fontWeight: 800, fontSize: 16, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>{data.company?.name || 'Your salon'}</span>
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: 16, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>{data.company?.name || 'Your salon'}</span>
             {(f.ratingMode ?? 'auto') === 'manual' && (f.ratingCount ?? 0) > 0 && (
-              <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.18)', color: '#fff', borderRadius: 999, padding: '5px 10px', fontSize: 12.5, fontWeight: 800, whiteSpace: 'nowrap' }}>★ {f.ratingValue ?? 0} · {f.ratingCount ?? 0}</span>
+              <span style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.18)', color: '#fff', borderRadius: 999, padding: '5px 10px', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' }}>★ {f.ratingValue ?? 0} · {f.ratingCount ?? 0}</span>
             )}
           </div>
         </div>

@@ -95,7 +95,7 @@ function Inner() {
           if (rows.length === 0) return null;
           return (
             <div key={g.key} style={{ marginTop: 18 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 8 }}>{g.icon} {T(g.vi, g.en)}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 8 }}>{g.icon} {T(g.vi, g.en)}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {rows.map((it) => {
                   const st = STATE[it.state] ?? STATE.off;
@@ -103,7 +103,7 @@ function Inner() {
                   return (
                     <div key={it.key} style={{ background: 'var(--c111a2c)', border: `1px solid ${it.state === 'error' ? 'var(--c7f1d1d)' : 'var(--c1e293b)'}`, borderRadius: 12, padding: '12px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        <span style={{ background: st.bg, color: st.color, border: `1px solid ${st.color}`, borderRadius: 999, padding: '2px 10px', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' }}>{T(st.vi, st.en)}</span>
+                        <span style={{ background: st.bg, color: st.color, border: `1px solid ${st.color}`, borderRadius: 999, padding: '2px 10px', fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{T(st.vi, st.en)}</span>
                         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--cf1f5f9)' }}>{it.name}</span>
                         <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                           {it.testPath && (

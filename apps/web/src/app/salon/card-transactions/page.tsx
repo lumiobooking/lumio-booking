@@ -123,11 +123,11 @@ function Inner() {
     return (
       <div style={{ ...box, borderColor: t.unresolved ? '#f59e0b' : 'var(--c334155)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'baseline' }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+          <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
             {formatPrice(t.amountCents, t.currency)}
             {t.tipCents ? <span style={{ ...meta, marginLeft: 8 }}>({L.tip} {formatPrice(t.tipCents, t.currency)})</span> : null}
           </div>
-          <div style={{ color, fontWeight: 700, fontSize: 13 }}>{t.status}</div>
+          <div style={{ color, fontWeight: 600, fontSize: 13 }}>{t.status}</div>
         </div>
 
         <div style={{ ...meta, marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
@@ -147,7 +147,7 @@ function Inner() {
 
         {t.unresolved && (
           <div style={{ marginTop: 10, background: 'var(--c1e293b)', borderLeft: '3px solid #f59e0b', borderRadius: 6, padding: 10 }}>
-            <div style={{ color: 'var(--cfbbf24)', fontWeight: 700, fontSize: 13 }}>{L.unresolvedTitle}</div>
+            <div style={{ color: 'var(--cfbbf24)', fontWeight: 600, fontSize: 13 }}>{L.unresolvedTitle}</div>
             <div style={{ color: 'var(--ccbd5e1)', fontSize: 12.5, marginTop: 4, lineHeight: 1.5 }}>{L.unresolvedBody}</div>
           </div>
         )}
@@ -189,7 +189,7 @@ function Inner() {
 
       {unresolved.length > 0 && (
         <div style={{ border: '1px solid #f59e0b', background: '#1c1917', borderRadius: 12, padding: 14, margin: '14px 0' }}>
-          <div style={{ color: 'var(--cfbbf24)', fontWeight: 700 }}>
+          <div style={{ color: 'var(--cfbbf24)', fontWeight: 600 }}>
             {unresolved.length} {vi ? 'giao dịch chưa rõ kết quả' : 'unresolved payment(s)'}
           </div>
           <div style={{ color: 'var(--ccbd5e1)', fontSize: 13, marginTop: 4, lineHeight: 1.55 }}>{L.unresolvedBody}</div>

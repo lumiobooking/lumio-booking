@@ -102,7 +102,7 @@ export function NotificationBell() {
   const recent = items.slice(0, 15);
 
   const bellBtn: CSSProperties = { position: 'relative', width: 40, height: 40, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 };
-  const badgeStyle: CSSProperties = { position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, display: 'grid', placeItems: 'center', border: '1.5px solid var(--c111827)' };
+  const badgeStyle: CSSProperties = { position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, padding: '0 4px', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center', border: '1.5px solid var(--c111827)' };
   const panel: CSSProperties = isMobile
     ? { position: 'fixed', top: 64, right: 8, left: 8, zIndex: 71, background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', maxHeight: '74vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
     : { position: 'fixed', top: 58, right: 22, width: 382, zIndex: 71, background: 'var(--c0f172a)', border: '1px solid var(--c223047)', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,0.55)', maxHeight: '76vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' };
@@ -122,7 +122,7 @@ export function NotificationBell() {
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'transparent' }} />
           <div style={panel}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 15px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
-              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{L('Thông báo', 'Notifications')}</span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--cf1f5f9)' }}>{L('Thông báo', 'Notifications')}</span>
               <button onClick={() => setOpen(false)} aria-label={L('Đóng', 'Close')} style={{ background: 'transparent', border: 'none', color: 'var(--c94a3b8)', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
             </div>
 
@@ -148,7 +148,7 @@ export function NotificationBell() {
                       </svg>
                     </span>
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: 13.5, color: '#e5e9f0', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail) : i.type === 'postReview' ? L('— đã sửa xong, mời bạn duyệt lại', '— updated, please review again') : `${verb(i.type)} ${i.detail}`}</span>
+                      <span style={{ display: 'block', fontSize: 13.5, color: '#e5e9f0', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><b style={{ fontWeight: 600 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail) : i.type === 'postReview' ? L('— đã sửa xong, mời bạn duyệt lại', '— updated, please review again') : `${verb(i.type)} ${i.detail}`}</span>
                       <span style={{ display: 'block', fontSize: 11.5, color: 'var(--c64748b)', marginTop: 1 }}>{rel(i.at)}</span>
                     </span>
                     {clickable && (

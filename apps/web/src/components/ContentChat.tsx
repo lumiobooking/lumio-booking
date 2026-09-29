@@ -131,7 +131,7 @@ function Bubbles({ messages, mine, empty }: {
                   style={{
                     width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 800, letterSpacing: .2,
+                    fontSize: 10, fontWeight: 700, letterSpacing: .2,
                     color, border: `1.5px solid ${color}`, background: `${color}1f`,
                   }}
                 >{initialsOf(m.authorName)}</span>
@@ -141,7 +141,7 @@ function Bubbles({ messages, mine, empty }: {
             <div style={{ maxWidth: '78%', minWidth: 0 }}>
               {opensRun && (
                 <div style={{
-                  fontSize: 10.5, marginBottom: 3, fontWeight: 700,
+                  fontSize: 10.5, marginBottom: 3, fontWeight: 600,
                   textAlign: isMine ? 'right' : 'left',
                   color: isMine ? 'var(--c94a3b8)' : color,
                 }}>
@@ -176,7 +176,7 @@ function Bubbles({ messages, mine, empty }: {
                   style={{
                     width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 800, letterSpacing: .2,
+                    fontSize: 10, fontWeight: 700, letterSpacing: .2,
                     color: '#ffffff', border: '1.5px solid #6366f1', background: '#6366f1',
                   }}
                 >{initialsOf(m.authorName)}</span>
@@ -351,7 +351,7 @@ export function ItemComments({ token, subject, unread, labelVi, vi, defaultOpen 
         </span>
         {!!unread && (
           <span style={{
-            fontSize: 11, fontWeight: 700, minWidth: 20, height: 20, borderRadius: 20,
+            fontSize: 11, fontWeight: 600, minWidth: 20, height: 20, borderRadius: 20,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             background: '#ef4444', color: '#ffffff', padding: '0 6px',
           }}>{unread}</span>
@@ -426,7 +426,7 @@ export function TeamChatDock({ token, unread, vi, height, salonName }: {
       }}>
         <span style={{ fontSize: 15 }}>💬</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {who.title}
           </div>
           <div style={{ fontSize: 10.5, color: 'var(--c64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -436,7 +436,7 @@ export function TeamChatDock({ token, unread, vi, height, salonName }: {
         {unread > 0 && (
           <span style={{
             minWidth: 20, height: 20, borderRadius: 20, background: '#ef4444',
-            color: '#ffffff', fontSize: 11, fontWeight: 700,
+            color: '#ffffff', fontSize: 11, fontWeight: 600,
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px',
           }}>{unread > 9 ? '9+' : unread}</span>
         )}
@@ -504,7 +504,7 @@ export function TeamChatWindow({ token, unread, vi }: {
             display: 'flex', alignItems: 'center', gap: 7,
             minHeight: 46, padding: '0 16px', borderRadius: 24, cursor: 'pointer',
             border: 'none', background: '#6366f1', color: '#ffffff',
-            fontSize: 14, fontWeight: 700, boxShadow: '0 8px 24px rgba(0,0,0,.45)',
+            fontSize: 14, fontWeight: 600, boxShadow: '0 8px 24px rgba(0,0,0,.45)',
           }}
         >
           {/* A bare circle in a corner reads as decoration. It says what it is. */}
@@ -514,7 +514,7 @@ export function TeamChatWindow({ token, unread, vi }: {
             <span style={{
               minWidth: 21, height: 21,
               borderRadius: 20, background: '#ef4444', color: '#ffffff',
-              fontSize: 11.5, fontWeight: 700, display: 'flex',
+              fontSize: 11.5, fontWeight: 600, display: 'flex',
               alignItems: 'center', justifyContent: 'center', padding: '0 5px',
             }}>{unread > 9 ? '9+' : unread}</span>
           )}
@@ -538,7 +538,7 @@ export function TeamChatWindow({ token, unread, vi }: {
           }}>
             <span style={{ fontSize: 15 }}>💬</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
                 {counterpart(side, undefined, vi).title}
               </div>
               <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>

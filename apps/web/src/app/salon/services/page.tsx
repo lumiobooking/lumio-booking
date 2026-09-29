@@ -354,7 +354,7 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
         <td style={ui.td}>
           <div>
             {s.name}
-            {s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
+            {s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>{t('sv.popular')}</span>}
           </div>
           {s.description && <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{s.description}</div>}
         </td>
@@ -367,10 +367,10 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
             <span>
               <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{fmt(s.priceCents)}</span>
               <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
-              <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{s.discountPercent}%</span>
+              <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>-{s.discountPercent}%</span>
             </span>
           ) : (
-            <>{fmt(s.priceCents)}{s.priceFrom ? <span title={lang === 'vi' ? 'Giá từ (trở lên)' : 'From price (and up)'} style={{ color: 'var(--c94a3b8)', fontWeight: 700 }}>+</span> : null}</>
+            <>{fmt(s.priceCents)}{s.priceFrom ? <span title={lang === 'vi' ? 'Giá từ (trở lên)' : 'From price (and up)'} style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}>+</span> : null}</>
           )}
         </td>
         <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
@@ -428,7 +428,7 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
             onPointerDown={onGrab}
             style={{ color: dragging ? 'var(--ink-link)' : 'var(--c64748b)', fontSize: 16, cursor: 'grab', paddingRight: 8, touchAction: 'none', userSelect: 'none' }}
           >⠿</span>
-          {s.name}{s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('sv.popular')}</span>}
+          {s.name}{s.isFeatured && <span style={{ marginLeft: 6, background: '#eab308', color: '#1f2937', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>{t('sv.popular')}</span>}
         </MHead>
         {s.description && <div style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{s.description}</div>}
         <MRow label={t('sv.colCategory')}>{catName(s.categoryId)}</MRow>
@@ -438,7 +438,7 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
             <span>
               <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{fmt(s.priceCents)}</span>
               <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{fmt(Math.round((s.priceCents * (100 - s.discountPercent)) / 100))}</span>
-              <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{s.discountPercent}%</span>
+              <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>-{s.discountPercent}%</span>
             </span>
           ) : fmt(s.priceCents)}
         </MRow>
@@ -1001,7 +1001,7 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
         {open ? '▾' : '▸'} {t('sv.weekdayTitle')}
       </button>
       {open && (
@@ -1081,7 +1081,7 @@ function FirstVisitDiscountCard({ token }: { token: string }) {
 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
         {open ? '▾' : '▸'} {t('sv.fvTitle')}
       </button>
       {open && (
@@ -1152,7 +1152,7 @@ function GroupDiscountCard({ token }: { token: string }) {
 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
         {open ? '▾' : '▸'} {t('sv.grTitle')}
       </button>
       {open && (
@@ -1223,7 +1223,7 @@ function DateDiscountCard({ token, categories }: { token: string; categories: Ca
 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
         {open ? '▾' : '▸'} {t('sv.dateTitle')}
       </button>
       {open && (
@@ -1325,10 +1325,10 @@ function BulkServiceEdit({ ids, services, categories, currency, token, vi, onDon
   }
 
   const field: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, minWidth: 150 };
-  const lbl: React.CSSProperties = { fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 700 };
+  const lbl: React.CSSProperties = { fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 600 };
   return (
     <div style={{ border: '1px solid #6366f1', background: 'rgba(99,102,241,.08)', borderRadius: 12, padding: '12px 14px', marginBottom: 10 }}>
-      <div style={{ fontWeight: 800, color: 'var(--ce2e8f0)', marginBottom: 8 }}>
+      <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 8 }}>
         ✏️ {T(`Sửa hàng loạt ${picked.length} dịch vụ`, `Edit ${picked.length} services at once`)}
         <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--c94a3b8)', marginLeft: 8 }}>{T('Ô nào để trống / "Giữ nguyên" thì không đổi.', 'Anything left blank / "Keep" stays as it is.')}</span>
       </div>

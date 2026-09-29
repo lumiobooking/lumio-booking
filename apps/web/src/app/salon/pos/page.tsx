@@ -1267,7 +1267,7 @@ function Register() {
       })
       .join('');
     const line = (label: string, val: string, bold = false) =>
-      `<tr><td style="${bold ? 'font-weight:700' : ''}">${label}</td><td style="text-align:right;${bold ? 'font-weight:700' : ''}">${val}</td></tr>`;
+      `<tr><td style="${bold ? 'font-weight:600' : ''}">${label}</td><td style="text-align:right;${bold ? 'font-weight:600' : ''}">${val}</td></tr>`;
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Receipt #${orderNumber}</title>
       <style>body{font-family:ui-monospace,Menlo,monospace;width:300px;margin:0 auto;padding:12px;color: #000}
       h2{text-align:center;margin:4px 0}table{width:100%;border-collapse:collapse;font-size:13px}
@@ -1513,22 +1513,22 @@ function Register() {
   );
   const textBtn: React.CSSProperties = { height: 44, padding: '0 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, textDecoration: 'none' };
   const heldCount = (
-    <span style={{ minWidth: 22, height: 22, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, background: 'var(--c1e1b4b)', color: 'var(--ce0e7ff)', fontSize: 12, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{heldBills.length}</span>
+    <span style={{ minWidth: 22, height: 22, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, background: 'var(--c1e1b4b)', color: 'var(--ce0e7ff)', fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{heldBills.length}</span>
   );
 
   const topBar = (
     <div style={{ height: layout === 'wide' && !tightTop ? 64 : 56, flexShrink: 0, boxSizing: 'border-box', padding: layout === 'phone' ? '0 12px' : '0 16px', display: 'flex', alignItems: 'center', gap: layout === 'phone' ? 10 : 12, background: 'var(--c0f172a)', borderBottom: '1px solid var(--line)', position: 'relative' }}>
       {iconBtn(L('Menu quản lý', 'Admin menu'), () => setMenuOpen(menuOpen === 'nav' ? null : 'nav'), <IcoMenu />, layout === 'phone' ? { border: 'none', background: 'transparent' } : undefined)}
       {layout === 'phone' ? (
-        <span style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{L('Thu ngân', 'Checkout')}</span>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{L('Thu ngân', 'Checkout')}</span>
       ) : layout === 'wide' && !tightTop ? (
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, minWidth: 0 }}>
-          <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{salonName || t('po.title')}</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{salonName || t('po.title')}</span>
           <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{L('Quầy thu ngân', 'Checkout')}{user?.firstName ? ` · ${L('Thu ngân', 'Cashier')}: ${user.firstName}` : ''}</span>
         </div>
       ) : (
         <span style={{ minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-          <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--cf1f5f9)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{salonName || t('po.title')}</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--cf1f5f9)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{salonName || t('po.title')}</span>
           <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>· {L('Quầy thu ngân', 'Checkout')}</span>
         </span>
       )}
@@ -1610,9 +1610,9 @@ function Register() {
               height: layout === 'wide' ? (tightTop ? 56 : 64) : (layout === 'dock' ? 52 : 48), boxSizing: 'border-box', padding: '0 12px', borderRadius: 12,
               border: on ? '2px solid #4f46e5' : '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', cursor: 'pointer',
             }}>
-              <span style={{ width: layout === 'wide' ? 36 : 30, height: layout === 'wide' ? 36 : 30, flexShrink: 0, borderRadius: '50%', background: 'var(--c1e1b4b)', color: 'var(--ce0e7ff)', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials(nm)}</span>
+              <span style={{ width: layout === 'wide' ? 36 : 30, height: layout === 'wide' ? 36 : 30, flexShrink: 0, borderRadius: '50%', background: 'var(--c1e1b4b)', color: 'var(--ce0e7ff)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials(nm)}</span>
               <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.3 }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nm}</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nm}</span>
                 {layout !== 'phone' && layout !== 'dock' && (
                   <span style={{ fontSize: 12.5, color: w.awaitingPayment ? 'var(--ink-good)' : 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.awaitingPayment ? `${L('Chờ trả tiền', 'Ready to pay')} · ` : ''}{w.what}</span>
                 )}
@@ -1687,14 +1687,14 @@ function Register() {
         {img
           ? <img src={img} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} style={{ width: layout === 'phone' ? 40 : 48, height: layout === 'phone' ? 40 : 48, flexShrink: 0, borderRadius: 10, objectFit: 'cover', background: 'var(--c1e293b)' }} />
           : dot && <span style={{ width: 8, height: 8, marginTop: 7, flexShrink: 0, borderRadius: '50%', background: dot }} />}
-        <span style={{ fontSize: layout === 'phone' ? 14.5 : 15, fontWeight: 700, lineHeight: 1.3, color: 'var(--cf1f5f9)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' }}>{niceName(name)}</span>
+        <span style={{ fontSize: layout === 'phone' ? 14.5 : 15, fontWeight: 600, lineHeight: 1.3, color: 'var(--cf1f5f9)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' }}>{niceName(name)}</span>
       </span>
       <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 6, minWidth: 0 }}>
         <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{meta}</span>
-        <span style={{ flexShrink: 0, fontSize: layout === 'phone' ? 16 : 17, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{price}</span>
+        <span style={{ flexShrink: 0, fontSize: layout === 'phone' ? 16 : 17, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{price}</span>
       </span>
       {count > 0 && (
-        <span style={{ position: 'absolute', top: -8, right: -8, minWidth: 26, height: 26, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, background: '#4f46e5', color: '#fff', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--c0b1120)' }}>{count}</span>
+        <span style={{ position: 'absolute', top: -8, right: -8, minWidth: 26, height: 26, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, background: '#4f46e5', color: '#fff', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--c0b1120)' }}>{count}</span>
       )}
     </button>
   );
@@ -1734,9 +1734,9 @@ function Register() {
     <div style={{ padding: compactRow ? '10px 16px' : '16px 20px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
       {customerId || custName ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ width: compactRow ? 40 : 44, height: compactRow ? 40 : 44, flexShrink: 0, borderRadius: '50%', background: 'rgba(219,39,119,.14)', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials(custName || '?')}</span>
+          <span style={{ width: compactRow ? 40 : 44, height: compactRow ? 40 : 44, flexShrink: 0, borderRadius: '50%', background: 'rgba(219,39,119,.14)', color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials(custName || '?')}</span>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
-            <span style={{ fontSize: compactRow ? 15 : 16, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{custName || t('po.custAttached')}</span>
+            <span style={{ fontSize: compactRow ? 15 : 16, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{custName || t('po.custAttached')}</span>
             <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[custPhone, loyalty.enabled && customerId ? `${customerPoints} ${L('điểm', 'points')}` : ''].filter(Boolean).join(' · ') || (walkInId ? L('Khách tại tiệm', 'In the salon') : '')}</span>
           </div>
           <button type="button" onClick={() => { setCustomerId(null); setCustomerLabel(null); setCustomerPoints(0); setRedeemInput(''); }} style={{ height: 36, padding: '0 12px', borderRadius: 9, border: '1px solid var(--line)', background: 'var(--c0f172a)', fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', cursor: 'pointer' }}>{L('Đổi', 'Change')}</button>
@@ -1757,8 +1757,8 @@ function Register() {
     const nm = st ? st.firstName : L('Chọn thợ', 'Pick tech');
     const warn = !st && l.kind === 'SERVICE' && staff.length > 0;
     return (
-      <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px 0 4px', borderRadius: 999, border: '1px solid ' + (warn ? 'rgba(217,119,6,.55)' : 'var(--line)'), background: warn ? 'rgba(245,158,11,.12)' : 'var(--c1e293b)', color: warn ? 'var(--ink-warn)' : 'var(--cf1f5f9)', fontSize: 13, fontWeight: 700, flexShrink: 0, maxWidth: 170 }}>
-        <span style={{ width: 24, height: 24, flexShrink: 0, borderRadius: '50%', background: st ? staffHue(st.id) : '#c2410c', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{st ? (st.firstName[0] || '?').toUpperCase() : '?'}</span>
+      <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px 0 4px', borderRadius: 999, border: '1px solid ' + (warn ? 'rgba(217,119,6,.55)' : 'var(--line)'), background: warn ? 'rgba(245,158,11,.12)' : 'var(--c1e293b)', color: warn ? 'var(--ink-warn)' : 'var(--cf1f5f9)', fontSize: 13, fontWeight: 600, flexShrink: 0, maxWidth: 170 }}>
+        <span style={{ width: 24, height: 24, flexShrink: 0, borderRadius: '50%', background: st ? staffHue(st.id) : '#c2410c', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{st ? (st.firstName[0] || '?').toUpperCase() : '?'}</span>
         <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nm}</span>
         {/* The real control: a native picker laid over the chip — one tap, works with touch and mouse alike. */}
         <select
@@ -1781,8 +1781,8 @@ function Register() {
       <div key={l.uid} style={{ borderBottom: '1px solid var(--line)', padding: dense ? '10px 4px' : '12px 8px' }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button type="button" onClick={() => setEditUid(open ? null : l.uid)} style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer', fontSize: dense ? 14.5 : 15, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}>
-              {l.isAddon && <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ce0e7ff)', background: 'var(--c1e1b4b)', borderRadius: 5, padding: '1px 6px', marginRight: 6, verticalAlign: 'middle' }}>{t('po.addonBadge')}</span>}
+            <button type="button" onClick={() => setEditUid(open ? null : l.uid)} style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer', fontSize: dense ? 14.5 : 15, fontWeight: 600, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}>
+              {l.isAddon && <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ce0e7ff)', background: 'var(--c1e1b4b)', borderRadius: 5, padding: '1px 6px', marginRight: 6, verticalAlign: 'middle' }}>{t('po.addonBadge')}</span>}
               {niceName(l.name)}{l.quantity > 1 ? <span style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}> × {l.quantity}</span> : null}
             </button>
             {(l.kind === 'SERVICE' && staff.length > 0) && (
@@ -1795,7 +1795,7 @@ function Register() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
             <button type="button" onClick={() => setEditUid(open ? null : l.uid)} style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'right' }}>
               {l.discountPercent > 0 && <span style={{ display: 'block', fontSize: 12, color: 'var(--c64748b)', textDecoration: 'line-through' }}>{fmt(l.origUnitPriceCents * l.quantity)}</span>}
-              <span style={{ fontSize: dense ? 15 : 16, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{fmt(l.unitPriceCents * l.quantity)}</span>
+              <span style={{ fontSize: dense ? 15 : 16, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{fmt(l.unitPriceCents * l.quantity)}</span>
             </button>
             {!dense && (
               <button type="button" onClick={() => removeLine(l.uid)} aria-label={L('Bỏ dòng này', 'Remove line')} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--c94a3b8)' }}><IcoX /></button>
@@ -1810,13 +1810,13 @@ function Register() {
               value={fromMinorUnits(l.unitPriceCents, currency)}
               onChange={(e) => setLinePrice(l.uid, e.target.value)}
               onFocus={(e) => e.currentTarget.select()}
-              style={{ width: 110, height: 40, boxSizing: 'border-box', padding: '0 10px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 16, fontWeight: 700, textAlign: 'right' }}
+              style={{ width: 110, height: 40, boxSizing: 'border-box', padding: '0 10px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 16, fontWeight: 600, textAlign: 'right' }}
             />
             {cat != null && cat !== l.unitPriceCents && <button type="button" onClick={() => resetLinePrice(l.uid)} style={smallBtn}>{t('po.resetPrice')}</button>}
             {l.kind === 'PRODUCT' && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
                 <button type="button" onClick={() => updateLine(l.uid, { quantity: Math.max(1, l.quantity - 1) })} style={{ ...smallBtn, width: 40, padding: 0 }}>−</button>
-                <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 700, color: 'var(--cf1f5f9)' }}>{l.quantity}</span>
+                <span style={{ minWidth: 20, textAlign: 'center', fontWeight: 600, color: 'var(--cf1f5f9)' }}>{l.quantity}</span>
                 <button type="button" onClick={() => updateLine(l.uid, { quantity: l.quantity + 1 })} style={{ ...smallBtn, width: 40, padding: 0 }}>+</button>
               </span>
             )}
@@ -1846,7 +1846,7 @@ function Register() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--line)', flexShrink: 0 }}>
             {([['AMOUNT', uiCurrencySymbol()], ['PERCENT', '%']] as const).map(([m, sym]) => (
-              <button key={m} type="button" onClick={() => setDiscountMode(m)} style={discountMode === m ? { width: 38, height: 34, borderRadius: 8, border: 'none', background: '#4f46e5', color: '#fff', fontWeight: 800, cursor: 'pointer' } : { width: 38, height: 34, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontWeight: 800, cursor: 'pointer' }}>{sym}</button>
+              <button key={m} type="button" onClick={() => setDiscountMode(m)} style={discountMode === m ? { width: 38, height: 34, borderRadius: 8, border: 'none', background: '#4f46e5', color: '#fff', fontWeight: 700, cursor: 'pointer' } : { width: 38, height: 34, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontWeight: 700, cursor: 'pointer' }}>{sym}</button>
             ))}
           </div>
           <input type="number" min={0} step={discountMode === 'PERCENT' ? 1 : 0.01} autoFocus value={orderDiscount} onChange={(e) => setOrderDiscount(e.target.value)} placeholder="0" style={adjInput} />
@@ -1861,7 +1861,7 @@ function Register() {
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input value={promoInput} autoFocus onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoErr(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyPromo(); } }} placeholder={t('po.promoPh')} style={{ ...adjInput, textAlign: 'left', textTransform: 'uppercase' }} />
-          <button type="button" disabled={!promoInput.trim() || promoBusy} onClick={applyPromo} style={{ height: 40, padding: '0 14px', borderRadius: 10, border: 'none', background: '#4f46e5', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: !promoInput.trim() || promoBusy ? 0.5 : 1 }}>{promoBusy ? '…' : t('po.promoApply')}</button>
+          <button type="button" disabled={!promoInput.trim() || promoBusy} onClick={applyPromo} style={{ height: 40, padding: '0 14px', borderRadius: 10, border: 'none', background: '#4f46e5', color: '#fff', fontWeight: 600, cursor: 'pointer', opacity: !promoInput.trim() || promoBusy ? 0.5 : 1 }}>{promoBusy ? '…' : t('po.promoApply')}</button>
         </div>
       ))}
       {adj === 'promo' && promoErr && <div style={{ fontSize: 12.5, color: 'var(--ink-bad)' }}>{promoErr}</div>}
@@ -1874,7 +1874,7 @@ function Register() {
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input value={giftInput} autoFocus onChange={(e) => setGiftInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyGift(); } }} placeholder={t('po.gcPlaceholder')} style={{ ...adjInput, textAlign: 'left' }} />
-          <button type="button" onClick={applyGift} style={{ height: 40, padding: '0 14px', borderRadius: 10, border: 'none', background: '#4f46e5', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>{t('po.gcApply')}</button>
+          <button type="button" onClick={applyGift} style={{ height: 40, padding: '0 14px', borderRadius: 10, border: 'none', background: '#4f46e5', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>{t('po.gcApply')}</button>
         </div>
       ))}
       {adj === 'points' && (
@@ -1895,8 +1895,8 @@ function Register() {
       {tipsOn && svcBase > 0 && <div style={totRow}><span>Tip</span><span>{money.tip > 0 ? fmt(money.tip) : L('Khách chọn khi thanh toán', 'Chosen at payment')}</span></div>}
       {money.giftApplied > 0 && <div style={totRow}><span>{L('Thẻ quà', 'Gift card')}</span><span>−{fmt(money.giftApplied)}</span></div>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4, gap: 10 }}>
-        <span style={{ fontSize: big > 28 ? 16 : 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{dualPrice ? L('Tổng · tiền mặt', 'Total · cash') : t('po.total')}</span>
-        <span style={{ fontSize: big, fontWeight: 800, letterSpacing: -0.5, color: 'var(--cf1f5f9)' }}>{fmt(cashDue)}</span>
+        <span style={{ fontSize: big > 28 ? 16 : 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{dualPrice ? L('Tổng · tiền mặt', 'Total · cash') : t('po.total')}</span>
+        <span style={{ fontSize: big, fontWeight: 700, letterSpacing: -0.5, color: 'var(--cf1f5f9)' }}>{fmt(cashDue)}</span>
       </div>
       {dualPrice && <div style={{ ...totRow, fontSize: 13.5 }}><span>{L(`Trả thẻ (+${cardSurchargePct}%)`, `By card (+${cardSurchargePct}%)`)}</span><b style={{ color: 'var(--ccbd5e1)' }}>{fmt(cardDue)}</b></div>}
     </div>
@@ -1910,20 +1910,20 @@ function Register() {
 
   const emptyBill = (
     <div style={{ flex: 1, minHeight: 160, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, textAlign: 'center', padding: 16 }}>
-      <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{L('Bill đang trống', 'The bill is empty')}</span>
+      <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ccbd5e1)' }}>{L('Bill đang trống', 'The bill is empty')}</span>
       <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{waiting.length ? L('Chạm dịch vụ, hoặc chọn khách đang chờ', 'Tap a service, or pick a waiting client') : L('Chạm dịch vụ để thêm vào bill', 'Tap a service to add it')}</span>
     </div>
   );
 
   const payBtn = (h: number, label?: string) => (
     <button type="button" onClick={goPay} disabled={cart.length === 0} style={cart.length
-      ? { flex: 1, height: h, borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', fontSize: h >= 60 ? 18 : 17, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }
-      : { flex: 1, height: h, borderRadius: 14, border: 'none', background: '#a5b4fc', color: '#fff', fontSize: h >= 60 ? 18 : 17, fontWeight: 800, cursor: 'default', whiteSpace: 'nowrap' }}>
+      ? { flex: 1, height: h, borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', fontSize: h >= 60 ? 18 : 17, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }
+      : { flex: 1, height: h, borderRadius: 14, border: 'none', background: '#a5b4fc', color: '#fff', fontSize: h >= 60 ? 18 : 17, fontWeight: 700, cursor: 'default', whiteSpace: 'nowrap' }}>
       {label ?? `${L('Thanh toán', 'Charge')} · ${fmt(cashDue)}`}
     </button>
   );
   const holdBtn = (h: number, short?: boolean) => (
-    <button type="button" onClick={park} disabled={cart.length === 0} style={{ height: h, padding: '0 16px', borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 700, color: 'var(--ccbd5e1)', cursor: cart.length ? 'pointer' : 'default', opacity: cart.length ? 1 : 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}>{short ? L('Giữ', 'Hold') : L('Giữ bill', 'Hold')}</button>
+    <button type="button" onClick={park} disabled={cart.length === 0} style={{ height: h, padding: '0 16px', borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 600, color: 'var(--ccbd5e1)', cursor: cart.length ? 'pointer' : 'default', opacity: cart.length ? 1 : 0.5, whiteSpace: 'nowrap', flexShrink: 0 }}>{short ? L('Giữ', 'Hold') : L('Giữ bill', 'Hold')}</button>
   );
 
   /** The bill on the right of a wide screen. */
@@ -1970,7 +1970,7 @@ function Register() {
       <div style={{ padding: '10px 20px calc(16px + env(safe-area-inset-bottom, 0px))', display: 'flex', alignItems: 'center', gap: 14, borderTop: '1px solid var(--line)', marginTop: 8, flexShrink: 0 }}>
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, minWidth: 0 }}>
           <span style={{ fontSize: 13, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{dualPrice ? `${L('Tiền mặt · thẻ', 'Cash · card')} ${fmt(cardDue)}` : t('po.total')}</span>
-          <span style={{ fontSize: 28, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{fmt(cashDue)}</span>
+          <span style={{ fontSize: 28, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{fmt(cashDue)}</span>
         </div>
         <div style={{ flex: 1 }} />
         {holdBtn(56)}
@@ -1983,8 +1983,8 @@ function Register() {
   const phoneTicket = (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--c0f172a)' }}>
       <div style={{ height: 56, flexShrink: 0, boxSizing: 'border-box', padding: '0 8px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid var(--line)' }}>
-        <button type="button" onClick={() => setMobileView('catalog')} style={{ height: 44, padding: '0 8px', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', gap: 4, fontSize: 15, fontWeight: 700, color: 'var(--ink-link)', cursor: 'pointer' }}><IcoBack />{L('Thêm dịch vụ', 'Add services')}</button>
-        <span style={{ flex: 1, textAlign: 'right', paddingRight: 8, fontSize: 14, fontWeight: 700, color: 'var(--c94a3b8)' }}>{L('Bill', 'Bill')} · {cart.length}</span>
+        <button type="button" onClick={() => setMobileView('catalog')} style={{ height: 44, padding: '0 8px', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', gap: 4, fontSize: 15, fontWeight: 600, color: 'var(--ink-link)', cursor: 'pointer' }}><IcoBack />{L('Thêm dịch vụ', 'Add services')}</button>
+        <span style={{ flex: 1, textAlign: 'right', paddingRight: 8, fontSize: 14, fontWeight: 600, color: 'var(--c94a3b8)' }}>{L('Bill', 'Bill')} · {cart.length}</span>
       </div>
       {custRow(true)}
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 16px', display: 'flex', flexDirection: 'column' }}>
@@ -2010,12 +2010,12 @@ function Register() {
   const phoneBar = (
     <div style={{ flexShrink: 0, boxSizing: 'border-box', padding: '10px 12px calc(12px + env(safe-area-inset-bottom, 0px))', background: 'var(--c0f172a)', borderTop: '1px solid var(--line)' }}>
       <button type="button" onClick={() => setMobileView('ticket')} style={{ width: '100%', height: 60, boxSizing: 'border-box', padding: '0 16px', borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', textAlign: 'left' }}>
-        <span style={{ minWidth: 28, height: 28, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, background: '#ffffff', color: '#3730a3', fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{cart.reduce((a, l) => a + l.quantity, 0)}</span>
+        <span style={{ minWidth: 28, height: 28, padding: '0 6px', boxSizing: 'border-box', borderRadius: 999, background: '#ffffff', color: '#3730a3', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{cart.reduce((a, l) => a + l.quantity, 0)}</span>
         <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-          <span style={{ fontSize: 15, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{L('Xem bill', 'View bill')}{custName ? ` · ${custName}` : ''}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{L('Xem bill', 'View bill')}{custName ? ` · ${custName}` : ''}</span>
           {missingTech && <span style={{ fontSize: 12, opacity: 0.9 }}>{L('Có dịch vụ chưa chọn thợ', 'A service has no technician')}</span>}
         </span>
-        <span style={{ fontSize: 18, fontWeight: 800 }}>{fmt(cashDue)}</span>
+        <span style={{ fontSize: 18, fontWeight: 700 }}>{fmt(cashDue)}</span>
       </button>
     </div>
   );
@@ -2034,13 +2034,13 @@ function Register() {
         { id: 'SPLIT', label: L('Chia bill', 'Split'), sub: L('Nhiều cách trả', 'Several ways'), on: split, go: () => (split ? selectMethod(payMethod) : startSplit()) }]
         .map((x) => (payNarrow ? (
           <button key={x.id} type="button" onClick={x.go} style={x.on
-            ? { height: 44, flexShrink: 0, padding: '0 14px', borderRadius: 10, border: '2px solid #4f46e5', background: 'var(--c1e1b4b)', fontSize: 14, fontWeight: 800, color: 'var(--ce0e7ff)', cursor: 'pointer', whiteSpace: 'nowrap' }
-            : { height: 44, flexShrink: 0, padding: '0 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', fontSize: 14, fontWeight: 700, color: 'var(--cf1f5f9)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            ? { height: 44, flexShrink: 0, padding: '0 14px', borderRadius: 10, border: '2px solid #4f46e5', background: 'var(--c1e1b4b)', fontSize: 14, fontWeight: 700, color: 'var(--ce0e7ff)', cursor: 'pointer', whiteSpace: 'nowrap' }
+            : { height: 44, flexShrink: 0, padding: '0 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', fontSize: 14, fontWeight: 600, color: 'var(--cf1f5f9)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
             {x.id === 'CARD' && dualPrice ? `${x.label} +${cardSurchargePct}%` : x.id === 'SPLIT' ? L('Chia', 'Split') : x.label}
           </button>
         ) : (
           <button key={x.id} type="button" onClick={x.go} style={{ height: 84, borderRadius: 14, border: x.on ? '2px solid #4f46e5' : '1px solid var(--line)', background: x.on ? 'var(--c1e1b4b)' : 'var(--c0f172a)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer', padding: '0 6px' }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color: x.on ? 'var(--ce0e7ff)' : 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{x.label}</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: x.on ? 'var(--ce0e7ff)' : 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{x.label}</span>
             <span style={{ fontSize: 13, fontWeight: 600, color: x.on ? 'var(--ce0e7ff)' : 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{x.sub}</span>
           </button>
         )))}
@@ -2051,8 +2051,8 @@ function Register() {
   const short = money.tenderedCents > 0 && money.tenderedCents < money.due;
   const changeBox = (
     <div style={{ marginTop: payNarrow ? 0 : 'auto', flexShrink: 0, padding: payNarrow ? '10px 14px' : tightTop ? '14px 16px' : '18px 20px', borderRadius: 14, background: short ? 'rgba(245,158,11,.12)' : 'var(--c052e16)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
-      <span style={{ fontSize: payNarrow || tightTop ? 15 : 17, fontWeight: 800, color: short ? 'var(--ink-warn)' : 'var(--ink-good)' }}>{short ? L('Còn thiếu', 'Still owed') : L('Tiền thừa trả khách', 'Change due')}</span>
-      <span style={{ fontSize: payNarrow ? 26 : tightTop ? 30 : 40, fontWeight: 800, whiteSpace: 'nowrap', color: short ? 'var(--ink-warn)' : 'var(--ink-good)' }}>{fmt(short ? money.due - money.tenderedCents : money.change)}</span>
+      <span style={{ fontSize: payNarrow || tightTop ? 15 : 17, fontWeight: 700, color: short ? 'var(--ink-warn)' : 'var(--ink-good)' }}>{short ? L('Còn thiếu', 'Still owed') : L('Tiền thừa trả khách', 'Change due')}</span>
+      <span style={{ fontSize: payNarrow ? 26 : tightTop ? 30 : 40, fontWeight: 700, whiteSpace: 'nowrap', color: short ? 'var(--ink-warn)' : 'var(--ink-good)' }}>{fmt(short ? money.due - money.tenderedCents : money.change)}</span>
     </div>
   );
   const cashPanel = (
@@ -2069,8 +2069,8 @@ function Register() {
             else if (e.key === 'Enter') { e.preventDefault(); pay(); }
           }}
           style={{ height: payNarrow ? 56 : 76, boxSizing: 'border-box', padding: '0 18px', borderRadius: 14, border: '2px solid var(--ce2e8f0)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, outline: 'none', background: 'var(--c0f172a)' }}>
-          {payNarrow && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--c94a3b8)' }}>{L('Khách đưa', 'Received')}</span>}
-          <span style={{ marginLeft: 'auto', fontSize: payNarrow ? 28 : tightTop ? 32 : 40, fontWeight: 800, whiteSpace: 'nowrap', color: money.tenderedCents ? 'var(--cf1f5f9)' : 'var(--c64748b)' }}>{fmt(money.tenderedCents)}</span>
+          {payNarrow && <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c94a3b8)' }}>{L('Khách đưa', 'Received')}</span>}
+          <span style={{ marginLeft: 'auto', fontSize: payNarrow ? 28 : tightTop ? 32 : 40, fontWeight: 700, whiteSpace: 'nowrap', color: money.tenderedCents ? 'var(--cf1f5f9)' : 'var(--c64748b)' }}>{fmt(money.tenderedCents)}</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: tightTop && !payNarrow ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: payNarrow ? 6 : 10 }}>
           {[{ k: 'exact', label: t('po.exact'), cents: money.due }, ...quickCash(money.due).map((c) => ({ k: String(c), label: fmtShort(c), cents: c }))].slice(0, 4).map((q2) => {
@@ -2082,7 +2082,7 @@ function Register() {
       </div>
       <div style={{ width: payNarrow ? '100%' : tightTop ? 240 : 330, flexShrink: 0, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gridAutoRows: keyRow, gap: payNarrow ? 6 : 10, alignContent: 'start' }}>
         {['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', 'back'].map((k) => (
-          <button key={k} type="button" onClick={() => keypad(k)} aria-label={k === 'back' ? L('Xoá một số', 'Delete a digit') : undefined} style={{ borderRadius: payNarrow ? 12 : 14, border: payNarrow ? 'none' : '1px solid var(--line)', background: 'var(--c1e293b)', fontSize: payNarrow ? 21 : 24, fontWeight: 700, color: 'var(--cf1f5f9)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <button key={k} type="button" onClick={() => keypad(k)} aria-label={k === 'back' ? L('Xoá một số', 'Delete a digit') : undefined} style={{ borderRadius: payNarrow ? 12 : 14, border: payNarrow ? 'none' : '1px solid var(--line)', background: 'var(--c1e293b)', fontSize: payNarrow ? 21 : 24, fontWeight: 600, color: 'var(--cf1f5f9)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {k === 'back' ? <IcoBackspace /> : k}
           </button>
         ))}
@@ -2146,7 +2146,7 @@ function Register() {
         </div>
       ))}
       {parts.length < 4 && <button type="button" onClick={() => setParts((ps) => [...ps, { method: tillMethods.includes('CARD') ? 'CARD' : tillMethods[0], amount: '' }])} style={{ ...smallBtn, alignSelf: 'flex-start' }}>+ {t('po.splitAdd')}</button>}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 800, paddingTop: 6, borderTop: '1px solid var(--line)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 700, paddingTop: 6, borderTop: '1px solid var(--line)' }}>
         <span style={{ color: 'var(--c94a3b8)' }}>{money.splitRemaining > 0 ? t('po.splitRemaining') : t('po.change')}</span>
         <span style={{ color: money.splitRemaining > 0 ? 'var(--ink-warn)' : 'var(--ink-good)' }}>{fmt(Math.abs(money.splitRemaining))}</span>
       </div>
@@ -2160,36 +2160,36 @@ function Register() {
   const tipBlock = tipsOn && svcBase > 0 && (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: payNarrow ? 12 : 16, borderRadius: 14, background: 'var(--c1e293b)', border: '1px solid var(--line)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-        <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--cf1f5f9)', flexShrink: 0 }}>Tip</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--cf1f5f9)', flexShrink: 0 }}>Tip</span>
         <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', textAlign: 'right' }}>{L('Khách chọn trên màn hình khách, hoặc bấm ở đây', 'The client picks it on their screen, or tap here')}</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
         {tipOptions.map((o) => {
           const on = tipMode === o.k || (tipMode === null && o.k === 'none' && money.tip === 0);
-          return <button key={o.k} type="button" onClick={() => { setTipMode(o.k); setCustomTip(''); applyCustomerTip(o.cents); }} style={{ height: payNarrow ? 48 : 54, minWidth: 0, padding: '0 2px', borderRadius: 10, border: on ? '2px solid #4f46e5' : '1px solid var(--line)', background: on ? 'var(--c1e1b4b)' : 'var(--c0f172a)', color: on ? 'var(--ce0e7ff)' : 'var(--cf1f5f9)', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          return <button key={o.k} type="button" onClick={() => { setTipMode(o.k); setCustomTip(''); applyCustomerTip(o.cents); }} style={{ height: payNarrow ? 48 : 54, minWidth: 0, padding: '0 2px', borderRadius: 10, border: on ? '2px solid #4f46e5' : '1px solid var(--line)', background: on ? 'var(--c1e1b4b)' : 'var(--c0f172a)', color: on ? 'var(--ce0e7ff)' : 'var(--cf1f5f9)', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden' }}>
             <span>{o.label}</span>{o.cents > 0 && <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.8, whiteSpace: 'nowrap' }}>{fmt(o.cents)}</span>}
           </button>;
         })}
         <input type="number" min={0} step="0.01" inputMode="decimal" placeholder={L('Khác', 'Other')} value={customTip}
           onChange={(e) => { setCustomTip(e.target.value); setTipMode('custom'); applyCustomerTip(Math.max(0, toMinorUnits(e.target.value || '0', currency))); }}
-          style={{ height: payNarrow ? 48 : 54, minWidth: 0, boxSizing: 'border-box', borderRadius: 10, border: tipMode === 'custom' ? '2px solid #4f46e5' : '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 14, fontWeight: 700, textAlign: 'center', padding: '0 4px' }} />
+          style={{ height: payNarrow ? 48 : 54, minWidth: 0, boxSizing: 'border-box', borderRadius: 10, border: tipMode === 'custom' ? '2px solid #4f46e5' : '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 14, fontWeight: 600, textAlign: 'center', padding: '0 4px' }} />
       </div>
       {money.tip > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 2 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--cf1f5f9)', flexShrink: 0, whiteSpace: 'nowrap' }}>{L('Chia tip theo thợ', 'Tip by technician')}</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--cf1f5f9)', flexShrink: 0, whiteSpace: 'nowrap' }}>{L('Chia tip theo thợ', 'Tip by technician')}</span>
             <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', textAlign: 'right' }}>{L('Tự chia theo giá dịch vụ · sửa được', 'Split by service value · editable')}</span>
           </div>
           {techsOnBill.map((sid) => {
             const st = sid ? staff.find((x) => x.id === sid) : null;
             return (
               <div key={sid || 'none'} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 32, height: 32, flexShrink: 0, borderRadius: '50%', background: st ? staffHue(st.id) : '#c2410c', color: '#fff', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{st ? (st.firstName[0] || '?').toUpperCase() : '?'}</span>
+                <span style={{ width: 32, height: 32, flexShrink: 0, borderRadius: '50%', background: st ? staffHue(st.id) : '#c2410c', color: '#fff', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{st ? (st.firstName[0] || '?').toUpperCase() : '?'}</span>
                 <span style={{ flex: 1, fontSize: 15, fontWeight: 600, color: st ? 'var(--cf1f5f9)' : 'var(--ink-warn)' }}>{st ? `${st.firstName} ${st.lastName ?? ''}`.trim() : L('Chưa chọn thợ', 'No technician')}</span>
                 <input type="number" min={0} step="0.01" inputMode="decimal" value={fromMinorUnits(techTips.get(sid) || 0, currency)}
                   onChange={(e) => setTechTip(sid, toMinorUnits(e.target.value || '0', currency))}
                   onFocus={(e) => e.currentTarget.select()}
-                  style={{ width: 110, height: 40, boxSizing: 'border-box', padding: '0 12px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 15, fontWeight: 700, textAlign: 'right' }} />
+                  style={{ width: 110, height: 40, boxSizing: 'border-box', padding: '0 12px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 15, fontWeight: 600, textAlign: 'right' }} />
               </div>
             );
           })}
@@ -2200,17 +2200,17 @@ function Register() {
 
   const directTip = tipTechs.length > 0 && (
     <details style={{ borderRadius: 14, background: 'var(--c1e293b)', padding: '10px 14px' }}>
-      <summary style={{ cursor: 'pointer', fontSize: 13.5, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{t('po.tipTitle')}</summary>
+      <summary style={{ cursor: 'pointer', fontSize: 13.5, fontWeight: 600, color: 'var(--ccbd5e1)' }}>{t('po.tipTitle')}</summary>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '8px 0' }}>{t('po.tipQrAfterNote')}</div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         {tipTechs.map((s2) => (
           <div key={s2.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, width: 160 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{s2.firstName} {s2.lastName ?? ''}</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--cf1f5f9)' }}>{s2.firstName} {s2.lastName ?? ''}</span>
             <div style={{ display: 'flex', gap: 4 }}>
               <input type="number" min={0} step="0.01" placeholder={uiCurrencySymbol()} value={tipLogInput[s2.id] || ''} onChange={(e) => setTipLogInput((m) => ({ ...m, [s2.id]: e.target.value }))} style={{ ...adjInput, height: 36, width: 70, flex: 'none' }} />
               <button type="button" onClick={() => logDirectTip(s2.id)} disabled={tipBusy === s2.id} style={{ ...smallBtn, height: 36 }}>{tipBusy === s2.id ? '…' : t('po.tipLogBtn')}</button>
             </div>
-            {tipLogged[s2.id] > 0 && <span style={{ fontSize: 12, color: 'var(--ink-good)', fontWeight: 700 }}>✓ {fmt(tipLogged[s2.id])}</span>}
+            {tipLogged[s2.id] > 0 && <span style={{ fontSize: 12, color: 'var(--ink-good)', fontWeight: 600 }}>✓ {fmt(tipLogged[s2.id])}</span>}
           </div>
         ))}
       </div>
@@ -2225,10 +2225,10 @@ function Register() {
   );
   const completeLabel = submitting ? t('po.processing') : `${L('Hoàn tất · Thu', 'Complete · Take')} ${fmt(money.due)}`;
   const completeBtn = (h: number, w?: number) => (
-    <button type="button" onClick={pay} disabled={submitting || cart.length === 0} style={{ width: w ?? '100%', height: h, borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', fontSize: h >= 64 ? 19 : 17, fontWeight: 800, cursor: submitting ? 'default' : 'pointer', opacity: submitting ? 0.7 : 1, whiteSpace: 'nowrap' }}>{completeLabel}</button>
+    <button type="button" onClick={pay} disabled={submitting || cart.length === 0} style={{ width: w ?? '100%', height: h, borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', fontSize: h >= 64 ? 19 : 17, fontWeight: 700, cursor: submitting ? 'default' : 'pointer', opacity: submitting ? 0.7 : 1, whiteSpace: 'nowrap' }}>{completeLabel}</button>
   );
   const methodBody = money.due === 0
-    ? <div style={{ padding: 16, borderRadius: 14, background: 'var(--c052e16)', color: 'var(--ink-good)', fontWeight: 700 }}>{L('Thẻ quà đã trả đủ — bấm Hoàn tất.', 'The gift card covers it — press Complete.')}</div>
+    ? <div style={{ padding: 16, borderRadius: 14, background: 'var(--c052e16)', color: 'var(--ink-good)', fontWeight: 600 }}>{L('Thẻ quà đã trả đủ — bấm Hoàn tất.', 'The gift card covers it — press Complete.')}</div>
     : split ? splitPanel
       : payMethod === 'CASH' ? cashPanel
         : payMethod === 'CARD' ? cardPanel
@@ -2237,8 +2237,8 @@ function Register() {
   const payHeader = (
     <div style={{ height: layout === 'phone' ? 56 : 64, flexShrink: 0, boxSizing: 'border-box', padding: layout === 'phone' ? '0 8px' : '0 20px', display: 'flex', alignItems: 'center', gap: 16, background: 'var(--c0f172a)', borderBottom: '1px solid var(--line)' }}>
       <button type="button" onClick={() => setStep('register')} style={layout === 'phone'
-        ? { height: 44, padding: '0 8px', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', gap: 4, fontSize: 15, fontWeight: 700, color: 'var(--ink-link)', cursor: 'pointer' }
-        : { ...textBtn, fontWeight: 700 }}>
+        ? { height: 44, padding: '0 8px', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', gap: 4, fontSize: 15, fontWeight: 600, color: 'var(--ink-link)', cursor: 'pointer' }
+        : { ...textBtn, fontWeight: 600 }}>
         <IcoBack />{layout === 'phone' ? L('Bill', 'Bill') : L('Quay lại bill', 'Back to bill')}
       </button>
       <span style={{ flex: layout === 'phone' ? 1 : undefined, textAlign: layout === 'phone' ? 'right' : undefined, paddingRight: layout === 'phone' ? 8 : 0, fontSize: layout === 'phone' ? 14 : 16, fontWeight: layout === 'phone' ? 700 : 800, color: layout === 'phone' ? 'var(--c94a3b8)' : 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -2250,7 +2250,7 @@ function Register() {
   const dueHead = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: payNarrow ? 'center' : 'flex-start', textAlign: payNarrow ? 'center' : 'left' }}>
       <span style={sectionLabel}>{L('CẦN THU', 'AMOUNT DUE')}</span>
-      <span style={{ fontSize: payNarrow ? 40 : 52, fontWeight: 800, letterSpacing: -1, lineHeight: 1.1, color: 'var(--cf1f5f9)' }}>{fmt(money.due)}</span>
+      <span style={{ fontSize: payNarrow ? 40 : 52, fontWeight: 700, letterSpacing: -1, lineHeight: 1.1, color: 'var(--cf1f5f9)' }}>{fmt(money.due)}</span>
       <span style={{ fontSize: payNarrow ? 12.5 : 14, color: 'var(--c94a3b8)' }}>
         {`${L('Dịch vụ', 'Services')} ${fmt(money.subtotal - money.discount - money.redeemDiscount + money.tax)}`}
         {money.tip > 0 && ` + tip ${fmt(money.tip)}`}
@@ -2267,7 +2267,7 @@ function Register() {
         return (
           <div key={l.uid} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '10px 0', borderTop: '1px solid var(--line)', fontSize: 15, color: 'var(--cf1f5f9)' }}>
             <span style={{ minWidth: 0 }}>{l.name}{l.quantity > 1 ? ` × ${l.quantity}` : ''}{st && <span style={{ color: 'var(--c94a3b8)' }}> · {st.firstName}</span>}</span>
-            <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(l.unitPriceCents * l.quantity)}</span>
+            <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{fmt(l.unitPriceCents * l.quantity)}</span>
           </div>
         );
       })}
@@ -2321,7 +2321,7 @@ function Register() {
       <div style={{ width: layout === 'phone' ? '100%' : 'min(680px, 100%)', boxSizing: 'border-box', padding: layout === 'phone' ? '32px 20px calc(20px + env(safe-area-inset-bottom, 0px))' : 40, borderRadius: layout === 'phone' ? 0 : 22, background: 'var(--c0f172a)', border: layout === 'phone' ? 'none' : '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 26 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
           <span style={{ width: 72, height: 72, borderRadius: '50%', background: done.offline ? 'rgba(245,158,11,.14)' : 'var(--c052e16)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: done.offline ? 'var(--ink-warn)' : 'var(--ink-good)' }}><IcoCheck /></span>
-          <span style={{ fontSize: 30, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{done.offline ? L('Đã lưu tạm', 'Saved offline') : L('Đã thu', 'Paid')} {fmt(done.paidCents)}</span>
+          <span style={{ fontSize: 30, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{done.offline ? L('Đã lưu tạm', 'Saved offline') : L('Đã thu', 'Paid')} {fmt(done.paidCents)}</span>
           <span style={{ fontSize: 16, color: 'var(--c94a3b8)' }}>
             {done.method}{done.changeCents > 0 && <> · {L('Trả lại khách', 'Change')} <b style={{ color: 'var(--ink-good)' }}>{fmt(done.changeCents)}</b></>} · {L('Đơn', 'Order')} {done.label}
           </span>
@@ -2331,12 +2331,12 @@ function Register() {
           <span style={sectionLabel}>{L('HOÁ ĐƠN CHO KHÁCH', 'RECEIPT')}</span>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ flex: 1, minWidth: 180, fontSize: 15, color: 'var(--ccbd5e1)' }}>{done.printed ? (printToReception ? L('Đã gửi tới máy in quầy lễ tân', 'Sent to the reception printer') : L('Đã in hoá đơn', 'Receipt printed')) : L('Không in hoá đơn', 'No receipt printed')}</span>
-            <button type="button" onClick={() => { const s2 = lastReceiptRef.current; if (s2) { printSnapshot(s2); setDone({ ...done, printed: true }); } }} disabled={!lastReceiptRef.current} style={{ height: 56, padding: '0 22px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)', cursor: 'pointer' }}>{done.printed ? L('In lại', 'Print again') : L('In hoá đơn', 'Print receipt')}</button>
+            <button type="button" onClick={() => { const s2 = lastReceiptRef.current; if (s2) { printSnapshot(s2); setDone({ ...done, printed: true }); } }} disabled={!lastReceiptRef.current} style={{ height: 56, padding: '0 22px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 600, color: 'var(--cf1f5f9)', cursor: 'pointer' }}>{done.printed ? L('In lại', 'Print again') : L('In hoá đơn', 'Print receipt')}</button>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 12, marginTop: 'auto' }}>
-          <a href="/salon/orders" style={{ height: 60, padding: '0 22px', borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 700, color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', textDecoration: 'none', whiteSpace: 'nowrap' }}>{L('Xem đơn hàng', 'Orders')}</a>
-          <button type="button" onClick={newBill} style={{ flex: 1, height: 60, borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 18, fontWeight: 800, cursor: 'pointer' }}>{L('Bill mới', 'New bill')}</button>
+          <a href="/salon/orders" style={{ height: 60, padding: '0 22px', borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 600, color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', textDecoration: 'none', whiteSpace: 'nowrap' }}>{L('Xem đơn hàng', 'Orders')}</a>
+          <button type="button" onClick={newBill} style={{ flex: 1, height: 60, borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>{L('Bill mới', 'New bill')}</button>
         </div>
       </div>
     </div>
@@ -2398,7 +2398,7 @@ function Register() {
       {cardStuck && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.94)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 24 }}>
           <div style={{ maxWidth: 460, background: 'var(--c0f172a)', border: '1px solid #f59e0b', borderRadius: 14, padding: 22 }}>
-            <div style={{ color: 'var(--ink-warn)', fontWeight: 700, fontSize: 17 }}>{t('po.cardUnknownTitle')}</div>
+            <div style={{ color: 'var(--ink-warn)', fontWeight: 600, fontSize: 17 }}>{t('po.cardUnknownTitle')}</div>
             <p style={{ color: 'var(--ce2e8f0)', fontSize: 14, lineHeight: 1.6, marginTop: 10 }}>{t('po.cardUnknownBody')}</p>
             {cardStuck.note && <p style={{ color: 'var(--c94a3b8)', fontSize: 12 }}>{cardStuck.note}</p>}
             <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
@@ -2431,7 +2431,7 @@ function Register() {
         <div onClick={() => setShowHeld(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(460px, 96vw)', maxHeight: '85vh', overflowY: 'auto', padding: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{L('Bill đang giữ', 'Held bills')} {heldBills.length ? `(${heldBills.length})` : ''}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{L('Bill đang giữ', 'Held bills')} {heldBills.length ? `(${heldBills.length})` : ''}</div>
               <button type="button" onClick={() => setShowHeld(false)} aria-label={t('po.close')} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer' }}>×</button>
             </div>
             <div style={{ padding: 12 }}>
@@ -2462,10 +2462,10 @@ interface WaitingTicket { id: string; customerId: string | null; name: string; w
 const CAT_COLORS = ['#db2777', '#0891b2', '#7c3aed', '#ea580c', '#2563eb', '#059669', '#ca8a04', '#64748b'];
 const STAFF_COLORS = ['#be185d', '#0e7490', '#6d28d9', '#c2410c', '#1d4ed8', '#047857', '#a16207', '#475569'];
 
-const sectionLabel: React.CSSProperties = { fontSize: 12, fontWeight: 800, letterSpacing: 0.8, color: 'var(--c94a3b8)' };
+const sectionLabel: React.CSSProperties = { fontSize: 12, fontWeight: 700, letterSpacing: 0.8, color: 'var(--c94a3b8)' };
 const noticeBox: React.CSSProperties = { padding: '10px 14px', borderRadius: 10, fontSize: 14, fontWeight: 600, flexShrink: 0 };
 const menuItem: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, minHeight: 44, padding: '0 12px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 14.5, fontWeight: 600, textAlign: 'left', cursor: 'pointer', textDecoration: 'none', fontFamily: 'inherit' };
-const smallBtn: React.CSSProperties = { height: 40, padding: '0 12px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' };
+const smallBtn: React.CSSProperties = { height: 40, padding: '0 12px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' };
 const adjInput: React.CSSProperties = { flex: 1, minWidth: 0, height: 40, boxSizing: 'border-box', padding: '0 12px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 16, fontWeight: 600, textAlign: 'right', fontFamily: 'inherit' };
 const totRow: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 14, color: 'var(--c94a3b8)' };
 const adjBtn = (on: boolean): React.CSSProperties => ({ height: 36, flexShrink: 0, padding: '0 12px', borderRadius: 9, border: on ? '1px solid #4f46e5' : '1px dashed var(--c475569)', background: on ? 'var(--c1e1b4b)' : 'var(--c0f172a)', color: on ? 'var(--ce0e7ff)' : 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' });
@@ -2512,7 +2512,7 @@ function IpadPairPanel({ session, onRotate, onClose, t }: {
         <div style={{ textAlign: 'center', marginBottom: 12 }}>
           <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('po.ipadOpenOn')} <strong style={{ color: 'var(--ce2e8f0)' }}>{displayUrl}</strong></div>
           <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('po.ipadCodeLabel')}</div>
-          <div style={{ fontSize: 34, fontWeight: 900, letterSpacing: 6, color: 'var(--ca5f3fc)', fontFamily: 'monospace' }}>{code}</div>
+          <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: 6, color: 'var(--ca5f3fc)', fontFamily: 'monospace' }}>{code}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
           <button onClick={() => { if (pairUrl) { navigator.clipboard?.writeText(pairUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); } }} style={{ ...ghost, padding: '8px 14px', fontSize: 13 }}>{copied ? '✓' : t('po.ipadCopyLink')}</button>
@@ -2532,7 +2532,7 @@ function CatPrice({ priceCents, discountPercent, currency }: { priceCents: numbe
     <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
       <span style={{ textDecoration: 'line-through', color: 'var(--c64748b)', fontSize: 11 }}>{posMoney(priceCents, currency)}</span>
       <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{posMoney(netP, currency)}</span>
-      <span style={{ background: '#ef4444', color: '#fff', borderRadius: 4, padding: '0 4px', fontSize: 10, fontWeight: 700 }}>-{d}%</span>
+      <span style={{ background: '#ef4444', color: '#fff', borderRadius: 4, padding: '0 4px', fontSize: 10, fontWeight: 600 }}>-{d}%</span>
     </span>
   );
 }
@@ -2576,7 +2576,7 @@ function escapeHtml(s: string) {
 const payTab = (active: boolean): React.CSSProperties => ({
   height: 46, padding: '0 6px', borderRadius: 9, border: 'none', cursor: 'pointer',
   background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : 'var(--ccbd5e1)',
-  fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
 });
 const tabBtn = (active: boolean): React.CSSProperties => ({
@@ -2597,12 +2597,12 @@ const chipSel = (active: boolean): React.CSSProperties => ({
 });
 
 function TabCount({ n, active }: { n: number; active: boolean }) {
-  return <span style={{ fontSize: 11, fontWeight: 700, marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: active ? 'rgba(255,255,255,0.22)' : 'var(--c1e293b)', color: active ? '#fff' : 'var(--c94a3b8)' }}>{n}</span>;
+  return <span style={{ fontSize: 11, fontWeight: 600, marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: active ? 'rgba(255,255,255,0.22)' : 'var(--c1e293b)', color: active ? '#fff' : 'var(--c94a3b8)' }}>{n}</span>;
 }
 function GroupHeader({ label, count }: { label: string; count: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c94a3b8)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
       <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>· {count}</span>
       <div style={{ flex: 1, height: 1, background: 'var(--line)' }} />
     </div>
@@ -2687,7 +2687,7 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
   if (adding) {
     return (
       <form onSubmit={quickAdd} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 10, marginBottom: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 8 }}>{t('po.custNew')}</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 8 }}>{t('po.custNew')}</div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
           <input value={nf.firstName} onChange={(e) => setNf({ ...nf, firstName: e.target.value })} placeholder={t('po.custName')} style={{ ...ui.input, flex: 1, padding: '7px 9px', fontSize: 13 }} />
           <input value={nf.phone} onChange={(e) => setNf({ ...nf, phone: e.target.value })} placeholder={t('po.custPhone')} inputMode="tel" autoFocus style={{ ...ui.input, flex: 1, padding: '7px 9px', fontSize: 13 }} />

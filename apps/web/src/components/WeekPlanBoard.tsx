@@ -293,7 +293,7 @@ export function WeekPlanBoard({
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={label}>{T('KẾ HOẠCH TUẦN', 'WEEKLY PLAN')}</div>
-          <div style={{ fontSize: 19, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.3 }}>
+          <div style={{ fontSize: 19, fontWeight: 600, color: 'var(--cf1f5f9)', lineHeight: 1.3 }}>
             {meta?.label ?? T('Tuần này', 'This week')}
             {dates.length > 1 && (
               <span style={{ fontWeight: 500, color: 'var(--c64748b)', fontSize: 15 }}>
@@ -328,7 +328,7 @@ export function WeekPlanBoard({
             </span>
           )}
           {!isPast && onApprove && (
-            <button onClick={onApprove} disabled={approving} style={{ ...btn, background: '#22c55e', color: '#052e16', border: 'none', fontWeight: 700 }}>
+            <button onClick={onApprove} disabled={approving} style={{ ...btn, background: '#22c55e', color: '#052e16', border: 'none', fontWeight: 600 }}>
               {approving ? T('Đang lưu…', 'Saving…') : T('✓ Duyệt kế hoạch', '✓ Approve')}
             </button>
           )}
@@ -353,7 +353,7 @@ export function WeekPlanBoard({
         display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
       }}>
         <div style={{ flex: '0 0 auto' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--cf1f5f9)' }}>
             {doneJobs}/{jobCount} {T('việc xong', jobCount === 1 ? 'job done' : 'jobs done')}
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2 }}>
@@ -380,7 +380,7 @@ export function WeekPlanBoard({
               background: 'var(--c0f172a)', border: '1px solid var(--line)',
               borderRadius: 10, padding: '10px 12px', minWidth: 0,
             }}>
-              <span style={{ fontSize: 19, fontWeight: 800, color: 'var(--ca5b4fc)', lineHeight: 1.1, flex: '0 0 auto' }}>{t.target}</span>
+              <span style={{ fontSize: 19, fontWeight: 700, color: 'var(--ca5b4fc)', lineHeight: 1.1, flex: '0 0 auto' }}>{t.target}</span>
               <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.4, minWidth: 0 }}>
                 {t.unit ? `${t.unit} — ` : ''}{t.label}
               </span>
@@ -414,7 +414,7 @@ export function WeekPlanBoard({
                 borderRadius: 10, padding: '9px 10px',
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 700, color: on ? '#ffffff' : 'var(--ce2e8f0)' }}>{d.label}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: on ? '#ffffff' : 'var(--ce2e8f0)' }}>{d.label}</div>
               <div style={{ fontSize: 11.5, color: on ? 'var(--cc7d2fe)' : 'var(--c64748b)', marginTop: 1 }}>
                 {dates[di] ? dm(dates[di]) : ''}{isToday ? ` · ${T('hôm nay', 'today')}` : ''}
               </div>
@@ -451,7 +451,7 @@ export function WeekPlanBoard({
       {/* ---- the work ---- */}
       <div style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--cf1f5f9)' }}>
             {dayTab === -1
               ? T('Cả tuần', 'The whole week')
               : dayTab === 0 && !isPast
@@ -506,9 +506,9 @@ export function WeekPlanBoard({
               {/* On one day the picker above already says which day it is. */}
               {dayTab === -1 && (
                 <div style={{ flex: '0 0 74px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: isToday ? 'var(--ca5b4fc)' : 'var(--ce2e8f0)' }}>{d.label}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: isToday ? 'var(--ca5b4fc)' : 'var(--ce2e8f0)' }}>{d.label}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{dates[di] ? dm(dates[di]) : ''}</div>
-                  {isToday && <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ca5b4fc)', letterSpacing: '.4px' }}>{T('HÔM NAY', 'TODAY')}</div>}
+                  {isToday && <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--ca5b4fc)', letterSpacing: '.4px' }}>{T('HÔM NAY', 'TODAY')}</div>}
                 </div>
               )}
 
@@ -593,7 +593,7 @@ export function WeekPlanBoard({
               <div>
                 <div style={{ fontSize: 13, color: 'var(--ce2e8f0)' }}>
                   <span style={{
-                    fontSize: 10, fontWeight: 800, letterSpacing: .4, padding: '1px 6px', borderRadius: 999,
+                    fontSize: 10, fontWeight: 700, letterSpacing: .4, padding: '1px 6px', borderRadius: 999,
                     marginRight: 6, textTransform: 'uppercase',
                     background: j.who === 'salon' ? 'rgba(245,158,11,.16)' : 'rgba(99,102,241,.18)',
                     color: j.who === 'salon' ? 'var(--ink-warn)' : 'var(--ink-link)',
@@ -662,7 +662,7 @@ export function WeekPlanBoard({
                     display: 'flex', alignItems: 'baseline', gap: 9, padding: '6px 0',
                     borderTop: i === 0 ? 'none' : '1px solid var(--line)',
                   }}>
-                    <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--ca5b4fc)', lineHeight: 1, minWidth: 26 }}>{t.target}</span>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--ca5b4fc)', lineHeight: 1, minWidth: 26 }}>{t.target}</span>
                     <span style={{ fontSize: 11.5, color: 'var(--c64748b)', minWidth: 44 }}>{t.unit}</span>
                     <span style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.4 }}>{t.label}</span>
                   </div>
@@ -1161,7 +1161,7 @@ function OfferCard({ offer, vi, currencySign, onSave }: {
             <input value={o.terms} onChange={(e) => setO({ ...o, terms: e.target.value })} placeholder={T('khách mới / đặt trước / không gộp', 'new clients / booked ahead')} style={input} />
           </FormField>
           <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => save(o)} disabled={busy || !dirty} style={{ ...btn, background: '#6366f1', border: 'none', color: '#fff', fontWeight: 700, opacity: busy || !dirty ? 0.6 : 1 }}>
+            <button onClick={() => save(o)} disabled={busy || !dirty} style={{ ...btn, background: '#6366f1', border: 'none', color: '#fff', fontWeight: 600, opacity: busy || !dirty ? 0.6 : 1 }}>
               {busy ? T('Đang lưu…', 'Saving…') : T('Lưu ưu đãi — cập nhật lịch', 'Save the offer — update the plan')}
             </button>
             {offer.updatedBy && <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('Lần cuối', 'Last')}: {offer.updatedBy}{offer.updatedAt ? ` · ${offer.updatedAt.slice(0, 10)}` : ''}</span>}
@@ -1236,7 +1236,7 @@ const card: React.CSSProperties = {
   borderRadius: 12, padding: 18, marginBottom: 14,
 };
 const label: React.CSSProperties = {
-  fontSize: 10.5, fontWeight: 700, letterSpacing: '.7px',
+  fontSize: 10.5, fontWeight: 600, letterSpacing: '.7px',
   textTransform: 'uppercase', color: 'var(--c64748b)',
 };
 const pill: React.CSSProperties = {
@@ -1267,5 +1267,5 @@ const sheet: React.CSSProperties = {
 };
 const tickBox: React.CSSProperties = {
   width: 18, height: 18, borderRadius: 5, border: '1.5px solid', cursor: 'pointer', flex: '0 0 auto', marginTop: 1,
-  fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+  fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0,
 };

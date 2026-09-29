@@ -138,7 +138,7 @@ function Inner() {
                       <span>
                         <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{formatPrice(p.priceCents, p.currency)}</span>
                         <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(netCents(p), p.currency)}</span>
-                        <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{p.discountPercent}%</span>
+                        <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>-{p.discountPercent}%</span>
                       </span>
                     ) : formatPrice(p.priceCents, p.currency)}
                   </MRow>
@@ -176,7 +176,7 @@ function Inner() {
                         <span>
                           <span style={{ textDecoration: 'line-through', color: 'var(--c94a3b8)', marginRight: 6 }}>{formatPrice(p.priceCents, p.currency)}</span>
                           <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(netCents(p), p.currency)}</span>
-                          <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>-{p.discountPercent}%</span>
+                          <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>-{p.discountPercent}%</span>
                         </span>
                       ) : formatPrice(p.priceCents, p.currency)}
                     </td>

@@ -90,7 +90,7 @@ function Inner() {
         {form.avatarUrl
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={form.avatarUrl} alt="avatar" width={84} height={84} style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--c334155)' }} />
-          : <span style={{ width: 84, height: 84, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--ccbd5e1)', display: 'grid', placeItems: 'center', fontSize: 30, fontWeight: 700 }}>{(form.firstName || '?').charAt(0).toUpperCase()}</span>}
+          : <span style={{ width: 84, height: 84, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--ccbd5e1)', display: 'grid', placeItems: 'center', fontSize: 30, fontWeight: 600 }}>{(form.firstName || '?').charAt(0).toUpperCase()}</span>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <label style={{ ...ui.input, padding: '9px 14px', cursor: 'pointer', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             📷 {busy ? 'Processing…' : form.avatarUrl ? 'Change photo' : 'Upload photo'}

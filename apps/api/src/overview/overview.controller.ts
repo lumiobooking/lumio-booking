@@ -15,6 +15,17 @@ export class OverviewController {
     return this.overview.stats(user);
   }
 
+  // GET /api/overview/home?from=YYYY-MM-DD&to=YYYY-MM-DD — the owner's home
+  // screen: the dashboard numbers, the previous period, and the floor right now.
+  @Get('home')
+  home(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.overview.home(user, from, to);
+  }
+
   // GET /api/overview/dashboard?from=YYYY-MM-DD&to=YYYY-MM-DD
   @Get('dashboard')
   dashboard(

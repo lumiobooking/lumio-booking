@@ -67,7 +67,7 @@ export function SourceChip({ b, vi, meta, count, active, onClick }: {
   );
   const style: React.CSSProperties = {
     display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0,
-    fontSize: 11, fontWeight: 700, lineHeight: 1,
+    fontSize: 11, fontWeight: 600, lineHeight: 1,
     borderRadius: 999, padding: '4px 9px',
     background: active ? m.color : `${m.color}1c`,
     color: active ? '#fff' : m.color,

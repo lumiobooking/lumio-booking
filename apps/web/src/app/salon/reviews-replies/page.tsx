@@ -451,8 +451,8 @@ function Inner() {
                 padding: '12px 16px', color: 'var(--ce2e8f0)', fontFamily: 'inherit',
               }}
             >
-              <span style={{ fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap' }}>⚙️ {t('setup')}</span>
-              <span style={{ fontSize: 12, fontWeight: 700, borderRadius: 999, padding: '2px 9px', whiteSpace: 'nowrap', flexShrink: 0, background: ready ? 'var(--c064e3b)' : 'var(--wash-amber)', color: ready ? 'var(--ink-good)' : 'var(--ink-warn)' }}>
+              <span style={{ fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap' }}>⚙️ {t('setup')}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, borderRadius: 999, padding: '2px 9px', whiteSpace: 'nowrap', flexShrink: 0, background: ready ? 'var(--c064e3b)' : 'var(--wash-amber)', color: ready ? 'var(--ink-good)' : 'var(--ink-warn)' }}>
                 {ready ? `● ${t('setupOk')}` : `⚠ ${t('setupTodo')}`}
               </span>
               <span style={{ fontSize: 12.5, color: 'var(--c64748b)', marginLeft: 4, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -466,7 +466,7 @@ function Inner() {
               <div style={{ ...ui.card, marginBottom: 16 }}>
                 {!s.connected ? (
                   <div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('connectTitle')}</div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('connectTitle')}</div>
                     <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5, margin: '0 0 14px', lineHeight: 1.5 }}>{t('connectDesc')}</p>
                     <button onClick={connect} disabled={!s.clientConfigured} style={{ ...ui.primaryBtn, opacity: s.clientConfigured ? 1 : 0.5 }}>{t('connectBtn')}</button>
                     <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '12px 0 0' }}>{t('pendingApproval')}</p>
@@ -475,7 +475,7 @@ function Inner() {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                       <div style={{ fontSize: 14, color: 'var(--ce2e8f0)' }}>
-                        <span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>● {t('connected')}</span>
+                        <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>● {t('connected')}</span>
                         {s.connectedEmail ? <span style={{ color: 'var(--c94a3b8)' }}> · {s.connectedEmail}</span> : null}
                       </div>
                       <button onClick={disconnect} style={ui.dangerBtn}>{t('disconnect')}</button>
@@ -543,7 +543,7 @@ function Inner() {
 
               {/* Rule + settings */}
               <div style={{ ...ui.card, marginBottom: 16 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('settingsTitle')}</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('settingsTitle')}</div>
 
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
                   <input type="checkbox" checked={s.enabled} onChange={(e) => saveSettings({ enabled: e.target.checked })} />
@@ -621,7 +621,7 @@ function Inner() {
                   </div>
                   {aiTest && (
                     <div style={{ marginTop: 10, background: 'var(--c0f172a)', border: `1px solid ${aiTest.ok ? 'var(--c14532d)' : 'var(--c7f1d1d)'}`, borderRadius: 10, padding: 12 }}>
-                      <div style={{ fontSize: 12, color: aiTest.ok ? 'var(--ink-good)' : 'var(--ink-warn)', fontWeight: 700, marginBottom: 6 }}>
+                      <div style={{ fontSize: 12, color: aiTest.ok ? 'var(--ink-good)' : 'var(--ink-warn)', fontWeight: 600, marginBottom: 6 }}>
                         {aiTest.ok ? `✨ ${t('testOk')}` : `⚠️ ${t('testFallback')}`}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{t('testSample')}: &ldquo;{aiTest.sample}&rdquo;</div>
@@ -686,11 +686,11 @@ function Inner() {
           }}>
             <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{t('onGoogle')}:</span>
             {typeof s.google.rating === 'number' && (
-              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-warn)' }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink-warn)' }}>
                 ★ {s.google.rating.toFixed(1)}
               </span>
             )}
-            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
               {typeof s.google.total === 'number' ? s.google.total : '—'} {t('grReviews')}
             </span>
             <span style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>
@@ -712,7 +712,7 @@ function Inner() {
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('inbox')}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{t('inbox')}</div>
           <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
             {([['DRAFTED', 'fDraft', c.DRAFTED], ['NEEDS_ATTENTION', 'fNeeds', c.NEEDS_ATTENTION], ['REPLIED', 'fReplied', c.REPLIED], ['ALL', 'fAll', undefined]] as const).map(([key, lbl, n]) => (
               <button key={key} onClick={() => setFilter(key)}
@@ -732,7 +732,7 @@ function Inner() {
               <div key={r.id} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                   <span style={{ color: r.starRating >= 4 ? 'var(--ink-good)' : 'var(--ink-warn)', fontSize: 16, letterSpacing: 1 }}>{stars(r.starRating)}</span>
-                  <span style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14 }}>{r.reviewerName || 'Google user'}</span>
+                  <span style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 14 }}>{r.reviewerName || 'Google user'}</span>
                   {r.reviewCreatedAt && <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{fmtInTz(r.reviewCreatedAt, { dateStyle: 'short' })}</span>}
                   {/* WHAT CHANGED SINCE YESTERDAY.
                       Fifty-two answered reviews and two new ones look the same
@@ -741,13 +741,13 @@ function Inner() {
                       a reply that went out in the last day, each say so. */}
                   {isFresh(r.reviewCreatedAt) && (
                     <span style={{
-                      background: 'var(--c312e81)', color: 'var(--cc7d2fe)', fontSize: 10.5, fontWeight: 700,
+                      background: 'var(--c312e81)', color: 'var(--cc7d2fe)', fontSize: 10.5, fontWeight: 600,
                       letterSpacing: '.06em', borderRadius: 6, padding: '2px 7px',
                     }}>{t('newReview')}</span>
                   )}
                   {r.status === 'REPLIED' && isFresh(r.repliedAt) && (
                     <span style={{
-                      background: 'var(--c064e3b)', color: 'var(--c6ee7b7)', fontSize: 10.5, fontWeight: 700,
+                      background: 'var(--c064e3b)', color: 'var(--c6ee7b7)', fontSize: 10.5, fontWeight: 600,
                       letterSpacing: '.06em', borderRadius: 6, padding: '2px 7px',
                     }}>{t('justReplied')}</span>
                   )}
@@ -767,7 +767,7 @@ function Inner() {
                         padding: '10px 12px', borderRadius: 9,
                         background: 'var(--c1e1b4b)', border: '1px solid var(--c312e81)',
                       }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cc7d2fe)', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--cc7d2fe)', whiteSpace: 'nowrap' }}>
                           ⏱ {t('autoIn')} {countdown(r.autoPostAt)}
                         </span>
                         <span style={{ fontSize: 12.5, color: 'var(--ca5b4fc)', lineHeight: 1.55 }}>{t('autoNote')}</span>
@@ -863,12 +863,12 @@ function Inner() {
 }
 
 const selStyle: React.CSSProperties = {
-  background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)', borderRadius: 6, padding: '2px 6px', fontSize: 13.5, fontWeight: 700,
+  background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)', borderRadius: 6, padding: '2px 6px', fontSize: 13.5, fontWeight: 600,
 };
 const tabStyle: React.CSSProperties = {
   padding: '5px 10px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap',
 };
-const tabActive: React.CSSProperties = { background: '#6366f1', color: 'white', borderColor: '#6366f1', fontWeight: 700 };
+const tabActive: React.CSSProperties = { background: '#6366f1', color: 'white', borderColor: '#6366f1', fontWeight: 600 };
 const ghostBtn: React.CSSProperties = {
   padding: '9px 14px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
 };

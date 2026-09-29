@@ -65,6 +65,30 @@ optgroup {
   font-family: inherit;
 }
 
+/* HOW THE TYPE READS.
+ *
+ * Be Vietnam Pro is a wide face with a tall x-height, and the app leaned on
+ * its two heaviest weights everywhere: every price, every name and every
+ * button was 700-800, so a screen read as a wall of shouting and the owner
+ * called it "thô" - crude. The weights were rebalanced to four steps (400
+ * body, 500 quiet labels, 600 emphasis and buttons, 700 headlines and the one
+ * big number on a card), and the rules below finish the job: figures line up
+ * in columns, large numbers sit a touch tighter, and lines breathe. */
+body {
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "tnum" 1, "calt" 1;
+  font-variant-numeric: tabular-nums;
+}
+h1,
+h2,
+h3 {
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
 /* Placeholders are a hint, not content. One muted tone in both themes, instead
  * of whatever grey each browser picks - which on white read almost as dark as
  * a real answer, so an empty box looked filled in. */

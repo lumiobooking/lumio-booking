@@ -303,7 +303,7 @@ function OfferEditor({ offer, t, onChange }: { offer?: Offer; t: (k: string) => 
   return (
     <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', margin: '0 0 14px', background: 'var(--c0b1220)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' }}>🎁 {t('mk.offerTitle')}</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)' }}>🎁 {t('mk.offerTitle')}</span>
         <Toggle on={o.enabled} onChange={(v) => onChange({ enabled: v })} label={t('mk.enable')} />
       </div>
       <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '4px 0 0', lineHeight: 1.5 }}>{t('mk.offerHelp')}</p>

@@ -64,11 +64,11 @@ export default function InvoicePage() {
     <Shell>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: '#4f46e5' }}>Lumio Booking</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#4f46e5' }}>Lumio Booking</div>
           <div style={{ fontSize: 13, color: 'var(--c64748b)', marginTop: 2 }}>Invoice · {inv.number}</div>
         </div>
         <span style={{
-          fontSize: 12.5, fontWeight: 700, padding: '5px 12px', borderRadius: 999,
+          fontSize: 12.5, fontWeight: 600, padding: '5px 12px', borderRadius: 999,
           background: paid ? '#dcfce7' : voided ? 'var(--cf1f5f9)' : 'var(--cfef3c7)',
           color: paid ? '#15803d' : voided ? 'var(--c64748b)' : '#b45309',
         }}>
@@ -77,7 +77,7 @@ export default function InvoicePage() {
       </div>
 
       <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--ce2e8f0)' }}>
-        <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--c0f172a)' }}>{title}</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--c0f172a)' }}>{title}</div>
         {inv.salonName && <div style={{ fontSize: 14, color: 'var(--c475569)', marginTop: 2 }}>{inv.salonName}</div>}
         <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', marginTop: 12, fontSize: 13, color: 'var(--c64748b)' }}>
           <div><div style={{ color: 'var(--c94a3b8)', fontSize: 11.5 }}>Issued</div>{fmt(inv.createdAt)}</div>
@@ -96,8 +96,8 @@ export default function InvoicePage() {
             </tr>
           ))}
           <tr>
-            <td style={{ padding: '14px 0 0', fontWeight: 800, fontSize: 16 }}>Total due<div style={{ fontWeight: 400, fontSize: 12, color: 'var(--c94a3b8)' }}>Số tiền cần thanh toán</div></td>
-            <td align="right" style={{ padding: '14px 0 0', fontWeight: 900, fontSize: 22, color: '#4f46e5', whiteSpace: 'nowrap' }}>{money(inv.totalCents, inv.currency)}</td>
+            <td style={{ padding: '14px 0 0', fontWeight: 700, fontSize: 16 }}>Total due<div style={{ fontWeight: 400, fontSize: 12, color: 'var(--c94a3b8)' }}>Số tiền cần thanh toán</div></td>
+            <td align="right" style={{ padding: '14px 0 0', fontWeight: 700, fontSize: 22, color: '#4f46e5', whiteSpace: 'nowrap' }}>{money(inv.totalCents, inv.currency)}</td>
           </tr>
         </tbody>
       </table>
@@ -136,4 +136,4 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 const card: CSSProperties = { width: '100%', maxWidth: 520, background: '#fff', borderRadius: 16, padding: 'clamp(20px, 4vw, 34px)', boxShadow: '0 20px 50px rgba(15,23,42,0.10)', height: 'fit-content', boxSizing: 'border-box' };
-const payBtn: CSSProperties = { marginTop: 22, width: '100%', padding: '14px 20px', borderRadius: 10, border: 'none', cursor: 'pointer', background: '#4f46e5', color: '#fff', fontSize: 16, fontWeight: 800 };
+const payBtn: CSSProperties = { marginTop: 22, width: '100%', padding: '14px 20px', borderRadius: 10, border: 'none', cursor: 'pointer', background: '#4f46e5', color: '#fff', fontSize: 16, fontWeight: 700 };

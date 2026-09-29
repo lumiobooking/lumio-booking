@@ -88,7 +88,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
   const tag = (source?: string | null) => {
     const m = srcMeta(source, vi);
-    return <span style={{ fontSize: 10, fontWeight: 700, color: m.c, background: m.bg, borderRadius: 20, padding: '1px 7px', whiteSpace: 'nowrap' }}>{m.label}</span>;
+    return <span style={{ fontSize: 10, fontWeight: 600, color: m.c, background: m.bg, borderRadius: 20, padding: '1px 7px', whiteSpace: 'nowrap' }}>{m.label}</span>;
   };
   const seatBooked = async (id: string) => {
     setError(null);
@@ -124,7 +124,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 13, color: freeCount > 0 ? 'var(--ink-good)' : 'var(--ink-warn)', background: freeCount > 0 ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)', borderRadius: 8, padding: '5px 10px', fontWeight: 700 }}>
+          <span style={{ fontSize: 13, color: freeCount > 0 ? 'var(--ink-good)' : 'var(--ink-warn)', background: freeCount > 0 ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)', borderRadius: 8, padding: '5px 10px', fontWeight: 600 }}>
             {active.length === 0 ? (vi ? 'Chưa có ghế' : 'No chairs yet') : `${freeCount} ${vi ? 'ghế trống' : 'free'}`}
           </span>
           {active.length === 0 && <a href="/salon/stations" style={{ fontSize: 12, color: 'var(--c818cf8)', textDecoration: 'none' }}>{vi ? 'Khai báo ghế →' : 'Set up chairs →'}</a>}
@@ -194,7 +194,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
       {byType.map((g) => (
         <div key={g.id} style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{g.name} ({g.list.length})</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{g.name} ({g.list.length})</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(172px, 1fr))', gap: 10 }}>
             {g.list.map((st) => {
               const occ = occByStation.get(st.id);
@@ -222,7 +222,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
                       <span style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fullName(occ.assignedStaff) || '—'}</span>
-                      <span style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>{formatPrice(total, currency)}</span>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{formatPrice(total, currency)}</span>
                     </div>
                   </div>
                 );
@@ -245,7 +245,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
       {waitingPay.length > 0 && (
         <div style={{ marginTop: 6, marginBottom: 6 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cfbbf24)', margin: '0 0 8px' }}>{vi ? '💤 Chờ thanh toán' : '💤 Waiting to pay'} ({waitingPay.length})</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--cfbbf24)', margin: '0 0 8px' }}>{vi ? '💤 Chờ thanh toán' : '💤 Waiting to pay'} ({waitingPay.length})</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {waitingPay.map((w) => {
               const total = w.items.reduce((a, it) => a + it.priceCents, 0);
@@ -253,8 +253,8 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
               return (
                 <div key={w.id} style={{ background: 'var(--c1e293b)', border: '1px solid #f59e0b', borderRadius: 12, padding: '10px 12px', minWidth: 230 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}><button onClick={() => setOpenId(w.id)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</button>{tag(w.source)}</div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf8fafc)' }}>{formatPrice(total, currency)}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}><button onClick={() => setOpenId(w.id)} style={{ background: 'none', border: 'none', color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 600, cursor: 'pointer', padding: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</button>{tag(w.source)}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf8fafc)' }}>{formatPrice(total, currency)}</div>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--c94a3b8)', margin: '2px 0 8px' }}>{fullName(w.assignedStaff)} · {vi ? 'chờ' : 'waited'} {minsSince(w.assignedAt)}′</div>
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -273,7 +273,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
       {board.waiting.length > 0 && (
         <div style={{ marginTop: 6 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{vi ? 'Đang chờ' : 'Waiting'} ({board.waiting.length})</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{vi ? 'Đang chờ' : 'Waiting'} ({board.waiting.length})</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {board.waiting.map((w) => (
               <div key={w.id} style={{ ...ui.card, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -296,7 +296,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
   );
 }
 
-const ava: CSSProperties = { width: 26, height: 26, borderRadius: '50%', background: 'var(--c312e81)', color: 'var(--cc7d2fe)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 };
+const ava: CSSProperties = { width: 26, height: 26, borderRadius: '50%', background: 'var(--c312e81)', color: 'var(--cc7d2fe)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 };
 
 function ServicePick({ services, onPick, placeholder }: { services: Svc[]; onPick: (id: string) => void; placeholder: string }) {
   const [q, setQ] = useState('');
@@ -332,7 +332,7 @@ function QuickBill({ vi, services, currency, onClose, onCreate }: {
   const content = (
     <div onClick={onClose} style={overlay}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(460px, 96vw)', padding: 18 }}>
-        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ce2e8f0)', marginBottom: 4 }}>{vi ? 'Lên bill nhanh' : 'Quick bill'}</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>{vi ? 'Lên bill nhanh' : 'Quick bill'}</div>
         <p style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '0 0 14px' }}>{vi ? 'Hệ thống tự chọn ghế trống + thợ tới lượt. Đổi sau bằng cách kéo trên sơ đồ.' : 'Auto-picks a free chair + the up-next tech. Drag on the floor to change.'}</p>
         <label style={{ display: 'block', marginBottom: 10 }}><span style={ui.label}>{vi ? 'Tên khách (tuỳ chọn)' : 'Customer (optional)'}</span>
           <input style={ui.input} value={name} placeholder="Walk-in" onChange={(e) => setName(e.target.value)} /></label>
@@ -370,7 +370,7 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
       <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(540px, 96vw)', maxHeight: '88vh', overflowY: 'auto', padding: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{w.customerName || 'Walk-in'}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{w.customerName || 'Walk-in'}</div>
             <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{vi ? 'Thợ' : 'Tech'} <strong style={{ color: 'var(--ccbd5e1)' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -395,8 +395,8 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
                 </div>
               ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--c0f172a)' }}>
-              <span style={{ fontSize: 13, color: 'var(--c94a3b8)', fontWeight: 700 }}>{vi ? 'Tạm tính' : 'Subtotal'}</span>
-              <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--cf8fafc)' }}>{formatPrice(subtotal, currency)}</span>
+              <span style={{ fontSize: 13, color: 'var(--c94a3b8)', fontWeight: 600 }}>{vi ? 'Tạm tính' : 'Subtotal'}</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--cf8fafc)' }}>{formatPrice(subtotal, currency)}</span>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>

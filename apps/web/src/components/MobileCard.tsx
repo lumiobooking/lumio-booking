@@ -24,7 +24,7 @@ export function MCard({ children }: { children: ReactNode }) {
 export function MHead({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-      <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 15, minWidth: 0, wordBreak: 'break-word' }}>{children}</div>
+      <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 15, minWidth: 0, wordBreak: 'break-word' }}>{children}</div>
       {right != null && <div style={{ flexShrink: 0, textAlign: 'right' }}>{right}</div>}
     </div>
   );

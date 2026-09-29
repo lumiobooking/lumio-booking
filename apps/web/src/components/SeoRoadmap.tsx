@@ -125,7 +125,7 @@ function monthsText(weeks: unknown): string {
 function Mismatch({ what }: { what: string }) {
   return (
     <div style={{ ...ui.card, padding: 16, borderColor: '#f59e0b' }}>
-      <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ink-warn)' }}>Chưa hiển thị được {what}</div>
+      <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ink-warn)' }}>Chưa hiển thị được {what}</div>
       <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.65, marginTop: 6 }}>
         Máy chủ đang trả về dữ liệu theo phiên bản cũ hơn màn hình này — thường là vì bản cập nhật
         vừa lên và phần máy chủ còn đang chạy. Đợi vài phút rồi tải lại trang.
@@ -170,7 +170,7 @@ function TaskRow({
         <span title="Hệ thống tự xác nhận" style={{
           width: 22, height: 22, borderRadius: 6, flexShrink: 0, marginTop: 1,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: tone.bg, color: tone.fg, fontSize: 12, fontWeight: 700,
+          background: tone.bg, color: tone.fg, fontSize: 12, fontWeight: 600,
           border: `1px solid ${t.state === 'done' ? '#22c55e' : t.state === 'unknown' ? '#f59e0b' : 'var(--c334155)'}`,
         }}>{t.state === 'done' ? '✓' : t.state === 'unknown' ? '?' : '·'}</span>
       ) : (
@@ -183,7 +183,7 @@ function TaskRow({
             cursor: busy === t.id ? 'wait' : 'pointer',
             background: t.state === 'done' ? '#22c55e' : 'transparent',
             border: `1.5px solid ${t.state === 'done' ? '#22c55e' : 'var(--c475569)'}`,
-            color: '#0f172a', fontSize: 13, fontWeight: 800, lineHeight: 1,
+            color: '#0f172a', fontSize: 13, fontWeight: 700, lineHeight: 1,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >{t.state === 'done' ? '✓' : ''}</button>
@@ -224,7 +224,7 @@ function TaskRow({
             {t.who && (
               <div style={{ marginTop: 6 }}>
                 <span style={{
-                  fontSize: 10.5, fontWeight: 800, letterSpacing: .4, padding: '1px 7px', borderRadius: 999,
+                  fontSize: 10.5, fontWeight: 700, letterSpacing: .4, padding: '1px 7px', borderRadius: 999,
                   textTransform: 'uppercase',
                   background: t.who === 'salon' ? 'rgba(245,158,11,.16)' : 'rgba(99,102,241,.18)',
                   color: t.who === 'salon' ? 'var(--ink-warn)' : 'var(--ink-link)',
@@ -405,7 +405,7 @@ export function SeoRoadmap({ token }: { token: string | null }) {
     <>
       {/* ---- what is due right now, across both tracks ---- */}
       <div style={{ ...ui.card, padding: 16, marginBottom: 14, borderColor: due.length ? '#f59e0b' : '#22c55e' }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
           {due.length ? `⚡ Việc đến hạn — ${due.length} việc` : '✓ Không còn việc đến hạn'}
         </div>
         <div style={{ fontSize: 12.5, color: 'var(--c64748b)', lineHeight: 1.6, marginTop: 5 }}>
@@ -443,7 +443,7 @@ export function SeoRoadmap({ token }: { token: string | null }) {
                   border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`,
                 }}
               >
-                <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: on ? 'var(--ca5b4fc)' : 'var(--ccbd5e1)' }}>{o.label}</span>
+                <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: on ? 'var(--ca5b4fc)' : 'var(--ccbd5e1)' }}>{o.label}</span>
                 <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)', marginTop: 2, lineHeight: 1.4 }}>{o.hint}</span>
               </button>
             );
@@ -473,10 +473,10 @@ export function SeoRoadmap({ token }: { token: string | null }) {
               }}
             >
               <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontSize: 14.5, fontWeight: 700, color: on ? 'var(--ce2e8f0)' : 'var(--c94a3b8)' }}>
+                <span style={{ fontSize: 14.5, fontWeight: 600, color: on ? 'var(--ce2e8f0)' : 'var(--c94a3b8)' }}>
                   {m.icon} {m.label}
                 </span>
-                <span style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: on ? m.accent : 'var(--c64748b)' }}>
+                <span style={{ fontFamily: mono, fontSize: 12, fontWeight: 600, color: on ? m.accent : 'var(--c64748b)' }}>
                   {t.done}/{t.total}
                 </span>
               </span>
@@ -490,7 +490,7 @@ export function SeoRoadmap({ token }: { token: string | null }) {
       </div>
 
       <div style={{ ...ui.card, padding: 16, marginBottom: 12, borderColor: meta.accent }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{meta.icon} {meta.label}</div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{meta.icon} {meta.label}</div>
         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 5 }}>{meta.blurb}</div>
         <div style={{ margin: '11px 0 4px' }}><Bar pct={pct} color="#22c55e" /></div>
         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 8 }}>
@@ -502,7 +502,7 @@ export function SeoRoadmap({ token }: { token: string | null }) {
             <div style={{ fontSize: 10.5, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 4 }}>
               Bước tiếp theo của nhánh này
             </div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', lineHeight: 1.4 }}>{cur.next.title}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.4 }}>{cur.next.title}</div>
             <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 6 }}>{cur.next.how}</div>
             {cur.next.minutes ? (
               <div style={{ fontSize: 12, color: 'var(--c64748b)', marginTop: 6 }}>≈ {cur.next.minutes} phút</div>
@@ -534,12 +534,12 @@ export function SeoRoadmap({ token }: { token: string | null }) {
               }}
             >
               <span style={{
-                fontFamily: mono, fontSize: 12, fontWeight: 700,
+                fontFamily: mono, fontSize: 12, fontWeight: 600,
                 color: finished ? 'var(--ink-good)' : meta.accent, background: finished ? 'rgba(34,197,94,.12)' : 'var(--c1e293b)',
                 borderRadius: 7, minWidth: 30, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               }}>{finished ? '✓' : p.n}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 15.5, fontWeight: 700, color: 'var(--ce2e8f0)', lineHeight: 1.3 }}>{p.title}</span>
+                <span style={{ display: 'block', fontSize: 15.5, fontWeight: 600, color: 'var(--ce2e8f0)', lineHeight: 1.3 }}>{p.title}</span>
                 <span style={{ display: 'block', fontSize: 12, color: 'var(--c64748b)', marginTop: 2 }}>
                   {p.total === 0 ? 'Không cần ở mức cạnh tranh này'
                     : p.weeksLeft ? `dự kiến ${p.weeksLeft[0]}–${p.weeksLeft[1]} tuần` : 'xong'}

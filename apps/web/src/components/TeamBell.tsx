@@ -123,7 +123,7 @@ export function TeamBell({ items, onOpen, busy }: {
         {n > 0 && (
           <span style={{
             position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, borderRadius: 20, padding: '0 6px',
-            background: '#ef4444', color: '#fff', fontSize: 11.5, fontWeight: 800, display: 'grid', placeItems: 'center',
+            background: '#ef4444', color: '#fff', fontSize: 11.5, fontWeight: 700, display: 'grid', placeItems: 'center',
             boxShadow: '0 0 0 2px var(--c0b1120)',
           }}>{n > 99 ? '99+' : n}</span>
         )}
@@ -136,7 +136,7 @@ export function TeamBell({ items, onOpen, busy }: {
           boxShadow: '0 18px 48px rgba(0,0,0,.55)', overflow: 'hidden',
         }}>
           <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--c1f2937)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontWeight: 800, fontSize: 14 }}>Tiệm đang chờ trả lời</span>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>Tiệm đang chờ trả lời</span>
             <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c64748b)' }}>{n ? `${n} mục` : 'Trống'}</span>
           </div>
           <div style={{ maxHeight: 'min(520px, 70vh)', overflowY: 'auto' }}>
@@ -160,7 +160,7 @@ export function TeamBell({ items, onOpen, busy }: {
                 >
                   <span style={{ fontSize: 18, lineHeight: '22px' }}>{k.icon}</span>
                   <span style={{ minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {it.salon} <span style={{ fontWeight: 600, color: it.held ? 'var(--ink-bad)' : 'var(--c94a3b8)' }}>· {it.held ? 'yêu cầu sửa bài' : k.label}</span>
                     </span>
                     <span style={{ display: 'block', fontSize: 12.5, color: 'var(--ccbd5e1)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -174,8 +174,8 @@ export function TeamBell({ items, onOpen, busy }: {
                   </span>
                   <span style={{ fontSize: 11.5, color: 'var(--c64748b)', whiteSpace: 'nowrap', textAlign: 'right' }}>
                     {ago(it.at)}
-                    {it.unread > 1 && <span style={{ display: 'block', color: 'var(--ink-bad)', fontWeight: 800 }}>{it.unread} tin</span>}
-                    <span style={{ display: 'block', color: 'var(--ink-link)', fontWeight: 800, marginTop: 2 }}>Mở →</span>
+                    {it.unread > 1 && <span style={{ display: 'block', color: 'var(--ink-bad)', fontWeight: 700 }}>{it.unread} tin</span>}
+                    <span style={{ display: 'block', color: 'var(--ink-link)', fontWeight: 700, marginTop: 2 }}>Mở →</span>
                   </span>
                 </button>
               );

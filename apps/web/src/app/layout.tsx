@@ -26,7 +26,7 @@ import { ChatHeartbeat } from '../components/ChatHeartbeat';
  */
 const appFont = Be_Vietnam_Pro({
   subsets: ['latin', 'vietnamese'],
-  weight: ['400', '500', '600', '700', '800'],
+  weight: ['400', '500', '600', '700'],
   display: 'swap',
   variable: '--font-app',
   // Metric-matched fallback: if the font is still arriving, the substitute is

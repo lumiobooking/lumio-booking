@@ -40,7 +40,7 @@ export default function PageError({ error, reset }: { error: Error & { digest?: 
         </pre>
         <button onClick={() => (stale ? hardReload() : reset())} style={{
           marginTop: 14, width: '100%', padding: '12px 16px', borderRadius: 10, border: 'none',
-          background: '#6366f1', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+          background: '#6366f1', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer',
         }}>
           {stale ? 'Tải lại · Reload' : 'Thử lại · Try again'}
         </button>

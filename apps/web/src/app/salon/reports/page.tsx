@@ -283,7 +283,7 @@ function Kpi({ label, value, hint, accent }: { label: string; value: string; hin
   return (
     <div style={{ background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 12, padding: '12px 14px' }}>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: accent ?? '#fff' }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: accent ?? '#fff' }}>{value}</div>
       {hint && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}
     </div>
   );
@@ -293,7 +293,7 @@ function Card({ title, children, right }: { title: string; children: ReactNode; 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{title}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)' }}>{title}</div>
         {right}
       </div>
       {children}
@@ -406,7 +406,7 @@ function MarkdownCard({ md, money, T, vi }: { md?: Markdowns; money: (c: number)
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{T('Giảm giá tại quầy', 'Counter markdowns')}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{T('Giảm giá tại quầy', 'Counter markdowns')}</span>
         <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
           {T('Tiền đã giảm khi sửa giá lúc thanh toán', 'Money given away by editing prices at checkout')}
         </span>
@@ -421,7 +421,7 @@ function MarkdownCard({ md, money, T, vi }: { md?: Markdowns; money: (c: number)
         ].map(([label, value, color]) => (
           <div key={label} style={{ flex: '1 1 130px', background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px' }}>
             <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{label}</div>
-            <div style={{ fontSize: 19, fontWeight: 800, color }}>{value}</div>
+            <div style={{ fontSize: 19, fontWeight: 700, color }}>{value}</div>
           </div>
         ))}
       </div>
@@ -442,7 +442,7 @@ function MarkdownCard({ md, money, T, vi }: { md?: Markdowns; money: (c: number)
 function MdTable({ title, rows, money, T }: { title: string; rows: MdRow[]; money: (c: number) => string; T: (v: string, e: string) => string }) {
   return (
     <div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c94a3b8)', marginBottom: 6 }}>{title}</div>
       {rows.length === 0 ? <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>—</div> : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
           <thead>

@@ -51,10 +51,10 @@ export default function PublicReviewPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', padding: '14px 14px 0' }}>
       <div style={{ maxWidth: 640, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 6 }}>
-        <span style={{ fontSize: 16, fontWeight: 800 }}>Lumio<span style={{ color: '#818cf8' }}>Booking</span></span>
+        <span style={{ fontSize: 16, fontWeight: 700 }}>Lumio<span style={{ color: '#818cf8' }}>Booking</span></span>
         <button
           onClick={() => { setVi((v) => { try { window.localStorage.setItem('lumio_lang', v ? 'en' : 'vi'); } catch { /* fine */ } return !v; }); }}
-          style={{ marginLeft: 'auto', font: 'inherit', fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', background: 'var(--c151f38)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', minHeight: 36 }}
+          style={{ marginLeft: 'auto', font: 'inherit', fontSize: 12, fontWeight: 600, color: 'var(--c94a3b8)', background: 'var(--c151f38)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', minHeight: 36 }}
         >
           {vi ? 'EN' : 'VI'}
         </button>

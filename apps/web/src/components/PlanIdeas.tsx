@@ -87,7 +87,7 @@ export function PlanIdeas({
       {/* One line of context, one row of controls. Nothing else above the list. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>💡 {T('Gợi ý theo ngày', 'Suggested by day')}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>💡 {T('Gợi ý theo ngày', 'Suggested by day')}</div>
           <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>
             {T(`${todo} gợi ý có thể đưa vào Plan · ngày lấy từ giờ vắng của tiệm · sửa lại trên Plan rồi mới lên lịch`, `${todo} ideas to put on the plan · days from the shop’s quiet hours · edit on the plan, schedule from there`)}
           </div>
@@ -102,7 +102,7 @@ export function PlanIdeas({
       {kinds.length > 1 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
           {['all', ...kinds].map((k) => (
-            <button key={k} type="button" onClick={() => setKind(k)} style={{ padding: '4px 11px', borderRadius: 999, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${kind === k ? '#6366f1' : 'var(--c334155)'}`, background: kind === k ? 'rgba(99,102,241,.16)' : 'transparent', color: kind === k ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>
+            <button key={k} type="button" onClick={() => setKind(k)} style={{ padding: '4px 11px', borderRadius: 999, fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${kind === k ? '#6366f1' : 'var(--c334155)'}`, background: kind === k ? 'rgba(99,102,241,.16)' : 'transparent', color: kind === k ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>
               {k === 'all' ? `${T('Tất cả', 'All')} · ${total}` : `${KIND_ICON[k] ?? ''} ${vi ? KIND_LABEL[k]?.vi ?? k : KIND_LABEL[k]?.en ?? k}`}
             </button>
           ))}
@@ -115,7 +115,7 @@ export function PlanIdeas({
         <div style={{ display: 'grid', gap: 14 }}>
           {visibleWeeks.map((w) => (
             <div key={w}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--c64748b)', padding: '0 0 6px 2px', borderBottom: '1px solid var(--line)', marginBottom: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .6, textTransform: 'uppercase', color: 'var(--c64748b)', padding: '0 0 6px 2px', borderBottom: '1px solid var(--line)', marginBottom: 4 }}>
                 {weekTitle(w)}
               </div>
               {rows.filter((d) => weekOf(d.key) === w).map((d) => {
@@ -131,16 +131,16 @@ export function PlanIdeas({
                   >
                     {/* the date, once per day — blank on the second job of a day so the eye groups them */}
                     <div style={{ textAlign: 'center', lineHeight: 1.05, visibility: i === 0 ? 'visible' : 'hidden' }}>
-                      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .4, color: d.today ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>{L.wd}</div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: d.today ? 'var(--ink-link)' : 'var(--cf1f5f9)', fontVariantNumeric: 'tabular-nums' }}>{L.d}</div>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .4, color: d.today ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>{L.wd}</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: d.today ? 'var(--ink-link)' : 'var(--cf1f5f9)', fontVariantNumeric: 'tabular-nums' }}>{L.d}</div>
                       <div style={{ fontSize: 10, color: 'var(--c64748b)' }}>{L.m}</div>
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 700, color: j.done ? 'var(--ink-faint)' : 'var(--cf1f5f9)', lineHeight: 1.4, textDecoration: j.done ? 'line-through' : 'none' }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: j.done ? 'var(--ink-faint)' : 'var(--cf1f5f9)', lineHeight: 1.4, textDecoration: j.done ? 'line-through' : 'none' }}>
                           {j.done ? '✅ ' : `${KIND_ICON[j.job.kind] ?? '•'} `}{j.job.text}
                         </span>
-                        {j.who === 'salon' && <span style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ink-warn)' }}>{T('tiệm làm', 'shop does')}</span>}
+                        {j.who === 'salon' && <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ink-warn)' }}>{T('tiệm làm', 'shop does')}</span>}
                       </div>
                       {(j.job.why || j.job.when) && (
                         <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.45, marginTop: 2, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
@@ -158,7 +158,7 @@ export function PlanIdeas({
                               type="button"
                               onClick={() => onPlan(j.job, target)}
                               title={T(`Đưa ý này vào Plan ngày ${shortDay(target)} — sửa lại trên Plan, xong mới lên lịch đăng`, `Put this on the plan for ${shortDay(target)} — edit it there, schedule from there`)}
-                              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #6366f1', background: 'rgba(99,102,241,.14)', color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                              style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #6366f1', background: 'rgba(99,102,241,.14)', color: 'var(--ink-link)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
                             >
                               {T('→ Đưa vào Plan', '→ To plan')}
                             </button>

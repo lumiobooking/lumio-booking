@@ -563,7 +563,7 @@ function AssignLines({ b, live, t, onAction, onClose }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {b.service?.name ?? '—'}
-          <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: 'var(--c818cf8)', border: '1px solid var(--c3730a3)', borderRadius: 6, padding: '0 4px' }}>{t('cal.lineMain')}</span>
+          <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 600, color: 'var(--c818cf8)', border: '1px solid var(--c3730a3)', borderRadius: 6, padding: '0 4px' }}>{t('cal.lineMain')}</span>
         </span>
         <select
           value={b.assignedStaff?.id ?? ''}
@@ -587,7 +587,7 @@ function AssignLines({ b, live, t, onAction, onClose }: {
           </select>
         </div>
       ))}
-      <button onClick={onClose} style={{ alignSelf: 'flex-end', background: 'none', border: 'none', color: 'var(--c818cf8)', fontSize: 12.5, cursor: 'pointer', padding: '2px 4px', fontWeight: 700 }}>
+      <button onClick={onClose} style={{ alignSelf: 'flex-end', background: 'none', border: 'none', color: 'var(--c818cf8)', fontSize: 12.5, cursor: 'pointer', padding: '2px 4px', fontWeight: 600 }}>
         ✓ {t('bk.done')}
       </button>
     </div>
@@ -822,7 +822,7 @@ function CreateBookingForm({
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '14px 20px', borderBottom: '1px solid var(--c334155)' }}>
         <span style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--c1e3a8a)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>📅</span>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('bk.createBooking')}</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{t('bk.createBooking')}</div>
           <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
             {serviceIds.length === 0
               ? t('bk.pickSvcFirst')
@@ -1023,7 +1023,7 @@ function FormSection({ title, children }: { title: string; children: React.React
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 11 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--c94a3b8)', textTransform: 'uppercase' }}>{title}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--c94a3b8)', textTransform: 'uppercase' }}>{title}</span>
         <span style={{ flex: 1, height: 1, background: 'var(--c334155)' }} />
       </div>
       {children}
@@ -1039,7 +1039,7 @@ function FieldLabel({ raw, required, optionalWord, hint }: { raw: string; requir
   return (
     <span style={{ ...ui.label, display: 'flex', alignItems: 'center', gap: 6 }} title={hint}>
       {text}
-      {required && <span style={{ color: 'var(--cf87171)', fontWeight: 700 }}>*</span>}
+      {required && <span style={{ color: 'var(--cf87171)', fontWeight: 600 }}>*</span>}
       {isOpt && !required && (
         <span style={{ fontSize: 10.5, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 5, padding: '1px 5px', fontWeight: 600 }}>{optionalWord}</span>
       )}
@@ -1059,7 +1059,7 @@ function GroupChip({ n, open, onToggle, label }: { n: number; open: boolean; onT
       type="button"
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(); }}
       title={label.replace('{n}', String(n))}
-      style={{ marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 4, background: open ? 'var(--c3730a3)' : 'var(--c312e81)', color: 'var(--cc7d2fe)', border: '1px solid #4338ca', borderRadius: 999, padding: '1px 9px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', cursor: 'pointer' }}
+      style={{ marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 4, background: open ? 'var(--c3730a3)' : 'var(--c312e81)', color: 'var(--cc7d2fe)', border: '1px solid #4338ca', borderRadius: 999, padding: '1px 9px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer' }}
     >
       👥 {n} <span style={{ fontSize: 9 }}>{open ? '▼' : '▶'}</span>
     </button>

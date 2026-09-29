@@ -135,7 +135,7 @@ function Inner() {
         : shown.length === 0 ? <p style={{ color: 'var(--c64748b)', fontSize: 14, marginTop: 20 }}>{L('Chưa có thông báo nào.', 'No notifications yet.')}</p>
         : <>{groups.map(([day, list]) => (
           <div key={day} style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.6, color: 'var(--c64748b)', marginBottom: 8 }}>{day}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: 'var(--c64748b)', marginBottom: 8 }}>{day}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {list.map((i) => {
                 const m = TYPE_META[i.type] ?? UNKNOWN_META;
@@ -160,7 +160,7 @@ function Inner() {
                       </svg>
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14.5, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}><b style={{ fontWeight: 700 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail)
+                      <div style={{ fontSize: 14.5, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}><b style={{ fontWeight: 600 }}>{i.customer}</b> {i.type === 'report' ? reportText(i.detail)
                         : i.type === 'postFailed' ? <span style={{ color: 'var(--cfca5a5)' }}>— {L('bài chưa đăng được', 'was not published')}</span>
                         : i.type === 'postReview' ? <span style={{ color: '#c4b5fd' }}>— {L('đã sửa xong, mời bạn duyệt lại', 'updated — please review again')}</span>
                           : `${verb(i.type)} ${i.detail}`}</div>

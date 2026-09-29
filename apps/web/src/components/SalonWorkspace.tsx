@@ -358,7 +358,7 @@ function SuggestionCard({
           </a>
         )}
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.4 }}>{s.title}</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--cf1f5f9)', lineHeight: 1.4 }}>{s.title}</div>
           {s.note && (
             <div style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 4 }}>{s.note}</div>
           )}
@@ -477,7 +477,7 @@ function OutboxBar({ vi, pending, running, online, pct }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 18 }}>{stuck ? '⏸' : '📤'}</span>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
             {!online
               ? T('Mất mạng — sẽ gửi tiếp khi có mạng lại', 'Offline — will continue when the connection is back')
               : failed.length
@@ -589,7 +589,7 @@ function SendAnything({ token, vi, onDone, onError, openRef }: {
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         <span style={{ fontSize: 30, lineHeight: 1, flex: '0 0 auto' }}>📤</span>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ color: 'var(--cf1f5f9)', fontWeight: 800, fontSize: 17, lineHeight: 1.3 }}>
+          <div style={{ color: 'var(--cf1f5f9)', fontWeight: 700, fontSize: 17, lineHeight: 1.3 }}>
             {T('Gửi ảnh/clip cho Lumio', 'Send photos or clips to Lumio')}
           </div>
           <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.55, marginTop: 3 }}>
@@ -631,14 +631,14 @@ const lede: React.CSSProperties = {
   fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.6, margin: '0 0 11px',
 };
 const countPill: React.CSSProperties = {
-  fontSize: 12, fontWeight: 800, minWidth: 22, height: 22, borderRadius: 20,
+  fontSize: 12, fontWeight: 700, minWidth: 22, height: 22, borderRadius: 20,
   background: '#6366f1', color: '#fff', display: 'inline-flex',
   alignItems: 'center', justifyContent: 'center', padding: '0 7px',
 };
 // 46px tall: a thumb on a phone, not a mouse on a desktop.
 const primary: React.CSSProperties = {
   minHeight: 46, padding: '12px 16px', borderRadius: 11, cursor: 'pointer',
-  border: 'none', background: '#6366f1', color: '#fff', fontSize: 14.5, fontWeight: 700,
+  border: 'none', background: '#6366f1', color: '#fff', fontSize: 14.5, fontWeight: 600,
 };
 const ghost: React.CSSProperties = {
   minHeight: 46, padding: '12px 16px', borderRadius: 11, cursor: 'pointer',

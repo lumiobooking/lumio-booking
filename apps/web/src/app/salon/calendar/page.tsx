@@ -346,14 +346,14 @@ function Inner() {
         if (!legend.length) return null;
         return (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{lang === 'vi' ? 'Nguồn khách' : 'Sources'}</span>
+            <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 1.2, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{lang === 'vi' ? 'Nguồn khách' : 'Sources'}</span>
             {legend.map(({ meta, count }) => (
               <SourceChip key={meta.key} meta={meta} count={count} vi={lang === 'vi'}
                 active={srcFilter === meta.key}
                 onClick={() => setSrcFilter(srcFilter === meta.key ? null : meta.key)} />
             ))}
             {srcFilter && (
-              <button onClick={() => setSrcFilter(null)} style={{ background: 'none', border: 'none', color: 'var(--c818cf8)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+              <button onClick={() => setSrcFilter(null)} style={{ background: 'none', border: 'none', color: 'var(--c818cf8)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
                 {lang === 'vi' ? '✕ Bỏ lọc' : '✕ Clear'}
               </button>
             )}
@@ -418,7 +418,7 @@ function Inner() {
             return (
               <div key={d.toDateString()} style={{ ...ui.card, padding: 12, opacity: isPast ? 0.72 : 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: isToday ? 'var(--c818cf8)' : 'var(--ce2e8f0)' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: isToday ? 'var(--c818cf8)' : 'var(--ce2e8f0)' }}>
                     {d.toLocaleDateString(locale, { weekday: 'long', month: 'short', day: 'numeric' })}{isToday ? ' · ' + t('cal.todayLabel') : ''}
                   </span>
                   {isPast && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 7px' }}>{lang === 'vi' ? 'đã qua' : 'past'}</span>}
@@ -431,7 +431,7 @@ function Inner() {
                       <div key={b.id} onClick={() => setSelected(b)}
                         onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, b }); }}
                         style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 11px', borderRadius: 7, background: 'var(--c1e293b)', borderLeft: `3px solid ${m.color}`, cursor: 'pointer' }}>
-                        <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: 'var(--ce2e8f0)' }}>{fmtT(b.startTime)}</span>
+                        <span style={{ fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--ce2e8f0)' }}>{fmtT(b.startTime)}</span>
                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ccbd5e1)' }}>{name(b.customer)}{svcLabel(b) ? ' · ' + svcLabel(b) : ''}</span>
                         <span style={{ width: 9, height: 9, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
                       </div>
@@ -458,7 +458,7 @@ function Inner() {
           const weekend = dow === 0 || dow === 6;
           const todayCol = today.getDay() === dow;
           return (
-            <div key={dow} style={{ background: 'var(--c1e293b)', textAlign: 'center', padding: '9px 0', fontSize: 11.5, letterSpacing: 0.6, textTransform: 'uppercase', color: todayCol ? 'var(--ca5b4fc)' : weekend ? 'var(--c8ea2c4)' : 'var(--c94a3b8)', fontWeight: 700 }}>{DAY_LABEL[lang][dow]}</div>
+            <div key={dow} style={{ background: 'var(--c1e293b)', textAlign: 'center', padding: '9px 0', fontSize: 11.5, letterSpacing: 0.6, textTransform: 'uppercase', color: todayCol ? 'var(--ca5b4fc)' : weekend ? 'var(--c8ea2c4)' : 'var(--c94a3b8)', fontWeight: 600 }}>{DAY_LABEL[lang][dow]}</div>
           );
         })}
         {days.map((d, i) => {
@@ -476,7 +476,7 @@ function Inner() {
                       style={{ display: 'inline-grid', placeItems: 'center', minWidth: 22, height: 22, padding: '0 6px', borderRadius: 999, fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: isToday ? '#fff' : 'var(--ccbd5e1)', background: isToday ? '#6366f1' : 'transparent', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       {d.getDate()}
                     </span>
-                    {items.length > 0 && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', fontWeight: 700 }}>{items.length}</span>}
+                    {items.length > 0 && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', fontWeight: 600 }}>{items.length}</span>}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {items.slice(0, 4).map((b) => {
@@ -489,7 +489,7 @@ function Inner() {
                           onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, b }); }}
                           style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 11, padding: '3px 7px', borderRadius: 5, background: `${m.color}1f`, borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: dim ? 0.55 : 1, overflow: 'hidden' }}>
                           <SourceDot b={b} vi={lang === 'vi'} />
-                          <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: m.color, textDecoration: strike, flexShrink: 0 }}>{fmtT(b.startTime)}</span>
+                          <span style={{ fontWeight: 600, whiteSpace: 'nowrap', color: m.color, textDecoration: strike, flexShrink: 0 }}>{fmtT(b.startTime)}</span>
                           <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--cdbe2ea)', textDecoration: strike }}>{name(b.customer)}{svcLabel(b) ? ` · ${svcLabel(b)}` : ''}</span>
                         </div>
                       );
@@ -643,7 +643,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
             {nowTop >= 0 && (
               <div style={{ position: 'absolute', top: nowTop, left: 0, right: 0, borderTop: '2px solid #ef4444', zIndex: 5 }}>
                 <span style={{ position: 'absolute', left: -1, top: -5, width: 9, height: 9, borderRadius: '50%', background: '#ef4444' }} />
-                <span style={{ position: 'absolute', right: 6, top: -9, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 5, padding: '1px 6px' }}>{fmtT(new Date().toISOString())}</span>
+                <span style={{ position: 'absolute', right: 6, top: -9, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 6px' }}>{fmtT(new Date().toISOString())}</span>
               </div>
             )}
             {pos.map(({ b, s, e, col, cols }) => {
@@ -671,28 +671,28 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                   {wide ? (
                     <>
                       <div style={{ width: 94, flexShrink: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</div>
                         <div style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{fmtT(b.endTime)} · {durMin}m</div>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--cf8fafc)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
+                        <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--cf8fafc)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
                         <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.groupId ? ' 👥' : ''}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
-                        <span style={{ width: 26, height: 26, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
+                        <span style={{ width: 26, height: 26, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 12, fontWeight: 600, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
                         <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tech}</span>
                       </div>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--ink-good)', flexShrink: 0, minWidth: 54, textAlign: 'right' }}>{formatPrice(b.priceCents, b.currency)}</div>
-                      <span style={{ flexShrink: 0, color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink-good)', flexShrink: 0, minWidth: 54, textAlign: 'right' }}>{formatPrice(b.priceCents, b.currency)}</div>
+                      <span style={{ flexShrink: 0, color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '2px 9px', fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
                     </>
                   ) : (
                     <>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: 11.5, fontWeight: 700, color: m.color, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: 'var(--ink-good)', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</span>
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: m.color, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: 'var(--ink-good)', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</span>
                       </div>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
                       {h > 50 && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.assignedStaff ? ` · ${tech}` : ''}</div>}
                     </>
                   )}
@@ -753,7 +753,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {periods.map((pg, i) => pg.list.length === 0 ? null : (
             <div key={i}>
-              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5, color: 'var(--c64748b)', textTransform: 'uppercase', marginBottom: 8 }}>{pg.label} · {pg.list.length}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.5, color: 'var(--c64748b)', textTransform: 'uppercase', marginBottom: 8 }}>{pg.label} · {pg.list.length}</div>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(258px, 1fr))', gap: 10 }}>
                 {pg.list.map((b) => {
                   const m = statusBucket(b.status);
@@ -774,22 +774,22 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                           <span style={{ width: 8, height: 8, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
-                          <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
+                          <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
                           <span style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>· {durMin}m</span>
                         </span>
-                        <span style={{ flexShrink: 0, color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '1px 8px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
+                        <span style={{ flexShrink: 0, color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '1px 8px', fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
                       </div>
-                      <div style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--cf8fafc)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
+                      <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--cf8fafc)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                         <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{svcLabel(b) || '—'}{b.groupId ? ' 👥' : ''}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</span>
                         <OriginChip b={b} t={t} />
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 1 }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                          <span style={{ width: 22, height: 22, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
+                          <span style={{ width: 22, height: 22, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 11, fontWeight: 600, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
                           <span style={{ fontSize: 12, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tech}</span>
                         </span>
-                        <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--ink-good)', flexShrink: 0 }}>{formatPrice(b.priceCents, b.currency)}</span>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink-good)', flexShrink: 0 }}>{formatPrice(b.priceCents, b.currency)}</span>
                       </div>
                     </div>
                   );
@@ -853,7 +853,7 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
         </div>
 
         <div style={{ textAlign: 'center', marginBottom: 16 }}>
-          <div style={{ fontSize: 20, fontWeight: 700 }}>{b.service?.name ?? t('cal.service')}</div>
+          <div style={{ fontSize: 20, fontWeight: 600 }}>{b.service?.name ?? t('cal.service')}</div>
           <div style={{ marginTop: 8 }}>
             <StatusBadge status={b.status} />
           </div>
@@ -945,7 +945,7 @@ function StatusPicker({ b, onAction }: { b: Booking; onAction: (id: string, path
   useEffect(() => { setNext(b.status); }, [b.status, b.id]);
   return (
     <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, padding: 10, marginTop: 12, background: 'var(--c0f172a)' }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 7 }}>{t('cal.setStatus')}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c94a3b8)', marginBottom: 7 }}>{t('cal.setStatus')}</div>
       <div style={{ display: 'flex', gap: 6 }}>
         <select value={next} onChange={(e) => setNext(e.target.value)} style={{ ...ui.input, flex: 1, padding: '7px 8px', fontSize: 13 }}>
           {ALL_STATUSES.map((sName) => <option key={sName} value={sName}>{t(`cal.st${sName}`)}</option>)}
@@ -994,7 +994,7 @@ function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path:
     <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, padding: 10, marginTop: 8, background: 'var(--c0f172a)' }}>
       <button
         onClick={() => setOpen((v) => !v)}
-        style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}
+        style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}
       >
         {t('cal.editVisit')}<span style={{ marginLeft: 'auto', color: 'var(--c64748b)' }}>{open ? '▴' : '▾'}</span>
       </button>
@@ -1023,7 +1023,7 @@ function VisitEditor({ b, onAction }: { b: Booking; onAction: (id: string, path:
               <button key={m} onClick={() => setMinutes((v) => v + m)} style={chipBtn}>+{m}m</button>
             ))}
             <button onClick={() => setMinutes(0)} style={chipBtn} disabled={minutes === 0}>↺</button>
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: minutes ? 'var(--ink-good)' : 'var(--c475569)', width: 46, textAlign: 'right' }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: minutes ? 'var(--ink-good)' : 'var(--c475569)', width: 46, textAlign: 'right' }}>
               {minutes ? `+${minutes}m` : '—'}
             </span>
           </div>
@@ -1113,7 +1113,7 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 13.5 }}>
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {b.service?.name ?? '—'}
-          <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--c818cf8)', border: '1px solid var(--c3730a3)', borderRadius: 6, padding: '1px 5px', verticalAlign: 'middle' }}>
+          <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 600, color: 'var(--c818cf8)', border: '1px solid var(--c3730a3)', borderRadius: 6, padding: '1px 5px', verticalAlign: 'middle' }}>
             {tr('cal.lineMain', lang)}
           </span>
         </span>
@@ -1207,7 +1207,7 @@ function OriginChip({ b, t }: { b: Booking; t: (k: string) => string }) {
   if (!sm && !dm) return null;
   return (
     <span title={[sm ? t(sm.key) : '', dm ? t(dm.key) : ''].filter(Boolean).join(' · ')}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0, fontSize: 10, fontWeight: 700,
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0, fontSize: 10, fontWeight: 600,
         color: 'var(--c93a4bd)', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 7px', whiteSpace: 'nowrap' }}>
       {sm && <span>{sm.icon}</span>}
       {sm && <span>{t(sm.key)}</span>}
@@ -1241,7 +1241,7 @@ const navBtn: React.CSSProperties = {
 };
 
 const pickerBtn: React.CSSProperties = {
-  padding: '6px 12px', borderRadius: 8, border: '1px solid #4f46e5', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 13, fontWeight: 700, cursor: 'pointer', minWidth: 128, textAlign: 'center', whiteSpace: 'nowrap',
+  padding: '6px 12px', borderRadius: 8, border: '1px solid #4f46e5', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 13, fontWeight: 600, cursor: 'pointer', minWidth: 128, textAlign: 'center', whiteSpace: 'nowrap',
 };
 
 // Zero-size but still rendered, so the browser's native month/date picker

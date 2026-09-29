@@ -136,7 +136,7 @@ function Inner() {
       {tab === 'plan' && native && (
         <div style={{ ...ui.card, marginBottom: 18 }}>
           <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('bl.currentPlan')}</div>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>{current?.planName ?? sum?.planName ?? '—'}</div>
+          <div style={{ fontSize: 22, fontWeight: 600 }}>{current?.planName ?? sum?.planName ?? '—'}</div>
           <p style={{ fontSize: 13.5, color: 'var(--c94a3b8)', lineHeight: 1.55, margin: '10px 0 0' }}>
             {lang === 'vi'
               ? 'Gói dịch vụ và thanh toán được quản lý trên trang web Lumio Booking (đăng nhập bằng tài khoản này). Ứng dụng này dùng để vận hành tiệm.'
@@ -150,7 +150,7 @@ function Inner() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('bl.currentPlan')}</div>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>{current?.planName ?? sum?.planName ?? '—'}</div>
+            <div style={{ fontSize: 22, fontWeight: 600 }}>{current?.planName ?? sum?.planName ?? '—'}</div>
           </div>
           <button onClick={portal} disabled={busy} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('bl.manageCard')}</button>
         </div>
@@ -199,11 +199,11 @@ function Inner() {
             const prorateNow = isUpgrade && remainFrac > 0 ? Math.max(0, Math.round((cents - curCents) * remainFrac)) : 0;
             return (
               <div key={p.id} style={{ ...ui.card, border: p.highlighted ? '2px solid #6366f1' : '1px solid var(--c334155)' }}>
-                {p.highlighted && <div style={{ display: 'inline-block', background: 'var(--c312e81)', color: 'var(--cc7d2fe)', fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 999, marginBottom: 8 }}>{t('bl.mostPopular')}</div>}
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{p.name}</div>
+                {p.highlighted && <div style={{ display: 'inline-block', background: 'var(--c312e81)', color: 'var(--cc7d2fe)', fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 999, marginBottom: 8 }}>{t('bl.mostPopular')}</div>}
+                <div style={{ fontSize: 18, fontWeight: 600 }}>{p.name}</div>
                 {p.tagline && <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 2 }}>{p.tagline}</div>}
                 <div style={{ margin: '12px 0' }}>
-                  <span style={{ fontSize: 30, fontWeight: 800 }}>{money(cents, p.currency)}</span>
+                  <span style={{ fontSize: 30, fontWeight: 700 }}>{money(cents, p.currency)}</span>
                   <span style={{ color: 'var(--c94a3b8)', fontSize: 14 }}>/{yearly ? t('bl.perYr') : t('bl.perMo')}</span>
                 </div>
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -278,7 +278,7 @@ function InvoicesList({ token, lang }: { token: string; lang: Lang }) {
         return (
           <div key={iv.id} style={{ ...ui.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>
                 {iv.type === 'RENEWAL' ? t('bl.invRenewal') : t('bl.invOverage')} · <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}>#{iv.number}</span>
               </div>
               <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 3 }}>

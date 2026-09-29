@@ -119,7 +119,7 @@ export function PwaRegister() {
         style={{
           flexShrink: 0, whiteSpace: 'nowrap',
           border: 'none', borderRadius: 10, padding: '7px 14px', cursor: 'pointer',
-          background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700,
+          background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 600,
         }}
       >
         {L('Tải lại', 'Reload')}

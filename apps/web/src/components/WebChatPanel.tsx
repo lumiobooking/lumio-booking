@@ -60,11 +60,11 @@ export function WebChatPanel({ token }: { token: string | null }) {
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ fontWeight: 700, fontSize: 15.5, color: 'var(--ce2e8f0)' }}>
+        <div style={{ fontWeight: 600, fontSize: 15.5, color: 'var(--ce2e8f0)' }}>
           🌐 {T('Chat trên website của tiệm', 'Chat on your website')}
         </div>
         {st.enabled
-          ? <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-good)' }}>● {T('ĐANG BẬT', 'ON')}{st.conversations ? ` · ${st.conversations} ${T('cuộc trò chuyện', 'conversations')}` : ''}</span>
+          ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-good)' }}>● {T('ĐANG BẬT', 'ON')}{st.conversations ? ` · ${st.conversations} ${T('cuộc trò chuyện', 'conversations')}` : ''}</span>
           : <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{T('đang tắt', 'off')}</span>}
         <button
           onClick={() => save({ enabled: !st.enabled }, st.enabled ? T('Đã tắt chat trên website.', 'Website chat is off.') : T('Đã bật — dán đoạn mã bên dưới vào website là chạy.', 'On — paste the line below into your site.'))}

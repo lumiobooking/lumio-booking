@@ -123,17 +123,17 @@ export function OnboardingReport({ token }: { token: string | null }) {
           <span style={{
             width: 28, height: 28, borderRadius: 8, flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: band.fg, color: '#0f172a', fontSize: 15, fontWeight: 800,
+            background: band.fg, color: '#0f172a', fontSize: 15, fontWeight: 700,
           }}>{band.icon}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: band.fg }}>{band.label}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: band.fg }}>{band.label}</div>
             <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 5 }}>{r.confidenceNote}</div>
           </div>
         </div>
 
         <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--line)', display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{r.shopName}</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{r.shopName}</div>
             <div style={{ fontSize: 12.5, color: 'var(--c64748b)', marginTop: 2 }}>{r.trade} · {r.where}</div>
           </div>
           <button
@@ -197,7 +197,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
             { n: r.start?.unknown ?? 0, l: 'chưa thấy', c: '#f59e0b' },
           ].map((x) => (
             <div key={x.l} style={{ flex: '1 1 100px', padding: '10px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--line)' }}>
-              <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: x.c }}>{x.n}</div>
+              <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 600, color: x.c }}>{x.n}</div>
               <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2 }}>{x.l}</div>
             </div>
           ))}
@@ -224,7 +224,7 @@ export function OnboardingReport({ token }: { token: string | null }) {
           {weeks.map((w) => (
             <div key={w.week} style={{ padding: '11px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--line)' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ca5b4fc)' }}>Tuần {w.week} — {w.focus}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ca5b4fc)' }}>Tuần {w.week} — {w.focus}</span>
                 <span style={{ fontFamily: mono, fontSize: 11.5, color: 'var(--c64748b)' }}>{w.minutes} phút</span>
               </div>
               {w.tasks.length === 0 ? (

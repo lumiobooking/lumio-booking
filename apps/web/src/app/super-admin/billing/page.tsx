@@ -130,7 +130,7 @@ export default function GatewaysPage() {
   }
 
   const copy = (t: string) => navigator.clipboard?.writeText(t).then(() => { setMsg('✓ Webhook URL copied'); }).catch(() => {});
-  const dot = (on: boolean) => <span style={{ color: on ? 'var(--ink-good)' : 'var(--ink-bad)', fontWeight: 700 }}>● {on ? 'Connected' : 'Not set'}</span>;
+  const dot = (on: boolean) => <span style={{ color: on ? 'var(--ink-good)' : 'var(--ink-bad)', fontWeight: 600 }}>● {on ? 'Connected' : 'Not set'}</span>;
 
   return (
     <main style={{ maxWidth: 820, margin: '0 auto', padding: '32px 24px', color: 'var(--ce2e8f0)' }}>
@@ -234,7 +234,7 @@ export default function GatewaysPage() {
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', marginBottom: 4 }}>
-              <span style={{ fontSize: 20, fontWeight: 800, color: '#2563eb', letterSpacing: '-0.4px' }}>Lumio Agency</span>
+              <span style={{ fontSize: 20, fontWeight: 700, color: '#2563eb', letterSpacing: '-0.4px' }}>Lumio Agency</span>
               <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
                 Email header. It is a text wordmark, not an image — image logos get blocked or squashed by mail clients, so the header used to look broken. Text renders the same everywhere.
               </span>
@@ -265,7 +265,7 @@ export default function GatewaysPage() {
                   background: 'var(--c0f172a)', border: `1px solid ${r.ok ? 'var(--c166534)' : 'var(--c7f1d1d)'}` }}>
                   <span style={{ flexShrink: 0, fontSize: 14 }}>{r.ok ? '✅' : '❌'}</span>
                   <span style={{ minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{label}</span>
+                    <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{label}</span>
                     <span style={{ display: 'block', fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55, marginTop: 2 }}>{r.detail}</span>
                   </span>
                 </div>

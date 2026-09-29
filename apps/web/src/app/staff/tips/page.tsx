@@ -122,7 +122,7 @@ function Inner() {
 
       {/* Editor */}
       <section style={{ ...ui.card, marginTop: 22 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>💸 Your tip details</div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>💸 Your tip details</div>
         <p style={{ color: 'var(--c64748b)', fontSize: 12.5, margin: '0 0 14px' }}>Upload your Venmo / Zelle / Cash App QR and (optionally) your handle. This stays in sync with what your manager sets up.</p>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -176,8 +176,8 @@ function TipCard({ name, avatar, qr, handle, big = false }: { name: string; avat
         {avatar
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={avatar} alt={name} width={66} height={66} style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.35)', boxShadow: '0 6px 18px rgba(0,0,0,0.4)' }} />
-          : <span style={{ width: 66, height: 66, borderRadius: '50%', background: 'linear-gradient(135deg,#8b5cf6,#6366f1)', color: '#fff', display: 'inline-grid', placeItems: 'center', fontSize: 26, fontWeight: 800, border: '2px solid rgba(255,255,255,0.35)' }}>{first.charAt(0).toUpperCase()}</span>}
-        <div style={{ fontSize: big ? 24 : 21, fontWeight: 800, color: 'var(--cf8fafc)', marginTop: 10, letterSpacing: 0.2 }}>{name}</div>
+          : <span style={{ width: 66, height: 66, borderRadius: '50%', background: 'linear-gradient(135deg,#8b5cf6,#6366f1)', color: '#fff', display: 'inline-grid', placeItems: 'center', fontSize: 26, fontWeight: 700, border: '2px solid rgba(255,255,255,0.35)' }}>{first.charAt(0).toUpperCase()}</span>}
+        <div style={{ fontSize: big ? 24 : 21, fontWeight: 700, color: 'var(--cf8fafc)', marginTop: 10, letterSpacing: 0.2 }}>{name}</div>
         <div style={{ fontSize: 13.5, color: '#c4b5fd', marginTop: 4, fontWeight: 500 }}>Thank you for letting me pamper you 💜</div>
 
         <div style={{ marginTop: 18, display: 'grid', placeItems: 'center' }}>

@@ -124,7 +124,7 @@ function Kpi({ label, value, accent }: { label: string; value: string; accent: s
   return (
     <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 16, borderLeft: `3px solid ${accent}` }}>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>{value}</div>
+      <div style={{ fontSize: 24, fontWeight: 600, marginTop: 4 }}>{value}</div>
     </div>
   );
 }

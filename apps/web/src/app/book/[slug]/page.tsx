@@ -915,7 +915,7 @@ export default function PublicBookingPage() {
           )}
           {step === 1 && <Logo url={salon?.branding?.logoUrl} scale={salon?.branding?.logoScale} size={38} />}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: isMobile ? 16 : 19, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontWeight: 700, fontSize: isMobile ? 16 : 19, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {step === 1 ? (salon?.name ?? barTitle) : barTitle}
             </div>
             {step === 1 && (
@@ -927,13 +927,13 @@ export default function PublicBookingPage() {
           </div>
           {step === 1 && salon?.rating && (
             <span title={`${salon.rating.value} out of 5 · ${salon.rating.count} reviews`}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px', borderRadius: 999, background: 'rgba(255,255,255,0.16)', color: '#fff', fontSize: 13, fontWeight: 800, flexShrink: 0, whiteSpace: 'nowrap' }}>
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px', borderRadius: 999, background: 'rgba(255,255,255,0.16)', color: '#fff', fontSize: 13, fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap' }}>
               <span style={{ color: '#fde047' }}>★</span>{salon.rating.value}
-              <span style={{ opacity: 0.75, fontWeight: 700 }}>· {salon.rating.count}</span>
+              <span style={{ opacity: 0.75, fontWeight: 600 }}>· {salon.rating.count}</span>
             </span>
           )}
           {step === 3 && chooseStaff && (
-            <button onClick={() => setStep(2)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px 6px 6px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+            <button onClick={() => setStep(2)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px 6px 6px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
               <Avatar name={employee ? `${employee.firstName} ${employee.lastName ?? ''}` : 'Any'} url={employee?.avatarUrl ?? null} size={26} accent={accent} />
               {employee ? employee.firstName : bt('Any nail tech')} ▾
             </button>
@@ -953,7 +953,7 @@ export default function PublicBookingPage() {
                 <div style={{ textAlign: 'left', margin: '10px 0 6px', border: '1px solid #e9edf4', borderRadius: 12, overflow: 'hidden' }}>
                   {bookedVisits.map((label, i) => (
                     <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 13px', borderTop: i ? '1px solid #eef1f6' : 'none', fontSize: 13.5, color: 'var(--c334155)' }}>
-                      <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
+                      <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span>
                       <span>{label}</span>
                     </div>
                   ))}
@@ -985,9 +985,9 @@ export default function PublicBookingPage() {
               {visitCart.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                   {visitCart.map((v, i) => (
-                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: tint(accent, 0.07), border: `1.4px solid ${tint(accent, 0.5)}`, color: INK, borderRadius: 999, padding: '7px 13px', fontSize: 12.5, fontWeight: 700, maxWidth: '100%' }}>
+                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: tint(accent, 0.07), border: `1.4px solid ${tint(accent, 0.5)}`, color: INK, borderRadius: 999, padding: '7px 13px', fontSize: 12.5, fontWeight: 600, maxWidth: '100%' }}>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📅 {v.label}</span>
-                      <span style={{ color: accent, fontWeight: 800, flexShrink: 0 }}>{fmt(v.totalCents)}</span>
+                      <span style={{ color: accent, fontWeight: 700, flexShrink: 0 }}>{fmt(v.totalCents)}</span>
                       <button type="button" onClick={() => removeCartVisit(i)} aria-label={bt("Remove visit")}
                         style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>✕</button>
                     </span>
@@ -996,7 +996,7 @@ export default function PublicBookingPage() {
                 </div>
               )}
               <Progress step={step} accent={accent} allowStaff={chooseStaff} />
-              <h1 key={step} className="lumio-step" style={{ fontSize: isMobile ? 22 : 27, fontWeight: 800, color: INK, margin: '10px 0 4px' }}>{stepTitle}</h1>
+              <h1 key={step} className="lumio-step" style={{ fontSize: isMobile ? 22 : 27, fontWeight: 700, color: INK, margin: '10px 0 4px' }}>{stepTitle}</h1>
               {stepHint && <p style={{ margin: '0 0 14px', fontSize: 13.5, color: '#8fa0bb', lineHeight: 1.5 }}>{stepHint}</p>}
 
               {step === 1 && (
@@ -1026,7 +1026,7 @@ export default function PublicBookingPage() {
                       const on = activeGuest === i;
                       return (
                         <button key={i} type="button" onClick={() => setActiveGuest(i)}
-                          style={{ borderRadius: 12, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                          style={{ borderRadius: 12, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
                             border: `1.6px solid ${on ? accent : '#e9edf4'}`,
                             background: on ? tint(accent, 0.07) : '#fff', color: on ? accent : '#7d8ba4' }}>
                           {i === 0 ? '👤 You' : `👥 ${extraGuests[i - 1].name || `Guest ${i + 1}`}`}
@@ -1045,7 +1045,7 @@ export default function PublicBookingPage() {
                     {visitCart.length === 0 && extraGuests.length < MAX_GUESTS - 1 && (
                       <button type="button"
                         onClick={() => { setExtraGuests((gs) => [...gs, { name: '', serviceIds: [] }]); setActiveGuest(extraGuests.length + 1); setStaffId(''); setSlot(null); }}
-                        style={{ borderRadius: 12, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                        style={{ borderRadius: 12, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
                           border: `1.6px dashed ${tint(accent, 0.6)}`, background: tint(accent, 0.03), color: accent }}>
                         ＋ {isGroup ? bt("Add guest") : bt("Bringing friends?")}
                       </button>
@@ -1084,7 +1084,7 @@ export default function PublicBookingPage() {
                               style={{ ...rowCard, borderColor: on ? accent : '#e6eaf2', background: on ? '#fffaf0' : '#fff' }}>
                               <span style={{ flex: 1, textAlign: 'left' }}>
                                 <span style={rowTitle}>{a.name}</span>
-                                <span style={rowMeta}>{a.durationMinutes > 0 && <>⏳ {a.durationMinutes} min <span style={{ color: 'var(--ccbd5e1)' }}>|</span> </>}<b style={{ color: accent }}>+{salon?.cardFee?.enabled && salon.cardFee.percent > 0 ? <>💵 </> : null}{fmt(a.priceCents)}</b>{salon?.cardFee?.enabled && salon.cardFee.percent > 0 && <span style={{ color: '#8fa0bb', fontWeight: 700 }}> · 💳 +{fmt(Math.round(a.priceCents * (1 + salon.cardFee.percent / 100)))}</span>}</span>
+                                <span style={rowMeta}>{a.durationMinutes > 0 && <>⏳ {a.durationMinutes} min <span style={{ color: 'var(--ccbd5e1)' }}>|</span> </>}<b style={{ color: accent }}>+{salon?.cardFee?.enabled && salon.cardFee.percent > 0 ? <>💵 </> : null}{fmt(a.priceCents)}</b>{salon?.cardFee?.enabled && salon.cardFee.percent > 0 && <span style={{ color: '#8fa0bb', fontWeight: 600 }}> · 💳 +{fmt(Math.round(a.priceCents * (1 + salon.cardFee.percent / 100)))}</span>}</span>
                               </span>
                               <PlusCheck on={on} accent={accent} />
                             </button>
@@ -1147,7 +1147,7 @@ export default function PublicBookingPage() {
                 {!isGroup && <button type="button" onClick={addAnotherVisit}
                   style={{ width: '100%', marginTop: 10, padding: '13px 16px', borderRadius: 999, cursor: 'pointer',
                     border: `1.6px dashed ${tint(accent, 0.65)}`, background: tint(accent, 0.04),
-                    color: accent, fontWeight: 700, fontSize: 13.5 }}>
+                    color: accent, fontWeight: 600, fontSize: 13.5 }}>
                   {bt('＋ Add another visit (different day or time)')}
                 </button>}
                 {visitCart.length > 0 && (
@@ -1187,7 +1187,7 @@ export default function PublicBookingPage() {
         {asPage && (
           <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
             style={{ display: 'block', textAlign: 'center', padding: isMobile ? '14px 0 calc(104px + env(safe-area-inset-bottom, 0px))' : '16px 0 8px', fontSize: 11.5, color: 'var(--c94a3b8)', textDecoration: 'none' }}>
-            {bt('Powered by')} <span style={{ color: accent, fontWeight: 700 }}>Lumio Booking</span>
+            {bt('Powered by')} <span style={{ color: accent, fontWeight: 600 }}>Lumio Booking</span>
           </a>
         )}
       </div>
@@ -1258,7 +1258,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
       <div style={{ background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`, color: '#fff', padding: '16px 18px', display: 'flex', gap: 13, alignItems: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22)' }}>
         <Logo url={salon?.branding?.logoUrl} scale={salon?.branding?.logoScale} size={46} />
         <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: -0.2, lineHeight: 1.2 }}>{salon?.name}</div>
+          <div style={{ fontWeight: 700, fontSize: 16, letterSpacing: -0.2, lineHeight: 1.2 }}>{salon?.name}</div>
           {salon?.address && <div style={{ fontSize: 11.5, opacity: 0.78, lineHeight: 1.45 }}>{salon.address}</div>}
           {salon?.contactPhone && <div style={{ fontSize: 11.5, opacity: 0.78, letterSpacing: 0.2 }}>{salon.contactPhone}</div>}
         </div>
@@ -1275,12 +1275,12 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
           <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: '1px solid #eef1f6' }}>
             <CartThumb url={l.imageUrl} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: INK, lineHeight: 1.35 }}>{l.name}</div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: INK, lineHeight: 1.35 }}>{l.name}</div>
               <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 3 }}>
                 {l.durationMinutes > 0 ? btf('{n} min', { n: l.durationMinutes }) : ''}{employee && step >= 3 ? <>{l.durationMinutes > 0 ? ' · ' : ''}<b style={{ color: accent }}>{employee.firstName}</b></> : null}
               </div>
             </div>
-            <div style={{ fontSize: 13.5, fontWeight: 800, color: accent, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: accent, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
             <button onClick={() => onRemove(l.id)} aria-label={bt("Remove")} style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', background: '#e8edf6', color: INK, fontSize: 12, cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}>✕</button>
           </div>
         ))}
@@ -1288,18 +1288,18 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
 
       <div style={{ padding: '12px 16px 16px', borderTop: '1px solid #eef1f6', flexShrink: 0, background: '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ fontWeight: 800, color: INK, fontSize: 15 }}>{grand ? bt(grand.kind === 'visits' ? 'This visit' : 'Your services') : bt("Total")}</span>
+          <span style={{ fontWeight: 700, color: INK, fontSize: 15 }}>{grand ? bt(grand.kind === 'visits' ? 'This visit' : 'Your services') : bt("Total")}</span>
           <span>
             {anyDiscount && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', fontSize: 13, marginRight: 8 }}>{fmt(fullCents)}</span>}
-            <AnimatedMoney cents={totalCents} fmt={fmt} style={{ fontWeight: 800, color: INK, fontSize: 17 }} />
+            <AnimatedMoney cents={totalCents} fmt={fmt} style={{ fontWeight: 700, color: INK, fontSize: 17 }} />
           </span>
         </div>
         {grand && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 8, padding: '9px 12px', borderRadius: 10, background: tint(accent, 0.08), border: `1.4px solid ${tint(accent, 0.4)}` }}>
-            <span style={{ fontWeight: 800, color: INK, fontSize: 13.5 }}>
+            <span style={{ fontWeight: 700, color: INK, fontSize: 13.5 }}>
               {grand.kind === 'visits' ? `🧾 Total · ${grand.count} visits` : `👥 Total · group of ${grand.count}`}
             </span>
-            <AnimatedMoney cents={grand.cents} fmt={fmt} style={{ fontWeight: 800, color: accent, fontSize: 18 }} />
+            <AnimatedMoney cents={grand.cents} fmt={fmt} style={{ fontWeight: 700, color: accent, fontSize: 18 }} />
           </div>
         )}
         {totalDuration > 0 && (
@@ -1308,7 +1308,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
           </div>
         )}
         {anyDiscount && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, padding: '7px 10px', borderRadius: 10, background: '#ecfdf5', color: '#065f46', fontSize: 12.5, fontWeight: 800 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, padding: '7px 10px', borderRadius: 10, background: '#ecfdf5', color: '#065f46', fontSize: 12.5, fontWeight: 700 }}>
             <span>🎉 You save</span><span>{fmt(fullCents - totalCents)}</span>
           </div>
         )}
@@ -1362,7 +1362,7 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
         <div style={{ background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`, color: '#fff', padding: '16px 16px 18px', display: 'flex', gap: 12, alignItems: 'center' }}>
           <Logo url={salon?.branding?.logoUrl} scale={salon?.branding?.logoScale} size={44} />
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{salon?.name}</div>
+            <div style={{ fontWeight: 700, fontSize: 17, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{salon?.name}</div>
             <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c4ade80)' }} className="lumio-dot" />
               {bt('Book online · confirmed in seconds')}
@@ -1372,7 +1372,7 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
 
         <div style={{ padding: '16px 16px 18px' }}>
           {soon && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, background: '#ecfdf5', border: '1px solid var(--cbbf7d0)', color: '#166534', fontSize: 12.5, fontWeight: 800, marginBottom: 12 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999, background: '#ecfdf5', border: '1px solid var(--cbbf7d0)', color: '#166534', fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} className="lumio-dot" />
               {btf('Next opening {when}', { when: soon })}
             </div>
@@ -1390,7 +1390,7 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
           </button>
           {salon?.contactPhone && (
             <a href={`tel:${salon.contactPhone.replace(/[^0-9+]/g, '')}`}
-              style={{ display: 'block', textAlign: 'center', marginTop: 10, padding: '11px', borderRadius: 999, border: `1px solid ${tint(accent, 0.30)}`, color: accent, fontWeight: 700, fontSize: 13.5, textDecoration: 'none' }}>
+              style={{ display: 'block', textAlign: 'center', marginTop: 10, padding: '11px', borderRadius: 999, border: `1px solid ${tint(accent, 0.30)}`, color: accent, fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>
               📞 Call {salon.contactPhone}
             </a>
           )}
@@ -1413,7 +1413,7 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
     <div style={{ padding: '16px 2px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
         <div style={{ width: 54, height: 54, borderRadius: '50%', background: tint(accent, 0.10), color: accent, display: 'grid', placeItems: 'center', fontSize: 24, margin: '0 auto 10px' }}>🛍️</div>
-        <div style={{ fontSize: 14.5, fontWeight: 800, color: INK }}>{bt("Pick a service to start")}</div>
+        <div style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>{bt("Pick a service to start")}</div>
         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4, lineHeight: 1.5 }}>
           Tap <b style={{ color: accent }}>＋</b> on any service. You can add more than one.
         </div>
@@ -1423,7 +1423,7 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
           <div key={title} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 12, background: SOFT }}>
             <span style={{ fontSize: 16, lineHeight: 1.2 }}>{icon}</span>
             <span>
-              <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: INK }}>{title}</span>
+              <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: INK }}>{title}</span>
               <span style={{ display: 'block', fontSize: 12, color: '#8fa0bb', marginTop: 2, lineHeight: 1.45 }}>{sub}</span>
             </span>
           </div>
@@ -1431,7 +1431,7 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
       </div>
       {salon?.contactPhone && (
         <a href={`tel:${salon.contactPhone.replace(/[^0-9+]/g, '')}`}
-          style={{ marginTop: 12, display: 'block', textAlign: 'center', padding: '11px 12px', borderRadius: 12, border: `1px solid ${tint(accent, 0.35)}`, color: accent, fontWeight: 700, fontSize: 13, textDecoration: 'none' }}>
+          style={{ marginTop: 12, display: 'block', textAlign: 'center', padding: '11px 12px', borderRadius: 12, border: `1px solid ${tint(accent, 0.35)}`, color: accent, fontWeight: 600, fontSize: 13, textDecoration: 'none' }}>
           📞 Rather talk to us? {salon.contactPhone}
         </a>
       )}
@@ -1493,7 +1493,7 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
         🛍️
         {count > 0 && (
           <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 19, height: 19, padding: '0 5px', borderRadius: 999,
-            background: accent, color: '#fff', fontSize: 11, fontWeight: 800, display: 'grid', placeItems: 'center',
+            background: accent, color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center',
             boxShadow: `0 4px 10px -4px ${tint(accent, 0.95)}` }}>{count}</span>
         )}
       </span>
@@ -1501,7 +1501,7 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
         <div style={{ fontSize: 12, color: '#8fa0bb', fontWeight: 600 }}>
           {count === 0 ? bt('No service yet') : btf(count === 1 ? '{n} service' : '{n} services', { n: count })}{durationMinutes > 0 && <> · 🕐 {fmtDur(durationMinutes)}</>}{grandLabel && <> · <b style={{ color: INK }}>{btf('total for {label}', { label: grandLabel })}</b></>}
         </div>
-        <div style={{ fontSize: 18, fontWeight: 800, color: INK, letterSpacing: -0.3 }}>{fmt(totalCents)}</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: INK, letterSpacing: -0.3 }}>{fmt(totalCents)}</div>
       </div>
       <button onClick={onContinue} disabled={!canContinue} className="lumio-cta"
         style={{ ...ctaBtn, width: 'auto', padding: '13px 20px', fontSize: 14.5, whiteSpace: 'nowrap',
@@ -1563,7 +1563,7 @@ function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules
 
   if (plan.kind === 'off') return null;
 
-  const pill = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: '#fff', fontSize: 12.5, fontWeight: 700 } as React.CSSProperties;
+  const pill = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: '#fff', fontSize: 12.5, fontWeight: 600 } as React.CSSProperties;
   const minsToClock = (m: number) => fmtTime(new Date(2000, 0, 1, Math.floor(m / 60), m % 60));
 
   return (
@@ -1577,7 +1577,7 @@ function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules
         // Times the owner typed in. Nothing here can be contradicted by the
         // booking screen, and it says nothing about how busy the shop is.
         plan.windows.map((w, i) => (
-          <span key={i} style={{ ...pill, border: '1px solid #e9edf4', color: 'var(--c166534)', fontWeight: 800 }}>
+          <span key={i} style={{ ...pill, border: '1px solid #e9edf4', color: 'var(--c166534)', fontWeight: 700 }}>
             🕐 {btf('Open today {from} – {to}', { from: minsToClock(w.open), to: minsToClock(w.close) })}
           </span>
         ))
@@ -1587,7 +1587,7 @@ function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules
         </span>
       ) : info ? (
         <>
-          <span style={{ ...pill, border: '1px solid #dcfce7', color: 'var(--c166534)', fontWeight: 800, boxShadow: '0 2px 8px -5px rgba(15,42,82,.4)' }}>
+          <span style={{ ...pill, border: '1px solid #dcfce7', color: 'var(--c166534)', fontWeight: 700, boxShadow: '0 2px 8px -5px rgba(15,42,82,.4)' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} className="lumio-dot" />
             {btf('Next opening {when} at {time}', { when: info.when, time: info.time })}
           </span>
@@ -1598,7 +1598,7 @@ function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules
           )}
         </>
       ) : (
-        <span style={{ fontSize: 12.5, color: '#5b6b85', fontWeight: 700 }}>{bt('Pick a service — we’ll show you every free time.')}</span>
+        <span style={{ fontSize: 12.5, color: '#5b6b85', fontWeight: 600 }}>{bt('Pick a service — we’ll show you every free time.')}</span>
       )}
       <span style={{ marginLeft: 'auto', fontSize: 12, color: '#8fa0bb' }}>{bt("Choose the time after your service \u2728")}</span>
     </div>
@@ -1732,7 +1732,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
           const on = active === g.id && !search;
           return (
             <button key={g.id} data-tab={g.id} type="button" onClick={() => goTo(g.id)}
-              style={{ padding: '10px 17px', borderRadius: 999, whiteSpace: 'nowrap', cursor: 'pointer', fontSize: 13.5, fontWeight: 700,
+              style={{ padding: '10px 17px', borderRadius: 999, whiteSpace: 'nowrap', cursor: 'pointer', fontSize: 13.5, fontWeight: 600,
                 border: `1px solid ${on ? 'transparent' : '#e9edf4'}`,
                 background: on ? `linear-gradient(120deg, ${accent}, ${shade(accent, 0.25)})` : '#fff',
                 color: on ? '#fff' : '#5b6b85',
@@ -1760,7 +1760,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
       )}
 
       {dualPct > 0 && (
-        <div style={{ margin: '2px 0 14px', fontSize: 12.5, color: '#5b6b85', fontWeight: 700, background: '#f7f9fc', border: '1px solid #e9edf4', borderRadius: 10, padding: '8px 13px', display: 'inline-block' }}>
+        <div style={{ margin: '2px 0 14px', fontSize: 12.5, color: '#5b6b85', fontWeight: 600, background: '#f7f9fc', border: '1px solid #e9edf4', borderRadius: 10, padding: '8px 13px', display: 'inline-block' }}>
           {btf('💵 Cash price · 💳 Card price (+{percent}%)', { percent: dualPct })}
         </div>
       )}
@@ -1787,8 +1787,8 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                   <span style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
                     <span style={rowTitle}>
                       {s.name}
-                      {s.isFeatured && <span style={{ marginLeft: 8, background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3 }}>{bt('POPULAR')}</span>}
-                      {disc > 0 && <span style={{ marginLeft: 8, background: '#fee2e2', color: '#b91c1c', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 800 }}>-{disc}%</span>}
+                      {s.isFeatured && <span style={{ marginLeft: 8, background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.3 }}>{bt('POPULAR')}</span>}
+                      {disc > 0 && <span style={{ marginLeft: 8, background: '#fee2e2', color: '#b91c1c', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 700 }}>-{disc}%</span>}
                     </span>
                     {/* The salon's own words about the service. Two clamped
                         lines: enough to say what's included ("massage, hot
@@ -1800,7 +1800,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                       {dualPct > 0 ? (
                         <>
                           <b style={{ color: accent }}>{s.priceFrom ? 'from ' : ''}💵 {fmt(svcNetCents(s))}</b>
-                          <span style={{ color: '#8fa0bb', fontWeight: 700 }}> · 💳 {fmt(toCard(svcNetCents(s)))}</span>
+                          <span style={{ color: '#8fa0bb', fontWeight: 600 }}> · 💳 {fmt(toCard(svcNetCents(s)))}</span>
                         </>
                       ) : (
                         <b style={{ color: accent }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</b>
@@ -1887,7 +1887,7 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
               cursor: ok ? 'pointer' : 'not-allowed',
               boxShadow: on ? `0 10px 26px -16px ${tint(accent, 0.9)}, 0 0 0 3px ${tint(accent, 0.12)}` : rowCard.boxShadow }}>
             <Avatar name={label} url={s.avatarUrl} size={46} accent={accent} />
-            <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 700, color: INK, marginLeft: 12, minWidth: 0 }}>
+            <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 600, color: INK, marginLeft: 12, minWidth: 0 }}>
               {s.id ? label : bt('Any nail tech')}
               {!s.id && <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--c94a3b8)', marginTop: 2 }}>{bt("First one free at your time")}</span>}
               {s.id && !ok && <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#b0532f', marginTop: 2 }}>{btf('Doesn’t offer {what}', { what: missing.join(', ') || bt('this service') })}</span>}
@@ -1895,7 +1895,7 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
             </span>
             {on
               ? <span style={{ width: 30, height: 30, borderRadius: '50%', background: accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 15, flexShrink: 0 }}>✓</span>
-              : <span style={{ padding: '8px 18px', borderRadius: 999, border: `1px solid ${ok ? accent : '#e2e8f2'}`, color: ok ? accent : '#b6bfcd', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{ok ? bt('Select') : '—'}</span>}
+              : <span style={{ padding: '8px 18px', borderRadius: 999, border: `1px solid ${ok ? accent : '#e2e8f2'}`, color: ok ? accent : '#b6bfcd', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{ok ? bt('Select') : '—'}</span>}
           </button>
         );
       })}
@@ -2057,7 +2057,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
     <div>
       {/* month + jump-to-date */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ fontWeight: 800, color: INK, fontSize: 15 }}>
+        <div style={{ fontWeight: 700, color: INK, fontSize: 15 }}>
           {selectedDate && <span style={{ color: accent, marginRight: 8 }}>📅 {selectedDate.toLocaleDateString(bookLocale(), { weekday: 'long', month: 'long', day: 'numeric' })}</span>}
           <span style={{ color: 'var(--c64748b)', fontWeight: 600 }}>{bt(MONTH_NAMES[stripStart.getMonth()])} {stripStart.getFullYear()}</span>
         </div>
@@ -2088,9 +2088,9 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
                   background: on ? `linear-gradient(140deg, ${accent}, ${shade(accent, 0.28)})` : 'transparent',
                   boxShadow: on ? `0 10px 22px -12px ${tint(accent, 0.95)}` : 'none',
                   color: on ? '#fff' : closed ? 'var(--ccbd5e1)' : INK, position: 'relative' }}>
-                <span style={{ fontSize: 17, fontWeight: 800, textDecoration: closed ? 'line-through' : 'none' }}>{d.getDate()}</span>
+                <span style={{ fontSize: 17, fontWeight: 700, textDecoration: closed ? 'line-through' : 'none' }}>{d.getDate()}</span>
                 <span style={{ fontSize: 11, opacity: on ? 0.95 : 0.6 }}>{bt(DOW_SHORT[d.getDay()])}</span>
-                {!on && deal > 0 && !closed && <span style={{ position: 'absolute', top: 2, right: 6, fontSize: 9, fontWeight: 800, color: '#16a34a' }}>-{deal}%</span>}
+                {!on && deal > 0 && !closed && <span style={{ position: 'absolute', top: 2, right: 6, fontSize: 9, fontWeight: 700, color: '#16a34a' }}>-{deal}%</span>}
               </button>
             );
           })}
@@ -2099,7 +2099,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
       </div>
 
       {promo > 0 && (
-        <div style={{ marginBottom: 14, padding: '9px 12px', borderRadius: 10, background: '#ecfdf5', border: '1px solid var(--c6ee7b7)', color: '#065f46', fontSize: 13, fontWeight: 700 }}>
+        <div style={{ marginBottom: 14, padding: '9px 12px', borderRadius: 10, background: '#ecfdf5', border: '1px solid var(--c6ee7b7)', color: '#065f46', fontSize: 13, fontWeight: 600 }}>
           🎉 −{promo}% off on this day — applied automatically.
         </div>
       )}
@@ -2142,7 +2142,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
             <div key={g.label} style={{ marginBottom: 18 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                 <span style={{ flex: 1, height: 1, background: '#eef1f6' }} />
-                <span style={{ fontWeight: 800, color: INK, fontSize: 12.5, letterSpacing: 0.4 }}>
+                <span style={{ fontWeight: 700, color: INK, fontSize: 12.5, letterSpacing: 0.4 }}>
                   {g.key === 'Morning' ? '🌤 ' : g.key === 'Afternoon' ? '☀️ ' : '🌙 '}{g.label.toUpperCase()}
                 </span>
                 <span style={{ flex: 1, height: 1, background: '#eef1f6' }} />
@@ -2154,7 +2154,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
                   return (
                     <button key={s.start.toISOString()} type="button" disabled={!free} onClick={() => onPickSlot(s)}
                       className={free ? 'lumio-slot' : undefined}
-                      style={{ padding: '13px 6px', borderRadius: 12, fontSize: 14, fontWeight: 700, cursor: free ? 'pointer' : 'not-allowed',
+                      style={{ padding: '13px 6px', borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: free ? 'pointer' : 'not-allowed',
                         border: `1px solid ${on ? accent : '#e9edf4'}`, background: on ? tint(accent, 0.10) : free ? '#fff' : '#f6f8fb',
                         boxShadow: on ? `0 10px 24px -16px ${tint(accent, 0.95)}, 0 0 0 3px ${tint(accent, 0.12)}` : '0 2px 6px -4px rgba(15,42,82,.16)',
                         color: !free ? '#c3cbd8' : on ? accent : INK, textDecoration: free ? 'none' : 'line-through' }}>
@@ -2201,14 +2201,14 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
               <CartThumb url={l.imageUrl} />
               <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: INK }}>{l.name}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: INK }}>{l.name}</div>
               <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{l.durationMinutes > 0 ? `${l.durationMinutes} min` : ''}{employee && <>{l.durationMinutes > 0 ? ' · ' : ''}👤 <b style={{ color: accent }}>{employee.firstName}</b></>}</div>
               </div>
             </div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: INK, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: INK, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
           </div>
         ))}
-        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 12, fontWeight: 800, color: INK, fontSize: 15 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 12, fontWeight: 700, color: INK, fontSize: 15 }}>
           <span>{bt("Total")}</span><span>{fmt(totalCents)}</span>
         </div>
         {salon?.firstVisit?.enabled && (salon.firstVisit.rules?.length ?? 0) > 0 && (
@@ -2220,7 +2220,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
           const feePct = cardFee?.enabled ? cardFee.percent : 0;
           const fee = feePct > 0 ? Math.round((depositCents * feePct) / 100) : 0;
           return (
-            <div style={{ marginTop: 8, fontSize: 13, color: accent, fontWeight: 700 }}>
+            <div style={{ marginTop: 8, fontSize: 13, color: accent, fontWeight: 600 }}>
               {bt('Deposit due today: ')}{fmt(depositCents + fee)}
               {fee > 0 && <span style={{ display: 'block', fontWeight: 500, color: 'var(--c64748b)', fontSize: 12, marginTop: 2 }}>{btf('Paid online by card — includes {percent}% card fee ({amount}). Pay at the salon in cash to avoid it.', { percent: feePct, amount: fmt(fee) })}</span>}
             </div>
@@ -2249,7 +2249,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
         </div>
 
         <div style={{ marginTop: 8, padding: '12px 14px', background: SOFT, border: '1px solid #e6eaf2', borderRadius: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: INK, marginBottom: 4 }}>{bt('📱 Appointment text updates')}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 4 }}>{bt('📱 Appointment text updates')}</div>
           <p style={{ margin: 0, fontSize: 12, lineHeight: 1.55, color: 'var(--c64748b)' }}>
             {btf('We’ll text you confirmations & reminders for this appointment from {salon}. Up to ~6 msgs/month. Msg & data rates may apply. Reply STOP to opt out, HELP for help.', { salon: salon?.name || bt('the salon') })}
           </p>
@@ -2290,7 +2290,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section style={{ border: '1px solid #e6eaf2', borderRadius: 14, padding: '14px 16px', marginBottom: 14, background: '#fff' }}>
-      <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 0.8, color: '#8fa0bb', marginBottom: 10 }}>{title}</div>
+      <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, color: '#8fa0bb', marginBottom: 10 }}>{title}</div>
       {children}
     </section>
   );
@@ -2301,7 +2301,7 @@ function InfoRow({ icon, label, value, sub, last }: { icon: string; label: strin
       <span style={{ width: 34, height: 34, borderRadius: 9, background: SOFT, display: 'grid', placeItems: 'center', fontSize: 15, flexShrink: 0 }}>{icon}</span>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 12, color: '#8fa0bb' }}>{label}</div>
-        <div style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>{value}</div>
+        <div style={{ fontSize: 14.5, fontWeight: 600, color: INK }}>{value}</div>
         {sub && <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{sub}</div>}
       </div>
     </div>
@@ -2315,7 +2315,7 @@ function PayOption({ selected, onClick, title, desc, accent }: { selected: boole
         {selected && <span style={{ width: 10, height: 10, borderRadius: '50%', background: accent }} />}
       </span>
       <span style={{ textAlign: 'left', marginLeft: 12 }}>
-        <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: INK }}>{title}</span>
+        <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: INK }}>{title}</span>
         <span style={{ display: 'block', fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{desc}</span>
       </span>
     </button>
@@ -2357,7 +2357,7 @@ function Avatar({ name, url, size, accent }: { name: string; url: string | null;
   // eslint-disable-next-line @next/next/no-img-element
   if (url) return <img src={url} alt={name} width={size} height={size} style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />;
   return (
-    <span style={{ width: size, height: size, borderRadius: '50%', background: accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: size * 0.36, fontWeight: 800, flexShrink: 0 }}>
+    <span style={{ width: size, height: size, borderRadius: '50%', background: accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: size * 0.36, fontWeight: 700, flexShrink: 0 }}>
       {initials || '?'}
     </span>
   );
@@ -2480,7 +2480,7 @@ function SectionLabel({ children, accent }: { children: React.ReactNode; accent:
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 10px' }}>
       <span style={{ width: 4, height: 16, borderRadius: 2, background: accent }} />
-      <span style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: 0.6, color: accent, textTransform: 'uppercase' }}>{children}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: 0.6, color: accent, textTransform: 'uppercase' }}>{children}</span>
     </div>
   );
 }
@@ -2560,13 +2560,13 @@ function WaitlistCta({ base, preferredDate, serviceId, fmtAccent }: { base: stri
   return (
     <div style={{ marginTop: 12, border: '1px solid #e6eaf2', borderRadius: 12, padding: '12px 14px' }}>
       {!open ? (
-        <button onClick={() => setOpen(true)} style={{ background: 'none', border: 'none', color: fmtAccent, fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+        <button onClick={() => setOpen(true)} style={{ background: 'none', border: 'none', color: fmtAccent, fontSize: 14, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
           {bt('Can’t find a time? Join the waitlist →')}
         </button>
       ) : (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 10 }}>
-            <div style={{ fontWeight: 800, color: INK }}>{bt("Join the waitlist")}</div>
+            <div style={{ fontWeight: 700, color: INK }}>{bt("Join the waitlist")}</div>
             <button onClick={() => { setOpen(false); setErr(null); }} aria-label={bt("Close")} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', fontSize: 22, lineHeight: 1, cursor: 'pointer' }}>×</button>
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
@@ -2618,10 +2618,10 @@ function DealsBanner({ wd, dd, categories }: { wd?: WeekdayDiscounts; dd?: DateD
   const ddSorted = ddOn ? [...dd!.rules].filter((r) => r.startDate).sort((a, b) => a.startDate.localeCompare(b.startDate) || b.percent - a.percent) : [];
   const fmtOne = (s: string) => { try { return new Date(s + 'T00:00:00').toLocaleDateString(bookLocale(), { month: 'short', day: 'numeric' }); } catch { return s; } };
   const fmtRange = (r: DateRule) => (r.endDate && r.endDate !== r.startDate ? `${fmtOne(r.startDate)}–${fmtOne(r.endDate)}` : fmtOne(r.startDate));
-  const chip: React.CSSProperties = { background: '#fff', border: '1px solid var(--c6ee7b7)', borderRadius: 999, padding: '4px 12px', fontSize: 12.5, color: '#065f46', fontWeight: 700 };
+  const chip: React.CSSProperties = { background: '#fff', border: '1px solid var(--c6ee7b7)', borderRadius: 999, padding: '4px 12px', fontSize: 12.5, color: '#065f46', fontWeight: 600 };
   return (
     <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 12, background: 'linear-gradient(90deg,#ecfdf5,var(--cd1fae5))', border: '1px solid var(--c6ee7b7)' }}>
-      <div style={{ fontWeight: 800, color: '#065f46', marginBottom: 8, fontSize: 14.5 }}>💸 {(wdOn && wd!.message) || bt('Save on select days!')}</div>
+      <div style={{ fontWeight: 700, color: '#065f46', marginBottom: 8, fontSize: 14.5 }}>💸 {(wdOn && wd!.message) || bt('Save on select days!')}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {wdSorted.map((r, i) => <span key={`w${i}`} style={chip}>{btf('{day}: −{percent}% off {what}', { day: bt(WEEKDAY_NAMES[r.day]), percent: r.percent, what: catName(r.categoryId) })}</span>)}
         {ddSorted.map((r, i) => <span key={`d${i}`} style={chip}>{r.label ? `${r.label} · ` : ''}{btf('{when}: −{percent}% off {what}', { when: fmtRange(r), percent: r.percent, what: catName(r.categoryId) })}</span>)}
@@ -2837,10 +2837,10 @@ function Progress({ step, accent, allowStaff }: { step: Step; accent: string; al
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: i === steps.length - 1 ? '0 0 auto' : 1, minWidth: 0 }}>
             <span style={{
               display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
-              fontSize: 12.5, fontWeight: 700, color: on ? accent : done ? '#16a34a' : '#a9b4c6',
+              fontSize: 12.5, fontWeight: 600, color: on ? accent : done ? '#16a34a' : '#a9b4c6',
             }}>
               <span style={{
-                width: 20, height: 20, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800,
+                width: 20, height: 20, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700,
                 background: done ? '#16a34a' : on ? accent : '#e6eaf2', color: done || on ? '#fff' : 'var(--c94a3b8)',
                 boxShadow: on ? `0 0 0 4px ${tint(accent, 0.15)}` : 'none',
               }} className={on ? 'lumio-dot' : undefined}>{done ? '✓' : i + 1}</span>
@@ -3024,7 +3024,7 @@ const rowCard: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 15px', borderRadius: 16,
   border: '1px solid #e9edf4', background: '#fff', cursor: 'pointer', boxShadow: '0 2px 6px -3px rgba(15,42,82,0.10)',
 };
-const rowTitle: React.CSSProperties = { display: 'block', fontSize: 14.5, fontWeight: 800, color: INK, letterSpacing: 0.2, lineHeight: 1.35 };
+const rowTitle: React.CSSProperties = { display: 'block', fontSize: 14.5, fontWeight: 700, color: INK, letterSpacing: 0.2, lineHeight: 1.35 };
 const rowMeta: React.CSSProperties = { display: 'block', fontSize: 12.5, color: '#7d8ba4', marginTop: 5 };
 // Service description: quiet, two lines max, then an ellipsis. It must read as
 // supporting text — lighter than the name, calmer than the price.
@@ -3043,14 +3043,14 @@ const rowDescOpen: React.CSSProperties = {
 // not competing with either — it is a door, not a call to action.
 const moreBtn: React.CSSProperties = {
   display: 'inline-block', marginTop: 4, padding: 0, border: 'none', background: 'none',
-  font: 'inherit', fontSize: 12.5, fontWeight: 700, color: 'var(--accent, #6366f1)',
+  font: 'inherit', fontSize: 12.5, fontWeight: 600, color: 'var(--accent, #6366f1)',
   cursor: 'pointer', textAlign: 'left',
 };
 const inputStyle: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #dbe2ee', background: '#fff', color: INK, fontSize: 14 };
 const ctaBtn: React.CSSProperties = {
-  width: '100%', padding: '15px 18px', borderRadius: 999, border: 'none', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer',
+  width: '100%', padding: '15px 18px', borderRadius: 999, border: 'none', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer',
   background: 'linear-gradient(120deg, var(--accent, #6366f1), var(--accent-dark, #4f46e5))',
   boxShadow: '0 16px 32px -16px var(--accent-glow, rgba(99,102,241,.8))',
 };
-const primaryBtn: React.CSSProperties = { padding: '12px 22px', borderRadius: 999, border: 'none', background: 'var(--accent, #6366f1)', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer' };
+const primaryBtn: React.CSSProperties = { padding: '12px 22px', borderRadius: 999, border: 'none', background: 'var(--accent, #6366f1)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' };
 const arrowBtn: React.CSSProperties = { width: 34, height: 34, borderRadius: '50%', border: '1px solid #e6eaf2', background: '#fff', color: INK, fontSize: 18, cursor: 'pointer', flexShrink: 0 };

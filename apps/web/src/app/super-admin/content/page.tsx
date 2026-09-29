@@ -353,7 +353,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: str
   return (
     <div>
       <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--c64748b)' }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: tone ?? 'var(--ce2e8f0)' }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: tone ?? 'var(--ce2e8f0)' }}>{value}</div>
     </div>
   );
 }

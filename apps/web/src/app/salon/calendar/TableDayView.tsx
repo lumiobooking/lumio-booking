@@ -216,11 +216,11 @@ export function TableDayView({ date, items, tz, isMobile, onOpen, today, onChang
                   onDrop={(e) => { e.preventDefault(); onDrop(c); }}
                   style={{ width: colW, flexShrink: 0, borderRight: '1px solid var(--c1f2937)', background: isTarget ? 'rgba(99,102,241,0.12)' : un ? 'rgba(99,102,241,0.05)' : 'transparent', outline: isTarget ? '2px dashed #6366f1' : 'none', outlineOffset: -2 }}>
                   <div style={{ height: headH, display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px', borderBottom: '1px solid var(--c1f2937)', boxSizing: 'border-box' }}>
-                    <div style={{ width: 30, height: 26, borderRadius: 6, flexShrink: 0, background: un ? 'var(--c334155)' : 'var(--c1e293b)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>
+                    <div style={{ width: 30, height: 26, borderRadius: 6, flexShrink: 0, background: un ? 'var(--c334155)' : 'var(--c1e293b)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 }}>
                       {un ? '?' : (c.seats ?? '')}
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
                       <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{un ? c.items.length + ' ' + t('cal.reservations') : (c.seats ?? '?') + ' ' + t('cal.seats')}</div>
                     </div>
                   </div>
@@ -240,11 +240,11 @@ export function TableDayView({ date, items, tz, isMobile, onOpen, today, onChang
                           onClick={() => onOpen(b)} title={`${fmtT(b.startTime)} · ${b.customer?.firstName ?? ''} · ${b.partySize ?? 1}p`}
                           style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: dim ? 'var(--c18202f)' : `${cc}22`, border: `1px solid ${cc}66`, borderRadius: 8, padding: '3px 7px', overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dim ? 0.7 : dragId === b.id ? 0.4 : 1 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 4 }}>
-                            <span style={{ fontSize: 10.5, fontWeight: 700, color: cc, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
-                            <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ce2e8f0)', background: 'var(--c334155)', borderRadius: 4, padding: '0 5px', whiteSpace: 'nowrap' }}>{b.partySize ?? 1}p</span>
+                            <span style={{ fontSize: 10.5, fontWeight: 600, color: cc, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
+                            <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--ce2e8f0)', background: 'var(--c334155)', borderRadius: 4, padding: '0 5px', whiteSpace: 'nowrap' }}>{b.partySize ?? 1}p</span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
                               {b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—'}
                             </span>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>

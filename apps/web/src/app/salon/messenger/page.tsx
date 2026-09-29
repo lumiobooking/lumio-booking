@@ -87,7 +87,7 @@ function ChannelBadge({ channel }: { channel?: string }) {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
-      padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+      padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
       background: ig ? 'rgba(219,39,119,0.16)' : 'rgba(59,130,246,0.16)',
       color: ig ? '#f9a8d4' : 'var(--c93c5fd)',
       border: `1px solid ${ig ? 'rgba(219,39,119,0.45)' : 'rgba(59,130,246,0.45)'}`,
@@ -625,7 +625,7 @@ function Inner() {
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: fbResult.ok ? '#052e1e' : 'var(--c7f1d1d)', color: fbResult.ok ? 'var(--cbbf7d0)' : 'var(--cfecaca)', border: `1px solid ${fbResult.ok ? '#10b981' : '#ef4444'}`, borderRadius: 10, padding: '11px 14px', fontSize: 13.5, lineHeight: 1.55, marginBottom: 14 }}>
           <span style={{ flex: 1 }}>{fbResult.ok ? '✅ ' : '⚠️ '}{fbResult.text}</span>
           {!fbResult.ok && (
-            <button onClick={connectFacebook} style={{ background: '#fff', border: 'none', color: 'var(--c7f1d1d)', borderRadius: 8, padding: '5px 12px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <button onClick={connectFacebook} style={{ background: '#fff', border: 'none', color: 'var(--c7f1d1d)', borderRadius: 8, padding: '5px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               {lang === 'vi' ? '↻ Connect lại' : '↻ Retry connect'}
             </button>
           )}
@@ -639,7 +639,7 @@ function Inner() {
            short — a green line on every connected salon is noise. */}
       {c?.connected && c.publishGrant && Object.values(c.publishGrant.scopes).some((v) => v !== 'granted') && (
         <div style={{ background: 'var(--c451a03)', border: '1px solid #f59e0b', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, lineHeight: 1.6, color: 'var(--cfde68a)' }}>
-          <div style={{ fontWeight: 800, marginBottom: 3 }}>
+          <div style={{ fontWeight: 700, marginBottom: 3 }}>
             {lang === 'vi' ? '📣 Quyền đăng bài sau lần kết nối gần nhất' : '📣 Publishing rights after the last connect'}
             <span style={{ fontWeight: 400, color: 'var(--cfcd34d)', marginLeft: 8, fontSize: 12 }}>{fmtInTz(c.publishGrant.at, { dateStyle: 'short', timeStyle: 'short' })}</span>
           </div>
@@ -656,7 +656,7 @@ function Inner() {
       )}
       {c?.connectTrace && fbResult && !fbResult.ok && (
         <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c94a3b8)', marginBottom: 6 }}>
             🔬 {lang === 'vi' ? 'Chi tiết kỹ thuật lần kết nối gần nhất' : 'Last connect attempt — technical trace'} · {fmtInTz(c.connectTrace.at, { dateStyle: 'short', timeStyle: 'short' })}
           </div>
           <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: 'var(--ccbd5e1)', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -666,7 +666,7 @@ function Inner() {
       )}
       {pickList && (
         <div style={{ ...ui.card, marginBottom: 16, border: '1px solid #6366f1' }}>
-          <div style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+          <div style={{ fontSize: 15.5, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
             {lang === 'vi' ? '📄 Facebook cấp nhiều page — chọn ĐÚNG page của tiệm này' : '📄 Facebook granted several Pages — pick THIS salon\'s page'}
           </div>
           <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>
@@ -693,27 +693,27 @@ function Inner() {
                 .map((pg) => (
                 <div key={pg.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 12px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.name}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.name}</div>
                     <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{pg.id}</div>
                   </div>
                   {pg.taken === 'this' || c.pages?.some((x) => x.pageId === pg.id) ? (
-                    <span style={{ color: '#34d399', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' }}>✓ {lang === 'vi' ? 'Đã nối' : 'Connected'}</span>
+                    <span style={{ color: '#34d399', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}>✓ {lang === 'vi' ? 'Đã nối' : 'Connected'}</span>
                   ) : pg.taken === 'other' ? (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span title={pg.takenBy || ''} style={{ color: 'var(--ink-warn)', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span title={pg.takenBy || ''} style={{ color: 'var(--ink-warn)', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         🔒 {lang === 'vi' ? 'Đang dùng ở' : 'In use by'} {pg.takenBy || (lang === 'vi' ? 'tiệm khác' : 'another salon')}
                       </span>
                       {canPickMode && (
                         <button onClick={() => choosePage(pg.id, true)} disabled={!!picking}
                           title={lang === 'vi' ? 'Page bị gắn nhầm tiệm? Chuyển về tiệm đang setup.' : 'Bound to the wrong salon? Move it here.'}
-                          style={{ background: 'transparent', border: '1px solid #f59e0b', color: 'var(--ink-warn)', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          style={{ background: 'transparent', border: '1px solid #f59e0b', color: 'var(--ink-warn)', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                           {picking === pg.id ? '…' : (lang === 'vi' ? '↪ Chuyển về tiệm này' : '↪ Move here')}
                         </button>
                       )}
                     </span>
                   ) : (
                   <button onClick={() => choosePage(pg.id)} disabled={!!picking}
-                    style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: picking && picking !== pg.id ? 0.5 : 1 }}>
+                    style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', opacity: picking && picking !== pg.id ? 0.5 : 1 }}>
                     {picking === pg.id ? '…' : (lang === 'vi' ? 'Dùng page này' : 'Use this page')}
                   </button>
                   )}
@@ -731,7 +731,7 @@ function Inner() {
       {/* Connect */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('connectTitle')}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{t('connectTitle')}</div>
           <span style={{ fontSize: 12.5, fontWeight: 600, color: c.connected ? 'var(--ink-good)' : 'var(--ink-warn)' }}>
             ● {c.connected ? t('connected') : t('notConnected')}
           </span>
@@ -743,7 +743,7 @@ function Inner() {
             <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 12px', lineHeight: 1.5 }}>{t('oneClickHint')}</p>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button onClick={connectFacebook} disabled={connecting} style={fbBtn}>
-                <span style={{ fontSize: 16, fontWeight: 800 }}>f</span>
+                <span style={{ fontSize: 16, fontWeight: 700 }}>f</span>
                 {connecting ? t('connecting') : (c.connected ? (lang === 'vi' ? '＋ Thêm page / kết nối lại' : '＋ Add page / reconnect') : t('connectFb'))}
               </button>
               {c.connected && (
@@ -759,7 +759,7 @@ function Inner() {
               <div style={{ marginTop: 14, padding: '11px 13px', borderRadius: 10, border: `1px solid ${c.enabled ? 'rgba(34,197,94,.35)' : 'var(--c334155)'}`, background: c.enabled ? 'rgba(34,197,94,.06)' : 'var(--c0f172a)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: 220 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
                       🤖 {lang === 'vi' ? 'Trợ lý AI trả lời tin nhắn' : 'AI replies to messages'}:{' '}
                       <span style={{ color: c.enabled ? 'var(--ink-good)' : 'var(--ink-warn)' }}>{c.enabled ? (lang === 'vi' ? 'ĐANG BẬT' : 'ON') : (lang === 'vi' ? 'ĐANG TẮT' : 'OFF')}</span>
                     </div>
@@ -828,7 +828,7 @@ function Inner() {
           chưa subscribe app" for an OA is noise that reads as a fault. */}
       {c.connected && !String(c.pageId || '').startsWith('zalo:') && (
         <div style={{ ...ui.card, marginBottom: 16 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('connDetailsTitle')}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 12 }}>{t('connDetailsTitle')}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <Field label={t('pageName')} value={wh?.pageName || c.pageName || '—'} />
             <Field label={t('pageIdLabel')} value={wh?.pageId || c.pageId || '—'} mono />
@@ -888,7 +888,7 @@ function Inner() {
               : !wh.subscribed && <p style={{ color: 'var(--ink-warn)', fontSize: 12, margin: '8px 0 0' }}>{t('notSubscribed')}</p>}
           {(c.pages?.length ?? 0) > 0 && (
             <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 8 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c94a3b8)', marginBottom: 8 }}>
                 {lang === 'vi' ? `Các page đang dùng chung bot này (${c.pages.length})` : `Pages sharing this bot (${c.pages.length})`}
               </div>
               {c.pages.length > 3 && (
@@ -903,7 +903,7 @@ function Inner() {
                   <div key={pg.pageId} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 12px' }}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: pg.enabled ? '#22c55e' : 'var(--c64748b)', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.pageName || pg.pageId}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pg.pageName || pg.pageId}</div>
                       <div style={{ fontSize: 11, color: 'var(--c64748b)', fontFamily: 'monospace' }}>
                         {pg.pageId}{pg.igId ? ` · IG ${pg.igUsername ? '@' + pg.igUsername + ' ' : ''}${pg.igId}` : ''}
                       </div>
@@ -932,14 +932,14 @@ function Inner() {
       {c.connected && <>
       {/* Send a test message — a real user-initiated Send API call from the app UI */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('sendTestTitle')}</div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>{t('sendTestTitle')}</div>
         <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('sendTestHint')}</p>
         {threads.length === 0 ? (
           <p style={{ color: 'var(--ink-warn)', fontSize: 13 }}>{t('noRecipient')}</p>
         ) : (
           <>
             <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginBottom: 10 }}>
-              {t('sendingAs')}: <span style={{ color: 'var(--ce2e8f0)', fontWeight: 700 }}>{wh?.pageName || c.pageName || '—'}</span>
+              {t('sendingAs')}: <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{wh?.pageName || c.pageName || '—'}</span>
             </div>
             <label style={ui.label}>{t('recipient')}</label>
             <select value={sendTo} onChange={(e) => setSendTo(e.target.value)} style={{ ...ui.input, marginBottom: 4 }}>
@@ -977,7 +977,7 @@ function Inner() {
       {/* Messenger activity — chronological in/out log (App Review evidence) */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t('activityTitle')}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{t('activityTitle')}</div>
           <button onClick={silentRefresh} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>{t('refreshActivity')}</button>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12.5, color: 'var(--ce2e8f0)', marginLeft: 'auto' }}>
             <input type="checkbox" checked={reviewMode} onChange={(e) => setReviewMode(e.target.checked)} />
@@ -992,7 +992,7 @@ function Inner() {
         {reviewMode && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 12.5 }}>
             <span style={{ color: 'var(--c94a3b8)' }}>Review Test ID:</span>
-            <code style={{ color: 'var(--ce2e8f0)', fontWeight: 700 }}>{reviewId || '—'}</code>
+            <code style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{reviewId || '—'}</code>
             <button onClick={genReviewId} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>Generate new review ID</button>
             {reviewId && <button onClick={() => copy(reviewId, 'rid')} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5 }}>{copied === 'rid' ? '✓' : 'Copy'}</button>}
             <button onClick={clearReview} style={{ ...ghost, padding: '4px 10px', fontSize: 11.5, color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>Clear review test data</button>
@@ -1053,7 +1053,7 @@ function Inner() {
 
       {/* Behaviour */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
           {t('behaviorTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: c.aiEnabled ? 'var(--ink-good)' : 'var(--ink-warn)' }}>· {c.aiEnabled ? t('aiOn') : t('aiOff')}</span>
         </div>
         {canPickMode && (
@@ -1131,7 +1131,7 @@ function Inner() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
           <label style={ui.label}>{t('greeting')}</label>
           <button type="button" onClick={() => setGreetOpen((v) => !v)}
-            style={{ background: 'transparent', border: '1px solid #6366f1', color: 'var(--ca5b4fc)', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginBottom: 6 }}>
+            style={{ background: 'transparent', border: '1px solid #6366f1', color: 'var(--ca5b4fc)', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginBottom: 6 }}>
             {lang === 'vi' ? '✨ Nhờ AI viết giúp' : '✨ Let AI write it'}
           </button>
         </div>
@@ -1148,7 +1148,7 @@ function Inner() {
                 placeholder={lang === 'vi' ? 'vd: nhấn mạnh bột dip, đang giảm 20% cho khách mới' : 'e.g. highlight dip powder, 20% off for new clients'}
                 style={{ ...ui.input, flex: 1, minWidth: 220, marginBottom: 0 }} />
               <button type="button" onClick={suggestGreeting} disabled={greetBusy}
-                style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '9px 16px', fontSize: 12.5, fontWeight: 700, cursor: greetBusy ? 'wait' : 'pointer', opacity: greetBusy ? 0.6 : 1 }}>
+                style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '9px 16px', fontSize: 12.5, fontWeight: 600, cursor: greetBusy ? 'wait' : 'pointer', opacity: greetBusy ? 0.6 : 1 }}>
                 {greetBusy ? (lang === 'vi' ? 'Đang viết…' : 'Writing…') : (lang === 'vi' ? 'Gợi ý 3 câu' : 'Draft 3')}
               </button>
             </div>
@@ -1160,7 +1160,7 @@ function Inner() {
                     <div style={{ flex: 1, color: 'var(--ce2e8f0)', fontSize: 13, lineHeight: 1.55 }}>{op}</div>
                     <button type="button"
                       onClick={() => { setC({ ...c, greeting: op }); save({ greeting: op }); setGreetOpen(false); setGreetOptions(null); }}
-                      style={{ background: '#22c55e', border: 'none', color: '#052e16', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      style={{ background: '#22c55e', border: 'none', color: '#052e16', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       {lang === 'vi' ? 'Dùng' : 'Use'}
                     </button>
                   </div>
@@ -1183,7 +1183,7 @@ function Inner() {
 
       {/* Knowledge import: website / fanpage → proposed facts → human approves */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
           📥 {lang === 'vi' ? 'Nạp kiến thức tự động' : 'Auto-import knowledge'}
         </div>
         <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.55 }}>
@@ -1223,7 +1223,7 @@ function Inner() {
               return (
                 <div key={k} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 12px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ca5b4fc)', marginBottom: 3 }}>{title}</div>
+                    <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ca5b4fc)', marginBottom: 3 }}>{title}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.5 }}>{v}</div>
                   </div>
                   <button
@@ -1243,7 +1243,7 @@ function Inner() {
         )}
         {proposed && (
           <div style={{ marginTop: 14, border: '1px solid var(--c334155)', borderRadius: 10, padding: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ca5b4fc)', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ca5b4fc)', marginBottom: 8 }}>
               {lang === 'vi' ? `AI đề xuất ${proposed.length} mục — bỏ tick mục nào sai rồi bấm thêm:` : `AI proposes ${proposed.length} row(s) — untick anything wrong, then add:`}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
@@ -1271,7 +1271,7 @@ function Inner() {
       {/* Salon info — tick + fill so the bot answers common questions */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: infoOpen ? 6 : 0 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
             {t('infoTitle')} <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--c64748b)' }}>· {facts.filter((f) => f.on && f.value.trim()).length}</span>
           </div>
           <button onClick={() => setInfoOpen((v) => !v)} style={{ ...ghost, fontSize: 12 }}>{infoOpen ? t('collapse') : t('expand')}</button>
@@ -1307,7 +1307,7 @@ function Inner() {
           shows nothing but the Connect card (clean App-Review opening shot). */}
       {c.connected && (
       <div style={{ ...ui.card }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>{t('convosTitle')} ({c.threads})</div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 10 }}>{t('convosTitle')} ({c.threads})</div>
         {threads.length === 0 ? (
           <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{t('noConvos')}</p>
         ) : (() => {
@@ -1327,7 +1327,7 @@ function Inner() {
                       <ChannelBadge channel={th.channel} />
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ color: 'var(--ccbd5e1)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {th.senderName && <span style={{ color: 'var(--ce2e8f0)', fontWeight: 700 }}>{th.senderName} · </span>}{th.lastText || '—'}
+                          {th.senderName && <span style={{ color: 'var(--ce2e8f0)', fontWeight: 600 }}>{th.senderName} · </span>}{th.lastText || '—'}
                         </div>
                         <div style={{ color: 'var(--c64748b)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <span>{fmtInTz(th.updatedAt, { dateStyle: 'short', timeStyle: 'short' })}</span>
@@ -1355,7 +1355,7 @@ function Inner() {
       {/* Sales-mode leads: the bot's handover list for the human team. */}
       {c.connected && c.botMode === 'sales' && (
       <div style={{ ...ui.card, marginTop: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>🔥 {t('leadsTitle')} ({leads.length})</div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 10 }}>🔥 {t('leadsTitle')} ({leads.length})</div>
         {leads.length === 0 ? (
           <p style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{t('noLeads')}</p>
         ) : (
@@ -1367,7 +1367,7 @@ function Inner() {
               <tbody>
                 {leads.map((l) => (
                   <tr key={l.id} style={{ borderBottom: '1px solid var(--c1f2937)' }}>
-                    <td style={{ padding: '9px 8px', fontWeight: 700, color: 'var(--ce2e8f0)' }}>{l.name}{l.salonName ? <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: 'var(--c64748b)' }}>{l.salonName}{l.city ? ` · ${l.city}` : ''}</span> : null}</td>
+                    <td style={{ padding: '9px 8px', fontWeight: 600, color: 'var(--ce2e8f0)' }}>{l.name}{l.salonName ? <span style={{ display: 'block', fontSize: 11, fontWeight: 500, color: 'var(--c64748b)' }}>{l.salonName}{l.city ? ` · ${l.city}` : ''}</span> : null}</td>
                     <td style={{ padding: '9px 8px', whiteSpace: 'nowrap', color: 'var(--ccbd5e1)' }}>{l.phone}</td>
                     <td style={{ padding: '9px 8px', color: 'var(--c94a3b8)', maxWidth: 220 }}>{l.interest || '—'}{l.note ? <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)' }}>{l.note}</span> : null}</td>
                     <td style={{ padding: '9px 8px', color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{fmtInTz(l.createdAt, { dateStyle: 'short' })}</td>
@@ -1415,5 +1415,5 @@ const ghost: React.CSSProperties = {
 
 const fbBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 10, padding: '12px 20px', borderRadius: 10,
-  border: 'none', background: '#1877F2', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+  border: 'none', background: '#1877F2', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer',
 };

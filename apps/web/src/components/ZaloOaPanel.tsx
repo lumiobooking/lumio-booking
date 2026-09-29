@@ -104,11 +104,11 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
   return (
     <div style={embedded ? { marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--line)' } : { ...ui.card, marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ fontWeight: 700, fontSize: 15.5, color: 'var(--ce2e8f0)' }}>
+        <div style={{ fontWeight: 600, fontSize: 15.5, color: 'var(--ce2e8f0)' }}>
           Kết nối Zalo OA
         </div>
         {st.connected
-          ? <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-good)' }}>● Đã kết nối{st.oaName ? ` · ${st.oaName}` : ''}{st.oaid ? ` · OA ${st.oaid}` : ''}</span>
+          ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-good)' }}>● Đã kết nối{st.oaName ? ` · ${st.oaName}` : ''}{st.oaid ? ` · OA ${st.oaid}` : ''}</span>
           : <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>chưa kết nối</span>}
         {st.connected && (
           <button onClick={() => setOpen((o) => !o)} style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '5px 10px', fontSize: 12.5, cursor: 'pointer' }}>
@@ -180,7 +180,7 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
           <button
             onClick={startOauth}
             disabled={zMsg.kind === 'busy'}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 10, border: 'none', background: '#0068ff', color: '#fff', cursor: 'pointer', fontSize: 14.5, fontWeight: 800 }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 18px', borderRadius: 10, border: 'none', background: '#0068ff', color: '#fff', cursor: 'pointer', fontSize: 14.5, fontWeight: 700 }}
           >
             <span style={{ fontSize: 16 }}>Z</span>{zMsg.kind === 'busy' ? 'Đang mở Zalo…' : (st.connected ? 'Kết nối lại Zalo OA' : 'Kết nối Zalo OA')}
           </button>
@@ -204,7 +204,7 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
             </div>
           )}
           <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px', fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>Lấy 6 giá trị ở đâu — làm theo thứ tự:</div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Lấy 6 giá trị ở đâu — làm theo thứ tự:</div>
             <ol style={{ margin: 0, paddingLeft: 18 }}>
               <li><b>developers.zalo.me</b> → Tạo ứng dụng (loại Official Account) → lấy <b>App ID</b> và <b>App Secret Key</b>.</li>
               <li>Trong app đó → <b>Official Account</b> → Liên kết OA của tiệm (chủ OA bấm chấp nhận trong OA Manager → Quản lý → Quản lý liên kết).</li>
@@ -227,7 +227,7 @@ export function ZaloOaPanel({ token, embedded }: { token: string | null; embedde
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <button
-              style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: '#0068ff', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
+              style={{ padding: '9px 14px', borderRadius: 8, border: 'none', background: '#0068ff', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
               disabled={zMsg.kind === 'busy'}
               onClick={connect}
             >{zMsg.kind === 'busy' ? 'Đang xử lý…' : (st.connected ? 'Cập nhật kết nối' : 'Kết nối Zalo OA')}</button>

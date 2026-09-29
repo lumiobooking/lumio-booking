@@ -115,7 +115,7 @@ function Inner() {
           <span style={{
             minWidth: 21, height: 21, borderRadius: 20, padding: '0 6px',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 11.5, fontWeight: 800,
+            fontSize: 11.5, fontWeight: 700,
             background: on ? 'rgba(255,255,255,.22)' : '#ef4444',
             color: '#fff',
           }}>{count}</span>

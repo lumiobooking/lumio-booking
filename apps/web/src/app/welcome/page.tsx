@@ -16,12 +16,12 @@ export default function WelcomePage() {
           Sign in with the email and password you just created to set up your salon.
         </p>
 
-        <Link href="/login" style={{ display: 'inline-block', background: INDIGO, color: '#fff', fontWeight: 700, fontSize: 16, padding: '14px 32px', borderRadius: 12, textDecoration: 'none', marginTop: 26 }}>
+        <Link href="/login" style={{ display: 'inline-block', background: INDIGO, color: '#fff', fontWeight: 600, fontSize: 16, padding: '14px 32px', borderRadius: 12, textDecoration: 'none', marginTop: 26 }}>
           Sign in to your dashboard →
         </Link>
 
         <div style={{ marginTop: 26, padding: 16, background: 'var(--cf8fafc)', borderRadius: 12, textAlign: 'left' }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--c334155)', marginBottom: 8 }}>Your first steps</div>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--c334155)', marginBottom: 8 }}>Your first steps</div>
           <ol style={{ margin: 0, paddingLeft: 18, color: 'var(--c475569)', fontSize: 14, lineHeight: 1.7 }}>
             <li>Add your services, prices and staff</li>
             <li>Set your working hours and share your booking link</li>

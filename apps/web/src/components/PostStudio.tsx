@@ -69,7 +69,7 @@ export function ChannelChips({ channels }: { channels: Channel[] }) {
         <span
           key={c}
           style={{
-            fontSize: 8.5, fontWeight: 800, letterSpacing: .3, lineHeight: 1,
+            fontSize: 8.5, fontWeight: 700, letterSpacing: .3, lineHeight: 1,
             padding: '2px 3px', borderRadius: 3,
             color: CHANNEL_COLOR[c], border: `1px solid ${CHANNEL_COLOR[c]}`,
           }}
@@ -501,7 +501,7 @@ export function MonthCalendar({
       background: 'var(--c450a0a)', border: '1px solid #f87171', borderRadius: 12,
       padding: '10px 12px', marginBottom: 10,
     }}>
-      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--cfecaca)', marginBottom: failures.length ? 6 : 0 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cfecaca)', marginBottom: failures.length ? 6 : 0 }}>
         ⚠ {T(`${failures.length} bài không đăng được`, `${failures.length} post${failures.length > 1 ? 's' : ''} did not go out`)}
       </div>
       <div style={{ display: 'grid', gap: 6 }}>
@@ -516,7 +516,7 @@ export function MonthCalendar({
               padding: 0, cursor: 'pointer', fontFamily: 'inherit',
             }}
           >
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--cfecaca)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--cfecaca)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
               {fmtInTz(new Date(p.scheduledAt), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
             </span>
             <span style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--cfecaca)', minWidth: 0 }}>
@@ -576,7 +576,7 @@ export function MonthCalendar({
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9 }}>
           <button onClick={() => step(-1)} style={navBtn}>‹</button>
-          <div style={{ flex: 1, fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', textAlign: 'center' }}>{label}</div>
+          <div style={{ flex: 1, fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', textAlign: 'center' }}>{label}</div>
           <button onClick={() => step(1)} style={navBtn}>›</button>
         </div>
 
@@ -652,7 +652,7 @@ export function MonthCalendar({
                   {d.toLocaleDateString(vi ? 'vi-VN' : 'en-US', { weekday: 'short', day: 'numeric', month: 'numeric' })}
                 </b>
                 {k === today && <span style={{ fontSize: 10.5, color: 'var(--ca5b4fc)' }}>{T('hôm nay', 'today')}</span>}
-                {alarmHere > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--ink-bad)' }}>● {alarmHere}</span>}
+                {alarmHere > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-bad)' }}>● {alarmHere}</span>}
                 <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--c64748b)' }}>{mine.length}</span>
               </div>
               {mine.map((x) => card(x, true))}
@@ -681,7 +681,7 @@ export function MonthCalendar({
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 9, flexWrap: 'wrap' }}>
         <button onClick={() => step(-1)} style={navBtn}>‹</button>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', minWidth: 150, textAlign: 'center' }}>{label}</div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', minWidth: 150, textAlign: 'center' }}>{label}</div>
         <button onClick={() => step(1)} style={navBtn}>›</button>
 
         {/* The month in four numbers. A person opening this screen wants to
@@ -740,7 +740,7 @@ export function MonthCalendar({
                   {d.getDate()}
                 </span>
                 {alarmHere > 0 && (
-                  <span title={T('bài cần xử lý', 'posts needing attention')} style={{ fontSize: 9, fontWeight: 800, color: 'var(--ink-bad)' }}>●{alarmHere}</span>
+                  <span title={T('bài cần xử lý', 'posts needing attention')} style={{ fontSize: 9, fontWeight: 700, color: 'var(--ink-bad)' }}>●{alarmHere}</span>
                 )}
                 {mine.length > 0 && (
                   <span style={{ marginLeft: 'auto', fontSize: 9.5, color: 'var(--ink-faint)' }}>{mine.length}</span>
@@ -895,7 +895,7 @@ export function IgGrid({ posts, onPick, vi }: { posts: StudioPost[]; onPick: (id
               {p.status !== 'posted' && (
                 <span style={{
                   position: 'absolute', left: 4, bottom: 4, padding: '1px 5px', borderRadius: 4,
-                  background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 9.5, fontWeight: 700,
+                  background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 9.5, fontWeight: 600,
                 }}>
                   {dayKeyInTz(p.scheduledAt).slice(8, 10).replace(/^0/, '')}/{dayKeyInTz(p.scheduledAt).slice(5, 7).replace(/^0/, '')}
                 </span>
@@ -961,7 +961,7 @@ export function PostPreview({ channel, message, media, pageName, igUsername, vi 
           </div>
         )}
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '28px 12px 12px', background: 'linear-gradient(transparent, rgba(0,0,0,.75))', color: '#fff', fontSize: 11.5, lineHeight: 1.4 }}>
-          <div style={{ fontWeight: 700, marginBottom: 3 }}>@{(pageName ?? 'tiktok').replace(/^@/, '')}</div>
+          <div style={{ fontWeight: 600, marginBottom: 3 }}>@{(pageName ?? 'tiktok').replace(/^@/, '')}</div>
           <div style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{text}</div>
         </div>
       </div>
@@ -979,7 +979,7 @@ export function PostPreview({ channel, message, media, pageName, igUsername, vi 
           display: 'grid', placeItems: 'center', fontSize: 12, color: 'var(--c94a3b8)',
         }}>{(name || '?').replace('@', '')[0]?.toUpperCase()}</span>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{name}</div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{name}</div>
           <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>
             {channel === 'facebook' ? T('Được tài trợ · Trang', 'Page') : channel === 'google' ? T('Google Maps · Cập nhật', 'Google Maps · Update') : T('Bài đăng', 'Post')}
           </div>
@@ -1016,7 +1016,7 @@ export function PostPreview({ channel, message, media, pageName, igUsername, vi 
           {media.length > 1 && (
             <span style={{
               position: 'absolute', right: 8, top: 8, padding: '2px 8px', borderRadius: 20,
-              background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 11, fontWeight: 700,
+              background: 'rgba(0,0,0,.6)', color: '#fff', fontSize: 11, fontWeight: 600,
             }}>1/{media.length}</span>
           )}
         </div>

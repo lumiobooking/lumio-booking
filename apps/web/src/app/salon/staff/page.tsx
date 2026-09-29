@@ -112,7 +112,7 @@ function RoleBadge({ role, takes }: { role?: Role; takes?: boolean }) {
   const m = map[r];
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: m.bg, color: m.fg, whiteSpace: 'nowrap' }}>{m.label}</span>
+      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: m.bg, color: m.fg, whiteSpace: 'nowrap' }}>{m.label}</span>
       {takes === false && r === 'TECHNICIAN' && (
         <span style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>· {t('st.notBookableTag')}</span>
       )}
@@ -166,7 +166,7 @@ function AvatarPicker({ value, name, onChange }: { value: string; name: string; 
       {value
         // eslint-disable-next-line @next/next/no-img-element
         ? <img src={value} alt="avatar" width={64} height={64} style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--c334155)' }} />
-        : <span style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--ccbd5e1)', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 700 }}>{(name || '?').charAt(0).toUpperCase()}</span>}
+        : <span style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--ccbd5e1)', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 600 }}>{(name || '?').charAt(0).toUpperCase()}</span>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <label style={{ ...ui.input, padding: '8px 14px', cursor: 'pointer', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           📷 {busy ? t('st.processing') : value ? t('st.changePhoto') : t('st.uploadPhoto')}
@@ -969,7 +969,7 @@ function SkillPicker({ all, ids, set }: { all: Service[]; ids: string[]; set: (v
     background: n > 0 ? '#4338ca' : 'var(--c1e293b)', color: n > 0 ? 'var(--ce0e7ff)' : 'var(--c64748b)',
   });
   const colHead: React.CSSProperties = {
-    fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)',
+    fontSize: 11, fontWeight: 600, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)',
     padding: '8px 10px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 8,
   };
 
@@ -1092,7 +1092,7 @@ function SkillsCell({ m, total, serviceName, t }: {
   if (n === 0) {
     // The one state that costs bookings — loud on purpose.
     return (
-      <span style={{ display: 'inline-block', background: 'rgba(239,68,68,0.12)', border: '1px solid var(--c7f1d1d)', color: 'var(--cfca5a5)', borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>
+      <span style={{ display: 'inline-block', background: 'rgba(239,68,68,0.12)', border: '1px solid var(--c7f1d1d)', color: 'var(--cfca5a5)', borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 600 }}>
         ⚠ {t('st.covNone')}
       </span>
     );
@@ -1106,7 +1106,7 @@ function SkillsCell({ m, total, serviceName, t }: {
           background: all ? 'rgba(34,197,94,0.12)' : 'var(--c1e293b)',
           border: `1px solid ${all ? 'var(--c166534)' : 'var(--c334155)'}`,
           color: all ? 'var(--c86efac)' : 'var(--ccbd5e1)',
-          borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
         }}
       >
         {all ? t('st.covAll') : `${n} / ${total} ${t('st.covOf')}`} {open ? '▴' : '▾'}

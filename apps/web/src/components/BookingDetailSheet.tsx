@@ -97,8 +97,8 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
       <div style={card} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--cf8fafc)' }}>{d ? fullName(d.customer) : L('Đang tải…', 'Loading…')}</div>
-            {d && <span style={{ display: 'inline-block', marginTop: 6, color: statusColor, border: `1px solid ${statusColor}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>{status}</span>}
+            <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--cf8fafc)' }}>{d ? fullName(d.customer) : L('Đang tải…', 'Loading…')}</div>
+            {d && <span style={{ display: 'inline-block', marginTop: 6, color: statusColor, border: `1px solid ${statusColor}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{status}</span>}
           </div>
           <button onClick={onClose} aria-label={L('Đóng', 'Close')} style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', color: 'var(--ccbd5e1)', width: 34, height: 34, borderRadius: 9, cursor: 'pointer', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button>
         </div>
@@ -126,7 +126,7 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
               {d.customer?.phone && (
-                <a href={`tel:${d.customer.phone}`} style={{ flex: 1, minWidth: 130, textAlign: 'center', padding: '11px 14px', borderRadius: 10, background: '#6366f1', color: '#fff', fontWeight: 700, fontSize: 14, textDecoration: 'none' }}>{L('Gọi khách', 'Call guest')}</a>
+                <a href={`tel:${d.customer.phone}`} style={{ flex: 1, minWidth: 130, textAlign: 'center', padding: '11px 14px', borderRadius: 10, background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>{L('Gọi khách', 'Call guest')}</a>
               )}
               {d.customer?.id && (
                 <a href={`/salon/customers/${d.customer.id}`} style={{ flex: 1, minWidth: 130, textAlign: 'center', padding: '11px 14px', borderRadius: 10, background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)', fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>{L('Hồ sơ khách', 'Customer')}</a>

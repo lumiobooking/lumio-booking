@@ -23,7 +23,7 @@ export function LumioLogo({ size = 28, wordmark = true, sub, color = 'var(--ce2e
       <img src="/logo/lumio-mark.png" alt="Lumio" width={size} height={size} style={{ width: size, height: size, display: 'block', flexShrink: 0 }} />
       {wordmark && (
         <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.05, minWidth: 0 }}>
-          <span style={{ fontSize: Math.round(size * 0.68), fontWeight: 800, color, letterSpacing: -0.2, whiteSpace: 'nowrap' }}>Lumio</span>
+          <span style={{ fontSize: Math.round(size * 0.68), fontWeight: 700, color, letterSpacing: -0.2, whiteSpace: 'nowrap' }}>Lumio</span>
           {sub && <span style={{ fontSize: Math.max(10, Math.round(size * 0.36)), fontWeight: 600, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{sub}</span>}
         </span>
       )}

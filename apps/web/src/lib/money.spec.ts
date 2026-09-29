@@ -89,7 +89,8 @@ describe('rubbish input never becomes a price', () => {
 describe('displaying a stored amount', () => {
   it('divides for the dollar and not for the đồng', () => {
     expect(formatPrice(5500, 'USD')).toBe('$55.00');
-    expect(formatPrice(200000, 'VND')).toContain('200,000');
+    // The đồng is written the way Vietnam writes it, whatever the menu language.
+    expect(formatPrice(200000, 'VND')).toContain('200.000');
   });
 });
 

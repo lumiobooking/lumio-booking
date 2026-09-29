@@ -241,7 +241,7 @@ function Inner() {
            a form, not a button, and both already exist. Rendered here so the
            page is complete, not to make a third copy of either. ---- */}
       <div style={{ ...ui.card, marginTop: 14, padding: 16 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>💬 Zalo Official Account</div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>💬 Zalo Official Account</div>
         <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>{T('Dùng cho: bot trả lời Zalo, hộp thư. Cần gói OA Tăng trưởng/Toàn diện để có API.', 'Used for: the Zalo reply bot and the inbox. Needs a Growth/Complete OA tier for API access.')}</div>
         <ZaloOaPanel token={token} embedded />
       </div>
@@ -269,7 +269,7 @@ function Card({ icon, title, uses, status, vi, children }: { icon: string; title
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 18 }}>{icon}</span>
         <b style={{ fontSize: 15, color: 'var(--ce2e8f0)' }}>{title}</b>
-        <span style={{ marginLeft: 'auto', background: st.bg, color: st.color, border: `1px solid ${st.color}`, borderRadius: 999, padding: '2px 10px', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' }}>{vi ? st.vi : st.en}</span>
+        <span style={{ marginLeft: 'auto', background: st.bg, color: st.color, border: `1px solid ${st.color}`, borderRadius: 999, padding: '2px 10px', fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{vi ? st.vi : st.en}</span>
       </div>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{vi ? 'Dùng cho' : 'Used for'}: {uses.join(' · ')}</div>
       {children}
@@ -291,6 +291,6 @@ function Err({ vi, e }: { vi: boolean; e: { message: string; forbidden: boolean 
   );
 }
 
-const primary: CSSProperties = { padding: '7px 13px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' };
+const primary: CSSProperties = { padding: '7px 13px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' };
 const ghost: CSSProperties = { padding: '7px 13px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' };
 const linkBtn: CSSProperties = { padding: '7px 13px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ca5b4fc)', fontSize: 13, textDecoration: 'none', display: 'inline-block' };

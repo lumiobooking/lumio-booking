@@ -64,7 +64,7 @@ export function PromoStrategyCard({ s, vi }: { s: StrategyView; vi: boolean }) {
 
   return (
     <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#6366f1' }}>
-      <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+      <div style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
         🎯 {T('Chiến lược khuyến mãi cho tiệm này', 'The promotion plan for this shop')}
       </div>
       <div style={{ fontSize: 13.5, color: 'var(--ce2e8f0)', lineHeight: 1.55, marginBottom: 12 }}>{s.headline}</div>
@@ -75,7 +75,7 @@ export function PromoStrategyCard({ s, vi }: { s: StrategyView; vi: boolean }) {
       }}>
         {s.facts.map((f) => (
           <div key={f.key} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '8px 11px' }}>
-            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{f.label}</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{f.label}</div>
             <div style={{ fontSize: 12.5, color: TONE[f.tone] ?? TONE.neutral, lineHeight: 1.45, marginTop: 2 }}>{f.value}</div>
           </div>
         ))}
@@ -92,13 +92,13 @@ export function PromoStrategyCard({ s, vi }: { s: StrategyView; vi: boolean }) {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
               <span style={{
-                fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: '2px 8px',
+                fontSize: 10.5, fontWeight: 700, borderRadius: 999, padding: '2px 8px',
                 background: main ? '#6366f1' : 'var(--c1e293b)', color: main ? '#fff' : 'var(--c94a3b8)',
                 border: main ? 'none' : '1px solid var(--c334155)',
               }}>
                 {main ? T('BẮT ĐẦU VỚI', 'START WITH') : T(`KÈM THEO ${i}`, `ALONGSIDE ${i}`)}
               </span>
-              <span style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--ce2e8f0)' }}>
+              <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
                 {ICON[p.key] ?? '•'} {p.title}
               </span>
             </div>
@@ -109,7 +109,7 @@ export function PromoStrategyCard({ s, vi }: { s: StrategyView; vi: boolean }) {
               background: 'var(--c1e293b)', border: '1px dashed var(--c475569)', borderRadius: 9, padding: '8px 10px', marginBottom: 8,
             }}>
               <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.5 }}>
-                <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 700 }}>{T('Nội dung ưu đãi', 'The offer')}: </span>
+                <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 600 }}>{T('Nội dung ưu đãi', 'The offer')}: </span>
                 {p.offer}
               </div>
               <button
@@ -117,7 +117,7 @@ export function PromoStrategyCard({ s, vi }: { s: StrategyView; vi: boolean }) {
                 onClick={() => copy(p.key, p.offer)}
                 style={{
                   flex: '0 0 auto', background: 'transparent', border: '1px solid var(--c334155)', borderRadius: 7,
-                  color: copied === p.key ? 'var(--ink-good)' : 'var(--ink-link)', fontSize: 11.5, fontWeight: 700,
+                  color: copied === p.key ? 'var(--ink-good)' : 'var(--ink-link)', fontSize: 11.5, fontWeight: 600,
                   padding: '3px 8px', cursor: 'pointer',
                 }}
               >{copied === p.key ? T('Đã chép ✓', 'Copied ✓') : T('Chép', 'Copy')}</button>
@@ -131,7 +131,7 @@ export function PromoStrategyCard({ s, vi }: { s: StrategyView; vi: boolean }) {
             </div>
 
             <details style={{ marginTop: 6 }}>
-              <summary style={{ fontSize: 12, color: 'var(--ink-link)', cursor: 'pointer', fontWeight: 700 }}>
+              <summary style={{ fontSize: 12, color: 'var(--ink-link)', cursor: 'pointer', fontWeight: 600 }}>
                 {T('Cách chạy cho khỏi lỗ & khi nào dừng', 'How to run it safely & when to stop')}
               </summary>
               <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.55 }}>
@@ -151,7 +151,7 @@ export function PromoStrategyCard({ s, vi }: { s: StrategyView; vi: boolean }) {
           background: 'var(--c450a0a)', border: '1px solid var(--c991b1b)', borderRadius: 10,
           padding: '9px 12px', marginTop: 4, marginBottom: 10,
         }}>
-          <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--cfca5a5)', marginBottom: 4 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cfca5a5)', marginBottom: 4 }}>
             🚫 {T('Đừng làm', 'Do not')}
           </div>
           {s.avoid.map((a, k) => (

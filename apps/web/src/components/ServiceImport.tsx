@@ -130,15 +130,15 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
 
   const step = (n: number, title: string, sub: string) => (
     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
-      <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 12, background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 800, display: 'grid', placeItems: 'center' }}>{n}</span>
+      <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 12, background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, display: 'grid', placeItems: 'center' }}>{n}</span>
       <div>
-        <div style={{ fontWeight: 700, fontSize: 14.5 }}>{title}</div>
+        <div style={{ fontWeight: 600, fontSize: 14.5 }}>{title}</div>
         <div style={{ color: 'var(--c94a3b8)', fontSize: 12.5, marginTop: 2, lineHeight: 1.45 }}>{sub}</div>
       </div>
     </div>
   );
   const pill = (text: string, color: string, border: string) => (
-    <span style={{ fontSize: 12.5, fontWeight: 700, color, border: `1px solid ${border}`, borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap' }}>{text}</span>
+    <span style={{ fontSize: 12.5, fontWeight: 600, color, border: `1px solid ${border}`, borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap' }}>{text}</span>
   );
   const ghostBtn = { ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)' };
 
@@ -146,7 +146,7 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
     <div style={{ ...ui.card, marginBottom: 16, padding: isMobile ? 14 : 20 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <div>
-          <div style={{ fontWeight: 800, fontSize: 16 }}>⇪ {L('Nhập dịch vụ hàng loạt', 'Import services in bulk')}</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>⇪ {L('Nhập dịch vụ hàng loạt', 'Import services in bulk')}</div>
           <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 3 }}>
             {L('Từ file Excel, CSV hoặc dán từ Google Sheets. Dịch vụ đã có sẽ được giữ nguyên.', 'From an Excel or CSV file, or pasted from Google Sheets. Services you already have are left untouched.')}
           </div>
@@ -199,7 +199,7 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 16,
             }}>
             <span style={{ fontSize: 28 }}>📄</span>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>{isMobile ? L('Bấm để chọn file', 'Tap to choose a file') : L('Kéo thả file vào đây hoặc bấm để chọn', 'Drop the file here or click to choose')}</span>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>{isMobile ? L('Bấm để chọn file', 'Tap to choose a file') : L('Kéo thả file vào đây hoặc bấm để chọn', 'Drop the file here or click to choose')}</span>
             <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>.xlsx · .csv · {L('tối đa', 'up to')} {MAX_ROWS} {L('dòng', 'rows')}</span>
           </button>
           <button type="button" onClick={() => setShowPaste((s) => !s)}

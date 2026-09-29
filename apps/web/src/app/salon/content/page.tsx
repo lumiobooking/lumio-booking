@@ -616,12 +616,12 @@ function BriefStepRow({ step: st, index: i, T }: {
     <div style={{ display: 'flex', gap: 11, padding: '10px 0', borderTop: i ? '1px solid var(--line)' : 'none' }}>
       <div style={{
         flex: '0 0 26px', height: 26, borderRadius: '50%', background: 'var(--c1e293b)',
-        color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 700, display: 'flex',
+        color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 600, display: 'flex',
         alignItems: 'center', justifyContent: 'center',
       }}>{i + 1}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{st.title}</span>
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{st.title}</span>
           {st.confidence === 'assumed' && (
             <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 20, background: 'var(--c451a03)', color: 'var(--cfde68a)' }}>
               {T('ước tính', 'estimate')}
@@ -2050,7 +2050,7 @@ function Inner() {
                 flexShrink: 0, width: isMobile ? '100%' : 104,
                 paddingRight: 6, lineHeight: 1.25,
               }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)' }}>
+                <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)' }}>
                   {g.label}
                 </div>
                 {/* --ink-faint, not --c475569: that token is a BORDER colour and
@@ -2094,7 +2094,7 @@ function Inner() {
                           // the same colour as a delivery.
                           background: postAlerts > 0 ? '#ef4444' : '#22c55e',
                           color: postAlerts > 0 ? '#fff' : '#052e16',
-                          fontSize: 11, fontWeight: 800, display: 'inline-flex',
+                          fontSize: 11, fontWeight: 700, display: 'inline-flex',
                           alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle',
                         }}>{(postAlerts + readyFiles) > 9 ? '9+' : (postAlerts + readyFiles)}</span>
                       )}
@@ -2142,7 +2142,7 @@ function Inner() {
                   cannot make. */}
               {!plan?.identity?.declared && !editProfile && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#f59e0b' }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
                     🏷️ {T('Học về doanh nghiệp này', 'Learn this business')}
                   </div>
                   <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginBottom: 10 }}>
@@ -2192,7 +2192,7 @@ function Inner() {
 
               {editProfile && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: 'var(--c334155)' }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
                     🏷️ {T('Sửa mô tả doanh nghiệp', 'Edit the description')}
                   </div>
                   <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginBottom: 10 }}>
@@ -2382,13 +2382,13 @@ function Inner() {
                   {!!plan.identity.gaps.length && (
                     <div style={{ marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--line)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
                           {T('Hồ sơ tiệm', 'Shop profile')}: {6 - plan.identity.gaps.length}/6
                         </span>
                         <div style={{ flex: 1, maxWidth: 120, height: 5, borderRadius: 3, background: 'var(--c1e293b)', overflow: 'hidden' }}>
                           <div style={{ width: `${Math.round(((6 - plan.identity.gaps.length) / 6) * 100)}%`, height: '100%', background: plan.identity.gaps.length > 2 ? '#f59e0b' : '#22c55e' }} />
                         </div>
-                        <button onClick={() => setEditProfile(true)} style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 700, color: 'var(--ca5b4fc)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                        <button onClick={() => setEditProfile(true)} style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 600, color: 'var(--ca5b4fc)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                           {T('Bổ sung →', 'Fill in →')}
                         </button>
                       </div>
@@ -2404,7 +2404,7 @@ function Inner() {
 
               {data?.trendNotes?.map((n) => (
                 <div key={n.id} style={{ background: 'var(--c451a03)', border: '1px solid var(--c92400e)', borderRadius: 10, padding: '11px 14px', marginBottom: 14 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cfcd34d)', marginBottom: 3 }}>🔥 {n.title}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--cfcd34d)', marginBottom: 3 }}>🔥 {n.title}</div>
                   <div style={{ fontSize: 13, color: 'var(--cfde68a)', lineHeight: 1.55 }}>{n.body}</div>
                 </div>
               ))}
@@ -2430,7 +2430,7 @@ function Inner() {
                     background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
                   }}>
                     <div style={{ flex: '0 0 auto' }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--cf1f5f9)' }}>
                         {finished}/{all.length} {T('việc xong', finished === 1 ? 'done' : 'done')}
                       </div>
                       <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2 }}>
@@ -2475,11 +2475,11 @@ function Inner() {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: expanded ? 9 : 0 }}>
                       {lead ? (
-                        <span style={{ background: '#4f46e5', color: '#fff', fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6 }}>
+                        <span style={{ background: '#4f46e5', color: '#fff', fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 6 }}>
                           {T('LÀM NGAY', 'DO THIS NOW')}
                         </span>
                       ) : (
-                        <span style={{ background: rankColor(idea.rank), color: '#fff', fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 6 }}>
+                        <span style={{ background: rankColor(idea.rank), color: '#fff', fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 6 }}>
                           {rankLabel(idea.rank)}
                         </span>
                       )}
@@ -2487,7 +2487,7 @@ function Inner() {
                         <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{idea.formatName}</span>
                       )}
                       {idea.signals?.pillar && (
-                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ca5b4fc)', background: 'var(--c1e1b4b)', border: '1px solid var(--c312e81)', padding: '2px 8px', borderRadius: 20 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ca5b4fc)', background: 'var(--c1e1b4b)', border: '1px solid var(--c312e81)', padding: '2px 8px', borderRadius: 20 }}>
                           {vi ? idea.signals.pillar.vi : idea.signals.pillar.en}
                         </span>
                       )}
@@ -2511,7 +2511,7 @@ function Inner() {
                       }}
                     >
                       <span style={{
-                        fontSize: expanded ? 16 : 14, fontWeight: 700, lineHeight: 1.4, minWidth: 0, flex: 1,
+                        fontSize: expanded ? 16 : 14, fontWeight: 600, lineHeight: 1.4, minWidth: 0, flex: 1,
                         color: done || skipped ? 'var(--c94a3b8)' : 'var(--ce2e8f0)',
                         textDecoration: skipped ? 'line-through' : 'none',
                       }}>
@@ -2532,7 +2532,7 @@ function Inner() {
                             <img src={idea.signals.trend.thumbUrl} alt="" style={{ width: 64, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
                           )}
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--ink-good)' }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.3, textTransform: 'uppercase', color: 'var(--ink-good)' }}>
                               📈 {T('Phỏng theo trend đang chạy', 'Adapted from a live trend')} · {idea.signals.trend.source === 'youtube' ? 'YouTube' : 'Instagram'}
                             </div>
                             {idea.signals.trend.url ? (
@@ -2588,7 +2588,7 @@ function Inner() {
 
                       {idea.reason && (
                         <div style={{ borderLeft: '2px solid var(--c334155)', padding: '2px 0 2px 11px', marginBottom: 12 }}>
-                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)', fontWeight: 700 }}>{T('VÌ SAO GỢI Ý', 'WHY THIS')}{' '}</span>
+                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)', fontWeight: 600 }}>{T('VÌ SAO GỢI Ý', 'WHY THIS')}{' '}</span>
                           <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>{idea.reason}</span>
                         </div>
                       )}
@@ -2604,7 +2604,7 @@ function Inner() {
                           marginBottom: 12, padding: '10px 12px', borderRadius: 9,
                           background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
                         }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: 'var(--cfcd34d)', marginBottom: 7 }}>
+                          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.6, color: 'var(--cfcd34d)', marginBottom: 7 }}>
                             {T('TRƯỚC KHI BẤM ĐĂNG — KIỂM 4 Ý NÀY', 'BEFORE YOU POST — CHECK THESE 4')}
                           </div>
                           <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))' }}>
@@ -2777,7 +2777,7 @@ function Inner() {
               {shownMonth && (
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--c94a3b8)' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--c94a3b8)' }}>
                       {T('Tháng đang xem', 'Month')}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -2786,7 +2786,7 @@ function Inner() {
                         title={T('Tháng trước', 'Previous month')}
                         style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', fontFamily: 'inherit', fontSize: 15, cursor: canStep(-1) ? 'pointer' : 'default', color: canStep(-1) ? 'var(--c94a3b8)' : 'var(--c475569)' }}
                       >‹</button>
-                      <div style={{ minWidth: 132, textAlign: 'center', padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 800, border: '1px solid #6366f1', background: 'rgba(99,102,241,.16)', color: 'var(--ink-link)' }}>
+                      <div style={{ minWidth: 132, textAlign: 'center', padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, border: '1px solid #6366f1', background: 'rgba(99,102,241,.16)', color: 'var(--ink-link)' }}>
                         {monthTitle(shownMonth, vi)}
                       </div>
                       <button
@@ -2796,7 +2796,7 @@ function Inner() {
                       >›</button>
                     </div>
                     {quickMonths.filter((m) => m !== shownMonth).map((m) => (
-                      <button key={m} type="button" onClick={() => pickMonth(m)} style={{ padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)' }}>
+                      <button key={m} type="button" onClick={() => pickMonth(m)} style={{ padding: '5px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)' }}>
                         {m === todayMonth ? T('Về tháng này', 'This month') : monthTitle(m, vi)}
                       </button>
                     ))}
@@ -2816,7 +2816,7 @@ function Inner() {
                         `${daysLeftInMonth} days until ${monthTitle(monthAhead.month, false)} — that month has no days planned and no month brief. On the 1st the shop opens the app to an empty calendar.`,
                       )}
                       {' '}
-                      <button type="button" onClick={() => pickMonth(monthAhead.month)} style={{ padding: 0, background: 'none', border: 'none', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: 'var(--ink-link)', cursor: 'pointer', textDecoration: 'underline' }}>
+                      <button type="button" onClick={() => pickMonth(monthAhead.month)} style={{ padding: 0, background: 'none', border: 'none', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-link)', cursor: 'pointer', textDecoration: 'underline' }}>
                         {T('Lên plan tháng đó ngay', 'Plan it now')}
                       </button>
                     </div>
@@ -2960,7 +2960,7 @@ function Inner() {
                    the one a client spends money on. */}
               {weeks.some((w) => w.outcome) && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
                     📊 {T('Các tuần đã qua làm được gì', 'What the past weeks produced')}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, lineHeight: 1.5 }}>
@@ -2976,7 +2976,7 @@ function Inner() {
                       <button
                         onClick={() => setViewWeek(w.weekKey)}
                         style={{
-                          fontSize: 12.5, fontWeight: 700, color: 'var(--ca5b4fc)', cursor: 'pointer',
+                          fontSize: 12.5, fontWeight: 600, color: 'var(--ca5b4fc)', cursor: 'pointer',
                           background: 'transparent', border: 'none', padding: 0, flex: '0 0 92px', textAlign: 'left',
                         }}
                       >{w.label}</button>
@@ -3044,7 +3044,7 @@ function Inner() {
                         borderColor: plan.weekMeta.shopSees ? '#22c55e' : '#f59e0b',
                         background: plan.weekMeta.shopSees ? 'rgba(34,197,94,.07)' : 'rgba(245,158,11,.07)',
                       }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
                           {plan.weekMeta.shopSees
                             ? T('👁 Tiệm đang thấy kế hoạch này', '👁 The salon can see this plan')
                             : T('🔒 Tiệm chưa thấy kế hoạch này', '🔒 The salon cannot see this plan yet')}
@@ -3130,7 +3130,7 @@ function Inner() {
                   ...ui.card, marginBottom: 14, padding: 16,
                   borderColor: plan.offer.kind === 'raise-price' ? '#22c55e' : plan.offer.kind === 'hold' ? 'var(--c334155)' : '#6366f1',
                 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
                     💰 {T('Kéo khách & doanh thu', 'Fill the book')}
                   </div>
                   <div style={{ fontSize: 14.5, fontWeight: 600, color: plan.offer.kind === 'raise-price' ? 'var(--ink-good)' : 'var(--ca5b4fc)', marginBottom: 5, lineHeight: 1.45 }}>
@@ -3205,7 +3205,7 @@ function Inner() {
                   Nothing here describes a person the platform has not seen. */}
               {plan?.audience && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
                     🎯 {T('Tệp khách của tiệm', 'Your customer base')}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, fontStyle: 'italic' }}>{plan.audience.basis}</div>
@@ -3227,7 +3227,7 @@ function Inner() {
 
                   {!!plan.audience.targets.length && (
                     <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
                         {T('Nên nhắm vào ai trước', 'Aim here first')}
                       </div>
                       {plan.audience.targets.map((t, i) => (
@@ -3264,7 +3264,7 @@ function Inner() {
                   ...ui.card, marginBottom: 14, padding: 16,
                   borderColor: plan.promo.proposed?.impossible ? '#ef4444' : 'var(--c334155)',
                 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
                     🧮 {T('Giảm bao nhiêu thì còn lãi', 'What a discount really costs')}
                   </div>
                   <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginBottom: 8 }}>{plan.promo.note}</div>
@@ -3273,7 +3273,7 @@ function Inner() {
                     <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{T('Biên lãi gộp', 'Gross margin')}</div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: plan.promo.margin.source === 'assumed' ? 'var(--ink-warn)' : 'var(--ink-good)' }}>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: plan.promo.margin.source === 'assumed' ? 'var(--ink-warn)' : 'var(--ink-good)' }}>
                           {plan.promo.margin.grossMarginPct}%
                           {plan.promo.margin.source === 'assumed' && (
                             <span style={{ fontSize: 10, marginLeft: 5, padding: '1px 6px', borderRadius: 20, background: 'var(--c451a03)', color: 'var(--cfde68a)', verticalAlign: 'middle' }}>
@@ -3284,7 +3284,7 @@ function Inner() {
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{T('Giảm tối đa nên dùng', 'Safe ceiling')}</div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ca5b4fc)' }}>{plan.promo.ceiling}%</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ca5b4fc)' }}>{plan.promo.ceiling}%</div>
                       </div>
                     </div>
                   )}
@@ -3337,7 +3337,7 @@ function Inner() {
                   right here does not belong here. */}
               {isNorthAmerica(uiMarket()) && (
               <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
                   🗺️ {T('Khu vực quanh tiệm', 'Around the shop')}
                 </div>
                 {plan?.area?.ok ? (
@@ -3425,7 +3425,7 @@ function Inner() {
                               opacity: c.n === 0 && !on ? 0.55 : 1,
                             }}
                           >
-                            <div style={{ fontSize: 20, fontWeight: 800, color: urgent || on ? c.color : 'var(--ce2e8f0)', lineHeight: 1.1 }}>{c.n}</div>
+                            <div style={{ fontSize: 20, fontWeight: 700, color: urgent || on ? c.color : 'var(--ce2e8f0)', lineHeight: 1.1 }}>{c.n}</div>
                             <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.icon} {c.label}</div>
                           </button>
                         );
@@ -3450,7 +3450,7 @@ function Inner() {
                       style={{
                         width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'inherit',
                         padding: '10px 14px', borderRadius: open ? '10px 10px 0 0' : 10, cursor: 'pointer',
-                        border: `1px solid ${readyFiles > 0 ? '#22c55e' : 'var(--c334155)'}`, background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: 700,
+                        border: `1px solid ${readyFiles > 0 ? '#22c55e' : 'var(--c334155)'}`, background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: 600,
                       }}
                     >
                       <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', fontSize: 11 }}>▶</span>
@@ -3473,7 +3473,7 @@ function Inner() {
 
               <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
                     🚀 {T('Lịch đăng bài tự động', 'Scheduled posts')}
                   </div>
                   {/* Team only: the link the client's group chat gets. One tap
@@ -3541,7 +3541,7 @@ function Inner() {
                           marginTop: 9, padding: '10px 12px', borderRadius: 9,
                           background: 'var(--c451a03)', border: '1px solid #f59e0b',
                         }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cfde68a)', marginBottom: 4 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--cfde68a)', marginBottom: 4 }}>
                             {T('Kết nối hiện tại chưa có quyền đăng bài', 'This connection cannot publish yet')}
                           </div>
                           <div style={{ fontSize: 12.5, color: 'var(--cfde68a)', lineHeight: 1.6 }}>
@@ -3569,7 +3569,7 @@ function Inner() {
                               href="/salon/messenger"
                               style={{
                                 display: 'inline-block', marginTop: 9, padding: '9px 15px', borderRadius: 9,
-                                background: '#f59e0b', color: '#451a03', fontSize: 13, fontWeight: 700, textDecoration: 'none',
+                                background: '#f59e0b', color: '#451a03', fontSize: 13, fontWeight: 600, textDecoration: 'none',
                               }}
                             >
                               {T('Kết nối lại Trang Facebook →', 'Reconnect the Page →')}
@@ -3633,7 +3633,7 @@ function Inner() {
                     queue?.tiktok ? (
                       <>
                         {queue.tiktok.needsReconnect && (
-                          <button onClick={() => tiktokConnect(false)} disabled={ttBusy} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 700, border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                          <button onClick={() => tiktokConnect(false)} disabled={ttBusy} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600, border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
                             {T('Kết nối lại TikTok', 'Reconnect TikTok')}
                           </button>
                         )}
@@ -3642,7 +3642,7 @@ function Inner() {
                         </button>
                       </>
                     ) : (
-                      <button onClick={() => tiktokConnect(false)} disabled={ttBusy} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 700, border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      <button onClick={() => tiktokConnect(false)} disabled={ttBusy} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 12, fontWeight: 600, border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
                         {ttBusy ? T('Đang mở TikTok…', 'Opening TikTok…') : T('Kết nối TikTok →', 'Connect TikTok →')}
                       </button>
                     )
@@ -3680,7 +3680,7 @@ function Inner() {
                     ...ui.card, marginBottom: 14, padding: 14,
                     borderColor: '#ef4444', background: 'var(--c450a0a)',
                   }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cfecaca)', marginBottom: 3 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--cfecaca)', marginBottom: 3 }}>
                       🔴 {held.length} {T('bài khách đang yêu cầu sửa', held.length === 1 ? 'post the client asked to change' : 'posts the client asked to change')}
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--cfca5a5)', lineHeight: 1.55, marginBottom: 9 }}>
@@ -3720,7 +3720,7 @@ function Inner() {
                               style={{
                                 minHeight: 34, padding: '7px 12px', borderRadius: 8,
                                 cursor: queueBusy ? 'not-allowed' : 'pointer', border: 'none',
-                                background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 700,
+                                background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 600,
                               }}
                             >
                               ✓ {T('Đã sửa xong — gửi tiệm duyệt lại', 'Fixed — send back for approval')}
@@ -3762,7 +3762,7 @@ function Inner() {
                     background: 'var(--c0f172a)', border: '1px solid #6366f1', borderLeft: '4px solid #6366f1',
                     position: 'sticky', top: 4, zIndex: 5,
                   }}>
-                    <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--ce2e8f0)', minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)', minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {postDraft.id ? T('Sửa bài · ', 'Edit post · ') : T('Bài mới · ', 'New post · ')}
                       <span style={{ color: 'var(--ca5b4fc)' }}>{kit?.shop.name ?? queue?.connected?.pageName ?? '—'}</span>
                     </span>
@@ -4016,7 +4016,7 @@ function Inner() {
                               ⚠ {r.text}{r.match && <> — {T('từ', 'word')}: <code style={{ background: 'var(--c0f172a)', padding: '0 4px', borderRadius: 4 }}>{r.match}</code></>}
                             </span>
                             {canEditPlan && (
-                              <button type="button" onClick={() => accept(r.code)} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 11.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: '1px solid #f59e0b', background: 'transparent', color: 'var(--cfde68a)', whiteSpace: 'nowrap' }}>
+                              <button type="button" onClick={() => accept(r.code)} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', border: '1px solid #f59e0b', background: 'transparent', color: 'var(--cfde68a)', whiteSpace: 'nowrap' }}>
                                 {T('Tôi hiểu, vẫn đăng', 'I understand — post anyway')}
                               </button>
                             )}
@@ -4097,7 +4097,7 @@ function Inner() {
                                 onClick={() => set({ button: b.k, url: b.k === 'call' || b.k === 'none' ? null : o.url })}
                                 title={vi ? b.hint.vi : b.hint.en}
                                 style={{
-                                  padding: '6px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+                                  padding: '6px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
                                   border: `1px solid ${on ? '#34a853' : 'var(--c475569)'}`,
                                   background: on ? 'rgba(52,168,83,.16)' : 'transparent',
                                   color: on ? 'var(--ink-good)' : 'var(--ccbd5e1)',
@@ -4206,7 +4206,7 @@ function Inner() {
                               {(() => {
                                 const who = tt.displayName || cr?.nickname || null;
                                 return (
-                                  <span style={{ fontSize: 12, color: who ? 'var(--ce2e8f0)' : 'var(--ink-warn)', fontWeight: 700 }}>
+                                  <span style={{ fontSize: 12, color: who ? 'var(--ce2e8f0)' : 'var(--ink-warn)', fontWeight: 600 }}>
                                     {who ?? T('Chưa đọc được tên tài khoản', 'Account name unavailable')}
                                   </span>
                                 );
@@ -4363,7 +4363,7 @@ function Inner() {
                             button is refusing for exactly these reasons. */}
                         {gate.length > 0 ? (
                           <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--c334155)' }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--cfde68a)' }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--cfde68a)' }}>
                               {T(`Chưa đăng lên TikTok được — còn ${gate.length} việc:`, `Not ready for TikTok — ${gate.length} thing(s) left:`)}
                             </div>
                             {gate.map((g, i) => (
@@ -4432,7 +4432,7 @@ function Inner() {
                           page and can never work. Uploading is the path that
                           does not require them to know any of that. */}
                       <label style={{
-                        minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 700,
+                        minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
                         display: 'inline-flex', alignItems: 'center', cursor: uploading ? 'wait' : 'pointer',
                         border: 'none', background: '#6366f1', color: '#fff',
                       }}>
@@ -4456,7 +4456,7 @@ function Inner() {
                           the photo path's data-URL trick would make a 60 MB
                           clip 80 MB and time out. */}
                       <label style={{
-                        minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 700,
+                        minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
                         display: 'inline-flex', alignItems: 'center', cursor: videoPct !== null ? 'wait' : 'pointer',
                         border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)',
                       }}>
@@ -4667,7 +4667,7 @@ function Inner() {
                       marginTop: 12, padding: '12px 13px', borderRadius: 10,
                       background: 'rgba(239,68,68,.10)', border: '1px solid #ef4444',
                     }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink-bad)' }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink-bad)' }}>
                         ⚠ {check.findings.length} {T('thông tin không thuộc về', 'details that do not belong to')} {kit.shop.name}
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 8 }}>
@@ -4747,10 +4747,10 @@ function Inner() {
                       const files = postDraft.media.filter((m) => m.driveUrl);
                       return (
                         <div style={{ marginTop: 14, padding: '11px 12px', borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--line)', fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
-                          <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>📁 {T('Ảnh/clip của bài đã đăng', 'This post’s files')}</div>
+                          <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>📁 {T('Ảnh/clip của bài đã đăng', 'This post’s files')}</div>
                           {live.driveFolderUrl ? (
                             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                              <a href={live.driveFolderUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)', fontWeight: 700 }}>{T('Mở thư mục Drive', 'Open the Drive folder')}</a>
+                              <a href={live.driveFolderUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)', fontWeight: 600 }}>{T('Mở thư mục Drive', 'Open the Drive folder')}</a>
                               {files.map((m, i) => (
                                 <a key={m.url} href={m.driveUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)' }}>{m.kind === 'video' ? '🎬' : '🖼'} {i + 1}</a>
                               ))}
@@ -4805,7 +4805,7 @@ function Inner() {
                           {stage !== 'ready' && (
                             <button
                               onClick={() => setPostDraft({ ...postDraft, stage: stage === 'writing' ? 'design' : 'ready' })}
-                              style={{ marginLeft: 'auto', padding: '5px 11px', borderRadius: 8, fontSize: 12.5, cursor: 'pointer', border: 'none', background: '#6366f1', color: '#fff', fontWeight: 700 }}
+                              style={{ marginLeft: 'auto', padding: '5px 11px', borderRadius: 8, fontSize: 12.5, cursor: 'pointer', border: 'none', background: '#6366f1', color: '#fff', fontWeight: 600 }}
                             >
                               {stage === 'writing' ? T('→ Chuyển cho thiết kế', '→ Hand to design') : T('→ Chốt lịch đăng', '→ Lock the slot')}
                             </button>
@@ -4835,7 +4835,7 @@ function Inner() {
                         {(live?.driveFolderUrl || driveFiles.length > 0) && (
                           <div style={{ marginTop: 8, fontSize: 12, color: 'var(--c94a3b8)', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                             {live?.driveFolderUrl && (
-                              <a href={live.driveFolderUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)', fontWeight: 700 }}>
+                              <a href={live.driveFolderUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--ca5b4fc)', fontWeight: 600 }}>
                                 📁 {T('Thư mục Drive của bài này', 'This post’s Drive folder')}
                               </a>
                             )}
@@ -4873,7 +4873,7 @@ function Inner() {
                         flex: '1 1 160px', minHeight: 44, borderRadius: 9, border: 'none', cursor: 'pointer',
                         background: blocked ? 'var(--c334155)' : (postDraft.message.trim() || postDraft.media.length) ? '#22c55e' : 'var(--c334155)',
                         color: blocked ? 'var(--c64748b)' : (postDraft.message.trim() || postDraft.media.length) ? '#052e16' : 'var(--c64748b)',
-                        fontSize: 14, fontWeight: 700,
+                        fontSize: 14, fontWeight: 600,
                       }}
                     >
                       {queueBusy
@@ -4961,7 +4961,7 @@ function Inner() {
                                 style={{
                                   marginTop: 8, minHeight: 34, padding: '7px 12px', borderRadius: 8,
                                   cursor: queueBusy ? 'not-allowed' : 'pointer', border: 'none',
-                                  background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 700,
+                                  background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 600,
                                 }}
                               >
                                 ✓ {T('Đã xử lý xong — cho bài chạy lại', 'Handled — let it publish')}
@@ -5096,7 +5096,7 @@ function Inner() {
                               onClick={() => postAction(live.id, 'publish')}
                               disabled={queueBusy || live.blockers.length > 0}
                               style={{
-                                minHeight: 42, padding: '0 18px', borderRadius: 9, fontSize: 13.5, fontWeight: 700,
+                                minHeight: 42, padding: '0 18px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
                                 cursor: live.blockers.length ? 'not-allowed' : 'pointer', border: 'none',
                                 background: live.blockers.length ? 'var(--c334155)' : '#6366f1',
                                 color: live.blockers.length ? 'var(--c64748b)' : '#fff',
@@ -5254,22 +5254,22 @@ function Inner() {
                                   )}
                                   {p.status === 'scheduled' && !p.held && (
                                     p.approvedAt
-                                      ? <div style={{ fontSize: 11.5, color: '#14b8a6', fontWeight: 700, marginTop: 4 }}>✅ {T('Khách đã duyệt', 'Client approved')}{approvedLine(p, vi)}</div>
+                                      ? <div style={{ fontSize: 11.5, color: '#14b8a6', fontWeight: 600, marginTop: 4 }}>✅ {T('Khách đã duyệt', 'Client approved')}{approvedLine(p, vi)}</div>
                                       : <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 4 }}>⏳ {T('Chờ khách duyệt', 'Awaiting client approval')}</div>
                                   )}
                                   {p.teamNote && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 4 }}>📝 {p.teamNote}</div>}
                                   <div style={{ display: 'flex', gap: 6, marginTop: 7, flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                                     {p.held && (
-                                      <button onClick={() => clearHold(p.id)} disabled={queueBusy} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>✓ {T('Đã xử lý xong', 'Handled')}</button>
+                                      <button onClick={() => clearHold(p.id)} disabled={queueBusy} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 600, border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>✓ {T('Đã xử lý xong', 'Handled')}</button>
                                     )}
                                     {!p.held && p.stage === 'writing' && (
-                                      <button onClick={() => changeStage(p.id, 'design')} disabled={queueBusy} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, border: '1px solid #c084fc', background: 'transparent', color: 'var(--ce2e8f0)', cursor: 'pointer', fontFamily: 'inherit' }}>→ {T('Chuyển thiết kế', 'To design')}</button>
+                                      <button onClick={() => changeStage(p.id, 'design')} disabled={queueBusy} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 600, border: '1px solid #c084fc', background: 'transparent', color: 'var(--ce2e8f0)', cursor: 'pointer', fontFamily: 'inherit' }}>→ {T('Chuyển thiết kế', 'To design')}</button>
                                     )}
                                     {!p.held && p.stage === 'design' && (
-                                      <button onClick={() => changeStage(p.id, 'ready')} disabled={queueBusy} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, border: '1px solid #22c55e', background: 'transparent', color: 'var(--ce2e8f0)', cursor: 'pointer', fontFamily: 'inherit' }}>✓ {T('Chốt lịch', 'Lock it')}</button>
+                                      <button onClick={() => changeStage(p.id, 'ready')} disabled={queueBusy} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 600, border: '1px solid #22c55e', background: 'transparent', color: 'var(--ce2e8f0)', cursor: 'pointer', fontFamily: 'inherit' }}>✓ {T('Chốt lịch', 'Lock it')}</button>
                                     )}
                                     {!p.held && (p.status === 'failed' || p.status === 'expired') && (
-                                      <button onClick={() => postAction(p.id, 'publish')} disabled={queueBusy || p.blockers.length > 0} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>🚀 {T('Đăng lại', 'Retry')}</button>
+                                      <button onClick={() => postAction(p.id, 'publish')} disabled={queueBusy || p.blockers.length > 0} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 600, border: 'none', background: '#6366f1', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>🚀 {T('Đăng lại', 'Retry')}</button>
                                     )}
                                     <button onClick={() => editPost(p.id)} style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11.5, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer', fontFamily: 'inherit' }}>✎ {T('Mở', 'Open')}</button>
                                   </div>
@@ -5301,7 +5301,7 @@ function Inner() {
                   ...ui.card, marginBottom: 14, padding: '11px 14px',
                   borderColor: '#f59e0b', background: 'var(--c451a03)',
                 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cfde68a)', marginBottom: 3 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--cfde68a)', marginBottom: 3 }}>
                     {T('Vài bài đăng quá sát nhau', 'Some posts are bunched together')}
                   </div>
                   {queue.crowding.slice(0, 4).map((c) => (
@@ -5344,7 +5344,7 @@ function Inner() {
                 return (
                   <div key={p.id} style={{ ...ui.card, marginBottom: 10, padding: 14, borderColor: p.held ? '#ef4444' : p.blockers.length ? '#f59e0b' : 'var(--c334155)' }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
                         {fmtInTz(when, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                       </span>
                       <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg }}>{p.held ? '🔴 ' : ''}{st.text}</span>
@@ -5376,7 +5376,7 @@ function Inner() {
                             style={{
                               marginTop: 8, minHeight: 34, padding: '7px 12px', borderRadius: 8,
                               cursor: queueBusy ? 'not-allowed' : 'pointer', border: 'none',
-                              background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 700,
+                              background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 600,
                             }}
                           >
                             ✓ {T('Đã xử lý xong', 'Handled')}
@@ -5413,7 +5413,7 @@ function Inner() {
                               {i === 2 && p.media.length > 3 && (
                                 <span style={{
                                   position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)', color: '#fff',
-                                  fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center',
+                                  fontSize: 12, fontWeight: 600, display: 'grid', placeItems: 'center',
                                 }}>+{p.media.length - 2}</span>
                               )}
                             </span>
@@ -5533,7 +5533,7 @@ function Inner() {
                   rather than a decision. */}
               {plan?.market && isNorthAmerica(uiMarket()) && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#6366f1' }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
                     🎯 {T('Tệp khách mục tiêu trong khu vực', 'Who to target in this area')}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 12, lineHeight: 1.5 }}>
@@ -5549,8 +5549,8 @@ function Inner() {
                       <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 2 }}>
                         {T('NHẮM VÀO', 'PRIMARY TARGET')}
                       </div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ca5b4fc)' }}>{plan.market.primary.label}</div>
-                      <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--ce2e8f0)', margin: '2px 0' }}>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ca5b4fc)' }}>{plan.market.primary.label}</div>
+                      <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--ce2e8f0)', margin: '2px 0' }}>
                         {plan.market.primary.size.toLocaleString('en-US')} <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--c94a3b8)' }}>{T('người', 'people')}</span>
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55, marginTop: 4 }}>{plan.market.primary.basis}</div>
@@ -5572,18 +5572,18 @@ function Inner() {
                     }}>
                       <div>
                         <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{T('Trần chi cả đợt', 'Spend ceiling')}</div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink-warn)' }}>{plan.market.maxSpend}</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink-warn)' }}>{plan.market.maxSpend}</div>
                       </div>
                       {plan.market.penetrationPct !== null && (
                         <div>
                           <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{T('Cần chiếm', 'Share needed')}</div>
-                          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{plan.market.penetrationPct}%</div>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{plan.market.penetrationPct}%</div>
                         </div>
                       )}
                       {plan.market.capacity !== null && (
                         <div>
                           <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{T('Chỗ trống lấp được', 'Seats to fill')}</div>
-                          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{plan.market.capacity}</div>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{plan.market.capacity}</div>
                         </div>
                       )}
                     </div>
@@ -5628,7 +5628,7 @@ function Inner() {
                   ...ui.card, marginBottom: 14, padding: 16,
                   borderColor: plan.brief.complete ? '#6366f1' : '#f59e0b',
                 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 4 }}>
                     🧭 {T('Phân tích chiến lược', 'The strategy')}
                   </div>
                   <div style={{
@@ -5646,7 +5646,7 @@ function Inner() {
 
                   {!!plan.brief.missing.length && (
                     <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-warn)', marginBottom: 6 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-warn)', marginBottom: 6 }}>
                         {T('Còn thiếu để hoàn chỉnh phân tích', 'Missing links in the chain')}
                       </div>
                       {plan.brief.missing.map((m) => (
@@ -5694,7 +5694,7 @@ function Inner() {
                     alsoIn={T('🛣️ Lộ trình SEO', '🛣️ SEO roadmap')}
                   />
 
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', marginBottom: 8, letterSpacing: 0.3 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c94a3b8)', marginBottom: 8, letterSpacing: 0.3 }}>
                     {T('NHÓM QUẢNG CÁO', 'AD GROUPS')}
                   </div>
                   {plan.keywordPlan.adGroups.map((g) => {
@@ -5705,8 +5705,8 @@ function Inner() {
                     return (
                       <div key={g.name} style={{ padding: '11px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: `1px solid ${tone}`, marginBottom: 9 }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-                          <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{g.name}</span>
-                          <span style={{ fontSize: 10.5, fontWeight: 700, color: tone, border: `1px solid ${tone}`, borderRadius: 20, padding: '1px 8px' }}>{badge}</span>
+                          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{g.name}</span>
+                          <span style={{ fontSize: 10.5, fontWeight: 600, color: tone, border: `1px solid ${tone}`, borderRadius: 20, padding: '1px 8px' }}>{badge}</span>
                         </div>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 7 }}>
                           {g.keywords.map((k) => (
@@ -5718,7 +5718,7 @@ function Inner() {
                     );
                   })}
 
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', margin: '16px 0 8px', letterSpacing: 0.3 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c94a3b8)', margin: '16px 0 8px', letterSpacing: 0.3 }}>
                     {T('BÀI SEO NÊN VIẾT', 'ARTICLES TO WRITE')}
                   </div>
                   {plan.keywordPlan.seoTopics.map((t2) => {
@@ -5728,7 +5728,7 @@ function Inner() {
                     return (
                       <div key={t2.title} style={{ padding: '11px 12px', borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', marginBottom: 9 }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 5 }}>
-                          <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t2.title}</span>
+                          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{t2.title}</span>
                           <span style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{kindLabel}</span>
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55, marginBottom: 6 }}>{t2.why}</div>
@@ -5749,20 +5749,20 @@ function Inner() {
 
               {plan?.ads && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
                     🎚️ {T('Một khách mới đáng chi tối đa bao nhiêu', 'The most a booking may cost')}
                   </div>
                   {plan.ads.money.ceilingStrict ? (
                     <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 8 }}>
                       <div>
                         <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Ngưỡng an toàn', 'Hard ceiling')}</div>
-                        <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--ink-good)' }}>{plan.ads.money.ceilingStrict}</div>
+                        <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--ink-good)' }}>{plan.ads.money.ceilingStrict}</div>
                         <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('mỗi booking', 'per booking')}</div>
                       </div>
                       {plan.ads.money.ceilingRepeat && (
                         <div>
                           <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Nếu khách quay lại đều', 'If they return')}</div>
-                          <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--c94a3b8)' }}>{plan.ads.money.ceilingRepeat}</div>
+                          <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--c94a3b8)' }}>{plan.ads.money.ceilingRepeat}</div>
                           <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>~{plan.ads.ceiling.visitsPerYear} {T('lần/năm', 'visits/yr')}</div>
                         </div>
                       )}
@@ -5783,26 +5783,26 @@ function Inner() {
                   ...ui.card, marginBottom: 14, padding: 16,
                   borderColor: plan.ads.budget.feasible === 'no' ? '#ef4444' : plan.ads.budget.feasible === 'tight' ? '#f59e0b' : 'var(--c334155)',
                 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
                     💵 {T('Ngân sách thử', 'The test budget')}
                   </div>
                   <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 8 }}>
                     <div>
                       <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Mỗi ngày', 'Daily')}</div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{plan.ads.money.daily}</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{plan.ads.money.daily}</div>
                     </div>
                     <div>
                       <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Trong', 'For')}</div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{plan.ads.budget.days} {T('ngày', 'days')}</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{plan.ads.budget.days} {T('ngày', 'days')}</div>
                     </div>
                     <div>
                       <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Tổng', 'Total')}</div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ca5b4fc)' }}>{plan.ads.money.total}</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ca5b4fc)' }}>{plan.ads.money.total}</div>
                     </div>
                     {plan.ads.budget.bookingsToBreakEven !== null && (
                       <div>
                         <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c64748b)' }}>{T('Cần để hoà vốn', 'Break-even')}</div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink-warn)' }}>{plan.ads.budget.bookingsToBreakEven} {T('booking', 'bookings')}</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink-warn)' }}>{plan.ads.budget.bookingsToBreakEven} {T('booking', 'bookings')}</div>
                       </div>
                     )}
                   </div>
@@ -5816,10 +5816,10 @@ function Inner() {
                    with an invented number attached is worse than silence. */}
               {plan?.ads?.competition && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#a5b4fc' }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
                     🏁 {T('Đối thủ quanh tiệm', 'The shops beside this one')}
                     <span style={{
-                      marginLeft: 8, fontSize: 11.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999,
+                      marginLeft: 8, fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
                       background: plan.ads.competition.density === 'crowded' ? 'rgba(239,68,68,.16)' : plan.ads.competition.density === 'busy' ? 'rgba(245,158,11,.16)' : 'rgba(34,197,94,.16)',
                       color: plan.ads.competition.density === 'crowded' ? 'var(--ink-bad)' : plan.ads.competition.density === 'busy' ? 'var(--ink-warn)' : 'var(--ink-good)',
                     }}>
@@ -5831,18 +5831,18 @@ function Inner() {
                   <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
                     {plan.ads.competition.top.map((t, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13 }}>
-                        <span style={{ width: 18, color: 'var(--c64748b)', fontWeight: 800 }}>{i + 1}</span>
+                        <span style={{ width: 18, color: 'var(--c64748b)', fontWeight: 700 }}>{i + 1}</span>
                         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ccbd5e1)' }}>{t.name}</span>
                         {t.rating !== null && <span style={{ color: 'var(--ink-warn)', fontSize: 12 }}>★ {t.rating.toFixed(1)}</span>}
-                        <span style={{ fontWeight: 800, color: 'var(--ce2e8f0)', minWidth: 46, textAlign: 'right' }}>{t.reviews}</span>
+                        <span style={{ fontWeight: 700, color: 'var(--ce2e8f0)', minWidth: 46, textAlign: 'right' }}>{t.reviews}</span>
                       </div>
                     ))}
                     {plan.ads.competition.myReviews !== null && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, borderTop: '1px solid var(--c1f2937)', paddingTop: 7, marginTop: 2 }}>
                         <span style={{ width: 18 }}>👉</span>
-                        <span style={{ flex: 1, color: 'var(--ink-link)', fontWeight: 700 }}>{T('Tiệm mình', 'This salon')}</span>
+                        <span style={{ flex: 1, color: 'var(--ink-link)', fontWeight: 600 }}>{T('Tiệm mình', 'This salon')}</span>
                         {plan.ads.competition.myRating !== null && <span style={{ color: 'var(--ink-warn)', fontSize: 12 }}>★ {plan.ads.competition.myRating.toFixed(1)}</span>}
-                        <span style={{ fontWeight: 800, color: 'var(--ink-link)', minWidth: 46, textAlign: 'right' }}>{plan.ads.competition.myReviews}</span>
+                        <span style={{ fontWeight: 700, color: 'var(--ink-link)', minWidth: 46, textAlign: 'right' }}>{plan.ads.competition.myReviews}</span>
                       </div>
                     )}
                   </div>
@@ -5856,7 +5856,7 @@ function Inner() {
                    what makes this advice something a client can check. */}
               {plan?.ads?.calendar && plan.ads.calendar.periods.length > 0 && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
                     🗓 {T('Lịch ngân sách 90 ngày', 'The next 90 days of budget')}
                   </div>
                   <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginBottom: 10 }}>{plan.ads.calendar.plain}</div>
@@ -5866,8 +5866,8 @@ function Inner() {
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
                     {plan.ads.calendar.months.map((m) => (
                       <div key={m.month} style={{ background: 'var(--c0f172a)', border: '1px solid var(--c1f2937)', borderRadius: 9, padding: '7px 11px' }}>
-                        <div style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 700 }}>{m.month}</div>
-                        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{m.total}</div>
+                        <div style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 600 }}>{m.month}</div>
+                        <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{m.total}</div>
                         <div style={{ fontSize: 10.5, color: 'var(--ink-faint)' }}>{T('chia đều', 'flat')} {m.flat}</div>
                       </div>
                     ))}
@@ -5879,7 +5879,7 @@ function Inner() {
                       <div style={{ fontSize: 11.5, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 5 }}>{T('NGÀY CẦN CHỈNH', 'DAYS TO CHANGE A NUMBER')}</div>
                       {plan.ads.calendar.diary.map((d, i) => (
                         <div key={i} style={{ display: 'flex', gap: 9, fontSize: 13, padding: '3px 0', color: 'var(--ccbd5e1)' }}>
-                          <span style={{ fontWeight: 800, color: 'var(--ink-warn)', flex: '0 0 auto', fontFamily: 'ui-monospace, monospace' }}>{d.on}</span>
+                          <span style={{ fontWeight: 700, color: 'var(--ink-warn)', flex: '0 0 auto', fontFamily: 'ui-monospace, monospace' }}>{d.on}</span>
                           <span>{d.line}</span>
                         </div>
                       ))}
@@ -5896,7 +5896,7 @@ function Inner() {
                         <span style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--c64748b)', flex: '0 0 auto', fontSize: 11.5 }}>
                           {p.from.slice(5)}→{p.to.slice(5)}
                         </span>
-                        <span style={{ fontWeight: 800, color: p.kind === 'push' ? 'var(--ink-good)' : p.kind === 'cut' ? 'var(--ink-bad)' : 'var(--c94a3b8)', flex: '0 0 auto', minWidth: 64 }}>
+                        <span style={{ fontWeight: 700, color: p.kind === 'push' ? 'var(--ink-good)' : p.kind === 'cut' ? 'var(--ink-bad)' : 'var(--c94a3b8)', flex: '0 0 auto', minWidth: 64 }}>
                           {p.daily}/{T('ngày', 'day')}
                         </span>
                         <span style={{ color: 'var(--ccbd5e1)', minWidth: 0 }}>
@@ -5911,7 +5911,7 @@ function Inner() {
               {/* ---- run days ---- */}
               {plan?.ads?.window && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 6 }}>
                     📅 {T('Ngày nào bật, ngày nào tắt', 'Days on, days off')}
                   </div>
                   <div style={{ marginBottom: 8 }}>
@@ -5943,7 +5943,7 @@ function Inner() {
                   and the count alone hides which. */}
               {!!plan?.ads?.channels?.reports?.length && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
                     📊 {T('Từng kênh đang hiệu quả tới đâu', 'How each channel is performing')}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, lineHeight: 1.5 }}>
@@ -5972,7 +5972,7 @@ function Inner() {
                         border: `1px solid ${c.verdict === 'builds' ? '#22c55e' : 'var(--c334155)'}`,
                       }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-                          <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{c.label}</span>
+                          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{c.label}</span>
                           <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: v.bg, color: v.fg }}>{v.text}</span>
                           {c.trend !== 'unknown' && (
                             <span style={{ fontSize: 11.5, color: c.trend === 'up' ? 'var(--ink-good)' : c.trend === 'down' ? 'var(--cfca5a5)' : 'var(--c64748b)' }}>
@@ -5990,7 +5990,7 @@ function Inner() {
                           ].map((m) => (
                             <div key={m.k}>
                               <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{m.k}</div>
-                              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{m.v}</div>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{m.v}</div>
                             </div>
                           ))}
                         </div>
@@ -6004,7 +6004,7 @@ function Inner() {
               {/* ---- what to do on each platform ---- */}
               {!!plan?.ads?.plans?.length && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
                     💸 {T('Chạy gì, bao nhiêu, trên từng nền tảng', 'What to run on each platform')}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10, lineHeight: 1.5 }}>
@@ -6035,7 +6035,7 @@ function Inner() {
                       }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 5 }}>
                           <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>#{p.rank}</span>
-                          <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{p.label}</span>
+                          <span style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{p.label}</span>
                           <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: 'var(--c0f172a)', color: s2.fg, border: `1px solid ${s2.fg}` }}>{s2.text}</span>
                         </div>
                         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55, marginBottom: 7 }}>{p.evidence}</div>
@@ -6050,7 +6050,7 @@ function Inner() {
                             ].filter((m) => m.v).map((m) => (
                               <div key={m.k}>
                                 <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{m.k}</div>
-                                <div style={{ fontSize: 17, fontWeight: 800, color: m.c }}>{m.v}</div>
+                                <div style={{ fontSize: 17, fontWeight: 700, color: m.c }}>{m.v}</div>
                               </div>
                             ))}
                           </div>
@@ -6076,7 +6076,7 @@ function Inner() {
                         {p.spec && (
                           <details style={{ marginTop: 9 }}>
                             <summary style={{
-                              cursor: 'pointer', fontSize: 13, fontWeight: 700, color: 'var(--ca5b4fc)',
+                              cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--ca5b4fc)',
                               padding: '8px 10px', borderRadius: 8, background: 'var(--c0f172a)',
                               border: '1px solid #6366f1', listStyle: 'none',
                             }}>
@@ -6109,7 +6109,7 @@ function Inner() {
                                   marginTop: 8, padding: '9px 11px', borderRadius: 8,
                                   background: 'var(--c0f172a)', border: '1px solid var(--c334155)',
                                 }}>
-                                  <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-link)' }}>
+                                  <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-link)' }}>
                                     {T('Nhóm quảng cáo', 'Ad set')} {ai + 1}: <code style={{ color: 'var(--ink-good)' }}>{a.name}</code>
                                   </div>
                                   {[[T('Ai', 'Who'), a.who], [T('Ở đâu', 'Where'), a.where], [T('Khi nào', 'When'), a.when], [T('Loại trừ', 'Exclude'), a.exclude]]
@@ -6123,7 +6123,7 @@ function Inner() {
                               ))}
 
                               <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }}>
-                                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-link)', marginBottom: 4 }}>
+                                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-link)', marginBottom: 4 }}>
                                   {T('Nội dung quảng cáo', 'The ad itself')}
                                 </div>
                                 <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 6, lineHeight: 1.5 }}>
@@ -6186,7 +6186,7 @@ function Inner() {
               {/* ---- audiences ---- */}
               {!!plan?.ads?.audiences?.length && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
                     👥 {T('Nhắm vào ai', 'Who to target')}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 10 }}>
@@ -6277,13 +6277,13 @@ function Inner() {
               {/* ---- what is coming, and what to prepare ---- */}
               {!!plan?.events?.length && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 10 }}>
                     📅 {T('Sắp tới', 'Coming up')}
                   </div>
                   {plan.events.slice(0, 4).map((e) => (
                     <div key={e.name} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '7px 0', borderTop: '1px solid var(--line)' }}>
                       <div style={{ flex: '0 0 66px' }}>
-                        <div style={{ fontSize: e.daysAway < 0 ? 13 : 17, fontWeight: 800, color: e.daysAway <= 14 ? 'var(--ink-warn)' : 'var(--ca5b4fc)', lineHeight: 1.1 }}>
+                        <div style={{ fontSize: e.daysAway < 0 ? 13 : 17, fontWeight: 700, color: e.daysAway <= 14 ? 'var(--ink-warn)' : 'var(--ca5b4fc)', lineHeight: 1.1 }}>
                           {e.daysAway < 0 ? T('Đang diễn ra', 'On now') : e.daysAway}
                         </div>
                         {e.daysAway >= 0 && <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('ngày nữa', 'days')}</div>}
@@ -6322,7 +6322,7 @@ function Inner() {
                    month, this one is what to order stock and book staff for. */}
               {!!plan?.calendar?.length && (
                 <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', marginBottom: 2 }}>
                     📆 {T('Lịch ngày lễ 6 tháng tới', 'Next six months')}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 8, lineHeight: 1.5 }}>
@@ -6338,7 +6338,7 @@ function Inner() {
                       {/* The date is what a person plans around; the countdown
                           is only how far off it is. So the date leads. */}
                       <div style={{ flex: '0 0 104px' }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: e.daysAway <= 30 ? 'var(--ink-warn)' : 'var(--ccbd5e1)' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: e.daysAway <= 30 ? 'var(--ink-warn)' : 'var(--ccbd5e1)' }}>
                           {holidayDate(e.date, vi) || (e.daysAway < 0 ? T('đang diễn ra', 'on now') : '')}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>
@@ -6510,7 +6510,7 @@ function CampaignReview({ review, token, vi, onDone }: {
   if (!review.started) {
     return (
       <div style={box('rgba(239,68,68,.07)', '#ef4444')}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-bad)' }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink-bad)' }}>
           ⚠️ {T('Tiệm đã duyệt ngân sách — chưa ai bật chiến dịch', 'The shop approved the budget — nobody has switched it on')}
         </div>
         <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 6 }}>
@@ -6551,11 +6551,11 @@ function CampaignReview({ review, token, vi, onDone }: {
   return (
     <div style={box(bad ? 'rgba(239,68,68,.06)' : late > 0 ? 'rgba(245,158,11,.06)' : 'var(--c0f172a)', tone)}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
           📊 {T(`Đến hạn soi — ngày thứ ${r.dayNumber}/${review.days}`, `Review due — day ${r.dayNumber} of ${review.days}`)}
         </div>
         {late > 0 && (
-          <span style={{ fontSize: 11.5, fontWeight: 800, padding: '2px 9px', borderRadius: 999, background: 'rgba(245,158,11,.18)', color: '#fbbf24' }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: 'rgba(245,158,11,.18)', color: '#fbbf24' }}>
             {T(`trễ ${late} ngày`, `${late} days late`)}
           </span>
         )}
@@ -6564,7 +6564,7 @@ function CampaignReview({ review, token, vi, onDone }: {
       <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', marginTop: 10 }}>
         {r.figures.map((f, i) => (
           <div key={i}>
-            <div style={{ fontSize: 24, fontWeight: 800, color: i === 2 && bad ? 'var(--ink-bad)' : 'var(--ce2e8f0)' }}>{f.value}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: i === 2 && bad ? 'var(--ink-bad)' : 'var(--ce2e8f0)' }}>{f.value}</div>
             <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{f.label}</div>
           </div>
         ))}
@@ -6577,13 +6577,13 @@ function CampaignReview({ review, token, vi, onDone }: {
         background: bad ? 'rgba(239,68,68,.12)' : 'rgba(99,102,241,.12)',
         border: `1px solid ${bad ? 'rgba(239,68,68,.5)' : 'rgba(99,102,241,.45)'}`,
       }}>
-        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: bad ? 'var(--ink-bad)' : 'var(--ink-link)' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: bad ? 'var(--ink-bad)' : 'var(--ink-link)' }}>
           {T('Làm cái này trước khi gửi', 'Do this before you send')}
         </div>
         <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.55, marginTop: 3 }}>{r.doNext}</div>
       </div>
 
-      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--ink-faint)', marginTop: 12 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--ink-faint)', marginTop: 12 }}>
         {T('Tin nhắn gửi tiệm', 'The message to send')}
       </div>
       <div style={{

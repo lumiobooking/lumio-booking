@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { AppointmentStatus, PaymentStatus, OrderStatus } from '@prisma/client';
+import { AppointmentStatus, PaymentStatus, OrderStatus, WalkInStatus, WaitlistStatus, GoogleReviewStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { addDaysToKey, dayKeyTz, dayRangeTz, hourTz, startOfDayTz, weekdayTz } from '../common/salon-time';
@@ -376,6 +376,164 @@ export class OverviewService {
       topServices,
       markdowns,
       upcoming: upcomingBookings,
+    };
+  }
+
+  /**
+   * The owner's home screen: what the dashboard shows, plus the previous
+   * period of the same length (so every number can say "vs last week"), plus
+   * what is happening on the floor right now and what needs a decision.
+   *
+   * Everything here is the authenticated tenant's own: every query carries
+   * tenantId, and the live picture is built from that tenant's staff, walk-ins,
+   * appointments, waitlist, reviews and products only.
+   */
+  async home(user: AuthenticatedUser, fromStr?: string, toStr?: string) {
+    const tenantId = this.tenantId(user);
+    const now = new Date();
+    const tz = await this.tzOf(tenantId);
+    const { fromKey, toKey } = dayRangeTz(fromStr, toStr, tz, { now, defaultDays: 1 });
+
+    // The previous period: the same number of days, ending the day before.
+    let days = 1;
+    for (let k = fromKey, g = 0; k < toKey && g < 370; k = addDaysToKey(k, 1), g += 1) days += 1;
+    const prevToKey = addDaysToKey(fromKey, -1);
+    const prevFromKey = addDaysToKey(fromKey, -days);
+
+    const [current, previous, live, tips, prevTips] = await Promise.all([
+      this.dashboard(user, fromKey, toKey),
+      this.periodKpis(tenantId, tz, prevFromKey, prevToKey, now),
+      this.live(tenantId, tz, now),
+      this.tipsFor(tenantId, tz, fromKey, toKey, now),
+      this.tipsFor(tenantId, tz, prevFromKey, prevToKey, now),
+    ]);
+
+    return {
+      ...current,
+      tipsCents: tips,
+      previous: { range: { from: prevFromKey, to: prevToKey }, kpis: previous, tipsCents: prevTips },
+      ...live,
+    };
+  }
+
+  /** The handful of headline numbers for a range — same revenue rules as dashboard(). */
+  private async periodKpis(tenantId: string, tz: string, fromKey: string, toKey: string, now: Date) {
+    const { from, to } = dayRangeTz(fromKey, toKey, tz, { now });
+    const [appts, payments, newCustomers] = await Promise.all([
+      this.prisma.appointment.findMany({ where: { tenantId, startTime: { gte: from, lte: to } }, select: { status: true } }),
+      this.prisma.payment.findMany({
+        where: { tenantId, status: PaymentStatus.PAID, paidAt: { gte: from, lte: to } },
+        select: { amountCents: true, appointment: { select: { status: true } } },
+      }),
+      this.prisma.customer.count({ where: { tenantId, createdAt: { gte: from, lte: to } } }),
+    ]);
+    const countable = payments.filter((p) => !p.appointment || !REVENUE_EXCLUDED_STATUSES.has(p.appointment.status));
+    const revenueCents = countable.reduce((sum, p) => sum + p.amountCents, 0);
+    const completed = appts.filter((a) => a.status === AppointmentStatus.COMPLETED).length;
+    return {
+      totalBookings: appts.length,
+      revenueCents,
+      newCustomers,
+      completed,
+      paidCount: countable.length,
+      avgBookingValueCents: countable.length ? Math.round(revenueCents / countable.length) : 0,
+    };
+  }
+
+  /** Tips collected at the till in a range (what the technicians took home). */
+  private async tipsFor(tenantId: string, tz: string, fromKey: string, toKey: string, now: Date): Promise<number> {
+    const { from, to } = dayRangeTz(fromKey, toKey, tz, { now });
+    const agg = await this.prisma.order.aggregate({
+      _sum: { tipCents: true },
+      where: { tenantId, status: OrderStatus.PAID, paidAt: { gte: from, lte: to } },
+    });
+    return agg._sum.tipCents ?? 0;
+  }
+
+  /**
+   * The floor right now: one row per active technician (what they are doing,
+   * or when their next booking is), today's booking counts, chairs in use, and
+   * the short list of things waiting on the owner.
+   */
+  private async live(tenantId: string, tz: string, now: Date) {
+    const todayKey = dayKeyTz(now, tz);
+    const startOfToday = startOfDayTz(todayKey, tz);
+    const endOfToday = startOfDayTz(addDaysToKey(todayKey, 1), tz);
+    const LIVE_STATUSES: AppointmentStatus[] = [...ACTIVE_STATUSES, AppointmentStatus.ARRIVED];
+
+    const [staff, todayAppts, serving, stations, pendingBookings, waitlist, reviews, lowStockRows] = await Promise.all([
+      this.prisma.staffMember.findMany({
+        where: { tenantId, isActive: true },
+        select: { id: true, firstName: true, lastName: true },
+        orderBy: { firstName: 'asc' },
+      }),
+      this.prisma.appointment.findMany({
+        where: { tenantId, startTime: { gte: startOfToday, lt: endOfToday }, status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.REJECTED] } },
+        select: {
+          id: true, status: true, startTime: true, endTime: true, assignedStaffId: true,
+          customer: { select: { firstName: true, lastName: true } },
+          service: { select: { name: true } },
+        },
+        orderBy: { startTime: 'asc' },
+      }),
+      this.prisma.walkIn.findMany({
+        where: { tenantId, status: WalkInStatus.SERVING },
+        select: { id: true, customerName: true, items: true, assignedStaffId: true, assignedAt: true, extraMinutes: true, awaitingPayment: true, service: { select: { name: true, durationMinutes: true } }, customer: { select: { firstName: true, lastName: true } } },
+      }),
+      this.prisma.station.count({ where: { tenantId, isActive: true } }),
+      this.prisma.appointment.count({ where: { tenantId, status: AppointmentStatus.PENDING, startTime: { gte: now } } }),
+      this.prisma.waitlistEntry.count({ where: { tenantId, status: WaitlistStatus.WAITING } }),
+      this.prisma.googleReview.count({ where: { tenantId, status: { in: [GoogleReviewStatus.NEW, GoogleReviewStatus.DRAFTED, GoogleReviewStatus.NEEDS_ATTENTION] } } }),
+      this.prisma.product.findMany({ where: { tenantId, isActive: true, trackStock: true, stockQty: { lte: 3 } }, select: { name: true, stockQty: true }, orderBy: { stockQty: 'asc' }, take: 5 }),
+    ]);
+
+    const personName = (c: { firstName: string; lastName: string | null } | null | undefined, fallback: string) =>
+      c ? `${c.firstName} ${c.lastName ?? ''}`.trim() : fallback;
+    const walkInWhat = (w: (typeof serving)[number]) => {
+      const items = Array.isArray(w.items) ? (w.items as { name?: string }[]).map((i) => i?.name).filter(Boolean) : [];
+      return items.length ? items.join(' + ') : w.service?.name ?? '';
+    };
+
+    type Slot = { kind: 'walkin' | 'appointment'; id: string; customer: string; service: string; startTime: string; endTime: string | null; awaitingPayment: boolean; status: string };
+    const rows = staff.map((s) => {
+      const w = serving.find((x) => x.assignedStaffId === s.id);
+      let current: Slot | null = null;
+      if (w) {
+        const started = w.assignedAt ?? now;
+        const mins = (w.service?.durationMinutes ?? 45) + (w.extraMinutes ?? 0);
+        current = {
+          kind: 'walkin', id: w.id, customer: w.customerName || personName(w.customer, 'Walk-in'), service: walkInWhat(w),
+          startTime: started.toISOString(), endTime: new Date(started.getTime() + mins * 60000).toISOString(),
+          awaitingPayment: w.awaitingPayment, status: WalkInStatus.SERVING,
+        };
+      } else {
+        const a = todayAppts.find((x) => x.assignedStaffId === s.id && LIVE_STATUSES.includes(x.status) && x.startTime <= now && x.endTime > now);
+        if (a) current = { kind: 'appointment', id: a.id, customer: personName(a.customer, 'Khách'), service: a.service?.name ?? '', startTime: a.startTime.toISOString(), endTime: a.endTime.toISOString(), awaitingPayment: false, status: a.status };
+      }
+      const n = todayAppts.find((x) => x.assignedStaffId === s.id && LIVE_STATUSES.includes(x.status) && x.startTime > now);
+      const next = n ? { id: n.id, customer: personName(n.customer, 'Khách'), service: n.service?.name ?? '', startTime: n.startTime.toISOString() } : null;
+      return { staffId: s.id, name: `${s.firstName} ${s.lastName ?? ''}`.trim(), current, next };
+    });
+    // Whoever is waiting to pay first, then everyone busy, then the free chairs.
+    rows.sort((a, b) => Number(!!b.current?.awaitingPayment) - Number(!!a.current?.awaitingPayment) || Number(!!b.current) - Number(!!a.current));
+
+    const busy = rows.filter((r) => r.current).length;
+    const awaitingPayment = serving.filter((w) => w.awaitingPayment).length;
+    const completedToday = todayAppts.filter((a) => a.status === AppointmentStatus.COMPLETED).length;
+    const upcomingToday = todayAppts.filter((a) => LIVE_STATUSES.includes(a.status) && a.startTime > now).length;
+    const inProgress = todayAppts.filter((a) => LIVE_STATUSES.includes(a.status) && a.startTime <= now && a.endTime > now).length;
+
+    return {
+      now: rows,
+      today: { bookings: todayAppts.length, completed: completedToday, inProgress, upcoming: upcomingToday, noShow: todayAppts.filter((a) => a.status === AppointmentStatus.NO_SHOW).length },
+      chairs: { total: stations, busy, staff: staff.length },
+      attention: {
+        awaitingPayment,
+        pendingBookings,
+        waitlist,
+        reviews,
+        lowStock: lowStockRows.map((p) => ({ name: p.name, qty: p.stockQty })),
+      },
     };
   }
 }

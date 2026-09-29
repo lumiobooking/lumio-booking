@@ -77,7 +77,7 @@ export default function SignupPage() {
   return (
     <div style={{ minHeight: '100dvh', background: 'linear-gradient(180deg,#eef2ff,#fff 40%)', color: INK, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}>
       <div style={{ maxWidth: 980, margin: '0 auto', padding: '28px 24px' }}>
-        <Link href="/" style={{ fontSize: 20, fontWeight: 800, color: INK, textDecoration: 'none' }}>Lumio<span style={{ color: INDIGO }}>Booking</span></Link>
+        <Link href="/" style={{ fontSize: 20, fontWeight: 700, color: INK, textDecoration: 'none' }}>Lumio<span style={{ color: INDIGO }}>Booking</span></Link>
       </div>
 
       <div style={{ maxWidth: 980, margin: '0 auto', padding: mobile ? '0 16px 48px' : '0 24px 64px', display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'minmax(0,1fr) 360px', gap: mobile ? 18 : 28, alignItems: 'start' }}>
@@ -123,7 +123,7 @@ export default function SignupPage() {
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <strong style={{ fontSize: 18 }}>{plan.name}</strong>
-                <span style={{ fontWeight: 800, fontSize: 20 }}>{money(cents, plan.currency)}<span style={{ color: 'var(--c64748b)', fontSize: 13, fontWeight: 400 }}>/{interval === 'year' ? 'yr' : 'mo'}</span></span>
+                <span style={{ fontWeight: 700, fontSize: 20 }}>{money(cents, plan.currency)}<span style={{ color: 'var(--c64748b)', fontSize: 13, fontWeight: 400 }}>/{interval === 'year' ? 'yr' : 'mo'}</span></span>
               </div>
               {plan.tagline && <p style={{ color: 'var(--c64748b)', fontSize: 13, margin: '6px 0 0' }}>{plan.tagline}</p>}
 
@@ -146,7 +146,7 @@ export default function SignupPage() {
               </div>
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {plan.features.slice(0, 6).map((f) => (
-                  <li key={f} style={{ display: 'flex', gap: 8, fontSize: 13.5, color: 'var(--c334155)' }}><span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> {f}</li>
+                  <li key={f} style={{ display: 'flex', gap: 8, fontSize: 13.5, color: 'var(--c334155)' }}><span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span> {f}</li>
                 ))}
               </ul>
             </>
@@ -164,12 +164,12 @@ function Banner({ children, color, bg }: { children: React.ReactNode; color: str
   return <div style={{ background: bg, color, padding: '10px 14px', borderRadius: 10, fontSize: 14, marginBottom: 16 }}>{children}</div>;
 }
 function ProviderBtn({ active, onClick, label: l }: { active: boolean; onClick: () => void; label: string }) {
-  return <button type="button" onClick={onClick} style={{ flex: 1, padding: '11px', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 14, border: `1.5px solid ${active ? INDIGO : 'var(--ccbd5e1)'}`, background: active ? '#eef2ff' : '#fff', color: active ? '#4338ca' : 'var(--c334155)' }}>{l}</button>;
+  return <button type="button" onClick={onClick} style={{ flex: 1, padding: '11px', borderRadius: 10, cursor: 'pointer', fontWeight: 600, fontSize: 14, border: `1.5px solid ${active ? INDIGO : 'var(--ccbd5e1)'}`, background: active ? '#eef2ff' : '#fff', color: active ? '#4338ca' : 'var(--c334155)' }}>{l}</button>;
 }
 
 const label: React.CSSProperties = { display: 'block', fontSize: 13, color: 'var(--c475569)', fontWeight: 600, marginBottom: 4 };
 const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid var(--ccbd5e1)', fontSize: 15, color: INK, background: '#fff' };
-const primaryBtn: React.CSSProperties = { background: INDIGO, color: '#fff', fontWeight: 700, border: 'none', borderRadius: 12, cursor: 'pointer' };
+const primaryBtn: React.CSSProperties = { background: INDIGO, color: '#fff', fontWeight: 600, border: 'none', borderRadius: 12, cursor: 'pointer' };
 function miniToggle(active: boolean): React.CSSProperties {
   return { border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600, background: active ? INDIGO : 'transparent', color: active ? '#fff' : 'var(--c475569)' };
 }

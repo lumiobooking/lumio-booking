@@ -324,7 +324,7 @@ function Inner() {
           : 'Why only one? A GTM container usually already includes the Google Tag (GA4) — loading GA4 directly as well would double-count every pageview and booking. The system loads exactly one method and fires exactly one booking_completed per order.'}
       </p>
       <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 14px', marginTop: 12, maxWidth: 640 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 4 }}>{lang === 'vi' ? '⚡ Tiệm mới? Import mẫu GTM dựng sẵn (2 phút)' : '⚡ New salon? Import the ready-made GTM template (2 min)'}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>{lang === 'vi' ? '⚡ Tiệm mới? Import mẫu GTM dựng sẵn (2 phút)' : '⚡ New salon? Import the ready-made GTM template (2 min)'}</div>
         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
           {lang === 'vi'
             ? 'Tải file mẫu → GTM Admin → Import Container → chọn file → Merge → sửa MỘT biến "CONST - GA4 Measurement ID" thành G-ID của tiệm → Publish. Có sẵn: Google Tag nền, purchase (booking) và click_call — khỏi tạo tay từng biến/trigger/tag.'

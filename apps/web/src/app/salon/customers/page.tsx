@@ -195,7 +195,7 @@ function Inner() {
                 <MRow label={t('cu.colBookings')}>{c._count.appointments}</MRow>
                 <MRow label={t('cu.colNoShows')}>
                   {(c.noShowCount ?? 0) === 0 ? '0' : (c.noShowCount ?? 0) >= 2
-                    ? <span style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>⚠ {c.noShowCount}</span>
+                    ? <span style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 600 }}>⚠ {c.noShowCount}</span>
                     : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
                 </MRow>
                 <MRow label={t('cu.colPoints')}>{c.loyaltyPoints ? <span style={{ color: 'var(--ceab308)', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</MRow>
@@ -242,7 +242,7 @@ function Inner() {
                   <td style={ui.td}>
                     {(c.noShowCount ?? 0) === 0 ? <span style={{ color: 'var(--c94a3b8)' }}>0</span>
                       : (c.noShowCount ?? 0) >= 2
-                        ? <span title={t('cu.repeatNoShow')} style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>⚠ {c.noShowCount}</span>
+                        ? <span title={t('cu.repeatNoShow')} style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 8px', fontSize: 12, fontWeight: 600 }}>⚠ {c.noShowCount}</span>
                         : <span style={{ color: '#f97316', fontWeight: 600 }}>{c.noShowCount}</span>}
                   </td>
                   <td style={ui.td}>{c.loyaltyPoints ? <span style={{ color: 'var(--ceab308)', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</td>

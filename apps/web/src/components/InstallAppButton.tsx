@@ -74,7 +74,7 @@ export function InstallAppButton({ label = 'Install app' }: { label?: string }) 
             color: 'var(--ce2e8f0)', fontSize: 13, lineHeight: 1.5, boxShadow: '0 8px 24px rgba(0,0,0,.4)',
           }}
         >
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Install on iPhone / iPad</div>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Install on iPhone / iPad</div>
           <div>1. Tap the <strong>Share</strong> button <span aria-hidden>􀈂</span> in Safari.</div>
           <div>2. Choose <strong>Add to Home Screen</strong>.</div>
           <div>3. Tap <strong>Add</strong> — the app icon appears on your home screen.</div>

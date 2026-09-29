@@ -218,7 +218,7 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
         {count > 0 && (
           <span style={{
             marginLeft: 7, background: '#ef4444', color: '#fff', borderRadius: 999,
-            padding: '1px 7px', fontSize: 12, fontWeight: 800,
+            padding: '1px 7px', fontSize: 12, fontWeight: 700,
           }}>{count}</span>
         )}
       </a>
@@ -269,7 +269,7 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
                 background: 'var(--c1e293b)', border: '1px solid #6366f1', borderLeft: '4px solid #6366f1',
                 borderRadius: 10, padding: '11px 13px', boxShadow: '0 10px 30px rgba(0,0,0,.45)',
               }}>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t.name}</p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{t.name}</p>
               <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--c94a3b8)' }}>
                 {vi ? 'vừa nhắn tin' : 'sent a message'}{t.pageName ? ` · ${t.pageName}` : ''}
               </p>

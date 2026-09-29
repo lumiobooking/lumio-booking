@@ -85,7 +85,7 @@ export function PinterestCard({ token }: { token: string | null }) {
         <h2 style={{ fontSize: 18, margin: 0 }}>📌 Pinterest Trends — từ khoá đang lên</h2>
         {st && (
           <span style={{
-            fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+            fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 20,
             background: st.connected ? 'rgba(34,197,94,.14)' : 'var(--c0f172a)',
             border: `1px solid ${st.connected ? '#22c55e' : 'var(--c475569)'}`,
             color: st.connected ? 'var(--ink-good)' : 'var(--c94a3b8)',
@@ -94,7 +94,7 @@ export function PinterestCard({ token }: { token: string | null }) {
           </span>
         )}
         {st?.connected && !st.hasTrends && (
-          <span style={{ fontSize: 12, color: 'var(--ink-warn)', fontWeight: 700 }}>thiếu quyền trends:read — bấm Kết nối lại</span>
+          <span style={{ fontSize: 12, color: 'var(--ink-warn)', fontWeight: 600 }}>thiếu quyền trends:read — bấm Kết nối lại</span>
         )}
       </div>
       <p style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.6, margin: '0 0 12px' }}>

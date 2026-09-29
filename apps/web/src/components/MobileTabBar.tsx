@@ -84,7 +84,7 @@ export function MobileTabBar() {
             <span style={{ position: 'relative', lineHeight: 0 }}>
               <Icon d={t.icon} active={active} />
               {t.badge && unread > 0 && !onAlerts && (
-                <span style={{ position: 'absolute', top: -6, right: -9, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 9.5, fontWeight: 800, display: 'grid', placeItems: 'center', border: '1.5px solid var(--c111827)' }}>{unread > 9 ? '9+' : unread}</span>
+                <span style={{ position: 'absolute', top: -6, right: -9, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'grid', placeItems: 'center', border: '1.5px solid var(--c111827)' }}>{unread > 9 ? '9+' : unread}</span>
               )}
             </span>
             {t.label}

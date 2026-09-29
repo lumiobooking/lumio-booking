@@ -431,7 +431,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
 
   const supportBanner = user?.supportSession ? (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c312e81)', border: '1px solid #6366f1', color: 'var(--ce0e7ff)', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13.5 }}>
-      <span style={{ fontWeight: 700 }}>🛠 Lumio Support</span>
+      <span style={{ fontWeight: 600 }}>🛠 Lumio Support</span>
       <span style={{ opacity: 0.9 }}>— {tr('shell.supportIn', lang)} <b>{user.tenantName || '…'}</b></span>
       {/* The level, on the banner rather than buried in a profile page: an
           employee who cannot find the reports should know in one glance
@@ -447,7 +447,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
             ? `${caps.length} mục được mở riêng cho tài khoản của bạn`
             : undefined}
           style={{
-            fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 20,
+            fontSize: 11.5, fontWeight: 600, padding: '2px 9px', borderRadius: 20,
             background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.25)',
           }}
         >
@@ -465,7 +465,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           } catch { /* ignore */ }
           window.location.assign('/agency');
         }}
-        style={{ marginLeft: 'auto', background: '#6366f1', border: 'none', color: 'white', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+        style={{ marginLeft: 'auto', background: '#6366f1', border: 'none', color: 'white', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}
       >{tr('shell.supportLeave', lang)}</button>
     </div>
   ) : null;
@@ -501,7 +501,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         {badge > 0 && (
           <span style={{
             marginLeft: 'auto', minWidth: 19, height: 19, padding: '0 5px', borderRadius: 20,
-            background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 800,
+            background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700,
             display: 'grid', placeItems: 'center',
           }}>{badge > 9 ? '9+' : badge}</span>
         )}
@@ -523,7 +523,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
                 padding: '12px 12px 4px', borderRadius: 8, border: 'none', cursor: 'pointer',
                 background: 'transparent', color: hasActive && !open ? 'var(--ca5b4fc)' : 'var(--c64748b)',
-                fontSize: 10.5, fontWeight: 700, letterSpacing: 1.4, textTransform: 'uppercase',
+                fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, textTransform: 'uppercase',
               }}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -575,7 +575,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         <div style={{ display: 'flex', gap: 4 }}>
           {(['en', 'vi'] as const).map((l) => (
             <button key={l} onClick={() => setLang(l)} aria-label={l === 'en' ? 'English' : 'Tiếng Việt'}
-              style={{ padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              style={{ padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
                 border: `1px solid ${lang === l ? '#6366f1' : 'var(--c334155)'}`, background: lang === l ? '#6366f1' : 'transparent', color: lang === l ? '#fff' : 'var(--c94a3b8)' }}>
               {l === 'en' ? 'EN' : 'VI'}
             </button>
@@ -642,15 +642,27 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       )}
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <header style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '10px 32px', background: 'var(--glass)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', borderBottom: '1px solid var(--c1f2937)' }}>
+          {/* One icon, as drawn: the menu toggle used to be a labelled pill that
+              read as a page action. The two things an owner does most from any
+              page - book someone, open the till - sit here instead. */}
           <button
             onClick={toggleNav}
             title={navHidden ? (lang === 'vi' ? 'Hiện menu' : 'Show menu') : (lang === 'vi' ? 'Thu menu — màn hình rộng hơn' : 'Collapse menu — wider screen')}
             aria-label={navHidden ? 'Show menu' : 'Collapse menu'}
-            style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--c1e293b)', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            style={{ marginRight: 'auto', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c0f172a)', border: '1px solid var(--line)', color: 'var(--ce2e8f0)', borderRadius: 10, cursor: 'pointer' }}
           >
-            {navHidden ? '☰' : '⟨⟨'}
-            <span>{navHidden ? (lang === 'vi' ? 'Hiện menu' : 'Show menu') : (lang === 'vi' ? 'Thu menu' : 'Collapse menu')}</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">{navHidden ? <path d="M4 6h16M4 12h16M4 18h16" /> : <path d="M11 6l-6 6 6 6M19 6l-6 6 6 6" />}</svg>
           </button>
+          {!isSupport && (
+            <a href="/salon/calendar" style={{ height: 40, padding: '0 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>{lang === 'vi' ? 'Lịch hẹn mới' : 'New booking'}
+            </a>
+          )}
+          {!isSupport && posOk && (
+            <a href="/salon/pos" style={{ height: 40, padding: '0 14px', borderRadius: 10, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6" /></svg>{lang === 'vi' ? 'Mở quầy thu ngân' : 'Open register'}
+            </a>
+          )}
           <ThemeToggle />
           {isSupport && <InboxAlerts href="/salon/inbox" label={lang === 'vi' ? 'Hộp thư' : 'Inbox'} />}
           <NotificationBell />
@@ -702,7 +714,7 @@ function BranchSwitcher() {
 
   return (
     <div style={{ padding: '0 10px 14px', marginBottom: 4, borderBottom: '1px solid var(--c1f2937)' }}>
-      <div style={{ fontSize: 11, color: 'var(--c818cf8)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>{tr('shell.branch', lang)}</div>
+      <div style={{ fontSize: 11, color: 'var(--c818cf8)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>{tr('shell.branch', lang)}</div>
       <select value={active} onChange={(e) => switchTo(e.target.value)}
         style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #4f46e5', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
         {branches.map((b) => <option key={b.id} value={b.id}>{b.name}{b.id === home ? ' ★' : ''}</option>)}

@@ -182,16 +182,16 @@ export function SuggestionInbox({
     }}>
       {/* ---- header ---- */}
       <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap', marginBottom: 3 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
           📨 {T('Tiệm đã gửi', 'From the shop')}
         </div>
         {feed.ready.length > 0 && (
-          <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: '#14532d', border: '1px solid #22c55e', color: '#86efac' }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: '#14532d', border: '1px solid #22c55e', color: '#86efac' }}>
             {feed.ready.length} {T('mới nhận', 'new')}
           </span>
         )}
         {working.length > 0 && (
-          <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'rgba(99,102,241,.15)', border: '1px solid #6366f1', color: 'var(--ca5b4fc)' }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: 'rgba(99,102,241,.15)', border: '1px solid #6366f1', color: 'var(--ca5b4fc)' }}>
             {working.length} {T('đang làm', 'in progress')}
           </span>
         )}
@@ -217,10 +217,10 @@ export function SuggestionInbox({
                 onClose={() => { setClosing(null); setNote(''); }} onPutAway={() => putAway(s.id)}
                 actions={(
                   <>
-                    <button onClick={() => act(s.id, '/claim')} disabled={busy === s.id} style={{ ...btn, flex: 1, background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 800 }}>
+                    <button onClick={() => act(s.id, '/claim')} disabled={busy === s.id} style={{ ...btn, flex: 1, background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 700 }}>
                       {busy === s.id ? '…' : `🙋 ${T('Nhận làm', 'Take it')}`}
                     </button>
-                    <button onClick={() => makePost(s)} disabled={busy === s.id} title={T('Mở trình soạn với file đính sẵn', 'Open the composer with the files attached')} style={{ ...btn, background: '#22c55e', borderColor: '#22c55e', color: '#052e16', fontWeight: 800 }}>✎</button>
+                    <button onClick={() => makePost(s)} disabled={busy === s.id} title={T('Mở trình soạn với file đính sẵn', 'Open the composer with the files attached')} style={{ ...btn, background: '#22c55e', borderColor: '#22c55e', color: '#052e16', fontWeight: 700 }}>✎</button>
                     <button onClick={() => { setClosing(s.id); setNote(''); }} title={T('Không cần dựng — ghi một dòng rồi cất', 'Nothing to make — note it and put away')} style={btn}>✓</button>
                   </>
                 )}
@@ -241,10 +241,10 @@ export function SuggestionInbox({
                 onClose={() => { setClosing(null); setNote(''); }} onPutAway={() => putAway(s.id)}
                 actions={(
                   <>
-                    <button onClick={() => makePost(s)} disabled={busy === s.id} style={{ ...btn, flex: 1, background: '#22c55e', borderColor: '#22c55e', color: '#052e16', fontWeight: 800 }}>
+                    <button onClick={() => makePost(s)} disabled={busy === s.id} style={{ ...btn, flex: 1, background: '#22c55e', borderColor: '#22c55e', color: '#052e16', fontWeight: 700 }}>
                       {busy === s.id ? '…' : `✎ ${T('Dựng bài', 'Make a post')}`}
                     </button>
-                    <button onClick={() => { setClosing(s.id); setNote(''); }} title={T('Xong — ghi một dòng rồi cất', 'Done — note it and put away')} style={{ ...btn, background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 800 }}>✓ {T('Xong', 'Done')}</button>
+                    <button onClick={() => { setClosing(s.id); setNote(''); }} title={T('Xong — ghi một dòng rồi cất', 'Done — note it and put away')} style={{ ...btn, background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 700 }}>✓ {T('Xong', 'Done')}</button>
                     <button onClick={() => act(s.id, '/release')} disabled={busy === s.id} title={T('Trả về Mới nhận', 'Back to received')} style={btn}>↩</button>
                   </>
                 )}
@@ -258,7 +258,7 @@ export function SuggestionInbox({
       {/* ---- waiting on the shop ---- */}
       {!!feed.waitingOnShop.length && (
         <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.5px', color: 'var(--c64748b)', marginBottom: 3 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: '.5px', color: 'var(--c64748b)', marginBottom: 3 }}>
             {T('ĐANG CHỜ TIỆM', 'WAITING ON THE SHOP')} · {feed.waitingOnShop.length}
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5, marginBottom: 6 }}>
@@ -285,7 +285,7 @@ export function SuggestionInbox({
       {/* ---- handled: what was done with each, by whom ---- */}
       {done.length > 0 && (
         <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--c334155)' }}>
-          <button onClick={() => setShowDone((v) => !v)} style={{ ...btn, border: 'none', padding: 0, fontSize: 11.5, fontWeight: 700, letterSpacing: '.5px', color: 'var(--c64748b)' }}>
+          <button onClick={() => setShowDone((v) => !v)} style={{ ...btn, border: 'none', padding: 0, fontSize: 11.5, fontWeight: 600, letterSpacing: '.5px', color: 'var(--c64748b)' }}>
             {showDone ? '▾' : '▸'} {T('ĐÃ XỬ LÝ', 'HANDLED')} · {done.length}
           </button>
           {showDone && (
@@ -328,7 +328,7 @@ function Lane({ title, count, color, vi, children }: { title: string; count: num
     <div style={{ marginTop: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <span style={{ width: 8, height: 8, borderRadius: 4, background: color }} />
-        <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '.5px', color: 'var(--c94a3b8)' }}>{title} · {count}</span>
+        <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.5px', color: 'var(--c94a3b8)' }}>{title} · {count}</span>
       </div>
       {children}
     </div>
@@ -351,7 +351,7 @@ function Card({ s, vi, border, me, closing, note, setNote, busy, onClose, onPutA
       <Thumb media={s.media} vi={vi} />
       <div style={{ padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4, color: s.fromShop ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, color: s.fromShop ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
             {s.fromShop ? `📤 ${T('TIỆM TỰ GỬI', 'SENT BY SHOP')}` : T('TRẢ LỜI ĐỀ XUẤT', 'ANSWERS A REQUEST')}
             <span style={{ fontWeight: 500, color: 'var(--c64748b)' }}> · {ago(s.doneAt ?? s.createdAt, vi)}</span>
           </div>
@@ -406,7 +406,7 @@ function Thumb({ media, vi, small }: { media: MediaItem[]; vi: boolean; small?: 
         <span style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', fontSize: small ? 16 : 28, color: '#fff', textShadow: '0 1px 6px rgba(0,0,0,.6)' }}>▶</span>
       )}
       {media.length > 1 && (
-        <span style={{ position: 'absolute', right: 6, bottom: 6, fontSize: 11, fontWeight: 800, background: 'rgba(0,0,0,.65)', color: '#fff', borderRadius: 6, padding: '2px 6px' }}>+{media.length - 1}</span>
+        <span style={{ position: 'absolute', right: 6, bottom: 6, fontSize: 11, fontWeight: 700, background: 'rgba(0,0,0,.65)', color: '#fff', borderRadius: 6, padding: '2px 6px' }}>+{media.length - 1}</span>
       )}
       {(first.driveFileId || first.driveUrl) && !small && (
         <span title={T('Đã ở Drive', 'On Drive')} style={{ position: 'absolute', left: 6, bottom: 6, fontSize: 11, background: 'rgba(0,0,0,.55)', color: '#fff', borderRadius: 6, padding: '2px 5px' }}>📁</span>

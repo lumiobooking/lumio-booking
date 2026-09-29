@@ -110,7 +110,7 @@ function Inner() {
       <a href="/salon/customers" style={{ color: 'var(--c818cf8)', fontSize: 13, textDecoration: 'none' }}>{t('cu.back')}</a>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, margin: '12px 0 18px' }}>
-        <span style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--ce2e8f0)', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 700 }}>
+        <span style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--ce2e8f0)', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 600 }}>
           {(c.firstName || '?').charAt(0).toUpperCase()}
         </span>
         <div style={{ flex: 1 }}>
@@ -198,7 +198,7 @@ function Inner() {
                 <td style={ui.td}>
                   {o.items.length === 0 ? '—' : o.items.map((it) => `${it.name}${it.quantity > 1 ? ` ×${it.quantity}` : ''}`).join(' · ')}
                 </td>
-                <td style={{ ...ui.td, textAlign: 'right', fontWeight: 700, color: 'var(--ink-good)' }}>{formatPrice(o.totalCents, o.currency)}</td>
+                <td style={{ ...ui.td, textAlign: 'right', fontWeight: 600, color: 'var(--ink-good)' }}>{formatPrice(o.totalCents, o.currency)}</td>
               </tr>
             ))}
           </tbody>
@@ -246,7 +246,7 @@ function Kpi({ label, value, accent }: { label: string; value: string; accent: s
   return (
     <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 16, borderLeft: `3px solid ${accent}` }}>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 600, marginTop: 4 }}>{value}</div>
     </div>
   );
 }

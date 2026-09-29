@@ -124,7 +124,7 @@ function Inner() {
           {board.map((s, i) => (
             <MCard key={s.id}>
               <MHead right={s.earnedMonth > 0 ? <span style={{ fontSize: 18 }}>{medal(i)}</span> : null}>
-                {s.name}{s.flagged && <span style={{ marginLeft: 6, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('rv.checkBadge')}</span>}
+                {s.name}{s.flagged && <span style={{ marginLeft: 6, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>{t('rv.checkBadge')}</span>}
               </MHead>
               <MRow label={t('rv.colEarned')}><strong style={{ color: 'var(--ceab308)' }}>{s.earnedMonth}</strong> <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('rv.pts')}</span></MRow>
               <MRow label={t('rv.colBalance')}>{s.balance}</MRow>
@@ -157,7 +157,7 @@ function Inner() {
             {board.map((s, i) => (
               <tr key={s.id} style={{ borderTop: '1px solid var(--c334155)' }}>
                 <td style={{ ...ui.td, textAlign: 'center' }}>{s.earnedMonth > 0 ? medal(i) : '—'}</td>
-                <td style={ui.td}>{s.name}{s.flagged && <span title={t('rv.checkTitle')} style={{ marginLeft: 6, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{t('rv.checkBadge')}</span>}</td>
+                <td style={ui.td}>{s.name}{s.flagged && <span title={t('rv.checkTitle')} style={{ marginLeft: 6, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', borderRadius: 6, padding: '1px 6px', fontSize: 10, fontWeight: 600 }}>{t('rv.checkBadge')}</span>}</td>
                 <td style={ui.td}><strong style={{ color: 'var(--ceab308)' }}>{s.earnedMonth}</strong> <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('rv.pts')}</span></td>
                 <td style={ui.td}>{s.balance}</td>
                 <td style={ui.td}><strong style={{ color: 'var(--ink-good)' }}>{s.sendsMonth}</strong>{s.blockedMonth ? <span style={{ color: '#f97316', fontSize: 12 }}> · {t('rv.blocked').replace('{n}', String(s.blockedMonth))}</span> : null}</td>
@@ -278,7 +278,7 @@ function AdminReviewQr({ slug, enabled, hasGoogle }: { slug: string; enabled: bo
         <img src={qr} alt="Salon review QR" width={150} height={150} style={{ display: 'block' }} />
       </div>
       <div style={{ minWidth: 220, flex: 1 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>🔗 Salon review QR — test &amp; front desk</div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>🔗 Salon review QR — test &amp; front desk</div>
         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', margin: '5px 0 10px', lineHeight: 1.5 }}>
           Scan to test the customer flow, or print it for the counter. Not tied to a specific tech.
           {!enabled && <span style={{ color: 'var(--ink-warn)' }}> Turn the program ON above to use it.</span>}
@@ -370,7 +370,7 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
       <div style={{ marginBottom: 14, padding: 14, background: 'var(--c0f172a)', borderRadius: 12, border: '1px solid var(--c334155)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <Toggle on={f.postVisitEnabled} onChange={(v) => setF({ ...f, postVisitEnabled: v })} />
-          <span style={{ fontWeight: 700, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? '🤖 Tự xin review khi khách đang làm' : '🤖 Auto review request (mid-visit)'}</span>
+          <span style={{ fontWeight: 600, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? '🤖 Tự xin review khi khách đang làm' : '🤖 Auto review request (mid-visit)'}</span>
         </div>
         <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.6 }}>
           {lang === 'vi'
@@ -395,12 +395,12 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 12 }}>
         <button type="button" onClick={() => setF({ ...f, reviewMode: 'direct' })}
           style={modeCard(f.reviewMode === 'direct')}>
-          <div style={{ fontWeight: 700 }}>{t('rv.modeDirect')}</div>
+          <div style={{ fontWeight: 600 }}>{t('rv.modeDirect')}</div>
           <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{t('rv.modeDirectDesc')}</div>
         </button>
         <button type="button" onClick={() => setF({ ...f, reviewMode: 'rate_first' })}
           style={modeCard(f.reviewMode === 'rate_first')}>
-          <div style={{ fontWeight: 700 }}>{t('rv.modeRate')}</div>
+          <div style={{ fontWeight: 600 }}>{t('rv.modeRate')}</div>
           <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{t('rv.modeRateDesc')}</div>
         </button>
       </div>

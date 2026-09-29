@@ -143,9 +143,9 @@ function Inner() {
         <div style={{ width: 4, background: colour, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0, padding: '12px 14px 12px 2px' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{hhmm(b.startTime)}</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{hhmm(b.startTime)}</span>
             {withDate && (
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ca5b4fc)', background: 'rgba(99,102,241,0.15)', borderRadius: 6, padding: '2px 8px' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ca5b4fc)', background: 'rgba(99,102,241,0.15)', borderRadius: 6, padding: '2px 8px' }}>
                 {d.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { day: 'numeric', month: 'short' })}
               </span>
             )}
@@ -154,7 +154,7 @@ function Inner() {
           <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 3 }}>{name(b.customer)}</div>
           {b.notes && <div style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 4, fontStyle: 'italic' }}>“{b.notes}”</div>}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-            <span style={{ color: colour, border: `1px solid ${colour}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>{b.status}</span>
+            <span style={{ color: colour, border: `1px solid ${colour}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{b.status}</span>
             {b.status === 'ASSIGNED' && (
               <>
                 <button onClick={() => respond(b.id, 'accept')} style={acceptBtn}>{vi ? 'Nhận' : 'Accept'}</button>
@@ -186,7 +186,7 @@ function Inner() {
 
   const tab = (key: 'cal' | 'list', label: string) => (
     <button onClick={() => setMode(key)}
-      style={{ padding: '7px 16px', borderRadius: 999, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+      style={{ padding: '7px 16px', borderRadius: 999, cursor: 'pointer', fontSize: 13, fontWeight: 600,
         border: mode === key ? '1px solid #6366f1' : '1px solid var(--c334155)',
         background: mode === key ? '#6366f1' : 'transparent', color: mode === key ? '#fff' : 'var(--ccbd5e1)' }}>
       {label}
@@ -220,13 +220,13 @@ function Inner() {
             </div>
           ) : (
             <>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{vi ? 'Sắp tới' : 'Upcoming'} ({upcoming.length})</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)' }}>{vi ? 'Sắp tới' : 'Upcoming'} ({upcoming.length})</div>
               {upcoming.length === 0
                 ? <div style={{ ...ui.card, color: 'var(--c64748b)', fontSize: 13 }}>{vi ? 'Không có lịch hẹn sắp tới.' : 'Nothing coming up.'}</div>
                 : upcoming.map((b) => row(b, true))}
               {past.length > 0 && (
                 <>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginTop: 8 }}>{vi ? 'Đã qua' : 'Past'} ({past.length})</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', marginTop: 8 }}>{vi ? 'Đã qua' : 'Past'} ({past.length})</div>
                   {past.slice(0, 20).map((b) => row(b, true))}
                 </>
               )}
@@ -239,9 +239,9 @@ function Inner() {
       {/* Month header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <button onClick={() => shift(-1)} style={navBtn} aria-label="Previous month">‹</button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', textTransform: 'capitalize' }}>{monthName}</div>
+        <div style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', textTransform: 'capitalize' }}>{monthName}</div>
         <button onClick={() => shift(1)} style={navBtn} aria-label="Next month">›</button>
-        <button onClick={jumpToday} style={{ ...navBtn, width: 'auto', padding: '0 12px', fontSize: 13, fontWeight: 700 }}>
+        <button onClick={jumpToday} style={{ ...navBtn, width: 'auto', padding: '0 12px', fontSize: 13, fontWeight: 600 }}>
           {vi ? 'Hôm nay' : 'Today'}
         </button>
       </div>
@@ -256,7 +256,7 @@ function Inner() {
             const weekend = i >= 5;
             return (
               <div key={d} style={{ background: 'var(--c1e293b)', textAlign: 'center', padding: '9px 0', fontSize: 11.5,
-                letterSpacing: 0.6, textTransform: 'uppercase', fontWeight: 700, color: weekend ? 'var(--c8ea2c4)' : 'var(--c94a3b8)' }}>{d}</div>
+                letterSpacing: 0.6, textTransform: 'uppercase', fontWeight: 600, color: weekend ? 'var(--c8ea2c4)' : 'var(--c94a3b8)' }}>{d}</div>
             );
           })}
           {cells.map((d, i) => {
@@ -275,7 +275,7 @@ function Inner() {
                   <span style={{ display: 'inline-grid', placeItems: 'center', minWidth: 22, height: 22, padding: '0 6px', borderRadius: 999,
                     fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: isToday ? '#fff' : 'var(--ccbd5e1)',
                     background: isToday ? '#6366f1' : 'transparent' }}>{d.getDate()}</span>
-                  {list.length > 0 && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', fontWeight: 700 }}>{list.length}</span>}
+                  {list.length > 0 && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', fontWeight: 600 }}>{list.length}</span>}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   {list.slice(0, 4).map((b) => {
@@ -286,7 +286,7 @@ function Inner() {
                         style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 11, padding: '3px 7px', borderRadius: 5,
                           background: `${colour}1f`, borderLeft: `3px solid ${colour}`, opacity: dead ? 0.55 : 1, overflow: 'hidden',
                           textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
-                        <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: colour, flexShrink: 0 }}>{hhmm(b.startTime)}</span>
+                        <span style={{ fontWeight: 600, whiteSpace: 'nowrap', color: colour, flexShrink: 0 }}>{hhmm(b.startTime)}</span>
                         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--cdbe2ea)' }}>
                           {name(b.customer)}{b.service?.name ? ` · ${b.service.name}` : ''}
                         </span>
@@ -307,7 +307,7 @@ function Inner() {
 
       {/* The day the tech tapped */}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', textTransform: 'capitalize' }}>
+        <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', textTransform: 'capitalize' }}>
           {picked.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}
         </span>
         <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>
@@ -324,7 +324,7 @@ function Inner() {
           </p>
           {upcoming.length > 0 && (
             <>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '14px 0 8px' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ccbd5e1)', margin: '14px 0 8px' }}>
                 {vi ? 'Lịch hẹn sắp tới của bạn' : 'Your next bookings'}
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
@@ -334,7 +334,7 @@ function Inner() {
                     <button key={b.id} onClick={() => { setPicked(d); setView(new Date(d.getFullYear(), d.getMonth(), 1)); }}
                       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
                         border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', textAlign: 'left' }}>
-                      <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--ca5b4fc)', flexShrink: 0 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ca5b4fc)', flexShrink: 0 }}>
                         {fmtInTz(b.startTime, { day: 'numeric', month: 'short' })} · {hhmm(b.startTime)}
                       </span>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -364,5 +364,5 @@ const navBtn: React.CSSProperties = {
 };
 const acceptBtn: React.CSSProperties = {
   padding: '6px 16px', borderRadius: 8, border: 'none', background: '#22c55e', color: 'white',
-  fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
+  fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
 };

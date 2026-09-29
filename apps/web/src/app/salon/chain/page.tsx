@@ -70,7 +70,7 @@ function Inner() {
           </div>
 
           <div style={ui.card}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.7fr 0.7fr', gap: 8, fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 700, padding: '0 0 10px', borderBottom: '1px solid var(--c334155)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.7fr 0.7fr', gap: 8, fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 600, padding: '0 0 10px', borderBottom: '1px solid var(--c334155)' }}>
               <span>{t('cr.branch')}</span>
               <span style={{ textAlign: 'right' }}>{t('cr.revenue')}</span>
               <span style={{ textAlign: 'right' }}>{t('cr.bookings')}</span>
@@ -101,7 +101,7 @@ function Kpi({ label, value, accent }: { label: string; value: string; accent: s
   return (
     <div style={{ ...ui.card, flex: '1 1 160px', minWidth: 150 }}>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 800, color: accent }}>{value}</div>
+      <div style={{ fontSize: 24, fontWeight: 700, color: accent }}>{value}</div>
     </div>
   );
 }

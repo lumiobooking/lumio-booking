@@ -208,40 +208,40 @@ export function PlanSheet({
         {p && <span style={{ position: 'absolute', left: 0, top: 10, bottom: 10, width: 4, borderRadius: 4, background: p.bg }} />}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, whiteSpace: 'nowrap' }}>
-          {isMobile && <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: d.today ? 'var(--ink-link)' : 'var(--c64748b)', flexShrink: 0 }}>{L.wd}</span>}
+          {isMobile && <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: d.today ? 'var(--ink-link)' : 'var(--c64748b)', flexShrink: 0 }}>{L.wd}</span>}
           {/* today: the number in a filled ring, which needs no word and cannot wrap */}
           <span style={{
-            flexShrink: 0, fontSize: compact ? 14 : 16, fontWeight: 800, fontVariantNumeric: 'tabular-nums', lineHeight: 1,
+            flexShrink: 0, fontSize: compact ? 14 : 16, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1,
             color: d.today ? '#ffffff' : has ? 'var(--cf1f5f9)' : 'var(--c94a3b8)',
             ...(d.today ? { background: '#6366f1', borderRadius: 999, minWidth: compact ? 24 : 26, height: compact ? 24 : 26, display: 'inline-grid', placeItems: 'center', padding: '0 5px', marginLeft: -3 } : {}),
           }} title={d.today ? T('Hôm nay', 'Today') : undefined}>{L.d}</span>
-          {d.today && !compact && <span style={{ fontSize: 9.5, fontWeight: 800, color: 'var(--ink-link)', textTransform: 'uppercase', letterSpacing: .4, flexShrink: 0 }}>{T('hôm nay', 'today')}</span>}
-          {p && !compact && <span style={{ marginLeft: 'auto', fontSize: 9.5, fontWeight: 800, letterSpacing: .4, textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4, background: p.bg, color: p.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{vi ? p.vi : p.en}</span>}
+          {d.today && !compact && <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--ink-link)', textTransform: 'uppercase', letterSpacing: .4, flexShrink: 0 }}>{T('hôm nay', 'today')}</span>}
+          {p && !compact && <span style={{ marginLeft: 'auto', fontSize: 9.5, fontWeight: 700, letterSpacing: .4, textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4, background: p.bg, color: p.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{vi ? p.vi : p.en}</span>}
           {p && compact && <span title={vi ? p.vi : p.en} style={{ marginLeft: 'auto', width: 10, height: 10, borderRadius: 3, background: p.bg, flexShrink: 0 }} />}
         </div>
 
         {has ? (
           <>
-            <div style={{ fontSize: compact ? 12 : 13, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: compact ? 3 : 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>
+            <div style={{ fontSize: compact ? 12 : 13, fontWeight: 600, color: 'var(--cf1f5f9)', lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: compact ? 3 : 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>
               {e.topic || <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}>{T('(chưa có chủ đề)', '(no topic yet)')}</span>}
             </div>
             {e.detail && !isMobile && !compact && (
               <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflowWrap: 'anywhere' }}>{e.detail}</div>
             )}
             <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: compact ? 4 : 5, flexWrap: 'wrap', minWidth: 0 }}>
-              {e.format && <span title={formatOf(e.format, formats)?.[vi ? 'vi' : 'en']} style={{ fontSize: 11, color: 'var(--c94a3b8)', fontWeight: 700, whiteSpace: 'nowrap' }}>{iconOf(e.format)}{compact ? '' : ` ${formatOf(e.format, formats)?.[vi ? 'vi' : 'en'] ?? ''}`}</span>}
+              {e.format && <span title={formatOf(e.format, formats)?.[vi ? 'vi' : 'en']} style={{ fontSize: 11, color: 'var(--c94a3b8)', fontWeight: 600, whiteSpace: 'nowrap' }}>{iconOf(e.format)}{compact ? '' : ` ${formatOf(e.format, formats)?.[vi ? 'vi' : 'en'] ?? ''}`}</span>}
               <span style={{ display: 'inline-flex', gap: 3 }}>
                 {AIR.filter((a) => e.air.includes(a.id)).map((a) => <span key={a.id} title={a.id} style={{ width: 9, height: 9, borderRadius: 5, background: a.bg, display: 'inline-block', border: '1px solid rgba(255,255,255,.25)' }} />)}
               </span>
               {e.mediaUrl && <span title={T('Có link ảnh', 'Has a media link')} style={{ fontSize: 11 }}>🔗</span>}
               {st ? (
-                <span style={{ marginLeft: 'auto', fontSize: compact ? 10 : 10.5, fontWeight: 800, padding: compact ? '1px 6px' : '2px 7px', borderRadius: 999, background: st.bg, color: st.ink, whiteSpace: 'nowrap' }}>{st.icon} {post!.status === 'scheduled' || post!.status === 'posted' ? hm : (vi ? st.vi : st.en)}</span>
+                <span style={{ marginLeft: 'auto', fontSize: compact ? 10 : 10.5, fontWeight: 700, padding: compact ? '1px 6px' : '2px 7px', borderRadius: 999, background: st.bg, color: st.ink, whiteSpace: 'nowrap' }}>{st.icon} {post!.status === 'scheduled' || post!.status === 'posted' ? hm : (vi ? st.vi : st.en)}</span>
               ) : e.postId && postsKnown === false ? (
-                <span style={{ marginLeft: 'auto', fontSize: compact ? 10 : 10.5, fontWeight: 800, padding: compact ? '1px 6px' : '2px 7px', borderRadius: 999, background: STATUS.scheduled.bg, color: STATUS.scheduled.ink, whiteSpace: 'nowrap' }}>🗓️ {compact ? T('lên lịch', 'set') : T('đã lên lịch', 'scheduled')}</span>
+                <span style={{ marginLeft: 'auto', fontSize: compact ? 10 : 10.5, fontWeight: 700, padding: compact ? '1px 6px' : '2px 7px', borderRadius: 999, background: STATUS.scheduled.bg, color: STATUS.scheduled.ink, whiteSpace: 'nowrap' }}>🗓️ {compact ? T('lên lịch', 'set') : T('đã lên lịch', 'scheduled')}</span>
               ) : e.postId ? (
                 <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--c64748b)' }}>{T('bài đã xoá', 'post deleted')}</span>
               ) : entryReady(e) ? (
-                <span style={{ marginLeft: 'auto', fontSize: compact ? 10 : 10.5, fontWeight: 700, color: 'var(--ink-warn)', whiteSpace: 'nowrap' }}>● {compact ? T('chờ lịch', 'to set') : T('chờ lên lịch', 'to schedule')}</span>
+                <span style={{ marginLeft: 'auto', fontSize: compact ? 10 : 10.5, fontWeight: 600, color: 'var(--ink-warn)', whiteSpace: 'nowrap' }}>● {compact ? T('chờ lịch', 'to set') : T('chờ lên lịch', 'to schedule')}</span>
               ) : (
                 <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>○ {T('đang soạn', 'drafting')}</span>
               )}
@@ -267,11 +267,11 @@ export function PlanSheet({
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 10 }}>
-        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--cf1f5f9)', letterSpacing: -.2 }}>🗓️ {T('Plan', 'Plan')} {monthTitle(month, vi)}</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--cf1f5f9)', letterSpacing: -.2 }}>🗓️ {T('Plan', 'Plan')} {monthTitle(month, vi)}</div>
         {months && onMonth && months.length > 1 && (
           <div style={{ display: 'flex', gap: 4 }}>
             {months.map((m) => (
-              <button key={m} type="button" onClick={() => onMonth(m)} style={{ padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${m === month ? '#6366f1' : 'var(--c334155)'}`, background: m === month ? 'rgba(99,102,241,.16)' : 'transparent', color: m === month ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>
+              <button key={m} type="button" onClick={() => onMonth(m)} style={{ padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${m === month ? '#6366f1' : 'var(--c334155)'}`, background: m === month ? 'rgba(99,102,241,.16)' : 'transparent', color: m === month ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>
                 {/* the year only when it differs from the month on screen: in
                     December the chips read "Tháng 11 · Tháng 12 · Tháng 1 2027",
                     so next January is never mistaken for last January */}
@@ -324,7 +324,7 @@ export function PlanSheet({
         <div ref={gridRef} style={{ borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c111827)', padding: compact ? 8 : 10 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap, marginBottom: 6 }}>
             {WD.map((w, i) => (
-              <div key={w} style={{ textAlign: 'center', fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: i >= 5 ? 'var(--ink-warn)' : 'var(--c64748b)' }}>{w}</div>
+              <div key={w} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, letterSpacing: .6, textTransform: 'uppercase', color: i >= 5 ? 'var(--ink-warn)' : 'var(--c64748b)' }}>{w}</div>
             ))}
           </div>
           <div style={{ display: 'grid', gap }}>
@@ -385,8 +385,8 @@ const field: CSSProperties = {
   width: '100%', boxSizing: 'border-box', minHeight: 38, padding: '9px 11px', borderRadius: 9, fontSize: 13.5, fontFamily: 'inherit',
   border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', outline: 'none', lineHeight: 1.5,
 };
-const labelStyle: CSSProperties = { fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--c94a3b8)', marginBottom: 6 };
-const editLink: CSSProperties = { marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 700, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-link)' };
+const labelStyle: CSSProperties = { fontSize: 10.5, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: 'var(--c94a3b8)', marginBottom: 6 };
+const editLink: CSSProperties = { marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 600, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-link)' };
 
 function DayPanel({
   day, entry, post, tz, vi, canEdit, isMobile, connected, pillars, formats, onEditTags, moveTargets, filledDays, onMoveTo, onIdeas, onSave, onClear, onSchedule, onOpenPost, onClose, onMove,
@@ -478,7 +478,7 @@ function DayPanel({
       disabled={!canEdit || !onClick}
       onClick={onClick}
       style={{
-        padding: '6px 11px', borderRadius: 999, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: canEdit && onClick ? 'pointer' : 'default', lineHeight: 1.3,
+        padding: '6px 11px', borderRadius: 999, fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: canEdit && onClick ? 'pointer' : 'default', lineHeight: 1.3,
         border: `1px solid ${on ? bg : 'var(--c334155)'}`, background: on ? bg : 'transparent', color: on ? ink : 'var(--c94a3b8)', ...extra,
       }}
     >{label}</button>
@@ -496,7 +496,7 @@ function DayPanel({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
           <button type="button" onClick={() => { flush(); onMove(-1); }} title={T('Ngày trước (←)', 'Previous day (←)')} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>‹</button>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: day.today ? 'var(--ink-link)' : 'var(--cf1f5f9)' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: day.today ? 'var(--ink-link)' : 'var(--cf1f5f9)' }}>
               {L.wd} {L.d} {L.m}{day.today ? ` · ${T('hôm nay', 'today')}` : day.past ? ` · ${T('đã qua', 'past')}` : ''}
             </div>
             <div style={{ fontSize: 11, color: state === 'error' ? 'var(--ink-bad)' : state === 'saved' ? 'var(--ink-good)' : 'var(--c64748b)' }}>
@@ -513,7 +513,7 @@ function DayPanel({
             <button type="button" onClick={() => onOpenPost(post.id)} style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: `1px solid ${st.ink}`, background: st.bg, color: st.ink, cursor: 'pointer', fontFamily: 'inherit' }}>
               <span style={{ fontSize: 18 }}>{st.icon}</span>
               <span style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 800 }}>{vi ? st.vi : st.en} · {instantToWall(post.scheduledAt, tz).slice(11, 16)}</div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{vi ? st.vi : st.en} · {instantToWall(post.scheduledAt, tz).slice(11, 16)}</div>
                 <div style={{ fontSize: 11.5, opacity: .85 }}>{T('Bấm để xem bài, sửa giờ hoặc đăng ngay', 'Tap to open the post, move it or post now')}</div>
               </span>
             </button>
@@ -523,11 +523,11 @@ function DayPanel({
             <div style={{ borderRadius: 10, border: '1px dashed var(--c334155)', padding: '10px 12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{T('Bí ý tưởng cho ngày này?', 'Stuck for this day?')}</span>
-                <button type="button" disabled={ideasBusy} onClick={() => void askIdeas(false)} style={{ minHeight: 32, padding: '0 12px', borderRadius: 8, border: '1px solid #f59e0b', background: 'rgba(245,158,11,.12)', color: 'var(--cfde68a)', fontSize: 12.5, fontWeight: 800, cursor: ideasBusy ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
+                <button type="button" disabled={ideasBusy} onClick={() => void askIdeas(false)} style={{ minHeight: 32, padding: '0 12px', borderRadius: 8, border: '1px solid #f59e0b', background: 'rgba(245,158,11,.12)', color: 'var(--cfde68a)', fontSize: 12.5, fontWeight: 700, cursor: ideasBusy ? 'wait' : 'pointer', fontFamily: 'inherit' }}>
                   {ideasBusy ? T('💡 Đang nghĩ… (10–20 giây)', '💡 Thinking… (10–20 s)') : ideas ? T('💡 Xem lại gợi ý', '💡 Show ideas') : T('💡 Gợi ý 3 ý tưởng', '💡 Suggest 3 ideas')}
                 </button>
                 {ideas && !ideasBusy && (
-                  <button type="button" onClick={() => void askIdeas(true)} title={T('Tốn một lần gọi AI — tối đa 5 lần/ngày cho tiệm này', 'Spends one AI call — at most 5 a day for this shop')} style={{ minHeight: 32, padding: '0 10px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <button type="button" onClick={() => void askIdeas(true)} title={T('Tốn một lần gọi AI — tối đa 5 lần/ngày cho tiệm này', 'Spends one AI call — at most 5 a day for this shop')} style={{ minHeight: 32, padding: '0 10px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                     ↻ {T('Gợi ý lại', 'Again')}{ideas.left !== null ? ` (${ideas.left})` : ''}
                   </button>
                 )}
@@ -545,12 +545,12 @@ function DayPanel({
                     <div key={i.id} style={{ borderRadius: 9, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', padding: '9px 11px', display: 'grid', gap: 4 }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{i.rank}. {i.title}{i.formatName ? <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--c94a3b8)' }}>{i.formatName}</span> : null}</div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{i.rank}. {i.title}{i.formatName ? <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 600, color: 'var(--c94a3b8)' }}>{i.formatName}</span> : null}</div>
                           {i.hook && <div style={{ fontSize: 12, color: 'var(--ccbd5e1)', marginTop: 2 }}>{i.hook}</div>}
                           {i.shotList && <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 2 }}>🎬 {i.shotList}</div>}
                           {i.reason && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{T('Vì', 'Why')}: {i.reason}</div>}
                         </div>
-                        <button type="button" onClick={() => applyIdea(i)} style={{ flex: '0 0 auto', minHeight: 30, padding: '0 10px', borderRadius: 8, border: '1px solid #6366f1', background: '#6366f1', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Dùng ý này', 'Use it')}</button>
+                        <button type="button" onClick={() => applyIdea(i)} style={{ flex: '0 0 auto', minHeight: 30, padding: '0 10px', borderRadius: 8, border: '1px solid #6366f1', background: '#6366f1', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Dùng ý này', 'Use it')}</button>
                       </div>
                     </div>
                   ))}
@@ -572,8 +572,8 @@ function DayPanel({
           <div>
             <div style={labelStyle}>{T('Chủ đề', 'Topic')}</div>
             {canEdit ? (
-              <input value={local.topic} placeholder={T('Một dòng: bài này nói về gì', 'One line: what the post is about')} onFocus={() => { typingRef.current = true; }} onChange={(e) => set({ topic: e.target.value })} onBlur={() => { typingRef.current = false; void commit({ topic: localRef.current.topic }); }} style={{ ...field, fontWeight: 700, fontSize: 14.5 }} />
-            ) : <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.4 }}>{local.topic || '—'}</div>}
+              <input value={local.topic} placeholder={T('Một dòng: bài này nói về gì', 'One line: what the post is about')} onFocus={() => { typingRef.current = true; }} onChange={(e) => set({ topic: e.target.value })} onBlur={() => { typingRef.current = false; void commit({ topic: localRef.current.topic }); }} style={{ ...field, fontWeight: 600, fontSize: 14.5 }} />
+            ) : <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--cf1f5f9)', lineHeight: 1.4 }}>{local.topic || '—'}</div>}
           </div>
 
           <div>
@@ -654,10 +654,10 @@ function DayPanel({
               <button
                 type="button"
                 onClick={() => { flush(); onClose(); }}
-                style={{ marginLeft: 'auto', minHeight: 38, padding: '0 14px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--cf1f5f9)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                style={{ marginLeft: 'auto', minHeight: 38, padding: '0 14px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--cf1f5f9)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
               >💾 {T('Lưu & đóng', 'Save & close')}</button>
               {post ? (
-                <button type="button" onClick={() => onOpenPost(post.id)} style={{ minHeight: 38, padding: '0 14px', borderRadius: 9, border: '1px solid #6366f1', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button type="button" onClick={() => onOpenPost(post.id)} style={{ minHeight: 38, padding: '0 14px', borderRadius: 9, border: '1px solid #6366f1', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                   {T('Xem bài đã lên lịch', 'Open the scheduled post')} ›
                 </button>
               ) : (
@@ -666,7 +666,7 @@ function DayPanel({
                   disabled={!ready}
                   onClick={() => { flush(); onSchedule(localRef.current); }}
                   title={ready ? T('Mở khung soạn với nội dung và ngày này', 'Open the composer with this content and day') : T('Cần chủ đề hoặc nội dung, và một kênh', 'Needs a topic or detail, and a network')}
-                  style={{ minHeight: 38, padding: '0 14px', borderRadius: 9, fontSize: 13, fontWeight: 800, fontFamily: 'inherit', cursor: ready ? 'pointer' : 'default', border: `1px solid ${ready ? '#6366f1' : 'var(--c334155)'}`, background: ready ? '#6366f1' : 'transparent', color: ready ? '#fff' : 'var(--c64748b)' }}
+                  style={{ minHeight: 38, padding: '0 14px', borderRadius: 9, fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: ready ? 'pointer' : 'default', border: `1px solid ${ready ? '#6366f1' : 'var(--c334155)'}`, background: ready ? '#6366f1' : 'transparent', color: ready ? '#fff' : 'var(--c64748b)' }}
                 >
                   {local.postId ? T('↻ Lên lịch lại', '↻ Schedule again') : T('Lên lịch đăng', 'Schedule')} →
                 </button>
@@ -730,7 +730,7 @@ function TagEditor({ kind, list, vi, isMobile, onClose, onSave }: {
       <div style={{ ...box, zIndex: 81, background: 'var(--c111827)', border: '1px solid var(--c334155)', boxShadow: '0 20px 50px rgba(0,0,0,.4)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{title}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{title}</div>
             <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('Chỉ áp dụng cho tiệm này · đổi tên thì các ngày cũ đổi theo', 'This shop only · renaming updates past days too')}</div>
           </div>
           <button type="button" onClick={onClose} title="Esc" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14 }}>✕</button>
@@ -741,10 +741,10 @@ function TagEditor({ kind, list, vi, isMobile, onClose, onSave }: {
             return (
               <div key={r.key} style={{ display: 'grid', gap: 6, opacity: r.hidden ? .55 : 1 }}>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <button type="button" onClick={() => setPalette(palette === r.key ? null : r.key)} title={T('Đổi màu', 'Colour')} style={{ flex: '0 0 auto', width: 34, height: 34, borderRadius: 8, border: '1px solid var(--c334155)', background: c.bg, color: c.ink, cursor: 'pointer', fontWeight: 800, fontFamily: 'inherit' }}>{kind === 'formats' ? iconOf(r.id) : 'A'}</button>
+                  <button type="button" onClick={() => setPalette(palette === r.key ? null : r.key)} title={T('Đổi màu', 'Colour')} style={{ flex: '0 0 auto', width: 34, height: 34, borderRadius: 8, border: '1px solid var(--c334155)', background: c.bg, color: c.ink, cursor: 'pointer', fontWeight: 700, fontFamily: 'inherit' }}>{kind === 'formats' ? iconOf(r.id) : 'A'}</button>
                   <input value={r.vi} maxLength={30} placeholder={T('Tên tiếng Việt', 'Vietnamese name')} onChange={(e) => edit(r.key, { vi: e.target.value })} style={{ ...small, flex: 1, minWidth: 0 }} />
                   <input value={r.en} maxLength={30} placeholder={T('Tên tiếng Anh', 'English name')} onChange={(e) => edit(r.key, { en: e.target.value })} style={{ ...small, flex: 1, minWidth: 0 }} />
-                  <button type="button" onClick={() => edit(r.key, { hidden: !r.hidden })} title={r.hidden ? T('Hiện lại', 'Show again') : T('Ẩn khỏi lựa chọn (ngày cũ vẫn giữ)', 'Hide from choices (past days keep it)')} style={{ flex: '0 0 auto', minWidth: 52, height: 34, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: r.hidden ? 'var(--ink-link)' : 'var(--c94a3b8)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700 }}>{r.hidden ? T('Hiện', 'Show') : T('Ẩn', 'Hide')}</button>
+                  <button type="button" onClick={() => edit(r.key, { hidden: !r.hidden })} title={r.hidden ? T('Hiện lại', 'Show again') : T('Ẩn khỏi lựa chọn (ngày cũ vẫn giữ)', 'Hide from choices (past days keep it)')} style={{ flex: '0 0 auto', minWidth: 52, height: 34, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: r.hidden ? 'var(--ink-link)' : 'var(--c94a3b8)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600 }}>{r.hidden ? T('Hiện', 'Show') : T('Ẩn', 'Hide')}</button>
                 </div>
                 {palette === r.key && (
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingLeft: 40 }}>
@@ -756,12 +756,12 @@ function TagEditor({ kind, list, vi, isMobile, onClose, onSave }: {
               </div>
             );
           })}
-          <button type="button" onClick={add} disabled={rows.length >= 24} style={{ justifySelf: 'start', marginTop: 4, minHeight: 34, padding: '0 12px', borderRadius: 8, border: '1px dashed var(--c334155)', background: 'transparent', color: 'var(--ink-link)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700 }}>+ {T('Thêm', 'Add')}</button>
+          <button type="button" onClick={add} disabled={rows.length >= 24} style={{ justifySelf: 'start', marginTop: 4, minHeight: 34, padding: '0 12px', borderRadius: 8, border: '1px dashed var(--c334155)', background: 'transparent', color: 'var(--ink-link)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>+ {T('Thêm', 'Add')}</button>
         </div>
         <div style={{ padding: '10px 14px', borderTop: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', alignItems: 'center', gap: 8 }}>
           {err && <span style={{ fontSize: 12, color: 'var(--ink-bad)' }}>{err}</span>}
-          <button type="button" onClick={onClose} style={{ marginLeft: 'auto', minHeight: 36, padding: '0 14px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--cf1f5f9)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Huỷ', 'Cancel')}</button>
-          <button type="button" disabled={busy} onClick={() => void save()} style={{ minHeight: 36, padding: '0 14px', borderRadius: 9, border: '1px solid #6366f1', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 800, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit' }}>{busy ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}</button>
+          <button type="button" onClick={onClose} style={{ marginLeft: 'auto', minHeight: 36, padding: '0 14px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--cf1f5f9)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Huỷ', 'Cancel')}</button>
+          <button type="button" disabled={busy} onClick={() => void save()} style={{ minHeight: 36, padding: '0 14px', borderRadius: 9, border: '1px solid #6366f1', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit' }}>{busy ? T('Đang lưu…', 'Saving…') : T('Lưu', 'Save')}</button>
         </div>
       </div>
     </>

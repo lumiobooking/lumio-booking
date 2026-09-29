@@ -103,7 +103,7 @@ export function PostDetailModal({
 
   const Row = ({ k, v }: { k: string; v: ReactNode }) => (
     <div style={{ display: 'grid', gridTemplateColumns: '112px 1fr', gap: 8, fontSize: 12.5, lineHeight: 1.5 }}>
-      <span style={{ color: 'var(--ink-faint)', fontSize: 11, letterSpacing: .4, textTransform: 'uppercase', fontWeight: 700, paddingTop: 2 }}>{k}</span>
+      <span style={{ color: 'var(--ink-faint)', fontSize: 11, letterSpacing: .4, textTransform: 'uppercase', fontWeight: 600, paddingTop: 2 }}>{k}</span>
       <span style={{ color: 'var(--ccbd5e1)', minWidth: 0, wordBreak: 'break-word' }}>{v}</span>
     </div>
   );
@@ -151,14 +151,14 @@ export function PostDetailModal({
             what state, then the words, then who touched it. */}
         <div style={{ padding: mobile ? '12px 14px 14px' : '16px 18px 18px', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: st.ink, padding: '3px 9px', borderRadius: 20, border: `1px solid ${'var(--c334155)'}` }}>{vi ? st.vi : st.en}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: st.ink, padding: '3px 9px', borderRadius: 20, border: `1px solid ${'var(--c334155)'}` }}>{vi ? st.vi : st.en}</span>
             {post.stage && !live && <span style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{vi ? STAGE[post.stage]?.vi : STAGE[post.stage]?.en}</span>}
-            {post.held && <span style={{ fontSize: 11, color: 'var(--ink-bad)', fontWeight: 700 }}>🔴 {T('Tiệm đang chờ trả lời', 'Client is waiting')}</span>}
+            {post.held && <span style={{ fontSize: 11, color: 'var(--ink-bad)', fontWeight: 600 }}>🔴 {T('Tiệm đang chờ trả lời', 'Client is waiting')}</span>}
             <button type="button" onClick={onClose} aria-label="close" style={{ marginLeft: 'auto', width: 30, height: 30, borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 16, fontFamily: 'inherit' }}>×</button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--cf1f5f9)', lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>{fmtWall(salonWall, vi)}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>{fmtWall(salonWall, vi)}</div>
             <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
               {T('giờ tiệm', 'salon time')}{salonTz ? ` · ${salonTz}` : ''}
               {!sameZone && <> · <span style={{ color: 'var(--ccbd5e1)' }}>{fmtWall(viewerWall, vi)}</span> {T('giờ máy anh', 'your time')}</>}
@@ -167,7 +167,7 @@ export function PostDetailModal({
 
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {post.channels.map((c) => (
-              <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--ccbd5e1)', padding: '3px 9px', borderRadius: 20, background: 'var(--c1e293b)' }}>
+              <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: 'var(--ccbd5e1)', padding: '3px 9px', borderRadius: 20, background: 'var(--c1e293b)' }}>
                 <i style={{ width: 8, height: 8, borderRadius: '50%', background: CH_COLOR[c] ?? '#94a3b8', display: 'inline-block' }} />{CH_NAME[c] ?? c}
               </span>
             ))}
@@ -241,12 +241,12 @@ export function PostDetailModal({
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 'auto', paddingTop: 4 }}>
             {!live && (
-              <button type="button" onClick={onEdit} disabled={busy} style={{ minHeight: 38, padding: '0 16px', borderRadius: 9, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <button type="button" onClick={onEdit} disabled={busy} style={{ minHeight: 38, padding: '0 16px', borderRadius: 9, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                 ✏️ {T('Sửa bài', 'Edit')}
               </button>
             )}
             {onPublish && !live && post.status !== 'cancelled' && (
-              <button type="button" onClick={onPublish} disabled={busy} style={{ minHeight: 38, padding: '0 14px', borderRadius: 9, border: '1px solid #22c55e', background: 'rgba(34,197,94,.14)', color: 'var(--ink-good)', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <button type="button" onClick={onPublish} disabled={busy} style={{ minHeight: 38, padding: '0 14px', borderRadius: 9, border: '1px solid #22c55e', background: 'rgba(34,197,94,.14)', color: 'var(--ink-good)', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                 🚀 {T('Đăng ngay', 'Post now')}
               </button>
             )}

@@ -92,7 +92,7 @@ function Inner() {
 
   function reprint(o: Order) {
     const line = (label: string, val: string, bold = false) =>
-      `<tr><td style="${bold ? 'font-weight:700' : ''}">${label}</td><td style="text-align:right;${bold ? 'font-weight:700' : ''}">${val}</td></tr>`;
+      `<tr><td style="${bold ? 'font-weight:600' : ''}">${label}</td><td style="text-align:right;${bold ? 'font-weight:600' : ''}">${val}</td></tr>`;
     const rows = o.items.map((l) => {
       const tech = l.staffMemberId ? `<div style="font-size:11px;color: #555">${esc(staffName(l.staffMemberId))}</div>` : '';
       const tip = l.tipCents ? `<div style="font-size:11px;color: #555">Tip: ${formatPrice(l.tipCents, o.currency)}</div>` : '';
@@ -223,7 +223,7 @@ function Inner() {
                         {o.discountCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.discount')}</span><span>-{formatPrice(o.discountCents, o.currency)}</span></div>}
                         {o.taxCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.tax')}</span><span>{formatPrice(o.taxCents, o.currency)}</span></div>}
                         {o.tipCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.tips')}</span><span>{formatPrice(o.tipCents, o.currency)}</span></div>}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}><span>{t('or.total')}</span><span style={{ color: 'var(--ink-good)' }}>{formatPrice(o.totalCents, o.currency)}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}><span>{t('or.total')}</span><span style={{ color: 'var(--ink-good)' }}>{formatPrice(o.totalCents, o.currency)}</span></div>
                         {o.changeCents > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--c94a3b8)' }}><span>{t('or.change')}</span><span>{formatPrice(o.changeCents, o.currency)}</span></div>}
                       </div>
                     </td></tr>

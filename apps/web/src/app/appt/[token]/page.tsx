@@ -49,7 +49,7 @@ export default function ApptPage() {
           <p style={{ color: 'var(--c94a3b8)', textAlign: 'center' }}>Loading…</p>
         ) : (
           <>
-            <div style={{ textAlign: 'center', fontSize: 18, fontWeight: 800, color: 'var(--c0f172a)' }}>{s.salon}</div>
+            <div style={{ textAlign: 'center', fontSize: 18, fontWeight: 700, color: 'var(--c0f172a)' }}>{s.salon}</div>
 
             {done === 'confirmed' ? (
               <Banner emoji="✅" title="See you then!" text="Your appointment is confirmed. Thank you." />
@@ -106,7 +106,7 @@ function Banner({ emoji, title, text }: { emoji: string; title: string; text: st
   return (
     <div style={{ textAlign: 'center', margin: '14px 0' }}>
       <div style={{ fontSize: 44 }}>{emoji}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--c0f172a)', marginTop: 4 }}>{title}</div>
+      <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--c0f172a)', marginTop: 4 }}>{title}</div>
       <div style={{ color: 'var(--c64748b)', fontSize: 14, marginTop: 2 }}>{text}</div>
     </div>
   );
@@ -139,7 +139,7 @@ function ReferCard({ r, salon }: { r: NonNullable<Summary['referral']>; salon: s
 
   return (
     <div style={referCard}>
-      <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--c0f172a)' }}>🎁 Refer friends, get rewarded</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--c0f172a)' }}>🎁 Refer friends, get rewarded</div>
       <p style={{ color: 'var(--c475569)', fontSize: 13, lineHeight: 1.5, margin: '6px 0 12px' }}>
         {r.message}{reward && <> When they book their first visit, <strong>{reward}</strong>.</>}
       </p>
@@ -156,8 +156,8 @@ function ReferCard({ r, salon }: { r: NonNullable<Summary['referral']>; salon: s
 
 const wrap: React.CSSProperties = { minHeight: '100dvh', background: 'linear-gradient(160deg,#eef2ff,var(--cf8fafc) 55%)', display: 'grid', placeItems: 'center', padding: 16, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' };
 const card: React.CSSProperties = { width: '100%', maxWidth: 380, background: '#fff', borderRadius: 22, padding: '26px 22px', boxShadow: '0 12px 40px rgba(15,23,42,0.12)' };
-const btn: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '13px', borderRadius: 12, border: 'none', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 };
+const btn: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '13px', borderRadius: 12, border: 'none', fontSize: 15, fontWeight: 600, cursor: 'pointer', marginBottom: 10 };
 const referCard: React.CSSProperties = { background: '#eef2ff', border: '1px solid var(--cc7d2fe)', borderRadius: 14, padding: 16, marginTop: 16 };
 const referInput: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 9, border: '1px solid var(--cc7d2fe)', background: '#fff', color: 'var(--c334155)', fontSize: 13 };
-const shareBtn: React.CSSProperties = { flex: 1, minWidth: 84, boxSizing: 'border-box', textAlign: 'center', padding: '10px', borderRadius: 9, fontSize: 13.5, fontWeight: 700, textDecoration: 'none', border: 'none' };
+const shareBtn: React.CSSProperties = { flex: 1, minWidth: 84, boxSizing: 'border-box', textAlign: 'center', padding: '10px', borderRadius: 9, fontSize: 13.5, fontWeight: 600, textDecoration: 'none', border: 'none' };
 const shareGhost: React.CSSProperties = { background: '#fff', color: '#4338ca', border: '1px solid var(--cc7d2fe)' };

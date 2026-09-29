@@ -107,7 +107,7 @@ function Inner() {
 
       {/* Chair types + auto-seat keywords: automatic, but you control the words */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 4 }}>{vi ? 'Loại ghế & từ khóa tự xếp' : 'Chair types & auto-seat keywords'}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>{vi ? 'Loại ghế & từ khóa tự xếp' : 'Chair types & auto-seat keywords'}</div>
         <p style={{ fontSize: 12, color: 'var(--c64748b)', margin: '0 0 12px', lineHeight: 1.5 }}>{vi
           ? 'Dịch vụ có tên hoặc nhóm chứa một trong các "từ khóa" này sẽ TỰ ĐỘNG được xếp vào loại ghế đó — không cần gán tay từng dịch vụ. Chỉ sửa từ khóa khi có ngoại lệ (vd thêm "combo" vào Pedi).'
           : 'A service whose name or category contains any of these keywords is auto-seated at that chair type — no per-service setup. Edit the words only to fix exceptions.'}</p>
@@ -155,7 +155,7 @@ function Inner() {
         <div style={{ ...ui.card, color: 'var(--c64748b)' }}>{vi ? 'Chưa có ghế nào. Dùng "Thêm nhanh" ở trên để tạo.' : 'No chairs yet. Use "Quick add" above.'}</div>
       ) : groups.map((g) => (
         <div key={g.id || 'none'} style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{g.name} ({g.list.length})</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{g.name} ({g.list.length})</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
             {g.list.map((s) => (
               <div key={s.id} style={{ ...ui.card, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, opacity: s.isActive ? 1 : 0.5, borderColor: pick.has(s.id) ? '#4338ca' : undefined, background: pick.has(s.id) ? 'var(--c1e1b4b)' : undefined }}>

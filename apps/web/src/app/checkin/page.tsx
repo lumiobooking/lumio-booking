@@ -217,7 +217,7 @@ export default function CheckInKiosk() {
             placeholder="ABC123"
             autoCapitalize="characters"
             autoCorrect="off"
-            style={{ ...bigInput, textAlign: 'center', letterSpacing: 8, fontSize: 34, fontWeight: 800 }}
+            style={{ ...bigInput, textAlign: 'center', letterSpacing: 8, fontSize: 34, fontWeight: 700 }}
           />
           {pairErr && <div style={{ color: C.bad, fontSize: 15, marginTop: 12 }}>{pairErr}</div>}
           <button onClick={pair} disabled={pairInput.trim().length < 4} style={{ ...primary(accent), marginTop: 18, width: '100%', opacity: pairInput.trim().length < 4 ? 0.5 : 1 }}>
@@ -265,7 +265,7 @@ export default function CheckInKiosk() {
             ? <img src={menu.logoUrl} alt="" style={{ height: 40, width: 'auto', borderRadius: 8 }} />
             : <span style={{ width: 40, height: 40, borderRadius: 12, background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>✦</span>}
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 'clamp(17px, 4.6vw, 20px)', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: C.ink }}>{menu.salonName}</div>
+            <div style={{ fontSize: 'clamp(17px, 4.6vw, 20px)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: C.ink }}>{menu.salonName}</div>
             <div style={{ fontSize: 13.5, color: C.muted }}>
               {/* Where they are, in words — three grey bars said nothing. */}
               Step {step} of 3 · {step === 1 ? 'Your details' : step === 2 ? 'Services' : 'Confirm'}
@@ -320,7 +320,7 @@ export default function CheckInKiosk() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
                 <h2 style={{ ...stepTitle, margin: 0 }}>What would you like today?</h2>
                 <span style={{
-                  fontSize: 14.5, fontWeight: 800, borderRadius: 999, padding: '5px 12px',
+                  fontSize: 14.5, fontWeight: 700, borderRadius: 999, padding: '5px 12px',
                   background: picked.length ? accent : C.line, color: picked.length ? '#fff' : C.muted,
                 }}>{picked.length} selected</span>
               </div>
@@ -329,7 +329,7 @@ export default function CheckInKiosk() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
                   {pickedList.map((s) => (
                     <button key={s.id} onClick={() => setPicked((v) => v.filter((x) => x !== s.id))}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: `${accent}14`, border: `1px solid ${accent}`, color: accent, borderRadius: 999, padding: '8px 13px', fontSize: 14.5, fontWeight: 700, cursor: 'pointer' }}>
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: `${accent}14`, border: `1px solid ${accent}`, color: accent, borderRadius: 999, padding: '8px 13px', fontSize: 14.5, fontWeight: 600, cursor: 'pointer' }}>
                       {s.name}<span style={{ fontSize: 16 }}>✕</span>
                     </button>
                   ))}
@@ -342,7 +342,7 @@ export default function CheckInKiosk() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#fff7ed', border: '1.5px solid #fdba74', borderRadius: 14, padding: '11px 13px', marginBottom: 14 }}>
                   <TagIcon color="#c2410c" size={22} />
                   <div>
-                    <div style={{ fontSize: 14.5, fontWeight: 800, color: '#9a3412' }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 700, color: '#9a3412' }}>
                       {menu.promo.label ? `${menu.promo.label} · ` : ''}{menu.promo.percent}% off {menu.promo.scope === 'all' ? 'today' : `${menu.promo.scope.toLowerCase()} today`}
                     </div>
                     <div style={{ fontSize: 12.5, color: '#c2410c', lineHeight: 1.45 }}>Applied automatically when you check in. Prices below already show it.</div>
@@ -361,7 +361,7 @@ export default function CheckInKiosk() {
                   <div ref={chips.ref} className="ck-chips" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12, paddingLeft: 16, paddingRight: 16, scrollbarWidth: 'none' }}>
                     <button onClick={() => setCat(null)} style={{ ...chip, ...(cat === null ? { background: accent, borderColor: accent, color: '#fff' } : null) }}>All</button>
                     {hasSale && (
-                      <button onClick={() => setCat(SALE)} style={{ ...chip, display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: '#fdba74', background: cat === SALE ? '#ea580c' : '#fff7ed', color: cat === SALE ? '#fff' : '#9a3412', fontWeight: 700 }}>
+                      <button onClick={() => setCat(SALE)} style={{ ...chip, display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: '#fdba74', background: cat === SALE ? '#ea580c' : '#fff7ed', color: cat === SALE ? '#fff' : '#9a3412', fontWeight: 600 }}>
                         <TagIcon color="currentColor" size={16} />On sale
                       </button>
                     )}
@@ -399,22 +399,22 @@ export default function CheckInKiosk() {
                         <span style={{
                           position: 'absolute', top: -10, right: -8, width: 30, height: 30, borderRadius: '50%',
                           background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 17, fontWeight: 900, border: `3px solid ${C.page}`,
+                          fontSize: 17, fontWeight: 700, border: `3px solid ${C.page}`,
                         }}>✓</span>
                       )}
                       {/* One badge, the most useful one: her own-discount figure
                           beats the day's promo (it is hers, not everyone's);
                           Popular only when there is no money to mention. */}
                       {offPct(s) > 0 ? (
-                        <span style={{ alignSelf: 'flex-start', background: '#fee2e2', color: '#b91c1c', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 800 }}>−{offPct(s)}%</span>
+                        <span style={{ alignSelf: 'flex-start', background: '#fee2e2', color: '#b91c1c', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 700 }}>−{offPct(s)}%</span>
                       ) : dealPct(s) > 0 ? (
-                        <span style={{ alignSelf: 'flex-start', background: '#fff7ed', color: '#9a3412', border: '1px solid #fdba74', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 800 }}>Today −{dealPct(s)}%</span>
+                        <span style={{ alignSelf: 'flex-start', background: '#fff7ed', color: '#9a3412', border: '1px solid #fdba74', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 700 }}>Today −{dealPct(s)}%</span>
                       ) : s.isFeatured ? (
-                        <span style={{ alignSelf: 'flex-start', background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 800 }}>POPULAR</span>
+                        <span style={{ alignSelf: 'flex-start', background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 700 }}>POPULAR</span>
                       ) : null}
-                      <span style={{ fontSize: 'clamp(15px, 4vw, 18px)', fontWeight: 700, lineHeight: 1.25 }}>{s.name}</span>
+                      <span style={{ fontSize: 'clamp(15px, 4vw, 18px)', fontWeight: 600, lineHeight: 1.25 }}>{s.name}</span>
                       <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 'clamp(16px, 4.2vw, 19px)', fontWeight: 800, color: on ? accent : C.price }}>{money(payCents(s))}</span>
+                        <span style={{ fontSize: 'clamp(16px, 4.2vw, 19px)', fontWeight: 700, color: on ? accent : C.price }}>{money(payCents(s))}</span>
                         {onSale(s) && <span style={{ fontSize: 13.5, color: C.faint, textDecoration: 'line-through' }}>{money(s.priceCents)}</span>}
                         <span style={{ fontSize: 13.5, color: C.muted }}>{s.durationMinutes} min</span>
                       </span>
@@ -444,13 +444,13 @@ export default function CheckInKiosk() {
                       <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: `1px solid ${C.line}` }}>
                         <span style={{ flex: 1, fontSize: 17, fontWeight: 600, color: C.ink }}>{s.name}</span>
                         <span style={{ fontSize: 14.5, color: C.muted }}>{s.durationMinutes} min</span>
-                        <span style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{money(s.priceCents)}</span>
+                        <span style={{ fontSize: 17, fontWeight: 600, color: C.ink }}>{money(s.priceCents)}</span>
                       </div>
                     ))}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', background: C.page, borderRadius: '0 0 18px 18px' }}>
-                      <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: C.muted }}>Estimate</span>
+                      <span style={{ flex: 1, fontSize: 16, fontWeight: 600, color: C.muted }}>Estimate</span>
                       <span style={{ fontSize: 14.5, color: C.muted }}>{totalMins} min</span>
-                      <span style={{ fontSize: 24, fontWeight: 800, color: C.price }}>{money(totalCents)}</span>
+                      <span style={{ fontSize: 24, fontWeight: 700, color: C.price }}>{money(totalCents)}</span>
                     </div>
                   </>
                 )}
@@ -481,7 +481,7 @@ export default function CheckInKiosk() {
                 {savedCents > 0 && <span style={{ color: C.faint, textDecoration: 'line-through', fontWeight: 500, marginRight: 6 }}>{money(fullCents)}</span>}
                 <span style={{ color: C.price }}>{money(totalCents)}</span>
               </span>
-              {savedCents > 0 && <span style={{ fontSize: 13, color: C.price, fontWeight: 700 }}>You save {money(savedCents)} today</span>}
+              {savedCents > 0 && <span style={{ fontSize: 13, color: C.price, fontWeight: 600 }}>You save {money(savedCents)} today</span>}
             </span>
           )}
           <span style={{ flex: 1 }} />
@@ -590,7 +590,7 @@ const ghostBtn: CSSProperties = {
 };
 const primary = (accent: string): CSSProperties => ({
   border: 'none', background: accent, color: '#fff', borderRadius: 14,
-  padding: '16px 34px', fontSize: 19, fontWeight: 700, cursor: 'pointer', minHeight: 60,
+  padding: '16px 34px', fontSize: 19, fontWeight: 600, cursor: 'pointer', minHeight: 60,
 });
-const stepTitle: CSSProperties = { fontSize: 'clamp(21px, 5.6vw, 28px)', fontWeight: 800, margin: '0 0 6px', color: C.ink };
+const stepTitle: CSSProperties = { fontSize: 'clamp(21px, 5.6vw, 28px)', fontWeight: 700, margin: '0 0 6px', color: C.ink };
 const stepHint: CSSProperties = { fontSize: 'clamp(14.5px, 3.8vw, 16.5px)', color: C.muted, margin: '0 0 18px', lineHeight: 1.5 };

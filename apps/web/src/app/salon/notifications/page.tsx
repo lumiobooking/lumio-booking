@@ -192,7 +192,7 @@ function TemplatesView({ token }: { token: string | null }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {groups.map((g) => (
             <div key={g}>
-              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--c64748b)', margin: '0 0 6px 2px', fontWeight: 700 }}>{t(GROUP_KEY[g] ?? g)}</div>
+              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--c64748b)', margin: '0 0 6px 2px', fontWeight: 600 }}>{t(GROUP_KEY[g] ?? g)}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {items.filter((i) => i.group === g).map((i) => {
                   const it = templates[i.id];
@@ -291,7 +291,7 @@ function TemplatesView({ token }: { token: string | null }) {
 
             {/* Live preview */}
             <div>
-              <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--c64748b)', margin: '0 0 8px 2px', fontWeight: 700 }}>{t('nt.preview')}</div>
+              <div style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--c64748b)', margin: '0 0 8px 2px', fontWeight: 600 }}>{t('nt.preview')}</div>
               {tpl.email && <EmailPreview accent={accent} subject={fillPct(tpl.subject)} body={fillPct(tpl.body)} salon={SAMPLE.salon_name} contact={SAMPLE.salon_contact} />}
               {tpl.sms && <SmsPreview text={fillPct(tpl.smsBody)} salon={SAMPLE.salon_name} />}
             </div>
@@ -312,7 +312,7 @@ function EmailPreview({ accent, subject, body, salon, contact }: { accent: strin
         <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600 }}>{subject || t('nt.emptySubject')}</div>
       </div>
       <div style={{ background: accent, padding: '18px 22px' }}>
-        <div style={{ color: '#fff', fontSize: 17, fontWeight: 800 }}>{salon}</div>
+        <div style={{ color: '#fff', fontSize: 17, fontWeight: 700 }}>{salon}</div>
       </div>
       <div style={{ padding: 22, color: '#374151', fontSize: 14, lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: body || `<em>${t('nt.emptyBody')}</em>` }} />
       <div style={{ background: '#f9fafb', padding: '12px 22px', color: '#4b5563', fontSize: 12, borderTop: '1px solid #eef0f4' }}>

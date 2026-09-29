@@ -161,7 +161,7 @@ export default function AiUsagePage() {
                           {' · '}{f.models.map((m) => m.model).join(', ')}
                         </div>
                       </td>
-                      <td style={{ ...tdR, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{usd(f.usd)}</td>
+                      <td style={{ ...tdR, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{usd(f.usd)}</td>
                       <td style={tdR}>{num(f.calls)}</td>
                       <td style={tdR}>{num(f.input)}</td>
                       <td style={tdR}>{num(f.output)}</td>
@@ -205,7 +205,7 @@ export default function AiUsagePage() {
                             <span style={{ color: 'var(--c64748b)', marginRight: 6 }}>{open ? '▾' : '▸'}</span>
                             {t.name}
                           </td>
-                          <td style={{ ...tdR, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{usd(t.usd)}</td>
+                          <td style={{ ...tdR, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{usd(t.usd)}</td>
                           <td style={tdR}>{num(t.calls)}</td>
                           <td style={tdR}>{r.totals.usd ? pct(t.usd / r.totals.usd) : '—'}</td>
                         </tr>
@@ -276,7 +276,7 @@ function Stat({ label, value, sub, big }: { label: string; value: string; sub?: 
   return (
     <div>
       <div style={{ fontSize: 11.5, color: 'var(--c64748b)', letterSpacing: .3 }}>{label}</div>
-      <div style={{ fontSize: big ? 26 : 20, fontWeight: 800, color: 'var(--cf1f5f9)', lineHeight: 1.25 }}>{value}</div>
+      <div style={{ fontSize: big ? 26 : 20, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.25 }}>{value}</div>
       {sub && <div style={{ fontSize: 11.5, color: 'var(--cfde68a)' }}>{sub}</div>}
     </div>
   );
@@ -305,10 +305,10 @@ const h2: React.CSSProperties = { fontSize: 17, margin: '0 0 4px' };
 const hint: React.CSSProperties = { fontSize: 12.5, color: 'var(--c64748b)', margin: '0 0 12px', lineHeight: 1.55 };
 const banner: React.CSSProperties = { border: '1px solid', borderRadius: 8, padding: '9px 13px', marginBottom: 14, fontSize: 13.5 };
 const chip: React.CSSProperties = { padding: '6px 13px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' };
-const chipOn: React.CSSProperties = { ...chip, border: '1px solid #6366f1', background: 'rgba(99,102,241,.16)', color: 'var(--ink-link)', fontWeight: 700 };
+const chipOn: React.CSSProperties = { ...chip, border: '1px solid #6366f1', background: 'rgba(99,102,241,.16)', color: 'var(--ink-link)', fontWeight: 600 };
 const ghost: React.CSSProperties = { padding: '6px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' };
 const table: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 13 };
-const th: React.CSSProperties = { textAlign: 'left', padding: '7px 8px', borderBottom: '1px solid var(--c334155)', color: 'var(--c64748b)', fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .4 };
+const th: React.CSSProperties = { textAlign: 'left', padding: '7px 8px', borderBottom: '1px solid var(--c334155)', color: 'var(--c64748b)', fontSize: 11.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .4 };
 const thR: React.CSSProperties = { ...th, textAlign: 'right' };
 const td: React.CSSProperties = { padding: '8px', borderBottom: '1px solid var(--line)', verticalAlign: 'top' };
 const tdR: React.CSSProperties = { ...td, textAlign: 'right', color: 'var(--c94a3b8)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };

@@ -82,7 +82,7 @@ export function PushEnable({ about = 'bookings' }: { about?: 'bookings' | 'posts
     <div style={box}>
       <span style={{ fontSize: 18 }}>🔔</span>
       <div style={{ flex: 1, fontSize: 13, color: 'var(--ccbd5e1)' }}>{about === 'posts' ? L('Nhận thông báo khi team gửi bài cho bạn duyệt hoặc trả lời góp ý — kể cả khi đã đóng app.', 'Get alerted when the team sends a post for your approval or answers your note — even with the app closed.') : L('Nhận thông báo ngay khi có booking mới — kể cả khi đã đóng app.', 'Get alerted the moment a booking arrives — even with the app closed.')}</div>
-      <button onClick={enable} disabled={state === 'busy'} style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 700, fontSize: 13, cursor: state === 'busy' ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>{state === 'busy' ? L('Đang bật…', 'Enabling…') : L('Bật', 'Enable')}</button>
+      <button onClick={enable} disabled={state === 'busy'} style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 13, cursor: state === 'busy' ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>{state === 'busy' ? L('Đang bật…', 'Enabling…') : L('Bật', 'Enable')}</button>
     </div>
   );
 }

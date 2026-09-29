@@ -104,7 +104,7 @@ function Inner() {
             {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('pm.empty')}</p>}
             {pg.paged.map((p) => (
               <MCard key={p.id}>
-                <MHead right={<span style={{ color: COLORS[p.status] ?? 'var(--c94a3b8)', fontWeight: 700, fontSize: 13 }}>{p.status}</span>}>
+                <MHead right={<span style={{ color: COLORS[p.status] ?? 'var(--c94a3b8)', fontWeight: 600, fontSize: 13 }}>{p.status}</span>}>
                   {formatPrice(p.amountCents, p.currency)}
                 </MHead>
                 <MRow label={t('pm.colDate')}>{fmtInTz(p.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</MRow>

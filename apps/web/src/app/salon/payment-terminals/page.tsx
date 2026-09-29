@@ -199,7 +199,7 @@ function Inner() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <div>
               <strong style={{ fontSize: 16 }}>{PROVIDER_META[c.provider]?.name ?? c.provider}</strong>
-              <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--ink-good)', fontWeight: 700 }}>● {L.connected}</span>
+              <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--ink-good)', fontWeight: 600 }}>● {L.connected}</span>
               <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 4 }}>
                 {L.secret}: {c.keyHint ?? '—'} · {c.currency}
                 {c.capabilities?.interac ? ' · Interac' : ''}{c.capabilities?.tapToPay ? ' · Tap to Pay' : ''}
@@ -458,7 +458,7 @@ function AgentsSection({ token, vi }: { token: string | null; vi: boolean }) {
       {pairCode && (
         <div style={{ background: 'var(--c052e16)', border: '1px solid #22c55e', borderRadius: 8, padding: 12, margin: '8px 0' }}>
           <div style={{ color: 'var(--c86efac)', fontSize: 13 }}>{vi ? 'Nhập mã này vào Bridge/Companion (hết hạn 15 phút):' : 'Enter this code in the Bridge/Companion (expires in 15 min):'}</div>
-          <div style={{ color: 'var(--cf8fafc)', fontSize: 24, letterSpacing: 4, fontWeight: 700, marginTop: 6 }}>{pairCode}</div>
+          <div style={{ color: 'var(--cf8fafc)', fontSize: 24, letterSpacing: 4, fontWeight: 600, marginTop: 6 }}>{pairCode}</div>
         </div>
       )}
       <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0' }}>

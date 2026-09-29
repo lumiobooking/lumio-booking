@@ -159,7 +159,7 @@ export function ContentInbox({ token }: { token: string | null }) {
         <h2 style={{ fontSize: 17, margin: 0, color: 'var(--ce2e8f0)' }}>💬 Trao đổi với các tiệm</h2>
         {waiting > 0 && (
           <span style={{
-            fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 20,
+            fontSize: 12, fontWeight: 600, padding: '2px 9px', borderRadius: 20,
             background: '#ef4444', color: '#ffffff',
           }}>{waiting} đang chờ mình</span>
         )}
@@ -195,11 +195,11 @@ export function ContentInbox({ token }: { token: string | null }) {
                 }}
               >
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{t.salonName}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{t.salonName}</span>
                   <span style={{ fontSize: 11.5, color: 'var(--ca5b4fc)' }}>{SUBJECT_LABEL(t.subject)}</span>
                   {t.unread > 0 && (
                     <span style={{
-                      fontSize: 10.5, fontWeight: 700, minWidth: 18, height: 18, borderRadius: 20,
+                      fontSize: 10.5, fontWeight: 600, minWidth: 18, height: 18, borderRadius: 20,
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       background: '#ef4444', color: '#ffffff', padding: '0 5px',
                     }}>{t.unread}</span>
@@ -236,7 +236,7 @@ export function ContentInbox({ token }: { token: string | null }) {
                 }}
               >← Danh sách</button>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{open.salonName}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{open.salonName}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--ca5b4fc)' }}>{SUBJECT_LABEL(open.subject)}</div>
               </div>
               <button

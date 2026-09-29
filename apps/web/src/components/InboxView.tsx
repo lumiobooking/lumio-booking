@@ -215,7 +215,7 @@ const Avatar = memo(function Avatar(
         <span style={{
           width: size, height: size, borderRadius: '50%', background: c.bg, color: c.fg,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: Math.round(size * 0.36), fontWeight: 700,
+          fontSize: Math.round(size * 0.36), fontWeight: 600,
         }}>{initialsOf(displayName(row, vi))}</span>
       )}
       {/* THE MARK IS ONLY WORTH ITS INK WHEN IT DISTINGUISHES SOMETHING.
@@ -940,10 +940,10 @@ export function InboxView() {
         // that decides whether a silent inbox means "quiet day" or "the Page
         // fell off two weeks ago and nobody noticed".
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{vi ? 'Hộp thư' : 'Inbox'}</h1>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{vi ? 'Hộp thư' : 'Inbox'}</h1>
           {waiting > 0 && pill('wait', vi ? `${waiting} khách đang chờ` : `${waiting} waiting`)}
           {unreadCount > 0 && (
-            <span style={{ background: 'var(--c172554)', color: 'var(--c93c5fd)', border: '1px solid #3b82f6', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+            <span style={{ background: 'var(--c172554)', color: 'var(--c93c5fd)', border: '1px solid #3b82f6', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
               ● {unreadCount} {vi ? 'chưa đọc' : 'unread'}
             </span>
           )}
@@ -964,7 +964,7 @@ export function InboxView() {
                 <ChannelIcon raw={src.channel} size={14} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{src.label}</span>
                 {src.waiting > 0 && (
-                  <span style={{ background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>{src.waiting}</span>
+                  <span style={{ background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 600 }}>{src.waiting}</span>
                 )}
               </span>
             ))}
@@ -1024,7 +1024,7 @@ export function InboxView() {
             }}>
             ▤
             {waiting > 0 && (
-              <span style={{ position: 'absolute', top: -4, right: -5, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '0 4px', minWidth: 15 }}>{waiting}</span>
+              <span style={{ position: 'absolute', top: -4, right: -5, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 600, borderRadius: 999, padding: '0 4px', minWidth: 15 }}>{waiting}</span>
             )}
           </button>
 
@@ -1041,7 +1041,7 @@ export function InboxView() {
                 <span style={{ position: 'absolute', left: 3, top: 7, bottom: 7, width: 3, borderRadius: 2, background: pageColor(src.key.split('|')[0]).bg }} />
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}><ChannelIcon raw={src.channel} size={20} /></span>
                 {src.waiting > 0 && (
-                  <span style={{ position: 'absolute', top: -4, right: -5, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '0 4px', minWidth: 15 }}>{src.waiting}</span>
+                  <span style={{ position: 'absolute', top: -4, right: -5, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 600, borderRadius: 999, padding: '0 4px', minWidth: 15 }}>{src.waiting}</span>
                 )}
               </button>
             );
@@ -1122,7 +1122,7 @@ export function InboxView() {
                     <span style={{ opacity: .7 }}>{c.total}</span>
                     {/* Waiting is the only number that earns a colour here. */}
                     {c.waiting > 0 && (
-                      <span style={{ background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>{c.waiting}</span>
+                      <span style={{ background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 600 }}>{c.waiting}</span>
                     )}
                   </button>
                 );
@@ -1154,12 +1154,12 @@ export function InboxView() {
                 {/* The number is on this chip and nowhere else. A follow-up
                     nobody can see the count of is a diary left in a drawer. */}
                 {key === 'followup' && dueCount > 0 && (
-                  <span style={{ marginLeft: 5, background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>{dueCount}</span>
+                  <span style={{ marginLeft: 5, background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 600 }}>{dueCount}</span>
                 )}
                 {/* Grey, not red. Junk is not urgent - the count is here so
                     somebody can check the bin was not swallowing real customers. */}
                 {key === 'spam' && junkCount > 0 && (
-                  <span style={{ marginLeft: 5, background: 'var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 700 }}>{junkCount}</span>
+                  <span style={{ marginLeft: 5, background: 'var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 600 }}>{junkCount}</span>
                 )}
               </button>
             ))}
@@ -1192,7 +1192,7 @@ export function InboxView() {
             flex: '1 1 0%', minHeight: 0 }}>
             {listErr && (
               <div style={{ margin: 10, padding: '9px 11px', borderRadius: 8, background: 'var(--c450a0a)', border: '1px solid var(--c7f1d1d)' }}>
-                <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--cfecaca)', fontWeight: 700 }}>
+                <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--cfecaca)', fontWeight: 600 }}>
                   {vi ? 'Không tải được danh sách hội thoại' : 'Could not load conversations'}
                 </p>
                 <p style={{ margin: '0 0 6px', fontSize: 11, color: 'var(--cfca5a5)', wordBreak: 'break-word' }}>{listErr}</p>
@@ -1378,7 +1378,7 @@ export function InboxView() {
                     border: 'none', background: filter === b.f ? 'var(--c1e293b)' : 'transparent',
                     cursor: 'pointer', padding: '8px 4px', fontFamily: 'inherit', textAlign: 'center',
                   }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: b.tone, fontVariantNumeric: 'tabular-nums', lineHeight: 1.15 }}>{b.n}</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: b.tone, fontVariantNumeric: 'tabular-nums', lineHeight: 1.15 }}>{b.n}</div>
                   <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{b.label}</div>
                 </button>
               ))}
@@ -1574,7 +1574,7 @@ export function InboxView() {
                         // at all, so it stops being one control among several
                         // and becomes the thing to press.
                         ...(wnotice?.kind === 'needs-takeover'
-                          ? { background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 700 }
+                          ? { background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 600 }
                           : {}),
                       }}>{vi ? 'Tôi nhận' : 'Take over'}</button>}
                 {/* Read, but not dealt with. The one action every mail client
@@ -1644,7 +1644,7 @@ export function InboxView() {
               {detail.historySource === 'local' && (
                 <div style={{ alignSelf: 'center', textAlign: 'center', fontSize: 11.5, color: 'var(--c94a3b8)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 8, padding: '6px 12px' }}>
                   {vi ? 'Chỉ đang hiện các tin gần nhất — chưa tải được toàn bộ lịch sử từ Meta.' : 'Showing recent messages only — Meta did not return the full history.'}
-                  <button onClick={() => void loadThread(detail.id)} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--c818cf8)', fontWeight: 700, cursor: 'pointer', fontSize: 11.5 }}>{vi ? 'Thử lại' : 'Retry'}</button>
+                  <button onClick={() => void loadThread(detail.id)} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--c818cf8)', fontWeight: 600, cursor: 'pointer', fontSize: 11.5 }}>{vi ? 'Thử lại' : 'Retry'}</button>
                 </div>
               )}
               {detail.historySource === 'partial' && detail.history.length === 0 && (
@@ -1841,7 +1841,7 @@ export function InboxView() {
                           <span style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--c64748b)' }}>{vi ? 'Lịch tới' : 'Next visit'}</span>
                           {upcoming.status && pill(apptTone(upcoming.status), apptStatusLabel(upcoming.status, vi))}
                         </div>
-                        <p style={{ margin: 0, fontSize: 14.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>
+                        <p style={{ margin: 0, fontSize: 14.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
                           {fmtInTz(upcoming.startTime, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
                         </p>
                         <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--c94a3b8)' }}>
@@ -1915,7 +1915,7 @@ export function InboxView() {
                   <button
                     onClick={() => { void bookFor(detail); }}
                     style={{
-                      padding: narrow ? '9px 14px' : '5px 11px', fontSize: narrow ? 13.5 : 12, fontWeight: 700,
+                      padding: narrow ? '9px 14px' : '5px 11px', fontSize: narrow ? 13.5 : 12, fontWeight: 600,
                       borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                       background: '#6366f1', color: '#ffffff',
                     }}>
@@ -1943,7 +1943,7 @@ export function InboxView() {
             {/* Labels: where this conversation stands. */}
             <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 700 }}>{vi ? 'NHÃN' : 'LABELS'}</span>
+                <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 600 }}>{vi ? 'NHÃN' : 'LABELS'}</span>
                 <button onClick={() => setShowLabelForm((v) => !v)}
                   style={{ ...ghostBtn, marginLeft: 'auto', fontSize: 11, padding: '1px 7px' }}>
                   {showLabelForm ? (vi ? 'Đóng' : 'Close') : (vi ? '+ Nhãn mới' : '+ New')}
@@ -1999,12 +1999,12 @@ export function InboxView() {
                 is true forever and so cannot remind anybody of anything. */}
             <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 700 }}>{vi ? 'HẸN THEO DÕI' : 'FOLLOW-UP'}</span>
+                <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 600 }}>{vi ? 'HẸN THEO DÕI' : 'FOLLOW-UP'}</span>
                 {followUpState(detail.followUpAt) !== 'none' && (
                   <span style={{
                     background: FOLLOWUP_TONE[followUpState(detail.followUpAt)].bg,
                     color: FOLLOWUP_TONE[followUpState(detail.followUpAt)].fg,
-                    borderRadius: 6, padding: '1px 7px', fontSize: 10.5, fontWeight: 700,
+                    borderRadius: 6, padding: '1px 7px', fontSize: 10.5, fontWeight: 600,
                   }}>{followUpLabel(detail.followUpAt, new Date())}</span>
                 )}
               </div>
@@ -2042,7 +2042,7 @@ export function InboxView() {
             </div>
 
             <div style={{ padding: '11px 13px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11, color: 'var(--cfcd34d)', fontWeight: 700 }}>{vi ? 'GHI CHÚ NỘI BỘ' : 'INTERNAL NOTES'}</span>
+              <span style={{ fontSize: 11, color: 'var(--cfcd34d)', fontWeight: 600 }}>{vi ? 'GHI CHÚ NỘI BỘ' : 'INTERNAL NOTES'}</span>
               <span style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{vi ? '· khách không thấy' : '· customer cannot see these'}</span>
             </div>
 
@@ -2098,7 +2098,7 @@ function Box({ n, label, sub, tone }: { n: number; label: string; sub?: string; 
       minWidth: 132, padding: '13px 16px', borderRadius: 12, textAlign: 'center',
       background: 'var(--c0f172a)', border: `1px solid ${edge}`,
     }}>
-      <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.1, color: num }}>{n}</div>
+      <div style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.1, color: num }}>{n}</div>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 3 }}>{label}</div>
       {sub && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{sub}</div>}
     </div>

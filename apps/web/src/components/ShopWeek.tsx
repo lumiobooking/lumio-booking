@@ -262,7 +262,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
              came from a post. */}
       {lastWeek && (
         <div style={{ ...card, marginBottom: 12, background: 'var(--c0f172a)', borderColor: 'var(--c334155)' }}>
-          <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 9 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 9 }}>
             {T(`TUẦN RỒI TIỆM NHẬN ĐƯỢC · ${lastWeek.label}`, `WHAT YOU GOT LAST WEEK · ${lastWeek.label}`)}
           </div>
           <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
@@ -285,7 +285,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
           borderColor: ads.verdict === 'over' ? '#ef4444' : ads.verdict === 'tight' ? '#f59e0b' : ads.verdict === 'good' ? '#22c55e' : 'var(--c334155)',
           background: ads.verdict === 'over' ? 'rgba(239,68,68,.06)' : ads.verdict === 'good' ? 'rgba(34,197,94,.06)' : 'var(--c0f172a)',
         }}>
-          <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 9 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 9 }}>
             {T('TIỀN QUẢNG CÁO THÁNG NÀY', 'AD MONEY THIS MONTH')}
           </div>
           <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))' }}>
@@ -331,7 +331,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
           {adsPlan.confidence && (
             <div style={{
               display: 'inline-block', marginBottom: 7, padding: '2px 8px', borderRadius: 20,
-              fontSize: 10.5, fontWeight: 800, letterSpacing: .4, textTransform: 'uppercase',
+              fontSize: 10.5, fontWeight: 700, letterSpacing: .4, textTransform: 'uppercase',
               background: adsPlan.confidence === 'measured' ? 'rgba(34,197,94,.14)' : adsPlan.confidence === 'estimated' ? 'rgba(251,191,36,.14)' : 'rgba(56,189,248,.14)',
               color: adsPlan.confidence === 'measured' ? 'var(--ink-good)' : adsPlan.confidence === 'estimated' ? 'var(--ink-warn)' : 'var(--ink-sky)',
             }}>
@@ -342,14 +342,14 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
                   : T('Đề xuất khởi động — chưa có số của tiệm', 'Starter plan — none of your numbers yet')}
             </div>
           )}
-          <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.35 }}>
             {adsPlan.state === 'offer' ? '📣 ' : adsPlan.state === 'not-yet' ? '✋ ' : adsPlan.state === 'starter' ? '🚀 ' : '⏳ '}{adsPlan.headline}
           </div>
           {!!adsPlan.figures.length && (
             <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', margin: '11px 0 9px' }}>
               {adsPlan.figures.map((f, i) => (
                 <div key={i}>
-                  <div style={{ fontSize: 24, fontWeight: 800, color: i === 2 ? 'var(--ink-good)' : 'var(--cf1f5f9)', lineHeight: 1.1 }}>{f.value}</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: i === 2 ? 'var(--ink-good)' : 'var(--cf1f5f9)', lineHeight: 1.1 }}>{f.value}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{f.label}</div>
                 </div>
               ))}
@@ -366,7 +366,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
               are what make the yes hers rather than ours. */}
           {!!adsPlan.steps?.length && (
             <div style={{ marginTop: 13, borderTop: '1px solid var(--c334155)', paddingTop: 11 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .8, color: 'var(--c94a3b8)', textTransform: 'uppercase', marginBottom: 9 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .8, color: 'var(--c94a3b8)', textTransform: 'uppercase', marginBottom: 9 }}>
                 {T('Bên em sẽ chạy như thế nào', 'How we will run it')}
               </div>
               {adsPlan.steps.map((st, i) => (
@@ -383,7 +383,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
             }}>
               <span style={{ fontSize: 13, flex: '0 0 auto' }}>🤝</span>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, color: 'var(--c94a3b8)', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, color: 'var(--c94a3b8)', textTransform: 'uppercase' }}>
                   {T('Tiệm làm song song', 'Alongside, on your side')}
                 </div>
                 <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 2 }}>{adsPlan.todo}</div>
@@ -401,10 +401,10 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
               marginTop: 12, borderRadius: 10, padding: '10px 12px',
               background: 'rgba(56,189,248,.10)', border: '1px solid var(--line-strong)',
             }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, color: 'var(--ink-sky)', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, color: 'var(--ink-sky)', textTransform: 'uppercase' }}>
                 {T('Bên em cần đúng 1 con số', 'We need exactly one number')}
               </div>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cf1f5f9)', marginTop: 4, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--cf1f5f9)', marginTop: 4, lineHeight: 1.5 }}>
                 {adsPlan.ask.question}
               </div>
               <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 4 }}>{adsPlan.ask.unlocks}</div>
@@ -428,7 +428,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
             return (
               <details style={{ marginTop: 12 }} open={adsPlan.state === 'starter'}>
                 <summary style={{
-                  cursor: 'pointer', fontSize: 11.5, fontWeight: 800, letterSpacing: .5,
+                  cursor: 'pointer', fontSize: 11.5, fontWeight: 700, letterSpacing: .5,
                   color: 'var(--ink-sky)', textTransform: 'uppercase', listStyle: 'none',
                 }}>
                   {left.length
@@ -444,12 +444,12 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
                       <div style={{ minWidth: 0 }}>
                         <div style={{ display: 'flex', gap: 7, alignItems: 'baseline', flexWrap: 'wrap' }}>
                           <span style={{
-                            fontSize: 13, fontWeight: 700, minWidth: 0,
+                            fontSize: 13, fontWeight: 600, minWidth: 0,
                             color: r.done ? 'var(--ink-faint)' : 'var(--cf1f5f9)',
                             textDecoration: r.done ? 'line-through' : 'none',
                           }}>{r.title}</span>
                           <span style={{
-                            fontSize: 10, fontWeight: 800, letterSpacing: .3, padding: '1px 6px', borderRadius: 20,
+                            fontSize: 10, fontWeight: 700, letterSpacing: .3, padding: '1px 6px', borderRadius: 20,
                             whiteSpace: 'nowrap',
                             background: r.who === 'shop' ? 'rgba(251,191,36,.14)' : 'rgba(99,102,241,.14)',
                             color: r.who === 'shop' ? 'var(--ink-warn)' : 'var(--ink-link)',
@@ -459,7 +459,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
                           <span style={{ fontSize: 11, color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>~{r.minutes}p</span>
                         </div>
                         <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 2 }}>
-                          <b style={{ color: 'var(--ink-good)', fontWeight: 700 }}>{T('Mở khoá', 'Unlocks')}:</b> {r.unlocks}
+                          <b style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{T('Mở khoá', 'Unlocks')}:</b> {r.unlocks}
                         </div>
                         <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', lineHeight: 1.55, marginTop: 2 }}>{r.where}</div>
                       </div>
@@ -473,7 +473,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
           {!!adsPlan.basis?.length && (
             <details style={{ marginTop: 12 }}>
               <summary style={{
-                cursor: 'pointer', fontSize: 11.5, fontWeight: 800, letterSpacing: .5,
+                cursor: 'pointer', fontSize: 11.5, fontWeight: 700, letterSpacing: .5,
                 color: 'var(--c94a3b8)', textTransform: 'uppercase', listStyle: 'none',
               }}>
                 {T('Con số này dựa trên đâu', 'What this is based on')} ({adsPlan.basis.filter((b) => b.known).length}/{adsPlan.basis.length})
@@ -512,11 +512,11 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
           background: 'linear-gradient(135deg, rgba(34,197,94,.14), rgba(34,197,94,.04))',
         }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--cf1f5f9)' }}>
+            <span style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--cf1f5f9)' }}>
               {T('Bên em cần tiệm giúp 1 việc', 'One thing we need from you')}
             </span>
             <span style={{
-              fontSize: 12, fontWeight: 800, padding: '2px 9px', borderRadius: 999,
+              fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 999,
               background: week.ask.byDayIndex <= 1 ? 'rgba(245,158,11,.18)' : 'rgba(148,163,184,.14)',
               color: week.ask.byDayIndex <= 1 ? 'var(--ink-warn)' : 'var(--c94a3b8)',
             }}>{week.ask.by}</span>
@@ -525,7 +525,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
 
           {!!week.ask.also?.length && (
             <div style={{ marginTop: 9, paddingTop: 8, borderTop: '1px solid var(--line-strong)' }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, color: 'var(--ink-faint)', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, color: 'var(--ink-faint)', textTransform: 'uppercase' }}>
                 {T('Ngoài ra, cần người ở tiệm', 'Also needs someone in the shop')}
               </div>
               {week.ask.also.map((t, i) => (
@@ -576,7 +576,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
 
       {!!week.prep.length && (
         <div style={{ ...card, background: 'var(--c0f172a)', marginTop: 10 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 7 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 7 }}>
             {/* The heading said "what we have ready for you" over a list of
                 things the SHOP has to produce — film three clips, take six
                 photos, ask for reviews. Now that the list is salon-owned only
@@ -623,7 +623,7 @@ function AdsYes({ token, vi, label, onError }: {
   const [sent, setSent] = useState(false);
   if (sent) {
     return (
-      <div style={{ marginTop: 11, fontSize: 13, fontWeight: 700, color: 'var(--ink-good)' }}>
+      <div style={{ marginTop: 11, fontSize: 13, fontWeight: 600, color: 'var(--ink-good)' }}>
         {T('✓ Đã gửi cho Lumio — bên em dựng chiến dịch và báo lại tiệm trước khi chạy.',
            '✓ Sent to Lumio — we will build the campaign and come back to you before it goes live.')}
       </div>
@@ -671,12 +671,12 @@ function PitchRow({ st, n, last, vi }: {
     <div style={{ display: 'flex', gap: 10, marginBottom: last ? 0 : 11 }}>
       <div style={{
         flex: '0 0 22px', height: 22, borderRadius: 999, background: 'rgba(99,102,241,.22)',
-        border: '1px solid rgba(99,102,241,.55)', color: '#c7d2fe', fontSize: 11.5, fontWeight: 800,
+        border: '1px solid rgba(99,102,241,.55)', color: '#c7d2fe', fontSize: 11.5, fontWeight: 700,
         display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1,
       }}>{n}</div>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{st.title}</div>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.4, marginTop: 2 }}>{st.head}</div>
+        <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: .5, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{st.title}</div>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--cf1f5f9)', lineHeight: 1.4, marginTop: 2 }}>{st.head}</div>
         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6, marginTop: 3 }}>{st.body}</div>
         {/* The trigger, boxed away from the reasoning around it. "Meta sau"
             with the condition buried in a paragraph is the same as "Meta sau"
@@ -687,7 +687,7 @@ function PitchRow({ st, n, last, vi }: {
             marginTop: 7, padding: '7px 10px', borderRadius: 8,
             background: 'var(--c0f172a)', border: '1px solid var(--line-strong)',
           }}>
-            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: 'var(--ink-faint)', textTransform: 'uppercase' }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, color: 'var(--ink-faint)', textTransform: 'uppercase' }}>
               {st.whenTitle || T('Điều kiện để sang bước sau', 'What has to be true first')}
             </div>
             <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6, marginTop: 2, whiteSpace: 'pre-line' }}>{st.when}</div>
@@ -700,7 +700,7 @@ function PitchRow({ st, n, last, vi }: {
               onClick={() => setOpen((o) => !o)}
               style={{
                 marginTop: 5, padding: 0, background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 11.5, fontWeight: 700, color: 'var(--ink-link)', letterSpacing: .2,
+                fontSize: 11.5, fontWeight: 600, color: 'var(--ink-link)', letterSpacing: .2,
               }}
             >
               {open
@@ -730,9 +730,9 @@ function Stat({ n, label, delta, tone }: { n: number | string; label: string; de
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-        <span style={{ fontSize: 22, fontWeight: 800, color: col, lineHeight: 1.1 }}>{n}</span>
+        <span style={{ fontSize: 22, fontWeight: 700, color: col, lineHeight: 1.1 }}>{n}</span>
         {(up || down) && (
-          <span style={{ fontSize: 11.5, fontWeight: 800, color: up ? 'var(--ink-good)' : 'var(--ink-bad)' }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: up ? 'var(--ink-good)' : 'var(--ink-bad)' }}>
             {up ? '▲' : '▼'}{Math.abs(delta as number)}
           </span>
         )}
@@ -799,10 +799,10 @@ function JobLine({ j, vi, canEdit, busy, days, onText, onSteps, onMove, onRemove
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
           <span style={{
-            fontSize: 10.5, fontWeight: 800, letterSpacing: '.4px', padding: '1px 6px', borderRadius: 6,
+            fontSize: 10.5, fontWeight: 700, letterSpacing: '.4px', padding: '1px 6px', borderRadius: 6,
             background: by === 'shop' ? 'rgba(34,197,94,.15)' : 'rgba(99,102,241,.15)', color: by === 'shop' ? 'var(--ink-good)' : 'var(--ink-link)',
           }}>{by === 'shop' ? T('TIỆM LÀM', 'YOU') : 'LUMIO'}</span>
-          {allDone && <span style={{ fontSize: 11, color: 'var(--ink-good)', fontWeight: 700 }}>✓ {T('xong', 'done')}</span>}
+          {allDone && <span style={{ fontSize: 11, color: 'var(--ink-good)', fontWeight: 600 }}>✓ {T('xong', 'done')}</span>}
         </div>
         <div style={{ fontSize: 14, color: 'var(--ce2e8f0)', lineHeight: 1.5, marginTop: 2, textDecoration: allDone ? 'line-through' : undefined }}>
           <Inline value={j.text} canEdit={canEdit} onCommit={onText} multiline />
@@ -831,7 +831,7 @@ function JobLine({ j, vi, canEdit, busy, days, onText, onSteps, onMove, onRemove
                 <span style={{ flex: 1, textDecoration: done.has(k) ? 'line-through' : undefined, opacity: done.has(k) ? 0.6 : 1 }}>
                   <Inline value={st} canEdit={canEdit && !auto.has(k)} onCommit={(v) => { const next = [...steps]; next[k] = v; onSteps(next.filter(Boolean)); }} multiline />
                   {auto.has(k) && (
-                    <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, letterSpacing: .4, color: '#86efac', background: 'rgba(34,197,94,.14)', borderRadius: 999, padding: '1px 6px', verticalAlign: 1 }}>
+                    <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, letterSpacing: .4, color: '#86efac', background: 'rgba(34,197,94,.14)', borderRadius: 999, padding: '1px 6px', verticalAlign: 1 }}>
                       {T('TỰ ĐỘNG', 'AUTO')}
                     </span>
                   )}
@@ -897,8 +897,8 @@ export function HolidayOffers({ token, vi, ideas, onError }: {
         {ideas.map((i) => (
           <div key={i.key} style={{ ...card, padding: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--cf1f5f9)' }}>{i.name}</span>
-              <span style={{ marginLeft: 'auto', fontSize: 11.5, color: i.daysAway <= 7 ? 'var(--ink-warn)' : 'var(--c64748b)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{i.name}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 11.5, color: i.daysAway <= 7 ? 'var(--ink-warn)' : 'var(--c64748b)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                 {i.daysAway === 0 ? T('hôm nay', 'today') : T(`còn ${i.daysAway} ngày`, `in ${i.daysAway} days`)}
               </span>
             </div>
@@ -937,5 +937,5 @@ const input: React.CSSProperties = {
   borderRadius: 9, padding: '8px 10px', fontSize: 13.5, fontFamily: 'inherit', minWidth: 0,
 };
 const select: React.CSSProperties = { ...input, padding: '6px 8px', fontSize: 13 };
-const smallPrimary: React.CSSProperties = { minHeight: 36, padding: '7px 12px', borderRadius: 9, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' };
+const smallPrimary: React.CSSProperties = { minHeight: 36, padding: '7px 12px', borderRadius: 9, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' };
 const smallGhost: React.CSSProperties = { minHeight: 36, padding: '7px 10px', borderRadius: 9, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, cursor: 'pointer' };

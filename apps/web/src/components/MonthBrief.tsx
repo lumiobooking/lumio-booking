@@ -46,24 +46,24 @@ export function MonthBriefView({ brief, vi, salonName }: { brief: MonthBriefData
   const parts = PARTS.filter((p) => brief[p.k]);
   return (
     <div style={{ borderRadius: 14, border: '1px solid #6366f1', background: 'linear-gradient(160deg, rgba(99,102,241,.16), rgba(99,102,241,.04))', padding: '16px 16px 14px', marginBottom: 12 }}>
-      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--ink-link)' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .7, textTransform: 'uppercase', color: 'var(--ink-link)' }}>
         {T('Kế hoạch', 'Plan')} · {monthLabel(brief.month, vi)}
       </div>
       {salonName && <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{salonName}</div>}
       <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
         {parts.map((p) => (
           <div key={p.k}>
-            <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--c94a3b8)', letterSpacing: .3, marginBottom: 3 }}>{p.icon} {vi ? p.vi : p.en}</div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--c94a3b8)', letterSpacing: .3, marginBottom: 3 }}>{p.icon} {vi ? p.vi : p.en}</div>
             <div style={{ fontSize: p.k === 'focus' ? 17 : 14.5, fontWeight: p.k === 'focus' ? 800 : 500, color: 'var(--cf1f5f9)', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{brief[p.k]}</div>
           </div>
         ))}
         {brief.needs.length > 0 && (
           <div style={{ marginTop: 2, padding: '11px 12px', borderRadius: 10, background: 'var(--wash-amber)', border: '1px solid var(--line-strong)' }}>
-            <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--ink-warn)', letterSpacing: .3, marginBottom: 6 }}>🤝 {T('Tiệm cần hỗ trợ / cung cấp', 'What we need from you')}</div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-warn)', letterSpacing: .3, marginBottom: 6 }}>🤝 {T('Tiệm cần hỗ trợ / cung cấp', 'What we need from you')}</div>
             <div style={{ display: 'grid', gap: 6 }}>
               {brief.needs.map((n, i) => (
                 <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14, color: 'var(--ce2e8f0)', lineHeight: 1.45 }}>
-                  <span style={{ flex: '0 0 auto', width: 20, height: 20, borderRadius: 6, border: '1.5px solid var(--ink-warn)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: 'var(--ink-warn)', marginTop: 1 }}>{i + 1}</span>
+                  <span style={{ flex: '0 0 auto', width: 20, height: 20, borderRadius: 6, border: '1.5px solid var(--ink-warn)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--ink-warn)', marginTop: 1 }}>{i + 1}</span>
                   <span>{n}</span>
                 </div>
               ))}
@@ -104,12 +104,12 @@ export function MonthBriefEditor({
   return (
     <div style={{ borderRadius: 14, border: `1px solid ${filled ? 'var(--c334155)' : '#f59e0b'}`, background: 'var(--c0f172a)', padding: '12px 14px', marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .7, textTransform: 'uppercase', color: filled ? 'var(--ink-link)' : 'var(--ink-warn)' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: .7, textTransform: 'uppercase', color: filled ? 'var(--ink-link)' : 'var(--ink-warn)' }}>
           {T('Kế hoạch tháng', 'Month plan')}{!filled && ` · ${T('chưa viết — tiệm chưa thấy gì', 'not written — the shop sees nothing')}`}
         </div>
         <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
           {months.map((m) => (
-            <button key={m} type="button" onClick={() => onPickMonth(m)} style={{ padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${m === brief.month ? '#6366f1' : 'var(--c334155)'}`, background: m === brief.month ? 'rgba(99,102,241,.16)' : 'transparent', color: m === brief.month ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>
+            <button key={m} type="button" onClick={() => onPickMonth(m)} style={{ padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', border: `1px solid ${m === brief.month ? '#6366f1' : 'var(--c334155)'}`, background: m === brief.month ? 'rgba(99,102,241,.16)' : 'transparent', color: m === brief.month ? 'var(--ink-link)' : 'var(--c94a3b8)' }}>
               {monthLabel(m, vi)}
             </button>
           ))}
@@ -121,7 +121,7 @@ export function MonthBriefEditor({
 
       {!open ? (
         <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--cf1f5f9)', lineHeight: 1.4 }}>{brief.focus || T('(chưa có trọng tâm)', '(no focus yet)')}</div>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--cf1f5f9)', lineHeight: 1.4 }}>{brief.focus || T('(chưa có trọng tâm)', '(no focus yet)')}</div>
           {brief.goals && <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', lineHeight: 1.5 }}>🏁 {brief.goals}</div>}
           {brief.needs.length > 0 && <div style={{ fontSize: 12.5, color: 'var(--ink-warn)' }}>🤝 {T('Tiệm cần cung cấp', 'Shop supplies')}: {brief.needs.join(' · ')}</div>}
         </div>
@@ -132,12 +132,12 @@ export function MonthBriefEditor({
           </div>
           {PARTS.map((p) => (
             <label key={p.k} style={{ display: 'grid', gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--ccbd5e1)' }}>{p.icon} {vi ? p.vi : p.en}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ccbd5e1)' }}>{p.icon} {vi ? p.vi : p.en}</span>
               <textarea id={`brief-${p.k}`} rows={p.rows} value={draft[p.k]} disabled={!canEdit} placeholder={vi ? p.hintVi : p.hintEn} onChange={(e) => setDraft({ ...draft, [p.k]: e.target.value })} style={field} />
             </label>
           ))}
           <label style={{ display: 'grid', gap: 4 }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--ink-warn)' }}>🤝 {T('Tiệm cần hỗ trợ / cung cấp', 'What the shop must supply')} <span style={{ fontWeight: 500, color: 'var(--c94a3b8)' }}>· {T('mỗi dòng một việc', 'one per line')}</span></span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-warn)' }}>🤝 {T('Tiệm cần hỗ trợ / cung cấp', 'What the shop must supply')} <span style={{ fontWeight: 500, color: 'var(--c94a3b8)' }}>· {T('mỗi dòng một việc', 'one per line')}</span></span>
             <textarea id="brief-needs" rows={4} value={draft.needsText} disabled={!canEdit} placeholder={T('Gửi 3 clip quay tay mỗi tuần\nChụp 5 ảnh mặt tiền, quầy, ghế\nIn mã QR review dán quầy', 'Send 3 phone clips a week\nPhotograph the front, counter, chairs\nPrint the review QR for the counter')} onChange={(e) => setDraft({ ...draft, needsText: e.target.value })} style={field} />
           </label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -146,7 +146,7 @@ export function MonthBriefEditor({
                 type="button"
                 disabled={!dirty || busy}
                 onClick={() => onSave({ month: brief.month, focus: draft.focus, goals: draft.goals, direction: draft.direction, needs: draft.needsText.split('\n').map((s) => s.trim()).filter(Boolean) })}
-                style={{ minHeight: 38, padding: '0 16px', borderRadius: 9, border: 'none', background: dirty ? '#6366f1' : 'var(--c334155)', color: dirty ? '#fff' : 'var(--c94a3b8)', fontWeight: 700, fontSize: 13, cursor: dirty ? 'pointer' : 'default', fontFamily: 'inherit' }}
+                style={{ minHeight: 38, padding: '0 16px', borderRadius: 9, border: 'none', background: dirty ? '#6366f1' : 'var(--c334155)', color: dirty ? '#fff' : 'var(--c94a3b8)', fontWeight: 600, fontSize: 13, cursor: dirty ? 'pointer' : 'default', fontFamily: 'inherit' }}
               >
                 {busy ? T('Đang lưu…', 'Saving…') : T('Lưu · tiệm thấy ngay', 'Save · shop sees it now')}
               </button>

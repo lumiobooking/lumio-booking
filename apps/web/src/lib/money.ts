@@ -32,10 +32,22 @@ export function formatPrice(minorUnits: number, currency?: string): string {
   // still reading "₫200,000" — American separators, symbol on the American
   // side — where the country writes "200.000 ₫". uiLocale() is the same signal
   // the dates already follow, so the dashboard agrees with itself.
-  const nf = safeFormatter(currency, uiLocale());
+  //
+  // But the locale is the CURRENCY's home, not the reader's language: a US
+  // salon whose owner reads the app in Vietnamese was shown "44,00 US$" on
+  // every price, a form nobody in that salon has ever written a dollar in.
+  // Dollars read "$44.00" whatever the menu language; đồng reads "200.000 ₫"
+  // whatever the menu language. Only a currency this table does not know
+  // falls back to the language's conventions.
+  const nf = safeFormatter(currency, CURRENCY_HOME_LOCALE[currency] ?? uiLocale());
   const digits = nf.resolvedOptions().maximumFractionDigits ?? 2;
   return nf.format(digits === 0 ? minorUnits : minorUnits / 10 ** digits);
 }
+
+/** How each currency is written where it is spent. */
+const CURRENCY_HOME_LOCALE: Record<string, string> = {
+  USD: 'en-US', CAD: 'en-CA', AUD: 'en-AU', NZD: 'en-NZ', GBP: 'en-GB', SGD: 'en-SG', VND: 'vi-VN', EUR: 'de-DE',
+};
 
 /** True when the currency has no sub-unit, so inputs are whole units and no
  *  "cents" box should ever be shown. */

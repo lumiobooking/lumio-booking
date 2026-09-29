@@ -128,7 +128,7 @@ function Inner() {
                     <span style={{ width: 10, height: 10, borderRadius: 3, background: SRC_COLOR[c.key] }} />{SRC_LABEL(c.key, vi)}
                   </span>
                   <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>
-                    {c.bookings} {T('đặt', 'booked')} → <span style={{ color: 'var(--ink-good)' }}>{c.showed} {T('đến', 'showed')}</span> → <span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>{money(c.revenueCents)}</span>
+                    {c.bookings} {T('đặt', 'booked')} → <span style={{ color: 'var(--ink-good)' }}>{c.showed} {T('đến', 'showed')}</span> → <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{money(c.revenueCents)}</span>
                   </span>
                 </div>
                 <div style={{ height: 8, background: 'var(--c0f172a)', borderRadius: 999 }}>
@@ -156,7 +156,7 @@ function Inner() {
                 <span style={{ color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' }}>
                   {c.key}{c.source ? <span style={{ color: 'var(--c64748b)' }}> · {c.source}</span> : null}
                 </span>
-                <span style={{ color: 'var(--c94a3b8)', flexShrink: 0 }}>{c.bookings} {T('đặt', 'booked')} → <span style={{ color: 'var(--ink-good)' }}>{c.showed} {T('đến', 'showed')}</span> → <span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>{money(c.revenueCents)}</span></span>
+                <span style={{ color: 'var(--c94a3b8)', flexShrink: 0 }}>{c.bookings} {T('đặt', 'booked')} → <span style={{ color: 'var(--ink-good)' }}>{c.showed} {T('đến', 'showed')}</span> → <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{money(c.revenueCents)}</span></span>
               </div>
               <div style={{ height: 6, background: 'var(--c0f172a)', borderRadius: 999 }}><div style={{ height: '100%', width: `${Math.max(3, (c.revenueCents / maxRev) * 100)}%`, background: '#0ea5e9', borderRadius: 999 }} /></div>
             </div>
@@ -188,7 +188,7 @@ function Kpi({ label, value, hint, accent }: { label: string; value: string; hin
   return (
     <div style={{ background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 12, padding: '12px 14px' }}>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: accent ?? '#fff' }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: accent ?? '#fff' }}>{value}</div>
       {hint && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}
     </div>
   );
@@ -197,7 +197,7 @@ function Mini({ label, value, hint }: { label: string; value: number; hint?: str
   return (
     <div style={{ background: 'var(--c0f172a)', borderRadius: 8, padding: '10px 12px' }}>
       <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{value}{hint && <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 400 }}> · {hint}</span>}</div>
+      <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{value}{hint && <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 400 }}> · {hint}</span>}</div>
     </div>
   );
 }
@@ -214,6 +214,6 @@ function MktTabs({ vi, active }: { vi: boolean; active: 'monthly' | 'live' }) {
     </div>
   );
 }
-const cardTitle: CSSProperties = { fontSize: 13, fontWeight: 700, color: 'var(--ccbd5e1)', marginBottom: 12 };
+const cardTitle: CSSProperties = { fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 12 };
 const dateInput: CSSProperties = { background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '6px 10px', fontSize: 13 };
 const chip = (on: boolean): CSSProperties => ({ padding: '6px 12px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--ccbd5e1)', fontSize: 12, fontWeight: on ? 700 : 400, cursor: 'pointer' });

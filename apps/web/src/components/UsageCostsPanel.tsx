@@ -215,7 +215,7 @@ export function UsageCostsPanel() {
       {/* HERO — projected month-end total */}
       <div className="hero card" style={hero}>
         <div style={{ fontSize: 13, color: 'var(--cc7d2fe)', fontWeight: 600 }} className="muted">{t('estTotal')}</div>
-        <div className="heavy" style={{ fontSize: 44, fontWeight: 900, lineHeight: 1.05, margin: '4px 0 6px' }}>
+        <div className="heavy" style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.05, margin: '4px 0 6px' }}>
           {money(sum.totals.projectedGrandTotalCents, cur)}
         </div>
         <div style={{ fontSize: 13.5, color: 'var(--ccbd5e1)' }} className="muted">
@@ -228,7 +228,7 @@ export function UsageCostsPanel() {
       {/* ITEMIZED STATEMENT */}
       <div className="card" style={card}>
         <div style={{ fontSize: 13, color: 'var(--c94a3b8)', marginBottom: 2 }} className="muted">{t('billFor')}</div>
-        <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 14 }}>{month}</div>
+        <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 14 }}>{month}</div>
 
         <div style={sectionHead}>{t('fixed')}</div>
         <Row label={`${t('plan')}${sum.plan.name ? ` — ${sum.plan.name}` : ''}`} amount={`${money(sum.plan.monthlyCents, cur)}${t('perMo')}`} />
@@ -287,15 +287,15 @@ export function UsageCostsPanel() {
         <div style={{ borderTop: '2px solid var(--c334155)', marginTop: 14, paddingTop: 12 }}>
           <Row label={t('grandNow')} amount={money(sum.totals.grandTotalCents, cur)} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 8 }}>
-            <span style={{ fontSize: 15.5, fontWeight: 800 }}>{t('grandProj')}</span>
-            <span className="heavy" style={{ fontSize: 26, fontWeight: 900, color: 'var(--c818cf8)' }}>{money(sum.totals.projectedGrandTotalCents, cur)}</span>
+            <span style={{ fontSize: 15.5, fontWeight: 700 }}>{t('grandProj')}</span>
+            <span className="heavy" style={{ fontSize: 26, fontWeight: 700, color: 'var(--c818cf8)' }}>{money(sum.totals.projectedGrandTotalCents, cur)}</span>
           </div>
         </div>
       </div>
 
       {/* HOW IT'S CALCULATED */}
       <div className="card" style={{ ...card, background: 'var(--c0f172a)' }}>
-        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>💡 {t('howTitle')}</div>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>💡 {t('howTitle')}</div>
         <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13.5, color: 'var(--ccbd5e1)' }} className="muted">
           <li>{fill(t('howPlan'), { sms: smsIncLabel, min: minIncLabel })}</li>
           <li>{fill(t(smsWording === 'free' ? 'howSmsFree' : smsWording === 'unset' ? 'howSmsUnset' : 'howSms'), { sms: smsIncLabel, rate: smsRate })}</li>
@@ -327,7 +327,7 @@ function UsageRow({ label, detail, over, overText, amount, within }: { label: st
       </div>
       <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: 10 }}>
         {over > 0
-          ? <span style={{ fontSize: 15, fontWeight: 700 }}>{amount}</span>
+          ? <span style={{ fontSize: 15, fontWeight: 600 }}>{amount}</span>
           : <span style={{ fontSize: 12.5, color: 'var(--c4ade80)' }}>{within}</span>}
       </div>
     </div>
@@ -336,6 +336,6 @@ function UsageRow({ label, detail, over, overText, amount, within }: { label: st
 
 const card: CSSProperties = { background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 14, padding: 20, marginTop: 16 };
 const hero: CSSProperties = { background: 'linear-gradient(150deg, var(--c1e1b4b), var(--c111827))', border: '1px solid var(--c3730a3)', borderRadius: 16, padding: '20px 22px', marginTop: 4 };
-const sectionHead: CSSProperties = { fontSize: 12, color: 'var(--c818cf8)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 };
+const sectionHead: CSSProperties = { fontSize: 12, color: 'var(--c818cf8)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 };
 const rowWrap: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '8px 0' };
 const btnGhost: CSSProperties = { padding: '8px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' };

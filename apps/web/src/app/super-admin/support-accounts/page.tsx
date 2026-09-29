@@ -299,7 +299,7 @@ export default function SupportAccountsPage() {
           <input required type="text" placeholder="Password (min 8)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={input} />
           <input placeholder="First name" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} style={input} />
           <input placeholder="Last name" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} style={input} />
-          <button type="submit" disabled={busy === 'new'} style={{ background: '#6366f1', border: 'none', color: 'white', borderRadius: 8, padding: '10px 16px', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: busy === 'new' ? 0.5 : 1 }}>
+          <button type="submit" disabled={busy === 'new'} style={{ background: '#6366f1', border: 'none', color: 'white', borderRadius: 8, padding: '10px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', opacity: busy === 'new' ? 0.5 : 1 }}>
             {busy === 'new' ? '…' : '+ Create'}
           </button>
 
@@ -325,7 +325,7 @@ export default function SupportAccountsPage() {
                       boxShadow: on ? `0 0 0 2px ${l.tone}33` : 'none',
                     }}
                   >
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: on ? l.tone : 'var(--ce2e8f0)' }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: on ? l.tone : 'var(--ce2e8f0)' }}>
                       {on ? '● ' : '○ '}{l.label}
                     </div>
                     <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.5, marginTop: 4 }}>
@@ -353,7 +353,7 @@ export default function SupportAccountsPage() {
           {rows.map((a) => (confirming === a.id ? (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--c1f2937)', background: 'var(--c450a0a)' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--cfecaca)' }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--cfecaca)' }}>
                   Xoá hẳn {`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}?
                 </div>
                 <div style={{ fontSize: 12.5, color: 'var(--cfca5a5)', lineHeight: 1.55 }}>
@@ -366,7 +366,7 @@ export default function SupportAccountsPage() {
                 Huỷ
               </button>
               <button onClick={() => remove(a)} disabled={busy === a.id}
-                style={{ background: '#ef4444', border: 'none', color: '#fff', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: busy === a.id ? 0.5 : 1 }}>
+                style={{ background: '#ef4444', border: 'none', color: '#fff', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: busy === a.id ? 0.5 : 1 }}>
                 {busy === a.id ? '…' : 'Xoá hẳn'}
               </button>
             </div>
@@ -374,7 +374,7 @@ export default function SupportAccountsPage() {
             <div key={a.id}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderBottom: editing === a.id ? 'none' : '1px solid var(--c1f2937)', background: 'var(--c111827)' }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14.5 }}>{`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}</div>
+                <div style={{ fontWeight: 600, fontSize: 14.5 }}>{`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}</div>
                 <div style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>
                   {a.email}{a.lastLoginAt ? ` · last login ${new Date(a.lastLoginAt).toLocaleDateString(uiLocale())}` : ' · never logged in'}
                 </div>
@@ -393,7 +393,7 @@ export default function SupportAccountsPage() {
                 style={{
                   width: 104, background: 'var(--c0f172a)', color: a.supportTeam ? 'var(--ink-link)' : 'var(--c64748b)',
                   border: `1px solid ${a.supportTeam ? '#6366f1' : 'var(--c334155)'}`, borderRadius: 8,
-                  padding: '6px 9px', fontSize: 12.5, fontWeight: 700,
+                  padding: '6px 9px', fontSize: 12.5, fontWeight: 600,
                 }}
               />
               <select
@@ -410,7 +410,7 @@ export default function SupportAccountsPage() {
                   // saying "Setup" next to a half-empty menu reads as a bug.
                   color: custom(a).length ? 'var(--c64748b)' : LEVEL(a.supportLevel).tone,
                   border: `1px solid ${custom(a).length ? 'var(--c334155)' : LEVEL(a.supportLevel).tone}`,
-                  borderRadius: 8, padding: '6px 9px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                  borderRadius: 8, padding: '6px 9px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
                   opacity: custom(a).length ? 0.6 : 1,
                 }}
               >
@@ -432,12 +432,12 @@ export default function SupportAccountsPage() {
                   background: custom(a).length ? 'var(--c312e81)' : 'transparent',
                   border: `1px solid ${custom(a).length ? '#6366f1' : 'var(--c334155)'}`,
                   color: custom(a).length ? 'var(--ink-link)' : 'var(--c94a3b8)',
-                  borderRadius: 8, padding: '6px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                  borderRadius: 8, padding: '6px 10px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
                 }}
               >
                 {custom(a).length ? `Riêng · ${custom(a).length}` : 'Tuỳ chỉnh'}{editing === a.id ? ' ▴' : ' ▾'}
               </button>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: a.isActive ? 'var(--ink-good)' : 'var(--ink-bad)' }}>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: a.isActive ? 'var(--ink-good)' : 'var(--ink-bad)' }}>
                 {a.isActive ? 'ACTIVE' : 'DISABLED'}
               </span>
               <button onClick={() => toggle(a)} disabled={busy === a.id}
@@ -461,7 +461,7 @@ export default function SupportAccountsPage() {
             </div>
             {pwFor === a.id && (
               <div style={{ background: 'var(--c0f172a)', borderBottom: '1px solid var(--c1f2937)', padding: '14px 16px 16px' }}>
-                <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 700, marginBottom: 4 }}>
+                <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600, marginBottom: 4 }}>
                   Đặt mật khẩu mới cho {`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}
                 </div>
                 {/* Said before the field, not after: an owner who learns this
@@ -483,7 +483,7 @@ export default function SupportAccountsPage() {
                   <button
                     onClick={() => savePassword(a)}
                     disabled={busy === a.id || pw.length < 8}
-                    style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: busy === a.id || pw.length < 8 ? 0.5 : 1 }}>
+                    style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: busy === a.id || pw.length < 8 ? 0.5 : 1 }}>
                     {busy === a.id ? '…' : 'Đặt mật khẩu'}
                   </button>
                   <button
@@ -497,7 +497,7 @@ export default function SupportAccountsPage() {
             )}
             {editing === a.id && (
               <div style={{ background: 'var(--c0f172a)', borderBottom: '1px solid var(--c1f2937)', padding: '14px 16px 16px' }}>
-                <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 700, marginBottom: 4 }}>
+                <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', fontWeight: 600, marginBottom: 4 }}>
                   Chọn từng mục cho {`${a.firstName ?? ''} ${a.lastName ?? ''}`.trim() || a.email}
                 </div>
                 {/* Said plainly, because this is the one thing about the feature
@@ -520,7 +520,7 @@ export default function SupportAccountsPage() {
                       if (!group.length) return null;
                       return (
                         <div key={title} style={{ marginBottom: 12 }}>
-                          <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: .3, textTransform: 'uppercase', color: priv ? 'var(--ink-bad)' : 'var(--c64748b)', marginBottom: 7 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: .3, textTransform: 'uppercase', color: priv ? 'var(--ink-bad)' : 'var(--c64748b)', marginBottom: 7 }}>
                             {title}
                           </div>
                           <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))' }}>
@@ -554,7 +554,7 @@ export default function SupportAccountsPage() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
                       <button onClick={() => saveCaps(a, draft)} disabled={busy === a.id}
-                        style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: busy === a.id ? 0.5 : 1 }}>
+                        style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: busy === a.id ? 0.5 : 1 }}>
                         {busy === a.id ? '…' : `Lưu ${draft.length} mục`}
                       </button>
                       {/* The way back, spelled out. Without it the only route

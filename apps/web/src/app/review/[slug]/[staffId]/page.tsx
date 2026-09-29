@@ -112,13 +112,13 @@ export default function ReviewPage() {
             {ctx.branding?.logoUrl
               // eslint-disable-next-line @next/next/no-img-element
               ? <img src={ctx.branding.logoUrl} alt={ctx.salonName} style={{ height: 40, objectFit: 'contain', marginBottom: 8 }} />
-              : <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--c0f172a)' }}>{ctx.salonName}</div>}
+              : <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--c0f172a)' }}>{ctx.salonName}</div>}
           </div>
           <div style={{ textAlign: 'center', marginTop: 18 }}>
             {ctx.staff?.avatarUrl
               // eslint-disable-next-line @next/next/no-img-element
               ? <img src={ctx.staff.avatarUrl} alt={ctx.staff.name} width={84} height={84} style={{ borderRadius: '50%', objectFit: 'cover', border: `3px solid ${accent}22` }} />
-              : <div style={{ width: 84, height: 84, borderRadius: '50%', background: `${accent}1a`, color: accent, display: 'grid', placeItems: 'center', fontSize: 32, fontWeight: 800, margin: '0 auto' }}>{(ctx.staff?.name || ctx.salonName).charAt(0).toUpperCase()}</div>}
+              : <div style={{ width: 84, height: 84, borderRadius: '50%', background: `${accent}1a`, color: accent, display: 'grid', placeItems: 'center', fontSize: 32, fontWeight: 700, margin: '0 auto' }}>{(ctx.staff?.name || ctx.salonName).charAt(0).toUpperCase()}</div>}
             <h1 style={{ fontSize: 22, margin: '14px 0 4px', color: 'var(--c0f172a)', lineHeight: 1.25 }}>
               Thank you{ctx.staff ? <> for visiting <span style={{ color: accent }}>{ctx.staff.name}</span></> : ''}! 💛
             </h1>
@@ -152,7 +152,7 @@ export default function ReviewPage() {
           {ctx.branding?.logoUrl
             // eslint-disable-next-line @next/next/no-img-element
             ? <img src={ctx.branding.logoUrl} alt={ctx.salonName} style={{ height: 40, objectFit: 'contain', marginBottom: 8 }} />
-            : <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--c0f172a)' }}>{ctx.salonName}</div>}
+            : <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--c0f172a)' }}>{ctx.salonName}</div>}
         </div>
 
         {phase !== 'done' && (
@@ -161,7 +161,7 @@ export default function ReviewPage() {
               {ctx.staff?.avatarUrl
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={ctx.staff.avatarUrl} alt={ctx.staff.name} width={76} height={76} style={{ borderRadius: '50%', objectFit: 'cover', border: `3px solid ${accent}22` }} />
-                : <div style={{ width: 76, height: 76, borderRadius: '50%', background: `${accent}1a`, color: accent, display: 'grid', placeItems: 'center', fontSize: 30, fontWeight: 800, margin: '0 auto' }}>{(ctx.staff?.name || ctx.salonName).charAt(0).toUpperCase()}</div>}
+                : <div style={{ width: 76, height: 76, borderRadius: '50%', background: `${accent}1a`, color: accent, display: 'grid', placeItems: 'center', fontSize: 30, fontWeight: 700, margin: '0 auto' }}>{(ctx.staff?.name || ctx.salonName).charAt(0).toUpperCase()}</div>}
               <h1 style={{ fontSize: 22, margin: '14px 0 4px', color: 'var(--c0f172a)', lineHeight: 1.25 }}>
                 How was your visit{ctx.staff ? <> with <span style={{ color: accent }}>{ctx.staff.name}</span></> : ''}?
               </h1>
@@ -265,4 +265,4 @@ function Center({ children, accent }: { children: React.ReactNode; accent: strin
 }
 
 const card: React.CSSProperties = { width: '100%', maxWidth: 380, background: '#fff', borderRadius: 22, padding: '26px 22px', boxShadow: '0 12px 40px rgba(15,23,42,0.12)' };
-const bigBtn: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: 12, border: 'none', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer' };
+const bigBtn: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: 12, border: 'none', color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'pointer' };

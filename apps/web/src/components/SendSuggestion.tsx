@@ -94,7 +94,7 @@ export function SendSuggestion({
           marginBottom: 'auto', marginTop: 'auto',
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--cf1f5f9)', marginBottom: 3 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--cf1f5f9)', marginBottom: 3 }}>
           📨 {T('Gửi cho tiệm quay', 'Send to the shop')}
         </div>
         <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.55, marginBottom: 12 }}>
@@ -196,7 +196,7 @@ export function SendSuggestion({
               flex: 1, minHeight: 46, borderRadius: 11, border: 'none',
               background: ok && !busy ? '#22c55e' : 'var(--c334155)',
               color: ok && !busy ? '#052e16' : 'var(--c64748b)',
-              fontSize: 14.5, fontWeight: 700, cursor: ok && !busy ? 'pointer' : 'not-allowed',
+              fontSize: 14.5, fontWeight: 600, cursor: ok && !busy ? 'pointer' : 'not-allowed',
             }}
           >
             {busy ? T('Đang gửi…', 'Sending…') : T('Gửi cho tiệm', 'Send')}

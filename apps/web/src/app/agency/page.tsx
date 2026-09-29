@@ -80,7 +80,7 @@ const cssFor = `
 .ag-cols { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 16px; align-items: start; }
 .ag-side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: calc(16px + env(safe-area-inset-top, 0px)); }
 .ag-group { display: flex; flex-direction: column; gap: 6px; }
-.ag-side-lbl { font-size: 10.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: var(--c64748b); padding: 0 4px 4px; }
+.ag-side-lbl { font-size: 10.5px; font-weight:700; letter-spacing: .8px; text-transform: uppercase; color: var(--c64748b); padding: 0 4px 4px; }
 .ag-row { display: flex; align-items: center; gap: 10px; }
 .ag-row:hover { background: var(--c162032) !important; }
 /* The salon's NAME is the row. It may shrink, never to nothing: without a
@@ -485,12 +485,12 @@ export default function AgencyPage() {
         >
           <span style={{ fontSize: 20 }}>🛠</span>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 15 }}>Việc hôm nay — mọi tiệm, gộp theo loại</div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Việc hôm nay — mọi tiệm, gộp theo loại</div>
             <div className="ag-today-desc" style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 1 }}>
               Đăng bài, story, ưu đãi, hồ sơ Google… của tất cả khách trong một hàng đợi. Nhận việc, thấy ai đang làm gì.
             </div>
           </div>
-          <span style={{ marginLeft: 'auto', color: 'var(--ink-link)', fontWeight: 800, fontSize: 14, whiteSpace: 'nowrap', flex: '0 0 auto', paddingLeft: 6 }}>Mở →</span>
+          <span style={{ marginLeft: 'auto', color: 'var(--ink-link)', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', flex: '0 0 auto', paddingLeft: 6 }}>Mở →</span>
         </a>
 
         {error && <div style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{error}</div>}
@@ -514,10 +514,10 @@ export default function AgencyPage() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 4, marginBottom: inbox.length ? 8 : 0 }}>
             <span style={{ fontSize: 18 }}>📥</span>
-            <div style={{ fontWeight: 800, fontSize: 15, whiteSpace: 'nowrap' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, whiteSpace: 'nowrap' }}>
               Tiệm vừa gửi
               {inbox.length > 0 && (
-                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 800, background: '#f59e0b', color: '#1c1917', borderRadius: 999, padding: '1px 8px' }}>{inbox.length}</span>
+                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, background: '#f59e0b', color: '#1c1917', borderRadius: 999, padding: '1px 8px' }}>{inbox.length}</span>
               )}
             </div>
             <span className="ag-inbox-status" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c64748b)', textAlign: 'right' }}>
@@ -550,8 +550,8 @@ export default function AgencyPage() {
                     }} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
-                        <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.salon}</span>
-                        <span style={{ fontSize: 12, color: 'var(--ink-warn)', fontWeight: 700, whiteSpace: 'nowrap' }}>{groupSummary(g)}</span>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.salon}</span>
+                        <span style={{ fontSize: 12, color: 'var(--ink-warn)', fontWeight: 600, whiteSpace: 'nowrap' }}>{groupSummary(g)}</span>
                       </div>
                       <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>
                         {g.fromShop ? '📤 ' : ''}{g.headline}
@@ -559,7 +559,7 @@ export default function AgencyPage() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }}>
                       <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{ago(g.latest)}</span>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink-warn)' }}>{opening ? '…' : 'Mở →'}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-warn)' }}>{opening ? '…' : 'Mở →'}</span>
                     </div>
                   </div>
                 );
@@ -567,7 +567,7 @@ export default function AgencyPage() {
               {groups.length > 6 && (
                 <button
                   onClick={() => setAllSalons((v) => !v)}
-                  style={{ width: '100%', background: 'transparent', border: 'none', borderTop: '1px solid var(--c1f2937)', color: 'var(--ink-warn)', padding: '8px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                  style={{ width: '100%', background: 'transparent', border: 'none', borderTop: '1px solid var(--c1f2937)', color: 'var(--ink-warn)', padding: '8px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
                 >
                   {allSalons ? 'Thu gọn ↑' : `Xem thêm ${groups.length - 6} tiệm ↓`}
                 </button>
@@ -635,7 +635,7 @@ export default function AgencyPage() {
                   style={{
                     background: picking ? '#6366f1' : 'transparent', color: picking ? '#fff' : 'var(--c94a3b8)',
                     border: `1px solid ${picking ? '#6366f1' : 'var(--c334155)'}`, borderRadius: 10,
-                    padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                    padding: '0 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
                   }}
                 >{picking ? '✕ Thoát' : '☑ Chọn nhiều'}</button>
               )}
@@ -656,7 +656,7 @@ export default function AgencyPage() {
               >
                 <span style={{ fontSize: 15 }}>🔔</span>
                 <span><b style={{ color: 'var(--ink-bad)' }}>{waitingHere} tiệm đang chờ Lumio trả lời</b> — góp ý bài, tin nhắn, file gửi</span>
-                <span style={{ marginLeft: 'auto', color: waitingOnly ? 'var(--ink-bad)' : 'var(--c94a3b8)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                <span style={{ marginLeft: 'auto', color: waitingOnly ? 'var(--ink-bad)' : 'var(--c94a3b8)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   {waitingOnly ? 'Bỏ lọc ✕' : 'Chỉ xem các tiệm này →'}
                 </span>
               </button>
@@ -673,8 +673,8 @@ export default function AgencyPage() {
                   padding: '9px 13px', color: 'var(--ce2e8f0)', fontSize: 13,
                 }}
               >
-                <span style={{ color: 'var(--ink-good)', fontWeight: 800 }}>{newHere} tiệm mới</span> trong tuần này
-                <span style={{ float: 'right', color: newOnly ? 'var(--ink-good)' : 'var(--c64748b)', fontWeight: 700 }}>
+                <span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>{newHere} tiệm mới</span> trong tuần này
+                <span style={{ float: 'right', color: newOnly ? 'var(--ink-good)' : 'var(--c64748b)', fontWeight: 600 }}>
                   {newOnly ? 'Bỏ lọc ✕' : 'Chỉ xem các tiệm mới →'}
                 </span>
               </button>
@@ -728,7 +728,7 @@ export default function AgencyPage() {
             {picking && listed.length > 0 && (
               <button
                 onClick={() => setChosen((c) => c.size === listed.length ? new Set() : new Set(listed.map((t) => t.id)))}
-                style={{ background: 'transparent', border: 'none', color: 'var(--ink-link)', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '10px 2px' }}
+                style={{ background: 'transparent', border: 'none', color: 'var(--ink-link)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '10px 2px' }}
               >
                 {chosen.size === listed.length ? 'Bỏ chọn tất cả' : `Chọn cả ${listed.length} tiệm đang hiện`}
               </button>
@@ -747,13 +747,13 @@ export default function AgencyPage() {
             boxShadow: '0 -8px 24px rgba(0,0,0,.45)', padding: '11px 16px', paddingBottom: 'calc(11px + env(safe-area-inset-bottom, 0px))',
           }}>
             <div style={{ maxWidth: 1060, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 800, fontSize: 14 }}>Đã chọn {chosen.size} tiệm</span>
+              <span style={{ fontWeight: 700, fontSize: 14 }}>Đã chọn {chosen.size} tiệm</span>
               <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>Giao cho:</span>
               <select
                 value=""
                 disabled={assigning}
                 onChange={(e) => { if (e.target.value) assignMany(e.target.value === '_none' ? '' : e.target.value); }}
-                style={{ background: 'var(--c0f172a)', border: '1px solid #6366f1', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '8px 10px', fontSize: 13.5, fontWeight: 700 }}
+                style={{ background: 'var(--c0f172a)', border: '1px solid #6366f1', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '8px 10px', fontSize: 13.5, fontWeight: 600 }}
               >
                 <option value="">— chọn nhóm —</option>
                 {(board?.teams ?? []).filter((x) => x.team).map((x) => <option key={x.team} value={x.team}>{x.team}</option>)}
@@ -856,7 +856,7 @@ function StagePill({ stage, disabled, onChange }: { stage: OpsStage; disabled?: 
       title="Trạng thái công việc của tiệm — chỉ để nhóm theo dõi, không khoá tài khoản"
       label={look.label}
       style={{
-        fontSize: 11, fontWeight: 700,
+        fontSize: 11, fontWeight: 600,
         color: look.fg, border: `1px solid ${look.bd}`, background: look.bg,
         borderRadius: 999, padding: '2px 9px',
         textDecoration: look.strike ? 'line-through' : 'none',
@@ -892,7 +892,7 @@ function NextPill({ next, disabled, onChange }: { next: WorkNext | ''; disabled?
       title="Làm xong phần mình thì chọn bộ phận làm tiếp"
       label={look ? look.label : '↪ Chuyển cho'}
       style={{
-        fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: '3px 10px',
+        fontSize: 11.5, fontWeight: 700, borderRadius: 999, padding: '3px 10px',
         border: `1px ${look ? 'solid' : 'dashed'} ${look ? look.bg : 'var(--c334155)'}`,
         background: look ? look.bg : 'transparent', color: look ? look.ink : 'var(--c64748b)',
       }}
@@ -932,7 +932,7 @@ function MarketChip({ code }: { code: string }) {
   const look = MARKET_LOOK[code] ?? MARKET_LOOK.US;
   return (
     <span title={`Thị trường: ${look.name}`} style={{
-      flexShrink: 0, fontSize: 10, fontWeight: 800, letterSpacing: 0.4, lineHeight: 1,
+      flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: 0.4, lineHeight: 1,
       padding: '3px 6px', borderRadius: 6, color: look.fg, background: look.bg, border: `1px solid ${look.border}`,
     }}>{code}</span>
   );
@@ -959,9 +959,9 @@ function SideItem({ item, active, onClick, tone, badge }: {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
         {badge}
-        <span style={{ fontWeight: 800, fontSize: 13.5, whiteSpace: 'nowrap' }}>{item.label}</span>
-        {item.mine && <span style={{ fontSize: 9.5, fontWeight: 800, background: '#6366f1', color: '#fff', borderRadius: 999, padding: '1px 6px' }}>TÔI</span>}
-        <span style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 700, color: active ? 'var(--ce2e8f0)' : 'var(--c64748b)', paddingLeft: 8 }}>{item.count}</span>
+        <span style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap' }}>{item.label}</span>
+        {item.mine && <span style={{ fontSize: 9.5, fontWeight: 700, background: '#6366f1', color: '#fff', borderRadius: 999, padding: '1px 6px' }}>TÔI</span>}
+        <span style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 600, color: active ? 'var(--ce2e8f0)' : 'var(--c64748b)', paddingLeft: 8 }}>{item.count}</span>
       </div>
       {!!item.members?.length && (
         <div className="ag-side-members" style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1047,7 +1047,7 @@ function Row({
       <div className="ag-name" style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
           <MarketChip code={marketOf(t)} />
-          <span style={{ fontWeight: 700, fontSize: 14.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{t.name}</span>
+          <span style={{ fontWeight: 600, fontSize: 14.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{t.name}</span>
         </div>
         <div style={{ fontSize: 12, color: 'var(--c64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>/{t.slug}</div>
       </div>
@@ -1063,7 +1063,7 @@ function Row({
             background: t.bot === 'on' ? 'rgba(34,197,94,.12)' : 'transparent',
             border: `1px solid ${t.bot === 'on' ? '#22c55e' : 'var(--c334155)'}`,
             color: t.bot === 'on' ? 'var(--ink-good)' : 'var(--c64748b)',
-            borderRadius: 999, padding: '2px 9px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 700,
+            borderRadius: 999, padding: '2px 9px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 600,
           }}
           className="ag-chip"
         >🤖 {t.bot === 'on' ? 'AI bật' : 'AI tắt'}</button>
@@ -1073,7 +1073,7 @@ function Row({
           Super Admin), so it is shown, never edited, here. */}
       {suspended && (
         <span className="ag-chip" title="Tài khoản tiệm đang bị khoá đăng nhập — mở lại ở Super Admin"
-          style={{ fontSize: 10.5, fontWeight: 800, color: 'var(--ink-bad)', border: '1px solid #ef4444', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>KHOÁ</span>
+          style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ink-bad)', border: '1px solid #ef4444', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>KHOÁ</span>
       )}
       {/* ---- what this shop is waiting for ----
           One pill, red, that says WHAT is waiting (góp ý / tin / file) and
@@ -1089,7 +1089,7 @@ function Row({
           title={`${notice.newest.who ? notice.newest.who + ': ' : ''}${notice.newest.preview || notice.newest.title} — bấm để mở`}
           style={{
             background: 'rgba(239,68,68,.14)', border: '1px solid #ef4444', color: 'var(--ink-bad)',
-            borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 800,
+            borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 700,
             display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis',
           }}
         >
@@ -1103,14 +1103,14 @@ function Row({
           className="ag-notice ag-chip"
           onClick={(e) => { e.stopPropagation(); onEnter(t, '/salon/content?tab=queue&work=held'); }}
           title="Tiệm yêu cầu sửa bài — bấm để mở danh sách và sửa"
-          style={{ background: 'rgba(239,68,68,.14)', border: '1px solid #ef4444', color: 'var(--ink-bad)', borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 800 }}
+          style={{ background: 'rgba(239,68,68,.14)', border: '1px solid #ef4444', color: 'var(--ink-bad)', borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 700 }}
         >✏️ {t.heldPosts} sửa bài</button>
       )}
       {!picking && (t.awaitingApproval ?? 0) > 0 && (
         <span
           className="ag-notice-soft ag-chip"
           title={`${t.awaitingApproval} bài đã lên lịch, tiệm chưa bấm duyệt`}
-          style={{ border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, whiteSpace: 'nowrap', fontWeight: 700 }}
+          style={{ border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, whiteSpace: 'nowrap', fontWeight: 600 }}
         >⏳ {t.awaitingApproval} chờ tiệm duyệt</span>
       )}
       {!picking && (t.approvedPosts ?? 0) > 0 && (
@@ -1118,7 +1118,7 @@ function Row({
           className="ag-notice-soft ag-chip"
           onClick={(e) => { e.stopPropagation(); onEnter(t, '/salon/content?tab=queue&work=approved'); }}
           title={`${t.approvedPosts} bài tiệm đã bấm duyệt, đang chờ tới giờ đăng — bấm để xem`}
-          style={{ background: 'rgba(20,184,166,.12)', border: '1px solid #14b8a6', color: 'var(--ink-good)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, whiteSpace: 'nowrap', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+          style={{ background: 'rgba(20,184,166,.12)', border: '1px solid #14b8a6', color: 'var(--ink-good)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, whiteSpace: 'nowrap', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
         >✅ {t.approvedPosts} đã duyệt{t.lastApprovedAt ? ` · ${agoShort(t.lastApprovedAt)}` : ''}</button>
       )}
       <NextPill next={t.workNext ?? ''} disabled={picking} onChange={(n) => onNext(t, n)} />
@@ -1153,7 +1153,7 @@ function Row({
       </div>
 
       {!picking && (
-        <span className="ag-go" style={{ color: suspended ? 'var(--c475569)' : 'var(--ink-link)', fontWeight: 800, fontSize: 15 }}>
+        <span className="ag-go" style={{ color: suspended ? 'var(--c475569)' : 'var(--ink-link)', fontWeight: 700, fontSize: 15 }}>
           {opening ? '…' : '→'}
         </span>
       )}

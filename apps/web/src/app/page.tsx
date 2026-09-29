@@ -67,18 +67,18 @@ const COMPARE: [string, [string, string, string, string][]][] = [
 ];
 
 const cCell = (v: string) => v === '✓'
-  ? <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
+  ? <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span>
   : v === '—' ? <span style={{ color: '#cbd5e1' }}>—</span>
-  : <span style={{ color: '#4f46e5', fontWeight: 700, fontSize: 12.5 }}>{v}</span>;
+  : <span style={{ color: '#4f46e5', fontWeight: 600, fontSize: 12.5 }}>{v}</span>;
 
 function ComparisonTable({ mobile }: { mobile: boolean }) {
-  const th: CSSProperties = { padding: '12px 10px', fontSize: 13.5, fontWeight: 700, textAlign: 'center', background: '#0f172a', color: '#f8fafc' };
-  const cat: CSSProperties = { padding: '9px 12px', fontSize: 13, fontWeight: 800, color: '#0f172a', background: '#eef2f7' };
+  const th: CSSProperties = { padding: '12px 10px', fontSize: 13.5, fontWeight: 600, textAlign: 'center', background: '#0f172a', color: '#f8fafc' };
+  const cat: CSSProperties = { padding: '9px 12px', fontSize: 13, fontWeight: 700, color: '#0f172a', background: '#eef2f7' };
   const feat: CSSProperties = { padding: '9px 12px', fontSize: 13.5, color: '#334155', borderBottom: '1px solid #f1f5f9' };
   const val: CSSProperties = { padding: '9px 10px', fontSize: 14, textAlign: 'center', borderBottom: '1px solid #f1f5f9' };
   return (
     <div style={{ marginTop: 48 }}>
-      <div style={{ textAlign: 'center', fontSize: mobile ? 20 : 26, fontWeight: 800, letterSpacing: -0.5, marginBottom: 20 }}>Compare every feature</div>
+      <div style={{ textAlign: 'center', fontSize: mobile ? 20 : 26, fontWeight: 700, letterSpacing: -0.5, marginBottom: 20 }}>Compare every feature</div>
       <div style={{ overflowX: 'auto', border: '1px solid #eef2f7', borderRadius: 14 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
           <thead>
@@ -157,7 +157,7 @@ export default function HomePage() {
       {/* ---------------- Nav ---------------- */}
       <header style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 50, background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #eef2f7' }}>
         <nav style={{ maxWidth: 1120, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 24 }}>
-          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontSize: 20, fontWeight: 800, color: INK, textDecoration: 'none', letterSpacing: -0.5 }}>
+          <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontSize: 20, fontWeight: 700, color: INK, textDecoration: 'none', letterSpacing: -0.5 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo/lumio-mark.png" alt="" width={34} height={34} style={{ width: 34, height: 34, display: 'block' }} />
             <span>Lumio<span style={{ color: INDIGO }}>Booking</span></span>
@@ -186,7 +186,7 @@ export default function HomePage() {
       <section style={{ background: 'linear-gradient(180deg,#eef2ff 0%, #ffffff 70%)' }}>
         <div style={{ maxWidth: 900, margin: '0 auto', padding: mobile ? '52px 20px 44px' : '84px 24px 64px', textAlign: 'center' }}>
           <span style={pill}>For nail salons in the US &amp; Canada</span>
-          <h1 style={{ fontSize: mobile ? 33 : 52, lineHeight: 1.1, fontWeight: 800, letterSpacing: mobile ? -0.8 : -1.5, margin: '18px 0 0' }}>
+          <h1 style={{ fontSize: mobile ? 33 : 52, lineHeight: 1.1, fontWeight: 700, letterSpacing: mobile ? -0.8 : -1.5, margin: '18px 0 0' }}>
             The booking system that fills your chairs — and runs your salon.
           </h1>
           <p style={{ fontSize: mobile ? 16 : 20, color: '#475569', maxWidth: 640, margin: '16px auto 0', lineHeight: 1.5 }}>
@@ -230,7 +230,7 @@ export default function HomePage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 24, marginTop: 44 }}>
             {STEPS.map((s, i) => (
               <div key={s.title} style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 16, padding: 26 }}>
-                <div style={{ width: 38, height: 38, borderRadius: '50%', background: INDIGO, display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 16 }}>{i + 1}</div>
+                <div style={{ width: 38, height: 38, borderRadius: '50%', background: INDIGO, display: 'grid', placeItems: 'center', fontWeight: 600, fontSize: 16 }}>{i + 1}</div>
                 <h3 style={{ fontSize: 18, margin: '16px 0 6px' }}>{s.title}</h3>
                 <p style={{ color: '#94a3b8', fontSize: 14, margin: 0, lineHeight: 1.5 }}>{s.desc}</p>
               </div>
@@ -245,7 +245,7 @@ export default function HomePage() {
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
           <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: 999, padding: 4 }}>
             <button onClick={() => setYearly(false)} style={toggleBtn(!yearly)}>Monthly</button>
-            <button onClick={() => setYearly(true)} style={toggleBtn(yearly)}>Yearly <span style={{ color: yearly ? '#c7d2fe' : '#16a34a', fontWeight: 700 }}>save ~17%</span></button>
+            <button onClick={() => setYearly(true)} style={toggleBtn(yearly)}>Yearly <span style={{ color: yearly ? '#c7d2fe' : '#16a34a', fontWeight: 600 }}>save ~17%</span></button>
           </div>
         </div>
 
@@ -257,7 +257,7 @@ export default function HomePage() {
                 <h3 style={{ fontSize: 22, margin: 0 }}>{p.name}</h3>
                 <p style={{ color: '#64748b', fontSize: 14, margin: '6px 0 0' }}>{p.tag}</p>
                 <div style={{ margin: '20px 0 4px' }}>
-                  <span style={{ fontSize: 44, fontWeight: 800, letterSpacing: -1 }}>${yearly ? p.yearly : p.monthly}</span>
+                  <span style={{ fontSize: 44, fontWeight: 700, letterSpacing: -1 }}>${yearly ? p.yearly : p.monthly}</span>
                   <span style={{ color: '#64748b', fontSize: 16 }}>{yearly ? '/year' : '/month'}</span>
                 </div>
                 <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>14-day free trial · no card upfront</p>
@@ -265,7 +265,7 @@ export default function HomePage() {
                 <ul style={{ listStyle: 'none', padding: 0, margin: '22px 0 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {p.bullets.map((f) => (
                     <li key={f} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: '#334155' }}>
-                      <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> {f}
+                      <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span> {f}
                     </li>
                   ))}
                 </ul>
@@ -291,7 +291,7 @@ export default function HomePage() {
                   <h3 style={{ fontSize: 22, margin: 0 }}>{p.name}</h3>
                   {p.tagline && <p style={{ color: '#64748b', fontSize: 14, margin: '6px 0 0' }}>{p.tagline}</p>}
                   <div style={{ margin: '20px 0 4px' }}>
-                    <span style={{ fontSize: 44, fontWeight: 800, letterSpacing: -1 }}>{money(cents, p.currency)}</span>
+                    <span style={{ fontSize: 44, fontWeight: 700, letterSpacing: -1 }}>{money(cents, p.currency)}</span>
                     <span style={{ color: '#64748b', fontSize: 16 }}>{per}</span>
                   </div>
                   {yearly && p.priceMonthlyCents > 0 && (
@@ -306,7 +306,7 @@ export default function HomePage() {
                   <ul style={{ listStyle: 'none', padding: 0, margin: '22px 0 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {(p.features.length ? p.features : defaultFeatures(p)).map((f) => (
                       <li key={f} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, color: '#334155' }}>
-                        <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span> {f}
+                        <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span> {f}
                       </li>
                     ))}
                   </ul>
@@ -324,7 +324,7 @@ export default function HomePage() {
       {/* ---------------- Final CTA ---------------- */}
       <section style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', color: '#fff' }}>
         <div style={{ maxWidth: 800, margin: '0 auto', padding: mobile ? '52px 20px' : '72px 24px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: mobile ? 26 : 34, fontWeight: 800, margin: 0, letterSpacing: -1 }}>Ready to grow your salon?</h2>
+          <h2 style={{ fontSize: mobile ? 26 : 34, fontWeight: 700, margin: 0, letterSpacing: -1 }}>Ready to grow your salon?</h2>
           <p style={{ fontSize: 18, opacity: 0.9, margin: '14px 0 28px' }}>Start free for 14 days. No card charged until your trial ends.</p>
           <a href="#pricing" style={{ ...primaryBtn, background: '#fff', color: INDIGO, padding: '14px 30px', fontSize: 16 }}>Get started</a>
         </div>
@@ -334,7 +334,7 @@ export default function HomePage() {
       <footer style={{ background: '#0b1120', color: '#94a3b8' }}>
         <div style={{ maxWidth: 1120, margin: '0 auto', padding: '40px 24px', display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 18, fontWeight: 800, color: '#f8fafc' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 18, fontWeight: 700, color: '#f8fafc' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/logo/lumio-mark.png" alt="" width={28} height={28} style={{ width: 28, height: 28, display: 'block' }} />
               <span>Lumio<span style={{ color: INDIGO }}>Booking</span></span>
@@ -389,8 +389,8 @@ function defaultFeatures(p: PublicPlan): string[] {
 function SectionHead({ eyebrow, title, dark }: { eyebrow: string; title: string; dark?: boolean }) {
   return (
     <div style={{ textAlign: 'center' }}>
-      <div style={{ color: INDIGO, fontWeight: 700, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase' }}>{eyebrow}</div>
-      <h2 style={{ fontSize: 'clamp(24px, 6vw, 34px)', fontWeight: 800, letterSpacing: -1, margin: '10px 0 0', color: dark ? '#fff' : INK, maxWidth: 640, marginLeft: 'auto', marginRight: 'auto' }}>{title}</h2>
+      <div style={{ color: INDIGO, fontWeight: 600, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase' }}>{eyebrow}</div>
+      <h2 style={{ fontSize: 'clamp(24px, 6vw, 34px)', fontWeight: 700, letterSpacing: -1, margin: '10px 0 0', color: dark ? '#fff' : INK, maxWidth: 640, marginLeft: 'auto', marginRight: 'auto' }}>{title}</h2>
     </div>
   );
 }
@@ -422,12 +422,12 @@ const STEPS = [
 
 const navLink: React.CSSProperties = { color: '#475569', textDecoration: 'none', fontSize: 15 };
 const pill: React.CSSProperties = { display: 'inline-block', background: '#e0e7ff', color: '#3730a3', fontSize: 13, fontWeight: 600, padding: '6px 14px', borderRadius: 999 };
-const primaryBtn: React.CSSProperties = { background: INDIGO, color: '#fff', fontWeight: 700, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none', border: 'none', cursor: 'pointer' };
+const primaryBtn: React.CSSProperties = { background: INDIGO, color: '#fff', fontWeight: 600, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none', border: 'none', cursor: 'pointer' };
 const ghostBtn: React.CSSProperties = { background: '#fff', color: INK, fontWeight: 600, fontSize: 14, padding: '10px 18px', borderRadius: 10, textDecoration: 'none', border: '1.5px solid #cbd5e1', cursor: 'pointer' };
 const featureCard: React.CSSProperties = { background: '#fff', border: '1px solid #eef2f7', borderRadius: 16, padding: 24, boxShadow: '0 1px 3px rgba(15,23,42,0.04)' };
 const priceCard: React.CSSProperties = { position: 'relative', background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 20, padding: 26, boxShadow: '0 4px 20px rgba(15,23,42,0.05)' };
 const priceCardHi: React.CSSProperties = { border: `2px solid ${INDIGO}`, boxShadow: '0 12px 36px rgba(99,102,241,0.18)' };
-const popularBadge: React.CSSProperties = { position: 'absolute', top: -12, right: 24, background: INDIGO, color: '#fff', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, padding: '4px 12px', borderRadius: 999 };
+const popularBadge: React.CSSProperties = { position: 'absolute', top: -12, right: 24, background: INDIGO, color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: 0.5, padding: '4px 12px', borderRadius: 999 };
 
 function toggleBtn(active: boolean): React.CSSProperties {
   return { border: 'none', cursor: 'pointer', padding: '8px 18px', borderRadius: 999, fontSize: 14, fontWeight: 600, background: active ? INDIGO : 'transparent', color: active ? '#fff' : '#475569', display: 'flex', gap: 6, alignItems: 'center' };

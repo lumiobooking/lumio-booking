@@ -402,3 +402,44 @@ test('the accent ink tokens are defined, and day is dark enough to read', () => 
     expect(contrast(light, '#eef2f8')).toBeGreaterThanOrEqual(4.5);
   }
 });
+
+/**
+ * THE GHOST BUTTON.
+ *
+ * `ui.primaryBtn` is white ink on indigo. A very common move is to keep the
+ * shape and make it quiet — `{ ...ui.primaryBtn, background: 'transparent' }`
+ * for a secondary action, or `background: 'var(--c334155)'` for a grey one.
+ * The white ink comes along for the ride. At night it reads (light on dark);
+ * by day the ground is white or pale grey and the label is gone — "Import
+ * menu" on the Services page was a blank pill, found by the owner in light
+ * mode. Thirty-one buttons had it.
+ *
+ * The rule: an object that spreads ui.primaryBtn and puts a transparent or
+ * themed ground under it must say what colour its text is now.
+ */
+test('a restyled primary button on a transparent or themed ground restates its text colour', () => {
+  const offenders: string[] = [];
+  for (const sub of APP_SHELL) {
+    const dir = path.join(ROOT, sub);
+    if (!fs.existsSync(dir)) continue;
+    for (const file of walk(dir)) {
+      const src = fs.readFileSync(file, 'utf8');
+      let at = 0;
+      while ((at = src.indexOf('...ui.primaryBtn', at)) !== -1) {
+        // The object literal this spread sits in: back to its `{`, forward to its `}`.
+        let depth = 0, s = at;
+        for (; s >= 0; s -= 1) { const c = src[s]; if (c === '}') depth += 1; else if (c === '{') { if (depth === 0) break; depth -= 1; } }
+        depth = 0; let e = s;
+        for (; e < src.length; e += 1) { const c = src[e]; if (c === '{') depth += 1; else if (c === '}') { depth -= 1; if (depth === 0) break; } }
+        const obj = src.slice(s, e + 1);
+        const ground = obj.match(/background:\s*([^,}]+)/)?.[1] ?? '';
+        const quiet = /'transparent'|'none'|var\(--c/.test(ground);
+        const restated = /(?<![a-zA-Z])color:/.test(obj);
+        if (quiet && !restated) offenders.push(`${path.relative(ROOT, file)}:${src.slice(0, at).split('\n').length}`);
+        at += 1;
+      }
+    }
+  }
+  if (offenders.length) console.error(`\nGHOST-BUTTON (${offenders.length}):\n${offenders.join('\n')}\n`);
+  expect(offenders).toEqual([]);
+});

@@ -152,7 +152,7 @@ function Inner() {
             <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('bl.currentPlan')}</div>
             <div style={{ fontSize: 22, fontWeight: 600 }}>{current?.planName ?? sum?.planName ?? '—'}</div>
           </div>
-          <button onClick={portal} disabled={busy} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('bl.manageCard')}</button>
+          <button onClick={portal} disabled={busy} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>{t('bl.manageCard')}</button>
         </div>
 
         <div style={{ borderTop: '1px solid var(--c334155)', marginTop: 14, paddingTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
@@ -212,7 +212,7 @@ function Inner() {
                   ))}
                 </ul>
                 {isCurrent ? (
-                  <button disabled style={{ ...ui.primaryBtn, width: '100%', background: 'var(--c334155)', cursor: 'default' }}>{t('bl.currentPlan')}</button>
+                  <button disabled style={{ ...ui.primaryBtn, width: '100%', background: 'var(--c334155)', color: 'var(--ce2e8f0)', cursor: 'default' }}>{t('bl.currentPlan')}</button>
                 ) : (
                   <>
                     <button onClick={() => choose(p.id, provider)} disabled={busy || !canPay}
@@ -289,7 +289,7 @@ function InvoicesList({ token, lang }: { token: string; lang: Lang }) {
               </div>
             </div>
             <a href={`/invoice/${iv.token}`} target="_blank" rel="noopener noreferrer"
-              style={{ ...ui.primaryBtn, textDecoration: 'none', background: paid || void_ ? 'transparent' : undefined, border: paid || void_ ? '1px solid var(--c475569)' : undefined, whiteSpace: 'nowrap' }}>
+              style={{ ...ui.primaryBtn, textDecoration: 'none', background: paid || void_ ? 'transparent' : undefined, color: paid || void_ ? 'var(--ce2e8f0)' : ui.primaryBtn.color, border: paid || void_ ? '1px solid var(--c475569)' : undefined, whiteSpace: 'nowrap' }}>
               {paid || void_ ? t('bl.invViewer') : t('bl.invPay')}
             </a>
           </div>

@@ -178,7 +178,7 @@ function ServicesInner() {
             style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid #6366f1', color: 'var(--ca5b4fc)', opacity: filling ? 0.6 : 1 }}>
             {filling ? (lang === 'vi' ? 'Đang thêm ảnh…' : 'Adding…') : (lang === 'vi' ? '🖼 Ảnh mẫu' : '🖼 Sample images')}
           </button>
-          <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid var(--c475569)' }}>
+          <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>
             {showImport ? t('sv.close') : t('sv.importMenu')}
           </button>
           <button onClick={() => { setShowForm((s) => !s); setShowImport(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined }}>
@@ -1033,7 +1033,7 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setRules([...rules, { day: 2, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('sv.addRule')}</button>
+            <button onClick={() => setRules([...rules, { day: 2, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>{t('sv.addRule')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
             {msg && <span style={{ color: msg.startsWith('✓') ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>
@@ -1107,7 +1107,7 @@ function FirstVisitDiscountCard({ token }: { token: string }) {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setRules([...rules, { visit: Math.min(100, (rules[rules.length - 1]?.visit ?? 0) + 1), percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('sv.grAddTier')}</button>
+            <button onClick={() => setRules([...rules, { visit: Math.min(100, (rules[rules.length - 1]?.visit ?? 0) + 1), percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>{t('sv.grAddTier')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
             {msg && <span style={{ color: msg.startsWith('✓') ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>
@@ -1178,7 +1178,7 @@ function GroupDiscountCard({ token }: { token: string }) {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setTiers([...tiers, { minSize: Math.min(20, (tiers[tiers.length - 1]?.minSize ?? 1) + 1), percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('sv.grAddTier')}</button>
+            <button onClick={() => setTiers([...tiers, { minSize: Math.min(20, (tiers[tiers.length - 1]?.minSize ?? 1) + 1), percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>{t('sv.grAddTier')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
             {msg && <span style={{ color: msg.startsWith('✓') ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>
@@ -1257,7 +1257,7 @@ function DateDiscountCard({ token, categories }: { token: string; categories: Ca
             ))}
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => setRules([...rules, { startDate: today, endDate: null, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{t('sv.dateAddRule')}</button>
+            <button onClick={() => setRules([...rules, { startDate: today, endDate: null, categoryId: null, percent: 10 }])} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>{t('sv.dateAddRule')}</button>
             <button onClick={save} disabled={busy} style={ui.primaryBtn}>{busy ? t('sv.saving') : t('sv.saveDiscounts')}</button>
             {msg && <span style={{ color: msg.startsWith('✓') ? 'var(--ink-good)' : 'var(--cf87171)', fontSize: 13 }}>{msg}</span>}
           </div>

@@ -19,6 +19,17 @@ export function bookLangForCountry(country?: string | null): BookLang {
 }
 
 const VI: Record<string, string> = {
+  // group booking — the cart lists every person
+  'You': 'Bạn',
+  'Guest {n}': 'Khách {n}',
+  'Guest {n} name (optional)': 'Tên khách {n} (không bắt buộc)',
+  'No services yet — tap to pick': 'Chưa chọn dịch vụ — chạm để chọn',
+  'Total · group of {n}': 'Tổng · nhóm {n} người',
+  'Total · {n} visits': 'Tổng · {n} lượt',
+  'group of {n}': 'nhóm {n} người',
+  '{n} visits': '{n} lượt',
+  'Duration': 'Thời gian',
+  'everyone at the same time': 'mọi người cùng lúc',
   // ---- steps -------------------------------------------------------------
   'Services': 'Dịch vụ',
   'Nail tech': 'Thợ',

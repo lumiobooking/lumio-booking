@@ -83,7 +83,7 @@ function Inner() {
 
       {error && <div style={ui.banner}>{error}</div>}
       {lowCount > 0 && (
-        <div style={{ background: '#3f2d0e', color: '#fde68a', padding: '9px 14px', borderRadius: 8, fontSize: 13, margin: '12px 0' }}>
+        <div style={{ background: 'var(--wash-amber-3)', color: 'var(--cfde68a)', padding: '9px 14px', borderRadius: 8, fontSize: 13, margin: '12px 0' }}>
           {t('iv.lowBanner').replace('{n}', String(lowCount))}
         </div>
       )}
@@ -121,8 +121,8 @@ function Inner() {
                   <MActions>
                     <button onClick={() => { setMoveFor({ id: i.id, dir: 'IN' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#16a34a' }}>{t('iv.stockIn')}</button>
                     <button onClick={() => { setMoveFor({ id: i.id, dir: 'OUT' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#d97706' }}>{t('iv.stockOut')}</button>
-                    <button onClick={() => { setHistFor(histFor === i.id ? null : i.id); setMoveFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: histFor === i.id ? 'var(--c475569)' : 'var(--c334155)' }}>{t('iv.history')}</button>
-                    <button onClick={() => setEditId(editId === i.id ? null : i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === i.id ? 'var(--c475569)' : '#6366f1' }}>{editId === i.id ? t('iv.close') : t('iv.edit')}</button>
+                    <button onClick={() => { setHistFor(histFor === i.id ? null : i.id); setMoveFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: histFor === i.id ? 'var(--c475569)' : 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{t('iv.history')}</button>
+                    <button onClick={() => setEditId(editId === i.id ? null : i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === i.id ? 'var(--c475569)' : '#6366f1', color: editId === i.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{editId === i.id ? t('iv.close') : t('iv.edit')}</button>
                     <button onClick={() => remove(i.id)} style={ui.dangerBtn}>{t('iv.delete')}</button>
                   </MActions>
                 </MCard>
@@ -172,8 +172,8 @@ function Inner() {
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         <button onClick={() => { setMoveFor({ id: i.id, dir: 'IN' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#16a34a' }}>{t('iv.stockIn')}</button>
                         <button onClick={() => { setMoveFor({ id: i.id, dir: 'OUT' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#d97706' }}>{t('iv.stockOut')}</button>
-                        <button onClick={() => { setHistFor(histFor === i.id ? null : i.id); setMoveFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: histFor === i.id ? 'var(--c475569)' : 'var(--c334155)' }}>{t('iv.history')}</button>
-                        <button onClick={() => setEditId(editId === i.id ? null : i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === i.id ? 'var(--c475569)' : '#6366f1' }}>{editId === i.id ? t('iv.close') : t('iv.edit')}</button>
+                        <button onClick={() => { setHistFor(histFor === i.id ? null : i.id); setMoveFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: histFor === i.id ? 'var(--c475569)' : 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{t('iv.history')}</button>
+                        <button onClick={() => setEditId(editId === i.id ? null : i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === i.id ? 'var(--c475569)' : '#6366f1', color: editId === i.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{editId === i.id ? t('iv.close') : t('iv.edit')}</button>
                         <button onClick={() => remove(i.id)} style={ui.dangerBtn}>{t('iv.delete')}</button>
                       </div>
                     </td>

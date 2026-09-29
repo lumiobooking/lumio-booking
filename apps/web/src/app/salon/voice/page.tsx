@@ -285,7 +285,7 @@ function Inner() {
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
               <span style={{ fontSize: 26, fontWeight: 700, color: 'var(--ca5b4fc)', letterSpacing: 0.5 }}>{c.lumioNumber}</span>
-              <button onClick={copyNum} style={{ ...ui.primaryBtn, background: copied ? '#22c55e' : 'var(--c334155)' }}>{copied ? t('copied') : t('copy')}</button>
+              <button onClick={copyNum} style={{ ...ui.primaryBtn, background: copied ? '#22c55e' : 'var(--c334155)', color: copied ? ui.primaryBtn.color : 'var(--ce2e8f0)' }}>{copied ? t('copied') : t('copy')}</button>
             </div>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: 'var(--ce2e8f0)' }}>
               <input type="checkbox" checked={c.enabled} disabled={saving} onChange={(e) => save({ enabled: e.target.checked })}
@@ -306,7 +306,7 @@ function Inner() {
             <Stat label={t('usageSms')} value={usage.includedSms > 0 ? `${usage.smsSent} / ${usage.includedSms}` : usage.smsSent} />
           </div>
           {(usage.overageMinutes > 0 || usage.overageSms > 0) && (
-            <div style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#3b1d1d', border: '1px solid #b91c1c', color: '#fecaca', fontSize: 13 }}>
+            <div style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: 'var(--wash-red-2)', border: '1px solid #b91c1c', color: 'var(--cfecaca)', fontSize: 13 }}>
               ⚠️ {t('overWarn')}: {usage.overageMinutes > 0 ? `+${usage.overageMinutes} ${t('usageMinutes').toLowerCase()}` : ''}{usage.overageMinutes > 0 && usage.overageSms > 0 ? ', ' : ''}{usage.overageSms > 0 ? `+${usage.overageSms} SMS` : ''}{usage.overageCents > 0 ? ` (~$${(usage.overageCents / 100).toFixed(2)})` : ''}
             </div>
           )}

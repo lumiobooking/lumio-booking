@@ -922,7 +922,7 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <a href={checkoutHref}
               style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '12px 16px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{t('wi.checkout')} · {formatPrice(subtotal, currency)}</a>
-            <button onClick={onDone} style={{ ...ui.primaryBtn, background: 'var(--c334155)', padding: '12px 14px' }}>{t('wi.done')}</button>
+            <button onClick={onDone} style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)', padding: '12px 14px' }}>{t('wi.done')}</button>
             {/* An in-service row is the one that gets stuck: it is not filtered
                 by date, so a test ticket left here sits on the board tomorrow
                 and keeps its technician marked busy for good. */}

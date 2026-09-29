@@ -96,7 +96,7 @@ function Inner() {
         </label>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
           {saved && <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>{t('mk.saved')}</span>}
-          <button onClick={runNow} disabled={running} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>{running ? t('mk.running') : t('mk.runNow')}</button>
+          <button onClick={runNow} disabled={running} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>{running ? t('mk.running') : t('mk.runNow')}</button>
           <button onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? t('mk.saving') : t('mk.save')}</button>
         </div>
       </div>

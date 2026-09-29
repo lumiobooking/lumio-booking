@@ -1773,7 +1773,7 @@ export function InboxView() {
                 <button disabled={notice.blocked || busy || !draft.trim()} onClick={() => void send()}
                   aria-label={vi ? 'Gửi' : 'Send'}
                   style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', flexShrink: 0, cursor: 'pointer',
-                    background: (notice.blocked || !draft.trim()) ? 'var(--c334155)' : '#6366f1', color: '#fff', fontSize: 19, lineHeight: 1 }}>➤</button>
+                    background: (notice.blocked || !draft.trim()) ? 'var(--c334155)' : '#6366f1', color: (notice.blocked || !draft.trim()) ? 'var(--c94a3b8)' : 'var(--cf8fafc)', fontSize: 19, lineHeight: 1 }}>➤</button>
               ) : (
                 <button disabled={notice.blocked || busy || !draft.trim()} onClick={() => void send()} style={ui.primaryBtn}>{vi ? 'Gửi' : 'Send'}</button>
               )}

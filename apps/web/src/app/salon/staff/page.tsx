@@ -364,14 +364,14 @@ function StaffInner() {
                   {m.user ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ color: 'var(--ink-good)' }}>🔑 {m.user.email}</span>
-                      <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? 'var(--c475569)' : 'var(--c334155)' }}>{loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}</button>
+                      <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? 'var(--c475569)' : 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}</button>
                     </span>
                   ) : (
-                    <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '5px 10px', fontSize: 12, background: loginFor === m.id ? 'var(--c475569)' : '#6366f1' }}>{loginFor === m.id ? t('st.cancel') : t('st.createLogin')}</button>
+                    <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '5px 10px', fontSize: 12, background: loginFor === m.id ? 'var(--c475569)' : '#6366f1', color: loginFor === m.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{loginFor === m.id ? t('st.cancel') : t('st.createLogin')}</button>
                   )}
                 </MRow>
                 <MActions>
-                  <button onClick={() => { setEditFor(editFor === m.id ? null : m.id); setLoginFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? 'var(--c475569)' : '#6366f1' }}>{editFor === m.id ? t('st.close') : t('st.edit')}</button>
+                  <button onClick={() => { setEditFor(editFor === m.id ? null : m.id); setLoginFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? 'var(--c475569)' : '#6366f1', color: editFor === m.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{editFor === m.id ? t('st.close') : t('st.edit')}</button>
                   <button onClick={() => remove(m.id)} style={ui.dangerBtn}>{t('st.delete')}</button>
                 </MActions>
               </MCard>
@@ -444,12 +444,12 @@ function StaffInner() {
                     {m.user ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>🔑 {m.user.email}</span>
-                        <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? 'var(--c475569)' : 'var(--c334155)' }}>
+                        <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? 'var(--c475569)' : 'var(--c334155)', color: 'var(--ce2e8f0)' }}>
                           {loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}
                         </button>
                       </div>
                     ) : (
-                      <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: loginFor === m.id ? 'var(--c475569)' : '#6366f1' }}>
+                      <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: loginFor === m.id ? 'var(--c475569)' : '#6366f1', color: loginFor === m.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>
                         {loginFor === m.id ? t('st.cancel') : t('st.createLogin')}
                       </button>
                     )}
@@ -463,7 +463,7 @@ function StaffInner() {
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button
                         onClick={() => { setEditFor(editFor === m.id ? null : m.id); setLoginFor(null); }}
-                        style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? 'var(--c475569)' : '#6366f1' }}
+                        style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? 'var(--c475569)' : '#6366f1', color: editFor === m.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}
                       >
                         {editFor === m.id ? t('st.close') : t('st.edit')}
                       </button>

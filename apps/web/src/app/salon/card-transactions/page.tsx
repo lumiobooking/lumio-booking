@@ -188,7 +188,7 @@ function Inner() {
       {msg && <div style={{ ...ui.banner, background: 'var(--c064e3b)', borderColor: '#059669', color: 'var(--cd1fae5)' }}>{msg}</div>}
 
       {unresolved.length > 0 && (
-        <div style={{ border: '1px solid #f59e0b', background: '#1c1917', borderRadius: 12, padding: 14, margin: '14px 0' }}>
+        <div style={{ border: '1px solid #f59e0b', background: 'var(--wash-amber-2)', borderRadius: 12, padding: 14, margin: '14px 0' }}>
           <div style={{ color: 'var(--cfbbf24)', fontWeight: 600 }}>
             {unresolved.length} {vi ? 'giao dịch chưa rõ kết quả' : 'unresolved payment(s)'}
           </div>

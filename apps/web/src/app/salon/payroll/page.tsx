@@ -105,8 +105,8 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <DateRangeBar range={range} />
-          <button onClick={exportCsv} disabled={!data} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>⬇ {t('pr.exportCsv')}</button>
-          <button onClick={() => window.print()} style={{ ...ui.primaryBtn, background: 'transparent', border: '1px solid var(--c475569)' }}>🖨 {t('pr.print')}</button>
+          <button onClick={exportCsv} disabled={!data} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>⬇ {t('pr.exportCsv')}</button>
+          <button onClick={() => window.print()} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>🖨 {t('pr.print')}</button>
         </div>
       </div>
 

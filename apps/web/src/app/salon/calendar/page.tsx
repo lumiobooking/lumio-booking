@@ -125,6 +125,14 @@ function Inner() {
   // Native month / date pickers (jump to a specific month or day).
   const monthInputRef = useRef<HTMLInputElement>(null);
   const dayInputRef = useRef<HTMLInputElement>(null);
+  // The phone's day strip swipes through the whole month; whenever the chosen
+  // day changes (tap, arrows, "Today", the picker) it is scrolled into view.
+  const stripRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = stripRef.current; if (!box) return;
+    const el = box.querySelector<HTMLElement>('[data-on="1"]'); if (!el) return;
+    box.scrollTo({ left: Math.max(0, el.offsetLeft - (box.clientWidth - el.offsetWidth) / 2), behavior: 'smooth' });
+  }, [mode, monthFocus, dayDate, view, isMobile]);
   const openMonthPicker = () => { const el = monthInputRef.current; if (!el) return; const anyEl = el as unknown as { showPicker?: () => void }; try { anyEl.showPicker ? anyEl.showPicker() : el.focus(); } catch { el.focus(); } };
   const openDayPicker = () => { const el = dayInputRef.current; if (!el) return; const anyEl = el as unknown as { showPicker?: () => void }; try { anyEl.showPicker ? anyEl.showPicker() : el.focus(); } catch { el.focus(); } };
   const onMonthPick = (e: React.ChangeEvent<HTMLInputElement>) => { const [y, m] = e.target.value.split('-').map(Number); if (y && m) setView(new Date(y, m - 1, 1)); };
@@ -318,8 +326,8 @@ function Inner() {
            status in words. */
         (() => {
           const anchor = mode === 'month' ? (monthFocus ?? (view.getMonth() === today.getMonth() && view.getFullYear() === today.getFullYear() ? today : new Date(view.getFullYear(), view.getMonth(), 1))) : dayDate;
-          const monday = new Date(anchor); monday.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7)); monday.setHours(0, 0, 0, 0);
-          const week = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+          const stripMonth = mode === 'month' ? view : anchor;
+          const week = Array.from({ length: new Date(stripMonth.getFullYear(), stripMonth.getMonth() + 1, 0).getDate() }, (_, i) => new Date(stripMonth.getFullYear(), stripMonth.getMonth(), i + 1));
           const shiftWeek = (delta: number) => {
             if (mode === 'month') { const m = new Date(view.getFullYear(), view.getMonth() + delta, 1); setView(m); setMonthFocus(null); setMonthPage(0); }
             else goDay(new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + 7 * delta));
@@ -364,16 +372,16 @@ function Inner() {
                   <button type="button" onClick={mode === 'month' ? openMonthPicker : openDayPicker} style={{ flex: 1, height: 36, border: 'none', background: 'transparent', color: 'var(--cf1f5f9)', fontSize: 15, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize' }}>{dateLabel} <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}>▾</span></button>
                   <button type="button" style={{ ...navIconBtn, width: 36, height: 36, border: 'none', background: 'transparent' }} onClick={() => shiftWeek(1)} aria-label={lang === 'vi' ? 'Sau' : 'Next'}>›</button>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4, marginTop: 4 }}>
+                <div ref={stripRef} className="no-bar" style={{ display: 'flex', gap: 4, marginTop: 4, overflowX: 'auto', scrollSnapType: 'x proximity', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', paddingBottom: 2 }}>
                   {week.map((d) => {
                     const list = byDay.get(cellKey(d)) ?? [];
                     const isToday = d.getTime() === today.getTime();
                     const isOn = mode === 'month' ? (monthFocus ? d.getTime() === monthFocus.getTime() : isToday) : d.getTime() === dayDate.getTime();
                     const dot = list.length ? statusBucket(list.find((b) => statusBucket(b.status).key === 'Pending')?.status ?? list[0].status).color : 'transparent';
                     return (
-                      <button key={d.toDateString()} type="button" onClick={() => pickDay(d)} style={isOn
-                        ? { height: 54, border: 'none', borderRadius: 10, background: '#4f46e5', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: 'pointer', padding: 0 }
-                        : { height: 54, border: 'none', borderRadius: 10, background: 'transparent', color: 'var(--ce2e8f0)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: 'pointer', padding: 0 }}>
+                      <button key={d.toDateString()} type="button" data-on={isOn ? '1' : undefined} onClick={() => pickDay(d)} style={isOn
+                        ? { flex: '0 0 calc((100% - 24px) / 7)', scrollSnapAlign: 'start', height: 54, border: 'none', borderRadius: 10, background: '#4f46e5', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: 'pointer', padding: 0 }
+                        : { flex: '0 0 calc((100% - 24px) / 7)', scrollSnapAlign: 'start', height: 54, border: 'none', borderRadius: 10, background: 'transparent', color: 'var(--ce2e8f0)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: 'pointer', padding: 0 }}>
                         <span style={{ fontSize: 11, opacity: isOn ? 0.85 : 1, color: isOn ? undefined : 'var(--c94a3b8)' }}>{DAY_LABEL[lang][d.getDay()]}</span>
                         <span style={{ fontSize: 15, fontWeight: isOn || isToday ? 700 : 600 }}>{d.getDate()}</span>
                         <span style={{ width: 5, height: 5, borderRadius: '50%', background: isOn ? (list.length ? '#fff' : 'transparent') : dot }} />

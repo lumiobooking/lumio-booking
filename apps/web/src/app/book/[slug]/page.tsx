@@ -845,10 +845,29 @@ export default function PublicBookingPage() {
     visitCart.length > 0 ? { count: visitCart.length + 1, cents: cartCents + totalCents, kind: 'visits' as const } :
     isGroup ? { count: extraGuests.length + 1, cents: guestCents + totalCents, kind: 'guests' as const } :
     null;
+  // Group booking: the cart lists EVERY person with their own services and
+  // subtotal, not just the person whose tab is open. One total at the bottom.
+  const party: Party | null = isGroup
+    ? [
+        { name: bt('You'), lines: allLines, cents: totalCents, minutes: totalDuration },
+        ...extraGuests.map((g, k) => {
+          const ls: Line[] = g.serviceIds
+            .map((id) => services.find((sv) => sv.id === id))
+            .filter((sv): sv is Service => !!sv)
+            .map((sv) => ({ id: sv.id, name: sv.name, durationMinutes: sv.durationMinutes, priceCents: sv.priceCents, fullCents: sv.priceCents, imageUrl: sv.imageUrl ?? null }));
+          return { name: g.name.trim() || btf('Guest {n}', { n: k + 2 }), lines: ls, cents: ls.reduce((x, l) => x + l.priceCents, 0), minutes: ls.reduce((x, l) => x + l.durationMinutes, 0) };
+        }),
+      ]
+    : null;
+  const removeFor = (who: number, id: string) => {
+    if (who === 0) { removeLine(id); return; }
+    setExtraGuests((gs) => gs.map((g, k) => (k === who - 1 ? { ...g, serviceIds: g.serviceIds.filter((x) => x !== id) } : g)));
+    setSlot(null);
+  };
 
   const ctaLabel =
     step === 4 ? (submitting ? bt("Booking\u2026") : isGroup ? btf('Book for {n}', { n: extraGuests.length + 1 }) : visitCart.length > 0 ? btf('Book {n} visits', { n: visitCart.length + 1 }) : bt("Book")) :
-    step === 1 ? (pickedServiceIds.length > 0 ? bt('Book for Me') : bt("Select a service")) : bt("Continue");
+    step === 1 ? (pickedServiceIds.length > 0 ? (isGroup ? btf('Book for {n}', { n: extraGuests.length + 1 }) : bt('Book for Me')) : bt("Select a service")) : bt("Continue");
 
   const goNext = () => {
     // A group shares one time slot, so a single named tech makes no sense —
@@ -887,6 +906,7 @@ export default function PublicBookingPage() {
       salon={salon} lines={allLines} fmt={fmt} totalCents={totalCents} fullCents={fullCents}
       anyDiscount={anyDiscount} totalDuration={totalDuration} employee={employee} slot={slot} selectedDate={selectedDate}
       onRemove={removeLine} canContinue={canContinue} ctaLabel={ctaLabel} onContinue={goNext} step={step} accent={accent} grand={grand}
+      party={party} activeGuest={activeGuest} onPickGuest={(i) => { setActiveGuest(i); if (step !== 1) setStep(1); }} onRemoveFor={removeFor}
     />
   );
 
@@ -1029,7 +1049,7 @@ export default function PublicBookingPage() {
                           style={{ borderRadius: 12, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
                             border: `1.6px solid ${on ? accent : '#e9edf4'}`,
                             background: on ? tint(accent, 0.07) : '#fff', color: on ? accent : '#7d8ba4' }}>
-                          {i === 0 ? '👤 You' : `👥 ${extraGuests[i - 1].name || `Guest ${i + 1}`}`}
+                          {i === 0 ? `👤 ${bt('You')}` : `👥 ${extraGuests[i - 1].name || btf('Guest {n}', { n: i + 1 })}`}
                           <span style={{ marginLeft: 6, fontWeight: 500 }}>· {g.serviceIds.length || 0}</span>
                           {i > 0 && on && (
                             <span onClick={(e) => { e.stopPropagation(); setExtraGuests((gs) => gs.filter((_, k) => k !== i - 1)); setActiveGuest(0); setSlot(null); }}
@@ -1055,7 +1075,7 @@ export default function PublicBookingPage() {
                     <input
                       value={extraGuests[activeGuest - 1]?.name ?? ''}
                       onChange={(e) => setExtraGuests((gs) => gs.map((g, k) => k === activeGuest - 1 ? { ...g, name: e.target.value } : g))}
-                      placeholder={`Guest ${activeGuest + 1} name (optional)`}
+                      placeholder={btf('Guest {n} name (optional)', { n: activeGuest + 1 })}
                       style={{ ...inputStyle, marginBottom: 12, maxWidth: 320 }}
                     />
                   )}
@@ -1136,7 +1156,7 @@ export default function PublicBookingPage() {
               {step === 4 && slot && (
                 <>
                 <ConfirmStep
-                  salon={salon} slot={slot} employee={employee} lines={allLines} fmt={fmt} totalCents={totalCents}
+                  salon={salon} slot={slot} employee={employee} lines={allLines} fmt={fmt} totalCents={grand ? grand.cents : totalCents} party={party}
                   depositCents={depositCents} cardFee={salon?.cardFee} rules={rules} paymentType={paymentType} setPaymentType={setPaymentType}
                   form={form} setForm={setForm} smsConsent={smsConsent} setSmsConsent={setSmsConsent}
                   accent={accent} error={error} infoOk={infoOk} isMobile={isMobile}
@@ -1179,7 +1199,7 @@ export default function PublicBookingPage() {
         {(isMobile || embedded) && step < 5 && (
           <MobileBar
             embedded={!asPage} count={cartLines.length} totalCents={grand ? grand.cents : totalCents} fmt={fmt}
-            grandLabel={grand ? (grand.kind === 'visits' ? `${grand.count} visits` : `group of ${grand.count}`) : undefined}
+            grandLabel={grand ? (grand.kind === 'visits' ? btf('{n} visits', { n: grand.count }) : btf('group of {n}', { n: grand.count })) : undefined}
             durationMinutes={totalDuration} canContinue={canContinue} label={ctaLabel} onContinue={goNext} accent={accent}
           />
         )}
@@ -1203,6 +1223,8 @@ function okImageUrl(u: string): boolean {
   return u.startsWith('https://') || u.startsWith('data:image/') || u.startsWith('http://localhost') || u.startsWith('http://127.0.0.1');
 }
 type Line = { id: string; name: string; durationMinutes: number; priceCents: number; fullCents: number; addon?: boolean; imageUrl?: string | null };
+/** A group booking, one entry per person: the booker first, then each guest. */
+type Party = { name: string; lines: Line[]; cents: number; minutes: number }[];
 
 /**
  * A money figure that rolls from its old value to the new one over ~380ms. It keeps
@@ -1230,13 +1252,17 @@ function AnimatedMoney({ cents, fmt, style }: { cents: number; fmt: (c: number) 
   return <span style={style}>{fmt(disp)}</span>;
 }
 
-function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill, grand }: {
+function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill, grand, party, activeGuest, onPickGuest, onRemoveFor }: {
   salon: Salon | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; fullCents: number; anyDiscount: boolean;
   totalDuration: number; employee: Staff | null; slot: Slot | null; selectedDate: Date | null;
   onRemove: (id: string) => void; canContinue: boolean; ctaLabel: string; onContinue: () => void; step: Step; accent: string; fill?: boolean;
   /** Multi-visit cart or group booking: the number the customer pays in total. */
   grand?: { count: number; cents: number; kind: 'visits' | 'guests' } | null;
+  /** Group booking: every person with their own lines; the open tab is highlighted. */
+  party?: Party | null; activeGuest?: number; onPickGuest?: (i: number) => void; onRemoveFor?: (who: number, id: string) => void;
 }) {
+  const partyEmpty = !!party && party.every((g) => g.lines.length === 0);
+  const partyMinutes = party ? Math.max(0, ...party.map((g) => g.minutes)) : 0;
   // On a desktop screen we show a small QR of this very page, so a visitor who found
   // the salon on their laptop can scan and finish on their phone (where they'll get the
   // SMS). Same QR service the tip/review screens already use.
@@ -1269,7 +1295,32 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
       {/* The list takes whatever room is left, so the panel fills the page instead of
           ending in a big white void — and the total + button stay pinned at the bottom. */}
       <div className="lumio-scroll" style={{ padding: '6px 16px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        {lines.length === 0 ? (
+        {party ? (partyEmpty ? <EmptyCart accent={accent} salon={salon} /> : party.map((g, gi) => {
+          const on = gi === activeGuest;
+          return (
+            <div key={gi} style={{ margin: '8px 0 4px', borderRadius: 12, border: `1.4px solid ${on ? tint(accent, 0.45) : '#eef1f6'}`, background: on ? tint(accent, 0.04) : '#fff', padding: '4px 10px 2px' }}>
+              <button type="button" onClick={() => onPickGuest?.(gi)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', font: 'inherit' }}>
+                <span style={{ fontSize: 14 }}>{gi === 0 ? '👤' : '👥'}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: on ? accent : INK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {g.name} <span style={{ fontWeight: 500, color: 'var(--c94a3b8)' }}>· {btf(g.lines.length === 1 ? '{n} service' : '{n} services', { n: g.lines.length })}</span>
+                </span>
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: INK, whiteSpace: 'nowrap' }}>{fmt(g.cents)}</span>
+              </button>
+              {g.lines.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', padding: '2px 0 8px 24px' }}>{bt('No services yet — tap to pick')}</div>
+              ) : g.lines.map((l, li) => (
+                <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0 8px 24px', borderTop: li === 0 ? '1px solid #eef1f6' : 'none' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: INK, lineHeight: 1.35 }}>{l.name}</div>
+                    {l.durationMinutes > 0 && <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 2 }}>{btf('{n} min', { n: l.durationMinutes })}</div>}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: accent, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</div>
+                  <button onClick={() => onRemoveFor?.(gi, l.id)} aria-label={bt("Remove")} style={{ width: 20, height: 20, borderRadius: '50%', border: 'none', background: '#e8edf6', color: INK, fontSize: 11, cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}>✕</button>
+                </div>
+              ))}
+            </div>
+          );
+        })) : lines.length === 0 ? (
           <EmptyCart accent={accent} salon={salon} />
         ) : lines.map((l) => (
           <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: '1px solid #eef1f6' }}>
@@ -1287,27 +1338,27 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
       </div>
 
       <div style={{ padding: '12px 16px 16px', borderTop: '1px solid #eef1f6', flexShrink: 0, background: '#fff' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        {!party && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <span style={{ fontWeight: 700, color: INK, fontSize: 15 }}>{grand ? bt(grand.kind === 'visits' ? 'This visit' : 'Your services') : bt("Total")}</span>
           <span>
             {anyDiscount && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', fontSize: 13, marginRight: 8 }}>{fmt(fullCents)}</span>}
             <AnimatedMoney cents={totalCents} fmt={fmt} style={{ fontWeight: 700, color: INK, fontSize: 17 }} />
           </span>
-        </div>
+        </div>}
         {grand && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 8, padding: '9px 12px', borderRadius: 10, background: tint(accent, 0.08), border: `1.4px solid ${tint(accent, 0.4)}` }}>
             <span style={{ fontWeight: 700, color: INK, fontSize: 13.5 }}>
-              {grand.kind === 'visits' ? `🧾 Total · ${grand.count} visits` : `👥 Total · group of ${grand.count}`}
+              {grand.kind === 'visits' ? `🧾 ${btf('Total · {n} visits', { n: grand.count })}` : `👥 ${btf('Total · group of {n}', { n: grand.count })}`}
             </span>
             <AnimatedMoney cents={grand.cents} fmt={fmt} style={{ fontWeight: 700, color: accent, fontSize: 18 }} />
           </div>
         )}
-        {totalDuration > 0 && (
+        {(party ? partyMinutes : totalDuration) > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 12.5, color: 'var(--c94a3b8)' }}>
-            <span>🕐 Duration</span><span>{fmtDur(totalDuration)}</span>
+            <span>🕐 {bt('Duration')}{party ? ` · ${bt('everyone at the same time')}` : ''}</span><span>{fmtDur(party ? partyMinutes : totalDuration)}</span>
           </div>
         )}
-        {anyDiscount && (
+        {anyDiscount && !party && (
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, padding: '7px 10px', borderRadius: 10, background: '#ecfdf5', color: '#065f46', fontSize: 12.5, fontWeight: 700 }}>
             <span>🎉 You save</span><span>{fmt(fullCents - totalCents)}</span>
           </div>
@@ -1318,7 +1369,7 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
             <div>🕐 {fmtTime(slot.start)}{totalDuration > 0 ? ` – ${fmtTime(slot.end)} (${fmtDur(totalDuration)})` : ''}</div>
           </div>
         )}
-        {wide && qrSrc && lines.length > 0 && (
+        {wide && qrSrc && (party ? !partyEmpty : lines.length > 0) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, background: SOFT, borderRadius: 12, padding: '8px 10px' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={qrSrc} width={44} height={44} alt="" style={{ borderRadius: 6, flexShrink: 0, background: '#fff' }} />
@@ -2175,8 +2226,8 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
 // ---------------------------------------------------------------------------
 // Step 4 · Confirm — appointment card, services, your details, payment.
 // ---------------------------------------------------------------------------
-function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCents, cardFee, rules, paymentType, setPaymentType, form, setForm, smsConsent, setSmsConsent, accent, error, infoOk, isMobile }: {
-  salon: Salon | null; slot: Slot; employee: Staff | null; lines: Line[]; fmt: (c: number) => string; totalCents: number;
+function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCents, cardFee, rules, paymentType, setPaymentType, form, setForm, smsConsent, setSmsConsent, accent, error, infoOk, isMobile, party }: {
+  salon: Salon | null; slot: Slot; employee: Staff | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; party?: Party | null;
   depositCents: number; cardFee?: { enabled: boolean; percent: number }; rules: BookingRules; paymentType: 'PAY_ONLINE' | 'PAY_LATER'; setPaymentType: (v: 'PAY_ONLINE' | 'PAY_LATER') => void;
   form: { firstName: string; lastName: string; email: string; phone: string; birthDate: string; partySize: string };
   setForm: (f: { firstName: string; lastName: string; email: string; phone: string; birthDate: string; partySize: string }) => void;
@@ -2196,7 +2247,21 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
       </Card>
 
       <Card title={bt("SERVICES")}>
-        {lines.map((l) => (
+        {party && party.map((g, gi) => (
+          <div key={gi} style={{ padding: '8px 0 2px', borderBottom: '1px solid #eef1f6' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13.5, fontWeight: 700, color: accent }}>
+              <span>{gi === 0 ? '👤' : '👥'} {g.name} <span style={{ fontWeight: 500, color: 'var(--c94a3b8)' }}>· {btf(g.lines.length === 1 ? '{n} service' : '{n} services', { n: g.lines.length })}</span></span>
+              <span style={{ color: INK }}>{fmt(g.cents)}</span>
+            </div>
+            {g.lines.map((l) => (
+              <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '5px 0 5px 22px', fontSize: 13.5 }}>
+                <span style={{ color: INK }}>{l.name}{l.durationMinutes > 0 && <span style={{ color: 'var(--c94a3b8)' }}> · {btf('{n} min', { n: l.durationMinutes })}</span>}</span>
+                <span style={{ fontWeight: 600, color: INK, whiteSpace: 'nowrap' }}>{fmt(l.priceCents)}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+        {!party && lines.map((l) => (
           <div key={l.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: '1px solid #eef1f6' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
               <CartThumb url={l.imageUrl} />
@@ -2209,7 +2274,7 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
           </div>
         ))}
         <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 12, fontWeight: 700, color: INK, fontSize: 15 }}>
-          <span>{bt("Total")}</span><span>{fmt(totalCents)}</span>
+          <span>{party ? `👥 ${btf('Total · group of {n}', { n: party.length })}` : bt("Total")}</span><span>{fmt(totalCents)}</span>
         </div>
         {salon?.firstVisit?.enabled && (salon.firstVisit.rules?.length ?? 0) > 0 && (
           <div style={{ fontSize: 12, color: '#7c5c22', background: '#fdf7ee', border: '1px solid #f0e2cc', borderRadius: 8, padding: '7px 11px', marginTop: 8, lineHeight: 1.5 }}>

@@ -140,7 +140,7 @@ export function NotificationBell() {
                     onClick={go}
                     onMouseEnter={() => setHoverId(i.id)}
                     onMouseLeave={() => setHoverId(null)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: hovered ? '#1a2536' : 'transparent', border: 'none', borderTop: '1px solid var(--line)', padding: '11px 14px', cursor: 'pointer' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: hovered ? 'var(--c273449)' : 'transparent', border: 'none', borderTop: '1px solid var(--line)', padding: '11px 14px', cursor: 'pointer' }}
                   >
                     <span style={{ width: 32, height: 32, borderRadius: 9, background: m.bg, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">

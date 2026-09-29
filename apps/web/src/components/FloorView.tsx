@@ -204,7 +204,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
                 const exp = expectedMins(occ.items);
                 const over = exp > 0 && elapsed >= exp;
                 const soon = exp > 0 && !over && elapsed >= exp - 5;
-                const tColor = over ? 'var(--cf87171)' : soon ? '#fbbf24' : 'var(--cc7d2fe)';
+                const tColor = over ? 'var(--cf87171)' : soon ? 'var(--ink-warn)' : 'var(--cc7d2fe)';
                 const tBg = over ? 'rgba(248,113,113,0.15)' : soon ? 'rgba(251,191,36,0.15)' : 'var(--c312e81)';
                 return (
                   <div key={st.id} className="fl-tile" draggable onDragStart={() => setDragId(occ.id)} onDragEnd={() => setDragId(null)} onClick={() => setOpenId(occ.id)}
@@ -222,7 +222,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
                       <span style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fullName(occ.assignedStaff) || '—'}</span>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{formatPrice(total, currency)}</span>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf8fafc)' }}>{formatPrice(total, currency)}</span>
                     </div>
                   </div>
                 );
@@ -232,7 +232,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
                   onDragOver={(e) => { if (dragId) { e.preventDefault(); e.currentTarget.classList.add('fl-drop'); } }}
                   onDragLeave={(e) => e.currentTarget.classList.remove('fl-drop')}
                   onDrop={(e) => { e.currentTarget.classList.remove('fl-drop'); if (dragId) { move(dragId, st.id); setDragId(null); } }}
-                  style={{ background: 'rgba(34,197,94,0.06)', border: '1.5px dashed #16a34a', borderRadius: 12, minHeight: 118, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, color: '#22c55e' }}>
+                  style={{ background: 'rgba(34,197,94,0.06)', border: '1.5px dashed #16a34a', borderRadius: 12, minHeight: 118, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, color: 'var(--ink-good)' }}>
                   <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
                   <span style={{ fontSize: 14, fontWeight: 600 }}>{vi ? 'Trống' : 'Free'}</span>
                   <span style={{ fontSize: 11, color: 'var(--ink-good)' }}>{st.name}</span>
@@ -425,7 +425,7 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
             <button
               onClick={() => { if (window.confirm(vi ? 'Kết thúc khách này mà KHÔNG thu tiền? Chỉ dùng khi khách bỏ về hoặc không tính tiền.' : 'Finish this client WITHOUT taking payment? Only use this for a walk-out or a comp.')) onDone(); }}
               title={vi ? 'Kết thúc không thu tiền' : 'Finish without payment'}
-              style={{ ...ui.primaryBtn, background: 'var(--c334155)', padding: '11px 14px' }}>{vi ? 'Xong' : 'Done'}</button>
+              style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)', padding: '11px 14px' }}>{vi ? 'Xong' : 'Done'}</button>
           </div>
           <p style={{ fontSize: 11, color: 'var(--c64748b)', margin: '10px 0 0', lineHeight: 1.5 }}>{vi ? 'Chờ thanh toán = khách xong, rời ghế cho khách mới, bill vẫn mở để tính sau. Thu ngân = tính tiền & kết thúc. Xong = kết thúc KHÔNG thu tiền.' : 'Waiting to pay frees the chair, bill stays open. Checkout takes payment & finishes. Done finishes with no sale.'}</p>
         </div>

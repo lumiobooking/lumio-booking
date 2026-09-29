@@ -495,7 +495,7 @@ export default function AgencyPage() {
 
         {error && <div style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{error}</div>}
         {note && (
-          <div style={{ background: 'rgba(34,197,94,.12)', border: '1px solid #22c55e', color: '#bbf7d0', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14, display: 'flex', gap: 10 }}>
+          <div style={{ background: 'rgba(34,197,94,.12)', border: '1px solid #22c55e', color: 'var(--cbbf7d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14, display: 'flex', gap: 10 }}>
             <span>{note}</span>
             <button onClick={() => setNote(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--ink-good)', cursor: 'pointer', fontSize: 14 }}>✕</button>
           </div>

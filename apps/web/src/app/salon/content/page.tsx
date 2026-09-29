@@ -3391,7 +3391,7 @@ function Inner() {
                 const chips: { k: typeof workFilter; icon: string; label: string; n: number; color: string }[] = [
                   { k: 'held', icon: '🔴', label: T('Khách yêu cầu sửa', 'Client changes'), n: counts.held, color: 'var(--ink-bad)' },
                   { k: 'problem', icon: '⚠', label: T('Lỗi / thiếu điều kiện', 'Failed / blocked'), n: counts.problem, color: 'var(--ink-warn)' },
-                  { k: 'writing', icon: '✍', label: T('Đang viết', 'Writing'), n: counts.writing, color: '#60a5fa' },
+                  { k: 'writing', icon: '✍', label: T('Đang viết', 'Writing'), n: counts.writing, color: 'var(--c60a5fa)' },
                   { k: 'design', icon: '🎨', label: T('Đang thiết kế', 'In design'), n: counts.design, color: '#c084fc' },
                   { k: 'ready', icon: '⏳', label: T('Chờ khách duyệt', 'Awaiting client'), n: counts.ready, color: 'var(--ink-good)' },
                   { k: 'approved', icon: '✅', label: T('Khách đã duyệt', 'Client approved'), n: counts.approved, color: '#14b8a6' },
@@ -4678,7 +4678,7 @@ function Inner() {
                           }}>
                             <code style={{
                               fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12,
-                              background: 'rgba(239,68,68,.16)', color: '#fecaca',
+                              background: 'rgba(239,68,68,.16)', color: 'var(--cfecaca)',
                               borderRadius: 5, padding: '1px 6px', flexShrink: 0, maxWidth: 220,
                               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                             }}>{f.found}</code>
@@ -4705,7 +4705,7 @@ function Inner() {
                           <button
                             onClick={() => setContactOverride(true)}
                             style={{
-                              background: 'transparent', border: '1px solid #f59e0b', color: '#fcd34d',
+                              background: 'transparent', border: '1px solid #f59e0b', color: 'var(--cfcd34d)',
                               borderRadius: 7, padding: '4px 10px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit',
                             }}
                           >{T('Tôi biết, vẫn đăng', 'I know — post anyway')}</button>
@@ -4726,7 +4726,7 @@ function Inner() {
                       background: 'rgba(245,158,11,.08)', border: '1px solid #f59e0b',
                       fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6,
                     }}>
-                      {T('Chưa đối chiếu được', 'Cannot check')}: <b style={{ color: '#fcd34d' }}>{kit.missing.map((m) => MISSING_LABEL[m]).join(', ')}</b>
+                      {T('Chưa đối chiếu được', 'Cannot check')}: <b style={{ color: 'var(--cfcd34d)' }}>{kit.missing.map((m) => MISSING_LABEL[m]).join(', ')}</b>
                       {' — '}{T('hồ sơ tiệm còn trống mục này, nên phần đó không được kiểm.',
                                 'the salon profile is blank there, so that part is not checked.')}
                     </div>
@@ -4775,7 +4775,7 @@ function Inner() {
                     }
                     const stage = postDraft.stage ?? (postDraft.media.length ? 'design' : 'writing');
                     const STEP: { k: 'writing' | 'design' | 'ready'; icon: string; vi: string; en: string; color: string }[] = [
-                      { k: 'writing', icon: '✍', vi: 'Đang viết content', en: 'Writing', color: '#60a5fa' },
+                      { k: 'writing', icon: '✍', vi: 'Đang viết content', en: 'Writing', color: 'var(--c60a5fa)' },
                       { k: 'design', icon: '🎨', vi: 'Đang thiết kế', en: 'In design', color: '#c084fc' },
                       { k: 'ready', icon: '📅', vi: 'Đã chốt lịch', en: 'Ready', color: 'var(--ink-good)' },
                     ];
@@ -5198,7 +5198,7 @@ function Inner() {
                     const rows = workPosts().filter((p) => p.status !== 'posted' && p.status !== 'cancelled');
                     const cols: { key: string; title: string; hint: string; color: string; pick: (p: QueuedPost) => boolean }[] = [
                       { key: 'stuck', title: T('🔴 Cần xử lý', '🔴 Needs attention'), hint: T('khách yêu cầu sửa · đăng lỗi · thiếu điều kiện', 'client change · failed · blocked'), color: 'var(--ink-bad)', pick: (p) => Boolean(p.held) || p.status === 'failed' || p.status === 'expired' || (p.blockers.length > 0 && p.stage === 'ready') },
-                      { key: 'writing', title: T('✍ Đang viết', '✍ Writing'), hint: T('content viết caption', 'writer drafts the caption'), color: '#60a5fa', pick: (p) => p.stage === 'writing' },
+                      { key: 'writing', title: T('✍ Đang viết', '✍ Writing'), hint: T('content viết caption', 'writer drafts the caption'), color: 'var(--c60a5fa)', pick: (p) => p.stage === 'writing' },
                       { key: 'design', title: T('🎨 Đang thiết kế', '🎨 In design'), hint: T('thiết kế đưa ảnh/clip vào', 'designer adds the visuals'), color: '#c084fc', pick: (p) => p.stage === 'design' },
                       { key: 'ready', title: T('📅 Đã chốt lịch', '📅 Locked'), hint: T('tự đăng đúng giờ', 'publishes on time'), color: 'var(--ink-good)', pick: (p) => p.status === 'scheduled' },
                     ];
@@ -6555,7 +6555,7 @@ function CampaignReview({ review, token, vi, onDone }: {
           📊 {T(`Đến hạn soi — ngày thứ ${r.dayNumber}/${review.days}`, `Review due — day ${r.dayNumber} of ${review.days}`)}
         </div>
         {late > 0 && (
-          <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: 'rgba(245,158,11,.18)', color: '#fbbf24' }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, background: 'rgba(245,158,11,.18)', color: 'var(--ink-warn)' }}>
             {T(`trễ ${late} ngày`, `${late} days late`)}
           </span>
         )}

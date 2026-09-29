@@ -238,7 +238,7 @@ function CleanupTools({ onWipe, onCleanup }: { onWipe: () => void; onCleanup: (f
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   return (
-    <div style={{ marginTop: 24, border: '1px solid var(--c7f1d1d)', borderRadius: 12, padding: 16, background: '#1f1416' }}>
+    <div style={{ marginTop: 24, border: '1px solid var(--c7f1d1d)', borderRadius: 12, padding: 16, background: 'var(--wash-red)' }}>
       <button onClick={() => setOpen((o) => !o)} style={{ background: 'none', border: 'none', color: 'var(--cfca5a5)', fontSize: 15, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
         {open ? '▾' : '▸'} {t('rv.cleanupTitle')}
       </button>

@@ -977,7 +977,7 @@ function DepositSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }
           <Field label={t('se.dep.threshold')}><input style={ui.input} type="number" min={1} value={f.thr} onChange={(e) => setF({ ...f, thr: e.target.value })} /></Field>
         )}
       </div>
-      <div style={{ background: '#3f2d0e', color: '#fde68a', padding: '10px 12px', borderRadius: 8, fontSize: 12.5, marginTop: 12 }}>
+      <div style={{ background: 'var(--wash-amber-3)', color: 'var(--cfde68a)', padding: '10px 12px', borderRadius: 8, fontSize: 12.5, marginTop: 12 }}>
         {t('se.dep.warn')}
       </div>
       <button style={{ ...ui.primaryBtn, marginTop: 14 }} onClick={save}>{t('se.dep.save')}</button>
@@ -1136,7 +1136,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
 
       <div style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>{t('se.no.templates')}</div>
-        <button onClick={() => setShowTpl((s) => !s)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: showTpl ? 'var(--c475569)' : '#6366f1' }}>
+        <button onClick={() => setShowTpl((s) => !s)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: showTpl ? 'var(--c475569)' : '#6366f1', color: showTpl ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>
           {showTpl ? t('se.no.hide') : t('se.no.customize')}
         </button>
       </div>
@@ -1251,7 +1251,7 @@ function NotificationsSection({ data, onSave }: { data: SettingsData; onSave: Sa
       <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '2px 0 10px' }}>
         {t('se.no.smtpHelp')}
       </p>
-      <div style={{ background: '#3f2d0e', color: '#fde68a', padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 10 }}>
+      <div style={{ background: 'var(--wash-amber-3)', color: 'var(--cfde68a)', padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 10 }}>
         {t('se.no.smtpWarn')}
       </div>
       <button

@@ -574,7 +574,7 @@ function Detail(props: {
           <div style={{ maxWidth: 560, margin: '0 auto' }}>
             {showApprove ? (
               <>
-                <div style={{ fontSize: 12, color: '#fcd34d', marginBottom: 8, lineHeight: 1.5 }}>
+                <div style={{ fontSize: 12, color: 'var(--cfcd34d)', marginBottom: 8, lineHeight: 1.5 }}>
                   ⏰ {T(`Bài sẽ tự đăng ${fmtDay(p.scheduledAt)} lúc ${fmtTime(p.scheduledAt)} nếu bạn không có ý kiến.`,
                         `Publishes automatically ${fmtDay(p.scheduledAt)} at ${fmtTime(p.scheduledAt)} unless you say otherwise.`)}
                 </div>

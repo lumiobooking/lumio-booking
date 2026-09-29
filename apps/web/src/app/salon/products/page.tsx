@@ -145,7 +145,7 @@ function Inner() {
                   <MRow label={t('pd.colTaxable')}>{p.taxable ? t('pd.yes') : t('pd.no')}</MRow>
                   <MRow label={t('pd.colStock')}>{p.trackStock ? p.stockQty : '—'}</MRow>
                   <MActions>
-                    <button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === p.id ? 'var(--c475569)' : '#6366f1' }}>{editId === p.id ? t('pd.close') : t('pd.edit')}</button>
+                    <button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === p.id ? 'var(--c475569)' : '#6366f1', color: editId === p.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{editId === p.id ? t('pd.close') : t('pd.edit')}</button>
                     <button onClick={() => remove(p.id)} style={ui.dangerBtn}>{t('pd.delete')}</button>
                   </MActions>
                 </MCard>
@@ -185,7 +185,7 @@ function Inner() {
                     <td style={ui.td}><span style={{ color: p.isActive ? 'var(--ink-good)' : 'var(--c94a3b8)' }}>{p.isActive ? t('pd.active') : t('pd.inactive')}</span></td>
                     <td style={ui.td}>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === p.id ? 'var(--c475569)' : '#6366f1' }}>{editId === p.id ? t('pd.close') : t('pd.edit')}</button>
+                        <button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === p.id ? 'var(--c475569)' : '#6366f1', color: editId === p.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{editId === p.id ? t('pd.close') : t('pd.edit')}</button>
                         <button onClick={() => remove(p.id)} style={ui.dangerBtn}>{t('pd.delete')}</button>
                       </div>
                     </td>

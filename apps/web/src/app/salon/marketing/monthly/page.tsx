@@ -594,7 +594,7 @@ function ReportEditor({ report, vi, T, busy, onGenerate, onSave, onApprove, prin
         </div>
       </div>
 
-      {report.content._aiUnavailable && <div style={{ ...ui.banner, background: '#422006', borderColor: '#b45309', color: '#fde68a', marginBottom: 12 }}>{T('AI không viết được nháp: ', 'AI could not draft: ')}<b>{report.content._aiError || 'unknown'}</b>{T(' — nhập nhận xét tay bên dưới.', ' — write the notes manually below.')}</div>}
+      {report.content._aiUnavailable && <div style={{ ...ui.banner, background: 'var(--wash-amber-3)', borderColor: '#b45309', color: 'var(--cfde68a)', marginBottom: 12 }}>{T('AI không viết được nháp: ', 'AI could not draft: ')}<b>{report.content._aiError || 'unknown'}</b>{T(' — nhập nhận xét tay bên dưới.', ' — write the notes manually below.')}</div>}
 
       <p style={{ fontSize: 11.5, color: 'var(--c64748b)', margin: '0 0 10px' }}>{T('AI đã điền sẵn — chỉ sửa nếu cần rồi bấm Duyệt. Đang sửa bản ', 'AI filled this in — edit only if needed, then Approve. Editing the ')}<b style={{ color: 'var(--ca5b4fc)' }}>{vi ? 'Tiếng Việt' : 'English'}</b>{T('; bấm VI/EN ở góc trên để sửa bản kia.', ' version; use VI/EN at the top to edit the other.')}</p>
 

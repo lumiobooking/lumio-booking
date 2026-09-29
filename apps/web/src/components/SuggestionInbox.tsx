@@ -186,7 +186,7 @@ export function SuggestionInbox({
           📨 {T('Tiệm đã gửi', 'From the shop')}
         </div>
         {feed.ready.length > 0 && (
-          <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: '#14532d', border: '1px solid #22c55e', color: '#86efac' }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: 'var(--c14532d)', border: '1px solid #22c55e', color: 'var(--c86efac)' }}>
             {feed.ready.length} {T('mới nhận', 'new')}
           </span>
         )}

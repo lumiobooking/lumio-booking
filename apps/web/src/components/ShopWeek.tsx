@@ -671,7 +671,7 @@ function PitchRow({ st, n, last, vi }: {
     <div style={{ display: 'flex', gap: 10, marginBottom: last ? 0 : 11 }}>
       <div style={{
         flex: '0 0 22px', height: 22, borderRadius: 999, background: 'rgba(99,102,241,.22)',
-        border: '1px solid rgba(99,102,241,.55)', color: '#c7d2fe', fontSize: 11.5, fontWeight: 700,
+        border: '1px solid rgba(99,102,241,.55)', color: 'var(--cc7d2fe)', fontSize: 11.5, fontWeight: 700,
         display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1,
       }}>{n}</div>
       <div style={{ minWidth: 0, flex: 1 }}>
@@ -831,7 +831,7 @@ function JobLine({ j, vi, canEdit, busy, days, onText, onSteps, onMove, onRemove
                 <span style={{ flex: 1, textDecoration: done.has(k) ? 'line-through' : undefined, opacity: done.has(k) ? 0.6 : 1 }}>
                   <Inline value={st} canEdit={canEdit && !auto.has(k)} onCommit={(v) => { const next = [...steps]; next[k] = v; onSteps(next.filter(Boolean)); }} multiline />
                   {auto.has(k) && (
-                    <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, letterSpacing: .4, color: '#86efac', background: 'rgba(34,197,94,.14)', borderRadius: 999, padding: '1px 6px', verticalAlign: 1 }}>
+                    <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, letterSpacing: .4, color: 'var(--c86efac)', background: 'rgba(34,197,94,.14)', borderRadius: 999, padding: '1px 6px', verticalAlign: 1 }}>
                       {T('TỰ ĐỘNG', 'AUTO')}
                     </span>
                   )}

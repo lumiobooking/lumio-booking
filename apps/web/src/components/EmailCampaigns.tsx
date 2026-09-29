@@ -640,7 +640,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             <input value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder={t('Gửi thử tới email của bạn', 'Send a test to your email')}
               style={{ ...ui.input, flex: 1, minWidth: 200 }} />
             <button onClick={sendTest} disabled={busy || !testTo || !d.subject || !d.fromName}
-              style={{ ...ui.primaryBtn, background: 'var(--c334155)', opacity: busy || !testTo || !d.subject || !d.fromName ? 0.5 : 1 }}>
+              style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)', opacity: busy || !testTo || !d.subject || !d.fromName ? 0.5 : 1 }}>
               {t('Gửi thử', 'Send test')}
             </button>
           </div>
@@ -652,7 +652,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             </button>
           ) : (
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setConfirm(false)} style={{ ...ui.primaryBtn, flex: 1, background: 'var(--c334155)' }}>
+              <button onClick={() => setConfirm(false)} style={{ ...ui.primaryBtn, flex: 1, background: 'var(--c334155)', color: 'var(--ce2e8f0)' }}>
                 {t('Huỷ', 'Cancel')}
               </button>
               <button onClick={sendAll} disabled={busy}
@@ -879,7 +879,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
             <span style={{ flex: 1, minWidth: 160, fontSize: 14, color: 'var(--ce2e8f0)' }}>
               {t(`Đã chọn ${picked.size} người`, `${picked.size} selected`)}
             </span>
-            <button onClick={() => setPicked(new Set())} style={{ ...ui.primaryBtn, background: 'var(--c334155)' }}>{t('Bỏ chọn', 'Clear')}</button>
+            <button onClick={() => setPicked(new Set())} style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{t('Bỏ chọn', 'Clear')}</button>
             <button onClick={reuse} style={{ ...ui.primaryBtn, background: '#16a34a' }}>
               {t(`Soạn thư gửi ${picked.size} người này →`, `Write to these ${picked.size} →`)}
             </button>
@@ -1000,7 +1000,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
           )}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-            <button onClick={() => setTab('compose')} style={{ ...ui.primaryBtn, background: 'var(--c334155)' }}>
+            <button onClick={() => setTab('compose')} style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)' }}>
               {t('+ Soạn thêm một lá', '+ Write another letter')}
             </button>
             <button onClick={runAutoNow} disabled={busy || !auto.enabled}

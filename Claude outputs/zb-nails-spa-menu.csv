@@ -1,0 +1,34 @@
+﻿Category,Service name,Price,Starting price (yes/no),Duration (min),Description
+Manicure,Manicure Regular,27,no,30,"Nail shaping, cuticle care, hand massage and polish of your choice."
+Manicure,Manicure Gel,57,no,45,"Nail shaping, cuticle care, hand massage and gel polish of your choice."
+Manicure,Change Polish,25,no,20,Remove old polish and apply new polish of your choice.
+Manicure,Take Off,5,no,15,Remove gel or acrylic product.
+Pedicure,P1 Basic Pedicure,35,no,40,"Polish removal, nail shine, shaping, cuticle care, foot scrub, and relaxing foot massage with oil. Finished with your choice of polish."
+Pedicure,P2 Classic Pedicure with Callus,45,no,45,"Classic pedicure with callus removal for smoother, softer feet."
+Pedicure,P3 Paraffin Spa Pedicure,55,no,50,Classic pedicure with added paraffin moisture treatment.
+Pedicure,P4 Deluxe Spa Pedicure,65,no,60,"Classic pedicure with sea salt exfoliation, sugar scrub, hot towels, hydrating mask, and steam treatment."
+Pedicure,P5 Milk & Honey Pedicure,85,no,75,"Sugar scrub, hydrating skin mask, hot stone or hot towel treatment, steam treatment, oil massage, and paraffin wax."
+Pedicure,Add Gel (Pedicure),17,no,15,Add-on: gel polish with any pedicure.
+Acrylic & Gel Nails,Acrylic Fullset,45,no,60,
+Acrylic & Gel Nails,Acrylic Fullset with Gel,55,no,75,
+Acrylic & Gel Nails,Dip Powder on Nails,45,no,60,
+Acrylic & Gel Nails,Dip Powder on Tip,55,no,75,
+Acrylic & Gel Nails,Builder Gel,60,no,60,
+Acrylic & Gel Nails,Builder Gel Fill,50,no,60,
+Acrylic & Gel Nails,Tip Overlay,5,no,15,
+Acrylic & Gel Nails,Gel Nails,17,no,30,
+Acrylic & Gel Nails,Acrylic Fill,35,no,45,
+Acrylic & Gel Nails,Acrylic Fill with Gel,45,no,60,
+Acrylic & Gel Nails,Custom Nail Design,5,no,15,Add-on: custom nail art design.
+Waxing,Eyebrows,15,no,15,
+Waxing,Lips,7,no,10,
+Waxing,Full Face,55,yes,30,
+Waxing,Chin,10,yes,10,
+Waxing,Neck,15,yes,15,
+Waxing,Underarms,18,no,15,
+Waxing,Half Arms,30,no,20,
+Waxing,Full Arms,45,no,30,
+Waxing,Half Legs,40,no,30,
+Waxing,Full Legs,65,no,45,
+Waxing,Bikini,40,no,30,
+Waxing,Brazilian,60,no,45,

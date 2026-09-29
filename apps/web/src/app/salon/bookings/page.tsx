@@ -93,6 +93,18 @@ function BookingsInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  // "/salon/bookings?new=1&staff=<id>&at=YYYY-MM-DDTHH:mm" — the phone
+  // calendar's "+ Đặt cho <thợ>" lands here with the form open and the
+  // technician / slot already chosen. Read once, on the client only.
+  const [prefill, setPrefill] = useState<{ staffId?: string; startLocal?: string } | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('new') !== '1') return;
+    const at = q.get('at') ?? '';
+    setPrefill({ staffId: q.get('staff') ?? undefined, startLocal: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at) ? at : undefined });
+    setShowForm(true);
+  }, []);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -244,6 +256,7 @@ function BookingsInner() {
           services={services}
           staff={staff.filter((s) => s.isActive)}
           bookings={bookings}
+          initial={prefill ?? undefined}
           onCreated={async () => {
             setShowForm(false);
             await load();
@@ -628,12 +641,14 @@ function CreateBookingForm({
   services,
   staff,
   bookings,
+  initial,
   onCreated,
 }: {
   token: string;
   services: Service[];
   staff: Staff[];
   bookings: Booking[];
+  initial?: { staffId?: string; startLocal?: string };
   onCreated: () => void;
 }) {
   const { lang } = useLang();
@@ -648,8 +663,8 @@ function CreateBookingForm({
   const setServiceIds = (fn: (ids: string[]) => string[]) =>
     setPeople((ps) => ps.map((p, i) => (i === who ? { ...p, serviceIds: fn(p.serviceIds) } : p)));
   const [form, setForm] = useState({
-    startLocal: '',
-    staffId: '',
+    startLocal: initial?.startLocal ?? '',
+    staffId: initial?.staffId ?? '',
     partySize: '1',
     customerFirstName: '',
     customerLastName: '',

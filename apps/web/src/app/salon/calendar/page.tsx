@@ -109,6 +109,11 @@ function Inner() {
     if (typeof window === 'undefined') return 'grid';
     return window.localStorage.getItem('lumio_day_layout') === 'timeline' ? 'timeline' : 'grid';
   });
+  // Phone header state: the search box folds behind its icon; the month list
+  // can start from a tapped day and folds the past away.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [monthFocus, setMonthFocus] = useState<Date | null>(null);
+  const [showPast, setShowPast] = useState(false);
   const pickDayLayout = (v: 'grid' | 'timeline') => { setDayLayout(v); try { window.localStorage.setItem('lumio_day_layout', v); } catch { /* ignore */ } };
   const [dayDate, setDayDate] = useState<Date>(today);
   const goDay = useCallback((d: Date) => {
@@ -234,10 +239,12 @@ function Inner() {
   useEffect(() => { setMonthPage(0); }, [view, search, mode]);
   const orderedMonthDays = useMemo(() => {
     const withItems = days.filter((d): d is Date => !!d && (byDay.get(cellKey(d))?.length ?? 0) > 0);
-    const upcoming = withItems.filter((d) => d.getTime() >= today.getTime()).sort((a, b) => a.getTime() - b.getTime());
-    const past = withItems.filter((d) => d.getTime() < today.getTime()).sort((a, b) => b.getTime() - a.getTime());
+    const anchor = monthFocus ?? today;
+    const upcoming = withItems.filter((d) => d.getTime() >= anchor.getTime()).sort((a, b) => a.getTime() - b.getTime());
+    const past = withItems.filter((d) => d.getTime() < anchor.getTime()).sort((a, b) => b.getTime() - a.getTime());
     return [...upcoming, ...past];
-  }, [days, byDay, today]);
+  }, [days, byDay, today, monthFocus]);
+  const monthUpcomingCount = useMemo(() => orderedMonthDays.filter((d) => d.getTime() >= (monthFocus ?? today).getTime()).length, [orderedMonthDays, monthFocus, today]);
   const MONTH_PAGE_SIZE = 6;
   const monthPageCount = Math.max(1, Math.ceil(orderedMonthDays.length / MONTH_PAGE_SIZE));
   const monthSafePage = Math.min(monthPage, monthPageCount - 1);
@@ -303,6 +310,116 @@ function Inner() {
 
   return (
     <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: 'var(--c0b1120)', padding: '14px 18px', paddingTop: 'calc(14px + env(safe-area-inset-top, 0px))', overflow: 'auto' } : undefined}>
+      {isMobile ? (
+        /* PHONE — as drawn: title · search icon · Today; the view switcher;
+           the week strip (the date above, seven tappable days below); one line
+           that sums the day up, with the list/grid switch; the sources in one
+           row that swipes. The status legend is gone: every card names its
+           status in words. */
+        (() => {
+          const anchor = mode === 'month' ? (monthFocus ?? (view.getMonth() === today.getMonth() && view.getFullYear() === today.getFullYear() ? today : new Date(view.getFullYear(), view.getMonth(), 1))) : dayDate;
+          const monday = new Date(anchor); monday.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7)); monday.setHours(0, 0, 0, 0);
+          const week = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+          const shiftWeek = (delta: number) => {
+            if (mode === 'month') { const m = new Date(view.getFullYear(), view.getMonth() + delta, 1); setView(m); setMonthFocus(null); setMonthPage(0); }
+            else goDay(new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + 7 * delta));
+          };
+          const pickDay = (d: Date) => {
+            if (mode === 'month') { setMonthFocus(d); setMonthPage(0); setShowPast(false); if (d.getMonth() !== view.getMonth()) setView(new Date(d.getFullYear(), d.getMonth(), 1)); }
+            else goDay(d);
+          };
+          const dayItems = byDay.get(cellKey(dayDate)) ?? [];
+          const monthItems = days.flatMap((d) => (d ? byDay.get(cellKey(d)) ?? [] : []));
+          const sumItems = mode === 'month' ? monthItems : dayItems;
+          const revenue = sumItems.reduce((acc, b) => acc + (b.status === 'CANCELLED' || b.status === 'NO_SHOW' ? 0 : b.priceCents), 0);
+          const pendingN = sumItems.filter((b) => statusBucket(b.status).key === 'Pending').length;
+          const currency = sumItems[0]?.currency ?? 'USD';
+          const dateLabel = mode === 'month' ? monthLabel : dayDate.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
+          return (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <h1 style={{ fontSize: 22, margin: 0, flex: 1, minWidth: 0, letterSpacing: -0.2 }}>{t('cal.title')}</h1>
+                <button type="button" onClick={() => { setSearchOpen((o) => !o); if (searchOpen) setSearch(''); }} aria-label={lang === 'vi' ? 'Tìm khách' : 'Search'} style={{ ...navIconBtn, background: searchOpen ? '#4f46e5' : 'var(--c0f172a)', color: searchOpen ? '#fff' : 'var(--ccbd5e1)' }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                </button>
+                <button type="button" style={{ ...navBtn, height: 40, padding: '0 14px', fontWeight: 600, borderRadius: 10, background: 'var(--c0f172a)' }} onClick={() => { setMonthFocus(null); setMonthPage(0); if (mode === 'month') setView(new Date(today.getFullYear(), today.getMonth(), 1)); else goDay(today); }}>{t('cal.today')}</button>
+              </div>
+              <div style={{ display: 'flex', background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 12, padding: 3, marginBottom: 10 }}>
+                <button onClick={() => setMode('month')} style={segBtnPhone(mode === 'month')}>{t('cal.viewMonth')}</button>
+                <button onClick={() => setMode('day')} style={segBtnPhone(mode === 'day')}>{t('cal.viewDay')}</button>
+                <button onClick={() => setMode('staff')} style={segBtnPhone(mode === 'staff')}>{isRestaurant ? t('cal.viewTables') : (lang === 'vi' ? 'Thợ' : 'Staff')}</button>
+                {!isRestaurant && <button onClick={() => setMode('floor')} style={segBtnPhone(false)}>{lang === 'vi' ? 'Sơ đồ' : 'Floor'}</button>}
+              </div>
+              {searchOpen && (
+                <div style={{ position: 'relative', marginBottom: 10 }}>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--c94a3b8)" strokeWidth="2" strokeLinecap="round" style={{ position: 'absolute', left: 13, top: 13 }}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                  <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder={lang === 'vi' ? 'Tìm khách theo tên hoặc số điện thoại…' : 'Search customer by name or phone…'} style={{ width: '100%', boxSizing: 'border-box', height: 44, padding: '0 40px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 16 }} />
+                  {search && <button onClick={() => setSearch('')} aria-label="Clear" style={{ position: 'absolute', right: 6, top: 6, width: 32, height: 32, border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 18, cursor: 'pointer' }}>✕</button>}
+                </div>
+              )}
+              {/* The week strip */}
+              <div style={{ boxSizing: 'border-box', padding: '8px 8px 6px', borderRadius: 14, background: 'var(--c0f172a)', border: '1px solid var(--line)', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <button type="button" style={{ ...navIconBtn, width: 36, height: 36, border: 'none', background: 'transparent' }} onClick={() => shiftWeek(-1)} aria-label={lang === 'vi' ? 'Trước' : 'Previous'}>‹</button>
+                  <button type="button" onClick={mode === 'month' ? openMonthPicker : openDayPicker} style={{ flex: 1, height: 36, border: 'none', background: 'transparent', color: 'var(--cf1f5f9)', fontSize: 15, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize' }}>{dateLabel} <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}>▾</span></button>
+                  <button type="button" style={{ ...navIconBtn, width: 36, height: 36, border: 'none', background: 'transparent' }} onClick={() => shiftWeek(1)} aria-label={lang === 'vi' ? 'Sau' : 'Next'}>›</button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4, marginTop: 4 }}>
+                  {week.map((d) => {
+                    const list = byDay.get(cellKey(d)) ?? [];
+                    const isToday = d.getTime() === today.getTime();
+                    const isOn = mode === 'month' ? (monthFocus ? d.getTime() === monthFocus.getTime() : isToday) : d.getTime() === dayDate.getTime();
+                    const dot = list.length ? statusBucket(list.find((b) => statusBucket(b.status).key === 'Pending')?.status ?? list[0].status).color : 'transparent';
+                    return (
+                      <button key={d.toDateString()} type="button" onClick={() => pickDay(d)} style={isOn
+                        ? { height: 54, border: 'none', borderRadius: 10, background: '#4f46e5', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: 'pointer', padding: 0 }
+                        : { height: 54, border: 'none', borderRadius: 10, background: 'transparent', color: 'var(--ce2e8f0)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: 'pointer', padding: 0 }}>
+                        <span style={{ fontSize: 11, opacity: isOn ? 0.85 : 1, color: isOn ? undefined : 'var(--c94a3b8)' }}>{DAY_LABEL[lang][d.getDay()]}</span>
+                        <span style={{ fontSize: 15, fontWeight: isOn || isToday ? 700 : 600 }}>{d.getDate()}</span>
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: isOn ? (list.length ? '#fff' : 'transparent') : dot }} />
+                      </button>
+                    );
+                  })}
+                </div>
+                <input ref={monthInputRef} type="month" value={`${view.getFullYear()}-${String(view.getMonth() + 1).padStart(2, '0')}`} onChange={onMonthPick} style={hiddenInput} tabIndex={-1} aria-hidden="true" />
+                <input ref={dayInputRef} type="date" value={cellKey(dayDate)} onChange={onDayPick} style={hiddenInput} tabIndex={-1} aria-hidden="true" />
+              </div>
+              {/* One line that sums it up (+ list/grid on the day) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <strong style={{ color: 'var(--cf1f5f9)', fontWeight: 700 }}>{sumItems.length} {t('cal.apptWord')}</strong>
+                  {mode === 'month' && <> {lang === 'vi' ? 'trong tháng' : 'this month'} · {t('cal.todayLabel')} <strong style={{ color: 'var(--cf1f5f9)', fontWeight: 700 }}>{todayStats.total}</strong></>}
+                  {mode !== 'month' && revenue > 0 && <> · {t('cal.expected')} <strong style={{ color: 'var(--ink-good)', fontWeight: 700 }}>{formatPrice(revenue, currency).replace(/[.,]00(?=\D*$)/, '')}</strong></>}
+                  {pendingN > 0 && <> · <span style={{ color: 'var(--ink-warn)', fontWeight: 600 }}>{pendingN} {t('cal.stPending').toLowerCase()}</span></>}
+                  {mode !== 'month' && dayDate.getTime() === today.getTime() && walkinNow > 0 && <> · <span style={{ color: 'var(--ink-warn)', fontWeight: 600 }}>{walkinNow} {lang === 'vi' ? 'khách vãng lai' : 'walk-in'}</span></>}
+                </span>
+                {mode === 'day' && (
+                  <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 9, overflow: 'hidden', flexShrink: 0 }}>
+                    <button type="button" onClick={() => pickDayLayout('grid')} aria-label={lang === 'vi' ? 'Danh sách' : 'List'} style={dayLayout === 'grid' ? { width: 36, height: 32, border: 'none', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' } : { width: 36, height: 32, border: 'none', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h16" /></svg></button>
+                    <button type="button" onClick={() => pickDayLayout('timeline')} aria-label={lang === 'vi' ? 'Lưới giờ' : 'Time grid'} style={dayLayout === 'timeline' ? { width: 36, height: 32, border: 'none', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' } : { width: 36, height: 32, border: 'none', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 10h16M4 15h16M10 4v16" /></svg></button>
+                  </div>
+                )}
+              </div>
+              {(() => {
+                const legend = sourceCounts(bookings);
+                if (!legend.length) return null;
+                return (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', overflowX: 'auto', scrollbarWidth: 'none', margin: '0 -16px 10px', padding: '0 16px' }}>
+                    {legend.map(({ meta, count }) => (
+                      <span key={meta.key} style={{ flexShrink: 0 }}>
+                        <SourceChip meta={meta} count={count} vi={lang === 'vi'} active={srcFilter === meta.key} onClick={() => setSrcFilter(srcFilter === meta.key ? null : meta.key)} />
+                      </span>
+                    ))}
+                    {srcFilter && <button onClick={() => setSrcFilter(null)} style={{ flexShrink: 0, background: 'none', border: 'none', color: 'var(--c818cf8)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>{lang === 'vi' ? '✕ Bỏ lọc' : '✕ Clear'}</button>}
+                  </div>
+                );
+              })()}
+              {error && <div style={ui.banner}>{error}</div>}
+            </>
+          );
+        })()
+      ) : (
+        <>
       {/* Row 1: title + view toggle (toggle is full-width on phones) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <h1 style={{ fontSize: isMobile ? 20 : 24, margin: 0 }}>{t('cal.title')}</h1>
@@ -387,6 +504,9 @@ function Inner() {
         </div>
       </div>
 
+        </>
+      )}
+
       {mode === 'staff' ? (
         isRestaurant ? (
           <TableDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} />
@@ -395,45 +515,54 @@ function Inner() {
         )
       ) : mode === 'day' ? (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-            <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3 }}>
-              <button onClick={() => pickDayLayout('grid')} style={segBtn(dayLayout === 'grid')}>▦ {lang === 'vi' ? 'Lưới' : 'Grid'}</button>
-              <button onClick={() => pickDayLayout('timeline')} style={segBtn(dayLayout === 'timeline')}>☰ {lang === 'vi' ? 'Dòng thời gian' : 'Timeline'}</button>
+          {!isMobile && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+              <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3 }}>
+                <button onClick={() => pickDayLayout('grid')} style={segBtn(dayLayout === 'grid')}>▦ {lang === 'vi' ? 'Lưới' : 'Grid'}</button>
+                <button onClick={() => pickDayLayout('timeline')} style={segBtn(dayLayout === 'timeline')}>☰ {lang === 'vi' ? 'Dòng thời gian' : 'Timeline'}</button>
+              </div>
             </div>
-          </div>
+          )}
           {dayLayout === 'grid'
-            ? <DayGrid date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} />
+            ? <DayGrid date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} onQuick={isMobile ? action : undefined} />
             : <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} />}
         </div>
       ) : isMobile ? (
-        /* Phones: day-by-day agenda — nearest day to today on top, paginated. */
+        /* Phones: the month as a list of days — the day you are on (today, or
+           the day tapped on the strip) first and forward from there; the days
+           before it fold away behind one button. */
         orderedMonthDays.length === 0 ? (
           <p style={{ color: 'var(--c64748b)', fontSize: 14, padding: '20px 0', textAlign: 'center' }}>{t('cal.noneThisMonth')}</p>
         ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {monthPageDays.map((d) => {
+          {(showPast ? orderedMonthDays : orderedMonthDays.slice(0, Math.max(1, monthUpcomingCount))).map((d) => {
             const items = byDay.get(cellKey(d)) ?? [];
             const isToday = d.getTime() === today.getTime();
             const isPast = d.getTime() < today.getTime();
+            const isAnchor = d.getTime() === (monthFocus ?? today).getTime();
             return (
-              <div key={d.toDateString()} style={{ ...ui.card, padding: 12, opacity: isPast ? 0.72 : 1 }}>
+              <div key={d.toDateString()} style={{ ...ui.card, padding: '12px 14px', border: `1px solid ${isAnchor ? '#4f46e5' : 'var(--line)'}`, opacity: isPast ? 0.72 : 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: isToday ? 'var(--c818cf8)' : 'var(--ce2e8f0)' }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: isToday ? 'var(--c818cf8)' : 'var(--ce2e8f0)' }}>
                     {d.toLocaleDateString(locale, { weekday: 'long', month: 'short', day: 'numeric' })}{isToday ? ' · ' + t('cal.todayLabel') : ''}
                   </span>
                   {isPast && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 7px' }}>{lang === 'vi' ? 'đã qua' : 'past'}</span>}
-                  <span style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--c64748b)' }}>{items.length}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c64748b)' }}>{items.length}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {items.map((b) => {
                     const m = statusBucket(b.status);
+                    const struck = b.status === 'CANCELLED';
                     return (
                       <div key={b.id} onClick={() => setSelected(b)}
                         onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, b }); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '10px 11px', borderRadius: 7, background: 'var(--c1e293b)', borderLeft: `3px solid ${m.color}`, cursor: 'pointer' }}>
-                        <span style={{ fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--ce2e8f0)' }}>{fmtT(b.startTime)}</span>
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ccbd5e1)' }}>{name(b.customer)}{svcLabel(b) ? ' · ' + svcLabel(b) : ''}</span>
-                        <span style={{ width: 9, height: 9, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '8px 10px', borderRadius: 9, background: 'var(--c1e293b)', borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: struck ? 0.75 : 1 }}>
+                        <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: 'var(--cf1f5f9)', fontSize: 14 }}>{fmtT(b.startTime)}</span>
+                        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--cf1f5f9)', fontWeight: 600, fontSize: 14, textDecoration: struck ? 'line-through' : 'none' }}>{name(b.customer)}</span>
+                          {svcLabel(b) && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--c94a3b8)', fontSize: 12.5 }}>{svcLabel(b)}</span>}
+                        </span>
+                        <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 600, color: m.color, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
                       </div>
                     );
                   })}
@@ -441,12 +570,10 @@ function Inner() {
               </div>
             );
           })}
-          {monthPageCount > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 4 }}>
-              <button style={{ ...navBtn, opacity: monthSafePage === 0 ? 0.5 : 1 }} disabled={monthSafePage === 0} onClick={() => setMonthPage((pp) => Math.max(0, pp - 1))}>‹ {lang === 'vi' ? 'Trước' : 'Prev'}</button>
-              <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{lang === 'vi' ? 'Trang' : 'Page'} {monthSafePage + 1}/{monthPageCount}</span>
-              <button style={{ ...navBtn, opacity: monthSafePage >= monthPageCount - 1 ? 0.5 : 1 }} disabled={monthSafePage >= monthPageCount - 1} onClick={() => setMonthPage((pp) => Math.min(monthPageCount - 1, pp + 1))}>{lang === 'vi' ? 'Sau' : 'Next'} ›</button>
-            </div>
+          {orderedMonthDays.length > monthUpcomingCount && (
+            <button type="button" onClick={() => setShowPast((v) => !v)} style={{ height: 40, borderRadius: 10, border: '1px dashed var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
+              {showPast ? (lang === 'vi' ? 'Ẩn ngày đã qua ▴' : 'Hide past days ▴') : (lang === 'vi' ? `Xem ${orderedMonthDays.length - monthUpcomingCount} ngày đã qua ▾` : `Show ${orderedMonthDays.length - monthUpcomingCount} past days ▾`)}
+            </button>
           )}
         </div>
         )
@@ -617,6 +744,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
   return (
     <div>
       <style>{`.cal-day-card{transition:filter .12s ease, box-shadow .12s ease, transform .06s ease}.cal-day-card:hover{filter:brightness(1.14)}.cal-day-card:active{transform:scale(.995)}`}</style>
+      {!isMobile && (
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, padding: '10px 14px', background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 10 }}>
         <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.apptWord')}</span></span>
         <span style={{ color: 'var(--ink-faint)' }}>|</span>
@@ -624,6 +752,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
         {ev.length > 0 && <><span style={{ color: 'var(--ink-faint)' }}>|</span><span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{fmtT(ev[0].b.startTime)} – {fmtT(ev[ev.length - 1].b.endTime)}</span></>}
         {nextB && <><span style={{ color: 'var(--ink-faint)' }}>|</span><span style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{lang === 'vi' ? 'Kế tiếp' : 'Next'}: <strong style={{ color: 'var(--cf1f5f9)' }}>{fmtT(nextB.startTime)}</strong> {nextB.customer?.firstName ?? ''}</span></>}
       </div>
+      )}
 
       {items.length === 0 ? (
         <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
@@ -702,7 +831,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
           </div>
         </div>
       )}
-      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('cal.dayHint')}</p>
+      {!isMobile && <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('cal.dayHint')}</p>}
     </div>
   );
 }
@@ -710,8 +839,10 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
 // Day view as a scannable card grid — grouped by morning / afternoon / evening,
 // wrapping into as many columns as fit. Much easier to read on a busy day than a
 // squished time-axis.
-function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
+function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx, onQuick }: {
   date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onCtx?: (b: Booking, x: number, y: number) => void;
+  /** Phone: confirm a pending booking from its card, no drawer needed. */
+  onQuick?: (id: string, path: string, body?: unknown) => void;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -741,11 +872,13 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
   return (
     <div>
       <style>{`.cal-day-card{transition:filter .12s ease, box-shadow .12s ease, transform .06s ease}.cal-day-card:hover{filter:brightness(1.15)}.cal-day-card:active{transform:scale(.99)}`}</style>
+      {!isMobile && (
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14, padding: '10px 14px', background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 10 }}>
         <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.apptWord')}</span></span>
         <span style={{ color: 'var(--ink-faint)' }}>|</span>
         <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: 'var(--ink-good)' }}>{formatPrice(revenue, currency)}</strong></span>
       </div>
+      )}
 
       {items.length === 0 ? (
         <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
@@ -791,6 +924,12 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                         </span>
                         <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink-good)', flexShrink: 0 }}>{formatPrice(b.priceCents, b.currency)}</span>
                       </div>
+                      {onQuick && m.key === 'Pending' && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
+                          <button type="button" onClick={() => onQuick(b.id, 'status', { status: 'CONFIRMED' })} style={{ flex: 1, height: 38, borderRadius: 10, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>{L('Xác nhận', 'Confirm')}</button>
+                          <button type="button" onClick={() => onOpen(b)} style={{ flex: 1, height: 38, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>{b.assignedStaff ? L('Chi tiết', 'Details') : L('Chọn thợ', 'Assign')}</button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -799,7 +938,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx }: {
           ))}
         </div>
       )}
-      <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 12 }}>{t('cal.dayHint')}</p>
+      {!isMobile && <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 12 }}>{t('cal.dayHint')}</p>}
     </div>
   );
 }
@@ -817,6 +956,10 @@ function CtxItem({ label, onClick, color }: { label: string; onClick: () => void
   );
 }
 
+/** The phone's view switcher: a full-width segmented control, 36px tall. */
+function segBtnPhone(active: boolean): React.CSSProperties {
+  return { flex: 1, height: 36, border: 'none', cursor: 'pointer', padding: 0, borderRadius: 8, fontSize: 13.5, fontWeight: 600, background: active ? '#4f46e5' : 'transparent', color: active ? '#fff' : 'var(--ccbd5e1)', whiteSpace: 'nowrap' };
+}
 function segBtn(active: boolean): React.CSSProperties {
   return { border: 'none', cursor: 'pointer', padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : 'var(--c94a3b8)' };
 }
@@ -1238,6 +1381,10 @@ function buildMonth(view: Date): (Date | null)[] {
 
 const navBtn: React.CSSProperties = {
   padding: '6px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer',
+};
+
+const navIconBtn: React.CSSProperties = {
+  width: 40, height: 40, flexShrink: 0, padding: 0, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 18, cursor: 'pointer',
 };
 
 const pickerBtn: React.CSSProperties = {

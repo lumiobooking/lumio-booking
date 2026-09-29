@@ -13,7 +13,7 @@ Các quyền này vẫn chạy bình thường trong lúc Meta xét yêu cầu m
 | # | Quyền / tính năng | Dùng cho | Bắt buộc? |
 |---|---|---|---|
 | 1 | **instagram_manage_insights** | Báo cáo tháng: Reach, Views, follow mới, số liệu từng bài, nhân khẩu học Instagram | Bắt buộc |
-| 2 | **read_insights** | Báo cáo tháng: số liệu Fanpage (lượt xem trang, follow mới) | Bắt buộc |
+| 2 | **read_insights** | Báo cáo tháng: số liệu Fanpage (follow mới). Facebook đã có lượt xem nên KHÔNG cần gấp; nếu xin được thì bật thêm `FB_SCOPE_READ_INSIGHTS` = `true` | Không bắt buộc |
 | 3 | **Instagram Public Content Access** (feature) | Tab xu hướng: tìm bài hot theo hashtag (ig_hashtag_search) | Nên xin |
 | 4 | **ads_read** | Mục "Quảng cáo" trong báo cáo (chi phí, reach, click) | Chỉ xin nếu quay được video có tài khoản quảng cáo đang có chi tiêu |
 

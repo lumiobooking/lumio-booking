@@ -372,7 +372,9 @@ export class MessengerService implements OnModuleInit {
     // scope the app has not been granted kills the WHOLE dialog with "Invalid
     // Scopes", so an app that has not added them yet sets FB_SCOPE_PUBLISH=0.
     const { fb: publishOn } = this.publishScopesRequested();
-    const insightsOn = process.env.FB_SCOPE_INSIGHTS === '1' || process.env.FB_SCOPE_INSIGHTS === 'true';
+    // Forgiving on purpose: "True", " true" or "yes" typed into Render mean on.
+    const insightsOn = ['1', 'true', 'yes', 'on'].includes(String(process.env.FB_SCOPE_INSIGHTS ?? '').trim().toLowerCase());
+    const readInsightsOn = ['1', 'true', 'yes', 'on'].includes(String(process.env.FB_SCOPE_READ_INSIGHTS ?? '').trim().toLowerCase());
     const scope = [
       'pages_show_list', 'pages_messaging', 'pages_manage_metadata',
       ...(readEng ? ['pages_read_engagement'] : []),
@@ -383,12 +385,14 @@ export class MessengerService implements OnModuleInit {
       // asking for when the Instagram scopes are on at all.
       ...(igOn && publishOn ? ['instagram_content_publish'] : []),
       // Monthly marketing report: Instagram reach/views/new follows (account
-      // and per post) need instagram_manage_insights, and Facebook Page
-      // insights need read_insights. Without them those cells stay blank.
-      // Opt-in with FB_SCOPE_INSIGHTS=1, for the same reason as the switches
+      // and per post) need instagram_manage_insights. Without it those cells
+      // stay blank. Opt-in with FB_SCOPE_INSIGHTS=1, for the same reason as the switches
       // above: a scope not yet added to the Meta app kills the whole dialog.
       // Salons connected before it is on must reconnect to get it.
-      ...(insightsOn ? ['read_insights'] : []),
+      // read_insights has its OWN switch (FB_SCOPE_READ_INSIGHTS): it is not
+      // in every app's use cases, and asking for it there makes Meta answer
+      // "Invalid Scopes: read_insights" to the app's own admins.
+      ...(readInsightsOn ? ['read_insights'] : []),
       ...(igOn && insightsOn ? ['instagram_manage_insights'] : []),
     ].join(',');
     const params = new URLSearchParams({

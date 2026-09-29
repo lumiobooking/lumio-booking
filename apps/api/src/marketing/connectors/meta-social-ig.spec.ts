@@ -25,7 +25,10 @@ function route(url: string, opts: { pageTokenInsights: boolean; agencyInsights: 
       { id: 'm2', media_type: 'VIDEO', media_product_type: 'REELS', timestamp: '2026-09-12T10:00:00+0000', like_count: 5, comments_count: 1 },
     ] });
   }
-  if (/\/m[12]\/insights/.test(url)) return fail('no media insights');
+  if (/\/m[12]\/insights/.test(url)) {
+    if (opts.agencyInsights && isAgency && (opts as any).postViews) return ok({ data: [{ name: 'views', values: [{ value: /m1/.test(url) ? 30 : 70 }] }, { name: 'reach', values: [{ value: 20 }] }] });
+    return fail('(#10) Application does not have permission for this action');
+  }
   if (/\/ig1\/insights\?metric=(reach|views|total_interactions)/.test(url)) {
     const allowed = isAgency ? opts.agencyInsights : opts.pageTokenInsights;
     if (!allowed) return fail('(#10) Application does not have permission for this action');
@@ -70,4 +73,18 @@ describe('Instagram numbers in the monthly report', () => {
     expect(untils.length).toBeGreaterThan(0);
     for (const u of untils) expect(u <= today).toBe(true);
   });
+  it('per-post views come from the second token when the first cannot read them, and the reason is kept', async () => {
+    seen = [];
+    jest.spyOn(iface, 'getJson').mockImplementation(async (url: string) => {
+      seen.push(url);
+      // Account-level views missing for both tokens; per-post views only via the agency token.
+      if (/\/ig1\/insights\?metric=(reach|views|impressions)/.test(url)) return fail('(#10) Application does not have permission for this action');
+      return route(url, { pageTokenInsights: false, agencyInsights: true, postViews: true } as any);
+    });
+    const r = await new MetaSocialConnector().fetchOrganic!({ token: 'pagetok', fallbackToken: 'agency', externalAccountId: 'page1' }, '2026-09');
+    expect(r.instagram?.views).toBe(100); // 30 + 70, summed from the posts
+    const dbg = (r.instagram?.raw as any).igDebug;
+    expect(dbg.errors.some((e: string) => /^post /.test(e))).toBe(true);
+  });
 });
+

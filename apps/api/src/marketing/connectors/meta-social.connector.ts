@@ -162,7 +162,7 @@ export class MetaSocialConnector implements SocialConnector {
   /** Instagram per-post breakdown for the month: media list + each post's
    *  interactions (reach/views/saved/shares/total). Resilient — a post whose
    *  insights fail still reports likes/comments from the node fields. */
-  private async igMediaBreakdown(igId: string, since: string, until: string, token: string): Promise<PostInsight[]> {
+  private async igMediaBreakdown(igId: string, since: string, until: string, token: string, fallbackToken?: string, errs?: string[]): Promise<PostInsight[]> {
     const from = new Date(`${since}T00:00:00Z`).getTime();
     const to = new Date(`${until}T23:59:59Z`).getTime();
     const s = Math.floor(from / 1000), u = Math.floor(to / 1000);
@@ -176,16 +176,26 @@ export class MetaSocialConnector implements SocialConnector {
     // The edge's since/until can be loose — keep only media actually posted this month.
     list = list.filter((m) => { const t = Date.parse(m?.timestamp || ''); return !Number.isFinite(t) || (t >= from && t <= to); }).slice(0, 40);
 
+    let postErrs = 0;
+    // Per-post insights need instagram_manage_insights; the token that listed
+    // the posts may not hold it, so the second token gets a turn.
+    const tokens = fallbackToken && fallbackToken !== token ? [token, fallbackToken] : [token];
     const insights = async (mediaId: string, metrics: string[]): Promise<Record<string, number | null> | null> => {
-      try {
-        const r = await getJson(`${GRAPH}/${encodeURIComponent(mediaId)}/insights?metric=${metrics.join(',')}&access_token=${encodeURIComponent(token)}`);
-        if (!r.ok || !Array.isArray(r.json?.data)) return null;
-        const map: Record<string, number | null> = {};
-        for (const d of r.json.data) { const v = d?.values?.[0]?.value ?? d?.total_value?.value; map[d.name] = numOrNull(v); }
-        return map;
-      } catch {
-        return null;
+      for (const tk of tokens) {
+        try {
+          const r = await getJson(`${GRAPH}/${encodeURIComponent(mediaId)}/insights?metric=${metrics.join(',')}&access_token=${encodeURIComponent(tk)}`);
+          if (!r.ok || !Array.isArray(r.json?.data)) {
+            if (errs && postErrs++ < 2) errs.push(`post ${metrics.length > 1 ? metrics.join('+') : metrics[0]}: ${String(r.json?.error?.message || `HTTP ${r.status}`).slice(0, 140)}`);
+            continue;
+          }
+          const map: Record<string, number | null> = {};
+          for (const d of r.json.data) { const v = d?.values?.[0]?.value ?? d?.total_value?.value; map[d.name] = numOrNull(v); }
+          return map;
+        } catch {
+          /* next token */
+        }
       }
+      return null;
     };
 
     const posts = await Promise.all(list.map(async (m): Promise<PostInsight> => {
@@ -405,7 +415,7 @@ export class MetaSocialConnector implements SocialConnector {
         this.ig(igId, ['total_interactions', 'accounts_engaged'], since, until, token, igErrs, fallback),
         this.ig(igId, ['follower_count'], since, until, token, igErrs, fallback),
         this.ig(igId, ['profile_views'], since, until, token, undefined, fallback),
-        this.igMediaBreakdown(igId, since, until, token),
+        this.igMediaBreakdown(igId, since, until, token, fallback, igErrs),
         this.igFollowerSeries(igId, since, until, token),
         this.igAudience(igId, token),
       ]);
@@ -432,7 +442,7 @@ export class MetaSocialConnector implements SocialConnector {
         posts: igPostList,
         series: igSeries,
         audience: igAud,
-        raw: { igId, username: igNode?.username ?? null, igDebug: { until, posts: igPostList.length, errors: igErrs.slice(0, 8) } },
+        raw: { igId, username: igNode?.username ?? null, igDebug: { until, posts: igPostList.length, errors: igErrs.slice(0, 10) } },
       };
     }
 

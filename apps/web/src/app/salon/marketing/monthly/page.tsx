@@ -55,6 +55,7 @@ interface SocialInsight {
   monthlySeries?: { month: string; followers: number }[];
   audience?: { gender?: Record<string, number>; age?: Record<string, number> } | null;
   fbDebug?: { count: number; status: number; error: string | null } | null;
+  igDebug?: { until?: string; posts?: number; errors?: string[] } | null;
   vsPrev?: { followers: SocialDelta | null; reach: SocialDelta | null; views: SocialDelta | null; engagement: SocialDelta | null; newFollowers: SocialDelta | null };
 }
 
@@ -1677,6 +1678,26 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
             const dbg = fbI?.fbDebug;
             if (!dbg) return null;
             return <div style={{ fontSize: 10.5, color: dbg.error ? 'var(--ink-warn)' : 'var(--c64748b)', marginTop: 6 }}>{T('Facebook: đọc được', 'Facebook: read')} <b>{dbg.count}</b> {T('bài', 'posts')}{dbg.error ? ` · ${dbg.error}` : (dbg.count === 0 ? T(' (Page chưa có bài trong tháng)', ' (no page posts this month)') : '')}</div>;
+          })()}
+          {(() => {
+            // Why the Instagram reach/views cells are blank, in Meta's own words.
+            // On screen only (this panel is not part of the printed report).
+            const igI = (data.socialInsights ?? []).find((x) => x.platform === 'instagram');
+            const errs = igI?.igDebug?.errors ?? [];
+            if (!igI || (igI.reach != null && igI.views != null) || !errs.length) return null;
+            const perm = errs.some((e) => /permission|\(#10\)|\(#200\)|instagram_manage_insights/i.test(e));
+            return (
+              <div style={{ fontSize: 10.5, color: 'var(--ink-warn)', marginTop: 6, lineHeight: 1.5 }}>
+                {perm
+                  ? T('Instagram: thiếu quyền xem thống kê (instagram_manage_insights). Kết nối lại Facebook cho tiệm và tick đủ quyền, rồi Đồng bộ tất cả.',
+                      'Instagram: the insights permission (instagram_manage_insights) is missing. Reconnect Facebook for this shop with every permission ticked, then Sync all.')
+                  : T('Instagram: Meta chưa trả Reach/Views.', 'Instagram: Meta returned no reach/views.')}
+                <details style={{ marginTop: 2 }}>
+                  <summary style={{ cursor: 'pointer' }}>{T('Chi tiết lỗi từ Meta', 'Meta error details')}</summary>
+                  {errs.slice(0, 6).map((e, i) => <div key={i} style={{ wordBreak: 'break-word' }}>• {e}</div>)}
+                </details>
+              </div>
+            );
           })()}
           <div style={{ fontSize: 10.5, color: 'var(--ink-faint)', marginTop: 8, lineHeight: 1.5 }}>
             {T('Số liệu tự nhiên (không tính quảng cáo), lấy trực tiếp từ Facebook/Instagram. Ô trống nghĩa là Meta đã ngừng cung cấp chỉ số đó.',

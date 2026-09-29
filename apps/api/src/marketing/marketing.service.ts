@@ -384,6 +384,7 @@ export class MarketingService {
       series: (r.raw && (r.raw as any).series) ? (r.raw as any).series : [],
       audience: (r.raw && (r.raw as any).audience) ? (r.raw as any).audience : null,
       fbDebug: (r.raw && (r.raw as any).fbDebug) ? (r.raw as any).fbDebug : null,
+      igDebug: (r.raw && (r.raw as any).igDebug) ? (r.raw as any).igDebug : null,
       syncedAt: r.syncedAt,
       vsPrev: {
         followers: socDelta(r.followers, prevSoc.get(r.platform)?.followers),
@@ -1362,12 +1363,26 @@ export class MarketingService {
     if (!conn.credentialEnc) {
       const shared = this.agencyCreds(platform);
       if (!shared) throw new NotFoundException('Channel not connected (agency token missing on server)');
-      return { creds: { ...shared, externalAccountId: conn.externalAccountId ?? undefined } as ChannelCreds, linked: false };
+      return { creds: await this.withPageFallback(tenantId, platform, { ...shared, externalAccountId: conn.externalAccountId ?? undefined } as ChannelCreds), linked: false };
     }
     const stored = JSON.parse(decryptSecret(conn.credentialEnc)) as ChannelCreds;
     // TikTok stores only the salon refresh token; backfill the agency app key/secret from env.
     const shared = this.agencyCreds(platform);
-    return { creds: { ...(shared ?? {}), ...stored } as ChannelCreds, linked: false };
+    return { creds: await this.withPageFallback(tenantId, platform, { ...(shared ?? {}), ...stored } as ChannelCreds), linked: false };
+  }
+
+  /**
+   * An explicit meta_social row (often riding on the agency token) wins over
+   * the salon's own Page connection — but the agency token may not hold the
+   * Instagram insights permission, while a Page connection made after
+   * FB_SCOPE_INSIGHTS was switched on does. So the salon's own Page token is
+   * offered as the second try. Same tenant only: it is read by tenantId.
+   */
+  private async withPageFallback(tenantId: string, platform: string, creds: ChannelCreds): Promise<ChannelCreds> {
+    if (platform !== 'meta_social' || creds.fallbackToken) return creds;
+    const own = await this.linkedCreds(tenantId, platform).catch(() => null);
+    const tk = own?.creds?.token;
+    return tk && tk !== creds.token ? { ...creds, fallbackToken: tk } : creds;
   }
 
   private channelView(c: any) {

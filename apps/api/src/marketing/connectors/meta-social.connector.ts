@@ -203,6 +203,13 @@ export class MetaSocialConnector implements SocialConnector {
       let ins = await insights(m.id, ['reach', 'saved', 'shares', 'total_interactions', 'views']);
       if (!ins) ins = await insights(m.id, ['reach', 'saved', 'shares', 'total_interactions']);
       if (!ins) ins = (await insights(m.id, ['reach'])) ?? {};
+      // One metric Instagram will not give for this kind of post fails the
+      // whole list above, and the fallbacks drop views. Views are what the
+      // top-posts ranking sorts by, so they are asked for on their own.
+      if (ins.views == null) {
+        const v = await insights(m.id, ['views']);
+        if (v?.views != null) ins = { ...ins, views: v.views };
+      }
       const likes = numOrNull(m.like_count), comments = numOrNull(m.comments_count);
       const interactions = ins.total_interactions ?? ((likes ?? 0) + (comments ?? 0) + (ins.saved ?? 0) + (ins.shares ?? 0));
       return {
@@ -274,7 +281,13 @@ export class MetaSocialConnector implements SocialConnector {
     // AND Reels (video_reels — a separate edge). Reels are what most salons post,
     // and crossposted IG Reels land here. Client-side filter by date afterwards.
     const postFields = 'id,message,story,created_time,permalink_url,full_picture,shares,likes.summary(true),comments.summary(true)';
-    const reelFields = 'id,description,updated_time,permalink_url,likes.summary(true),comments.summary(true)';
+    // created_time is asked for on Reels too: `updated_time` moves whenever a
+    // Reel is edited, which put an August Reel into September's count.
+    const reelFields = 'id,description,created_time,updated_time,permalink_url,likes.summary(true),comments.summary(true)';
+    // since/until on every edge, and pages followed: a bare `limit=60` read
+    // the page's 60 NEWEST items, so a report for an earlier month missed
+    // posts whenever the page had posted a lot since.
+    const range = `&since=${s}&until=${u}`;
     const edges: Array<[string, string]> = [
       ['published_posts', postFields],
       ['feed', postFields],
@@ -282,20 +295,57 @@ export class MetaSocialConnector implements SocialConnector {
       ['video_reels', reelFields],
     ];
     const collected: Record<string, unknown>[] = [];
-    const seenIds = new Set<string>();
+    // One post can come back twice: as a Page post (id "page_post", permalink
+    // .../reel/123 or .../videos/123) AND on the video_reels edge (id "123").
+    // Keyed by the video id when there is one, so a Reel counts once.
+    const byKey = new Map<string, Record<string, unknown>>();
+    const videoIdOf = (it: Record<string, unknown>, edge: string): string | null => {
+      if (edge === 'video_reels') return String(it.id ?? '') || null;
+      const m = String(it.permalink_url ?? '').match(/\/(?:reel|videos)\/(\d+)/i);
+      return m ? m[1] : null;
+    };
     let status = 0;
     let error: string | null = null;
     for (const [edge, flds] of edges) {
-      try {
-        const r = await getJson(`${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${flds}&limit=60&access_token=${encodeURIComponent(pageToken)}`);
-        status = r.status;
-        if (r.ok && Array.isArray(r.json?.data)) {
-          error = null;
-          for (const it of r.json.data as Record<string, unknown>[]) { const id = String(it?.id ?? ''); if (id && !seenIds.has(id)) { seenIds.add(id); collected.push(it); } }
-        } else if (!error) {
-          error = r.json?.error?.message ? String(r.json.error.message) : `HTTP ${r.status}`;
-        }
-      } catch (e) { if (!error) error = String((e as Error).message).slice(0, 120); }
+      const bare = `${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${flds}&limit=100&access_token=${encodeURIComponent(pageToken)}`;
+      let next: string | null = `${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${flds}&limit=100${range}&access_token=${encodeURIComponent(pageToken)}`;
+      let triedBare = false;
+      for (let page = 0; next && page < 5; page++) {
+        try {
+          const r = await getJson(next);
+          status = r.status;
+          next = null;
+          if (r.ok && Array.isArray(r.json?.data)) {
+            error = null;
+            for (const it of r.json.data as Record<string, unknown>[]) {
+              const id = String(it?.id ?? '');
+              if (!id) continue;
+              const vid = videoIdOf(it, edge);
+              const key = vid ? `v:${vid}` : `p:${id}`;
+              const had = byKey.get(key);
+              if (had) {
+                // Keep what the first copy had (caption, picture), fill the gaps.
+                for (const [k, v] of Object.entries(it)) if (had[k] == null && v != null) had[k] = v;
+                if (vid) had._vid = vid;
+                continue;
+              }
+              const row = { ...it, ...(vid ? { _vid: vid } : {}) };
+              byKey.set(key, row);
+              collected.push(row);
+            }
+            const nx = r.json?.paging?.next;
+            if (typeof nx === 'string' && nx.startsWith('https://') && r.json.data.length) next = nx;
+          } else if (page === 0 && !triedBare) {
+            // An edge that will not take since/until is read the old way;
+            // the month filter below still applies.
+            triedBare = true;
+            next = bare;
+            page = -1;
+          } else if (!error) {
+            error = r.json?.error?.message ? String(r.json.error.message) : `HTTP ${r.status}`;
+          }
+        } catch (e) { if (!error) error = String((e as Error).message).slice(0, 120); next = null; }
+      }
     }
     let list = collected;
     // STRICT month filter. The old rule kept anything whose date failed to
@@ -317,9 +367,9 @@ export class MetaSocialConnector implements SocialConnector {
       const comments = numOrNull(m?.comments?.summary?.total_count);
       const shares = numOrNull(m?.shares?.count);
       const cap = m?.message || m?.story || m?.description || '';
-      const isVid = /\/(videos|reel)/i.test(String(m?.permalink_url || '')) || m?.description != null;
+      const isVid = Boolean(m?._vid) || /\/(videos|reel)/i.test(String(m?.permalink_url || '')) || m?.description != null;
       return {
-        id: String(m.id),
+        id: String(m._vid ?? m.id),
         type: isVid ? 'reel' : 'post',
         timestamp: m.created_time ?? m.updated_time ?? null,
         permalink: m.permalink_url ?? null,

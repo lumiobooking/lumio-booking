@@ -754,17 +754,48 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   // is now a numbered chip + tracked small caps, numbered per page.
   const panel = (n: string, title: string, inner: string) =>
     `<div class="panel"><div class="sec">${n ? `<span class="sec-n">${n}</span>` : ''}<span class="sec-t">${title}</span></div>${inner}</div>`;
-  const prow = (label: string, fv: string, fd: SocialDelta | null | undefined, iv: string, idv: SocialDelta | null | undefined, tv?: string, tdv?: SocialDelta | null) =>
-    `<tr><td class="t-body" style="padding:7px 2px;color: #475569;border-top:1px solid #eef1f6">${label}</td><td style="padding:7px 2px;text-align:right;font-weight:700;color: #0f2a52;border-top:1px solid #eef1f6">${fv} ${arS(fd)}</td><td style="padding:7px 2px;text-align:right;font-weight:700;color: #0f2a52;border-top:1px solid #eef1f6">${iv} ${arS(idv)}</td>${tt ? `<td style="padding:7px 2px;text-align:right;font-weight:700;color: #0f2a52;border-top:1px solid #eef1f6">${tv ?? '—'} ${arS(tdv)}</td>` : ''}</tr>`;
-  const perfTable = `<table style="width:100%;border-collapse:collapse">
-    <tr class="t-body" style=""><td></td><td style="text-align:right;padding-bottom:4px"><span style="color: #1877f2;font-weight:800">Facebook</span></td><td style="text-align:right;padding-bottom:4px"><span style="color:#e1306c;font-weight:800">Instagram</span></td>${tt ? '<td style="text-align:right;padding-bottom:4px"><span style="color:#010101;font-weight:800">TikTok</span></td>' : ''}</tr>
-    ${prow(t('Tổng follower', 'Total followers'), fnum(fb?.followers), fb?.vsPrev?.followers, fnum(ig?.followers), ig?.vsPrev?.followers, fnum(tt?.followers), tt?.vsPrev?.followers)}
-    ${prow(t('Người tiếp cận (Reach)', 'Reach'), fb?.reach == null ? ('<span class="t-cap" style="color: #94a3b8;font-weight:600">' + t('Meta ngừng cung cấp', 'retired by Meta') + '</span>') : fnum(fb?.reach), fb?.vsPrev?.reach, fnum(ig?.reach), ig?.vsPrev?.reach, '<span class="t-cap" style="color: #94a3b8;font-weight:600">' + t('Không áp dụng', 'n/a') + '</span>', null)}
-    ${prow(t('Lượt xem (Views)', 'Views'), fnum(fb?.views), fb?.vsPrev?.views, fnum(ig?.views), ig?.vsPrev?.views, fnum(tt?.views), tt?.vsPrev?.views)}
-    ${prow(t('Lượt tương tác', 'Engagements'), fnum(fb?.engagement), fb?.vsPrev?.engagement, fnum(ig?.engagement), ig?.vsPrev?.engagement, fnum(tt?.engagement), tt?.vsPrev?.engagement)}
-    ${prow(t('Tỉ lệ tương tác', 'Engagement rate'), engR(fb), null, engR(ig), null, engR(tt), null)}
-    ${prow(t('Số follow mới', 'Net followers'), fnum(fb?.newFollowers), fb?.vsPrev?.newFollowers, fnum(ig?.newFollowers), ig?.vsPrev?.newFollowers, fnum(tt?.newFollowers), tt?.vsPrev?.newFollowers)}
-  </table>`;
+  // PERFORMANCE TABLE — laid out so the eye can run down a column.
+  // Each value cell is two fixed tracks: the number right-aligned, the change
+  // pill left-aligned in a fixed width, so every number and every pill in a
+  // column sits on the same edge. A metric a platform does not give is a light
+  // "—" with a footnote mark, instead of a sentence squeezed into a number
+  // column. Rows alternate a faint tint so a row is easy to follow across.
+  const pNotes: string[] = [];
+  const na = (why: string) => {
+    let i = pNotes.indexOf(why);
+    if (i < 0) { pNotes.push(why); i = pNotes.length - 1; }
+    return `<span style="color:#cbd5e1;font-weight:700">—</span><sup style="color:#94a3b8;font-size:9px;font-weight:700;margin-left:1px">${i + 1}</sup>`;
+  };
+  const pill = (dl?: SocialDelta | null) => {
+    if (!dl || dl.pct == null) return '';
+    const z = dl.pct === 0;
+    const up = dl.pct > 0;
+    const bg = z ? '#f1f5f9' : up ? '#dcfce7' : '#fee2e2';
+    const fg = z ? '#64748b' : up ? '#15803d' : '#b91c1c';
+    return `<span class="t-cap" style="display:inline-block;background:${bg};color:${fg};font-weight:700;border-radius:999px;padding:1px 6px;white-space:nowrap">${z ? '' : up ? '▲ ' : '▼ '}${Math.abs(dl.pct)}%</span>`;
+  };
+  const pcell = (v: string, dl?: SocialDelta | null, zebra?: boolean) =>
+    `<td style="padding:8px 4px;${zebra ? 'background:#f8fafc;' : ''}"><div style="display:flex;align-items:center;gap:6px"><span class="t-h2" style="flex:1;text-align:right;color:#0f2a52;white-space:nowrap">${v}</span><span style="width:52px;text-align:left">${pill(dl)}</span></div></td>`;
+  let pRow = 0;
+  const prow = (label: string, fv: string, fd: SocialDelta | null | undefined, iv: string, idv: SocialDelta | null | undefined, tv?: string, tdv?: SocialDelta | null) => {
+    const z = pRow++ % 2 === 1;
+    return `<tr><td class="t-body" style="padding:8px 8px;color:#334155;font-weight:600;${z ? 'background:#f8fafc;' : ''}border-radius:6px 0 0 6px">${label}</td>${pcell(fv, fd, z)}${pcell(iv, idv, z)}${tt ? pcell(tv ?? '—', tdv, z) : ''}</tr>`;
+  };
+  const phead = (name: string, col: string) =>
+    `<td style="text-align:center;padding:0 4px 7px"><span class="t-h3" style="color:${col};display:inline-block;padding-bottom:4px;border-bottom:3px solid ${col}">${name}</span></td>`;
+  const pRows = [
+    prow(t('Tổng follower', 'Total followers'), fnum(fb?.followers), fb?.vsPrev?.followers, fnum(ig?.followers), ig?.vsPrev?.followers, fnum(tt?.followers), tt?.vsPrev?.followers),
+    prow(t('Người tiếp cận (Reach)', 'Reach'), fb?.reach == null ? na(t('Facebook: Meta đã ngừng cung cấp chỉ số Reach.', 'Facebook: Meta no longer provides Reach.')) : fnum(fb?.reach), fb?.reach == null ? null : fb?.vsPrev?.reach, ig?.reach == null ? na(t('Instagram: chưa có số liệu tháng này.', 'Instagram: no data this month.')) : fnum(ig?.reach), ig?.vsPrev?.reach, na(t('TikTok không có chỉ số Reach.', 'TikTok has no Reach metric.')), null),
+    prow(t('Lượt xem (Views)', 'Views'), fnum(fb?.views), fb?.vsPrev?.views, fnum(ig?.views), ig?.vsPrev?.views, fnum(tt?.views), tt?.vsPrev?.views),
+    prow(t('Lượt tương tác', 'Engagements'), fnum(fb?.engagement), fb?.vsPrev?.engagement, fnum(ig?.engagement), ig?.vsPrev?.engagement, fnum(tt?.engagement), tt?.vsPrev?.engagement),
+    prow(t('Tỉ lệ tương tác', 'Engagement rate'), engR(fb), null, engR(ig), null, engR(tt), null),
+    prow(t('Số follow mới', 'Net followers'), fnum(fb?.newFollowers), fb?.vsPrev?.newFollowers, fnum(ig?.newFollowers), ig?.vsPrev?.newFollowers, fnum(tt?.newFollowers), tt?.vsPrev?.newFollowers),
+  ].join('');
+  const perfTable = `<table style="width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed">
+    <colgroup><col style="width:${tt ? 31 : 38}%"/>${tt ? '<col/><col/><col/>' : '<col/><col/>'}</colgroup>
+    <tr><td></td>${phead('Facebook', '#1877f2')}${phead('Instagram', '#e1306c')}${tt ? phead('TikTok', '#010101') : ''}</tr>
+    ${pRows}
+  </table>${pNotes.length ? `<div class="t-cap" style="color:#94a3b8;margin-top:8px;line-height:1.5">${pNotes.map((n, i) => `<sup style="font-weight:700">${i + 1}</sup> ${n}`).join(' · ')}</div>` : ''}`;
   const igSeries = ig?.series ?? [];
   const cumA: number[] = [];
   if (igSeries.length > 1) { const vals = igSeries.map((x) => x.value || 0); let base = (ig?.followers ?? 0) - vals.reduce((a, b2) => a + b2, 0); for (const v of vals) { base += v; cumA.push(base); } }

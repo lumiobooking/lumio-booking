@@ -63,6 +63,14 @@ Xuất video MP4 (≤ 50 MB nếu form giới hạn), hoặc để link Google D
 > - After posting we poll publish/status/fetch and show the user the processing result.
 > - Users can disconnect TikTok at any time from the Social channels screen; on disconnect Lumio revokes the token with TikTok and deletes it.
 
+**Please list the API response data fields that your API client will save in its database** (đã đối chiếu với code):
+> Lumio stores only the following TikTok fields, on our server, per salon (each salon has at most one TikTok connection):
+> 1. OAuth token response (/v2/oauth/token/): open_id, access_token, refresh_token, and expires_in / refresh_expires_in (saved as expiry times). The scope is checked for video.publish but not stored. Tokens stay on the server and are never sent to the browser.
+> 2. user/info (fields=open_id,display_name,avatar_url): display_name and avatar_url, to show the owner which account is connected.
+> 3. creator_info/query: creator_nickname, creator_username, creator_avatar_url, privacy_level_options, comment_disabled, duet_disabled, stitch_disabled, max_video_post_duration_sec. These build the post form and are refreshed each time the TikTok post panel is opened.
+> 4. Publishing: publish_id (from video/init) and publicaly_available_post_id (from publish/status/fetch), saved on the salon's post so the owner can open the published video. If publishing fails, the fail_reason is saved as the error message shown to the user.
+> We do not store videos lists, followers, likes, comments or any other TikTok user data. When the owner disconnects, Lumio revokes the token with TikTok (/v2/oauth/revoke/) and deletes the tokens, open_id, avatar and creator info; only the display name and username are kept so the salon's post history shows which account earlier posts went to.
+
 **Scopes used:** user.info.basic, video.publish (không xin thêm scope nào khác).
 
 **Demo video:** (link video ở mục 2)

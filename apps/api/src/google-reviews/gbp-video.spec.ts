@@ -1,4 +1,4 @@
-import { GoogleReviewsService } from './google-reviews.service';
+import { GoogleReviewsService, gbpVideoRefused } from './google-reviews.service';
 
 /**
  * "Video trên Google được phép đăng thủ công, tại sao hệ thống không đăng?"
@@ -58,4 +58,37 @@ describe('Google Business post with a video', () => {
     expect(calls[0].url).toBe('https://mybusiness.googleapis.com/v4/accounts/1/locations/123/media');
     expect(calls[0].body).toEqual({ mediaFormat: 'VIDEO', locationAssociation: { category: 'ADDITIONAL' }, sourceUrl: 'https://media.x/v.mp4' });
   });
+  it('Google answers 500 "Internal error" for the video → still retried without it', async () => {
+    answer = (url, body) => (body?.media?.[0]?.mediaFormat === 'VIDEO'
+      ? { status: 500, json: { error: { message: 'Internal error encountered.' } } }
+      : { status: 200, json: { name: 'p' } });
+    const out = await svc.createLocalPost('t1', { ...post, photoUrl: 'https://media.x/a.jpg' });
+    expect(out.videoInPost).toBe(false);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].body.media).toEqual([{ mediaFormat: 'PHOTO', sourceUrl: 'https://media.x/a.jpg' }]);
+  });
+
+  it('a one-off 500 on a post without video is tried once more', async () => {
+    let n = 0;
+    answer = () => (n++ === 0 ? { status: 500, json: { error: { message: 'Internal error encountered.' } } } : { status: 200, json: { name: 'p' } });
+    const out = await svc.createLocalPost('t1', { ...post, videoUrl: null, photoUrl: 'https://media.x/a.jpg' });
+    expect(out.name).toBe('p');
+    expect(calls).toHaveLength(2);
+  }, 10_000);
+
+  it('a 500 that keeps coming is shown, not looped', async () => {
+    answer = () => ({ status: 500, json: { error: { message: 'Internal error encountered.' } } });
+    await expect(svc.createLocalPost('t1', { ...post, videoUrl: null })).rejects.toThrow(/Google 500/);
+    expect(calls).toHaveLength(2);
+  }, 10_000);
+
+  it('auth / not-found answers are not blamed on the video', () => {
+    expect(gbpVideoRefused(400)).toBe(true);
+    expect(gbpVideoRefused(500)).toBe(true);
+    expect(gbpVideoRefused(503)).toBe(true);
+    expect(gbpVideoRefused(401)).toBe(false);
+    expect(gbpVideoRefused(403)).toBe(false);
+    expect(gbpVideoRefused(404)).toBe(false);
+  });
 });
+

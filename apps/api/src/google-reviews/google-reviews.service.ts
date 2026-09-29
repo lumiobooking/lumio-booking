@@ -655,9 +655,21 @@ export class GoogleReviewsService {
     // same post without it — with the photo when there is one — and let the
     // caller put the video on the profile. The post itself must not be lost
     // over the one part Google will not take.
-    if (videoInPost && res.status === 400) {
+    //
+    // Google does not always say no with a 400: for a VIDEO in localPosts it
+    // often answers "500 Internal error encountered". Anything that is not an
+    // auth or a not-found problem (those have their own handling below and are
+    // not about the video) is treated the same way.
+    if (videoInPost && !res.ok && gbpVideoRefused(res.status)) {
       if (photoMedia) payload.media = photoMedia; else delete payload.media;
       videoInPost = false;
+      ({ res, text, msg } = await send(where.parent));
+    }
+
+    // A 5xx on a post with no video is Google's own hiccup: one more try after
+    // a short pause before the salon is shown an error it cannot act on.
+    if (res.status >= 500) {
+      await new Promise((r) => setTimeout(r, 2000));
       ({ res, text, msg } = await send(where.parent));
     }
 
@@ -1335,4 +1347,14 @@ function shortAddress(a?: { addressLines?: string[]; locality?: string; administ
   if (!a) return '';
   const line = (a.addressLines || []).join(' ').trim();
   return [line, a.locality, a.administrativeArea].filter(Boolean).join(', ');
+}
+
+/**
+ * Did Google refuse the VIDEO in a localPost (so the post should go again
+ * without it)? 400 is the documented answer; 5xx is what Google often sends in
+ * practice. 401/403/404 are about the account or the location, not the video.
+ */
+export function gbpVideoRefused(status: number): boolean {
+  if (status === 401 || status === 403 || status === 404) return false;
+  return status === 400 || status >= 500;
 }

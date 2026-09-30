@@ -2137,14 +2137,12 @@ model HeldBill {
   @@map("held_bills")
 }
 
-/**
- * A cashier shift ("ca thu ngân"): the till is opened with a counted float,
- * every sale rung up while it is open is tagged with it, cash put in or taken
- * out is logged, and at close the cashier counts the drawer against what the
- * system expects. The close snapshot (`summary`) is frozen so the printed
- * hand-over sheet never changes after the fact, even if an order is voided
- * later.
- */
+// A cashier shift ("ca thu ngân"): the till is opened with a counted float,
+// every sale rung up while it is open is tagged with it, cash put in or taken
+// out is logged, and at close the cashier counts the drawer against what the
+// system expects. The close snapshot (`summary`) is frozen so the printed
+// hand-over sheet never changes after the fact, even if an order is voided
+// later.
 model CashShift {
   id               String   @id @default(uuid())
   tenantId         String
@@ -2172,7 +2170,7 @@ model CashShift {
   @@map("cash_shifts")
 }
 
-/** Cash put into or taken out of the drawer mid-shift (petty cash, paying a tech, bank drop). */
+// Cash put into or taken out of the drawer mid-shift (petty cash, paying a tech, bank drop).
 model CashMovement {
   id          String    @id @default(uuid())
   tenantId    String

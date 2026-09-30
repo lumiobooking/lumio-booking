@@ -231,19 +231,33 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // folded, unless the person has said otherwise. Their own choice, once made,
   // is kept on every screen size as before.
   const tablet = useIsMobile(1180);
+  // The inbox folds the menu by itself: four columns of conversations need
+  // the width more than a menu the person already navigated with. Opening
+  // the menu again there is remembered for the visit (sessionStorage), not as
+  // the global preference — leaving the inbox restores whatever that was.
+  const inboxPage = pathname.startsWith('/salon/inbox');
   useEffect(() => {
+    if (inboxPage) {
+      let open: string | null = null;
+      try { open = window.sessionStorage.getItem('lumio_nav_inbox_open'); } catch { /* ignore */ }
+      setNavHidden(open !== '1');
+      return;
+    }
     let stored: string | null = null;
     try { stored = window.localStorage.getItem('lumio_nav_hidden'); } catch { /* ignore */ }
     if (stored === '1' || stored === '0') { setNavHidden(stored === '1'); return; }
     setNavHidden(tablet && pathname.startsWith('/salon/pos'));
-  }, [tablet, pathname]);
+  }, [tablet, pathname, inboxPage]);
   const toggleNav = useCallback(() => {
     setNavHidden((v) => {
       const next = !v;
-      try { window.localStorage.setItem('lumio_nav_hidden', next ? '1' : '0'); } catch { /* ignore */ }
+      try {
+        if (inboxPage) window.sessionStorage.setItem('lumio_nav_inbox_open', next ? '0' : '1');
+        else window.localStorage.setItem('lumio_nav_hidden', next ? '1' : '0');
+      } catch { /* ignore */ }
       return next;
     });
-  }, []);
+  }, [inboxPage]);
 
   // Which sidebar groups are expanded (persisted). The group holding the active
   // route auto-expands so the current page is always reachable.

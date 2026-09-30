@@ -1470,13 +1470,13 @@ export function InboxView() {
             )}
 
             {composerMode === 'reply' && !notice.blocked && (suggestions.length > 0 || ASKS.length > 0) && (
-              <div className="no-bar" style={{ display: 'flex', gap: 6, alignItems: 'center', padding: narrow ? '8px 12px 0' : '8px 10px 0', fontSize: 12.5, overflowX: 'auto', WebkitOverflowScrolling: 'touch', flexWrap: narrow || !allCanned ? 'nowrap' : 'wrap' }}>
+              <div className="no-bar" style={{ display: 'flex', gap: 6, alignItems: 'center', padding: narrow ? '8px 12px 0' : '8px 10px 0', fontSize: 12.5, ...(narrow ? { overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const, flexWrap: 'nowrap' as const } : { flexWrap: 'wrap' as const }) }}>
                 <span style={{ color: 'var(--c64748b)', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>⚡{!narrow && ` ${vi ? 'Gợi ý:' : 'Suggested:'}`}</span>
                 {(allCanned ? (detail.canned ?? []) : suggestions).map((q, qi) => (
                   <button key={q.label} title={q.text} onClick={() => setDraft((d) => (d.trim() ? `${d.trim()}\n${q.text}` : q.text))}
                     style={qi === 0 && !allCanned
-                      ? { height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid #6366f1', background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }
-                      : { height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }}>{q.label}</button>
+                      ? { height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid #6366f1', background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }
+                      : { height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.label}</button>
                 ))}
                 {allCanned && ASKS.map((a) => (
                   <button key={a.k} title={vi ? a.vi : a.en} onClick={() => setDraft((d) => { const t = vi ? a.vi : a.en; return d.trim() ? `${d.trim()} ${t}` : t; })}

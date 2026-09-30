@@ -129,8 +129,8 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
   if (closed) {
     body = (
       <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--c052e16)', color: 'var(--ink-good)', fontSize: 14, fontWeight: 600 }}>
-          {L('Đã chốt ca và bàn giao.', 'Shift closed and handed over.')} {closed.shift.varianceCents === 0 ? L('Két khớp đúng.', 'Drawer balanced.') : `${L('Chênh lệch', 'Variance')}: ${signed(closed.shift.varianceCents ?? 0, fmt)}`}
+        <div style={{ padding: '10px 12px', borderRadius: 10, background: (closed.shift.varianceCents ?? 0) === 0 ? 'var(--c052e16)' : (closed.shift.varianceCents ?? 0) < 0 ? 'rgba(239,68,68,.10)' : 'rgba(245,158,11,.12)', color: (closed.shift.varianceCents ?? 0) === 0 ? 'var(--ink-good)' : (closed.shift.varianceCents ?? 0) < 0 ? 'var(--ink-bad)' : 'var(--ink-warn)', fontSize: 14, fontWeight: 600 }}>
+          {L('Đã chốt ca và bàn giao.', 'Shift closed and handed over.')} {closed.shift.varianceCents === 0 ? L('Két khớp đúng.', 'Drawer balanced.') : `${L('Chênh lệch', 'Variance')}: ${signed(closed.shift.varianceCents ?? 0, fmt)} ${(closed.shift.varianceCents ?? 0) < 0 ? L('(thiếu)', '(short)') : L('(dư)', '(over)')}`}
         </div>
         <ShiftSheet shift={closed.shift} summary={closed.summary} vi={vi} fmt={fmt} />
         <div style={{ display: 'flex', gap: 8 }}>

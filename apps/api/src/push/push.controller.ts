@@ -42,6 +42,36 @@ export class PushController {
     return { ok: true };
   }
 
+  /**
+   * How many devices of MINE will ring, and a way to prove it.
+   *
+   * "Bật thông báo" used to be the end of the story: a person pressed it, the
+   * browser said yes, and nothing ever confirmed that a real notification
+   * could reach the lock screen. The first customer message at 9pm was the
+   * test — and when the phone stayed silent (iPhone still in Safari, Focus
+   * mode, a battery saver), nobody could tell which link had failed. A test
+   * push while the person is holding the phone answers that in five seconds.
+   */
+  @Get('mine')
+  async mine(@CurrentUser() user: AuthenticatedUser) {
+    const tenantId = resolveTenantScope(user);
+    const devices = tenantId ? await this.push.countForUser(tenantId, user.userId) : { web: 0, native: 0 };
+    return { ...devices, enabled: this.push.enabled(), native: this.push.nativeEnabled() };
+  }
+
+  @Post('test')
+  async test(@CurrentUser() user: AuthenticatedUser, @Body() dto: { vi?: boolean }) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) return { sent: 0 };
+    const vi = dto?.vi !== false;
+    const sent = await this.push.sendToUser(tenantId, user.userId, {
+      title: vi ? 'Lumio: thông báo thử 🔔' : 'Lumio: test notification 🔔',
+      body: vi ? 'Điện thoại này sẽ báo như vậy mỗi khi khách nhắn tin.' : 'This phone will ring like this whenever a customer writes.',
+      url: '/salon/inbox', tag: 'lumio-test',
+    });
+    return { sent };
+  }
+
   @Post('subscribe')
   async subscribe(@CurrentUser() user: AuthenticatedUser, @Body() dto: SubscribeDto) {
     const tenantId = resolveTenantScope(user);

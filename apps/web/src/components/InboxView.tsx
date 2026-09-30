@@ -29,6 +29,7 @@ import { apiFetch, apiStream, apiImage, apiImageCached } from '../lib/api';
 import { wallToInstantISO, instantToWall, dayKeyInTz } from '../lib/datetime';
 import { ui } from '../lib/ui';
 import { Linkified } from './Linkified';
+import { PushSetup } from './PushSetup';
 import type { TurnsView } from './ChatTurnsPanel';
 import { useLang } from '../lib/i18n';
 import { uiLocale } from '../lib/datetime';
@@ -1098,6 +1099,7 @@ export function InboxView() {
       )}
 
       <span style={{ flex: 1 }} />
+      <div style={{ marginBottom: 8 }}><PushSetup compact /></div>
       {turns && (
         <div style={{ boxSizing: 'border-box', padding: '10px 12px', borderRadius: 12, background: 'var(--c0f172a)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1174,6 +1176,7 @@ export function InboxView() {
             {turns && <span style={{ color: turns.settings.botFirst ? 'var(--ink-good)' : 'var(--c64748b)', fontWeight: 600, whiteSpace: 'nowrap' }}>● {turns.settings.botFirst ? (vi ? 'Bot đang bật' : 'Bot on') : (vi ? 'Bot chỉ phụ' : 'Bot assists')}</span>}
           </div>
         )}
+        {(narrow || compact) && <PushSetup compact />}
         {labels.length > 0 && !narrow && (
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
             {labels.map((l) => (

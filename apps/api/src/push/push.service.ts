@@ -164,19 +164,32 @@ export class PushService {
    * Scoped by tenant AND user, so a person who also works at another salon is
    * only woken by the salon the turn belongs to.
    */
+  /** This person's registered devices, split by how they are reached. */
+  async countForUser(tenantId: string, userId: string): Promise<{ web: number; native: number }> {
+    const rows = await this.prisma.pushSubscription
+      .findMany({ where: { tenantId, userId }, select: { endpoint: true } })
+      .catch(() => []) as unknown as { endpoint: string }[];
+    const uniq = [...new Set(rows.map((r) => r.endpoint))];
+    const native = uniq.filter((e) => isFcmEndpoint(e)).length;
+    return { web: uniq.length - native, native };
+  }
+
+  /** Returns how many devices were addressed (0 when push is off or none registered). */
   async sendToUser(
     tenantId: string,
     userId: string,
     payload: { title: string; body: string; url?: string; tag?: string },
-  ): Promise<void> {
-    if (!this.enabled() || !tenantId || !userId) return;
+  ): Promise<number> {
+    if (!this.enabled() || !tenantId || !userId) return 0;
     type SubRow = { id: string; userId: string; endpoint: string; p256dh: string; auth: string };
     const subs: SubRow[] = await this.prisma.pushSubscription
       .findMany({ where: { tenantId, userId }, select: { id: true, userId: true, endpoint: true, p256dh: true, auth: true } })
       .catch(() => []) as unknown as SubRow[];
     const seen = new Set<string>();
     const data = { title: payload.title, body: payload.body, url: payload.url || '/salon/inbox', tag: payload.tag || 'lumio-chat-turn' };
-    await Promise.all(subs.filter((s) => !seen.has(s.endpoint) && seen.add(s.endpoint)).map((s) => this.deliver(s, data)));
+    const targets = subs.filter((s) => !seen.has(s.endpoint) && seen.add(s.endpoint));
+    await Promise.all(targets.map((s) => this.deliver(s, data)));
+    return targets.length;
   }
 
   async sendToTenant(

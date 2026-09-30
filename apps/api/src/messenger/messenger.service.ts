@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { personaFor } from '../common/business-persona';
+import { dayKeyTz } from '../common/salon-time';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import {
   killsTheLead, dodgesTheQuestion, guessesGender, disclosesBeforeQualifying, hasIdentitySignal,
@@ -97,7 +98,23 @@ const PHOTO_SHOP = 'DOANH NGHIỆP:';
 const withNote = (t: { content: string; note?: string }) =>
   (t.note ? `${t.content}\n[Nội dung ảnh khách gửi (hệ thống đã đọc): ${t.note}]` : t.content);
 type Channel = 'messenger' | 'instagram' | 'zalo' | 'web';
-export interface BotFact { label: string; value: string; on: boolean }
+/**
+ * One thing the salon told the bot. `from`/`until` are salon-local dates
+ * (YYYY-MM-DD); outside that window the fact is invisible to the bot — a
+ * grand-opening offer stops being offered the morning after it ends, with
+ * nobody having to remember to untick it.
+ */
+export interface BotFact { label: string; value: string; on: boolean; from?: string | null; until?: string | null }
+
+/** Whether a fact is live on a given salon-local day ("YYYY-MM-DD"). */
+export function factLiveOn(f: BotFact, day: string): boolean {
+  if (!f || !f.on) return false;
+  const from = String(f.from ?? '').slice(0, 10);
+  const until = String(f.until ?? '').slice(0, 10);
+  if (from && /^\d{4}-\d{2}-\d{2}$/.test(from) && day < from) return false;
+  if (until && /^\d{4}-\d{2}-\d{2}$/.test(until) && day > until) return false;
+  return true;
+}
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
@@ -929,7 +946,12 @@ export class MessengerService implements OnModuleInit {
         ? dto.chatPreferUsualTech
         : ((cur as unknown as { chatPreferUsualTech?: boolean } | null)?.chatPreferUsualTech ?? true),
       aiInstruction: typeof dto.aiInstruction === 'string' ? dto.aiInstruction.slice(0, 2000) : cur?.aiInstruction ?? null,
-      botFacts: (Array.isArray(dto.botFacts) ? dto.botFacts.slice(0, 40) : (cur?.botFacts ?? [])) as unknown as Prisma.InputJsonValue,
+      botFacts: (Array.isArray(dto.botFacts)
+        ? dto.botFacts.slice(0, 40).map((f) => {
+          const day = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+          return { label: String(f?.label ?? '').slice(0, 60), value: String(f?.value ?? '').slice(0, 600), on: Boolean(f?.on), from: day(f?.from), until: day(f?.until) };
+        })
+        : (cur?.botFacts ?? [])) as unknown as Prisma.InputJsonValue,
       // The mode is a PLATFORM decision (a mis-flip turns a salon's booking bot
       // into a software salesman). Only Lumio hands may change it — the UI hides
       // the switch from salons, and this guard closes the direct-API route too.
@@ -1253,8 +1275,9 @@ export class MessengerService implements OnModuleInit {
     // and types it loosely, so a direct cast compiles here and fails on the
     // real build — which is exactly how this reached Render.
     const facts = (Array.isArray(conn?.botFacts) ? conn?.botFacts : []) as unknown as BotFact[];
+    const todayKey = dayKeyTz(new Date(), await this.tzOf(tenantId));
     const canned = facts
-      .filter((f) => f && f.on && String(f.label ?? '').trim() && String(f.value ?? '').trim())
+      .filter((f) => f && factLiveOn(f, todayKey) && String(f.label ?? '').trim() && String(f.value ?? '').trim())
       .slice(0, 12)
       .map((f) => ({ label: String(f.label).trim().slice(0, 40), text: String(f.value).trim().slice(0, 600) }));
 
@@ -2687,7 +2710,7 @@ export class MessengerService implements OnModuleInit {
     // their own below — after the customer's message, before the reply.
     let agentCtx: Parameters<MessengerService['runAgent']>[4] | null = null;
     try {
-      const instruction = [this.factsText(conn.botFacts), conn.aiInstruction || ''].filter(Boolean).join('\n');
+      const instruction = [this.factsText(conn.botFacts, await this.tzOf(conn.tenantId)), conn.aiInstruction || ''].filter(Boolean).join('\n');
       const cx = conn as unknown as { botMode?: string; leadEmail?: string | null };
       // Hard deadline over the WHOLE agent run (model + tools + card images).
       // Whatever stalls, the customer still gets an answer instead of silence.
@@ -3980,7 +4003,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       const promos = services.filter((sv) => sv.discountPercent > 0);
       out.push(promos.length
         ? `CURRENT PROMOTIONS: ${promos.map((p) => `${p.name} −${p.discountPercent}%`).join(', ')} — mention these when they fit; never invent any other discount.`
-        : 'NO promotions are running right now — never invent a discount.');
+        : 'No service-level discount is set on the menu. Do not invent a discount — only mention an offer if the salon\'s own notes above state one, and only within its dates.');
     }
     if (staff.length) {
       out.push(`TEAM (${staff.length}): ${staff.map((st) => `${st.firstName}${st.lastName ? ' ' + st.lastName : ''}`).join(', ')}.`);
@@ -4023,13 +4046,36 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
   }
 
-  /** Turn the salon's ticked FAQ facts into prompt lines the bot can answer from. */
-  private factsText(botFacts: unknown): string {
+  /**
+   * Turn the salon's ticked FAQ facts into prompt lines the bot can answer
+   * from — only the ones live TODAY in the salon's timezone. A dated fact
+   * carries its end date so the bot tells the customer when the offer ends,
+   * and after that date it is simply not in the prompt: the bot cannot
+   * remember what it was never told.
+   */
+  private factsText(botFacts: unknown, tz: string): string {
     if (!Array.isArray(botFacts)) return '';
+    const today = dayKeyTz(new Date(), tz);
     return (botFacts as BotFact[])
-      .filter((f) => f && f.on && typeof f.value === 'string' && f.value.trim())
-      .map((f) => `- ${String(f.label).trim()}: ${f.value.trim()}`)
+      .filter((f) => f && typeof f.value === 'string' && f.value.trim() && factLiveOn(f, today))
+      .map((f) => {
+        const until = String(f.until ?? '').slice(0, 10);
+        const tail = until ? ` (valid until ${until} — after that date this no longer applies)` : '';
+        return `- ${String(f.label).trim()}: ${f.value.trim()}${tail}`;
+      })
       .join('\n');
+  }
+
+  // Salon timezone, cached for a few minutes: the facts filter runs on every
+  // customer message and a tenant's timezone does not change between them.
+  private readonly tzCache = new Map<string, { tz: string; at: number }>();
+  private async tzOf(tenantId: string): Promise<string> {
+    const hit = this.tzCache.get(tenantId);
+    if (hit && Date.now() - hit.at < 5 * 60_000) return hit.tz;
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    const tz = t?.timezone || 'America/New_York';
+    this.tzCache.set(tenantId, { tz, at: Date.now() });
+    return tz;
   }
 
   /**
@@ -4065,7 +4111,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       }
       if (name === 'get_pricing') {
         const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
-        return this.factsText(conn?.botFacts) || 'No facts configured yet — do not state any price.';
+        return this.factsText(conn?.botFacts, await this.tzOf(tenantId)) || 'No facts configured yet — do not state any price.';
       }
       if (name === 'quote_price') {
         // Website-matched maths. Fixed rates, half-up rounding to WHOLE units,

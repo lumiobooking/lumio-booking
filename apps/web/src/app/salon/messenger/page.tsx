@@ -15,7 +15,7 @@ import { ChatTurnsPanel } from '../../../components/ChatTurnsPanel';
 import { useLang } from '../../../lib/i18n';
 import { uiLocale } from '../../../lib/datetime';
 
-interface BotFact { label: string; value: string; on: boolean }
+interface BotFact { label: string; value: string; on: boolean; from?: string | null; until?: string | null }
 interface MConf {
   connected: boolean; pageId: string; pageName: string; igId: string; enabled: boolean; greeting: string; aiInstruction: string;
   aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number; fbConfigured: boolean; botFacts: BotFact[];
@@ -282,10 +282,10 @@ function Inner() {
     const byLabel = new Map(stored.map((f) => [f.label, f]));
     const rows: FactRow[] = FACT_DEFS.map((d) => {
       const s = byLabel.get(d.label);
-      return { label: d.label, value: s?.value ?? '', on: s?.on ?? false, custom: false };
+      return { label: d.label, value: s?.value ?? '', on: s?.on ?? false, from: s?.from ?? null, until: s?.until ?? null, custom: false };
     });
     for (const s of stored) {
-      if (!FACT_DEFS.some((d) => d.label === s.label)) rows.push({ label: s.label, value: s.value ?? '', on: s.on ?? true, custom: true });
+      if (!FACT_DEFS.some((d) => d.label === s.label)) rows.push({ label: s.label, value: s.value ?? '', on: s.on ?? true, from: s.from ?? null, until: s.until ?? null, custom: true });
     }
     setFacts(rows);
     setFactsInit(true);
@@ -543,7 +543,7 @@ function Inner() {
   async function saveFacts() {
     const payload = facts
       .filter((f) => f.label.trim() && (f.value.trim() || f.on))
-      .map((f) => ({ label: f.label.trim(), value: f.value.trim(), on: f.on }));
+      .map((f) => ({ label: f.label.trim(), value: f.value.trim(), on: f.on, from: f.from || null, until: f.until || null }));
     await save({ botFacts: payload });
   }
   async function handoff(id: string, val: boolean) {
@@ -1290,6 +1290,15 @@ function Inner() {
                     ? <input value={f.label} placeholder={t('customLabelPh')} onChange={(e) => setFact(i, { label: e.target.value })} style={{ ...ui.input, width: 150, flexShrink: 0 }} />
                     : <span style={{ width: 150, flexShrink: 0, fontSize: 13, color: f.on ? 'var(--ce2e8f0)' : 'var(--c94a3b8)' }}>{factLabel(f.label)}</span>}
                   <input value={f.value} placeholder={factPh(f.label)} onChange={(e) => setFact(i, { value: e.target.value })} style={{ ...ui.input, flex: 1, minWidth: 160 }} />
+                  {/* Dated facts: a grand-opening offer is only told to customers between these
+                      days and vanishes from the bot on its own the morning after it ends. */}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--c94a3b8)', flexShrink: 0 }} title={lang === 'vi' ? 'Chỉ áp dụng trong khoảng ngày này (để trống = luôn áp dụng). Hết hạn là bot tự quên.' : 'Only told to customers between these days (blank = always). The bot forgets it on its own after the end date.'}>
+                    <span>{lang === 'vi' ? 'Từ' : 'From'}</span>
+                    <input type="date" value={f.from ?? ''} onChange={(e) => setFact(i, { from: e.target.value || null })} style={{ ...ui.input, width: 138, padding: '5px 6px', fontSize: 12 }} />
+                    <span>{lang === 'vi' ? 'đến' : 'to'}</span>
+                    <input type="date" value={f.until ?? ''} onChange={(e) => setFact(i, { until: e.target.value || null })} style={{ ...ui.input, width: 138, padding: '5px 6px', fontSize: 12 }} />
+                    {f.until && f.until < new Date().toISOString().slice(0, 10) && <span style={{ color: 'var(--ink-warn)', fontWeight: 600 }}>{lang === 'vi' ? 'Hết hạn — bot không dùng nữa' : 'Expired — the bot no longer uses it'}</span>}
+                  </span>
                   {f.custom && <button onClick={() => removeFact(i)} title="remove" style={{ ...ghost, padding: '6px 10px', color: 'var(--cfca5a5)', borderColor: 'var(--c7f1d1d)' }}>✕</button>}
                 </div>
               ))}

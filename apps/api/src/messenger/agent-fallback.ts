@@ -17,7 +17,7 @@
  * and retries transient API errors before giving up at all.
  */
 
-import { detectLang } from '../common/reply-language';
+import { detectLang, type ReplyLang } from '../common/reply-language';
 
 const VI_DIACRITICS = /[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
 
@@ -54,8 +54,13 @@ export function looksVietnamese(conversationText: string): boolean {
  * and DON'T pretend the question was handled. Never "Thanks!" — gratitude for
  * a question we failed to answer reads as evasion.
  */
-export function fallbackText(conversationText: string): string {
-  return looksVietnamese(conversationText)
+export function fallbackText(conversationText: string, fallback?: ReplyLang | null): string {
+  // The customer's own words decide when they can; otherwise the salon's
+  // market does (an American salon's silent customer is answered in English),
+  // and only with neither does the old Vietnamese-leaning guess still run.
+  const detected = detectLang(conversationText);
+  const vi = detected ? detected === 'vi' : fallback ? fallback === 'vi' : looksVietnamese(conversationText);
+  return vi
     ? 'Dạ em xin lỗi, hệ thống đang hơi chậm một chút 🙏 Em đã chuyển tin nhắn của anh/chị cho nhân viên — bên em sẽ trả lời ngay khi có thể ạ.'
     : 'So sorry — our system is a little slow right now 🙏 I\'ve flagged your message for a teammate, and someone will reply here as soon as possible.';
 }

@@ -141,3 +141,17 @@ export function sayIn(lang: ReplyLang | null): string {
   if (lang === 'vi') return ' Khách đang dùng TIẾNG VIỆT — nói câu dưới đây bằng tiếng Việt.';
   return ' Say it in the customer\'s own language, translating it if needed.';
 }
+
+/**
+ * The language a salon's customers are ASSUMED to speak when a conversation
+ * has said nothing yet — "hi", a photo, a name, an emoji.
+ *
+ * It follows the salon's market, not the owner's: a Vietnamese owner running
+ * a shop in Texas has American customers, and a first reply in Vietnamese to
+ * "hi" costs that booking. Only a salon in Vietnam starts in Vietnamese. The
+ * moment the customer writes a real sentence, the detector above takes over
+ * and this default no longer matters.
+ */
+export function defaultLangForMarket(market: string | null | undefined): ReplyLang {
+  return String(market ?? '').trim().toUpperCase() === 'VN' ? 'vi' : 'en';
+}

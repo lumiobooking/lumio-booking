@@ -15,7 +15,7 @@ import {
   metaAttachments, imageUrls, describeMedia, visionRule, nonImageRule, imageMediaType, IMAGE_MAX_BYTES, type InboundMedia,
 } from './inbound-media';
 import { escalationPush, fallbackText, isTransientStatus } from './agent-fallback';
-import { conversationLang, localeForLang, replyLangRule, sayIn, type ReplyLang } from '../common/reply-language';
+import { conversationLang, defaultLangForMarket, localeForLang, replyLangRule, sayIn, type ReplyLang } from '../common/reply-language';
 import {
   sharedAiHealth, recordAiSuccess, recordAiFailure, shouldAlert, markAlerted, aiAlertLine,
 } from './ai-health';
@@ -2373,7 +2373,9 @@ export class MessengerService implements OnModuleInit {
     // written in Vietnamese for every salon, and since it is fed back into
     // the prompt as if it were the conversation, an English thread slowly
     // turned itself Vietnamese one distillation at a time.
-    const lang = conversationLang(dropped.filter((t) => t.role === 'user').map((t) => String(t.content ?? '')));
+    const threadRow = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { tenantId: true } }).catch(() => null);
+    const lang = conversationLang(dropped.filter((t) => t.role === 'user').map((t) => String(t.content ?? '')))
+      ?? (threadRow?.tenantId ? await this.defaultLangOf(threadRow.tenantId) : null);
     const lines = dropped.map((t) => `${t.role === 'user' ? (lang === 'en' ? 'CUSTOMER' : 'KHACH') : 'SHOP'}: ${String(t.role === 'user' ? withNote(t) : t.content).slice(0, 500)}`).join('\n');
     const prompt = lang === 'en'
       ? `You keep the CUSTOMER PROFILE for a long-running Messenger conversation. Current profile:\n${prev || '(empty)'}\n\nOlder messages about to fall out of short-term memory:\n${lines}\n\nWrite the NEW profile: merge old + new, 120 words maximum, short bullet lines — customer name, phone, trade / business name, city, services or packages discussed, details they gave, anything still unfinished, their mood or intent. Write ONLY what actually appeared in the conversation, never an inference. Write it in ENGLISH. Return the profile itself, with no preamble.`
@@ -2737,7 +2739,7 @@ export class MessengerService implements OnModuleInit {
       // The bot could not think. Say so honestly, in the conversation's own
       // language — and make the "a person will reply" promise TRUE below.
       agentFailed = true;
-      reply = fallbackText([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), text].join(' '));
+      reply = fallbackText([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), text].join(' '), await this.defaultLangOf(conn.tenantId));
     }
     // A human may have taken over WHILE we were generating (their echo flips
     // handoff on this thread). Sending now would talk over them — drop the
@@ -2957,10 +2959,10 @@ export class MessengerService implements OnModuleInit {
       // treats a missing Anthropic key as one more reason to use the second
       // door, so a shop is never left unanswered by a configuration slip.
       this.noteAiFailure('no-key', 'ANTHROPIC_API_KEY is not set');
-      return fallbackText([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' '));
+      return fallbackText([...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')), userText].join(' '), await this.defaultLangOf(tenantId));
     }
 
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true, businessType: true } });
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true, contactPhone: true, contactEmail: true, businessType: true, market: true } as never }) as { name: string; timezone: string | null; contactPhone: string | null; contactEmail: string | null; businessType: string | null; market?: string } | null;
     // The AI's identity, goal and vocabulary follow the tenant's line of
     // business — a real-estate caller must never be offered a gel set, and a
     // coffee shop must not open by offering a table reservation. The declared
@@ -2982,10 +2984,14 @@ export class MessengerService implements OnModuleInit {
     // "Are you open Sunday?" was answered in Vietnamese because of it. This
     // one value now decides the reply language, the dossier's labels and the
     // date format in every tool result.
+    // …and when the customer has said nothing decisive yet ("hi", a photo,
+    // a name), the salon's MARKET decides: English for a shop in the US,
+    // Canada or Australia, Vietnamese only for a shop in Vietnam. The sales
+    // page (Lumio's own) keeps judging from the conversation alone.
     const customerLang = conversationLang([
       ...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? h.content : '')),
       userText,
-    ]);
+    ]) ?? (ctx.mode === 'sales' ? null : defaultLangForMarket((tenant as { market?: string } | null)?.market));
     const infoBlock = await this.systemKnowledge(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -3566,7 +3572,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       }
       return withBookingLink(text || (customerLang === 'vi' ? 'Dạ em nghe ạ — em giúp gì thêm cho anh/chị không ạ?' : 'Got it! How else can I help you book?'), ctx.booked?.url);
     }
-    return fallbackText(customerWords);
+    return fallbackText(customerWords, customerLang);
   }
 
   /**
@@ -4068,14 +4074,23 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
   // Salon timezone, cached for a few minutes: the facts filter runs on every
   // customer message and a tenant's timezone does not change between them.
-  private readonly tzCache = new Map<string, { tz: string; at: number }>();
-  private async tzOf(tenantId: string): Promise<string> {
+  private readonly tzCache = new Map<string, { tz: string; market: string; at: number }>();
+  private async basicsOf(tenantId: string): Promise<{ tz: string; market: string }> {
     const hit = this.tzCache.get(tenantId);
-    if (hit && Date.now() - hit.at < 5 * 60_000) return hit.tz;
-    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
-    const tz = t?.timezone || 'America/New_York';
-    this.tzCache.set(tenantId, { tz, at: Date.now() });
-    return tz;
+    if (hit && Date.now() - hit.at < 5 * 60_000) return hit;
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true, market: true } }).catch(() => null);
+    const row = { tz: t?.timezone || 'America/New_York', market: (t as { market?: string } | null)?.market || 'US', at: Date.now() };
+    this.tzCache.set(tenantId, row);
+    return row;
+  }
+  private async tzOf(tenantId: string): Promise<string> { return (await this.basicsOf(tenantId)).tz; }
+  /**
+   * The language this salon's customers are answered in when they have not
+   * said enough to tell: the market's language — English everywhere but
+   * Vietnam. See defaultLangForMarket.
+   */
+  private async defaultLangOf(tenantId: string): Promise<ReplyLang> {
+    return defaultLangForMarket((await this.basicsOf(tenantId)).market);
   }
 
   /**
@@ -4645,8 +4660,14 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         } catch { /* the first hundred still stand */ }
       }
 
+      // Meta writes its own notes into the Page inbox — "Beathe đã trả lời
+      // một quảng cáo" when a customer arrives from an ad — in the PAGE
+      // ADMIN's language. Shown as a bubble they read as the bot speaking
+      // Vietnamese to an American customer. They are Meta's, not ours: dropped.
+      const metaNote = /(đã trả lời (một )?quảng cáo|replied to (your|an|the) ad\b|responded to (your|an|the) ad\b|đã phản hồi quảng cáo)/i;
       const turns: Turn[] = msgs
         .filter((m) => String(m?.message ?? '').trim())
+        .filter((m) => !(String(m.from?.id ?? '') === pageId && metaNote.test(String(m.message))))
         .map((m) => ({
           // from.id is the PAGE on anything we sent — the bot's replies and the
           // staff's replies both go out through the Page, so Meta cannot tell

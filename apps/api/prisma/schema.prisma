@@ -290,6 +290,8 @@ model Tenant {
   stations          Station[]
   stationTypes      StationType[]
   heldBills         HeldBill[]
+  cashShifts        CashShift[]
+  cashMovements     CashMovement[]
   supplyItems       SupplyItem[]
   supplyMovements   SupplyMovement[]
   products          Product[]
@@ -2078,6 +2080,10 @@ model Order {
   // Client-generated idempotency key for offline checkout: the same ref is never
   // created twice, so re-syncing a queued offline sale cannot duplicate the order.
   clientRef       String?
+  // The cashier shift (till session) this sale was rung up in, when one was
+  // open. Null for sales taken with no shift open, so nothing changes for a
+  // salon that never uses shifts.
+  shiftId         String?
 
   // Money (all in minor units / cents).
   subtotalCents Int    @default(0) // sum of line totals before order discount/tax
@@ -2109,6 +2115,7 @@ model Order {
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
   @@index([tenantId, source])
+  @@index([tenantId, shiftId])
   @@map("orders")
 }
 
@@ -2128,6 +2135,59 @@ model HeldBill {
 
   @@index([tenantId])
   @@map("held_bills")
+}
+
+/**
+ * A cashier shift ("ca thu ngân"): the till is opened with a counted float,
+ * every sale rung up while it is open is tagged with it, cash put in or taken
+ * out is logged, and at close the cashier counts the drawer against what the
+ * system expects. The close snapshot (`summary`) is frozen so the printed
+ * hand-over sheet never changes after the fact, even if an order is voided
+ * later.
+ */
+model CashShift {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  status           String   @default("OPEN") // OPEN | CLOSED
+  openedByUserId   String?
+  openedByName     String?
+  openedAt         DateTime @default(now())
+  openingCents     Int      @default(0)
+  openNote         String?
+  closedByUserId   String?
+  closedByName     String?
+  closedAt         DateTime?
+  expectedCashCents Int?    // opening + cash sales - change + cash in - cash out, frozen at close
+  countedCents     Int?     // what the cashier actually counted
+  varianceCents    Int?     // counted - expected
+  closeNote        String?
+  summary          Json?    // frozen totals at close (sales, by method, tips, movements)
+  movements        CashMovement[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, openedAt])
+  @@map("cash_shifts")
+}
+
+/** Cash put into or taken out of the drawer mid-shift (petty cash, paying a tech, bank drop). */
+model CashMovement {
+  id          String    @id @default(uuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shiftId     String
+  shift       CashShift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  kind        String    // IN | OUT
+  amountCents Int
+  reason      String?
+  byUserId    String?
+  byName      String?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId, shiftId])
+  @@map("cash_movements")
 }
 
 /// One line on a ticket — a service or a retail product, with the technician

@@ -369,6 +369,7 @@ export class SettingsService {
       transferInstructions?: string;
       transferQrUrl?: string;
       tipsEnabled?: boolean;
+      requireShift?: boolean;
       paymentMethods?: string[];
       paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>;
     },
@@ -402,6 +403,7 @@ export class SettingsService {
       // A salon that has never seen this setting keeps tipping on, which is
       // what it has always done.
       tipsEnabled: typeof dto.tipsEnabled === 'boolean' ? dto.tipsEnabled : (cur.tipsEnabled ?? true),
+      requireShift: typeof dto.requireShift === 'boolean' ? dto.requireShift : (cur.requireShift ?? false),
     };
     await this.writeKey(tenantId, POS_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.pos_updated', resourceType: 'tenant', resourceId: tenantId });

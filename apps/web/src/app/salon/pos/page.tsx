@@ -16,6 +16,7 @@ import { currencySymbolFor } from '../../../lib/money';
 import { setUiCurrency, uiCurrencySymbol } from '../../../lib/ui-currency';
 import { useLang, tr, setUiCurrencySymbol } from '../../../lib/i18n';
 import { BarcodeScanner } from '../../../components/BarcodeScanner';
+import { CashShiftPanel, useShiftState } from '../../../components/CashShiftPanel';
 import { uiLocale } from '../../../lib/datetime';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
@@ -227,6 +228,11 @@ function Register() {
   useEffect(() => { if (cart.length === 0) setPayOpen(false); }, [cart.length]);
   const [heldBills, setHeldBills] = useState<{ id: string; label: string | null; totalCents: number; payload: unknown; createdAt: string }[]>([]);
   const [showHeld, setShowHeld] = useState(false);
+  // Cashier shift: the drawer this till is selling into. The badge in the
+  // header says whose shift is open; a salon that requires one cannot ring up
+  // a live sale until somebody has opened the till.
+  const [showShift, setShowShift] = useState(false);
+  const shiftCtl = useShiftState(token);
   const [orderDiscount, setOrderDiscount] = useState('');
   const [discountMode, setDiscountMode] = useState<'AMOUNT' | 'PERCENT'>('AMOUNT');
   // Promo code from a marketing campaign (win-back / reactivation / birthday).
@@ -1030,6 +1036,14 @@ function Register() {
 
   async function pay() {
     if (cart.length === 0) { setError(t('po.addItem')); return; }
+    // Live sale with no shift open where the salon insists on one: open the
+    // drawer first. Offline sales are never blocked — the money is already in
+    // the till and the queue uploads them under whatever shift is open then.
+    if (shiftCtl.mustOpen && online) {
+      setError(lang === 'vi' ? 'Chưa vào ca — vào ca (nhập tiền đầu ca) rồi mới thu tiền.' : 'No shift open — open the shift (enter the float) before taking payment.');
+      setShowShift(true);
+      return;
+    }
     // Remember this ticket's tip-tech(s) + their service value BEFORE we clear the
     // cart, so the customer's after-payment QR tip (Channel 3) logs to the right person.
     {
@@ -1103,7 +1117,7 @@ function Register() {
     // are dropped offline (can't verify the balance) so a queued order is never
     // rejected at sync time.
     const saveOffline = () => {
-      queueOrder({ clientRef, payload: { ...payload, redeemPoints: undefined }, at: Date.now(), totalCents: money.total });
+      queueOrder({ clientRef, payload: { ...payload, redeemPoints: undefined, offline: true }, at: Date.now(), totalCents: money.total });
       setPendingSync(queueCount());
       const offRef = `OFF-${clientRef.slice(0, 5).toUpperCase()}`;
       printReceipt(offRef);
@@ -1166,10 +1180,14 @@ function Register() {
         setOnline(true);
         setPendingSync(queueCount());
         load(); // refresh stock
+        void shiftCtl.refresh();
       } catch (err) {
         // A real server rejection (bad data / auth) → show it. A network failure
         // (no response) → save the sale offline so nothing is lost.
-        if (err instanceof ApiError) { setError(err.message || t('po.payFail')); return; }
+        if (err instanceof ApiError) {
+          if (/SHIFT_REQUIRED/.test(err.message || '')) { setError(lang === 'vi' ? 'Chưa vào ca — vào ca rồi mới thu tiền.' : 'No shift open — open the shift before taking payment.'); setShowShift(true); void shiftCtl.refresh(); return; }
+          setError(err.message || t('po.payFail')); return;
+        }
         if (giftCard) { setError(t('po.gcOffline')); return; }
         saveOffline();
       }
@@ -1539,6 +1557,13 @@ function Register() {
           {online ? L('Đang kết nối', 'Online') : L('Mất mạng — lưu tạm', 'Offline — saving locally')}
         </span>
       )}
+      {layout === 'wide' && shiftCtl.state && (
+        <button type="button" onClick={() => setShowShift(true)} title={L('Ca thu ngân', 'Cashier shift')} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 12px', borderRadius: 999, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: shiftCtl.state.shift ? 'var(--c1e1b4b)' : 'rgba(245,158,11,.14)', color: shiftCtl.state.shift ? 'var(--ca5b4fc)' : 'var(--ink-warn)' }}>
+          {shiftCtl.state.shift
+            ? `${L('Ca', 'Shift')}: ${shiftCtl.state.shift.openedByName || '—'} · ${fmtInTz(shiftCtl.state.shift.openedAt, { hour: 'numeric', minute: '2-digit' })}`
+            : L('Chưa vào ca', 'No shift open')}
+        </button>
+      )}
       {layout === 'wide' && (tightTop
         ? iconBtn(t('po.custScreen'), openCustomerScreen, <IcoScreen />)
         : <button type="button" onClick={openCustomerScreen} title={t('po.custScreenHint')} style={textBtn}><IcoScreen />{L('Màn hình khách', 'Customer screen')}</button>)}
@@ -1560,6 +1585,7 @@ function Register() {
                   ['/salon/calendar', L('Lịch hẹn', 'Calendar')],
                   ['/salon/walkins', L('Khách vãng lai · Lượt', 'Walk-ins')],
                   ['/salon/orders', L('Đơn hàng', 'Orders')],
+                  ['/salon/pos/shifts', L('Lịch sử ca thu ngân', 'Shift history')],
                   ['/salon/services', L('Dịch vụ', 'Services')],
                   ['/salon/products', t('po.manageProducts')],
                 ].map(([href, label]) => (
@@ -1573,6 +1599,7 @@ function Register() {
                 <button type="button" onClick={() => togglePrint(!printOn)} style={menuItem}>{L('In hoá đơn khi xong', 'Print receipts')}: <b style={{ marginLeft: 'auto' }}>{printOn ? L('Bật', 'On') : L('Tắt', 'Off')}</b></button>
                 <button type="button" onClick={() => toggleReception(!printToReception)} style={menuItem}>{t('po.printReception')}: <b style={{ marginLeft: 'auto' }}>{printToReception ? L('Bật', 'On') : L('Tắt', 'Off')}</b></button>
                 <button type="button" onClick={() => { setMenuOpen(null); toggleFull(); }} style={menuItem}>{fullscreen ? t('po.fullOff') : t('po.fullOn')}</button>
+                <button type="button" onClick={() => { setMenuOpen(null); setShowShift(true); }} style={menuItem}>{L('Ca thu ngân', 'Cashier shift')}{shiftCtl.state && <b style={{ marginLeft: 'auto', color: shiftCtl.state.shift ? 'var(--ink-good)' : 'var(--ink-warn)' }}>{shiftCtl.state.shift ? L('Đang mở', 'Open') : L('Chưa mở', 'Closed')}</b>}</button>
                 <button type="button" onClick={() => { setMenuOpen(null); park(); }} disabled={cart.length === 0} style={{ ...menuItem, opacity: cart.length ? 1 : 0.45 }}>{L('Giữ bill này', 'Hold this bill')}</button>
               </>
             )}
@@ -2427,6 +2454,18 @@ function Register() {
           </div>
         </div>, document.body)}
 
+      {showShift && typeof document !== 'undefined' && createPortal(
+        <CashShiftPanel
+          token={token}
+          vi={lang === 'vi'}
+          currency={currency}
+          fmt={fmt}
+          salonName={salonName}
+          cashierName={user?.firstName || undefined}
+          onState={shiftCtl.setState}
+          onClose={() => setShowShift(false)}
+          onHistory={() => { window.location.href = '/salon/pos/shifts'; }}
+        />, document.body)}
       {showHeld && typeof document !== 'undefined' && createPortal(
         <div onClick={() => setShowHeld(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.7)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(460px, 96vw)', maxHeight: '85vh', overflowY: 'auto', padding: 0 }}>

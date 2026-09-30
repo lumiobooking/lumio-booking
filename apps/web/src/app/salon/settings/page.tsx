@@ -55,7 +55,7 @@ interface SettingsData {
     /** Lumio's shared VN Zalo/SMS channel is live on the server — nothing to set up. */
     sharedVn?: { active: boolean; zns: boolean; sms: boolean } | null;
   };
-  pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }> };
+  pos?: { taxRatePercent: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; receiptFooter: string; primaryCardGateway: string; transferInstructions: string; transferQrUrl: string; tipsEnabled?: boolean; requireShift?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }> };
   loyalty?: { enabled: boolean; earnPointsPerDollar: number; redeemCentsPerPoint: number; minRedeemPoints: number };
   reminders?: { enabled: boolean; hoursBefore1: number; hoursBefore2: number; channelEmail: boolean; channelSms: boolean };
   deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number };
@@ -691,6 +691,16 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       </Panel>
 
       <Panel
+        title={lang === 'vi' ? 'Ca thu ngân' : 'Cashier shifts'}
+        badge={data.pos?.requireShift
+          ? { text: lang === 'vi' ? 'Bắt buộc' : 'Required', color: 'var(--ink-good)' }
+          : { text: lang === 'vi' ? 'Tuỳ chọn' : 'Optional', color: 'var(--c64748b)' }}
+        hint={lang === 'vi' ? 'Vào ca với tiền đầu ca, chốt ca đếm két, in phiếu bàn giao' : 'Open the till with a float, count the drawer at close, print the hand-over sheet'}
+      >
+        <ShiftConfig data={data} onSave={onSave} />
+      </Panel>
+
+      <Panel
         title={t('se.pay.loyaltyTitle')}
         badge={data.loyalty?.enabled ? { text: t('se.pay.on'), color: 'var(--ceab308)' } : { text: t('se.pay.off'), color: 'var(--c64748b)' }}
         hint={t('se.pay.loyaltyHint')}
@@ -747,6 +757,34 @@ function TipsConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
           : 'When off, the customer screen, the thank-you QR and the counter tip box all disappear — not set to 0%, simply not asked. Picking Vietnam turns this off automatically; a salon serving tourists can turn it back on. Tips already recorded are untouched.'}
       </p>
       <button style={ui.primaryBtn} onClick={() => onSave('pos', { tipsEnabled: on }, lang === 'vi' ? 'Tiền tip' : 'Tipping')}>{lang === 'vi' ? 'Lưu' : 'Save'}</button>
+    </div>
+  );
+}
+
+/**
+ * Cashier shifts: optional by default — the till keeps selling exactly as it
+ * always has. Required means no live sale until somebody opened the drawer
+ * with a counted float, so every dollar of cash has a shift to answer to.
+ */
+function ShiftConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
+  const { lang } = useLang();
+  const [on, setOn] = useState(Boolean(data.pos?.requireShift));
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+        <label style={{ position: 'relative', display: 'inline-block', width: 42, height: 24, flexShrink: 0 }}>
+          <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
+          <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: on ? '#6366f1' : 'var(--c334155)', borderRadius: 24, transition: '.2s' }} />
+          <span style={{ position: 'absolute', height: 18, width: 18, left: on ? 21 : 3, top: 3, background: '#fff', borderRadius: '50%', transition: '.2s' }} />
+        </label>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? 'Bắt buộc vào ca trước khi thu tiền' : 'Require an open shift before taking payment'}</div>
+      </div>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 8px', lineHeight: 1.5, maxWidth: 640 }}>
+        {lang === 'vi'
+          ? 'Ca thu ngân luôn dùng được từ POS (menu ⋯ → Ca thu ngân): vào ca với tiền lẻ đầu ca, ghi thu/chi tiền mặt, chốt ca đếm két, in phiếu bàn giao. Bật mục này thì thu ngân phải vào ca rồi mới bấm thanh toán được; đơn lưu tạm lúc mất mạng vẫn đồng bộ bình thường. Xem lại các ca ở "Lịch sử ca thu ngân".'
+          : 'Shifts are always available from the POS (⋯ menu → Cashier shift): open with a counted float, log cash in/out, count the drawer at close, print the hand-over sheet. With this on, the cashier must open a shift before charging; sales saved while offline still sync normally. Past shifts are under "Shift history".'}
+      </p>
+      <button style={ui.primaryBtn} onClick={() => onSave('pos', { requireShift: on }, lang === 'vi' ? 'Ca thu ngân' : 'Cashier shifts')}>{lang === 'vi' ? 'Lưu' : 'Save'}</button>
     </div>
   );
 }

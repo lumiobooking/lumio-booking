@@ -11,6 +11,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizeSource } from '../common/source.util';
 import { AuditService } from '../audit/audit.service';
+import { CashShiftsService } from './cash-shifts.service';
 import { SettingsService } from '../settings/settings.service';
 import { ledgerProviderFor, bucketFor, methodsForSalon } from './payment-methods';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -31,6 +32,7 @@ export class PosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly shifts: CashShiftsService,
     private readonly settings: SettingsService,
     private readonly loyalty: LoyaltyService,
     private readonly giftCards: GiftCardsService,
@@ -174,6 +176,13 @@ export class PosService {
     }
     const pos = await this.settings.getPosSettings(tenantId);
     const taxRate = Math.max(0, pos.taxRatePercent || 0);
+    // Cashier shift: the sale is tagged with the drawer it goes into. A salon
+    // that requires a shift cannot ring up a live sale without one — except a
+    // queued offline sale, whose money is already in the drawer.
+    const shiftId = await this.shifts.openShiftId(tenantId);
+    if (!shiftId && (pos as { requireShift?: boolean }).requireShift && !dto.offline) {
+      throw new BadRequestException('SHIFT_REQUIRED');
+    }
 
     // --- Compute line totals + order money ---
     const lines = dto.items.map((it) => {
@@ -288,7 +297,8 @@ export class PosService {
           giftCardAppliedCents: paid ? giftApplied : 0,
           note: dto.note ?? null,
           clientRef: dto.clientRef ?? null,
-        },
+          ...(shiftId ? { shiftId } : {}),
+        } as never,
       });
 
       // Line items + tenders via createMany (carries the scalar tenantId/orderId).

@@ -93,6 +93,7 @@ const GROUPS: NavGroup[] = [
     { href: '/salon/card-transactions', label: 'Card transactions', icon: 'fileText', feature: 'pos', market: 'na' },
     { href: '/salon/reports', label: 'Business report', icon: 'trendUp' },
     { href: '/salon/pos/report', label: 'Sales report', icon: 'pie', feature: 'pos' },
+    { href: '/salon/pos/shifts', label: 'Cashier shifts', icon: 'banknote', feature: 'pos' },
     { href: '/salon/payroll', label: 'Staff & pay', icon: 'banknote', feature: 'pos' },
     { href: '/salon/inventory', label: 'Inventory', icon: 'box', feature: 'pos' },
   ] },
@@ -126,7 +127,7 @@ const HREF_CAP: Record<string, string> = {
   '/salon/waitlist': 'waitlist', '/salon/customers': 'customers', '/salon/services': 'services',
   '/salon/products': 'products', '/salon/gift-cards': 'pos', '/salon/staff': 'staff', '/salon/stations': 'staff', '/salon/payroll': 'payroll',
   '/salon/reviews': 'reviews', '/salon/marketing': 'marketing', '/salon/content': 'marketing', '/salon/channels': 'marketing', '/salon/inventory': 'inventory',
-  '/salon/pos/report': 'reports', '/salon/reports': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
+  '/salon/pos/report': 'reports', '/salon/pos/shifts': 'reports', '/salon/reports': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
   '/salon/trash': 'settings',
   '/salon/integrations': 'integrations', '/salon/billing': 'billing', '/salon/usage-costs': 'billing', '/salon/settings': 'settings',
   '/salon/chain': 'reports', // multi-branch consolidated report

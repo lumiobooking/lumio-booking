@@ -181,6 +181,7 @@ export class SettingsController {
       // and VietQR / MoMo / ZaloPay are three different QR images.
       paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }>;
       tipsEnabled?: boolean;
+      requireShift?: boolean;
     },
   ) {
     return this.settings.updatePos(user, dto);

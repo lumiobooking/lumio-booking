@@ -344,6 +344,12 @@ export interface PosSettings {
    */
   tipsEnabled: boolean;
   /**
+   * Cashier shifts: when true, a live sale cannot be rung up until someone
+   * has opened the till ("vào ca") with a counted float. Off by default —
+   * every salon keeps selling exactly as before until it turns this on.
+   */
+  requireShift?: boolean;
+  /**
    * Which payment buttons this till shows, in order.
    *
    * Absent or empty means "use the market default" — which is what every salon
@@ -371,7 +377,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   tipsEnabled: true,
   paymentMethods: [], // empty = follow the salon's market
   paymentDetails: {},
-
+  requireShift: false,
 };
 
 /** When/where booking notifications go, plus the SMS (Twilio) connection. */

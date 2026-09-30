@@ -75,6 +75,10 @@ export class CreateOrderDto {
   @IsOptional() @IsInt() @Min(0) redeemPoints?: number; // loyalty points to redeem as a discount
   @IsOptional() @IsString() @MaxLength(500) note?: string;
   @IsOptional() @IsString() @MaxLength(64) clientRef?: string; // offline-checkout idempotency key
+  // True when a sale queued while offline is being uploaded later. The shift
+  // rule is not applied to it: the money already changed hands, and a 4xx
+  // here would make the till drop the sale as unrecoverable.
+  @IsOptional() @IsBoolean() offline?: boolean;
   @IsOptional() @IsString() @MaxLength(40) giftCardCode?: string; // redeem a gift card toward this ticket
 
   @IsArray()

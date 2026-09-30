@@ -1233,22 +1233,21 @@ export class SocialPublishService {
       }
       if (check.blockers.length === 0) ai = await this.googleScreen(tenantId, check.summary, photo);
     }
-    // The six findings nobody may accept join the word list's hard blockers:
-    // same row, same ⛔, no button. See HARD_RULES in ./gbp-screen.
-    for (const h of ai?.hard ?? []) check.blockers.push({ code: 'ai-hard', level: 'hard', vi: `🤖 ${h}`, en: `🤖 ${h}` });
     // What still stands in the way, after what the team has already accepted.
     const open = unacceptedRisks(check.risks, ack);
     // Filed under the POST, so the acceptance survives the model rewording
-    // its objection at lock and send time. See postAckCode. Only the
-    // acceptable objections get a code; a hard finding has nothing to accept.
-    const aiCode = ai && ai.blockers.length ? postAckCode(check.summary, media.find((m) => m.kind === 'image')?.url ?? null) : null;
+    // its objection at lock and send time. See postAckCode. A hard finding is
+    // an acceptable objection too now — shown as high risk, with the button
+    // (see the note on screenHardRefusal in ./gbp-screen).
+    const aiCode = ai && (ai.blockers.length || ai.hard.length) ? postAckCode(check.summary, media.find((m) => m.kind === 'image')?.url ?? null) : null;
+    const aiText = ai ? screenRefusal(ai) ?? '' : '';
     return {
       ...check,
       ai,
       /** The code to send back in `ack` to accept the model's objection. */
       aiCode,
       /** Risks nobody has accepted yet — what the composer must still ask about. */
-      openRisks: aiCode && !ack.includes(aiCode) ? [...open, { code: aiCode, level: 'risky' as const, vi: `Google Business (AI kiểm duyệt): ${ai!.blockers.join(' ')}`, en: `Google Business (AI kiểm duyệt): ${ai!.blockers.join(' ')}` }] : open,
+      openRisks: aiCode && !ack.includes(aiCode) ? [...open, { code: aiCode, level: 'risky' as const, vi: aiText, en: aiText }] : open,
       aiOff: !process.env.ANTHROPIC_API_KEY,
     };
   }
@@ -1272,13 +1271,12 @@ export class SocialPublishService {
     const summary = checkGbpPost(message, media).summary;
     const ack = opts.ack ?? [];
     const v = await this.googleScreen(tenantId, summary, photo);
-    // A hard finding is refused before any acceptance is even looked at:
-    // there is no code that unlocks it, for any account. At send time it is
-    // still advisory (the post passed this same gate when it was locked; a
-    // model changing its mind at 5pm is a log line, not a silent failure).
+    // A hard finding used to be refused before any acceptance was looked at.
+    // It is now an acceptable objection like the rest — flagged high risk in
+    // the composer, and logged here so a suspension can be traced to the
+    // acceptance that let it through.
     const hard = screenHardRefusal(v);
-    if (hard && opts.enforceAi) return hard;
-    if (hard) this.log.warn(`gbp hard finding at send time for ${tenantId} (not enforced): ${hard}`);
+    if (hard) this.log.warn(`gbp hard finding for ${tenantId} (${opts.enforceAi ? 'lock' : 'send'} time, acceptable): ${hard}`);
     if (!v || v.ok) return null;
     // The team's acceptance is keyed to the post, so it survives the model
     // rewording its objection at lock and send time.

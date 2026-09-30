@@ -1,4 +1,4 @@
-import { HARD_RULES, gbpScreenPrompt, parseScreenVerdict, screenHardRefusal, screenRefusal } from './gbp-screen';
+import { HARD_RULES, gbpScreenPrompt, parseScreenVerdict, screenAckCode, screenHardRefusal, screenRefusal } from './gbp-screen';
 
 describe('the model’s look at a Google post', () => {
   it('names the policy, the shop and the trade, and says whether a photo is attached', () => {
@@ -58,12 +58,15 @@ describe('the findings nobody may wave through', () => {
     expect(p.system).toMatch(/CHẮC CHẮN/);
   });
 
-  it('come back on their own list, fail the verdict, and read as a refusal with no way past it', () => {
+  it('come back on their own list, fail the verdict, and read as a HIGH-RISK objection the team may still accept', () => {
     const v = parseScreenVerdict('{"ok":false,"hard":["Ảnh có watermark Shutterstock rõ ràng."],"blockers":[],"warnings":[]}', true)!;
     expect(v.hard).toEqual(['Ảnh có watermark Shutterstock rõ ràng.']);
     expect(v.ok).toBe(false);
-    expect(screenHardRefusal(v)).toMatch(/KHÔNG thể bỏ qua.*watermark.*bỏ Google Business/);
-    expect(screenRefusal(v)).toMatch(/watermark/);
+    expect(screenHardRefusal(v)).toMatch(/rủi ro cao.*watermark/);
+    expect(screenHardRefusal(v)).not.toMatch(/KHÔNG thể bỏ qua/);
+    expect(screenRefusal(v)).toMatch(/RỦI RO CAO.*watermark/);
+    // …and it has an acceptance code, like any other objection.
+    expect(screenAckCode(v)).toMatch(/^ai-/);
   });
 
   it('never lets "not about this shop" be hard — a bakery that sells pho is the team\'s call, so it becomes a blocker', () => {

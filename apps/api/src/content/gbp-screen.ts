@@ -153,13 +153,25 @@ export function parseScreenVerdict(raw: string, sawImage: boolean): ScreenVerdic
  */
 export function screenRefusal(v: ScreenVerdict | null): string | null {
   if (!v || v.ok) return null;
-  return `Google Business (AI kiểm duyệt): ${[...v.hard, ...v.blockers].join(' ')}`;
+  // A hard finding is still the team's call — but it is named for what it
+  // is: the kind of thing Google suspends a profile for, not a nitpick.
+  const hard = v.hard.length ? `⚠ RỦI RO CAO (Google có thể treo hồ sơ): ${v.hard.join(' ')}` : '';
+  return `Google Business (AI kiểm duyệt): ${[hard, ...v.blockers].filter(Boolean).join(' ')}`;
 }
 
-/** The refusal nobody can accept — null when the verdict has no hard finding. */
+/**
+ * The wording of a hard finding on its own — for the log line at send time.
+ *
+ * This used to be a refusal nobody could accept. The salons asked for the
+ * button back: the model's certainty is still a model's, a real photo of the
+ * shop front was being called a screenshot, and the only way past was
+ * rewriting a fine post. So a hard finding now reads as a HIGH-RISK
+ * acceptable objection (see screenRefusal), and the owner who knows the
+ * shop can press "Tôi hiểu, vẫn đăng" — logged under their name.
+ */
 export function screenHardRefusal(v: ScreenVerdict | null): string | null {
   if (!v || !v.hard.length) return null;
-  return `Google Business (AI kiểm duyệt — KHÔNG thể bỏ qua): ${v.hard.join(' ')} Sửa ảnh hoặc caption, hoặc bỏ Google Business khỏi bài này (Facebook/Instagram vẫn đăng bình thường).`;
+  return `Google Business (AI kiểm duyệt — rủi ro cao): ${v.hard.join(' ')}`;
 }
 
 /**
@@ -169,8 +181,8 @@ export function screenHardRefusal(v: ScreenVerdict | null): string | null {
  * post again.
  */
 export function screenAckCode(v: ScreenVerdict | null): string | null {
-  if (!v || v.ok || !v.blockers.length) return null;
-  return `ai-${hash36(v.blockers.join(' ').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 40))}`;
+  if (!v || v.ok || (!v.blockers.length && !v.hard.length)) return null;
+  return `ai-${hash36([...v.hard, ...v.blockers].join(' ').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 40))}`;
 }
 
 /**

@@ -99,10 +99,12 @@ export function channelMark(raw: unknown): string {
  */
 export function channelBrand(raw: unknown): { bg: string; name: string } {
   switch (channelOf(raw)) {
-    case 'instagram': return { bg: '#e1306c', name: 'Instagram' };
-    case 'zalo': return { bg: '#0068ff', name: 'Zalo' };
-    case 'web': return { bg: '#16a34a', name: 'Website' };
-    default: return { bg: '#0084ff', name: 'Messenger' };
+    // Four hues that also differ in LIGHTNESS (Messenger bright, Zalo dark),
+    // so the badges stay apart for a colour-blind reader and at 18px.
+    case 'instagram': return { bg: '#d62976', name: 'Instagram' };
+    case 'zalo': return { bg: '#0b3d91', name: 'Zalo' };
+    case 'web': return { bg: '#0f766e', name: 'Website' };
+    default: return { bg: '#0a7cff', name: 'Messenger' };
   }
 }
 

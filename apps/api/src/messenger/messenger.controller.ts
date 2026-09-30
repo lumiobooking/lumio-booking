@@ -79,8 +79,8 @@ export class MessengerController {
 
   @Roles(...INBOX_ROLES)
   @Get('threads')
-  threads(@CurrentUser() user: AuthenticatedUser) {
-    return this.svc.listThreads(user);
+  threads(@CurrentUser() user: AuthenticatedUser, @Query('before') before?: string, @Query('take') take?: string) {
+    return this.svc.listThreads(user, { before: before || undefined, take: take ? Number(take) : undefined });
   }
 
   @Roles(...INBOX_ROLES)

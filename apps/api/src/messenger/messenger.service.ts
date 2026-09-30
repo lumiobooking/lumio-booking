@@ -970,13 +970,23 @@ export class MessengerService implements OnModuleInit {
    * Deriving it here means the webhook and the screen can never disagree about
    * who owns a conversation, because they call the same function.
    */
-  async listThreads(user: AuthenticatedUser) {
+  async listThreads(user: AuthenticatedUser, opts: { before?: string; take?: number } = {}) {
     const tenantId = this.tenantId(user);
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
     const activeMins = (conn as unknown as { humanActiveMins?: number } | null)?.humanActiveMins ?? 15;
     const botFirst = turnSettingsOf(conn as never).botFirst;
+    // A page of the list, newest first. The first page used to be the WHOLE
+    // list: fifty rows, no way to ask for more. On a busy Page fifty
+    // conversations is one or two days, and the owner's exact words were
+    // "tin nhắn kéo về chỉ 1 2 ngày". Now the first page is a hundred and the
+    // screen asks for the next hundred with `before` = the oldest updatedAt it
+    // has — a cursor, not an offset, so a conversation moving to the top while
+    // the person scrolls cannot shift the page under them.
+    const take = Math.min(200, Math.max(1, Math.floor(Number(opts.take) || 100)));
+    const before = opts.before ? new Date(opts.before) : null;
     const rows = await this.prisma.messengerThread.findMany({
-      where: { tenantId }, orderBy: { updatedAt: 'desc' }, take: 50,
+      where: { tenantId, ...(before && !Number.isNaN(before.getTime()) ? { updatedAt: { lt: before } } : {}) },
+      orderBy: { updatedAt: 'desc' }, take,
       select: {
         id: true, senderId: true, senderName: true, lastText: true, handoff: true, pageId: true,
         updatedAt: true, channel: true,

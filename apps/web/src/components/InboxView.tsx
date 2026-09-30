@@ -22,7 +22,7 @@
  * customer another customer's history is worse than showing none.
  */
 
-import { Fragment, memo, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fmtInTz } from '../lib/datetime';
 import { useAuth } from '../lib/auth';
 import { apiFetch, apiStream, apiImage, apiImageCached } from '../lib/api';
@@ -244,7 +244,7 @@ const Avatar = memo(function Avatar(
               // and the result read as clutter rather than as an answer. The
               // Page has a chip of its own when there is more than one; the
               // badge does one job.
-              boxShadow: '0 0 0 2px var(--c0b1220)',
+              boxShadow: '0 0 0 2px var(--c0f172a)',
               // Clips a square official icon (Instagram) to the round badge.
               overflow: 'hidden',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -253,7 +253,7 @@ const Avatar = memo(function Avatar(
             <OfficialChannelIcon
               raw={row.channel}
               size={d}
-              fallback={channelGlyph(row.channel, Math.round(d * 0.66))}
+              fallback={<span style={{ fontSize: Math.max(7, Math.round(d * 0.5)), fontWeight: 700, lineHeight: 1, color: '#fff', letterSpacing: -0.2 }}>{channelLetter(row.channel)}</span>}
             />
           </span>
         );
@@ -400,7 +400,29 @@ export function InboxView() {
   const { lang } = useLang();
   const me = useAuth().user?.id ?? null;
   const vi = lang === 'vi';
-  const [rows, setRows] = useState<InboxRow[]>([]);
+  const [topRows, setRows] = useState<InboxRow[]>([]);
+  /** Pages of older conversations the person asked for with "load more". The
+   *  live list (first page, refreshed by the stream) sits on top; these follow.
+   *  A conversation that wakes up moves into the live page and is dropped
+   *  from here, so nothing is ever listed twice. */
+  const [older, setOlder] = useState<InboxRow[]>([]);
+  const [moreState, setMoreState] = useState<'idle' | 'loading' | 'end'>('idle');
+  const rows = useMemo(() => {
+    const ids = new Set(topRows.map((r) => r.id));
+    return older.length ? [...topRows, ...older.filter((r) => !ids.has(r.id))] : topRows;
+  }, [topRows, older]);
+  /** Reply / internal note: two tabs of the one composer. */
+  const [composerMode, setComposerMode] = useState<'reply' | 'note'>('reply');
+  const [allCanned, setAllCanned] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  /** The card's own width — the shell's sidebar takes 230px of the window,
+   *  so the window's width says nothing about the room the four columns
+   *  actually have. Three tiers: the mockup's widths, a tighter four-column
+   *  set, and two columns (rail folded into the list, customer panel behind
+   *  the ⓘ button) for an iPad or a half-screen window. */
+  const [cardW, setCardW] = useState(1400);
+  const wide = cardW >= 1200;
+  const compact = cardW < 1040;
   const [openId, setOpenId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [draft, setDraft] = useState('');
@@ -445,7 +467,6 @@ export function InboxView() {
   /** Shows '✓ Đã chép' for a moment, so the press has an answer. */
   const [copied, setCopied] = useState(false);
   /** Which KIND of channel, as opposed to which account. See FilterState.channel. */
-  const [chan, setChan] = useState<string>('any');
   const [query, setQuery] = useState('');
   const [note, setNote] = useState('');
   const [labels, setLabels] = useState<InboxLabel[]>([]);
@@ -687,11 +708,26 @@ export function InboxView() {
   // (support banner, heading, an error) is already subtracted, so the bottom
   // edge lands on the bottom of the window instead of somewhere past it.
   useEffect(() => {
+    const el = cardRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => { const w = entries[0]?.contentRect.width; if (w) setCardW(Math.round(w)); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
     const measure = () => {
       if (narrow) window.scrollTo(0, 0);
       const top = cardRef.current?.getBoundingClientRect().top ?? 0;
-      const gap = narrow ? 8 : 16;
-      setCardH(`calc(100dvh - ${Math.max(0, Math.round(top))}px - ${gap}px)`);
+      // The phone shell pins a tab bar to the bottom of the window. A card
+      // that reaches the bottom edge puts its composer UNDER that bar — the
+      // send button rendered and unreachable. Whatever fixed bar sits at the
+      // bottom is measured and subtracted; the staff portal has none.
+      const bar = narrow
+        ? Array.from(document.querySelectorAll('nav')).find((n) => { const cs = getComputedStyle(n); return cs.position === 'fixed' && cs.bottom === '0px'; })
+        : null;
+      const gap = (narrow ? 8 : 16) + (bar ? bar.getBoundingClientRect().height : 0);
+      setCardH(`calc(100dvh - ${Math.max(0, Math.round(top))}px - ${Math.round(gap)}px)`);
     };
     measure();
     window.addEventListener('resize', measure);
@@ -803,7 +839,6 @@ export function InboxView() {
   // with a single Page still got "Lumio Booking" stamped on every row — the
   // same eleven characters repeated down the list, pushing the customer's own
   // labels onto a second line. Distinct names is the question that matters.
-  const showPageChip = new Set(rows.map((r) => String(r.pageName ?? '').trim()).filter(Boolean)).size > 1;
   // THE BADGE IS NOT CONDITIONAL ANY MORE, AND THE OLD REASONING WAS WRONG.
   //
   // It used to appear only when the list actually mixed channels, on the
@@ -815,10 +850,24 @@ export function InboxView() {
   // they look at the row and expect it to say where the message came from.
   // Messenger, Instagram, Zalo and the website all land in one list, and which
   // one decides the rules — a 24-hour window, a 7-day window, or none at all.
-  const sorted = sortRows(filterRows(rows, { filter, source, channel: chan, query, meId: me, labelId }));
+  const sorted = sortRows(filterRows(rows, { filter, source, channel: 'any', query, meId: me, labelId }));
   const unreadCount = rows.filter((r) => r.unread && !isSpamRow(r)).length;
   /** How many conversations are in the bin. Drives whether the chip exists. */
   const junkCount = spamCount(rows);
+
+  /** The next hundred conversations older than the oldest one on screen. */
+  async function loadMore() {
+    if (!token || moreState === 'loading') return;
+    const oldest = rows.reduce<string | null>((m, r) => (!m || r.updatedAt < m ? r.updatedAt : m), null);
+    if (!oldest) return;
+    setMoreState('loading');
+    try {
+      const r = await apiFetch<InboxRow[]>(`/messenger/threads?before=${encodeURIComponent(oldest)}&take=100`, { token });
+      const page = Array.isArray(r) ? r : [];
+      setOlder((cur) => { const seen = new Set(cur.map((x) => x.id)); return [...cur, ...page.filter((x) => !seen.has(x.id))]; });
+      setMoreState(page.length < 100 ? 'end' : 'idle');
+    } catch (e) { setErr(String(e)); setMoreState('idle'); }
+  }
 
   /** Clear every unread mark in the shop, then repaint from the server. */
   async function markAllRead() {
@@ -864,7 +913,6 @@ export function InboxView() {
     // Not `sorted` — it is rebuilt on every render, which would re-run this
     // effect on every render to do nothing. The id is the only part that matters.
   }, [narrow, openId, firstId, loadThread]);
-  const chans = channelCounts(rows);
   const waiting = waitingCount(rows);
   const dueCount = followUpCount(rows);
   /**
@@ -927,1158 +975,751 @@ export function InboxView() {
   const state = detail ? stateOf(detail) : 'bot';
 
   const pill = (tone: string, text: string) => (
-    <span style={{ background: TONE[tone].bg, color: TONE[tone].fg, borderRadius: 7, padding: '3px 9px', fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{text}</span>
+    <span style={{ background: TONE[tone].bg, color: TONE[tone].fg, borderRadius: 999, padding: '2px 8px', fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{text}</span>
+  );
+
+  // ─── The list, in the order the mockup draws it ──────────────────────────
+  // "Đang chờ người thật" first, longest wait on top; everything else after,
+  // newest first. Sorting by WORK, not by channel — the channel is a filter on
+  // the left, never the order of the queue.
+  const waitingRows = sorted.filter((r) => stateOf(r) === 'unclaimed').sort((a, b) => (b.waitingMinutes ?? 0) - (a.waitingMinutes ?? 0));
+  const restRows = sorted.filter((r) => stateOf(r) !== 'unclaimed');
+  const pageNames = new Set(rows.map((r) => String(r.pageName ?? '').trim()).filter(Boolean));
+  const activeSource = sources.find((s) => s.key === source) ?? null;
+  const filterName = (f: InboxFilter) => ({
+    all: vi ? 'Tất cả' : 'All', waiting: wide ? (vi ? 'Đang chờ người thật' : 'Waiting for a person') : (vi ? 'Đang chờ' : 'Waiting'), unread: vi ? 'Chưa đọc' : 'Unread',
+    mine: vi ? 'Giao cho tôi' : 'Assigned to me', followup: vi ? 'Cần theo dõi' : 'Follow-up', spam: 'Spam',
+  })[f];
+  /** The ONE chip a row carries. Waiting › follow-up › held › done — never two. */
+  const rowChip = (r: InboxRow) => {
+    const st = stateOf(r);
+    if (st === 'unclaimed') {
+      const w = r.waitingMinutes ?? 0;
+      const long = w >= 60;
+      const txt = w >= 60 ? (vi ? `chờ ${Math.floor(w / 60)} giờ${w % 60 ? ` ${w % 60} phút` : ''}` : `waiting ${Math.floor(w / 60)}h${w % 60 ? ` ${w % 60}m` : ''}`) : (vi ? `chờ ${w} phút` : `waiting ${w} min`);
+      return <span style={{ height: 20, padding: '0 7px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', background: long ? 'var(--wash-red)' : 'var(--wash-amber-3)', color: long ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>{txt}</span>;
+    }
+    const fu = followUpState(r.followUpAt);
+    if (fu !== 'none') {
+      return <span style={{ height: 20, padding: '0 7px', borderRadius: 999, fontSize: 11.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', background: fu === 'overdue' ? 'var(--wash-red)' : 'var(--c1e1b4b)', color: fu === 'overdue' ? 'var(--ink-bad)' : 'var(--ca5b4fc)' }}>⏰ {followUpLabel(r.followUpAt, new Date())}</span>;
+    }
+    if (st === 'human') return <span style={{ height: 20, padding: '0 7px', borderRadius: 999, fontSize: 11.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', background: 'var(--c14532d)', color: 'var(--c86efac)' }}>{r.assignedName ? (vi ? `${r.assignedName} giữ` : `${r.assignedName} holding`) : (vi ? 'người thật giữ' : 'a person holds it')}</span>;
+    if (st === 'done') return <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>✓ {vi ? 'đã xong' : 'done'}</span>;
+    return <span style={{ height: 20, padding: '0 7px', borderRadius: 999, fontSize: 11.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', background: 'var(--c14532d)', color: 'var(--c86efac)' }}>{vi ? 'bot đang xử lý' : 'bot handling'}</span>;
+  };
+
+  const rowView = (r: InboxRow) => {
+    const on = r.id === openId;
+    return (
+      <button key={r.id} onClick={() => { keepUnreadRef.current = null; setOpenId(r.id); void loadThread(r.id); }}
+        onMouseEnter={() => prefetchThread(r.id)} onTouchStart={() => prefetchThread(r.id)}
+        aria-current={on ? 'true' : undefined}
+        style={{ boxSizing: 'border-box', width: narrow ? '100%' : 'calc(100% - 12px)', margin: narrow ? '0 0 6px' : '0 6px 2px', textAlign: 'left', display: 'flex', gap: 10, cursor: 'pointer', flexShrink: 0,
+          background: on ? 'var(--row-on)' : (narrow ? 'var(--c0f172a)' : 'transparent'),
+          boxShadow: on ? 'inset 0 0 0 1.5px #6366f1' : (narrow ? 'inset 0 0 0 1px var(--line)' : 'none'),
+          border: 'none', borderRadius: narrow ? 14 : 12, padding: narrow ? '12px' : '10px 12px 10px 10px', fontFamily: 'inherit', color: 'var(--cf1f5f9)' }}>
+        <Avatar row={r} size={44} token={token} vi={vi} />
+        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ fontSize: 14.5, fontWeight: r.unread ? 700 : 600, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '-0.01em' }}>{displayName(r, vi)}</span>
+            <span title={fmtInTz(r.lastMessageAt || r.updatedAt, { dateStyle: 'full', timeStyle: 'short' })} style={{ fontSize: 11.5, color: 'var(--c64748b)', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{listStampLabel(r.lastMessageAt || r.updatedAt, vi)}</span>
+          </span>
+          <span style={{ fontSize: 13, lineHeight: 1.4, color: r.unread ? 'var(--ccbd5e1)' : 'var(--c94a3b8)', fontWeight: r.unread ? 500 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.lastText || (vi ? '(chưa có tin nhắn)' : '(no message yet)')}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, minWidth: 0 }}>
+            <span style={{ color: 'var(--c64748b)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+              {pageNames.size > 1 && r.pageName ? r.pageName : channelBrand(r.channel).name}
+              {(r.labels ?? []).slice(0, 2).map((l) => <span key={l.id} style={{ marginLeft: 6, color: l.color, fontWeight: 600 }}>● {l.name}</span>)}
+            </span>
+            <span style={{ flex: 1 }} />
+            {rowChip(r)}
+            {r.unread && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#4f46e5', flexShrink: 0 }} aria-label={vi ? 'Chưa đọc' : 'Unread'} />}
+          </span>
+        </span>
+      </button>
+    );
+  };
+
+  const sectionHead = (text: string, tone: 'warn' | 'muted' = 'muted') => (
+    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, color: tone === 'warn' ? 'var(--ink-warn)' : 'var(--c64748b)', padding: narrow ? '6px 4px 4px' : '10px 14px 4px', textTransform: 'uppercase', flexShrink: 0 }}>{text}</span>
+  );
+
+  const railItem = (key: InboxFilter, icon: React.ReactNode, count: React.ReactNode) => {
+    const on = filter === key;
+    return (
+      <button key={key} onClick={() => setFilter(key)} style={{ height: 36, boxSizing: 'border-box', padding: '0 10px', borderRadius: 9, border: 'none', display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', width: '100%',
+        background: on ? 'var(--c1e1b4b)' : 'transparent', color: on ? 'var(--ca5b4fc)' : 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: on ? 700 : 500 }}>
+        <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', color: on ? 'var(--ca5b4fc)' : 'var(--c94a3b8)' }}>{icon}</span>
+        <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{filterName(key)}</span>
+        {count}
+      </button>
+    );
+  };
+  const railCount = (n: number) => <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{n}</span>;
+  const hotCount = (n: number) => <span style={{ minWidth: 22, height: 20, padding: '0 6px', borderRadius: 999, background: '#d97706', color: '#fff', fontSize: 11.5, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{n}</span>;
+  const svg = (d: React.ReactNode, w = 2) => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">{d}</svg>;
+
+  // ─── The views + channels column (desktop) ────────────────────────────────
+  const rail = (
+    <div style={{ boxSizing: 'border-box', padding: '12px 8px', borderRight: '1px solid var(--line)', background: 'var(--c0b1220)', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', minHeight: 0 }}>
+      {sectionHead(vi ? 'Hộp thư' : 'Inbox')}
+      {railItem('all', svg(<><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.5 5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-7A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1z" /></>), railCount(rows.filter((r) => !isSpamRow(r)).length))}
+      {railItem('waiting', svg(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>, 2.2), waiting > 0 ? hotCount(waiting) : railCount(0))}
+      {railItem('unread', svg(<circle cx="12" cy="12" r="4" />), railCount(unreadCount))}
+      {railItem('mine', svg(<><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 12 0v1" /></>), railCount(rows.filter((r) => r.assignedUserId && r.assignedUserId === me && !isSpamRow(r)).length))}
+      {railItem('followup', svg(<><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></>), (
+        <span style={{ fontSize: 12, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{rows.filter((r) => followUpState(r.followUpAt) !== 'none' && !isSpamRow(r)).length}{dueCount > 0 && <> · <span style={{ color: 'var(--ink-bad)', fontWeight: 700 }}>{dueCount} {vi ? 'tới hạn' : 'due'}</span></>}</span>
+      ))}
+      {(junkCount > 0 || filter === 'spam') && railItem('spam', svg(<><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></>), railCount(junkCount))}
+
+      {sectionHead(vi ? 'Kênh · tài khoản' : 'Channel · account')}
+      <button onClick={() => setSource('any')} style={{ height: 34, boxSizing: 'border-box', padding: '0 10px', borderRadius: 9, border: 'none', display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', width: '100%',
+        background: source === 'any' ? 'var(--c1e1b4b)' : 'transparent', color: source === 'any' ? 'var(--ca5b4fc)' : 'var(--ce2e8f0)', fontSize: 13, fontWeight: source === 'any' ? 700 : 500 }}>
+        <span style={{ display: 'flex', width: 24, justifyContent: 'center' }}>{svg(<><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>)}</span>
+        <span style={{ flex: 1 }}>{vi ? 'Tất cả kênh' : 'All channels'}</span>
+      </button>
+      {sources.map((src) => {
+        const on = source === src.key;
+        const brand = channelBrand(src.channel);
+        const total = rows.filter((r) => `${r.pageId ?? ''}|${channelOf(r.channel)}` === src.key && !isSpamRow(r)).length;
+        return (
+          <button key={src.key} onClick={() => setSource(on ? 'any' : src.key)} title={src.label} style={{ height: 44, boxSizing: 'border-box', padding: '0 10px', borderRadius: 9, border: 'none', display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', width: '100%',
+            background: on ? 'var(--c1e1b4b)' : 'transparent', color: 'var(--ce2e8f0)' }}>
+            <span style={{ width: 24, height: 24, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 700, ...onHue(brand.bg) }}>{channelLetter(src.channel)}</span>
+            <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: on ? 'var(--ca5b4fc)' : 'var(--ce2e8f0)' }}>{src.label}</span>
+              <span style={{ fontSize: 11, color: 'var(--c64748b)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{brand.name}{channelOf(src.channel) === 'messenger' ? ' · Fanpage' : channelOf(src.channel) === 'zalo' ? ' · Official Account' : ''}</span>
+            </span>
+            {src.waiting > 0 ? hotCount(src.waiting) : <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{total}</span>}
+          </button>
+        );
+      })}
+      {inSalonPortal() && (
+        <a href="/salon/channels" style={{ height: 38, marginTop: 6, boxSizing: 'border-box', padding: '0 10px', borderRadius: 9, border: '1px dashed var(--c334155)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none', color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 600 }}>＋ {vi ? 'Kết nối kênh mới' : 'Connect a channel'}</a>
+      )}
+
+      <span style={{ flex: 1 }} />
+      {turns && (
+        <div style={{ boxSizing: 'border-box', padding: '10px 12px', borderRadius: 12, background: 'var(--c0f172a)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ width: 9, height: 9, borderRadius: '50%', background: turns.settings.botFirst ? '#16a34a' : 'var(--c64748b)', flexShrink: 0 }} />
+            <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25, minWidth: 0 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{turns.settings.botFirst ? (vi ? 'Bot trả lời trước' : 'Bot answers first') : (vi ? 'Người thật trả lời trước' : 'People answer first')}</span>
+              <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>{turns.settings.botFirst ? (vi ? 'bàn giao khi khách cần người thật' : 'hands over when a person is needed') : (vi ? 'bot chỉ phụ' : 'the bot only assists')}</span>
+            </span>
+          </div>
+          {turnsOn && turns.me && (
+            <button onClick={() => void toggleMyStatus()} style={{ height: 32, borderRadius: 9, border: `1px solid ${myStatus === 'available' ? '#22c55e' : 'var(--c334155)'}`, background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: myStatus === 'available' ? '#22c55e' : 'var(--c64748b)' }} />
+              {myStatus === 'available' ? (vi ? 'Đang nhận khách · tạm vắng' : 'Taking turns · go away') : (vi ? 'Đang vắng · nhận lại' : 'Away · take turns')}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  // ─── The queue ─────────────────────────────────────────────────────────────
+  const list = (
+    <div style={{ borderRight: narrow ? 'none' : '1px solid var(--line)', flexDirection: 'column', minWidth: 0, minHeight: 0, background: narrow ? 'var(--c0b1120)' : 'var(--c0f172a)',
+      display: (narrow && openId) ? 'none' : 'flex', ...(narrow ? { flex: '1 1 0%' } : {}) }}>
+      <div style={{ boxSizing: 'border-box', padding: narrow ? '12px 16px 10px' : '12px 12px 8px', display: 'flex', flexDirection: 'column', gap: 8, borderBottom: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
+        {narrow && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 22, fontWeight: 700, flex: 1, letterSpacing: -0.2, color: 'var(--cf1f5f9)' }}>{vi ? 'Hộp thư' : 'Inbox'}</span>
+            {waiting > 0 && <span style={{ height: 26, padding: '0 9px', borderRadius: 999, background: 'var(--wash-amber-3)', color: 'var(--ink-warn)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center' }}>{waiting} {vi ? 'đang chờ' : 'waiting'}</span>}
+            {unreadCount > 0 && (
+              <button onClick={() => void markAllRead()} disabled={busy} aria-label={vi ? 'Đánh dấu đã đọc tất cả' : 'Mark all read'} title={vi ? `Đánh dấu đã đọc tất cả (${unreadCount})` : `Mark all read (${unreadCount})`}
+                style={{ width: 40, height: 40, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 14, cursor: 'pointer' }}>✓✓</button>
+            )}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <label style={{ flex: 1, minWidth: 0, height: narrow ? 42 : 38, boxSizing: 'border-box', padding: '0 12px', borderRadius: 10, border: '1px solid var(--c334155)', background: narrow ? 'var(--c0f172a)' : 'var(--c0b1220)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c64748b)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <input value={query} onChange={(e) => setQuery(e.target.value)} aria-label={vi ? 'Tìm khách' : 'Search'}
+              placeholder={vi ? 'Tìm tên, số điện thoại, nội dung…' : 'Search name, phone, message…'}
+              style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: narrow ? 16 : 13.5, color: 'var(--ce2e8f0)', fontFamily: 'inherit' }} />
+          </label>
+          {!narrow && unreadCount > 0 && (
+            <button onClick={() => void markAllRead()} disabled={busy} aria-label={vi ? 'Đánh dấu đã đọc tất cả' : 'Mark all read'} title={vi ? `Đánh dấu đã đọc tất cả (${unreadCount})` : `Mark all read (${unreadCount})`}
+              style={{ width: 38, height: 38, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer', flexShrink: 0 }}>✓✓</button>
+          )}
+        </div>
+        {(narrow || compact) ? (
+          <div className="no-bar" style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            {(['waiting', 'all', 'unread', 'mine', 'followup', ...((junkCount > 0 || filter === 'spam') ? ['spam'] : [])] as InboxFilter[]).map((f) => {
+              const on = filter === f;
+              const n = f === 'waiting' ? waiting : f === 'all' ? rows.filter((r) => !isSpamRow(r)).length : f === 'unread' ? unreadCount : f === 'mine' ? rows.filter((r) => r.assignedUserId === me).length : f === 'followup' ? dueCount : junkCount;
+              return (
+                <button key={f} onClick={() => setFilter(f)} style={on
+                  ? { flexShrink: 0, height: 34, padding: '0 12px', borderRadius: 999, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: '#4f46e5', color: '#fff' }
+                  : { flexShrink: 0, height: 34, padding: '0 12px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {f === 'waiting' ? (vi ? 'Đang chờ' : 'Waiting') : f === 'followup' ? (vi ? 'Theo dõi' : 'Follow-up') : f === 'mine' ? (vi ? 'Của tôi' : 'Mine') : filterName(f)} · {n}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--c94a3b8)', minWidth: 0 }}>
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{vi ? 'Đang xem:' : 'Viewing:'} <strong style={{ color: 'var(--ca5b4fc)' }}>{filterName(filter)}</strong> · {activeSource ? activeSource.label : (vi ? 'tất cả kênh' : 'all channels')}</span>
+          </div>
+        )}
+        {(narrow || compact) && sources.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--c94a3b8)' }}>
+            <select value={source} onChange={(e) => setSource(e.target.value)} aria-label={vi ? 'Kênh' : 'Channel'} style={{ ...ui.input, width: 'auto', maxWidth: 220, padding: '6px 8px', fontSize: 12.5, borderRadius: 999 }}>
+              <option value="any">{vi ? `Tất cả kênh · ${sources.length} tài khoản` : `All channels · ${sources.length} accounts`}</option>
+              {sources.map((s) => <option key={s.key} value={s.key}>{channelBrand(s.channel).name} · {s.label}{s.waiting ? ` · ${s.waiting} ${vi ? 'chờ' : 'waiting'}` : ''}</option>)}
+            </select>
+            <span style={{ flex: 1 }} />
+            {turns && <span style={{ color: turns.settings.botFirst ? 'var(--ink-good)' : 'var(--c64748b)', fontWeight: 600, whiteSpace: 'nowrap' }}>● {turns.settings.botFirst ? (vi ? 'Bot đang bật' : 'Bot on') : (vi ? 'Bot chỉ phụ' : 'Bot assists')}</span>}
+          </div>
+        )}
+        {labels.length > 0 && !narrow && (
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+            {labels.map((l) => (
+              <button key={l.id} onClick={() => setLabelId(labelId === l.id ? null : l.id)}
+                style={{ border: `1px solid ${labelId === l.id ? l.color : 'var(--c334155)'}`, background: labelId === l.id ? l.color : 'transparent', color: labelId === l.id ? '#fff' : 'var(--c94a3b8)', borderRadius: 999, padding: '2px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>{l.name}</button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', flex: '1 1 0%', minHeight: 0, display: 'flex', flexDirection: 'column', padding: narrow ? '6px 10px' : '0 0 8px' }}>
+        {listErr && (
+          <div style={{ margin: 10, padding: '9px 11px', borderRadius: 8, background: 'var(--wash-red)', border: '1px solid var(--c7f1d1d)' }}>
+            <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--ink-bad)', fontWeight: 600 }}>{vi ? 'Không tải được danh sách hội thoại' : 'Could not load conversations'}</p>
+            <p style={{ margin: '0 0 6px', fontSize: 11, color: 'var(--ink-bad)', wordBreak: 'break-word' }}>{listErr}</p>
+            <button onClick={() => void loadList()} style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px' }}>{vi ? 'Thử lại' : 'Retry'}</button>
+          </div>
+        )}
+        {!loaded && !listErr && (
+          <div aria-busy="true" aria-label={vi ? 'Đang tải hội thoại' : 'Loading conversations'}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} style={{ display: 'flex', gap: 12, padding: '12px 12px', margin: '0 8px 2px', opacity: 1 - i * 0.25 }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--c1e293b)', flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 3 }}>
+                  <div style={{ height: 9, width: '55%', borderRadius: 4, background: 'var(--c1e293b)' }} />
+                  <div style={{ height: 8, width: '80%', borderRadius: 4, background: 'var(--c1e293b)' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {loaded && !sorted.length && !listErr && (
+          <p style={{ color: 'var(--c64748b)', fontSize: 13, padding: 16, margin: 0 }}>
+            {filter === 'waiting'
+              ? (vi ? 'Không ai đang chờ. Tốt.' : 'Nobody is waiting. Good.')
+              : rows.length === 0
+                ? (vi ? 'Chưa có hội thoại nào. Khi khách nhắn vào Page, hội thoại sẽ hiện ở đây.' : 'No conversations yet. They appear here when a customer writes to the Page.')
+                : (vi ? 'Không có hội thoại nào khớp bộ lọc.' : 'No conversations match these filters.')}
+          </p>
+        )}
+        {waitingRows.length > 0 && sectionHead(vi ? `Đang chờ người thật · ${waitingRows.length}` : `Waiting for a person · ${waitingRows.length}`, 'warn')}
+        {waitingRows.map(rowView)}
+        {restRows.length > 0 && filter !== 'waiting' && sectionHead(waitingRows.length ? (vi ? `Còn lại · ${restRows.length}` : `Everything else · ${restRows.length}`) : (vi ? `${restRows.length} hội thoại` : `${restRows.length} conversations`))}
+        {filter !== 'waiting' && restRows.map(rowView)}
+        {loaded && rows.length >= 100 && moreState !== 'end' && (
+          <button onClick={() => void loadMore()} disabled={moreState === 'loading'} style={{ margin: narrow ? '6px 0 12px' : '8px 12px 4px', height: 38, flexShrink: 0, borderRadius: 10, border: '1px dashed var(--c334155)', background: 'transparent', color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {moreState === 'loading' ? (vi ? 'Đang tải…' : 'Loading…') : (vi ? 'Tải thêm hội thoại cũ hơn' : 'Load older conversations')}
+          </button>
+        )}
+        {moreState === 'end' && rows.length > 0 && <span style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--c64748b)', padding: '8px 0 12px' }}>{vi ? 'Đã hiện toàn bộ hội thoại.' : 'That is every conversation.'}</span>}
+      </div>
+    </div>
+  );
+
+  // ─── The conversation ──────────────────────────────────────────────────────
+  const noticeTone = notice.tone ?? (notice.blocked ? 'red' : 'amber');
+  const suggestions = (detail?.canned ?? []).slice(0, 3);
+  const thread = (
+    <div style={{ flexDirection: 'column', minWidth: 0, minHeight: 0, background: 'var(--c0b1120)',
+      display: (narrow && (!openId || showInfo)) ? 'none' : 'flex', ...(narrow ? { flex: '1 1 0%' } : {}) }}>
+      {!detail && !openId && !loaded && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c64748b)', fontSize: 13 }}>{vi ? 'Đang tải hộp thư…' : 'Loading the inbox…'}</div>
+      )}
+      {!detail && openId && (
+        <div aria-busy="true" aria-label={vi ? 'Đang mở hội thoại' : 'Opening the conversation'} style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', borderBottom: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--c1e293b)', flexShrink: 0 }} />
+            <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ height: 10, width: '35%', borderRadius: 4, background: 'var(--c1e293b)' }} />
+              <div style={{ height: 8, width: '55%', borderRadius: 4, background: 'var(--c1e293b)' }} />
+            </div>
+          </div>
+          <div style={{ flex: 1, padding: 18, display: 'flex', flexDirection: 'column', gap: 12, justifyContent: 'flex-end' }}>
+            {[{ w: '62%', mine: false }, { w: '48%', mine: true }, { w: '70%', mine: false }].map((b, i) => (
+              <div key={i} style={{ alignSelf: b.mine ? 'flex-end' : 'flex-start', width: b.w, height: 40, borderRadius: 16, background: 'var(--c1e293b)', opacity: 0.85 - i * 0.18 }} />
+            ))}
+          </div>
+        </div>
+      )}
+      {!detail && !openId && loaded && (() => {
+        const oldest = rows.filter((r) => stateOf(r) === 'unclaimed').reduce((m, r) => Math.max(m, r.waitingMinutes ?? 0), 0);
+        const mins = (n: number) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 ? ` ${n % 60}p` : ''}` : `${n} ${vi ? 'phút' : 'min'}`);
+        return (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16, minHeight: 0 }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+              <Box n={waiting} label={vi ? 'khách đang chờ' : 'waiting for a reply'} tone={waiting > 0 ? 'alarm' : 'calm'} sub={waiting > 0 ? (vi ? `lâu nhất ${mins(oldest)}` : `longest ${mins(oldest)}`) : (vi ? 'không ai phải đợi' : 'nobody is waiting')} />
+              <Box n={dueCount} label={vi ? 'cần theo dõi hôm nay' : 'follow-ups due'} tone={dueCount > 0 ? 'warn' : 'calm'} sub={vi ? 'đã hẹn quay lại' : 'you said you would come back'} />
+              <Box n={unreadCount} label={vi ? 'chưa đọc' : 'unread'} tone="calm" sub={vi ? 'trong toàn bộ hộp thư' : 'across the inbox'} />
+            </div>
+            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c64748b)', textAlign: 'center', lineHeight: 1.6, maxWidth: 380 }}>
+              {waiting > 0 ? (vi ? 'Bấm "Đang chờ người thật" bên trái để xem đúng những người này trước.' : 'Tap “Waiting for a person” on the left to see exactly those first.')
+                : rows.length === 0 ? (vi ? 'Chưa có hội thoại nào. Khi khách nhắn vào Page hoặc Instagram, hội thoại sẽ mở sẵn ở đây.' : 'No conversations yet. When a customer writes to the Page or Instagram, the conversation opens here.')
+                : (vi ? 'Không có hội thoại nào khớp bộ lọc bên trái.' : 'Nothing matches the filters on the left.')}
+            </p>
+          </div>
+        );
+      })()}
+
+      {detail && (() => {
+        const since = detail.lastCustomerAt ? sinceLabel(detail.lastCustomerAt as string, vi) : null;
+        const stateText = state === 'unclaimed' ? (vi ? 'đang chờ người thật' : 'waiting for a person') : state === 'human' ? (detail.assignedName ? (vi ? `${detail.assignedName} đang giữ` : `${detail.assignedName} is holding`) : (vi ? 'người thật giữ' : 'a person holds it')) : state === 'done' ? (vi ? 'đã xong' : 'done') : (vi ? 'bot đang trả lời' : 'bot is replying');
+        const mineTurn = detail.assignedUserId === turns?.me?.userId;
+        const mayAssign = !!turns && (turns.canEdit || !detail.assignedUserId || mineTurn);
+        const assigned = turns?.agents.find((a) => a.userId === detail.assignedUserId)?.name ?? detail.assignedName ?? null;
+        const botButton = (
+          (state === 'human' || state === 'unclaimed')
+              ? <button disabled={busy} onClick={() => void act('handoff', { handoff: false })} title={vi ? 'Để bot trả lời lại' : 'Let the bot reply again'}
+                  style={{ height: narrow ? 30 : 36, padding: narrow ? '0 10px' : '0 12px', borderRadius: narrow ? 999 : 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: narrow ? 12 : 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--c64748b)' }} />{(narrow || !wide) ? (vi ? 'Trả bot' : 'To bot') : (vi ? 'Bot: tắt · trả bot' : 'Bot: off · hand back')}
+                </button>
+              : <button disabled={busy} onClick={() => void act('handoff', { handoff: true })} title={vi ? 'Tôi nhận — bot ngừng trả lời' : 'Take over — the bot stops replying'}
+                  style={wnotice?.kind === 'needs-takeover'
+                    ? { height: narrow ? 30 : 36, padding: '0 12px', borderRadius: narrow ? 999 : 10, border: 'none', fontSize: narrow ? 12 : 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', flexShrink: 0, background: '#4f46e5', color: '#fff' }
+                    : { height: narrow ? 30 : 36, padding: narrow ? '0 10px' : '0 12px', borderRadius: narrow ? 999 : 10, border: '1px solid #16a34a', background: 'var(--c14532d)', color: 'var(--c86efac)', fontSize: narrow ? 12 : 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {wnotice?.kind !== 'needs-takeover' && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a' }} />}
+                  {wnotice?.kind === 'needs-takeover' ? (vi ? 'Tôi nhận' : 'Take over') : (narrow || !wide) ? (vi ? 'Bot: bật' : 'Bot: on') : (vi ? 'Bot: đang bật · tôi nhận' : 'Bot: on · take over')}
+                </button>
+        );
+        return (<>
+          <div style={{ flexShrink: 0, boxSizing: 'border-box', padding: narrow ? '10px 12px 10px 6px' : '0 18px', minHeight: narrow ? 60 : 64, display: 'flex', alignItems: 'center', gap: narrow ? 8 : 12, background: 'var(--c0f172a)', borderBottom: '1px solid var(--line)' }}>
+            {narrow && (
+              <button onClick={() => { setOpenId(null); setDetail(null); setShowInfo(false); }} aria-label={vi ? 'Quay lại danh sách' : 'Back to list'}
+                style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+              </button>
+            )}
+            <Avatar row={detail} size={40} token={token} vi={vi} />
+            <div onClick={() => (narrow ? setShowInfo(true) : void renameThread())} title={narrow ? (vi ? 'Thông tin khách' : 'Customer info') : (vi ? 'Bấm để đặt tên khách' : 'Click to set the name')}
+              style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.25, cursor: 'pointer' }}>
+              <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {displayName(detail, vi)}{!detail.senderName && !narrow && <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}> ✎</span>}{narrow && <span style={{ color: 'var(--c64748b)', fontWeight: 500 }}> ›</span>}
+              </span>
+              <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {channelBrand(detail.channel).name}{detail.pageName ? <> · <strong style={{ color: 'var(--ccbd5e1)', fontWeight: 600 }}>{detail.pageName}</strong></> : null}
+                {since && <> · {vi ? 'khách nhắn' : 'wrote'} <strong style={{ color: state === 'unclaimed' ? 'var(--ink-warn)' : 'var(--ccbd5e1)', fontWeight: 600 }}>{since}</strong></>}
+                {!narrow && <> · {stateText}</>}
+              </span>
+            </div>
+            {!narrow && wide && turns && turns.agents.length > 0 && (
+              <select value={detail.assignedUserId ?? ''} disabled={busy || !mayAssign} onChange={(e) => void assignTo(e.target.value)} aria-label={vi ? 'Giao cho' : 'Assign to'} title={vi ? 'Người phụ trách hội thoại này' : 'Who follows up this conversation'}
+                style={{ ...ui.input, width: 'auto', maxWidth: 170, height: 36, padding: '0 10px', fontSize: 13, fontWeight: 600, borderRadius: 10 }}>
+                <option value="">{vi ? 'Chưa giao' : 'Unassigned'}</option>
+                {turns.agents.map((a) => <option key={a.userId} value={a.userId}>{a.name}{a.userId === turns.me?.userId ? (vi ? ' (tôi)' : ' (me)') : ''}{turnsOn && !a.onDuty ? (vi ? ' · vắng' : ' · away') : ''}</option>)}
+              </select>
+            )}
+            {!narrow && botButton}
+            {!isSpamRow(detail) && (state !== 'done'
+              ? <button disabled={busy} onClick={() => void act('status', { status: 'done' })} style={{ height: 36, padding: '0 14px', borderRadius: 10, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0, background: '#4f46e5', color: '#fff' }}>✓ {vi ? 'Xong' : 'Done'}</button>
+              : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={{ height: 36, padding: '0 12px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>{vi ? 'Mở lại' : 'Reopen'}</button>)}
+            {compact && !narrow && (
+              <button onClick={() => setShowInfo((v) => !v)} aria-label={vi ? 'Thông tin khách' : 'Customer info'} aria-pressed={showInfo}
+                style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${showInfo ? '#6366f1' : 'var(--c334155)'}`, background: showInfo ? 'var(--c1e1b4b)' : 'var(--c0f172a)', color: showInfo ? 'var(--ca5b4fc)' : 'var(--ccbd5e1)', fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>ⓘ</button>
+            )}
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <button onClick={() => setMoreOpen((o) => !o)} aria-label={vi ? 'Thêm' : 'More'} aria-expanded={moreOpen}
+                style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⋯</button>
+              {moreOpen && (
+                <div style={{ position: 'absolute', right: 0, top: 40, zIndex: 20, minWidth: 200, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 12, boxShadow: '0 12px 30px -12px rgba(15,42,82,.45)', padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {[
+                    { k: 'unread', label: `● ${vi ? 'Để lại chưa đọc' : 'Mark unread'}`, run: () => markUnread(detail.id) },
+                    { k: 'rename', label: `✎ ${vi ? 'Đặt tên khách' : 'Set customer name'}`, run: () => renameThread() },
+                    ...(isSpamRow(detail)
+                      ? [{ k: 'unspam', label: vi ? 'Không phải spam' : 'Not spam', run: () => act('status', { status: 'open' }) }]
+                      : [{ k: 'spam', label: `⊘ ${vi ? 'Chuyển vào Spam' : 'Move to Spam'}`, run: () => act('status', { status: 'spam' }) }]),
+                  ].map((m) => (
+                    <button key={m.k} disabled={busy} onClick={() => { setMoreOpen(false); void m.run(); }}
+                      style={{ height: 36, padding: '0 12px', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13, fontWeight: 500, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{m.label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {narrow && (
+            <div className="no-bar" style={{ flexShrink: 0, boxSizing: 'border-box', padding: '8px 12px 0', display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              {botButton}
+              {turns && turns.agents.length > 0 && (
+                <select value={detail.assignedUserId ?? ''} disabled={busy || !mayAssign} onChange={(e) => void assignTo(e.target.value)} aria-label={vi ? 'Giao cho' : 'Assign to'}
+                  style={{ ...ui.input, width: 'auto', maxWidth: 160, height: 30, padding: '0 10px', fontSize: 12, fontWeight: 600, borderRadius: 999, flexShrink: 0 }}>
+                  <option value="">{vi ? 'Chưa giao' : 'Unassigned'}</option>
+                  {turns.agents.map((a) => <option key={a.userId} value={a.userId}>{a.name}</option>)}
+                </select>
+              )}
+              {notice.text && !notice.blocked && (
+                <span style={{ flexShrink: 0, height: 30, padding: '0 10px', borderRadius: 999, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', background: noticeTone === 'red' ? 'var(--wash-red)' : 'var(--wash-amber-3)', color: noticeTone === 'red' ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>{notice.text.length > 48 ? `${notice.text.slice(0, 46)}…` : notice.text}</span>
+              )}
+            </div>
+          )}
+
+          {!narrow && notice.text && (
+            <div style={{ flexShrink: 0, boxSizing: 'border-box', margin: '10px 18px 0', padding: '8px 12px', borderRadius: 10, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 8, lineHeight: 1.4,
+              background: notice.blocked || noticeTone === 'red' ? 'var(--wash-red)' : 'var(--wash-amber-3)', color: notice.blocked || noticeTone === 'red' ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+              <span>{notice.text}</span>
+            </div>
+          )}
+
+          <div ref={paneRef} onScroll={(e) => { const el = e.currentTarget; atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}
+            style={{ flex: '1 1 0%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0, padding: narrow ? '10px 12px' : '14px 18px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ marginTop: 'auto' }} aria-hidden="true" />
+            {isSpamRow(detail) && (
+              <div style={{ alignSelf: 'center', textAlign: 'center', fontSize: 11.5, color: 'var(--c94a3b8)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 8, padding: '6px 12px' }}>
+                {vi ? 'Hội thoại này đang ở Spam — bot không trả lời. Không có gì bị xoá.' : 'This conversation is in Spam — the bot does not reply. Nothing was deleted.'}
+              </div>
+            )}
+            {detail.historySource === 'local' && (
+              <div style={{ alignSelf: 'center', textAlign: 'center', fontSize: 11.5, color: 'var(--c94a3b8)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 8, padding: '6px 12px' }}>
+                {vi ? 'Chỉ đang hiện các tin gần nhất — chưa tải được toàn bộ lịch sử từ Meta.' : 'Showing recent messages only — Meta did not return the full history.'}
+                <button onClick={() => void loadThread(detail.id)} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--ca5b4fc)', fontWeight: 600, cursor: 'pointer', fontSize: 11.5, fontFamily: 'inherit' }}>{vi ? 'Thử lại' : 'Retry'}</button>
+              </div>
+            )}
+            {detail.historySource === 'partial' && detail.history.length === 0 && (
+              <div style={{ alignSelf: 'center', fontSize: 12, color: 'var(--c94a3b8)', padding: '18px 0' }}>{vi ? 'Đang tải tin nhắn…' : 'Loading messages…'}</div>
+            )}
+            {detail.history.map((t, i) => {
+              const mine = t.role === 'assistant';
+              const prev = i > 0 ? detail.history[i - 1] : null;
+              const newDay = Boolean(t.at) && (!prev?.at || dayKeyInTz(t.at as string) !== dayKeyInTz(prev.at as string));
+              const who = mine ? (t.manual ? (vi ? 'Nhân viên' : 'Staff') : 'Bot') : (vi ? 'Khách' : 'Customer');
+              return (
+                <Fragment key={i}>
+                  {newDay && (
+                    <span style={{ alignSelf: 'center', fontSize: 11.5, fontWeight: 600, color: 'var(--c64748b)', padding: '2px 10px', borderRadius: 999, background: 'var(--raised)', border: '1px solid var(--line)', whiteSpace: 'nowrap', margin: '4px 0' }}>{dayDividerLabel(t.at as string, vi)}</span>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: narrow ? '84%' : '72%', flexDirection: mine ? 'row-reverse' : 'row' }}>
+                    {!mine && <Avatar row={detail} size={24} token={token} vi={vi} mark={false} />}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: mine ? 'flex-end' : 'flex-start', minWidth: 0 }}>
+                      {!!t.images?.length && (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {t.images.map((u, j) => (
+                            <a key={j} href={u} target="_blank" rel="noreferrer" title={vi ? 'Mở ảnh gốc' : 'Open the photo'}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={u} alt="" loading="lazy" style={{ width: narrow ? 160 : 140, height: narrow ? 160 : 140, objectFit: 'cover', borderRadius: 12, border: '1px solid var(--c334155)', background: 'var(--raised)', display: 'block' }} />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                      {(!t.images?.length || !/^\[Khách gửi/.test(t.content)) && (
+                        <div style={{
+                          padding: narrow ? '10px 13px' : '10px 14px',
+                          borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                          background: mine ? (t.manual ? '#1d4ed8' : 'var(--bubble-bot)') : 'var(--raised)',
+                          // The salon's replies sit on a saturated indigo/blue in both
+                          // themes, so their text stays white; the customer's bubble
+                          // follows the surface.
+                          color: mine ? '#f8fafc' : 'var(--ce2e8f0)',
+                          border: mine ? '1px solid transparent' : '1px solid var(--line)',
+                          fontSize: narrow ? 14.5 : 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+                        }}><Linkified text={t.content} /></div>
+                      )}
+                      <span style={{ fontSize: 11, color: 'var(--c64748b)', display: 'flex', alignItems: 'center', gap: 5, padding: '0 4px' }}>
+                        {mine && !t.manual && <span style={{ width: 14, height: 14, borderRadius: 4, background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 8, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>AI</span>}
+                        {who}{t.at ? <span title={fmtInTz(t.at, { dateStyle: 'full', timeStyle: 'short' })}> · {bubbleStampLabel(t.at, vi)}</span> : null}
+                      </span>
+                    </div>
+                  </div>
+                </Fragment>
+              );
+            })}
+            {state === 'unclaimed' && !isSpamRow(detail) && (
+              <div style={{ alignSelf: 'center', textAlign: 'center', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 999, background: 'var(--wash-amber-3)', color: 'var(--ink-warn)', fontSize: 12.5, fontWeight: 600, lineHeight: 1.4 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 9v4M12 17h.01" /><circle cx="12" cy="12" r="9" /></svg>
+                {vi ? 'Bot đã bàn giao — khách đang chờ người thật' : 'The bot handed over — the customer is waiting for a person'}{typeof detail.waitingMinutes === 'number' ? ` · ${detail.waitingMinutes} ${vi ? 'phút' : 'min'}` : ''}
+              </div>
+            )}
+            {(detail.notes ?? []).slice(-1).map((n) => (
+              <div key={n.id} style={{ alignSelf: 'flex-start', display: 'flex', gap: 8, alignItems: 'flex-start', maxWidth: narrow ? '88%' : '72%' }}>
+                <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--wash-amber-2)', border: '1px solid var(--c78350f)', color: 'var(--cfde68a)', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{initialsOf(n.authorName).slice(0, 1)}</span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ padding: '9px 12px', borderRadius: 12, background: 'var(--wash-amber)', border: '1px dashed var(--c78350f)', fontSize: 13, lineHeight: 1.5, color: 'var(--cfde68a)', whiteSpace: 'pre-wrap' }}><strong>{vi ? 'Ghi chú nội bộ' : 'Internal note'}</strong> · {n.authorName}: {n.text}</span>
+                  <span style={{ fontSize: 11, color: 'var(--c64748b)', paddingLeft: 4 }}>{vi ? 'Chỉ tiệm thấy' : 'Only the salon sees this'} · {fmtInTz(n.createdAt, { timeStyle: 'short' })}</span>
+                </span>
+              </div>
+            ))}
+            <div ref={endRef} />
+          </div>
+
+          {/* COMPOSER — reply and internal note are two tabs of one box. */}
+          <div style={{ flexShrink: 0, boxSizing: 'border-box', margin: narrow ? 0 : '0 18px 14px', borderRadius: narrow ? 0 : 14, background: 'var(--c0f172a)', border: narrow ? 'none' : '1px solid var(--c334155)', borderTop: '1px solid var(--c334155)', boxShadow: narrow ? 'none' : '0 6px 18px -12px rgba(15,42,82,.35)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            paddingBottom: narrow ? 'calc(8px + env(safe-area-inset-bottom))' : 0 }}>
+            {narrow ? (
+              <div style={{ display: 'flex', background: 'var(--c0b1220)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 3, margin: '8px 12px 0' }}>
+                <button onClick={() => setComposerMode('reply')} style={composerMode === 'reply' ? { flex: 1, height: 32, border: 'none', borderRadius: 9, background: 'var(--c0f172a)', color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 700, boxShadow: '0 1px 2px rgba(15,42,82,.12)', cursor: 'pointer', fontFamily: 'inherit' } : { flex: 1, height: 32, border: 'none', borderRadius: 9, background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{vi ? 'Trả lời khách' : 'Reply to customer'}</button>
+                <button onClick={() => setComposerMode('note')} style={composerMode === 'note' ? { flex: 1, height: 32, border: 'none', borderRadius: 9, background: 'var(--c0f172a)', color: 'var(--ink-warn)', fontSize: 13, fontWeight: 700, boxShadow: '0 1px 2px rgba(15,42,82,.12)', cursor: 'pointer', fontFamily: 'inherit' } : { flex: 1, height: 32, border: 'none', borderRadius: 9, background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{vi ? 'Ghi chú nội bộ' : 'Internal note'}</button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 8px 0', borderBottom: '1px solid var(--line)' }}>
+                <button onClick={() => setComposerMode('reply')} style={{ height: 34, padding: '0 12px', border: 'none', borderBottom: `2px solid ${composerMode === 'reply' ? '#4f46e5' : 'transparent'}`, background: 'transparent', color: composerMode === 'reply' ? 'var(--ca5b4fc)' : 'var(--c94a3b8)', fontSize: 13, fontWeight: composerMode === 'reply' ? 700 : 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>{vi ? 'Trả lời khách' : 'Reply to customer'}</button>
+                <button onClick={() => setComposerMode('note')} style={{ height: 34, padding: '0 12px', border: 'none', borderBottom: `2px solid ${composerMode === 'note' ? '#d97706' : 'transparent'}`, background: 'transparent', color: composerMode === 'note' ? 'var(--ink-warn)' : 'var(--c94a3b8)', fontSize: 13, fontWeight: composerMode === 'note' ? 700 : 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>{vi ? 'Ghi chú nội bộ' : 'Internal note'}</button>
+                <span style={{ flex: 1 }} />
+                {composerMode === 'reply' && detail.pageName && wide && <span style={{ fontSize: 12, color: 'var(--c64748b)', paddingRight: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{vi ? 'Gửi với tư cách' : 'Sending as'} <strong style={{ color: 'var(--ccbd5e1)' }}>{detail.pageName}</strong></span>}
+                {composerMode === 'note' && <span style={{ fontSize: 12, color: 'var(--ink-warn)', paddingRight: 6, whiteSpace: 'nowrap' }}>{vi ? 'Khách không thấy ghi chú này' : 'The customer never sees this'}</span>}
+              </div>
+            )}
+
+            {composerMode === 'reply' && !notice.blocked && (suggestions.length > 0 || ASKS.length > 0) && (
+              <div className="no-bar" style={{ display: 'flex', gap: 6, alignItems: 'center', padding: narrow ? '8px 12px 0' : '8px 10px 0', fontSize: 12.5, overflowX: 'auto', WebkitOverflowScrolling: 'touch', flexWrap: narrow || !allCanned ? 'nowrap' : 'wrap' }}>
+                <span style={{ color: 'var(--c64748b)', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>⚡{!narrow && ` ${vi ? 'Gợi ý:' : 'Suggested:'}`}</span>
+                {(allCanned ? (detail.canned ?? []) : suggestions).map((q, qi) => (
+                  <button key={q.label} title={q.text} onClick={() => setDraft((d) => (d.trim() ? `${d.trim()}\n${q.text}` : q.text))}
+                    style={qi === 0 && !allCanned
+                      ? { height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid #6366f1', background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }
+                      : { height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }}>{q.label}</button>
+                ))}
+                {allCanned && ASKS.map((a) => (
+                  <button key={a.k} title={vi ? a.vi : a.en} onClick={() => setDraft((d) => { const t = vi ? a.vi : a.en; return d.trim() ? `${d.trim()} ${t}` : t; })}
+                    style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }}>{a.icon} {vi ? a.viLabel : a.enLabel}</button>
+                ))}
+                <button onClick={() => setAllCanned((v) => !v)} style={{ height: 28, padding: '0 10px', borderRadius: 999, border: '1px dashed var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }}>
+                  {allCanned ? (vi ? 'Thu gọn ▴' : 'Fewer ▴') : `${vi ? 'Tất cả mẫu' : 'All templates'} (${(detail.canned?.length ?? 0) + ASKS.length}) ▾`}
+                </button>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, padding: narrow ? '8px 12px 0' : '8px 10px 8px' }}>
+              {composerMode === 'reply' ? (
+                <textarea value={draft} onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+                  placeholder={composerPlaceholder} disabled={notice.blocked || busy} rows={narrow ? 1 : 2} aria-label={vi ? 'Nội dung trả lời' : 'Reply'}
+                  style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', minHeight: narrow ? 40 : 52, padding: narrow ? '10px 12px' : '8px 6px', borderRadius: narrow ? 12 : 8, border: narrow ? '1px solid var(--c334155)' : 'none', background: narrow ? 'var(--c0b1220)' : 'transparent', resize: 'none', fontSize: narrow ? 16 : 14, lineHeight: 1.5, color: 'var(--ce2e8f0)', outline: 'none', fontFamily: 'inherit' }} />
+              ) : (
+                <textarea value={note} onChange={(e) => setNote(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void addNote(); } }}
+                  placeholder={vi ? 'Ghi chú cho team — khách không thấy (Enter để lưu)' : 'Note for the team — the customer never sees it (Enter to save)'} disabled={busy} rows={narrow ? 1 : 2} aria-label={vi ? 'Ghi chú nội bộ' : 'Internal note'}
+                  style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', minHeight: narrow ? 40 : 52, padding: '10px 12px', borderRadius: 12, border: '1px solid var(--c78350f)', background: 'var(--wash-amber)', resize: 'none', fontSize: narrow ? 16 : 14, lineHeight: 1.5, color: 'var(--ce2e8f0)', outline: 'none', fontFamily: 'inherit' }} />
+              )}
+              {narrow && (composerMode === 'reply'
+                ? <button disabled={notice.blocked || busy || !draft.trim()} onClick={() => void send()} aria-label={vi ? 'Gửi' : 'Send'}
+                    style={{ width: 40, height: 40, borderRadius: 10, border: 'none', flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: (notice.blocked || !draft.trim()) ? 'var(--c334155)' : '#4f46e5', color: (notice.blocked || !draft.trim()) ? 'var(--c94a3b8)' : 'var(--cf8fafc)' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" /></svg>
+                  </button>
+                : <button disabled={busy || !note.trim()} onClick={() => void addNote()} aria-label={vi ? 'Lưu ghi chú' : 'Save note'}
+                    style={{ height: 40, padding: '0 14px', borderRadius: 10, border: 'none', flexShrink: 0, cursor: 'pointer', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit', background: !note.trim() ? 'var(--c334155)' : '#d97706', color: !note.trim() ? 'var(--c94a3b8)' : 'var(--cf8fafc)' }}>{vi ? 'Lưu' : 'Save'}</button>)}
+            </div>
+            {!narrow && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px 8px' }}>
+                {composerMode === 'reply' && inSalonPortal() && (
+                  <button onClick={() => { void bookFor(detail); }} style={{ height: 34, padding: '0 10px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>{vi ? 'Đặt lịch cho khách' : 'Book this customer'}
+                  </button>
+                )}
+                {composerMode === 'reply' && wide && <span style={{ fontSize: 11.5, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{vi ? 'Enter gửi · Shift+Enter xuống dòng' : 'Enter sends · Shift+Enter for a new line'}</span>}
+                <span style={{ flex: 1 }} />
+                {composerMode === 'reply'
+                  ? <button disabled={notice.blocked || busy || !draft.trim()} onClick={() => void send()} style={{ height: 36, padding: '0 18px', borderRadius: 10, border: 'none', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: '#4f46e5', color: '#fff', opacity: (notice.blocked || !draft.trim()) ? 0.5 : 1 }}>{vi ? 'Gửi' : 'Send'}</button>
+                  : <button disabled={busy || !note.trim()} onClick={() => void addNote()} style={{ height: 36, padding: '0 18px', borderRadius: 10, border: 'none', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: '#d97706', color: '#fff', opacity: !note.trim() ? 0.5 : 1 }}>{vi ? 'Lưu ghi chú' : 'Save note'}</button>}
+              </div>
+            )}
+          </div>
+        </>);
+      })()}
+    </div>
+  );
+
+  // ─── Who this is, in Lumio terms ──────────────────────────────────────────
+  const infoHead = (text: string, right?: React.ReactNode) => (
+    <span style={{ display: 'flex', alignItems: 'center', fontSize: 11, fontWeight: 700, letterSpacing: 0.8, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{text}<span style={{ flex: 1 }} />{right}</span>
+  );
+  const softBtn: React.CSSProperties = { height: narrow ? 40 : 32, padding: '0 10px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: narrow ? 13 : 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' };
+  const info = (
+    <div style={{ borderLeft: narrow ? 'none' : '1px solid var(--line)', flexDirection: 'column', minWidth: 0, minHeight: 0, background: 'var(--c0f172a)', overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+      display: narrow ? (showInfo && !!openId ? 'flex' : 'none') : compact ? (showInfo ? 'flex' : 'none') : 'flex', ...(narrow ? { flex: '1 1 0%' } : {}), boxSizing: 'border-box', padding: narrow ? '8px 16px 24px' : 14, gap: 14 }}>
+      {(narrow || compact) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => setShowInfo(false)} style={{ ...softBtn, height: 36, display: 'flex', alignItems: 'center', gap: 6 }}>‹ {vi ? 'Về hội thoại' : 'Back to chat'}</button>
+        </div>
+      )}
+      {!detail ? (
+        <p style={{ color: 'var(--c64748b)', fontSize: 12.5, margin: 0, lineHeight: 1.5 }}>
+          {vi ? 'Chọn một hội thoại để xem khách là ai với tiệm: lịch hẹn, thợ quen, nhãn, hẹn theo dõi và ghi chú nội bộ.' : 'Pick a conversation to see who this is to the salon: appointments, usual tech, labels, follow-up and the team’s notes.'}
+        </p>
+      ) : (() => {
+        const cust = detail.customer;
+        const appts = [...(cust?.appointments ?? [])].filter((a) => a && a.startTime).sort((a, b) => +new Date(b.startTime) - +new Date(a.startTime));
+        const now = Date.now();
+        const upcoming = [...appts].reverse().find((a) => +new Date(a.startTime) > now) ?? null;
+        const past = appts.filter((a) => +new Date(a.startTime) <= now).slice(0, 3);
+        const fullName = [cust?.firstName, cust?.lastName].filter(Boolean).join(' ').trim();
+        const mineTurn = detail.assignedUserId === turns?.me?.userId;
+        const mayAssign = !!turns && (turns.canEdit || !detail.assignedUserId || mineTurn);
+        const assigned = turns?.agents.find((a) => a.userId === detail.assignedUserId)?.name ?? detail.assignedName ?? null;
+        return (<>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {infoHead(vi ? 'Khách hàng' : 'Customer')}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <Avatar row={detail} size={44} token={token} vi={vi} />
+              <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3, minWidth: 0 }}>
+                <span onClick={() => void renameThread()} title={vi ? 'Bấm để đặt tên' : 'Click to set the name'} style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)', cursor: 'text', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fullName || displayName(detail, vi)}</span>
+                <span style={{ fontSize: 12.5, color: cust ? 'var(--ink-good)' : 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cust ? (vi ? `Đã nối hồ sơ Lumio · đến ${cust.visits ?? 0} lần` : `Linked in Lumio · ${cust.visits ?? 0} visits`) : (vi ? 'Chưa nối với hồ sơ khách ở Lumio' : 'Not linked to a customer record yet')}</span>
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {inSalonPortal() && <button onClick={() => { void bookFor(detail); }} style={{ flex: 1, height: narrow ? 44 : 38, borderRadius: 10, border: 'none', fontSize: narrow ? 14 : 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: '#4f46e5', color: '#fff' }}>📅 {vi ? 'Đặt lịch cho khách' : 'Book for this customer'}</button>}
+              {cust?.phone && <a href={`tel:${String(cust.phone).replace(/[^+\d]/g, '')}`} style={{ ...softBtn, height: narrow ? 44 : 38, display: 'flex', alignItems: 'center', textDecoration: 'none' }}>☎ {vi ? 'Gọi' : 'Call'}</a>}
+              {cust?.phone && <button onClick={() => { void copyContact(detail); }} style={{ ...softBtn, height: narrow ? 44 : 38 }}>{copied ? `✓ ${vi ? 'Đã chép' : 'Copied'}` : `⧉ ${vi ? 'Chép' : 'Copy'}`}</button>}
+            </div>
+            {cust && (cust.phone || cust.usualTech || cust.email) && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 10px' }}>
+                {cust.phone && <Stat label={vi ? 'Điện thoại' : 'Phone'} value={String(cust.phone)} />}
+                {cust.usualTech && <Stat label={vi ? 'Thợ quen' : 'Usual tech'} value={cust.usualTech} />}
+                {cust.email && <Stat label="Email" value={cust.email} />}
+              </div>
+            )}
+            {cust && (upcoming ? (
+              <div style={{ boxSizing: 'border-box', padding: '9px 11px', borderRadius: 12, background: 'var(--c0b1220)', border: '1px solid var(--line)' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 3 }}>
+                  <span style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--c64748b)', fontWeight: 700 }}>{vi ? 'Lịch tới' : 'Next visit'}</span>
+                  {upcoming.status && pill(apptTone(upcoming.status), apptStatusLabel(upcoming.status, vi))}
+                </div>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{fmtInTz(upcoming.startTime, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
+                <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--c94a3b8)' }}>{[upcoming.service?.name, upcoming.assignedStaff?.firstName && `${vi ? 'thợ' : 'with'} ${upcoming.assignedStaff.firstName}`].filter(Boolean).join(' · ') || (vi ? 'chưa rõ dịch vụ' : 'service not set')}</p>
+              </div>
+            ) : (
+              <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c64748b)' }}>{vi ? 'Chưa có lịch hẹn sắp tới.' : 'No upcoming appointment.'}</p>
+            ))}
+            {past.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--c64748b)', fontWeight: 700 }}>{vi ? 'Đã làm gần đây' : 'Recent visits'}</span>
+                {past.map((a) => (
+                  <div key={a.id} style={{ display: 'flex', gap: 8, fontSize: 12.5, lineHeight: 1.45 }}>
+                    <span style={{ color: 'var(--c64748b)', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{fmtInTz(a.startTime, { day: '2-digit', month: '2-digit' })}</span>
+                    <span style={{ color: 'var(--c94a3b8)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[a.service?.name, a.assignedStaff?.firstName].filter(Boolean).join(' · ') || (vi ? 'lịch hẹn' : 'appointment')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!cust && <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5 }}>{vi ? 'Sẽ tự nối khi khách đặt lịch từ hội thoại này.' : 'It links itself when they book from this conversation.'}</p>}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {infoHead(vi ? 'Nhãn' : 'Labels', (
+              <button onClick={() => setShowLabelForm((v) => !v)} style={{ height: 24, padding: '0 8px', borderRadius: 999, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ca5b4fc)', fontSize: 11.5, fontWeight: 600, letterSpacing: 0, cursor: 'pointer', fontFamily: 'inherit', textTransform: 'none' }}>{showLabelForm ? (vi ? 'Đóng' : 'Close') : `＋ ${vi ? 'Nhãn' : 'Label'}`}</button>
+            ))}
+            {showLabelForm && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void createLabel(); } }}
+                  placeholder={vi ? 'Tên nhãn, ví dụ "Đã báo giá"' : 'Label name'} maxLength={40} style={{ ...ui.input, fontSize: 13, padding: '7px 10px' }} />
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {LABEL_COLORS.map((c) => <button key={c} onClick={() => setNewColor(c)} aria-label={c} style={{ width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer', border: newColor === c ? '2px solid var(--ce2e8f0)' : '2px solid transparent' }} />)}
+                  <span style={{ flex: 1 }} />
+                  <button onClick={() => void createLabel()} disabled={busy || !newLabel.trim()} style={{ ...ui.primaryBtn, fontSize: 12.5, padding: '6px 12px' }}>{vi ? 'Tạo' : 'Create'}</button>
+                </div>
+              </div>
+            )}
+            {!labels.length && !showLabelForm && <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c64748b)', lineHeight: 1.5 }}>{vi ? 'Chưa có nhãn. Tạo theo cách tiệm bán hàng: "Đã báo giá", "Chờ chốt", "Không quan tâm".' : 'No labels yet. Create the stages your salon actually uses.'}</p>}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {labels.map((l) => {
+                const on = (detail.labels ?? []).some((x) => x.id === l.id);
+                return (
+                  <button key={l.id} onClick={() => void toggleLabel(l.id, !on)} disabled={busy} title={on ? (vi ? 'Bỏ nhãn' : 'Remove') : (vi ? 'Gắn nhãn' : 'Apply')}
+                    style={{ height: narrow ? 30 : 26, padding: '0 10px', borderRadius: 999, border: `1px solid ${on ? l.color : 'var(--c334155)'}`, background: on ? l.color : 'transparent', color: on ? '#fff' : 'var(--c94a3b8)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6 }}>{l.name}{on && <span style={{ opacity: .8 }}>✕</span>}</button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {infoHead(vi ? 'Hẹn theo dõi' : 'Follow-up', followUpState(detail.followUpAt) !== 'none' ? (
+              <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: 0, textTransform: 'none', color: followUpState(detail.followUpAt) === 'overdue' ? 'var(--ink-bad)' : 'var(--ca5b4fc)' }}>⏰ {followUpLabel(detail.followUpAt, new Date())}</span>
+            ) : undefined)}
+            <div style={{ display: 'flex', gap: 6 }}>
+              {([[1, vi ? 'Mai 10:00' : 'Tomorrow'], [3, vi ? '3 ngày' : '3 days'], [7, vi ? '1 tuần' : '1 week']] as [number, string][]).map(([days, label]) => (
+                <button key={days} disabled={busy} onClick={() => { const day = dayKeyInTz(new Date(Date.now() + days * 86_400_000)); void setFollowUp(`${day}T10:00`); }} style={{ ...softBtn, flex: 1, padding: 0 }}>{label}</button>
+              ))}
+              {detail.followUpAt && <button onClick={() => void setFollowUp('')} disabled={busy} title={vi ? 'Xoá hẹn' : 'Clear'} style={{ ...softBtn, width: narrow ? 40 : 32, padding: 0, color: 'var(--ink-bad)' }}>✕</button>}
+            </div>
+            <input type="datetime-local" value={toLocalInput(detail.followUpAt)} onChange={(e) => void setFollowUp(e.target.value)} disabled={busy} aria-label={vi ? 'Ngày giờ theo dõi' : 'Follow-up date and time'} style={{ ...ui.input, fontSize: 12.5, padding: '6px 10px' }} />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {infoHead(vi ? 'Ghi chú nội bộ' : 'Internal notes', <span style={{ fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: 'var(--ink-warn)' }}>{vi ? 'khách không thấy' : 'customer never sees'}</span>)}
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void addNote(); } }}
+              placeholder={vi ? 'Nhập ghi chú (Enter để lưu)' : 'Add a note (Enter to save)'} rows={2} aria-label={vi ? 'Ghi chú nội bộ' : 'Internal note'}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 10, border: '1px solid var(--c78350f)', background: 'var(--wash-amber)', fontSize: narrow ? 16 : 13, color: 'var(--ce2e8f0)', resize: 'none', outline: 'none', fontFamily: 'inherit' }} />
+            {!detail.notes?.length && <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c64748b)' }}>{vi ? 'Chưa có ghi chú nào.' : 'No notes yet.'}</p>}
+            {detail.notes?.map((n) => (
+              <div key={n.id} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 10px', borderRadius: 10, background: 'var(--c0b1220)', border: '1px solid var(--line)', fontSize: 12.5, lineHeight: 1.45 }}>
+                <span style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11.5, color: 'var(--c64748b)' }}>
+                  <strong style={{ color: 'var(--ccbd5e1)' }}>{n.authorName}</strong><span>·</span><span>{fmtInTz(n.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</span>
+                  <button onClick={() => void apiFetch(`/messenger/threads/${detail.id}/notes/${n.id}/delete`, { method: 'POST', token: token! }).then(() => loadThread(detail.id))} title={vi ? 'Xoá ghi chú' : 'Delete note'} aria-label={vi ? 'Xoá ghi chú' : 'Delete note'}
+                    style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--c64748b)', cursor: 'pointer', fontSize: 13, padding: 0, fontFamily: 'inherit' }}>×</button>
+                </span>
+                <span style={{ color: 'var(--ce2e8f0)', whiteSpace: 'pre-wrap' }}>{n.text}</span>
+              </div>
+            ))}
+          </div>
+
+          {turns && turns.agents.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {infoHead(vi ? 'Giao cho' : 'Assigned to')}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {turns.agents.map((a) => {
+                  const on = a.userId === detail.assignedUserId;
+                  return (
+                    <button key={a.userId} disabled={busy || !mayAssign} onClick={() => void assignTo(on ? '' : a.userId)} title={on ? (vi ? 'Bỏ giao' : 'Unassign') : (vi ? 'Giao cho người này' : 'Assign to this person')}
+                      style={{ height: narrow ? 36 : 32, padding: '0 10px 0 4px', borderRadius: 999, border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`, background: on ? 'var(--c1e1b4b)' : 'var(--c0f172a)', color: on ? 'var(--ca5b4fc)' : 'var(--ce2e8f0)', fontSize: 12.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      <span style={{ width: 24, height: 24, borderRadius: '50%', fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', ...onHue(on ? '#4f46e5' : '#0f766e') }}>{initialsOf(a.name).slice(0, 1)}</span>{a.name}{a.userId === turns.me?.userId ? (vi ? ' (tôi)' : ' (me)') : ''}
+                    </button>
+                  );
+                })}
+              </div>
+              {assigned && !turns.agents.some((a) => a.userId === detail.assignedUserId) && <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{vi ? 'Đang giao cho' : 'Held by'} {assigned}</span>}
+            </div>
+          )}
+        </>);
+      })()}
+    </div>
   );
 
   return (
     <>
       {!narrow && (
-        // The band above the inbox used to hold one word and a lot of dark.
-        // It now carries what a person standing at the desk wants before they
-        // read anything: how many are unanswered, how many unread, and WHICH
-        // accounts this inbox is actually watching — the last one is the fact
-        // that decides whether a silent inbox means "quiet day" or "the Page
-        // fell off two weeks ago and nobody noticed".
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{vi ? 'Hộp thư' : 'Inbox'}</h1>
-          {waiting > 0 && pill('wait', vi ? `${waiting} khách đang chờ` : `${waiting} waiting`)}
-          {unreadCount > 0 && (
-            <span style={{ background: 'var(--c172554)', color: 'var(--c93c5fd)', border: '1px solid #3b82f6', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
-              ● {unreadCount} {vi ? 'chưa đọc' : 'unread'}
-            </span>
-          )}
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap', minWidth: 0 }}>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--cf1f5f9)', letterSpacing: -0.2 }}>{vi ? 'Hộp thư' : 'Inbox'}</h1>
+          {unreadCount > 0 && <span style={{ height: 26, padding: '0 10px', borderRadius: 999, background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4f46e5' }} />{unreadCount} {vi ? 'chưa đọc' : 'unread'}</span>}
+          {waiting > 0 && <span style={{ height: 26, padding: '0 10px', borderRadius: 999, background: 'var(--wash-amber-3)', color: 'var(--ink-warn)', fontSize: 12.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: '#d97706' }} />{waiting} {vi ? 'khách đang chờ người thật' : 'waiting for a person'}</span>}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             {!loaded ? (
-              <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{vi ? 'Đang tải…' : 'Loading…'}</span>
+              <span style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>{vi ? 'Đang tải…' : 'Loading…'}</span>
             ) : sources.length === 0 ? (
-              <span style={{ fontSize: 12, color: 'var(--cfcd34d)' }}>
-                {vi ? 'Chưa nối kênh nào — vào Kênh kết nối để nối Trang.' : 'No channel connected — open Channels to connect a Page.'}
+              <span style={{ fontSize: 12.5, color: 'var(--ink-warn)' }}>{vi ? 'Chưa nối kênh nào — vào Kênh kết nối để nối Trang.' : 'No channel connected — open Channels to connect a Page.'}</span>
+            ) : (<>
+              <span style={{ display: 'flex', alignItems: 'center' }}>
+                {sources.slice(0, 6).map((src, i) => (
+                  <span key={src.key} title={src.label} style={{ width: 26, height: 26, borderRadius: '50%', fontSize: 10.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--c0b1120)', marginLeft: i ? -8 : 0, ...onHue(channelBrand(src.channel).bg) }}>{channelLetter(src.channel)}</span>
+                ))}
               </span>
-            ) : sources.map((src) => (
-              <span key={src.key} title={src.label}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5, maxWidth: 220,
-                  background: pageColor(src.key.split('|')[0]).bg, color: pageColor(src.key.split('|')[0]).fg,
-                  borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 600,
-                }}>
-                <ChannelIcon raw={src.channel} size={14} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{src.label}</span>
-                {src.waiting > 0 && (
-                  <span style={{ background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 600 }}>{src.waiting}</span>
-                )}
-              </span>
-            ))}
+              <span style={{ fontSize: 13, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{new Set(sources.map((s) => channelOf(s.channel))).size} {vi ? 'kênh' : 'channels'} · {sources.length} {vi ? 'tài khoản' : 'accounts'}</span>
+            </>)}
+            {inSalonPortal() && <a href="/salon/channels" style={{ height: 36, padding: '0 14px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', textDecoration: 'none', whiteSpace: 'nowrap' }}>＋ {vi ? 'Kết nối kênh' : 'Connect a channel'}</a>}
           </div>
         </div>
       )}
 
-      {err && <div style={{ ...ui.card, borderColor: 'var(--c7f1d1d)', color: 'var(--cfca5a5)', marginBottom: 12, fontSize: 13 }}>{err}</div>}
+      {err && <div style={{ ...ui.card, borderColor: 'var(--c7f1d1d)', color: 'var(--ink-bad)', marginBottom: 12, fontSize: 13 }}>{err}</div>}
 
-      <div ref={cardRef} style={{ ...ui.card, padding: 0, overflow: 'hidden', display: 'grid',
-        // Desktop: exactly as tall as the window allows, so every pane below
-        // fills its column and scrolls inside itself.
+      <div ref={cardRef} onClick={() => { if (moreOpen) setMoreOpen(false); }} style={{ ...ui.card, padding: 0, overflow: 'hidden', display: narrow ? 'flex' : 'grid',
         ...(narrow ? {} : { height: cardH ?? undefined }),
-        // One column on a phone. The list and the conversation then take turns
-        // filling the screen, the way every messaging app on a phone works.
-        gridTemplateColumns: narrow ? '1fr' : '52px minmax(0,290px) minmax(0,1fr) minmax(0,270px)',
-        // Full-bleed and exactly viewport-tall on the phone. The width trick
-        // escapes whatever padding the shell wrapped us in without knowing it;
-        // the fixed height pins the composer on screen and moves ALL scrolling
-        // inside — a page that scrolls under a chat is two scrollbars fighting.
-        ...(narrow ? {
-          width: '100vw', marginLeft: 'calc(50% - 50vw)',
-          border: 'none', borderRadius: 0,
-          height: cardH ?? undefined,
-          // Flex, not grid, on the phone. The grid version declared ONE
-          // flexible row — which the browser handed to the first child, the
-          // source strip, squashing it to a clipped sliver while the list
-          // took leftovers. In a column of [strip, one visible pane], flex
-          // says it directly: strip keeps its size, the pane gets the rest.
-          display: 'flex', flexDirection: 'column' as const,
-        } : {}) }}>
-        {/* No fixed height on the card. It used to be 74vh, but the card's TOP
-            already sits well down the page — support banner, heading, whatever
-            else the shell puts above it — so 74vh from there ran off the bottom
-            of the screen and took the composer with it. The message box was
-            rendered and simply unreachable, which reads as "there is no way to
-            reply". Capping the SCROLLING areas instead keeps every control that
-            follows them on screen regardless of what is above. */}
-
-        {/* Source rail: one entry per connected Page or Instagram account, by
-            NAME. Listing channel types instead collapsed two Pages into one
-            button, and a salon running two of them could not answer as just one.
-            The customer sees the Page's name, so the person replying sees it too.
-            Counts are people WAITING, not conversations that exist. */}
-        <div style={{
-          background: 'var(--c0b1220)', gap: 6, display: (narrow && openId) ? 'none' : 'flex',
-          ...(narrow
-            ? { flexDirection: 'row', padding: '10px 12px', borderBottom: '1px solid var(--line)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const, flexShrink: 0, minHeight: 54, alignItems: 'center' }
-            : { flexDirection: 'column', padding: '10px 0', borderRight: '1px solid var(--line)', alignItems: 'center', minHeight: 0, overflowY: 'auto' as const }),
-        }}>
-          <button onClick={() => setSource('any')} title={vi ? 'Tất cả nguồn' : 'All sources'} aria-label={vi ? 'Tất cả nguồn' : 'All sources'}
-            style={{
-              position: 'relative', width: 34, height: 34, borderRadius: 9, cursor: 'pointer',
-              background: source === 'any' ? 'var(--c312e81)' : 'transparent',
-              border: `1px solid ${source === 'any' ? '#6366f1' : 'transparent'}`,
-              color: source === 'any' ? 'var(--cc7d2fe)' : 'var(--c64748b)', fontSize: 16, lineHeight: 1,
-            }}>
-            ▤
-            {waiting > 0 && (
-              <span style={{ position: 'absolute', top: -4, right: -5, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 600, borderRadius: 999, padding: '0 4px', minWidth: 15 }}>{waiting}</span>
-            )}
-          </button>
-
-          {sources.map((src) => {
-            const on = source === src.key;
-            return (
-              <button key={src.key} onClick={() => setSource(src.key)} title={src.label} aria-label={src.label}
-                style={{
-                  position: 'relative', width: 34, height: 34, borderRadius: 9, cursor: 'pointer',
-                  background: on ? 'var(--c312e81)' : 'transparent',
-                  border: `1px solid ${on ? '#6366f1' : 'transparent'}`,
-                  color: on ? 'var(--cc7d2fe)' : 'var(--c64748b)', fontSize: 16, lineHeight: 1,
-                }}>
-                <span style={{ position: 'absolute', left: 3, top: 7, bottom: 7, width: 3, borderRadius: 2, background: pageColor(src.key.split('|')[0]).bg }} />
-                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}><ChannelIcon raw={src.channel} size={20} /></span>
-                {src.waiting > 0 && (
-                  <span style={{ position: 'absolute', top: -4, right: -5, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 600, borderRadius: 999, padding: '0 4px', minWidth: 15 }}>{src.waiting}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Conversation list */}
-        <div style={{
-          borderRight: narrow ? 'none' : '1px solid var(--line)', flexDirection: 'column', minWidth: 0, minHeight: 0,
-          // On a phone, picking a customer replaces the list with the chat.
-          display: (narrow && openId) ? 'none' : 'flex',
-          ...(narrow ? { flex: '1 1 0%' } : {}),
-        }}>
-          <div style={{ padding: '9px 10px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 7, alignItems: 'center' }}>
-            <input value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder={vi ? 'Tìm khách…' : 'Search…'}
-              // 16px on the phone is not a taste choice: anything smaller and
-              // iOS zooms the page the moment the field is tapped.
-              style={{ ...ui.input, flex: 1, minWidth: 0, fontSize: narrow ? 16 : 12, padding: narrow ? '10px 13px' : '6px 9px', borderRadius: narrow ? 12 : 8 }} />
-            {/* My chat-turn status. Away = no new turns come to me; the
-                conversations I already hold stay mine. */}
-            {turnsOn && turns?.me && (
-              <button onClick={() => void toggleMyStatus()}
-                title={myStatus === 'available'
-                  ? (vi ? 'Đang nhận turn — bấm để tạm vắng' : 'Taking turns — tap to go away')
-                  : (vi ? 'Đang vắng, không nhận turn mới — bấm để sẵn sàng' : 'Away, no new turns — tap to be available')}
-                style={{ ...ghostBtn, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: narrow ? '9px 11px' : '5px 9px', fontSize: narrow ? 13 : 11.5, borderRadius: 999,
-                  borderColor: myStatus === 'available' ? '#22c55e' : 'var(--c334155)' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: myStatus === 'available' ? '#22c55e' : 'var(--c64748b)' }} />
-                {myStatus === 'available' ? (vi ? 'Sẵn sàng' : 'Available') : (vi ? 'Vắng' : 'Away')}
-              </button>
-            )}
-            {/* Clears the whole blue pile. Only offered when there IS one —
-                a button that does nothing is a button people learn to ignore. */}
-            {unreadCount > 0 && (
-              <button onClick={() => void markAllRead()} disabled={busy}
-                title={vi ? `Đánh dấu đã đọc tất cả (${unreadCount})` : `Mark all read (${unreadCount})`}
-                aria-label={vi ? 'Đánh dấu đã đọc tất cả' : 'Mark all read'}
-                style={{ ...ghostBtn, flexShrink: 0, padding: narrow ? '9px 11px' : '6px 9px', fontSize: narrow ? 14 : 13, lineHeight: 1 }}>
-                ✓✓
-              </button>
-            )}
-          </div>
-
-          {/* Which channel.
-              The rail on the left answers "which of my accounts"; this answers
-              "which kind of place is this coming from". A salon that has just
-              switched the website widget on wants to watch those without first
-              learning which internal id it hides behind — and the number of
-              people WAITING on each is the reason to look at all. Drawn only
-              when more than one kind has ever been used. */}
-          {chans.length > 1 && (
-            <div style={{ display: 'flex', gap: narrow ? 8 : 5, padding: narrow ? '8px 12px' : '7px 8px', borderBottom: '1px solid var(--line)', alignItems: 'center',
-              ...(narrow ? { flexWrap: 'nowrap' as const, overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const, scrollbarWidth: 'none' as const } : { flexWrap: 'wrap' as const }) }}>
-              <button onClick={() => setChan('any')}
-                style={{ ...ghostBtn, fontSize: narrow ? 13 : 11, padding: narrow ? '7px 12px' : '3px 9px', borderRadius: 999, flexShrink: 0, fontWeight: chan === 'any' ? 700 : 500,
-                  borderColor: chan === 'any' ? '#6366f1' : 'var(--c334155)',
-                  background: chan === 'any' ? 'var(--c312e81)' : 'transparent',
-                  color: chan === 'any' ? 'var(--cc7d2fe)' : 'var(--c94a3b8)' }}>
-                {vi ? 'Tất cả kênh' : 'All channels'} <span style={{ opacity: .7 }}>{rows.length}</span>
-              </button>
-              {chans.map((c) => {
-                const look = channelLabel(c.key);
-                const on = chan === c.key;
-                return (
-                  <button key={c.key} onClick={() => setChan(on ? 'any' : c.key)}
-                    title={c.waiting > 0 ? (vi ? `${c.waiting} khách đang chờ` : `${c.waiting} waiting`) : undefined}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, cursor: 'pointer',
-                      borderRadius: 999, padding: narrow ? '7px 12px' : '3px 9px',
-                      fontSize: narrow ? 13 : 11, fontWeight: on ? 700 : 500, fontFamily: 'inherit',
-                      border: `1px solid ${on ? look.border : 'var(--c334155)'}`,
-                      background: on ? look.bg : 'transparent',
-                      color: on ? look.fg : 'var(--c94a3b8)',
-                    }}>
-                    <ChannelIcon raw={c.key} size={narrow ? 16 : 13} />
-                    {look.text.replace(/^\S+\s/, '')}
-                    <span style={{ opacity: .7 }}>{c.total}</span>
-                    {/* Waiting is the only number that earns a colour here. */}
-                    {c.waiting > 0 && (
-                      <span style={{ background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 600 }}>{c.waiting}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: narrow ? 8 : 4, padding: narrow ? '8px 12px' : '7px 8px', borderBottom: '1px solid var(--line)',
-            // One row that scrolls sideways. Wrapping onto a second line — the
-            // desktop behaviour — costs a whole conversation of height on a
-            // phone, and every chat app solved it the same way: swipe the chips.
-            ...(narrow ? { flexWrap: 'nowrap' as const, overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const, scrollbarWidth: 'none' as const } : { flexWrap: 'wrap' as const }) }}>
-            {([
-              ['all', vi ? 'Tất cả' : 'All'],
-              ['waiting', vi ? 'Đang chờ' : 'Waiting'],
-              ['unread', vi ? 'Chưa đọc' : 'Unread'],
-              ['mine', vi ? 'Của tôi' : 'Mine'],
-              ['followup', vi ? 'Cần theo dõi' : 'Follow-up'],
-              // Last on purpose. It is a bin, not a view of the work - and it
-              // is only worth a chip once there is something in it.
-              ...(junkCount > 0 || filter === 'spam' ? [['spam', vi ? 'Spam' : 'Spam'] as [InboxFilter, string]] : []),
-            ] as [InboxFilter, string][]).map(([key, label]) => (
-              <button key={key} onClick={() => setFilter(key)}
-                style={{ ...ghostBtn, fontSize: narrow ? 13.5 : 11, padding: narrow ? '8px 14px' : '2px 8px', borderRadius: 999, flexShrink: 0,
-                  borderColor: filter === key ? '#6366f1' : 'var(--c334155)',
-                  background: filter === key ? 'var(--c312e81)' : 'transparent',
-                  color: filter === key ? 'var(--cc7d2fe)' : 'var(--c94a3b8)', fontWeight: filter === key ? 700 : 400 }}>
-                {label}
-                {/* The number is on this chip and nowhere else. A follow-up
-                    nobody can see the count of is a diary left in a drawer. */}
-                {key === 'followup' && dueCount > 0 && (
-                  <span style={{ marginLeft: 5, background: '#ef4444', color: '#fff', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 600 }}>{dueCount}</span>
-                )}
-                {/* Grey, not red. Junk is not urgent - the count is here so
-                    somebody can check the bin was not swallowing real customers. */}
-                {key === 'spam' && junkCount > 0 && (
-                  <span style={{ marginLeft: 5, background: 'var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 999, padding: '0 5px', fontSize: 10, fontWeight: 600 }}>{junkCount}</span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          {/* Label filter. Only drawn once the salon has made a label — an
-              empty row of nothing is worse than no row. */}
-          {labels.length > 0 && (
-            <div style={{ display: 'flex', gap: narrow ? 8 : 4, padding: narrow ? '8px 12px' : '0 8px 7px', borderBottom: '1px solid var(--line)', alignItems: 'center',
-              ...(narrow ? { flexWrap: 'nowrap' as const, overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const } : { flexWrap: 'wrap' as const }) }}>
-              <button onClick={() => setLabelId(null)}
-                style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px',
-                  borderColor: labelId === null ? '#6366f1' : 'var(--c334155)',
-                  color: labelId === null ? 'var(--cc7d2fe)' : 'var(--c64748b)' }}>{vi ? 'Mọi nhãn' : 'Any label'}</button>
-              {labels.map((l) => (
-                <button key={l.id} onClick={() => setLabelId(labelId === l.id ? null : l.id)}
-                  style={{
-                    border: `1px solid ${labelId === l.id ? l.color : 'var(--c334155)'}`,
-                    background: labelId === l.id ? l.color : 'transparent',
-                    color: labelId === l.id ? '#fff' : 'var(--c94a3b8)',
-                    borderRadius: 999, padding: '2px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 600,
-                  }}>{l.name}</button>
-              ))}
-            </div>
-          )}
-
-          <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch',
-            // The card is window-tall on both screens now, so the list simply
-            // takes the room the search box and the filter chips left over.
-            flex: '1 1 0%', minHeight: 0 }}>
-            {listErr && (
-              <div style={{ margin: 10, padding: '9px 11px', borderRadius: 8, background: 'var(--c450a0a)', border: '1px solid var(--c7f1d1d)' }}>
-                <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--cfecaca)', fontWeight: 600 }}>
-                  {vi ? 'Không tải được danh sách hội thoại' : 'Could not load conversations'}
-                </p>
-                <p style={{ margin: '0 0 6px', fontSize: 11, color: 'var(--cfca5a5)', wordBreak: 'break-word' }}>{listErr}</p>
-                <button onClick={() => void loadList()} style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px' }}>
-                  {vi ? 'Thử lại' : 'Retry'}
-                </button>
-              </div>
-            )}
-            {!loaded && !listErr && (
-              // Three grey rows in the shape of real ones. A person reads the
-              // shape as "coming" and waits; a sentence saying the inbox is
-              // empty reads as an answer and they act on it.
-              <div aria-busy="true" aria-label={vi ? 'Đang tải hội thoại' : 'Loading conversations'}>
-                {[0, 1, 2].map((i) => (
-                  <div key={i} style={{ display: 'flex', gap: 12, padding: '12px 12px', margin: '0 8px 2px', opacity: 1 - i * 0.25 }}>
-                    <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--c1e293b)', flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 3 }}>
-                      <div style={{ height: 9, width: '55%', borderRadius: 4, background: 'var(--c1e293b)' }} />
-                      <div style={{ height: 8, width: '80%', borderRadius: 4, background: 'var(--c1e293b)' }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {loaded && !sorted.length && !listErr && (
-              <p style={{ color: 'var(--c64748b)', fontSize: 13, padding: 16, margin: 0 }}>
-                {filter === 'waiting'
-                  ? (vi ? 'Không ai đang chờ. Tốt.' : 'Nobody is waiting. Good.')
-                  : rows.length === 0
-                    ? (vi ? 'Chưa có hội thoại nào. Khi khách nhắn vào Page, hội thoại sẽ hiện ở đây.' : 'No conversations yet. They appear here when a customer writes to the Page.')
-                    : (vi ? 'Không có hội thoại nào khớp bộ lọc.' : 'No conversations match these filters.')}
-              </p>
-            )}
-            {sorted.map((r) => {
-              const ch = channelLabel(r.channel);
-              const st = stateLabel(r, vi);
-              const on = r.id === openId;
-              // Does the third line carry anything at all? Most rows: no.
-              const rowChips = (source === 'any' && showPageChip && r.pageName ? 1 : 0)
-                + (followUpState(r.followUpAt) !== 'none' ? 1 : 0)
-                + (r.labels?.length ?? 0);
-              return (
-                <button key={r.id} onClick={() => { keepUnreadRef.current = null; setOpenId(r.id); void loadThread(r.id); }}
-                  onMouseEnter={() => prefetchThread(r.id)} onTouchStart={() => prefetchThread(r.id)}
-                  aria-current={on ? 'true' : undefined}
-                  // TWO SIGNALS, TWO CHANNELS, NEVER COMPETING.
-                  //
-                  // These used to share one: selected filled the row and unread
-                  // ALSO filled the row, and by day the selected fill was the
-                  // paler of the two. So the open conversation was marked by a
-                  // 3px bar at the far edge and nothing else, and "which one am
-                  // I in" had to be answered by hunting for it.
-                  //
-                  //   background  = WHERE YOU ARE     (selected)
-                  //   left rail + dot + bold name = WHAT IS NEW  (unread)
-                  //
-                  // A row can be both, and now it reads as both.
-                  // THIRTEEN ROWS USED TO BE THIRTEEN HAIRLINES.
-                  //
-                  // A rule under every conversation draws a ladder across the
-                  // eye, and the eye reads the ladder before it reads a single
-                  // name. Rows are separated by the space between them now;
-                  // the one you are in is a rounded wash, which says "here"
-                  // far louder than a 3px bar at the far left edge ever did.
-                  // Unread is the dot and the weight of the name, nothing else
-                  // — one accent colour on this screen, not five.
-                  style={{ boxSizing: 'border-box', width: 'calc(100% - 16px)',
-                    margin: '0 8px 2px', textAlign: 'left', display: 'block', cursor: 'pointer',
-                    background: on ? 'var(--row-on)' : 'transparent',
-                    // Drawn INSIDE, so selecting a row cannot move it or its
-                    // neighbours by a pixel — a 1px border here would nudge the
-                    // whole list every time somebody arrowed through it.
-                    boxShadow: on ? 'inset 0 0 0 1.5px #6366f1' : 'none',
-                    border: 'none', borderRadius: 12, padding: '12px 12px' }}>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <Avatar row={r} size={44} token={token} vi={vi} />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      {/* FOUR SIZES ON THE WHOLE ROW: 15.5 name, 14 message,
-                          13 clock, 11.5 chip — and the name and the message are
-                          nearly the same size on purpose. They are told apart
-                          by weight and colour, not by one being small, which is
-                          why a list like this reads calm instead of busy. */}
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 1 }}>
-                        <span style={{ color: 'var(--cf8fafc)', fontSize: 15.5, fontWeight: r.unread ? 700 : 600, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {displayName(r, vi)}
-                        </span>
-                        <span title={fmtInTz(r.lastMessageAt || r.updatedAt, { dateStyle: 'full', timeStyle: 'short' })}
-                          // The clock is not the unread signal. Colouring it too
-                          // put a third blue thing on every unread row, and the
-                          // rail, the dot and the bold name already say it.
-                          style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--c64748b)', fontWeight: 400, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-                          {listStampLabel(r.lastMessageAt || r.updatedAt, vi)}
-                        </span>
-                        {r.unread && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#6366f1', flexShrink: 0, alignSelf: 'center' }} aria-label={vi ? 'Chưa đọc' : 'Unread'} />}
-                      </div>
-                      {/* The preview and the state badge share ONE line.
-                          The badge used to own a third line of its own, and on
-                          almost every row it said "Bot" — the default. A whole
-                          line of row height, on every conversation, to repeat
-                          the thing that is true unless stated otherwise. Now it
-                          sits at the end of the preview, and four conversations
-                          no longer fill the column. */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                        <p style={{ margin: '3px 0 0', flex: 1, minWidth: 0, fontSize: 14, lineHeight: 1.45, color: r.unread ? 'var(--ce2e8f0)' : 'var(--c94a3b8)', fontWeight: r.unread ? 500 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.lastText || '—'}</p>
-                        {/* THE DEFAULT IS NOT NEWS.
-                            Thirteen conversations, thirteen identical "Bot"
-                            badges in a column down the right edge. A badge
-                            every row carries tells you nothing about any row -
-                            it is the thing that is true unless stated
-                            otherwise, stated thirteen times. It is drawn now
-                            only when something is different: a person is
-                            holding it, it is waiting for one, or it is closed.
-                            The conversation header still shows the state
-                            always, which is where somebody about to type
-                            actually needs it. */}
-                        {stateOf(r) !== 'bot' && <span style={{ flexShrink: 0 }}>{pill(st.tone, st.text)}</span>}
-                      </div>
-                      {/* And this line is drawn only when it carries something.
-                          An empty flex row still costs its gap. */}
-                      {(rowChips > 0) && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                        {/* The Page, named and in its own colour — but only
-                            when there are two of them to tell apart. A salon
-                            with ONE Page got its own name stamped on every row
-                            of the list, which says nothing and costs the width
-                            that the customer's labels needed. */}
-                        {source === 'any' && showPageChip && r.pageName && (
-                          <span style={{
-                            background: pageColor(r.pageId).bg, color: pageColor(r.pageId).fg,
-                            borderRadius: 7, padding: '3px 9px', fontSize: 11.5, fontWeight: 600,
-                            maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>{r.pageName}</span>
-                        )}
-                        {/* Follow-up first, labels after: a date that has come
-                            due is the only thing on this row that is asking
-                            for something today. */}
-                        {followUpState(r.followUpAt) !== 'none' && (
-                          <span style={{
-                            ...FOLLOWUP_TONE[followUpState(r.followUpAt)],
-                            background: FOLLOWUP_TONE[followUpState(r.followUpAt)].bg,
-                            color: FOLLOWUP_TONE[followUpState(r.followUpAt)].fg,
-                            borderRadius: 7, padding: '3px 9px', fontSize: 11.5, fontWeight: 600,
-                          }}>⏰ {followUpLabel(r.followUpAt, new Date())}</span>
-                        )}
-                        {(r.labels ?? []).slice(0, 3).map((l) => (
-                          <span key={l.id} style={{
-                            background: l.color, color: '#fff', borderRadius: 7,
-                            padding: '3px 9px', fontSize: 11.5, fontWeight: 600,
-                            maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>{l.name}</span>
-                        ))}
-                        {(r.labels?.length ?? 0) > 3 && (
-                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>+{(r.labels?.length ?? 0) - 3}</span>
-                        )}
-                      </div>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* The three numbers a person opens an inbox to check.
-              They used to live in the middle panel's empty state, which means
-              they were visible exactly when there was nothing to look at and
-              hidden the moment a conversation was open — backwards. Pinned to
-              the foot of the list they are always on screen, and they fill the
-              column below a short list instead of leaving it blank. */}
-          {!narrow && rows.length > 0 && (
-            <div style={{
-              flexShrink: 0, borderTop: '1px solid var(--line)', background: 'var(--c0b1220)',
-              display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
-            }}>
-              {([
-                { n: waiting, label: vi ? 'đang chờ' : 'waiting', tone: waiting > 0 ? '#fcd34d' : 'var(--c64748b)', f: 'waiting' as InboxFilter },
-                { n: dueCount, label: vi ? 'cần theo dõi' : 'follow-up', tone: dueCount > 0 ? '#fdba74' : 'var(--c64748b)', f: 'followup' as InboxFilter },
-                { n: rows.filter((r) => r.unread).length, label: vi ? 'chưa đọc' : 'unread', tone: rows.some((r) => r.unread) ? '#f87171' : 'var(--c64748b)', f: 'unread' as InboxFilter },
-              ]).map((b) => (
-                <button key={b.label} onClick={() => setFilter(b.f)}
-                  title={vi ? 'Lọc theo mục này' : 'Filter by this'}
-                  style={{
-                    border: 'none', background: filter === b.f ? 'var(--c1e293b)' : 'transparent',
-                    cursor: 'pointer', padding: '8px 4px', fontFamily: 'inherit', textAlign: 'center',
-                  }}>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: b.tone, fontVariantNumeric: 'tabular-nums', lineHeight: 1.15 }}>{b.n}</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{b.label}</div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Conversation */}
-        <div style={{
-          flexDirection: 'column', minWidth: 0, minHeight: 0,
-          // On a phone this IS the screen once a customer is picked, and it is
-          // hidden until then — never a half-width chat beside a half-width list.
-          display: (narrow && (!openId || showInfo)) ? 'none' : 'flex',
-          ...(narrow ? { flex: '1 1 0%' } : {}),
-        }}>
-          {/* Nothing picked yet.
-              A sentence telling somebody to pick a conversation is a sentence
-              they have already obeyed or ignored; either way the largest panel
-              on the screen spends most of the day saying nothing. The same
-              space can answer the question a person actually opens an inbox
-              with — is anyone waiting, and for how long. */}
-          {!detail && !openId && !loaded && (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c64748b)', fontSize: 13 }}>
-              {vi ? 'Đang tải hộp thư…' : 'Loading the inbox…'}
-            </div>
-          )}
-
-          {/* A CONVERSATION IS PICKED AND HAS NOT ARRIVED YET.
-              This case had no branch of its own, so it fell into the "nothing
-              picked" board below: on a phone, where that panel IS the screen,
-              tapping a customer showed a page of statistics for half a second
-              and only then the messages. The person had just answered the
-              question that board asks, and it answered them back with it.
-              A conversation in the shape of a conversation instead — the frame
-              stays put and only the words arrive. */}
-          {!detail && openId && (
-            <div aria-busy="true" aria-label={vi ? 'Đang mở hội thoại' : 'Opening the conversation'}
-              style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderBottom: '1px solid var(--line)' }}>
-                <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--c1e293b)', flexShrink: 0 }} />
-                <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ height: 10, width: '45%', borderRadius: 4, background: 'var(--c1e293b)' }} />
-                  <div style={{ height: 8, width: '28%', borderRadius: 4, background: 'var(--c1e293b)' }} />
-                </div>
-              </div>
-              <div style={{ flex: 1, padding: 14, display: 'flex', flexDirection: 'column', gap: 12, justifyContent: 'flex-end' }}>
-                {[
-                  { w: '62%', mine: false },
-                  { w: '48%', mine: true },
-                  { w: '70%', mine: false },
-                ].map((b, i) => (
-                  <div key={i} style={{
-                    alignSelf: b.mine ? 'flex-end' : 'flex-start',
-                    width: b.w, height: 34, borderRadius: 14,
-                    background: 'var(--c1e293b)', opacity: 0.85 - i * 0.18,
-                  }} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {!detail && !openId && loaded && (() => {
-            const oldest = rows
-              .filter((r) => stateOf(r) === 'unclaimed')
-              .reduce((m, r) => Math.max(m, r.waitingMinutes ?? 0), 0);
-            const mins = (n: number) => (n >= 60 ? `${Math.floor(n / 60)}h${n % 60 ? ` ${n % 60}p` : ''}` : `${n} ${vi ? 'phút' : 'min'}`);
-            return (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16, minHeight: 0 }}>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
-                  <Box
-                    n={waiting}
-                    label={vi ? 'khách đang chờ' : 'waiting for a reply'}
-                    tone={waiting > 0 ? 'alarm' : 'calm'}
-                    sub={waiting > 0 ? (vi ? `lâu nhất ${mins(oldest)}` : `longest ${mins(oldest)}`) : (vi ? 'không ai phải đợi' : 'nobody is waiting')}
-                  />
-                  <Box
-                    n={dueCount}
-                    label={vi ? 'cần theo dõi hôm nay' : 'follow-ups due'}
-                    tone={dueCount > 0 ? 'warn' : 'calm'}
-                    sub={vi ? 'đã hẹn quay lại' : 'you said you would come back'}
-                  />
-                  <Box
-                    n={rows.filter((r) => r.unread).length}
-                    label={vi ? 'chưa đọc' : 'unread'}
-                    tone="calm"
-                    sub={vi ? 'trong toàn bộ hộp thư' : 'across the inbox'}
-                  />
-                </div>
-
-                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c64748b)', textAlign: 'center', lineHeight: 1.6, maxWidth: 380 }}>
-                  {waiting > 0
-                    ? (vi ? 'Bấm "Đang chờ" bên trái để xem đúng những người này trước.' : 'Tap “Waiting” on the left to see exactly those first.')
-                    : rows.length === 0
-                      ? (vi ? 'Chưa có hội thoại nào. Khi khách nhắn vào Page hoặc Instagram, hội thoại sẽ mở sẵn ở đây.' : 'No conversations yet. When a customer writes to the Page or Instagram, the conversation opens right here.')
-                      : (vi ? 'Không có hội thoại nào khớp bộ lọc bên trái.' : 'Nothing matches the filters on the left.')}
-                </p>
-              </div>
-            );
-          })()}
-
-          {detail && (<>
-            <div style={{ padding: '9px 13px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 9 }}>
-              {narrow && (
-                <button onClick={() => { setOpenId(null); setDetail(null); setShowInfo(false); }}
-                  aria-label={vi ? 'Quay lại danh sách' : 'Back to list'}
-                  style={{ ...ghostBtn, padding: '10px 15px', fontSize: 19, lineHeight: 1, borderRadius: 12 }}>‹</button>
-              )}
-              <Avatar row={detail} size={34} token={token} vi={vi} />
-              <div style={{ minWidth: 0 }}>
-                {/* Click the name to set it. Meta withholds the profile for
-                    plenty of people — accounts made with a phone number, anyone
-                    who never opted in — and their own docs return an empty
-                    object rather than an error, so there is no version of this
-                    that always works through the API. Typing it once always
-                    works, and the salon usually knows who this is. */}
-                <p
-                  onClick={() => void renameThread()}
-                  title={vi ? 'Bấm để đặt tên khách' : 'Click to set the name'}
-                  style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}
-                >
-                  {displayName(detail, vi)}
-                  {!detail.senderName && <span style={{ color: 'var(--c64748b)', fontWeight: 400, fontSize: 12 }}> ✎</span>}
-                </p>
-                <p style={{ margin: 0, fontSize: 11, color: 'var(--c64748b)', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <ChannelIcon raw={detail.channel} size={13} />
-                    {channelLabel(detail.channel).text.replace(/^\S+\s/, '')}
-                  </span>
-                  {detail.pageName && (
-                    <span style={{ background: pageColor(detail.pageId).bg, color: pageColor(detail.pageId).fg, borderRadius: 5, padding: '1px 6px', fontWeight: 600 }}>{detail.pageName}</span>
-                  )}
-                  {/* How long ago they wrote. Meta's 24-hour and 7-day windows
-                      are the rules this screen lives under, and the warning bar
-                      above the composer only says WHICH side of them we are on.
-                      This says by how much — the difference between "answer now"
-                      and "that ship sailed on Tuesday". */}
-                  {/* "wrote N ago" means the CUSTOMER. It read lastMessageAt,
-                      which the bot and the staff also move — so a thread whose
-                      customer last wrote last night announced "wrote 1h ago"
-                      because the bot had answered an hour ago. Same field the
-                      24-hour and 7-day windows are measured from, so the header
-                      and the composer's warning can never disagree again. */}
-                  {(detail.lastCustomerAt ?? null) && (
-                    <span title={fmtInTz(detail.lastCustomerAt as string, { dateStyle: 'medium', timeStyle: 'short' })}>
-                      · {vi ? 'khách nhắn' : 'customer wrote'} {sinceLabel(detail.lastCustomerAt as string, vi)}
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div style={{
-                marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center',
-                // When the header runs out of width the buttons move onto a
-                // second line, whole. The customer's name shrinks first (its
-                // block is minWidth:0 with an ellipsis), and only once there is
-                // nothing left to give does this wrap.
-                flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0,
-              }}>
-                {/* The phone header keeps ONE action. The state pill repeats
-                    what the list already showed, and "Done" lives on in the ⓘ
-                    panel — on a 390px screen every extra button here is paid
-                    for with letters of the customer's name. */}
-                {/* The status stays on the phone too — the owner asked for it
-                    by name. Who holds this conversation is the one fact a
-                    person needs before typing. */}
-                {turns && turns.agents.length > 0 && (() => {
-                  const mine = detail.assignedUserId === turns.me?.userId;
-                  // Staff may move their own conversation or pick up a free
-                  // one; the admin may move any. The server checks the same.
-                  const may = turns.canEdit || !detail.assignedUserId || mine;
-                  return (
-                    <select value={detail.assignedUserId ?? ''} disabled={busy || !may}
-                      onChange={(e) => void assignTo(e.target.value)}
-                      title={vi ? 'Người phụ trách hội thoại này' : 'Who follows up this conversation'}
-                      aria-label={vi ? 'Giao cho' : 'Assign to'}
-                      style={{ ...ui.input, width: 'auto', maxWidth: narrow ? 130 : 170, padding: narrow ? '8px 8px' : '4px 8px', fontSize: narrow ? 13 : 11.5, borderRadius: 999 }}>
-                      <option value="">{vi ? '👤 Chưa giao' : '👤 Unassigned'}</option>
-                      {turns.agents.map((a) => (
-                        <option key={a.userId} value={a.userId}>
-                          {'👤 '}{a.name}{a.userId === turns.me?.userId ? (vi ? ' (tôi)' : ' (me)') : ''}{turnsOn && !a.onDuty ? (vi ? ' · vắng' : ' · away') : ''}
-                        </option>
-                      ))}
-                    </select>
-                  );
-                })()}
-                {pill(stateLabel(detail, vi).tone, stateLabel(detail, vi).text)}
-                {(state === 'human' || state === 'unclaimed')
-                  ? <button disabled={busy} onClick={() => void act('handoff', { handoff: false })} style={{ ...ghostBtn, ...(narrow ? { padding: '9px 13px', fontSize: 13.5, borderRadius: 10 } : {}) }}>{vi ? 'Trả bot' : 'To bot'}</button>
-                  : <button disabled={busy} onClick={() => void act('handoff', { handoff: true })}
-                      style={{
-                        ...ghostBtn,
-                        ...(narrow ? { padding: '9px 13px', fontSize: 13.5, borderRadius: 10, borderColor: '#6366f1', color: 'var(--cc7d2fe)' } : {}),
-                        // Past 24 hours this button is the ONLY way to answer
-                        // at all, so it stops being one control among several
-                        // and becomes the thing to press.
-                        ...(wnotice?.kind === 'needs-takeover'
-                          ? { background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 600 }
-                          : {}),
-                      }}>{vi ? 'Tôi nhận' : 'Take over'}</button>}
-                {/* Read, but not dealt with. The one action every mail client
-                    has and every chat inbox forgets. */}
-                {!narrow && (
-                  <button disabled={busy} onClick={() => void markUnread(detail.id)}
-                    title={vi ? 'Để lại dấu chưa đọc' : 'Leave it marked unread'}
-                    style={ghostBtn}>● {vi ? 'Chưa đọc' : 'Unread'}</button>
-                )}
-                {!narrow && !isSpamRow(detail) && (state !== 'done'
-                  ? <button disabled={busy} onClick={() => void act('status', { status: 'done' })} style={ghostBtn}>{vi ? 'Xong' : 'Done'}</button>
-                  : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={ghostBtn}>{vi ? 'Mở lại' : 'Reopen'}</button>)}
-                {/* Marking junk is not an everyday action, so it is quiet - and
-                    getting it back is one press, because the cost of a wrong
-                    mark has to be near zero or nobody will use it on the one
-                    that matters. */}
-                {!narrow && (isSpamRow(detail)
-                  ? <button disabled={busy} onClick={() => void act('status', { status: 'open' })}
-                      style={{ ...ghostBtn, borderColor: '#6366f1', color: 'var(--cc7d2fe)' }}>{vi ? 'Không phải spam' : 'Not spam'}</button>
-                  : <button disabled={busy} onClick={() => void act('status', { status: 'spam' })}
-                      title={vi ? 'Chuyển vào Spam — bot ngừng trả lời, khách vẫn nhắn được' : 'Move to Spam — the bot stops replying; nothing is deleted'}
-                      // Softer than Done, but NOT the muted grey - at that
-                      // weight it reads as a disabled button and nobody presses it.
-                      style={{ ...ghostBtn, color: 'var(--c94a3b8)' }}>Spam</button>)}
-                {narrow && (
-                  // Labels, follow-up and notes are a column on a desktop and a
-                  // panel behind this button on a phone. Same content either way.
-                  <button onClick={() => setShowInfo(true)} style={{ ...ghostBtn, padding: '9px 13px', fontSize: 15, borderRadius: 10 }}
-                    title={vi ? 'Nhãn · hẹn · ghi chú' : 'Labels · follow-up · notes'}>ⓘ {vi ? 'Ghi chú' : 'Notes'}</button>
-                )}
-              </div>
-            </div>
-
-            <div
-              ref={paneRef}
-              // Within ~60px of the floor counts as "reading the newest" - a
-              // reader is never pixel-exact, and a half-scrolled line should
-              // not stop the next message arriving in view.
-              onScroll={(e) => {
-                const el = e.currentTarget;
-                atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-              }}
-              style={{ flex: '1 1 0%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0, padding: narrow ? 12 : 14, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--c0b1220)' }}>
-              {/* Messages sit on the floor, not the ceiling.
-                  A four-message conversation in a window-tall column used to
-                  cluster at the top with a field of empty dark between the last
-                  message and the box you answer in. `margin-top: auto` on a
-                  zero-height first child pushes the stack down when it is short
-                  and does nothing once it overflows — which is why it is this
-                  rather than justify-content, whose overflow clips the oldest
-                  messages out of reach. */}
-              <div style={{ marginTop: 'auto' }} aria-hidden="true" />
-              {/* Open a spam conversation and it looks exactly like a live one
-                  - same bubbles, same composer. Say so, or somebody answers a
-                  scammer wondering why the bot went quiet. */}
-              {isSpamRow(detail) && (
-                <div style={{ alignSelf: 'center', textAlign: 'center', fontSize: 11.5, color: 'var(--c94a3b8)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 8, padding: '6px 12px' }}>
-                  {vi
-                    ? 'Hội thoại này đang ở Spam — bot không trả lời. Không có gì bị xoá.'
-                    : 'This conversation is in Spam — the bot does not reply. Nothing was deleted.'}
-                </div>
-              )}
-              {/* Twelve messages must never pretend to be the whole story.
-                  When Meta refused the transcript, say so and offer the retry
-                  — silence here is how somebody re-asks a question the
-                  customer answered last week. */}
-              {detail.historySource === 'local' && (
-                <div style={{ alignSelf: 'center', textAlign: 'center', fontSize: 11.5, color: 'var(--c94a3b8)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 8, padding: '6px 12px' }}>
-                  {vi ? 'Chỉ đang hiện các tin gần nhất — chưa tải được toàn bộ lịch sử từ Meta.' : 'Showing recent messages only — Meta did not return the full history.'}
-                  <button onClick={() => void loadThread(detail.id)} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--c818cf8)', fontWeight: 600, cursor: 'pointer', fontSize: 11.5 }}>{vi ? 'Thử lại' : 'Retry'}</button>
-                </div>
-              )}
-              {detail.historySource === 'partial' && detail.history.length === 0 && (
-                <div style={{ alignSelf: 'center', fontSize: 12, color: 'var(--c94a3b8)', padding: '18px 0' }}>
-                  {vi ? 'Đang tải tin nhắn…' : 'Loading messages…'}
-                </div>
-              )}
-              {detail.history.map((t, i) => {
-                const mine = t.role === 'assistant';
-                // A divider whenever the calendar day changes — and before the
-                // first message, so a transcript never opens without saying
-                // which day it starts on.
-                const prev = i > 0 ? detail.history[i - 1] : null;
-                const newDay = Boolean(t.at) && (!prev?.at || dayKeyInTz(t.at as string) !== dayKeyInTz(prev.at as string));
-                return (
-                  <Fragment key={i}>
-                  {newDay && (
-                    <div style={{ alignSelf: 'center', margin: '6px 0 2px' }}>
-                      <span style={{
-                        background: 'var(--raised)', border: '1px solid var(--line)',
-                        color: 'var(--c94a3b8)', borderRadius: 999,
-                        padding: '3px 12px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
-                      }}>{dayDividerLabel(t.at as string, vi)}</span>
-                    </div>
-                  )}
-                  <div style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%' }}>
-                    {/* The customer's photos, as they sent them. The links
-                        are the platform's own and expire after a while; an
-                        expired one shows as a broken tile, which is still
-                        more honest than pretending no photo was sent. */}
-                    {!!t.images?.length && (
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
-                        {t.images.map((u, j) => (
-                          <a key={j} href={u} target="_blank" rel="noreferrer" title={vi ? 'Mở ảnh gốc' : 'Open the photo'}>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={u} alt="" loading="lazy" style={{ width: narrow ? 160 : 140, height: narrow ? 160 : 140, objectFit: 'cover', borderRadius: 12, border: '1px solid var(--c334155)', background: 'var(--raised)', display: 'block' }} />
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                    {(!t.images?.length || !/^\[Khách gửi/.test(t.content)) && (
-                      <div style={{
-                        background: mine ? (t.manual ? '#1d4ed8' : 'var(--bubble-bot)') : 'var(--raised)',
-                        // The salon's own replies are on a saturated indigo in
-                        // both themes, so their text stays white; only the
-                        // customer's bubble follows the surface.
-                        color: mine ? '#f8fafc' : 'var(--ce2e8f0)',
-                        // An edge, so a white bubble on a near-white pane is
-                        // still a bubble. In dark the line IS the bubble
-                        // colour, so nothing changes there.
-                        border: mine ? '1px solid transparent' : '1px solid var(--line)',
-                        borderRadius: 16, padding: narrow ? '9px 13px' : '7px 11px',
-                        fontSize: narrow ? 15 : 13, lineHeight: 1.4, whiteSpace: 'pre-wrap',
-                        overflowWrap: 'anywhere',
-                      }}><Linkified text={t.content} /></div>
-                    )}
-                    <p style={{ margin: '3px 2px 0', fontSize: 11, color: 'var(--c64748b)', textAlign: mine ? 'right' : 'left' }}>
-                      {/* Who said it. A staff reply and a bot reply looking
-                          identical is how nobody could tell what the bot had
-                          already promised a customer. */}
-                      {mine ? (t.manual ? (vi ? 'Nhân viên' : 'Staff') : 'Bot') : (vi ? 'Khách' : 'Customer')}
-                      {t.at ? (
-                        <span title={fmtInTz(t.at, { dateStyle: 'full', timeStyle: 'short' })}>
-                          {` · ${bubbleStampLabel(t.at, vi)}`}
-                        </span>
-                      ) : ''}
-                    </p>
-                  </div>
-                  </Fragment>
-                );
-              })}
-              <div ref={endRef} />
-            </div>
-
-            {/* One strip, two kinds of button.
-                The first are the salon's OWN facts — prices, hours, address —
-                read from what they wrote for the bot, so a receptionist can
-                never quote a figure the bot would contradict.
-                After the divider are the four things every conversation needs
-                and no salon should have to type again: a name, a number, a
-                time, a thank-you. Those are the ones that turn a chat into a
-                booking, and typing them thirty times a day is how a busy front
-                desk ends up answering in one word. */}
-            {!notice.blocked && (
-              <div style={{ borderTop: '1px solid var(--line)', padding: narrow ? '8px 12px' : '8px 10px', display: 'flex', gap: narrow ? 8 : 6, alignItems: 'center',
-                ...(narrow ? { flexWrap: 'nowrap' as const, overflowX: 'auto' as const, WebkitOverflowScrolling: 'touch' as const } : { flexWrap: 'wrap' as const }) }}>
-                {(detail.canned ?? []).map((q) => (
-                  <button key={q.label} title={q.text}
-                    onClick={() => setDraft((d) => (d.trim() ? `${d.trim()}\n${q.text}` : q.text))}
-                    style={{ ...ghostBtn, fontSize: narrow ? 13 : 11, padding: narrow ? '8px 13px' : '3px 9px', borderRadius: 999, flexShrink: 0,
-                      borderColor: '#6366f1', color: 'var(--cc7d2fe)' }}>{q.label}</button>
-                ))}
-                {!!detail.canned?.length && (
-                  <span style={{ width: 1, alignSelf: 'stretch', background: 'var(--c334155)', flexShrink: 0, margin: '0 2px' }} />
-                )}
-                {ASKS.map((a) => (
-                  <button key={a.k} title={vi ? a.vi : a.en}
-                    onClick={() => setDraft((d) => { const t = vi ? a.vi : a.en; return d.trim() ? `${d.trim()} ${t}` : t; })}
-                    style={{ ...ghostBtn, fontSize: narrow ? 13 : 11, padding: narrow ? '8px 13px' : '3px 9px', borderRadius: 999, flexShrink: 0 }}>
-                    {a.icon} {vi ? a.viLabel : a.enLabel}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {notice.text && (
-              <div style={{ borderTop: '1px solid var(--line)', padding: '7px 13px', fontSize: 12,
-                // Amber is "a rule applies here"; red is "nothing can be sent".
-                // The take-over state locks the box but is NOT red: the reply
-                // is one click away, and red would read as a dead end.
-                color: (notice.tone ?? (notice.blocked ? 'red' : 'amber')) === 'red' ? 'var(--cfca5a5)' : 'var(--cfcd34d)',
-                background: (notice.tone ?? (notice.blocked ? 'red' : 'amber')) === 'red' ? 'var(--wash-red)' : 'var(--wash-amber-3)' }}>{notice.text}</div>
-            )}
-
-            <div style={{ borderTop: '1px solid var(--line)', padding: narrow ? '8px 10px' : 10, display: 'flex', gap: 8, alignItems: 'flex-end',
-              // The iPhone home bar floats over anything that ignores the safe
-              // area; a send button under it is a send button nobody can press.
-              paddingBottom: narrow ? 'calc(8px + env(safe-area-inset-bottom))' : 10 }}>
-              <textarea value={draft} onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
-                placeholder={composerPlaceholder}
-                disabled={notice.blocked || busy} rows={narrow ? 1 : 2}
-                style={{ ...ui.input, flex: 1, resize: narrow ? 'none' : 'vertical', minHeight: 44,
-                  fontSize: narrow ? 16 : 14, borderRadius: narrow ? 22 : 8, padding: narrow ? '11px 16px' : '9px 11px' }} />
-              {narrow ? (
-                <button disabled={notice.blocked || busy || !draft.trim()} onClick={() => void send()}
-                  aria-label={vi ? 'Gửi' : 'Send'}
-                  style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', flexShrink: 0, cursor: 'pointer',
-                    background: (notice.blocked || !draft.trim()) ? 'var(--c334155)' : '#6366f1', color: (notice.blocked || !draft.trim()) ? 'var(--c94a3b8)' : 'var(--cf8fafc)', fontSize: 19, lineHeight: 1 }}>➤</button>
-              ) : (
-                <button disabled={notice.blocked || busy || !draft.trim()} onClick={() => void send()} style={ui.primaryBtn}>{vi ? 'Gửi' : 'Send'}</button>
-              )}
-            </div>
-
-          </>)}
-        </div>
-
-        {/* Info column. Customer facts on top, internal notes below — the
-            layout Pancake uses, and the right one: both are reference material
-            you glance at while typing, not things that belong in the flow of
-            the conversation. */}
-        <div style={{
-          borderLeft: narrow ? 'none' : '1px solid var(--line)', flexDirection: 'column', minWidth: 0,
-          background: 'var(--c0f172a)', overflowY: 'auto', WebkitOverflowScrolling: 'touch', minHeight: 0,
-          // On a phone the notes, labels and follow-up live behind the ⓘ button
-          // in the conversation header rather than in a fourth column.
-          display: narrow ? (showInfo && !!openId ? 'flex' : 'none') : 'flex',
-          ...(narrow ? { flex: '1 1 0%' } : {}),
-        }}>
-          {narrow && (
-            <button onClick={() => setShowInfo(false)}
-              style={{ ...ghostBtn, margin: 10, alignSelf: 'flex-start', fontSize: 12 }}>
-              ‹ {vi ? 'Về hội thoại' : 'Back to chat'}
-            </button>
-          )}
-          {!detail ? (
-            <p style={{ color: 'var(--c64748b)', fontSize: 12, padding: 14, margin: 0 }}>
-              {vi
-                ? 'Chọn một hội thoại để xem: tên và số điện thoại, số lần đã ghé, lịch hẹn sắp tới, thợ quen, nhãn, lời nhắc theo dõi và ghi chú nội bộ của team.'
-                : 'Pick a conversation to see: name and phone, visits so far, the next appointment, their usual tech, labels, the follow-up reminder and the team’s private notes.'}
-            </p>
-          ) : (<>
-            <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line)' }}>
-              <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--c64748b)' }}>{vi ? 'Khách này ở Lumio' : 'This customer, in Lumio'}</p>
-              {detail.customer ? (() => {
-                // Four facts stacked two lines each used a third of the column
-                // to say very little, and the appointments the server had
-                // already sent were thrown away. They are the reason somebody
-                // opens this panel mid-conversation: is this person booked,
-                // for what, with whom.
-                const appts = [...(detail.customer.appointments ?? [])]
-                  .filter((a) => a && a.startTime)
-                  .sort((a, b) => +new Date(b.startTime) - +new Date(a.startTime));
-                const now = Date.now();
-                const upcoming = [...appts].reverse().find((a) => +new Date(a.startTime) > now) ?? null;
-                const past = appts.filter((a) => +new Date(a.startTime) <= now).slice(0, 3);
-                const who = (a: ApptCtx) => a.assignedStaff?.firstName ?? null;
-                const what = (a: ApptCtx) => a.service?.name ?? null;
-                return (
-                  <div style={{ display: 'grid', gap: 10 }}>
-                    {/* The facts, two to a row. Same information, a third of the height. */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 10px' }}>
-                      <Stat label={vi ? 'Đã đến' : 'Visits'} value={vi ? `${detail.customer.visits ?? 0} lần` : String(detail.customer.visits ?? 0)} />
-                      {detail.customer.usualTech && <Stat label={vi ? 'Thợ quen' : 'Usual tech'} value={detail.customer.usualTech} />}
-                      {detail.customer.phone && <Stat label={vi ? 'Điện thoại' : 'Phone'} value={detail.customer.phone} />}
-                      {detail.customer.email && <Stat label="Email" value={detail.customer.email} />}
-                    </div>
-
-                    {/* The next appointment, given the weight it has in the
-                        conversation. Not a stat line — the thing itself. */}
-                    {upcoming ? (
-                      <div style={{ border: '1px solid var(--c334155)', borderRadius: 9, padding: '9px 11px', background: 'var(--c0b1220)' }}>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 4 }}>
-                          <span style={{ fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--c64748b)' }}>{vi ? 'Lịch tới' : 'Next visit'}</span>
-                          {upcoming.status && pill(apptTone(upcoming.status), apptStatusLabel(upcoming.status, vi))}
-                        </div>
-                        <p style={{ margin: 0, fontSize: 14.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
-                          {fmtInTz(upcoming.startTime, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
-                        </p>
-                        <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--c94a3b8)' }}>
-                          {[what(upcoming), who(upcoming) && `${vi ? 'thợ' : 'with'} ${who(upcoming)}`].filter(Boolean).join(' · ') || (vi ? 'chưa rõ dịch vụ' : 'service not set')}
-                        </p>
-                      </div>
-                    ) : (
-                      <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)' }}>
-                        {vi ? 'Chưa có lịch hẹn sắp tới.' : 'No upcoming appointment.'}
-                      </p>
-                    )}
-
-                    {/* What they actually came in for. Three lines of history
-                        answer "have we done this before, and who did it" without
-                        leaving the conversation. */}
-                    {past.length > 0 && (
-                      <div>
-                        <p style={{ margin: '0 0 5px', fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--c64748b)' }}>
-                          {vi ? 'Đã làm gần đây' : 'Recent visits'}
-                        </p>
-                        <div style={{ display: 'grid', gap: 4 }}>
-                          {past.map((a) => (
-                            <div key={a.id} style={{ display: 'flex', gap: 8, fontSize: 12, lineHeight: 1.45 }}>
-                              <span style={{ color: 'var(--c64748b)', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-                                {fmtInTz(a.startTime, { day: '2-digit', month: '2-digit' })}
-                              </span>
-                              <span style={{ color: 'var(--c94a3b8)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {[what(a), who(a)].filter(Boolean).join(' · ') || (vi ? 'lịch hẹn' : 'appointment')}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })() : (
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5 }}>
-                  {/* Deliberately empty rather than guessed. Matching on a name
-                      would show one customer another customer's spending. */}
-                  {vi
-                    ? 'Chưa nối được với hồ sơ khách. Sẽ tự nối khi khách đặt lịch từ hội thoại này.'
-                    : 'Not linked to a customer record yet. It links itself when they book from this conversation.'}
-                </p>
-              )}
-
-              {/* From a conversation to a booking, in one press.
-                  This is the shortest path in the product between a message
-                  and money, and until now it was: read the number, remember
-                  it, open another tab, find the booking screen, type it back.
-                  Four chances to transpose two digits.
-
-                  The name and number are put on the clipboard FIRST and the
-                  query string carries them too — whichever the booking screen
-                  is ready for, the receptionist has them. */}
-              <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 11 }}>
-                {detail.customer?.phone && (
-                  <a href={`tel:${String(detail.customer.phone).replace(/[^+\d]/g, '')}`}
-                    style={{ ...ghostBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5, padding: narrow ? '9px 13px' : '5px 10px', fontSize: narrow ? 13.5 : 12 }}>
-                    ☎ {vi ? 'Gọi' : 'Call'}
-                  </a>
-                )}
-                {detail.customer?.phone && (
-                  <button
-                    onClick={() => { void copyContact(detail); }}
-                    style={{ ...ghostBtn, padding: narrow ? '9px 13px' : '5px 10px', fontSize: narrow ? 13.5 : 12 }}>
-                    {copied ? `✓ ${vi ? 'Đã chép' : 'Copied'}` : `⧉ ${vi ? 'Chép tên + số' : 'Copy name + number'}`}
-                  </button>
-                )}
-                {inSalonPortal() && (
-                  <button
-                    onClick={() => { void bookFor(detail); }}
-                    style={{
-                      padding: narrow ? '9px 14px' : '5px 11px', fontSize: narrow ? 13.5 : 12, fontWeight: 600,
-                      borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                      background: '#6366f1', color: '#ffffff',
-                    }}>
-                    📅 {vi ? 'Đặt lịch cho khách này' : 'Book this customer'}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* The phone header gave this button's seat to the customer's
-                name; the action itself moves here rather than disappearing. */}
-            {narrow && (
-              <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line)', display: 'flex', gap: 8 }}>
-                {isSpamRow(detail) ? (
-                  <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10, borderColor: '#6366f1', color: 'var(--cc7d2fe)' }}>{vi ? 'Không phải spam' : 'Not spam'}</button>
-                ) : (<>
-                  {stateOf(detail) !== 'done'
-                    ? <button disabled={busy} onClick={() => void act('status', { status: 'done' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10 }}>✓ {vi ? 'Xong hội thoại' : 'Mark done'}</button>
-                    : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10 }}>{vi ? 'Mở lại hội thoại' : 'Reopen'}</button>}
-                  <button disabled={busy} onClick={() => void act('status', { status: 'spam' })} style={{ ...ghostBtn, flex: 1, padding: '11px 0', fontSize: 14, borderRadius: 10, color: 'var(--c94a3b8)' }}>Spam</button>
-                </>)}
-              </div>
-            )}
-
-            {/* Labels: where this conversation stands. */}
-            <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 600 }}>{vi ? 'NHÃN' : 'LABELS'}</span>
-                <button onClick={() => setShowLabelForm((v) => !v)}
-                  style={{ ...ghostBtn, marginLeft: 'auto', fontSize: 11, padding: '1px 7px' }}>
-                  {showLabelForm ? (vi ? 'Đóng' : 'Close') : (vi ? '+ Nhãn mới' : '+ New')}
-                </button>
-              </div>
-
-              {showLabelForm && (
-                <div style={{ marginBottom: 9 }}>
-                  <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void createLabel(); } }}
-                    placeholder={vi ? 'Tên nhãn, ví dụ "Đã báo giá"' : 'Label name'}
-                    maxLength={40}
-                    style={{ ...ui.input, fontSize: 12, padding: '5px 8px' }} />
-                  <div style={{ display: 'flex', gap: 5, margin: '7px 0' }}>
-                    {LABEL_COLORS.map((c) => (
-                      <button key={c} onClick={() => setNewColor(c)} aria-label={c}
-                        style={{ width: 20, height: 20, borderRadius: '50%', background: c, cursor: 'pointer',
-                          border: newColor === c ? '2px solid var(--ce2e8f0)' : '2px solid transparent' }} />
-                    ))}
-                  </div>
-                  <button onClick={() => void createLabel()} disabled={busy || !newLabel.trim()}
-                    style={{ ...ui.primaryBtn, fontSize: 12, padding: "4px 11px" }}>{vi ? "Tạo" : "Create"}</button>
-                </div>
-              )}
-
-              {!labels.length && !showLabelForm && (
-                // Nothing is seeded on purpose — the stages of a sale differ in
-                // every salon, and an invented default would sit unused forever.
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5 }}>
-                  {vi ? 'Chưa có nhãn nào. Tạo nhãn theo cách tiệm bạn bán hàng: "Đã báo giá", "Chờ chốt", "Không quan tâm".'
-                      : 'No labels yet. Create the stages your salon actually uses.'}
-                </p>
-              )}
-
-              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                {labels.map((l) => {
-                  const on = (detail.labels ?? []).some((x) => x.id === l.id);
-                  return (
-                    <button key={l.id} onClick={() => void toggleLabel(l.id, !on)} disabled={busy}
-                      title={on ? (vi ? 'Bỏ nhãn' : 'Remove') : (vi ? 'Gắn nhãn' : 'Apply')}
-                      style={{
-                        border: `1px solid ${on ? l.color : 'var(--c334155)'}`,
-                        background: on ? l.color : 'transparent',
-                        color: on ? '#fff' : 'var(--c94a3b8)',
-                        borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
-                      }}>{on ? '✓ ' : ''}{l.name}</button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Follow-up: WHEN to come back. Deliberately not a label — a label
-                is true forever and so cannot remind anybody of anything. */}
-            <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: 'var(--c64748b)', fontWeight: 600 }}>{vi ? 'HẸN THEO DÕI' : 'FOLLOW-UP'}</span>
-                {followUpState(detail.followUpAt) !== 'none' && (
-                  <span style={{
-                    background: FOLLOWUP_TONE[followUpState(detail.followUpAt)].bg,
-                    color: FOLLOWUP_TONE[followUpState(detail.followUpAt)].fg,
-                    borderRadius: 6, padding: '1px 7px', fontSize: 10.5, fontWeight: 600,
-                  }}>{followUpLabel(detail.followUpAt, new Date())}</span>
-                )}
-              </div>
-
-              <input type="datetime-local"
-                value={toLocalInput(detail.followUpAt)}
-                onChange={(e) => void setFollowUp(e.target.value)}
-                disabled={busy}
-                style={{ ...ui.input, fontSize: 12, padding: '5px 8px'}} />
-
-              <div style={{ display: 'flex', gap: 5, marginTop: 7, flexWrap: 'wrap' }}>
-                {/* The three answers a receptionist actually gives. Typing a
-                    date by hand for every "để em gọi lại sau" is the reason
-                    follow-up systems go unused. */}
-                {([
-                  [1, vi ? 'Mai' : 'Tomorrow'],
-                  [3, vi ? '3 ngày' : '3 days'],
-                  [7, vi ? '1 tuần' : '1 week'],
-                ] as [number, string][]).map(([days, label]) => (
-                  <button key={days} disabled={busy}
-                    onClick={() => {
-                      // "+N days at 10:00" counts salon days and a salon hour.
-                      const day = dayKeyInTz(new Date(Date.now() + days * 86_400_000));
-                      void setFollowUp(`${day}T10:00`);
-                    }}
-                    style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px' }}>{label}</button>
-                ))}
-                {detail.followUpAt && (
-                  <button onClick={() => void setFollowUp('')} disabled={busy}
-                    style={{ ...ghostBtn, fontSize: 11, padding: '2px 8px', color: 'var(--cf87171)', borderColor: 'var(--c7f1d1d)' }}>
-                    {vi ? 'Xoá hẹn' : 'Clear'}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div style={{ padding: '11px 13px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11, color: 'var(--cfcd34d)', fontWeight: 600 }}>{vi ? 'GHI CHÚ NỘI BỘ' : 'INTERNAL NOTES'}</span>
-              <span style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{vi ? '· khách không thấy' : '· customer cannot see these'}</span>
-            </div>
-
-            <div style={{ padding: '0 13px 10px' }}>
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void addNote(); } }}
-                placeholder={vi ? 'Nhập ghi chú (Enter để lưu)' : 'Add a note (Enter to save)'}
-                rows={2}
-                style={{ ...ui.input, width: '100%', fontSize: 12, resize: 'vertical', minHeight: 38, borderColor: 'var(--c78350f)', background: 'var(--wash-amber)' }}
-              />
-            </div>
-
-            <div style={{ flex: '1 1 0%', overflowY: 'auto', minHeight: narrow ? undefined : 120, padding: '0 13px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {!detail.notes?.length && (
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)' }}>{vi ? 'Chưa có ghi chú nào.' : 'No notes yet.'}</p>
-              )}
-              {detail.notes?.map((n) => (
-                <div key={n.id} style={{ background: 'var(--wash-amber-2)', border: '1px solid var(--c78350f)', borderRadius: 8, padding: '7px 9px' }}>
-                  <p style={{ margin: 0, fontSize: 12.5, color: 'var(--cfde68a)', whiteSpace: 'pre-wrap' }}>{n.text}</p>
-                  <p style={{ margin: '4px 0 0', fontSize: 10.5, color: '#a16207', display: 'flex', gap: 6 }}>
-                    <span>{n.authorName}</span>
-                    <span>·</span>
-                    <span>{fmtInTz(n.createdAt, { dateStyle: 'short', timeStyle: 'short' })}</span>
-                    <button
-                      onClick={() => void apiFetch(`/messenger/threads/${detail.id}/notes/${n.id}/delete`, { method: 'POST', token: token! }).then(() => loadThread(detail.id))}
-                      title={vi ? 'Xoá ghi chú' : 'Delete note'}
-                      style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#a16207', cursor: 'pointer', fontSize: 11, padding: 0 }}
-                    >×</button>
-                  </p>
-                </div>
-              ))}
-            </div>
-          </>)}
-        </div>
+        gridTemplateColumns: narrow ? undefined
+          : compact ? (showInfo ? 'minmax(0,280px) minmax(0,1fr) minmax(0,272px)' : 'minmax(0,300px) minmax(0,1fr)')
+          : wide ? '232px minmax(0,344px) minmax(0,1fr) minmax(0,312px)' : '196px minmax(0,272px) minmax(0,1fr) minmax(0,256px)',
+        ...(narrow ? { width: '100vw', marginLeft: 'calc(50% - 50vw)', border: 'none', borderRadius: 0, height: cardH ?? undefined, flexDirection: 'column' as const } : {}) }}>
+        {!narrow && !compact && rail}
+        {list}
+        {thread}
+        {info}
       </div>
     </>
   );
@@ -2237,3 +1878,17 @@ function Stat({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+/** The letter on a channel badge — colour does the recognising, the letter confirms it. */
+function channelLetter(raw: unknown): string {
+  switch (channelOf(raw)) {
+    case 'instagram': return 'IG';
+    case 'zalo': return 'Z';
+    case 'web': return 'W';
+    default: return 'M';
+  }
+}
+
+// White text on a coloured (never themed) ground: the ground is a channel's
+// brand hue or the accent, so light mode does not flip it.
+const onHue = (bg: string): React.CSSProperties => ({ background: bg, color: '#fff' });

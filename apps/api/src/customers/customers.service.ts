@@ -110,21 +110,37 @@ export class CustomersService {
     let existing = phone
       ? await this.prisma.customer.findFirst({ where: { tenantId, phone }, select: { id: true, firstName: true, email: true, phone: true, birthDate: true } })
       : null;
-    if (!existing && email) {
-      existing = await this.prisma.customer.findFirst({ where: { tenantId, email }, select: { id: true, firstName: true, email: true, phone: true, birthDate: true } });
-    }
+    // Emails were not always stored lower-case — match them the way people read them.
+    const byEmail = (e: string) => this.prisma.customer.findFirst({ where: { tenantId, email: { equals: e, mode: 'insensitive' } }, select: { id: true, firstName: true, email: true, phone: true, birthDate: true } });
+    if (!existing && email) existing = await byEmail(email);
     if (existing) {
       const patch: Record<string, unknown> = {};
       if (phone && !existing.phone) patch.phone = phone;
-      if (email && !existing.email) patch.email = email;
+      // Backfill the email only when no OTHER customer of this salon already has
+      // it. The phone matched one person and the email another: writing it here
+      // broke the (tenantId, email) unique key and the till showed
+      // "Internal server error" on "Lưu khách".
+      if (email && !existing.email) {
+        const other = await byEmail(email);
+        if (!other || other.id === existing.id) patch.email = email;
+      }
       if ((!existing.firstName || existing.firstName === 'Walk-in') && firstName !== 'Walk-in') patch.firstName = firstName;
       if (birth && !existing.birthDate) patch.birthDate = birth;
       if (Object.keys(patch).length) await this.prisma.customer.updateMany({ where: { id: existing.id, tenantId }, data: patch });
       return this.brief(tenantId, existing.id);
     }
     if (!phone && !email) return null; // nothing to dedupe on → skip
-    const created = await this.prisma.customer.create({ data: { tenantId, firstName, lastName, phone, email, birthDate: birth }, select: { id: true } });
-    return this.brief(tenantId, created.id);
+    try {
+      const created = await this.prisma.customer.create({ data: { tenantId, firstName, lastName, phone, email, birthDate: birth }, select: { id: true } });
+      return this.brief(tenantId, created.id);
+    } catch (e) {
+      // Two tills saving the same new customer at once: the second one gets the first one's row.
+      if ((e as { code?: string })?.code === 'P2002' && email) {
+        const again = await byEmail(email);
+        if (again) return this.brief(tenantId, again.id);
+      }
+      throw e;
+    }
   }
 
   private brief(tenantId: string, id: string) {

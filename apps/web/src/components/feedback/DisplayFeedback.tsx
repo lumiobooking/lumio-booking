@@ -35,18 +35,18 @@ export function DisplayFeedback({ token, salonName, salonLogo, paidLine, tipFoot
   const accent = ctx.accentColor || '#6366f1';
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: '#faf9f7', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif', color: '#1c1917' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '20px 34px 20px 68px', borderBottom: '1px solid #e7e3dd', background: '#fff', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 'clamp(8px, 1.8vh, 20px) 34px clamp(8px, 1.8vh, 20px) 68px', borderBottom: '1px solid #e7e3dd', background: '#fff', flexShrink: 0 }}>
         {salonLogo || ctx.logoUrl
           // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={(salonLogo || ctx.logoUrl)!} alt="" style={{ height: 46, width: 'auto', maxWidth: 160, objectFit: 'contain', borderRadius: 8 }} />
-          : <span style={{ width: 46, height: 46, borderRadius: '50%', background: `${accent}1a`, border: `1.5px solid ${accent}59`, color: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>✦</span>}
+          ? <img src={(salonLogo || ctx.logoUrl)!} alt="" style={{ height: 'clamp(32px, 5vh, 46px)', width: 'auto', maxWidth: 160, objectFit: 'contain', borderRadius: 8 }} />
+          : <span style={{ width: 'clamp(32px, 5vh, 46px)', height: 'clamp(32px, 5vh, 46px)', borderRadius: '50%', background: `${accent}1a`, border: `1.5px solid ${accent}59`, color: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>✦</span>}
         <div>
-          <div style={{ fontFamily: 'Baskerville, "Libre Baskerville", Georgia, serif', fontWeight: 600, fontSize: 22 }}>{salonName || ctx.salonName}</div>
+          <div style={{ fontFamily: 'Baskerville, "Libre Baskerville", Georgia, serif', fontWeight: 600, fontSize: 'clamp(17px, 2.6vh, 22px)' }}>{salonName || ctx.salonName}</div>
           <div style={{ fontSize: 14, color: '#6f6a64' }}>{ctx.lang === 'vi' ? 'Cảm ơn bạn đã ghé tiệm' : 'Thank you for visiting'}</div>
         </div>
       </div>
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'stretch', justifyContent: 'center', overflowY: 'auto' }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '24px 0' }}>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'safe center', padding: 'clamp(10px, 2.4vh, 24px) 0' }}>
           <FeedbackFlow token={token} ctx={ctx} variant="ipad" onDone={onDone} header={paidLine} footer={tipFooter} />
         </div>
       </div>

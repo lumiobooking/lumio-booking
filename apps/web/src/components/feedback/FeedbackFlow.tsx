@@ -262,10 +262,10 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
       const onTap = () => { if (busy) return; if (happy) answer('HAPPY'); else setStep('form'); };
       if (ipad) {
         return (
-          <button type="button" onClick={onTap} disabled={busy} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '34px 20px', borderRadius: 28, background: C.card, border: `2px solid ${C.line}`, boxShadow: '0 10px 30px rgba(23,20,18,.07)', cursor: 'pointer', fontFamily: 'inherit', color: C.ink }}>
-            <span style={{ width: 104, height: 104, borderRadius: '50%', background: happy ? C.good : C.warm, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 58 }}>{happy ? '😊' : '😕'}</span>
-            <b style={{ fontSize: 30 }}>{happy ? t.happy : t.notQuite}</b>
-            <span style={{ fontSize: 17, color: C.muted }}>{happy ? t.happySub : t.notQuiteSub}</span>
+          <button type="button" onClick={onTap} disabled={busy} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'clamp(6px, 1.6vh, 14px)', padding: 'clamp(16px, 3.6vh, 34px) 20px', borderRadius: 28, background: C.card, border: `2px solid ${C.line}`, boxShadow: '0 10px 30px rgba(23,20,18,.07)', cursor: 'pointer', fontFamily: 'inherit', color: C.ink }}>
+            <span style={{ width: 'clamp(62px, 12vh, 104px)', height: 'clamp(62px, 12vh, 104px)', borderRadius: '50%', background: happy ? C.good : C.warm, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'clamp(34px, 6.6vh, 58px)' }}>{happy ? '😊' : '😕'}</span>
+            <b style={{ fontSize: 'clamp(21px, 3.5vh, 30px)' }}>{happy ? t.happy : t.notQuite}</b>
+            <span style={{ fontSize: 'clamp(14px, 2vh, 17px)', color: C.muted }}>{happy ? t.happySub : t.notQuiteSub}</span>
           </button>
         );
       }
@@ -282,18 +282,18 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
       return (
         <div style={{ width: '100%', maxWidth: 860, margin: '0 auto', textAlign: 'center' }}>
           {header}
-          <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 44, letterSpacing: '-.01em', lineHeight: 1.12, color: C.ink, margin: '30px 0 12px' }}>{t.howShort}</div>
+          <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 'clamp(28px, 5.4vh, 44px)', letterSpacing: '-.01em', lineHeight: 1.12, color: C.ink, margin: 'clamp(12px, 3.4vh, 30px) 0 clamp(8px, 1.4vh, 12px)' }}>{t.howShort}</div>
           {ctx.staffName && (
-            <div style={{ marginBottom: 26 }}>
+            <div style={{ marginBottom: 'clamp(12px, 3vh, 26px)' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '8px 16px 8px 8px', borderRadius: 999, background: C.card, border: `1px solid ${C.line}`, color: C.ink }}>
                 <Avatar ctx={ctx} accent={accent} size={38} />
                 <span style={{ fontSize: 17, fontWeight: 600 }}>{ctx.staffName}{service ? ` · ${service}` : ''}</span>
               </span>
             </div>
           )}
-          <div style={{ display: 'flex', gap: 26 }}>{choice('HAPPY')}{choice('UNHAPPY')}</div>
+          <div style={{ display: 'flex', gap: 'clamp(14px, 2.4vw, 26px)', padding: '0 clamp(12px, 3vw, 0px)' }}>{choice('HAPPY')}{choice('UNHAPPY')}</div>
           {err && <p style={{ color: C.bad, marginTop: 14 }}>{err}</p>}
-          {footer && <div style={{ marginTop: 26 }}>{footer}</div>}
+          {footer && <div style={{ marginTop: 'clamp(12px, 3vh, 26px)' }}>{footer}</div>}
         </div>
       );
     }
@@ -323,8 +323,8 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
     if (step === 'later' || !google) {
       return (
         <Shell ipad={ipad}>
-          <div style={{ ...center, paddingTop: ipad ? 90 : 120, flex: 1 }}>
-            <div style={{ fontSize: ipad ? 64 : 48 }}>💕</div>
+          <div style={{ ...center, paddingTop: ipad ? 'clamp(30px, 10vh, 90px)' : 120, flex: 1 }}>
+            <div style={{ fontSize: ipad ? 'clamp(40px, 7vh, 64px)' : 48 }}>💕</div>
             <div style={{ ...eyebrow, color: C.faint, marginTop: 18 }}>{t.thanks(first)}</div>
             <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: ipad ? 44 : 29, marginTop: 8 }}>{t.seeYou}</div>
           </div>
@@ -335,14 +335,14 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
     if (ipad) {
       return (
         <Shell ipad>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 70, padding: '30px 60px' }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'clamp(24px, 5vw, 70px)', padding: 'clamp(14px, 3.4vh, 30px) clamp(20px, 5vw, 60px)', overflowY: 'auto' }}>
             <div style={{ flex: 1, maxWidth: 520 }}>
-              <div style={{ fontSize: 64 }}>😊</div>
+              <div style={{ fontSize: 'clamp(38px, 7vh, 64px)' }}>😊</div>
               <div style={{ ...eyebrow, color: C.faint, marginTop: 14 }}>{t.thanks(first)}</div>
-              <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 46, marginTop: 10, lineHeight: 1.12 }}>{t.glad}</div>
-              <p style={{ fontSize: 21, lineHeight: 1.5, color: C.muted, margin: '16px 0 0' }}>{t.askIpad}</p>
-              <div style={{ color: C.star, fontSize: 30, letterSpacing: 5, marginTop: 22 }}>★★★★★</div>
-              <div style={{ display: 'flex', gap: 14, marginTop: 26 }}>
+              <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 'clamp(30px, 5.6vh, 46px)', marginTop: 10, lineHeight: 1.12 }}>{t.glad}</div>
+              <p style={{ fontSize: 'clamp(16px, 2.5vh, 21px)', lineHeight: 1.5, color: C.muted, margin: 'clamp(8px, 1.8vh, 16px) 0 0' }}>{t.askIpad}</p>
+              <div style={{ color: C.star, fontSize: 'clamp(22px, 3.6vh, 30px)', letterSpacing: 5, marginTop: 'clamp(10px, 2.4vh, 22px)' }}>★★★★★</div>
+              <div style={{ display: 'flex', gap: 14, marginTop: 'clamp(12px, 3vh, 26px)', flexWrap: 'wrap' }}>
                 {ctx.hasPhone && <button type="button" onClick={textLink} disabled={texted} style={ghost(true)}>{texted ? t.texted : t.textMe}</button>}
                 {onDone && <button type="button" onClick={onDone} style={ghost(true)}>{t.done}</button>}
               </div>
@@ -410,29 +410,34 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
     const toggle = (r: string) => setPicked((v) => (v.includes(r) ? v.filter((x) => x !== r) : [...v, r]));
     return (
       <Shell ipad={ipad}>
-        <div style={{ flex: 1, padding: ipad ? '36px 60px 0' : '46px 22px 16px', display: 'flex', flexDirection: 'column', overflowY: 'auto', maxWidth: ipad ? 980 : undefined, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+        <div className="fbf-scroll" style={{ flex: 1, minHeight: 0, padding: ipad ? 'clamp(14px, 3.6vh, 36px) clamp(20px, 5vw, 60px) 0' : '46px 22px 16px', display: 'flex', flexDirection: 'column', overflowY: 'auto', maxWidth: ipad ? 1100 : undefined, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+          <style>{FORM_CSS}</style>
           {!ipad && <button type="button" onClick={() => setStep('ask')} style={{ background: 'none', border: 'none', padding: 0, color: C.muted, font: '600 14px system-ui', cursor: 'pointer', alignSelf: 'flex-start' }}>‹ {t.back}</button>}
           <div style={{ ...eyebrow, color: C.faint, marginTop: ipad ? 0 : 16 }}>{t.sorry(first)}</div>
-          <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: ipad ? 44 : 27, marginTop: 6, lineHeight: 1.14 }}>{t.better}</div>
-          <p style={{ fontSize: ipad ? 17 : 14.5, lineHeight: 1.5, color: C.muted, margin: '8px 0 16px' }}>{t.lock}</p>
+          <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: ipad ? 'clamp(26px, 5vh, 44px)' : 27, marginTop: 6, lineHeight: 1.14 }}>{t.better}</div>
+          <p style={{ fontSize: ipad ? 'clamp(14px, 2vh, 17px)' : 14.5, lineHeight: 1.5, color: C.muted, margin: ipad ? '6px 0 clamp(10px, 2vh, 16px)' : '8px 0 16px' }}>{t.lock}</p>
+          <div className={ipad ? 'fbf-grid' : undefined}>
+          <div className="fbf-col">
           <div style={label(ipad)}>{t.tapAll}</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: ipad ? 12 : 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: ipad ? 'clamp(8px, 1.3vh, 12px)' : 8 }}>
             {ctx.reasons.map((r) => (
-              <button key={r} type="button" onClick={() => toggle(r)} style={{ ...chip(picked.includes(r), accent), fontSize: ipad ? 19 : 14.5, padding: ipad ? '16px 22px' : '10px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>{reasonText(r)}</button>
+              <button key={r} type="button" onClick={() => toggle(r)} style={{ ...chip(picked.includes(r), accent), fontSize: ipad ? 'clamp(15px, 2.3vh, 19px)' : 14.5, padding: ipad ? 'clamp(9px, 1.7vh, 16px) clamp(14px, 1.8vw, 22px)' : '10px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>{reasonText(r)}</button>
             ))}
           </div>
-          <div style={{ ...label(ipad), marginTop: 18 }}>{t.more} <span style={{ fontWeight: 500, color: C.faint }}>· {t.optional}</span></div>
+          <div style={{ ...label(ipad), marginTop: ipad ? 'clamp(12px, 2.2vh, 18px)' : 18 }}>{t.more} <span style={{ fontWeight: 500, color: C.faint }}>· {t.optional}</span></div>
           <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t.placeholder} rows={ipad ? 2 : 3} maxLength={1000}
-            style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.line}`, borderRadius: 16, background: '#fff', padding: '13px 15px', fontSize: ipad ? 18 : 16, lineHeight: 1.45, color: C.ink, fontFamily: 'inherit', resize: 'none' }} />
+            style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.line}`, borderRadius: 16, background: '#fff', padding: '13px 15px', fontSize: ipad ? 'clamp(16px, 2.2vh, 18px)' : 16, lineHeight: 1.45, color: C.ink, fontFamily: 'inherit', resize: 'none', minHeight: ipad ? 'clamp(64px, 11vh, 96px)' : 96, flexShrink: 0 }} />
+          </div>
+          <div className="fbf-col">
           {ctx.askPhoto && (
             <>
-              <div style={{ ...label(ipad), marginTop: 18 }}>{t.photo} <span style={{ fontWeight: 500, color: C.faint }}>· {t.optional}</span></div>
+              <div className="fbf-photo-label" style={{ ...label(ipad), marginTop: ipad ? 'clamp(12px, 2.2vh, 18px)' : 18 }}>{t.photo} <span style={{ fontWeight: 500, color: C.faint }}>· {t.optional}</span></div>
               {photoInput}
               {ipad ? (
                 (photo || (phonePhoto && photo === null)) ? photoDone(true) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '14px 16px', borderRadius: 16, background: '#fff', border: `1.5px dashed ${C.line}` }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={qrImg(`${origin}/f/${token}/photo`, 260)} alt="" width={104} height={104} style={{ borderRadius: 10, border: `1px solid ${C.line}`, padding: 4, background: '#fff', flexShrink: 0 }} />
+                    <img src={qrImg(`${origin}/f/${token}/photo`, 260)} alt="" style={{ width: 'clamp(76px, 12vh, 104px)', height: 'clamp(76px, 12vh, 104px)', borderRadius: 10, border: `1px solid ${C.line}`, padding: 4, background: '#fff', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <b style={{ fontSize: 18 }}>📷 {t.photoPhone}</b>
                       <div style={{ fontSize: 15.5, color: C.muted, marginTop: 3, lineHeight: 1.45 }}>{t.photoPhoneSub}</div>
@@ -466,11 +471,14 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
               </button>
             </div>
           )}
+          </div>
+          </div>
           {err && <p style={{ color: C.bad, margin: '12px 0 0' }}>{err}</p>}
+          {ipad && <div style={{ height: 12, flexShrink: 0 }} />}
         </div>
         <Footer ipad={ipad}>
           {ipad && <button type="button" onClick={() => setStep('ask')} style={ghost(true)}>{t.back}</button>}
-          <button type="button" onClick={() => answer('UNHAPPY')} disabled={busy || photoBusy} style={{ ...primary(accent), ...(ipad ? { width: 'auto', padding: '0 40px' } : {}), opacity: busy ? 0.6 : 1 }}>{busy ? t.sending : t.send}</button>
+          <button type="button" onClick={() => answer('UNHAPPY')} disabled={busy || photoBusy} style={{ ...primary(accent), ...(ipad ? { width: 'auto', padding: '0 40px', minHeight: 'clamp(48px, 7vh, 58px)' } : {}), opacity: busy ? 0.6 : 1 }}>{busy ? t.sending : t.send}</button>
         </Footer>
       </Shell>
     );
@@ -480,12 +488,12 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
   const willCall = contact && ctx.hasPhone;
   return (
     <Shell ipad={ipad}>
-      <div style={{ flex: 1, padding: ipad ? '60px 60px 20px' : '96px 22px 18px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: ipad ? 'clamp(20px, 6vh, 60px) clamp(20px, 5vw, 60px) 20px' : '96px 22px 18px', display: 'flex', flexDirection: 'column' }}>
         <div style={{ textAlign: 'center', maxWidth: 720, margin: '0 auto' }}>
-          <div style={{ width: ipad ? 100 : 84, height: ipad ? 100 : 84, borderRadius: '50%', background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: ipad ? 48 : 40, margin: '0 auto', boxShadow: `0 14px 30px ${accent}55` }}>✓</div>
+          <div style={{ width: ipad ? 'clamp(64px, 11vh, 100px)' : 84, height: ipad ? 'clamp(64px, 11vh, 100px)' : 84, borderRadius: '50%', background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: ipad ? 'clamp(32px, 5.4vh, 48px)' : 40, margin: '0 auto', boxShadow: `0 14px 30px ${accent}55` }}>✓</div>
           <div style={{ ...eyebrow, color: C.faint, marginTop: 24 }}>{t.received}</div>
-          <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: ipad ? 46 : 29, marginTop: 8 }}>{t.thanksTelling}</div>
-          <p style={{ fontSize: ipad ? 21 : 16, lineHeight: 1.55, color: C.muted, margin: '12px 6px 0' }}>{willCall ? t.willReach(ctx.replyHours) : t.willReachPlain}</p>
+          <div style={{ fontFamily: SERIF, fontWeight: 600, fontSize: ipad ? 'clamp(30px, 5.6vh, 46px)' : 29, marginTop: 8 }}>{t.thanksTelling}</div>
+          <p style={{ fontSize: ipad ? 'clamp(16px, 2.5vh, 21px)' : 16, lineHeight: 1.55, color: C.muted, margin: '12px 6px 0' }}>{willCall ? t.willReach(ctx.replyHours) : t.willReachPlain}</p>
         </div>
         {willCall && ctx.maskedPhone && !ipad && (
           <div style={{ marginTop: 22, display: 'flex', gap: 10, alignItems: 'center', padding: '13px 15px', borderRadius: 16, background: '#fff', border: `1px solid ${C.line}`, fontSize: 14, color: C.ink2 }}>💬 <span>{t.expect(ctx.maskedPhone, ctx.salonName)}</span></div>
@@ -535,17 +543,28 @@ function Shell({ ipad, children }: { ipad: boolean; children: React.ReactNode })
 
 function Footer({ children, ipad }: { children: React.ReactNode; ipad?: boolean }) {
   return (
-    <div style={{ display: 'flex', gap: 14, justifyContent: ipad ? 'flex-end' : 'stretch', padding: ipad ? '18px 60px 26px' : '14px 22px', paddingBottom: ipad ? 26 : 'max(26px, env(safe-area-inset-bottom))', borderTop: ipad ? 'none' : `1px solid ${C.line}`, background: 'rgba(250,249,247,.96)', position: ipad ? 'static' : 'sticky', bottom: 0 }}>
+    <div style={{ display: 'flex', gap: 14, justifyContent: ipad ? 'flex-end' : 'stretch', padding: ipad ? 'clamp(8px, 1.8vh, 18px) clamp(20px, 5vw, 60px) clamp(10px, 2.6vh, 26px)' : '14px 22px', paddingBottom: ipad ? 'clamp(10px, 2.6vh, 26px)' : 'max(26px, env(safe-area-inset-bottom))', borderTop: ipad ? 'none' : `1px solid ${C.line}`, background: 'rgba(250,249,247,.96)', position: ipad ? 'static' : 'sticky', bottom: 0 }}>
       {children}
     </div>
   );
 }
 
+/** The "not quite" form on a shared screen: two columns when the glass is wide
+ *  (reasons + note | photo + call-back), one when it is narrow, and no field
+ *  is ever squeezed to nothing — the form scrolls instead. */
+const FORM_CSS = `
+.fbf-scroll > *{flex-shrink:0}
+.fbf-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);column-gap:clamp(20px,3vw,40px);align-items:start}
+.fbf-col{min-width:0;display:flex;flex-direction:column}
+.fbf-grid .fbf-col + .fbf-col > .fbf-photo-label{margin-top:0 !important}
+@media (max-width:860px){.fbf-grid{grid-template-columns:minmax(0,1fr)}.fbf-grid .fbf-col + .fbf-col > .fbf-photo-label{margin-top:clamp(12px,2.2vh,18px) !important}}
+`;
+
 const eyebrow: CSSProperties = { font: '700 11.5px system-ui', letterSpacing: '.14em', textTransform: 'uppercase' };
 const center: CSSProperties = { textAlign: 'center', padding: '0 24px' };
 const lead: CSSProperties = { fontSize: 16, lineHeight: 1.55, color: C.muted };
 const timer: CSSProperties = { textAlign: 'center', fontSize: 14, color: C.faint, padding: '0 0 18px' };
-const label = (ipad: boolean): CSSProperties => ({ font: `600 ${ipad ? 18 : 14}px system-ui`, color: C.ink2, margin: '0 0 10px' });
+const label = (ipad: boolean): CSSProperties => ({ fontFamily: 'system-ui', fontWeight: 600, fontSize: ipad ? 'clamp(15px, 2.2vh, 18px)' : 14, color: C.ink2, margin: ipad ? '0 0 clamp(6px, 1.2vh, 10px)' : '0 0 10px' });
 const primary = (accent: string): CSSProperties => ({ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, width: '100%', minHeight: 58, borderRadius: 999, border: 'none', background: accent, color: '#fff', font: '700 17.5px system-ui', boxShadow: `0 10px 24px ${accent}59`, cursor: 'pointer' });
-const ghost = (ipad: boolean): CSSProperties => ({ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: ipad ? 60 : 50, padding: ipad ? '0 30px' : 0, width: ipad ? 'auto' : '100%', borderRadius: 999, border: `1.5px solid ${C.line}`, background: '#fff', color: C.ink, font: `600 ${ipad ? 18 : 15.5}px system-ui`, cursor: 'pointer' });
+const ghost = (ipad: boolean): CSSProperties => ({ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: ipad ? 'clamp(48px, 7vh, 60px)' : 50, padding: ipad ? '0 30px' : 0, width: ipad ? 'auto' : '100%', borderRadius: 999, border: `1.5px solid ${C.line}`, background: '#fff', color: C.ink, font: `600 ${ipad ? 18 : 15.5}px system-ui`, cursor: 'pointer' });
 const chip = (on: boolean, accent: string): CSSProperties => ({ padding: '10px 14px', borderRadius: 999, border: `1.5px solid ${on ? accent : C.line}`, background: on ? accent : '#fff', font: '600 14.5px system-ui', color: on ? '#fff' : C.ink2, display: 'inline-flex', alignItems: 'center', gap: 6 });

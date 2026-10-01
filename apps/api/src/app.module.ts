@@ -33,6 +33,7 @@ import { BillingModule } from './billing/billing.module';
 import { PaymentsHubModule } from './payments-hub/payments-hub.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { ReviewsModule } from './reviews/reviews.module';
+import { FeedbackModule } from './feedback/feedback.module';
 import { WaitlistModule } from './waitlist/waitlist.module';
 import { WalkinsModule } from './walkins/walkins.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
@@ -101,6 +102,7 @@ import { AiUsageModule } from './common/ai-usage.module';
     UploadsModule,
     // Review-reward program: customer feedback → staff & customer points.
     ReviewsModule,
+    FeedbackModule,
     // Waitlist: fill slots freed by cancellations.
     WaitlistModule,
     // Walk-in queue + fair turn rotation ("lượt").

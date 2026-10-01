@@ -292,6 +292,10 @@ model Tenant {
   heldBills         HeldBill[]
   cashShifts        CashShift[]
   cashMovements     CashMovement[]
+  feedbackRequests  FeedbackRequest[]
+  feedbackCases     FeedbackCase[]
+  feedbackCaseEvents FeedbackCaseEvent[]
+  staffCoaching     StaffCoaching[]
   supplyItems       SupplyItem[]
   supplyMovements   SupplyMovement[]
   products          Product[]
@@ -700,6 +704,16 @@ model Feedback {
   rating          Int // 1–5
   comment         String?
   invitedToGoogle Boolean @default(false) // did we show them the Google button
+
+  // Two-button feedback (after a visit). HAPPY / UNHAPPY; null on the old
+  // star-rating rows. `rating` is still filled (5 / 2) so older reports read.
+  sentiment    String?
+  reasons      Json? // string[] of reason labels the customer tapped
+  wantsContact Boolean @default(false)
+  photoUrl     String?
+  source       String? // ipad | sms | qr | link
+  requestId    String? // the FeedbackRequest it answered
+  orderId      String?
 
   // Anti-abuse: rewardable feedback must be anchored to a real visit.
   appointmentId String? // the matched appointment (one reward per visit)
@@ -3231,3 +3245,108 @@ model ChatAssignmentLog {
   @@index([threadId])
   @@map("chat_assignment_logs")
 }
+
+// One "how was your visit?" per visit. Created when the till takes payment;
+// the token is the customer's only credential, so it is long and random and
+// nothing internal is ever put in the link.
+model FeedbackRequest {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  token         String  @unique
+  orderId       String?
+  appointmentId String?
+  walkInId      String?
+  customerId    String?
+  staffId       String?
+  customerName  String?
+  phone         String? // where the SMS fallback / "text me the link" goes
+  serviceNames  Json?   // string[] snapshot for the screens
+  visitAt       DateTime @default(now())
+
+  status     String    @default("PENDING") // PENDING | ANSWERED | SKIPPED | EXPIRED
+  smsDueAt   DateTime?
+  smsSentAt  DateTime?
+  answeredAt DateTime?
+  feedbackId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, orderId])
+  @@index([tenantId, customerId])
+  @@index([status, smsDueAt])
+  @@map("feedback_requests")
+}
+
+// A "not quite" the salon has to make right.
+model FeedbackCase {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  feedbackId     String  @unique
+  customerId     String?
+  staffId        String?
+  status         String  @default("NEW") // NEW | IN_PROGRESS | CONTACTED | RESOLVED
+  assigneeUserId String?
+  assigneeName   String?
+  dueAt          DateTime
+  firstResponseAt DateTime?
+  resolvedAt     DateTime?
+  resolution     String? // free fix, refund, discount, apology…
+  wonBack        Boolean? // came back after the case (filled by the next visit)
+  note           String?
+
+  events FeedbackCaseEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, staffId])
+  @@index([tenantId, createdAt])
+  @@map("feedback_cases")
+}
+
+model FeedbackCaseEvent {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  caseId   String
+  case     FeedbackCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  kind     String // received | taken | status | note | text_sent | call | free_fix | discount | refund | resolved
+  byUserId String?
+  byName   String?
+  text     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, caseId])
+  @@map("feedback_case_events")
+}
+
+// Owner/manager notes on a technician: coaching talks, goals, praise, and the
+// system's own automatic reminders. Never shown to the technician.
+model StaffCoaching {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staffId  String
+
+  kind      String // NOTE | GOAL | PRAISE | AUTO
+  text      String
+  goalPct   Int?
+  goalUntil DateTime?
+  byUserId  String?
+  byName    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, staffId])
+  @@map("staff_coaching")
+}
+

@@ -322,7 +322,11 @@ export class ReviewsService {
       verified,
       reason: blockReason,
       customerPointsAwarded,
-      googleReviewUrl: invitedToGoogle ? googleUrl : null,
+      // Everyone gets the Google link — Google forbids inviting only the
+      // happy ones ("review gating"). `invited` decides how loudly the page
+      // offers it: a big button for a high rating, one quiet line otherwise.
+      googleReviewUrl: googleUrl,
+      invitedToGoogle,
     };
   }
 

@@ -18,6 +18,7 @@ import { useLang, tr, setUiCurrencySymbol } from '../../../lib/i18n';
 import { BarcodeScanner } from '../../../components/BarcodeScanner';
 import { CashShiftPanel, useShiftState } from '../../../components/CashShiftPanel';
 import { RebookSheet, type RebookResult } from '../../../components/RebookSheet';
+import { FeedbackStatus } from '../../../components/feedback/FeedbackStatus';
 import { uiLocale } from '../../../lib/datetime';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
@@ -289,6 +290,8 @@ function Register() {
   const [done, setDone] = useState<null | { label: string; offline: boolean; paidCents: number; changeCents: number; method: string; customer: string | null; printed: boolean }>(null);
   // "Same again in two weeks?" — the next visit, booked from the Paid screen.
   const [showRebook, setShowRebook] = useState(false);
+  /** The "how was your visit?" for the sale just taken — the Paid screen shows a neutral status. */
+  const [fbReq, setFbReq] = useState<{ orderId: string; status: string; onScreen: boolean } | null>(null);
   /** The lines of the bill that just went through — the till clears the cart on payment, the rebook sheet still needs them. */
   const paidLinesRef = useRef<Line[]>([]);
   const [nextVisit, setNextVisit] = useState<RebookResult | null>(null);
@@ -949,7 +952,7 @@ function Register() {
       }
     }
   }
-  function broadcastPaid(ticketRef: string) {
+  function broadcastPaid(ticketRef: string, feedbackToken?: string | null) {
     const tt = paidTipRef.current;
     const paidState = {
       status: 'paid', currency, salonName, salonLogo, salonAccent, lines: [] as unknown[],
@@ -961,6 +964,8 @@ function Register() {
       tipBaseCents: tt.baseCents,
       tipTechs: tipsOn ? tt.techs.map((t) => ({ name: t.name, qr: t.qr, handle: t.handle })) : [],
       reviewUrl: reviewUrl ?? undefined,
+      // The customer screen asks "how was your visit?" over this Paid view.
+      feedbackToken: feedbackToken ?? undefined,
     };
     displayChRef.current?.postMessage({ type: 'state', tenant: tenantRef.current || undefined, state: paidState });
     // Relay to a paired iPad, carrying the server-only tech split so a tapped tip is
@@ -1178,11 +1183,16 @@ function Register() {
         }
       }
       try {
-        const order = await apiFetch<{ orderNumber: number }>('/pos/orders', { method: 'POST', token, body: payload });
-        printReceipt(order.orderNumber);
+        const order = await apiFetch<{ id: string; orderNumber: number; feedback?: { token: string | null; status: string; receiptQr?: boolean } | null }>('/pos/orders', { method: 'POST', token, body: payload });
+        // "How was your visit?" — the server decided whether to ask (feature on,
+        // not asked recently). The token goes to the customer screen and the receipt.
+        const fbToken = order.feedback?.token ?? null;
+        const fbLink = fbToken && order.feedback?.receiptQr && typeof window !== 'undefined' ? `${window.location.origin}/f/${fbToken}?src=qr` : undefined;
+        setFbReq(order.feedback ? { orderId: order.id, status: order.feedback.status, onScreen: !!fbToken && ipadEnabledRef.current } : null);
+        printReceipt(order.orderNumber, fbLink);
         setDone({ label: `#${order.orderNumber}`, offline: false, paidCents: money.due, changeCents: money.change, method: split ? (lang === 'vi' ? 'Chia bill' : 'Split') : payLabel(payMethod, lang), customer: customerLabel, printed: printOn });
         setOkMsg(t('po.paidOk').replace('{n}', String(order.orderNumber)));
-        broadcastPaid(clientRef);
+        broadcastPaid(clientRef, fbToken);
         paidLinesRef.current = cart;
         clearCart();
         setOnline(true);
@@ -1204,12 +1214,17 @@ function Register() {
     }
   }
 
-  function printReceipt(orderNumber: number | string) {
+  function printReceipt(orderNumber: number | string, feedbackLink?: string) {
     // The receipt is built NOW, while the bill is still on the till, and kept
     // whole: the "Hoàn tất" screen's "In lại" prints this same paper after the
     // bill has been cleared. Whether anything prints at all is the device's
     // "In hoá đơn" switch (on by default, which is what the till always did).
     const snap = { orderNumber, text: buildReceiptText(orderNumber), html: buildReceiptHtml(orderNumber) };
+    if (feedbackLink) {
+      // The QR opens the same two-button "how was it?" page on the customer's phone.
+      snap.text += `\nHow was your visit?\nTell us: ${feedbackLink}\n`;
+      snap.html = snap.html.replace('</body>', `<hr><div class="center" style="margin-top:6px"><b>How was your visit?</b><br><img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=1&data=${encodeURIComponent(feedbackLink)}" width="120" height="120" alt="" style="margin-top:6px"><br>Scan to tell us</div></body>`);
+    }
     lastReceiptRef.current = snap;
     if (printOn) printSnapshot(snap);
   }
@@ -1480,7 +1495,7 @@ function Register() {
     setPromo(null); setPromoInput(''); setPromoErr(null); setBookedOffer(null);
     setTendered(''); setSplit(false); setParts([]); setCustomTip(''); setTipMode(null);
     setAdj(null); setEditUid(null); setOkMsg(null); setError(null);
-    setDone(null); setNextVisit(null); setShowRebook(false); setStep('register'); setMobileView('catalog'); setPrefilled(true);
+    setDone(null); setNextVisit(null); setShowRebook(false); setFbReq(null); setStep('register'); setMobileView('catalog'); setPrefilled(true);
     try { window.history.replaceState(null, '', '/salon/pos'); } catch { /* ignore */ }
   }
   /** Open a waiting client's floor ticket on this till. */
@@ -2369,6 +2384,7 @@ function Register() {
             <button type="button" onClick={() => { const s2 = lastReceiptRef.current; if (s2) { printSnapshot(s2); setDone({ ...done, printed: true }); } }} disabled={!lastReceiptRef.current} style={{ height: 56, padding: '0 22px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 600, color: 'var(--cf1f5f9)', cursor: 'pointer' }}>{done.printed ? L('In lại', 'Print again') : L('In hoá đơn', 'Print receipt')}</button>
           </div>
         </div>
+        {fbReq && token && <FeedbackStatus token={token} req={fbReq} lang={lang} />}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <span style={sectionLabel}>{L('LẦN SAU', 'NEXT VISIT')}</span>
           {nextVisit ? (

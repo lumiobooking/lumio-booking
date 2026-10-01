@@ -181,6 +181,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'gc.scanError': { en: 'Could not start the camera. Type the number instead.', vi: 'Không mở được camera. Nhập số thẻ thay thế.' },
   'nav.payroll': { en: 'Lương thợ · Payroll', vi: 'Lương thợ' },
   'nav.reviews': { en: 'Reviews & rewards', vi: 'Đánh giá & thưởng' },
+  'nav.feedback': { en: 'Feedback', vi: 'Phản hồi khách' },
   'nav.marketing': { en: 'Marketing', vi: 'Marketing' },
   // "Nội dung hôm nay" described ONE of this page's seven tabs, and was the only
   // Vietnamese label in an otherwise English list. The page is the weekly plan
@@ -1845,6 +1846,7 @@ export const NAV_KEY: Record<string, string> = {
   '/salon/menu': 'nav.menu',
   '/salon/payroll': 'nav.payroll',
   '/salon/reviews': 'nav.reviews',
+  '/salon/feedback': 'nav.feedback',
   '/salon/marketing': 'nav.marketing',
   '/salon/content': 'nav.contentPlan',
   '/salon/inventory': 'nav.inventory',

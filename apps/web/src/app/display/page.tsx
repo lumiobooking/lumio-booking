@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState, CSSProperties } from 'react';
+import { DisplayFeedback } from '../../components/feedback/DisplayFeedback';
 import { apiFetch, ApiError } from '../../lib/api';
 import { uiLocale } from '../../lib/datetime';
 
@@ -38,6 +39,8 @@ type DisplayState = {
   tippable?: boolean;
   tipBaseCents?: number;
   tipTechs?: { name: string; qr?: string; handle?: string }[];
+  /** The visit's feedback token — the screen asks "how was it?" over the Paid view. */
+  feedbackToken?: string;
   reviewUrl?: string; // salon Google-review link → QR on the display
 };
 
@@ -202,6 +205,11 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
 
   const isActive = s.status === 'active' && s.lines.length > 0;
   const hasTip = (s.tipTechs?.length ?? 0) > 0;
+  // "How was your visit?" — laid over the Paid screen when the till sent a token.
+  // Closed per token, so the next sale asks again.
+  const [fbClosed, setFbClosed] = useState<string | null>(null);
+  const fbToken = s.status === 'paid' ? s.feedbackToken : undefined;
+  const closeFb = useCallback(() => setFbClosed(fbToken ?? null), [fbToken]);
 
   // Services + totals. `col` stacks them (used in the right half of the landscape
   // split, and in portrait); otherwise they sit side by side.
@@ -353,6 +361,29 @@ function LiveDisplay({ token, onUnlink }: { token: string; onUnlink: () => void 
       </div>
       </>)}
 
+      {fbToken && fbClosed !== fbToken && !(revealTip && !tipped) && (
+        <DisplayFeedback
+          key={fbToken}
+          token={fbToken}
+          salonName={s.salonName}
+          salonLogo={s.salonLogo}
+          paidLine={(
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 14 }}>
+              <span style={{ width: 58, height: 58, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, fontWeight: 800 }}>✓</span>
+              <span style={{ textAlign: 'left' }}>
+                <span style={{ display: 'block', fontSize: 36, fontWeight: 700, color: '#16a34a', lineHeight: 1.05 }}>Thank you!</span>
+                <span style={{ fontSize: 18, color: '#6f6a64' }}>Paid <b style={{ color: '#1c1917' }}>{money(s.paidCents ?? s.dueCents, cur)}</b></span>
+              </span>
+            </div>
+          )}
+          tipFooter={hasTip && !tipped ? (
+            <button type="button" onClick={() => setRevealTip(true)} style={{ background: 'none', border: 'none', font: '600 17px system-ui', color: accent, cursor: 'pointer' }}>
+              💝 Tip {s.tipTechs!.length === 1 ? s.tipTechs![0].name : 'your tech'}? <span style={{ opacity: 0.6, fontWeight: 500 }}>· optional</span>
+            </button>
+          ) : undefined}
+          onDone={closeFb}
+        />
+      )}
       {keypad && (
         <div style={keypadOverlay} onClick={() => { setKeypad(false); setPad(''); }}>
           <div style={keypadCard} onClick={(e) => e.stopPropagation()}>

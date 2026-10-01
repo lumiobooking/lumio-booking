@@ -6,6 +6,7 @@ import { StaffShell } from '../../../components/StaffShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { uiLocale } from '../../../lib/datetime';
+import { MyFeedbackCard } from '../../../components/feedback/MyFeedbackCard';
 
 interface Mine { staffId: string; slug: string; rewardPoints: number; recent: { id: string; rating: number; comment: string | null; createdAt: string }[] }
 
@@ -39,6 +40,7 @@ function Inner() {
 
   return (
     <section>
+      <MyFeedbackCard token={token} />
       <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 16, padding: 22, textAlign: 'center', marginBottom: 18 }}>
         <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>Your reward points</div>
         <div style={{ fontSize: 40, fontWeight: 700, color: 'var(--ceab308)', margin: '2px 0 14px' }}>{data.rewardPoints}</div>

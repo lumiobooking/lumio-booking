@@ -10,10 +10,11 @@ import { SettingsModule } from '../settings/settings.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { GiftCardsModule } from '../gift-cards/gift-cards.module';
 import { WalkinsModule } from '../walkins/walkins.module';
+import { FeedbackModule } from '../feedback/feedback.module';
 
 @Module({
   // + walk-ins: a checkout closes the ticket, which opens a chair for the queue
-  imports: [MaintenanceModule, SettingsModule, LoyaltyModule, GiftCardsModule, WalkinsModule],
+  imports: [MaintenanceModule, SettingsModule, LoyaltyModule, GiftCardsModule, WalkinsModule, FeedbackModule],
   controllers: [PosController, HeldBillsController, CashShiftsController],
   providers: [PosService, HeldBillsService, CashShiftsService],
   exports: [PosService, CashShiftsService],

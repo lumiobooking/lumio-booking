@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { normalizeSource } from '../common/source.util';
 import { AuditService } from '../audit/audit.service';
 import { CashShiftsService } from './cash-shifts.service';
+import { FeedbackService } from '../feedback/feedback.service';
 import { SettingsService } from '../settings/settings.service';
 import { ledgerProviderFor, bucketFor, methodsForSalon } from './payment-methods';
 import { LoyaltyService } from '../loyalty/loyalty.service';
@@ -40,6 +41,8 @@ export class PosService {
     // Optional so the unit tests can build the service without the walk-in
     // board. Used only to fill the chair a checkout just freed.
     @Optional() private readonly walkins?: WalkinsService,
+    // Optional for the same reason: asks "how was your visit?" after a paid sale.
+    @Optional() private readonly feedback?: FeedbackService,
   ) {}
 
   private tenantId(user: AuthenticatedUser): string {
@@ -459,7 +462,15 @@ export class PosService {
       metadata: { orderNumber: order?.orderNumber, totalCents },
     });
 
-    return order;
+    // "How was your visit?" — one per paid sale, when the salon has it on. The
+    // token rides back to the till so the customer iPad can ask right now.
+    // createForOrder never throws; a sale that is taken stays taken.
+    let feedback: { token: string | null; status: string; receiptQr?: boolean } | null = null;
+    if (paid && order && this.feedback) {
+      feedback = await this.feedback.createForOrder(tenantId, order as never);
+    }
+
+    return feedback && order ? { ...order, feedback } : order;
   }
 
   /** Void an order: no revenue. Refunds the mirrored payment and restocks. */

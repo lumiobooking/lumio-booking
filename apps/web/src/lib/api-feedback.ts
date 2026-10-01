@@ -94,6 +94,7 @@ const NEVER_CACHE: RegExp[] = [
   /\/stream/,           // SSE — not a JSON GET, but belt and braces
   /\/healthz/,
   /\/export|\/download/, // files
+  /^\/feedback\/orders\//, // the till polls this while the customer answers
 ];
 
 export function cacheable(method: string, path: string): boolean {

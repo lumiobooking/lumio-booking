@@ -58,6 +58,7 @@ describe('what may be answered from memory', () => {
     expect(cacheable('GET', '/messenger/stream')).toBe(false);
     expect(cacheable('GET', '/healthz')).toBe(false);
     expect(cacheable('GET', '/invoices/export')).toBe(false);
+    expect(cacheable('GET', '/feedback/orders/o1')).toBe(false);
   });
 });
 

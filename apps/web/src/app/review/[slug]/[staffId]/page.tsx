@@ -41,7 +41,7 @@ export default function ReviewPage() {
   const [phone, setPhone] = useState('');
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ points: number; googleUrl: string | null } | null>(null);
+  const [result, setResult] = useState<{ points: number; googleUrl: string | null; invited: boolean } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [googleWords, setGoogleWords] = useState('');
   const [copied, setCopied] = useState(false);
@@ -64,7 +64,7 @@ export default function ReviewPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Could not submit');
-      setResult({ points: data.customerPointsAwarded ?? 0, googleUrl: data.googleReviewUrl ?? null });
+      setResult({ points: data.customerPointsAwarded ?? 0, googleUrl: data.googleReviewUrl ?? null, invited: data.invitedToGoogle !== false });
       setPhase('done');
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not submit'); setBusy(false);
@@ -212,7 +212,16 @@ export default function ReviewPage() {
             {result.points > 0 && <p style={{ color: '#15803d', fontWeight: 600, margin: '0 0 4px' }}>You earned {result.points} reward points 🎁</p>}
             <p style={{ color: 'var(--c64748b)', fontSize: 14, margin: '0 0 18px' }}>We appreciate your feedback.</p>
 
-            {result.googleUrl ? (
+            {result.googleUrl && !result.invited ? (
+              // A low rating still gets the link — quietly. Google forbids
+              // offering it only to happy customers.
+              <>
+                <p style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>The salon will follow up with you shortly.</p>
+                <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, marginTop: 18 }}>
+                  You can also share your experience publicly <a href={appDeepLink(result.googleUrl)} style={{ color: 'var(--c94a3b8)' }}>on Google</a>.
+                </p>
+              </>
+            ) : result.googleUrl ? (
               <>
                 <p style={{ fontSize: 14, color: 'var(--c0f172a)', margin: '0 0 8px' }}>Loved your visit? A quick Google review means the world 💛</p>
                 <textarea

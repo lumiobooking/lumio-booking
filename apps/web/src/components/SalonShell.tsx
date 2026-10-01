@@ -54,6 +54,8 @@ const GROUPS: NavGroup[] = [
   ] },
   { id: 'clients', label: 'Clients & Catalog', items: [
     { href: '/salon/customers', label: 'Customers', icon: 'users' },
+    // Two-button feedback after every visit: the owner's cases and each tech's scorecard.
+    { href: '/salon/feedback', label: 'Feedback', icon: 'heart' },
     { href: '/salon/services', label: 'Services', icon: 'sparkle' },
     { href: '/salon/products', label: 'Products', icon: 'bag', feature: 'pos' },
     { href: '/salon/gift-cards', label: 'Gift cards', icon: 'gift', feature: 'pos' },
@@ -126,7 +128,7 @@ const HREF_CAP: Record<string, string> = {
   '/salon/calendar': 'calendar', '/salon/bookings': 'bookings', '/salon/walkins': 'walkins',
   '/salon/waitlist': 'waitlist', '/salon/customers': 'customers', '/salon/services': 'services',
   '/salon/products': 'products', '/salon/gift-cards': 'pos', '/salon/staff': 'staff', '/salon/stations': 'staff', '/salon/payroll': 'payroll',
-  '/salon/reviews': 'reviews', '/salon/marketing': 'marketing', '/salon/content': 'marketing', '/salon/channels': 'marketing', '/salon/inventory': 'inventory',
+  '/salon/reviews': 'reviews', '/salon/feedback': 'reviews', '/salon/marketing': 'marketing', '/salon/content': 'marketing', '/salon/channels': 'marketing', '/salon/inventory': 'inventory',
   '/salon/pos/report': 'reports', '/salon/pos/shifts': 'reports', '/salon/reports': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',
   '/salon/trash': 'settings',
   '/salon/integrations': 'integrations', '/salon/billing': 'billing', '/salon/usage-costs': 'billing', '/salon/settings': 'settings',
@@ -204,6 +206,8 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
    * single page in the app.
    */
   const [postAlerts, setPostAlerts] = useState(0);
+  /** Open "not quite" cases, for the Feedback badge. */
+  const [fbOpen, setFbOpen] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
   const isMobile = useIsMobile();
@@ -423,6 +427,22 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     return () => { alive = false; window.clearInterval(iv); };
   }, [token]);
 
+  // The Feedback badge: open cases nobody has closed yet. Same slow clock as
+  // the posts badge; a 403 (no reviews capability) just leaves it at zero.
+  const canFeedback = caps.includes('reviews');
+  useEffect(() => {
+    if (!token || !canFeedback) { setFbOpen(0); return; }
+    let alive = true;
+    const load = () => {
+      apiFetch<{ open: number }>('/feedback/cases/open-count', { token })
+        .then((q) => { if (alive) setFbOpen(Number(q?.open) || 0); })
+        .catch(() => undefined);
+    };
+    load();
+    const iv = window.setInterval(() => { if (document.visibilityState === 'visible') load(); }, 2 * 60 * 1000);
+    return () => { alive = false; window.clearInterval(iv); };
+  }, [token, canFeedback, pathname]);
+
   if (!ready || !token || !user || !hasSalonAccess) {
     return (
       <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)', background: 'var(--c0b1120)' }}>
@@ -490,7 +510,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     // Only one nav item carries a count today, and it carries it for a reason:
     // a scheduled post that failed to publish is otherwise silent, and the
     // salon goes on believing its Facebook Page is being looked after.
-    const badge = item.href === '/salon/content' ? postAlerts : 0;
+    const badge = item.href === '/salon/content' ? postAlerts : item.href === '/salon/feedback' ? fbOpen : 0;
     return (
       <Link
         key={item.href}

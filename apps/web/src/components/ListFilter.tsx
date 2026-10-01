@@ -122,11 +122,7 @@ const dateInput: React.CSSProperties = {
 };
 
 /** Case-insensitive substring match (true when the query is empty). */
-export function matchesQuery(haystack: string, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return haystack.toLowerCase().includes(q);
-}
+export { matchesQuery, fold } from '../lib/search-fold';
 
 /** A compact search box for filtering long lists. */
 export function SearchBox({

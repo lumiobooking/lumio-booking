@@ -163,7 +163,11 @@ export default function TenantsPage() {
         range.inRange(t.createdAt) &&
         // Absent means US: rows created before the column existed.
         (!marketFilter || marketOption(t.market).code === marketFilter) &&
-        matchesQuery(`${t.name} ${t.slug} ${t.contactEmail ?? ''} ${t.status} ${marketOption(t.market).label}`, q),
+        // Name and slug always; the contact email only when the query looks
+        // like one. Dozens of salons share the agency's support address, so
+        // "lumio" used to match every row and the box seemed to do nothing.
+        // Status and market have their own controls and are not searched.
+        matchesQuery(`${t.name} ${t.slug}${q.includes('@') ? ` ${t.contactEmail ?? ''}` : ''}`, q),
     ),
     (t) => t.createdAt,
   );

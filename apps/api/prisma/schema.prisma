@@ -1910,6 +1910,7 @@ model VoiceLine {
   mode           String  @default("ai")
   forwardNumbers String? // comma-separated E.164 rung before the AI (ring_first/forward)
   ringSeconds    Int     @default(20) // how long the humans ring (~6 s per ring)
+  transferNumber String? // receptionist's phone the AI hands a caller to mid-call (asked for a person / AI can't answer)
 
   // When the AI is allowed to answer at all.
   //   always | business_hours | after_hours | custom

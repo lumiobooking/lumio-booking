@@ -118,6 +118,26 @@ export function agentFallbackLines(lang: string): { keepGoing: string; handOff: 
     };
 }
 
+/**
+ * What the caller hears around a hand-off to a real person: the line spoken
+ * while the salon's phone rings (when the model gives us no words of its
+ * own), and the apology when nobody picks up — after which the assistant
+ * stays on the line instead of hanging up on someone who asked for help.
+ */
+export function transferLines(lang: string): { connecting: string; missed: string; ownerSms: (from: string) => string } {
+  return lang === 'vi-VN'
+    ? {
+      connecting: 'Dạ em chuyển máy cho nhân viên ngay, anh chị vui lòng chờ máy một chút ạ.',
+      missed: 'Dạ em xin lỗi, hiện nhân viên chưa bắt máy được. Em đã báo tiệm gọi lại cho anh chị sớm nhất ạ. Anh chị có muốn em ghi lời nhắn, hay em giúp gì thêm được không ạ?',
+      ownerSms: (from) => `Lễ tân AI: khách ${from} muốn nói chuyện với nhân viên nhưng không ai bắt máy. Vui lòng gọi lại cho khách.`,
+    }
+    : {
+      connecting: 'Of course — I’m connecting you to a team member now. Please hold for a moment.',
+      missed: 'I’m sorry, nobody could pick up right now. I’ve let the team know to call you back as soon as they can. Is there a message I can pass on, or anything else I can help with?',
+      ownerSms: (from) => `AI receptionist: caller ${from} asked to speak to a staff member and nobody picked up. Please call them back.`,
+    };
+}
+
 /** One line for the agent's system prompt so the BRAIN answers in the same
  *  language the MOUTH will speak. */
 export function agentLangRule(lang: string): string {

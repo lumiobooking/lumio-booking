@@ -19,6 +19,8 @@ export class UpdateVoiceDto {
   @IsOptional() @IsIn(['ai', 'ring_first', 'forward']) mode?: string;
   @IsOptional() @IsString() @MaxLength(200) forwardNumbers?: string;
   @IsOptional() @IsInt() @Min(5) @Max(60) ringSeconds?: number;
+  // The receptionist's phone the assistant transfers a caller to mid-call ('' clears it).
+  @IsOptional() @IsString() @MaxLength(32) transferNumber?: string;
 
   // When the assistant is allowed to answer
   @IsOptional() @IsIn(['always', 'business_hours', 'after_hours', 'custom']) schedule?: string;

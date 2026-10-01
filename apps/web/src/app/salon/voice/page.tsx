@@ -20,6 +20,8 @@ interface VConf {
   language: string; aiInstruction: string; aiEnabled: boolean; webhookUrl: string; calls: number;
   // Call routing
   mode: string; forwardNumbers: string; ringSeconds: number;
+  // The receptionist's phone the assistant transfers a caller to mid-call.
+  transferNumber: string;
   schedule: string; customHours: CustomHour[] | null;
   noAnswerAction: string; awayMessage: string; voicemailSms: string;
 }
@@ -80,6 +82,17 @@ const DICT: Record<string, { vi: string; en: string }> = {
     en: 'Use the full number, e.g. +1 403 555 0123. Important: these numbers must NOT forward back to Lumio, or the call will loop. A mobile number is safest.',
   },
   ringsLabel: { vi: 'Đổ chuông bao lâu trước khi AI bắt máy', en: 'How long to ring before the assistant answers' },
+  transferTitle: { vi: 'Chuyển máy cho lễ tân khi khách cần', en: 'Transfer to your front desk when a caller needs it' },
+  transferIntro: {
+    vi: 'Khi khách muốn gặp nhân viên — hoặc hỏi điều AI không trả lời được và khách đồng ý — AI nói "Dạ em chuyển máy cho nhân viên ngay" rồi nối máy sang số này. Khách vẫn ở trên đường dây. Không ai nghe thì AI quay lại xin lỗi, nhận lời nhắn và nhắn SMS báo tiệm gọi lại.',
+    en: 'When a caller asks for a person — or asks something the assistant cannot answer and agrees to be connected — the assistant says "I\'ll connect you now" and puts the call through to this phone. The caller stays on the line. If nobody answers, the assistant comes back, takes a message and texts the salon to call back.',
+  },
+  transferLabel: { vi: 'Số điện thoại lễ tân đang cầm', en: 'The phone your front desk is holding' },
+  transferHint: {
+    vi: 'Nhập số đầy đủ, ví dụ +1 631 320 3255. Để trống thì AI dùng các số đổ chuông ở trên; nếu cũng không có số nào, AI sẽ hẹn nhân viên gọi lại. Số này KHÔNG được cài chuyển hướng về Lumio.',
+    en: 'Full number, e.g. +1 631 320 3255. Leave empty to use the ring numbers above; with no number at all, the assistant promises a call-back instead. This number must NOT forward back to Lumio.',
+  },
+  transferRings: { vi: 'Đổ chuông bao lâu khi chuyển máy', en: 'How long to ring when transferring' },
   rings: { vi: 'hồi chuông', en: 'rings' },
   seconds: { vi: 'giây', en: 'sec' },
   schedLabel: { vi: 'AI trực điện thoại vào lúc nào', en: 'When may the assistant answer' },
@@ -202,6 +215,11 @@ const OUTCOME: Record<string, { vi: string; en: string; color: string }> = {
   info: { vi: 'Trả lời câu hỏi', en: 'Answered', color: 'var(--c60a5fa)' },
   no_action: { vi: 'Không đặt', en: 'No booking', color: 'var(--c94a3b8)' },
   handoff: { vi: 'Chuyển người', en: 'Handoff', color: 'var(--ink-warn)' },
+  transferring: { vi: 'Đang chuyển máy', en: 'Transferring', color: 'var(--ink-warn)' },
+  transferred: { vi: 'Đã chuyển cho nhân viên', en: 'Transferred to staff', color: 'var(--ink-good)' },
+  transfer_missed: { vi: 'Chuyển máy — không ai nghe', en: 'Transfer missed', color: 'var(--ink-bad)' },
+  forwarded: { vi: 'Nhân viên đã nghe', en: 'Answered by staff', color: 'var(--ink-good)' },
+  voicemail: { vi: 'Hộp thư thoại', en: 'Voicemail', color: 'var(--ink-warn)' },
   in_progress: { vi: 'Đang gọi', en: 'In progress', color: '#a78bfa' },
   error: { vi: 'Lỗi', en: 'Error', color: 'var(--ink-bad)' },
 };
@@ -246,7 +264,7 @@ function Inner() {
     try {
       const next = await apiFetch<VConf>('/voice/settings', { method: 'POST', token, body: {
         enabled: c.enabled, greeting: c.greeting, language: c.language, aiInstruction: c.aiInstruction,
-        mode: c.mode, forwardNumbers: c.forwardNumbers, ringSeconds: c.ringSeconds,
+        mode: c.mode, forwardNumbers: c.forwardNumbers, ringSeconds: c.ringSeconds, transferNumber: c.transferNumber ?? '',
         schedule: c.schedule, customHours: c.customHours ?? undefined,
         noAnswerAction: c.noAnswerAction, awayMessage: c.awayMessage, voicemailSms: c.voicemailSms,
         ...patch,
@@ -356,6 +374,36 @@ function Inner() {
               {c.mode === 'ring_first' && (
                 <div style={{ marginTop: 12 }}>
                   <label style={ui.label}>{t('ringsLabel')}</label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {[12, 18, 24, 30, 40].map((sec) => {
+                      const on = c.ringSeconds === sec;
+                      return (
+                        <button key={sec} type="button" onClick={() => setC({ ...c, ringSeconds: sec })}
+                          style={{ padding: '8px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                            border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`, background: on ? '#6366f1' : 'var(--c0f172a)',
+                            color: on ? '#fff' : 'var(--ccbd5e1)' }}>
+                          {Math.round(sec / 6)} {t('rings')} · {sec}{t('seconds')}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 2b — hand a caller to a person mid-call */}
+          {c.mode !== 'forward' && (
+            <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 10, background: 'var(--c0f172a)', border: '1px solid var(--line-strong)' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{t('transferTitle')}</div>
+              <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '4px 0 10px', lineHeight: 1.5 }}>{t('transferIntro')}</p>
+              <label style={ui.label}>{t('transferLabel')}</label>
+              <input value={c.transferNumber ?? ''} onChange={(e) => setC({ ...c, transferNumber: e.target.value })}
+                placeholder="+1 631 320 3255" inputMode="tel" style={{ ...ui.input, width: '100%' }} />
+              <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '6px 0 0', lineHeight: 1.5 }}>{t('transferHint')}</p>
+              {c.mode === 'ai' && (
+                <div style={{ marginTop: 12 }}>
+                  <label style={ui.label}>{t('transferRings')}</label>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {[12, 18, 24, 30, 40].map((sec) => {
                       const on = c.ringSeconds === sec;

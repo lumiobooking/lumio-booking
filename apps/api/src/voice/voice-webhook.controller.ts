@@ -61,6 +61,15 @@ export class VoiceWebhookController {
     return this.svc.handleAfterDial(body || {});
   }
 
+  /** The AI handed the caller to the salon's phones: answered → done; else the AI comes back. */
+  @Public()
+  @Post('after-transfer')
+  @HttpCode(200)
+  @Header('Content-Type', 'text/xml; charset=utf-8')
+  afterTransfer(@Body() body: Record<string, string>, @Query('lg') lg?: string) {
+    return this.svc.handleAfterTransfer(body || {}, lg);
+  }
+
   /** The caller finished leaving a voicemail (Twilio <Record> action). */
   @Public()
   @Post('voicemail')

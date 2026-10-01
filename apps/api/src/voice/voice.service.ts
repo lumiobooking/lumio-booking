@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { personaFor } from '../common/business-persona';
-import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor, agentFallbackLines } from './voice-lang';
+import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor, agentFallbackLines, transferLines } from './voice-lang';
 import { isTransientStatus } from '../messenger/agent-fallback';
 import { Prisma, NotificationChannel, NotificationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -67,10 +67,12 @@ function normNum(v: string | null | undefined): string {
   return plus + t.replace(/[^\d]/g, '');
 }
 
-type Turn = { role: 'user' | 'assistant'; content: string };
+/** `meta` marks a turn for us (never sent to the model): 'transfer_missed' = a
+ *  hand-off to staff was tried on this call and nobody picked up. */
+type Turn = { role: 'user' | 'assistant'; content: string; meta?: string };
 export interface UpdateVoiceInput {
   enabled?: boolean; greeting?: string; language?: string; aiInstruction?: string;
-  mode?: string; forwardNumbers?: string; ringSeconds?: number;
+  mode?: string; forwardNumbers?: string; ringSeconds?: number; transferNumber?: string;
   schedule?: string; customHours?: { day: number; enabled?: boolean; start?: string; end?: string }[];
   noAnswerAction?: string; awayMessage?: string; voicemailSms?: string;
 }
@@ -130,7 +132,10 @@ export class VoiceService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     try {
       await this.prisma.$executeRawUnsafe('ALTER TABLE "voice_calls" ADD COLUMN IF NOT EXISTS "language" TEXT');
-      this.logger.log('voice_calls.language ensured');
+      // Same lesson for the receptionist's hand-off number: every voiceLine
+      // read selects all columns, so a missing one would take the whole line down.
+      await this.prisma.$executeRawUnsafe('ALTER TABLE "voice_lines" ADD COLUMN IF NOT EXISTS "transferNumber" TEXT');
+      this.logger.log('voice_calls.language + voice_lines.transferNumber ensured');
     } catch (e) {
       this.logger.error(`could not ensure voice_calls.language: ${String(e).slice(0, 160)}`);
     }
@@ -248,6 +253,18 @@ export class VoiceService implements OnModuleInit {
   }
 
   /**
+   * Who the assistant hands a caller to mid-call: the receptionist's phone when
+   * the salon set one (the person actually holding the desk phone today), else
+   * the numbers it rings first. Never the Lumio number itself.
+   */
+  private transferTargets(line: { transferNumber?: string | null; forwardNumbers: string | null; lumioNumber: string | null }, dial = '1'): string[] {
+    const lumio = normNum(line.lumioNumber);
+    const direct = toE164(line.transferNumber ?? '', dial);
+    if (direct && normNum(direct) !== lumio) return [direct];
+    return this.humanNumbers(line, dial);
+  }
+
+  /**
    * How this salon's numbers and prices should be read: its dial code and the
    * locale its own customers are written to. Both follow the country chosen in
    * Settings, falling back to the timezone, so a salon that has stated nothing
@@ -338,6 +355,85 @@ export class VoiceService implements OnModuleInit {
     return this.twiml(
       `<Dial timeout="${timeout}" answerOnBridge="true"${cid} action="${action}" method="POST">${list}</Dial>`,
     );
+  }
+
+  /**
+   * The caller asked the assistant for a person: speak the hand-off line,
+   * then ring the salon's own phones with the caller still on the line.
+   * However the ringing ends, Twilio comes back to /voice/after-transfer.
+   */
+  private transferTwiml(
+    say: string, nums: string[], line: { ringSeconds: number; lumioNumber: string | null },
+    language: string, voice: string | null, lg: string | null,
+  ): string {
+    const v = voiceFor(language, voice);
+    const langAttr = v.sayLanguage ? ` language="${xml(v.sayLanguage)}"` : '';
+    const timeout = Math.min(60, Math.max(10, Number(line.ringSeconds) || 20));
+    const action = `${this.apiBase()}/api/voice/after-transfer${lg ? `?lg=${encodeURIComponent(lg)}` : ''}`;
+    const callerId = toE164(line.lumioNumber);
+    const cid = callerId ? ` callerId="${xml(callerId)}"` : '';
+    const list = nums.map((n) => `<Number>${xml(n)}</Number>`).join('');
+    return this.twiml(
+      `<Say${this.sayAttr(v.voice)}${langAttr}>${xml(say)}</Say>` +
+      `<Dial timeout="${timeout}" answerOnBridge="true"${cid} action="${xml(action)}" method="POST">${list}</Dial>`,
+    );
+  }
+
+  /**
+   * The hand-off's ringing is over.
+   *   answered → a person has the caller: the call is theirs, we hang up our leg.
+   *   no answer / busy / failed → the assistant comes back, apologises, says the
+   *   salon will call back (and texts the salon so it does), and keeps helping —
+   *   a caller who asked for help is never left on dead air or hung up on.
+   */
+  async handleAfterTransfer(body: Record<string, string>, lgParam?: string): Promise<string> {
+    const callSid = String(body.CallSid || '');
+    const status = String(body.DialCallStatus || '').toLowerCase();
+    const call = callSid ? await this.prisma.voiceCall.findUnique({ where: { callSid } }).catch(() => null) : null;
+    const line = call ? await this.prisma.voiceLine.findUnique({ where: { tenantId: call.tenantId } }).catch(() => null) : null;
+    if (!call || !line) return this.twiml('<Hangup/>');
+
+    if (status === 'completed' || status === 'answered') {
+      await this.prisma.voiceCall.updateMany({ where: { callSid, tenantId: call.tenantId }, data: { outcome: 'transferred' } }).catch(() => undefined);
+      return this.twiml('<Hangup/>');
+    }
+
+    const savedLang = (call as unknown as { language?: string | null }).language || lgParam || null;
+    const lang = effectiveLang(line.language, savedLang);
+    const lgFlag = isBilingual(line.language) ? lang : null;
+    const lines = transferLines(lang);
+
+    // Remember on the call that the hand-off was tried, so the assistant takes
+    // a message next instead of offering to transfer again.
+    const history = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
+    const last = history[history.length - 1];
+    const next: Turn[] = last && last.role === 'assistant'
+      ? [...history.slice(0, -1), { ...last, content: `${last.content} ${lines.missed}`, meta: 'transfer_missed' }]
+      : [...history, { role: 'assistant', content: lines.missed, meta: 'transfer_missed' }];
+    await this.prisma.voiceCall.update({
+      where: { id: call.id },
+      data: { outcome: 'transfer_missed', transcript: next as unknown as Prisma.InputJsonValue },
+    }).catch(() => undefined);
+
+    // Text the salon so the promised call-back actually happens.
+    try {
+      const n = await this.settings.getNotificationSettings(call.tenantId);
+      const { dial } = await this.localeInfo(call.tenantId);
+      const to = toE164(line.voicemailSms || n.adminPhone || '', dial);
+      if (to) {
+        const ownerLines = transferLines(String(line.language || '').startsWith('vi') || isBilingual(line.language) ? 'vi-VN' : 'en-US');
+        await this.notifications.send({
+          tenantId: call.tenantId,
+          channel: NotificationChannel.SMS,
+          recipient: to,
+          body: ownerLines.ownerSms(call.fromNumber || 'unknown'),
+          twilio: n.twilio,
+          relatedType: 'voice',
+        });
+      }
+    } catch { /* a failed alert must never break the call */ }
+
+    return this.sayGather(lines.missed, 0, lang, line.voice || null, lgFlag);
   }
 
   /** Nobody is going to answer: leave a voicemail, play a notice, or hang up. */
@@ -569,12 +665,18 @@ export class VoiceService implements OnModuleInit {
 
     const history = (Array.isArray(call.transcript) ? call.transcript : []) as Turn[];
     const t0 = Date.now();
+    // A real person to hand the caller to: the salon's own numbers, once per
+    // call (a second "please hold" after nobody answered the first is worse
+    // than taking a message).
+    const { dial: lineDial } = await this.localeInfo(call.tenantId);
+    const humans = String(line.mode || 'ai') === 'forward' ? [] : this.transferTargets(line as unknown as { transferNumber?: string | null; forwardNumbers: string | null; lumioNumber: string | null }, lineDial);
+    const canTransfer = humans.length > 0 && !history.some((h) => h.meta === 'transfer_missed');
 
     // Everything after "we have their words" — brain, transcript, next TwiML —
     // runs here, once, whether it finishes inside the fast window or is
     // collected later by /turn-result.
     const work = (async (): Promise<string> => {
-      let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null };
+      let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean };
       let lang2 = lang; let lgFlag2 = lgFlag; let canned2 = canned;
       try {
         // Twilio abandons a webhook after ~15 seconds and HANGS UP — the caller
@@ -582,7 +684,7 @@ export class VoiceService implements OnModuleInit {
         // themselves and the CALL SURVIVES. A phone conversation that dies is
         // worse than one that says "sorry, once more?".
         result = await Promise.race([
-          this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang2, biline),
+          this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang2, biline, canTransfer),
           new Promise<never>((_, rej) => { const tm = setTimeout(() => rej(new Error('turn-deadline')), TURN_DEADLINE_MS); (tm as { unref?: () => void }).unref?.(); }),
         ]);
       } catch (e) {
@@ -621,6 +723,19 @@ export class VoiceService implements OnModuleInit {
           ...(result.booked ? { outcome: 'booked', appointmentId: result.appointmentId } : {}),
         },
       }).catch(() => undefined);
+
+      // The caller asked for a person: say so, then ring the salon's phones
+      // with the caller still on the line. The AI's share of the call is
+      // stamped now — the minutes a human talks are never billed as AI.
+      if (result.transfer && canTransfer) {
+        const aiSec = Math.max(1, Math.round((Date.now() - new Date((call as unknown as { createdAt?: Date }).createdAt ?? Date.now()).getTime()) / 1000));
+        await this.prisma.voiceCall.update({
+          where: { id: call.id },
+          data: { outcome: 'transferring', durationSec: aiSec },
+        }).catch(() => undefined);
+        const say = result.reply || transferLines(lang2).connecting;
+        return this.transferTwiml(say, humans, line, lang2, voice, lgFlag2);
+      }
 
       if (result.done) {
         if (!result.booked) await this.finalize(call.id, call.outcome === 'booked' ? 'booked' : 'info', null);
@@ -705,7 +820,9 @@ export class VoiceService implements OnModuleInit {
     const callSid = String(body.CallSid || '');
     const dur = Number(body.CallDuration || body.DialCallDuration || 0) || 0;
     if (!callSid || !dur) return;
-    await this.prisma.voiceCall.updateMany({ where: { callSid }, data: { durationSec: dur } }).catch(() => undefined);
+    // A call handed to a person keeps the AI's share stamped at the hand-off;
+    // the whole call's length would bill the salon's own staff time as AI.
+    await this.prisma.voiceCall.updateMany({ where: { callSid, outcome: { notIn: ['transferred', 'transferring'] } }, data: { durationSec: dur } }).catch(() => undefined);
   }
 
   // ---- usage metering (AI minutes + SMS) -----------------------------------
@@ -762,10 +879,10 @@ export class VoiceService implements OnModuleInit {
 
   // ---- AI agent (tool use) — phone-tuned -----------------------------------
   private async runAgent(
-    tenantId: string, callerPhone: string, aiInstruction: string, history: Turn[], userText: string, lang = 'en-US', bilingual = false,
-  ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null }> {
+    tenantId: string, callerPhone: string, aiInstruction: string, history: Turn[], userText: string, lang = 'en-US', bilingual = false, canTransfer = false,
+  ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
-    const acc = { wantEnd: false, booked: false, appointmentId: null as string | null, langSwitch: null as string | null };
+    const acc = { wantEnd: false, booked: false, appointmentId: null as string | null, langSwitch: null as string | null, transfer: false };
     if (!key) {
       this.logger.error('ANTHROPIC_API_KEY is not set on this service — the voice agent cannot think. Every call will fail until it is added.');
       throw new Error('no-anthropic-key');
@@ -835,7 +952,7 @@ If the caller asks about a booking they already have ("when is my appointment", 
 Never call create_booking on a service the caller has not named back to you, and never guess between two services — a wrong service means a chair, a technician and a price the ${persona.venueNoun} did not agree to. After it succeeds, warmly repeat the day and time back to confirm, and let them know a text confirmation is on the way. Then ask if there is anything else you can help with, and wait for their reply. Do not hang up right after booking; ending the call the moment they book feels abrupt and disrespectful.
 Speak times naturally (for example, "two thirty PM on Friday"). The ${persona.venueNoun}'s local time right now is ${nowLocal} (timezone ${tz}); interpret "today/tomorrow/this Friday" in that timezone.
 Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours; if they ask for a closed time, tell them the ${persona.venueNoun} is closed then and offer the nearest open time.
-When the conversation is finished — they've booked and have nothing else, or they only had a question and it's answered, or they say goodbye — call end_call to say a warm goodbye and hang up. If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. Never ask for payment or card details.
+When the conversation is finished — they've booked and have nothing else, or they only had a question and it's answered, or they say goodbye — call end_call to say a warm goodbye and hang up. ${canTransfer ? 'If the caller asks for a real person — a staff member, the owner, a manager, "someone at the ' + persona.venueNoun + '" — or is upset and wants a human, do not argue or keep them: say ONE short sentence that you are connecting them now (no goodbye), and call transfer_to_human. If they ask something you cannot answer from what you were given here (never guess), say you are not sure and offer to connect them to the front desk; if they say yes, call transfer_to_human.' : 'If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. If they ask something you cannot answer from what you were given here, never guess: say a staff member will call them back with the answer.'} Never ask for payment or card details.
 Warmth and pace: sound like a caring human, not a script. Use the caller's name once you know it and react naturally ("Great choice!", "Perfect."). When it is time to end, give an unhurried, friendly goodbye: thank them by name, wish them a great day, and invite them to call back anytime. Never clip the goodbye or hang up mid-thought.
 ${servicesBlock}
 ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: ' + facts + '\n' : ''}${ownerRules}${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
@@ -910,9 +1027,16 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
       },
       {
         name: 'end_call',
-        description: 'End the phone call after saying goodbye. Call this when the caller is done (booked and nothing else, question answered, or they said goodbye), or when handing off to a human.',
+        description: 'End the phone call after saying goodbye. Call this when the caller is done (booked and nothing else, question answered, or they said goodbye).',
         input_schema: { type: 'object', properties: { reason: { type: 'string' } }, required: [] },
       },
+      // Only on a line that has people to hand the caller to (and has not
+      // already tried and failed on this call).
+      ...(canTransfer ? [{
+        name: 'transfer_to_human',
+        description: 'Connect the caller to a real staff member right now. Use when the caller asks for a person, the owner or a manager, or is upset and wants a human. Say one short sentence that you are connecting them (no goodbye) — the call is then put through to the salon’s phone.',
+        input_schema: { type: 'object', properties: { reason: { type: 'string' } }, required: [] as string[] },
+      }] : []),
     ];
 
     const messages: { role: string; content: unknown }[] = [
@@ -961,6 +1085,9 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
         continue;
       }
       const text = blocks.filter((b) => b.type === 'text').map((b) => b.text || '').join(' ').trim();
+      if (acc.transfer) {
+        return { reply: text || transferLines(acc.langSwitch || lang).connecting, done: true, transfer: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch };
+      }
       return { reply: text || agentFallbackLines(acc.langSwitch || lang).keepGoing, done: acc.booked ? false : acc.wantEnd, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch };
     }
     return { reply: agentFallbackLines(acc.langSwitch || lang).handOff, done: true, booked: acc.booked, appointmentId: acc.appointmentId, langSwitch: acc.langSwitch };
@@ -968,9 +1095,13 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
 
   private async runTool(
     tenantId: string, tz: string, callerPhone: string, name: string, input: Record<string, unknown>,
-    acc: { wantEnd: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null },
+    acc: { wantEnd: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean },
   ): Promise<string> {
     try {
+      if (name === 'transfer_to_human') {
+        acc.transfer = true;
+        return 'TRANSFERRING. Say ONE short, warm sentence telling the caller you are connecting them to a team member now. Do not say goodbye and do not ask anything else.';
+      }
       if (name === 'switch_language') {
         const lg = String(input.language || '');
         if (lg === 'vi-VN' || lg === 'en-US') { acc.langSwitch = lg; return `SWITCHED. Reply in ${lg === 'vi-VN' ? 'Vietnamese' : 'English'} from now on.`; }
@@ -1164,6 +1295,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
       aiInstruction: line?.aiInstruction ?? '',
       mode: line?.mode ?? 'ai',
       forwardNumbers: line?.forwardNumbers ?? '',
+      transferNumber: (line as unknown as { transferNumber?: string | null } | null)?.transferNumber ?? '',
       ringSeconds: line?.ringSeconds ?? 20,
       schedule: line?.schedule ?? 'always',
       customHours: (line?.customHours as unknown) ?? null,
@@ -1200,6 +1332,18 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
       forwardNumbers = list.slice(0, 5).join(',') || null;
     }
 
+    // The receptionist's phone for mid-call hand-offs: one valid number, never
+    // the Lumio line (that would ring straight back into the assistant).
+    let transferNumber = (cur as unknown as { transferNumber?: string | null } | null)?.transferNumber ?? null;
+    if (typeof dto.transferNumber === 'string') {
+      const raw = dto.transferNumber.trim();
+      const e164 = raw ? toE164(raw, dial) : '';
+      if (raw && (!e164 || normNum(e164) === lumio)) {
+        throw new BadRequestException('That transfer number does not look valid. Use a full number, e.g. +1 403 555 0123 — and it cannot be your Lumio hotline number.');
+      }
+      transferNumber = e164 || null;
+    }
+
     const mode = typeof dto.mode === 'string' && MODES.includes(dto.mode) ? dto.mode : cur?.mode ?? 'ai';
     if ((mode === 'ring_first' || mode === 'forward') && !forwardNumbers) {
       throw new BadRequestException('Add at least one phone number to ring before the assistant takes over.');
@@ -1228,6 +1372,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
       noAnswerAction: typeof dto.noAnswerAction === 'string' && ACTIONS.includes(dto.noAnswerAction) ? dto.noAnswerAction : cur?.noAnswerAction ?? 'voicemail',
       awayMessage: typeof dto.awayMessage === 'string' ? dto.awayMessage.slice(0, 500) : cur?.awayMessage ?? null,
       voicemailSms: typeof dto.voicemailSms === 'string' ? (toE164(dto.voicemailSms, dial) || null) : cur?.voicemailSms ?? null,
+      transferNumber,
     };
     if (data.enabled && !cur?.lumioNumber) {
       throw new BadRequestException('No Lumio phone number is assigned yet. Contact Lumio to provision your AI hotline number.');

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { C, cardStyle, Lx, Pill, Toggle, Avatar, reasonText } from './fb-ui';
 
 export interface FbSettings {
-  enabled: boolean; askOnDisplay: boolean; smsFallback: boolean; smsDelayMinutes: number; receiptQr: boolean; cooldownDays: number;
+  enabled: boolean; askOnDisplay: boolean; smsFallback: boolean; emailFallback?: boolean; smsDelayMinutes: number; receiptQr: boolean; cooldownDays: number;
   reasons: string[]; askPhoto: boolean; replyHours: number; alertPush: boolean; alertUserIds: string[];
   techSeeOwnScore: boolean; techSeeReasons: boolean; techLeaderboard: boolean; alertSameReason: number; alertWindowDays: number;
 }
@@ -74,7 +74,7 @@ export function FeedbackSettings({ view, draft, setDraft, lang, readOnly }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: C.ink2, flexWrap: 'wrap' }}>
           {step(L('Khách thanh toán', 'Customer pays'))}→
           {step(L('Hỏi trên iPad khách', 'Asked on the customer iPad'), s.askOnDisplay, !s.askOnDisplay)}→
-          {step(<>{L('Không trả lời? SMS sau', 'No answer? SMS after')} <b>{s.smsDelayMinutes} {L('phút', 'min')}</b></>, false, !s.smsFallback)}→
+          {step(<>{L('Không trả lời?', 'No answer?')} {[s.smsFallback ? 'SMS' : null, s.emailFallback !== false ? 'email' : null].filter(Boolean).join(' + ') || L('không nhắc', 'no follow-up')} {L('sau', 'after')} <b>{s.smsDelayMinutes} {L('phút', 'min')}</b></>, false, !s.smsFallback && s.emailFallback === false)}→
           {step(`😊 → ${L('QR / link Google', 'Google QR / link')}`)}
           {step(`😕 → ${L('góp ý riêng → ca cho anh/chị', 'private note → case for you')}`)}
         </div>
@@ -101,6 +101,9 @@ export function FeedbackSettings({ view, draft, setDraft, lang, readOnly }: {
               ))}
             </select>
             <Toggle on={s.smsFallback} onChange={(v) => set('smsFallback', v)} />
+          </Opt>
+          <Opt title={L('Gửi email nếu khách chưa trả lời', 'Email if they didn’t answer')} sub={L(`Cùng lúc với SMS (${s.smsDelayMinutes} phút sau khi trả tiền), cho khách có email. Email có sẵn 2 nút Hài lòng / Chưa hài lòng.`, `Same time as the text (${s.smsDelayMinutes} min after paying), to customers with an email. The email carries the two buttons.`)}>
+            <Toggle on={s.emailFallback !== false} onChange={(v) => set('emailFallback', v)} />
           </Opt>
           <Opt title={L('Mã QR trên hoá đơn', 'QR code on the receipt')} sub={L('Mở cùng trang 2 nút trên điện thoại khách.', 'Opens the same two-button page on their phone.')}>
             <Toggle on={s.receiptQr} onChange={(v) => set('receiptQr', v)} />

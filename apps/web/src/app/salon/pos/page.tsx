@@ -185,7 +185,10 @@ function Register() {
   // on the register via the customer box. Drives loyalty earn + redeem.
   const [customerId, setCustomerId] = useState<string | null>(() => params.get('customerId') || null);
   const [customerLabel, setCustomerLabel] = useState<string | null>(() => params.get('customer') || null);
-  const [bookingCustomer] = useState<string | null>(() => params.get('customer'));
+  // The name handed over from a booking / walk-in link. Cleared with the bill —
+  // it used to outlive the sale, so the NEXT customer's bill still showed the
+  // previous walk-in's name and the cashier had to leave the till to clear it.
+  const [bookingCustomer, setBookingCustomer] = useState<string | null>(() => params.get('customer'));
   const [prefilled, setPrefilled] = useState(false);
   const [services, setServices] = useState<Service[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -729,18 +732,22 @@ function Register() {
       await apiFetch('/pos/held', { method: 'POST', token, body: {
         label: customerLabel || bookingCustomer || 'Walk-in',
         totalCents: money.total,
-        payload: { cart, customerId, customerLabel, orderDiscount, discountMode },
+        payload: { cart, customerId, customerLabel: customerLabel || bookingCustomer, walkInId, appointmentId, orderDiscount, discountMode },
       } });
-      clearCart();
+      // The till is free for the next customer: the held bill keeps this one's name and ticket.
+      newBill();
       await loadHeld();
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not hold this ticket'); }
   }
   function recall(h: { id: string; payload: unknown }) {
     if (cart.length > 0 && !window.confirm(lang === 'vi' ? 'Thay giỏ hàng hiện tại bằng bill này?' : 'Replace the current cart with this bill?')) return;
-    const pp = (h.payload || {}) as { cart?: Line[]; customerId?: string | null; customerLabel?: string | null; orderDiscount?: string; discountMode?: 'AMOUNT' | 'PERCENT' };
+    const pp = (h.payload || {}) as { cart?: Line[]; customerId?: string | null; customerLabel?: string | null; walkInId?: string | null; appointmentId?: string | null; orderDiscount?: string; discountMode?: 'AMOUNT' | 'PERCENT' };
+    newBill();
     setCart(Array.isArray(pp.cart) ? pp.cart.map((l) => ({ ...l, uid: `u${uidSeq++}` })) : []);
     setCustomerId(pp.customerId ?? null);
     setCustomerLabel(pp.customerLabel ?? null);
+    if (pp.walkInId) setWalkInId(pp.walkInId);
+    if (pp.appointmentId) setAppointmentId(pp.appointmentId);
     setOrderDiscount(pp.orderDiscount ?? ''); setDiscountMode(pp.discountMode ?? 'AMOUNT');
     setShowHeld(false);
     apiFetch(`/pos/held/${h.id}`, { method: 'DELETE', token }).then(loadHeld).catch(() => {});
@@ -1491,7 +1498,7 @@ function Register() {
   function newBill() {
     clearCart();
     setAppointmentId(null); setWalkInId(null); setGroupId(null); setGroupApptIds([]);
-    setCustomerId(null); setCustomerLabel(null); setCustomerPoints(0);
+    setCustomerId(null); setCustomerLabel(null); setCustomerPoints(0); setBookingCustomer(null);
     setPromo(null); setPromoInput(''); setPromoErr(null); setBookedOffer(null);
     setTendered(''); setSplit(false); setParts([]); setCustomTip(''); setTipMode(null);
     setAdj(null); setEditUid(null); setOkMsg(null); setError(null);
@@ -1789,7 +1796,7 @@ function Register() {
             <span style={{ fontSize: compactRow ? 15 : 16, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{custName || t('po.custAttached')}</span>
             <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{[custPhone, loyalty.enabled && customerId ? `${customerPoints} ${L('điểm', 'points')}` : ''].filter(Boolean).join(' · ') || (walkInId ? L('Khách tại tiệm', 'In the salon') : '')}</span>
           </div>
-          <button type="button" onClick={() => { setCustomerId(null); setCustomerLabel(null); setCustomerPoints(0); setRedeemInput(''); }} style={{ height: 36, padding: '0 12px', borderRadius: 9, border: '1px solid var(--line)', background: 'var(--c0f172a)', fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', cursor: 'pointer' }}>{L('Đổi', 'Change')}</button>
+          <button type="button" onClick={() => { setCustomerId(null); setCustomerLabel(null); setBookingCustomer(null); setCustomerPoints(0); setRedeemInput(''); }} style={{ height: 36, padding: '0 12px', borderRadius: 9, border: '1px solid var(--line)', background: 'var(--c0f172a)', fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', cursor: 'pointer' }}>{L('Đổi', 'Change')}</button>
         </div>
       ) : (
         <CustomerBox

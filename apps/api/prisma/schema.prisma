@@ -3262,12 +3262,14 @@ model FeedbackRequest {
   staffId       String?
   customerName  String?
   phone         String? // where the SMS fallback / "text me the link" goes
+  email         String? // where the email follow-up goes
   serviceNames  Json?   // string[] snapshot for the screens
   visitAt       DateTime @default(now())
 
   status     String    @default("PENDING") // PENDING | ANSWERED | SKIPPED | EXPIRED
   smsDueAt   DateTime?
   smsSentAt  DateTime?
+  emailSentAt DateTime?
   answeredAt DateTime?
   feedbackId String?
   photoUrl   String? // sent from the customer's phone while they answer on the shared screen

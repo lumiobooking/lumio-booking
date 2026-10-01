@@ -14,7 +14,7 @@ export class SubmitDto {
   @IsOptional() @IsArray() @IsString({ each: true }) @MaxLength(40, { each: true }) reasons?: string[];
   @IsOptional() @IsString() @MaxLength(1000) comment?: string;
   @IsOptional() @IsBoolean() wantsContact?: boolean;
-  @IsOptional() @IsIn(['ipad', 'sms', 'qr', 'link']) source?: string;
+  @IsOptional() @IsIn(['ipad', 'sms', 'email', 'qr', 'link']) source?: string;
   @IsOptional() @IsString() @MaxLength(600) photoUrl?: string;
 }
 
@@ -39,6 +39,7 @@ export class FeedbackSettingsDto {
   @IsOptional() @IsBoolean() enabled?: boolean;
   @IsOptional() @IsBoolean() askOnDisplay?: boolean;
   @IsOptional() @IsBoolean() smsFallback?: boolean;
+  @IsOptional() @IsBoolean() emailFallback?: boolean;
   @IsOptional() @IsInt() @Min(5) @Max(1440) smsDelayMinutes?: number;
   @IsOptional() @IsBoolean() receiptQr?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(365) cooldownDays?: number;

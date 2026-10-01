@@ -299,3 +299,45 @@ describe('a photo for the visit', () => {
     await expect(svc.publicPhoto(r2!.token!, 'data:image/jpeg;base64,AAAA')).rejects.toThrow();
   });
 });
+
+describe('the follow-up when nobody answered on the screen', () => {
+  const later = () => new Date(Date.now() + 2 * 3_600_000);
+  const sends = (notifications: any, ch: string) => notifications.send.mock.calls.map((c: any[]) => c[0]).filter((x: any) => x.channel === ch);
+
+  it('texts AND emails once, with the two buttons in the email, then never again', async () => {
+    const { svc, db, notifications } = setup();
+    db.customer.rows[0].email = 'anna@example.com';
+    await svc.createForOrder('A', order);
+    expect(db.feedbackRequest.rows[0].email).toBe('anna@example.com');
+    await svc.processDue(later());
+    const mails = sends(notifications, 'EMAIL');
+    expect(sends(notifications, 'SMS')).toHaveLength(1);
+    expect(mails).toHaveLength(1);
+    expect(mails[0].recipient).toBe('anna@example.com');
+    expect(mails[0].html).toContain('a=happy');
+    expect(mails[0].html).toContain('a=unhappy');
+    expect(mails[0].tenantId).toBe('A');
+    await svc.processDue(later());
+    expect(notifications.send).toHaveBeenCalledTimes(2);
+  });
+
+  it('email only, when the salon switched texts off — and a customer with no phone still hears from the salon', async () => {
+    const { svc, db, notifications } = setup();
+    db.customer.rows[0].email = 'anna@example.com';
+    db.customer.rows[0].phone = null;
+    db.setting.rows[0].value = { ...db.setting.rows[0].value, smsFallback: false };
+    await svc.createForOrder('A', order);
+    await svc.processDue(later());
+    expect(sends(notifications, 'SMS')).toHaveLength(0);
+    expect(sends(notifications, 'EMAIL')).toHaveLength(1);
+  });
+
+  it('nothing goes out once they answered on the screen', async () => {
+    const { svc, db, notifications } = setup();
+    db.customer.rows[0].email = 'anna@example.com';
+    const r = await svc.createForOrder('A', order);
+    await svc.publicSubmit(r!.token!, { sentiment: 'HAPPY', source: 'ipad' });
+    await svc.processDue(later());
+    expect(notifications.send).not.toHaveBeenCalled();
+  });
+});

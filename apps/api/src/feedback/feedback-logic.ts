@@ -37,6 +37,7 @@ export interface FeedbackSettings {
   enabled: boolean;
   askOnDisplay: boolean;     // ask on the customer iPad right after payment
   smsFallback: boolean;      // text the link if they did not answer there
+  emailFallback: boolean;    // …and/or email it, to customers with an email on file
   smsDelayMinutes: number;
   receiptQr: boolean;        // QR at the bottom of the receipt
   cooldownDays: number;      // do not ask the same customer again within N days
@@ -56,6 +57,7 @@ export const DEFAULT_FEEDBACK_SETTINGS: FeedbackSettings = {
   enabled: false,
   askOnDisplay: true,
   smsFallback: true,
+  emailFallback: true,
   smsDelayMinutes: 45,
   receiptQr: true,
   cooldownDays: 45,
@@ -87,6 +89,7 @@ export function sanitizeSettings(raw: Partial<FeedbackSettings> | null | undefin
     enabled: bool('enabled'),
     askOnDisplay: bool('askOnDisplay'),
     smsFallback: bool('smsFallback'),
+    emailFallback: bool('emailFallback'),
     smsDelayMinutes: r.smsDelayMinutes === undefined ? base.smsDelayMinutes : clampInt(r.smsDelayMinutes, 5, 24 * 60, base.smsDelayMinutes),
     receiptQr: bool('receiptQr'),
     cooldownDays: r.cooldownDays === undefined ? base.cooldownDays : clampInt(r.cooldownDays, 0, 365, base.cooldownDays),

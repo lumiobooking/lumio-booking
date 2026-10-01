@@ -1548,7 +1548,23 @@ export class BookingsService {
   async processDueReviewRequests(): Promise<{ sent: number }> {
     const now = new Date();
     const cache = new Map<string, ReviewSettings>();
-    const getRs = async (t: string) => { let rs = cache.get(t); if (!rs) { rs = await this.settings.getReviewSettings(t); cache.set(t, rs); } return rs; };
+    // A salon that switched on Feedback (the two-button "how was your visit?"
+    // after payment) is already asking every paid visit — this older mid-service
+    // Google nudge stands aside there, so nobody is asked twice.
+    const fbOn = new Map<string, boolean>();
+    const getRs = async (t: string) => {
+      let rs = cache.get(t);
+      if (!rs) {
+        rs = await this.settings.getReviewSettings(t);
+        if (!fbOn.has(t)) {
+          const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId: t, key: 'feedback_settings' } }, select: { value: true } }).catch(() => null);
+          fbOn.set(t, !!(row?.value as { enabled?: boolean } | null)?.enabled);
+        }
+        if (fbOn.get(t)) rs = { ...rs, postVisitEnabled: false };
+        cache.set(t, rs);
+      }
+      return rs;
+    };
     let sent = 0;
 
     // 1) Booked customers who checked in.

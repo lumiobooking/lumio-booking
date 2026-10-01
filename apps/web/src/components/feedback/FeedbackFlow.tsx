@@ -160,7 +160,10 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
   const ipad = variant === 'ipad';
   const first = ctx.customerFirstName;
   const service = ctx.services[0] ?? null;
-  const [step, setStep] = useState<Step>(ctx.answered === 'HAPPY' ? 'happy' : ctx.answered === 'UNHAPPY' ? 'sent' : 'ask');
+  // From the email's two buttons: ?a=unhappy opens the note straight away;
+  // ?a=happy is answered below, once a real person has the page open.
+  const preset = !ipad && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('a') : null;
+  const [step, setStep] = useState<Step>(ctx.answered === 'HAPPY' ? 'happy' : ctx.answered === 'UNHAPPY' ? 'sent' : preset === 'unhappy' ? 'form' : 'ask');
   const [picked, setPicked] = useState<string[]>([]);
   const [comment, setComment] = useState('');
   const [contact, setContact] = useState(ctx.hasPhone);
@@ -180,7 +183,10 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
   const [texted, setTexted] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const source = ipad ? 'ipad' : (typeof window !== 'undefined' && /[?&]src=qr\b/.test(window.location.search) ? 'qr' : (typeof window !== 'undefined' && /[?&]src=sms\b/.test(window.location.search) ? 'sms' : 'link'));
+  const source = ipad ? 'ipad' : (() => {
+    const m = typeof window !== 'undefined' ? /[?&]src=(qr|sms|email)\b/.exec(window.location.search) : null;
+    return m ? m[1] : 'link';
+  })();
 
   // iPad: give the screen back on its own — 60 s on the Google QR, 20 s after a
   // note, 90 s if somebody walks away mid-form.
@@ -207,6 +213,21 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
       setErr(t.error);
     } finally { setBusy(false); }
   }
+
+  // "😊 I'm happy" tapped in the email: record it — but only for a person in a
+  // real, visible browser, never for a mail scanner that opens every link.
+  const presetDone = useRef(false);
+  useEffect(() => {
+    if (preset !== 'happy' || ctx.answered || presetDone.current) return;
+    if (typeof navigator !== 'undefined' && (navigator as Navigator & { webdriver?: boolean }).webdriver) return;
+    const id = window.setTimeout(() => {
+      if (document.visibilityState !== 'visible' || presetDone.current) return;
+      presetDone.current = true;
+      void answer('HAPPY');
+    }, 700);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset, ctx.answered]);
 
   function tapGoogle() {
     // Counted, never blocking: the anchor's own navigation is what opens the Maps app on iOS.

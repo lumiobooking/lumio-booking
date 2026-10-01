@@ -12,6 +12,9 @@ type Status = {
   smsDueAt?: string | null;
   smsSentAt?: string | null;
   hasPhone?: boolean;
+  hasEmail?: boolean;
+  smsOn?: boolean;
+  emailOn?: boolean;
   smsDelayMinutes?: number;
   cooldownDays?: number;
 };
@@ -65,6 +68,11 @@ export function FeedbackStatus({ token, req, lang }: { token: string; req: Req; 
   if (st.status === 'NONE' || st.status === 'EXPIRED') return null;
 
   const delay = st.smsDelayMinutes ?? 45;
+  // Which follow-up this visit gets: a text, an email, or both.
+  const sms = st.smsOn ?? !!st.hasPhone;
+  const mail = !!st.emailOn;
+  const via = sms && mail ? L('SMS + email', 'text + email') : mail ? 'email' : L('SMS', 'text');
+  const canFollow = sms || mail;
   const time = (at?: string | null) => (at ? fmtInTz(at, { hour: 'numeric', minute: '2-digit' }) : '');
   const asking = !final && req.onScreen && now - startedAt.current < SCREEN_WINDOW_MS && !st.smsSentAt;
 
@@ -84,22 +92,23 @@ export function FeedbackStatus({ token, req, lang }: { token: string; req: Req; 
     sub = L('Không gửi SMS cho khách.', 'No text will be sent to the customer.');
   } else if (asking) {
     tone = 'ask'; title = L('Đang hỏi khách trên màn hình khách…', 'Asking the customer on their screen…');
-    sub = st.hasPhone && st.smsDueAt
-      ? L(`Khách không trả lời ở đây thì hệ thống tự gửi SMS sau ${delay} phút.`, `If they don't answer here, a text goes out automatically in ${delay} minutes.`)
-      : L('Khách chưa có số điện thoại — mã QR trên hoá đơn vẫn dùng được.', 'No mobile on file — the QR on the receipt still works.');
+    sub = canFollow && st.smsDueAt
+      ? L(`Khách không trả lời ở đây thì hệ thống tự gửi ${via} sau ${delay} phút.`, `If they don't answer here, a ${via} goes out automatically in ${delay} minutes.`)
+      : L('Khách chưa có số điện thoại hay email — mã QR trên hoá đơn vẫn dùng được.', 'No mobile or email on file — the QR on the receipt still works.');
     actions = [{ kind: 'skip', label: L('Bỏ qua', 'Skip') }];
   } else if (st.smsSentAt) {
-    tone = 'idle'; title = L(`Đã gửi SMS lúc ${time(st.smsSentAt)}`, `Text sent at ${time(st.smsSentAt)}`);
+    tone = 'idle'; title = L(`Đã gửi ${via} lúc ${time(st.smsSentAt)}`, `${via[0].toUpperCase()}${via.slice(1)} sent at ${time(st.smsSentAt)}`);
     sub = L('Khách chưa trả lời — kết quả về mục Feedback.', 'No answer yet — results land in Feedback.');
-  } else if (st.hasPhone && st.smsDueAt) {
-    tone = 'idle'; title = L(`Sẽ gửi SMS lúc ${time(st.smsDueAt)}`, `Text goes out at ${time(st.smsDueAt)}`);
+  } else if (canFollow && st.smsDueAt) {
+    tone = 'idle'; title = L(`Sẽ gửi ${via} lúc ${time(st.smsDueAt)}`, `${via[0].toUpperCase()}${via.slice(1)} goes out at ${time(st.smsDueAt)}`);
+    const onFile = sms && mail ? L('có số điện thoại + email', 'mobile + email on file') : mail ? L('có email', 'email on file') : L('có số điện thoại', 'mobile on file');
     sub = req.onScreen
-      ? L('Khách bỏ qua trên màn hình · có số điện thoại.', 'Skipped on the screen · mobile on file.')
-      : L('Có số điện thoại của khách.', 'Mobile on file.');
+      ? L(`Khách bỏ qua trên màn hình · ${onFile}.`, `Skipped on the screen · ${onFile}.`)
+      : `${onFile[0].toUpperCase()}${onFile.slice(1)}.`;
     actions = [{ kind: 'send', label: L('Gửi ngay', 'Send now') }, { kind: 'skip', label: L('Bỏ qua', 'Skip') }];
   } else {
     tone = 'mute'; title = L('Chưa hỏi được khách', 'No way to ask yet');
-    sub = L('Không có số điện thoại · mã QR trên hoá đơn vẫn dùng được.', 'No mobile on file · the QR on the receipt still works.');
+    sub = L('Không có số điện thoại hay email · mã QR trên hoá đơn vẫn dùng được.', 'No mobile or email on file · the QR on the receipt still works.');
     actions = [{ kind: 'skip', label: L('Bỏ qua', 'Skip') }];
   }
 

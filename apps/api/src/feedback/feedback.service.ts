@@ -123,9 +123,10 @@ export class FeedbackService {
 
       let customer: Row | null = null;
       if (order.customerId) {
-        customer = await this.db.customer.findFirst({ where: { id: order.customerId, tenantId }, select: { id: true, firstName: true, phone: true } });
+        customer = await this.db.customer.findFirst({ where: { id: order.customerId, tenantId }, select: { id: true, firstName: true, phone: true, email: true } });
       }
       let phone: string | null = customer?.phone ?? null;
+      const email: string | null = customer?.email && /@/.test(customer.email) ? String(customer.email).trim() : null;
       let name: string | null = customer?.firstName ?? null;
       if (!phone && order.walkInId) {
         const w = await this.db.walkIn.findFirst({ where: { id: order.walkInId, tenantId }, select: { phone: true, customerName: true } }).catch(() => null);
@@ -144,11 +145,14 @@ export class FeedbackService {
         if (recent > 0) status = 'COOLDOWN';
       }
       const token = randomBytes(18).toString('base64url');
-      const smsDueAt = status === 'PENDING' && s.smsFallback && phone ? new Date(Date.now() + s.smsDelayMinutes * 60_000) : null;
+      // One follow-up time for both channels: a text and/or an email, whichever the
+      // salon switched on and the customer can receive.
+      const canFollowUp = (s.smsFallback && !!phone) || (s.emailFallback && !!email);
+      const smsDueAt = status === 'PENDING' && canFollowUp ? new Date(Date.now() + s.smsDelayMinutes * 60_000) : null;
       await this.db.feedbackRequest.create({
         data: {
           tenantId, token, orderId: order.id, appointmentId: order.appointmentId ?? null, walkInId: order.walkInId ?? null,
-          customerId: customer?.id ?? null, staffId, customerName: name, phone,
+          customerId: customer?.id ?? null, staffId, customerName: name, phone, email,
           serviceNames: services.map((i) => String(i.name ?? '')).filter(Boolean).slice(0, 6),
           status, smsDueAt,
         },
@@ -231,7 +235,7 @@ export class FeedbackService {
 
     const s = await this.getSettings(tenantId);
     const reasons = sentiment === 'UNHAPPY' ? cleanReasons(dto.reasons, s.reasons) : [];
-    const source = ['ipad', 'sms', 'qr', 'link'].includes(String(dto.source)) ? String(dto.source) : 'link';
+    const source = ['ipad', 'sms', 'email', 'qr', 'link'].includes(String(dto.source)) ? String(dto.source) : 'link';
     const sent = dto.photoUrl ?? r.photoUrl ?? '';
     const photoUrl = s.askPhoto && /^https:\/\//i.test(String(sent)) ? String(sent).slice(0, 600) : null;
 
@@ -349,7 +353,8 @@ export class FeedbackService {
     const st = await this.getSettings(tenantId);
     return {
       id: r.id, status: r.status as string, answered: !!r.feedbackId,
-      smsDueAt: r.smsDueAt, smsSentAt: r.smsSentAt, hasPhone: !!r.phone,
+      smsDueAt: r.smsDueAt, smsSentAt: r.smsSentAt ?? r.emailSentAt ?? null, hasPhone: !!r.phone,
+      hasEmail: !!r.email, smsOn: st.smsFallback && !!r.phone, emailOn: st.emailFallback && !!r.email,
       link: `${publicWebBase()}/f/${r.token}`,
       smsDelayMinutes: st.smsDelayMinutes, cooldownDays: st.cooldownDays,
     };
@@ -366,32 +371,64 @@ export class FeedbackService {
     const tenantId = this.tenantId(user);
     const r = await this.db.feedbackRequest.findFirst({ where: { id, tenantId } });
     if (!r) throw new NotFoundException('Request not found');
-    if (r.status !== 'PENDING' || !r.phone) throw new BadRequestException('This visit cannot be texted');
-    if (r.smsSentAt) return { ok: true, already: true };
+    if (r.status !== 'PENDING' || (!r.phone && !r.email)) throw new BadRequestException('This visit cannot be texted');
+    if (r.smsSentAt || r.emailSentAt) return { ok: true, already: true };
     await this.sendLink(r);
     return { ok: true };
   }
 
+  /**
+   * The follow-up for a visit nobody answered on the screen: a text and/or an
+   * email, each only when the salon switched that channel on and the customer
+   * can receive it. Each goes once; the timestamps are the proof.
+   */
   private async sendLink(r: Row) {
     if (!this.notifications) return;
-    const tenant = await this.db.tenant.findUnique({ where: { id: r.tenantId }, select: { name: true, market: true } });
+    const s = await this.getSettings(r.tenantId);
+    const tenant = await this.db.tenant.findUnique({ where: { id: r.tenantId }, select: { name: true, market: true, branding: true } });
     const name = r.customerName ? String(r.customerName).split(' ')[0] : null;
-    const link = `${publicWebBase()}/f/${r.token}`;
     const vi = this.langFor(tenant?.market) === 'vi';
-    const body = vi
-      ? `${tenant?.name ?? ''}: ${name ? `Chào ${name}, ` : ''}cảm ơn bạn đã ghé tiệm! Hôm nay bạn thấy thế nào? Chỉ 1 chạm: ${link}`
-      : `${tenant?.name ?? ''}: ${name ? `Hi ${name}, ` : ''}thanks for visiting! How was everything today? One tap: ${link} Reply STOP to opt out.`;
-    await this.db.feedbackRequest.updateMany({ where: { id: r.id, tenantId: r.tenantId, smsSentAt: null }, data: { smsSentAt: new Date() } });
-    await this.notifications.send({ tenantId: r.tenantId, channel: NotificationChannel.SMS, recipient: r.phone, body: body.trim(), relatedType: 'feedback_request', relatedId: r.id });
+    const salon = tenant?.name ?? '';
+    const jobs: Promise<unknown>[] = [];
+    let n: Row | null = null;
+    try { n = await (this.settings as Row).getNotificationSettings?.(r.tenantId); } catch { n = null; }
+
+    if (s.smsFallback && r.phone && !r.smsSentAt) {
+      const link = `${publicWebBase()}/f/${r.token}?src=sms`;
+      const body = vi
+        ? `${salon}: ${name ? `Chào ${name}, ` : ''}cảm ơn bạn đã ghé tiệm! Hôm nay bạn thấy thế nào? Chỉ 1 chạm: ${link}`
+        : `${salon}: ${name ? `Hi ${name}, ` : ''}thanks for visiting! How was everything today? One tap: ${link} Reply STOP to opt out.`;
+      const claimed = await this.db.feedbackRequest.updateMany({ where: { id: r.id, tenantId: r.tenantId, smsSentAt: null }, data: { smsSentAt: new Date() } });
+      if (claimed.count) jobs.push(this.notifications.send({ tenantId: r.tenantId, channel: NotificationChannel.SMS, recipient: r.phone, body: body.trim(), relatedType: 'feedback_request', relatedId: r.id, ...(n?.twilio ? { twilio: n.twilio } : {}) } as never));
+    }
+
+    if (s.emailFallback && r.email && !r.emailSentAt) {
+      const claimed = await this.db.feedbackRequest.updateMany({ where: { id: r.id, tenantId: r.tenantId, emailSentAt: null }, data: { emailSentAt: new Date() } });
+      if (claimed.count) {
+        const staff = r.staffId ? await this.db.staffMember.findFirst({ where: { id: r.staffId, tenantId: r.tenantId }, select: { firstName: true } }) : null;
+        const services: string[] = Array.isArray(r.serviceNames) ? r.serviceNames.map(String) : [];
+        const brand = this.settings.brandingFrom(tenant?.branding);
+        const mail = feedbackEmail({
+          vi, salon, firstName: name, tech: staff?.firstName ?? null, service: services[0] ?? null,
+          accent: /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(brand.accentColor || '') ? brand.accentColor : '#6366f1',
+          link: `${publicWebBase()}/f/${r.token}`,
+        });
+        jobs.push(this.notifications.send({ tenantId: r.tenantId, channel: NotificationChannel.EMAIL, recipient: r.email, subject: mail.subject, body: mail.text, html: mail.html, relatedType: 'feedback_request', relatedId: r.id, ...emailTransport(n, salon) } as never));
+      }
+    }
+    await Promise.allSettled(jobs);
   }
 
   /** The dispatcher's sweep: text the visits nobody answered on the iPad, retire stale links. */
   async processDue(now = new Date()): Promise<{ sent: number; expired: number }> {
     let sent = 0;
-    const due: Row[] = await this.db.feedbackRequest.findMany({ where: { status: 'PENDING', smsSentAt: null, smsDueAt: { lte: now } }, take: 200, orderBy: { smsDueAt: 'asc' } });
+    const due: Row[] = await this.db.feedbackRequest.findMany({ where: { status: 'PENDING', smsSentAt: null, emailSentAt: null, smsDueAt: { lte: now } }, take: 200, orderBy: { smsDueAt: 'asc' } });
     for (const r of due) {
-      if (!r.phone) continue;
-      try { await this.sendLink(r); sent += 1; } catch (e) { this.log.warn(`feedback sms failed ${r.id}: ${(e as Error).message}`); }
+      try {
+        if (r.phone || r.email) { await this.sendLink(r); sent += 1; }
+      } catch (e) { this.log.warn(`feedback follow-up failed ${r.id}: ${(e as Error).message}`); }
+      // Whatever happened, this visit's follow-up is done — never picked up again.
+      await this.db.feedbackRequest.updateMany({ where: { id: r.id, tenantId: r.tenantId }, data: { smsDueAt: null } });
     }
     const old = new Date(now.getTime() - LINK_TTL_DAYS * 86_400_000);
     const ex = await this.db.feedbackRequest.updateMany({ where: { status: 'PENDING', createdAt: { lt: old } }, data: { status: 'EXPIRED' } });
@@ -761,3 +798,53 @@ export class FeedbackService {
     return { visible: true, answers: rows.length, happy, pct: pct(happy, rows.length), google: rows.filter((r) => r.toGoogle).length, reasons: s.techSeeReasons ? reasonCounts(rows) : null, board };
   }
 }
+
+/** The salon's own email connection (Brevo / Gmail / SMTP), same mapping the booking emails use. */
+function emailTransport(n: Row | null, salon: string): Row {
+  if (!n) return {};
+  const senderName = n.senderName || salon;
+  const replyTo = n.replyTo || n.senderEmail || undefined;
+  const smtp = n.smtp?.user && n.smtp?.pass
+    ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${senderName} <${n.senderEmail || n.smtp.user}>` }
+    : undefined;
+  const brevo = n.brevo?.apiKey && n.senderEmail
+    ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || senderName }
+    : undefined;
+  const gmail = n.gmail?.clientId && n.gmail?.clientSecret && n.gmail?.refreshToken && n.gmail?.senderEmail
+    ? { clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken, senderEmail: n.gmail.senderEmail, senderName, replyTo }
+    : undefined;
+  return { smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo };
+}
+
+const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+
+/**
+ * "How was your visit?" by email: the same two buttons as the salon's screen.
+ * 😊 opens the Google step, 😕 opens the private note — the email never decides
+ * for the customer, and the Google line stays on every path.
+ */
+export function feedbackEmail(i: { vi: boolean; salon: string; firstName: string | null; tech: string | null; service: string | null; accent: string; link: string }) {
+  const L = (vi: string, en: string) => (i.vi ? vi : en);
+  const salon = esc(i.salon || L('tiệm', 'the salon'));
+  const hi = i.firstName ? L(`Chào ${esc(i.firstName)},`, `Hi ${esc(i.firstName)},`) : L('Xin chào,', 'Hi there,');
+  const did = i.tech ? (i.service ? L(`${esc(i.tech)} đã làm ${esc(i.service)} cho bạn hôm nay.`, `${esc(i.tech)} did your ${esc(i.service)} today.`) : L(`${esc(i.tech)} đã phục vụ bạn hôm nay.`, `${esc(i.tech)} looked after you today.`)) : '';
+  const happy = `${i.link}?src=email&a=happy`;
+  const unhappy = `${i.link}?src=email&a=unhappy`;
+  const subject = L(`Hôm nay bạn thấy ${i.salon || 'tiệm'} thế nào?`, `How was your visit to ${i.salon || 'the salon'}?`);
+  const btn = (href: string, emoji: string, label: string, bg: string, fg: string, border: string) =>
+    `<a href="${href}" style="display:block;text-decoration:none;background:${bg};color:${fg};border:2px solid ${border};border-radius:18px;padding:18px 10px;text-align:center;font-weight:700;font-size:17px"><span style="font-size:34px;display:block;line-height:1.2">${emoji}</span>${label}</a>`;
+  const html = `<div style="background:#faf9f7;padding:24px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">`
+    + `<div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e7e3dd;border-radius:20px;overflow:hidden">`
+    + `<div style="background:${i.accent};padding:22px 24px;color:#ffffff"><div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:.85">✦ ${salon}</div>`
+    + `<div style="font-family:Georgia,'Times New Roman',serif;font-size:26px;font-weight:600;margin-top:6px;line-height:1.2">${L('Hôm nay bạn thấy thế nào?', 'How was your visit today?')}</div></div>`
+    + `<div style="padding:22px 24px 8px;color:#1c1917;font-size:15.5px;line-height:1.6">${hi}<br>${L('Cảm ơn bạn đã ghé tiệm.', 'Thank you for coming in.')} ${did}<br>${L('Chỉ một chạm — câu trả lời của bạn gửi thẳng tới chủ tiệm.', 'One tap — your answer goes straight to the owner.')}</div>`
+    + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:10px 18px 6px"><tr>`
+    + `<td width="50%" style="padding:6px">${btn(happy, '😊', L('Hài lòng', 'I’m happy'), '#ecfdf3', '#166534', '#bbf7d0')}</td>`
+    + `<td width="50%" style="padding:6px">${btn(unhappy, '😕', L('Chưa hài lòng', 'Not quite'), '#fff4ed', '#9a3412', '#fed7aa')}</td>`
+    + `</tr></table>`
+    + `<div style="padding:8px 24px 22px;color:#a39d96;font-size:12.5px;line-height:1.5;text-align:center">${L('Góp ý chưa hài lòng chỉ chủ tiệm đọc — tên bạn không hiện cho thợ.', 'A “not quite” is read only by the owner — your name is never shown to the technician.')}</div>`
+    + `</div></div>`;
+  const text = `${hi.replace(/<[^>]+>/g, '')} ${L('Cảm ơn bạn đã ghé', 'Thank you for visiting')} ${i.salon}. ${L('Hôm nay bạn thấy thế nào?', 'How was your visit today?')}\n😊 ${L('Hài lòng', 'I’m happy')}: ${happy}\n😕 ${L('Chưa hài lòng', 'Not quite')}: ${unhappy}`;
+  return { subject, html, text };
+}
+

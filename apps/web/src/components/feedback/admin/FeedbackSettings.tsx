@@ -95,7 +95,7 @@ export function FeedbackSettings({ view, draft, setDraft, lang, readOnly }: {
             <Toggle on={s.askOnDisplay} onChange={(v) => set('askOnDisplay', v)} />
           </Opt>
           <Opt title={L('Nhắn SMS nếu khách chưa trả lời', 'Text message if they didn’t answer')} sub={L('Chỉ gửi cho khách đồng ý nhận tin.', 'Only to customers who agreed to texts.')}>
-            <select value={s.smsDelayMinutes} onChange={(e) => set('smsDelayMinutes', Number(e.target.value))} style={selStyle} disabled={!s.smsFallback || readOnly}>
+            <select value={s.smsDelayMinutes} onChange={(e) => set('smsDelayMinutes', Number(e.target.value))} style={selStyle} disabled={(!s.smsFallback && s.emailFallback === false) || readOnly}>
               {[...new Set([15, 30, 45, 60, 90, 120, 180, 240, s.smsDelayMinutes])].sort((a, b) => a - b).map((m) => (
                 <option key={m} value={m}>{m < 60 || m % 60 ? L(`${m} phút sau khi trả tiền`, `${m} min after paying`) : L(`${m / 60} giờ sau khi trả tiền`, `${m / 60} h after paying`)}</option>
               ))}

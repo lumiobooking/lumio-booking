@@ -2,6 +2,7 @@ import {
   IsArray,
   IsBoolean,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Max,
@@ -80,4 +81,12 @@ export class CreateServiceDto {
   @IsArray()
   @IsString({ each: true })
   staffIds?: string[];
+
+  // Walk-in turns this service is worth for the technician who does it:
+  // 1 normally, 0.5 for a small add-on, 0 for something that shouldn't count.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  turnValue?: number;
 }

@@ -23,6 +23,13 @@ function cleanImageUrl(v: string | null | undefined): string | null {
   return null;
 }
 
+/** Turn values are counted in halves (0, ½, 1, 1½ …); anything else rounds to the nearest half. */
+export function cleanTurnValue(v: unknown): number | undefined {
+  const n = Number(v);
+  if (v === undefined || v === null || v === '' || !Number.isFinite(n)) return undefined;
+  return Math.min(5, Math.max(0, Math.round(n * 2) / 2));
+}
+
 @Injectable()
 export class ServicesService {
   constructor(
@@ -227,6 +234,7 @@ export class ServicesService {
           isFeatured: dto.isFeatured ?? false,
           priceFrom: dto.priceFrom ?? false,
           imageUrl: cleanImageUrl(dto.imageUrl),
+          ...({ turnValue: cleanTurnValue(dto.turnValue) ?? 1 } as Record<string, unknown>),
         },
       });
       if (staffIds.length > 0) {
@@ -269,6 +277,7 @@ export class ServicesService {
       priceFrom: dto.priceFrom,
     };
     if (dto.imageUrl !== undefined) data.imageUrl = cleanImageUrl(dto.imageUrl);
+    if (dto.turnValue !== undefined) (data as Record<string, unknown>).turnValue = cleanTurnValue(dto.turnValue) ?? 1;
     // categoryId: only touch when provided (null clears it).
     if (dto.categoryId !== undefined) {
       data.categoryId = dto.categoryId ? await this.validCategoryId(tenantId, dto.categoryId) : null;

@@ -32,6 +32,13 @@ class AssignDto {
   @IsString() staffId!: string;
 }
 
+class LegDto {
+  // A technician id, or null / empty to give the leg back to the dispatcher.
+  @IsOptional() @IsString() staffId?: string | null;
+  // Start it now even if she is still finishing someone ("Bắt đầu ngay").
+  @IsOptional() @IsBoolean() start?: boolean;
+}
+
 class AddServiceDto {
   // One id or a batch — the front desk often adds two things at once.
   @IsOptional() @IsString() serviceId?: string;
@@ -109,6 +116,18 @@ export class WalkinsController {
   @Patch(':id/assign')
   assign(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AssignDto) {
     return this.nudge(user, id, this.walkins.assign(user, id, dto.staffId));
+  }
+
+  /** Move one leg of a ticket (hands / feet …) to a technician, or back to the queue. */
+  @Patch(':id/legs/:legId')
+  assignLeg(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('legId') legId: string, @Body() dto: LegDto) {
+    return this.nudge(user, id, this.walkins.assignLeg(user, id, legId, dto.staffId || null, !!dto.start));
+  }
+
+  /** One leg finished; the ticket stays open for the next one. */
+  @Patch(':id/legs/:legId/done')
+  doneLeg(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('legId') legId: string) {
+    return this.nudge(user, id, this.walkins.doneLeg(user, id, legId));
   }
 
   @Patch(':id/station')

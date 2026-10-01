@@ -11,7 +11,13 @@ import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useLiveEvents } from '../../../lib/useLiveEvents';
 import { useIsMobile } from '../../../lib/responsive';
 
-interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null }
+interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null; legId?: string }
+/** One part of a visit done by one technician (hands, feet, …) — see walkin-legs.ts in the API. */
+interface Leg {
+  legId: string; zone: 'HAND' | 'FOOT' | 'OTHER'; status: 'WAITING' | 'SERVING' | 'DONE';
+  staffId: string | null; pinned: boolean; startedAt: string | null; doneAt: string | null;
+  lineIds: string[]; serviceIds: string[]; names: string[]; minutes: number; turnValue: number; legacy?: boolean;
+}
 interface WalkIn {
   id: string; customerId: string | null; customerName: string | null; phone: string | null; note: string | null;
   partySize: number; status: string; createdAt: string; assignedAt: string | null;
@@ -21,9 +27,37 @@ interface WalkIn {
   items: WalkInItem[];
   service: { id: string; name: string } | null;
   assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
+  legs?: Leg[];
+  /** WAITING | SERVING | BETWEEN (one part done, the next one waiting for a technician) | DONE */
+  phase?: string;
 }
-interface StaffTurn { id: string; name: string; avatarUrl: string | null; turns: number; busy: boolean; nextUp: boolean }
-interface Board { waiting: WalkIn[]; serving: WalkIn[]; done?: WalkIn[]; staff: StaffTurn[]; nextUpStaffId: string | null }
+interface StaffTurn {
+  id: string; name: string; avatarUrl: string | null; turns: number; busy: boolean; nextUp: boolean;
+  /** Minutes left on what she is doing (rough). */
+  busyFor?: number | null;
+  /** Services she does; empty = all of them. */
+  skills?: string[];
+}
+interface Board { waiting: WalkIn[]; serving: WalkIn[]; done?: WalkIn[]; staff: StaffTurn[]; nextUpStaffId: string | null; restricted?: string[] }
+
+/** Turns can be halves (a small add-on is worth ½): 1.5 → "1½". */
+function fmtTurns(n: number): string {
+  const whole = Math.floor(n + 1e-9);
+  const half = Math.abs(n - whole - 0.5) < 0.01;
+  if (half) return whole ? `${whole}½` : '½';
+  return String(Math.round(n * 100) / 100);
+}
+/** Can this technician do every service of the leg? (Unticked services are open to all.) */
+function canDoLeg(s: StaffTurn, leg: Leg, restricted: Set<string>): boolean {
+  const need = leg.serviceIds.filter((id) => restricted.has(id));
+  if (!s.skills || s.skills.length === 0 || need.length === 0) return true;
+  return need.every((id) => s.skills!.includes(id));
+}
+const ZONE_ICON: Record<Leg['zone'], string> = { HAND: '✋', FOOT: '🦶', OTHER: '✦' };
+function legLabel(leg: Leg, t: (k: string) => string): string {
+  if (leg.legacy) return t('wi.legWhole');
+  return leg.zone === 'HAND' ? t('wi.legHand') : leg.zone === 'FOOT' ? t('wi.legFoot') : (leg.names[0] ?? t('wi.legOther'));
+}
 interface Service {
   id: string; name: string;
   // Needed by the customer screen so it can show price and length per service.
@@ -595,10 +629,10 @@ function Inner() {
               <div key={s.id} style={{ background: isNext ? 'rgba(34,197,94,0.10)' : 'var(--c1e293b)', border: `1.5px solid ${border}`, borderRadius: 12, padding: isMobile ? '10px 8px' : '8px 12px', textAlign: 'center', ...(isMobile ? { flex: '0 0 104px' } : { flex: '0 0 auto', minWidth: 108 }) }}>
                 <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
                 <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--cf8fafc)', lineHeight: 1.1, margin: '3px 0 2px' }}>
-                  {s.turns}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--c94a3b8)', marginLeft: 4 }}>{t('wi.turns')}</span>
+                  {fmtTurns(s.turns)}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--c94a3b8)', marginLeft: 4 }}>{t('wi.turns')}</span>
                 </div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: isNext ? 'var(--ink-good)' : s.busy ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
-                  {isNext ? t('wi.nextUp') : s.busy ? t('wi.serving') : t('wi.free')}
+                  {isNext ? t('wi.nextUp') : s.busy ? (s.busyFor != null ? `${isMobile ? '○' : t('wi.serving') + ' ·'} ${t('wi.freeIn').replace('{m}', String(s.busyFor))}` : t('wi.serving')) : t('wi.free')}
                 </div>
               </div>
             );
@@ -634,6 +668,7 @@ function Inner() {
               open={openWait === w.id} onToggle={() => setOpenWait(openWait === w.id ? null : w.id)}
               onAssign={(staffId) => act(`${w.id}/assign`, { staffId })}
               onCancel={() => act(`${w.id}/cancel`)}
+              onManage={() => setOpenId(w.id)}
             />
           ))}
         </div>
@@ -646,22 +681,41 @@ function Inner() {
       </div>
       {(!board || board.serving.length === 0) ? (
         <div style={{ ...ui.card, color: 'var(--c64748b)', marginBottom: 20, padding: '16px 18px', fontSize: 13.5 }}>{t('wi.noInService')}</div>
-      ) : (
-        <div style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-          {board.serving.map((w) => (
-            <ServingRow key={w.id} w={w} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} />
-          ))}
-        </div>
-      )}
+      ) : (() => {
+        // A customer whose hands are done and whose feet wait for a technician
+        // is not "in service" — she is sitting there. Shown apart, so the desk
+        // sees at a glance who is stuck between two parts of a visit.
+        const inChair = board.serving.filter((w) => w.phase !== 'BETWEEN');
+        const between = board.serving.filter((w) => w.phase === 'BETWEEN');
+        return (
+          <div style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
+            {inChair.map((w) => (
+              <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} />
+            ))}
+            {between.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: 'var(--wash-amber-2)', borderBottom: '1px solid var(--line)', fontSize: 12, fontWeight: 600, color: 'var(--ink-warn)' }}>
+                <span>⏸ {t('wi.between')}</span>
+                <span style={{ marginLeft: 'auto' }}>{between.length}</span>
+              </div>
+            )}
+            {between.map((w) => (
+              <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} />
+            ))}
+          </div>
+        );
+      })()}
       </div>
       </div>
 
       {openId && board && (() => {
-        const w = board.serving.find((x) => x.id === openId);
+        const w = board.serving.find((x) => x.id === openId) ?? board.waiting.find((x) => x.id === openId);
         if (!w) return null;
         return (
           <WalkInTicketSheet
             w={w} staff={staff} services={services} t={t} currency={currency}
+            restricted={new Set(board.restricted ?? [])}
+            onLeg={(legId, staffId, start) => act(`${w.id}/legs/${legId}`, { staffId, start })}
+            onLegDone={(legId) => act(`${w.id}/legs/${legId}/done`)}
             onAdd={addServiceLine} onUpdateLine={updateServiceLine} onRemove={removeServiceLine} onStation={setStationFor}
             onDone={async () => { await act(`${w.id}/done`); setOpenId(null); }}
             onDelete={canDelete ? async () => { await deleteWalkIn(w.id); setOpenId(null); } : null}
@@ -721,11 +775,12 @@ const svcOpt = (active: boolean): CSSProperties => ({
  *  a quick Checkout, and a Details button that opens the full ticket sheet. Kept
  *  small on purpose so the whole floor fits on one screen when it's busy. */
 /** One line for one customer in the queue: number, who, what, how long, seat. */
-function WaitingRow({ w, pos, staff, currency, t, isMobile, sel, onPick, open, onToggle, onAssign, onCancel }: {
+function WaitingRow({ w, pos, staff, currency, t, isMobile, sel, onPick, open, onToggle, onAssign, onCancel, onManage }: {
   w: WalkIn; pos: number; staff: StaffTurn[]; currency: string; t: (k: string) => string; isMobile: boolean;
   sel: string; onPick: (v: string) => void; open: boolean; onToggle: () => void;
-  onAssign: (staffId: string) => void; onCancel: () => void;
+  onAssign: (staffId: string) => void; onCancel: () => void; onManage: () => void;
 }) {
+  const legs = (w.legs ?? []).filter((l) => !l.legacy || l.lineIds.length > 0);
   const items = w.items ?? [];
   const total = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
   const mins = items.reduce((sum, it) => sum + (it.durationMinutes || 0), 0);
@@ -746,7 +801,9 @@ function WaitingRow({ w, pos, staff, currency, t, isMobile, sel, onPick, open, o
           {w.phone && <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.phone}</div>}
         </div>
         <div style={{ minWidth: 0, flex: '1 1 160px', order: isMobile ? 5 : 0, ...(isMobile ? { flexBasis: '100%' } : null) }}>
-          <div style={{ color: 'var(--ccbd5e1)', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{names}</div>
+          {legs.length > 1 || legs.some((l) => l.pinned && l.staffId)
+            ? <LegChips legs={legs} staff={staff} t={t} />
+            : <div style={{ color: 'var(--ccbd5e1)', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{names}</div>}
           <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>
             <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(total, currency)}</span>{mins > 0 ? ` · ${mins} ${t('wi.mins')}` : ''}
           </div>
@@ -782,6 +839,7 @@ function WaitingRow({ w, pos, staff, currency, t, isMobile, sel, onPick, open, o
             </div>
           </div>
           {w.note && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }}>📝 {w.note}</div>}
+          <button onClick={onManage} style={{ marginTop: 8, padding: '6px 10px', background: 'transparent', border: '1px solid var(--c334155)', borderRadius: 8, color: 'var(--ccbd5e1)', cursor: 'pointer', fontSize: 12 }}>{t('wi.splitTechs')}</button>
         </div>
       )}
     </div>
@@ -789,24 +847,33 @@ function WaitingRow({ w, pos, staff, currency, t, isMobile, sel, onPick, open, o
 }
 
 /** One line for one customer in a chair: who, with whom, what, for how long, checkout. */
-function ServingRow({ w, currency, t, isMobile, onOpen }: {
-  w: WalkIn; currency: string; t: (k: string) => string; isMobile: boolean; onOpen: () => void;
+function ServingRow({ w, staff, currency, t, isMobile, onOpen }: {
+  w: WalkIn; staff: StaffTurn[]; currency: string; t: (k: string) => string; isMobile: boolean; onOpen: () => void;
 }) {
   const items = w.items ?? [];
+  const legs = (w.legs ?? []).filter((l) => !l.legacy || l.lineIds.length > 0);
+  const between = w.phase === 'BETWEEN';
+  // Who is on the customer right now (two at once for hands + feet).
+  const nameOf = (id: string | null) => staff.find((s) => s.id === id)?.name ?? (w.assignedStaff?.id === id ? fullName(w.assignedStaff) : '');
+  const onNow = [...new Set(legs.filter((l) => l.status === 'SERVING' && l.staffId).map((l) => nameOf(l.staffId)).filter(Boolean))];
+  const techText = onNow.length ? onNow.join(' + ') : between ? t('wi.waitingTech') : (fullName(w.assignedStaff) || '—');
   const subtotal = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
   const names = items.length ? items.map((it) => it.name).join(' · ') : t('wi.noService');
   const since = waitedMins(w.assignedAt ?? w.createdAt);
   const checkoutHref = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
   return (
     <div className="wi-serving" onClick={onOpen} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '10px 12px' : '9px 14px', borderBottom: '1px solid var(--line)', cursor: 'pointer', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
-      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: between ? '#f59e0b' : '#22c55e', flexShrink: 0 }} />
       <div style={{ minWidth: 0, flex: isMobile ? '1 1 120px' : '0 0 140px' }}>
         <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
         <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{since}′{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}</div>
       </div>
-      <span style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, color: 'var(--ink-warn)', background: 'var(--wash-amber-2)', borderRadius: 999, padding: '2px 9px' }}>✂ {fullName(w.assignedStaff) || '—'}</span>
+      {legs.length > 1
+        // Several parts: one chip per part, each with its technician.
+        ? <div style={{ flexShrink: 0 }}><LegChips legs={legs} staff={staff} t={t} /></div>
+        : <span style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, color: 'var(--ink-warn)', background: 'var(--wash-amber-2)', borderRadius: 999, padding: '2px 9px', maxWidth: isMobile ? 'none' : 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>{between ? '⏸' : '✂'} {techText}</span>}
       <div style={{ minWidth: 0, flex: '1 1 140px', ...(isMobile ? { flexBasis: '100%', order: 5 } : null) }}>
-        <div style={{ color: 'var(--ccbd5e1)', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{names}</div>
+        {(legs.length <= 1 || isMobile) && <div style={{ color: 'var(--ccbd5e1)', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{names}</div>}
       </div>
       <span style={{ color: 'var(--ink-good)', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: isMobile ? 'auto' : 0 }}>{formatPrice(subtotal, currency)}</span>
       <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexShrink: 0, ...(isMobile ? { flexBasis: '100%', order: 6 } : null) }}>
@@ -827,8 +894,11 @@ const countPill = (n: number): CSSProperties => ({
 /** Full ticket editor for one in-service walk-in, in a focused overlay: service
  *  lines (each with its tech), add a service, edit station, checkout, done. Opened
  *  from a compact card so the board itself stays a clean overview. Portaled to body. */
-function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLine, onRemove, onStation, onDone, onDelete, onClose }: {
+function WalkInTicketSheet({ w, staff, services, t, currency, restricted, onLeg, onLegDone, onAdd, onUpdateLine, onRemove, onStation, onDone, onDelete, onClose }: {
   w: WalkIn; staff: StaffTurn[]; services: Service[]; t: (k: string) => string; currency: string;
+  restricted: Set<string>;
+  onLeg: (legId: string, staffId: string | null, start?: boolean) => Promise<void> | void;
+  onLegDone: (legId: string) => Promise<void> | void;
   onAdd: (id: string, serviceId: string, staffId: string, extraMinutes?: number) => Promise<void> | void;
   onUpdateLine: (id: string, lineId: string, patch: Record<string, unknown>) => Promise<void> | void;
   onRemove: (id: string, lineId: string) => Promise<void> | void;
@@ -844,7 +914,9 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
   const [station, setStation] = useState(w.station ?? '');
   const [busy, setBusy] = useState(false);
   const items = w.items ?? [];
+  const legs = w.legs ?? [];
   const subtotal = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
+  const onNow = [...new Set(legs.filter((l) => l.status === 'SERVING' && l.staffId).map((l) => staff.find((s) => s.id === l.staffId)?.name).filter(Boolean))] as string[];
   const techLabel = (id: string | null) => {
     if (!id) return t('wi.unassignedTech');
     const s = staff.find((x) => x.id === id);
@@ -868,7 +940,9 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, background: 'var(--c111827)', zIndex: 1 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
-            <div style={{ color: 'var(--c94a3b8)', fontSize: 12, marginTop: 2 }}>{t('wi.tech')} <strong style={{ color: 'var(--ccbd5e1)' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
+            {!onNow.length && (w.phase === 'BETWEEN' || w.status === 'WAITING')
+              ? <div style={{ color: 'var(--ink-warn)', fontSize: 12, marginTop: 2, fontWeight: 600 }}>{w.phase === 'BETWEEN' ? `⏸ ${t('wi.between')}` : t('wi.legWaiting')}</div>
+              : <div style={{ color: 'var(--c94a3b8)', fontSize: 12, marginTop: 2 }}>{t('wi.tech')} <strong style={{ color: 'var(--ccbd5e1)' }}>{onNow.length ? onNow.join(' + ') : fullName(w.assignedStaff) || '—'}</strong></div>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title={t('wi.station')}>
@@ -884,6 +958,9 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
         </div>
 
         <div style={{ padding: 16 }}>
+          {legs.length > 0 && (
+            <LegsPanel w={w} legs={legs} staff={staff} restricted={restricted} t={t} onLeg={onLeg} onLegDone={onLegDone} />
+          )}
           <div style={{ border: '1px solid var(--c263041)', borderRadius: 10, overflow: 'hidden' }}>
             {items.length === 0 ? (
               <div style={{ padding: '12px', color: 'var(--c64748b)', fontSize: 13 }}>{t('wi.noLines')}</div>
@@ -904,7 +981,7 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
               <ServiceSearchSelect services={services} value={svcId} onChange={setSvcId} placeholder={t('wi.addServicePh')} />
             </div>
             <select style={{ ...ui.input, padding: '9px 10px', width: 'auto', maxWidth: 150 }} value={techId} onChange={(e) => setTechId(e.target.value)}>
-              <option value="">{t('wi.sameTech')}</option>
+              <option value="">{t('wi.legAutoShort')}</option>
               {staff.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6 }} title={t('wi.extraTimeHint')}>
@@ -919,10 +996,12 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
             <button onClick={add} disabled={(!svcId && !extraChanged) || busy} style={{ ...ui.primaryBtn, padding: '9px 14px', opacity: ((svcId || extraChanged) && !busy) ? 1 : 0.5 }}>{busy ? '…' : t('wi.addLine')}</button>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
             <a href={checkoutHref}
-              style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '12px 16px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{t('wi.checkout')} · {formatPrice(subtotal, currency)}</a>
-            <button onClick={onDone} style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)', padding: '12px 14px' }}>{t('wi.done')}</button>
+              style={{ ...ui.primaryBtn, flex: '1 1 140px', textAlign: 'center', padding: '12px 16px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{t('wi.checkout')} · {formatPrice(subtotal, currency)}</a>
+            {w.status !== 'WAITING' && (
+              <button onClick={onDone} title={legs.length > 1 ? t('wi.doneAllHint') : undefined} style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)', padding: '12px 14px', whiteSpace: 'nowrap' }}>{legs.length > 1 ? t('wi.doneAll') : t('wi.done')}</button>
+            )}
             {/* An in-service row is the one that gets stuck: it is not filtered
                 by date, so a test ticket left here sits on the board tomorrow
                 and keeps its technician marked busy for good. */}
@@ -936,6 +1015,120 @@ function WalkInTicketSheet({ w, staff, services, t, currency, onAdd, onUpdateLin
     </div>
   );
   return typeof document === 'undefined' ? null : createPortal(content, document.body);
+}
+
+/** The parts of a visit at a glance: ✋ Hana ✓ · 🦶 chờ thợ. */
+function LegChips({ legs, staff, t }: { legs: Leg[]; staff: StaffTurn[]; t: (k: string) => string }) {
+  return (
+    <div style={{ display: 'flex', gap: 5, flexWrap: 'nowrap', overflow: 'hidden', minWidth: 0 }}>
+      {legs.map((l) => {
+        const who = l.staffId ? staff.find((s) => s.id === l.staffId)?.name ?? '' : '';
+        const tone = l.status === 'DONE'
+          ? { color: 'var(--c64748b)', border: 'var(--c334155)', mark: '✓' }
+          : l.status === 'SERVING'
+            ? { color: 'var(--ink-good)', border: 'rgba(34,197,94,0.45)', mark: '●' }
+            : { color: 'var(--ink-warn)', border: 'rgba(245,158,11,0.45)', mark: '○' };
+        return (
+          <span key={l.legId} title={l.names.join(' · ')} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, maxWidth: 140,
+            fontSize: 11.5, fontWeight: 600, color: tone.color, border: `1px solid ${tone.border}`,
+            borderRadius: 999, padding: '1px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            <span>{ZONE_ICON[l.zone]}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {who || (l.status === 'WAITING' ? t('wi.legWaitingShort') : legLabel(l, t))}{l.pinned && l.status === 'WAITING' && who ? ' 📌' : ''}
+            </span>
+            <span style={{ fontSize: 9 }}>{tone.mark}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Who does which part of the visit. Each leg (hands, feet, anything else) has
+ * its own technician: "Tự động" lets the dispatcher pick the fairest free one
+ * who does those services; picking a name reserves it for her. Works at any
+ * moment — before, during (the customer wants someone else) or after (fixing
+ * who gets the turn).
+ */
+function LegsPanel({ w, legs, staff, restricted, t, onLeg, onLegDone }: {
+  w: WalkIn; legs: Leg[]; staff: StaffTurn[]; restricted: Set<string>; t: (k: string) => string;
+  onLeg: (legId: string, staffId: string | null, start?: boolean) => Promise<void> | void;
+  onLegDone: (legId: string) => Promise<void> | void;
+}) {
+  const [busyLeg, setBusyLeg] = useState<string | null>(null);
+  async function run(legId: string, fn: () => Promise<void> | void) {
+    if (busyLeg) return;
+    setBusyLeg(legId);
+    try { await fn(); } finally { setBusyLeg(null); }
+  }
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--c94a3b8)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{t('wi.legs')}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2 }}>{t('wi.legsHint')}</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {legs.map((l) => {
+          const able = staff.filter((s) => canDoLeg(s, l, restricted));
+          const others = staff.filter((s) => !canDoLeg(s, l, restricted));
+          const since = l.startedAt ? waitedMins(l.startedAt) : 0;
+          const status = l.status === 'DONE'
+            ? { text: t('wi.legDone'), color: 'var(--c94a3b8)', bg: 'var(--c1e293b)' }
+            : l.status === 'SERVING'
+              ? { text: `${t('wi.legServing')} · ${since}′`, color: 'var(--ink-good)', bg: 'rgba(34,197,94,0.12)' }
+              : { text: t('wi.legWaiting'), color: 'var(--ink-warn)', bg: 'var(--wash-amber-2)' };
+          const opt = (s: StaffTurn) => `${s.name}${s.nextUp ? ' ★' : ''}${s.busy && s.id !== l.staffId ? ` · ${s.busyFor != null ? t('wi.freeIn').replace('{m}', String(s.busyFor)) : t('wi.busyShort')}` : ''}`;
+          const busy = busyLeg === l.legId;
+          return (
+            <div key={l.legId} style={{ border: '1px solid var(--c263041)', borderRadius: 10, padding: '10px 12px', background: 'var(--c0f172a)', opacity: busy ? 0.6 : 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span style={{ fontSize: 16, lineHeight: 1 }}>{ZONE_ICON[l.zone]}</span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{legLabel(l, t)}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {l.names.join(' · ') || t('wi.noService')}{l.minutes ? ` · ${l.minutes} ${t('wi.mins')}` : ''}{l.turnValue !== 1 ? ` · ${fmtTurns(l.turnValue)} ${t('wi.turns')}` : ''}
+                  </div>
+                </div>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: status.color, background: status.bg, borderRadius: 999, padding: '2px 9px', whiteSpace: 'nowrap' }}>{status.text}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                <select
+                  aria-label={t('wi.pickStaff')}
+                  value={l.staffId && (l.pinned || l.status !== 'WAITING') ? l.staffId : ''}
+                  disabled={busy}
+                  onChange={(e) => { const v = e.target.value || null; void run(l.legId, () => onLeg(l.legId, v)); }}
+                  style={{ ...ui.input, marginBottom: 0, padding: '7px 9px', fontSize: 12.5, flex: '1 1 170px', minWidth: 0 }}
+                >
+                  {l.status !== 'DONE' && <option value="">{t('wi.legAuto')}</option>}
+                  {able.map((s) => <option key={s.id} value={s.id}>{opt(s)}</option>)}
+                  {others.length > 0 && (
+                    <optgroup label={t('wi.cantDo')}>
+                      {others.map((s) => <option key={s.id} value={s.id}>{opt(s)}</option>)}
+                    </optgroup>
+                  )}
+                </select>
+                {l.status === 'WAITING' && l.staffId && l.pinned && (
+                  <button disabled={busy} onClick={() => run(l.legId, () => onLeg(l.legId, l.staffId, true))}
+                    style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>{t('wi.legStartNow')}</button>
+                )}
+                {l.status === 'SERVING' && (
+                  <button disabled={busy} onClick={() => run(l.legId, () => onLegDone(l.legId))}
+                    style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)', padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>✓ {t('wi.legFinish')}</button>
+                )}
+              </div>
+              {l.status === 'WAITING' && l.pinned && l.staffId && (
+                <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 6 }}>📌 {t('wi.legPinned')}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {w.status === 'WAITING' && <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 6 }}>{t('wi.legQueueHint')}</div>}
+    </div>
+  );
 }
 
 const wiGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 };

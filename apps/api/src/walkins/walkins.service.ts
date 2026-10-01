@@ -6,6 +6,30 @@ import { CustomersService } from '../customers/customers.service';
 import { SettingsService } from '../settings/settings.service';
 import { normalizeSource } from '../common/source.util';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import {
+  attachLines, busyTechs, canRunTogether, itemsOf as legItemsOf, LegItem, legsOf, minutesLeft, newLegId, patchLeg, phaseOf, pickTech,
+  planDispatch, syncTicket, TechInfo, TicketLike, turnsFromTickets, upgradeItems, Zone, zoneOf,
+} from './walkin-legs';
+
+/**
+ * One queue change at a time per salon. Two techs pressing "Xong" in the same
+ * second each read the floor, each saw the same customer at the front, and
+ * each sat them down: one customer, two technicians. Every read-modify-write
+ * of a salon's tickets goes through here (one API instance, so in-process is
+ * enough), so the second press sees what the first one did.
+ */
+const locks = new Map<string, Promise<unknown>>();
+export function serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = locks.get(key) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(fn);
+  const tail = run.catch(() => undefined);
+  locks.set(key, tail);
+  void tail.then(() => { if (locks.get(key) === tail) locks.delete(key); });
+  return run;
+}
+
+/** The virtual leg of a ticket written before legs existed (see walkin-legs.ts). */
+const TICKET_LEG = '_ticket';
 
 export interface AddWalkInDto {
   customerName?: string;
@@ -32,21 +56,16 @@ const INCLUDE = {
   stationRef: { select: { id: true, name: true, kind: true } },
 };
 
-export interface WalkInItem {
-  lineId: string;
-  serviceId: string;
-  name: string;
-  priceCents: number;
-  /** Minutes for this line. Seeded from the catalogue, editable per ticket. */
-  durationMinutes?: number;
-  staffId: string | null;
-}
+
+/** A ticket line. The leg fields (legId, zone, legStatus…) are described in walkin-legs.ts. */
+export type WalkInItem = LegItem;
 
 /**
- * Walk-in queue + fair turn rotation ("lượt"). The front desk adds walk-in
- * clients; each is handed to a technician. Turns are counted per tech per day
- * (done walk-ins + completed appointments) so the next client goes to whoever
- * is "up" — removing the daily fights over turn order.
+ * Walk-in queue + fair turn rotation ("lượt"). The front desk (or the
+ * customer's own phone) adds walk-ins; their services are split into legs and
+ * handed to technicians by the dispatcher — see walkin-legs.ts for the rules.
+ * Turns are counted per tech per day (finished legs at their turn value +
+ * completed appointments) so the next job goes to whoever is "up".
  */
 @Injectable()
 export class WalkinsService {
@@ -62,13 +81,117 @@ export class WalkinsService {
     return id;
   }
 
+  /**
+   * Prisma seen without the generated types, for columns newer than the
+   * locally built client (Service.turnValue). Production builds generate it.
+   */
+  private get db(): any { // eslint-disable-line @typescript-eslint/no-explicit-any
+    return this.prisma as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+
+  /** Menu rows with what the legs need: zone (name + category) and turn value. */
+  private async menuRows(tenantId: string, ids: string[]) {
+    type Row = { id: string; name: string; priceCents: number; discountPercent: number | null; durationMinutes: number; turnValue?: number | null; category?: { name: string } | null };
+    const uniq = [...new Set(ids.filter(Boolean))];
+    if (!uniq.length) return new Map<string, Row>();
+    const select = { id: true, name: true, priceCents: true, discountPercent: true, durationMinutes: true, category: { select: { name: true } } };
+    let rows: Row[];
+    try {
+      rows = await this.db.service.findMany({ where: { tenantId, id: { in: uniq } }, select: { ...select, turnValue: true } });
+    } catch {
+      // The column arrives with its migration; until then everything is worth 1.
+      rows = await this.db.service.findMany({ where: { tenantId, id: { in: uniq } }, select });
+    }
+    return new Map((rows ?? []).map((r) => [r.id, r]));
+  }
+
   /** Snapshot a service into a ticket line (net price after its own discount). */
-  private async buildItem(tenantId: string, serviceId: string, staffId: string | null): Promise<WalkInItem> {
-    const svc = await this.prisma.service.findFirst({ where: { id: serviceId, tenantId }, select: { id: true, name: true, priceCents: true, discountPercent: true, durationMinutes: true } });
+  private async buildItem(tenantId: string, serviceId: string, staffId: string | null): Promise<LegItem & { zone: Zone }> {
+    const svc = (await this.menuRows(tenantId, [serviceId])).get(serviceId);
     if (!svc) throw new BadRequestException('Service not found');
     const d = Math.min(90, Math.max(0, svc.discountPercent ?? 0));
     const net = d > 0 ? Math.round((svc.priceCents * (100 - d)) / 100) : svc.priceCents;
-    return { lineId: randomUUID(), serviceId: svc.id, name: svc.name, priceCents: net, durationMinutes: svc.durationMinutes, staffId };
+    return {
+      lineId: randomUUID(), serviceId: svc.id, name: svc.name, priceCents: net, durationMinutes: svc.durationMinutes, staffId,
+      zone: zoneOf(svc.name, svc.category?.name),
+      turnValue: typeof svc.turnValue === 'number' ? svc.turnValue : 1,
+    };
+  }
+
+  /**
+   * Fill in what a line written by older code (or the self check-in screen)
+   * does not carry: its zone and its turn value, from the menu.
+   */
+  private async enrich(tenantId: string, items: LegItem[]): Promise<LegItem[]> {
+    const missing = items.filter((it) => (!it.legId && !it.zone) || typeof it.turnValue !== 'number');
+    if (!missing.length) return items;
+    const menu = await this.menuRows(tenantId, missing.map((it) => it.serviceId)).catch(() => new Map());
+    return items.map((it) => {
+      const m = menu.get(it.serviceId);
+      const out: LegItem = { ...it };
+      if (!it.legId && !it.zone) out.zone = m ? zoneOf(m.name, m.category?.name) : zoneOf(it.name);
+      if (typeof it.turnValue !== 'number') out.turnValue = typeof m?.turnValue === 'number' ? m.turnValue : 1;
+      return out;
+    });
+  }
+
+  /** A ticket as the board shows it: its legs and where the visit is at. */
+  private view<T extends object>(w: T) {
+    const t = w as unknown as TicketLike;
+    return { ...w, legs: legsOf(t), phase: phaseOf(t) };
+  }
+
+  /** Re-read one ticket (after the dispatcher may have moved it on). */
+  private async row(tenantId: string, id: string) {
+    const w = await this.prisma.walkIn.findFirst({ where: { id, tenantId }, include: INCLUDE });
+    if (!w) throw new NotFoundException('Walk-in not found');
+    return this.view(w);
+  }
+
+  /** Run the dispatcher after a change, never failing the change itself. */
+  private async settle(tenantId: string) {
+    await this.seatWaitingQueue(tenantId).catch(() => []);
+  }
+
+  /**
+   * The ticket's items with real legIds, and the real id of `legId` — which
+   * for a ticket written before legs is the virtual "_ticket" leg.
+   * Returns legId null when the ticket has no lines at all (nothing to write).
+   */
+  private async legItems(tenantId: string, w: TicketLike, legId: string): Promise<{ items: LegItem[]; legId: string | null }> {
+    const before = legItemsOf(w);
+    const legacyIds = new Set(before.filter((it) => !it.legId).map((it) => it.lineId));
+    const items = legacyIds.size ? upgradeItems({ ...w, items: await this.enrich(tenantId, before) }) : before.map((it) => ({ ...it }));
+    if (legId !== TICKET_LEG) {
+      if (!items.some((it) => it.legId === legId)) throw new NotFoundException('Leg not found');
+      return { items, legId };
+    }
+    const real = items.find((it) => legacyIds.has(it.lineId))?.legId ?? null;
+    return { items, legId: real };
+  }
+
+  /** Write items + what the ticket row says about them. */
+  private async writeItems(w: TicketLike & { tenantId: string }, items: LegItem[], extra: Record<string, unknown> = {}) {
+    const s = syncTicket(w, items, new Date());
+    await this.prisma.walkIn.updateMany({
+      where: { id: w.id, tenantId: w.tenantId },
+      data: {
+        items: items as unknown as Prisma.InputJsonValue,
+        status: s.status as WalkInStatus,
+        assignedStaffId: s.assignedStaffId,
+        assignedAt: s.assignedAt,
+        doneAt: s.doneAt,
+        ...extra,
+      },
+    });
+    return s;
+  }
+
+  /** An active technician of this salon, or a 400. */
+  private async techOf(tenantId: string, staffId: string): Promise<string> {
+    const staff = await this.prisma.staffMember.findFirst({ where: { id: staffId, tenantId, takesAppointments: true }, select: { id: true } });
+    if (!staff) throw new BadRequestException('Technician not found');
+    return staff.id;
   }
 
   /**
@@ -130,49 +253,33 @@ export class WalkinsService {
     return (hit ?? free[0]).id;
   }
 
-  /** Add a walk-in. If a technician is passed (or auto-assign is on and a tech is
-   * free) it starts in SERVING; otherwise it waits. */
+  /**
+   * Add a walk-in. Every service the customer asked for goes on the ticket,
+   * grouped into legs (hands, feet, anything else — see walkin-legs.ts), and
+   * the dispatcher starts whatever it can: hands and feet together when two
+   * technicians are free. A technician picked at the desk takes every leg
+   * (the customer asked for her); the desk can move any leg afterwards.
+   * "Add to waiting" only queues the ticket.
+   */
   async add(user: AuthenticatedUser, dto: AddWalkInDto) {
     const tenantId = this.tenantId(user);
     const svcMeta = dto.serviceId
-      ? await this.prisma.service.findFirst({ where: { id: dto.serviceId, tenantId }, select: { id: true, name: true, category: { select: { name: true } } } })
+      ? await this.prisma.service.findFirst({ where: { id: dto.serviceId, tenantId }, select: { id: true } })
       : null;
     const serviceId = svcMeta?.id ?? null;
-    const staff = dto.assignedStaffId
-      ? await this.prisma.staffMember.findFirst({ where: { id: dto.assignedStaffId, tenantId, takesAppointments: true }, select: { id: true } })
+    const staffId = dto.assignedStaffId
+      ? (await this.prisma.staffMember.findFirst({ where: { id: dto.assignedStaffId, tenantId, takesAppointments: true }, select: { id: true } }))?.id ?? null
       : null;
-    // Turn rotation: when no specific tech is requested and auto-assign is on, give
-    // the walk-in to the "up next" tech (fewest turns today AND currently free). If
-    // every tech is busy, nobody can start it -> it waits (front desk assigns when
-    // a tech frees up). A specific requested tech always wins over auto.
-    // ...but never AHEAD of somebody already in the queue. Auto-assign used to
-    // hand the free tech to whoever was being typed in right now, so a customer
-    // who had been sitting for twenty minutes watched a newcomer walk into the
-    // chair. With anybody waiting, this ticket joins the back of the line and
-    // the queue is drained in order (seatWaitingQueue) instead.
-    let assignedStaffId: string | null = staff?.id ?? null;
-    if (!assignedStaffId && dto.autoAssign && !(await this.anyoneWaiting(tenantId))) {
-      assignedStaffId = await this.nextUpStaffId(tenantId);
-    }
-    const assigned = !!assignedStaffId;
     // Every service the customer asked for, in the order picked. The first one
-    // stays the ticket's headline service (it drives the chair match).
+    // stays the ticket's headline service.
     const wanted = [...new Set([...(serviceId ? [serviceId] : []), ...(dto.serviceIds ?? [])])].filter(Boolean);
-    const items: WalkInItem[] = [];
+    const lines: (LegItem & { zone: Zone })[] = [];
     for (const sid of wanted) {
-      try { items.push(await this.buildItem(tenantId, sid, assignedStaffId)); } catch { /* removed from the menu */ }
+      try { lines.push(await this.buildItem(tenantId, sid, staffId)); } catch { /* removed from the menu */ }
     }
-    // A customer takes a chair once a tech starts. Auto-pick a free chair, preferring
-    // one whose kind matches the service (pedi service -> pedi chair). Front desk can
-    // drag them to another chair on the floor view.
-    const stationId = assigned
-      ? await this.freeStationId(tenantId, this.svcMatchText(svcMeta?.name, svcMeta?.category?.name))
-      : null;
-    // Find-or-create a CRM customer by phone so the walk-in earns loyalty and is
-    // remarketable. Skips when no phone is given (no key to dedupe on).
-    // An email is just as good a key as a phone, and the birthday feeds the
-    // birthday campaign — a walk-in should build the same customer record a
-    // booking does.
+    const items = attachLines([], lines);
+    // Find-or-create a CRM customer by phone/email so the walk-in earns loyalty
+    // and is remarketable, with the birthday for the birthday campaign.
     const linked = (dto.phone?.trim() || dto.email?.trim())
       ? await this.customers.findOrCreateByContact(tenantId, {
           firstName: dto.customerName,
@@ -182,7 +289,7 @@ export class WalkinsService {
           birthDate: dto.birthDate,
         })
       : null;
-    return this.prisma.walkIn.create({
+    const created = await this.prisma.walkIn.create({
       data: {
         tenantId,
         serviceId,
@@ -192,33 +299,28 @@ export class WalkinsService {
         note: dto.note?.trim().slice(0, 300) || null,
         partySize: Math.max(1, Math.min(20, Math.round(dto.partySize ?? 1))),
         extraMinutes: dto.extraMinutes ? Math.max(0, Math.min(600, Math.round(dto.extraMinutes))) : null,
-        assignedStaffId,
+        // A requested technician with no services yet: the ticket itself waits for her.
+        assignedStaffId: staffId,
         items: items as unknown as Prisma.InputJsonValue,
         station: dto.station?.trim().slice(0, 24) || null,
-        stationId,
         source: 'walkin',
-        status: assigned ? WalkInStatus.SERVING : WalkInStatus.WAITING,
-        assignedAt: assigned ? new Date() : null,
+        status: WalkInStatus.WAITING,
       },
-      include: INCLUDE,
+      select: { id: true },
     });
+    // Never ahead of anybody already waiting: the dispatcher serves the queue
+    // in arrival order, so a newcomer only starts when nobody is before them
+    // (or the technician they asked for is free).
+    if (staffId || dto.autoAssign) await this.settle(tenantId);
+    return this.row(tenantId, created.id);
   }
 
   /**
-   * A customer who checked in on their own phone lands on a technician by
-   * itself — the "up next" one, exactly as the desk's auto-assign does — so
-   * the board shows who has them the moment the ticket appears, instead of
-   * a WAITING card that needs a person to press "Giao". The owner can still
-   * move them: the card is a normal SERVING card. When every technician is
-   * busy nobody is picked and the ticket waits, same as the desk.
-   * Returns the technician's id, or null when it stayed in the queue.
+   * A customer who checked in on their own phone joins the queue and the
+   * dispatcher runs, exactly as for the desk's "Auto". Returns the technician
+   * now working on them, or null when they are waiting.
    */
   async seatSelfCheckIn(tenantId: string, walkInId: string): Promise<string | null> {
-    // Not "seat THIS ticket": drain the queue from the front. When nobody is
-    // ahead, this ticket IS the front and lands on a tech exactly as before.
-    // When three people are already waiting, the free chair goes to the first
-    // of them and this customer keeps their place — which is the whole point
-    // of a queue, and was the one thing the old version got wrong.
     await this.seatWaitingQueue(tenantId);
     const after = await this.prisma.walkIn.findFirst({
       where: { id: walkInId, tenantId },
@@ -227,130 +329,118 @@ export class WalkinsService {
     return after?.status === WalkInStatus.SERVING ? after.assignedStaffId : null;
   }
 
-  /** Is anybody already in the queue? */
-  private async anyoneWaiting(tenantId: string): Promise<boolean> {
-    const n = await this.prisma.walkIn.count({ where: { tenantId, status: WalkInStatus.WAITING } });
-    return n > 0;
-  }
-
   /**
-   * Hand every free technician the customer who has waited longest, in order.
-   *
-   * Called wherever a chair opens up — a ticket finished at the desk, a ticket
-   * closed by the till — and wherever someone joins the queue. Before this, a
-   * tech finishing left the board frozen: five people waiting, a tech free, and
-   * nothing moved until somebody at the desk pressed "Giao" on a row they
-   * picked by eye. The rotation already knew who was up next; nothing was
-   * asking it.
-   *
-   * Order is arrival order (createdAt), never price or service. The loop is
-   * bounded: at most one pass per active technician, so a bad row can never
-   * spin it.
-   *
-   * Best effort by design — it runs after the work it follows has been saved,
-   * so a failure here leaves tickets in the queue rather than undoing a
-   * checkout. Returns the ids it seated.
+   * Everything the dispatcher and the board need about today's floor: open
+   * tickets, today's finished ones, the team with their skills, and turns.
    */
-  async seatWaitingQueue(tenantId: string): Promise<string[]> {
-    const seated: string[] = [];
-    const rounds = await this.prisma.staffMember.count({ where: { tenantId, isActive: true, takesAppointments: true } });
-    for (let i = 0; i < rounds; i += 1) {
-      const staffId = await this.nextUpStaffId(tenantId);
-      if (!staffId) break;
-      const head = await this.prisma.walkIn.findFirst({
-        where: { tenantId, status: WalkInStatus.WAITING },
-        orderBy: { createdAt: 'asc' },
-        include: { service: { select: { name: true, category: { select: { name: true } } } } },
-      });
-      if (!head) break;
-      const stationId = await this
-        .freeStationId(tenantId, this.svcMatchText(head.service?.name, head.service?.category?.name))
-        .catch(() => null);
-      // A line the customer picked with no tech on it yet inherits the tech who
-      // takes the ticket; a line already given to somebody keeps them.
-      const items = (Array.isArray(head.items) ? (head.items as unknown as WalkInItem[]) : [])
-        .map((it) => ({ ...it, staffId: it.staffId ?? staffId }));
-      await this.prisma.walkIn.update({
-        where: { id: head.id },
-        data: {
-          assignedStaffId: staffId,
-          status: WalkInStatus.SERVING,
-          assignedAt: new Date(),
-          stationId,
-          items: items as unknown as Prisma.InputJsonValue,
-        },
-      });
-      seated.push(head.id);
-    }
-    return seated;
-  }
-
-  /** The tech "up next" = currently free (not serving) with the fewest turns today. */
-  private async nextUpStaffId(tenantId: string): Promise<string | null> {
+  private async floor(tenantId: string) {
     const today = await this.startOfToday(tenantId);
-    const [serving, staff, doneWalkIns, completedAppts] = await Promise.all([
-      this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.SERVING }, select: { assignedStaffId: true } }),
-      this.prisma.staffMember.findMany({ where: { tenantId, isActive: true, takesAppointments: true }, select: { id: true }, orderBy: [{ bookingPriority: 'desc' }, { firstName: 'asc' }] }),
-      this.prisma.walkIn.groupBy({ by: ['assignedStaffId'], where: { tenantId, status: WalkInStatus.DONE, doneAt: { gte: today }, assignedStaffId: { not: null } }, _count: { _all: true } }),
-      this.prisma.appointment.groupBy({ by: ['assignedStaffId'], where: { tenantId, status: AppointmentStatus.COMPLETED, completedAt: { gte: today }, assignedStaffId: { not: null } }, _count: { _all: true } }),
-    ]);
-    const turns = new Map<string, number>();
-    for (const r of doneWalkIns) if (r.assignedStaffId) turns.set(r.assignedStaffId, (turns.get(r.assignedStaffId) ?? 0) + r._count._all);
-    for (const r of completedAppts) if (r.assignedStaffId) turns.set(r.assignedStaffId, (turns.get(r.assignedStaffId) ?? 0) + r._count._all);
-    const busy = new Set(serving.map((x) => x.assignedStaffId).filter((v): v is string => !!v));
-    const available = staff.filter((x) => !busy.has(x.id));
-    if (!available.length) return null;
-    return available.reduce((a, b) => ((turns.get(b.id) ?? 0) < (turns.get(a.id) ?? 0) ? b : a)).id;
-  }
-
-  /** The live board: waiting queue, in-service, and per-tech turn counts. */
-  async board(user: AuthenticatedUser) {
-    const tenantId = this.tenantId(user);
-    const today = await this.startOfToday(tenantId);
-    const [waiting, serving, staff, doneWalkIns, completedAppts] = await Promise.all([
-      this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.WAITING }, include: INCLUDE, orderBy: { createdAt: 'asc' } }),
-      this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.SERVING }, include: INCLUDE, orderBy: { assignedAt: 'asc' } }),
+    const [open, doneToday, staff, links, completedAppts] = await Promise.all([
+      this.prisma.walkIn.findMany({ where: { tenantId, status: { in: [WalkInStatus.WAITING, WalkInStatus.SERVING] } }, include: INCLUDE, orderBy: { createdAt: 'asc' } }),
+      this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.DONE, doneAt: { gte: today } }, include: INCLUDE, orderBy: { doneAt: 'desc' } }),
       this.prisma.staffMember.findMany({
         where: { tenantId, isActive: true, takesAppointments: true },
         select: { id: true, firstName: true, lastName: true, avatarUrl: true, bookingPriority: true },
         orderBy: [{ bookingPriority: 'desc' }, { firstName: 'asc' }],
       }),
-      // DONE walk-ins today WITH their ticket, so a turn credits EVERY tech who did a
-      // service on the visit (a customer who moved to a 2nd tech gives both a turn) —
-      // not only the tech the walk-in was first assigned to.
-      this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.DONE, doneAt: { gte: today } }, include: INCLUDE, orderBy: { doneAt: 'desc' } }),
+      this.prisma.staffService.findMany({ where: { tenantId }, select: { staffMemberId: true, serviceId: true } }).catch(() => [] as { staffMemberId: string; serviceId: string }[]),
       this.prisma.appointment.groupBy({ by: ['assignedStaffId'], where: { tenantId, status: AppointmentStatus.COMPLETED, completedAt: { gte: today }, assignedStaffId: { not: null } }, _count: { _all: true } }),
     ]);
-
-    const turns = new Map<string, number>();
-    const bump = (id: string | null | undefined) => { if (id) turns.set(id, (turns.get(id) ?? 0) + 1); };
-    for (const w of doneWalkIns) {
-      const techs = this.lineTechs(w);
-      if (techs.length) techs.forEach(bump);
-      else bump(w.assignedStaffId); // no lines logged -> credit the assigned tech
-    }
+    // Turns: each finished leg is worth its service's turn value (a ticket from
+    // before legs keeps the old one-per-technician rule), plus completed bookings.
+    const turns = turnsFromTickets([...open, ...doneToday] as unknown as TicketLike[], today);
     for (const r of completedAppts) if (r.assignedStaffId) turns.set(r.assignedStaffId, (turns.get(r.assignedStaffId) ?? 0) + r._count._all);
-    // Waiting-to-pay: the tech has finished, so credit the turn now (chair + tech free).
-    for (const w of serving) {
-      if (!(w as { awaitingPayment?: boolean }).awaitingPayment) continue;
-      const techs = this.lineTechs(w);
-      if (techs.length) techs.forEach(bump);
-      else bump(w.assignedStaffId);
-    }
+    const skills = new Map<string, string[]>();
+    for (const l of links ?? []) skills.set(l.staffMemberId, [...(skills.get(l.staffMemberId) ?? []), l.serviceId]);
+    const techs: TechInfo[] = staff.map((s) => ({
+      id: s.id,
+      name: `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`,
+      priority: Number(s.bookingPriority) || 0,
+      skills: skills.get(s.id) ?? [],
+    }));
+    const restricted = new Set((links ?? []).map((l) => l.serviceId));
+    return { today, open, doneToday, staff, techs, skills, turns, restricted };
+  }
 
-    // A tech is "busy" only while actively serving (not once the client is waiting to pay).
-    const busy = new Set<string>();
-    for (const sv of serving) {
-      if ((sv as { awaitingPayment?: boolean }).awaitingPayment) continue;
-      if (sv.assignedStaffId) busy.add(sv.assignedStaffId);
-      for (const tech of this.lineTechs(sv)) busy.add(tech);
+  /**
+   * Start every leg that can start, fairly. Called wherever a technician frees
+   * up or the queue changes: a leg or ticket finished, a ticket paid, a
+   * customer added, a leg moved. The rules live in planDispatch (pure, tested):
+   * customers part-way through first, then arrival order; fewest turns, then
+   * priority; a technician only gets services she does; hands and feet run
+   * together, nothing else does.
+   *
+   * Best effort by design — it runs after the change it follows has been
+   * saved, so a failure leaves people in the queue rather than undoing the
+   * change. Returns the ids of the tickets it started something on.
+   */
+  async seatWaitingQueue(tenantId: string): Promise<string[]> {
+    return serial(tenantId, () => this.dispatchLocked(tenantId));
+  }
+
+  private async dispatchLocked(tenantId: string): Promise<string[]> {
+    const f = await this.floor(tenantId);
+    // A queued ticket written by older code (or the self check-in screen) is
+    // split into legs now, so its hands and feet can go to two technicians.
+    const upgraded = new Set<string>();
+    const tickets: (Omit<(typeof f.open)[number], 'items'> & { items: LegItem[] })[] = [];
+    for (const w of f.open) {
+      const raw = legItemsOf(w as unknown as TicketLike);
+      if (w.status === WalkInStatus.WAITING && raw.some((it) => !it.legId)) {
+        const items = upgradeItems({ ...(w as unknown as TicketLike), items: await this.enrich(tenantId, raw) });
+        tickets.push({ ...w, items });
+        upgraded.add(w.id);
+      } else {
+        tickets.push({ ...w, items: raw });
+      }
     }
+    const plan = planDispatch(tickets as unknown as TicketLike[], f.techs, f.turns, { restricted: f.restricted });
+    const now = new Date();
+    const seated: string[] = [];
+    for (const t of tickets) {
+      const mine = plan.filter((a) => a.ticketId === t.id);
+      if (!mine.length && !upgraded.has(t.id)) continue;
+      let items: LegItem[] = t.items;
+      let ticketTech: string | null = null;
+      for (const a of mine) {
+        if (a.legId === TICKET_LEG) { ticketTech = a.staffId; continue; }
+        items = patchLeg(items, a.legId, { legStatus: 'SERVING', staffId: a.staffId, startedAt: now.toISOString(), doneAt: null });
+      }
+      const extra: Record<string, unknown> = {};
+      if (mine.length && !t.stationId) {
+        const names = legsOf({ ...(t as unknown as TicketLike), items }).filter((l) => mine.some((a) => a.legId === l.legId)).flatMap((l) => l.names);
+        extra.stationId = await this.freeStationId(tenantId, this.svcMatchText(names.join(' ') || t.service?.name, null)).catch(() => null);
+      }
+      if (ticketTech) {
+        // A ticket with no service lines: the ticket itself is the job.
+        await this.prisma.walkIn.updateMany({
+          where: { id: t.id, tenantId },
+          data: { status: WalkInStatus.SERVING, assignedStaffId: ticketTech, assignedAt: now, ...extra },
+        });
+      } else {
+        await this.writeItems({ ...(t as unknown as TicketLike), tenantId }, items, extra);
+      }
+      if (mine.length) seated.push(t.id);
+    }
+    return seated;
+  }
+
+  /** The live board: queue, chairs, legs, and per-tech turns. */
+  async board(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const f = await this.floor(tenantId);
+    const now = new Date();
+    const open = f.open as unknown as TicketLike[];
+    const busy = busyTechs(open);
+    // Waiting-to-pay: the technician is finished, so she is free.
+    const waiting = f.open.filter((w) => w.status === WalkInStatus.WAITING).map((w) => this.view(w));
+    const serving = f.open.filter((w) => w.status === WalkInStatus.SERVING).sort((a, b) => +(a.assignedAt ?? a.createdAt) - +(b.assignedAt ?? b.createdAt)).map((w) => this.view(w));
 
     // Today's online bookings not yet arrived — shown in the floor's "Booked today"
     // strip so walk-ins and appointments live on one screen.
-    const tomorrow = new Date(today.getTime() + 86400000);
+    const tomorrow = new Date(f.today.getTime() + 86400000);
     const bookedRaw = await this.prisma.appointment.findMany({
-      where: { tenantId, startTime: { gte: today, lt: tomorrow }, status: { in: [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED] } },
+      where: { tenantId, startTime: { gte: f.today, lt: tomorrow }, status: { in: [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED] } },
       select: { id: true, startTime: true, source: true, customer: { select: { firstName: true, lastName: true } }, service: { select: { name: true } }, assignedStaff: { select: { id: true, firstName: true, lastName: true } } },
       orderBy: { startTime: 'asc' }, take: 60,
     });
@@ -363,56 +453,65 @@ export class WalkinsService {
       staff: a.assignedStaff ? { id: a.assignedStaff.id, name: `${a.assignedStaff.firstName}${a.assignedStaff.lastName ? ' ' + a.assignedStaff.lastName : ''}` } : null,
     }));
 
-    const board = staff.map((s) => ({
+    // Next up = the free technician the dispatcher would pick for a plain job.
+    const free = f.techs.filter((t) => !busy.has(t.id));
+    const nextUpStaffId = pickTech(free, [], f.turns)?.id ?? null;
+    const staff = f.staff.map((s) => ({
       id: s.id,
       name: `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`,
       avatarUrl: s.avatarUrl,
-      turns: turns.get(s.id) ?? 0,
+      turns: f.turns.get(s.id) ?? 0,
       busy: busy.has(s.id),
+      // Minutes left on what she is doing now (rough), for "free in ~10'".
+      busyFor: busy.has(s.id) ? minutesLeft(open, s.id, now) : null,
+      // Services she does; empty = everything (nobody ticked boxes yet).
+      skills: f.skills.get(s.id) ?? [],
+      nextUp: s.id === nextUpStaffId,
     }));
-
-    // Next up = an available (not busy) tech with the fewest turns today.
-    const available = board.filter((s) => !s.busy);
-    const nextUpStaffId = available.length
-      ? available.reduce((a, b) => (b.turns < a.turns ? b : a)).id
-      : null;
 
     // Finished today, most recent first: a ticket marked Done by mistake (or done
     // before the customer paid) has to be reachable again for checkout.
-    const done = doneWalkIns.slice(0, 20);
-    return { waiting, serving, booked, done, staff: board.map((s) => ({ ...s, nextUp: s.id === nextUpStaffId })), nextUpStaffId };
+    const done = f.doneToday.slice(0, 20).map((w) => this.view(w));
+    return { waiting, serving, booked, done, staff, nextUpStaffId, restricted: [...f.restricted] };
   }
 
-  /** Check in an online booking: place the customer on a chair as a floor ticket
-   *  linked back to the appointment, and mark the appointment ARRIVED. Everything
-   *  else (running ticket, checkout, turns) then works exactly like a walk-in. */
+  /** Check in an online booking: place the customer on the floor as a ticket
+   *  linked back to the appointment, and mark the appointment ARRIVED. Its
+   *  booked technicians take their legs; the rest goes through the dispatcher,
+   *  queued at the booked time rather than behind everyone who walked in since. */
   async seatAppointment(user: AuthenticatedUser, appointmentId: string) {
     const tenantId = this.tenantId(user);
     const appt = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, tenantId },
       select: {
-        id: true, customerId: true, source: true, assignedStaffId: true, addons: true,
+        id: true, customerId: true, source: true, assignedStaffId: true, addons: true, startTime: true,
         customer: { select: { firstName: true, lastName: true, phone: true } },
         service: { select: { id: true, name: true } },
       },
     });
     if (!appt) throw new NotFoundException('Appointment not found');
     const custName = appt.customer ? `${appt.customer.firstName}${appt.customer.lastName ? ' ' + appt.customer.lastName : ''}`.trim() : null;
-    // A multi-service booking used to arrive at the chair with only its primary
-    // service, so the extras had to be typed in again at the till.
+    // Every service of the booking, each with the technician it was booked with.
     const extraLines = (Array.isArray(appt.addons) ? (appt.addons as unknown as { id?: string; kind?: string; staffMemberId?: string | null }[]) : [])
       .filter((a) => a?.kind === 'service' && a?.id);
-    const items: WalkInItem[] = appt.service
+    const lines: (LegItem & { zone: Zone })[] = appt.service
       ? [await this.buildItem(tenantId, appt.service.id, appt.assignedStaffId ?? null)]
       : [];
     for (const line of extraLines) {
       try {
-        items.push(await this.buildItem(tenantId, line.id!, line.staffMemberId ?? appt.assignedStaffId ?? null));
+        lines.push(await this.buildItem(tenantId, line.id!, line.staffMemberId ?? appt.assignedStaffId ?? null));
       } catch {
         // A service deleted since the booking was taken shouldn't block check-in.
       }
     }
-    const stationId = await this.freeStationId(tenantId, this.svcMatchText(appt.service?.name, null));
+    const now = new Date();
+    let items = attachLines([], lines);
+    // The booked technician is expecting this customer: her first leg starts now.
+    const first = legsOf({ id: '', status: 'WAITING', assignedStaffId: null, createdAt: now, items }).find((l) => l.staffId);
+    if (first) items = patchLeg(items, first.legId, { legStatus: 'SERVING', startedAt: now.toISOString() });
+    const ticket: TicketLike = { id: '', status: 'WAITING', assignedStaffId: null, createdAt: now, items };
+    const s = syncTicket(ticket, items, now);
+    const stationId = first ? await this.freeStationId(tenantId, this.svcMatchText(first.names.join(' ') || appt.service?.name, null)) : null;
     const walkIn = await this.prisma.walkIn.create({
       data: {
         tenantId,
@@ -420,17 +519,20 @@ export class WalkinsService {
         customerId: appt.customerId,
         customerName: custName,
         phone: appt.customer?.phone ?? null,
-        assignedStaffId: appt.assignedStaffId ?? null,
+        assignedStaffId: s.assignedStaffId ?? appt.assignedStaffId ?? null,
         items: items as unknown as Prisma.InputJsonValue,
         source: normalizeSource(appt.source),
         stationId,
-        status: WalkInStatus.SERVING,
-        assignedAt: new Date(),
+        status: s.status as WalkInStatus,
+        assignedAt: s.assignedAt,
+        // In the queue at the time they booked, not at the time they walked in.
+        createdAt: appt.startTime && appt.startTime < now ? appt.startTime : now,
       },
-      include: INCLUDE,
+      select: { id: true },
     });
-    await this.prisma.appointment.update({ where: { id: appt.id }, data: { status: AppointmentStatus.ARRIVED, arrivedAt: new Date() } });
-    return walkIn;
+    await this.prisma.appointment.update({ where: { id: appt.id }, data: { status: AppointmentStatus.ARRIVED, arrivedAt: now } });
+    await this.settle(tenantId);
+    return this.row(tenantId, walkIn.id);
   }
 
   private async mine(user: AuthenticatedUser, id: string) {
@@ -474,16 +576,38 @@ export class WalkinsService {
   /** Move the customer off the chair to wait to pay (bill stays open; chair + tech free). */
   async waitPayment(user: AuthenticatedUser, id: string) {
     const w = await this.mine(user, id);
-    return this.prisma.walkIn.update({ where: { id: w.id }, data: { awaitingPayment: true, stationId: null }, include: INCLUDE });
+    await this.prisma.walkIn.updateMany({ where: { id: w.id, tenantId: w.tenantId }, data: { awaitingPayment: true, stationId: null } });
+    // Her technician is free now: someone waiting can have her.
+    await this.settle(w.tenantId);
+    return this.row(w.tenantId, w.id);
   }
 
-  /** Undo an accidental "Done": bring a finished walk-in back to being served. */
+  /**
+   * Undo an accidental "Done": bring a finished walk-in back to being served.
+   * With legs, the leg finished last goes back into the chair.
+   */
   async reactivate(user: AuthenticatedUser, id: string) {
     const w = await this.mine(user, id);
-    return this.prisma.walkIn.update({ where: { id: w.id }, data: { status: WalkInStatus.SERVING, doneAt: null }, include: INCLUDE });
+    await serial(w.tenantId, async () => {
+      const t = w as unknown as TicketLike;
+      const items = legItemsOf(t);
+      if (!items.some((it) => it.legId)) {
+        await this.prisma.walkIn.updateMany({ where: { id: w.id, tenantId: w.tenantId }, data: { status: WalkInStatus.SERVING, doneAt: null } });
+        return;
+      }
+      const last = legsOf(t).filter((l) => l.status === 'DONE').sort((a, b) => String(a.doneAt).localeCompare(String(b.doneAt))).pop();
+      const next = last ? patchLeg(items, last.legId, { legStatus: 'SERVING', doneAt: null }) : items;
+      await this.writeItems({ ...t, tenantId: w.tenantId, doneAt: null }, next);
+    });
+    return this.row(w.tenantId, w.id);
   }
 
-  /** Add a service line to a walk-in's running ticket (front desk OR the tech). */
+  /**
+   * Add service lines to a running ticket (front desk OR the tech). A line
+   * joins the leg already open for its part of the body (nail art on a
+   * manicure in progress is the same job) or becomes a new leg for the
+   * dispatcher. A line sent with a technician lands on her leg.
+   */
   async addService(
     user: AuthenticatedUser,
     id: string,
@@ -494,14 +618,43 @@ export class WalkinsService {
   ) {
     const w = await this.mine(user, id);
     const ids = [...new Set([...(serviceId ? [serviceId] : []), ...(serviceIds ?? [])])].filter(Boolean);
-    const lines: WalkInItem[] = [];
-    for (const sid of ids) lines.push(await this.buildItem(w.tenantId, sid, staffId ?? w.assignedStaffId ?? null));
-    const data: Prisma.WalkInUpdateInput = {};
-    if (lines.length) data.items = [...this.itemsOf(w), ...lines] as unknown as Prisma.InputJsonValue;
-    // Sent explicitly (including 0) → replace the stored estimate.
-    if (extraMinutes !== undefined) data.extraMinutes = Math.max(0, Math.min(600, Math.round(extraMinutes)));
-    if (Object.keys(data).length === 0) return this.prisma.walkIn.findFirst({ where: { id: w.id }, include: INCLUDE });
-    return this.prisma.walkIn.update({ where: { id: w.id }, data, include: INCLUDE });
+    const tech = staffId ? await this.techOf(w.tenantId, staffId) : null;
+    const lines: (LegItem & { zone: Zone })[] = [];
+    for (const sid of ids) lines.push(await this.buildItem(w.tenantId, sid, tech));
+    await serial(w.tenantId, async () => {
+      const fresh = await this.mine(user, id);
+      const t = fresh as unknown as TicketLike;
+      const extra: Record<string, unknown> = {};
+      // Sent explicitly (including 0) → replace the stored estimate.
+      if (extraMinutes !== undefined) extra.extraMinutes = Math.max(0, Math.min(600, Math.round(extraMinutes)));
+      if (!lines.length) {
+        if (Object.keys(extra).length) await this.prisma.walkIn.updateMany({ where: { id: fresh.id, tenantId: fresh.tenantId }, data: extra });
+        return;
+      }
+      const before = legItemsOf(t);
+      const base = before.some((it) => !it.legId) ? upgradeItems({ ...t, items: await this.enrich(fresh.tenantId, before) }) : before;
+      // A line added to a ticket that has nothing else and is already with a
+      // technician (no lines yet, "Giao"-ed) belongs to her.
+      const owner = !base.length && fresh.status === WalkInStatus.SERVING ? fresh.assignedStaffId : null;
+      // A technician logging what she did while she has the customer: it is
+      // part of the leg she is on, whatever part of the body it is.
+      const live = tech ? legsOf({ ...t, items: base }).find((l) => l.staffId === tech && l.status === 'SERVING') : undefined;
+      let items: LegItem[] = live
+        ? [...base, ...lines.map((l) => ({
+            ...l, legId: live.legId, zone: base.find((b) => b.legId === live.legId)?.zone ?? live.zone,
+            legStatus: 'SERVING' as const, pinned: live.pinned, startedAt: live.startedAt, doneAt: null, staffId: tech,
+          }))]
+        : attachLines(base, lines.map((l) => ({ ...l, staffId: l.staffId ?? owner })));
+      if (owner) {
+        for (const leg of legsOf({ ...t, items })) if (leg.staffId === owner && leg.status === 'WAITING') {
+          items = patchLeg(items, leg.legId, { legStatus: 'SERVING', startedAt: (fresh.assignedAt ?? new Date()).toISOString() });
+          break;
+        }
+      }
+      await this.writeItems({ ...t, tenantId: fresh.tenantId }, items, extra);
+    });
+    await this.settle(w.tenantId);
+    return this.row(w.tenantId, w.id);
   }
 
   /**
@@ -517,38 +670,138 @@ export class WalkinsService {
     dto: { serviceId?: string; priceCents?: number; durationMinutes?: number; staffId?: string | null },
   ) {
     const w = await this.mine(user, id);
-    const items = this.itemsOf(w);
-    const idx = items.findIndex((x) => x.lineId === lineId);
-    if (idx < 0) throw new NotFoundException('Line not found');
-    let line = { ...items[idx] };
-
-    if (dto.serviceId && dto.serviceId !== line.serviceId) {
-      const fresh = await this.buildItem(w.tenantId, dto.serviceId, line.staffId);
-      line = { ...fresh, lineId: line.lineId }; // keep the line's identity
-    }
-    if (dto.priceCents !== undefined) line.priceCents = Math.max(0, Math.round(dto.priceCents));
-    if (dto.durationMinutes !== undefined) line.durationMinutes = Math.max(0, Math.min(600, Math.round(dto.durationMinutes)));
-    if (dto.staffId !== undefined) line.staffId = dto.staffId || null;
-
-    items[idx] = line;
-    return this.prisma.walkIn.update({
-      where: { id: w.id },
-      data: { items: items as unknown as Prisma.InputJsonValue },
-      include: INCLUDE,
+    const tech = dto.staffId ? await this.techOf(w.tenantId, dto.staffId) : null;
+    await serial(w.tenantId, async () => {
+      const fresh = await this.mine(user, id);
+      const t = fresh as unknown as TicketLike;
+      let items = legItemsOf(t).map((it) => ({ ...it }));
+      const idx = items.findIndex((x) => x.lineId === lineId);
+      if (idx < 0) throw new NotFoundException('Line not found');
+      let line = { ...items[idx] };
+      if (dto.serviceId && dto.serviceId !== line.serviceId) {
+        const svc = await this.buildItem(fresh.tenantId, dto.serviceId, line.staffId);
+        // Keep the line's identity and its place in its leg.
+        line = { ...line, serviceId: svc.serviceId, name: svc.name, priceCents: svc.priceCents, durationMinutes: svc.durationMinutes, turnValue: svc.turnValue };
+        if (!line.legId) line.zone = svc.zone;
+      }
+      if (dto.priceCents !== undefined) line.priceCents = Math.max(0, Math.round(dto.priceCents));
+      if (dto.durationMinutes !== undefined) line.durationMinutes = Math.max(0, Math.min(600, Math.round(dto.durationMinutes)));
+      items[idx] = line;
+      if (dto.staffId !== undefined && (dto.staffId || null) !== line.staffId) {
+        if (!line.legId) {
+          items[idx] = { ...line, staffId: tech };
+        } else {
+          const leg = legsOf({ ...t, items }).find((l) => l.legId === line.legId)!;
+          if (leg.lineIds.length === 1) {
+            // The line is the whole leg: the leg changes hands.
+            items = patchLeg(items, leg.legId, { staffId: tech, pinned: !!tech });
+          } else {
+            // One line of a bigger leg done by someone else: it becomes its own
+            // leg, in the same state, with that technician.
+            items[idx] = { ...line, legId: newLegId(), staffId: tech, pinned: !!tech };
+          }
+        }
+      }
+      await this.writeItems({ ...t, tenantId: fresh.tenantId }, items);
     });
+    await this.settle(w.tenantId);
+    return this.row(w.tenantId, w.id);
   }
 
   /** Remove one service line from a walk-in's ticket. */
   async removeService(user: AuthenticatedUser, id: string, lineId: string) {
     const w = await this.mine(user, id);
-    return this.prisma.walkIn.update({ where: { id: w.id }, data: { items: this.itemsOf(w).filter((x) => x.lineId !== lineId) as unknown as Prisma.InputJsonValue }, include: INCLUDE });
+    await serial(w.tenantId, async () => {
+      const fresh = await this.mine(user, id);
+      const t = fresh as unknown as TicketLike;
+      const items = legItemsOf(t).filter((x) => x.lineId !== lineId);
+      if (!items.some((it) => it.legId)) {
+        // A ticket from before legs: just the line, as before.
+        await this.prisma.walkIn.updateMany({ where: { id: fresh.id, tenantId: fresh.tenantId }, data: { items: items as unknown as Prisma.InputJsonValue } });
+        return;
+      }
+      await this.writeItems({ ...t, tenantId: fresh.tenantId }, items);
+    });
+    await this.settle(w.tenantId);
+    return this.row(w.tenantId, w.id);
+  }
+
+  /**
+   * Move one leg. The desk can do this at any moment:
+   *   - waiting leg + a technician  → reserved for her; starts when she is free
+   *     (or right now with `start`, even if she is still finishing someone);
+   *   - waiting leg + null          → back to "whoever is up next";
+   *   - leg in progress + a tech    → the customer changed technician mid-way:
+   *     the leg (and its turn) moves to the new one, the clock keeps running;
+   *   - leg in progress + null      → stop it and put it back in the queue;
+   *   - finished leg + a tech       → correct who did it (and who gets the turn).
+   */
+  async assignLeg(user: AuthenticatedUser, id: string, legId: string, staffId: string | null, start = false) {
+    const w = await this.mine(user, id);
+    const tech = staffId ? await this.techOf(w.tenantId, staffId) : null;
+    await serial(w.tenantId, async () => {
+      const fresh = await this.mine(user, id);
+      const t = fresh as unknown as TicketLike;
+      const { items, legId: real } = await this.legItems(fresh.tenantId, t, legId);
+      if (!real) {
+        // A ticket with no lines: the ticket itself moves.
+        const startNow = !!tech && (start || fresh.status === WalkInStatus.SERVING);
+        await this.prisma.walkIn.updateMany({
+          where: { id: fresh.id, tenantId: fresh.tenantId },
+          data: tech
+            ? { assignedStaffId: tech, ...(startNow ? { status: WalkInStatus.SERVING, assignedAt: fresh.assignedAt ?? new Date() } : {}) }
+            : { assignedStaffId: null, status: WalkInStatus.WAITING, assignedAt: null },
+        });
+        return;
+      }
+      const leg = legsOf({ ...t, items }).find((l) => l.legId === real)!;
+      const now = new Date().toISOString();
+      let next: LegItem[];
+      if (!tech) {
+        next = patchLeg(items, real, leg.status === 'DONE'
+          ? { staffId: null, pinned: false }
+          : { staffId: null, pinned: false, legStatus: 'WAITING', startedAt: null });
+      } else if (leg.status === 'WAITING') {
+        next = patchLeg(items, real, start
+          ? { staffId: tech, pinned: true, legStatus: 'SERVING', startedAt: now }
+          : { staffId: tech, pinned: true });
+      } else {
+        next = patchLeg(items, real, { staffId: tech, pinned: true });
+      }
+      await this.writeItems({ ...t, tenantId: fresh.tenantId }, next);
+    });
+    await this.settle(w.tenantId);
+    return this.row(w.tenantId, w.id);
+  }
+
+  /**
+   * One leg is finished (hands done, feet still to do). Its technician is
+   * free and gets the turn; the ticket stays open until every leg is done,
+   * and the dispatcher immediately looks for someone for the next leg.
+   */
+  async doneLeg(user: AuthenticatedUser, id: string, legId: string) {
+    const w = await this.mine(user, id);
+    await serial(w.tenantId, async () => {
+      const fresh = await this.mine(user, id);
+      const t = fresh as unknown as TicketLike;
+      const { items, legId: real } = await this.legItems(fresh.tenantId, t, legId);
+      if (!real) {
+        await this.prisma.walkIn.updateMany({ where: { id: fresh.id, tenantId: fresh.tenantId }, data: { status: WalkInStatus.DONE, doneAt: new Date() } });
+        return;
+      }
+      const leg = legsOf({ ...t, items }).find((l) => l.legId === real)!;
+      if (leg.status === 'DONE') return;
+      if (!leg.staffId) throw new BadRequestException('Chặng này chưa có thợ — chọn thợ trước.');
+      const now = new Date().toISOString();
+      await this.writeItems({ ...t, tenantId: fresh.tenantId }, patchLeg(items, real, { legStatus: 'DONE', doneAt: now, startedAt: leg.startedAt ?? now }));
+    });
+    await this.settle(w.tenantId);
+    return this.row(w.tenantId, w.id);
   }
 
   /** One walk-in with its ticket (used by POS to prefill every service line). */
   async getOne(user: AuthenticatedUser, id: string) {
-    const w = await this.prisma.walkIn.findFirst({ where: { id, tenantId: this.tenantId(user) }, include: INCLUDE });
-    if (!w) throw new NotFoundException('Walk-in not found');
-    return w;
+    return this.row(this.tenantId(user), id);
   }
 
   /** The staff member row for the signed-in user (null for a salon admin without one). */
@@ -604,10 +857,14 @@ export class WalkinsService {
     const currency = (await this.settings.getBookingRules(tenantId).catch(() => null))?.currency ?? 'USD';
     if (!staff) return { staffId: null, currency, serving: [] as unknown[], salon: [] as unknown[] };
     const allServing = await this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.SERVING }, include: INCLUDE, orderBy: { assignedAt: 'asc' } });
-    // "Mine" = the tech is the assigned tech OR already has a service line on the
-    // ticket. So when a customer moves to a 2nd tech and that tech adds their
-    // service, the ticket appears in THEIR chair too.
-    const serving = allServing.filter((w) => w.assignedStaffId === staff.id || this.lineTechs(w).includes(staff.id));
+    // "Mine" = I am working on a leg of it right now. A ticket from before legs
+    // keeps the old rule: I am its tech, or I have a service line on it.
+    const isMine = (w: (typeof allServing)[number]) => {
+      const t = w as unknown as TicketLike;
+      if (legItemsOf(t).some((it) => it.legId)) return legsOf(t).some((l) => l.status === 'SERVING' && l.staffId === staff.id);
+      return w.assignedStaffId === staff.id || this.lineTechs(w).includes(staff.id);
+    };
+    const serving = allServing.filter(isMine).map((w) => this.view(w));
     // Everyone else currently in the salon (for the "a client moved to my chair" picker).
     const mineIds = new Set(serving.map((w) => w.id));
     const salon = allServing
@@ -616,32 +873,77 @@ export class WalkinsService {
     return { staffId: staff.id, currency, serving, salon };
   }
 
-  /** Hand a waiting walk-in to a technician (→ SERVING). */
+  /**
+   * "Giao" on a waiting ticket: the desk hands the customer to this
+   * technician now. Her leg is the first one that can start (the leg already
+   * reserved for her, else the first in order); the ticket's other legs stay
+   * with the dispatcher.
+   */
   async assign(user: AuthenticatedUser, id: string, staffId: string) {
     const w = await this.mine(user, id);
-    const staff = await this.prisma.staffMember.findFirst({ where: { id: staffId, tenantId: w.tenantId, takesAppointments: true }, select: { id: true } });
-    if (!staff) throw new BadRequestException('Technician not found');
-    return this.prisma.walkIn.update({
-      where: { id: w.id },
-      data: { assignedStaffId: staff.id, status: WalkInStatus.SERVING, assignedAt: w.assignedAt ?? new Date() },
-      include: INCLUDE,
-    });
+    const tech = await this.techOf(w.tenantId, staffId);
+    const t = w as unknown as TicketLike;
+    const legs = legsOf(t);
+    const running = legs.filter((l) => l.status === 'SERVING').map((l) => l.zone);
+    const startable = legs.filter((l) => l.status === 'WAITING' && running.every((z) => canRunTogether(z, l.zone)));
+    const leg = startable.find((l) => l.staffId === tech) ?? startable.find((l) => !l.pinned) ?? startable[0] ?? legs.find((l) => l.status === 'WAITING');
+    if (!leg) {
+      // Nothing left waiting on it: hand over the leg in progress (or the ticket).
+      const live = legs.find((l) => l.status === 'SERVING');
+      return this.assignLeg(user, id, live?.legId ?? TICKET_LEG, tech, true);
+    }
+    return this.assignLeg(user, id, leg.legId, tech, true);
   }
 
-  /** Mark finished (counts as a completed turn), then fill the chair it freed. */
+  /** Mark the whole visit finished (every leg), then fill the chairs it freed. */
   async done(user: AuthenticatedUser, id: string) {
     const w = await this.mine(user, id);
-    const out = await this.prisma.walkIn.update({ where: { id: w.id }, data: { status: WalkInStatus.DONE, doneAt: new Date() }, include: INCLUDE });
+    await serial(w.tenantId, async () => {
+      const fresh = await this.mine(user, id);
+      const t = fresh as unknown as TicketLike;
+      const items = legItemsOf(t);
+      if (!items.some((it) => it.legId)) {
+        await this.prisma.walkIn.updateMany({ where: { id: fresh.id, tenantId: fresh.tenantId }, data: { status: WalkInStatus.DONE, doneAt: new Date() } });
+        return;
+      }
+      const now = new Date().toISOString();
+      let next = items;
+      for (const leg of legsOf(t)) {
+        if (leg.status === 'DONE') continue;
+        next = patchLeg(next, leg.legId, { legStatus: 'DONE', doneAt: now, startedAt: leg.startedAt ?? now });
+      }
+      await this.writeItems({ ...t, tenantId: fresh.tenantId }, next);
+    });
     // After the save, and swallowing its own failure: finishing a customer must
     // succeed even if the queue cannot be drained this second.
-    await this.seatWaitingQueue(w.tenantId).catch(() => []);
-    return out;
+    await this.settle(w.tenantId);
+    return this.row(w.tenantId, w.id);
+  }
+
+  /**
+   * "Xong" in the technician's own app: finishes HER part. A customer whose
+   * feet are still to do stays on the floor for the next technician; when hers
+   * was the last leg, the visit is done. A ticket from before legs closes as
+   * it always did.
+   */
+  async doneAsMe(user: AuthenticatedUser, id: string) {
+    const w = await this.mine(user, id);
+    const me = await this.staffOf(user);
+    const t = w as unknown as TicketLike;
+    const myLegs = me ? legsOf(t).filter((l) => !l.legacy && l.staffId === me && l.status === 'SERVING') : [];
+    if (!myLegs.length) return this.done(user, id);
+    let out: Awaited<ReturnType<WalkinsService['doneLeg']>> | null = null;
+    for (const leg of myLegs) out = await this.doneLeg(user, id, leg.legId);
+    return out!;
   }
 
   /** Remove from the queue (left / mistake). */
   async cancel(user: AuthenticatedUser, id: string) {
     const w = await this.mine(user, id);
-    return this.prisma.walkIn.update({ where: { id: w.id }, data: { status: WalkInStatus.CANCELLED }, include: INCLUDE });
+    const out = await this.prisma.walkIn.update({ where: { id: w.id }, data: { status: WalkInStatus.CANCELLED }, include: INCLUDE });
+    // A customer who left mid-visit frees her technician.
+    if (w.status === WalkInStatus.SERVING) await this.settle(w.tenantId);
+    return out;
   }
 
   /**

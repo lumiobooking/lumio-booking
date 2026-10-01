@@ -72,10 +72,14 @@ export class MyChairController {
     return this.walkins.waitPayment(user, id);
   }
 
-  /** Close the ticket (credits a turn to every tech on it). */
+  /**
+   * I'm finished with this client: closes MY part (and credits my turn). When
+   * another part of the visit is still to do (feet after hands), the client
+   * stays on the floor for the next technician.
+   */
   @Patch(':id/done')
   done(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.walkins.done(user, id);
+    return this.walkins.doneAsMe(user, id);
   }
 
   /** Undo an accidental "Done". */

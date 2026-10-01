@@ -29,6 +29,7 @@ interface Service {
   priceFrom?: boolean;
   imageUrl?: string | null;
   sortOrder?: number;
+  turnValue?: number;
   staffServices?: { staffMemberId: string }[];
 }
 
@@ -455,6 +456,18 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
   );
 }
 
+/** Walk-in turns a service is worth: 1 normally, ½ or 0 for a small add-on. */
+function TurnSelect({ value, onChange, t }: { value: number; onChange: (v: number) => void; t: (k: string) => string }) {
+  const opts: [number, string][] = [[1, 'sv.turn1'], [0.5, 'sv.turnHalf'], [0, 'sv.turn0'], [1.5, 'sv.turn15'], [2, 'sv.turn2']];
+  return (
+    <label title={t('sv.turnHint')}><span style={ui.label}>{t('sv.fTurn')}</span>
+      <select style={ui.input} value={String(value)} onChange={(e) => onChange(Number(e.target.value))}>
+        {opts.map(([v, k]) => <option key={v} value={String(v)}>{t(k)}</option>)}
+      </select>
+    </label>
+  );
+}
+
 function EditServicePanel({ service, token, categories, staff, onSaved }: { service: Service; token: string; categories: Category[]; staff: Staff[]; onSaved: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -468,6 +481,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
     isFeatured: service.isFeatured ?? false,
     priceFrom: service.priceFrom ?? false,
     imageUrl: service.imageUrl ?? '',
+    turnValue: typeof service.turnValue === 'number' ? service.turnValue : 1,
   });
   const [staffIds, setStaffIds] = useState<string[]>(service.staffServices?.map((x) => x.staffMemberId) ?? []);
   const [error, setError] = useState<string | null>(null);
@@ -492,6 +506,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           isFeatured: form.isFeatured,
           priceFrom: form.priceFrom,
           imageUrl: form.imageUrl.trim(),
+          turnValue: form.turnValue,
           staffIds,
         },
       });
@@ -506,6 +521,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           isFeatured: updated.isFeatured ?? false,
           priceFrom: updated.priceFrom ?? false,
           imageUrl: updated.imageUrl ?? '',
+          turnValue: typeof updated.turnValue === 'number' ? updated.turnValue : form.turnValue,
         });
       }
       setSaved(true);
@@ -540,6 +556,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8 }}>
           <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> {t('sv.fromPrice')}
         </label>
+        <TurnSelect value={form.turnValue} onChange={(v) => { setForm({ ...form, turnValue: v }); setSaved(false); }} t={t} />
       </div>
       <label style={{ display: 'block', marginTop: 10 }}>
         <span style={ui.label}>{t('sv.fDescription')}</span>
@@ -642,7 +659,7 @@ function AddonsPanel({ serviceId, token, fmt, currency = 'USD' }: { serviceId: s
 function CreateServiceForm({ token, categories, staff, currency, onCreated }: { token: string; categories: Category[]; staff: Staff[]; currency: string; onCreated: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false, imageUrl: '' });
+  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false, imageUrl: '', turnValue: 1 });
   const [staffIds, setStaffIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -665,6 +682,7 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
           isFeatured: form.isFeatured,
           priceFrom: form.priceFrom,
           imageUrl: form.imageUrl.trim() || undefined,
+          turnValue: form.turnValue,
           staffIds,
         },
       });
@@ -736,6 +754,7 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8, whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> {t('sv.fromPrice')}
         </label>
+        <TurnSelect value={form.turnValue} onChange={(v) => setForm({ ...form, turnValue: v })} t={t} />
       </div>
       <label style={{ display: 'block', marginTop: 12 }}>
         <span style={ui.label}>{t('sv.fDescription')}</span>

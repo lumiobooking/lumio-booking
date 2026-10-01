@@ -40,7 +40,7 @@ export class FeedbackSettingsDto {
   @IsOptional() @IsBoolean() askOnDisplay?: boolean;
   @IsOptional() @IsBoolean() smsFallback?: boolean;
   @IsOptional() @IsBoolean() emailFallback?: boolean;
-  @IsOptional() @IsInt() @Min(5) @Max(1440) smsDelayMinutes?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(1440) smsDelayMinutes?: number;
   @IsOptional() @IsBoolean() receiptQr?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(365) cooldownDays?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) @MaxLength(40, { each: true }) reasons?: string[];

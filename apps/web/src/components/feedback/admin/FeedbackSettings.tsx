@@ -74,7 +74,7 @@ export function FeedbackSettings({ view, draft, setDraft, lang, readOnly }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: C.ink2, flexWrap: 'wrap' }}>
           {step(L('Khách thanh toán', 'Customer pays'))}→
           {step(L('Hỏi trên iPad khách', 'Asked on the customer iPad'), s.askOnDisplay, !s.askOnDisplay)}→
-          {step(<>{L('Không trả lời?', 'No answer?')} {[s.smsFallback ? 'SMS' : null, s.emailFallback !== false ? 'email' : null].filter(Boolean).join(' + ') || L('không nhắc', 'no follow-up')} {L('sau', 'after')} <b>{s.smsDelayMinutes} {L('phút', 'min')}</b></>, false, !s.smsFallback && s.emailFallback === false)}→
+          {step(<>{L('Không trả lời?', 'No answer?')} {[s.smsFallback ? 'SMS' : null, s.emailFallback !== false ? 'email' : null].filter(Boolean).join(' + ') || L('không nhắc', 'no follow-up')} {s.smsDelayMinutes <= 2 ? <b>{L('ngay sau khi trả tiền', 'right after paying')}</b> : <>{L('sau', 'after')} <b>{s.smsDelayMinutes} {L('phút', 'min')}</b></>}</>, false, !s.smsFallback && s.emailFallback === false)}→
           {step(`😊 → ${L('QR / link Google', 'Google QR / link')}`)}
           {step(`😕 → ${L('góp ý riêng → ca cho anh/chị', 'private note → case for you')}`)}
         </div>
@@ -96,8 +96,8 @@ export function FeedbackSettings({ view, draft, setDraft, lang, readOnly }: {
           </Opt>
           <Opt title={L('Nhắn SMS nếu khách chưa trả lời', 'Text message if they didn’t answer')} sub={L('Chỉ gửi cho khách đồng ý nhận tin.', 'Only to customers who agreed to texts.')}>
             <select value={s.smsDelayMinutes} onChange={(e) => set('smsDelayMinutes', Number(e.target.value))} style={selStyle} disabled={(!s.smsFallback && s.emailFallback === false) || readOnly}>
-              {[...new Set([15, 30, 45, 60, 90, 120, 180, 240, s.smsDelayMinutes])].sort((a, b) => a - b).map((m) => (
-                <option key={m} value={m}>{m < 60 || m % 60 ? L(`${m} phút sau khi trả tiền`, `${m} min after paying`) : L(`${m / 60} giờ sau khi trả tiền`, `${m / 60} h after paying`)}</option>
+              {[...new Set([1, 15, 30, 45, 60, 90, 120, 180, 240, s.smsDelayMinutes])].sort((a, b) => a - b).map((m) => (
+                <option key={m} value={m}>{m <= 2 ? L('Ngay sau khi trả tiền', 'Right after paying') : m < 60 || m % 60 ? L(`${m} phút sau khi trả tiền`, `${m} min after paying`) : L(`${m / 60} giờ sau khi trả tiền`, `${m / 60} h after paying`)}</option>
               ))}
             </select>
             <Toggle on={s.smsFallback} onChange={(v) => set('smsFallback', v)} />

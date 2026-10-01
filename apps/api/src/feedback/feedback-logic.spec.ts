@@ -10,9 +10,9 @@ describe('feedback settings', () => {
     expect(DEFAULT_FEEDBACK_SETTINGS.enabled).toBe(false);
   });
   it('clamp numbers, drop junk reasons, keep what was not sent', () => {
-    const s = sanitizeSettings({ enabled: true, smsDelayMinutes: 2, replyHours: 999, reasons: ['  Price ', 'Price', '', 'Late'] });
+    const s = sanitizeSettings({ enabled: true, smsDelayMinutes: 0, replyHours: 999, reasons: ['  Price ', 'Price', '', 'Late'] });
     expect(s.enabled).toBe(true);
-    expect(s.smsDelayMinutes).toBe(5);
+    expect(s.smsDelayMinutes).toBe(1);
     expect(s.replyHours).toBe(168);
     expect(s.reasons).toEqual(['Price', 'Late']);
     expect(s.cooldownDays).toBe(45);

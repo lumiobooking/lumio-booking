@@ -90,7 +90,7 @@ export function sanitizeSettings(raw: Partial<FeedbackSettings> | null | undefin
     askOnDisplay: bool('askOnDisplay'),
     smsFallback: bool('smsFallback'),
     emailFallback: bool('emailFallback'),
-    smsDelayMinutes: r.smsDelayMinutes === undefined ? base.smsDelayMinutes : clampInt(r.smsDelayMinutes, 5, 24 * 60, base.smsDelayMinutes),
+    smsDelayMinutes: r.smsDelayMinutes === undefined ? base.smsDelayMinutes : clampInt(r.smsDelayMinutes, 1, 24 * 60, base.smsDelayMinutes),
     receiptQr: bool('receiptQr'),
     cooldownDays: r.cooldownDays === undefined ? base.cooldownDays : clampInt(r.cooldownDays, 0, 365, base.cooldownDays),
     reasons: reasons.length ? reasons : DEFAULT_REASONS,

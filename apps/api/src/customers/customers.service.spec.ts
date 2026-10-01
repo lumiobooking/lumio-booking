@@ -7,16 +7,19 @@ import { CustomersService } from './customers.service';
  * the salon's own (tenantId, email) unique key.
  */
 type Row = Record<string, any>;
-function setup(rows: Row[]) {
+function setup(rows: Row[], market = 'US') {
   const ci = (a: unknown, b: unknown) => String(a ?? '').toLowerCase() === String(b ?? '').toLowerCase();
   const match = (r: Row, w: Row): boolean => Object.entries(w).every(([k, v]) => {
     if (k === 'NOT') return !match(r, v as Row);
     if (v && typeof v === 'object' && 'equals' in (v as Row)) return ci(r[k], (v as Row).equals);
+    if (v && typeof v === 'object' && 'contains' in (v as Row)) return String(r[k] ?? '').toLowerCase().includes(String((v as Row).contains).toLowerCase());
+    if (k === 'OR') return (v as Row[]).some((w) => match(r, w));
     return r[k] === v;
   });
   const prisma: any = {
     customer: {
       findFirst: jest.fn(async ({ where }: Row) => { if (!where.tenantId) throw new Error('unscoped'); return rows.find((r) => match(r, where)) ?? null; }),
+      findMany: jest.fn(async ({ where }: Row) => { if (!where.tenantId) throw new Error('unscoped'); return rows.filter((r) => match(r, where)); }),
       updateMany: jest.fn(async ({ where, data }: Row) => {
         if (data.email && rows.some((r) => r.tenantId === where.tenantId && r.id !== where.id && r.email === data.email)) throw Object.assign(new Error('Unique'), { code: 'P2002' });
         rows.filter((r) => match(r, where)).forEach((r) => Object.assign(r, data)); return { count: 1 };
@@ -27,6 +30,7 @@ function setup(rows: Row[]) {
       }),
     },
   };
+  prisma.tenant = { findUnique: jest.fn(async () => ({ market, timezone: market === 'VN' ? 'Asia/Ho_Chi_Minh' : 'America/Chicago' })) };
   const audit: any = { log: jest.fn() };
   return { svc: new CustomersService(prisma, audit, {} as never), rows };
 }
@@ -58,4 +62,38 @@ describe('quick-adding a customer at the till', () => {
     expect(c?.id).not.toBe('b1');
     expect(rows.filter((r) => r.tenantId === 'A')).toHaveLength(1);
   });
+
+  it('a number saved as "+1 512-523-5123" is the same customer when typed "5125235123" — points stay on one card', async () => {
+    const { svc, rows } = setup([{ id: 'old', tenantId: 'A', firstName: 'Viet', phone: '+15125235123', email: null, loyaltyPoints: 120 }]);
+    const c = await svc.quickCreate(owner, { firstName: 'A Viet', phone: '(512) 523-5123' });
+    expect(c?.id).toBe('old');
+    expect(rows).toHaveLength(1);
+  });
+
+  it('Vietnam: 0912 345 678 and +84912345678 are one person', async () => {
+    const { svc, rows } = setup([{ id: 'vn', tenantId: 'A', firstName: 'Lan', phone: '+84912345678', email: null }], 'VN');
+    const c = await svc.quickCreate(owner, { firstName: 'Lan', phone: '0912 345 678' });
+    expect(c?.id).toBe('vn');
+    expect(rows).toHaveLength(1);
+  });
+
+  it('same last digits, different area code: a different person', async () => {
+    const { svc, rows } = setup([{ id: 'p1', tenantId: 'A', firstName: 'Kim', phone: '6125235123', email: null }]);
+    const c = await svc.quickCreate(owner, { firstName: 'A Viet', phone: '5125235123' });
+    expect(c?.id).not.toBe('p1');
+    expect(rows).toHaveLength(2);
+  });
 });
+
+describe('finding a returning customer at the till', () => {
+  it('by any spelling of their number, by email, never from another salon', async () => {
+    const { svc } = setup([
+      { id: 'a1', tenantId: 'A', firstName: 'Viet', lastName: null, phone: '+15125235123', email: 'NguyenViet14546@gmail.com', loyaltyPoints: 120 },
+      { id: 'b1', tenantId: 'B', firstName: 'Viet', lastName: null, phone: '5125235123', email: 'nguyenviet14546@gmail.com', loyaltyPoints: 999 },
+    ]);
+    expect((await svc.search(owner, '512-523-5123')).map((c: any) => c.id)).toEqual(['a1']);
+    expect((await svc.search(owner, '15125235123')).map((c: any) => c.id)).toEqual(['a1']);
+    expect((await svc.search(owner, 'nguyenviet14546@gmail')).map((c: any) => c.id)).toEqual(['a1']);
+  });
+});
+

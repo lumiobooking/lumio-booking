@@ -25,7 +25,7 @@ interface Service { id: string; name: string; priceCents: number; discountPercen
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null; imageUrl?: string | null }
 interface Addon { id: string; name: string; priceCents: number; durationMinutes: number; serviceId: string; service: { name: string } | null }
 interface Staff { id: string; firstName: string; lastName: string | null; isActive: boolean; tipQrUrl?: string | null; tipHandle?: string | null }
-interface CustomerHit { id: string; firstName: string; lastName?: string | null; phone?: string | null; loyaltyPoints?: number }
+interface CustomerHit { id: string; firstName: string; lastName?: string | null; phone?: string | null; email?: string | null; loyaltyPoints?: number }
 interface CatalogCache {
   services: Service[]; products: Product[]; addons: Addon[]; staff: Staff[];
   taxRate: number; cardSurchargePct: number; cardSurchargeOn: boolean; transferInfo: string; transferQr: string; currency: string;
@@ -2749,6 +2749,24 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
   const [nf, setNf] = useState({ firstName: '', phone: '', email: '', birthDate: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // While a "new" customer is being typed: is this person already on the salon's books?
+  const [known, setKnown] = useState<CustomerHit | null>(null);
+
+  useEffect(() => {
+    if (!adding) { setKnown(null); return; }
+    const digits = nf.phone.replace(/\D/g, '');
+    const email = nf.email.trim();
+    const term = digits.length >= 7 ? nf.phone.trim() : (/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) ? email : '');
+    if (!term) { setKnown(null); return; }
+    let alive = true;
+    const h = setTimeout(async () => {
+      try {
+        const r = await apiFetch<CustomerHit[]>(`/customers/search?q=${encodeURIComponent(term)}`, { token });
+        if (alive) setKnown(r[0] ?? null);
+      } catch { if (alive) setKnown(null); }
+    }, 300);
+    return () => { alive = false; clearTimeout(h); };
+  }, [adding, nf.phone, nf.email, token]);
 
   useEffect(() => {
     if (customerId) return; // already attached — no searching
@@ -2807,6 +2825,18 @@ function CustomerBox({ token, t, customerId, customerLabel, customerPoints, onPi
           <span style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>✉️ {t('po.custEmail')}</span>
           <input type="email" value={nf.email} onChange={(e) => setNf({ ...nf, email: e.target.value })} placeholder="name@email.com" style={{ ...ui.input, flex: 1, padding: '6px 9px', fontSize: 13 }} />
         </div>
+        {known && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', marginBottom: 8, borderRadius: 8, background: 'var(--c052e16)', border: '1px solid var(--c166534)' }}>
+            <span style={{ fontSize: 16 }}>👤</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, color: 'var(--ink-good)' }}>{t('po.custExisting')}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hitLabel(known)}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>⭐ {t('po.custPoints').replace('{n}', String(known.loyaltyPoints ?? 0))} · {t('po.custExistingSub')}</div>
+            </div>
+            <button type="button" onClick={() => { onPick(known.id, hitLabel(known), known.loyaltyPoints ?? 0); setAdding(false); setKnown(null); setNf({ firstName: '', phone: '', email: '', birthDate: '' }); setQ(''); setErr(null); }}
+              style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 13, background: '#16a34a' }}>{t('po.custUseThis')}</button>
+          </div>
+        )}
         {err && <div style={{ color: 'var(--cfca5a5)', fontSize: 12, marginBottom: 6 }}>{err}</div>}
         <div style={{ display: 'flex', gap: 6 }}>
           <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 13 }}>{busy ? t('po.custSaving') : t('po.custSave')}</button>

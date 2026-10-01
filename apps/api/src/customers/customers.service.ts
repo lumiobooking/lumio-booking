@@ -4,6 +4,7 @@ import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { TrashService } from '../maintenance/trash.service';
+import { dialCodeFor, toE164 } from '../common/phone';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
 @Injectable()
@@ -55,17 +56,54 @@ export class CustomersService {
     const term = (q ?? '').trim();
     if (term.length < 2) return [];
     const digits = term.replace(/[^\d]/g, '');
+    const select = { id: true, firstName: true, lastName: true, phone: true, email: true, loyaltyPoints: true } as const;
     const or: Prisma.CustomerWhereInput[] = [
       { firstName: { contains: term, mode: 'insensitive' } },
       { lastName: { contains: term, mode: 'insensitive' } },
     ];
+    if (term.includes('@')) or.push({ email: { contains: term, mode: 'insensitive' } });
     if (digits.length >= 3) or.push({ phone: { contains: digits } });
-    return this.prisma.customer.findMany({
-      where: { tenantId, OR: or },
-      select: { id: true, firstName: true, lastName: true, phone: true, loyaltyPoints: true },
-      orderBy: { createdAt: 'desc' },
-      take: 8,
+    // A full number finds the person however it was typed back then:
+    // "+1 512-523-5123", "15125235123" and "5125235123" are the same customer.
+    if (digits.length >= 7) or.push({ phone: { contains: digits.slice(-7) } });
+    const rows = await this.prisma.customer.findMany({ where: { tenantId, OR: or }, select, orderBy: { createdAt: 'desc' }, take: 30 });
+    let keep = rows;
+    if (digits.length >= 7) {
+      const dial = await this.dialFor(tenantId);
+      const want = toE164(term, dial);
+      const low = term.toLowerCase();
+      keep = rows.filter((r) =>
+        `${r.firstName} ${r.lastName ?? ''}`.toLowerCase().includes(low)
+        || (r.phone ?? '').replace(/\D/g, '').includes(digits)
+        || (!!want && toE164(r.phone, dial) === want));
+    }
+    return keep.slice(0, 8);
+  }
+
+  /** The salon's calling code: its country, else its timezone. */
+  private async dialFor(tenantId: string): Promise<string> {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true, timezone: true } }).catch(() => null);
+    return dialCodeFor(t?.market ?? null, t?.timezone ?? null);
+  }
+
+  /**
+   * This salon's customer with this phone number, however either side was
+   * written (with or without +1 / 0, spaces, dashes). Only ever inside one salon.
+   */
+  private async findByPhone(tenantId: string, raw: string) {
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length < 7) return null;
+    const dial = await this.dialFor(tenantId);
+    const want = toE164(raw, dial);
+    const rows = await this.prisma.customer.findMany({
+      where: { tenantId, phone: { contains: digits.slice(-7) } },
+      select: { id: true, firstName: true, email: true, phone: true, birthDate: true },
+      orderBy: { createdAt: 'asc' },
+      take: 20,
     });
+    return rows.find((r) => r.phone === raw)
+      ?? rows.find((r) => !!want && toE164(r.phone, dial) === want)
+      ?? null;
   }
 
   /** Front-desk quick-add (POS): find-or-create by phone/email, return a brief. */
@@ -107,9 +145,7 @@ export class CustomersService {
       return isNaN(d.getTime()) ? null : d;
     })();
 
-    let existing = phone
-      ? await this.prisma.customer.findFirst({ where: { tenantId, phone }, select: { id: true, firstName: true, email: true, phone: true, birthDate: true } })
-      : null;
+    let existing = phone ? await this.findByPhone(tenantId, phone) : null;
     // Emails were not always stored lower-case — match them the way people read them.
     const byEmail = (e: string) => this.prisma.customer.findFirst({ where: { tenantId, email: { equals: e, mode: 'insensitive' } }, select: { id: true, firstName: true, email: true, phone: true, birthDate: true } });
     if (!existing && email) existing = await byEmail(email);

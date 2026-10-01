@@ -1,46 +1,45 @@
 'use client';
 
-// The technician's own schedule — as a CALENDAR, not a list. A tech thinks in
-// days ("what have I got tomorrow?"), so they get a month grid they can scan at a
-// glance, and the day they tap opens underneath as a timeline.
+// The technician's schedule.
+//
+// On a phone it is a WEEK, not a month: a strip of seven days she can hit
+// with a thumb (each showing how many bookings it holds), and under it the
+// chosen day as a list in time order. A month grid on a 390px screen is
+// either unreadable or scrolls sideways — the old page did the latter.
+// Anything waiting for her yes carries "Nhận / Không nhận" right on the
+// row; tapping a booking opens it close up (call or text the client, or
+// "Khách đã đến — bắt đầu làm").
+//
+// On a computer the month grid stays, as a tab beside the week.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { StaffShell } from '../../../components/StaffShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
-import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
-import { uiLocale, dayKeyInTz, hourInTz, fmtInTz } from '../../../lib/datetime';
+import { useIsMobile } from '../../../lib/responsive';
+import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { uiLocale, dayKeyInTz, fmtInTz } from '../../../lib/datetime';
+import { IC, Icon, L, Pill, Toast, st, useToast } from '../../../components/staff/kit';
+import { BookingSheet, StaffBooking, bookingName, bookingServices, bookingMinutes, bookingStatus } from '../../../components/staff/BookingSheet';
 
-interface NamedRef { firstName?: string; lastName?: string | null }
-interface Booking {
-  id: string;
-  status: string;
-  startTime: string;
-  endTime?: string | null;
-  notes: string | null;
-  customer: NamedRef | null;
-  service: { name: string } | null;
-}
-
+const DEAD = ['CANCELLED', 'NO_SHOW', 'REJECTED'];
 const STATUS_COLORS: Record<string, string> = {
-  ASSIGNED: '#3b82f6',
-  ACCEPTED: '#22c55e',
-  CONFIRMED: '#22c55e',
-  ARRIVED: '#0ea5e9',
-  COMPLETED: '#a855f7',
-  CANCELLED: 'var(--c94a3b8)',
-  NO_SHOW: '#ef4444',
+  ASSIGNED: '#f59e0b', ACCEPTED: '#6366f1', CONFIRMED: '#6366f1', ARRIVED: '#0ea5e9',
+  COMPLETED: '#94a3b8', CANCELLED: '#94a3b8', NO_SHOW: '#ef4444', REJECTED: '#94a3b8',
 };
-// A cancelled / no-show booking still shows, but never counts as work to do.
-const DEAD = ['CANCELLED', 'NO_SHOW'];
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const sameDay = (a: Date, b: Date) => ymd(a) === ymd(b);
+const fromKey = (k: string) => new Date(`${k}T00:00:00`);
+const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const mondayOf = (d: Date) => addDays(d, -((d.getDay() + 6) % 7));
 
 export default function StaffBookingsPage() {
+  const { lang } = useLang();
+  const vi = lang === 'vi';
   return (
-    <StaffShell>
+    <StaffShell title={L(vi, 'Lịch của tôi', 'My schedule')}>
       <Inner />
     </StaffShell>
   );
@@ -48,42 +47,32 @@ export default function StaffBookingsPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const router = useRouter();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const isMobile = useIsMobile(720);
+  const [bookings, setBookings] = useState<StaffBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState(() => new Date());        // which month is on screen
-  const [picked, setPicked] = useState(() => new Date());    // which day is open
-  const [mode, setMode] = useState<'cal' | 'list'>('cal');
+  const [mode, setMode] = useState<'week' | 'month'>('week');
+  const [picked, setPicked] = useState(() => fromKey(dayKeyInTz(new Date())));
+  const [view, setView] = useState(() => new Date());
   const [autoPicked, setAutoPicked] = useState(false);
-
-  // A month grid full of chips needs room. On a phone the tech starts on the list
-  // (the grid is still one tap away, and scrolls sideways).
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 720) setMode('list');
-  }, []);
+  const [open, setOpen] = useState<{ b: StaffBooking; reject: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { toast, show } = useToast();
 
   const load = useCallback(async () => {
     if (!token) return;
-    setLoading(true); setError(null);
-    try { setBookings(await apiFetch<Booking[]>('/bookings/my', { token })); }
+    try { setBookings(await apiFetch<StaffBooking[]>('/bookings/my', { token })); setError(null); }
     catch (err) { setError(err instanceof Error ? err.message : 'Failed to load bookings'); }
     finally { setLoading(false); }
   }, [token]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
+  useLiveRefresh(load, 30000);
 
-  async function respond(id: string, action: 'accept' | 'reject') {
-    try {
-      const body = action === 'reject' ? { reason: 'Not available' } : undefined;
-      await apiFetch(`/bookings/${id}/${action}`, { method: 'POST', token, body });
-      await load();
-    } catch (err) { setError(err instanceof Error ? err.message : 'Action failed'); }
-  }
-
-  // Bookings bucketed by day, so the grid can render counts without re-scanning.
   const byDay = useMemo(() => {
-    const m = new Map<string, Booking[]>();
+    const m = new Map<string, StaffBooking[]>();
     for (const b of bookings) {
       const k = dayKeyInTz(b.startTime); // the SALON's day, not the phone's
       const list = m.get(k);
@@ -93,276 +82,223 @@ function Inner() {
     return m;
   }, [bookings]);
 
-  // Landing on "today" when today is empty makes the page look broken. Open the
-  // nearest day that actually has work on it (today if it has any, else the next
-  // upcoming day, else the most recent past one).
+  // Landing on an empty today makes the page look broken: open the nearest
+  // day that has work (today if it has any, else the next one coming).
   useEffect(() => {
     if (autoPicked || bookings.length === 0) return;
     const todayKey = dayKeyInTz(new Date());
-    const days = [...new Set(bookings.map((b) => dayKeyInTz(b.startTime)))].sort();
-    const upcoming = days.find((d) => d >= todayKey);
-    const target = upcoming ?? days[days.length - 1];
-    if (!target) return;
-    const d = new Date(target + 'T00:00:00');
-    setPicked(d);
-    setView(new Date(d.getFullYear(), d.getMonth(), 1));
-    setAutoPicked(true);
-  }, [bookings, autoPicked]);
+    const days = [...byDay.keys()].sort();
+    const target = (byDay.get(todayKey)?.length ? todayKey : undefined) ?? days.find((d) => d >= todayKey) ?? todayKey;
+    const d = fromKey(target);
+    setPicked(d); setView(new Date(d.getFullYear(), d.getMonth(), 1)); setAutoPicked(true);
+  }, [bookings, byDay, autoPicked]);
 
-  const cells = useMemo(() => {
-    const y = view.getFullYear(), mo = view.getMonth();
-    const offset = (new Date(y, mo, 1).getDay() + 6) % 7; // grid starts Monday
-    const days = new Date(y, mo + 1, 0).getDate();
-    const out: (Date | null)[] = [];
-    for (let i = 0; i < offset; i++) out.push(null);
-    for (let d = 1; d <= days; d++) out.push(new Date(y, mo, d));
-    while (out.length % 7 !== 0) out.push(null);
-    return out;
-  }, [view]);
-
-  // The ring says "today" by the SALON's calendar.
-  const todayKey = dayKeyInTz(new Date());
-  const today = new Date(`${todayKey}T00:00:00`);
-  const dayList = byDay.get(ymd(picked)) ?? [];
-  const pending = bookings.filter((b) => b.status === 'ASSIGNED').length;
-
-  const monthName = view.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { month: 'long', year: 'numeric' });
-  const dayNames = vi ? ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const shift = (n: number) => setView(new Date(view.getFullYear(), view.getMonth() + n, 1));
-  const jumpToday = () => { const d = new Date(`${dayKeyInTz(new Date())}T00:00:00`); setView(d); setPicked(d); };
-
-  const name = (c: NamedRef | null) => (c ? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() : '—');
-  const hhmm = (iso: string) => fmtInTz(iso, { hour: 'numeric', minute: '2-digit' });
-
-  const row = (b: Booking, withDate = false) => {
-    const colour = STATUS_COLORS[b.status] ?? 'var(--c94a3b8)';
-    const dead = DEAD.includes(b.status);
-    const d = new Date(b.startTime);
-    return (
-      <div key={b.id} style={{ ...ui.card, display: 'flex', gap: 12, alignItems: 'stretch', padding: 0, overflow: 'hidden', opacity: dead ? 0.55 : 1 }}>
-        <div style={{ width: 4, background: colour, flexShrink: 0 }} />
-        <div style={{ flex: 1, minWidth: 0, padding: '12px 14px 12px 2px' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{hhmm(b.startTime)}</span>
-            {withDate && (
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ca5b4fc)', background: 'rgba(99,102,241,0.15)', borderRadius: 6, padding: '2px 8px' }}>
-                {d.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { day: 'numeric', month: 'short' })}
-              </span>
-            )}
-            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ccbd5e1)', minWidth: 0 }}>{b.service?.name ?? 'Service'}</span>
-          </div>
-          <div style={{ color: 'var(--c94a3b8)', fontSize: 13, marginTop: 3 }}>{name(b.customer)}</div>
-          {b.notes && <div style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 4, fontStyle: 'italic' }}>“{b.notes}”</div>}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-            <span style={{ color: colour, border: `1px solid ${colour}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{b.status}</span>
-            {b.status === 'ASSIGNED' && (
-              <>
-                <button onClick={() => respond(b.id, 'accept')} style={acceptBtn}>{vi ? 'Nhận' : 'Accept'}</button>
-                <button onClick={() => respond(b.id, 'reject')} style={{ ...ui.dangerBtn, padding: '6px 14px', fontSize: 13, whiteSpace: 'nowrap' }}>
-                  {vi ? 'Từ chối' : 'Reject'}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    );
+  async function call(path: string, body?: Record<string, unknown>) {
+    setBusy(true); setError(null);
+    try { await apiFetch(path, { method: 'POST', token, body }); await load(); return true; }
+    catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); return false; }
+    finally { setBusy(false); }
+  }
+  const accept = async (b: StaffBooking) => {
+    if (await call(`/bookings/${b.id}/accept`)) { setOpen(null); show(L(vi, `Đã nhận lịch · ${bookingName(b)}`, `Accepted · ${bookingName(b)}`)); }
+  };
+  const reject = async (b: StaffBooking, reason: string) => {
+    if (await call(`/bookings/${b.id}/reject`, { reason })) { setOpen(null); show(L(vi, 'Đã báo quầy — lịch sẽ giao thợ khác', 'The desk will give it to someone else')); }
+  };
+  const start = async (b: StaffBooking) => {
+    if (await call(`/my-chair/appointments/${b.id}/start`)) { setOpen(null); router.push('/staff/today'); }
   };
 
-  // Everything from today on, soonest first — used by the List tab and by the
-  // "nothing on this day" fallback, so the tech is never staring at an empty screen.
-  const upcoming = useMemo(() => {
-    const t0 = dayKeyInTz(new Date());
-    return bookings
-      .filter((b) => dayKeyInTz(b.startTime) >= t0)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }, [bookings]);
-  const past = useMemo(() => {
-    const t0 = dayKeyInTz(new Date());
-    return bookings
-      .filter((b) => dayKeyInTz(b.startTime) < t0)
-      .sort((a, b) => b.startTime.localeCompare(a.startTime));
-  }, [bookings]);
+  const todayKey = dayKeyInTz(new Date());
+  const pending = bookings.filter((b) => b.status === 'ASSIGNED' && new Date(b.startTime).getTime() > Date.now() - 3600_000);
+  const week = Array.from({ length: 7 }, (_, i) => addDays(mondayOf(picked), i));
+  const dayList = byDay.get(ymd(picked)) ?? [];
+  const live = dayList.filter((b) => !DEAD.includes(b.status));
+  const dowShort = vi ? ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const monthLabel = vi ? `Tháng ${picked.getMonth() + 1}, ${picked.getFullYear()}` : picked.toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric' });
+  const dayLabel = ymd(picked) === todayKey
+    ? L(vi, 'Hôm nay', 'Today')
+    : (() => { const t = picked.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { weekday: 'long', day: 'numeric', month: 'numeric' }); return t.charAt(0).toUpperCase() + t.slice(1); })();
 
-  const tab = (key: 'cal' | 'list', label: string) => (
-    <button onClick={() => setMode(key)}
-      style={{ padding: '7px 16px', borderRadius: 999, cursor: 'pointer', fontSize: 13, fontWeight: 600,
-        border: mode === key ? '1px solid #6366f1' : '1px solid var(--c334155)',
-        background: mode === key ? '#6366f1' : 'transparent', color: mode === key ? '#fff' : 'var(--ccbd5e1)' }}>
+  const tab = (key: 'week' | 'month', label: string) => (
+    <button type="button" onClick={() => setMode(key)} aria-pressed={mode === key}
+      style={{ height: 40, padding: '0 16px', borderRadius: 999, cursor: 'pointer', fontSize: 14, fontWeight: 700,
+        border: mode === key ? '1px solid #4f46e5' : '1px solid var(--line-strong)',
+        background: mode === key ? '#4f46e5' : 'transparent', color: mode === key ? '#fff' : 'var(--ccbd5e1)' }}>
       {label}
     </button>
   );
 
   return (
     <section style={{ width: '100%', maxWidth: 900 }}>
-      {error && <div style={ui.banner}>{error}</div>}
+      {error && <div style={{ ...st.card, borderColor: 'var(--ink-bad)', color: 'var(--ink-bad)', fontSize: 14, padding: 12, marginBottom: 12 }}>{error}</div>}
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        {tab('cal', vi ? '📅 Lịch' : '📅 Calendar')}
-        {tab('list', vi ? '📋 Danh sách' : '📋 List')}
-      </div>
-
-      {/* Anything waiting on the tech's answer is surfaced before the calendar. */}
-      {pending > 0 && (
-        <div style={{ ...ui.card, marginBottom: 12, borderColor: '#3b82f6', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 18 }}>🔔</span>
-          <span style={{ color: 'var(--ce2e8f0)', fontSize: 14 }}>
-            {vi ? <><b>{pending}</b> lịch hẹn đang chờ bạn nhận.</> : <><b>{pending}</b> booking{pending === 1 ? '' : 's'} waiting for you to accept.</>}
-          </span>
+      {!isMobile && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          {tab('week', L(vi, 'Tuần', 'Week'))}
+          {tab('month', L(vi, 'Tháng', 'Month'))}
         </div>
       )}
 
-      {mode === 'list' && (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {loading ? <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p> : bookings.length === 0 ? (
-            <div style={{ ...ui.card, color: 'var(--c94a3b8)', textAlign: 'center', padding: '28px 16px' }}>
-              {vi ? 'Bạn chưa có lịch hẹn nào.' : 'You have no bookings yet.'}
+      {pending.length > 0 && (
+        <div style={{ ...st.card, background: 'var(--wash-amber)', borderColor: 'var(--ink-warn)', padding: '12px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 14, color: 'var(--ce2e8f0)', flex: 1 }}>
+            {vi ? <><b>{pending.length}</b> lịch hẹn đang chờ bạn nhận.</> : <><b>{pending.length}</b> booking{pending.length === 1 ? '' : 's'} waiting for your OK.</>}
+          </span>
+          <button type="button" onClick={() => setOpen({ b: pending[0], reject: false })} style={{ ...st.primary, height: 44, fontSize: 14 }}>{L(vi, 'Xem', 'Review')}</button>
+        </div>
+      )}
+
+      {(mode === 'week' || isMobile) && (
+        <>
+          {/* The week strip: seven thumb-sized days, with how busy each is. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+            <button type="button" aria-label={L(vi, 'Tuần trước', 'Previous week')} onClick={() => setPicked(addDays(picked, -7))} style={{ ...st.ghost, width: 44, padding: 0 }}><Icon d={IC.back} size={20} /></button>
+            <span style={{ flex: 1, textAlign: 'center', fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)', textTransform: 'capitalize', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{monthLabel}</span>
+            <button type="button" onClick={() => setPicked(fromKey(todayKey))} style={{ ...st.ghost, height: 44, fontSize: 14 }}>{L(vi, 'Hôm nay', 'Today')}</button>
+            <button type="button" aria-label={L(vi, 'Tuần sau', 'Next week')} onClick={() => setPicked(addDays(picked, 7))} style={{ ...st.ghost, width: 44, padding: 0 }}><Icon d={IC.chevron} size={20} /></button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 6, marginBottom: 16 }}>
+            {week.map((d, i) => {
+              const k = ymd(d);
+              const n = (byDay.get(k) ?? []).filter((b) => !DEAD.includes(b.status)).length;
+              const waiting = (byDay.get(k) ?? []).some((b) => b.status === 'ASSIGNED');
+              const on = k === ymd(picked);
+              const isToday = k === todayKey;
+              const past = k < todayKey;
+              return (
+                <button key={k} type="button" onClick={() => setPicked(d)} aria-pressed={on}
+                  aria-label={`${dowShort[i]} ${d.getDate()}, ${n} ${L(vi, 'lịch hẹn', 'bookings')}`}
+                  style={{ height: 68, borderRadius: 14, cursor: 'pointer', padding: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, position: 'relative',
+                    border: `1.5px solid ${on ? '#4f46e5' : isToday ? '#6366f1' : 'var(--line)'}`,
+                    background: on ? '#4f46e5' : 'var(--c111827)', color: on ? '#fff' : past ? 'var(--c94a3b8)' : 'var(--ce2e8f0)' }}>
+                  <span style={{ fontSize: 11, fontWeight: 600 }}>{dowShort[i]}</span>
+                  <span style={{ fontSize: 19, fontWeight: 800, lineHeight: 1.1 }}>{d.getDate()}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: on ? '#e0e7ff' : n ? 'var(--ink-link)' : 'var(--c64748b)' }}>{n ? n : '–'}</span>
+                  {waiting && <span style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: 999, background: '#f59e0b' }} />}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{dayLabel}</span>
+            <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{live.length} {L(vi, 'lịch', live.length === 1 ? 'booking' : 'bookings')}</span>
+          </div>
+
+          {loading ? <p style={{ color: 'var(--c94a3b8)' }}>{L(vi, 'Đang tải…', 'Loading…')}</p> : dayList.length === 0 ? (
+            <div style={{ ...st.card, textAlign: 'center', color: 'var(--c94a3b8)', fontSize: 14, padding: '24px 16px' }}>
+              {L(vi, 'Ngày này bạn chưa có lịch hẹn.', 'Nothing booked for you on this day.')}
             </div>
           ) : (
-            <>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)' }}>{vi ? 'Sắp tới' : 'Upcoming'} ({upcoming.length})</div>
-              {upcoming.length === 0
-                ? <div style={{ ...ui.card, color: 'var(--c64748b)', fontSize: 13 }}>{vi ? 'Không có lịch hẹn sắp tới.' : 'Nothing coming up.'}</div>
-                : upcoming.map((b) => row(b, true))}
-              {past.length > 0 && (
-                <>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', marginTop: 8 }}>{vi ? 'Đã qua' : 'Past'} ({past.length})</div>
-                  {past.slice(0, 20).map((b) => row(b, true))}
-                </>
-              )}
-            </>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {dayList.map((b) => (
+                <AgendaRow key={b.id} b={b} vi={vi} busy={busy}
+                  onOpen={() => setOpen({ b, reject: false })} onAccept={() => accept(b)} onReject={() => setOpen({ b, reject: true })} />
+              ))}
+            </div>
           )}
-        </div>
+        </>
       )}
 
-      {mode === 'cal' && (<>
-      {/* Month header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <button onClick={() => shift(-1)} style={navBtn} aria-label="Previous month">‹</button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: 600, color: 'var(--ce2e8f0)', textTransform: 'capitalize' }}>{monthName}</div>
-        <button onClick={() => shift(1)} style={navBtn} aria-label="Next month">›</button>
-        <button onClick={jumpToday} style={{ ...navBtn, width: 'auto', padding: '0 12px', fontSize: 13, fontWeight: 600 }}>
-          {vi ? 'Hôm nay' : 'Today'}
-        </button>
-      </div>
-
-      {/* Month grid — same visual language as the salon's admin calendar: every
-          booking is a chip inside the day, colour-coded by status, so the tech can
-          read the month at a glance instead of decoding a number badge. */}
-      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 12, marginBottom: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 1, minWidth: 680,
-          background: 'var(--c243044)', border: '1px solid var(--c243044)', borderRadius: 12, overflow: 'hidden' }}>
-          {dayNames.map((d, i) => {
-            const weekend = i >= 5;
-            return (
-              <div key={d} style={{ background: 'var(--c1e293b)', textAlign: 'center', padding: '9px 0', fontSize: 11.5,
-                letterSpacing: 0.6, textTransform: 'uppercase', fontWeight: 600, color: weekend ? 'var(--c8ea2c4)' : 'var(--c94a3b8)' }}>{d}</div>
-            );
-          })}
-          {cells.map((d, i) => {
-            if (!d) return <div key={i} style={{ background: 'var(--c0b1322)', minHeight: 116, opacity: 0.5 }} />;
-            const list = byDay.get(ymd(d)) ?? [];
-            const isToday = sameDay(d, today);
-            const on = sameDay(d, picked);
-            const dow = d.getDay();
-            const weekend = dow === 0 || dow === 6;
-            const bg = isToday ? 'var(--c151f38)' : weekend ? 'var(--c0d1526)' : 'var(--c0f172a)';
-            return (
-              <div key={i} onClick={() => setPicked(d)}
-                style={{ background: bg, minHeight: 116, minWidth: 0, overflow: 'hidden', padding: 7, cursor: 'pointer',
-                  boxShadow: on ? 'inset 0 0 0 2px #6366f1' : isToday ? 'inset 0 0 0 1.5px #4f46e5' : undefined }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                  <span style={{ display: 'inline-grid', placeItems: 'center', minWidth: 22, height: 22, padding: '0 6px', borderRadius: 999,
-                    fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: isToday ? '#fff' : 'var(--ccbd5e1)',
-                    background: isToday ? '#6366f1' : 'transparent' }}>{d.getDate()}</span>
-                  {list.length > 0 && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', fontWeight: 600 }}>{list.length}</span>}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {list.slice(0, 4).map((b) => {
-                    const colour = STATUS_COLORS[b.status] ?? 'var(--c94a3b8)';
-                    const dead = DEAD.includes(b.status);
-                    return (
-                      <div key={b.id} title={`${b.status} · ${b.service?.name ?? ''} · ${name(b.customer)}`}
-                        style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 11, padding: '3px 7px', borderRadius: 5,
-                          background: `${colour}1f`, borderLeft: `3px solid ${colour}`, opacity: dead ? 0.55 : 1, overflow: 'hidden',
-                          textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
-                        <span style={{ fontWeight: 600, whiteSpace: 'nowrap', color: colour, flexShrink: 0 }}>{hhmm(b.startTime)}</span>
-                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--cdbe2ea)' }}>
-                          {name(b.customer)}{b.service?.name ? ` · ${b.service.name}` : ''}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  {list.length > 4 && (
-                    <div style={{ fontSize: 10.5, color: 'var(--c818cf8)', fontWeight: 600, padding: '2px 4px 0' }}>
-                      +{list.length - 4} {vi ? 'nữa' : 'more'}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* The day the tech tapped */}
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', textTransform: 'capitalize' }}>
-          {picked.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}
-        </span>
-        <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>
-          {dayList.length} {vi ? 'lịch hẹn' : dayList.length === 1 ? 'booking' : 'bookings'}
-        </span>
-      </div>
-
-      {loading ? (
-        <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p>
-      ) : dayList.length === 0 ? (
-        <div style={{ ...ui.card, padding: 16 }}>
-          <p style={{ margin: 0, color: 'var(--c94a3b8)', fontSize: 14 }}>
-            {vi ? 'Ngày này bạn không có lịch hẹn nào.' : 'Nothing booked for you on this day.'}
-          </p>
-          {upcoming.length > 0 && (
-            <>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ccbd5e1)', margin: '14px 0 8px' }}>
-                {vi ? 'Lịch hẹn sắp tới của bạn' : 'Your next bookings'}
-              </div>
-              <div style={{ display: 'grid', gap: 6 }}>
-                {upcoming.slice(0, 3).map((b) => {
-                  const d = new Date(`${dayKeyInTz(b.startTime)}T00:00:00`);
-                  return (
-                    <button key={b.id} onClick={() => { setPicked(d); setView(new Date(d.getFullYear(), d.getMonth(), 1)); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-                        border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', textAlign: 'left' }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ca5b4fc)', flexShrink: 0 }}>
-                        {fmtInTz(b.startTime, { day: 'numeric', month: 'short' })} · {hhmm(b.startTime)}
-                      </span>
-                      <span style={{ flex: 1, minWidth: 0, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {b.service?.name ?? 'Service'} · {name(b.customer)}
-                      </span>
-                      <span style={{ color: 'var(--c64748b)', flexShrink: 0 }}>›</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {dayList.map((b) => row(b))}
-        </div>
+      {mode === 'month' && !isMobile && (
+        <MonthGrid vi={vi} view={view} setView={setView} picked={picked} setPicked={(d) => { setPicked(d); setMode('week'); }} byDay={byDay} todayKey={todayKey} />
       )}
-      </>)}
+
+      <BookingSheet booking={open?.b ?? null} startReject={open?.reject ?? false} vi={vi}
+        onClose={() => setOpen(null)} onAccept={accept} onReject={reject} onStart={start} />
+      {toast && <Toast text={toast.text} action={toast.action} onAction={toast.onAction} />}
     </section>
   );
 }
 
-const navBtn: React.CSSProperties = {
-  width: 36, height: 36, borderRadius: 8, border: '1px solid var(--c334155)',
-  background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 18, cursor: 'pointer', lineHeight: 1,
-};
-const acceptBtn: React.CSSProperties = {
-  padding: '6px 16px', borderRadius: 8, border: 'none', background: '#22c55e', color: 'white',
-  fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
-};
+function AgendaRow({ b, vi, busy, onOpen, onAccept, onReject }: {
+  b: StaffBooking; vi: boolean; busy: boolean; onOpen: () => void; onAccept: () => void; onReject: () => void;
+}) {
+  const s = bookingStatus(b.status, vi);
+  const dead = DEAD.includes(b.status) || b.status === 'COMPLETED';
+  const mins = bookingMinutes(b);
+  return (
+    <div style={{ display: 'flex', gap: 12, opacity: dead ? 0.6 : 1 }}>
+      <div style={{ width: 54, flexShrink: 0, paddingTop: 14, textAlign: 'right' }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{fmtInTz(b.startTime, { hour: 'numeric', minute: '2-digit' })}</div>
+        {mins > 0 && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 2 }}>{mins} {L(vi, 'phút', 'min')}</div>}
+      </div>
+      <div style={{ ...st.card, flex: 1, minWidth: 0, padding: 0, overflow: 'hidden', borderColor: b.status === 'ASSIGNED' ? 'var(--ink-warn)' : 'var(--line)' }}>
+        <button type="button" onClick={onOpen}
+          style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '12px 14px', cursor: 'pointer', color: 'var(--ce2e8f0)', minHeight: 48 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>{bookingName(b)}</span>
+            <Pill text={s.text} tone={s.tone} />
+          </div>
+          <div style={{ fontSize: 14, color: 'var(--ccbd5e1)', marginTop: 3 }}>{bookingServices(b)}</div>
+          {b.notes && <div style={{ fontSize: 13, color: 'var(--c94a3b8)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.notes}</div>}
+        </button>
+        {b.status === 'ASSIGNED' && (
+          <div style={{ display: 'flex', gap: 8, padding: '0 12px 12px' }}>
+            <button type="button" disabled={busy} onClick={onReject} style={{ ...st.ghost, flex: '1 1 0', height: 46, fontSize: 14, padding: '0 8px' }}>{L(vi, 'Không nhận', 'Decline')}</button>
+            <button type="button" disabled={busy} onClick={onAccept} style={{ ...st.primary, flex: '1.3 1 0', height: 46, fontSize: 15 }}>{L(vi, 'Nhận', 'Accept')}</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The month at a glance — for a computer screen, where it fits. */
+function MonthGrid({ vi, view, setView, picked, setPicked, byDay, todayKey }: {
+  vi: boolean; view: Date; setView: (d: Date) => void; picked: Date; setPicked: (d: Date) => void;
+  byDay: Map<string, StaffBooking[]>; todayKey: string;
+}) {
+  const y = view.getFullYear(), mo = view.getMonth();
+  const offset = (new Date(y, mo, 1).getDay() + 6) % 7;
+  const days = new Date(y, mo + 1, 0).getDate();
+  const cells: (Date | null)[] = [];
+  for (let i = 0; i < offset; i++) cells.push(null);
+  for (let d = 1; d <= days; d++) cells.push(new Date(y, mo, d));
+  while (cells.length % 7 !== 0) cells.push(null);
+  const dayNames = vi ? ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const name = (b: StaffBooking) => bookingName(b);
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <button type="button" onClick={() => setView(new Date(y, mo - 1, 1))} style={{ ...st.ghost, width: 44, padding: 0 }} aria-label="Previous month"><Icon d={IC.back} size={20} /></button>
+        <div style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: 700, color: 'var(--ce2e8f0)', textTransform: 'capitalize' }}>
+          {view.toLocaleDateString(vi ? 'vi-VN' : uiLocale(), { month: 'long', year: 'numeric' })}
+        </div>
+        <button type="button" onClick={() => setView(new Date(y, mo + 1, 1))} style={{ ...st.ghost, width: 44, padding: 0 }} aria-label="Next month"><Icon d={IC.chevron} size={20} /></button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 1, background: 'var(--c243044)', border: '1px solid var(--c243044)', borderRadius: 12, overflow: 'hidden' }}>
+        {dayNames.map((d) => (
+          <div key={d} style={{ background: 'var(--c1e293b)', textAlign: 'center', padding: '9px 0', fontSize: 11.5, fontWeight: 600, color: 'var(--c94a3b8)', textTransform: 'uppercase' }}>{d}</div>
+        ))}
+        {cells.map((d, i) => {
+          if (!d) return <div key={i} style={{ background: 'var(--c0b1322)', minHeight: 110 }} />;
+          const list = byDay.get(ymd(d)) ?? [];
+          const isToday = ymd(d) === todayKey;
+          const on = ymd(d) === ymd(picked);
+          return (
+            <button key={i} type="button" onClick={() => setPicked(d)}
+              style={{ background: isToday ? 'var(--c151f38)' : 'var(--c0f172a)', minHeight: 110, minWidth: 0, overflow: 'hidden', padding: 7, cursor: 'pointer', border: 'none', textAlign: 'left', display: 'block',
+                boxShadow: on ? 'inset 0 0 0 2px #6366f1' : isToday ? 'inset 0 0 0 1.5px #4f46e5' : undefined }}>
+              <div style={{ fontSize: 12.5, fontWeight: isToday ? 800 : 600, color: 'var(--ccbd5e1)', marginBottom: 5 }}>{d.getDate()}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {list.slice(0, 4).map((b) => {
+                  const colour = STATUS_COLORS[b.status] ?? '#94a3b8';
+                  return (
+                    <div key={b.id} style={{ display: 'flex', gap: 5, fontSize: 11, padding: '3px 6px', borderRadius: 5, background: 'var(--c1e293b)', opacity: DEAD.includes(b.status) ? 0.55 : 1, overflow: 'hidden' }}>
+                      <span style={{ width: 6, height: 6, borderRadius: 999, background: colour, marginTop: 4, flexShrink: 0 }} />
+                      <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: 'var(--ce2e8f0)' }}>{fmtInTz(b.startTime, { hour: 'numeric', minute: '2-digit' })}</span>
+                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ccbd5e1)' }}>{name(b)}</span>
+                    </div>
+                  );
+                })}
+                {list.length > 4 && <div style={{ fontSize: 10.5, color: 'var(--ink-link)', fontWeight: 600 }}>+{list.length - 4}</div>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

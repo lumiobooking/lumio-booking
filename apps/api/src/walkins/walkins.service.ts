@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { AppointmentStatus, Prisma, WalkInStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -91,7 +91,7 @@ export class WalkinsService {
       await this.push!.sendToUser(tenantId, staff.userId, {
         title: `💺 Khách mới · New client: ${who}`,
         body: legNames.join(' · ') || who,
-        url: '/staff/chair',
+        url: '/staff/today',
         tag: 'lumio-chair',
       });
     })().catch(() => undefined);
@@ -930,6 +930,121 @@ export class WalkinsService {
       .filter((w) => !mineIds.has(w.id))
       .map((w) => ({ id: w.id, customerName: w.customerName, station: (w as { station?: string | null }).station ?? null }));
     return { staffId: staff.id, currency, serving, salon, techNames };
+  }
+
+  /**
+   * The technician's day at a glance, for her phone: her turns and her place
+   * in the rotation, who else is free or busy, how many customers are waiting,
+   * and her OWN money today and this week — her service lines and her tips,
+   * never the salon's totals or another technician's.
+   */
+  async myDay(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const me = await this.staffOf(user);
+    const currency = (await this.settings.getBookingRules(tenantId).catch(() => null))?.currency ?? 'USD';
+    const blank = { serviceCents: 0, services: 0, tipsCents: 0, directTipsCents: 0 };
+    if (!me) {
+      return { staffId: null, currency, turns: 0, busy: false, freeRank: null, nextUpStaffId: null, queue: 0, techs: [], today: blank, week: [], todayIndex: 0 };
+    }
+    const f = await this.floor(tenantId);
+    const open = f.open as unknown as TicketLike[];
+    const busy = busyTechs(open);
+    const now = new Date();
+    const turnsOf = (id: string) => f.turns.get(id) ?? 0;
+    // The rotation as the dispatcher reads it: fewest turns, then priority, then
+    // the salon's own list order (a stable sort keeps it).
+    const sorted = [...f.techs].sort((a, b) => (turnsOf(a.id) - turnsOf(b.id)) || (b.priority - a.priority));
+    const freeOrder = sorted.filter((t) => !busy.has(t.id));
+    const nextUpStaffId = pickTech(freeOrder, [], f.turns)?.id ?? null;
+    const techs = sorted.map((t, i) => ({
+      id: t.id, name: t.name, rank: i + 1, turns: turnsOf(t.id),
+      busy: busy.has(t.id), busyFor: busy.has(t.id) ? minutesLeft(open, t.id, now) : null,
+      me: t.id === me, nextUp: t.id === nextUpStaffId,
+    }));
+    const queue = open.filter((t) => { const p = phaseOf(t); return p === 'WAITING' || p === 'BETWEEN'; }).length;
+
+    // ---- her money: this week, Monday to today, in the salon's calendar ----
+    const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone || 'UTC';
+    let todayIndex = 0;
+    try {
+      const wd = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(now);
+      todayIndex = Math.max(0, ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(wd));
+    } catch { /* unknown zone: the week starts today */ }
+    const weekStart = new Date(f.today.getTime() - todayIndex * 86400000);
+    const week = Array.from({ length: 7 }, (_, day) => ({ day, serviceCents: 0, services: 0, tipsCents: 0, directTipsCents: 0 }));
+    const slot = (d: Date | string | null | undefined) => {
+      if (!d) return null;
+      const i = Math.floor((new Date(d).getTime() - weekStart.getTime()) / 86400000);
+      return i >= 0 && i < 7 ? week[i] : null;
+    };
+    type OrderRow = { paidAt: Date | null; appointmentId: string | null; appointmentIds?: string[]; items: { kind: string; lineTotalCents: number; tipCents: number; quantity: number; staffMemberId: string | null }[] };
+    const orders: OrderRow[] = await this.db.order.findMany({
+      where: { tenantId, status: 'PAID', paidAt: { gte: weekStart } },
+      select: {
+        paidAt: true, appointmentId: true, appointmentIds: true,
+        items: { where: { staffMemberId: me }, select: { kind: true, lineTotalCents: true, tipCents: true, quantity: true, staffMemberId: true } },
+      },
+    }).catch(() => []);
+    const paidAppts = new Set<string>();
+    for (const o of orders ?? []) {
+      for (const a of [o.appointmentId, ...(o.appointmentIds ?? [])]) if (a) paidAppts.add(a);
+      const w = slot(o.paidAt);
+      if (!w) continue;
+      for (const l of o.items ?? []) {
+        if (l.staffMemberId !== me) continue;
+        if (l.kind === 'SERVICE') { w.serviceCents += l.lineTotalCents; w.services += l.quantity || 1; }
+        w.tipsCents += l.tipCents || 0;
+      }
+    }
+    // A booking closed without the till still counts (same rule as the POS report).
+    const done: { id: string; priceCents: number; completedAt: Date | null }[] = await this.db.appointment.findMany({
+      where: { tenantId, assignedStaffId: me, status: AppointmentStatus.COMPLETED, completedAt: { gte: weekStart } },
+      select: { id: true, priceCents: true, completedAt: true },
+    }).catch(() => []);
+    for (const a of done ?? []) {
+      if (paidAppts.has(a.id)) continue;
+      const w = slot(a.completedAt);
+      if (w) { w.serviceCents += a.priceCents || 0; w.services += 1; }
+    }
+    // Tips paid straight to her (QR, cash in hand): hers, logged for visibility.
+    const direct: { amountCents: number; createdAt: Date }[] = await this.db.tipLog.findMany({
+      where: { tenantId, staffMemberId: me, createdAt: { gte: weekStart } },
+      select: { amountCents: true, createdAt: true },
+    }).catch(() => []);
+    for (const t of direct ?? []) { const w = slot(t.createdAt); if (w) w.directTipsCents += t.amountCents || 0; }
+
+    const today = week[todayIndex];
+    return {
+      staffId: me, currency, turns: turnsOf(me), busy: busy.has(me),
+      // Her place among the technicians who are free right now (null while busy).
+      freeRank: busy.has(me) ? null : freeOrder.findIndex((t) => t.id === me) + 1,
+      nextUpStaffId, queue, techs,
+      today: { serviceCents: today.serviceCents, services: today.services, tipsCents: today.tipsCents, directTipsCents: today.directTipsCents },
+      week, todayIndex,
+    };
+  }
+
+  /**
+   * "Khách đã đến — bắt đầu làm" on the technician's own booking. Same as the
+   * desk checking the customer in (the booking becomes a floor ticket and her
+   * part starts), but only for a booking that is hers. Pressing it twice, or
+   * after the desk already checked the customer in, returns the same ticket.
+   */
+  async startMyAppointment(user: AuthenticatedUser, appointmentId: string) {
+    const tenantId = this.tenantId(user);
+    const me = await this.staffOf(user);
+    if (!me) throw new ForbiddenException('Tài khoản này không phải thợ của tiệm.');
+    const appt = await this.prisma.appointment.findFirst({ where: { id: appointmentId, tenantId }, select: { id: true, assignedStaffId: true, status: true } });
+    if (!appt) throw new NotFoundException('Appointment not found');
+    if (appt.assignedStaffId !== me) throw new ForbiddenException('Lịch này không phải của bạn.');
+    const closed: string[] = [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW, AppointmentStatus.COMPLETED, AppointmentStatus.REJECTED];
+    if (closed.includes(appt.status)) throw new BadRequestException('Lịch này đã đóng.');
+    const existing = await this.prisma.walkIn.findFirst({
+      where: { tenantId, appointmentId: appt.id, status: { in: [WalkInStatus.WAITING, WalkInStatus.SERVING] } },
+      select: { id: true },
+    });
+    if (existing) return this.row(tenantId, existing.id);
+    return this.seatAppointment(user, appt.id);
   }
 
   /**

@@ -129,7 +129,7 @@ export default function HomePage() {
   // support account back to /, which redirected to /salon, forever - Safari
   // kills the app at 100 history writes in 10 seconds.
   const dashHref = user?.role === 'SUPER_ADMIN' ? '/super-admin/tenants'
-    : user?.role === 'STAFF' ? '/staff/bookings'
+    : user?.role === 'STAFF' ? '/staff/today'
       : user?.role === 'SUPPORT' ? '/agency'
         : '/salon';
 

@@ -61,6 +61,18 @@ export class MyChairController {
     return this.walkins.myChair(user);
   }
 
+  /** My day: turns, my place in the rotation, the team, the queue, my money. */
+  @Get('today')
+  today(@CurrentUser() user: AuthenticatedUser) {
+    return this.walkins.myDay(user);
+  }
+
+  /** My booking's customer is here: check them in and start my part. */
+  @Post('appointments/:id/start')
+  startAppointment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.nudge(user, id, this.walkins.startMyAppointment(user, id));
+  }
+
   /** The salon's price list (so the tech can add what they actually did). */
   @Get('services')
   services(@CurrentUser() user: AuthenticatedUser) {

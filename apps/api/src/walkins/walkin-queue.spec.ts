@@ -59,7 +59,7 @@ const MENU = [
 const legacyLine = (lineId: string, serviceId: string, name: string, staffId: string | null = null): LegItem =>
   ({ lineId, serviceId, name, priceCents: 1000, durationMinutes: 30, staffId });
 
-function floor(opts: { walkIns?: Row[]; staff?: Row[]; links?: Row[] } = {}) {
+function floor(opts: { walkIns?: Row[]; staff?: Row[]; links?: Row[]; orders?: Row[]; tips?: Row[]; appts?: Row[] } = {}) {
   const prisma = {
     tenant: table([{ id: T1, timezone: 'America/Los_Angeles' }, { id: 't2', timezone: 'America/Los_Angeles' }]),
     staffMember: table(opts.staff ?? [tech('hana'), tech('lisa')]),
@@ -67,8 +67,9 @@ function floor(opts: { walkIns?: Row[]; staff?: Row[]; links?: Row[] } = {}) {
     walkIn: table((opts.walkIns ?? []).map((r) => ({ tenantId: T1, assignedStaffId: null, assignedAt: null, doneAt: null, awaitingPayment: false, stationId: null, items: [], service: null, ...r }))),
     service: table(MENU),
     station: table([]),
-    appointment: table([]),
-    order: table([]),
+    appointment: table(opts.appts ?? []),
+    order: table(opts.orders ?? []),
+    tipLog: table(opts.tips ?? []),
   };
   const settings = { getBookingRules: async () => ({ currency: 'USD' }) };
   const svc = new WalkinsService(prisma as never, {} as never, settings as never);
@@ -256,7 +257,7 @@ describe('the technician’s phone', () => {
     const svc = new WalkinsService(f.prisma as never, {} as never, {} as never, push as never);
     await svc.add(admin, { customerName: 'Kim', serviceIds: ['pedi'], autoAssign: true });
     await new Promise((r) => setTimeout(r, 0));
-    expect(push.sendToUser).toHaveBeenCalledWith(T1, 'u-hana', expect.objectContaining({ url: '/staff/chair', body: 'Spa Pedicure' }));
+    expect(push.sendToUser).toHaveBeenCalledWith(T1, 'u-hana', expect.objectContaining({ url: '/staff/today', body: 'Spa Pedicure' }));
   });
 
   it('cannot send the customer to pay while her feet are still being done', async () => {
@@ -317,5 +318,46 @@ describe('one salon never touches another', () => {
     const f = floor({ staff: [tech('hana'), tech('zoe', 't2')] });
     const w = await f.svc.add(admin, { serviceIds: ['mani'] });
     await expect(f.svc.assignLeg(admin, w.id, f.legs(w.id)[0].legId, 'zoe')).rejects.toThrow('Technician not found');
+  });
+});
+
+describe('the technician’s day on her phone', () => {
+  const paid = (id: string, tenantId: string, items: Row[]) => ({ id, tenantId, status: 'PAID', paidAt: new Date(), appointmentId: null, appointmentIds: [], items });
+  it('shows her own money and tips — never another technician’s or another salon’s', async () => {
+    const f = floor({
+      orders: [
+        paid('o1', T1, [{ kind: 'SERVICE', lineTotalCents: 3500, tipCents: 500, quantity: 1, staffMemberId: 'hana' }, { kind: 'SERVICE', lineTotalCents: 9900, tipCents: 900, quantity: 1, staffMemberId: 'lisa' }]),
+        paid('o2', 't2', [{ kind: 'SERVICE', lineTotalCents: 7000, tipCents: 700, quantity: 1, staffMemberId: 'hana' }]),
+      ],
+      tips: [{ tenantId: T1, staffMemberId: 'hana', amountCents: 1000, createdAt: new Date() }, { tenantId: T1, staffMemberId: 'lisa', amountCents: 2000, createdAt: new Date() }],
+    });
+    const day = await f.svc.myDay(asTech('hana'));
+    expect(day.today).toEqual({ serviceCents: 3500, services: 1, tipsCents: 500, directTipsCents: 1000 });
+    expect(day.week).toHaveLength(7);
+  });
+
+  it('knows her place in the rotation and how many are waiting', async () => {
+    const f = floor({ staff: [tech('hana'), tech('lisa'), tech('vy')], walkIns: [{ id: 'b', status: 'SERVING', assignedStaffId: 'vy', createdAt: at(0) }] });
+    await f.svc.add(admin, { serviceIds: ['mani'], assignedStaffId: 'vy' }); // waits for Vy
+    const day = await f.svc.myDay(asTech('lisa'));
+    expect(day.busy).toBe(false);
+    expect(day.freeRank).toBe(2);
+    expect(day.queue).toBe(1);
+    expect((day.techs as { id: string; busy: boolean }[]).find((t) => t.id === 'vy')!.busy).toBe(true);
+  });
+
+  it('starts her own booking when the customer arrives — not someone else’s, not another salon’s', async () => {
+    const appt = (id: string, tenantId: string, staffId: string) => ({
+      id, tenantId, assignedStaffId: staffId, status: 'ACCEPTED', customerId: null, source: 'online', addons: [], startTime: new Date(),
+      customer: { firstName: 'Mai', lastName: 'Anh', phone: null }, service: { id: 'mani', name: 'Gel Manicure' },
+    });
+    const f = floor({ appts: [appt('a1', T1, 'hana'), appt('a2', T1, 'lisa'), appt('a3', 't2', 'hana')] });
+    await expect(f.svc.startMyAppointment(asTech('hana'), 'a2')).rejects.toThrow('không phải của bạn');
+    await expect(f.svc.startMyAppointment(asTech('hana'), 'a3')).rejects.toBeInstanceOf(NotFoundException);
+    const w = await f.svc.startMyAppointment(asTech('hana'), 'a1');
+    expect(f.legs(w.id)[0]).toMatchObject({ status: 'SERVING', staffId: 'hana' });
+    // Pressing again gives the same ticket, not a second one.
+    const again = await f.svc.startMyAppointment(asTech('hana'), 'a1');
+    expect(again.id).toBe(w.id);
   });
 });

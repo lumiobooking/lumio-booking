@@ -162,6 +162,55 @@ describe('BookingsService double-booking prevention', () => {
   });
 });
 
+/**
+ * The till's rebook: the customer who just paid, confirmed on the spot. Both
+ * shortcuts exist for staff only — an end customer posting them is ignored.
+ */
+describe('BookingsService counter rebook', () => {
+  it('books the customer on file (no twin record) and confirms at once for staff', async () => {
+    const prisma = makePrisma({ overlapConflict: false });
+    prisma._tx.customer.findFirst = jest.fn(async ({ where }: any) => (where.tenantId === 'tenant-a' && where.id === 'cust-on-file' ? { id: 'cust-on-file' } : null));
+    const svc = makeService(prisma);
+
+    const result: any = await svc.create(salonA, { ...baseDto, customerId: 'cust-on-file', confirmNow: true } as any, 'counter');
+
+    expect(result.customerId).toBe('cust-on-file');
+    expect(prisma._tx.customer.upsert).not.toHaveBeenCalled();
+    expect(result.status).toBe('CONFIRMED');
+    expect(result.confirmedAt).toBeInstanceOf(Date);
+    expect(result.responseDeadline).toBeNull();
+    expect(result.source).toBe('counter');
+  });
+
+  it('never lets a public booking pick a customer record or skip the technician\'s acceptance', async () => {
+    const prisma = makePrisma({ overlapConflict: false });
+    prisma._tx.customer.findFirst = jest.fn(async () => ({ id: 'cust-on-file' }));
+    (prisma.appointment as any).count = jest.fn(async () => 0); // the public velocity cap
+    (prisma as any).tenant = { findUnique: jest.fn(async () => ({ timezone: 'UTC' })) };
+    // Open all week, so the opening-hours gate lets 14:00 UTC through.
+    (settings as any).getBookingRules = jest.fn(async () => ({ businessHours: Array(7).fill({ closed: false, openMinutes: 0, closeMinutes: 1440 }), daysOff: [], assignmentMode: 'none' }));
+    const svc = makeService(prisma);
+
+    const result: any = await svc.createForTenant('tenant-a', { ...baseDto, customerId: 'cust-on-file', confirmNow: true, customerPhone: '+15125550123' } as any, null, 'hosted');
+
+    expect(prisma._tx.customer.findFirst).not.toHaveBeenCalled();
+    expect(result.customerId).toBe('cust-1'); // the upsert's own record
+    expect(result.status).toBe('ASSIGNED');
+    expect(result.responseDeadline).toBeInstanceOf(Date);
+  });
+
+  it('a customer id from another salon falls back to the normal upsert', async () => {
+    const prisma = makePrisma({ overlapConflict: false });
+    prisma._tx.customer.findFirst = jest.fn(async ({ where }: any) => (where.tenantId === 'tenant-a' ? null : { id: 'leak' }));
+    const svc = makeService(prisma);
+
+    const result: any = await svc.create(salonA, { ...baseDto, customerId: 'cust-of-tenant-b' } as any);
+
+    expect(prisma._tx.customer.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'cust-of-tenant-b', tenantId: 'tenant-a' } }));
+    expect(result.customerId).toBe('cust-1');
+  });
+});
+
 describe('BookingsService reschedule', () => {
   const booked = {
     id: 'appt-1',

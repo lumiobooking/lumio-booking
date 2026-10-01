@@ -72,6 +72,21 @@ export class BookingsController {
   // SUPER_ADMIN reads too: the agency runs the salons it hosts, and support work
   // (and the POS checkout screen) dies with a silent 403 without it. Read-only —
   // every write below stays salon-scoped.
+  // Open start times on one day, for the till's "book the next visit" sheet.
+  // Declared before ':id' so the word is not read as a booking id.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Get('open-times')
+  openTimes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('date') date: string,
+    @Query('staffId') staffId?: string,
+    @Query('minutes') minutes?: string,
+  ) {
+    const m = minutes ? parseInt(minutes, 10) : undefined;
+    return this.bookings.openTimes(user, { date, staffId: staffId || undefined, minutes: m !== undefined && Number.isFinite(m) ? m : undefined });
+  }
+
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF, UserRole.SUPER_ADMIN)
   @Caps('bookings')
   @Get(':id')
@@ -84,6 +99,15 @@ export class BookingsController {
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateBookingDto) {
     return this.bookings.create(user, dto);
+  }
+
+  // The same booking, made at the till right after a sale — tagged so reports
+  // can tell a counter rebook from a phone call.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Post('counter')
+  createAtCounter(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateBookingDto) {
+    return this.bookings.create(user, dto, 'counter');
   }
 
   // Run the assignment engine on a pending booking.

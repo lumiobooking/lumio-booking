@@ -17,6 +17,7 @@ import { setUiCurrency, uiCurrencySymbol } from '../../../lib/ui-currency';
 import { useLang, tr, setUiCurrencySymbol } from '../../../lib/i18n';
 import { BarcodeScanner } from '../../../components/BarcodeScanner';
 import { CashShiftPanel, useShiftState } from '../../../components/CashShiftPanel';
+import { RebookSheet, type RebookResult } from '../../../components/RebookSheet';
 import { uiLocale } from '../../../lib/datetime';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
@@ -286,6 +287,11 @@ function Register() {
   };
   /** The sale that just went through — drives the "Hoàn tất" screen. */
   const [done, setDone] = useState<null | { label: string; offline: boolean; paidCents: number; changeCents: number; method: string; customer: string | null; printed: boolean }>(null);
+  // "Same again in two weeks?" — the next visit, booked from the Paid screen.
+  const [showRebook, setShowRebook] = useState(false);
+  /** The lines of the bill that just went through — the till clears the cart on payment, the rebook sheet still needs them. */
+  const paidLinesRef = useRef<Line[]>([]);
+  const [nextVisit, setNextVisit] = useState<RebookResult | null>(null);
   /** The last receipt, kept whole so "In lại" prints the same paper after the bill is cleared. */
   const lastReceiptRef = useRef<{ orderNumber: number | string; text: string; html: string } | null>(null);
   const toggleReception = (v: boolean) => {
@@ -1124,6 +1130,7 @@ function Register() {
       setDone({ label: offRef, offline: true, paidCents: money.due, changeCents: money.change, method: split ? (lang === 'vi' ? 'Chia bill' : 'Split') : payLabel(payMethod, lang), customer: customerLabel, printed: printOn });
       setOkMsg(t('po.savedOffline'));
       broadcastPaid(clientRef);
+      paidLinesRef.current = cart;
       clearCart();
       setOnline(false);
     };
@@ -1176,6 +1183,7 @@ function Register() {
         setDone({ label: `#${order.orderNumber}`, offline: false, paidCents: money.due, changeCents: money.change, method: split ? (lang === 'vi' ? 'Chia bill' : 'Split') : payLabel(payMethod, lang), customer: customerLabel, printed: printOn });
         setOkMsg(t('po.paidOk').replace('{n}', String(order.orderNumber)));
         broadcastPaid(clientRef);
+        paidLinesRef.current = cart;
         clearCart();
         setOnline(true);
         setPendingSync(queueCount());
@@ -1472,7 +1480,7 @@ function Register() {
     setPromo(null); setPromoInput(''); setPromoErr(null); setBookedOffer(null);
     setTendered(''); setSplit(false); setParts([]); setCustomTip(''); setTipMode(null);
     setAdj(null); setEditUid(null); setOkMsg(null); setError(null);
-    setDone(null); setStep('register'); setMobileView('catalog'); setPrefilled(true);
+    setDone(null); setNextVisit(null); setShowRebook(false); setStep('register'); setMobileView('catalog'); setPrefilled(true);
     try { window.history.replaceState(null, '', '/salon/pos'); } catch { /* ignore */ }
   }
   /** Open a waiting client's floor ticket on this till. */
@@ -2361,6 +2369,24 @@ function Register() {
             <button type="button" onClick={() => { const s2 = lastReceiptRef.current; if (s2) { printSnapshot(s2); setDone({ ...done, printed: true }); } }} disabled={!lastReceiptRef.current} style={{ height: 56, padding: '0 22px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 600, color: 'var(--cf1f5f9)', cursor: 'pointer' }}>{done.printed ? L('In lại', 'Print again') : L('In hoá đơn', 'Print receipt')}</button>
           </div>
         </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <span style={sectionLabel}>{L('LẦN SAU', 'NEXT VISIT')}</span>
+          {nextVisit ? (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 12, background: 'var(--c052e16)', border: '1px solid var(--line)' }}>
+              <span style={{ color: 'var(--ink-good)', display: 'flex' }}><IcoCheck /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{fmtInTz(nextVisit.startTime, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}{nextVisit.staffName ? ` · ${nextVisit.staffName}` : ''}</div>
+                <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{nextVisit.serviceNames.filter(Boolean).join(', ')} · {L('Đã gửi xác nhận cho khách nếu có số điện thoại.', 'Confirmation sent to the customer if a mobile is on file.')}</div>
+              </div>
+              <a href={`/salon/bookings`} style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ca5b4fc)', textDecoration: 'none', whiteSpace: 'nowrap' }}>{L('Xem lịch', 'Open')}</a>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ flex: 1, minWidth: 180, fontSize: 15, color: 'var(--ccbd5e1)' }}>{L('Khách muốn hẹn lần tới? Khách, dịch vụ và thợ đã có sẵn — chỉ chọn ngày giờ.', 'Want to book the next visit? Customer, services and tech are already filled in — just pick a time.')}</span>
+              <button type="button" onClick={() => setShowRebook(true)} style={{ height: 56, padding: '0 22px', borderRadius: 12, border: '1px solid var(--ca5b4fc)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 700, color: 'var(--ca5b4fc)', cursor: 'pointer', whiteSpace: 'nowrap' }}>📅 {L('Đặt lịch lần sau', 'Book next visit')}</button>
+            </div>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 12, marginTop: 'auto' }}>
           <a href="/salon/orders" style={{ height: 60, padding: '0 22px', borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 600, color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', textDecoration: 'none', whiteSpace: 'nowrap' }}>{L('Xem đơn hàng', 'Orders')}</a>
           <button type="button" onClick={newBill} style={{ flex: 1, height: 60, borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>{L('Bill mới', 'New bill')}</button>
@@ -2454,6 +2480,32 @@ function Register() {
           </div>
         </div>, document.body)}
 
+      {showRebook && done && token && typeof document !== 'undefined' && createPortal(
+        <RebookSheet
+          token={token}
+          lang={lang}
+          customerId={customerId}
+          customerLabel={customerLabel}
+          lines={paidLinesRef.current.filter((l) => l.kind === 'SERVICE' && !l.isAddon).map((l) => ({ serviceId: l.refId, staffId: l.staffMemberId || null }))}
+          services={services}
+          staff={staff}
+          onClose={() => setShowRebook(false)}
+          onBooked={(r) => {
+            setNextVisit(r); setShowRebook(false);
+            // The paper the customer takes home says when they are coming back —
+            // on a reprint, since the first copy left the printer with the sale.
+            const snap = lastReceiptRef.current;
+            if (snap) {
+              const when = fmtInTz(r.startTime, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+              const who = r.staffName ? ` with ${r.staffName}` : '';
+              lastReceiptRef.current = {
+                ...snap,
+                text: `${snap.text}\n\nNEXT VISIT: ${when}${who}\n`,
+                html: snap.html.replace('</body>', `<hr><div class="center"><b>Next visit:</b> ${when}${who}</div></body>`),
+              };
+            }
+          }}
+        />, document.body)}
       {showShift && typeof document !== 'undefined' && createPortal(
         <CashShiftPanel
           token={token}

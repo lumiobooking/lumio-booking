@@ -65,6 +65,18 @@ export class CreateBookingDto {
   @IsString()
   staffId?: string;
 
+  // Till only (ignored on public requests): the customer already on file —
+  // the one the register just charged — so a rebook never creates a twin.
+  @IsOptional()
+  @IsString()
+  customerId?: string;
+
+  // Till only (ignored on public requests): the customer agreed in person,
+  // with the technician present, so the booking is CONFIRMED on creation.
+  @IsOptional()
+  @IsBoolean()
+  confirmNow?: boolean;
+
   // The customer's preferred technician (stored as a preference when unassigned).
   @IsOptional()
   @IsString()

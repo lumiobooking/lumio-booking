@@ -41,6 +41,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
 import { addMinutes, parseStartTime, BLOCKING_STATUSES, wallTimeToUtc, planLineTechnician } from './booking.util';
+import { openTimesFor, type BusyBlock } from './open-times';
 
 const BOOKING_INCLUDE = {
   customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
@@ -380,8 +381,8 @@ export class BookingsService {
   }
 
   // Salon Admin create (tenant from the JWT).
-  create(user: AuthenticatedUser, dto: CreateBookingDto) {
-    return this.createForTenant(this.tenantId(user), dto, user.userId);
+  create(user: AuthenticatedUser, dto: CreateBookingDto, source?: string) {
+    return this.createForTenant(this.tenantId(user), dto, user.userId, source);
   }
 
   /**
@@ -599,8 +600,15 @@ export class BookingsService {
       await this.assertStaffActive(tenantId, dto.staffId);
     }
 
+    // Two fields only the till may use. A public request carrying them is
+    // treated as if it never did: an end customer cannot book onto someone
+    // else's record, nor skip the technician's acceptance.
+    const onFile = actorUserId && dto.customerId ? dto.customerId : null;
+    const confirmNow = Boolean(actorUserId && dto.confirmNow && dto.staffId);
+
     const appointment = await this.prisma.$transaction(async (tx) => {
-      const customer = await this.upsertCustomer(tx, tenantId, dto);
+      const customer = (onFile && (await tx.customer.findFirst({ where: { id: onFile, tenantId } })))
+        || (await this.upsertCustomer(tx, tenantId, dto));
 
       if (dto.staffId) {
         await this.lockStaffSlot(tx, tenantId, dto.staffId);
@@ -622,7 +630,10 @@ export class BookingsService {
           serviceId: service.id,
           assignedStaffId: dto.staffId ?? null,
           preferredStaffId: dto.preferredStaffId ?? dto.staffId ?? null,
-          status: dto.staffId ? AppointmentStatus.ASSIGNED : AppointmentStatus.PENDING,
+          // Booked at the counter with the tech standing there: confirmed on
+          // the spot, no accept round-trip and no 30-minute deadline.
+          status: confirmNow ? AppointmentStatus.CONFIRMED : dto.staffId ? AppointmentStatus.ASSIGNED : AppointmentStatus.PENDING,
+          ...(confirmNow ? { confirmedAt: new Date(), customerConfirmedAt: new Date() } : {}),
           startTime: start,
           endTime: end,
           priceCents: totalPrice,
@@ -646,7 +657,7 @@ export class BookingsService {
           partySize: dto.partySize ?? 1,
           groupId: dto.groupId?.trim() || null,
           assignedAt: dto.staffId ? new Date() : null,
-          responseDeadline: dto.staffId ? addMinutes(new Date(), 30) : null,
+          responseDeadline: dto.staffId && !confirmNow ? addMinutes(new Date(), 30) : null,
         },
         include: BOOKING_INCLUDE,
       });
@@ -1990,6 +2001,61 @@ export class BookingsService {
       durationMinutes,
       busy: appts.map((a: { startTime: Date; endTime: Date }) => ({ start: a.startTime.toISOString(), end: a.endTime.toISOString() })),
     };
+  }
+
+  /**
+   * The start times still open on one day, for the till's "book the next
+   * visit" sheet. With a technician: that tech's bookings and off-shift hours
+   * are taken out. Without one: the salon's hours alone (the booking lands
+   * PENDING and the desk assigns, exactly like a phone booking).
+   */
+  async openTimes(user: AuthenticatedUser, q: { date: string; staffId?: string; minutes?: number }) {
+    const tenantId = this.tenantId(user);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(q.date || '')) throw new BadRequestException('date must be YYYY-MM-DD');
+    const [rules, tenant] = await Promise.all([
+      this.settings.getBookingRules(tenantId),
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }),
+    ]);
+    const tz = tenant?.timezone || 'UTC';
+    const dayOfWeek = new Date(`${q.date}T12:00:00Z`).getUTCDay();
+    const busy: BusyBlock[] = [];
+    if (q.staffId) {
+      const st = await this.prisma.staffMember.findFirst({
+        where: { id: q.staffId, tenantId },
+        select: { id: true, workingHours: { where: { isActive: true }, select: { dayOfWeek: true, startTime: true, endTime: true } } },
+      });
+      if (!st) throw new NotFoundException('Staff member not found');
+      const dayStart = wallTimeToUtc(q.date, '00:00', tz);
+      const dayEnd = new Date(dayStart.getTime() + 24 * 3_600_000);
+      const appts = await this.prisma.appointment.findMany({
+        where: { tenantId, assignedStaffId: st.id, status: { in: [...BLOCKING_STATUSES, AppointmentStatus.ARRIVED] }, startTime: { lt: dayEnd }, endTime: { gt: dayStart } },
+        select: { startTime: true, endTime: true },
+      });
+      for (const a of appts) busy.push({ start: a.startTime, end: a.endTime });
+      // Off-shift hours block the day the same way they do on the online page.
+      const hours = st.workingHours ?? [];
+      if (hours.length > 0) {
+        const today = hours.filter((h) => h.dayOfWeek === dayOfWeek)
+          .map((h) => ({ s: wallTimeToUtc(q.date, h.startTime, tz), e: wallTimeToUtc(q.date, h.endTime, tz) }))
+          .filter((x) => x.e.getTime() > x.s.getTime())
+          .sort((a, b) => a.s.getTime() - b.s.getTime());
+        if (today.length === 0) busy.push({ start: dayStart, end: dayEnd });
+        else {
+          let cursor = dayStart;
+          for (const sp of today) {
+            if (sp.s.getTime() > cursor.getTime()) busy.push({ start: cursor, end: sp.s });
+            if (sp.e.getTime() > cursor.getTime()) cursor = sp.e;
+          }
+          if (cursor.getTime() < dayEnd.getTime()) busy.push({ start: cursor, end: dayEnd });
+        }
+      }
+    }
+    const times = openTimesFor({
+      dateStr: q.date, tz, day: rules.businessHours[dayOfWeek] ?? null,
+      closedToday: (rules.daysOff ?? []).includes(q.date),
+      stepMinutes: rules.slotStepMinutes, durationMinutes: q.minutes ?? 30, busy, now: new Date(),
+    });
+    return { tz, times: times.map((d) => d.toISOString()) };
   }
 
   async publicAvailability(tenantId: string, serviceId: string, dateStr: string) {

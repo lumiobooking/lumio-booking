@@ -93,6 +93,7 @@ export function FeedbackCases({ token, lang, staffId, search, selectedId, onSele
       case 'discount': return <>{by} {L('tặng giảm giá lần sau', 'offered a discount next visit')}</>;
       case 'refund': return <>{by} {L('hoàn tiền', 'refunded')}</>;
       case 'note': return <>{by} {L('ghi chú nội bộ', 'added an internal note')}</>;
+      case 'photo': return <>📷 {L('Khách gửi thêm ảnh', 'The customer added a photo')}</>;
       case 'resolved': return <>{by} {L('đã giải quyết', 'resolved the case')}</>;
       case 'status': return <>{by} {e.text === '→ CONTACTED' ? L('đánh dấu đã liên hệ', 'marked contacted') : e.text === '→ IN_PROGRESS' ? L('mở lại ca', 'reopened the case') : L('đổi trạng thái', 'changed the status')}</>;
       default: return <>{by} {e.text}</>;

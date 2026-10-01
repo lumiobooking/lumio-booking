@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState, CSSProperties } from 'react';
 import { DisplayFeedback } from '../../components/feedback/DisplayFeedback';
+import { OrderScreen, type TotalRow } from '../../components/display/OrderScreen';
 import { uiLocale } from '../../lib/datetime';
 
 type Line = { name: string; qty: number; lineCents: number; staff?: string };
@@ -179,39 +180,15 @@ export default function PosDisplayPage() {
   const fbToken = s.status === 'paid' ? s.feedbackToken : undefined;
   const closeFb = useCallback(() => setFbClosed(fbToken ?? null), [fbToken]);
 
-  // Services + totals. `col` stacks them (right half of the landscape split, and
-  // in portrait); otherwise they sit side by side.
-  const orderPayment = (col: boolean) => (
-    <div style={{ display: 'flex', flexDirection: col ? 'column' : 'row', gap: col ? 'clamp(14px, 2vh, 20px)' : '2.4vw', alignItems: 'stretch', width: '100%' }}>
-      <div style={{ ...itemsPanel, flex: col ? '0 0 auto' : '2 1 440px' }}>
-        <div style={{ fontSize: 'clamp(20px, 2.8vw, 30px)', fontWeight: 700, color: 'var(--c0f172a)', marginBottom: 14 }}>Your services</div>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {s.lines.map((l, i) => (
-            <div key={i} style={lineRow}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 600, color: 'var(--c1e293b)' }}>
-                  <span style={{ color: accent, fontWeight: 700 }}>{l.qty}×</span> {l.name}
-                </div>
-                {l.staff && <div style={{ fontSize: 'clamp(12px, 1.5vw, 15px)', color: 'var(--c94a3b8)', marginTop: 2 }}>with {l.staff}</div>}
-              </div>
-              <div style={{ fontSize: 'clamp(17px, 2.1vw, 23px)', fontWeight: 600, color: 'var(--c1e293b)', whiteSpace: 'nowrap', marginLeft: 16 }}>{money(l.lineCents, cur)}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div style={{ ...totalsPanel(accent), flex: col ? '0 0 auto' : '1 1 330px' }}>
-        <Row k="Subtotal" v={money(s.subtotalCents, cur)} />
-        {s.savingsCents > 0 && <Row k="You saved" v={`− ${money(s.savingsCents, cur)}`} color="var(--cbbf7d0)" />}
-        {s.tipCents > 0 && <Row k="Tip" v={money(s.tipCents, cur)} />}
-        {s.taxCents > 0 && <Row k="Tax" v={money(s.taxCents, cur)} />}
-        {(s.cardFeeCents ?? 0) > 0 && <Row k={`Card fee${s.cardFeePct ? ` (${s.cardFeePct}%)` : ''}`} v={money(s.cardFeeCents!, cur)} color="#fbbf24" />}
-        {s.giftCents > 0 && <Row k="Gift card" v={`− ${money(s.giftCents, cur)}`} color="var(--cbbf7d0)" />}
-        <div style={{ height: 1, background: 'rgba(255,255,255,0.25)', margin: '16px 0' }} />
-        <div style={{ fontSize: 'clamp(14px, 2vw, 22px)', fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginBottom: 4 }}>Amount due</div>
-        <div style={{ fontSize: 'clamp(30px, 6.5vw, 56px)', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', letterSpacing: '-0.01em', lineHeight: 1.05 }}>{money(s.dueCents, cur)}</div>
-      </div>
-    </div>
-  );
+  // The totals card's lines, in the order the till sends them.
+  const totalRows: TotalRow[] = [
+    { k: 'Subtotal', v: money(s.subtotalCents, cur) },
+    ...(s.savingsCents > 0 ? [{ k: 'You saved', v: `− ${money(s.savingsCents, cur)}`, color: '#bbf7d0' }] : []),
+    ...(s.tipCents > 0 ? [{ k: 'Tip', v: money(s.tipCents, cur) }] : []),
+    ...(s.taxCents > 0 ? [{ k: 'Tax', v: money(s.taxCents, cur) }] : []),
+    ...((s.cardFeeCents ?? 0) > 0 ? [{ k: `Card fee${s.cardFeePct ? ` (${s.cardFeePct}%)` : ''}`, v: money(s.cardFeeCents!, cur), color: '#fde68a' }] : []),
+    ...(s.giftCents > 0 ? [{ k: 'Gift card', v: `− ${money(s.giftCents, cur)}`, color: '#bbf7d0' }] : []),
+  ];
 
   const brand = (s.salonName || s.salonLogo) ? (
     <div style={brandBar}>
@@ -245,7 +222,7 @@ export default function PosDisplayPage() {
       ) : (<>
       {brand}
       <div style={contentArea}>
-        <div style={{ ...scrollInner, justifyContent: (s.status === 'active' && s.lines.length > 0) ? 'flex-start' : 'center' }}>
+        <div style={{ ...scrollInner, ...(s.status === 'active' && s.lines.length > 0 ? { height: '100%', minHeight: 0, padding: 0, justifyContent: 'flex-start' } : { justifyContent: 'center' }) }}>
 
           {s.status === 'idle' || (s.status === 'active' && s.lines.length === 0) ? (
             (!tall && s.reviewUrl) ? (
@@ -309,20 +286,13 @@ export default function PosDisplayPage() {
               )}
             </div>
 
-          ) : (!tall && s.reviewUrl) ? (
-            // ORDER · landscape → split screen: review QR (left) | payment (right)
-            <div style={{ width: '100%', maxWidth: 1320, margin: '0 auto', display: 'flex', flexDirection: 'row', gap: '2.6vw', alignItems: 'stretch', animation: 'lumioFade .4s ease both' }}>
-              <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <ReviewCard url={s.reviewUrl} accent={accent} big full />
-              </div>
-              <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center' }}>{orderPayment(true)}</div>
-            </div>
           ) : (
-            // ORDER · portrait (or no review) → stacked: payment, then review below
-            <div style={{ width: '100%', maxWidth: 1220, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 'clamp(14px, 2.2vh, 24px)', animation: 'lumioFade .4s ease both' }}>
-              {orderPayment(portrait)}
-              {s.reviewUrl && <ReviewCard url={s.reviewUrl} accent={accent} stack={tall} />}
-            </div>
+            // ORDER — fits the glass: the ticket scrolls inside its card, totals stay put.
+            <OrderScreen
+              lines={s.lines} rows={totalRows} due={money(s.dueCents, cur)} accent={accent}
+              money={(c) => money(c, cur)} tall={tall}
+              reviewUrl={s.reviewUrl}
+            />
           )}
 
         </div>
@@ -648,21 +618,6 @@ const contentArea: CSSProperties = { flex: 1, minHeight: 0, width: '100%', overf
 const scrollInner: CSSProperties = { minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'safe center', padding: '0.5rem 0', boxSizing: 'border-box' };
 const brandBar: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '2px 0 12px', flexShrink: 0 };
 const centerBox: CSSProperties = { textAlign: 'center', maxWidth: 760, margin: '0 auto', animation: 'lumioFade .5s ease both' };
-const itemsPanel: CSSProperties = {
-  background: 'white', borderRadius: 24, padding: 'clamp(20px, 3vw, 38px)',
-  boxShadow: '0 20px 60px rgba(15,23,42,0.10)',
-};
-function totalsPanel(accent: string): CSSProperties {
-  return {
-    background: `linear-gradient(160deg, ${accent} 0%, ${accent} 100%)`, borderRadius: 24,
-    padding: 'clamp(22px, 3vw, 38px)', boxShadow: `0 20px 60px ${accent}59`,
-    display: 'flex', flexDirection: 'column', justifyContent: 'center',
-  };
-}
-const lineRow: CSSProperties = {
-  display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-  padding: 'clamp(11px, 1.6vw, 18px) 0', borderBottom: '1px solid var(--cf1f5f9)',
-};
 function softTipLink(accent: string): CSSProperties {
   return {
     border: `1.5px solid ${accent}55`, background: `${accent}0d`, color: accent,

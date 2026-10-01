@@ -33,6 +33,8 @@ export interface FeedbackCtx {
   replyHours: number;
   maskedPhone: string | null;
   hasPhone: boolean;
+  /** A photo already arrived for this visit (sent from the customer's phone). */
+  hasPhoto?: boolean;
   googleUrl: string | null;
   answered: 'HAPPY' | 'UNHAPPY' | null;
   expired: boolean;
@@ -81,7 +83,16 @@ function strings(lang: 'en' | 'vi') {
     tapAll: vi ? 'Chọn tất cả ý đúng' : 'Tap all that apply',
     more: vi ? 'Kể thêm' : 'Tell us more', optional: vi ? 'không bắt buộc' : 'optional',
     placeholder: vi ? 'Chạm để nhập…' : 'Tap to type…',
-    photo: vi ? '📷 Thêm ảnh' : '📷 Add a photo', photoOk: vi ? '✓ Đã thêm ảnh' : '✓ Photo added', photoBusy: vi ? 'Đang tải ảnh…' : 'Uploading…',
+    photo: vi ? 'Thêm ảnh' : 'Add a photo', photoOk: vi ? 'Đã thêm ảnh' : 'Photo added', photoBusy: vi ? 'Đang tải ảnh…' : 'Uploading…',
+    photoSub: vi ? 'Giúp chủ tiệm thấy rõ chuyện gì đã xảy ra' : 'Helps the owner see exactly what happened',
+    photoChange: vi ? 'Đổi ảnh' : 'Change', photoRemove: vi ? 'Bỏ' : 'Remove',
+    photoPhone: vi ? 'Gửi ảnh bằng điện thoại của bạn' : 'Add a photo from your phone',
+    photoPhoneSub: vi ? 'Quét mã · chụp · xong. Ảnh sẽ đi kèm góp ý của bạn.' : 'Scan, snap, done — it goes with your note.',
+    photoHere: vi ? '📷 Chụp bằng iPad này' : '📷 Use this iPad’s camera',
+    photoGot: vi ? 'Đã nhận ảnh của bạn' : 'Photo received',
+    photoGotSub: vi ? 'Ảnh sẽ đi kèm góp ý gửi chủ tiệm.' : 'It goes to the owner with your note.',
+    photoAfter: vi ? 'Muốn gửi thêm ảnh?' : 'Want to add a photo?',
+    photoAfterOk: vi ? '✓ Đã gửi ảnh cho chủ tiệm' : '✓ Photo sent to the owner',
     contact: vi ? 'Chủ tiệm gọi hoặc nhắn cho bạn được không?' : 'Can the owner call or text you?',
     send: vi ? 'Gửi tới chủ tiệm' : 'Send to the owner', sending: vi ? 'Đang gửi…' : 'Sending…',
     back: vi ? 'Quay lại' : 'Back',
@@ -118,7 +129,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 /** Shrink a picked photo to ≤1280px JPEG before it leaves the phone. */
-function shrink(file: File): Promise<string> {
+export function shrink(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -154,7 +165,15 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
   const [comment, setComment] = useState('');
   const [contact, setContact] = useState(ctx.hasPhone);
   const [photo, setPhoto] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
+  // Shared screen: a photo sent from the customer's own phone (QR) while they answer here.
+  const [phonePhoto, setPhonePhoto] = useState(!!ctx.hasPhoto);
+  const [afterPhoto, setAfterPhoto] = useState(false);
+  // Only a tablet's own camera — never a file picker on the salon's PC (a touch
+  // monitor on Windows would otherwise open the computer's folders to a customer).
+  const canCamera = typeof navigator !== 'undefined'
+    && (/iPad|iPhone|Android/i.test(navigator.userAgent || '') || (/Macintosh/.test(navigator.userAgent || '') && (navigator.maxTouchPoints ?? 0) > 1));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [google, setGoogle] = useState<string | null>(ctx.googleUrl);
@@ -181,7 +200,7 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
     try {
       const r = await post<{ googleUrl: string | null }>(`/public/feedback/${token}`, sentiment === 'HAPPY'
         ? { sentiment, source }
-        : { sentiment, source, reasons: picked, comment: comment.trim() || undefined, wantsContact: contact && ctx.hasPhone, photoUrl: photo || undefined });
+        : { sentiment, source, reasons: picked, comment: comment.trim() || undefined, wantsContact: contact && ctx.hasPhone, photoUrl: photo === null ? undefined : photo });
       setGoogle(r.googleUrl ?? ctx.googleUrl);
       setStep(sentiment === 'HAPPY' ? 'happy' : 'sent');
     } catch {
@@ -200,9 +219,23 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
     try {
       const dataUrl = await shrink(f);
       const r = await post<{ url: string }>(`/public/feedback/${token}/photo`, { dataUrl });
-      setPhoto(r.url);
-    } catch { setErr(t.error); } finally { setPhotoBusy(false); }
+      setPhoto(r.url); setPhotoPreview(dataUrl);
+      if (step === 'sent') setAfterPhoto(true);
+    } catch { setErr(t.error); } finally { setPhotoBusy(false); if (fileRef.current) fileRef.current.value = ''; }
   }
+
+  // Shared screen: watch for a photo arriving from the customer's phone.
+  useEffect(() => {
+    if (!ipad || step !== 'form' || !ctx.askPhoto || phonePhoto || photo !== null) return;
+    let alive = true;
+    const id = window.setInterval(() => {
+      fetch(`${API_URL}/public/feedback/${encodeURIComponent(token)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: FeedbackCtx | null) => { if (alive && d?.hasPhoto) setPhonePhoto(true); })
+        .catch(() => undefined);
+    }, 3000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, [ipad, step, ctx.askPhoto, phonePhoto, photo, token]);
 
   async function textLink() {
     try { await post(`/public/feedback/${token}/text-link`); setTexted(true); } catch { /* ignore */ }
@@ -349,6 +382,29 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
     );
   }
 
+  // ------------------------------------------------------------- photo
+  // capture="environment" opens the camera straight away on phones and iPads;
+  // they still offer "Photo library" from the same sheet.
+  const photoInput = <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={(e) => pickPhoto(e.target.files?.[0])} />;
+  const photoDone = (big: boolean) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px', borderRadius: 16, background: C.good, border: '1.5px solid #bbf7d0' }}>
+      {photoPreview
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={photoPreview} alt="" style={{ width: big ? 72 : 58, height: big ? 72 : 58, borderRadius: 12, objectFit: 'cover', flexShrink: 0 }} />
+        : <span style={{ width: big ? 72 : 58, height: big ? 72 : 58, borderRadius: 12, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0 }}>📷</span>}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <b style={{ fontSize: big ? 18 : 15.5, color: '#166534' }}>✓ {phonePhoto && !photo ? t.photoGot : t.photoOk}</b>
+        <div style={{ fontSize: big ? 15 : 13, color: C.muted, marginTop: 2 }}>{t.photoGotSub}</div>
+      </div>
+      {photo && (
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={photoBusy} style={{ height: 34, padding: '0 12px', borderRadius: 999, border: `1px solid ${C.line}`, background: '#fff', font: '600 13px system-ui', color: C.ink2, cursor: 'pointer' }}>{photoBusy ? '…' : t.photoChange}</button>
+          <button type="button" onClick={() => { setPhoto(''); setPhotoPreview(null); }} style={{ height: 34, padding: '0 12px', borderRadius: 999, border: `1px solid ${C.line}`, background: '#fff', font: '600 13px system-ui', color: C.muted, cursor: 'pointer' }}>{t.photoRemove}</button>
+        </div>
+      )}
+    </div>
+  );
+
   // ---------------------------------------------------------------- form
   if (step === 'form') {
     const toggle = (r: string) => setPicked((v) => (v.includes(r) ? v.filter((x) => x !== r) : [...v, r]));
@@ -368,12 +424,38 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
           <div style={{ ...label(ipad), marginTop: 18 }}>{t.more} <span style={{ fontWeight: 500, color: C.faint }}>· {t.optional}</span></div>
           <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t.placeholder} rows={ipad ? 2 : 3} maxLength={1000}
             style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${C.line}`, borderRadius: 16, background: '#fff', padding: '13px 15px', fontSize: ipad ? 18 : 16, lineHeight: 1.45, color: C.ink, fontFamily: 'inherit', resize: 'none' }} />
-          {ctx.askPhoto && !ipad && (
+          {ctx.askPhoto && (
             <>
-              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => pickPhoto(e.target.files?.[0])} />
-              <button type="button" onClick={() => fileRef.current?.click()} disabled={photoBusy} style={{ background: 'none', border: 'none', padding: 0, marginTop: 10, color: accent, font: '600 14px system-ui', cursor: 'pointer', alignSelf: 'flex-start' }}>
-                {photoBusy ? t.photoBusy : photo ? t.photoOk : t.photo}
-              </button>
+              <div style={{ ...label(ipad), marginTop: 18 }}>{t.photo} <span style={{ fontWeight: 500, color: C.faint }}>· {t.optional}</span></div>
+              {photoInput}
+              {ipad ? (
+                (photo || (phonePhoto && photo === null)) ? photoDone(true) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '14px 16px', borderRadius: 16, background: '#fff', border: `1.5px dashed ${C.line}` }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={qrImg(`${origin}/f/${token}/photo`, 260)} alt="" width={104} height={104} style={{ borderRadius: 10, border: `1px solid ${C.line}`, padding: 4, background: '#fff', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <b style={{ fontSize: 18 }}>📷 {t.photoPhone}</b>
+                      <div style={{ fontSize: 15.5, color: C.muted, marginTop: 3, lineHeight: 1.45 }}>{t.photoPhoneSub}</div>
+                      {canCamera && (
+                        <button type="button" onClick={() => fileRef.current?.click()} disabled={photoBusy}
+                          style={{ marginTop: 10, height: 44, padding: '0 18px', borderRadius: 999, border: `1.5px solid ${accent}55`, background: '#fff', color: accent, font: '600 15px system-ui', cursor: 'pointer' }}>
+                          {photoBusy ? t.photoBusy : t.photoHere}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              ) : photo ? photoDone(false) : (
+                <button type="button" onClick={() => fileRef.current?.click()} disabled={photoBusy}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', padding: '14px 15px', borderRadius: 16, background: '#fff', border: `1.5px dashed ${accent}66`, cursor: 'pointer', fontFamily: 'inherit', color: C.ink }}>
+                  <span style={{ width: 46, height: 46, borderRadius: 14, background: `${accent}14`, color: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>{photoBusy ? '…' : '📷'}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <b style={{ display: 'block', fontSize: 15.5 }}>{photoBusy ? t.photoBusy : t.photo}</b>
+                    <span style={{ display: 'block', fontSize: 13, color: C.muted, marginTop: 2 }}>{t.photoSub}</span>
+                  </span>
+                  <span style={{ color: accent, fontSize: 22, fontWeight: 300 }}>+</span>
+                </button>
+              )}
             </>
           )}
           {ctx.hasPhone && (
@@ -408,6 +490,19 @@ export function FeedbackFlow({ token, ctx, variant, onDone, header, footer }: {
         {willCall && ctx.maskedPhone && !ipad && (
           <div style={{ marginTop: 22, display: 'flex', gap: 10, alignItems: 'center', padding: '13px 15px', borderRadius: 16, background: '#fff', border: `1px solid ${C.line}`, fontSize: 14, color: C.ink2 }}>💬 <span>{t.expect(ctx.maskedPhone, ctx.salonName)}</span></div>
         )}
+        {!ipad && ctx.askPhoto && !photo && !ctx.hasPhoto && (
+          <>
+            {photoInput}
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={photoBusy}
+              style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12, padding: '13px 15px', borderRadius: 16, background: '#fff', border: `1.5px dashed ${accent}66`, fontFamily: 'inherit', fontSize: 14.5, color: C.ink2, cursor: 'pointer', textAlign: 'left' }}>
+              <span style={{ fontSize: 20 }}>📷</span>
+              <span style={{ flex: 1 }}><b>{photoBusy ? t.photoBusy : t.photoAfter}</b> <span style={{ color: C.faint }}>· {t.optional}</span></span>
+              <span style={{ color: accent, fontSize: 20 }}>+</span>
+            </button>
+          </>
+        )}
+        {!ipad && afterPhoto && <div style={{ marginTop: 14, textAlign: 'center', fontSize: 14.5, fontWeight: 600, color: '#166534' }}>{t.photoAfterOk}</div>}
+        {err && step === 'sent' && <p style={{ color: C.bad, margin: '10px 0 0', textAlign: 'center' }}>{err}</p>}
         <div style={{ marginTop: 'auto', paddingTop: 30 }}>{smallGoogle}</div>
       </div>
       {ipad

@@ -3270,6 +3270,7 @@ model FeedbackRequest {
   smsSentAt  DateTime?
   answeredAt DateTime?
   feedbackId String?
+  photoUrl   String? // sent from the customer's phone while they answer on the shared screen
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

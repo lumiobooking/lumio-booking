@@ -185,9 +185,11 @@ export class FeedbackService {
     const brand = this.settings.brandingFrom(tenant?.branding);
     const expired = r.status === 'EXPIRED' || r.createdAt.getTime() < Date.now() - LINK_TTL_DAYS * 86_400_000;
     let answered: Sentiment | null = null;
+    let answeredPhoto = false;
     if (r.feedbackId) {
-      const f = await this.db.feedback.findFirst({ where: { id: r.feedbackId, tenantId: r.tenantId }, select: { sentiment: true } });
+      const f = await this.db.feedback.findFirst({ where: { id: r.feedbackId, tenantId: r.tenantId }, select: { sentiment: true, photoUrl: true } });
       answered = (f?.sentiment as Sentiment) ?? null;
+      answeredPhoto = !!f?.photoUrl;
     }
     return {
       salonName: tenant?.name ?? '',
@@ -205,6 +207,9 @@ export class FeedbackService {
       replyHours: s.replyHours,
       maskedPhone: maskPhone(r.phone),
       hasPhone: !!r.phone,
+      // A photo already arrived for this visit (from the customer's phone) — the
+      // shared screen shows it as received rather than asking again.
+      hasPhoto: !!r.photoUrl || answeredPhoto,
       googleUrl,
       answered,
       expired: expired && !answered,
@@ -227,7 +232,8 @@ export class FeedbackService {
     const s = await this.getSettings(tenantId);
     const reasons = sentiment === 'UNHAPPY' ? cleanReasons(dto.reasons, s.reasons) : [];
     const source = ['ipad', 'sms', 'qr', 'link'].includes(String(dto.source)) ? String(dto.source) : 'link';
-    const photoUrl = s.askPhoto && /^https:\/\//i.test(String(dto.photoUrl ?? '')) ? String(dto.photoUrl).slice(0, 600) : null;
+    const sent = dto.photoUrl ?? r.photoUrl ?? '';
+    const photoUrl = s.askPhoto && /^https:\/\//i.test(String(sent)) ? String(sent).slice(0, 600) : null;
 
     // Claim the request first so two taps can never write two answers.
     const claimed = await this.db.feedbackRequest.updateMany({ where: { id: r.id, tenantId, feedbackId: null }, data: { status: 'ANSWERED', answeredAt: new Date() } });
@@ -259,12 +265,31 @@ export class FeedbackService {
   }
 
   /** The optional photo with a "not quite" — stored in the salon's own folder before the answer is sent. */
+  /**
+   * A photo for this visit. Three moments, one endpoint:
+   *  - on the phone, before answering → the form sends the url with the answer;
+   *  - from the phone while the customer answers on the SHARED screen → kept on
+   *    the request and picked up when the answer arrives;
+   *  - after a "not quite" was sent → attached to it, and the case hears about it.
+   */
   async publicPhoto(token: string, dataUrl: string) {
     const r = await this.requestByToken(token);
-    if (r.feedbackId) throw new BadRequestException('Already answered');
     const s = await this.getSettings(r.tenantId);
     if (!s.askPhoto || !this.uploads) throw new BadRequestException('Photos are not accepted here');
+    let fb: Row | null = null;
+    if (r.feedbackId) {
+      fb = await this.db.feedback.findFirst({ where: { id: r.feedbackId, tenantId: r.tenantId }, select: { id: true, sentiment: true, photoUrl: true } });
+      if (!fb || fb.sentiment !== 'UNHAPPY') throw new BadRequestException('Already answered');
+      if (fb.photoUrl) throw new BadRequestException('A photo was already added');
+    }
     const url = await this.uploads.uploadDataUrl(r.tenantId, String(dataUrl ?? ''));
+    if (fb) {
+      await this.db.feedback.updateMany({ where: { id: fb.id, tenantId: r.tenantId }, data: { photoUrl: url } });
+      const c = await this.db.feedbackCase.findFirst({ where: { tenantId: r.tenantId, feedbackId: fb.id }, select: { id: true } });
+      if (c) await this.db.feedbackCaseEvent.create({ data: { tenantId: r.tenantId, caseId: c.id, kind: 'photo', text: 'Customer added a photo' } });
+    } else {
+      await this.db.feedbackRequest.updateMany({ where: { id: r.id, tenantId: r.tenantId }, data: { photoUrl: url } });
+    }
     return { url };
   }
 

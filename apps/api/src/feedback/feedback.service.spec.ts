@@ -260,3 +260,42 @@ describe('what a technician sees', () => {
     expect(await svc.mine(lisaUser)).toEqual({ visible: false });
   });
 });
+
+describe('a photo for the visit', () => {
+  function withUploads() {
+    const env = setup();
+    const uploads: any = { uploadDataUrl: jest.fn(async (t: string) => `https://cdn.example/${t}/p${uploads.uploadDataUrl.mock.calls.length}.jpg`) };
+    const svc = new FeedbackService(env.db as never, (env.svc as any).settings, env.audit, env.notifications, env.push, uploads);
+    return { ...env, svc, uploads };
+  }
+
+  it('sent from the phone while the customer answers on the shared screen, it lands on the answer', async () => {
+    const { svc, db } = withUploads();
+    const r = await svc.createForOrder('A', order);
+    expect((await svc.publicContext(r!.token!)).hasPhoto).toBe(false);
+    await svc.publicPhoto(r!.token!, 'data:image/jpeg;base64,AAAA');
+    expect((await svc.publicContext(r!.token!)).hasPhoto).toBe(true);
+    await svc.publicSubmit(r!.token!, { sentiment: 'UNHAPPY', reasons: ['Polish chipped'], source: 'ipad' });
+    expect(db.feedback.rows[0].photoUrl).toBe('https://cdn.example/A/p1.jpg');
+  });
+
+  it('added after a "not quite" is sent, it joins the answer and the case timeline — once', async () => {
+    const { svc, db } = withUploads();
+    const r = await svc.createForOrder('A', order);
+    await svc.publicSubmit(r!.token!, { sentiment: 'UNHAPPY', reasons: ['Polish chipped'], source: 'ipad' });
+    await svc.publicPhoto(r!.token!, 'data:image/jpeg;base64,AAAA');
+    expect(db.feedback.rows[0].photoUrl).toMatch(/^https:\/\/cdn\.example\/A\//);
+    expect(db.feedbackCaseEvent.rows.some((e: Row) => e.kind === 'photo' && e.tenantId === 'A')).toBe(true);
+    await expect(svc.publicPhoto(r!.token!, 'data:image/jpeg;base64,BBBB')).rejects.toThrow();
+  });
+
+  it('never after a happy answer, and not when the owner switched photos off', async () => {
+    const { svc, db } = withUploads();
+    const r = await svc.createForOrder('A', order);
+    await svc.publicSubmit(r!.token!, { sentiment: 'HAPPY', source: 'link' });
+    await expect(svc.publicPhoto(r!.token!, 'data:image/jpeg;base64,AAAA')).rejects.toThrow();
+    const r2 = await svc.createForOrder('A', { ...order, id: 'o9', customerId: null as never });
+    db.setting.rows[0].value = { ...db.setting.rows[0].value, askPhoto: false };
+    await expect(svc.publicPhoto(r2!.token!, 'data:image/jpeg;base64,AAAA')).rejects.toThrow();
+  });
+});

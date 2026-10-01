@@ -1,9 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { AppointmentStatus, Prisma, WalkInStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomersService } from '../customers/customers.service';
 import { SettingsService } from '../settings/settings.service';
+import { PushService } from '../push/push.service';
 import { normalizeSource } from '../common/source.util';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import {
@@ -73,7 +74,28 @@ export class WalkinsService {
     private readonly prisma: PrismaService,
     private readonly customers: CustomersService,
     private readonly settings: SettingsService,
+    @Optional() private readonly push?: PushService,
   ) {}
+
+  /**
+   * Tell a technician she has a customer: a push to her phone (when push is
+   * set up) on top of the live refresh of her chair screen. Best effort and
+   * never awaited by the change that caused it.
+   */
+  private notifyStart(tenantId: string, staffId: string, customerName: string | null, legNames: string[]) {
+    if (!this.push) return;
+    void (async () => {
+      const staff = await this.prisma.staffMember.findFirst({ where: { id: staffId, tenantId }, select: { userId: true } });
+      if (!staff?.userId) return;
+      const who = customerName?.trim() || 'Walk-in';
+      await this.push!.sendToUser(tenantId, staff.userId, {
+        title: `💺 Khách mới · New client: ${who}`,
+        body: legNames.join(' · ') || who,
+        url: '/staff/chair',
+        tag: 'lumio-chair',
+      });
+    })().catch(() => undefined);
+  }
 
   private tenantId(user: AuthenticatedUser): string {
     const id = resolveTenantScope(user);
@@ -420,7 +442,14 @@ export class WalkinsService {
       } else {
         await this.writeItems({ ...(t as unknown as TicketLike), tenantId }, items, extra);
       }
-      if (mine.length) seated.push(t.id);
+      if (mine.length) {
+        seated.push(t.id);
+        const started = legsOf({ ...(t as unknown as TicketLike), items });
+        for (const a of mine) {
+          const leg = started.find((l) => l.legId === a.legId);
+          this.notifyStart(tenantId, a.staffId, t.customerName, leg?.names ?? []);
+        }
+      }
     }
     return seated;
   }
@@ -580,6 +609,24 @@ export class WalkinsService {
     // Her technician is free now: someone waiting can have her.
     await this.settle(w.tenantId);
     return this.row(w.tenantId, w.id);
+  }
+
+  /**
+   * "Ra quầy trả tiền" from the technician's own app. Sending the customer to
+   * pay closes the visit for everyone on it, so it is refused while another
+   * part is still going or still to do (her feet with Lisa, or waiting for a
+   * pedicurist): that technician would be marked free mid-pedicure. The
+   * technician finishes HER part instead and the customer stays on the floor.
+   */
+  async waitPaymentAsMe(user: AuthenticatedUser, id: string) {
+    const w = await this.mine(user, id);
+    const me = await this.staffOf(user);
+    const open = legsOf(w as unknown as TicketLike).filter((l) => !l.legacy && l.status !== 'DONE' && l.staffId !== me);
+    if (open.length) {
+      const what = open.map((l) => (l.zone === 'HAND' ? 'tay' : l.zone === 'FOOT' ? 'chân' : l.names[0] ?? 'dịch vụ')).join(', ');
+      throw new BadRequestException(`Khách còn phần ${what} chưa xong — bấm "Xong phần của tôi", khách sẽ ở lại cho thợ kế tiếp.`);
+    }
+    return this.waitPayment(user, id);
   }
 
   /**
@@ -769,6 +816,10 @@ export class WalkinsService {
         next = patchLeg(items, real, { staffId: tech, pinned: true });
       }
       await this.writeItems({ ...t, tenantId: fresh.tenantId }, next);
+      // She is on the customer now (started, or took over mid-service).
+      const startsNow = leg.status === 'WAITING' && start;
+      const takesOver = leg.status === 'SERVING' && tech !== leg.staffId;
+      if (tech && (startsNow || takesOver)) this.notifyStart(fresh.tenantId, tech, fresh.customerName, leg.names);
     });
     await this.settle(w.tenantId);
     return this.row(w.tenantId, w.id);
@@ -865,12 +916,20 @@ export class WalkinsService {
       return w.assignedStaffId === staff.id || this.lineTechs(w).includes(staff.id);
     };
     const serving = allServing.filter(isMine).map((w) => this.view(w));
+    // Names of everyone working on my customers, so the chair can say
+    // "Chân — Lisa đang làm" next to my own part.
+    const ids = [...new Set(serving.flatMap((w) => w.legs.map((l) => l.staffId)).filter((x): x is string => !!x))];
+    const team = ids.length
+      ? await this.prisma.staffMember.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, firstName: true, lastName: true } })
+      : [];
+    const techNames: Record<string, string> = {};
+    for (const s of team) techNames[s.id] = `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`;
     // Everyone else currently in the salon (for the "a client moved to my chair" picker).
     const mineIds = new Set(serving.map((w) => w.id));
     const salon = allServing
       .filter((w) => !mineIds.has(w.id))
       .map((w) => ({ id: w.id, customerName: w.customerName, station: (w as { station?: string | null }).station ?? null }));
-    return { staffId: staff.id, currency, serving, salon };
+    return { staffId: staff.id, currency, serving, salon, techNames };
   }
 
   /**

@@ -15,17 +15,31 @@ import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
+import { useLiveEvents } from '../../../lib/useLiveEvents';
 
 interface Svc { id: string; name: string; priceCents: number; durationMinutes: number }
 interface ChairOpt { id: string; name: string; type: string; takenBy: string | null }
-interface Item { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null }
+interface Item { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null; legId?: string }
+/** One part of the visit done by one technician (hands, feet, …). */
+interface Leg {
+  legId: string; zone: 'HAND' | 'FOOT' | 'OTHER'; status: 'WAITING' | 'SERVING' | 'DONE';
+  staffId: string | null; startedAt: string | null; names: string[]; legacy?: boolean;
+}
 interface Chair {
   id: string; customerName: string | null; phone: string | null; assignedAt: string | null;
   station: string | null; stationId: string | null; awaitingPayment?: boolean;
   items: Item[]; service: { id: string; name: string } | null;
+  legs?: Leg[];
 }
 interface SalonClient { id: string; customerName: string | null; station: string | null }
-interface MyChair { staffId: string | null; currency: string; serving: Chair[]; salon: SalonClient[] }
+interface MyChair { staffId: string | null; currency: string; serving: Chair[]; salon: SalonClient[]; techNames?: Record<string, string> }
+
+const ZONE_ICON: Record<Leg['zone'], string> = { HAND: '✋', FOOT: '🦶', OTHER: '✦' };
+function legName(l: Leg, vi: boolean): string {
+  if (l.zone === 'HAND') return vi ? 'Tay' : 'Hands';
+  if (l.zone === 'FOOT') return vi ? 'Chân' : 'Feet';
+  return l.names[0] ?? (vi ? 'Dịch vụ' : 'Service');
+}
 
 export default function StaffChairPage() {
   const { lang } = useLang();
@@ -52,7 +66,7 @@ function Inner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [undo, setUndo] = useState<{ id: string; name: string } | null>(null);
+  const [undo, setUndo] = useState<{ id: string; name: string; part: boolean } | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -69,6 +83,9 @@ function Inner() {
 
   useEffect(() => { load(); }, [load]);
   useLiveRefresh(load, 15000);
+  // The moment the desk or the dispatcher hands her a customer (or another
+  // technician finishes her part), this screen redraws — no waiting for the poll.
+  useLiveEvents('/my-chair/events', token, () => { void load(); });
 
   // The undo bar for an accidental "Done" only lives for 20 seconds.
   useEffect(() => {
@@ -90,7 +107,7 @@ function Inner() {
   const removeService = (id: string, lineId: string) => act(id, `/my-chair/${id}/services/${lineId}`, 'DELETE');
   const setChair = (id: string, stationId: string) => act(id, `/my-chair/${id}/chair`, 'PATCH', { stationId });
   const toPay = (id: string) => act(id, `/my-chair/${id}/wait-payment`, 'PATCH');
-  const finish = async (id: string, name: string) => { await act(id, `/my-chair/${id}/done`, 'PATCH'); setUndo({ id, name }); };
+  const finish = async (id: string, name: string, part: boolean) => { await act(id, `/my-chair/${id}/done`, 'PATCH'); setUndo({ id, name, part }); };
   const undoDone = (id: string) => { setUndo(null); act(id, `/my-chair/${id}/reactivate`, 'PATCH'); };
 
   if (loading && !data) return <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p>;
@@ -112,6 +129,7 @@ function Inner() {
         <div style={{ display: 'grid', gap: 14 }}>
           {serving.map((w) => (
             <ChairCard key={w.id} w={w} services={services} chairs={chairs} currency={currency} t={t} vi={vi}
+              me={data?.staffId ?? null} techNames={data?.techNames ?? {}}
               busy={busyId === w.id}
               onAdd={addService} onRemove={removeService} onChair={setChair} onPay={toPay} onDone={finish} />
           ))}
@@ -139,7 +157,7 @@ function Inner() {
         <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60, display: 'flex', alignItems: 'center', gap: 12,
           padding: '12px 16px calc(12px + env(safe-area-inset-bottom, 0px))', background: 'var(--c1e293b)', borderTop: '1px solid var(--c334155)' }}>
           <span style={{ flex: 1, minWidth: 0, color: 'var(--ce2e8f0)', fontSize: 14 }}>
-            {vi ? 'Đã xong' : 'Finished'}: <b>{undo.name}</b>
+            {undo.part ? (vi ? 'Đã xong phần của bạn' : 'Your part is done') : (vi ? 'Đã xong' : 'Finished')}: <b>{undo.name}</b>
           </span>
           <button onClick={() => undoDone(undo.id)}
             style={{ flexShrink: 0, padding: '10px 18px', borderRadius: 999, border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)', fontWeight: 600, cursor: 'pointer' }}>
@@ -177,16 +195,26 @@ function ServicePicker({ services, currency, busy, onPick, onCancel, t }: {
   );
 }
 
-function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove, onChair, onPay, onDone }: {
-  w: Chair; services: Svc[]; chairs: ChairOpt[]; currency: string; t: (k: string) => string; vi: boolean; busy: boolean;
+function ChairCard({ w, services, chairs, currency, t, vi, me, techNames, busy, onAdd, onRemove, onChair, onPay, onDone }: {
+  w: Chair; services: Svc[]; chairs: ChairOpt[]; currency: string; t: (k: string) => string; vi: boolean;
+  me: string | null; techNames: Record<string, string>; busy: boolean;
   onAdd: (id: string, serviceId: string) => void; onRemove: (id: string, lineId: string) => void;
-  onChair: (id: string, stationId: string) => void; onPay: (id: string) => void; onDone: (id: string, name: string) => void;
+  onChair: (id: string, stationId: string) => void; onPay: (id: string) => void; onDone: (id: string, name: string, part: boolean) => void;
 }) {
+  // The visit in parts: mine (what I am doing now) and the others' (feet with
+  // Lisa, or waiting for a pedicurist). A ticket from before parts has none.
+  const legs = (w.legs ?? []).filter((l) => !l.legacy);
+  const myLegs = legs.filter((l) => l.staffId === me && l.status === 'SERVING');
+  const otherLegs = legs.filter((l) => !myLegs.includes(l));
+  const othersOpen = otherLegs.filter((l) => l.status !== 'DONE');
+  const legOf = (it: Item) => legs.find((l) => l.legId === it.legId);
+  const myStart = myLegs.map((l) => l.startedAt).filter(Boolean).sort()[0] ?? null;
+  const fresh = myStart ? minsSince(myStart) < 3 : false;
   const [adding, setAdding] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const items = w.items ?? [];
   const subtotal = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
-  const mins = minsSince(w.assignedAt);
+  const mins = minsSince(myStart ?? w.assignedAt);
   const name = w.customerName || t('sc.walkin');
   const chair = chairs.find((c) => c.id === w.stationId);
 
@@ -194,11 +222,44 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
     <div style={{ ...ui.card, padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--ce2e8f0)' }}>{name}</div>
+          <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--ce2e8f0)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {name}
+            {fresh && <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: '#16a34a', borderRadius: 999, padding: '2px 8px' }}>{vi ? 'Mới giao' : 'New'}</span>}
+          </div>
           {mins > 0 && <div style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 2 }}>{mins}m {t('sc.inChair')}</div>}
         </div>
         {w.phone && <a href={`tel:${w.phone}`} style={{ color: 'var(--c818cf8)', fontSize: 13, textDecoration: 'none', whiteSpace: 'nowrap' }}>{w.phone}</a>}
       </div>
+
+      {legs.length > 0 && (
+        <div style={{ marginBottom: 12, display: 'grid', gap: 6 }}>
+          {myLegs.map((l) => (
+            <div key={l.legId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: '1.5px solid rgba(34,197,94,0.55)', background: 'rgba(34,197,94,0.10)' }}>
+              <span style={{ fontSize: 20, lineHeight: 1 }}>{ZONE_ICON[l.zone]}</span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-good)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{vi ? 'Phần của bạn' : 'Your part'} · {legName(l, vi)}</div>
+                <div style={{ fontSize: 14, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.names.join(' · ')}</div>
+              </div>
+              {l.startedAt && <span style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{minsSince(l.startedAt)}m</span>}
+            </div>
+          ))}
+          {otherLegs.map((l) => {
+            const who = l.staffId ? techNames[l.staffId] ?? '' : '';
+            const state = l.status === 'DONE'
+              ? { text: vi ? `xong${who ? ' · ' + who : ''}` : `done${who ? ' · ' + who : ''}`, color: 'var(--c64748b)' }
+              : l.status === 'SERVING'
+                ? { text: vi ? `${who || 'thợ khác'} đang làm` : `${who || 'another tech'} working`, color: 'var(--ink-good)' }
+                : { text: who ? (vi ? `chờ ${who}` : `waiting for ${who}`) : (vi ? 'chờ thợ — hệ thống tự giao' : 'waiting — auto-assigned'), color: 'var(--ink-warn)' };
+            return (
+              <div key={l.legId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 10, border: '1px solid var(--c334155)' }}>
+                <span style={{ fontSize: 16, lineHeight: 1, opacity: 0.8 }}>{ZONE_ICON[l.zone]}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{legName(l, vi)} · {l.names.join(' · ')}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: state.color, whiteSpace: 'nowrap' }}>{l.status === 'DONE' ? '✓ ' : ''}{state.text}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div style={{ marginBottom: 12 }}>
         <label style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>
@@ -231,14 +292,25 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
       <div style={{ border: '1px solid var(--c263041)', borderRadius: 12, overflow: 'hidden', marginBottom: 12 }}>
         {items.length === 0 ? (
           <div style={{ padding: '12px 14px', color: 'var(--c64748b)', fontSize: 13 }}>{t('wi.noLines')}</div>
-        ) : items.map((it) => (
-          <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderBottom: '1px solid var(--line)' }}>
-            <div style={{ flex: 1, minWidth: 0, color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
-            <div style={{ color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 600 }}>{formatPrice(it.priceCents, currency)}</div>
-            <button onClick={() => onRemove(w.id, it.lineId)} aria-label={t('wi.removeLine')}
-              style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 22, lineHeight: 1, padding: '0 4px' }}>&times;</button>
-          </div>
-        ))}
+        ) : items.map((it) => {
+          // A line of somebody else's part: shown (it is one bill) but not hers to remove.
+          const leg = legOf(it);
+          const theirs = !!leg && leg.staffId !== me && !myLegs.includes(leg);
+          const owner = theirs && leg?.staffId ? techNames[leg.staffId] : '';
+          return (
+            <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderBottom: '1px solid var(--line)', opacity: theirs ? 0.6 : 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
+                {theirs && <div style={{ color: 'var(--c94a3b8)', fontSize: 11.5 }}>{owner || (leg?.staffId ? (vi ? 'Thợ khác' : 'Another tech') : (vi ? 'Chờ thợ' : 'Waiting for a tech'))}</div>}
+              </div>
+              <div style={{ color: 'var(--ce2e8f0)', fontSize: 15, fontWeight: 600 }}>{formatPrice(it.priceCents, currency)}</div>
+              {theirs ? <span style={{ width: 26 }} /> : (
+                <button onClick={() => onRemove(w.id, it.lineId)} aria-label={t('wi.removeLine')}
+                  style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', cursor: 'pointer', fontSize: 22, lineHeight: 1, padding: '0 4px' }}>&times;</button>
+              )}
+            </div>
+          );
+        })}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: 'var(--c0f172a)' }}>
           <span style={{ color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 600 }}>{t('wi.subtotal')}</span>
           <span style={{ color: 'var(--cf8fafc)', fontSize: 18, fontWeight: 700 }}>{formatPrice(subtotal, currency)}</span>
@@ -254,8 +326,9 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
 
       {!adding && (
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <button onClick={() => onPay(w.id)} disabled={busy || !!w.awaitingPayment}
-            style={{ ...ghost, flex: 1, padding: '12px', opacity: w.awaitingPayment ? 0.5 : 1 }}>
+          <button onClick={() => onPay(w.id)} disabled={busy || !!w.awaitingPayment || othersOpen.length > 0}
+            title={othersOpen.length ? (vi ? 'Khách còn phần khác chưa xong' : 'Another part is not finished yet') : undefined}
+            style={{ ...ghost, flex: 1, padding: '12px', opacity: w.awaitingPayment || othersOpen.length ? 0.5 : 1 }}>
             {w.awaitingPayment
               ? (vi ? '⏳ Đang chờ trả tiền' : '⏳ Waiting to pay')
               : (vi ? '💵 Ra quầy trả tiền' : '💵 Send to pay')}
@@ -263,20 +336,28 @@ function ChairCard({ w, services, chairs, currency, t, vi, busy, onAdd, onRemove
           {!confirm ? (
             <button onClick={() => setConfirm(true)} disabled={busy}
               style={{ ...ghost, flex: 1, padding: '12px', borderColor: '#16a34a', color: 'var(--c4ade80)' }}>
-              {vi ? '✓ Xong khách' : '✓ Finish'}
+              {othersOpen.length ? (vi ? '✓ Xong phần của tôi' : '✓ My part is done') : (vi ? '✓ Xong khách' : '✓ Finish')}
             </button>
           ) : (
-            <button onClick={() => { setConfirm(false); onDone(w.id, name); }} disabled={busy}
+            <button onClick={() => { setConfirm(false); onDone(w.id, name, othersOpen.length > 0); }} disabled={busy}
               style={{ flex: 1, padding: '12px', borderRadius: 8, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
               {vi ? 'Chắc chắn xong?' : 'Confirm finish?'}
             </button>
           )}
         </div>
       )}
+      {othersOpen.length > 0 && !confirm && !adding && (
+        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '8px 0 0' }}>
+          {vi ? 'Khách trả tiền khi xong mọi phần — thợ làm phần cuối sẽ đưa khách ra quầy.' : 'The client pays once every part is done — the last technician sends them to the desk.'}
+        </p>
+      )}
       {confirm && (
         <p style={{ color: 'var(--c94a3b8)', fontSize: 12, margin: '8px 0 0' }}>
-          {vi ? 'Xong khách sẽ nhả ghế và tính một lượt cho thợ. Bấm lại để xác nhận — lỡ tay vẫn hoàn tác được.'
-              : 'Finishing frees the chair and credits your turn. Tap again to confirm — you can still undo.'}
+          {othersOpen.length
+            ? (vi ? `Bạn được tính lượt và rảnh để nhận khách mới. Khách ở lại cho phần ${othersOpen.map((l) => legName(l, vi).toLowerCase()).join(', ')} — hệ thống tự giao cho thợ kế tiếp. Bấm lại để xác nhận.`
+                  : `Your turn is credited and you are free for the next client. The client stays for the ${othersOpen.map((l) => legName(l, vi).toLowerCase()).join(', ')} — the system hands it to the next technician. Tap again to confirm.`)
+            : (vi ? 'Xong khách sẽ nhả ghế và tính một lượt cho thợ. Bấm lại để xác nhận — lỡ tay vẫn hoàn tác được.'
+                  : 'Finishing frees the chair and credits your turn. Tap again to confirm — you can still undo.')}
         </p>
       )}
     </div>

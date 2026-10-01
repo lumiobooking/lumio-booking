@@ -1,9 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, MessageEvent, Param, Patch, Post, Sse } from '@nestjs/common';
+import { Observable, interval, merge } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { liveEvents } from '../common/live-events';
 import { UserRole } from '@prisma/client';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthenticatedUser } from '../common/tenant/tenant-context';
+import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { WalkinsService } from './walkins.service';
 
 class AddServiceDto {
@@ -31,6 +34,27 @@ class ChairDto {
 export class MyChairController {
   constructor(private readonly walkins: WalkinsService) {}
 
+  /**
+   * The same nudge stream as the desk's board (carries no data — see
+   * common/live-events.ts), so a technician's screen shows a new customer
+   * the moment the dispatcher hands her one, not on its next poll.
+   */
+  @Sse('events')
+  events(@CurrentUser() user: AuthenticatedUser): Observable<MessageEvent> {
+    const tenantId = resolveTenantScope(user) ?? '';
+    return merge(
+      liveEvents.stream(tenantId).pipe(map((e) => ({ data: e }))),
+      interval(25_000).pipe(map(() => ({ data: { topic: 'ping', at: Date.now() } }))),
+    );
+  }
+
+  /** Run a change, then tell every open board and chair of this salon to look again. */
+  private async nudge<T>(user: AuthenticatedUser, id: string, work: Promise<T>): Promise<T> {
+    const r = await work;
+    liveEvents.emit(resolveTenantScope(user), 'walkins', id);
+    return r;
+  }
+
   /** Clients in my chair + everyone else currently in the salon. */
   @Get()
   mine(@CurrentUser() user: AuthenticatedUser) {
@@ -52,24 +76,24 @@ export class MyChairController {
   /** Add a service I performed to this client's running bill (credited to ME). */
   @Post(':id/services')
   addService(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AddServiceDto) {
-    return this.walkins.addServiceAsMe(user, id, dto.serviceId);
+    return this.nudge(user, id, this.walkins.addServiceAsMe(user, id, dto.serviceId));
   }
 
   @Delete(':id/services/:lineId')
   removeService(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('lineId') lineId: string) {
-    return this.walkins.removeService(user, id, lineId);
+    return this.nudge(user, id, this.walkins.removeService(user, id, lineId));
   }
 
   /** Seat this client in a chair (or clear it). */
   @Patch(':id/chair')
   chair(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ChairDto) {
-    return this.walkins.moveToStation(user, id, dto.stationId);
+    return this.nudge(user, id, this.walkins.moveToStation(user, id, dto.stationId));
   }
 
   /** Client is finished but hasn't paid: free the chair, keep the bill open. */
   @Patch(':id/wait-payment')
   waitPayment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.walkins.waitPayment(user, id);
+    return this.nudge(user, id, this.walkins.waitPaymentAsMe(user, id));
   }
 
   /**
@@ -79,12 +103,12 @@ export class MyChairController {
    */
   @Patch(':id/done')
   done(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.walkins.doneAsMe(user, id);
+    return this.nudge(user, id, this.walkins.doneAsMe(user, id));
   }
 
   /** Undo an accidental "Done". */
   @Patch(':id/reactivate')
   reactivate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.walkins.reactivate(user, id);
+    return this.nudge(user, id, this.walkins.reactivate(user, id));
   }
 }

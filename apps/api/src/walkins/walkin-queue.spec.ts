@@ -70,7 +70,8 @@ function floor(opts: { walkIns?: Row[]; staff?: Row[]; links?: Row[] } = {}) {
     appointment: table([]),
     order: table([]),
   };
-  const svc = new WalkinsService(prisma as never, {} as never, {} as never);
+  const settings = { getBookingRules: async () => ({ currency: 'USD' }) };
+  const svc = new WalkinsService(prisma as never, {} as never, settings as never);
   const get = (id: string) => prisma.walkIn.rows.find((r) => r.id === id)!;
   const legs = (id: string) => legsOf(get(id) as unknown as TicketLike);
   return { prisma, svc, get, legs };
@@ -245,6 +246,39 @@ describe('the technician’s own app', () => {
     const f = floor({ walkIns: [{ id: 'old', status: 'SERVING', assignedStaffId: 'hana', createdAt: at(0), items: [legacyLine('a', 'mani', 'Gel Manicure', 'hana')] }] });
     await f.svc.doneAsMe(asTech('hana'), 'old');
     expect(f.get('old').status).toBe('DONE');
+  });
+});
+
+describe('the technician’s phone', () => {
+  it('buzzes the technician the dispatcher hands a customer to', async () => {
+    const f = floor({ staff: [tech('hana')] });
+    const push = { sendToUser: jest.fn(async () => 1) };
+    const svc = new WalkinsService(f.prisma as never, {} as never, {} as never, push as never);
+    await svc.add(admin, { customerName: 'Kim', serviceIds: ['pedi'], autoAssign: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(push.sendToUser).toHaveBeenCalledWith(T1, 'u-hana', expect.objectContaining({ url: '/staff/chair', body: 'Spa Pedicure' }));
+  });
+
+  it('cannot send the customer to pay while her feet are still being done', async () => {
+    const f = floor();
+    const w = await f.svc.add(admin, { serviceIds: ['mani', 'pedi'], autoAssign: true });
+    const handTech = f.legs(w.id)[0].staffId!;
+    await expect(f.svc.waitPaymentAsMe(asTech(handTech), w.id)).rejects.toThrow('Xong phần của tôi');
+    expect(f.get(w.id).awaitingPayment).toBeFalsy();
+    // Once she is the last one on the customer, she can.
+    await f.svc.doneLeg(admin, w.id, f.legs(w.id)[0].legId);
+    const footTech = f.legs(w.id)[1].staffId!;
+    await f.svc.waitPaymentAsMe(asTech(footTech), w.id);
+    expect(f.get(w.id).awaitingPayment).toBe(true);
+  });
+
+  it('the chair screen names who is on the other part', async () => {
+    const f = floor();
+    const w = await f.svc.add(admin, { serviceIds: ['mani', 'pedi'], autoAssign: true });
+    const [hand, foot] = f.legs(w.id);
+    const mine = await f.svc.myChair(asTech(hand.staffId!) as never) as unknown as { serving: { legs: unknown[] }[]; techNames: Record<string, string> };
+    expect(mine.serving).toHaveLength(1);
+    expect(mine.techNames[foot.staffId!]).toBe(foot.staffId);
   });
 });
 

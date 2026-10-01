@@ -18,6 +18,8 @@ describe('which taps earn a receipt', () => {
     ['POST', '/messenger/threads/t1/read'],   // fires on every conversation open
     ['POST', '/push/subscribe'],              // background re-subscription
     ['POST', '/auth/login'],                  // has its own full-page outcome
+    ['POST', '/display/pair'],                // customer kiosk pairing
+    ['POST', '/display/checkin/tk1'],         // customer check-in: has its own thank-you screen
   ])('%s %s stays silent', (m, p) => {
     expect(writeKind(m, p)).toBe('silent');
   });

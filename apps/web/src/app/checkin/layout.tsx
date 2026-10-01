@@ -6,7 +6,9 @@ import type { Metadata, Viewport } from 'next';
 export const metadata: Metadata = {
   title: 'Check in',
   applicationName: 'Lumio Check-in',
-  manifest: '/display.webmanifest',
+  // Its OWN manifest: the display one is scoped to /display, so a tablet that
+  // installed /checkin through it would relaunch on the customer display.
+  manifest: '/checkin.webmanifest',
   appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'Check in' },
   formatDetection: { telephone: false },
 };

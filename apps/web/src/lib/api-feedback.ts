@@ -24,6 +24,10 @@ const SILENT_WRITES: RegExp[] = [
   /\/push\//,           // background push (re)subscription
   /\/heartbeat|\/hello|\/telemetry|\/track/,
   /\/auth\/login|\/auth\/refresh/, // login has its own full-page outcome
+  // The customer-facing screens (check-in kiosk, customer display): a dark
+  // "✓ Saved" pill in the owner's language is back-office noise on a page a
+  // customer is touching, and each of them has its own full-screen outcome.
+  /^\/display\//,
 ];
 
 export type WriteKind = 'silent' | 'announce';

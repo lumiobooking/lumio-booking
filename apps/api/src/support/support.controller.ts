@@ -72,6 +72,25 @@ export class SupportController {
     return this.svc.setTenantStage(user, tenantId, dto?.stage);
   }
 
+  /** The Lumio service packages a salon can be labelled with (name, price, care tier). */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Get('packages')
+  packages() {
+    return this.svc.servicePackages();
+  }
+
+  /** Which service package a salon is on ('' clears). Any support account. See ./service-package. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Post('tenants/:tenantId/package')
+  @HttpCode(200)
+  setTenantPackage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Body() dto: { package?: string },
+  ) {
+    return this.svc.setTenantPackage(user, tenantId, dto?.package);
+  }
+
   /** Hand a salon to the next department (Content/Design/Duyệt/Lên lịch/Xong). Any support account. See ./work-next. */
   @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
   @Post('tenants/:tenantId/next')

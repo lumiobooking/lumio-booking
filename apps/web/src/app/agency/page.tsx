@@ -42,7 +42,11 @@ interface TenantRow {
   approvedPosts?: number;
   /** The newest of those sign-offs. */
   lastApprovedAt?: string | null;
+  /** Which Lumio service package the shop is on ('' = not recorded). */
+  servicePackage?: string;
 }
+/** One Lumio service package (GET /support/packages). tier 4 = the most care. */
+interface ServicePackage { key: string; name: string; family: 'social' | 'maps'; priceUsd: number; tier: 1 | 2 | 3 | 4 }
 type WorkNext = 'content' | 'design' | 'review' | 'schedule' | 'done';
 /** One thing a shop sent that nobody has made a post from yet. */
 type InboxRow = InboxItem;
@@ -148,6 +152,19 @@ export default function AgencyPage() {
   const [mkt, setMktState] = useState<string>('');
   useEffect(() => { try { setMktState(window.localStorage.getItem('lumio_agency_market') || ''); } catch { /* private mode */ } }, []);
   const setMkt = (m: string) => { setMktState(m); try { window.localStorage.setItem('lumio_agency_market', m); } catch { /* ignore */ } };
+  /** Package filter: '' = every package, 'none' = no package recorded, else a key. Remembered. */
+  const [packages, setPackages] = useState<ServicePackage[]>([]);
+  const [pkgF, setPkgFState] = useState<string>('');
+  const [bigFirst, setBigFirstState] = useState(false);
+  useEffect(() => {
+    try {
+      setPkgFState(window.localStorage.getItem('lumio_agency_pkg') || '');
+      setBigFirstState(window.localStorage.getItem('lumio_agency_bigfirst') === '1');
+    } catch { /* private mode */ }
+  }, []);
+  const setPkgF = (k: string) => { setPkgFState(k); try { window.localStorage.setItem('lumio_agency_pkg', k); } catch { /* ignore */ } };
+  const setBigFirst = (v: boolean) => { setBigFirstState(v); try { window.localStorage.setItem('lumio_agency_bigfirst', v ? '1' : '0'); } catch { /* ignore */ } };
+  const pkgByKey = useMemo(() => new Map(packages.map((p) => [p.key, p])), [packages]);
   /** Bulk mode: the tick boxes are showing, and these are the salons ticked. */
   const [picking, setPicking] = useState(false);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
@@ -172,6 +189,7 @@ export default function AgencyPage() {
     // How this employee's list is grouped. Separate from the salon rows so a
     // slow group read never delays the list itself.
     apiFetch<Board>('/support/board', { token }).then(setBoard).catch(() => undefined);
+    apiFetch<ServicePackage[]>('/support/packages', { token }).then(setPackages).catch(() => undefined);
     // What is waiting, across every salon. Refreshed each minute while the
     // picker is open — this is the screen somebody leaves up on a second
     // monitor, and it has to be right when they glance at it.
@@ -208,7 +226,9 @@ export default function AgencyPage() {
    */
   const listed = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const inMkt = (r: TenantRow) => !mkt || marketOf(r) === mkt;
+    const inMkt = (r: TenantRow) => (!mkt || marketOf(r) === mkt)
+      && (!pkgF || (pkgF === 'none' ? !r.servicePackage : r.servicePackage === pkgF));
+    const tierOf = (r: TenantRow) => (r.servicePackage ? pkgByKey.get(r.servicePackage)?.tier ?? 0 : 0);
     if (needle) return rows.filter((r) => inMkt(r) && `${r.name} ${r.slug}`.toLowerCase().includes(needle));
     let out: TenantRow[];
     if (!board || pick === null || pick === ALL) {
@@ -220,7 +240,7 @@ export default function AgencyPage() {
         .map((sg) => byId.get(sg.id))
         .filter((t): t is TenantRow => Boolean(t));
     }
-    if (mkt) out = out.filter(inMkt);
+    if (mkt || pkgF) out = out.filter(inMkt);
     if (newOnly) out = out.filter((t) => newIds.has(t.id));
     if (waitingOnly) out = out.filter((t) => noticeBy.has(t.id) || (t.heldPosts ?? 0) > 0);
     // A salon that is waiting on us floats to the top of whatever list this
@@ -230,8 +250,15 @@ export default function AgencyPage() {
       const n = noticeBy.get(t.id);
       return n ? Date.parse(n.newest.at) : (t.heldPosts ?? 0) > 0 ? 1 : 0;
     };
-    return [...out].sort((a, b) => waitAt(b) - waitAt(a));
-  }, [rows, board, pick, q, newOnly, newIds, waitingOnly, noticeBy, mkt]);
+    // "Gói lớn trước": the biggest packages lead, still waiting-first inside a tier.
+    return [...out].sort((a, b) => (bigFirst ? tierOf(b) - tierOf(a) : 0) || waitAt(b) - waitAt(a));
+  }, [rows, board, pick, q, newOnly, newIds, waitingOnly, noticeBy, mkt, pkgF, pkgByKey, bigFirst]);
+  /** How many salons each package has, for the filter. */
+  const pkgCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of rows) { const k = r.servicePackage || 'none'; m.set(k, (m.get(k) ?? 0) + 1); }
+    return m;
+  }, [rows]);
   /** How many salons each market has, for the filter. */
   const marketCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -330,6 +357,20 @@ export default function AgencyPage() {
     } catch (e) {
       setRows((rs) => rs.map((r) => (r.id === t.id ? { ...r, workNext: before } : r)));
       setError(e instanceof Error ? e.message : 'Không đổi được bộ phận tiếp theo');
+    }
+  }
+
+  /** Record a salon's service package. Optimistic, like the stage pill. */
+  async function setPackage(t: TenantRow, pkg: string) {
+    if (!token || pkg === (t.servicePackage ?? '')) return;
+    const before = t.servicePackage ?? '';
+    setError(null);
+    setRows((rs) => rs.map((r) => (r.id === t.id ? { ...r, servicePackage: pkg } : r)));
+    try {
+      await apiFetch(`/support/tenants/${encodeURIComponent(t.id)}/package`, { method: 'POST', token, body: { package: pkg } });
+    } catch (e) {
+      setRows((rs) => rs.map((r) => (r.id === t.id ? { ...r, servicePackage: before } : r)));
+      setError(e instanceof Error ? e.message : 'Không đổi được gói dịch vụ');
     }
   }
 
@@ -618,6 +659,32 @@ export default function AgencyPage() {
               />
             ))}
           </div>
+            {packages.length > 0 && (
+            <div className="ag-group">
+              {/* Which package. Biggest first, so the shops that pay for the most care are the first line read. */}
+              <div className="ag-side-lbl">Gói dịch vụ</div>
+              <SideItem item={{ key: 'pkg-all', label: 'Mọi gói', count: rows.length, fresh: 0 }} active={!pkgF} onClick={() => setPkgF('')} />
+              {[...packages].sort((a, b) => b.tier - a.tier || b.priceUsd - a.priceUsd).filter((p) => (pkgCounts.get(p.key) ?? 0) > 0).map((p) => (
+                <SideItem
+                  key={p.key}
+                  item={{ key: `pkg-${p.key}`, label: p.name, count: pkgCounts.get(p.key) ?? 0, fresh: 0 }}
+                  badge={<PackageDot tier={p.tier} />}
+                  active={pkgF === p.key}
+                  onClick={() => { if (pkgF === p.key) { setPkgF(''); return; } setPkgF(p.key); setPick(ALL); setNewOnly(false); }}
+                />
+              ))}
+              <SideItem
+                item={{ key: 'pkg-none', label: 'Chưa ghi gói', count: pkgCounts.get('none') ?? 0, fresh: 0 }}
+                tone="warn"
+                active={pkgF === 'none'}
+                onClick={() => { if (pkgF === 'none') { setPkgF(''); return; } setPkgF('none'); setPick(ALL); setNewOnly(false); }}
+              />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontSize: 12.5, color: 'var(--ccbd5e1)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={bigFirst} onChange={(e) => setBigFirst(e.target.checked)} style={{ accentColor: '#6366f1' }} />
+                Gói lớn lên đầu danh sách
+              </label>
+            </div>
+            )}
           </aside>
 
           <div style={{ minWidth: 0 }}>
@@ -717,6 +784,9 @@ export default function AgencyPage() {
                   onBot={setBot}
                   onStage={setStage}
                   onNext={setNext}
+                  pkg={t.servicePackage ? pkgByKey.get(t.servicePackage) ?? null : null}
+                  packages={packages}
+                  onPackage={setPackage}
                   onEnter={enter}
                   editing={editing}
                   setEditing={setEditing}
@@ -911,6 +981,47 @@ function NextPill({ next, disabled, onChange }: { next: WorkNext | ''; disabled?
  * where the work is than any label could.
  */
 /**
+ * The service package, on the salon's own line — the first thing read after
+ * the name, so "this shop pays for Scale" is never a click away. Colour climbs
+ * with the care the package buys: grey (Social Care) → blue → violet → gold.
+ * An unrecorded package is a dashed "+ Gói": an invitation, not a status.
+ */
+const TIER_LOOK: Record<number, { bg: string; ink: string; bd: string; mark: string }> = {
+  4: { bg: '#fde68a', ink: '#78350f', bd: '#f59e0b', mark: '💎 ' },
+  3: { bg: '#ddd6fe', ink: '#4c1d95', bd: '#8b5cf6', mark: '⭐ ' },
+  2: { bg: '#bfdbfe', ink: '#1e3a8a', bd: '#3b82f6', mark: '' },
+  1: { bg: '#e2e8f0', ink: '#334155', bd: '#94a3b8', mark: '' },
+};
+function PackagePill({ pkg, packages, disabled, onChange }: { pkg: ServicePackage | null; packages: ServicePackage[]; disabled?: boolean; onChange: (k: string) => void }) {
+  const look = pkg ? TIER_LOOK[pkg.tier] ?? TIER_LOOK[1] : null;
+  const social = packages.filter((p) => p.family === 'social');
+  const maps = packages.filter((p) => p.family === 'maps');
+  const opt = (p: ServicePackage) => <option key={p.key} value={p.key} style={{ color: '#0f172a', background: '#fff' }}>{p.name} · ${p.priceUsd}/tháng</option>;
+  return (
+    <PillSelect
+      value={pkg?.key ?? ''}
+      disabled={disabled}
+      onChange={onChange}
+      title={pkg ? `Gói ${pkg.name} · $${pkg.priceUsd}/tháng — bấm để đổi` : 'Chưa ghi gói dịch vụ — bấm để chọn'}
+      label={pkg ? `${look!.mark}${pkg.name} · $${pkg.priceUsd}` : '+ Gói'}
+      style={{
+        fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 9px', flexShrink: 0,
+        border: `1px ${pkg ? 'solid' : 'dashed'} ${look ? look.bd : 'var(--c334155)'}`,
+        background: look ? look.bg : 'transparent', color: look ? look.ink : 'var(--c64748b)',
+      }}
+    >
+      <option value="" style={{ color: '#0f172a', background: '#fff' }}>— Chưa có gói —</option>
+      <optgroup label="Social / thương hiệu">{social.map(opt)}</optgroup>
+      <optgroup label="Google Maps">{maps.map(opt)}</optgroup>
+    </PillSelect>
+  );
+}
+function PackageDot({ tier }: { tier: number }) {
+  const look = TIER_LOOK[tier] ?? TIER_LOOK[1];
+  return <span aria-hidden style={{ width: 10, height: 10, borderRadius: '50%', background: look.bg, border: `1.5px solid ${look.bd}`, flexShrink: 0 }} />;
+}
+
+/**
  * The salon's market, as two letters in its own colour.
  *
  * Letters, not flags: Windows has no glyph for a flag emoji and Chrome there
@@ -990,8 +1101,11 @@ function SideItem({ item, active, onClick, tone, badge }: {
  */
 function Row({
   t, fresh, team, showTeam, canAssign, teams, picking, checked, onCheck,
-  busy, notice, onEnter, editing, setEditing, onTeam, onBot, onStage, onNext,
+  busy, notice, onEnter, editing, setEditing, onTeam, onBot, onStage, onNext, pkg, packages, onPackage,
 }: {
+  pkg: ServicePackage | null;
+  packages: ServicePackage[];
+  onPackage: (t: TenantRow, pkg: string) => void;
   t: TenantRow;
   fresh?: boolean;
   /** What this shop wrote that nobody answered — null when nothing waits. */
@@ -1048,6 +1162,7 @@ function Row({
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
           <MarketChip code={marketOf(t)} />
           <span style={{ fontWeight: 600, fontSize: 14.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{t.name}</span>
+          {packages.length > 0 && <PackagePill pkg={pkg} packages={packages} disabled={picking} onChange={(k) => onPackage(t, k)} />}
         </div>
         <div style={{ fontSize: 12, color: 'var(--c64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>/{t.slug}</div>
       </div>

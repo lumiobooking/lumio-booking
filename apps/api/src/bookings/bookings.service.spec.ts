@@ -260,6 +260,67 @@ describe('BookingsService reschedule', () => {
   });
 });
 
+describe('BookingsService move (calendar drag)', () => {
+  const booked = {
+    id: 'appt-1', tenantId: 'tenant-a', status: 'CONFIRMED', assignedStaffId: 'staff-1',
+    startTime: new Date('2099-06-20T14:00:00.000Z'), endTime: new Date('2099-06-20T15:00:00.000Z'),
+  };
+  function primed(opts: { overlapConflict: boolean; booking?: any | null }) {
+    const prisma = makePrisma({ overlapConflict: opts.overlapConflict });
+    prisma.appointment.findFirst = jest.fn(async ({ where }: any) =>
+      opts.booking === null || where.tenantId !== 'tenant-a' ? null : (opts.booking ?? booked),
+    ) as any;
+    // Only tenant A's technicians are bookable for tenant A.
+    prisma.staffMember.findFirst = jest.fn(async ({ where }: any) => (where.tenantId === 'tenant-a' && where.id !== 'staff-of-b' ? { id: where.id } : null)) as any;
+    (prisma._tx.appointment as any).updateMany = jest.fn(async () => ({ count: 1 }));
+    return prisma;
+  }
+
+  it('moves time and technician together, keeping duration and a confirmed status', async () => {
+    const prisma = primed({ overlapConflict: false });
+    await makeService(prisma).move(salonA, 'appt-1', '2099-06-20T16:30:00.000Z', 'staff-2');
+    const call = (prisma._tx.appointment as any).updateMany.mock.calls[0][0];
+    expect(call.where).toEqual({ id: 'appt-1', tenantId: 'tenant-a' });
+    expect(call.data.assignedStaffId).toBe('staff-2');
+    expect(call.data.startTime.toISOString()).toBe('2099-06-20T16:30:00.000Z');
+    expect(call.data.endTime.toISOString()).toBe('2099-06-20T17:30:00.000Z');
+    expect(call.data.status).toBeUndefined();
+    // The clash check ran against the NEW technician, inside the tenant.
+    const overlapWhere = (prisma._tx.appointment.findFirst as jest.Mock).mock.calls[0][0].where;
+    expect(overlapWhere).toMatchObject({ tenantId: 'tenant-a', assignedStaffId: 'staff-2' });
+  });
+
+  it('a clash on the new technician changes nothing', async () => {
+    const prisma = primed({ overlapConflict: true });
+    await expect(makeService(prisma).move(salonA, 'appt-1', '2099-06-20T16:30:00.000Z', 'staff-2')).rejects.toBeInstanceOf(ConflictException);
+    expect((prisma._tx.appointment as any).updateMany).not.toHaveBeenCalled();
+  });
+
+  it('cannot move onto another salon\'s technician', async () => {
+    const prisma = primed({ overlapConflict: false });
+    await expect(makeService(prisma).move(salonA, 'appt-1', '2099-06-20T16:30:00.000Z', 'staff-of-b')).rejects.toBeInstanceOf(BadRequestException);
+    expect((prisma._tx.appointment as any).updateMany).not.toHaveBeenCalled();
+  });
+
+  it('404s for another salon\'s booking', async () => {
+    const prisma = primed({ overlapConflict: false, booking: null });
+    await expect(makeService(prisma).move(salonA, 'appt-of-b', '2099-06-20T16:30:00.000Z', 'staff-2')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('refuses a finished booking', async () => {
+    const prisma = primed({ overlapConflict: false, booking: { ...booked, status: 'COMPLETED' } });
+    await expect(makeService(prisma).move(salonA, 'appt-1', '2099-06-20T16:30:00.000Z', 'staff-2')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('same technician = a plain reschedule', async () => {
+    const prisma = primed({ overlapConflict: false });
+    await makeService(prisma).move(salonA, 'appt-1', '2099-06-20T16:30:00.000Z', 'staff-1');
+    const data = (prisma._tx.appointment as any).updateMany.mock.calls[0][0].data;
+    expect(data.assignedStaffId).toBeUndefined();
+    expect(data.startTime.toISOString()).toBe('2099-06-20T16:30:00.000Z');
+  });
+});
+
 describe('BookingsService tenant isolation', () => {
   it('returns 404 when reading a booking that belongs to another tenant', async () => {
     const prisma = makePrisma({ overlapConflict: false });

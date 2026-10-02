@@ -10,6 +10,7 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useLiveEvents } from '../../../lib/useLiveEvents';
 import { useIsMobile } from '../../../lib/responsive';
+import { FloorStats, TechBoard } from './TechBoard';
 
 interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null; legId?: string }
 /** One part of a visit done by one technician (hands, feet, …) — see walkin-legs.ts in the API. */
@@ -83,6 +84,9 @@ function Inner() {
   const canDelete = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN' || Boolean(user?.supportSession);
   const { lang } = useLang();
   const isMobile = useIsMobile();
+  // iPad landscape and up: the intake form slides in from the right and the
+  // board stays in view behind it, instead of being pushed down the page.
+  const wide = !useIsMobile(1023);
   const t = (k: string) => tr(k, lang);
   const [board, setBoard] = useState<Board | null>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -120,6 +124,16 @@ function Inner() {
   const [salonWelcome, setSalonWelcome] = useState('');
   const [reviewUrl, setReviewUrl] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  // "Danh sách" (the list, as always) or "Theo thợ" (a column per technician).
+  // Remembered per device: the front-desk PC and the owner's phone differ.
+  const [view, setViewState] = useState<'list' | 'tech'>('list');
+  useEffect(() => {
+    try { const v = window.localStorage.getItem('lumio_wi_view'); if (v === 'list' || v === 'tech') setViewState(v); } catch { /* ignore */ }
+  }, []);
+  const setView = (v: 'list' | 'tech') => { setViewState(v); try { window.localStorage.setItem('lumio_wi_view', v); } catch { /* ignore */ } };
+  // The customer the "waiting too long" chip points at.
+  const [focusId, setFocusId] = useState<string | null>(null);
+  useEffect(() => { if (!focusId) return; const id = window.setTimeout(() => setFocusId(null), 4000); return () => window.clearTimeout(id); }, [focusId]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -300,6 +314,8 @@ function Inner() {
   useEffect(() => { thanksNameRef.current = thanksName; }, [thanksName]);
   // "+ Tạo mới → Khách vãng lai" from the header (?new=1) opens the intake form at once.
   useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') startNew(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // "/salon/walkins?focus=<id>" — from the dashboard's long-wait alert: ring the card.
+  useEffect(() => { const f = new URLSearchParams(window.location.search).get('focus'); if (f) { setFocusId(f); setOpenWait(f); } }, []);
   useEffect(() => {
     salonNameRef.current = salonName; salonLogoRef.current = salonLogo;
     salonWelcomeRef.current = salonWelcome; reviewUrlRef.current = reviewUrl;
@@ -471,46 +487,8 @@ function Inner() {
 
   const staff = board?.staff ?? [];
   const nextUp = board?.nextUpStaffId ?? null;
-
-  return (
-    <section>
-      <h2 style={{ fontSize: 18, margin: isMobile ? '0 0 10px' : '0 0 2px' }}>{t('wi.title')}</h2>
-      {!isMobile && <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>{t('wi.subtitle')}</p>}
-
-      {error && <div style={ui.banner}>{error}</div>}
-
-      {/* Reception looks at the board all day; the form only appears when
-          someone actually walks in. The customer monitor stays connected. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-        <button
-          onClick={() => { if (formOpen) { setFormOpen(false); pushToScreen('idle'); } else startNew(); }}
-          style={{ ...ui.primaryBtn, padding: '11px 20px', fontSize: 14.5 }}
-        >{formOpen ? t('wi.closeForm') : t('wi.newWalkin')}</button>
-        <button
-          onClick={openCustomerScreen}
-          title={t('wi.custScreenHint')}
-          style={{
-            border: `1px solid ${screenOn ? '#4f46e5' : 'var(--c334155)'}`, background: 'transparent',
-            color: screenOn ? 'var(--cc7d2fe)' : 'var(--ccbd5e1)', borderRadius: 8, padding: '10px 14px',
-            fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
-          }}
-        >
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: screenOn ? '#22c55e' : 'var(--c475569)' }} />
-          🖥️ {screenOn ? t('wi.custScreenOn') : t('wi.custScreen')}
-        </button>
-        <span style={{ flex: 1 }} />
-        <KioskInline
-          t={t}
-          qrOn={qrOn}
-          canShow={!!checkinUrl}
-          onToggleQr={() => { const next = !qrOn; setQrOn(next); if (next) { setFormOpen(false); pushToScreen('qr'); } else pushToScreen('idle'); }}
-        />
-      </div>
-
-      {/* Three labelled blocks instead of one long strip of inputs: who the
-          customer is (kept for marketing), what they want (several services at
-          once), and where they sit. */}
-      {formOpen && (
+  const closeForm = () => { setFormOpen(false); pushToScreen('idle'); };
+  const formEl = (
       <form onSubmit={add} style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
@@ -576,7 +554,76 @@ function Inner() {
           <button type="submit" style={{ ...ui.primaryBtn, padding: '10px 20px', fontSize: 14 }}>{t('wi.addQueue')}</button>
         </div>
       </form>
+  );
+
+  return (
+    <section>
+      <h2 style={{ fontSize: 18, margin: isMobile ? '0 0 10px' : '0 0 2px' }}>{t('wi.title')}</h2>
+      {!isMobile && <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>{t('wi.subtitle')}</p>}
+
+      {error && <div style={ui.banner}>{error}</div>}
+
+      {/* Reception looks at the board all day; the form only appears when
+          someone actually walks in. The customer monitor stays connected. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <button
+          onClick={() => { if (formOpen) { setFormOpen(false); pushToScreen('idle'); } else startNew(); }}
+          style={{ ...ui.primaryBtn, padding: '11px 20px', fontSize: 14.5 }}
+        >{formOpen ? t('wi.closeForm') : t('wi.newWalkin')}</button>
+        <button
+          onClick={openCustomerScreen}
+          title={t('wi.custScreenHint')}
+          style={{
+            border: `1px solid ${screenOn ? '#4f46e5' : 'var(--c334155)'}`, background: 'transparent',
+            color: screenOn ? 'var(--cc7d2fe)' : 'var(--ccbd5e1)', borderRadius: 8, padding: '10px 14px',
+            fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
+          }}
+        >
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: screenOn ? '#22c55e' : 'var(--c475569)' }} />
+          🖥️ {screenOn ? t('wi.custScreenOn') : t('wi.custScreen')}
+        </button>
+        <span style={{ flex: 1 }} />
+        <KioskInline
+          t={t}
+          qrOn={qrOn}
+          canShow={!!checkinUrl}
+          onToggleQr={() => { const next = !qrOn; setQrOn(next); if (next) { setFormOpen(false); pushToScreen('qr'); } else pushToScreen('idle'); }}
+        />
+        <div role="group" aria-label={lang === 'vi' ? 'Cách xem' : 'View'} style={{ display: 'inline-flex', padding: 3, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
+          {(['list', 'tech'] as const).map((v) => (
+            <button key={v} type="button" onClick={() => setView(v)} aria-pressed={view === v}
+              style={{ border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                background: view === v ? '#4f46e5' : 'transparent', color: view === v ? '#ffffff' : 'var(--c94a3b8)' }}>
+              {v === 'list' ? (lang === 'vi' ? '☰ Danh sách' : '☰ List') : (lang === 'vi' ? '▥ Theo thợ' : '▥ By tech')}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {board && (
+        <FloorStats board={board} vi={lang === 'vi'}
+          onLongest={(id) => { setFocusId(id); if (view === 'list') setOpenWait(id); }} />
       )}
+
+      {/* Wide screens: the intake form is a drawer over the right edge, so the
+          board (and the customer who just walked in) stay in view. */}
+      {formOpen && wide && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 85, display: 'flex', justifyContent: 'flex-end' }}>
+          <div onClick={closeForm} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} />
+          <aside aria-label={t('wi.newWalkin')} style={{ position: 'relative', width: 'min(600px, 100vw)', height: '100%', boxSizing: 'border-box', overflowY: 'auto', background: 'var(--c111827)', borderLeft: '1px solid var(--line)', boxShadow: '-16px 0 40px rgba(0,0,0,0.3)', padding: '16px 16px 24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <b style={{ fontSize: 17, color: 'var(--cf8fafc)', flex: 1 }}>{t('wi.newWalkin')}</b>
+              <button type="button" onClick={closeForm} aria-label={t('wi.closeForm')} style={{ width: 38, height: 38, borderRadius: 10, border: '1px solid var(--line)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 18, cursor: 'pointer' }}>✕</button>
+            </div>
+            {formEl}
+          </aside>
+        </div>
+      )}
+
+      {/* Three labelled blocks instead of one long strip of inputs: who the
+          customer is (kept for marketing), what they want (several services at
+          once), and where they sit. */}
+      {formOpen && !wide && formEl}
 
       {(board?.done ?? []).length > 0 && (
         <div style={{ marginBottom: 16 }}>
@@ -608,6 +655,14 @@ function Inner() {
         </div>
       )}
 
+      {view === 'tech' && board ? (
+        <TechBoard
+          board={board} vi={lang === 'vi'} currency={currency} isMobile={isMobile} focusId={focusId}
+          onAssign={(id, staffId) => act(`${id}/assign`, { staffId })}
+          onOpen={(id) => setOpenId(id)}
+          onCancel={(id) => act(`${id}/cancel`)}
+        />
+      ) : (<>
       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', margin: '4px 0 8px' }}>{t('wi.turnsToday')}</div>
       {staff.length === 0 ? (
         <div style={{ ...ui.card, color: 'var(--c94a3b8)' }}>{t('wi.noStaff')}</div>
@@ -708,6 +763,7 @@ function Inner() {
       })()}
       </div>
       </div>
+      </>)}
 
       {openId && board && (() => {
         const w = board.serving.find((x) => x.id === openId) ?? board.waiting.find((x) => x.id === openId);

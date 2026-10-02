@@ -6,7 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
-import { uiLocale } from '../../../lib/datetime';
+import { uiLocale, wallToInstantISO } from '../../../lib/datetime';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -77,8 +77,11 @@ function srcMeta(s: string | null | undefined, t: (k: string) => string): { icon
   }
 }
 
-// Resource view: one column per technician + an "unassigned" lane. Drag a card
-// onto another tech's column to reassign (double-booking is blocked by the API).
+// Resource view: one column per technician + an "unassigned" lane.
+// Desktop: click an empty slot to book that tech at that time; drag a card up
+// or down to change the time, sideways to change the tech (one POST /move, so a
+// clash leaves the booking where it was; "Hoàn tác" puts it back). Hours
+// outside a tech's shift, and breaks between split shifts, are hatched.
 export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChanged }: {
   date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onChanged?: () => void;
 }) {
@@ -92,6 +95,18 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const swipe = useRef<{ x: number; y: number } | null>(null);
+  // Desktop: the dashed slot under the pointer — where a click books, or where
+  // a dragged card will land — and how far down the card it was grabbed.
+  const [ghost, setGhost] = useState<{ col: string; min: number; dur: number; drag: boolean; clash?: boolean } | null>(null);
+  const grab = useRef(0);
+  const [undo, setUndo] = useState<{ id: string; startTime: string; staffId: string } | null>(null);
+  const noteTimer = useRef<number | null>(null);
+  const flash = (msg: string, ms = 2600) => {
+    setNote(msg);
+    if (noteTimer.current) window.clearTimeout(noteTimer.current);
+    noteTimer.current = window.setTimeout(() => { setNote(null); setUndo(null); }, ms);
+  };
+  useEffect(() => () => { if (noteTimer.current) window.clearTimeout(noteTimer.current); }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -141,7 +156,17 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
       : shown;
   }, [items, activeStaff, focus, t]);
 
+  // Each technician's hours on this weekday (several rows = a split shift).
+  const dowD = date.getDay();
+  const hhmm = (v: string) => { const [h, m] = v.split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+  const deskShift = (st: StaffLite | undefined): { hasHours: boolean; parts: { s: number; e: number }[] } => {
+    const all = st?.workingHours ?? [];
+    const parts = all.filter((w) => w.dayOfWeek === dowD && w.isActive).map((w) => ({ s: hhmm(w.startTime), e: hhmm(w.endTime) })).filter((x) => x.e > x.s).sort((a, b) => a.s - b.s);
+    return { hasHours: all.length > 0, parts };
+  };
+
   let startH = 9, endH = 18;
+  for (const st of activeStaff) for (const x of deskShift(st).parts) { startH = Math.min(startH, Math.floor(x.s / 60)); endH = Math.max(endH, Math.ceil(x.e / 60)); }
   for (const b of items) {
     const s = minInTz(b.startTime);
     let e = minInTz(b.endTime); if (e <= s) e = s + 30;
@@ -185,28 +210,73 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
     return out;
   };
 
-  // Drag a booking onto a staff column → reassign via the existing endpoint.
-  const reassign = async (bookingId: string, staffId: string, staffName: string) => {
-    setBusy(true); setNote(null);
-    try {
-      await apiFetch(`/bookings/${bookingId}/assign`, { method: 'POST', token, body: { staffId } });
-      setNote(t('cal.reassigned').replace('{name}', staffName));
-      onChanged?.();
-    } catch (e) {
-      setNote(e instanceof Error ? e.message : t('cal.reassignFail'));
-    } finally {
-      setBusy(false); setDragId(null); setOverCol(null);
-      setTimeout(() => setNote(null), 2600);
-    }
+  // ── desktop: click an empty slot to book, drag a card to a new time / tech ──
+  const vi = lang === 'vi';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const dKey = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const wall = (m: number) => `${dKey}T${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+  const clock = (m: number) => { const h = Math.floor(m / 60) % 24, mm = m % 60; return vi ? `${h}:${pad(mm)}` : `${(h % 12) || 12}:${pad(mm)}${h < 12 ? 'a' : 'p'}`; };
+  const isPastDay = date.getTime() < today.getTime();
+  const durOf = (b: Booking) => { const s0 = minInTz(b.startTime); let e0 = minInTz(b.endTime); if (e0 <= s0) e0 = s0 + (b.service?.durationMinutes || 30); return e0 - s0; };
+  const bodyOf = (el: HTMLElement) => el.querySelector<HTMLElement>('[data-body]') ?? el;
+  const minAt = (body: HTMLElement, clientY: number) => gStart + ((clientY - body.getBoundingClientRect().top) / HP) * 60;
+  /** Where a dragged card would start; null while the pointer is over the column header (= keep the time). */
+  const dropMin = (wrap: HTMLElement, clientY: number, dur: number) => {
+    const body = bodyOf(wrap);
+    if (clientY < body.getBoundingClientRect().top) return null;
+    const m = Math.round((minAt(body, clientY) - grab.current) / 15) * 15;
+    return Math.max(gStart, Math.min(endH * 60 - dur, m));
   };
 
-  const onDrop = (col: { id: string; name: string; items: Booking[] }) => {
-    const id = dragId; setDragId(null); setOverCol(null);
-    if (!id || col.id === '__un') return;
-    const b = items.find((x) => x.id === id);
-    if (!b || b.assignedStaff?.id === col.id) return; // same tech, no-op
-    reassign(id, col.id, col.name);
+  /** Would this card overlap another live booking in that column? (The API checks too.) */
+  const clashIn = (col: { id: string; items: Booking[] }, b: Booking, startMin: number) => {
+    if (col.id === '__un') return false;
+    const end = startMin + durOf(b);
+    return col.items.some((x) => x.id !== b.id && !isGone(x.status) && x.status !== 'COMPLETED' && minInTz(x.startTime) < end && minInTz(x.startTime) + durOf(x) > startMin);
   };
+
+  const moveTo = async (b: Booking, startMin: number | null, col: { id: string; name: string; items: Booking[] }) => {
+    const toTech = col.id !== '__un' && col.id !== b.assignedStaff?.id;
+    const orig = minInTz(b.startTime);
+    // A drop within a quarter-hour of where it was is a change of tech, not of time.
+    const target = startMin === null || Math.abs(startMin - orig) < 15 ? orig : startMin;
+    if (!toTech && target === orig) return;
+    if (clashIn(col, b, target)) {
+      flash(vi ? `${col.name} đã có lịch lúc ${clock(target)} — chọn giờ khác.` : `${col.name} is already booked at ${clock(target)} — pick another time.`, 4000);
+      return;
+    }
+    const prev = b.assignedStaff ? { id: b.id, startTime: b.startTime, staffId: b.assignedStaff.id } : null;
+    setBusy(true); setUndo(null);
+    try {
+      await apiFetch(`/bookings/${b.id}/move`, { method: 'POST', token, body: { startTime: target === orig ? b.startTime : wallToInstantISO(wall(target), tz), ...(toTech ? { staffId: col.id } : {}) } });
+      const who = b.customer?.firstName ?? (vi ? 'Lịch hẹn' : 'Booking');
+      flash(vi ? `Đã chuyển ${who} → ${toTech ? col.name + ' · ' : ''}${clock(target)}` : `Moved ${who} → ${toTech ? col.name + ' · ' : ''}${clock(target)}`, 7000);
+      setUndo(prev);
+      onChanged?.();
+    } catch (e) {
+      flash(e instanceof Error ? e.message : t('cal.reassignFail'), 5000);
+    } finally {
+      setBusy(false); setDragId(null); setOverCol(null); setGhost(null);
+    }
+  };
+  const undoMove = async () => {
+    const u = undo; if (!u) return;
+    setUndo(null); setBusy(true);
+    try {
+      await apiFetch(`/bookings/${u.id}/move`, { method: 'POST', token, body: { startTime: u.startTime, staffId: u.staffId } });
+      flash(vi ? 'Đã hoàn tác' : 'Undone');
+      onChanged?.();
+    } catch (e) {
+      flash(e instanceof Error ? e.message : t('cal.reassignFail'), 5000);
+    } finally { setBusy(false); }
+  };
+  const bookAt = (colId: string, m: number) => {
+    const q = new URLSearchParams({ new: '1', at: wall(m) });
+    if (colId !== '__un') q.set('staff', colId);
+    window.location.href = `/salon/bookings?${q.toString()}`;
+  };
+
+
 
   // ───────────────────────────── phone ─────────────────────────────
   // Board 3 "Theo thợ — cả ca trong một màn hình": one card per technician
@@ -526,7 +596,12 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
         <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: 'var(--ink-good)' }}>{formatPrice(revenue, currency)}</strong></span>
         <span style={{ color: 'var(--ink-faint)' }}>|</span>
         <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.stArrived')}: </span><strong style={{ color: '#10b981' }}>{arrived}</strong></span>
-        {note && <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--ca7f3d0)', background: 'var(--c064e3b)', padding: '3px 10px', borderRadius: 6 }}>{note}</span>}
+        {note && (
+          <span role="status" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--ca7f3d0)', background: 'var(--c064e3b)', padding: '3px 6px 3px 10px', borderRadius: 6 }}>
+            {note}
+            {undo && <button type="button" onClick={undoMove} style={{ border: '1px solid var(--ca7f3d0)', background: 'transparent', color: 'var(--ca7f3d0)', borderRadius: 6, padding: '2px 8px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>{vi ? 'Hoàn tác' : 'Undo'}</button>}
+          </span>
+        )}
       </div>
 
       {activeStaff.length > 0 && (
@@ -539,7 +614,10 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
         </div>
       )}
 
-      {items.length === 0 ? (
+      {items.length === 0 && columns.length > 0 && (
+        <div style={{ fontSize: 13, color: 'var(--c94a3b8)', margin: '0 0 8px' }}>{t('cal.noAppts')} {isPastDay ? '' : (vi ? 'Bấm vào ô trống của một thợ để đặt lịch.' : 'Click an empty slot to book.')}</div>
+      )}
+      {columns.length === 0 ? (
         <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
       ) : (
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', border: '1px solid var(--c1f2937)', borderRadius: 12, background: 'var(--c0f172a)', opacity: busy ? 0.6 : 1, transition: 'opacity .15s' }}>
@@ -559,13 +637,38 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
               const pos = place(c.items);
               const load = c.items.filter((b) => b.status !== 'CANCELLED' && b.status !== 'NO_SHOW').length;
               const un = c.id === '__un';
-              const isTarget = overCol === c.id && !un && dragId !== null;
+              const dragged = dragId ? items.find((x) => x.id === dragId) : undefined;
+              // The unassigned lane takes a time change for its own cards only.
+              const canDrop = !!dragged && (!un || !dragged.assignedStaff);
+              const isTarget = overCol === c.id && canDrop;
+              const st = un ? undefined : activeStaff.find((x) => x.id === c.id);
+              const sh = deskShift(st);
+              const offToday = !un && sh.hasHours && sh.parts.length === 0;
+              const hatch = 'repeating-linear-gradient(135deg, transparent 0 6px, rgba(148,163,184,0.12) 6px 7px)';
+              const offBands: { s: number; e: number }[] = [];
+              if (!un && sh.parts.length) {
+                let cur = gStart;
+                for (const x of sh.parts) { if (x.s > cur) offBands.push({ s: cur, e: x.s }); cur = Math.max(cur, x.e); }
+                if (cur < endH * 60) offBands.push({ s: cur, e: endH * 60 });
+              }
+              const g = ghost && ghost.col === c.id ? ghost : null;
               return (
                 <div key={c.id}
-                  onDragOver={(e) => { if (!un && dragId) { e.preventDefault(); setOverCol(c.id); } }}
-                  onDragLeave={() => setOverCol((o) => (o === c.id ? null : o))}
-                  onDrop={(e) => { e.preventDefault(); onDrop(c); }}
-                  style={{ width: colW, flexShrink: 0, borderRight: '1px solid var(--c1f2937)', background: isTarget ? 'rgba(99,102,241,0.12)' : un ? 'rgba(99,102,241,0.05)' : 'transparent', outline: isTarget ? '2px dashed #6366f1' : 'none', outlineOffset: -2 }}>
+                  onDragOver={(e) => {
+                    if (!canDrop || !dragged) return;
+                    e.preventDefault(); setOverCol(c.id);
+                    const m = dropMin(e.currentTarget, e.clientY, durOf(dragged));
+                    const at = m === null || Math.abs(m - minInTz(dragged.startTime)) < 15 ? minInTz(dragged.startTime) : m;
+                    if (!ghost || ghost.col !== c.id || ghost.min !== at || !ghost.drag) setGhost({ col: c.id, min: at, dur: durOf(dragged), drag: true, clash: clashIn(c, dragged, at) });
+                  }}
+                  onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setOverCol((o) => (o === c.id ? null : o)); setGhost((gh) => (gh && gh.col === c.id ? null : gh)); } }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const b = dragged; setDragId(null); setOverCol(null); setGhost(null);
+                    if (!b || !canDrop) return;
+                    moveTo(b, dropMin(e.currentTarget, e.clientY, durOf(b)), c);
+                  }}
+                  style={{ flex: `1 0 ${colW}px`, minWidth: colW, borderRight: '1px solid var(--c1f2937)', background: isTarget ? 'rgba(99,102,241,0.12)' : un ? 'rgba(99,102,241,0.05)' : 'transparent', outline: isTarget ? '2px dashed #6366f1' : 'none', outlineOffset: -2 }}>
                   <div style={{ height: headH, display: 'flex', alignItems: 'center', gap: 7, padding: '0 8px', borderBottom: '1px solid var(--c1f2937)', boxSizing: 'border-box' }}>
                     {un ? (
                       <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: 'var(--c334155)', color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>?</div>
@@ -576,13 +679,36 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                     )}
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
-                      <div style={{ fontSize: 10.5, color: 'var(--c64748b)' }}>{load} {t('cal.apptWord')}</div>
+                      <div style={{ fontSize: 10.5, color: offToday ? 'var(--ink-warn)' : 'var(--c64748b)' }}>{load} {t('cal.apptWord')}{offToday ? (vi ? ' · nghỉ hôm nay' : ' · off today') : ''}</div>
                     </div>
                   </div>
-                  <div style={{ position: 'relative', height: total }}>
-                    {Array.from({ length: endH - startH }, (_, i) => i + 1).map((i) => (
-                      <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid var(--line)' }} />
+                  <div data-body="1" style={{ position: 'relative', height: total, cursor: isPastDay ? 'default' : 'cell' }}
+                    onMouseMove={(e) => {
+                      if (dragId || isPastDay) return;
+                      if ((e.target as HTMLElement).closest('[data-card]')) { if (g) setGhost(null); return; }
+                      const m = Math.floor(minAt(e.currentTarget, e.clientY) / 15) * 15;
+                      if (isToday && m + 15 <= nowMin) { if (g) setGhost(null); return; }
+                      if (!g || g.min !== m || g.drag) setGhost({ col: c.id, min: m, dur: 30, drag: false });
+                    }}
+                    onMouseLeave={() => { if (!dragId) setGhost((gh) => (gh && gh.col === c.id ? null : gh)); }}
+                    onClick={(e) => {
+                      if (isPastDay || (e.target as HTMLElement).closest('[data-card]')) return;
+                      const m = Math.floor(minAt(e.currentTarget, e.clientY) / 15) * 15;
+                      if (isToday && m + 15 <= nowMin) return;
+                      bookAt(c.id, m);
+                    }}>
+                    {offToday && <div style={{ position: 'absolute', inset: 0, background: hatch, pointerEvents: 'none' }} />}
+                    {offBands.map((x) => (
+                      <div key={x.s} style={{ position: 'absolute', left: 0, right: 0, top: (x.s - gStart) / 60 * HP, height: (x.e - x.s) / 60 * HP, background: hatch, pointerEvents: 'none' }} />
                     ))}
+                    {Array.from({ length: endH - startH }, (_, i) => i + 1).map((i) => (
+                      <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid var(--line)', pointerEvents: 'none' }} />
+                    ))}
+                    {g && (
+                      <div style={{ position: 'absolute', top: (g.min - gStart) / 60 * HP, height: Math.max(22, g.dur / 60 * HP - 3), left: 3, right: 3, boxSizing: 'border-box', borderRadius: 8, border: `1.5px dashed ${g.clash ? '#ef4444' : '#6366f1'}`, background: g.clash ? 'rgba(239,68,68,0.12)' : 'rgba(99,102,241,0.10)', color: g.clash ? 'var(--ink-bad)' : 'var(--ink-link)', fontSize: 11.5, fontWeight: 700, padding: '3px 7px', pointerEvents: 'none', zIndex: 2 }}>
+                        {g.drag ? `${clock(g.min)} – ${clock(g.min + g.dur)}${g.clash ? (vi ? ' · trùng lịch' : ' · clash') : ''}` : `+ ${clock(g.min)} · ${vi ? 'đặt lịch' : 'book'}`}
+                      </div>
+                    )}
                     {pos.map(({ b, s, e, col, cols }) => {
                       const cc = sc(b.status);
                       const topPx = (s - gStart) / 60 * HP;
@@ -593,7 +719,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                       const sm = srcMeta(b.source, t);
                       const dep = paid > 0 ? (paid >= b.priceCents && b.priceCents > 0 ? t('cal.paidFull') : t('cal.deposit')) : '';
                       return (
-                        <div key={b.id} draggable={!dim} onDragStart={(ev) => { setDragId(b.id); ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', b.id); }} onDragEnd={() => { setDragId(null); setOverCol(null); }}
+                        <div key={b.id} data-card="1" draggable={!dim} onDragStart={(ev) => { setDragId(b.id); setGhost(null); grab.current = ((ev.clientY - ev.currentTarget.getBoundingClientRect().top) / HP) * 60; ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', b.id); }} onDragEnd={() => { setDragId(null); setOverCol(null); setGhost(null); }}
                           onClick={() => onOpen(b)} title={`${fmtT(b.startTime)} · ${b.customer?.firstName ?? ''} · ${b.service?.name ?? ''}`}
                           style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: dim ? 'var(--c18202f)' : `${cc}22`, border: `1px solid ${cc}66`, borderRadius: 8, padding: '3px 7px', overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dim ? 0.7 : dragId === b.id ? 0.4 : 1 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 4 }}>

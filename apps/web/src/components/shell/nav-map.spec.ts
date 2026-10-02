@@ -1,4 +1,27 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { activeHref, DASHBOARD, GROUPS, ITEM_BY_HREF, SECTIONS, sectionFor } from './nav-map';
+
+// The drawings live in NavIcon.tsx (JSX, which this runner does not compile),
+// so their names are read from the source: `  name: <...`.
+const drawn = new Set(
+  [...readFileSync(join(__dirname, '..', 'NavIcon.tsx'), 'utf8').matchAll(/^  (\w+): </gm)].map((m) => m[1]),
+);
+
+describe('menu icons', () => {
+  const items = [DASHBOARD, ...GROUPS.flatMap((g) => g.items)];
+  it('every screen and every area has a drawing (no silent fallback)', () => {
+    for (const i of items) expect([i.href, drawn.has(i.icon)]).toEqual([i.href, true]);
+    for (const s of SECTIONS) expect([s.id, drawn.has(s.icon)]).toEqual([s.id, true]);
+  });
+  it('no two screens share an icon', () => {
+    const seen = new Map<string, string>();
+    for (const i of items) {
+      expect([i.href, seen.get(i.icon) ?? null]).toEqual([i.href, null]);
+      seen.set(i.icon, i.href);
+    }
+  });
+});
 
 /**
  * The new two-tier menu shows the same screens as the classic sidebar — none

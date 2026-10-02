@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dayKeyInTz, fmtInTz, presetRangeInTz, salonTz } from '../../lib/datetime';
-import { SalonShell } from '../../components/SalonShell';
+import { SalonShell, useNavAccess } from '../../components/SalonShell';
+import { NavIcon } from '../../components/NavIcon';
 import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
 import { sourceCounts } from '../../lib/booking-sources';
@@ -49,6 +50,8 @@ interface Home {
   today: { bookings: number; completed: number; inProgress: number; upcoming: number; noShow: number };
   chairs: { total: number; busy: number; staff: number };
   attention: { awaitingPayment: number; pendingBookings: number; waitlist: number; reviews: number; lowStock: { name: string; qty: number }[] };
+  /** The strip across the top. Optional: an API one deploy behind leaves it out. */
+  floor?: { inService: number; waiting: number; nextHour: number; freeTechs: number; longestWait: { id: string; name: string; minutes: number } | null };
 }
 interface Trend { series: SeriesPoint[]; topStaff: Ranked[]; topServices: Ranked[]; kpis: Kpis; previous?: { kpis: { revenueCents: number } } }
 
@@ -72,9 +75,26 @@ function Inner() {
   const vi = lang === 'vi';
   const L = (v: string, e: string) => (vi ? v : e);
   const t = (k: string) => tr(k, lang);
-  const phone = useIsMobile(767);      // the shell's own phone layout (drawer + tab bar)
-  const narrow = useIsMobile(1023);    // iPad upright: the sidebar leaves ~600px, so one column
-  const tablet = useIsMobile(1279);    // iPad sideways: tighter rows, no progress bars
+  const canOpen = useNavAccess();
+  // The layout follows the room the page actually has, not the window: the
+  // classic sidebar, the new rail + area menu and the iPad flyout all leave
+  // different widths at the same screen size. Until the first measurement the
+  // window decides, as before.
+  const vPhone = useIsMobile(767);
+  const vNarrow = useIsMobile(1023);
+  const vTablet = useIsMobile(1279);
+  const [cw, setCw] = useState<number | null>(null);
+  const ro = useRef<ResizeObserver | null>(null);
+  const measure = useCallback((el: HTMLElement | null) => {
+    ro.current?.disconnect(); ro.current = null;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const obs = new ResizeObserver((es) => { const w = Math.round(es[0]?.contentRect.width ?? 0); if (w > 0) setCw((p) => (p === w ? p : w)); });
+    obs.observe(el); ro.current = obs;
+  }, []);
+  useEffect(() => () => ro.current?.disconnect(), []);
+  const phone = cw !== null ? cw < 600 : vPhone;      // one column, small numbers
+  const narrow = cw !== null ? cw < 760 : vNarrow;    // iPad upright: one column of cards
+  const tablet = cw !== null ? cw < 1040 : vTablet;   // tighter rows, no progress bars
 
   const todayKey = dayKeyInTz(new Date());
   const [period, setPeriod] = useState<Period>('today');
@@ -236,6 +256,58 @@ function Inner() {
     </div>
   );
 
+  /* The floor in four numbers, and the one client who has waited too long. */
+  const fl = home.floor;
+  const liveStat = (n: number, text: string, href: string, tone?: 'warn' | 'good') => (
+    <a href={href} style={{ display: 'flex', flexDirection: phone ? 'column' : 'row', alignItems: phone ? 'flex-start' : 'baseline', gap: phone ? 0 : 6, textDecoration: 'none', minWidth: 0 }}>
+      <span style={{ fontSize: phone ? 20 : 20, fontWeight: 700, lineHeight: 1.15, fontVariantNumeric: 'tabular-nums', color: tone === 'warn' && n > 0 ? 'var(--ink-warn)' : tone === 'good' && n > 0 ? 'var(--ink-good)' : 'var(--cf1f5f9)' }}>{n}</span>
+      <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: phone ? 'normal' : 'nowrap', lineHeight: 1.25 }}>{text}</span>
+    </a>
+  );
+  const liveStrip = fl ? (
+    <div style={{ ...card, flexDirection: narrow ? 'column' : 'row', alignItems: narrow ? 'stretch' : 'center', gap: narrow ? 10 : tablet ? 18 : 26, padding: phone ? '12px 14px' : '12px 18px' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+        <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 0 4px rgba(34,197,94,.18)' }} />
+        {L('Lúc này', 'Right now')}
+        {narrow && <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 500, color: 'var(--c94a3b8)' }}>{fmtInTz(new Date(), { hour: 'numeric', minute: '2-digit' })}</span>}
+      </span>
+      <div style={narrow ? { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 } : { display: 'flex', alignItems: 'baseline', gap: tablet ? 18 : 26, minWidth: 0, flexWrap: 'wrap' }}>
+        {liveStat(fl.inService, L('đang làm', 'in service'), '/salon/walkins')}
+        {liveStat(fl.waiting, L('đang chờ', 'waiting'), '/salon/walkins', 'warn')}
+        {liveStat(fl.nextHour, phone ? L('hẹn trong 1 giờ', 'next hour') : L('hẹn trong 1 giờ tới', 'booked next hour'), '/salon/calendar')}
+        {liveStat(fl.freeTechs, L('thợ rảnh', 'techs free'), '/salon/walkins', 'good')}
+      </div>
+      {fl.longestWait && (
+        <a href={`/salon/walkins?focus=${encodeURIComponent(fl.longestWait.id)}`}
+          style={{ marginLeft: narrow ? 0 : 'auto', display: 'flex', alignItems: 'center', justifyContent: narrow ? 'center' : undefined, gap: 6, minHeight: 32, padding: '4px 12px', borderRadius: 999, background: 'rgba(245,158,11,.14)', border: '1px solid rgba(245,158,11,.4)', color: 'var(--ink-warn)', fontSize: 13, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+          ⚠ {L(`${fl.longestWait.name} chờ ${fl.longestWait.minutes}′ · giao thợ`, `${fl.longestWait.name} waiting ${fl.longestWait.minutes}′ · assign`)}
+        </a>
+      )}
+    </div>
+  ) : null;
+
+  /* The four things the front desk starts from here; only the ones this person may open. */
+  const quick = [
+    { key: 'walkin', href: '/salon/walkins?new=1', page: '/salon/walkins', icon: 'walk', title: L('Khách vãng lai', 'Walk-in'), sub: L('Thêm vào hàng chờ', 'Add to the queue') },
+    { key: 'book', href: '/salon/bookings?new=1', page: '/salon/bookings', icon: 'calendarCheck', title: L('Lịch hẹn mới', 'New booking'), sub: L('Chọn thợ và giờ', 'Pick a tech and a time') },
+    { key: 'pos', href: '/salon/pos', page: '/salon/pos', icon: 'receipt', title: L('Thu tiền', 'Check out'), sub: L('Mở quầy thu ngân', 'Open the till') },
+    { key: 'cal', href: '/salon/calendar', page: '/salon/calendar', icon: 'calendar', title: L('Lịch hôm nay', "Today's calendar"), sub: L(`${home.today.upcoming} lịch sắp tới`, `${home.today.upcoming} still to come`) },
+  ].filter((q) => canOpen(q.page));
+  const quickActions = quick.length > 0 ? (
+    <nav aria-label={L('Thao tác nhanh', 'Quick actions')} style={{ display: 'grid', gridTemplateColumns: narrow && !phone ? 'repeat(2, minmax(0, 1fr))' : `repeat(${quick.length}, minmax(0, 1fr))`, gap: phone ? 8 : 12 }}>
+      {quick.map((q) => (
+        <a key={q.key} href={q.href} style={{ boxSizing: 'border-box', display: 'flex', flexDirection: phone ? 'column' : 'row', alignItems: 'center', gap: phone ? 6 : 10, minWidth: 0, minHeight: phone ? 76 : 58, padding: phone ? '10px 4px' : '10px 14px', borderRadius: 14, background: 'var(--c0f172a)', border: '1px solid var(--line)', textDecoration: 'none', textAlign: phone ? 'center' : 'left' }}>
+          <span aria-hidden="true" style={{ width: phone ? 32 : 36, height: phone ? 32 : 36, flexShrink: 0, borderRadius: 10, display: 'grid', placeItems: 'center', background: '#4f46e5', color: '#fff' }}><NavIcon name={q.icon} size={phone ? 16 : 18} /></span>
+          <span style={{ minWidth: 0, flex: phone ? undefined : 1, display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
+            <span style={phone ? { fontSize: 12.5, fontWeight: 700, color: 'var(--cf1f5f9)' } : { fontSize: 14, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.title}</span>
+            {!phone && <span style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.sub}</span>}
+          </span>
+          {!phone && !tablet && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c94a3b8)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>}
+        </a>
+      ))}
+    </nav>
+  ) : null;
+
   const nowRow = (r: NowRow, i: number) => {
     const c = r.current;
     const left = c ? minsLeft(c.endTime) : null;
@@ -378,7 +450,7 @@ function Inner() {
   /* -------------------------------------------------------------- layout */
   const gap = phone ? 12 : 14;
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: phone ? 12 : 18, maxWidth: 1400 }}>
+    <section ref={measure} style={{ display: 'flex', flexDirection: 'column', gap: phone ? 12 : 18, maxWidth: 1400 }}>
       {error && <div style={ui.banner}>{error}</div>}
 
       <div style={{ display: 'flex', alignItems: phone || narrow ? 'stretch' : 'flex-end', flexDirection: phone || narrow ? 'column' : 'row', gap: phone ? 12 : 16 }}>
@@ -391,10 +463,13 @@ function Inner() {
         {periodPicker}
       </div>
 
+      {liveStrip}
+
       {phone ? (
         <>
           {hero}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>{bookingsCard}{avgCard}{chairsCard}</div>
+          {quickActions}
           {attentionCard}
           {nowCard}
           {chartCard}
@@ -410,6 +485,7 @@ function Inner() {
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: tablet ? '1.5fr 1fr 1fr 1fr' : '1.6fr 1fr 1fr 1fr', gap }}>{hero}{bookingsCard}{avgCard}{chairsCard}</div>
           )}
+          {quickActions}
           <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : tablet ? '1.5fr 1fr' : '1.6fr 1fr', gap, alignItems: 'start' }}>{nowCard}{attentionCard}</div>
           <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr' : '1.6fr 1fr', gap, alignItems: 'stretch' }}>{chartCard}{topCard}</div>
         </>

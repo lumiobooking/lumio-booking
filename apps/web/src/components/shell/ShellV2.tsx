@@ -243,6 +243,19 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
     </>
   );
 
+  // The language switch stays in plain sight, as it was on the classic sidebar —
+  // tucked into the account menu, nobody found it.
+  const langToggle = (
+    <div role="group" aria-label={L('Ngôn ngữ', 'Language')} style={{ display: 'flex', flexShrink: 0, border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden', height: 40 }}>
+      {(['vi', 'en'] as const).map((l) => (
+        <button key={l} type="button" onClick={() => setLang(l)} aria-pressed={lang === l} title={l === 'vi' ? 'Tiếng Việt' : 'English'}
+          style={{ width: 40, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: lang === l ? '#4f46e5' : 'var(--c0f172a)', color: lang === l ? '#ffffff' : 'var(--c94a3b8)' }}>
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+
   const palette_ = <CommandPalette open={palette} onClose={() => setPalette(false)} token={token} vi={vi} pages={pages} phone={phone} />;
 
   // ---------------------------------------------------------------- phone
@@ -272,6 +285,10 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
                 <LumioLogo size={28} />
                 <button type="button" onClick={() => setSheet(false)} aria-label={L('Đóng', 'Close')} style={iconBtn}>✕</button>
               </div>
+              <div style={{ padding: '0 14px 10px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', flex: 1 }}>{L('Ngôn ngữ', 'Language')}</span>
+                {langToggle}
+              </div>
               <div style={{ padding: '0 10px' }}>{branchSwitcher}</div>
               {/* Areas as tabs across the top of the sheet: one tap to switch, the
                   list underneath stays short enough to reach with a thumb. */}
@@ -293,11 +310,6 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
               <div style={{ marginTop: 'auto', padding: '16px 14px 0', display: 'grid', gap: 10 }}>
                 <ShareBookingLink />
                 <div style={{ fontSize: 12, color: 'var(--c94a3b8)', wordBreak: 'break-all' }}>{email}</div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {(['vi', 'en'] as const).map((l) => (
-                    <button key={l} type="button" onClick={() => setLang(l)} style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: `1px solid ${lang === l ? '#6366f1' : 'var(--c334155)'}`, background: lang === l ? '#6366f1' : 'transparent', color: lang === l ? '#fff' : 'var(--c94a3b8)' }}>{l === 'vi' ? 'Tiếng Việt' : 'English'}</button>
-                  ))}
-                </div>
                 <Link href="/salon/account" style={sheetBtn}>{tr('shell.myAccount', lang)}</Link>
                 <button type="button" onClick={onClassic} style={sheetBtn}>↩ {L('Dùng giao diện cũ', 'Use the classic layout')}</button>
                 <button type="button" onClick={logout} style={{ ...sheetBtn, color: 'var(--ink-bad)' }}>{tr('shell.logout', lang)}</button>
@@ -365,6 +377,7 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
           </div>
           {searchButton(!tablet)}
           {createButton(tablet)}
+          {langToggle}
           <ThemeToggle />
           {isSupport && <InboxAlerts href="/salon/inbox" label={L('Hộp thư', 'Inbox')} />}
           <NotificationBell />

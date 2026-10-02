@@ -43,6 +43,11 @@ function makePrisma(now: Date) {
   const serving = [
     { id: 'w1', customerName: 'Anna Tran', items: [{ name: 'Gel Manicure' }, { name: 'Cuticle Care Extra' }], assignedStaffId: 'st-linda', assignedAt: min(-40), extraMinutes: null, awaitingPayment: true, service: { name: 'Gel Manicure', durationMinutes: 45 }, customer: null },
   ];
+  const waiting = [
+    // Waited 14 minutes: over the 10-minute line, so it is called out.
+    { id: 'w-old', customerName: '', createdAt: min(-14), customer: { firstName: 'Grace', lastName: 'Lam' } },
+    { id: 'w-new', customerName: 'Tom Ho', createdAt: min(-3), customer: null },
+  ];
   const prisma: any = {
     tenant: { findUnique: async () => ({ timezone: 'America/Chicago' }) },
     staffMember: { findMany: jest.fn(async (a: any) => { rec('staffMember')(a); return staff; }) },
@@ -52,7 +57,7 @@ function makePrisma(now: Date) {
     },
     payment: { findMany: jest.fn(async (a: any) => { rec('payment')(a); return [{ amountCents: 4400, paidAt: min(-60), provider: 'pos-cash', type: 'ONSITE', appointment: null }]; }) },
     customer: { count: jest.fn(async (a: any) => { rec('customer.count')(a); return 2; }) },
-    walkIn: { findMany: jest.fn(async (a: any) => { rec('walkIn')(a); return serving; }) },
+    walkIn: { findMany: jest.fn(async (a: any) => { rec('walkIn')(a); return a?.where?.status === 'WAITING' ? waiting : serving; }) },
     station: { count: jest.fn(async (a: any) => { rec('station.count')(a); return 7; }) },
     waitlistEntry: { count: jest.fn(async (a: any) => { rec('waitlistEntry.count')(a); return 2; }) },
     googleReview: { count: jest.fn(async (a: any) => { rec('googleReview.count')(a); return 1; }) },
@@ -83,6 +88,9 @@ describe('OverviewService.home', () => {
       expect(home.today).toMatchObject({ bookings: 3, completed: 1, inProgress: 1, upcoming: 1 });
       expect(home.attention).toMatchObject({ awaitingPayment: 1, pendingBookings: 3, waitlist: 2, reviews: 1, lowStock: [{ name: 'Hand Cream', qty: 3 }] });
       expect(home.tipsCents).toBe(18600);
+      // The strip: Mai's appointment is in service (Linda's client is only
+      // waiting to pay), two walk-ins queue, Kevin's 10:32 is within the hour.
+      expect(home.floor).toEqual({ inService: 1, waiting: 2, nextHour: 1, freeTechs: 1, longestWait: { id: 'w-old', name: 'Grace Lam', minutes: 14 } });
       // The previous period is the same length (one day), ending yesterday.
       expect(home.previous.range).toEqual({ from: '2026-09-28', to: '2026-09-28' });
       expect(home.previous.kpis.revenueCents).toBe(4400);
@@ -98,6 +106,21 @@ describe('OverviewService.home', () => {
     await svc.home(owner, '2026-09-22', '2026-09-29');
     expect(calls.length).toBeGreaterThan(10);
     for (const c of calls) expect(c.where?.tenantId).toBe('tenant-a');
+  });
+
+  it('names no one when nobody has waited 10 minutes', async () => {
+    const now = new Date('2026-09-29T15:42:00Z');
+    const { prisma } = makePrisma(now);
+    prisma.walkIn.findMany = jest.fn(async (a: any) => (a?.where?.status === 'WAITING' ? [{ id: 'w1', customerName: 'Tom', createdAt: new Date(now.getTime() - 9 * 60000), customer: null }] : []));
+    const svc = new OverviewService(prisma);
+    jest.useFakeTimers().setSystemTime(now);
+    try {
+      const home = await svc.home(owner, '2026-09-29', '2026-09-29');
+      expect(home.floor.waiting).toBe(1);
+      expect(home.floor.longestWait).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('a 7-day window compares with the 7 days before it', async () => {

@@ -14,6 +14,7 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
 import { AssignBookingDto } from './dto/assign-booking.dto';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
+import { MoveBookingDto } from './dto/move-booking.dto';
 import { AssignTableDto } from './dto/assign-table.dto';
 import { RejectBookingDto } from './dto/reject-booking.dto';
 import { SetStatusDto } from './dto/set-status.dto';
@@ -148,6 +149,19 @@ export class BookingsController {
     @Body() dto: AssignBookingDto,
   ) {
     return this.bookings.assign(user, id, dto.staffId);
+  }
+
+  // POST /api/bookings/:id/move { startTime, staffId? } — the calendar drag.
+  @Roles(UserRole.SALON_ADMIN)
+  @Caps('bookings')
+  @Post(':id/move')
+  @HttpCode(200)
+  move(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: MoveBookingDto,
+  ) {
+    return this.bookings.move(user, id, dto.startTime, dto.staffId);
   }
 
   @Roles(UserRole.SALON_ADMIN)

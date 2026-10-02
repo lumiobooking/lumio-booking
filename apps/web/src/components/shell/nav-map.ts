@@ -26,7 +26,7 @@ export const DASHBOARD: NavItem = { href: '/salon', label: 'Dashboard', icon: 'h
 // now lives inside Billing & plan, so it is no longer a separate nav item.
 export const GROUPS: NavGroup[] = [
   { id: 'ops', label: 'Operations', items: [
-    { href: '/salon/calendar', label: 'Calendar', icon: 'calendar' },
+    { href: '/salon/calendar', label: 'Calendar', icon: 'calendarDays' },
     { href: '/salon/bookings', label: 'Bookings', icon: 'calendarCheck' },
     // Front-desk check-in board: seat a customer, run their ticket, hand it to
     // the till. Its route and permission always existed — the nav entry didn't.
@@ -34,59 +34,59 @@ export const GROUPS: NavGroup[] = [
     { href: '/salon/activity', label: 'Activity', icon: 'pulse' },
     { href: '/salon/tables', label: 'Tables', icon: 'utensils', biz: 'restaurant' },
     { href: '/salon/menu', label: 'Menu', icon: 'bowl', biz: 'restaurant' },
-    { href: '/salon/waitlist', label: 'Waitlist', icon: 'clock' },
-    { href: '/salon/pos', label: 'POS / Checkout', icon: 'receipt', feature: 'pos' },
-    { href: '/salon/orders', label: 'Orders', icon: 'clipboard', feature: 'pos' },
+    { href: '/salon/waitlist', label: 'Waitlist', icon: 'hourglass' },
+    { href: '/salon/pos', label: 'POS / Checkout', icon: 'register', feature: 'pos' },
+    { href: '/salon/orders', label: 'Orders', icon: 'receipt', feature: 'pos' },
   ] },
   { id: 'clients', label: 'Clients & Catalog', items: [
     { href: '/salon/customers', label: 'Customers', icon: 'users' },
     // Two-button feedback after every visit: the owner's cases and each tech's scorecard.
-    { href: '/salon/feedback', label: 'Feedback', icon: 'heart' },
-    { href: '/salon/services', label: 'Services', icon: 'sparkle' },
+    { href: '/salon/feedback', label: 'Feedback', icon: 'thumbs' },
+    { href: '/salon/services', label: 'Services', icon: 'nailPolish' },
     { href: '/salon/products', label: 'Products', icon: 'bag', feature: 'pos' },
     { href: '/salon/gift-cards', label: 'Gift cards', icon: 'gift', feature: 'pos' },
-    { href: '/salon/staff', label: 'Staff', icon: 'scissors' },
+    { href: '/salon/staff', label: 'Staff', icon: 'userBadge' },
     { href: '/salon/stations', label: 'Chairs', icon: 'chair' },
   ] },
   { id: 'growth', label: 'Marketing & AI', items: [
-    { href: '/salon/content', label: 'Marketing plan & posts', icon: 'sparkle' },
+    { href: '/salon/content', label: 'Marketing plan & posts', icon: 'wand' },
     // One door for every channel the shop publishes to or is reached on —
     // Facebook, Instagram, Google Business, TikTok, Zalo, website chat.
     // The screens that use a channel keep a status line and link here.
-    { href: '/salon/channels', label: 'Social channels', icon: 'plug' },
+    { href: '/salon/channels', label: 'Social channels', icon: 'share' },
     // The client's own door: preview + approve what is about to publish.
     // Deliberately its own route, NOT the content page — that page is the
     // agency's kitchen and has its own switch; this one is the dining room.
-    { href: '/salon/approve-posts', label: 'Post approval', icon: 'check' },
+    { href: '/salon/approve-posts', label: 'Post approval', icon: 'docCheck' },
     { href: '/salon/marketing', label: 'Marketing', icon: 'megaphone' },
     { href: '/salon/marketing/monthly', label: 'Marketing report', icon: 'chart' },
     { href: '/salon/email', label: 'Email marketing', icon: 'mail' },
-    { href: '/salon/reviews', label: 'Reviews & rewards', icon: 'star' },
-    { href: '/salon/reviews-replies', label: 'Google reviews', icon: 'chat' },
+    { href: '/salon/reviews', label: 'Reviews & rewards', icon: 'award' },
+    { href: '/salon/reviews-replies', label: 'Google reviews', icon: 'starChat' },
     // The inbox sits ABOVE the bot settings on purpose: answering customers is
     // done fifty times a day by a receptionist, configuring the bot is done once
     // by the owner. The frequent job should not live under the rare one.
     { href: '/salon/inbox', label: 'Inbox', icon: 'inboxTray' },
     { href: '/salon/messenger', label: 'Messenger bot', icon: 'bot' },
-    { href: '/salon/voice', label: 'AI Hotline', icon: 'phone' },
+    { href: '/salon/voice', label: 'AI Hotline', icon: 'headset' },
   ] },
   { id: 'finance', label: 'Finance', items: [
     { href: '/salon/payments', label: 'Payments', icon: 'dollar' },
-    { href: '/salon/payment-terminals', label: 'Card terminals', icon: 'card', feature: 'pos' },
+    { href: '/salon/payment-terminals', label: 'Card terminals', icon: 'terminal', feature: 'pos' },
     // North America only. The whole screen is the card terminal's receipt book —
     // void, refund, approval code, batch number, card brand, all of it Dejavoo —
     // and the terminal itself is already vetoed for Vietnam by the market.
     // Blocking the machine and leaving its receipt book in the menu was half a
     // veto: a row a Vietnamese salon can never have, on a screen it can never act on.
-    { href: '/salon/card-transactions', label: 'Card transactions', icon: 'fileText', feature: 'pos', market: 'na' },
+    { href: '/salon/card-transactions', label: 'Card transactions', icon: 'card', feature: 'pos', market: 'na' },
     { href: '/salon/reports', label: 'Business report', icon: 'trendUp' },
     { href: '/salon/pos/report', label: 'Sales report', icon: 'pie', feature: 'pos' },
-    { href: '/salon/pos/shifts', label: 'Cashier shifts', icon: 'banknote', feature: 'pos' },
+    { href: '/salon/pos/shifts', label: 'Cashier shifts', icon: 'drawer', feature: 'pos' },
     { href: '/salon/payroll', label: 'Staff & pay', icon: 'banknote', feature: 'pos' },
     { href: '/salon/inventory', label: 'Inventory', icon: 'box', feature: 'pos' },
   ] },
   { id: 'account', label: 'Account', items: [
-    { href: '/salon/billing', label: 'Billing & plan', icon: 'card' },
+    { href: '/salon/billing', label: 'Billing & plan', icon: 'crown' },
     { href: '/salon/notifications', label: 'Notifications', icon: 'bell' },
     { href: '/salon/integrations', label: 'Integrations', icon: 'puzzle' },
     // Lumio's wiring board — every OAuth, token and webhook behind the salon,
@@ -94,7 +94,7 @@ export const GROUPS: NavGroup[] = [
     // reading it sees a wall of red "not connected" for things Lumio runs on
     // its behalf, and rings to ask. Team only.
     { href: '/salon/connections', label: 'Connections', icon: 'plug', team: true },
-    { href: '/salon/settings', label: 'Settings', icon: 'gear' },
+    { href: '/salon/settings', label: 'Settings', icon: 'cog' },
     // Deleted items live here for a week before they are gone for good.
     { href: '/salon/trash', label: 'Recycle bin', icon: 'trash' },
   ] },
@@ -123,18 +123,18 @@ export interface Section {
  * owner restocks what the menu sells).
  */
 export const SECTIONS: Section[] = [
-  { id: 'ops', vi: 'Vận hành', en: 'Operations', viDesc: 'Điều hành tiệm hằng ngày', enDesc: 'Run the floor day to day', icon: 'home',
+  { id: 'ops', vi: 'Vận hành', en: 'Operations', viDesc: 'Điều hành tiệm hằng ngày', enDesc: 'Run the floor day to day', icon: 'store',
     hrefs: ['/salon', '/salon/calendar', '/salon/bookings', '/salon/walkins', '/salon/pos', '/salon/orders', '/salon/waitlist', '/salon/activity', '/salon/tables', '/salon/menu'],
     lessUsed: ['/salon/waitlist', '/salon/activity'] },
   { id: 'clients', vi: 'Khách hàng', en: 'Clients', viDesc: 'Khách, tin nhắn, góp ý', enDesc: 'Clients, messages, feedback', icon: 'users',
     hrefs: ['/salon/customers', '/salon/inbox', '/salon/feedback', '/salon/reviews', '/salon/gift-cards'] },
-  { id: 'catalog', vi: 'Dịch vụ & Thợ', en: 'Services & team', viDesc: 'Menu, sản phẩm, đội thợ', enDesc: 'Menu, products, team', icon: 'scissors',
+  { id: 'catalog', vi: 'Dịch vụ & Thợ', en: 'Services & team', viDesc: 'Menu, sản phẩm, đội thợ', enDesc: 'Menu, products, team', icon: 'nailPolish',
     hrefs: ['/salon/services', '/salon/products', '/salon/inventory', '/salon/staff', '/salon/stations'] },
   { id: 'growth', vi: 'Marketing & AI', en: 'Marketing & AI', viDesc: 'Kéo khách mới, giữ khách cũ', enDesc: 'Win and keep clients', icon: 'megaphone',
     hrefs: ['/salon/content', '/salon/approve-posts', '/salon/channels', '/salon/marketing', '/salon/marketing/monthly', '/salon/email', '/salon/reviews-replies', '/salon/messenger', '/salon/voice'] },
-  { id: 'finance', vi: 'Tài chính', en: 'Finance', viDesc: 'Doanh thu, thanh toán, lương', enDesc: 'Revenue, payments, pay', icon: 'dollar',
+  { id: 'finance', vi: 'Tài chính', en: 'Finance', viDesc: 'Doanh thu, thanh toán, lương', enDesc: 'Revenue, payments, pay', icon: 'wallet',
     hrefs: ['/salon/reports', '/salon/pos/report', '/salon/payments', '/salon/card-transactions', '/salon/pos/shifts', '/salon/payroll', '/salon/payment-terminals'] },
-  { id: 'account', vi: 'Cài đặt', en: 'Settings', viDesc: 'Làm một lần, ít khi quay lại', enDesc: 'Set once, rarely revisited', icon: 'gear',
+  { id: 'account', vi: 'Cài đặt', en: 'Settings', viDesc: 'Làm một lần, ít khi quay lại', enDesc: 'Set once, rarely revisited', icon: 'cog',
     hrefs: ['/salon/settings', '/salon/notifications', '/salon/billing', '/salon/integrations', '/salon/connections', '/salon/trash'] },
 ];
 

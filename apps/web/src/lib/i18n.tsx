@@ -1212,7 +1212,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'cal.unassignedCol': { en: 'Unassigned', vi: 'Chưa xếp thợ' },
   'cal.allStaff': { en: 'All staff', vi: 'Tất cả thợ' },
   'cal.staffHint': { en: 'Tap an appointment for full details. Scroll sideways to see every technician.', vi: 'Bấm vào lịch hẹn để xem chi tiết. Vuốt ngang để xem tất cả thợ.' },
-  'cal.dragHint': { en: 'Drag a card to reassign', vi: 'Kéo thẻ để đổi thợ' },
+  'cal.dragHint': { en: 'Drag a card to change its time or tech · click an empty slot to book', vi: 'Kéo thẻ để dời giờ hoặc đổi thợ · bấm ô trống để đặt lịch' },
   'cal.reassigned': { en: 'Moved to {name}', vi: 'Đã chuyển sang {name}' },
   'cal.reassignFail': { en: 'Could not reassign', vi: 'Không đổi được thợ' },
   'cal.paidFull': { en: 'Paid', vi: 'Đã thanh toán' },

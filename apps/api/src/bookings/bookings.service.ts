@@ -2348,6 +2348,60 @@ export class BookingsService {
     return updated;
   }
 
+  /**
+   * The calendar's drag: a new start time and, optionally, a different
+   * technician, in ONE transaction. Two calls (reschedule, then assign) could
+   * leave the booking half-moved when the second one hits a clash; here the
+   * target tech's calendar is locked and checked before anything changes.
+   * Same rules as reschedule() (finished bookings stay put) and assign()
+   * (a confirmed/arrived visit keeps its status).
+   */
+  async move(user: AuthenticatedUser, id: string, startTimeIso: string, staffId?: string | null) {
+    const booking = await this.getById(user, id);
+    if (!staffId || staffId === booking.assignedStaffId) return this.reschedule(user, id, startTimeIso);
+    const tenantId = this.tenantId(user);
+    const finalStates: AppointmentStatus[] = [
+      AppointmentStatus.CANCELLED, AppointmentStatus.COMPLETED,
+      AppointmentStatus.NO_SHOW, AppointmentStatus.REJECTED,
+    ];
+    if (finalStates.includes(booking.status)) {
+      throw new BadRequestException('This booking is finished and can no longer be moved.');
+    }
+    const newStart = new Date(startTimeIso);
+    if (Number.isNaN(newStart.getTime())) throw new BadRequestException('Invalid start time');
+    await this.assertStaffActive(tenantId, staffId);
+    const newEnd = new Date(newStart.getTime() + (booking.endTime.getTime() - booking.startTime.getTime()));
+    const keepStatus = booking.status === AppointmentStatus.CONFIRMED || booking.status === AppointmentStatus.ARRIVED;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await this.lockStaffSlot(tx, tenantId, staffId);
+      await this.assertNoOverlap(tx, tenantId, staffId, newStart, newEnd, id);
+      await tx.appointment.updateMany({
+        where: { id, tenantId },
+        data: {
+          startTime: newStart,
+          endTime: newEnd,
+          assignedStaffId: staffId,
+          assignedAt: new Date(),
+          rejectedAt: null,
+          ...(keepStatus ? {} : { status: AppointmentStatus.ASSIGNED, responseDeadline: addMinutes(new Date(), 30) }),
+        },
+      });
+      return tx.appointment.findFirst({ where: { id, tenantId }, include: BOOKING_INCLUDE });
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: user.userId,
+      action: 'booking.moved',
+      resourceType: 'appointment',
+      resourceId: id,
+      metadata: { from: booking.startTime.toISOString(), to: newStart.toISOString(), fromStaffId: booking.assignedStaffId, staffId },
+    });
+    this.sendStaffAssignmentEmail(tenantId, id).catch(() => undefined);
+    return updated;
+  }
+
   /** Move a booking to a new date & time (admin reschedule). Duration and
    *  status are preserved; the assigned technician's calendar is re-checked
    *  race-safely so the move can never create a double booking. */

@@ -56,12 +56,41 @@ const P: Record<string, React.ReactNode> = {
   bell: <><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.8 2H4.2l1.8-2Z" /><path d="M10 20.5a2 2 0 0 0 4 0" /></>,
   puzzle: <path d="M10 4.5a1.8 1.8 0 1 1 3.6 0H17a1.5 1.5 0 0 1 1.5 1.5v3.2a1.8 1.8 0 1 0 0 3.6V16a1.5 1.5 0 0 1-1.5 1.5h-3.2a1.8 1.8 0 1 0-3.6 0H7A1.5 1.5 0 0 1 5.5 16v-3.4a1.8 1.8 0 1 1 0-3.6V6A1.5 1.5 0 0 1 7 4.5h3Z" />,
   plug: <><path d="M9 3.5V8M15 3.5V8" /><path d="M6.5 8h11v3.5A5.5 5.5 0 0 1 12 17a5.5 5.5 0 0 1-5.5-5.5V8ZM12 17v4" /></>,
-  gear: <><circle cx="12" cy="12" r="3" /><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6" /></>,
+  // The old gear read as a sun at 17px; a toothed cog reads as settings.
+  gear: <><circle cx="12" cy="12" r="2.8" /><path d="M10.4 3.5h3.2l.5 2.4 1.7 1 2.3-.8 1.6 2.8-1.8 1.6v2l1.8 1.6-1.6 2.8-2.3-.8-1.7 1-.5 2.4h-3.2l-.5-2.4-1.7-1-2.3.8-1.6-2.8 1.8-1.6v-2L4.3 8.9l1.6-2.8 2.3.8 1.7-1 .5-2.4Z" /></>,
   trash: <><path d="M5 6.5h14M9.5 6.5V4.5h5v2M7 6.5 8 21h8l1-14.5" /><path d="M10.2 10.5v6.5M13.8 10.5v6.5" /></>,
+
+  // ── 2026-10: one icon per screen (no two screens share one), drawn for a nail salon ──
+  // Areas of the new rail
+  store: <><path d="M4 9.5 5.6 4.5h12.8L20 9.5" /><path d="M4 9.5c0 1.5 1.2 2.6 2.7 2.6s2.6-1.1 2.6-2.6c0 1.5 1.2 2.6 2.7 2.6s2.7-1.1 2.7-2.6c0 1.5 1.1 2.6 2.6 2.6S20 11 20 9.5" /><path d="M5.5 12v8.5h13V12M10 20.5v-5h4v5" /></>,
+  nailPolish: <><rect x="9.5" y="2.8" width="5" height="5.4" rx="1" /><path d="M6.8 11.4a3.2 3.2 0 0 1 3.2-3.2h4a3.2 3.2 0 0 1 3.2 3.2V19a2 2 0 0 1-2 2H8.8a2 2 0 0 1-2-2v-7.6Z" /><path d="M9.8 12.5v5" /></>,
+  wallet: <><path d="M17 7.5V5.8A1.3 1.3 0 0 0 15.5 4.5L5.3 6.4A1.6 1.6 0 0 0 4 8" /><rect x="4" y="7.5" width="16" height="12.5" rx="2" /><path d="M20 11.5h-3.5a2 2 0 0 0 0 4H20" /></>,
+  cog: <><circle cx="12" cy="12" r="2.8" /><path d="M10.4 3.5h3.2l.5 2.4 1.7 1 2.3-.8 1.6 2.8-1.8 1.6v2l1.8 1.6-1.6 2.8-2.3-.8-1.7 1-.5 2.4h-3.2l-.5-2.4-1.7-1-2.3.8-1.6-2.8 1.8-1.6v-2L4.3 8.9l1.6-2.8 2.3.8 1.7-1 .5-2.4Z" /></>,
+  // Operations
+  calendarDays: <><rect x="3.5" y="5" width="17" height="16" rx="2.5" /><path d="M3.5 10h17M8 2.8V7M16 2.8V7" /><circle cx="8" cy="13.6" r=".9" fill="currentColor" stroke="none" /><circle cx="12" cy="13.6" r=".9" fill="currentColor" stroke="none" /><circle cx="16" cy="13.6" r=".9" fill="currentColor" stroke="none" /><circle cx="8" cy="17.3" r=".9" fill="currentColor" stroke="none" /><circle cx="12" cy="17.3" r=".9" fill="currentColor" stroke="none" /></>,
+  hourglass: <><path d="M6.5 3.5h11M6.5 20.5h11" /><path d="M8 3.5c0 4 4 5.3 4 8.5s-4 4.5-4 8.5M16 3.5c0 4-4 5.3-4 8.5s4 4.5 4 8.5" /><path d="M10 18.5h4" /></>,
+  register: <><rect x="4" y="11" width="16" height="9.5" rx="1.8" /><path d="M7 11V5.3A1.3 1.3 0 0 1 8.3 4h7.4A1.3 1.3 0 0 1 17 5.3V11" /><path d="M9.5 7.5h5M8 14.2h.01M12 14.2h.01M16 14.2h.01M8 17.3h8" /></>,
+  // Clients & catalog
+  thumbs: <><path d="M7.5 10.5v9.5h-3v-9.5h3Z" /><path d="M7.5 10.5 11 4.3a1.7 1.7 0 0 1 3.1 1.2l-.7 4h5a1.8 1.8 0 0 1 1.8 2.1l-1.3 6.8a2 2 0 0 1-2 1.6H7.5" /></>,
+  userBadge: <><circle cx="10" cy="8" r="3.3" /><path d="M3.8 19.5c0-3.2 2.8-5.4 6.2-5.4 1.2 0 2.3.3 3.2.7" /><rect x="14.5" y="13.5" width="6.5" height="7" rx="1.3" /><path d="M16.5 16.4h2.5M16.5 18.4h1.6" /></>,
+  // Marketing & AI
+  wand: <><path d="m4 20 10.5-10.5" /><path d="m12.8 7.8 3.4 3.4" /><path d="M17.5 3v3M16 4.5h3M20.5 9.5v2.2M19.4 10.6h2.2M9.5 3.5v2M8.5 4.5h2" /></>,
+  share: <><circle cx="6.5" cy="12" r="2.5" /><circle cx="17.5" cy="6" r="2.5" /><circle cx="17.5" cy="18" r="2.5" /><path d="m8.7 10.8 6.6-3.6M8.7 13.2l6.6 3.6" /></>,
+  docCheck: <><path d="M6.5 3h8L19 7.5V21h-12.5V3Z" /><path d="M14 3v5h5" /><path d="m9.3 14.6 2 2 3.8-4.1" /></>,
+  award: <><circle cx="12" cy="9" r="5.5" /><circle cx="12" cy="9" r="2.2" /><path d="m9 13.7-1.5 7.3 4.5-2.4 4.5 2.4-1.5-7.3" /></>,
+  starChat: <><path d="M4 5h16v11.5h-9.5L6 20.5v-4H4V5Z" /><path d="m12 7.6 1.1 2.2 2.4.3-1.8 1.7.5 2.4-2.2-1.2-2.2 1.2.5-2.4-1.8-1.7 2.4-.3L12 7.6Z" /></>,
+  headset: <><path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2" /><rect x="3.5" y="13" width="4" height="6" rx="1.5" /><rect x="16.5" y="13" width="4" height="6" rx="1.5" /><path d="M18.5 19c0 1.3-1.5 2-4 2H13" /></>,
+  // Finance & account
+  terminal: <><rect x="6" y="2.8" width="12" height="18.4" rx="2.2" /><rect x="8.5" y="5.5" width="7" height="4.3" rx=".8" /><path d="M9 13.3h.01M12 13.3h.01M15 13.3h.01M9 16.6h.01M12 16.6h.01M15 16.6h.01" /></>,
+  crown: <><path d="m4 8 4 3.5L12 5l4 6.5L20 8l-1.6 9.5H5.6L4 8Z" /><path d="M5.6 20.5h12.8" /></>,
+  drawer: <><path d="M3.5 13.5 5.5 6h13l2 7.5" /><rect x="3.5" y="13.5" width="17" height="6.5" rx="1.5" /><path d="M10 16.7h4M8.5 9.5h7" /></>,
 };
 
+/** Is there a drawing for this name? (Unknown names fall back to the cog.) */
+export const hasNavIcon = (name: string): boolean => Object.prototype.hasOwnProperty.call(P, name);
+
 export function NavIcon({ name, size = 17 }: { name: string; size?: number }) {
-  const paths = P[name] ?? P.gear;
+  const paths = P[name] ?? P.cog;
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden

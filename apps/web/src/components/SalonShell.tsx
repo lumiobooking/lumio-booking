@@ -22,7 +22,7 @@ import { ShareBookingLink } from './ShareBookingLink';
 import { MobileTabBar } from './MobileTabBar';
 import { NotificationBell } from './NotificationBell';
 import { LumioLogo } from './LumioLogo';
-import { DASHBOARD, GROUPS, type NavItem } from './shell/nav-map';
+import { DASHBOARD, GROUPS, ITEM_BY_HREF, type NavItem } from './shell/nav-map';
 import { ShellV2 } from './shell/ShellV2';
 
 // The menu itself (DASHBOARD + GROUPS) lives in shell/nav-map.ts, shared with
@@ -106,6 +106,15 @@ function writeCachedRestaurant(on: boolean) {
  * with a hamburger that opens a slide-in drawer. Auth-guarded.
  */
 const ShellMountedContext = createContext(false);
+
+/**
+ * "May this person open that screen?" — the same rule the menu uses (role,
+ * plan, market, restaurant, support gate), for pages that link elsewhere
+ * (the dashboard's quick actions). Outside the shell everything is allowed;
+ * the page itself still guards.
+ */
+const NavAccessContext = createContext<(href: string) => boolean>(() => true);
+export const useNavAccess = () => useContext(NavAccessContext);
 
 export function SalonShell({ children }: { children: ReactNode }) {
   const alreadyInShell = useContext(ShellMountedContext);
@@ -237,6 +246,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     // screen someone uses every day.
     && (item.market !== 'na' || isNorthAmerica(market))
     && can(item.href);
+  const hrefVisible = (href: string) => { const it = ITEM_BY_HREF[href]; return it ? itemVisible(it) : can(href); };
   const visibleGroups = GROUPS
     .map((g) => ({ ...g, items: g.items.filter(itemVisible) }))
     .filter((g) => g.items.length > 0);
@@ -389,7 +399,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       <h2 style={{ margin: '0 0 10px', fontSize: 19, color: 'var(--cf8fafc)' }}>{gateText(lang === 'vi').title}</h2>
       <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: 'var(--c94a3b8)' }}>{gateText(lang === 'vi').body}</p>
     </div>
-  ) : children;
+  ) : <NavAccessContext.Provider value={hrefVisible}>{children}</NavAccessContext.Provider>;
 
   const supportBanner = user?.supportSession ? (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c312e81)', border: '1px solid #6366f1', color: 'var(--ce0e7ff)', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13.5 }}>

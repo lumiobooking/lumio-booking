@@ -4,6 +4,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { addDaysToKey, dayKeyTz, dayRangeTz, hourTz, startOfDayTz, weekdayTz } from '../common/salon-time';
 
+/** A walk-in waiting this long is called out on the home screen (same rule as the turns board). */
+const LONG_WAIT_MINUTES = 10;
+
 const ACTIVE_STATUSES: AppointmentStatus[] = [
   AppointmentStatus.PENDING,
   AppointmentStatus.ASSIGNED,
@@ -461,7 +464,7 @@ export class OverviewService {
     const endOfToday = startOfDayTz(addDaysToKey(todayKey, 1), tz);
     const LIVE_STATUSES: AppointmentStatus[] = [...ACTIVE_STATUSES, AppointmentStatus.ARRIVED];
 
-    const [staff, todayAppts, serving, stations, pendingBookings, waitlist, reviews, lowStockRows] = await Promise.all([
+    const [staff, todayAppts, serving, stations, pendingBookings, waitlist, reviews, lowStockRows, waitingRows] = await Promise.all([
       this.prisma.staffMember.findMany({
         where: { tenantId, isActive: true },
         select: { id: true, firstName: true, lastName: true },
@@ -485,6 +488,12 @@ export class OverviewService {
       this.prisma.waitlistEntry.count({ where: { tenantId, status: WaitlistStatus.WAITING } }),
       this.prisma.googleReview.count({ where: { tenantId, status: { in: [GoogleReviewStatus.NEW, GoogleReviewStatus.DRAFTED, GoogleReviewStatus.NEEDS_ATTENTION] } } }),
       this.prisma.product.findMany({ where: { tenantId, isActive: true, trackStock: true, stockQty: { lte: 3 } }, select: { name: true, stockQty: true }, orderBy: { stockQty: 'asc' }, take: 5 }),
+      // The walk-in queue, oldest first — the same set the turns board shows.
+      this.prisma.walkIn.findMany({
+        where: { tenantId, status: WalkInStatus.WAITING },
+        select: { id: true, customerName: true, createdAt: true, customer: { select: { firstName: true, lastName: true } } },
+        orderBy: { createdAt: 'asc' },
+      }),
     ]);
 
     const personName = (c: { firstName: string; lastName: string | null } | null | undefined, fallback: string) =>
@@ -523,8 +532,25 @@ export class OverviewService {
     const upcomingToday = todayAppts.filter((a) => LIVE_STATUSES.includes(a.status) && a.startTime > now).length;
     const inProgress = todayAppts.filter((a) => LIVE_STATUSES.includes(a.status) && a.startTime <= now && a.endTime > now).length;
 
+    // The strip across the top of the home screen: the floor in four numbers,
+    // and the one client who has waited too long (if any).
+    const hourAhead = new Date(now.getTime() + 60 * 60000);
+    const nextHour = todayAppts.filter((a) => LIVE_STATUSES.includes(a.status) && a.startTime > now && a.startTime <= hourAhead).length;
+    const oldest = waitingRows[0];
+    const oldestMins = oldest ? Math.max(0, Math.floor((now.getTime() - oldest.createdAt.getTime()) / 60000)) : 0;
+    const floor = {
+      inService: serving.filter((w) => !w.awaitingPayment).length + inProgress,
+      waiting: waitingRows.length,
+      nextHour,
+      freeTechs: Math.max(0, staff.length - busy),
+      longestWait: oldest && oldestMins >= LONG_WAIT_MINUTES
+        ? { id: oldest.id, name: oldest.customerName || personName(oldest.customer, 'Walk-in'), minutes: oldestMins }
+        : null,
+    };
+
     return {
       now: rows,
+      floor,
       today: { bookings: todayAppts.length, completed: completedToday, inProgress, upcoming: upcomingToday, noShow: todayAppts.filter((a) => a.status === AppointmentStatus.NO_SHOW).length },
       chairs: { total: stations, busy, staff: staff.length },
       attention: {

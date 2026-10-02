@@ -104,6 +104,23 @@ function Inner() {
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   // Month grid vs. detailed single-day timeline.
   const [mode, setMode] = useState<'month' | 'day' | 'staff' | 'floor'>('month');
+  // The view is remembered per device. With no memory yet, the new layout
+  // opens on the day by technician (what the front desk works from); the
+  // classic layout keeps the month it always opened on.
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem('lumio_cal_mode');
+      if (v === 'month' || v === 'day' || v === 'staff') setMode(v);
+      else if (window.localStorage.getItem('lumio_ui2') === '1') setMode('staff');
+    } catch { /* ignore */ }
+  }, []);
+  const modeSeen = useRef(false);
+  useEffect(() => {
+    // Not the first render: that is the default, not a choice.
+    if (!modeSeen.current) { modeSeen.current = true; return; }
+    if (mode === 'floor') return;
+    try { window.localStorage.setItem('lumio_cal_mode', mode); } catch { /* ignore */ }
+  }, [mode]);
   // Day view: a scannable card grid (best for busy days) or a time-axis timeline.
   const [dayLayout, setDayLayout] = useState<'grid' | 'timeline'>(() => {
     if (typeof window === 'undefined') return 'grid';

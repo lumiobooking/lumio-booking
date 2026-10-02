@@ -218,7 +218,7 @@ function Inner() {
         {prevLabel} {money(pk.revenueCents)}
         {home.paymentMethods.cash > 0 && <> · {L('Tiền mặt', 'Cash')} {money(home.paymentMethods.cash)}</>}
         {home.paymentMethods.card > 0 && <> · {L('Thẻ', 'Card')} {money(home.paymentMethods.card)}</>}
-        {home.tipsCents > 0 && <> · {L('Tip cho thợ', 'Tips')} {money(home.tipsCents)}</>}
+        {home.tipsCents > 0 && <> · {L('trong đó tip của thợ', 'incl. tips')} {money(home.tipsCents)}</>}
       </span>
     </div>
   );

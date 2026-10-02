@@ -1,5 +1,8 @@
 'use client';
 
+import { minorUnitDigits } from '../../../lib/money';
+import { uiCurrency } from '../../../lib/ui-currency';
+
 import { useCallback, useEffect, useState, CSSProperties, ReactNode } from 'react';
 import { dayKeyInTz, presetRangeInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
@@ -128,8 +131,8 @@ function Inner() {
     rows.push([]);
     rows.push([T('Chỉ số', 'Metric'), T('Giá trị', 'Value')]);
     if (k) {
-      rows.push([T('Doanh thu', 'Revenue'), (k.revenueCents / 100).toFixed(2)]);
-      rows.push([T('Giá trị TB/lượt', 'Avg ticket'), (k.avgBookingValueCents / 100).toFixed(2)]);
+      rows.push([T('Tiền thu về (gồm thuế & tip)', 'Money collected (incl. tax & tips)'), csvMoney(k.revenueCents)]);
+      rows.push([T('Giá trị TB/lượt', 'Avg ticket'), csvMoney(k.avgBookingValueCents)]);
       rows.push([T('Tổng lịch', 'Total bookings'), String(k.totalBookings)]);
       rows.push([T('Hoàn tất', 'Completed'), String(k.completed)]);
       rows.push([T('No-show', 'No-show'), String(k.noShow)]);
@@ -143,11 +146,11 @@ function Inner() {
     rows.push([]); rows.push([T('Thiết bị', 'Device'), T('Lượt', 'Visits')]);
     for (const d of DEV_ORDER) { const n = dt ? dt[d] : 0; if (n > 0) rows.push([DEV_LABEL(d, vi), String(n)]); }
     rows.push([]); rows.push([T('Dịch vụ', 'Service'), T('Lượt', 'Bookings'), T('Doanh thu', 'Revenue')]);
-    for (const s of dash?.topServices ?? []) rows.push([s.name, String(s.bookings), (s.revenueCents / 100).toFixed(2)]);
+    for (const s of dash?.topServices ?? []) rows.push([s.name, String(s.bookings), csvMoney(s.revenueCents)]);
     rows.push([]); rows.push([T('Thợ', 'Staff'), T('Lượt', 'Bookings'), T('Doanh thu', 'Revenue')]);
-    for (const s of dash?.topStaff ?? []) rows.push([s.name, String(s.bookings), (s.revenueCents / 100).toFixed(2)]);
+    for (const s of dash?.topStaff ?? []) rows.push([s.name, String(s.bookings), csvMoney(s.revenueCents)]);
     rows.push([]); rows.push([T('Phương thức', 'Method'), T('Số tiền', 'Amount')]);
-    if (dash) for (const [key, val] of Object.entries(dash.paymentMethods)) if (val > 0) rows.push([PAY_LABEL(key, vi), (val / 100).toFixed(2)]);
+    if (dash) for (const [key, val] of Object.entries(dash.paymentMethods)) if (val > 0) rows.push([PAY_LABEL(key, vi), csvMoney(val)]);
 
     const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -182,10 +185,13 @@ function Inner() {
 
       {/* KPI strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 18 }}>
-        <Kpi label={T('Doanh thu', 'Revenue')} value={money(k?.revenueCents ?? 0)} hint={`${T('TB/lượt', 'Avg')} ${money(k?.avgBookingValueCents ?? 0)}`} />
+        {/* Money that came in (cash, card, transfer, online deposits) — it includes
+            tax and the techs' tips, so it is named for what it is; sales per
+            tech, net of discounts and without tips, are in the Sales report. */}
+        <Kpi label={T('Tiền thu về', 'Money collected')} value={money(k?.revenueCents ?? 0)} hint={`${T('gồm thuế & tip', 'incl. tax & tips')} · ${T('TB/lượt', 'Avg')} ${money(k?.avgBookingValueCents ?? 0)}`} />
         <Kpi label={T('Lượt khách', 'Visits')} value={String(visitsTotal)} hint={`${T('đặt', 'booked')} ${booked} · ${T('vãng lai', 'walk-in')} ${walkin}`} />
-        <Kpi label={T('Tỷ lệ no-show', 'No-show rate')} value={`${Math.round((k?.noShowRate ?? 0) * 100)}%`} hint={`${k?.noShow ?? 0} ${T('vắng', 'no-shows')}`} accent="#f59e0b" />
-        <Kpi label={T('Hoàn tất', 'Completion')} value={`${Math.round((k?.completionRate ?? 0) * 100)}%`} hint={`${k?.completed ?? 0} ${T('xong', 'done')}`} accent="#22c55e" />
+        <Kpi label={T('Tỷ lệ no-show', 'No-show rate')} value={`${Math.round((k?.noShowRate ?? 0) * 100)}%`} hint={`${k?.noShow ?? 0} ${T('vắng', 'no-shows')}`} accent="var(--ink-warn)" />
+        <Kpi label={T('Hoàn tất', 'Completion')} value={`${Math.round((k?.completionRate ?? 0) * 100)}%`} hint={`${k?.completed ?? 0} ${T('xong', 'done')}`} accent="var(--ink-good)" />
         <Kpi label={T('Khách mới', 'New customers')} value={String(k?.newCustomers ?? 0)} hint={`${pct(k?.newCustomers ?? 0, k?.totalBookings ?? 0)}% ${T('tổng', 'of total')}`} />
       </div>
 
@@ -283,7 +289,7 @@ function Kpi({ label, value, hint, accent }: { label: string; value: string; hin
   return (
     <div style={{ background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 12, padding: '12px 14px' }}>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: accent ?? '#fff' }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: accent ?? 'var(--cf1f5f9)' }}>{value}</div>
       {hint && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}
     </div>
   );
@@ -495,3 +501,9 @@ const btn: CSSProperties = { padding: '7px 14px', borderRadius: 8, border: '1px 
 const chip = (on: boolean): CSSProperties => ({ padding: '6px 12px', borderRadius: 8, border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`, background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--ccbd5e1)', fontSize: 12, fontWeight: on ? 700 : 400, cursor: 'pointer' });
 const miniSeg = (on: boolean): CSSProperties => ({ padding: '4px 10px', borderRadius: 6, border: 'none', background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--c94a3b8)', fontSize: 12, fontWeight: on ? 700 : 400, cursor: 'pointer' });
 const dateInput: CSSProperties = { background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '6px 10px', fontSize: 13 };
+
+/** A plain number for the CSV in the salon's own currency (no symbol): VND has no cents. */
+function csvMoney(minor: number): string {
+  const d = minorUnitDigits(uiCurrency());
+  return ((minor ?? 0) / 10 ** d).toFixed(d);
+}

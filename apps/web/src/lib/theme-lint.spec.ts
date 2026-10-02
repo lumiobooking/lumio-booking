@@ -443,3 +443,34 @@ test('a restyled primary button on a transparent or themed ground restates its t
   if (offenders.length) console.error(`\nGHOST-BUTTON (${offenders.length}):\n${offenders.join('\n')}\n`);
   expect(offenders).toEqual([]);
 });
+
+/**
+ * WHITE HIDING BEHIND A CONDITION.
+ *
+ * `color: '#fff'` is caught above. `color: big ? 'var(--ink-good)' : '#fff'`
+ * and `color: accent ?? '#fff'` were not — the regex wanted the literal right
+ * after the colon — and both shipped: the payroll and report tiles printed
+ * their numbers in white on a card that turns white by day ("0", "$0.00"
+ * that the owner could not read). A conditional or fallback white is the
+ * same bug whenever the element sits on a themed surface and has no
+ * background of its own (a conditional background, like a selected pill,
+ * pairs its own ink and is left alone).
+ */
+const COND_WHITE = /(?<![a-zA-Z])color:\s*[^,}'\n]*(?:\?|\?\?)[^,}\n]*'(#fff(?:fff)?|white)'/;
+const SURFACE = /background:\s*'var\(--c(0b1120|0b1220|0f172a|111827|1e293b|1f2937|334155|475569)\)'|\.\.\.ui\.(card|input|panel|surface|sheet)\b/;
+
+test('no conditional / fallback white text on a themed surface', () => {
+  const offenders: string[] = [];
+  for (const file of walk(ROOT)) {
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      if (!COND_WHITE.test(line)) return;
+      const obj = styleObjectAround(lines, i);
+      if (/background(?:Color)?:/.test(obj)) return;
+      const above = lines.slice(Math.max(0, i - 6), i + 1).join('\n');
+      if (SURFACE.test(above)) offenders.push(`${path.relative(ROOT, file)}:${i + 1}`);
+    });
+  }
+  // The fix: the theme's ink — var(--cf1f5f9) — not white.
+  expect(offenders).toEqual([]);
+});

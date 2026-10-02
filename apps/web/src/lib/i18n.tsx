@@ -565,7 +565,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'pf.recentTitle': { en: 'Recent customers', vi: 'Khách gần đây' },
   'pf.inactive': { en: 'inactive', vi: 'nghỉ' },
   'pf.empty': { en: 'No completed visits in this period yet.', vi: 'Chưa có lượt khách nào hoàn thành trong kỳ này.' },
-  'pf.note': { en: 'Revenue = money collected via POS (or the list price of completed visits when POS isn\'t used). Tips are POS tips. Points and reviews are all-time.', vi: 'Doanh thu = tiền đã thu qua POS (hoặc giá niêm yết của lịch hẹn đã xong nếu chưa dùng POS). Tip lấy từ POS. Điểm và đánh giá tính toàn thời gian.' },
+  'pf.note': { en: 'Revenue = the tech\'s service and retail sales after ticket discounts (no tax, no tips) — the same figures payroll uses; bookings completed without the till count at their price. Visits = tickets plus such bookings. Reviews are for the dates chosen; reward points are all-time.', vi: 'Doanh thu = tiền dịch vụ và sản phẩm thợ bán, đã trừ giảm giá trên bill (không gồm thuế, tip) — đúng số dùng để tính lương; lịch hẹn xong mà không thu qua quầy tính theo giá lịch hẹn. Lượt khách = số bill + các lịch hẹn đó. Đánh giá tính trong khoảng ngày đã chọn; điểm thưởng tính toàn thời gian.' },
   'cu.colSince': { en: 'Since', vi: 'Từ ngày' },
   'cu.colBirthday': { en: 'Birthday', vi: 'Sinh nhật' },
   'cu.birthdayIn': { en: 'Birthday in', vi: 'Sinh nhật tháng' },

@@ -1,3 +1,5 @@
+import { loadLedger } from '../payroll/ledger-loader';
+import { UNASSIGNED } from '../payroll/sales-ledger';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { AppointmentStatus, PaymentStatus, OrderStatus, WalkInStatus, WaitlistStatus, GoogleReviewStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -255,18 +257,14 @@ export class OverviewService {
       entry.bookings += 1;
       staffAgg.set(id, entry);
     }
-    // Staff revenue counts ONLY completed bookings, credited to the technician
-    // who finally handled it (assignedStaffId already reflects any reassignment).
-    for (const p of payments) {
-      if (p.appointment?.status !== AppointmentStatus.COMPLETED) continue;
-      const id = p.appointment?.assignedStaffId ?? 'unassigned';
-      const entry = staffAgg.get(id) ?? {
-        name: staffName(p.appointment?.assignedStaff ?? null),
-        bookings: 0,
-        revenueCents: 0,
-      };
-      entry.revenueCents += p.amountCents;
-      staffAgg.set(id, entry);
+    // Staff revenue = what each technician SOLD in the range, from the same
+    // ledger payroll uses: walk-ins at the till included (they never had a
+    // booking), ticket discounts taken off, tips and tax left out.
+    const { ledger } = await loadLedger(this.prisma, tenantId, tz, from, to);
+    for (const led of ledger.values()) {
+      if (led.staffId === UNASSIGNED) continue;
+      const entry = staffAgg.get(led.staffId);
+      if (entry) entry.revenueCents += led.serviceCents + led.productCents;
     }
     const topStaff = [...staffAgg.values()]
       .sort((a, b) => b.revenueCents - a.revenueCents || b.bookings - a.bookings)

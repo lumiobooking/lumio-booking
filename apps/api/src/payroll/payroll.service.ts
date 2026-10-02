@@ -1,0 +1,212 @@
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
+import { loadLedger } from './ledger-loader';
+import { UNASSIGNED } from './sales-ledger';
+import { computePayslip, PayConfig, PayOverride, PayrollSettings, Payslip, sanitizeSettings } from './pay-calc';
+import { daysBetween, isDayKey, periodContaining, recentPeriods } from './pay-period';
+
+export const PAYROLL_SETTINGS_KEY = 'payroll';
+
+type Overrides = Record<string, PayOverride>;
+
+const TOTAL_KEYS = [
+  'serviceCents', 'productCents', 'serviceCount', 'visits', 'supplyFeeCents', 'serviceCommissionCents', 'productCommissionCents',
+  'hourlyPayCents', 'guaranteeTopUpCents', 'salaryForPeriodCents', 'earningsCents', 'tipsCents', 'cardTipFeeCents', 'tipsNetCents',
+  'adjustmentsCents', 'netPayCents', 'checkCents', 'cashCents',
+] as const;
+type Totals = Record<(typeof TOTAL_KEYS)[number], number>;
+
+function sumTotals(slips: Payslip[]): Totals {
+  const t = Object.fromEntries(TOTAL_KEYS.map((k) => [k, 0])) as Totals;
+  for (const s of slips) for (const k of TOTAL_KEYS) t[k] += (s as unknown as Record<string, number>)[k] ?? 0;
+  return t;
+}
+
+/**
+ * Payroll for one salon: settings, the live (draft) payslips of a pay period,
+ * the owner's corrections, and closing the period into a frozen record.
+ *
+ * Every read and write is pinned to the caller's tenant: staff, sales, runs
+ * and settings of another salon are never in reach.
+ */
+@Injectable()
+export class PayrollService {
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+
+  private tenantId(user: AuthenticatedUser): string {
+    const id = resolveTenantScope(user);
+    if (!id) throw new NotFoundException('No tenant context');
+    return id;
+  }
+
+  private async tzOf(tenantId: string): Promise<string> {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    return t?.timezone || 'UTC';
+  }
+
+  async readSettings(tenantId: string): Promise<PayrollSettings> {
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: PAYROLL_SETTINGS_KEY } } });
+    return sanitizeSettings((row?.value as Partial<PayrollSettings>) ?? null);
+  }
+
+  async getSettings(user: AuthenticatedUser) {
+    return this.readSettings(this.tenantId(user));
+  }
+
+  async updateSettings(user: AuthenticatedUser, dto: Partial<PayrollSettings>) {
+    const tenantId = this.tenantId(user);
+    const next = sanitizeSettings({ ...(await this.readSettings(tenantId)), ...dto });
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: PAYROLL_SETTINGS_KEY } },
+      update: { value: next as unknown as Prisma.InputJsonValue },
+      create: { tenantId, key: PAYROLL_SETTINGS_KEY, value: next as unknown as Prisma.InputJsonValue },
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'payroll.settings_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { ...next } });
+    return next;
+  }
+
+  /** Validates a period, defaulting to the one that contains today. */
+  private async periodOf(tenantId: string, from?: string, to?: string) {
+    const [tz, settings] = await Promise.all([this.tzOf(tenantId), this.readSettings(tenantId)]);
+    const today = dayKeyTz(new Date(), tz);
+    let p = periodContaining(settings.payPeriod, today, settings.periodAnchor);
+    if (from || to) {
+      if (!isDayKey(from) || !isDayKey(to) || to < from) throw new BadRequestException('Pay period must be from/to as YYYY-MM-DD, from ≤ to');
+      if (daysBetween(from, to) > 93) throw new BadRequestException('A pay period can be at most 93 days');
+      p = { from, to };
+    }
+    return { tz, settings, today, period: p };
+  }
+
+  /** The draft payslips of a period — computed live from sales, schedule and the owner's corrections. */
+  private async compute(tenantId: string, tz: string, settings: PayrollSettings, period: { from: string; to: string }, today: string, overrides: Overrides) {
+    const from = startOfDayTz(period.from, tz);
+    const to = new Date(startOfDayTz(addDaysToKey(period.to, 1), tz).getTime() - 1);
+    const [{ ledger }, staff] = await Promise.all([
+      loadLedger(this.prisma, tenantId, tz, from, to),
+      this.prisma.staffMember.findMany({
+        where: { tenantId },
+        select: {
+          id: true, firstName: true, lastName: true, isActive: true,
+          commissionPercent: true, baseCents: true,
+          payType: true, productCommissionPercent: true, hourlyRateCents: true, dailyGuaranteeCents: true, salaryPeriod: true, checkPercent: true,
+          workingHours: { select: { dayOfWeek: true, startTime: true, endTime: true, isActive: true } },
+        } as never,
+        orderBy: { firstName: 'asc' },
+      }) as unknown as Promise<{
+        id: string; firstName: string; lastName: string | null; isActive: boolean; commissionPercent: number; baseCents: number;
+        payType?: string; productCommissionPercent?: number; hourlyRateCents?: number; dailyGuaranteeCents?: number; salaryPeriod?: string; checkPercent?: number | null;
+        workingHours: { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[];
+      }[]>,
+    ]);
+
+    const slips: Payslip[] = [];
+    for (const s of staff) {
+      const led = ledger.get(s.id);
+      const cfg: PayConfig = {
+        staffId: s.id,
+        name: `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`,
+        payType: s.payType ?? (s.baseCents > 0 ? 'SALARY' : 'COMMISSION'),
+        commissionPercent: s.commissionPercent ?? 0,
+        productCommissionPercent: s.productCommissionPercent ?? 0,
+        hourlyRateCents: s.hourlyRateCents ?? 0,
+        dailyGuaranteeCents: s.dailyGuaranteeCents ?? 0,
+        salaryCents: s.baseCents ?? 0,
+        salaryPeriod: s.salaryPeriod ?? 'MONTHLY',
+        checkPercent: s.checkPercent ?? null,
+        // A tech who has left earns nothing by the schedule any more.
+        workingHours: s.isActive ? s.workingHours : [],
+      };
+      const slip = computePayslip({ cfg, ledger: led, period, upTo: today, settings, override: overrides[s.id] });
+      // Everyone on the team, plus anyone who has left but still has money in this period.
+      const owed = slip.netPayCents !== 0 || slip.serviceCents > 0 || slip.productCents > 0 || slip.tipsCents > 0;
+      if (s.isActive || owed) slips.push(slip);
+    }
+    slips.sort((a, b) => b.netPayCents - a.netPayCents || a.name.localeCompare(b.name));
+    const un = ledger.get(UNASSIGNED);
+    const unassigned = un ? { serviceCents: un.serviceCents, productCents: un.productCents, tipsCents: un.tipsCents, visits: un.visits } : null;
+    return { slips, totals: sumTotals(slips), unassigned };
+  }
+
+  async preview(user: AuthenticatedUser, from?: string, to?: string) {
+    const tenantId = this.tenantId(user);
+    const { tz, settings, today, period } = await this.periodOf(tenantId, from, to);
+    const run = await this.prisma.payrollRun.findUnique({ where: { tenantId_periodFrom_periodTo: { tenantId, periodFrom: period.from, periodTo: period.to } } });
+    const runs = await this.prisma.payrollRun.findMany({
+      where: { tenantId }, orderBy: { periodFrom: 'desc' }, take: 24,
+      select: { id: true, periodFrom: true, periodTo: true, status: true, finalizedAt: true, totals: true },
+    });
+    const periods = recentPeriods(settings.payPeriod, today, 8, settings.periodAnchor).map((p) => {
+      const r = runs.find((x) => x.periodFrom === p.from && x.periodTo === p.to);
+      return { ...p, status: r?.status ?? null };
+    });
+    const head = { period, today, running: period.to >= today, settings, periods, history: runs.filter((r) => r.status === 'FINAL') };
+
+    if (run?.status === 'FINAL') {
+      return { ...head, run: { id: run.id, status: run.status, finalizedAt: run.finalizedAt, note: run.note }, frozen: true, slips: run.lines as unknown as Payslip[], totals: run.totals, unassigned: null };
+    }
+    const overrides = (run?.overrides as unknown as Overrides) ?? {};
+    const live = await this.compute(tenantId, tz, settings, period, today, overrides);
+    return { ...head, run: run ? { id: run.id, status: run.status, finalizedAt: null, note: run.note } : null, frozen: false, ...live };
+  }
+
+  /** The owner's correction for one tech on a period still open (hours, days off, bonus / deduction lines). */
+  async saveOverride(user: AuthenticatedUser, dto: { from: string; to: string; staffId: string; override: PayOverride }) {
+    const tenantId = this.tenantId(user);
+    const { period } = await this.periodOf(tenantId, dto.from, dto.to);
+    const staff = await this.prisma.staffMember.findFirst({ where: { id: dto.staffId, tenantId }, select: { id: true } });
+    if (!staff) throw new NotFoundException('Staff member not found');
+    const clean: PayOverride = {
+      hours: dto.override?.hours == null || dto.override.hours === ('' as never) ? null : Math.max(0, Math.min(744, Number(dto.override.hours) || 0)),
+      offDays: (dto.override?.offDays ?? []).filter((d) => isDayKey(d) && d >= period.from && d <= period.to).slice(0, 93),
+      adjustments: (dto.override?.adjustments ?? []).slice(0, 20).map((a) => ({ label: String(a.label ?? '').slice(0, 80), cents: Math.max(-10_000_000, Math.min(10_000_000, Math.round(Number(a.cents) || 0))) })),
+    };
+    const run = await this.prisma.payrollRun.findUnique({ where: { tenantId_periodFrom_periodTo: { tenantId, periodFrom: period.from, periodTo: period.to } } });
+    if (run?.status === 'FINAL') throw new ConflictException('This pay period is closed. Reopen it to make changes.');
+    const overrides = { ...((run?.overrides as unknown as Overrides) ?? {}), [dto.staffId]: clean };
+    if (run) {
+      await this.prisma.payrollRun.updateMany({ where: { id: run.id, tenantId }, data: { overrides: overrides as unknown as Prisma.InputJsonValue } });
+    } else {
+      await this.prisma.payrollRun.create({ data: { tenantId, periodFrom: period.from, periodTo: period.to, status: 'DRAFT', overrides: overrides as unknown as Prisma.InputJsonValue, createdByUserId: user.userId } });
+    }
+    await this.audit.log({ tenantId, userId: user.userId, action: 'payroll.adjusted', resourceType: 'staff_member', resourceId: dto.staffId, metadata: { period, override: clean } as never });
+    return this.preview(user, period.from, period.to);
+  }
+
+  /** Close the period: freeze every payslip as it stands now. */
+  async finalize(user: AuthenticatedUser, dto: { from: string; to: string; note?: string }) {
+    const tenantId = this.tenantId(user);
+    const { tz, settings, today, period } = await this.periodOf(tenantId, dto.from, dto.to);
+    const run = await this.prisma.payrollRun.findUnique({ where: { tenantId_periodFrom_periodTo: { tenantId, periodFrom: period.from, periodTo: period.to } } });
+    if (run?.status === 'FINAL') throw new ConflictException('This pay period is already closed.');
+    const overrides = (run?.overrides as unknown as Overrides) ?? {};
+    const { slips, totals } = await this.compute(tenantId, tz, settings, period, today, overrides);
+    const data = {
+      status: 'FINAL',
+      lines: slips as unknown as Prisma.InputJsonValue,
+      totals: { ...totals, settings } as unknown as Prisma.InputJsonValue,
+      note: dto.note?.slice(0, 500) ?? null,
+      finalizedAt: new Date(),
+      finalizedByUserId: user.userId,
+    };
+    let id = run?.id;
+    if (run) await this.prisma.payrollRun.updateMany({ where: { id: run.id, tenantId }, data });
+    else id = (await this.prisma.payrollRun.create({ data: { tenantId, periodFrom: period.from, periodTo: period.to, createdByUserId: user.userId, ...data } })).id;
+    await this.audit.log({ tenantId, userId: user.userId, action: 'payroll.finalized', resourceType: 'payroll_run', resourceId: id, metadata: { period, netPayCents: totals.netPayCents, staff: slips.length } });
+    return this.preview(user, period.from, period.to);
+  }
+
+  /** Reopen a closed period (e.g. a ticket was fixed). The frozen record is dropped; corrections are kept. */
+  async reopen(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const run = await this.prisma.payrollRun.findFirst({ where: { id, tenantId } });
+    if (!run) throw new NotFoundException('Pay period not found');
+    await this.prisma.payrollRun.updateMany({ where: { id, tenantId }, data: { status: 'DRAFT', lines: Prisma.DbNull, totals: Prisma.DbNull, finalizedAt: null, finalizedByUserId: null } });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'payroll.reopened', resourceType: 'payroll_run', resourceId: id, metadata: { period: { from: run.periodFrom, to: run.periodTo }, wasNetPayCents: (run.totals as { netPayCents?: number } | null)?.netPayCents ?? null } });
+    return this.preview(user, run.periodFrom, run.periodTo);
+  }
+}

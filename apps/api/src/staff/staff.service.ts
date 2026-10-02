@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { hashSecret } from '../auth/password.util';
 import { PosService } from '../pos/pos.service';
+import { loadLedger } from '../payroll/ledger-loader';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { addDaysToKey, dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { CreateStaffDto, WorkingHourDto } from './dto/create-staff.dto';
@@ -31,6 +32,26 @@ const STAFF_INCLUDE = {
  * referenced serviceId is validated to belong to the same tenant before linking
  * (so a salon can't attach another salon's service).
  */
+
+/**
+ * The pay columns a create / update may set. Written as one object so the two
+ * paths can never drift, and cast at the call site because a machine with an
+ * older generated Prisma client does not know these columns yet.
+ */
+function payFields(dto: {
+  payType?: string; productCommissionPercent?: number; hourlyRateCents?: number;
+  dailyGuaranteeCents?: number; salaryPeriod?: string; checkPercent?: number | null;
+}): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (dto.payType !== undefined) out.payType = dto.payType;
+  if (dto.productCommissionPercent !== undefined) out.productCommissionPercent = dto.productCommissionPercent;
+  if (dto.hourlyRateCents !== undefined) out.hourlyRateCents = dto.hourlyRateCents;
+  if (dto.dailyGuaranteeCents !== undefined) out.dailyGuaranteeCents = dto.dailyGuaranteeCents;
+  if (dto.salaryPeriod !== undefined) out.salaryPeriod = dto.salaryPeriod;
+  if (dto.checkPercent !== undefined) out.checkPercent = dto.checkPercent;
+  return out;
+}
+
 @Injectable()
 export class StaffService {
   constructor(
@@ -90,7 +111,7 @@ export class StaffService {
       }),
       // Completed visits in range, by the tech who actually did them.
       this.prisma.appointment.findMany({
-        where: { tenantId, status: 'COMPLETED', assignedStaffId: { not: null }, startTime: { gte: from, lte: to } },
+        where: { tenantId, status: 'COMPLETED', assignedStaffId: { not: null }, completedAt: { gte: from, lte: to } },
         select: {
           assignedStaffId: true, priceCents: true, startTime: true,
           service: { select: { name: true } },
@@ -106,15 +127,14 @@ export class StaffService {
       }),
     ]);
 
-    // POS money (collected revenue + tips) per tech in the same range.
-    let posByStaff = new Map<string, { revenueCents: number; tipsCents: number }>();
+    // Sales, visits and tips per tech come from the SAME ledger payroll and the
+    // sales report use (net of ticket discounts; walk-ins at the till count as
+    // visits too, not only bookings).
+    let posByStaff = new Map<string, { revenueCents: number; serviceCents: number; tipsCents: number; visits: number }>();
     try {
-      const rep = await this.pos.report(user, from.toISOString(), to.toISOString());
-      posByStaff = new Map(
-        (rep.staff ?? []).map((r: { staffId: string; serviceRevenueCents: number; productRevenueCents: number; tipsCents: number }) =>
-          [r.staffId, { revenueCents: r.serviceRevenueCents + r.productRevenueCents, tipsCents: r.tipsCents }]),
-      );
-    } catch { /* POS optional */ }
+      const { ledger } = await loadLedger(this.prisma, tenantId, tz, from, to);
+      posByStaff = new Map([...ledger.values()].map((r) => [r.staffId, { revenueCents: r.serviceCents + r.productCents, serviceCents: r.serviceCents, tipsCents: r.tipsCents, visits: r.visits }]));
+    } catch { /* no sales tables yet */ }
 
     const fb = new Map(feedback.map((f) => [f.staffId as string, { avg: f._avg.rating ?? 0, count: f._count._all }]));
 
@@ -144,7 +164,7 @@ export class StaffService {
 
     const rows = staff.map((s) => {
       const x = acc.get(s.id) ?? blank();
-      const pos = posByStaff.get(s.id) ?? { revenueCents: 0, tipsCents: 0 };
+      const pos = posByStaff.get(s.id) ?? { revenueCents: 0, serviceCents: 0, tipsCents: 0, visits: 0 };
       const rev = fb.get(s.id) ?? { avg: 0, count: 0 };
       let topService: { name: string; count: number } | null = null;
       for (const [name, count] of x.services) if (!topService || count > topService.count) topService = { name, count };
@@ -153,9 +173,9 @@ export class StaffService {
         name: `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`,
         avatarUrl: s.avatarUrl,
         isActive: s.isActive,
-        completed: x.completed,
-        serviceRevenueCents: x.serviceRevenueCents,   // list price of completed visits
-        collectedCents: pos.revenueCents,              // money actually taken via POS
+        completed: pos.visits,                         // tickets + till-less bookings
+        serviceRevenueCents: pos.serviceCents,         // service sales, net of discounts
+        collectedCents: pos.revenueCents,              // service + retail sales
         tipsCents: pos.tipsCents,
         rating: Math.round((rev.avg || 0) * 10) / 10,
         reviewCount: rev.count,
@@ -165,7 +185,7 @@ export class StaffService {
       };
     });
     // Best earners first; unused techs sink to the bottom.
-    rows.sort((a, b) => (b.collectedCents + b.serviceRevenueCents) - (a.collectedCents + a.serviceRevenueCents) || b.completed - a.completed);
+    rows.sort((a, b) => b.collectedCents - a.collectedCents || b.completed - a.completed);
 
     const totals = rows.reduce((t, r) => ({
       completed: t.completed + r.completed,
@@ -271,7 +291,10 @@ export class StaffService {
           isActive: dto.isActive ?? true,
           staffRole: role,
           takesAppointments,
-        },
+          commissionPercent: dto.commissionPercent ?? 0,
+          baseCents: dto.baseCents ?? 0,
+          ...payFields(dto),
+        } as never,
       });
 
       if (serviceIds.length > 0) {
@@ -336,10 +359,11 @@ export class StaffService {
           performanceScore: dto.performanceScore,
           commissionPercent: dto.commissionPercent,
           baseCents: dto.baseCents,
+          ...payFields(dto),
           staffRole: dto.staffRole,
           takesAppointments: dto.takesAppointments,
           bookingPriority: dto.bookingPriority,
-        },
+        } as never,
       });
 
       // Replace skills when provided.

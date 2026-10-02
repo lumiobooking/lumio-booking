@@ -62,7 +62,10 @@ function makePrisma(now: Date) {
     waitlistEntry: { count: jest.fn(async (a: any) => { rec('waitlistEntry.count')(a); return 2; }) },
     googleReview: { count: jest.fn(async (a: any) => { rec('googleReview.count')(a); return 1; }) },
     product: { findMany: jest.fn(async (a: any) => { rec('product')(a); return [{ name: 'Hand Cream', stockQty: 3 }]; }) },
-    order: { aggregate: jest.fn(async (a: any) => { rec('order.aggregate')(a); return { _sum: { tipCents: 18600 } }; }) },
+    order: {
+      aggregate: jest.fn(async (a: any) => { rec('order.aggregate')(a); return { _sum: { tipCents: 18600 } }; }),
+      findMany: jest.fn(async (a: any) => { rec('order.findMany')(a); return []; }),
+    },
     orderItem: { findMany: jest.fn(async (a: any) => { rec('orderItem')(a); return []; }) },
   };
   return { prisma, calls, T };

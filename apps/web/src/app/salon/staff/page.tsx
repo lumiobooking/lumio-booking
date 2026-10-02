@@ -11,6 +11,7 @@ import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
+import { PayFields, payBody, payFormFrom, paySummary, type PayForm } from './PayFields';
 
 interface Service {
   id: string;
@@ -33,6 +34,12 @@ interface StaffMember {
   performanceScore: number;
   commissionPercent?: number;
   baseCents?: number;
+  payType?: string;
+  productCommissionPercent?: number;
+  hourlyRateCents?: number;
+  dailyGuaranteeCents?: number;
+  salaryPeriod?: string;
+  checkPercent?: number | null;
   bookingPriority?: number;
   staffRole?: Role;
   takesAppointments?: boolean;
@@ -233,6 +240,15 @@ function StaffInner() {
   const [loginMode, setLoginMode] = useState<'create' | 'reset'>('create');
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [createdMsg, setCreatedMsg] = useState<string | null>(null);
+  // The salon's default check share, shown on each tech's pay card. Only an
+  // owner with payroll access can read it; everyone else sees 100%.
+  const [defaultCheck, setDefaultCheck] = useState(100);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ defaultCheckPercent?: number }>('/payroll/settings', { token })
+      .then((x) => setDefaultCheck(x.defaultCheckPercent ?? 100))
+      .catch(() => undefined);
+  }, [token]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -334,6 +350,7 @@ function StaffInner() {
         <CreateStaffForm
           token={token!}
           services={services}
+          defaultCheckPercent={defaultCheck}
           onCreated={async () => {
             setShowForm(false);
             await load();
@@ -360,6 +377,7 @@ function StaffInner() {
                 </MHead>
                 <MRow label={t('st.colContact')}>{m.email || '—'}{m.phone ? ' · ' + m.phone : ''}</MRow>
                 <MRow label={t('st.colSkills')}><SkillsCell m={m} total={services.length} serviceName={serviceName} t={t} /></MRow>
+                <MRow label={lang === 'vi' ? 'Lương' : 'Pay'}>{paySummary(m, lang === 'vi')}</MRow>
                 <MRow label={t('st.colLogin')}>
                   {m.user ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -375,7 +393,7 @@ function StaffInner() {
                   <button onClick={() => remove(m.id)} style={ui.dangerBtn}>{t('st.delete')}</button>
                 </MActions>
               </MCard>
-              {editFor === m.id && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><StaffEditPanel token={token!} member={m} services={services} onSaved={load} /></div>}
+              {editFor === m.id && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><StaffEditPanel token={token!} member={m} services={services} onSaved={load} defaultCheckPercent={defaultCheck} /></div>}
               {loginFor === m.id && (
                 <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}>
                   <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginBottom: 8, fontWeight: 600 }}>{(loginMode === 'reset' ? t('st.resetPwFor') : t('st.createLoginFor')).replace('{name}', m.firstName)}</div>
@@ -407,6 +425,7 @@ function StaffInner() {
                 <th style={ui.th}>{t('st.colName')}</th>
                 <th style={ui.th}>{t('st.colContact')}</th>
                 <th style={ui.th}>{t('st.colSkills')}</th>
+                <th style={ui.th}>{lang === 'vi' ? 'Lương' : 'Pay'}</th>
                 <th style={ui.th}>{t('st.colLogin')}</th>
                 <th style={ui.th}>{t('st.colStatus')}</th>
                 <th style={ui.th}>{t('st.colActions')}</th>
@@ -415,7 +434,7 @@ function StaffInner() {
             <tbody>
               {visible.length === 0 && (
                 <tr>
-                  <td style={ui.td} colSpan={7}>
+                  <td style={ui.td} colSpan={8}>
                     {t('st.empty')}
                   </td>
                 </tr>
@@ -440,6 +459,7 @@ function StaffInner() {
                   <td style={{ ...ui.td, color: 'var(--ccbd5e1)', fontSize: 13 }}>
                     <SkillsCell m={m} total={services.length} serviceName={serviceName} t={t} />
                   </td>
+                  <td style={{ ...ui.td, fontSize: 13, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap' }}>{paySummary(m, lang === 'vi')}</td>
                   <td style={ui.td}>
                     {m.user ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -475,19 +495,20 @@ function StaffInner() {
                 </tr>
                 {editFor === m.id && (
                   <tr>
-                    <td colSpan={7} style={{ padding: 16, background: 'var(--c0f172a)' }}>
+                    <td colSpan={8} style={{ padding: 16, background: 'var(--c0f172a)' }}>
                       <StaffEditPanel
                         token={token!}
                         member={m}
                         services={services}
                         onSaved={load}
+                        defaultCheckPercent={defaultCheck}
                       />
                     </td>
                   </tr>
                 )}
                 {loginFor === m.id && (
                   <tr>
-                    <td colSpan={7} style={{ padding: 14, background: 'var(--c0f172a)' }}>
+                    <td colSpan={8} style={{ padding: 14, background: 'var(--c0f172a)' }}>
                       <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', marginBottom: 8, fontWeight: 600 }}>
                         {(loginMode === 'reset' ? t('st.resetPwFor') : t('st.createLoginFor')).replace('{name}', m.firstName)}
                       </div>
@@ -551,14 +572,20 @@ function StaffEditPanel({
   member,
   services,
   onSaved,
+  defaultCheckPercent,
 }: {
   token: string;
   member: StaffMember;
   services: Service[];
   onSaved: () => void;
+  defaultCheckPercent: number;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const vi = lang === 'vi';
+  const L = (v: string, e: string) => (vi ? v : e);
+  const [pay, setPay] = useState<PayForm>(() => payFormFrom(member));
+  const [tab, setTab] = useState<'profile' | 'schedule' | 'pay' | 'tips'>('profile');
   const [form, setForm] = useState({
     firstName: member.firstName,
     lastName: member.lastName ?? '',
@@ -566,8 +593,6 @@ function StaffEditPanel({
     phone: member.phone ?? '',
     avatarUrl: member.avatarUrl ?? '',
     isActive: member.isActive,
-    commissionPercent: String(member.commissionPercent ?? 0),
-    basePay: String(((member.baseCents ?? 0) / 100) || 0),
     bookingPriority: String(member.bookingPriority ?? 0),
     staffRole: (member.staffRole ?? 'TECHNICIAN') as Role,
     takesAppointments: member.takesAppointments ?? (member.staffRole ?? 'TECHNICIAN') === 'TECHNICIAN',
@@ -635,8 +660,7 @@ function StaffEditPanel({
           phone: form.phone || undefined,
           avatarUrl: form.avatarUrl || undefined,
           isActive: form.isActive,
-          commissionPercent: Math.max(0, Math.min(100, parseInt(form.commissionPercent, 10) || 0)),
-          baseCents: Math.max(0, Math.round((parseFloat(form.basePay) || 0) * 100)),
+          ...payBody(pay),
           staffRole: form.staffRole,
           takesAppointments: form.takesAppointments,
           bookingPriority: Math.max(0, parseInt(form.bookingPriority, 10) || 0),
@@ -656,115 +680,160 @@ function StaffEditPanel({
   }
 
   const anyEnabled = hours.some((d) => d.enabled);
+  const hoursPerWeek = hours.filter((d) => d.enabled).reduce((sum, d) => sum + d.windows.reduce((a, w) => {
+    const [sh, sm] = w.start.split(':').map(Number); const [eh, em] = w.end.split(':').map(Number);
+    return a + Math.max(0, (eh * 60 + em) - (sh * 60 + sm));
+  }, 0), 0) / 60;
+
+  const tabs: { id: typeof tab; label: string }[] = [
+    { id: 'profile', label: L('Hồ sơ', 'Profile') },
+    { id: 'schedule', label: L('Lịch làm & dịch vụ', 'Schedule & services') },
+    { id: 'pay', label: L('Lương', 'Pay') },
+    { id: 'tips', label: L('Tip trực tiếp', 'Direct tips') },
+  ];
+  const section: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 14 };
+  const fieldLabel: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, color: 'var(--ccbd5e1)' };
+  const field = (label: React.ReactNode, input: React.ReactNode, hint?: string) => (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+      <span style={fieldLabel}>{label}</span>
+      {input}
+      {hint && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.35 }}>{hint}</span>}
+    </label>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', fontWeight: 600 }}>{t('st.editName').replace('{name}', member.firstName)}</div>
-
-      {/* Profile photo */}
-      <div>
-        <span style={ui.label}>{t('st.profilePhoto')}</span>
-        <AvatarPicker value={form.avatarUrl} name={form.firstName} onChange={(v) => up('avatarUrl', v)} />
-      </div>
-
-      {/* Role + bookable */}
-      <RolePicker
-        role={form.staffRole}
-        takesAppointments={form.takesAppointments}
-        onChange={(staffRole, takesAppointments) => { up('staffRole', staffRole); up('takesAppointments', takesAppointments); }}
-      />
-
-      {/* Profile */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.fFirstName')} <span style={{ color: 'var(--ink-bad)' }}>*</span></span>
-          <input style={{ ...ui.input, marginTop: 'auto' }} value={form.firstName} onChange={(e) => up('firstName', e.target.value)} required /></label>
-        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.fLastName')}</span>
-          <input style={{ ...ui.input, marginTop: 'auto' }} value={form.lastName} onChange={(e) => up('lastName', e.target.value)} /></label>
-        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.fEmail')}</span>
-          <input style={{ ...ui.input, marginTop: 'auto' }} type="email" value={form.email} onChange={(e) => up('email', e.target.value)} /></label>
-        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.fPhone')}</span>
-          <input style={{ ...ui.input, marginTop: 'auto' }} value={form.phone} onChange={(e) => up('phone', e.target.value)} /></label>
-        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.commission')}</span>
-          <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} max={100} value={form.commissionPercent} onChange={(e) => up('commissionPercent', e.target.value)} /></label>
-        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.basePay')}</span>
-          <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} step="0.01" value={form.basePay} onChange={(e) => up('basePay', e.target.value)} /></label>
-        <label style={{ display: 'flex', flexDirection: 'column' }}><span style={ui.label}>{t('st.priority')}</span>
-          <input style={{ ...ui.input, marginTop: 'auto' }} type="number" min={0} value={form.bookingPriority} onChange={(e) => up('bookingPriority', e.target.value)} /></label>
-        <label style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 9 }}>
-            <input type="checkbox" checked={form.isActive} onChange={(e) => up('isActive', e.target.checked)} />
-            <span style={{ fontSize: 14, color: 'var(--ce2e8f0)' }}>{t('st.activeBookings')}</span>
-          </span>
+      {/* Who is being edited, and the one switch that matters most. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <Avatar url={form.avatarUrl || null} name={form.firstName} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{form.firstName} {form.lastName}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{paySummary(payBody(pay), vi)}</div>
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: 'var(--ce2e8f0)', cursor: 'pointer' }}>
+          <HourToggle on={form.isActive} onChange={(v) => up('isActive', v)} />
+          {form.isActive ? L('Đang làm việc', 'Active') : L('Đã nghỉ', 'Inactive')}
         </label>
       </div>
 
-      {/* Skills (bookable technicians only) */}
-      {form.takesAppointments ? (
-        <div>
-          <span style={ui.label}>{t('st.skills')}</span>
-          <SkillPicker all={services} ids={skillIds} set={(v) => { setSkillIds(v); setSaved(false); }} />
+      <div role="tablist" aria-label={L('Mục cài đặt thợ', 'Staff settings')} style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 12, background: 'var(--c111827)', border: '1px solid var(--line)', overflowX: 'auto' }}>
+        {tabs.map((x) => (
+          <button key={x.id} type="button" role="tab" aria-selected={tab === x.id} onClick={() => setTab(x.id)}
+            style={{ flex: '1 0 auto', padding: '8px 14px', borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap',
+              background: tab === x.id ? '#4f46e5' : 'transparent', color: tab === x.id ? '#fff' : 'var(--ccbd5e1)' }}>{x.label}</button>
+        ))}
+      </div>
+
+      {tab === 'profile' && (
+        <div style={section}>
+          <div>
+            <span style={ui.label}>{t('st.profilePhoto')}</span>
+            <AvatarPicker value={form.avatarUrl} name={form.firstName} onChange={(v) => up('avatarUrl', v)} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+            {field(<>{t('st.fFirstName')} <span style={{ color: 'var(--ink-bad)' }}>*</span></>, <input style={ui.input} value={form.firstName} onChange={(e) => up('firstName', e.target.value)} required />)}
+            {field(t('st.fLastName'), <input style={ui.input} value={form.lastName} onChange={(e) => up('lastName', e.target.value)} />)}
+            {field(t('st.fPhone'), <input style={ui.input} type="tel" value={form.phone} onChange={(e) => up('phone', e.target.value)} />)}
+            {field(t('st.fEmail'), <input style={ui.input} type="email" value={form.email} onChange={(e) => up('email', e.target.value)} />)}
+          </div>
+          <RolePicker
+            role={form.staffRole}
+            takesAppointments={form.takesAppointments}
+            onChange={(staffRole, takesAppointments) => { up('staffRole', staffRole); up('takesAppointments', takesAppointments); }}
+          />
         </div>
-      ) : (
-        <p style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('st.skillsTechOnly')}</p>
       )}
 
-      {/* Working hours */}
-      <div>
-        <span style={ui.label}>{t('st.workingHours')}</span>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 460 }}>
-          {hours.map((d) => {
-            const label = DAY_LABEL[lang][d.dow] ?? '';
-            return (
-              <div key={d.dow} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
-                <span style={{ width: 40, fontSize: 13.5, color: 'var(--ccbd5e1)', paddingTop: 5 }}>{label}</span>
-                <div style={{ paddingTop: 3 }}>
-                  <HourToggle on={d.enabled} onChange={(v) => updDay(d.dow, { enabled: v })} />
-                </div>
-                {d.enabled ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {d.windows.map((w, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input type="time" style={{ ...ui.input, width: 118 }} value={w.start} onChange={(e) => setWin(d.dow, i, { start: e.target.value })} />
-                        <span style={{ color: 'var(--c64748b)' }}>–</span>
-                        <input type="time" style={{ ...ui.input, width: 118 }} value={w.end} onChange={(e) => setWin(d.dow, i, { end: e.target.value })} />
-                        {d.windows.length > 1 && (
-                          <button type="button" onClick={() => rmWin(d.dow, i)} style={{ background: 'none', border: 'none', color: 'var(--c64748b)', cursor: 'pointer', fontSize: 14, padding: 2 }}>✕</button>
-                        )}
+      {tab === 'schedule' && (
+        <div style={section}>
+          {form.takesAppointments ? (
+            <div>
+              <span style={ui.label}>{t('st.skills')}</span>
+              <SkillPicker all={services} ids={skillIds} set={(v) => { setSkillIds(v); setSaved(false); }} />
+            </div>
+          ) : (
+            <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: 0 }}>{t('st.skillsTechOnly')}</p>
+          )}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
+              <span style={{ ...ui.label, marginBottom: 0 }}>{t('st.workingHours')}</span>
+              {anyEnabled && <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L(`${Math.round(hoursPerWeek * 10) / 10} giờ / tuần`, `${Math.round(hoursPerWeek * 10) / 10} h / week`)}{pay.payType === 'HOURLY' ? L(' · dùng để tính lương giờ', ' · used for hourly pay') : ''}</span>}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 520 }}>
+              {hours.map((d) => {
+                const label = DAY_LABEL[lang][d.dow] ?? '';
+                return (
+                  <div key={d.dow} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
+                    <span style={{ width: 40, fontSize: 13.5, color: 'var(--ccbd5e1)', paddingTop: 5 }}>{label}</span>
+                    <div style={{ paddingTop: 3 }}>
+                      <HourToggle on={d.enabled} onChange={(v) => updDay(d.dow, { enabled: v })} />
+                    </div>
+                    {d.enabled ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {d.windows.map((w, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <input type="time" style={{ ...ui.input, width: 118 }} value={w.start} onChange={(e) => setWin(d.dow, i, { start: e.target.value })} />
+                            <span style={{ color: 'var(--c94a3b8)' }}>–</span>
+                            <input type="time" style={{ ...ui.input, width: 118 }} value={w.end} onChange={(e) => setWin(d.dow, i, { end: e.target.value })} />
+                            {d.windows.length > 1 && (
+                              <button type="button" onClick={() => rmWin(d.dow, i)} aria-label={L('Bỏ khung giờ', 'Remove')} style={{ background: 'none', border: 'none', color: 'var(--c94a3b8)', cursor: 'pointer', fontSize: 14, padding: 2 }}>✕</button>
+                            )}
+                          </div>
+                        ))}
+                        <button type="button" onClick={() => addWin(d.dow)} style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed var(--c334155)', borderRadius: 8, color: 'var(--ink-link)', fontSize: 12, padding: '3px 10px', cursor: 'pointer' }}>
+                          {t('st.addHours')}
+                        </button>
                       </div>
-                    ))}
-                    <button type="button" onClick={() => addWin(d.dow)} style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed var(--c334155)', borderRadius: 8, color: 'var(--ca5b4fc)', fontSize: 12, padding: '3px 10px', cursor: 'pointer' }}>
-                      {t('st.addHours')}
-                    </button>
+                    ) : (
+                      <span style={{ color: 'var(--c94a3b8)', fontSize: 13, paddingTop: 5 }}>{t('st.off')}</span>
+                    )}
                   </div>
-                ) : (
-                  <span style={{ color: 'var(--c64748b)', fontSize: 13, paddingTop: 5 }}>{t('st.off')}</span>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+            <p style={{ color: 'var(--c94a3b8)', fontSize: 12, marginTop: 8 }}>{anyEnabled ? t('st.hoursSet') : t('st.hoursUnset')}</p>
+          </div>
+          {form.takesAppointments && (
+            <div style={{ maxWidth: 360 }}>
+              {field(L('Ưu tiên khi khách đặt lịch', 'Booking priority'),
+                <select style={ui.input} value={Number(form.bookingPriority) > 0 ? form.bookingPriority : '0'} onChange={(e) => up('bookingPriority', e.target.value)}>
+                  <option value="0">{L('Tự động, chia đều', 'Automatic, shared fairly')}</option>
+                  <option value="10">{L('Ưu tiên', 'Preferred')}</option>
+                  <option value="100">{L('Luôn đứng đầu danh sách', 'Always first')}</option>
+                  {!['0', '10', '100'].includes(String(form.bookingPriority)) && Number(form.bookingPriority) > 0 && <option value={form.bookingPriority}>{L(`Mức ${form.bookingPriority}`, `Level ${form.bookingPriority}`)}</option>}
+                </select>,
+                L('Thợ ưu tiên được gợi ý trước cho khách đặt online.', 'Preferred techs are suggested first to online bookers.'))}
+            </div>
+          )}
         </div>
-        <p style={{ color: 'var(--c94a3b8)', fontSize: 12, marginTop: 8 }}>
-          {anyEnabled ? t('st.hoursSet') : t('st.hoursUnset')}
-        </p>
-      </div>
+      )}
 
-      {/* Direct tip: this tech's payment QR (Venmo/Zelle/Cash App) + handle. */}
-      <div>
-        <span style={ui.label}>💸 {t('st.tipSection')}</span>
-        <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 8px' }}>{t('st.tipHint')}</p>
-        <QrPicker value={form.tipQrUrl} onChange={(v) => up('tipQrUrl', v)} />
-        <label style={{ display: 'block', marginTop: 10, maxWidth: 360 }}>
-          <span style={ui.label}>{t('st.tipHandle')}</span>
-          <input style={ui.input} value={form.tipHandle} onChange={(e) => up('tipHandle', e.target.value)} placeholder={t('st.tipHandlePh')} />
-        </label>
-      </div>
+      {tab === 'pay' && (
+        <div style={section}>
+          <PayFields value={pay} onChange={(v) => { setPay(v); setSaved(false); }} vi={vi} defaultCheckPercent={defaultCheckPercent} />
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--c94a3b8)' }}>
+            {L('Tip luôn trả đủ cho thợ (trừ phí quẹt thẻ nếu tiệm bật). Phí nguyên liệu, phí thẻ và kỳ lương đặt ở trang Lương thợ → Cài đặt lương.', 'Tips always go to the tech (less the card fee, if the salon turns it on). Supply fee, card fee and the pay period are set in Staff & pay → Payroll settings.')}
+          </p>
+        </div>
+      )}
+
+      {tab === 'tips' && (
+        <div style={section}>
+          <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: 0 }}>{t('st.tipHint')}</p>
+          <QrPicker value={form.tipQrUrl} onChange={(v) => up('tipQrUrl', v)} />
+          <div style={{ maxWidth: 360 }}>
+            {field(t('st.tipHandle'), <input style={ui.input} value={form.tipHandle} onChange={(e) => up('tipHandle', e.target.value)} placeholder={t('st.tipHandlePh')} />)}
+          </div>
+        </div>
+      )}
 
       {error && <div style={ui.banner}>{error}</div>}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
         <button onClick={save} disabled={saving} style={ui.primaryBtn}>
           {saving ? t('st.saving') : t('st.saveChanges')}
         </button>
         {saved && <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>{t('st.saved')}</span>}
+        <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L('Lưu một lần cho tất cả các mục.', 'One save for every tab.')}</span>
       </div>
     </div>
   );
@@ -774,13 +843,17 @@ function CreateStaffForm({
   token,
   services,
   onCreated,
+  defaultCheckPercent,
 }: {
   token: string;
   services: Service[];
   onCreated: () => void;
+  defaultCheckPercent: number;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const vi = lang === 'vi';
+  const [pay, setPay] = useState<PayForm>(() => payFormFrom({ payType: 'COMMISSION', commissionPercent: 60 }));
   const [form, setForm] = useState({
     firstName: '', lastName: '', email: '', phone: '', avatarUrl: '',
     staffRole: 'TECHNICIAN' as Role, takesAppointments: true,
@@ -813,6 +886,7 @@ function CreateStaffForm({
           loginPassword: form.loginPassword || undefined,
           // Skills only matter for bookable technicians.
           serviceIds: form.takesAppointments ? skillIds : [],
+          ...payBody(pay),
         },
       });
       onCreated();
@@ -904,6 +978,11 @@ function CreateStaffForm({
       ) : (
         <p style={{ color: 'var(--c64748b)', fontSize: 12 }}>{t('st.skillsTechOnly')}</p>
       )}
+
+      <div>
+        <span style={ui.label}>{vi ? 'Lương' : 'Pay'}</span>
+        <PayFields value={pay} onChange={setPay} vi={vi} defaultCheckPercent={defaultCheckPercent} />
+      </div>
 
       {error && <div style={ui.banner}>{error}</div>}
       <button type="submit" disabled={submitting} style={{ ...ui.primaryBtn }}>

@@ -109,8 +109,8 @@ function Inner() {
       {/* Headline funnel */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 18 }}>
         <Kpi label={T('Booking từ đặt lịch', 'Bookings')} value={String(tot?.bookings ?? 0)} />
-        <Kpi label={T('Khách đã đến', 'Showed up')} value={String(tot?.showed ?? 0)} hint={`${pct(tot?.showed ?? 0, tot?.bookings ?? 0)}% ${T('đến', 'showed')}`} accent="#22c55e" />
-        <Kpi label={T('Doanh thu (từ lịch)', 'Revenue (booked)')} value={money(tot?.revenueCents ?? 0)} accent="#22c55e" />
+        <Kpi label={T('Khách đã đến', 'Showed up')} value={String(tot?.showed ?? 0)} hint={`${pct(tot?.showed ?? 0, tot?.bookings ?? 0)}% ${T('đến', 'showed')}`} accent="var(--ink-good)" />
+        <Kpi label={T('Doanh thu (từ lịch)', 'Revenue (booked)')} value={money(tot?.revenueCents ?? 0)} accent="var(--ink-good)" />
         <Kpi label={T('Đánh giá Google mới', 'New Google reviews')} value={String(data?.owned.googleReviews ?? 0)} />
         <Kpi label={T('Khách từ giới thiệu', 'Referred customers')} value={String(data?.owned.referredNewCustomers ?? 0)} />
       </div>
@@ -188,7 +188,7 @@ function Kpi({ label, value, hint, accent }: { label: string; value: string; hin
   return (
     <div style={{ background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 12, padding: '12px 14px' }}>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: accent ?? '#fff' }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: accent ?? 'var(--cf1f5f9)' }}>{value}</div>
       {hint && <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}
     </div>
   );

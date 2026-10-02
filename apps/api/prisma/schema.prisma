@@ -314,6 +314,7 @@ model Tenant {
   giftCards            GiftCard[]
   giftCardTransactions GiftCardTransaction[]
   tipLogs              TipLog[]
+  payrollRuns          PayrollRun[]
   voiceLine            VoiceLine?
   contentIdeas         ContentIdea[]
   contentSuggestions   ContentSuggestion[]
@@ -654,9 +655,21 @@ model StaffMember {
   // POS service commission rate (percent of service revenue this tech earns).
   commissionPercent Int @default(0)
 
-  // Optional fixed base pay per pay period (cents). Added on top of commission +
-  // tips when running payroll. 0 = commission-only (the default).
+  // Fixed salary (cents) per `salaryPeriod`, used when payType = SALARY.
+  // Payroll prorates it to the pay period being run (a 7-day view of a
+  // monthly salary is 7/30ths of it, not all of it). 0 = none.
   baseCents Int @default(0)
+
+  // How this person is paid. COMMISSION | HOURLY | DAILY_GUARANTEE | SALARY.
+  // commissionPercent / productCommissionPercent apply on top of HOURLY and
+  // SALARY when above 0, and per day against the guarantee for DAILY_GUARANTEE.
+  payType                  String @default("COMMISSION")
+  productCommissionPercent Int    @default(0)
+  hourlyRateCents          Int    @default(0)
+  dailyGuaranteeCents      Int    @default(0)
+  salaryPeriod             String @default("MONTHLY") // WEEKLY | BIWEEKLY | MONTHLY
+  // Share of net pay paid by check (the rest in cash). null = the salon default.
+  checkPercent             Int?
 
   // Feature-permission role for this staff member's login (if they have one).
   staffRole StaffRole @default(TECHNICIAN)
@@ -2365,6 +2378,35 @@ model TipLog {
   @@index([tenantId, createdAt])
   @@index([staffMemberId])
   @@map("tip_logs")
+}
+
+// A pay period's payroll. DRAFT holds the owner's per-tech overrides (hours,
+// days not worked, bonuses, deductions) while the period is open; FINAL is the
+// frozen record of what was paid — lines are a snapshot, so an order edited
+// next month never rewrites a payslip already handed over.
+model PayrollRun {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  periodFrom String // YYYY-MM-DD, salon calendar
+  periodTo   String // YYYY-MM-DD, inclusive
+  status     String @default("DRAFT") // DRAFT | FINAL
+
+  overrides Json? // { [staffId]: { hours?, offDays?: string[], adjustments?: [{ label, cents }] } }
+  lines     Json? // FINAL only: the computed payslips
+  totals    Json? // FINAL only
+  note      String?
+
+  createdByUserId   String?
+  finalizedByUserId String?
+  finalizedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([tenantId, periodFrom, periodTo])
+  @@index([tenantId, periodFrom])
+  @@map("payroll_runs")
 }
 
 // Customer-facing display relay. Lets an INDEPENDENT device (e.g. a wireless

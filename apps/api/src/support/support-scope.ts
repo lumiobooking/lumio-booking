@@ -242,6 +242,7 @@ const PATH_CAPS: [string, Capability][] = [
   ['tables', 'services'],
   // Per-technician takings and commission. Money wearing a staff URL — and the
   // reason `staff` alone is not enough to decide this one.
+  ['payroll', 'payroll'],
   ['staff/performance', 'payroll'],
   ['staff', 'staff'],
   ['stations', 'staff'],

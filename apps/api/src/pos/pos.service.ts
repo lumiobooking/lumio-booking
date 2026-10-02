@@ -28,6 +28,11 @@ const ORDER_INCLUDE = {
   tenders: { orderBy: { createdAt: 'asc' as const } },
 };
 
+import { loadLedger } from '../payroll/ledger-loader';
+import { UNASSIGNED } from '../payroll/sales-ledger';
+import { commissionOnly, sanitizeSettings } from '../payroll/pay-calc';
+import { PAYROLL_SETTINGS_KEY } from '../payroll/payroll.service';
+
 @Injectable()
 export class PosService {
   constructor(
@@ -629,20 +634,22 @@ export class PosService {
       throw new Error('report range must be YYYY-MM-DD or an ISO instant');
     }
 
-    const orders = await this.prisma.order.findMany({
-      where: { tenantId, status: OrderStatus.PAID, paidAt: { gte: from, lte: to } },
-      select: {
-        id: true, items: true, appointmentId: true, appointmentIds: true, changeCents: true, giftCardAppliedCents: true,
-        tenders: { select: { method: true, amountCents: true } },
-      },
-    });
-    const staff = await this.prisma.staffMember.findMany({
-      where: { tenantId },
-      select: { id: true, firstName: true, lastName: true, commissionPercent: true, baseCents: true },
-    });
+    // Sales per technician come from the shared ledger (payroll/sales-ledger):
+    // net of the ticket's discount, tips apart, till-less bookings once. The
+    // commission shown here is computed by the same function payroll uses, so
+    // the sales report and the payslip can never disagree.
+    const [{ ledger, orderCount, extraVisits, orders }, staff, payrollRow] = await Promise.all([
+      loadLedger(this.prisma, tenantId, tz, from, to),
+      this.prisma.staffMember.findMany({
+        where: { tenantId },
+        select: { id: true, firstName: true, lastName: true, commissionPercent: true, productCommissionPercent: true } as never,
+      }) as unknown as Promise<{ id: string; firstName: string; lastName: string | null; commissionPercent: number; productCommissionPercent?: number }[]>,
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: PAYROLL_SETTINGS_KEY } } }),
+    ]);
+    const paySettings = sanitizeSettings((payrollRow?.value as never) ?? null);
     const staffMap = new Map(staff.map((s) => [s.id, s]));
 
-    type Row = { staffId: string; name: string; commissionPercent: number; serviceCount: number; serviceRevenueCents: number; productRevenueCents: number; tipsCents: number; commissionCents: number; baseCents: number; totalPayCents: number; directTipsCents: number };
+    type Row = { staffId: string; name: string; commissionPercent: number; serviceCount: number; visits: number; serviceRevenueCents: number; productRevenueCents: number; tipsCents: number; commissionCents: number; baseCents: number; totalPayCents: number; directTipsCents: number };
     const rows = new Map<string, Row>();
     const ensure = (id: string | null) => {
       const key = id ?? 'unassigned';
@@ -652,75 +659,32 @@ export class PosService {
           staffId: key,
           name: s ? `${s.firstName} ${s.lastName ?? ''}`.trim() : 'Unassigned',
           commissionPercent: s?.commissionPercent ?? 0,
-          serviceCount: 0,
-          serviceRevenueCents: 0,
-          productRevenueCents: 0,
-          tipsCents: 0,
-          commissionCents: 0,
-          baseCents: 0,
-          totalPayCents: 0,
-          directTipsCents: 0,
+          serviceCount: 0, visits: 0,
+          serviceRevenueCents: 0, productRevenueCents: 0, tipsCents: 0,
+          commissionCents: 0, baseCents: 0, totalPayCents: 0, directTipsCents: 0,
         });
       }
       return rows.get(key)!;
     };
 
-    let totalRevenue = 0;
-    let totalTips = 0;
-    let totalCommission = 0;
-    let totalPay = 0;
-    for (const o of orders) {
-      for (const l of o.items) {
-        const row = ensure(l.staffMemberId);
-        if (l.kind === OrderItemKind.SERVICE) { row.serviceRevenueCents += l.lineTotalCents; row.serviceCount += l.quantity; }
-        else row.productRevenueCents += l.lineTotalCents;
-        row.tipsCents += l.tipCents;
-        totalRevenue += l.lineTotalCents;
-        totalTips += l.tipCents;
-      }
-    }
-    // Completed bookings NOT collected through POS still count toward revenue
-    // and the assigned tech's commission (tips only come from POS). Skip any
-    // booking already paid via a POS order so nothing is double-counted.
-    const posPaidApptIds = new Set(
-      orders.flatMap((o) => [o.appointmentId, ...(o.appointmentIds ?? [])]).filter((x): x is string => !!x),
-    );
-    const completedAppts = await this.prisma.appointment.findMany({
-      where: { tenantId, status: AppointmentStatus.COMPLETED, completedAt: { gte: from, lte: to } },
-      select: { id: true, priceCents: true, assignedStaffId: true },
-    });
-    let extraTxns = 0;
-    for (const a of completedAppts) {
-      if (posPaidApptIds.has(a.id)) continue;
-      const row = ensure(a.assignedStaffId);
-      row.serviceRevenueCents += a.priceCents;
-      row.serviceCount += 1;
-      totalRevenue += a.priceCents;
-      extraTxns += 1;
-    }
-
-    // Commission on service revenue using each tech's rate; pay = commission + tips.
-    for (const row of rows.values()) {
-      const s = row.staffId !== 'unassigned' ? staffMap.get(row.staffId) : null;
-      const pct = s?.commissionPercent ?? 0;
-      row.commissionCents = Math.round((row.serviceRevenueCents * pct) / 100);
+    let totalRevenue = 0, totalTips = 0, totalCommission = 0, totalPay = 0;
+    const totalBase = 0;
+    for (const led of ledger.values()) {
+      const s = led.staffId !== UNASSIGNED ? staffMap.get(led.staffId) : null;
+      const row = ensure(led.staffId === UNASSIGNED ? null : led.staffId);
+      row.serviceCount = led.serviceCount;
+      row.visits = led.visits;
+      row.serviceRevenueCents = led.serviceCents;
+      row.productRevenueCents = led.productCents;
+      row.tipsCents = led.tipsCents;
+      row.commissionCents = s ? commissionOnly({ commissionPercent: s.commissionPercent ?? 0, productCommissionPercent: s.productCommissionPercent ?? 0 }, led, paySettings) : 0;
       row.totalPayCents = row.commissionCents + row.tipsCents;
+      totalRevenue += led.serviceCents + led.productCents;
+      totalTips += led.tipsCents;
       totalCommission += row.commissionCents;
       totalPay += row.totalPayCents;
     }
-
-    // Fixed base pay per period: every tech with a base gets it (even with no
-    // sales this period). Total pay = base + commission + tips.
-    let totalBase = 0;
-    for (const s of staff) {
-      const base = s.baseCents ?? 0;
-      if (base <= 0) continue;
-      const row = ensure(s.id);
-      row.baseCents = base;
-      row.totalPayCents += base;
-      totalBase += base;
-      totalPay += base;
-    }
+    const extraTxns = extraVisits;
 
     // Direct tips (paid straight to the tech via QR/cash — logged for visibility
     // only). NOT added to totalPay: the salon never holds this money.
@@ -764,7 +728,7 @@ export class PosService {
       range: { from: from.toISOString(), to: to.toISOString() },
       byMethod,
       byTender,
-      totals: { revenueCents: totalRevenue, tipsCents: totalTips, commissionCents: totalCommission, baseCents: totalBase, payCents: totalPay, directTipsCents: totalDirectTips, orders: orders.length + extraTxns },
+      totals: { revenueCents: totalRevenue, tipsCents: totalTips, commissionCents: totalCommission, baseCents: totalBase, payCents: totalPay, directTipsCents: totalDirectTips, orders: orderCount + extraTxns },
       staff: [...rows.values()].sort(
         (a, b) =>
           b.serviceRevenueCents + b.productRevenueCents - (a.serviceRevenueCents + a.productRevenueCents),

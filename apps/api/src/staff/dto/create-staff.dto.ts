@@ -1,4 +1,5 @@
 import {
+  IsIn,
   IsArray,
   IsBoolean,
   IsEmail,
@@ -69,6 +70,51 @@ export class CreateStaffDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  commissionPercent?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  baseCents?: number;
+
+  // ---- Pay (see payroll/pay-calc.ts) ----
+  @IsOptional()
+  @IsIn(['COMMISSION', 'HOURLY', 'DAILY_GUARANTEE', 'SALARY'])
+  payType?: 'COMMISSION' | 'HOURLY' | 'DAILY_GUARANTEE' | 'SALARY';
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  productCommissionPercent?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  hourlyRateCents?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000000)
+  dailyGuaranteeCents?: number;
+
+  @IsOptional()
+  @IsIn(['WEEKLY', 'BIWEEKLY', 'MONTHLY'])
+  salaryPeriod?: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
+
+  // Share of net pay paid by check; null = the salon's default.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  checkPercent?: number | null;
 
   // Feature-permission role (MANAGER / RECEPTIONIST / TECHNICIAN). Drives RBAC
   // and the default of takesAppointments. Defaults to TECHNICIAN when omitted.

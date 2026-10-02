@@ -11,7 +11,8 @@ import { DateRangeBar, useDateRange } from '../../../components/ListFilter';
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow } from '../../../components/MobileCard';
-import { useState as useTabState } from 'react';
+import { PayrollRun } from './PayrollRun';
+import { NavIcon } from '../../../components/NavIcon';
 import { uiLocale } from '../../../lib/datetime';
 
 interface Row {
@@ -34,176 +35,40 @@ export default function PayrollPage() {
 function Hub() {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [tab, setTab] = useTabState<'performance' | 'payroll'>('performance');
+  // The tab is remembered per device: an owner who runs payroll every Monday
+  // lands on it, one who checks performance lands there.
+  const [tab, setTabState] = useState<'performance' | 'payroll'>('payroll');
+  useEffect(() => {
+    try { const v = window.localStorage.getItem('lumio_pay_tab'); if (v === 'performance' || v === 'payroll') setTabState(v); } catch { /* ignore */ }
+  }, []);
+  const setTab = (v: 'performance' | 'payroll') => { setTabState(v); try { window.localStorage.setItem('lumio_pay_tab', v); } catch { /* ignore */ } };
   const tabBtn = (id: 'performance' | 'payroll', label: string, icon: string) => (
-    <button onClick={() => setTab(id)} style={{
-      padding: '10px 18px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600,
-      background: tab === id ? '#6366f1' : 'var(--c1e293b)', color: tab === id ? '#fff' : 'var(--c94a3b8)',
-    }}>{icon} {label}</button>
+    <button role="tab" aria-selected={tab === id} onClick={() => setTab(id)} style={{
+      display: 'inline-flex', alignItems: 'center', gap: 8,
+      padding: '9px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600,
+      background: tab === id ? '#4f46e5' : 'transparent', color: tab === id ? '#fff' : 'var(--ccbd5e1)',
+    }}><NavIcon name={icon} size={16} />{label}</button>
   );
   return (
     <section>
       <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{t('pf.hubTitle')}</h1>
       <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>{t('pf.hubSub')}</p>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
-        {tabBtn('performance', t('pf.tabPerformance'), '📊')}
-        {tabBtn('payroll', t('pf.tabPayroll'), '💵')}
+      <div role="tablist" style={{ display: 'inline-flex', gap: 4, padding: 4, marginBottom: 18, borderRadius: 12, background: 'var(--c111827)', border: '1px solid var(--line)' }}>
+        {tabBtn('payroll', t('pf.tabPayroll'), 'banknote')}
+        {tabBtn('performance', t('pf.tabPerformance'), 'chart')}
       </div>
-      {tab === 'performance' ? <Performance /> : <Inner />}
+      {tab === 'performance' ? <Performance /> : <PayrollRun vi={lang === 'vi'} />}
     </section>
   );
 }
 
-function Inner() {
-  const { token } = useAuth();
-  const { lang } = useLang();
-  const t = (k: string) => tr(k, lang);
-  const isMobile = useIsMobile();
-  const range = useDateRange('7d');
-  const [data, setData] = useState<Report | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    if (!token) return;
-    setLoading(true); setError(null);
-    try {
-      const q = new URLSearchParams();
-      if (range.from) q.set('from', range.from);
-      if (range.to) q.set('to', range.to);
-      setData(await apiFetch<Report>(`/pos/report?${q.toString()}`, { token }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
-    } finally { setLoading(false); }
-  }, [token, range.from, range.to]);
-  useEffect(() => { load(); }, [load]);
-
-  const techs = (data?.staff ?? []).filter((r) => r.staffId !== 'unassigned' || r.totalPayCents > 0 || r.tipsCents > 0);
-
-  // Export the period's payroll to an Excel/accounting-friendly CSV (plain decimal
-  // amounts, no currency symbol). Built from the already-loaded report — no extra fetch.
-  function exportCsv() {
-    if (!data) return;
-    const dollars = (c: number) => (c / 100).toFixed(2);
-    const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-    const header = ['Technician', '# Services', 'Service Revenue', 'Commission %', 'Commission', 'Base Pay', 'Tips', 'Direct Tips', 'Total Pay'];
-    const body = techs.map((r) => [r.name, String(r.serviceCount), dollars(r.serviceRevenueCents), String(r.commissionPercent), dollars(r.commissionCents), dollars(r.baseCents), dollars(r.tipsCents), dollars(r.directTipsCents ?? 0), dollars(r.totalPayCents)]);
-    const totals = [t('pr.csvTotal'), '', dollars(data.totals.revenueCents), '', dollars(data.totals.commissionCents), dollars(data.totals.baseCents), dollars(data.totals.tipsCents), dollars(data.totals.directTipsCents ?? 0), dollars(data.totals.payCents)];
-    const period = `${t('pr.csvPeriod')}: ${range.from || 'all'} → ${range.to || 'today'}`;
-    const lines = [[period], [], header, ...body, totals].map((cols) => cols.map((c) => esc(String(c))).join(',')).join('\r\n');
-    const blob = new Blob(['﻿' + lines], { type: 'text/csv;charset=utf-8' }); // BOM so Excel reads UTF-8
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `payroll_${range.from || 'all'}_${range.to || 'today'}.csv`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <DateRangeBar range={range} />
-          <button onClick={exportCsv} disabled={!data} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>⬇ {t('pr.exportCsv')}</button>
-          <button onClick={() => window.print()} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>🖨 {t('pr.print')}</button>
-        </div>
-      </div>
-
-      {error && <div style={ui.banner}>{error}</div>}
-
-      {loading || !data ? <p style={{ color: 'var(--c94a3b8)' }}>Loading…</p> : (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, marginBottom: 18 }}>
-            <Kpi label={t('pr.kTotal')} value={formatPrice(data.totals.payCents)} accent="#22c55e" big />
-            <Kpi label={t('pr.kCommission')} value={formatPrice(data.totals.commissionCents)} accent="#06b6d4" />
-            <Kpi label={t('pr.kTips')} value={formatPrice(data.totals.tipsCents)} accent="#a855f7" />
-            {(data.totals.directTipsCents ?? 0) > 0 && <Kpi label={t('pr.kDirectTips')} value={formatPrice(data.totals.directTipsCents!)} accent="#34d399" />}
-            <Kpi label={t('pr.kRevenue')} value={formatPrice(data.totals.revenueCents)} accent="#3b82f6" />
-          </div>
-
-          {data.byMethod && (data.byMethod.cashCents + data.byMethod.cardCents + data.byMethod.otherCents + data.byMethod.giftCardCents) > 0 && (
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
-              <MethodChip icon="💵" label={t('pr.mCash')} cents={data.byMethod.cashCents} color="#22c55e" />
-              <MethodChip icon="💳" label={t('pr.mCard')} cents={data.byMethod.cardCents} color="#3b82f6" />
-              <MethodChip icon="🏦" label={t('pr.mOther')} cents={data.byMethod.otherCents} color="#a855f7" />
-              {data.byMethod.giftCardCents > 0 && <MethodChip icon="🎁" label={t('pr.mGift')} cents={data.byMethod.giftCardCents} color="#f59e0b" />}
-            </div>
-          )}
-
-          {isMobile ? (
-            <MList>
-              {techs.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('pr.empty')}</p>}
-              {techs.map((r) => (
-                <MCard key={r.staffId}>
-                  <MHead right={<span style={{ color: 'var(--ink-good)', fontWeight: 700, fontSize: 16 }}>{formatPrice(r.totalPayCents)}</span>}>
-                    {r.name}
-                  </MHead>
-                  <MRow label={t('pr.cCount')}>{r.serviceCount}</MRow>
-                  <MRow label={t('pr.cRevenue')}>{formatPrice(r.serviceRevenueCents)}</MRow>
-                  <MRow label={t('pr.cCommission')}>{formatPrice(r.commissionCents)} <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>({r.commissionPercent}%)</span></MRow>
-                  <MRow label={t('pr.cBase')}>{r.baseCents > 0 ? formatPrice(r.baseCents) : '—'}</MRow>
-                  <MRow label={t('pr.cTips')}>{formatPrice(r.tipsCents)}</MRow>
-                  {(r.directTipsCents ?? 0) > 0 && <MRow label={t('pr.cDirectTips')}>{formatPrice(r.directTipsCents!)}</MRow>}
-                </MCard>
-              ))}
-            </MList>
-          ) : (
-            <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-              <thead><tr style={{ background: 'var(--c1e293b)' }}>
-                <th style={ui.th}>{t('pr.cTech')}</th>
-                <th style={ui.th}>{t('pr.cCount')}</th>
-                <th style={ui.th}>{t('pr.cRevenue')}</th>
-                <th style={ui.th}>{t('pr.cCommission')}</th>
-                <th style={ui.th}>{t('pr.cBase')}</th>
-                <th style={ui.th}>{t('pr.cTips')}</th>
-                <th style={{ ...ui.th, color: '#34d399' }}>{t('pr.cDirectTips')}</th>
-                <th style={{ ...ui.th, color: 'var(--ink-good)' }}>{t('pr.cTotal')}</th>
-              </tr></thead>
-              <tbody>
-                {techs.length === 0 && <tr><td style={ui.td} colSpan={8}>{t('pr.empty')}</td></tr>}
-                {techs.map((r) => (
-                  <tr key={r.staffId} style={{ borderTop: '1px solid var(--c334155)' }}>
-                    <td style={ui.td}>{r.name}</td>
-                    <td style={ui.td}>{r.serviceCount}</td>
-                    <td style={ui.td}>{formatPrice(r.serviceRevenueCents)}</td>
-                    <td style={{ ...ui.td, color: '#06b6d4' }}>{formatPrice(r.commissionCents)} <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>({r.commissionPercent}%)</span></td>
-                    <td style={{ ...ui.td, color: 'var(--ccbd5e1)' }}>{r.baseCents > 0 ? formatPrice(r.baseCents) : '—'}</td>
-                    <td style={{ ...ui.td, color: '#a855f7' }}>{formatPrice(r.tipsCents)}</td>
-                    <td style={{ ...ui.td, color: '#34d399' }}>{(r.directTipsCents ?? 0) > 0 ? formatPrice(r.directTipsCents!) : '—'}</td>
-                    <td style={{ ...ui.td, fontWeight: 700, color: 'var(--ink-good)', fontSize: 15 }}>{formatPrice(r.totalPayCents)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          )}
-          <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('pr.note')}</p>
-          {(data.totals.directTipsCents ?? 0) > 0 && <p style={{ color: '#34d399', fontSize: 12, marginTop: 4 }}>{t('pr.directNote')}</p>}
-        </>
-      )}
-    </div>
-  );
-}
-
-function MethodChip({ icon, label, cents, color }: { icon: string; label: string; cents: number; color: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 14px' }}>
-      <span style={{ fontSize: 18 }}>{icon}</span>
-      <div>
-        <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{label}</div>
-        <div style={{ fontSize: 17, fontWeight: 700, color }}>{formatPrice(cents)}</div>
-      </div>
-    </div>
-  );
-}
-
+// The number is drawn in the theme's strongest ink: white was invisible on the
+// light-mode card (the owner's screenshot: "0" and "$0.00" you could not read).
 function Kpi({ label, value, accent, big }: { label: string; value: string; accent: string; big?: boolean }) {
   return (
-    <div style={{ background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 16, borderLeft: `3px solid ${accent}` }}>
-      <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{label}</div>
-      <div style={{ fontSize: big ? 30 : 24, fontWeight: 700, marginTop: 4, color: big ? 'var(--ink-good)' : '#fff' }}>{value}</div>
+    <div style={{ background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 14, padding: '14px 16px', boxShadow: `inset 3px 0 0 ${accent}` }}>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--c94a3b8)' }}>{label}</div>
+      <div style={{ fontSize: big ? 28 : 22, fontWeight: 800, marginTop: 4, color: big ? 'var(--ink-good)' : 'var(--cf1f5f9)', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
     </div>
   );
 }

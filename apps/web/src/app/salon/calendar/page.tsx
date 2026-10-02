@@ -246,6 +246,17 @@ function Inner() {
       return nm.includes(q) || em.includes(q) || (!!qd && ph.includes(qd));
     });
   }, [bySource, search]);
+  // The legend counts what is ON SCREEN — the month being shown, or the one
+  // day in the day / staff views — not the three-month window fetched to
+  // catch spill-over days. It ignores the source filter itself, so every
+  // chip keeps its number while one of them is selected.
+  const scopeRows = useMemo(() => {
+    const keys = mode === 'month'
+      ? new Set(days.filter((d): d is Date => !!d).map(cellKey))
+      : new Set([cellKey(dayDate)]);
+    return bookings.filter((b) => keys.has(dayKeyTz(new Date(b.startTime), tz)));
+  }, [bookings, mode, days, dayDate, tz]);
+
   const byDay = useMemo(() => {
     const map = new Map<string, Booking[]>();
     for (const b of filtered) {
@@ -426,7 +437,7 @@ function Inner() {
                 )}
               </div>
               {(() => {
-                const legend = sourceCounts(bookings);
+                const legend = sourceCounts(scopeRows);
                 if (!legend.length) return null;
                 return (
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', overflowX: 'auto', scrollbarWidth: 'none', margin: '0 -16px 10px', padding: '0 16px' }}>
@@ -484,7 +495,7 @@ function Inner() {
           watching happens HERE, not in a report at the end of the month. One
           click isolates a channel in all three views; the same click frees it. */}
       {(() => {
-        const legend = sourceCounts(bookings);
+        const legend = sourceCounts(scopeRows);
         if (!legend.length) return null;
         return (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
@@ -1368,17 +1379,23 @@ function deviceMeta(dev?: string | null) {
   return null;
 }
 
-// Compact origin chip for calendar cards: channel icon (+ device icon) + short label.
-function OriginChip({ b, t }: { b: Booking; t: (k: string) => string }) {
-  const sm = sourceMeta(b.source);
+// Compact origin chip for calendar cards. The SOURCE comes from the shared
+// resolver (lib/booking-sources) — the same one the month grid, the legend,
+// the filter and the detail sheet use. It used to read the raw door
+// (`hosted` → "Lumio link") and so contradicted the month view for every
+// Google customer who arrived through the Lumio link.
+function OriginChip({ b }: { b: Booking; t?: (k: string) => string }) {
+  const { lang } = useLang();
+  const vi = lang === 'vi';
+  const m = srcMetaOf(b);
   const dm = deviceMeta(b.device);
-  if (!sm && !dm) return null;
+  const devLabel = dm ? (dm.key === 'cal.devMobile' ? (vi ? 'Điện thoại' : 'Phone') : (vi ? 'Máy tính' : 'Computer')) : '';
   return (
-    <span title={[sm ? t(sm.key) : '', dm ? t(dm.key) : ''].filter(Boolean).join(' · ')}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0, fontSize: 10, fontWeight: 600,
-        color: 'var(--c93a4bd)', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 7px', whiteSpace: 'nowrap' }}>
-      {sm && <span>{sm.icon}</span>}
-      {sm && <span>{t(sm.key)}</span>}
+    <span title={[vi ? m.labelVi : m.labelEn, devLabel].filter(Boolean).join(' · ')}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, fontSize: 10.5, fontWeight: 600,
+        color: 'var(--ccbd5e1)', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '1px 7px 1px 3px', whiteSpace: 'nowrap' }}>
+      <SourceDot b={b} vi={vi} />
+      <span>{vi ? m.labelVi : m.labelEn}</span>
       {dm && <span style={{ opacity: 0.85 }}>{dm.icon}</span>}
     </span>
   );

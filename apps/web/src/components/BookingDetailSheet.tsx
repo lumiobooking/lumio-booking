@@ -5,6 +5,7 @@ import { fmtInTz } from '../lib/datetime';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiFetch } from '../lib/api';
+import { srcMetaOf } from '../lib/booking-sources';
 import { useIsMobile } from '../lib/responsive';
 import { uiLocale } from '../lib/datetime';
 
@@ -21,6 +22,9 @@ interface Detail {
   notes: string | null;
   partySize?: number | null;
   source?: string | null;
+  utmSource?: string | null;
+  attrReferrer?: string | null;
+  attrLandingUrl?: string | null;
   customer: { id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null } | null;
   service: { id: string; name: string; durationMinutes: number } | null;
   assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
@@ -67,15 +71,12 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
   const fmtWhen = (iso: string) => fmtInTz(iso, { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
   const fmtTime = (iso: string) => fmtInTz(iso, { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
   const money = (cents: number) => { try { return new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100); } catch { return '$' + Math.round(cents / 100); } };
-  const sourceLabel = (s?: string | null) => {
-    switch ((s || '').toUpperCase()) {
-      case 'ONLINE': case 'PUBLIC': case 'WEB': return L('Khách đặt online', 'Online');
-      case 'ADMIN': case 'STAFF': case 'DASHBOARD': return L('Tạo tại tiệm', 'In-store');
-      case 'PHONE': case 'VOICE': case 'HOTLINE': return L('Gọi điện', 'Phone');
-      case 'MESSENGER': return 'Messenger';
-      case 'WALK_IN': case 'WALKIN': return L('Khách vãng lai', 'Walk-in');
-      default: return s || '';
-    }
+  // Same resolver as the calendar, legend and reports: the door (`hosted`,
+  // `plugin`…) refined by utm / referrer / landing page, so a Google Maps
+  // customer reads "Google Maps" here too, not the raw channel code.
+  const sourceLabel = (d: { source?: string | null; utmSource?: string | null; attrReferrer?: string | null; attrLandingUrl?: string | null }) => {
+    const m = srcMetaOf(d);
+    return L(m.labelVi, m.labelEn);
   };
 
   const paid = d?.payments?.find((p) => p.status === 'PAID');
@@ -115,7 +116,7 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
               <Row label={L('Nhân viên', 'Staff')}>{d.assignedStaff ? fullName(d.assignedStaff, '—') : L('Chưa phân công', 'Unassigned')}</Row>
               {d.table && <Row label={L('Bàn', 'Table')}>{d.table.name}{d.table.seats ? ` · ${d.table.seats} ${L('chỗ', 'seats')}` : ''}</Row>}
               {d.partySize ? <Row label={L('Số người', 'Party')}>{d.partySize}</Row> : null}
-              {d.source ? <Row label={L('Nguồn', 'Source')}>{sourceLabel(d.source)}</Row> : null}
+              <Row label={L('Nguồn', 'Source')}>{sourceLabel(d)}</Row>
               <Row label={L('Thanh toán', 'Payment')}>
                 {paid ? <span style={{ color: '#34d399' }}>{L('Đã thu', 'Paid')} {money(paid.amountCents)}</span> : <span style={{ color: 'var(--c94a3b8)' }}>{L('Chưa thu · thu tại quầy', 'Unpaid · at checkout')}</span>}
               </Row>

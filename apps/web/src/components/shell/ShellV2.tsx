@@ -335,13 +335,22 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '14px 0', paddingTop: 'calc(14px + env(safe-area-inset-top, 0px))' }}>
         <Link href="/salon" aria-label="Lumio" style={{ marginBottom: 10, display: 'grid', placeItems: 'center' }}><LumioLogo size={34} wordmark={false} /></Link>
         {sections.map((s) => {
-          const on = s.id === (tablet && flyout ? shown : here);
+          // The filled tile follows the area whose menu is OPEN — the one just
+          // picked — not the page underneath. Before, it stayed on the page's
+          // area while the menu showed another, so a click looked ignored.
+          // The page's own area keeps a small bar, so "where am I" survives.
+          const menuOpen = tablet ? flyout : subOpen;
+          const on = s.id === (menuOpen ? shown : here);
+          const isHere = s.id === here && !on;
           const b = sectionBadge(s);
           return (
-            <button key={s.id} type="button" onClick={() => pickSection(s.id)} aria-label={vi ? s.vi : s.en} title={vi ? s.vi : s.en} aria-pressed={on}
+            <button key={s.id} type="button" onClick={() => pickSection(s.id)} aria-label={vi ? s.vi : s.en}
+              title={isHere ? `${vi ? s.vi : s.en} · ${L('trang bạn đang mở', 'the page you are on')}` : (vi ? s.vi : s.en)} aria-pressed={on} aria-current={s.id === here ? 'location' : undefined}
               style={{ position: 'relative', width: 48, height: 48, borderRadius: 14, border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center',
-                background: on ? '#4f46e5' : 'transparent', color: on ? '#ffffff' : 'var(--c94a3b8)', boxShadow: on ? '0 8px 18px -8px #4f46e5' : 'none' }}>
+                background: on ? '#4f46e5' : isHere ? 'var(--c1e293b)' : 'transparent', color: on ? '#ffffff' : isHere ? 'var(--ca5b4fc)' : 'var(--c94a3b8)',
+                boxShadow: on ? '0 8px 18px -8px #4f46e5' : 'none', transition: 'background-color .15s ease, color .15s ease, box-shadow .15s ease' }}>
               <NavIcon name={s.icon} size={21} />
+              {isHere && <span aria-hidden style={{ position: 'absolute', left: -12, top: 14, bottom: 14, width: 4, borderRadius: '0 4px 4px 0', background: '#6366f1' }} />}
               {b > 0 && <span style={{ position: 'absolute', top: 9, right: 9, width: 8, height: 8, borderRadius: '50%', background: '#ef4444', border: '2px solid var(--c111827)' }} />}
             </button>
           );

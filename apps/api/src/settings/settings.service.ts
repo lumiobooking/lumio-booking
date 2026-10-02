@@ -8,6 +8,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { methodsForSalon } from '../pos/payment-methods';
 import { knownTrades } from '../content/trends/trend-feed';
 import { signingSecret } from '../common/secret.util';
+import { cleanPromoWindow } from './promo-window';
 import {
   RECEIPT_DESIGN_KEY,
   ReceiptDesign,
@@ -1173,7 +1174,7 @@ export class SettingsService {
 
   async updateFirstVisitDiscount(
     user: AuthenticatedUser,
-    dto: { enabled?: boolean; percent?: number; message?: string; rules?: Array<{ visit?: number; percent?: number }> },
+    dto: { enabled?: boolean; percent?: number; message?: string; rules?: Array<{ visit?: number; percent?: number }>; startDate?: string | null; endDate?: string | null },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.getFirstVisitDiscount(tenantId);
@@ -1196,6 +1197,7 @@ export class SettingsService {
         ?? (typeof dto.percent === 'number' ? Math.min(90, Math.max(1, Math.round(dto.percent))) : cur.percent),
       message: typeof dto.message === 'string' ? dto.message.slice(0, 160) : cur.message,
       rules,
+      ...cleanPromoWindow(dto, cur),
     };
     await this.writeKey(tenantId, FIRST_VISIT_DISCOUNT_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.first_visit_discount_updated', resourceType: 'tenant', resourceId: tenantId });
@@ -1206,7 +1208,7 @@ export class SettingsService {
     return this.readKey<GroupDiscount>(tenantId, GROUP_DISCOUNT_KEY, DEFAULT_GROUP_DISCOUNT);
   }
 
-  async updateGroupDiscount(user: AuthenticatedUser, dto: { enabled?: boolean; message?: string; tiers?: Array<{ minSize?: number; percent?: number }> }) {
+  async updateGroupDiscount(user: AuthenticatedUser, dto: { enabled?: boolean; message?: string; tiers?: Array<{ minSize?: number; percent?: number }>; startDate?: string | null; endDate?: string | null }) {
     const tenantId = this.tenantId(user);
     const cur = await this.getGroupDiscount(tenantId);
     // Sanitize tiers: 2-20 people, 1-90 %, max 5 tiers, sorted by size.
@@ -1224,6 +1226,7 @@ export class SettingsService {
       enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
       message: typeof dto.message === 'string' ? dto.message.slice(0, 160) : cur.message,
       tiers,
+      ...cleanPromoWindow(dto, cur),
     };
     await this.writeKey(tenantId, GROUP_DISCOUNT_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.group_discount_updated', resourceType: 'tenant', resourceId: tenantId });
@@ -1275,7 +1278,7 @@ export class SettingsService {
     return this.readKey<WeekdayDiscounts>(tenantId, WEEKDAY_DISCOUNTS_KEY, DEFAULT_WEEKDAY_DISCOUNTS);
   }
 
-  async updateWeekdayDiscounts(user: AuthenticatedUser, dto: { enabled?: boolean; message?: string; rules?: WeekdayDiscountRule[] }) {
+  async updateWeekdayDiscounts(user: AuthenticatedUser, dto: { enabled?: boolean; message?: string; rules?: WeekdayDiscountRule[]; startDate?: string | null; endDate?: string | null }) {
     const tenantId = this.tenantId(user);
     const cur = await this.getWeekdayDiscounts(tenantId);
     const rules = Array.isArray(dto.rules)
@@ -1288,6 +1291,7 @@ export class SettingsService {
       enabled: typeof dto.enabled === 'boolean' ? dto.enabled : cur.enabled,
       message: typeof dto.message === 'string' ? dto.message.slice(0, 160) : cur.message,
       rules,
+      ...cleanPromoWindow(dto, cur),
     };
     await this.writeKey(tenantId, WEEKDAY_DISCOUNTS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.weekday_discounts_updated', resourceType: 'tenant', resourceId: tenantId });

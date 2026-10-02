@@ -134,7 +134,7 @@ export class SettingsController {
   @Patch('weekday-discounts')
   updateWeekdayDiscounts(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { enabled?: boolean; message?: string; rules?: Array<{ day: number; categoryId: string | null; percent: number }> },
+    @Body() dto: { enabled?: boolean; message?: string; rules?: Array<{ day: number; categoryId: string | null; percent: number }>; startDate?: string | null; endDate?: string | null },
   ) {
     return this.settings.updateWeekdayDiscounts(user, dto);
   }
@@ -142,7 +142,7 @@ export class SettingsController {
   @Patch('first-visit-discount')
   updateFirstVisitDiscount(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { enabled?: boolean; percent?: number; message?: string },
+    @Body() dto: { enabled?: boolean; percent?: number; message?: string; rules?: Array<{ visit?: number; percent?: number }>; startDate?: string | null; endDate?: string | null },
   ) {
     return this.settings.updateFirstVisitDiscount(user, dto);
   }
@@ -150,7 +150,7 @@ export class SettingsController {
   @Patch('group-discount')
   updateGroupDiscount(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { enabled?: boolean; message?: string; tiers?: Array<{ minSize?: number; percent?: number }> },
+    @Body() dto: { enabled?: boolean; message?: string; tiers?: Array<{ minSize?: number; percent?: number }>; startDate?: string | null; endDate?: string | null },
   ) {
     return this.settings.updateGroupDiscount(user, dto);
   }

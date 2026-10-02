@@ -38,6 +38,9 @@ export interface WeekdayDiscounts {
   enabled: boolean;
   message: string; // optional headline shown on the booking page
   rules: WeekdayDiscountRule[];
+  /** Optional run dates (salon-local YYYY-MM-DD, inclusive). Empty = open-ended. */
+  startDate?: string | null;
+  endDate?: string | null;
 }
 
 export const DEFAULT_WEEKDAY_DISCOUNTS: WeekdayDiscounts = {
@@ -63,6 +66,9 @@ export interface FirstVisitDiscount {
   // Visit-based tiers: e.g. visit 1 → 10%, visit 5 → 15% (returning-customer
   // thank-you). Older saved settings without rules are normalized on read.
   rules?: VisitDiscountRule[];
+  /** Optional run dates (salon-local YYYY-MM-DD, inclusive). Empty = open-ended. */
+  startDate?: string | null;
+  endDate?: string | null;
 }
 
 export const DEFAULT_FIRST_VISIT_DISCOUNT: FirstVisitDiscount = {
@@ -86,6 +92,9 @@ export interface GroupDiscount {
   enabled: boolean;
   message: string;
   tiers: GroupDiscountTier[];
+  /** Optional run dates (salon-local YYYY-MM-DD, inclusive). Empty = open-ended. */
+  startDate?: string | null;
+  endDate?: string | null;
 }
 
 export const DEFAULT_GROUP_DISCOUNT: GroupDiscount = {

@@ -26,10 +26,12 @@
  * in a salon in Houston at 11 pm.
  */
 
+import { inPromoWindow } from '../settings/promo-window';
+
 export interface WeekdayRule { day: number; categoryId: string | null; percent: number }
 export interface DateRule { startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string }
 export interface PromoSettings {
-  weekday?: { enabled?: boolean; message?: string; rules?: WeekdayRule[] } | null;
+  weekday?: { enabled?: boolean; message?: string; rules?: WeekdayRule[]; startDate?: string | null; endDate?: string | null } | null;
   dates?: { enabled?: boolean; rules?: DateRule[] } | null;
 }
 
@@ -46,7 +48,7 @@ const pct = (n: unknown) => Math.min(90, Math.max(0, Math.round(Number(n) || 0))
 /** The best weekday % for today and this category. */
 export function weekdayPct(p: PromoSettings, day: SalonDay, categoryId: string | null): number {
   const wd = p.weekday;
-  if (!wd?.enabled || !Array.isArray(wd.rules)) return 0;
+  if (!wd?.enabled || !Array.isArray(wd.rules) || !inPromoWindow(wd, day.dayKey)) return 0;
   let best = 0;
   for (const r of wd.rules) {
     if (r.day !== day.weekday) continue;
@@ -148,7 +150,7 @@ export function promoBanner(
     }
   };
   const wd = p.weekday;
-  if (wd?.enabled && Array.isArray(wd.rules)) {
+  if (wd?.enabled && Array.isArray(wd.rules) && inPromoWindow(wd, day.dayKey)) {
     for (const r of wd.rules) {
       if (r.day !== day.weekday) continue;
       const scope = r.categoryId ? (categories.find((c) => c.id === r.categoryId)?.name ?? null) : 'all';

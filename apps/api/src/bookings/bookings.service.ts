@@ -42,6 +42,7 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
 import { addMinutes, parseStartTime, BLOCKING_STATUSES, wallTimeToUtc, planLineTechnician } from './booking.util';
 import { openTimesFor, type BusyBlock } from './open-times';
+import { hasPromoWindow, inPromoWindow, salonYmd, type PromoWindow } from '../settings/promo-window';
 
 const BOOKING_INCLUDE = {
   customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
@@ -181,8 +182,9 @@ export class BookingsService {
       let best = 0;
 
       // Recurring weekday rules (matched by salon-local weekday).
-      const wd = wdRow?.value as { enabled?: boolean; rules?: Array<{ day: number; categoryId: string | null; percent: number }> } | undefined;
-      if (wd?.enabled && Array.isArray(wd.rules)) {
+      const wd = wdRow?.value as ({ enabled?: boolean; rules?: Array<{ day: number; categoryId: string | null; percent: number }> } & PromoWindow) | undefined;
+      // Run dates bound the whole weekday program (e.g. "Tuesdays −10% until Oct 25").
+      if (wd?.enabled && Array.isArray(wd.rules) && inPromoWindow(wd, salonYmd(start, tz))) {
         // en-US on purpose: this reads the weekday NAME back into an index via
         // the map below. It is a parser, not something anybody sees.
         const wdName = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(start);
@@ -217,9 +219,23 @@ export class BookingsService {
    *  and group size (party of 2+). Returns the single BEST % — program promos
    *  never stack with each other or with weekday/date rules (max wins), and a
    *  promo lookup failure must never break booking. */
-  private async programDiscountPercent(tenantId: string, dto: CreateBookingDto): Promise<number> {
+  private async programDiscountPercent(tenantId: string, dto: CreateBookingDto, visitAt?: Date): Promise<number> {
     let best = 0;
     try {
+      // The salon-local day of the visit, for programs with run dates. Looked
+      // up only when a program has one, so open-ended programs cost nothing.
+      let visitDay: string | null = null;
+      const dayOfVisit = async (): Promise<string> => {
+        if (visitDay) return visitDay;
+        let tz: string | null = null;
+        try { tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone ?? null; } catch { tz = null; }
+        // The visit's real instant when the caller has it (startTime may be a
+        // salon wall time with no zone).
+        const at = visitAt ?? (dto.startTime ? new Date(dto.startTime) : new Date());
+        visitDay = salonYmd(Number.isNaN(at.getTime()) ? new Date() : at, tz);
+        return visitDay;
+      };
+      const running = async (w: PromoWindow | undefined) => !hasPromoWindow(w) || inPromoWindow(w, await dayOfVisit());
       const [fvRow, grRow] = await Promise.all([
         this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'first_visit_discount' } } }),
         this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'group_discount' } } }),
@@ -229,11 +245,11 @@ export class BookingsService {
       // visitNumber = completed/arrived visits so far + 1 (the visit being booked);
       // a tier fires only on its EXACT visit number (visit 1 = brand-new customer,
       // visit 5 = returning-customer thank-you, etc.).
-      const fv = fvRow?.value as { enabled?: boolean; percent?: number; rules?: Array<{ visit?: number; percent?: number }> } | undefined;
+      const fv = fvRow?.value as ({ enabled?: boolean; percent?: number; rules?: Array<{ visit?: number; percent?: number }> } & PromoWindow) | undefined;
       const rawPhone = (dto.customerPhone || '').trim();
       const phone = (await this.normalizedPhone(tenantId, rawPhone)) ?? '';
       const email = (dto.customerEmail || '').trim().toLowerCase();
-      if (fv?.enabled && (phone || email)) {
+      if (fv?.enabled && (phone || email) && (await running(fv))) {
         const rules = Array.isArray(fv.rules) && fv.rules.length
           ? fv.rules
           : ((fv.percent ?? 0) > 0 ? [{ visit: 1, percent: fv.percent! }] : []);
@@ -256,9 +272,9 @@ export class BookingsService {
       }
 
       // Group size — best tier whose minSize the party reaches.
-      const gr = grRow?.value as { enabled?: boolean; tiers?: Array<{ minSize?: number; percent?: number }> } | undefined;
+      const gr = grRow?.value as ({ enabled?: boolean; tiers?: Array<{ minSize?: number; percent?: number }> } & PromoWindow) | undefined;
       const size = dto.partySize ?? 1;
-      if (gr?.enabled && Array.isArray(gr.tiers) && size >= 2) {
+      if (gr?.enabled && Array.isArray(gr.tiers) && size >= 2 && (await running(gr))) {
         for (const t of gr.tiers) {
           if ((t?.minSize ?? 99) <= size && (t?.percent ?? 0) > best) best = t.percent!;
         }
@@ -500,7 +516,7 @@ export class BookingsService {
 
     // Program promos that don't depend on the category (first visit / group).
     // Policy: ONE best promo % per line — never stacked on top of weekday/date.
-    const programPct = await this.programDiscountPercent(tenantId, dto);
+    const programPct = await this.programDiscountPercent(tenantId, dto, start);
 
     // Primary service: its own discount, then the best promo for its category.
     const primaryDisc = Math.min(90, Math.max(0, service.discountPercent ?? 0));
@@ -1071,7 +1087,7 @@ export class BookingsService {
       // Prisma client this was written against, and a field access that
       // compiles in exactly one of the two places is not worth a group tier.
       partySize: (appt as { partySize?: number }).partySize ?? 1,
-    } as unknown as CreateBookingDto);
+    } as unknown as CreateBookingDto, appt.startTime);
 
     const items: { id: string; name: string; priceCents: number; durationMinutes: number; kind: 'service' }[] = [];
     for (const s of services) {

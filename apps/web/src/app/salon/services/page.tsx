@@ -320,14 +320,49 @@ function ServicesInner() {
   );
 }
 
+// ---- Run dates: every program can start and end ------------------------------
+
+interface RunWindow { startDate: string; endDate: string }
+const runOf = (w: { startDate?: string | null; endDate?: string | null }): RunWindow => ({ startDate: w.startDate ?? '', endDate: w.endDate ?? '' });
+const runBody = (r: RunWindow) => ({ startDate: r.startDate || null, endDate: r.endDate || null });
+
+/**
+ * "Chạy từ … đến …" for a program. Both optional: empty start = from now,
+ * empty end = until switched off. The dates are the salon's calendar days and
+ * bound the day of the VISIT.
+ */
+function RunDates({ value, onChange, vi }: { value: RunWindow; onChange: (v: RunWindow) => void; vi: boolean }) {
+  const today = new Date().toLocaleDateString('en-CA');
+  const bad = !!value.startDate && !!value.endDate && value.endDate < value.startDate;
+  const ended = !!value.endDate && value.endDate < today;
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', margin: '0 0 12px', padding: '10px 12px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)' }}>
+      <label style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{vi ? 'Bắt đầu' : 'Starts'}
+        <input type="date" value={value.startDate} onChange={(e) => onChange({ ...value, startDate: e.target.value })} style={{ ...ui.input, width: 'auto', display: 'block', marginTop: 3 }} />
+      </label>
+      <label style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{vi ? 'Kết thúc' : 'Ends'}
+        <input type="date" value={value.endDate} min={value.startDate || undefined} onChange={(e) => onChange({ ...value, endDate: e.target.value })} style={{ ...ui.input, width: 'auto', display: 'block', marginTop: 3 }} />
+      </label>
+      {(value.startDate || value.endDate) && (
+        <button type="button" onClick={() => onChange({ startDate: '', endDate: '' })} style={{ ...miniBtn, marginBottom: 8 }}>{vi ? 'Không giới hạn' : 'No end date'}</button>
+      )}
+      <span style={{ flex: '1 1 220px', fontSize: 12, marginBottom: 8, color: bad || ended ? 'var(--ink-bad)' : 'var(--c64748b)' }}>
+        {bad ? (vi ? 'Ngày kết thúc phải sau ngày bắt đầu.' : 'The end date must be after the start date.')
+          : ended ? (vi ? 'Chương trình đã kết thúc — khách không còn thấy và không được giảm.' : 'This program has ended — customers no longer see or get it.')
+          : (vi ? 'Để trống = chạy liên tục. Tính theo ngày khách đến làm.' : 'Leave empty to run with no end. Counts the day of the visit.')}
+      </span>
+    </div>
+  );
+}
+
 // ---- Page tabs: Menu · Promotions · Categories --------------------------------
 
 type PageTab = 'services' | 'promos' | 'categories';
 type PromoKey = 'weekday' | 'firstVisit' | 'group' | 'date';
 interface SettingsPromos {
-  weekdayDiscounts?: { enabled: boolean; message?: string; rules: DiscRule[] };
-  firstVisitDiscount?: { enabled: boolean; percent?: number; message?: string; rules?: VisitTier[] };
-  groupDiscount?: { enabled: boolean; message?: string; tiers: GroupTier[] };
+  weekdayDiscounts?: { enabled: boolean; message?: string; rules: DiscRule[]; startDate?: string | null; endDate?: string | null };
+  firstVisitDiscount?: { enabled: boolean; percent?: number; message?: string; rules?: VisitTier[]; startDate?: string | null; endDate?: string | null };
+  groupDiscount?: { enabled: boolean; message?: string; tiers: GroupTier[]; startDate?: string | null; endDate?: string | null };
   dateDiscounts?: { enabled: boolean; rules: DateRule[] };
 }
 interface PromoSummary {
@@ -345,7 +380,14 @@ function liveDateRules(p: PromoSummary): DateRule[] {
   return (p.date?.rules ?? []).filter((r) => r?.startDate && (r.endDate || r.startDate) >= today);
 }
 
+/** The program-level run dates (special dates carry theirs per rule). */
+function windowOf(p: PromoSummary, k: PromoKey): { startDate?: string | null; endDate?: string | null } | undefined {
+  return k === 'weekday' ? p.weekday : k === 'firstVisit' ? p.firstVisit : k === 'group' ? p.group : undefined;
+}
+
 function promoOn(p: PromoSummary, k: PromoKey): boolean {
+  const w = windowOf(p, k);
+  if (w?.endDate && w.endDate < todayYmd()) return false; // over
   if (k === 'weekday') return !!(p.weekday?.enabled && p.weekday.rules?.length);
   if (k === 'firstVisit') return !!(p.firstVisit?.enabled && ((p.firstVisit.rules?.length ?? 0) > 0 || (p.firstVisit.percent ?? 0) > 0));
   if (k === 'group') return !!(p.group?.enabled && p.group.tiers?.length);
@@ -445,7 +487,13 @@ function PromoBoard({ token, categories, promos, sel, onSel, onSaved, vi }: {
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
         {keys.map((k) => {
           const on = promoOn(promos, k);
+          const w = windowOf(promos, k);
+          const ended = !!w?.endDate && w.endDate < today;
+          const upcoming = on && !!w?.startDate && w.startDate > today;
           const ls = on ? lines(k) : [];
+          const span = on && w && (w.startDate || w.endDate)
+            ? (w.startDate && w.endDate ? `${fmtD(w.startDate)}–${fmtD(w.endDate)}` : w.endDate ? (vi ? `đến ${fmtD(w.endDate)}` : `until ${fmtD(w.endDate)}`) : (vi ? `từ ${fmtD(w.startDate!)}` : `from ${fmtD(w.startDate!)}`))
+            : '';
           const active = current === k;
           return (
             <button key={k} type="button" onClick={() => pick(k)} aria-pressed={active}
@@ -453,11 +501,11 @@ function PromoBoard({ token, categories, promos, sel, onSel, onSaved, vi }: {
                 background: active ? 'var(--c312e81)' : 'var(--c1e293b)', border: `1px solid ${active ? '#6366f1' : 'var(--c334155)'}`, color: 'var(--ce2e8f0)' }}>
               <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.3 }}>{title[k]}</span>
               <span style={{ alignSelf: 'flex-start', fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 8px', border: '1px solid currentColor',
-                color: on ? 'var(--ink-good)' : 'var(--c94a3b8)' }}>
-                {on ? (vi ? '● Đang bật' : '● On') : (vi ? 'Đang tắt' : 'Off')}
+                color: on ? (upcoming ? 'var(--ink-warn)' : 'var(--ink-good)') : 'var(--c94a3b8)' }}>
+                {on ? (upcoming ? (vi ? '◷ Sắp chạy' : '◷ Scheduled') : (vi ? '● Đang bật' : '● On')) : ended ? (vi ? 'Đã kết thúc' : 'Ended') : (vi ? 'Đang tắt' : 'Off')}
               </span>
               <span style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
-                {ls.length ? ls.join(' · ') : hintFor(k, vi)}
+                {ls.length ? ls.join(' · ') + (span ? ` · 📅 ${span}` : '') : hintFor(k, vi)}
               </span>
             </button>
           );
@@ -1197,16 +1245,17 @@ function WeekdayDiscountCard({ token, categories, defaultOpen, onSaved }: { toke
   const [loaded, setLoaded] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [message, setMessage] = useState('');
+  const [run, setRun] = useState<RunWindow>({ startDate: '', endDate: '' });
   const [rules, setRules] = useState<DiscRule[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || loaded) return;
-    apiFetch<{ weekdayDiscounts?: { enabled: boolean; message: string; rules: DiscRule[] } }>('/settings', { token })
+    apiFetch<{ weekdayDiscounts?: { enabled: boolean; message: string; rules: DiscRule[]; startDate?: string | null; endDate?: string | null } }>('/settings', { token })
       .then((s) => {
         const w = s.weekdayDiscounts;
-        if (w) { setEnabled(!!w.enabled); setMessage(w.message || ''); setRules(Array.isArray(w.rules) ? w.rules : []); }
+        if (w) { setEnabled(!!w.enabled); setMessage(w.message || ''); setRules(Array.isArray(w.rules) ? w.rules : []); setRun(runOf(w)); }
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
@@ -1215,7 +1264,7 @@ function WeekdayDiscountCard({ token, categories, defaultOpen, onSaved }: { toke
   function upd(i: number, patch: Partial<DiscRule>) { setRules(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
   async function save() {
     setBusy(true); setMsg(null);
-    try { await apiFetch('/settings/weekday-discounts', { method: 'PATCH', token, body: { enabled, message, rules } }); setMsg(t('sv.saved')); onSaved?.(); }
+    try { await apiFetch('/settings/weekday-discounts', { method: 'PATCH', token, body: { enabled, message, rules, ...runBody(run) } }); setMsg(t('sv.saved')); onSaved?.(); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }
@@ -1232,6 +1281,7 @@ function WeekdayDiscountCard({ token, categories, defaultOpen, onSaved }: { toke
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             <span style={{ fontSize: 14 }}>{t('sv.weekdayEnable')}</span>
           </label>
+          <RunDates value={run} onChange={setRun} vi={lang === 'vi'} />
           <label style={{ display: 'block', marginBottom: 12 }}>
             <span style={ui.label}>{t('sv.weekdayHeadline')}</span>
             <input style={ui.input} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={t('sv.weekdayHeadlinePh')} />
@@ -1274,17 +1324,18 @@ function FirstVisitDiscountCard({ token, defaultOpen, onSaved }: { token: string
   const [loaded, setLoaded] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [message, setMessage] = useState('');
+  const [run, setRun] = useState<RunWindow>({ startDate: '', endDate: '' });
   const [rules, setRules] = useState<VisitTier[]>([{ visit: 1, percent: 10 }]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || loaded) return;
-    apiFetch<{ firstVisitDiscount?: { enabled: boolean; percent: number; message: string; rules?: VisitTier[] } }>('/settings', { token })
+    apiFetch<{ firstVisitDiscount?: { enabled: boolean; percent: number; message: string; rules?: VisitTier[]; startDate?: string | null; endDate?: string | null } }>('/settings', { token })
       .then((s) => {
         const f = s.firstVisitDiscount;
         if (f) {
-          setEnabled(!!f.enabled); setMessage(f.message || '');
+          setEnabled(!!f.enabled); setMessage(f.message || ''); setRun(runOf(f));
           setRules(Array.isArray(f.rules) && f.rules.length ? f.rules : [{ visit: 1, percent: f.percent || 10 }]);
         }
         setLoaded(true);
@@ -1295,7 +1346,7 @@ function FirstVisitDiscountCard({ token, defaultOpen, onSaved }: { token: string
   function upd(i: number, patch: Partial<VisitTier>) { setRules(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
   async function save() {
     setBusy(true); setMsg(null);
-    try { await apiFetch('/settings/first-visit-discount', { method: 'PATCH', token, body: { enabled, message, rules } }); setMsg(t('sv.saved')); onSaved?.(); }
+    try { await apiFetch('/settings/first-visit-discount', { method: 'PATCH', token, body: { enabled, message, rules, ...runBody(run) } }); setMsg(t('sv.saved')); onSaved?.(); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }
@@ -1312,6 +1363,7 @@ function FirstVisitDiscountCard({ token, defaultOpen, onSaved }: { token: string
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             <span style={{ fontSize: 14 }}>{t('sv.fvEnable')}</span>
           </label>
+          <RunDates value={run} onChange={setRun} vi={lang === 'vi'} />
           <label style={{ display: 'block', marginBottom: 12 }}>
             <span style={ui.label}>{t('sv.fvHeadline')}</span>
             <input style={ui.input} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="10% off your first visit!" />
@@ -1348,16 +1400,17 @@ function GroupDiscountCard({ token, defaultOpen, onSaved }: { token: string; def
   const [loaded, setLoaded] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [message, setMessage] = useState('');
+  const [run, setRun] = useState<RunWindow>({ startDate: '', endDate: '' });
   const [tiers, setTiers] = useState<GroupTier[]>([{ minSize: 2, percent: 10 }, { minSize: 3, percent: 15 }]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || loaded) return;
-    apiFetch<{ groupDiscount?: { enabled: boolean; message: string; tiers: GroupTier[] } }>('/settings', { token })
+    apiFetch<{ groupDiscount?: { enabled: boolean; message: string; tiers: GroupTier[]; startDate?: string | null; endDate?: string | null } }>('/settings', { token })
       .then((s) => {
         const g = s.groupDiscount;
-        if (g) { setEnabled(!!g.enabled); setMessage(g.message || ''); if (Array.isArray(g.tiers) && g.tiers.length) setTiers(g.tiers); }
+        if (g) { setEnabled(!!g.enabled); setMessage(g.message || ''); if (Array.isArray(g.tiers) && g.tiers.length) setTiers(g.tiers); setRun(runOf(g)); }
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
@@ -1366,7 +1419,7 @@ function GroupDiscountCard({ token, defaultOpen, onSaved }: { token: string; def
   function upd(i: number, patch: Partial<GroupTier>) { setTiers(tiers.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
   async function save() {
     setBusy(true); setMsg(null);
-    try { await apiFetch('/settings/group-discount', { method: 'PATCH', token, body: { enabled, message, tiers } }); setMsg(t('sv.saved')); onSaved?.(); }
+    try { await apiFetch('/settings/group-discount', { method: 'PATCH', token, body: { enabled, message, tiers, ...runBody(run) } }); setMsg(t('sv.saved')); onSaved?.(); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }
@@ -1383,6 +1436,7 @@ function GroupDiscountCard({ token, defaultOpen, onSaved }: { token: string; def
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             <span style={{ fontSize: 14 }}>{t('sv.grEnable')}</span>
           </label>
+          <RunDates value={run} onChange={setRun} vi={lang === 'vi'} />
           <label style={{ display: 'block', marginBottom: 12 }}>
             <span style={ui.label}>{t('sv.grHeadline')}</span>
             <input style={ui.input} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Bring your friends and save!" />

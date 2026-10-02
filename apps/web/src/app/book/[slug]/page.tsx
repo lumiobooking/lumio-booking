@@ -28,6 +28,7 @@ import { uiLocale } from '../../../lib/datetime';
 import { todayInZone } from '../../../lib/salon-clock';
 import { planOpeningBar } from '../../../lib/opening-bar';
 import { bookLangForCountry, setBookLang, bt, btf, bookLocale } from '../../../lib/i18n-book';
+import { afterPct, anyDealPct, dayKey, lineDeal, nextDeal, promoDeal, windowEnded, type Promos } from '../../../lib/booking-promos';
 import { gbpAttribution, gbpSearch, isGbpPath } from '../../../lib/gbp-source';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
@@ -116,7 +117,9 @@ function fmtMoney(minorUnits: number, r: BookingRules): string {
 }
 
 interface WdRule { day: number; categoryId: string | null; percent: number }
-interface WeekdayDiscounts { enabled: boolean; message: string; rules: WdRule[] }
+/** Run dates (salon-local YYYY-MM-DD, inclusive) — empty = open-ended. */
+interface PromoWindow { startDate?: string | null; endDate?: string | null }
+interface WeekdayDiscounts extends PromoWindow { enabled: boolean; message: string; rules: WdRule[] }
 interface DateRule { startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string }
 interface DateDiscounts { enabled: boolean; rules: DateRule[] }
 interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number }
@@ -124,8 +127,8 @@ interface Salon {
   name: string; slug: string; businessType?: string; timezone: string; address?: string | null; contactPhone?: string | null;
   branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string }; booking?: BookingRules;
   weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy; cardFee?: { enabled: boolean; percent: number };
-  firstVisit?: { enabled: boolean; percent: number; message: string; rules?: { visit: number; percent: number }[] };
-  groupDiscount?: { enabled: boolean; message: string; tiers: { minSize: number; percent: number }[] };
+  firstVisit?: { enabled: boolean; percent: number; message: string; rules?: { visit: number; percent: number }[] } & PromoWindow;
+  groupDiscount?: { enabled: boolean; message: string; tiers: { minSize: number; percent: number }[] } & PromoWindow;
   rating?: { value: number; count: number } | null;
   /** ISO country of the salon; decides the language this page speaks. */
   country?: string;
@@ -168,32 +171,15 @@ const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', '
 const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-function weekdayPctFor(wd: WeekdayDiscounts | undefined, date: Date | null, categoryId: string | null | undefined): number {
-  if (!wd?.enabled || !date || !Array.isArray(wd.rules)) return 0;
-  const day = date.getDay();
-  let best = 0;
-  for (const r of wd.rules) {
-    if (r.day !== day) continue;
-    if (r.categoryId && r.categoryId !== categoryId) continue;
-    if (r.percent > best) best = r.percent;
-  }
-  return Math.min(90, Math.max(0, best));
-}
-function datePctFor(dd: DateDiscounts | undefined, date: Date | null, categoryId: string | null | undefined): number {
-  if (!dd?.enabled || !date || !Array.isArray(dd.rules)) return 0;
-  const s = ymd(date);
-  let best = 0;
-  for (const r of dd.rules) {
-    if (!r?.startDate) continue;
-    if (categoryId && r.categoryId && r.categoryId !== categoryId) continue;
-    const end = r.endDate || r.startDate;
-    if (r.startDate <= s && s <= end && r.percent > best) best = r.percent;
-  }
-  return Math.min(90, Math.max(0, best));
+/** The salon's promotions, in the shape lib/booking-promos reads. */
+function promosOf(salon: Salon | null | undefined): Promos {
+  return { weekday: salon?.weekdayDiscounts, dates: salon?.dateDiscounts, group: salon?.groupDiscount };
 }
 function promoPctFor(salon: Salon | null | undefined, date: Date | null, categoryId: string | null | undefined): number {
-  return Math.max(weekdayPctFor(salon?.weekdayDiscounts, date, categoryId), datePctFor(salon?.dateDiscounts, date, categoryId));
+  return promoDeal(promosOf(salon), date, categoryId).pct;
 }
+/** What the menu says about a service's promotion. */
+interface MenuDeal { pct: number; label: string | null; upcoming: string | null }
 function svcDiscount(s: Service | null): number { return s ? Math.min(90, Math.max(0, s.discountPercent ?? 0)) : 0; }
 function svcNetCents(s: Service | null): number { return s ? Math.round((s.priceCents * (100 - svcDiscount(s))) / 100) : 0; }
 
@@ -403,16 +389,40 @@ export default function PublicBookingPage() {
   // client-side). Mirrors the server rule exactly: ONE best % per line —
   // max(weekday/date promo, group tier) — never stacked.
   const partyN = parseInt(form.partySize, 10) || 1;
-  const groupPct = salon?.groupDiscount?.enabled && partyN >= 2
-    ? salon.groupDiscount.tiers.reduce((b, ti) => (ti.minSize <= partyN && ti.percent > b ? ti.percent : b), 0)
-    : 0;
+
+  // The day prices are quoted for: the day picked, or — before one is picked —
+  // the salon's today. Quoting nothing until step 3 hid a Grand Opening from
+  // the menu it was meant to sell; the price follows the day once it changes.
+  const promos = promosOf(salon);
+  const priceDay = selectedDate ?? todayInZone(salon?.timezone);
 
   // Prices: each service keeps its own discount + the best promo for its line.
-  const lineFor = (s: Service) => {
-    const net = svcNetCents(s);
-    const promo = Math.max(promoPctFor(salon, selectedDate, s.categoryId ?? null), groupPct);
-    return { id: s.id, name: s.name, durationMinutes: s.durationMinutes, fullCents: s.priceCents, priceCents: Math.round((net * (100 - promo)) / 100), imageUrl: s.imageUrl ?? null };
+  const lineAt = (s: Service, size: number) => {
+    const promo = lineDeal(promos, priceDay, s.categoryId ?? null, size).pct;
+    return { id: s.id, name: s.name, durationMinutes: s.durationMinutes, fullCents: s.priceCents, priceCents: afterPct(svcNetCents(s), promo), imageUrl: s.imageUrl ?? null };
   };
+  const lineFor = (s: Service) => lineAt(s, partyN);
+
+  // The menu's word on each service: the deal on the quoted day, or — while no
+  // day is picked — the best one coming up ("−20% from Oct 10", "−10% on Tue").
+  const menuDeal = (s: Service): MenuDeal => {
+    const deal = lineDeal(promos, priceDay, s.categoryId ?? null, partyN);
+    if (deal.pct > 0) {
+      return { pct: deal.pct, label: deal.label ?? (deal.source === 'group' ? bt('group deal') : selectedDate ? null : bt('today')), upcoming: null };
+    }
+    if (selectedDate) return { pct: 0, label: null, upcoming: null };
+    const n = nextDeal(promos, priceDay, Math.min(Math.max(rules.maxAdvanceDays || 30, 1), 60), s.categoryId ?? null);
+    if (!n) return { pct: 0, label: null, upcoming: null };
+    const when = n.source === 'weekday' && n.date.getTime() - priceDay.getTime() < 7 * 86400000
+      ? btf('on {day}', { day: bt(DOW_SHORT[n.date.getDay()]) })
+      : btf('from {date}', { date: n.date.toLocaleDateString(bookLocale(), { month: 'short', day: 'numeric' }) });
+    return { pct: 0, label: null, upcoming: `${n.label ? `${n.label} · ` : ''}−${n.pct}% ${when}` };
+  };
+  // The calendar marks a day with the deal THIS cart would get on it.
+  const cartServices = pickedServiceIds.map((id) => services.find((sv) => sv.id === id)).filter((sv): sv is Service => !!sv);
+  const dealOn = (d: Date) => cartServices.length
+    ? Math.max(0, ...cartServices.map((sv) => lineDeal(promos, d, sv.categoryId ?? null, partyN).pct))
+    : anyDealPct(promos, d);
   const cartLines = pickedServiceIds
     .map((id) => services.find((s) => s.id === id))
     .filter((s): s is Service => !!s)
@@ -838,7 +848,10 @@ export default function PublicBookingPage() {
   // applies can only make the real bill smaller, never bigger).
   const cartCents = visitCart.reduce((s, v) => s + v.totalCents, 0);
   const guestCents = extraGuests.reduce(
-    (s, g) => s + g.serviceIds.reduce((x, sid) => x + (services.find((sv) => sv.id === sid)?.priceCents ?? 0), 0),
+    (s, g) => s + g.serviceIds.reduce((x, sid) => {
+      const sv = services.find((v) => v.id === sid);
+      return x + (sv ? lineAt(sv, 1).priceCents : 0);
+    }, 0),
     0,
   );
   const grand =
@@ -854,7 +867,7 @@ export default function PublicBookingPage() {
           const ls: Line[] = g.serviceIds
             .map((id) => services.find((sv) => sv.id === id))
             .filter((sv): sv is Service => !!sv)
-            .map((sv) => ({ id: sv.id, name: sv.name, durationMinutes: sv.durationMinutes, priceCents: sv.priceCents, fullCents: sv.priceCents, imageUrl: sv.imageUrl ?? null }));
+            .map((sv) => lineAt(sv, 1));
           return { name: g.name.trim() || btf('Guest {n}', { n: k + 2 }), lines: ls, cents: ls.reduce((x, l) => x + l.priceCents, 0), minutes: ls.reduce((x, l) => x + l.durationMinutes, 0) };
         }),
       ]
@@ -1021,7 +1034,7 @@ export default function PublicBookingPage() {
 
               {step === 1 && (
                 <>
-                  <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} />
+                  <DealsBanner wd={salon?.weekdayDiscounts} dd={salon?.dateDiscounts} categories={categories} today={dayKey(todayInZone(salon?.timezone))} />
                   {offerCode && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#ecfdf5', border: '1px solid var(--c6ee7b7)', borderRadius: 12, padding: '11px 14px', marginBottom: 12 }}>
                       <span style={{ fontSize: 18 }}>🎁</span>
@@ -1030,7 +1043,7 @@ export default function PublicBookingPage() {
                       </span>
                     </div>
                   )}
-                  <ProgramBanner fv={salon?.firstVisit} gr={salon?.groupDiscount} />
+                  <ProgramBanner fv={salon?.firstVisit} gr={salon?.groupDiscount} today={dayKey(todayInZone(salon?.timezone))} />
                   {/* A day picker used to sit here. It was removed on purpose: date and time
                       belong together (nobody thinks "the 15th" — they think "tomorrow at 2"),
                       and step 3 already asks for both. Two pickers for one answer made people
@@ -1089,7 +1102,7 @@ export default function PublicBookingPage() {
                         : g));
                       setSlot(null);
                     }}
-                    fmt={fmt} accent={accent} cardFee={salon?.cardFee}
+                    fmt={fmt} accent={accent} cardFee={salon?.cardFee} dealFor={menuDeal}
                     subscribe={subscribe} pinning={pinning} stickyTop={fullscreen ? 58 : 64}
                   />
                   {activeGuest === 0 && serviceAddons.length > 0 && (
@@ -1126,7 +1139,7 @@ export default function PublicBookingPage() {
 
               {step === 3 && (
                 <TimePicker
-                  rules={rules} salon={salon} selectedDate={selectedDate} slot={slot} avail={avail}
+                  rules={rules} salon={salon} selectedDate={selectedDate} slot={slot} avail={avail} dealOn={dealOn}
                   staffId={staffId} durationMinutes={totalDuration} accent={accent}
                   cartBusy={visitCart
                     .filter((v) => staffId && v.staffId === staffId)
@@ -1660,8 +1673,10 @@ function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules
 // Step 1 · Services: sticky category tabs + one section per category.
 // Scrolling moves the tabs (scroll-spy); tapping a tab scrolls to the section.
 // ---------------------------------------------------------------------------
-function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accent, cardFee, subscribe, pinning, stickyTop }: {
+function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accent, cardFee, dealFor, subscribe, pinning, stickyTop }: {
   services: Service[]; categories: Category[]; selectedIds: string[];
+  /** The promotion this service gets (see menuDeal) — shown on the menu itself. */
+  dealFor?: (s: Service) => MenuDeal;
   onToggle: (id: string) => void; fmt: (c: number) => string; accent: string;
   /** Dual pricing (US nail-salon "cash discount" model): when the salon passes
    *  card fees on, the menu shows BOTH prices up-front so customers can choose. */
@@ -1822,6 +1837,9 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
             {g.items.map((s) => {
               const on = selectedIds.includes(s.id);
               const disc = svcDiscount(s);
+              const deal = dealFor ? dealFor(s) : null;
+              const promo = deal?.pct ?? 0;
+              const price = afterPct(svcNetCents(s), promo);
               return (
                 // A div rather than a button, because "Show more" lives inside it
                 // and HTML does not allow a button inside a button — Firefox
@@ -1840,6 +1858,7 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                       {s.name}
                       {s.isFeatured && <span style={{ marginLeft: 8, background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.3 }}>{bt('POPULAR')}</span>}
                       {disc > 0 && <span style={{ marginLeft: 8, background: '#fee2e2', color: '#b91c1c', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 700 }}>-{disc}%</span>}
+                      {promo > 0 && <span style={{ marginLeft: 8, background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>🎉 −{promo}%{deal?.label ? ` · ${deal.label}` : ''}</span>}
                     </span>
                     {/* The salon's own words about the service. Two clamped
                         lines: enough to say what's included ("massage, hot
@@ -1847,16 +1866,19 @@ function ServicePicker({ services, categories, selectedIds, onToggle, fmt, accen
                     {s.description?.trim() ? <ServiceDescription text={s.description.trim()} /> : null}
                     <span style={rowMeta}>
                       {s.durationMinutes > 0 && <>⏳ {s.durationMinutes} min <span style={{ color: 'var(--ccbd5e1)' }}>|</span>{' '}</>}
-                      {disc > 0 && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', marginRight: 6 }}>{fmt(s.priceCents)}</span>}
+                      {(disc > 0 || promo > 0) && <span style={{ textDecoration: 'line-through', color: '#b6bfcd', marginRight: 6 }}>{fmt(s.priceCents)}</span>}
                       {dualPct > 0 ? (
                         <>
-                          <b style={{ color: accent }}>{s.priceFrom ? 'from ' : ''}💵 {fmt(svcNetCents(s))}</b>
-                          <span style={{ color: '#8fa0bb', fontWeight: 600 }}> · 💳 {fmt(toCard(svcNetCents(s)))}</span>
+                          <b style={{ color: promo > 0 ? '#15803d' : accent }}>{s.priceFrom ? 'from ' : ''}💵 {fmt(price)}</b>
+                          <span style={{ color: '#8fa0bb', fontWeight: 600 }}> · 💳 {fmt(toCard(price))}</span>
                         </>
                       ) : (
-                        <b style={{ color: accent }}>{s.priceFrom ? 'from ' : ''}{fmt(svcNetCents(s))}</b>
+                        <b style={{ color: promo > 0 ? '#15803d' : accent }}>{s.priceFrom ? 'from ' : ''}{fmt(price)}</b>
                       )}
                     </span>
+                    {deal?.upcoming && (
+                      <span style={{ display: 'block', marginTop: 4, fontSize: 12, fontWeight: 700, color: '#15803d' }}>🏷 {deal.upcoming}</span>
+                    )}
                   </span>
                   <PlusCheck on={on} accent={accent} />
                 </div>
@@ -1959,8 +1981,10 @@ function TechPicker({ staff, staffId, onPick, accent, serviceIds, services }: {
 // Times that are taken stay visible but struck through, so the page never
 // looks empty and the visitor can see how busy the day is.
 // ---------------------------------------------------------------------------
-function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, durationMinutes, onPickDate, onPickSlot, waitlist, accent, cartBusy = [], groupNeeds = [] }: {
+function TimePicker({ rules, salon, selectedDate, slot, avail, dealOn, staffId, durationMinutes, onPickDate, onPickSlot, waitlist, accent, cartBusy = [], groupNeeds = [] }: {
   rules: BookingRules; salon: Salon | null; selectedDate: Date | null; slot: Slot | null; avail: Availability | null;
+  /** The % this cart gets on a day — marks the calendar and the picked day. */
+  dealOn?: (d: Date) => number;
   staffId: string; durationMinutes: number; onPickDate: (d: Date) => void; onPickSlot: (s: Slot) => void;
   waitlist?: React.ReactNode; accent: string;
   /** Times already reserved by earlier visits in this session's cart. */
@@ -2102,7 +2126,8 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
   }, [slots]);
 
   const anyFree = slots.some(isFree);
-  const promo = promoPctFor(salon, selectedDate, null);
+  const dealPct = (d: Date) => (dealOn ? dealOn(d) : promoPctFor(salon, d, undefined));
+  const promo = selectedDate ? dealPct(selectedDate) : 0;
 
   return (
     <div>
@@ -2132,7 +2157,7 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, staffId, duration
           {days.map((d) => {
             const closed = isClosedDay(d, rules) || d > maxDate;
             const on = !!selectedDate && sameDay(d, selectedDate);
-            const deal = promoPctFor(salon, d, null);
+            const deal = dealPct(d);
             return (
               <button key={d.toISOString()} type="button" disabled={closed} onClick={() => onPickDate(d)}
                 style={{ display: 'grid', justifyItems: 'center', gap: 2, padding: '8px 2px', borderRadius: 12, border: 'none', cursor: closed ? 'not-allowed' : 'pointer',
@@ -2649,20 +2674,34 @@ function WaitlistCta({ base, preferredDate, serviceId, fmtAccent }: { base: stri
 
 // Always-on program promos (first visit / bring friends). Display only — the
 // actual % is applied server-side at booking time (can't be spoofed).
-function ProgramBanner({ fv, gr }: {
-  fv?: { enabled: boolean; percent: number; message: string; rules?: { visit: number; percent: number }[] };
-  gr?: { enabled: boolean; message: string; tiers: { minSize: number; percent: number }[] };
+/** " · until Oct 25" / " · from Nov 1" / " · Nov 1–Nov 30" for a program with run dates. */
+function windowSpan(w: PromoWindow | undefined, today: string): string {
+  if (!w) return '';
+  const f = (ymd: string) => { try { return new Date(ymd + 'T00:00:00').toLocaleDateString(bookLocale(), { month: 'short', day: 'numeric' }); } catch { return ymd; } };
+  const upcoming = !!w.startDate && w.startDate > today;
+  if (upcoming && w.endDate) return ` · ${f(w.startDate!)}–${f(w.endDate)}`;
+  if (upcoming) return ` · ${btf('from {date}', { date: f(w.startDate!) })}`;
+  if (w.endDate) return ` · ${btf('until {date}', { date: f(w.endDate) })}`;
+  return '';
+}
+
+function ProgramBanner({ fv, gr, today }: {
+  fv?: { enabled: boolean; percent: number; message: string; rules?: { visit: number; percent: number }[] } & PromoWindow;
+  gr?: { enabled: boolean; message: string; tiers: { minSize: number; percent: number }[] } & PromoWindow;
+  /** Salon-local YYYY-MM-DD: a program past its last day is not advertised. */
+  today: string;
 }) {
   const lines: string[] = [];
+  const span = (w?: PromoWindow) => windowSpan(w, today);
   const ord = (n: number) => (n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`);
-  const fvRules = fv?.enabled ? (fv.rules?.length ? fv.rules : (fv.percent > 0 ? [{ visit: 1, percent: fv.percent }] : [])) : [];
+  const fvRules = fv?.enabled && !windowEnded(fv, today) ? (fv.rules?.length ? fv.rules : (fv.percent > 0 ? [{ visit: 1, percent: fv.percent }] : [])) : [];
   if (fvRules.length) {
     const tiers = fvRules.map((r) => btf('{n} visit: {percent}% off', { n: ord(r.visit), percent: r.percent })).join(' · ');
-    lines.push(`🎁 ${fv!.message || bt('Visit rewards')} — ${tiers} ${bt('(applied automatically)')}`);
+    lines.push(`🎁 ${fv!.message || bt('Visit rewards')} — ${tiers} ${bt('(applied automatically)')}${span(fv)}`);
   }
-  if (gr?.enabled && gr.tiers.length > 0) {
+  if (gr?.enabled && gr.tiers.length > 0 && !windowEnded(gr, today)) {
     const tiers = gr.tiers.map((t) => btf('{size}+ people: {percent}% off', { size: t.minSize, percent: t.percent })).join(' · ');
-    lines.push(`👯 ${gr.message || bt('Bring your friends and save!')} — ${tiers}`);
+    lines.push(`👯 ${gr.message || bt('Bring your friends and save!')} — ${tiers}${span(gr)}`);
   }
   if (lines.length === 0) return null;
   return (
@@ -2674,13 +2713,16 @@ function ProgramBanner({ fv, gr }: {
   );
 }
 
-function DealsBanner({ wd, dd, categories }: { wd?: WeekdayDiscounts; dd?: DateDiscounts; categories: { id: string; name: string }[] }) {
-  const wdOn = !!(wd?.enabled && wd.rules?.length);
-  const ddOn = !!(dd?.enabled && dd.rules?.length);
+function DealsBanner({ wd, dd, categories, today }: { wd?: WeekdayDiscounts; dd?: DateDiscounts; categories: { id: string; name: string }[]; today: string }) {
+  // Only what can still be booked: a program past its last day, or a sale
+  // whose dates are behind us, is not a deal any more.
+  const wdOn = !!(wd?.enabled && wd.rules?.length && !windowEnded(wd, today));
+  const ddLive = dd?.enabled ? (dd.rules ?? []).filter((r) => r?.startDate && (r.endDate || r.startDate) >= today) : [];
+  const ddOn = ddLive.length > 0;
   if (!wdOn && !ddOn) return null;
   const catName = (id: string | null) => (id ? (categories.find((c) => c.id === id)?.name ?? bt('select services')) : bt('everything'));
   const wdSorted = wdOn ? [...wd!.rules].sort((a, b) => a.day - b.day || b.percent - a.percent) : [];
-  const ddSorted = ddOn ? [...dd!.rules].filter((r) => r.startDate).sort((a, b) => a.startDate.localeCompare(b.startDate) || b.percent - a.percent) : [];
+  const ddSorted = ddOn ? [...ddLive].sort((a, b) => a.startDate.localeCompare(b.startDate) || b.percent - a.percent) : [];
   const fmtOne = (s: string) => { try { return new Date(s + 'T00:00:00').toLocaleDateString(bookLocale(), { month: 'short', day: 'numeric' }); } catch { return s; } };
   const fmtRange = (r: DateRule) => (r.endDate && r.endDate !== r.startDate ? `${fmtOne(r.startDate)}–${fmtOne(r.endDate)}` : fmtOne(r.startDate));
   const chip: React.CSSProperties = { background: '#fff', border: '1px solid var(--c6ee7b7)', borderRadius: 999, padding: '4px 12px', fontSize: 12.5, color: '#065f46', fontWeight: 600 };
@@ -2688,7 +2730,7 @@ function DealsBanner({ wd, dd, categories }: { wd?: WeekdayDiscounts; dd?: DateD
     <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 12, background: 'linear-gradient(90deg,#ecfdf5,var(--cd1fae5))', border: '1px solid var(--c6ee7b7)' }}>
       <div style={{ fontWeight: 700, color: '#065f46', marginBottom: 8, fontSize: 14.5 }}>💸 {(wdOn && wd!.message) || bt('Save on select days!')}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {wdSorted.map((r, i) => <span key={`w${i}`} style={chip}>{btf('{day}: −{percent}% off {what}', { day: bt(WEEKDAY_NAMES[r.day]), percent: r.percent, what: catName(r.categoryId) })}</span>)}
+        {wdSorted.map((r, i) => <span key={`w${i}`} style={chip}>{btf('{day}: −{percent}% off {what}', { day: bt(WEEKDAY_NAMES[r.day]), percent: r.percent, what: catName(r.categoryId) })}{windowSpan(wd, today)}</span>)}
         {ddSorted.map((r, i) => <span key={`d${i}`} style={chip}>{r.label ? `${r.label} · ` : ''}{btf('{when}: −{percent}% off {what}', { when: fmtRange(r), percent: r.percent, what: catName(r.categoryId) })}</span>)}
       </div>
     </div>

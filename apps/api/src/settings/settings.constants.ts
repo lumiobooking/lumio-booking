@@ -5,6 +5,7 @@ export const COMPANY_EXTRA_KEY = 'company_extra';
 export const PAYMENT_GATEWAYS_KEY = 'payment_gateways';
 export const NOTIFICATION_SETTINGS_KEY = 'notifications';
 export const POS_SETTINGS_KEY = 'pos_settings';
+export const RECEIPT_DESIGN_KEY = 'receipt_design';
 export const LOYALTY_SETTINGS_KEY = 'loyalty_settings';
 
 // Loyalty program: earn points per $ spent, redeem points for a discount.
@@ -1017,3 +1018,93 @@ export const VN_TEMPLATE_TEXTS: Record<string, Partial<Pick<NotifTemplate, 'subj
   },
 };
 
+
+
+/**
+ * How the salon's printed bill looks — the owner's own choices.
+ *
+ * What it can NOT switch off: the salon's name, address and phone number at
+ * the top. A receipt without them is not a receipt (a customer disputing a
+ * charge, a card company, an accountant all need to know who issued it), so
+ * those three are always printed. The owner may write them differently for
+ * the paper (a shorter name, the address on two lines) — empty means "take it
+ * from the salon profile".
+ *
+ * The footer text is NOT stored here: it is `PosSettings.receiptFooter`, which
+ * the products screen already edits, so there is one footer, not two.
+ */
+export interface ReceiptDesign {
+  /** '' = "RECEIPT" / "HOÁ ĐƠN" in the receipt's language. */
+  title: string;
+  /** Language of the printed labels (Subtotal / Tạm tính …). */
+  language: 'en' | 'vi';
+  /** Thermal paper width: 58mm (32 characters) or 80mm (48 characters). */
+  paper: '58' | '80';
+  fontSize: 'normal' | 'large';
+  showLogo: boolean;
+  // Mandatory header, optionally rewritten for paper ('' = salon profile).
+  nameOverride: string;
+  addressOverride: string;
+  phoneOverride: string;
+  /** Extra lines under the header: website, Instagram, tax ID, Wi-Fi… */
+  headerNote: string;
+  showWebsite: boolean;
+  showOrderNumber: boolean;
+  showDateTime: boolean;
+  showCustomer: boolean;
+  showTechnician: boolean;
+  showLineTips: boolean;
+  showSavings: boolean;
+  showPayments: boolean;
+  /** QR to the salon's booking page — "book your next visit". */
+  showBookingQr: boolean;
+}
+
+export const DEFAULT_RECEIPT_DESIGN: ReceiptDesign = {
+  title: '',
+  language: 'en',
+  paper: '80',
+  fontSize: 'normal',
+  showLogo: true,
+  nameOverride: '',
+  addressOverride: '',
+  phoneOverride: '',
+  headerNote: '',
+  showWebsite: true,
+  showOrderNumber: true,
+  showDateTime: true,
+  showCustomer: true,
+  showTechnician: true,
+  showLineTips: true,
+  showSavings: true,
+  showPayments: true,
+  showBookingQr: false,
+};
+
+const RD_BOOL_KEYS = ['showLogo', 'showWebsite', 'showOrderNumber', 'showDateTime', 'showCustomer', 'showTechnician', 'showLineTips', 'showSavings', 'showPayments', 'showBookingQr'] as const;
+
+/** Keep only what a receipt design may hold, trimmed to sane sizes. */
+export function cleanReceiptDesign(input: unknown, base: ReceiptDesign = DEFAULT_RECEIPT_DESIGN): ReceiptDesign {
+  const v = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const str = (k: keyof ReceiptDesign, max: number) =>
+    typeof v[k] === 'string' ? String(v[k]).replace(/\r/g, '').trim().slice(0, max) : (base[k] as string);
+  const out: ReceiptDesign = {
+    ...base,
+    title: str('title', 40),
+    language: v.language === 'vi' || v.language === 'en' ? v.language : base.language,
+    paper: v.paper === '58' || v.paper === '80' ? v.paper : base.paper,
+    fontSize: v.fontSize === 'large' || v.fontSize === 'normal' ? v.fontSize : base.fontSize,
+    nameOverride: str('nameOverride', 80),
+    addressOverride: str('addressOverride', 200),
+    phoneOverride: str('phoneOverride', 40),
+    headerNote: str('headerNote', 300),
+  };
+  for (const k of RD_BOOL_KEYS) if (typeof v[k] === 'boolean') (out as unknown as Record<string, unknown>)[k] = v[k];
+  return out;
+}
+
+/** Everything a till needs to print the salon's bill. */
+export interface ReceiptProfile {
+  shop: { name: string; address: string; phone: string; website: string; logoUrl: string; bookingSlug: string };
+  design: ReceiptDesign & { footer: string };
+}

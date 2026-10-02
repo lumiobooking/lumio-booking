@@ -23,6 +23,12 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 export class PosController {
   constructor(private readonly pos: PosService) {}
 
+  // ---- The printed bill: salon header + the owner's design (any cashier) ----
+  @Get('receipt-profile')
+  receiptProfile(@CurrentUser() user: AuthenticatedUser) {
+    return this.pos.receiptProfile(user);
+  }
+
   // ---- Products ----
   @Get('products')
   listProducts(@CurrentUser() user: AuthenticatedUser) {

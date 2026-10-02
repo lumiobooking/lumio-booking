@@ -114,6 +114,8 @@ function Inner() {
         </label>
         <button onClick={saveTax} style={ui.primaryBtn}>{t('pd.save')}</button>
         {savedTax && <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>{t('pd.saved')}</span>}
+        {/* The footer is one line of a whole bill the owner can design. */}
+        <a href="/salon/settings?tab=receipt" style={{ color: 'var(--ink-link)', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', textDecoration: 'none' }}>🧾 {lang === 'vi' ? 'Thiết kế hoá đơn in →' : 'Design the printed receipt →'}</a>
       </div>
 
       {showForm && <ProductForm token={token!} currency={currency} onDone={async () => { setShowForm(false); await load(); }} />}

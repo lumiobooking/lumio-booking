@@ -1612,6 +1612,8 @@ const SETTINGS_DICT: Record<string, { en: string; vi: string }> = {
   'se.secD.deposit': { en: 'Hold slots / no-show', vi: 'Giữ chỗ / chống vắng' },
   'se.sec.branding': { en: 'Branding', vi: 'Thương hiệu' },
   'se.secD.branding': { en: 'Colors & logo', vi: 'Màu & logo' },
+  'se.sec.receipt': { en: 'Printed receipt', vi: 'Hoá đơn in' },
+  'se.secD.receipt': { en: 'Bill layout & footer', vi: 'Mẫu bill & lời chào' },
   // Company
   'se.co.title': { en: 'Company', vi: 'Doanh nghiệp' },
   'se.co.desc': { en: 'Your salon identity and contact details.', vi: 'Thông tin nhận diện và liên hệ của tiệm.' },

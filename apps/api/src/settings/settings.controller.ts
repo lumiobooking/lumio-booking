@@ -163,6 +163,12 @@ export class SettingsController {
     return this.settings.updateDateDiscounts(user, dto);
   }
 
+  // The printed bill: header text, what to show, paper, language, footer.
+  @Patch('receipt')
+  updateReceipt(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) {
+    return this.settings.updateReceipt(user, dto as never);
+  }
+
   // POS settings: retail tax rate + receipt footer.
   @Patch('pos')
   updatePos(

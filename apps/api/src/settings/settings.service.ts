@@ -9,6 +9,11 @@ import { methodsForSalon } from '../pos/payment-methods';
 import { knownTrades } from '../content/trends/trend-feed';
 import { signingSecret } from '../common/secret.util';
 import {
+  RECEIPT_DESIGN_KEY,
+  ReceiptDesign,
+  ReceiptProfile,
+  DEFAULT_RECEIPT_DESIGN,
+  cleanReceiptDesign,
   BOOKING_RULES_KEY,
   BookingRules,
   Branding,
@@ -407,6 +412,56 @@ export class SettingsService {
     };
     await this.writeKey(tenantId, POS_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.pos_updated', resourceType: 'tenant', resourceId: tenantId });
+    return this.get(user);
+  }
+
+  // ---- Printed bill ---------------------------------------------------------
+
+  /** The salon's receipt design, with the one footer (kept in POS settings). */
+  async getReceiptDesign(tenantId: string): Promise<ReceiptDesign & { footer: string }> {
+    const [design, pos] = await Promise.all([
+      this.readKey<ReceiptDesign>(tenantId, RECEIPT_DESIGN_KEY, DEFAULT_RECEIPT_DESIGN),
+      this.getPosSettings(tenantId),
+    ]);
+    return { ...cleanReceiptDesign(design), footer: pos.receiptFooter ?? '' };
+  }
+
+  /**
+   * What the till prints at the top, plus the design. Served to the POS (any
+   * cashier), so it carries only what a receipt shows — never settings that
+   * are the owner's alone.
+   */
+  async receiptProfile(tenantId: string): Promise<ReceiptProfile> {
+    const [tenant, extra, design] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true, contactPhone: true, branding: true } }),
+      this.readKey<CompanyExtra>(tenantId, COMPANY_EXTRA_KEY, DEFAULT_COMPANY_EXTRA),
+      this.getReceiptDesign(tenantId),
+    ]);
+    if (!tenant) throw new NotFoundException('Tenant not found');
+    return {
+      shop: {
+        name: tenant.name,
+        address: extra.address ?? '',
+        phone: tenant.contactPhone ?? '',
+        website: extra.website ?? '',
+        logoUrl: this.brandingFrom(tenant.branding).logoUrl ?? '',
+        bookingSlug: tenant.slug,
+      },
+      design,
+    };
+  }
+
+  /** The owner edits the bill. The footer goes to the one footer the till already prints. */
+  async updateReceipt(user: AuthenticatedUser, dto: Partial<ReceiptDesign> & { footer?: string }) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.readKey<ReceiptDesign>(tenantId, RECEIPT_DESIGN_KEY, DEFAULT_RECEIPT_DESIGN);
+    const next = cleanReceiptDesign(dto, cleanReceiptDesign(cur));
+    await this.writeKey(tenantId, RECEIPT_DESIGN_KEY, next);
+    if (typeof dto.footer === 'string') {
+      const pos = await this.getPosSettings(tenantId);
+      await this.writeKey(tenantId, POS_SETTINGS_KEY, { ...pos, receiptFooter: dto.footer.replace(/\r/g, '').trim().slice(0, 500) });
+    }
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.receipt_updated', resourceType: 'tenant', resourceId: tenantId });
     return this.get(user);
   }
 
@@ -1032,7 +1087,7 @@ export class SettingsService {
     const [
       extra, booking, gateways, notifications, notificationTemplates, pos, loyalty, review,
       weekdayDiscounts, googleReviewLink, firstVisitDiscount, groupDiscount, dateDiscounts, reminders, deposit,
-      analytics, businessProfile, rebooking,
+      analytics, businessProfile, rebooking, receipt,
     ] = await Promise.all([
       this.readKey<CompanyExtra>(tenantId, COMPANY_EXTRA_KEY, DEFAULT_COMPANY_EXTRA),
       this.getBookingRules(tenantId),
@@ -1052,6 +1107,7 @@ export class SettingsService {
       this.getAnalyticsSettings(tenantId),
       this.getBusinessProfile(tenantId),
       this.getRebookingSettings(tenantId),
+      this.getReceiptDesign(tenantId),
     ]);
     return {
       // The salon's real market, straight from the tenant row.
@@ -1101,6 +1157,7 @@ export class SettingsService {
       analytics,
       businessProfile,
       rebooking,
+      receipt,
       gmailRedirectUri: this.gmailRedirectUri(),
     };
   }

@@ -9,6 +9,8 @@ import { isVN as marketIsVN } from '../../../lib/markets';
 import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { TimezonePicker } from '../../../components/TimezonePicker';
+import { ReceiptDesigner } from '../../../components/ReceiptDesigner';
+import type { ReceiptDesign } from '../../../lib/receipt';
 
 interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number; intervals?: { open: number; close: number }[] }
 interface Booking {
@@ -60,6 +62,8 @@ interface SettingsData {
   reminders?: { enabled: boolean; hoursBefore1: number; hoursBefore2: number; channelEmail: boolean; channelSms: boolean };
   deposit?: { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number };
   gmailRedirectUri?: string;
+  /** Settings → Hoá đơn in (footer included — it lives with the till settings). */
+  receipt?: Partial<ReceiptDesign>;
 }
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'VND', 'JPY', 'SGD'];
@@ -83,6 +87,7 @@ const SECTIONS = [
   { id: 'daysoff', label: 'Days off', icon: '📅', desc: 'Holidays & closures' },
   { id: 'rules', label: 'Booking rules', icon: '⚙️', desc: 'Slots & limits' },
   { id: 'payments', label: 'Payments', icon: '💳', desc: 'Currency & methods' },
+  { id: 'receipt', label: 'Printed receipt', icon: '🧾', desc: 'Bill layout & footer' },
   { id: 'notifications', label: 'Notifications', icon: '🔔', desc: 'Email & SMS alerts' },
   { id: 'reminders', label: 'Reminders', icon: '⏰', desc: 'Auto no-show reminders' },
   { id: 'deposit', label: 'Deposits', icon: '💰', desc: 'Hold slots / no-show' },
@@ -114,6 +119,12 @@ function Inner() {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Deep link (e.g. the till's "Tuỳ chỉnh bill"): /salon/settings?tab=receipt
+  useEffect(() => {
+    const want = new URLSearchParams(window.location.search).get('tab');
+    if (want && SECTIONS.some((s) => s.id === want)) setTab(want as SectionId);
+  }, []);
 
   async function save(path: string, body: unknown, label: string) {
     setError(null); setSavedMsg(null);
@@ -163,12 +174,24 @@ function Inner() {
         </nav>
 
         {/* Active section */}
-        <div style={{ maxWidth: 620 }}>
+        <div style={{ maxWidth: tab === 'receipt' ? 1000 : 620, minWidth: 0 }}>
           {tab === 'company' && <CompanySection data={data} onSave={save} />}
           {tab === 'hours' && <HoursSection data={data} onSave={save} />}
           {tab === 'daysoff' && <DaysOffSection data={data} onSave={save} />}
           {tab === 'rules' && <RulesSection data={data} onSave={save} />}
           {tab === 'payments' && <PaymentsSection data={data} onSave={save} />}
+          {tab === 'receipt' && (
+            <ReceiptDesigner
+              shop={{
+                name: data.company.name, address: data.company.address ?? '', phone: data.company.contactPhone ?? '',
+                website: data.company.website ?? '', logoUrl: data.branding.logoUrl ?? '', bookingSlug: data.company.slug,
+              }}
+              design={{ ...data.receipt, footer: data.receipt?.footer ?? data.pos?.receiptFooter ?? '' }}
+              currency={data.booking.currency}
+              onSave={save}
+              onOpenCompany={() => setTab('company')}
+            />
+          )}
           {tab === 'notifications' && <NotificationsSection data={data} onSave={save} />}
           {tab === 'reminders' && <><RemindersSection data={data} onSave={save} /><RebookingCard data={data} onSave={save} /></>}
           {tab === 'deposit' && <DepositSection data={data} onSave={save} />}

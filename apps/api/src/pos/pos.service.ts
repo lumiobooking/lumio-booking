@@ -51,6 +51,11 @@ export class PosService {
     return id;
   }
 
+  /** What the till prints: the salon's header and the owner's bill design. */
+  receiptProfile(user: AuthenticatedUser) {
+    return this.settings.receiptProfile(this.tenantId(user));
+  }
+
   /** The tenant's own timezone: a till report's "day" is the salon's day. */
   private async tzOf(tenantId: string): Promise<string> {
     const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);

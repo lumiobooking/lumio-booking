@@ -61,9 +61,37 @@ function ServicesInner() {
   const [showImport, setShowImport] = useState(false);
   const [filling, setFilling] = useState(false);
   const [catFilter, setCatFilter] = useState<string>('all');
+  // The page has three jobs — the menu, the promotions on it, its categories —
+  // and showing all of them stacked pushed the menu (the thing searched every
+  // day) below five panels. One tab each; the menu is the default.
+  const [tab, setTabState] = useState<PageTab>('services');
+  const [promos, setPromos] = useState<PromoSummary>({});
+  const [promoSel, setPromoSel] = useState<PromoKey | null>(null);
   // Currency is a salon-level setting (Settings -> Payments). The whole Services
   // screen formats prices with it, so changing the currency there is reflected here.
   const [money, setMoney] = useState({ code: 'USD', symbol: '$', pos: 'before', decimals: 2 });
+
+  // Deep link: /salon/services?tab=promos | categories
+  useEffect(() => {
+    const want = new URLSearchParams(window.location.search).get('tab');
+    if (want === 'promos' || want === 'categories') setTabState(want);
+  }, []);
+  const setTab = (next: PageTab) => {
+    setTabState(next);
+    try {
+      const u = new URL(window.location.href);
+      if (next === 'services') u.searchParams.delete('tab'); else u.searchParams.set('tab', next);
+      window.history.replaceState(window.history.state, '', u.toString());
+    } catch { /* the tab still switches */ }
+  };
+  const promosFrom = (st: SettingsPromos | null | undefined): PromoSummary => ({
+    weekday: st?.weekdayDiscounts, firstVisit: st?.firstVisitDiscount, group: st?.groupDiscount, date: st?.dateDiscounts,
+  });
+  const refreshPromos = useCallback(async () => {
+    if (!token) return;
+    const st = await apiFetch<SettingsPromos>('/settings', { token }).catch(() => null);
+    if (st) setPromos(promosFrom(st));
+  }, [token]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -74,8 +102,9 @@ function ServicesInner() {
         apiFetch<Service[]>('/services', { token }),
         apiFetch<Category[]>('/services/categories', { token }),
         apiFetch<Staff[]>('/staff', { token }).catch(() => [] as Staff[]),
-        apiFetch<{ booking?: { currency?: string; currencySymbol?: string; symbolPosition?: string; priceDecimals?: number } }>('/settings', { token }).catch(() => ({})),
+        apiFetch<{ booking?: { currency?: string; currencySymbol?: string; symbolPosition?: string; priceDecimals?: number } } & SettingsPromos>('/settings', { token }).catch(() => ({})),
       ]);
+      setPromos(promosFrom(settings as SettingsPromos));
       setStaff(staffList);
       const b = (settings as { booking?: { currency?: string; currencySymbol?: string; symbolPosition?: string; priceDecimals?: number } }).booking ?? {};
       const code = b.currency ?? 'USD';
@@ -179,38 +208,47 @@ function ServicesInner() {
             style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', border: '1px solid #6366f1', color: 'var(--ca5b4fc)', opacity: filling ? 0.6 : 1 }}>
             {filling ? (lang === 'vi' ? 'Đang thêm ảnh…' : 'Adding…') : (lang === 'vi' ? '🖼 Ảnh mẫu' : '🖼 Sample images')}
           </button>
-          <button onClick={() => { setShowImport((s) => !s); setShowForm(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>
+          <button onClick={() => { setShowImport((s) => !s); setShowForm(false); setTab('services'); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>
             {showImport ? t('sv.close') : t('sv.importMenu')}
           </button>
-          <button onClick={() => { setShowForm((s) => !s); setShowImport(false); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined }}>
+          <button onClick={() => { setShowForm((s) => !s); setShowImport(false); setTab('services'); }} style={{ ...ui.primaryBtn, flex: isMobile ? 1 : undefined }}>
             {showForm ? t('sv.close') : t('sv.newService')}
           </button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+      <PageTabs tab={tab} onTab={setTab} vi={lang === 'vi'} isMobile={isMobile}
+        counts={{ services: services.length, promos: activePromoCount(promos), categories: categories.length }} />
+
+      {error && <div style={ui.banner}>{error}</div>}
+
+      {tab === 'promos' && (
+        <PromoBoard token={token!} categories={categories} promos={promos} sel={promoSel} onSel={setPromoSel} onSaved={refreshPromos} vi={lang === 'vi'} />
+      )}
+
+      {tab === 'categories' && (
+        <CategoryManager token={token!} categories={categories} onChanged={load} defaultOpen />
+      )}
+
+      {tab === 'services' && (<>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
         <SearchBox value={q} onChange={setQ} placeholder={t('sv.searchPh')} />
         <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{visible.length} {t('sv.serviceWord')}</span>
       </div>
 
-      {error && <div style={ui.banner}>{error}</div>}
-
       {showImport && <ServiceImport token={token!} currency={money.code} vi={lang === 'vi'} existingNames={services.map((x) => x.name)} onDone={async () => { setShowImport(false); await load(); }} />}
 
-      <CategoryManager token={token!} categories={categories} onChanged={load} />
-
-      <WeekdayDiscountCard token={token!} categories={categories} />
-      <FirstVisitDiscountCard token={token!} />
-      <GroupDiscountCard token={token!} />
-      <DateDiscountCard token={token!} categories={categories} />
-
       {categories.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 16px' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 16px' }}>
           <FilterChip active={catFilter === 'all'} onClick={() => setCatFilter('all')}>{t('sv.all')}</FilterChip>
           {categories.map((c) => (
             <FilterChip key={c.id} active={catFilter === c.id} onClick={() => setCatFilter(c.id)}>{c.name}</FilterChip>
           ))}
           <FilterChip active={catFilter === 'none'} onClick={() => setCatFilter('none')}>{t('sv.uncategorised')}</FilterChip>
+          <button type="button" onClick={() => setTab('categories')}
+            style={{ background: 'none', border: 'none', color: 'var(--ink-link)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '6px 4px', whiteSpace: 'nowrap' }}>
+            ✎ {lang === 'vi' ? 'Sửa danh mục' : 'Edit categories'}
+          </button>
         </div>
       )}
 
@@ -277,8 +315,172 @@ function ServicesInner() {
           </div>
         </div>
       )}
+      </>)}
     </section>
   );
+}
+
+// ---- Page tabs: Menu · Promotions · Categories --------------------------------
+
+type PageTab = 'services' | 'promos' | 'categories';
+type PromoKey = 'weekday' | 'firstVisit' | 'group' | 'date';
+interface SettingsPromos {
+  weekdayDiscounts?: { enabled: boolean; message?: string; rules: DiscRule[] };
+  firstVisitDiscount?: { enabled: boolean; percent?: number; message?: string; rules?: VisitTier[] };
+  groupDiscount?: { enabled: boolean; message?: string; tiers: GroupTier[] };
+  dateDiscounts?: { enabled: boolean; rules: DateRule[] };
+}
+interface PromoSummary {
+  weekday?: SettingsPromos['weekdayDiscounts'];
+  firstVisit?: SettingsPromos['firstVisitDiscount'];
+  group?: SettingsPromos['groupDiscount'];
+  date?: SettingsPromos['dateDiscounts'];
+}
+
+const todayYmd = () => new Date().toLocaleDateString('en-CA');
+
+/** Date rules that still mean something: today or later. */
+function liveDateRules(p: PromoSummary): DateRule[] {
+  const today = todayYmd();
+  return (p.date?.rules ?? []).filter((r) => r?.startDate && (r.endDate || r.startDate) >= today);
+}
+
+function promoOn(p: PromoSummary, k: PromoKey): boolean {
+  if (k === 'weekday') return !!(p.weekday?.enabled && p.weekday.rules?.length);
+  if (k === 'firstVisit') return !!(p.firstVisit?.enabled && ((p.firstVisit.rules?.length ?? 0) > 0 || (p.firstVisit.percent ?? 0) > 0));
+  if (k === 'group') return !!(p.group?.enabled && p.group.tiers?.length);
+  return !!(p.date?.enabled && liveDateRules(p).length);
+}
+
+function activePromoCount(p: PromoSummary): number {
+  return (['weekday', 'firstVisit', 'group', 'date'] as PromoKey[]).filter((k) => promoOn(p, k)).length;
+}
+
+function PageTabs({ tab, onTab, counts, vi, isMobile }: {
+  tab: PageTab; onTab: (t: PageTab) => void; vi: boolean; isMobile: boolean;
+  counts: { services: number; promos: number; categories: number };
+}) {
+  const items: { id: PageTab; label: string; count: number; hot?: boolean }[] = [
+    { id: 'services', label: vi ? 'Dịch vụ' : 'Services', count: counts.services },
+    { id: 'promos', label: vi ? 'Khuyến mãi' : 'Promotions', count: counts.promos, hot: counts.promos > 0 },
+    { id: 'categories', label: vi ? 'Danh mục' : 'Categories', count: counts.categories },
+  ];
+  return (
+    <div role="tablist" style={{ display: 'flex', gap: isMobile ? 0 : 4, borderBottom: '1px solid var(--line)', marginBottom: 16, overflowX: 'auto', scrollbarWidth: 'none' }}>
+      {items.map((it) => {
+        const on = tab === it.id;
+        return (
+          <button key={it.id} role="tab" aria-selected={on} type="button" onClick={() => onTab(it.id)}
+            style={{ flex: isMobile ? '1 0 auto' : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 5 : 7, padding: isMobile ? '11px 4px' : '10px 16px',
+              background: 'transparent', border: 'none', borderBottom: `2px solid ${on ? '#6366f1' : 'transparent'}`, marginBottom: -1,
+              color: on ? 'var(--ce2e8f0)' : 'var(--c94a3b8)', fontSize: isMobile ? 13 : 14, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            {it.label}
+            <span style={{ minWidth: 18, padding: isMobile ? '0 6px' : '1px 7px', borderRadius: 999, fontSize: isMobile ? 11 : 11.5, fontWeight: 700, lineHeight: '18px',
+              background: it.hot ? '#16a34a' : on ? '#6366f1' : 'var(--c334155)', color: it.hot || on ? '#ffffff' : 'var(--ccbd5e1)' }}>
+              {it.count}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Every promotion at a glance — is it on, and what does the customer get —
+ * with the one being edited open underneath. The customer always gets the
+ * single best % of these; they never stack.
+ */
+function PromoBoard({ token, categories, promos, sel, onSel, onSaved, vi }: {
+  token: string; categories: Category[]; promos: PromoSummary; sel: PromoKey | null;
+  onSel: (k: PromoKey) => void; onSaved: () => void; vi: boolean;
+}) {
+  const isMobile = useIsMobile();
+  const { lang } = useLang();
+  const t = (k: string) => tr(k, lang);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const keys: PromoKey[] = ['date', 'weekday', 'firstVisit', 'group'];
+  const current: PromoKey = sel ?? keys.find((k) => promoOn(promos, k)) ?? 'date';
+  const dow = vi ? DOW_VI : DOW;
+  const catLabel = (id: string | null) => (id ? categories.find((c) => c.id === id)?.name ?? '' : '');
+  const fmtD = (ymd: string) => {
+    try { return new Date(ymd + 'T00:00:00').toLocaleDateString(vi ? 'vi-VN' : 'en-US', { day: 'numeric', month: vi ? 'numeric' : 'short' }); } catch { return ymd; }
+  };
+  const today = todayYmd();
+  const runningToday = (promos.date?.enabled ? liveDateRules(promos) : []).filter((r) => r.startDate <= today);
+
+  const lines = (k: PromoKey): string[] => {
+    if (k === 'weekday') {
+      return [...(promos.weekday?.rules ?? [])].sort((a, b) => a.day - b.day)
+        .map((r) => `${dow[r.day]} −${r.percent}%${r.categoryId ? ` · ${catLabel(r.categoryId)}` : ''}`);
+    }
+    if (k === 'firstVisit') {
+      const f = promos.firstVisit;
+      const rules = f?.rules?.length ? f.rules : f?.percent ? [{ visit: 1, percent: f.percent }] : [];
+      return rules.map((r) => (vi ? `Lần ${r.visit}: −${r.percent}%` : `Visit #${r.visit}: −${r.percent}%`));
+    }
+    if (k === 'group') {
+      return [...(promos.group?.tiers ?? [])].sort((a, b) => a.minSize - b.minSize)
+        .map((r) => (vi ? `${r.minSize}+ người: −${r.percent}%` : `${r.minSize}+ people: −${r.percent}%`));
+    }
+    return liveDateRules(promos).sort((a, b) => a.startDate.localeCompare(b.startDate)).map((r) => {
+      const range = r.endDate && r.endDate !== r.startDate ? `${fmtD(r.startDate)}–${fmtD(r.endDate)}` : fmtD(r.startDate);
+      return `${r.label ? `${r.label} · ` : ''}${range} −${r.percent}%${r.categoryId ? ` · ${catLabel(r.categoryId)}` : ''}`;
+    });
+  };
+
+  const title: Record<PromoKey, string> = { weekday: t('sv.weekdayTitle'), firstVisit: t('sv.fvTitle'), group: t('sv.grTitle'), date: t('sv.dateTitle') };
+  const pick = (k: PromoKey) => {
+    onSel(k);
+    if (isMobile) setTimeout(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+
+  return (
+    <div>
+      {runningToday.length > 0 && (
+        <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: '#dcfce7', color: '#166534', fontSize: 13.5, fontWeight: 600 }}>
+          🎉 {vi ? 'Đang chạy hôm nay:' : 'Running today:'} {runningToday.map((r) => `${r.label || (vi ? 'Giảm giá' : 'Sale')} −${r.percent}%`).join(' · ')}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
+        {keys.map((k) => {
+          const on = promoOn(promos, k);
+          const ls = on ? lines(k) : [];
+          const active = current === k;
+          return (
+            <button key={k} type="button" onClick={() => pick(k)} aria-pressed={active}
+              style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderRadius: 12, cursor: 'pointer', minWidth: 0,
+                background: active ? 'var(--c312e81)' : 'var(--c1e293b)', border: `1px solid ${active ? '#6366f1' : 'var(--c334155)'}`, color: 'var(--ce2e8f0)' }}>
+              <span style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.3 }}>{title[k]}</span>
+              <span style={{ alignSelf: 'flex-start', fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '1px 8px', border: '1px solid currentColor',
+                color: on ? 'var(--ink-good)' : 'var(--c94a3b8)' }}>
+                {on ? (vi ? '● Đang bật' : '● On') : (vi ? 'Đang tắt' : 'Off')}
+              </span>
+              <span style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                {ls.length ? ls.join(' · ') : hintFor(k, vi)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p style={{ margin: '10px 0 14px', fontSize: 12, color: 'var(--c64748b)' }}>
+        {vi ? 'Khách luôn nhận mức % cao nhất trong các chương trình đang áp dụng — không cộng dồn.' : 'Customers always get the single best % that applies — promotions never stack.'}
+      </p>
+      <div ref={editorRef} style={{ scrollMarginTop: 70 }}>
+        {current === 'weekday' && <WeekdayDiscountCard key="weekday" token={token} categories={categories} defaultOpen onSaved={onSaved} />}
+        {current === 'firstVisit' && <FirstVisitDiscountCard key="firstVisit" token={token} defaultOpen onSaved={onSaved} />}
+        {current === 'group' && <GroupDiscountCard key="group" token={token} defaultOpen onSaved={onSaved} />}
+        {current === 'date' && <DateDiscountCard key="date" token={token} categories={categories} defaultOpen onSaved={onSaved} />}
+      </div>
+    </div>
+  );
+}
+
+function hintFor(k: PromoKey, vi: boolean): string {
+  if (k === 'date') return vi ? 'Khai trương, ngày lễ — giảm vào đúng những ngày bạn chọn' : 'Grand opening, holidays — a sale on the dates you pick';
+  if (k === 'weekday') return vi ? 'Giảm vào ngày vắng trong tuần, lặp lại hàng tuần' : 'A weekly % off on quiet days';
+  if (k === 'firstVisit') return vi ? 'Ưu đãi khách mới / tri ân khách quen theo lần đến' : 'Reward new and returning customers by visit';
+  return vi ? 'Đi nhóm đông được giảm nhiều hơn' : 'Bigger parties save more';
 }
 
 /**
@@ -912,10 +1114,10 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
-function CategoryManager({ token, categories, onChanged }: { token: string; categories: Category[]; onChanged: () => void }) {
+function CategoryManager({ token, categories, onChanged, defaultOpen }: { token: string; categories: Category[]; onChanged: () => void; defaultOpen?: boolean }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!defaultOpen);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -987,11 +1189,11 @@ const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DOW_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 interface DiscRule { day: number; categoryId: string | null; percent: number }
 
-function WeekdayDiscountCard({ token, categories }: { token: string; categories: Category[] }) {
+function WeekdayDiscountCard({ token, categories, defaultOpen, onSaved }: { token: string; categories: Category[]; defaultOpen?: boolean; onSaved?: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const dow = lang === 'vi' ? DOW_VI : DOW;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!defaultOpen);
   const [loaded, setLoaded] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [message, setMessage] = useState('');
@@ -1013,7 +1215,7 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
   function upd(i: number, patch: Partial<DiscRule>) { setRules(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
   async function save() {
     setBusy(true); setMsg(null);
-    try { await apiFetch('/settings/weekday-discounts', { method: 'PATCH', token, body: { enabled, message, rules } }); setMsg(t('sv.saved')); }
+    try { await apiFetch('/settings/weekday-discounts', { method: 'PATCH', token, body: { enabled, message, rules } }); setMsg(t('sv.saved')); onSaved?.(); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }
@@ -1065,10 +1267,10 @@ function WeekdayDiscountCard({ token, categories }: { token: string; categories:
 // ---- First-visit discount (automatic % off for new customers) ---------------
 interface VisitTier { visit: number; percent: number }
 
-function FirstVisitDiscountCard({ token }: { token: string }) {
+function FirstVisitDiscountCard({ token, defaultOpen, onSaved }: { token: string; defaultOpen?: boolean; onSaved?: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!defaultOpen);
   const [loaded, setLoaded] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [message, setMessage] = useState('');
@@ -1093,7 +1295,7 @@ function FirstVisitDiscountCard({ token }: { token: string }) {
   function upd(i: number, patch: Partial<VisitTier>) { setRules(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
   async function save() {
     setBusy(true); setMsg(null);
-    try { await apiFetch('/settings/first-visit-discount', { method: 'PATCH', token, body: { enabled, message, rules } }); setMsg(t('sv.saved')); }
+    try { await apiFetch('/settings/first-visit-discount', { method: 'PATCH', token, body: { enabled, message, rules } }); setMsg(t('sv.saved')); onSaved?.(); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }
@@ -1139,10 +1341,10 @@ function FirstVisitDiscountCard({ token }: { token: string }) {
 // ---- Group discount (bring your friends — tiered by party size) --------------
 interface GroupTier { minSize: number; percent: number }
 
-function GroupDiscountCard({ token }: { token: string }) {
+function GroupDiscountCard({ token, defaultOpen, onSaved }: { token: string; defaultOpen?: boolean; onSaved?: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!defaultOpen);
   const [loaded, setLoaded] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [message, setMessage] = useState('');
@@ -1164,7 +1366,7 @@ function GroupDiscountCard({ token }: { token: string }) {
   function upd(i: number, patch: Partial<GroupTier>) { setTiers(tiers.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
   async function save() {
     setBusy(true); setMsg(null);
-    try { await apiFetch('/settings/group-discount', { method: 'PATCH', token, body: { enabled, message, tiers } }); setMsg(t('sv.saved')); }
+    try { await apiFetch('/settings/group-discount', { method: 'PATCH', token, body: { enabled, message, tiers } }); setMsg(t('sv.saved')); onSaved?.(); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }
@@ -1210,10 +1412,10 @@ function GroupDiscountCard({ token }: { token: string }) {
 // ---- Specific-date discounts (one-off dates / ranges) ----------------------
 interface DateRule { startDate: string; endDate: string | null; categoryId: string | null; percent: number; label?: string }
 
-function DateDiscountCard({ token, categories }: { token: string; categories: Category[] }) {
+function DateDiscountCard({ token, categories, defaultOpen, onSaved }: { token: string; categories: Category[]; defaultOpen?: boolean; onSaved?: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!defaultOpen);
   const [loaded, setLoaded] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [rules, setRules] = useState<DateRule[]>([]);
@@ -1234,7 +1436,7 @@ function DateDiscountCard({ token, categories }: { token: string; categories: Ca
   function upd(i: number, patch: Partial<DateRule>) { setRules(rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r))); }
   async function save() {
     setBusy(true); setMsg(null);
-    try { await apiFetch('/settings/date-discounts', { method: 'PATCH', token, body: { enabled, rules } }); setMsg(t('sv.saved')); }
+    try { await apiFetch('/settings/date-discounts', { method: 'PATCH', token, body: { enabled, rules } }); setMsg(t('sv.saved')); onSaved?.(); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }

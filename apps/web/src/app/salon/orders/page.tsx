@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { useAuth } from '../../../lib/auth';
@@ -13,6 +13,7 @@ import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileC
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { uiLocale } from '../../../lib/datetime';
+import { buildReceiptHtml, printHtml, withDefaults, type ReceiptProfile } from '../../../lib/receipt';
 
 interface OrderItem {
   id: string; kind: 'SERVICE' | 'PRODUCT'; name: string; quantity: number;
@@ -53,6 +54,8 @@ function Inner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  // The bill's header + the owner's design, fetched on the first reprint.
+  const receiptRef = useRef<ReceiptProfile | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -90,32 +93,26 @@ function Inner() {
     catch (err) { setError(err instanceof Error ? err.message : 'Delete failed'); }
   }
 
-  function reprint(o: Order) {
-    const line = (label: string, val: string, bold = false) =>
-      `<tr><td style="${bold ? 'font-weight:600' : ''}">${label}</td><td style="text-align:right;${bold ? 'font-weight:600' : ''}">${val}</td></tr>`;
-    const rows = o.items.map((l) => {
-      const tech = l.staffMemberId ? `<div style="font-size:11px;color: #555">${esc(staffName(l.staffMemberId))}</div>` : '';
-      const tip = l.tipCents ? `<div style="font-size:11px;color: #555">Tip: ${formatPrice(l.tipCents, o.currency)}</div>` : '';
-      return `<tr><td>${l.quantity}× ${esc(l.name)}${tech}${tip}</td><td style="text-align:right;vertical-align:top">${formatPrice(l.lineTotalCents, o.currency)}</td></tr>`;
-    }).join('');
-    const tenders = o.tenders.map((t) => line(METHOD_LABEL[t.method] ?? t.method, formatPrice(t.amountCents, o.currency))).join('');
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Receipt #${o.orderNumber}</title>
-      <style>body{font-family:ui-monospace,Menlo,monospace;width:300px;margin:0 auto;padding:12px;color: #000}
-      h2{text-align:center;margin:4px 0}table{width:100%;border-collapse:collapse;font-size:13px}td{padding:2px 0;vertical-align:top}
-      hr{border:none;border-top:1px dashed #999;margin:8px 0}.center{text-align:center;font-size:12px;color: #333}</style></head><body>
-      <h2>Receipt</h2><div class="center">Order #${o.orderNumber} · ${fmtInTz(o.paidAt ?? o.createdAt, { dateStyle: 'short', timeStyle: 'short' })}${o.status === 'VOID' ? ' · VOID' : ''}</div><hr>
-      <table>${rows}</table><hr><table>
-      ${line('Subtotal', formatPrice(o.subtotalCents, o.currency))}
-      ${o.discountCents ? line('Discount', '-' + formatPrice(o.discountCents, o.currency)) : ''}
-      ${o.taxCents ? line('Tax', formatPrice(o.taxCents, o.currency)) : ''}
-      ${o.tipCents ? line('Tip', formatPrice(o.tipCents, o.currency)) : ''}
-      ${line('TOTAL', formatPrice(o.totalCents, o.currency), true)}
-      ${tenders}
-      ${o.changeCents ? line('Change', formatPrice(o.changeCents, o.currency)) : ''}
-      </table><hr><div class="center">Thank you!</div>
-      <script>window.onload=function(){window.print();}</script></body></html>`;
-    const w = window.open('', '_blank', 'width=360,height=640');
-    if (w) { w.document.write(html); w.document.close(); }
+  /** Print an old bill again — the same paper the till prints, in today's design. */
+  async function reprint(o: Order) {
+    if (!receiptRef.current) receiptRef.current = await apiFetch<ReceiptProfile>('/pos/receipt-profile', { token }).catch(() => null);
+    const p = receiptRef.current;
+    const shop = p?.shop ?? { name: '', address: '', phone: '', website: '', logoUrl: '' };
+    const money = (c: number) => formatPrice(c, o.currency);
+    printHtml(buildReceiptHtml({
+      orderNumber: o.orderNumber,
+      when: fmtInTz(o.paidAt ?? o.createdAt, { dateStyle: 'short', timeStyle: 'short' }),
+      voided: o.status === 'VOID',
+      lines: o.items.map((l) => ({
+        qty: l.quantity, name: l.name, amountCents: l.lineTotalCents,
+        tech: l.staffMemberId ? staffName(l.staffMemberId) : null, tipCents: l.tipCents,
+      })),
+      subtotal: o.subtotalCents, discount: o.discountCents, tax: o.taxCents, tip: o.tipCents, total: o.totalCents,
+      // This screen has always called the till's OTHER tender a transfer.
+      paid: o.tenders.map((t) => ({ method: t.method === 'OTHER' ? 'TRANSFER' : t.method, cents: t.amountCents })),
+      change: o.changeCents,
+      bookingUrl: p?.shop.bookingSlug ? `${window.location.origin}/book/${p.shop.bookingSlug}` : null,
+    }, shop, withDefaults(p?.design), money));
   }
 
   const visible = sortNewest(
@@ -239,8 +236,6 @@ function Inner() {
     </section>
   );
 }
-
-function esc(s: string) { return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string)); }
 
 const tiny: React.CSSProperties = {
   padding: '6px 12px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer',

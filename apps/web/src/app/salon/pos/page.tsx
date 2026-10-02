@@ -20,6 +20,7 @@ import { CashShiftPanel, useShiftState } from '../../../components/CashShiftPane
 import { RebookSheet, type RebookResult } from '../../../components/RebookSheet';
 import { FeedbackStatus } from '../../../components/feedback/FeedbackStatus';
 import { uiLocale } from '../../../lib/datetime';
+import { buildReceiptHtml as buildBillHtml, buildReceiptText as buildBillText, withDefaults as receiptDesignOf, type ReceiptData, type ReceiptProfile } from '../../../lib/receipt';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null; imageUrl?: string | null }
@@ -34,6 +35,8 @@ interface CatalogCache {
   tillMethods?: PayMethod[];
   loyalty: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number };
   salonName?: string; salonLogo?: string; salonAccent?: string; salonWelcome?: string;
+  /** The owner's bill design + the salon's name/address/phone for its header. */
+  receipt?: ReceiptProfile | null;
 }
 
 interface Line {
@@ -208,6 +211,7 @@ function Register() {
   const [tillMethods, setTillMethods] = useState<PayMethod[]>(['CASH', 'CARD', 'TRANSFER']);
   const [currency, setCurrency] = useState('USD');
   const [salonName, setSalonName] = useState('');
+  const [receiptProfile, setReceiptProfile] = useState<ReceiptProfile | null>(null);
   const [salonLogo, setSalonLogo] = useState('');
   const [salonAccent, setSalonAccent] = useState('#6366f1');
   const [salonWelcome, setSalonWelcome] = useState('');
@@ -381,6 +385,7 @@ function Register() {
     setTaxRate(c.taxRate); setCardSurchargePct(c.cardSurchargePct ?? 0); setCardSurchargeOn(!!c.cardSurchargeOn); setTransferInfo(c.transferInfo); setTransferQr(c.transferQr); setPayDetails(c.payDetails ?? {}); setCurrency(c.currency);
     setLoyalty(c.loyalty);
     setSalonName(c.salonName ?? ''); setSalonLogo(c.salonLogo ?? ''); setSalonAccent(c.salonAccent ?? '#6366f1'); setSalonWelcome(c.salonWelcome ?? '');
+    setReceiptProfile(c.receipt ?? null);
     setTipsOn(c.tipsOn !== false);
     setTillMethods(tillMethodsFrom(c.tillMethods));
     // Exact, from the currency this salon actually counts in — the shell only
@@ -400,6 +405,9 @@ function Register() {
         apiFetch<Staff[]>('/staff', { token }),
         apiFetch<{ pos?: { taxRatePercent?: number; cardSurchargePercent?: number; cardSurchargeEnabled?: boolean; transferInstructions?: string; transferQrUrl?: string; tipsEnabled?: boolean; resolvedPaymentMethods?: string[]; paymentDetails?: Record<string, { instructions?: string; qrUrl?: string }> }; booking?: { currency?: string }; loyalty?: { enabled: boolean; redeemCentsPerPoint: number; minRedeemPoints: number }; company?: { name?: string; slug?: string }; branding?: { logoUrl?: string; accentColor?: string; welcomeImageUrl?: string } }>('/settings', { token }),
       ]);
+      // The bill's header + the owner's design. Any cashier may read it; if it
+      // cannot be fetched the till still prints (salon name, default layout).
+      const receipt = await apiFetch<ReceiptProfile>('/pos/receipt-profile', { token }).catch(() => null);
       const cat: CatalogCache = {
         services: s.filter((x) => x.isActive),
         products: p.filter((x) => x.isActive),
@@ -423,6 +431,7 @@ function Register() {
         salonLogo: settings.branding?.logoUrl ?? '',
         salonAccent: settings.branding?.accentColor ?? '#6366f1',
         salonWelcome: settings.branding?.welcomeImageUrl ?? '',
+        receipt,
       };
       applyCatalog(cat);
       cacheCatalog(cat);
@@ -1226,12 +1235,12 @@ function Register() {
     // whole: the "Hoàn tất" screen's "In lại" prints this same paper after the
     // bill has been cleared. Whether anything prints at all is the device's
     // "In hoá đơn" switch (on by default, which is what the till always did).
-    const snap = { orderNumber, text: buildReceiptText(orderNumber), html: buildReceiptHtml(orderNumber) };
-    if (feedbackLink) {
-      // The QR opens the same two-button "how was it?" page on the customer's phone.
-      snap.text += `\nHow was your visit?\nTell us: ${feedbackLink}\n`;
-      snap.html = snap.html.replace('</body>', `<hr><div class="center" style="margin-top:6px"><b>How was your visit?</b><br><img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=1&data=${encodeURIComponent(feedbackLink)}" width="120" height="120" alt="" style="margin-top:6px"><br>Scan to tell us</div></body>`);
-    }
+    // The paper follows the owner's design (Settings → Hoá đơn in); the
+    // feedback QR opens the two-button "how was it?" page on the customer's phone.
+    const data = receiptData(orderNumber, feedbackLink);
+    const { shop, design } = receiptLayout();
+    const m = (c: number) => posMoney(c, currency);
+    const snap = { orderNumber, text: buildBillText(data, shop, design, m), html: buildBillHtml(data, shop, design, m) };
     lastReceiptRef.current = snap;
     if (printOn) printSnapshot(snap);
   }
@@ -1252,92 +1261,60 @@ function Register() {
 
   // What actually paid the bill, line by line — so a split (part cash, part card)
   // prints "Cash $35 / Card $10" instead of a single lumped "Paid (CASH)".
-  function paidLines(): { label: string; cents: number }[] {
-    const nameOf = (m: string) => (m === 'CASH' ? 'Cash' : m === 'CARD' ? 'Card' : 'Transfer');
+  // Method KEYS (CASH, CARD, VIETQR…): the bill names them in its own language.
+  function paidLines(): { method: string; cents: number }[] {
     if (money.giftApplied > 0 && cart.length && money.due === 0) {
-      return [{ label: 'Gift card', cents: money.giftApplied }];
+      return [{ method: 'GIFT', cents: money.giftApplied }];
     }
-    const lines: { label: string; cents: number }[] = [];
-    if (money.giftApplied > 0) lines.push({ label: 'Gift card', cents: money.giftApplied });
+    const lines: { method: string; cents: number }[] = [];
+    if (money.giftApplied > 0) lines.push({ method: 'GIFT', cents: money.giftApplied });
     if (split) {
       for (const p of parts) {
         const c = toMinorUnits(p.amount, currency);
-        if (c > 0) lines.push({ label: nameOf(p.method), cents: c });
+        if (c > 0) lines.push({ method: p.method, cents: c });
       }
     } else {
-      lines.push({ label: nameOf(payMethod), cents: payMethod === 'CASH' ? (money.tenderedCents || money.due) : money.due });
+      lines.push({ method: payMethod, cents: payMethod === 'CASH' ? (money.tenderedCents || money.due) : money.due });
     }
     return lines;
   }
 
-  /** Plain-text receipt (≈32 cols) for the reception thermal printer. */
-  function buildReceiptText(orderNumber: number | string): string {
-    const W = 32;
-    const row = (l: string, r: string) => {
-      const left = l.length > W - r.length - 1 ? l.slice(0, W - r.length - 1) : l;
-      return left + ' '.repeat(Math.max(1, W - left.length - r.length)) + r;
+  /** This sale, as the bill builder reads it (lib/receipt). */
+  function receiptData(orderNumber: number | string, feedbackLink?: string): ReceiptData {
+    const slug = receiptProfile?.shop.bookingSlug;
+    return {
+      orderNumber,
+      when: fmtInTz(new Date(), { dateStyle: 'short', timeStyle: 'short' }),
+      customer: (customerLabel || bookingCustomer || '').split(' · ')[0].trim() || null,
+      lines: cart.map((l) => ({
+        qty: l.quantity,
+        name: l.name,
+        amountCents: l.unitPriceCents * l.quantity,
+        origAmountCents: l.origUnitPriceCents * l.quantity,
+        discountPercent: l.discountPercent,
+        isAddon: l.isAddon,
+        tech: l.staffMemberId ? staffName(l.staffMemberId) : null,
+        tipCents: l.tipCents,
+      })),
+      subtotal: money.subtotal,
+      discount: money.discount,
+      tax: money.tax,
+      tip: money.tip,
+      cardFee: money.cardSurcharge,
+      cardFeePct: cardSurchargePct,
+      savings: money.savings,
+      total: money.total + money.cardSurcharge,
+      paid: paidLines(),
+      change: money.change,
+      feedbackLink: feedbackLink || null,
+      bookingUrl: slug && typeof window !== 'undefined' ? `${window.location.origin}/book/${slug}` : null,
     };
-    const center = (s: string) => ' '.repeat(Math.max(0, Math.floor((W - s.length) / 2))) + s;
-    const sep = '-'.repeat(W);
-    const items = cart
-      .map((l) => {
-        let s = row(`${l.quantity}x ${l.name}`, posMoney(l.unitPriceCents * l.quantity, currency));
-        if (l.staffMemberId) s += `\n  ${staffName(l.staffMemberId)}`;
-        if (l.tipCents) s += `\n  Tip: ${posMoney(l.tipCents, currency)}`;
-        return s;
-      })
-      .join('\n');
-    let o = center('RECEIPT') + '\n' + center(`Order #${orderNumber}`) + '\n' + center(fmtInTz(new Date(), { dateStyle: 'short', timeStyle: 'short' })) + '\n' + sep + '\n';
-    o += items + '\n' + sep + '\n';
-    o += row('Subtotal', posMoney(money.subtotal, currency)) + '\n';
-    if (money.discount) o += row('Discount', '-' + posMoney(money.discount, currency)) + '\n';
-    if (money.tax) o += row('Tax', posMoney(money.tax, currency)) + '\n';
-    if (money.tip) o += row('Tip', posMoney(money.tip, currency)) + '\n';
-    if (money.cardSurcharge) o += row(`Card fee (${cardSurchargePct}%)`, posMoney(money.cardSurcharge, currency)) + '\n';
-    o += row('TOTAL', posMoney(money.total + money.cardSurcharge, currency)) + '\n';
-    for (const pl of paidLines()) o += row(`Paid · ${pl.label}`, posMoney(pl.cents, currency)) + '\n';
-    if (money.change) o += row('Change', posMoney(money.change, currency)) + '\n';
-    o += sep + '\n' + center('Thank you!') + '\n';
-    return o;
   }
 
-  function buildReceiptHtml(orderNumber: number | string): string {
-    const rows = cart
-      .map((l) => {
-        const lt = posMoney(l.unitPriceCents * l.quantity, currency);
-        const tech = l.staffMemberId ? `<div style="font-size:11px;color: #555">${staffName(l.staffMemberId)}</div>` : '';
-        const tip = l.tipCents ? `<div style="font-size:11px;color: #555">Tip: ${posMoney(l.tipCents, currency)}</div>` : '';
-        const disc = l.discountPercent > 0
-          ? `<div style="font-size:11px;color: #777"><s>${posMoney(l.origUnitPriceCents * l.quantity, currency)}</s> &nbsp;-${l.discountPercent}%</div>`
-          : '';
-        const addon = l.isAddon ? `<span style="font-size:10px;color: #777"> (add-on)</span>` : '';
-        return `<tr><td>${l.quantity}× ${escapeHtml(l.name)}${addon}${disc}${tech}${tip}</td><td style="text-align:right;vertical-align:top">${lt}</td></tr>`;
-      })
-      .join('');
-    const line = (label: string, val: string, bold = false) =>
-      `<tr><td style="${bold ? 'font-weight:600' : ''}">${label}</td><td style="text-align:right;${bold ? 'font-weight:600' : ''}">${val}</td></tr>`;
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Receipt #${orderNumber}</title>
-      <style>body{font-family:ui-monospace,Menlo,monospace;width:300px;margin:0 auto;padding:12px;color: #000}
-      h2{text-align:center;margin:4px 0}table{width:100%;border-collapse:collapse;font-size:13px}
-      td{padding:2px 0;vertical-align:top}hr{border:none;border-top:1px dashed #999;margin:8px 0}
-      .center{text-align:center;font-size:12px;color: #333}</style></head><body>
-      <h2>Receipt</h2>
-      <div class="center">Order #${orderNumber} · ${fmtInTz(new Date(), { dateStyle: 'short', timeStyle: 'short' })}</div><hr>
-      <table>${rows}</table><hr>
-      <table>
-        ${line('Subtotal', posMoney(money.subtotal, currency))}
-        ${money.discount ? line('Order discount', '-' + posMoney(money.discount, currency)) : ''}
-        ${money.tax ? line('Tax', posMoney(money.tax, currency)) : ''}
-        ${money.tip ? line('Tip', posMoney(money.tip, currency)) : ''}
-        ${money.cardSurcharge ? line(`Card fee (${cardSurchargePct}%)`, posMoney(money.cardSurcharge, currency)) : ''}
-        ${money.savings ? line('You saved', '-' + posMoney(money.savings, currency)) : ''}
-        ${line('TOTAL', posMoney(money.total + money.cardSurcharge, currency), true)}
-        ${paidLines().map((pl) => line('Paid · ' + pl.label, posMoney(pl.cents, currency))).join('')}
-        ${money.change ? line('Change', posMoney(money.change, currency)) : ''}
-      </table><hr>
-      <div class="center">Thank you!</div>
-      </body></html>`;
-    return html;
+  /** Header + design; before the profile loads (or offline with an old cache) the salon name and default layout. */
+  function receiptLayout() {
+    if (receiptProfile) return { shop: receiptProfile.shop, design: receiptDesignOf(receiptProfile.design) };
+    return { shop: { name: salonName, address: '', phone: '', website: '', logoUrl: salonLogo }, design: receiptDesignOf(null) };
   }
 
   function printHtml(html: string) {
@@ -2680,10 +2657,6 @@ function groupAddons(addons: Addon[]): { service: string; items: Addon[] }[] {
     map.get(key)!.push(a);
   }
   return [...map.entries()].map(([service, items]) => ({ service, items }));
-}
-
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 }
 
 /** One third of the payment segmented control. Fixed height, never wraps. */

@@ -591,6 +591,7 @@ model ServiceCategory {
   updatedAt DateTime @updatedAt
 
   services Service[]
+  addons   ServiceAddon[] // shared extras offered on every service in this category
 
   @@index([tenantId])
   @@map("service_categories")
@@ -603,8 +604,14 @@ model ServiceAddon {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  serviceId String
-  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  // Who can take this extra:
+  //   serviceId set            → that one service ("Nail art" on Gel Manicure)
+  //   categoryId set, no serviceId → every service in that category ("Take Off" for all Manicure)
+  //   both empty               → every service on the menu
+  serviceId  String?
+  service    Service?         @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  categoryId String?
+  category   ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   name            String
   durationMinutes Int     @default(0)
@@ -617,6 +624,7 @@ model ServiceAddon {
 
   @@index([tenantId])
   @@index([serviceId])
+  @@index([categoryId])
   @@map("service_addons")
 }
 

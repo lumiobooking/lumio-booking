@@ -11,7 +11,7 @@ import { UserRole } from '@prisma/client';
 import { ServicesService } from './services.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
-import { CreateServiceAddonDto } from './dto/create-addon.dto';
+import { CreateServiceAddonDto, CreateSharedAddonDto } from './dto/create-addon.dto';
 import { CreateServiceCategoryDto, UpdateServiceCategoryDto } from './dto/category.dto';
 import { ReorderDto } from './dto/reorder.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -38,6 +38,23 @@ export class ServicesController {
   @Get('addons/all')
   listAllAddons(@CurrentUser() user: AuthenticatedUser) {
     return this.servicesService.listAllAddons(user);
+  }
+
+  // Shared extras — one per category or for the whole menu ("Take Off $5").
+  // Salon-Admin only (class @Roles); tenant comes from the token, never the body.
+  @Get('addons/shared')
+  listSharedAddons(@CurrentUser() user: AuthenticatedUser) {
+    return this.servicesService.listSharedAddons(user);
+  }
+
+  @Post('addons/shared')
+  createSharedAddon(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateSharedAddonDto) {
+    return this.servicesService.createSharedAddon(user, dto);
+  }
+
+  @Delete('addons/shared/:addonId')
+  removeSharedAddon(@CurrentUser() user: AuthenticatedUser, @Param('addonId') addonId: string) {
+    return this.servicesService.removeSharedAddon(user, addonId);
   }
 
   // Reorder the menu. Declared before :id so "reorder" is never read as an id.

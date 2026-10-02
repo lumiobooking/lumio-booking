@@ -5,7 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
-import { CreateServiceAddonDto } from './dto/create-addon.dto';
+import { CreateServiceAddonDto, CreateSharedAddonDto } from './dto/create-addon.dto';
 
 /**
  * Services (treatments) belong to exactly one tenant. Every method resolves the
@@ -452,9 +452,11 @@ export class ServicesService {
 
   // ---- Service add-ons (extras) ------------------------------------------
 
-  /** All active add-ons for the tenant, with parent service name (POS catalog). */
-  listAllAddons(user: AuthenticatedUser) {
-    return this.prisma.serviceAddon.findMany({
+  /** All active add-ons for the tenant, with parent service name (POS catalog).
+   *  A shared extra has no parent service; the till groups it under the
+   *  category it serves (or "All services"), so it reads the same way. */
+  async listAllAddons(user: AuthenticatedUser) {
+    const rows = (await this.prisma.serviceAddon.findMany({
       where: { tenantId: this.tenantId(user), isActive: true },
       select: {
         id: true,
@@ -464,17 +466,77 @@ export class ServicesService {
         currency: true,
         serviceId: true,
         service: { select: { name: true } },
-      },
+        categoryId: true,
+        category: { select: { name: true } },
+      } as never,
+      orderBy: { createdAt: 'asc' },
+    })) as unknown as Array<{ id: string; name: string; priceCents: number; durationMinutes: number; currency: string; serviceId: string | null; service: { name: string } | null; categoryId: string | null; category: { name: string } | null }>;
+    return rows.map(({ category, categoryId, ...a }) => (
+      a.serviceId ? a : { ...a, service: { name: category?.name ?? 'All services' }, shared: categoryId ? 'category' : 'all' }
+    ));
+  }
+
+  // ---- Shared add-ons: one extra for a whole category, or the whole menu ----
+
+  /** Shared extras (no single parent service), with the category they serve. */
+  listSharedAddons(user: AuthenticatedUser) {
+    return this.prisma.serviceAddon.findMany({
+      where: { tenantId: this.tenantId(user), serviceId: null } as never,
+      select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, isActive: true, categoryId: true, category: { select: { id: true, name: true } } } as never,
       orderBy: { createdAt: 'asc' },
     });
   }
 
+  async createSharedAddon(user: AuthenticatedUser, dto: CreateSharedAddonDto) {
+    const tenantId = this.tenantId(user);
+    const categoryId = dto.categoryId || null;
+    if (categoryId) {
+      // Only THIS salon's category — another salon's id is simply not found.
+      const cat = await this.prisma.serviceCategory.findFirst({ where: { id: categoryId, tenantId }, select: { id: true } });
+      if (!cat) throw new NotFoundException('Category not found');
+    }
+    const addon = await this.prisma.serviceAddon.create({
+      data: {
+        tenantId,
+        serviceId: null,
+        categoryId,
+        name: dto.name.trim(),
+        durationMinutes: dto.durationMinutes,
+        priceCents: dto.priceCents,
+        isActive: dto.isActive ?? true,
+      } as never,
+    });
+    await this.audit.log({
+      tenantId, userId: user.userId, action: 'service_addon.created', resourceType: 'service_addon',
+      resourceId: (addon as { id: string }).id, metadata: { shared: categoryId ? 'category' : 'all', categoryId, name: dto.name },
+    });
+    return addon;
+  }
+
+  async removeSharedAddon(user: AuthenticatedUser, addonId: string) {
+    const tenantId = this.tenantId(user);
+    const res = await this.prisma.serviceAddon.deleteMany({ where: { id: addonId, tenantId, serviceId: null } as never });
+    if (!res.count) throw new NotFoundException('Add-on not found');
+    await this.audit.log({ tenantId, userId: user.userId, action: 'service_addon.deleted', resourceType: 'service_addon', resourceId: addonId });
+    return { id: addonId, deleted: true };
+  }
+
   async listAddons(user: AuthenticatedUser, serviceId: string) {
-    await this.getById(user, serviceId); // ensures the service is in this tenant
-    return this.prisma.serviceAddon.findMany({
-      where: { serviceId, tenantId: this.tenantId(user) },
+    const svc = (await this.getById(user, serviceId)) as unknown as { categoryId?: string | null }; // ensures the service is in this tenant
+    const tenantId = this.tenantId(user);
+    const own = await this.prisma.serviceAddon.findMany({
+      where: { serviceId, tenantId },
       orderBy: { createdAt: 'asc' },
     });
+    // The shared extras this service also offers, marked so the editor shows
+    // them read-only ("edit under Categories") instead of offering a delete
+    // that would remove them from every other service too.
+    const shared = (await this.prisma.serviceAddon.findMany({
+      where: { tenantId, serviceId: null, isActive: true, OR: [{ categoryId: null }, ...(svc.categoryId ? [{ categoryId: svc.categoryId }] : [])] } as never,
+      select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, categoryId: true, category: { select: { name: true } } } as never,
+      orderBy: { createdAt: 'asc' },
+    }).catch(() => [])) as unknown as Array<{ categoryId: string | null; category: { name: string } | null }>;
+    return [...own, ...shared.map(({ category, ...a }) => ({ ...a, shared: a.categoryId ? 'category' : 'all', scopeName: category?.name ?? null }))];
   }
 
   async createAddon(user: AuthenticatedUser, serviceId: string, dto: CreateServiceAddonDto) {

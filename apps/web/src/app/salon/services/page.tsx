@@ -226,9 +226,10 @@ function ServicesInner() {
         <PromoBoard token={token!} categories={categories} promos={promos} sel={promoSel} onSel={setPromoSel} onSaved={refreshPromos} vi={lang === 'vi'} />
       )}
 
-      {tab === 'categories' && (
+      {tab === 'categories' && (<>
         <CategoryManager token={token!} categories={categories} onChanged={load} defaultOpen />
-      )}
+        <SharedAddonsCard token={token!} categories={categories} currency={money.code} fmt={fmt} vi={lang === 'vi'} />
+      </>)}
 
       {tab === 'services' && (<>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
@@ -317,6 +318,107 @@ function ServicesInner() {
       )}
       </>)}
     </section>
+  );
+}
+
+// ---- Shared add-ons: one extra for a whole category, or the whole menu --------
+
+interface SharedAddon { id: string; name: string; durationMinutes: number; priceCents: number; currency: string; isActive: boolean; categoryId: string | null; category: { id: string; name: string } | null }
+
+/**
+ * "Take Off $5" belongs on every Manicure — set it once here instead of on
+ * each service. Customers see it under any service of that category (or of
+ * the whole menu) on the booking page; the till lists it under the category.
+ */
+function SharedAddonsCard({ token, categories, currency, fmt, vi }: {
+  token: string; categories: Category[]; currency: string; fmt: (c: number) => string; vi: boolean;
+}) {
+  const L = (v: string, e: string) => (vi ? v : e);
+  const [items, setItems] = useState<SharedAddon[]>([]);
+  const [form, setForm] = useState({ name: '', duration: '10', price: '5', scope: '' });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try { setItems(await apiFetch<SharedAddon[]>('/services/addons/shared', { token })); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Failed to load'); }
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  async function add(e: FormEvent) {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    setBusy(true); setError(null);
+    try {
+      await apiFetch('/services/addons/shared', {
+        method: 'POST', token,
+        body: { name: form.name.trim(), durationMinutes: parseInt(form.duration, 10) || 0, priceCents: toMinorUnits(form.price, currency), categoryId: form.scope || null },
+      });
+      setForm({ ...form, name: '' });
+      await load();
+    } catch (err) { setError(err instanceof Error ? err.message : 'Create failed'); }
+    finally { setBusy(false); }
+  }
+  async function remove(a: SharedAddon) {
+    const where = a.category ? a.category.name : L('mọi dịch vụ', 'every service');
+    if (!confirm(L(`Xoá "${a.name}" khỏi ${where}?`, `Remove "${a.name}" from ${where}?`))) return;
+    try { await apiFetch(`/services/addons/shared/${a.id}`, { method: 'DELETE', token }); await load(); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Delete failed'); }
+  }
+
+  // Grouped the way the owner thinks of them: everything, then each category.
+  const groups = [
+    { id: '', name: L('Tất cả dịch vụ', 'All services'), items: items.filter((a) => !a.categoryId) },
+    ...categories.map((c) => ({ id: c.id, name: c.name, items: items.filter((a) => a.categoryId === c.id) })),
+  ].filter((g) => g.items.length > 0);
+
+  return (
+    <div style={{ ...ui.card, marginBottom: 16 }}>
+      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>➕ {L('Tuỳ chọn thêm dùng chung', 'Shared add-ons')}</div>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '4px 0 12px' }}>
+        {L('Món thêm áp dụng cho cả danh mục hoặc mọi dịch vụ — vd "Take Off $5" cho tất cả Manicure. Khách chọn thêm được ở bất kỳ dịch vụ nào trong danh mục đó. Món chỉ dành cho một dịch vụ thì vẫn thêm ở nút "Tùy chọn thêm" của dịch vụ đó.',
+           'Extras offered on a whole category or on every service — e.g. "Take Off $5" for all Manicures. Customers can add them to any service in that category. An extra for one service only still goes under that service’s "Add-ons" button.')}
+      </p>
+      {error && <div style={ui.banner}>{error}</div>}
+      {groups.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13, margin: '0 0 12px' }}>{L('Chưa có món dùng chung nào.', 'No shared add-ons yet.')}</p>}
+      {groups.map((g) => (
+        <div key={g.id || 'all'} style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c94a3b8)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{g.name}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {g.items.map((a) => (
+              <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, padding: '8px 10px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                <span style={{ color: 'var(--c94a3b8)', fontSize: 13, whiteSpace: 'nowrap' }}>{a.durationMinutes} {L('phút', 'min')}</span>
+                <span style={{ color: 'var(--ink-good)', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmt(a.priceCents)}</span>
+                <button type="button" onClick={() => remove(a)} style={{ ...ui.dangerBtn, padding: '3px 8px', fontSize: 12 }}>{L('Xoá', 'Remove')}</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap', marginTop: 6 }}>
+        <div style={{ flex: '2 1 160px' }}>
+          <span style={ui.label}>{L('Tên món thêm', 'Add-on name')}</span>
+          <input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={L('vd: Take Off, French tips', 'e.g. Take Off, French tips')} required />
+        </div>
+        <div style={{ flex: '1 1 150px' }}>
+          <span style={ui.label}>{L('Áp dụng cho', 'Applies to')}</span>
+          <select style={ui.input} value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })}>
+            <option value="">{L('Tất cả dịch vụ', 'All services')}</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{L('Cả danh mục', 'All of')} {c.name}</option>)}
+          </select>
+        </div>
+        <div style={{ width: 80 }}>
+          <span style={ui.label}>{L('Phút', 'Min')}</span>
+          <input style={ui.input} type="number" min={0} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} />
+        </div>
+        <div style={{ width: 100 }}>
+          <span style={ui.label}>{L('Giá', 'Price')}</span>
+          <input style={ui.input} type="number" min={0} step={priceInputStep(currency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+        </div>
+        <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, padding: '9px 14px', opacity: busy ? 0.6 : 1 }}>{L('Thêm', 'Add')}</button>
+      </form>
+    </div>
   );
 }
 
@@ -547,7 +649,11 @@ function hintFor(k: PromoKey, vi: boolean): string {
  * the actual request — "phải thứ tự từ 1 đến 3".
  */
 
-interface Addon { id: string; name: string; durationMinutes: number; priceCents: number; currency: string }
+interface Addon {
+  id: string; name: string; durationMinutes: number; priceCents: number; currency: string;
+  /** Set on a shared extra (whole category / whole menu) listed under a service: read-only here. */
+  shared?: 'category' | 'all'; scopeName?: string | null;
+}
 
 
 /** The one line telling an owner the rows move, plus the save state. */
@@ -879,12 +985,26 @@ function AddonsPanel({ serviceId, token, fmt, currency = 'USD' }: { serviceId: s
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
           {addons.map((a) => (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
-              <span style={{ flex: 1 }}>{a.name}</span>
+              <span style={{ flex: 1 }}>
+                {a.name}
+                {a.shared && (
+                  <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--ink-link)', border: '1px solid currentColor', borderRadius: 999, padding: '0 7px' }}>
+                    {lang === 'vi' ? 'Dùng chung' : 'Shared'} · {a.shared === 'all' ? (lang === 'vi' ? 'mọi dịch vụ' : 'all services') : a.scopeName}
+                  </span>
+                )}
+              </span>
               <span style={{ color: 'var(--c94a3b8)' }}>{a.durationMinutes} {t('sv.min')}</span>
               <span style={{ color: 'var(--ink-good)' }}>{fmt(a.priceCents)}</span>
-              <button onClick={() => remove(a.id)} style={{ ...ui.dangerBtn, padding: '3px 8px', fontSize: 12 }}>{t('sv.remove')}</button>
+              {a.shared
+                ? <span title={lang === 'vi' ? 'Sửa ở tab Danh mục → Tuỳ chọn thêm dùng chung' : 'Edit under Categories → Shared add-ons'} style={{ width: 52, textAlign: 'center', color: 'var(--c64748b)', fontSize: 12 }}>🔗</span>
+                : <button onClick={() => remove(a.id)} style={{ ...ui.dangerBtn, padding: '3px 8px', fontSize: 12 }}>{t('sv.remove')}</button>}
             </div>
           ))}
+          {addons.some((a) => a.shared) && (
+            <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
+              {lang === 'vi' ? '🔗 Món dùng chung sửa ở tab Danh mục → Tuỳ chọn thêm dùng chung.' : '🔗 Shared add-ons are edited under Categories → Shared add-ons.'}
+            </div>
+          )}
         </div>
       )}
       <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }}>

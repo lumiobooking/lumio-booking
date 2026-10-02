@@ -19,3 +19,14 @@ export class CreateServiceAddonDto {
   @IsBoolean()
   isActive?: boolean;
 }
+
+/**
+ * An extra offered on MANY services at once: every service in one category
+ * (categoryId), or the whole menu (categoryId empty) — "Take Off $5".
+ */
+export class CreateSharedAddonDto extends CreateServiceAddonDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  categoryId?: string | null;
+}

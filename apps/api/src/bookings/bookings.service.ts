@@ -493,11 +493,20 @@ export class BookingsService {
       throw new NotFoundException('Service not found or inactive');
     }
 
-    // Validate + load selected add-ons (must belong to this service & tenant).
+    // Validate + load selected add-ons: this salon's, and offered on THIS
+    // service — its own, its category's shared ones, or the whole menu's.
     const addonIds = [...new Set(dto.addonIds ?? [])];
+    const svcCategory = (service as { categoryId?: string | null }).categoryId ?? null;
     const addons = addonIds.length
       ? await this.prisma.serviceAddon.findMany({
-          where: { id: { in: addonIds }, serviceId: service.id, tenantId, isActive: true },
+          where: {
+            id: { in: addonIds }, tenantId, isActive: true,
+            OR: [
+              { serviceId: service.id },
+              { serviceId: null, categoryId: null },
+              ...(svcCategory ? [{ serviceId: null, categoryId: svcCategory }] : []),
+            ],
+          } as never,
           select: { id: true, name: true, priceCents: true, durationMinutes: true },
         })
       : [];
@@ -1955,8 +1964,28 @@ export class BookingsService {
     await Promise.allSettled(jobs);
   }
 
-  /** Active services for a tenant, with their active add-ons (public flow). */
-  publicServices(tenantId: string) {
+  /** Active services for a tenant, with their active add-ons (public flow) —
+   *  their own extras plus the shared ones their category / the whole menu
+   *  offers ("Take Off $5"), so the booking page needs no idea of either. */
+  async publicServices(tenantId: string) {
+    const [rows, shared] = await Promise.all([
+      this.publicServiceRows(tenantId),
+      this.prisma.serviceAddon.findMany({
+        where: { tenantId, isActive: true, serviceId: null } as never,
+        select: { id: true, name: true, durationMinutes: true, priceCents: true, currency: true, categoryId: true } as never,
+        orderBy: { createdAt: 'asc' },
+      }).catch(() => []) as Promise<unknown>,
+    ]);
+    const extras = shared as Array<{ id: string; name: string; durationMinutes: number; priceCents: number; currency: string; categoryId: string | null }>;
+    if (!extras.length) return rows;
+    return rows.map((s) => {
+      const cat = (s as { categoryId?: string | null }).categoryId ?? null;
+      const mine = extras.filter((a) => !a.categoryId || a.categoryId === cat).map(({ categoryId: _c, ...a }) => a);
+      return mine.length ? { ...s, addons: [...(s.addons ?? []), ...mine] } : s;
+    });
+  }
+
+  private publicServiceRows(tenantId: string) {
     return this.prisma.service.findMany({
       where: { tenantId, isActive: true },
       select: {

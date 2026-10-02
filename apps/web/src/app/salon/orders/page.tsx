@@ -51,6 +51,8 @@ function Inner() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [statusFilter, setStatusFilter] = useState('');
   const [q, setQ] = useState('');
+  // Arrived from the header search (?q=…): start with that search filled in.
+  useEffect(() => { const v = new URLSearchParams(window.location.search).get('q'); if (v) setQ(v); }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);

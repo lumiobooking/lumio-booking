@@ -52,12 +52,16 @@ function ServicesInner() {
   const t = (k: string) => tr(k, lang);
   const isMobile = useIsMobile();
   const [q, setQ] = useState('');
+  // Arrived from the header search (?q=…): start with that search filled in.
+  useEffect(() => { const v = new URLSearchParams(window.location.search).get('q'); if (v) setQ(v); }, []);
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  // "+ Tạo mới → Dịch vụ mới" from the header lands here with the form open.
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') setShowForm(true); }, []);
   const [showImport, setShowImport] = useState(false);
   const [filling, setFilling] = useState(false);
   const [catFilter, setCatFilter] = useState<string>('all');

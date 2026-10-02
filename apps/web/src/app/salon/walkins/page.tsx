@@ -298,6 +298,8 @@ function Inner() {
   // Mirror every desk keystroke onto the customer screen while the form is open.
   useEffect(() => { liveRef.current = { form, pickedIds, formOpen, qrOn }; }, [form, pickedIds, formOpen, qrOn]);
   useEffect(() => { thanksNameRef.current = thanksName; }, [thanksName]);
+  // "+ Tạo mới → Khách vãng lai" from the header (?new=1) opens the intake form at once.
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') startNew(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     salonNameRef.current = salonName; salonLogoRef.current = salonLogo;
     salonWelcomeRef.current = salonWelcome; reviewUrlRef.current = reviewUrl;

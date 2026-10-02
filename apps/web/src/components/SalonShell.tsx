@@ -22,97 +22,18 @@ import { ShareBookingLink } from './ShareBookingLink';
 import { MobileTabBar } from './MobileTabBar';
 import { NotificationBell } from './NotificationBell';
 import { LumioLogo } from './LumioLogo';
+import { DASHBOARD, GROUPS, type NavItem } from './shell/nav-map';
+import { ShellV2 } from './shell/ShellV2';
 
-// `feature: 'pos'` items only show when the salon's plan unlocks the POS suite.
-//
-// `market: 'na'` means the screen only makes sense in North America. It is a
-// nav-level condition rather than a feature-policy key on purpose: every key in
-// FEATURE_DEFS ships OFF — "nothing opens by accident" — so giving one of these
-// screens a key would take it away from every US salon that has it today, to
-// solve a problem only Vietnam has.
-type NavItem = { href: string; label: string; icon: string; feature?: 'pos'; biz?: 'restaurant'; market?: 'na'; team?: true };
-type NavGroup = { id: string; label: string; items: NavItem[] };
+// The menu itself (DASHBOARD + GROUPS) lives in shell/nav-map.ts, shared with
+// the new two-tier layout so both always list the same screens.
 
-// Dashboard sits on its own above the collapsible groups.
-const DASHBOARD: NavItem = { href: '/salon', label: 'Dashboard', icon: 'home' };
-
-// The sidebar is organised as a folder tree: 5 collapsible groups. Usage & costs
-// now lives inside Billing & plan, so it is no longer a separate nav item.
-const GROUPS: NavGroup[] = [
-  { id: 'ops', label: 'Operations', items: [
-    { href: '/salon/calendar', label: 'Calendar', icon: 'calendar' },
-    { href: '/salon/bookings', label: 'Bookings', icon: 'calendarCheck' },
-    // Front-desk check-in board: seat a customer, run their ticket, hand it to
-    // the till. Its route and permission always existed — the nav entry didn't.
-    { href: '/salon/walkins', label: 'Walk-ins · Turns', icon: 'walk' },
-    { href: '/salon/activity', label: 'Activity', icon: 'pulse' },
-    { href: '/salon/tables', label: 'Tables', icon: 'utensils', biz: 'restaurant' },
-    { href: '/salon/menu', label: 'Menu', icon: 'bowl', biz: 'restaurant' },
-    { href: '/salon/waitlist', label: 'Waitlist', icon: 'clock' },
-    { href: '/salon/pos', label: 'POS / Checkout', icon: 'receipt', feature: 'pos' },
-    { href: '/salon/orders', label: 'Orders', icon: 'clipboard', feature: 'pos' },
-  ] },
-  { id: 'clients', label: 'Clients & Catalog', items: [
-    { href: '/salon/customers', label: 'Customers', icon: 'users' },
-    // Two-button feedback after every visit: the owner's cases and each tech's scorecard.
-    { href: '/salon/feedback', label: 'Feedback', icon: 'heart' },
-    { href: '/salon/services', label: 'Services', icon: 'sparkle' },
-    { href: '/salon/products', label: 'Products', icon: 'bag', feature: 'pos' },
-    { href: '/salon/gift-cards', label: 'Gift cards', icon: 'gift', feature: 'pos' },
-    { href: '/salon/staff', label: 'Staff', icon: 'scissors' },
-    { href: '/salon/stations', label: 'Chairs', icon: 'chair' },
-  ] },
-  { id: 'growth', label: 'Marketing & AI', items: [
-    { href: '/salon/content', label: 'Marketing plan & posts', icon: 'sparkle' },
-    // One door for every channel the shop publishes to or is reached on —
-    // Facebook, Instagram, Google Business, TikTok, Zalo, website chat.
-    // The screens that use a channel keep a status line and link here.
-    { href: '/salon/channels', label: 'Social channels', icon: 'plug' },
-    // The client's own door: preview + approve what is about to publish.
-    // Deliberately its own route, NOT the content page — that page is the
-    // agency's kitchen and has its own switch; this one is the dining room.
-    { href: '/salon/approve-posts', label: 'Post approval', icon: 'check' },
-    { href: '/salon/marketing', label: 'Marketing', icon: 'megaphone' },
-    { href: '/salon/marketing/monthly', label: 'Marketing report', icon: 'chart' },
-    { href: '/salon/email', label: 'Email marketing', icon: 'mail' },
-    { href: '/salon/reviews', label: 'Reviews & rewards', icon: 'star' },
-    { href: '/salon/reviews-replies', label: 'Google reviews', icon: 'chat' },
-    // The inbox sits ABOVE the bot settings on purpose: answering customers is
-    // done fifty times a day by a receptionist, configuring the bot is done once
-    // by the owner. The frequent job should not live under the rare one.
-    { href: '/salon/inbox', label: 'Inbox', icon: 'inboxTray' },
-    { href: '/salon/messenger', label: 'Messenger bot', icon: 'bot' },
-    { href: '/salon/voice', label: 'AI Hotline', icon: 'phone' },
-  ] },
-  { id: 'finance', label: 'Finance', items: [
-    { href: '/salon/payments', label: 'Payments', icon: 'dollar' },
-    { href: '/salon/payment-terminals', label: 'Card terminals', icon: 'card', feature: 'pos' },
-    // North America only. The whole screen is the card terminal's receipt book —
-    // void, refund, approval code, batch number, card brand, all of it Dejavoo —
-    // and the terminal itself is already vetoed for Vietnam by the market.
-    // Blocking the machine and leaving its receipt book in the menu was half a
-    // veto: a row a Vietnamese salon can never have, on a screen it can never act on.
-    { href: '/salon/card-transactions', label: 'Card transactions', icon: 'fileText', feature: 'pos', market: 'na' },
-    { href: '/salon/reports', label: 'Business report', icon: 'trendUp' },
-    { href: '/salon/pos/report', label: 'Sales report', icon: 'pie', feature: 'pos' },
-    { href: '/salon/pos/shifts', label: 'Cashier shifts', icon: 'banknote', feature: 'pos' },
-    { href: '/salon/payroll', label: 'Staff & pay', icon: 'banknote', feature: 'pos' },
-    { href: '/salon/inventory', label: 'Inventory', icon: 'box', feature: 'pos' },
-  ] },
-  { id: 'account', label: 'Account', items: [
-    { href: '/salon/billing', label: 'Billing & plan', icon: 'card' },
-    { href: '/salon/notifications', label: 'Notifications', icon: 'bell' },
-    { href: '/salon/integrations', label: 'Integrations', icon: 'puzzle' },
-    // Lumio's wiring board — every OAuth, token and webhook behind the salon,
-    // with test buttons. The team reads it while setting a salon up; an owner
-    // reading it sees a wall of red "not connected" for things Lumio runs on
-    // its behalf, and rings to ask. Team only.
-    { href: '/salon/connections', label: 'Connections', icon: 'plug', team: true },
-    { href: '/salon/settings', label: 'Settings', icon: 'gear' },
-    // Deleted items live here for a week before they are gone for good.
-    { href: '/salon/trash', label: 'Recycle bin', icon: 'trash' },
-  ] },
-];
+/** Which layout this device uses: the new one is opt-in while salons try it. */
+const UI2_KEY = 'lumio_ui2';
+function readUi2(): boolean {
+  if (typeof window === 'undefined') return false;
+  try { return window.localStorage.getItem(UI2_KEY) === '1'; } catch { return false; }
+}
 
 /** Routes a paying salon's own accounts never open, whatever their capabilities. */
 const TEAM_ONLY = new Set(GROUPS.flatMap((g) => g.items.filter((i) => i.team).map((i) => i.href)));
@@ -225,6 +146,12 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // country's items until some unrelated state happened to update it. Seeded
   // from the same cache so the first paint is already right.
   const [market, setMarket] = useState<string>(() => { initUiMarket(); return uiMarket(); });
+  // New layout (opt-in, per device). Kept above the early return like every hook here.
+  const [ui2, setUi2] = useState<boolean>(() => readUi2());
+  const switchUi = useCallback((on: boolean) => {
+    setUi2(on);
+    try { window.localStorage.setItem(UI2_KEY, on ? '1' : '0'); } catch { /* ignore */ }
+  }, []);
   // Sidebar collapsed? Remembered, so a cashier who works on the POS all day
   // keeps the wide screen instead of re-collapsing it on every page.
   const [navHidden, setNavHidden] = useState(false);
@@ -621,6 +548,36 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     </div>
   );
 
+  // ---------------------------- New layout (opt-in) ----------------------------
+  if (ui2) {
+    return (
+      <ShellV2
+        banner={supportBanner}
+        visible={itemVisible}
+        badges={{ '/salon/content': postAlerts, '/salon/feedback': fbOpen }}
+        token={token}
+        email={user.email}
+        salonName={user.tenantName}
+        isSupport={isSupport}
+        lang={lang}
+        setLang={setLang}
+        logout={logout}
+        onClassic={() => switchUi(false)}
+        branchSwitcher={<BranchSwitcher />}
+      >
+        {gated}
+      </ShellV2>
+    );
+  }
+
+  const tryNew = (
+    <button type="button" onClick={() => switchUi(true)}
+      title={lang === 'vi' ? 'Menu gọn theo khu, tìm kiếm Ctrl+K, nút Tạo mới — quay lại giao diện cũ bất cứ lúc nào' : 'Menu by area, Ctrl+K search, one New button — switch back any time'}
+      style={{ height: 40, padding: '0 12px', borderRadius: 10, border: '1px dashed #6366f1', background: 'transparent', color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+      ✨ {lang === 'vi' ? 'Thử giao diện mới' : 'Try the new layout'}
+    </button>
+  );
+
   // ---------------------------- Mobile ----------------------------
   if (isMobile) {
     return (
@@ -652,6 +609,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
                 <button onClick={() => setDrawerOpen(false)} aria-label="Close" style={{ width: 36, height: 36, borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 22, cursor: 'pointer' }}>✕</button>
               </div>
               <BranchSwitcher />
+              <div style={{ padding: '0 0 10px' }}>{tryNew}</div>
               {navList}
               {footer}
             </aside>
@@ -698,6 +656,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6" /></svg>{lang === 'vi' ? 'Mở quầy thu ngân' : 'Open register'}
             </a>
           )}
+          {tryNew}
           <ThemeToggle />
           {isSupport && <InboxAlerts href="/salon/inbox" label={lang === 'vi' ? 'Hộp thư' : 'Inbox'} />}
           <NotificationBell />

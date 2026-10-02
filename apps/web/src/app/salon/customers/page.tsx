@@ -66,6 +66,8 @@ function Inner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
+  // Arrived from the header search (?q=…): start with that search filled in.
+  useEffect(() => { const v = new URLSearchParams(window.location.search).get('q'); if (v) setQ(v); }, []);
   const [bMonth, setBMonth] = useState(0); // 0 = any birthday month
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'since', dir: 'desc' });
 

@@ -81,6 +81,8 @@ function BookingsInner() {
   const isMobile = useIsMobile();
   const range = useDateRange('all', true); // bookings are future-oriented
   const [q, setQ] = useState('');
+  // Arrived from the header search (?q=…): start with that search filled in.
+  useEffect(() => { const v = new URLSearchParams(window.location.search).get('q'); if (v) setQ(v); }, []);
   const [needsConfirm, setNeedsConfirm] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [services, setServices] = useState<Service[]>([]);

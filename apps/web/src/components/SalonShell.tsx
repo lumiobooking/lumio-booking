@@ -381,6 +381,16 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     return () => { alive = false; window.clearInterval(iv); };
   }, [token, canFeedback, pathname]);
 
+  // (A hook, so it lives ABOVE the early return below — hooks must run in the
+  // same order on every render.) The salon's name on the browser tab: an employee with five salons open
+  // tells them apart from the tab strip, before clicking into the wrong one.
+  useEffect(() => {
+    if (!user?.supportSession || !user.tenantName || typeof document === 'undefined') return;
+    const prev = document.title;
+    document.title = `${user.tenantName} · Lumio Support`;
+    return () => { document.title = prev; };
+  }, [user?.supportSession, user?.tenantName]);
+
   if (!ready || !token || !user || !hasSalonAccess) {
     return (
       <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', color: 'var(--c94a3b8)', background: 'var(--c0b1120)' }}>
@@ -401,15 +411,6 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: 'var(--c94a3b8)' }}>{gateText(lang === 'vi').body}</p>
     </div>
   ) : <NavAccessContext.Provider value={hrefVisible}>{children}</NavAccessContext.Provider>;
-
-  // The salon's name on the browser tab: an employee with five salons open
-  // tells them apart from the tab strip, before clicking into the wrong one.
-  useEffect(() => {
-    if (!user?.supportSession || !user.tenantName || typeof document === 'undefined') return;
-    const prev = document.title;
-    document.title = `${user.tenantName} · Lumio Support`;
-    return () => { document.title = prev; };
-  }, [user?.supportSession, user?.tenantName]);
 
   const supportBanner = user?.supportSession ? (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c312e81)', border: '1px solid #6366f1', color: 'var(--ce0e7ff)', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13.5 }}>

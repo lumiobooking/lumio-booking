@@ -77,6 +77,7 @@ import {
   DEFAULT_GROUP_DISCOUNT,
   GroupDiscount,
   BUSINESS_PROFILE_KEY, DEFAULT_BUSINESS_PROFILE, BusinessProfileSettings,
+  AI_NOTES_KEY, DEFAULT_AI_NOTES, AiNotes,
 } from './settings.constants';
 import { SmtpEmailProvider } from '../notifications/providers/smtp.provider';
 import { BrevoEmailProvider } from '../notifications/providers/brevo.provider';
@@ -249,6 +250,24 @@ export class SettingsService {
 
   async getAnalyticsSettings(tenantId: string): Promise<AnalyticsSettings> {
     return this.readKey<AnalyticsSettings>(tenantId, ANALYTICS_SETTINGS_KEY, DEFAULT_ANALYTICS_SETTINGS);
+  }
+
+  /** The salon's own rules for every AI assistant. Empty text = none. */
+  async getAiNotes(tenantId: string): Promise<AiNotes> {
+    const v = await this.readKey<AiNotes>(tenantId, AI_NOTES_KEY, DEFAULT_AI_NOTES);
+    return { text: typeof v?.text === 'string' ? v.text : '' };
+  }
+
+  getAiNotesFor(user: AuthenticatedUser): Promise<AiNotes> {
+    return this.getAiNotes(this.tenantId(user));
+  }
+
+  async updateAiNotes(user: AuthenticatedUser, dto: { text?: unknown }) {
+    const tenantId = this.tenantId(user);
+    const text = typeof dto.text === 'string' ? dto.text.trim().slice(0, 4000) : '';
+    await this.writeKey(tenantId, AI_NOTES_KEY, { text });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.ai_notes_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { length: text.length } });
+    return { text };
   }
 
   async getBusinessProfile(tenantId: string): Promise<BusinessProfileSettings> {
@@ -1161,6 +1180,23 @@ export class SettingsService {
       receipt,
       gmailRedirectUri: this.gmailRedirectUri(),
     };
+  }
+
+  /**
+   * THE DESK'S VIEW OF SETTINGS.
+   *
+   * The till, the calendar, the walk-in board and the bookings list all read
+   * `/settings` for the currency, the timezone, the tax rate, the loyalty
+   * rule and the salon's name — and `/settings` was owner-only, so every one
+   * of those screens failed for a receptionist with "Insufficient role". A
+   * staff account gets exactly the keys those screens read, and none of the
+   * owner's: no gateways, no SMS and mail credentials, no reminder templates,
+   * no analytics ids, no deposit policy, no Gmail redirect.
+   */
+  async getForDesk(user: AuthenticatedUser) {
+    const full = await this.get(user) as Record<string, unknown>;
+    const pick = (keys: string[]) => Object.fromEntries(keys.filter((k) => k in full).map((k) => [k, full[k]]));
+    return pick(['company', 'booking', 'pos', 'loyalty', 'branding', 'receipt', 'review', 'weekdayDiscounts', 'dateDiscounts', 'firstVisitDiscount', 'groupDiscount']);
   }
 
   async getFirstVisitDiscount(tenantId: string): Promise<FirstVisitDiscount> {

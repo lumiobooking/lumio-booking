@@ -16,7 +16,15 @@ import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { CreateStaffLoginDto } from './dto/create-staff-login.dto';
 import { ResetStaffPasswordDto } from './dto/reset-staff-password.dto';
 import { UpdateStaffLoginDto } from './dto/update-staff-login.dto';
-import { ROLE_PRESETS, STAFF_GRANTABLE } from '../auth/capabilities';
+import { ROLE_PRESETS, STAFF_GRANTABLE, hasCapability } from '../auth/capabilities';
+
+/** A staff row as the desk may see it: who they are and what they do — never what they earn or how they sign in. */
+const PAY_FIELDS = ['commissionPercent', 'baseCents', 'payType', 'productCommissionPercent', 'hourlyRateCents', 'dailyGuaranteeCents', 'salaryPeriod', 'checkPercent', 'performanceScore', 'rewardPoints', 'permissions', 'user', 'email', 'phone'];
+export function stripForDesk(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) if (!PAY_FIELDS.includes(k)) out[k] = v;
+  return out;
+}
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -27,12 +35,19 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 export class StaffController {
   constructor(private readonly staffService: StaffService) {}
 
-  // A manager given "Staff" may SEE the team; every write below stays the owner's.
+  // The team list. The desk needs it everywhere — the till assigns a sale to
+  // a technician, the calendar draws a column per tech, the walk-in board
+  // hands tickets out — so any desk role may read it. What a desk role may
+  // NOT read is what each person is paid, or their login: those fields are
+  // stripped unless the caller holds "staff" (or is the owner). Every write
+  // below stays the owner's.
   @Get()
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
-  @Caps('staff')
-  list(@CurrentUser() user: AuthenticatedUser) {
-    return this.staffService.list(user);
+  @Caps('staff', 'pos', 'calendar', 'bookings', 'walkins')
+  async list(@CurrentUser() user: AuthenticatedUser) {
+    const rows = await this.staffService.list(user);
+    const full = user.role !== UserRole.STAFF || hasCapability(user.role, user.staffRole, 'staff', user.staffCaps);
+    return full ? rows : rows.map((r) => stripForDesk(r as unknown as Record<string, unknown>));
   }
 
   // Per-technician performance (revenue, tips, reviews, points, top service,

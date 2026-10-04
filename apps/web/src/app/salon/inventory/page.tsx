@@ -9,6 +9,7 @@ import { ui, formatPrice, toMinorUnits, fromMinorUnits } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
+import { EditDialog } from '../../../components/EditDialog';
 import { SearchBox, matchesQuery, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { uiLocale } from '../../../lib/datetime';
@@ -123,11 +124,13 @@ function Inner() {
                     <button onClick={() => { setMoveFor({ id: i.id, dir: 'IN' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#16a34a' }}>{t('iv.stockIn')}</button>
                     <button onClick={() => { setMoveFor({ id: i.id, dir: 'OUT' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#d97706' }}>{t('iv.stockOut')}</button>
                     <button onClick={() => { setHistFor(histFor === i.id ? null : i.id); setMoveFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: histFor === i.id ? 'var(--c475569)' : 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{t('iv.history')}</button>
-                    <button onClick={() => setEditId(editId === i.id ? null : i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === i.id ? 'var(--c475569)' : '#6366f1', color: editId === i.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{editId === i.id ? t('iv.close') : t('iv.edit')}</button>
+                    <button onClick={() => setEditId(i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12 }}>{t('iv.edit')}</button>
                     <button onClick={() => remove(i.id)} style={ui.dangerBtn}>{t('iv.delete')}</button>
                   </MActions>
                 </MCard>
-                {editId === i.id && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><SupplyForm token={token!} currency={pageCurrency} item={i} onDone={async () => { setEditId(null); await load(); }} /></div>}
+                <EditDialog open={editId === i.id} onClose={() => setEditId(null)} title={`${t('iv.edit')} · ${i.name}`}>
+                  <SupplyForm token={token!} currency={pageCurrency} item={i} onDone={async () => { setEditId(null); await load(); }} />
+                </EditDialog>
                 {moveFor?.id === i.id && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><MovePanel token={token!} currency={pageCurrency} item={i} dir={moveFor.dir} onDone={async () => { setMoveFor(null); await load(); }} onCancel={() => setMoveFor(null)} /></div>}
                 {histFor === i.id && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><HistoryPanel token={token!} item={i} /></div>}
               </Fragment>
@@ -174,14 +177,16 @@ function Inner() {
                         <button onClick={() => { setMoveFor({ id: i.id, dir: 'IN' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#16a34a' }}>{t('iv.stockIn')}</button>
                         <button onClick={() => { setMoveFor({ id: i.id, dir: 'OUT' }); setHistFor(null); setEditId(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: '#d97706' }}>{t('iv.stockOut')}</button>
                         <button onClick={() => { setHistFor(histFor === i.id ? null : i.id); setMoveFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 11px', fontSize: 12, background: histFor === i.id ? 'var(--c475569)' : 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{t('iv.history')}</button>
-                        <button onClick={() => setEditId(editId === i.id ? null : i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === i.id ? 'var(--c475569)' : '#6366f1', color: editId === i.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{editId === i.id ? t('iv.close') : t('iv.edit')}</button>
+                        <button onClick={() => setEditId(i.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12 }}>{t('iv.edit')}</button>
                         <button onClick={() => remove(i.id)} style={ui.dangerBtn}>{t('iv.delete')}</button>
                       </div>
                     </td>
                   </tr>
                   {editId === i.id && (
-                    <tr><td colSpan={6} style={{ padding: 16, background: 'var(--c0f172a)' }}>
-                      <SupplyForm token={token!} currency={pageCurrency} item={i} onDone={async () => { setEditId(null); await load(); }} />
+                    <tr><td colSpan={6} style={{ padding: 0, border: 'none' }}>
+                      <EditDialog open onClose={() => setEditId(null)} title={`${t('iv.edit')} · ${i.name}`}>
+                        <SupplyForm token={token!} currency={pageCurrency} item={i} onDone={async () => { setEditId(null); await load(); }} />
+                      </EditDialog>
                     </td></tr>
                   )}
                   {moveFor?.id === i.id && (

@@ -3,6 +3,7 @@ import { BookingsController } from './bookings.controller';
 import { PublicAppointmentController } from './public-appointment.controller';
 import { BookingsService } from './bookings.service';
 import { ReminderService } from './reminder.service';
+import { PartyAvailabilityService } from './party-availability.service';
 import { AssignmentModule } from '../assignment/assignment.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SettingsModule } from '../settings/settings.module';
@@ -14,7 +15,7 @@ import { PushModule } from '../push/push.module';
 @Module({
   imports: [MaintenanceModule, AssignmentModule, NotificationsModule, SettingsModule, PaymentsModule, ReferralModule, PushModule],
   controllers: [BookingsController, PublicAppointmentController],
-  providers: [BookingsService, ReminderService],
-  exports: [BookingsService], // reused by PublicModule (WordPress plugin flow)
+  providers: [BookingsService, ReminderService, PartyAvailabilityService],
+  exports: [BookingsService, PartyAvailabilityService], // reused by PublicModule (WordPress plugin flow)
 })
 export class BookingsModule {}

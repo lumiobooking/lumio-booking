@@ -8,6 +8,7 @@ import { ui, formatPrice, toMinorUnits, fromMinorUnits, priceInputStep } from '.
 import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
+import { EditDialog } from '../../../components/EditDialog';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
@@ -148,11 +149,13 @@ function Inner() {
                   <MRow label={t('pd.colTaxable')}>{p.taxable ? t('pd.yes') : t('pd.no')}</MRow>
                   <MRow label={t('pd.colStock')}>{p.trackStock ? p.stockQty : '—'}</MRow>
                   <MActions>
-                    <button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === p.id ? 'var(--c475569)' : '#6366f1', color: editId === p.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{editId === p.id ? t('pd.close') : t('pd.edit')}</button>
+                    <button onClick={() => setEditId(p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12 }}>{t('pd.edit')}</button>
                     <button onClick={() => remove(p.id)} style={ui.dangerBtn}>{t('pd.delete')}</button>
                   </MActions>
                 </MCard>
-                {editId === p.id && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><ProductForm token={token!} product={p} currency={currency} onDone={async () => { setEditId(null); await load(); }} /></div>}
+                <EditDialog open={editId === p.id} onClose={() => setEditId(null)} title={`${t('pd.edit')} · ${p.name}`}>
+                  <ProductForm token={token!} product={p} currency={currency} onDone={async () => { setEditId(null); await load(); }} />
+                </EditDialog>
               </Fragment>
             ))}
           </MList>
@@ -188,14 +191,16 @@ function Inner() {
                     <td style={ui.td}><span style={{ color: p.isActive ? 'var(--ink-good)' : 'var(--c94a3b8)' }}>{p.isActive ? t('pd.active') : t('pd.inactive')}</span></td>
                     <td style={ui.td}>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => setEditId(editId === p.id ? null : p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editId === p.id ? 'var(--c475569)' : '#6366f1', color: editId === p.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{editId === p.id ? t('pd.close') : t('pd.edit')}</button>
+                        <button onClick={() => setEditId(p.id)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12 }}>{t('pd.edit')}</button>
                         <button onClick={() => remove(p.id)} style={ui.dangerBtn}>{t('pd.delete')}</button>
                       </div>
                     </td>
                   </tr>
                   {editId === p.id && (
-                    <tr><td colSpan={7} style={{ padding: 16, background: 'var(--c0f172a)' }}>
-                      <ProductForm token={token!} product={p} currency={currency} onDone={async () => { setEditId(null); await load(); }} />
+                    <tr><td colSpan={7} style={{ padding: 0, border: 'none' }}>
+                      <EditDialog open onClose={() => setEditId(null)} title={`${t('pd.edit')} · ${p.name}`}>
+                        <ProductForm token={token!} product={p} currency={currency} onDone={async () => { setEditId(null); await load(); }} />
+                      </EditDialog>
                     </td></tr>
                   )}
                 </Fragment>

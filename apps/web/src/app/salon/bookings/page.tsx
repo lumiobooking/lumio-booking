@@ -43,6 +43,7 @@ interface Booking {
   // appointment (kind: 'service'); add-ons live in the same array without a kind.
   addons?: { id?: string; name?: string; kind?: string; staffMemberId?: string }[] | null;
   assignedStaff: NamedRef | null;
+  preferredStaff?: NamedRef | null;
   // Shared by everyone booked together; null for a solo visit.
   groupId?: string | null;
 }
@@ -1113,6 +1114,8 @@ function serviceNames(b: Booking): string[] {
  */
 function StaffCell({ b, staff }: { b: Booking; staff: Staff[] }) {
   const primary = b.assignedStaff ? `${b.assignedStaff.firstName} ${b.assignedStaff.lastName ?? ''}`.trim() : '—';
+  // The one the customer ASKED for, when nobody (or somebody else) is assigned yet.
+  const asked = b.preferredStaff && b.preferredStaff.id !== b.assignedStaff?.id ? `${b.preferredStaff.firstName} ${b.preferredStaff.lastName ?? ''}`.trim() : '';
   const others = [...new Set(
     (b.addons ?? [])
       .filter((a) => a?.kind === 'service' && a.staffMemberId && a.staffMemberId !== b.assignedStaff?.id)
@@ -1122,11 +1125,13 @@ function StaffCell({ b, staff }: { b: Booking; staff: Staff[] }) {
       })
       .filter(Boolean),
   )];
-  if (others.length === 0) return <>{primary}</>;
+  const askedLine = asked ? <span style={{ display: 'block', fontSize: 12, color: 'var(--cfcd34d)', marginTop: 2 }} title="Requested by the customer">★ {asked}</span> : null;
+  if (others.length === 0) return <>{primary}{askedLine}</>;
   return (
     <span title={[primary, ...others].join(', ')}>
       {primary}
       <span style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>+ {others.join(' · ')}</span>
+      {askedLine}
     </span>
   );
 }

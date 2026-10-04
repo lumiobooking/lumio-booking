@@ -32,6 +32,7 @@ interface Booking {
   priceCents: number;
   currency: string;
   notes: string | null;
+  preferredStaff?: { id: string; firstName: string; lastName: string | null } | null;
   source?: string | null;
   utmSource?: string | null;
   attrReferrer?: string | null;
@@ -1091,7 +1092,12 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
         <DetailRow label={t('cal.dName')} value={fullName} />
         {b.customer?.phone && <DetailRow label={t('cal.dPhone')} value={b.customer.phone} />}
         {b.customer?.email && <DetailRow label={t('cal.dEmail')} value={b.customer.email} />}
-        {b.notes && <DetailRow label={t('cal.dNote')} value={b.notes} />}
+        {/* Who the customer ASKED for — the hotline and the chat bot write it,
+            and it is the one thing the desk must know before moving a booking. */}
+        {b.preferredStaff && b.preferredStaff.id !== b.assignedStaff?.id && (
+          <DetailRow label={t('cal.dPreferred')} value={<span style={{ color: 'var(--cfcd34d)', fontWeight: 600 }}>★ {`${b.preferredStaff.firstName} ${b.preferredStaff.lastName ?? ''}`.trim()}</span>} />
+        )}
+        {b.notes && <NoteBox label={t('cal.dNote')} text={b.notes} />}
 
         {active && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 20 }}>
@@ -1334,6 +1340,21 @@ function ServiceLines({ b, onAction, editable }: { b: Booking; onAction: (id: st
           {tr('cal.dAddons', lang)}: {extras.map((a) => a.name).join(', ')}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * A note the way it was written — line breaks kept. An AI booking's note is
+ * two lines (where it came from · phone · technician asked for · group, then
+ * what the customer said) and used to be flattened into one grey run.
+ */
+function NoteBox({ label, text }: { label: string; text: string }) {
+  const ai = /^[☎️💬]/u.test(text);
+  return (
+    <div style={{ padding: '6px 0', fontSize: 14 }}>
+      <div style={{ color: 'var(--c94a3b8)', marginBottom: 4 }}>{label}</div>
+      <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.45, padding: '8px 10px', borderRadius: 8, background: ai ? 'rgba(99,102,241,0.10)' : 'var(--c0f172a)', border: `1px solid ${ai ? 'rgba(99,102,241,0.35)' : 'var(--line)'}`, color: 'var(--ce2e8f0)' }}>{text}</div>
     </div>
   );
 }

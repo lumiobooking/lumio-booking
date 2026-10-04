@@ -12,6 +12,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { useLang } from '../../../lib/i18n';
+import { AiNotesBox } from '../../../components/AiNotesBox';
 import { uiLocale } from '../../../lib/datetime';
 
 interface CustomHour { day: number; enabled: boolean; start: string; end: string }
@@ -590,6 +591,7 @@ function Inner() {
           <option value="bilingual">{t('langBi')}</option>
         </select>
 
+        <AiNotesBox token={token} vi={lang === 'vi'} />
         <label style={ui.label}>{t('aiInstruction')}</label>
         <textarea value={c.aiInstruction} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} placeholder={t('aiInstructionPh')}
           rows={3} style={{ ...ui.input, marginBottom: 10, resize: 'vertical' }} />

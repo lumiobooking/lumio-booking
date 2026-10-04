@@ -15,6 +15,7 @@ import { CreateServiceAddonDto, CreateSharedAddonDto } from './dto/create-addon.
 import { CreateServiceCategoryDto, UpdateServiceCategoryDto } from './dto/category.dto';
 import { ReorderDto } from './dto/reorder.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 
@@ -35,6 +36,8 @@ export class ServicesController {
 
   // All add-ons for the tenant (used by the POS catalog). Two-segment path so it
   // never collides with GET /services/:id.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('pos', 'services')
   @Get('addons/all')
   listAllAddons(@CurrentUser() user: AuthenticatedUser) {
     return this.servicesService.listAllAddons(user);

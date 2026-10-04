@@ -21,6 +21,7 @@ interface Detail {
   endTime: string;
   notes: string | null;
   partySize?: number | null;
+  preferredStaff?: { id: string; firstName: string; lastName: string | null } | null;
   source?: string | null;
   utmSource?: string | null;
   attrReferrer?: string | null;
@@ -114,6 +115,7 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
               <Row label={L('Thời gian', 'When')}>{fmtWhen(d.startTime)}{d.endTime ? ` – ${fmtTime(d.endTime)}` : ''}</Row>
               <Row label={L('Dịch vụ', 'Service')}>{d.service?.name ?? '—'}{d.service?.durationMinutes ? ` · ${d.service.durationMinutes} min` : ''}</Row>
               <Row label={L('Nhân viên', 'Staff')}>{d.assignedStaff ? fullName(d.assignedStaff, '—') : L('Chưa phân công', 'Unassigned')}</Row>
+              {d.preferredStaff && d.preferredStaff.id !== d.assignedStaff?.id && <Row label={L('Thợ khách yêu cầu', 'Asked for')}><span style={{ color: 'var(--cfcd34d)', fontWeight: 600 }}>★ {fullName(d.preferredStaff, '—')}</span></Row>}
               {d.table && <Row label={L('Bàn', 'Table')}>{d.table.name}{d.table.seats ? ` · ${d.table.seats} ${L('chỗ', 'seats')}` : ''}</Row>}
               {d.partySize ? <Row label={L('Số người', 'Party')}>{d.partySize}</Row> : null}
               <Row label={L('Nguồn', 'Source')}>{sourceLabel(d)}</Row>
@@ -122,7 +124,7 @@ export function BookingDetailSheet({ token, apptId, onClose, lang, L }: { token?
               </Row>
               {d.customer?.phone && <Row label={L('Điện thoại', 'Phone')}><a href={`tel:${d.customer.phone}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{d.customer.phone}</a></Row>}
               {d.customer?.email && <Row label="Email"><a href={`mailto:${d.customer.email}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{d.customer.email}</a></Row>}
-              {d.notes && <Row label={L('Ghi chú', 'Notes')}>{d.notes}</Row>}
+              {d.notes && <Row label={L('Ghi chú', 'Notes')}><span style={{ whiteSpace: 'pre-wrap' }}>{d.notes}</span></Row>}
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>

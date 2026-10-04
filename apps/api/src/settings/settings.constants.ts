@@ -229,6 +229,17 @@ export interface BusinessProfileSettings {
    */
   tradeSource?: 'manual' | 'auto' | '';
 }
+/**
+ * What this salon wants EVERY assistant to know — hotline, Messenger,
+ * Instagram, web chat, Zalo — in the owner's own words: "ask gel or dip for
+ * a full set", "we don't do kids under 8", "Kim only does pedicures". One
+ * place, read by every channel, so a rule is not typed twice and forgotten
+ * once.
+ */
+export const AI_NOTES_KEY = 'ai_notes';
+export interface AiNotes { text: string }
+export const DEFAULT_AI_NOTES: AiNotes = { text: '' };
+
 export const BUSINESS_PROFILE_KEY = 'business_profile';
 export const DEFAULT_BUSINESS_PROFILE: BusinessProfileSettings = {
   whatWeDo: '', whoWeServe: '', languages: '', serviceArea: '', edge: '', avoid: '', trade: '', tradeSource: '',

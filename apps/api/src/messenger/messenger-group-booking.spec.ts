@@ -25,6 +25,7 @@ function makeSvc(o: { failOn?: number } = {}) {
     service: { findMany: async (a: { where: Row }) => { wheres.push(a.where); return MENUS[a.where.tenantId] ?? []; } },
     appointment: { updateMany: async (a: Row) => { updates.push(a); return { count: 1 }; } },
     messengerThread: { update: async () => ({}) },
+    tenant: { findUnique: async () => ({ market: 'US' }) },
   };
   const bookings = {
     createForTenant: async (tenantId: string, dto: Row, actor: unknown, source: string, device: unknown, opts: Row) => {

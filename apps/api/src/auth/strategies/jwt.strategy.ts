@@ -6,6 +6,7 @@ import { StaffRole, UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/tenant/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { refusalMessage, sessionRefusal, type UserLookup } from '../session-check';
+import { cleanStaffCaps } from '../capabilities';
 
 /** Shape of the signed JWT payload (iat/exp added by passport-jwt on verify). */
 export interface JwtPayload {
@@ -60,15 +61,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Does this token still stand for a real, allowed person? A signature only
     // proves the token was issued; everything that happened since — the account
     // deleted, switched off, its password changed — lives in the row.
-    const refusal = sessionRefusal(await this.lookup(payload.sub), payload.iat);
+    const look = await this.lookup(payload.sub);
+    const refusal = sessionRefusal(look, payload.iat);
     if (refusal) throw new UnauthorizedException(refusalMessage(refusal));
+    // What a STAFF account may open comes from the ROW when the row was read
+    // (cached ten seconds), and from the token only when the read failed. So
+    // an old token gets today's rules, and the owner's change applies within
+    // seconds on every machine — not only on the ones that signed in after it.
+    const fromRow = payload.role === 'STAFF' && !look.failed && look.found && look.staffRole !== undefined;
     return {
       userId: payload.sub,
       email: payload.email,
       role: payload.role,
       tenantId: payload.tenantId ?? null,
-      staffRole: payload.staffRole ?? null,
-      staffCaps: Array.isArray(payload.staffCaps) ? payload.staffCaps.map((c) => String(c)) : null,
+      staffRole: fromRow ? ((look.staffRole ?? null) as StaffRole | null) : (payload.staffRole ?? null),
+      staffCaps: fromRow ? (look.staffCaps ?? null) : (Array.isArray(payload.staffCaps) ? payload.staffCaps.map((c) => String(c)) : null),
       supportSession: payload.supportSession === true,
     // Carried through verbatim. The level is decided once, at enter-salon time,
     // from the employee's own row — so changing somebody's level takes effect
@@ -98,13 +105,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     try {
       const u = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { isActive: true, passwordChangedAt: true },
-      });
+        select: { isActive: true, passwordChangedAt: true, role: true, staffMember: { select: { staffRole: true, permissions: true } } } as never,
+      }) as { isActive: boolean; passwordChangedAt: Date | null; role: UserRole; staffMember?: { staffRole: StaffRole; permissions?: unknown } | null } | null;
+      const sm = u?.role === UserRole.STAFF ? u?.staffMember ?? null : undefined;
       look = {
         failed: false,
         found: Boolean(u),
         isActive: u?.isActive !== false,
         changedAt: u?.passwordChangedAt ? u.passwordChangedAt.getTime() : 0,
+        // undefined = not a staff account (or the relation was not selected); null = staff with no profile row.
+        ...(sm === undefined ? {} : { staffRole: sm?.staffRole ?? null, staffCaps: cleanStaffCaps(sm?.permissions) }),
       };
     } catch {
       // Not an answer. Not cached either — the next request asks again.

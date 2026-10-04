@@ -1198,6 +1198,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'cal.dPhone': { en: 'Phone', vi: 'SĐT' },
   'cal.dEmail': { en: 'Email', vi: 'Email' },
   'cal.dNote': { en: 'Note', vi: 'Ghi chú' },
+  'cal.dPreferred': { en: 'Asked for', vi: 'Thợ khách yêu cầu' },
   'cal.complete': { en: 'Complete', vi: 'Hoàn thành' },
   'cal.cancel': { en: 'Cancel', vi: 'Huỷ' },
   'cal.arrive': { en: '✓ Mark arrived (checked-in)', vi: '✓ Đánh dấu đã đến' },

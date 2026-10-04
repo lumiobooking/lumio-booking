@@ -23,6 +23,8 @@ import { chat as llmChat, openAiEnabled, type ChatMessage, type ToolDef, type Te
 import { withBookingLink } from './booking-link';
 import { FbPageRow, FbPagesBody, walkFbPages } from './fb-pages';
 import { isSameVisit, servicesAsked, type OpenVisit } from './one-visit';
+import { PartyAvailabilityService } from '../bookings/party-availability.service';
+import { aiBookingNote, noteLangForMarket, type AiChannel } from '../bookings/ai-booking-note';
 import { leadDossier, rawMemoryFallback, LeadFacts, customerDossier, type KnownCustomer } from './lead-memory';
 import { InboxEventsService } from './inbox-events.service';
 import { PushService } from '../push/push.service';
@@ -177,7 +179,15 @@ export class MessengerService implements OnModuleInit {
     // Chat turns: who in the salon follows up a conversation. Optional so a
     // routing problem can never stop the bot answering.
     @Optional() private readonly turns?: ChatTurnsService,
+    // "Is there room for all of us at two?" — the same diary arithmetic the
+    // hotline uses (bookings module). Optional so the older specs still run.
+    @Optional() private readonly party?: PartyAvailabilityService,
   ) {}
+
+  private get parties(): PartyAvailabilityService {
+    if (!this.party) (this as unknown as { party?: PartyAvailabilityService }).party = new PartyAvailabilityService(this.prisma, this.settings);
+    return this.party!;
+  }
 
   /**
    * Count a call made with a bare fetch rather than through common/llm.
@@ -2993,6 +3003,10 @@ export class MessengerService implements OnModuleInit {
       userText,
     ]) ?? (ctx.mode === 'sales' ? null : defaultLangForMarket((tenant as { market?: string } | null)?.market));
     const infoBlock = await this.systemKnowledge(tenantId, tenant?.contactPhone ?? null, tenant?.contactEmail ?? null);
+    // The salon's shared rules for every assistant, ahead of this channel's own notes.
+    let sharedNotes = '';
+    if (ctx.mode === 'booking') { try { sharedNotes = (await this.settings.getAiNotes(tenantId))?.text ?? ''; } catch { sharedNotes = ''; } }
+    const ownerNotes = [sharedNotes, String(aiInstruction ?? '').trim()].filter(Boolean).join('\n').slice(0, 4000);
     const nowLocal = new Date().toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
     // WHERE this chat is happening. It said "Facebook Messenger" to everyone,
@@ -3022,10 +3036,10 @@ GREETING AND THANKS: open the conversation warmly with the salon's name ("Hi Bre
 If the conversation is just starting and the customer hasn't said what they need, greet briefly and ask what they'd like to book.
 WHAT YOU NEED TO BOOK — collect only what is still missing, one question at a time, in this order:
 1. WHO and WHAT: the service(s) for each person. One person can have several services. If they mention someone else ("me and my sister", "for 2"), it is a group: get each person's service(s) — "Does your sister want the same, or something different?" is one question. If their words could mean more than one menu item ("manicure" → regular or gel; "acrylic" → full set or fill), ask which.
-2. WHEN: a specific day and time.
+2. WHEN: a specific day and time. As soon as you know the services and a day (or a time), call check_availability — offer only times it says are open; if theirs is taken, offer the 2–3 it gives you. Never promise a time you have not checked.
 3. NAMES: their first name, and the first name of each person with them.
 4. PHONE: their mobile number (one number for the whole group).
-A technician preference only if they bring it up. That is everything — nothing more.
+A technician preference only if they bring it up (pass the name in create_booking; if they do not care, say nothing). If they mention anything the salon should know — an allergy, a design, being late — pass it in create_booking's "request"; do not ask for it. That is everything — nothing more.
 Email is OPTIONAL: mention once that a confirmation email is possible; if they skip it, book without it and never bring it up again.
 Recap ONCE, in one short line ("Gel manicure, Friday 2:00 PM, for Anna — shall I book it?"; for a group: "Acrylic full sets for Rebecca and Tasha, Saturday 1:00 PM — shall I book it?"). Any agreement at all — "yes", "ok", "sure", "thanks", a thumbs-up — means BOOK IT NOW. Never recap a second time and never ask a second confirming question; a customer who has to agree twice thinks the booking failed.
 Use the get_services tool for what's available. When you have name + phone + service + a specific date/time, call create_booking ONCE, listing EVERY service for that visit in the "services" array (id and name copied exactly from get_services; include email only if given). Two services in one visit is ONE call with two entries — never two calls, and never two start times: the salon lengthens the appointment for the extra services by itself, so one person sitting in one chair gets one appointment and one bill. A GROUP is still ONE call: the person you are chatting with in customerFirstName/services, everyone else in "guests" (each with their own name and services) — they are all booked at the same time, each with their own technician. After it succeeds, thank them and confirm warmly in one line, and say a confirmation is on the way.
@@ -3033,10 +3047,34 @@ If they ask about an EXISTING appointment ("khi nào lịch của tôi", "đổi
 To CANCEL one, first read the day and time back and ask them to confirm in plain words ("anh/chị xác nhận huỷ lịch ... nhé?"); only after a clear yes, call cancel_appointment with the appointment id and their phone. Never cancel on a hint, on "maybe", or while they are still asking questions — an emptied chair cannot be undone from this chat. If the tool refuses, say ITS reason and offer to have a staff member call back. If they sound like they only want a different time, offer to move it instead — the salon keeps the customer and they keep their slot.
 CRITICAL: Only tell the customer the booking is confirmed if the create_booking tool result starts with "SUCCESS". If the tool returns an error, NEVER claim the booking was made — apologize, briefly explain the problem in plain words, and offer another time or ask for corrected details.
 As a kind final touch AFTER the booking is confirmed, mention the salon loves to send a little birthday treat and gently ask if they'd like to share their birthday (just the month and day) — make it clear this is entirely optional. If they share it, call save_birthday with their phone. If they decline, hesitate, or don't answer, that is completely fine — thank them warmly and never push or ask again.
-${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address, and contact info that are given to you here; never invent them. Do not book or promise a time outside business hours — if the customer asks for a closed day or time, tell them the salon is closed then and offer the nearest open time. If the customer is upset or asks for a human, tell them a staff member will follow up soon. Do not ask for payment.${aiInstruction ? `\nSalon owner's extra notes: ${aiInstruction}` : ''}`;
+${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address, and contact info that are given to you here; never invent them. Do not book or promise a time outside business hours — if the customer asks for a closed day or time, tell them the salon is closed then and offer the nearest open time. If the customer is upset or asks for a human, tell them a staff member will follow up soon. Do not ask for payment.${ownerNotes ? `\nTHE SALON OWNER'S OWN RULES — follow these on every conversation, at the step they apply to (still one question per message): ${ownerNotes}` : ''}`;
 
     const bookingTools = [
       { name: 'get_services', description: 'List this salon’s bookable services with their id, name, price and duration.', input_schema: { type: 'object', properties: {}, required: [] } },
+      {
+        name: 'check_availability',
+        description: 'Look in the salon’s book before offering or confirming a time. Each person needs their own free technician at the same start time. Returns whether the asked time works and the nearest open times. Call it as soon as you know the services and a day.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            date: { type: 'string', description: 'The salon-local day, YYYY-MM-DD.' },
+            time: { type: 'string', description: 'The salon-local start, HH:MM in 24-hour time. Leave out to hear the open times that day.' },
+            people: {
+              type: 'array', minItems: 1, maxItems: 8,
+              description: 'Everyone in the party, the customer first; one entry per person with the services they want.',
+              items: {
+                type: 'object',
+                properties: {
+                  services: { type: 'array', items: { type: 'string' }, description: 'Service names (or ids) exactly as in get_services.' },
+                  technician: { type: 'string', description: 'Only when they asked for someone by name.' },
+                },
+                required: ['services'],
+              },
+            },
+          },
+          required: ['date', 'people'],
+        },
+      },
       {
         name: 'create_booking',
         description: 'Create ONE appointment for ONE visit. If the customer wants several services in the same visit, list them ALL in `services` in a single call — never call this tool twice for the same visit.',
@@ -3061,6 +3099,8 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
             serviceName: { type: 'string', description: 'Only for a single-service visit; prefer `services`.' },
             localDateTime: { type: 'string', description: 'Salon local time in ISO form, e.g. 2026-07-10T14:00. ONE start time for the whole visit — the salon extends the block for the extra services itself.' },
             customerEmail: { type: 'string', description: 'Optional. The customer email for an email confirmation; omit entirely if they did not give one.' },
+            technician: { type: 'string', description: 'Only when the customer asked for a technician by name (first name as the salon lists it). Leave out otherwise.' },
+            request: { type: 'string', description: 'Optional. Anything the customer wants the salon to know, in their words: an allergy, a design, "running 10 minutes late". Leave out if nothing.' },
             guests: {
               type: 'array',
               maxItems: 8,
@@ -4293,6 +4333,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         await this.sendCards(ctx.pageToken, ctx.senderId, cards);
         return `SUCCESS — ${cards.length} package card(s) sent. Now send ONE short line asking which fits (do NOT repeat the package details).`;
       }
+      if (name === 'check_availability' && ctx?.mode === 'booking') {
+        const pctx = await this.partyCtx(tenantId);
+        // The chat bot names services by their menu name; the shared parser
+        // also takes ids and codes, so both spellings land on the same item.
+        return this.parties.describe(tenantId, tz, input, pctx);
+      }
       if (name === 'get_services') {
         const services = await this.prisma.service.findMany({
           where: { tenantId, isActive: true },
@@ -4373,12 +4419,28 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
 
         const partySize = guests.length + 1;
         const groupId = guests.length ? `chat-${crypto.randomUUID()}` : undefined;
-        const names = [firstName, ...guests.map((g) => g.firstName)].join(', ');
+        const partyNames = [firstName, ...guests.map((g) => g.firstName)];
+        // The technician they asked for, if any — matched against THIS salon's team.
+        const wantTech = String(input.technician ?? '').trim();
+        let techId: string | null = null; let techName: string | null = null;
+        if (wantTech && !/^(any|anyone|no preference|none)$/i.test(wantTech)) {
+          const team = (await this.partyCtx(tenantId)).staff;
+          const key = wantTech.toLowerCase();
+          const hits = team.filter((t) => t.firstName.toLowerCase() === key || `${t.firstName} ${t.lastName ?? ''}`.trim().toLowerCase() === key);
+          if (hits.length !== 1) return `There is no single technician called "${wantTech}" here (team: ${team.map((t) => t.firstName).join(', ') || 'none listed'}). Tell the customer and ask whether anyone else is fine — do not book yet.`;
+          techId = hits[0].id; techName = hits[0].firstName;
+        }
+        const request = String(input.request ?? '').trim().slice(0, 300);
+        const noteLang = noteLangForMarket((await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } as never }).catch(() => null) as { market?: string } | null)?.market);
+        const channel: AiChannel = ctx?.channel === 'instagram' ? 'instagram' : ctx?.channel === 'web' ? 'web' : ctx?.channel === 'zalo' ? 'zalo' : 'messenger';
+        const svcNames = await this.serviceNames(tenantId, ids);
         const dto = {
           serviceId, startTime, customerFirstName: firstName, customerPhone: phone,
           ...(ids.length > 1 ? { serviceIds: ids } : {}),
           ...(email && /.+@.+\..+/.test(email) ? { customerEmail: email } : {}),
-          ...(groupId ? { partySize, groupId, notes: `Group of ${partySize} booked by chat: ${names}` } : {}),
+          ...(techId ? { preferredStaffId: techId } : {}),
+          ...(groupId ? { partySize, groupId } : {}),
+          notes: aiBookingNote({ channel, lang: noteLang, phone, techName, partyNames: groupId ? partyNames : undefined, services: svcNames, request }),
         } as CreateBookingDto;
         // The door is the THREAD's channel, not the module's name. Instagram
         // bookings used to be filed as 'messenger', which meant the owner's
@@ -4397,7 +4459,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
             const gb = await this.bookings.createForTenant(tenantId, {
               serviceId: g.ids[0], ...(g.ids.length > 1 ? { serviceIds: g.ids } : {}), startTime,
               customerFirstName: g.firstName, partySize, groupId,
-              notes: `Group of ${partySize} with ${firstName} (booked by chat): ${names}`,
+              notes: aiBookingNote({ channel, lang: noteLang, phone, partyNames, services: await this.serviceNames(tenantId, g.ids), request: request ? `(${firstName}) ${request}` : null }),
             } as CreateBookingDto, null, bookedVia, null, { autoAssign: true, groupGuest: true });
             const gid = (gb as { id?: string }).id;
             if (gid) guestIds.push(gid);
@@ -4625,6 +4687,21 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       return { urls: uniq([...own, ...more]), label };
     }
     return { urls: [], label: '' };
+  }
+
+  /** The coded menu and the team, for the shared party arithmetic. */
+  private async partyCtx(tenantId: string): Promise<{ menu: { id: string; name: string; minutes: number }[]; staff: { id: string; firstName: string; lastName: string | null }[] }> {
+    const [rows, staff] = await Promise.all([
+      this.prisma.service.findMany({ where: { tenantId, isActive: true }, select: { id: true, name: true, durationMinutes: true }, orderBy: { name: 'asc' }, take: 250 }),
+      this.prisma.staffMember.findMany({ where: { tenantId, isActive: true, takesAppointments: true }, select: { id: true, firstName: true, lastName: true }, orderBy: { firstName: 'asc' }, take: 60 }).catch(() => []),
+    ]);
+    return { menu: rows.map((r) => ({ id: r.id, name: r.name, minutes: r.durationMinutes > 0 ? r.durationMinutes : 30 })), staff };
+  }
+
+  private async serviceNames(tenantId: string, ids: string[]): Promise<string[]> {
+    if (!ids.length) return [];
+    const rows: { id: string; name: string }[] = await this.prisma.service.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, name: true } }).catch(() => []);
+    return ids.map((id) => rows.find((r) => r.id === id)?.name).filter((x): x is string => !!x);
   }
 
   private async resolveServiceId(tenantId: string, id: string, name: string): Promise<string | null> {

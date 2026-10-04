@@ -13,6 +13,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { ChatTurnsPanel } from '../../../components/ChatTurnsPanel';
 import { useLang } from '../../../lib/i18n';
+import { AiNotesBox } from '../../../components/AiNotesBox';
 import { uiLocale } from '../../../lib/datetime';
 
 interface BotFact { label: string; value: string; on: boolean; from?: string | null; until?: string | null }
@@ -1177,6 +1178,7 @@ function Inner() {
         <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-6px 0 12px', lineHeight: 1.5 }}>
           {lang === 'vi' ? 'Bot không dán nguyên văn — nó chào tạm biệt theo đúng tinh thần câu này, bằng ngôn ngữ của khách.' : 'Not pasted verbatim — the bot says goodbye in the spirit of this line, in the customer\u2019s language.'}
         </p>
+        <AiNotesBox token={token} vi={lang === 'vi'} />
         <label style={ui.label}>{t('extraNotes')}</label>
         <textarea value={c.aiInstruction} placeholder={t('extraNotesPh')} rows={3} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
       </div>

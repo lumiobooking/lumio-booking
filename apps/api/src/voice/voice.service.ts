@@ -5,7 +5,9 @@ import { isTransientStatus } from '../messenger/agent-fallback';
 import { Prisma, NotificationChannel, NotificationStatus, AppointmentStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { wallTimeToUtc } from '../bookings/booking.util';
-import { MenuItem, PartyMember, Tech, nearestTimes, partyFits, partyOpenTimes, resolveService, serviceCode } from './group-booking';
+import { MenuItem, resolveService, serviceCode } from '../bookings/group-booking';
+import { PartyAvailabilityService, type Member } from '../bookings/party-availability.service';
+import { aiBookingNote, noteLangForMarket } from '../bookings/ai-booking-note';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { SettingsService } from '../settings/settings.service';
@@ -82,8 +84,6 @@ export interface UpdateVoiceInput {
 interface BotFact { label: string; value: string; on: boolean }
 /** What the tools need from the turn that called them: the coded menu, who works here, and which booking flow applies. */
 interface ToolCtx { menu: MenuItem[]; staff: { id: string; firstName: string; lastName: string | null }[]; groupMode: boolean }
-/** One person of a party, resolved against the menu and the team. */
-interface Member { firstName: string; items: MenuItem[]; techId: string | null; techName: string | null }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 export interface VoiceUsage {
   periodStart: string; aiCalls: number; aiMinutes: number; smsSent: number;
@@ -167,7 +167,16 @@ export class VoiceService implements OnModuleInit {
     // Optional like everywhere else the meter is injected: counting a call
     // must never be able to drop one.
     @Optional() private readonly aiUsage?: AiUsageService,
+    // The shared "is there room for all of us" arithmetic (bookings module).
+    // Optional so the older specs that build the service bare still run.
+    @Optional() private readonly party?: PartyAvailabilityService,
   ) {}
+
+  /** The party service, built on demand when Nest did not hand one in (specs). */
+  private get parties(): PartyAvailabilityService {
+    if (!this.party) (this as unknown as { party?: PartyAvailabilityService }).party = new PartyAvailabilityService(this.prisma, this.settings);
+    return this.party!;
+  }
 
   /**
    * Count one turn of a phone call. A caller who says four things costs four
@@ -960,7 +969,11 @@ export class VoiceService implements OnModuleInit {
     // the assistant never asked. They are now a named block the model is told
     // to follow on every call — still one question per turn, and still never
     // a price or service the salon did not give.
-    const ownerNote = String(aiInstruction ?? '').trim().slice(0, 2000);
+    // The salon's shared rules (every AI door) come first, the hotline's own
+    // extras after — both are the owner's words, both are followed.
+    let shared = '';
+    try { shared = (await this.settings.getAiNotes(tenantId))?.text ?? ''; } catch { shared = ''; }
+    const ownerNote = [shared, String(aiInstruction ?? '').trim()].filter(Boolean).join('\n').slice(0, 4000);
     const ownerRules = ownerNote
       ? `\nTHE ${persona.venueNoun.toUpperCase()} OWNER'S INSTRUCTIONS — follow these on every call. They are this ${persona.venueNoun}'s own rules: when one says to quote a price a certain way or to ask a question for a certain service, do exactly that at that point in the booking steps (one question per turn), in the caller's language:\n${ownerNote}\n`
       : '';
@@ -1016,6 +1029,7 @@ The call has already been answered with the ${persona.venueNoun}'s greeting — 
 - WHEN: the day and time. As soon as you know everyone's services and the day or time, call check_availability. Only offer times it says are open; if theirs is taken, offer the times it gives you.
 - NAMES: the first name of each person, asked once for everybody ("And the first names for each of you?"). Never invent, guess or reuse a name. The caller's phone number is already known — do not ask for it.
 - TECHNICIAN: only if the caller asks for someone by name, pass that name; otherwise anyone is fine — do not ask.
+- REQUESTS: if they mention anything the salon should know (an allergy, a design, being late), pass it in create_booking's "request" — do not ask for it.
 - CONFIRM: read everything back in ONE sentence and wait for a clear yes, e.g. "So Anna for a gel manicure and pedicure and Lisa for a pedicure, Saturday at 2 PM — is that right?"
 - BOOK: after the yes, call create_booking ONCE with everyone in it. Then say in one short sentence that it is booked and a text confirmation is on the way, and ask if there is anything else.${staff.length ? `\nTechnicians here (first names): ${staff.map((s) => s.firstName).join(', ')}.` : ''}`;
     const singleScript = `${persona.voiceGoal}
@@ -1065,6 +1079,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
                 localDateTime: { type: 'string', description: 'Salon local start time in ISO form, e.g. 2026-07-10T14:00' },
                 people: { type: 'array', minItems: 1, maxItems: 8, items: personItem(true) },
                 customerPhone: { type: 'string', description: 'Optional. Defaults to the caller’s own number; only set if they give a different callback number.' },
+                request: { type: 'string', description: 'Optional. Anything the caller asked the salon to know, in their words: an allergy, a design they want, "running 10 minutes late". Leave out if nothing.' },
               },
               required: ['localDateTime', 'people'],
             },
@@ -1345,157 +1360,11 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
   }
 
   // ---- party booking (one person or a group) --------------------------------
-
-  /** "Saturday, October 10 at 2:00 PM" in the salon's own clock. */
-  private spoken(d: Date, tz: string, withDay = true): string {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: tz, ...(withDay ? { weekday: 'long', month: 'long', day: 'numeric' } : {}), hour: 'numeric', minute: '2-digit',
-    }).format(d);
-  }
-
-  /**
-   * Who can work on one day, and what already fills their time: bookings
-   * assigned to them, hours outside their shift, and the bookings nobody is
-   * assigned to yet (each of those will take somebody's chair). Every read is
-   * this tenant's — the hotline never looks into another salon's book.
-   */
-  private async staffDay(tenantId: string, dateStr: string, tz: string): Promise<{ techs: Tech[]; unassigned: { start: Date; end: Date }[] }> {
-    const dayStart = wallTimeToUtc(dateStr, '00:00', tz);
-    const dayEnd = new Date(dayStart.getTime() + 24 * 3_600_000);
-    const dow = new Date(`${dateStr}T12:00:00Z`).getUTCDay();
-    const holding = [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED, AppointmentStatus.ARRIVED];
-    const [staff, appts] = await Promise.all([
-      this.prisma.staffMember.findMany({
-        where: { tenantId, isActive: true, takesAppointments: true },
-        select: {
-          id: true, firstName: true,
-          staffServices: { select: { serviceId: true } },
-          workingHours: { where: { isActive: true }, select: { dayOfWeek: true, startTime: true, endTime: true } },
-        },
-      }),
-      this.prisma.appointment.findMany({
-        where: { tenantId, status: { in: holding }, startTime: { lt: dayEnd }, endTime: { gt: dayStart } },
-        select: { assignedStaffId: true, startTime: true, endTime: true },
-      }),
-    ]);
-    const techs: Tech[] = staff.map((st) => {
-      const busy: { start: Date; end: Date }[] = appts
-        .filter((a) => a.assignedStaffId === st.id)
-        .map((a) => ({ start: a.startTime, end: a.endTime }));
-      const hours = st.workingHours ?? [];
-      if (hours.length) {
-        // A tech with a schedule is off outside it; one without follows the salon's hours.
-        const spans = hours.filter((h) => h.dayOfWeek === dow)
-          .map((h) => ({ s: wallTimeToUtc(dateStr, h.startTime, tz), e: wallTimeToUtc(dateStr, h.endTime, tz) }))
-          .filter((x) => x.e.getTime() > x.s.getTime())
-          .sort((a, b) => a.s.getTime() - b.s.getTime());
-        let cursor = dayStart;
-        for (const sp of spans) {
-          if (sp.s.getTime() > cursor.getTime()) busy.push({ start: cursor, end: sp.s });
-          if (sp.e.getTime() > cursor.getTime()) cursor = sp.e;
-        }
-        if (cursor.getTime() < dayEnd.getTime()) busy.push({ start: cursor, end: dayEnd });
-      }
-      return { id: st.id, name: st.firstName, skills: st.staffServices.map((x) => x.serviceId), busy };
-    });
-    const unassigned = appts.filter((a) => !a.assignedStaffId).map((a) => ({ start: a.startTime, end: a.endTime }));
-    return { techs, unassigned };
-  }
-
-  /** The open start times one day has for this party: on the salon's grid, and every 5 minutes (to honour "2:10"). */
-  private async partySlots(tenantId: string, tz: string, dateStr: string, party: PartyMember[]): Promise<{ grid: Date[]; fine: Date[]; tooFar: number | null }> {
-    const rules = await this.settings.getBookingRules(tenantId);
-    const adv = Number(rules.maxAdvanceDays ?? 0);
-    if (adv > 0) {
-      const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-      const days = Math.round((Date.parse(`${dateStr}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
-      if (days > adv) return { grid: [], fine: [], tooFar: adv };
-    }
-    const { techs, unassigned } = await this.staffDay(tenantId, dateStr, tz);
-    const dow = new Date(`${dateStr}T12:00:00Z`).getUTCDay();
-    const base = {
-      dateStr, tz, party, techs, unassigned,
-      day: (rules.businessHours ?? [])[dow] ?? null,
-      closedToday: (rules.daysOff ?? []).includes(dateStr),
-      now: new Date(Date.now() + Math.max(0, Number(rules.minLeadHours ?? 0)) * 3_600_000),
-    };
-    const grid = partyOpenTimes({ ...base, stepMinutes: Number((rules as { slotStepMinutes?: number }).slotStepMinutes ?? 15) || 15 });
-    const fine = partyOpenTimes({ ...base, stepMinutes: 5 });
-    return { grid, fine, tooFar: null };
-  }
-
-  /**
-   * The party the model described, checked against THIS salon's menu and
-   * team. Anything it cannot place exactly comes back as an instruction to
-   * ask the caller — never a silent guess.
-   */
-  private parseParty(input: Record<string, unknown>, ctx: ToolCtx, needNames: boolean): { members: Member[] } | { error: string } {
-    const raw = Array.isArray(input.people) ? (input.people as Record<string, unknown>[]) : [];
-    if (!raw.length) return { error: 'No people given. Ask who the booking is for and what service each person wants.' };
-    if (raw.length > 8) return { error: 'More than 8 people is a large group — offer to connect them to the salon, or take a message for a call back.' };
-    const members: Member[] = [];
-    for (let i = 0; i < raw.length; i++) {
-      const p = raw[i] || {};
-      const refs = (Array.isArray(p.services) ? p.services : [p.services]).map((x) => String(x ?? '').trim()).filter(Boolean);
-      if (!refs.length) return { error: `Person ${i + 1} has no service yet. Ask what they would like.` };
-      const items: MenuItem[] = [];
-      for (const ref of refs) {
-        const hit = resolveService(ref, ctx.menu);
-        if (!hit) return { error: `"${ref}" is not one exact menu item. Use the menu codes (S1, S2…), call get_services, or ask the caller which one they mean.` };
-        if (!items.some((x) => x.id === hit.id)) items.push(hit);
-      }
-      const firstName = String(p.firstName ?? '').trim();
-      if (needNames && !firstName) return { error: `Person ${i + 1} has no name yet. Ask for the first name of each person.` };
-      let techId: string | null = null; let techName: string | null = null;
-      const wantTech = String(p.technician ?? '').trim();
-      if (wantTech && !/^(any|anyone|no preference)$/i.test(wantTech)) {
-        const key = wantTech.toLowerCase();
-        const hits = ctx.staff.filter((s) => s.firstName.toLowerCase() === key || `${s.firstName} ${s.lastName ?? ''}`.trim().toLowerCase() === key);
-        if (hits.length !== 1) return { error: `There is no single technician called "${wantTech}" here (team: ${ctx.staff.map((s) => s.firstName).join(', ') || 'none listed'}). Tell the caller and ask whether anyone else is fine.` };
-        techId = hits[0].id; techName = hits[0].firstName;
-      }
-      members.push({ firstName, items, techId, techName });
-    }
-    return { members };
-  }
-
-  private partyOf(members: Member[]): PartyMember[] {
-    return members.map((m) => ({ serviceIds: m.items.map((x) => x.id), minutes: m.items.reduce((s, x) => s + x.minutes, 0), techId: m.techId }));
-  }
-
-  /** What to tell the caller when their time does not work: the nearest that do, that day or the next open day. */
-  private async alternatives(tenantId: string, tz: string, dateStr: string, party: PartyMember[], wanted: Date | null, grid: Date[]): Promise<string> {
-    const near = nearestTimes(grid, wanted, 3);
-    if (near.length) return `Nearest open times that day: ${near.map((d) => this.spoken(d, tz, false)).join(', ')}. Offer these and let the caller choose.`;
-    for (let k = 1; k <= 7; k++) {
-      const next = new Date(Date.parse(`${dateStr}T12:00:00Z`) + k * 86_400_000).toISOString().slice(0, 10);
-      const s = await this.partySlots(tenantId, tz, next, party);
-      if (s.tooFar) break;
-      if (s.grid.length) return `Nothing is open that day for ${party.length === 1 ? 'this booking' : `${party.length} people at once`}. The next open day is ${new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long', month: 'long', day: 'numeric' }).format(s.grid[0])}: ${nearestTimes(s.grid, null, 3).map((d) => this.spoken(d, tz, false)).join(', ')}. Offer that.`;
-    }
-    return 'Nothing is open in the next week for this booking. Offer to take a message so the salon calls back, or to connect them to the front desk.';
-  }
+  // The arithmetic lives in bookings/party-availability.service.ts, shared
+  // with the chat bot; the hotline only phrases it for a phone call.
 
   private async toolCheckAvailability(tenantId: string, tz: string, input: Record<string, unknown>, ctx: ToolCtx): Promise<string> {
-    const dateStr = String(input.date ?? '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return 'date must be YYYY-MM-DD in the salon’s local calendar.';
-    const parsed = this.parseParty(input, ctx, false);
-    if ('error' in parsed) return parsed.error;
-    const party = this.partyOf(parsed.members);
-    const time = String(input.time ?? '').trim();
-    if (time && !/^\d{1,2}:\d{2}$/.test(time)) return 'time must be HH:MM in 24-hour salon-local time.';
-    const wanted = time ? wallTimeToUtc(dateStr, time, tz) : null;
-    const s = await this.partySlots(tenantId, tz, dateStr, party);
-    if (s.tooFar) return `That day is too far ahead — the salon books up to ${s.tooFar} days in advance. Ask for an earlier day.`;
-    const who = party.length === 1 ? '' : ` for all ${party.length} people`;
-    if (wanted && s.fine.some((d) => d.getTime() === wanted.getTime())) {
-      return `OPEN: ${this.spoken(wanted, tz)} works${who}. Carry on: get anything still missing (names), then read it all back and confirm.`;
-    }
-    if (!wanted) {
-      if (!s.grid.length) return `NOTHING OPEN that day${who}. ${await this.alternatives(tenantId, tz, dateStr, party, null, s.grid)}`;
-      return `Open start times that day${who}: ${s.grid.slice(0, 6).map((d) => this.spoken(d, tz, false)).join(', ')}${s.grid.length > 6 ? ' (and later ones)' : ''}. Offer two or three, not the whole list.`;
-    }
-    return `NOT OPEN at ${this.spoken(wanted, tz)}${who}. ${await this.alternatives(tenantId, tz, dateStr, party, wanted, s.grid)}`;
+    return this.parties.describe(tenantId, tz, input, ctx);
   }
 
   /**
@@ -1509,9 +1378,12 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
     tenantId: string, tz: string, callerPhone: string, input: Record<string, unknown>,
     acc: { booked: boolean; appointmentId: string | null }, ctx: ToolCtx,
   ): Promise<string> {
-    const parsed = this.parseParty(input, ctx, true);
+    const parsed = this.parties.parseParty(input, ctx, true);
     if ('error' in parsed) return parsed.error;
     const members = parsed.members;
+    // The caller's own words — an allergy, "running late", "same colour as
+    // last time" — go on the booking so the desk reads them, not just the AI.
+    const request = String(input.request ?? '').trim().slice(0, 300);
     const local = String(input.localDateTime ?? '').trim();
     const lm = /^(\d{4}-\d{2}-\d{2})T(\d{1,2}):(\d{2})/.exec(local);
     if (!lm) return 'localDateTime must look like 2026-07-10T14:00 (salon local). Ask for the day and time if you do not have them.';
@@ -1533,17 +1405,14 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
       return 'ALREADY BOOKED a moment ago — do not book again. Tell the caller they are all set and a text confirmation is on the way, then ask if there is anything else.';
     }
 
-    const party = this.partyOf(members);
-    const slots = await this.partySlots(tenantId, tz, dateStr, party);
-    if (slots.tooFar) return `That day is too far ahead — the salon books up to ${slots.tooFar} days in advance. Nothing was booked; ask for an earlier day.`;
-    if (!slots.fine.some((d) => d.getTime() === start.getTime())) {
-      return `NOT BOOKED — ${this.spoken(start, tz)} is no longer open${members.length > 1 ? ` for all ${members.length} people` : ''}. ${await this.alternatives(tenantId, tz, dateStr, party, start, slots.grid)}`;
-    }
+    const party = this.parties.partyOf(members);
+    const open = await this.parties.stillOpen(tenantId, tz, dateStr, start, party);
+    if (!open.ok) return `NOT BOOKED — ${open.reason}`;
+    const noteLang = noteLangForMarket((await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } as never }).catch(() => null) as { market?: string } | null)?.market);
 
     const n = members.length;
     const groupId = n > 1 ? `ph-${randomUUID()}` : undefined;
     const lead = members[0];
-    const names = members.map((m) => m.firstName).join(', ');
     const order = [...members.slice(1).map((m, i) => ({ m, i: i + 1 })), { m: lead, i: 0 }];
     const made: string[] = [];
     let leadId: string | null = null;
@@ -1557,7 +1426,13 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
           customerFirstName: m.firstName,
           ...(isLead ? { customerPhone: phone } : {}),
           ...(m.techId ? { preferredStaffId: m.techId } : {}),
-          ...(n > 1 ? { partySize: n, groupId, notes: isLead ? `Group of ${n} booked by phone: ${names}` : `Group of ${n} with ${lead.firstName} (booked by phone): ${names}` } : {}),
+          ...(n > 1 ? { partySize: n, groupId } : {}),
+          notes: aiBookingNote({
+            channel: 'hotline', lang: noteLang, phone, techName: m.techName,
+            partyNames: n > 1 ? [lead.firstName, ...members.slice(1).map((x) => x.firstName)] : undefined,
+            services: m.items.map((x) => x.name),
+            request: isLead ? request : (request ? `(${lead.firstName}) ${request}` : null),
+          }),
         } as CreateBookingDto;
         const b = await this.bookings.createForTenant(tenantId, dto, null, 'hotline', null, { autoAssign: true, groupGuest: !isLead });
         const id = (b as { id?: string }).id;
@@ -1573,7 +1448,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
     acc.booked = true;
     acc.appointmentId = leadId;
     const who = members.map((m) => `${m.firstName} (${m.items.map((x) => x.name).join(' + ')}${m.techName ? ` with ${m.techName}` : ''})`).join(', ');
-    return `SUCCESS. Booked ${who} for ${this.spoken(start, tz)}. Thank them and confirm in ONE short sentence, saying a text confirmation is on its way to this number. Then ask if there is anything else — do not end the call yet.`;
+    return `SUCCESS. Booked ${who} for ${this.parties.spoken(start, tz)}. Thank them and confirm in ONE short sentence, saying a text confirmation is on its way to this number. Then ask if there is anything else — do not end the call yet.`;
   }
 
   // ---- shared prompt context (mirrors messenger) ---------------------------

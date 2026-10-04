@@ -1,4 +1,4 @@
-import { openTimesFor } from '../bookings/open-times';
+import { openTimesFor } from './open-times';
 import type { DayHoursLike } from '../settings/business-hours';
 
 /**

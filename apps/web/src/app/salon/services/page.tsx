@@ -10,6 +10,7 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { useRowDrag } from '../../../lib/useRowDrag';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
+import { EditDialog } from '../../../components/EditDialog';
 import { ServiceImport } from '../../../components/ServiceImport';
 import { SearchBox, matchesQuery } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
@@ -744,29 +745,21 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
         <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
           <div style={{ display: 'inline-flex', gap: 6 }}>
             <button onClick={() => setEditing((e) => !e)} style={actBtn(editing ? 'var(--c475569)' : '#0ea5e9')}>
-              {editing ? t('sv.close') : t('sv.edit')}
+              {t('sv.edit')}
             </button>
             <button onClick={() => setOpen((o) => !o)} style={actBtn(open ? 'var(--c475569)' : '#6366f1')}>
-              {open ? t('sv.hide') : t('sv.addons')}
+              {t('sv.addons')}
             </button>
             <button onClick={onDelete} style={actBtn('#b91c1c')}>{t('sv.delete')}</button>
           </div>
         </td>
       </tr>
-      {editing && (
-        <tr>
-          <td colSpan={7} style={{ padding: 0, background: 'var(--c0f172a)' }}>
-            <EditServicePanel service={s} token={token} categories={categories} staff={staff} onSaved={onSaved} />
-          </td>
-        </tr>
-      )}
-      {open && (
-        <tr>
-          <td colSpan={7} style={{ padding: 0, background: 'var(--c0f172a)' }}>
-            <AddonsPanel serviceId={s.id} token={token} fmt={fmt} currency={s.currency} />
-          </td>
-        </tr>
-      )}
+      <EditDialog open={editing} onClose={() => setEditing(false)} title={`${t('sv.edit')} · ${s.name}`} subtitle={catName(s.categoryId)}>
+        <EditServicePanel service={s} token={token} categories={categories} staff={staff} onSaved={onSaved} />
+      </EditDialog>
+      <EditDialog open={open} onClose={() => setOpen(false)} title={`${t('sv.addons')} · ${s.name}`}>
+        <AddonsPanel serviceId={s.id} token={token} fmt={fmt} currency={s.currency} />
+      </EditDialog>
     </>
   );
 }
@@ -806,14 +799,18 @@ function ServiceCard({ service: s, token, categories, staff, catName, fmt, onTog
           ) : fmt(s.priceCents)}
         </MRow>
         <MActions>
-          <button onClick={() => setEditing((e) => !e)} style={actBtn(editing ? 'var(--c475569)' : '#0ea5e9')}>{editing ? t('sv.close') : t('sv.edit')}</button>
-          <button onClick={() => setOpen((o) => !o)} style={actBtn(open ? 'var(--c475569)' : '#6366f1')}>{open ? t('sv.hide') : t('sv.addons')}</button>
+          <button onClick={() => setEditing((e) => !e)} style={actBtn(editing ? 'var(--c475569)' : '#0ea5e9')}>{t('sv.edit')}</button>
+          <button onClick={() => setOpen((o) => !o)} style={actBtn(open ? 'var(--c475569)' : '#6366f1')}>{t('sv.addons')}</button>
           <button onClick={onDelete} style={actBtn('#b91c1c')}>{t('sv.delete')}</button>
         </MActions>
       </MCard>
       </div>
-      {editing && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><EditServicePanel service={s} token={token} categories={categories} staff={staff} onSaved={onSaved} /></div>}
-      {open && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><AddonsPanel serviceId={s.id} token={token} fmt={fmt} currency={s.currency} /></div>}
+      <EditDialog open={editing} onClose={() => setEditing(false)} title={`${t('sv.edit')} · ${s.name}`} subtitle={catName(s.categoryId)}>
+        <EditServicePanel service={s} token={token} categories={categories} staff={staff} onSaved={onSaved} />
+      </EditDialog>
+      <EditDialog open={open} onClose={() => setOpen(false)} title={`${t('sv.addons')} · ${s.name}`}>
+        <AddonsPanel serviceId={s.id} token={token} fmt={fmt} currency={s.currency} />
+      </EditDialog>
     </>
   );
 }

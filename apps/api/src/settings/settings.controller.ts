@@ -9,6 +9,7 @@ import {
   UpdatePaymentsDto,
 } from './dto/update-settings.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 
@@ -17,9 +18,14 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 export class SettingsController {
   constructor(private readonly settings: SettingsService) {}
 
+  // The owner sees everything. A staff account at the desk (till, calendar,
+  // walk-ins, bookings) gets the desk view: the keys those screens read, and
+  // none of the owner's credentials or policies. Every PATCH below stays owner-only.
   @Get()
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('pos', 'calendar', 'bookings', 'walkins', 'customers')
   get(@CurrentUser() user: AuthenticatedUser) {
-    return this.settings.get(user);
+    return user.role === UserRole.STAFF ? this.settings.getForDesk(user) : this.settings.get(user);
   }
 
   @Patch('company')
@@ -94,6 +100,17 @@ export class SettingsController {
    * they serve, and the engines that used to guess it from a four-value enum
    * now read this first.
    */
+  // One note every AI assistant reads (hotline, Messenger, web chat, Zalo).
+  @Get('ai-notes')
+  aiNotes(@CurrentUser() user: AuthenticatedUser) {
+    return this.settings.getAiNotesFor(user);
+  }
+
+  @Patch('ai-notes')
+  updateAiNotes(@CurrentUser() user: AuthenticatedUser, @Body() dto: { text?: string }) {
+    return this.settings.updateAiNotes(user, dto);
+  }
+
   @Patch('business-profile')
   updateBusinessProfile(
     @CurrentUser() user: AuthenticatedUser,

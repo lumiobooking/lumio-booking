@@ -31,6 +31,14 @@ export interface UserLookup {
   isActive: boolean;
   /** ms since epoch of the last password change; 0 = never changed. */
   changedAt: number;
+  /**
+   * STAFF accounts: what they may open, read from the row rather than the
+   * token. A token issued before a permission existed, or before the owner
+   * changed it, used to decide forever — one receptionist's till worked and
+   * another's said "no permission", depending on when each signed in.
+   */
+  staffRole?: string | null;
+  staffCaps?: string[] | null;
 }
 
 export type SessionRefusal = 'gone' | 'disabled' | 'password-changed';

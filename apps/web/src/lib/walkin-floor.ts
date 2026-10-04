@@ -9,6 +9,8 @@ export interface BoardWalkIn {
   id: string; customerName: string | null; partySize: number; status: string; createdAt: string; assignedAt: string | null;
   station: string | null; customerId: string | null; items: Item[]; service: { id: string; name: string } | null;
   assignedStaff: { id: string; firstName: string; lastName: string | null } | null; legs?: Leg[]; phase?: string;
+  /** The party this ticket belongs to (friends who came in together), or null. */
+  group?: { tag: string; size: number; waiting: number; serving: number; done: number } | null;
 }
 export interface BoardStaff { id: string; name: string; turns: number; busy: boolean; nextUp: boolean; busyFor?: number | null }
 export interface BoardData { waiting: BoardWalkIn[]; serving: BoardWalkIn[]; staff: BoardStaff[]; nextUpStaffId: string | null }

@@ -115,3 +115,33 @@ describe('safety', () => {
     expect(wrap('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bb', 32).every((l) => l.length <= 32)).toBe(true);
   });
 });
+
+describe("a party's bill reads person by person", () => {
+  const party: ReceiptData = {
+    orderNumber: 1043, when: '10/4/26, 3:10 PM', customer: 'Nhóm A · Anna, Linh',
+    lines: [
+      { qty: 1, name: 'Anna · Gel Manicure', amountCents: 4500, tech: 'Cindy', guest: 'Anna' },
+      { qty: 1, name: 'Anna · Nail Art', amountCents: 1000, tech: 'Cindy', guest: 'Anna' },
+      { qty: 1, name: 'Linh · Spa Pedicure', amountCents: 5500, tech: 'Ivy', guest: 'Linh' },
+    ],
+    subtotal: 11000, total: 11000,
+  };
+  it('groups the lines under each name with her own subtotal, dropping the name prefix', () => {
+    const txt = buildReceiptText(party, shop, DEFAULT_RECEIPT_DESIGN, money);
+    const a = txt.indexOf('* ANNA'); const l = txt.indexOf('* LINH');
+    expect(a).toBeGreaterThan(-1); expect(l).toBeGreaterThan(a);
+    expect(txt.slice(a, l)).toContain('1x Gel Manicure');
+    expect(txt.slice(a, l)).not.toContain('Anna · Gel');
+    expect(txt.slice(a, l)).toContain('Subtotal for Anna');
+    expect(txt.slice(a, l)).toContain('$55.00');
+    expect(txt.slice(l)).toContain('Subtotal for Linh');
+    const html = buildReceiptHtml(party, shop, DEFAULT_RECEIPT_DESIGN, money);
+    expect(html).toContain('<tr class="g"><td colspan="2">Anna</td></tr>');
+    expect(html).toContain('Subtotal for Linh</td><td class="r">$55.00');
+  });
+  it('a bill with no party prints exactly as before', () => {
+    const txt = buildReceiptText(sale, shop, DEFAULT_RECEIPT_DESIGN, money);
+    expect(txt).not.toContain('Subtotal for');
+    expect(txt).not.toContain('* ');
+  });
+});

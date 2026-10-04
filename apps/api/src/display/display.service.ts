@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { Prisma, WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -175,6 +175,9 @@ export class DisplayService {
     const guestNames = guests.map((g, i) => (g?.firstName ?? '').trim().slice(0, 80) || `Guest ${i + 2}`);
     const partyNote = party > 1 ? `Party of ${party}: ${[name, ...guestNames].join(', ')}` : '';
     const mainItems = itemsFor(dto.serviceIds);
+    // One party, one groupId: the floor shows them together and the till can
+    // bill them on one receipt or several.
+    const groupId = guests.length ? `ci-${randomUUID()}` : null;
     const walkIn = await this.prisma.walkIn.create({
       data: {
         tenantId,
@@ -187,6 +190,7 @@ export class DisplayService {
         items: mainItems as unknown as Prisma.InputJsonValue,
         source: 'walkin',
         status: WalkInStatus.WAITING,
+        ...({ groupId } as object),
       },
       select: { id: true },
     });
@@ -205,6 +209,7 @@ export class DisplayService {
           items: items as unknown as Prisma.InputJsonValue,
           source: 'walkin',
           status: WalkInStatus.WAITING,
+          ...({ groupId } as object),
         },
         select: { id: true },
       });

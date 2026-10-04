@@ -501,3 +501,38 @@ export function isStale(t: TicketLike, now: Date, grace = STALE_GRACE_MIN): bool
     return spent >= (leg.minutes || ASSUMED_LEG_MIN) + grace;
   });
 }
+
+// ------------------------------------------------------------------ parties
+
+export interface PartyInfo {
+  /** A, B, C… in order of arrival today. */
+  tag: string;
+  size: number;
+  waiting: number;
+  serving: number;
+  done: number;
+}
+
+/**
+ * One letter per party on today's floor, in order of the party's first
+ * arrival, with where its members are. A ticket without a groupId is not
+ * in any party. Pure; the board attaches the result to each ticket.
+ */
+export function partyTags(tickets: (TicketLike & { groupId?: string | null; awaitingPayment?: boolean })[]): Map<string, PartyInfo> {
+  const first = new Map<string, number>();
+  const info = new Map<string, PartyInfo>();
+  for (const t of tickets) {
+    if (!t.groupId || t.status === 'CANCELLED') continue;
+    const at = new Date(t.createdAt).getTime();
+    first.set(t.groupId, Math.min(first.get(t.groupId) ?? Infinity, at));
+    const g = info.get(t.groupId) ?? { tag: '', size: 0, waiting: 0, serving: 0, done: 0 };
+    g.size += 1;
+    if (t.status === 'DONE') g.done += 1;
+    else if (t.status === 'SERVING') g.serving += 1;
+    else g.waiting += 1;
+    info.set(t.groupId, g);
+  }
+  const order = [...first.entries()].sort((a, b) => a[1] - b[1]).map(([gid]) => gid);
+  order.forEach((gid, i) => { info.get(gid)!.tag = i < 26 ? String.fromCharCode(65 + i) : `G${i + 1}`; });
+  return info;
+}

@@ -1,7 +1,8 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { apiFetch, setUnauthorizedHandler } from './api';
+import { apiFetch, setUnauthorizedHandler, setSessionTenant } from './api';
+import { readSession, clearAllSessions, AUTH_KEY } from './support-session';
 
 export type UserRole = 'SUPER_ADMIN' | 'SALON_ADMIN' | 'STAFF' | 'SUPPORT';
 
@@ -42,7 +43,7 @@ interface AuthState {
   logout: () => void;
 }
 
-const STORAGE_KEY = 'lumio_auth';
+const STORAGE_KEY = AUTH_KEY;
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -50,17 +51,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [ready, setReady] = useState(false);
 
-  // Restore session from localStorage on first mount.
+  // Restore the session on first mount: this tab's own salon session (Lumio
+  // Support working inside one salon — per tab, see support-session.ts), else
+  // the login every tab shares.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as LoginResponse;
-        setToken(parsed.accessToken);
-        setUser(parsed.user);
-      }
-    } catch {
-      // ignore corrupted storage
+    const parsed = readSession();
+    if (parsed) {
+      setToken(parsed.accessToken);
+      setUser(parsed.user as unknown as AuthUser);
+      setSessionTenant(parsed.user.tenantId ?? null);
     }
     setReady(true);
   }, []);
@@ -70,11 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // "Unauthorized" error.
   useEffect(() => {
     setUnauthorizedHandler(() => {
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch {
-        // ignore
-      }
+      clearAllSessions();
       if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
         window.location.assign('/login');
       }
@@ -89,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     setToken(res.accessToken);
     setUser(res.user);
+    setSessionTenant(res.user.tenantId ?? null);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(res));
     localStorage.removeItem('lumio_active_branch'); // a fresh login starts at the home branch
     return res.user;
@@ -97,7 +93,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     setToken(null);
     setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
+    setSessionTenant(null);
+    clearAllSessions();
     localStorage.removeItem('lumio_pos_enabled'); // clear cached plan gating
     localStorage.removeItem('lumio_active_branch');
   }

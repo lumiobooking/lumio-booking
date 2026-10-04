@@ -16,6 +16,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
+import { PartyChip, type PartyInfo } from '../../../components/PartyChip';
 
 interface Ticket {
   id: string;
@@ -32,8 +33,9 @@ interface Ticket {
   phase?: 'WAITING' | 'SERVING' | 'BETWEEN' | 'DONE';
   /** Minutes past the visit's expected finish (server-computed). */
   overdueMinutes?: number | null;
+  group?: PartyInfo | null;
 }
-interface Booked { id: string; startTime: string; customerName: string | null; serviceName: string | null; staff: { id: string; name: string } | null; source?: string }
+interface Booked { id: string; startTime: string; customerName: string | null; serviceName: string | null; staff: { id: string; name: string } | null; source?: string; groupId?: string | null; groupSize?: number }
 interface StaffChip { id: string; name: string; busy: boolean; busyFor: number | null; nextUp: boolean; turns: number }
 interface Board { waiting: Ticket[]; serving: Ticket[]; booked: Booked[]; staff: StaffChip[] }
 
@@ -79,9 +81,9 @@ function FrontDesk() {
     return () => { window.clearInterval(a); window.clearInterval(b); };
   }, [load]);
 
-  async function arrive(id: string) {
+  async function arrive(id: string, party = false) {
     setBusy(id);
-    try { await apiFetch(`/walkins/seat-appointment/${id}`, { method: 'POST', token }); await load(); }
+    try { await apiFetch(`/walkins/seat-appointment/${id}`, { method: 'POST', token, body: party ? { party: true } : {} }); await load(); }
     catch (e) { setErr(e instanceof Error ? e.message : L('Không check-in được', 'Could not check in')); }
     finally { setBusy(null); }
   }
@@ -166,9 +168,18 @@ function FrontDesk() {
                   <span style={{ display: 'block', ...sub }}>{[b.serviceName, b.staff?.name].filter(Boolean).join(' · ')}</span>
                 </span>
                 {may('walkins') && (
-                  <button type="button" disabled={busy === b.id} onClick={() => arrive(b.id)} style={{ ...smallBtn, opacity: busy === b.id ? 0.6 : 1 }}>
-                    {busy === b.id ? '…' : L('Đã đến', 'Arrived')}
-                  </button>
+                  <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
+                    {/* A party: one press seats everyone booked together who is still to come. */}
+                    {(b.groupSize ?? 1) > 1 && (
+                      <button type="button" disabled={busy === b.id} onClick={() => arrive(b.id, true)} title={L('Nhận tất cả người trong nhóm còn chưa đến', 'Seat everyone in the party who has not arrived yet')}
+                        style={{ ...smallBtn, background: 'rgba(99,102,241,0.18)', color: 'var(--cc7d2fe)', border: '1px solid rgba(99,102,241,0.45)', opacity: busy === b.id ? 0.6 : 1 }}>
+                        {busy === b.id ? '…' : `👥 ${L('Cả nhóm', 'Party')} (${b.groupSize})`}
+                      </button>
+                    )}
+                    <button type="button" disabled={busy === b.id} onClick={() => arrive(b.id)} style={{ ...smallBtn, opacity: busy === b.id ? 0.6 : 1 }}>
+                      {busy === b.id ? '…' : L('Đã đến', 'Arrived')}
+                    </button>
+                  </span>
                 )}
               </div>
             );
@@ -183,9 +194,10 @@ function FrontDesk() {
             return (
               <a key={w.id} href="/salon/walkins" style={{ ...row, textDecoration: 'none' }}>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', ...name }}>{w.customerName || L('Khách', 'Guest')}{(w.partySize ?? 1) > 1 ? ` · ${w.partySize}` : ''}</span>
+                  <span style={{ display: 'block', ...name }}>{w.customerName || L('Khách', 'Guest')}{!w.group && (w.partySize ?? 1) > 1 ? ` · ${w.partySize}` : ''}</span>
                   <span style={{ display: 'block', ...sub }}>{services(w) || L('Chưa chọn dịch vụ', 'No service yet')}</span>
                 </span>
+                <PartyChip group={w.group} />
                 <span style={{ fontSize: 12.5, fontWeight: 700, color: m >= 20 ? 'var(--ink-bad)' : m >= 10 ? 'var(--ink-warn)' : 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{m}′</span>
               </a>
             );
@@ -201,6 +213,7 @@ function FrontDesk() {
                 <span style={{ display: 'block', ...name }}>{w.customerName || L('Khách', 'Guest')}</span>
                 <span style={{ display: 'block', ...sub }}>{[techName(w), services(w)].filter(Boolean).join(' · ')}</span>
               </span>
+              <PartyChip group={w.group} />
               {w.overdueMinutes != null && w.overdueMinutes >= 15 && (
                 <span title={L('Khách đã quá thời gian dịch vụ. Quá 45′ hệ thống tự chuyển sang Chờ thanh toán để thợ rảnh.', 'Past the services\u2019 time. At 45′ over, the visit moves to Waiting to pay by itself so the technician is free.')}
                   style={{ fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', borderRadius: 999, padding: '2px 8px', color: w.overdueMinutes >= 45 ? 'var(--ink-bad)' : 'var(--ink-warn)', background: w.overdueMinutes >= 45 ? 'rgba(239,68,68,0.14)' : 'var(--wash-amber-2)' }}>

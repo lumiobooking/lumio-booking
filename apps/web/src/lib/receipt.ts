@@ -59,6 +59,8 @@ export interface ReceiptLine {
   isAddon?: boolean;
   tech?: string | null;
   tipCents?: number;
+  /** On a party's bill: whose line this is. Lines are printed person by person with a subtotal each. */
+  guest?: string | null;
 }
 
 export interface ReceiptData {
@@ -90,14 +92,14 @@ const LABELS = {
     title: 'RECEIPT', order: 'Order', customer: 'Customer', subtotal: 'Subtotal', discount: 'Discount', tax: 'Tax',
     tip: 'Tip', cardFee: 'Card fee', saved: 'You saved', total: 'TOTAL', paid: 'Paid', change: 'Change', addon: 'add-on',
     voided: 'VOID', feedback: 'How was your visit?', feedbackCta: 'Scan to tell us', book: 'Book your next visit', thanks: 'Thank you!',
-    phone: 'Tel',
+    phone: 'Tel', guestTotal: 'Subtotal for',
     methods: { CASH: 'Cash', CARD: 'Card', TRANSFER: 'Transfer', GIFT: 'Gift card', GIFT_CARD: 'Gift card', VIETQR: 'VietQR', MOMO: 'MoMo', ZALOPAY: 'ZaloPay', CHECK: 'Check', OTHER: 'Other' } as Record<string, string>,
   },
   vi: {
     title: 'HOÁ ĐƠN', order: 'Số', customer: 'Khách', subtotal: 'Tạm tính', discount: 'Giảm giá', tax: 'Thuế',
     tip: 'Tip', cardFee: 'Phí thẻ', saved: 'Tiết kiệm', total: 'TỔNG CỘNG', paid: 'Đã trả', change: 'Tiền thối', addon: 'thêm',
     voided: 'ĐÃ HUỶ', feedback: 'Dịch vụ hôm nay thế nào?', feedbackCta: 'Quét để góp ý', book: 'Đặt lịch lần sau', thanks: 'Cảm ơn quý khách!',
-    phone: 'ĐT',
+    phone: 'ĐT', guestTotal: 'Tạm tính của',
     methods: { CASH: 'Tiền mặt', CARD: 'Thẻ', TRANSFER: 'Chuyển khoản', GIFT: 'Thẻ quà tặng', GIFT_CARD: 'Thẻ quà tặng', VIETQR: 'VietQR', MOMO: 'MoMo', ZALOPAY: 'ZaloPay', CHECK: 'Séc', OTHER: 'Khác' } as Record<string, string>,
   },
 };
@@ -170,10 +172,14 @@ export function buildReceiptText(data: ReceiptData, shop: ReceiptShop, design0: 
   if (d.showDateTime) out.push(center(data.when));
   if (d.showCustomer && data.customer) out.push(center(`${L.customer}: ${data.customer}`));
   out.push(sep);
-  for (const l of data.lines) {
-    out.push(row(`${l.qty}x ${l.name}${l.isAddon ? ` (${L.addon})` : ''}`, money(l.amountCents)));
-    if (d.showTechnician && l.tech) out.push(`  ${l.tech}`);
-    if (d.showLineTips && l.tipCents) out.push(`  ${L.tip}: ${money(l.tipCents)}`);
+  for (const g of receiptGroups(data.lines)) {
+    if (g.guest) out.push(`* ${g.guest.toUpperCase()}`);
+    for (const l of g.lines) {
+      out.push(row(`${l.qty}x ${l.name}${l.isAddon ? ` (${L.addon})` : ''}`, money(l.amountCents)));
+      if (d.showTechnician && l.tech) out.push(`  ${l.tech}`);
+      if (d.showLineTips && l.tipCents) out.push(`  ${L.tip}: ${money(l.tipCents)}`);
+    }
+    if (g.guest) out.push(row(`  ${L.guestTotal} ${g.guest}`, money(g.subtotalCents)));
   }
   out.push(sep);
   out.push(row(L.subtotal, money(data.subtotal)));
@@ -193,6 +199,27 @@ export function buildReceiptText(data: ReceiptData, shop: ReceiptShop, design0: 
   return out.join('\n') + '\n';
 }
 
+// ------------------------------------------------------------------ parties
+
+/**
+ * A party's bill reads person by person: her lines under her name, then her
+ * subtotal, then the next person — instead of forty lines prefixed with names.
+ * Lines without a guest print as before (one group, no headings).
+ */
+export function receiptGroups(lines: ReceiptLine[]): { guest: string | null; lines: ReceiptLine[]; subtotalCents: number }[] {
+  if (!lines.some((l) => l.guest)) return [{ guest: null, lines, subtotalCents: lines.reduce((a, l) => a + l.amountCents, 0) }];
+  const order: string[] = [];
+  const by = new Map<string, ReceiptLine[]>();
+  for (const l of lines) {
+    const g = l.guest || '';
+    if (!by.has(g)) { by.set(g, []); order.push(g); }
+    // The line was named "Anna · Gel Manicure" for the till; under her heading the name alone reads better.
+    const name = l.guest && l.name.startsWith(`${l.guest} · `) ? l.name.slice(l.guest.length + 3) : l.name;
+    by.get(g)!.push({ ...l, name });
+  }
+  return order.map((g) => { const ls = by.get(g)!; return { guest: g || null, lines: ls, subtotalCents: ls.reduce((a, l) => a + l.amountCents, 0) }; });
+}
+
 // ------------------------------------------------------------------ html
 
 const qr = (url: string, px: number) =>
@@ -208,14 +235,17 @@ export function buildReceiptHtml(data: ReceiptData, shop: ReceiptShop, design0: 
   const widthMm = d.paper === '58' ? 48 : 72;
   const line = (label: string, val: string, bold = false) =>
     `<tr${bold ? ' class="b"' : ''}><td>${label}</td><td class="r">${val}</td></tr>`;
-  const rows = data.lines.map((l) => {
+  const lineRow = (l: ReceiptLine) => {
     const disc = d.showSavings && l.discountPercent && l.origAmountCents
       ? `<div class="s"><s>${money(l.origAmountCents)}</s> &nbsp;-${l.discountPercent}%</div>` : '';
     const tech = d.showTechnician && l.tech ? `<div class="s">${esc(l.tech)}</div>` : '';
     const tip = d.showLineTips && l.tipCents ? `<div class="s">${L.tip}: ${money(l.tipCents)}</div>` : '';
     const addon = l.isAddon ? ` <span class="s">(${L.addon})</span>` : '';
     return `<tr><td>${l.qty}× ${esc(l.name)}${addon}${disc}${tech}${tip}</td><td class="r">${money(l.amountCents)}</td></tr>`;
-  }).join('');
+  };
+  const rows = receiptGroups(data.lines).map((g) => (g.guest
+    ? `<tr class="g"><td colspan="2">${esc(g.guest)}</td></tr>${g.lines.map(lineRow).join('')}<tr class="gt"><td>${L.guestTotal} ${esc(g.guest)}</td><td class="r">${money(g.subtotalCents)}</td></tr>`
+    : g.lines.map(lineRow).join(''))).join('');
   const foot = lines(d.footer);
   const meta = [
     d.showOrderNumber ? `${L.order} #${esc(String(data.orderNumber))}` : '',
@@ -232,6 +262,8 @@ body{font-family:Arial,Helvetica,sans-serif;width:${widthMm}mm;margin:0 auto;pad
 .t{font-size:${fs + 1}px;font-weight:700;letter-spacing:.08em;margin-top:2px}
 table{width:100%;border-collapse:collapse}td{padding:2px 0;vertical-align:top}
 tr.b td{font-weight:700;font-size:${fs + 2}px;padding-top:4px}
+tr.g td{font-weight:700;padding-top:6px;letter-spacing:.04em;text-transform:uppercase;font-size:${small}px}
+tr.gt td{font-size:${small}px;color:#333;border-bottom:1px dotted #999;padding-bottom:4px}
 hr{border:none;border-top:1px dashed #000;margin:6px 0}
 img.logo{display:block;margin:0 auto 4px;max-width:60%;max-height:${big ? 70 : 56}px}
 img.qr{display:block;margin:4px auto 0}

@@ -19,6 +19,7 @@ import { BarcodeScanner } from '../../../components/BarcodeScanner';
 import { CashShiftPanel, useShiftState } from '../../../components/CashShiftPanel';
 import { RebookSheet, type RebookResult } from '../../../components/RebookSheet';
 import { FeedbackStatus } from '../../../components/feedback/FeedbackStatus';
+import { PartyPanel, type Composed } from './PartyPanel';
 import { uiLocale } from '../../../lib/datetime';
 import { buildReceiptHtml as buildBillHtml, buildReceiptText as buildBillText, withDefaults as receiptDesignOf, type ReceiptData, type ReceiptProfile } from '../../../lib/receipt';
 
@@ -54,6 +55,11 @@ interface Line {
   // On a group ticket, whose appointment this line came from — so the till can
   // write each person's total back to their own booking.
   apptId?: string;
+  // On a party of floor tickets: the ticket and line this came from, and whose
+  // service it is (kept on the order row so a reload knows what is paid).
+  walkInId?: string;
+  walkInLineId?: string;
+  guestName?: string;
 }
 
 let uidSeq = 1;
@@ -186,6 +192,14 @@ function Register() {
   // Settling a whole party on one bill: every appointment in the group.
   const [groupApptIds, setGroupApptIds] = useState<string[]>([]);
   const [walkInId, setWalkInId] = useState<string | null>(() => params.get('walkInId'));
+  // A party of floor tickets (friends who came in together): the sheet that
+  // shows them side by side, and every ticket the composed sale settles.
+  const [partyGroupId, setPartyGroupId] = useState<string | null>(() => params.get('partyGroupId'));
+  const [partyOpen, setPartyOpen] = useState<boolean>(() => !!params.get('partyGroupId'));
+  const [partyRefresh, setPartyRefresh] = useState(0);
+  const [walkInIds, setWalkInIds] = useState<string[]>([]);
+  const [equalParts, setEqualParts] = useState<number | null>(null);
+  const autoPayRef = useRef(false);
   // Attached CRM customer: pre-filled from a booking/walk-in checkout, or picked
   // on the register via the customer box. Drives loyalty earn + redeem.
   const [customerId, setCustomerId] = useState<string | null>(() => params.get('customerId') || null);
@@ -522,7 +536,9 @@ function Register() {
     (async () => {
       if (walkInId) {
         try {
-          const w = await apiFetch<{ items?: { serviceId: string; name: string; priceCents: number; staffId: string | null }[] }>(`/walkins/${walkInId}`, { token });
+          const w = await apiFetch<{ groupId?: string | null; items?: { serviceId: string; name: string; priceCents: number; staffId: string | null }[] }>(`/walkins/${walkInId}`, { token });
+          // One of a party: show the whole party, not just this one ticket.
+          if (alive && w.groupId && !partyGroupId) { setPartyGroupId(w.groupId); setPartyOpen(true); }
           const items = Array.isArray(w.items) ? w.items : [];
           if (alive && items.length > 0) {
             setCart((c) => (c.length > 0 ? c : items.map((it) => ({
@@ -1113,6 +1129,7 @@ function Register() {
       appointmentId: appointmentId || undefined,
       appointmentIds: groupApptIds.length > 1 ? groupApptIds : undefined,
       walkInId: walkInId || undefined,
+      walkInIds: walkInIds.length ? walkInIds : undefined,
       customerId: customerId || undefined,
       discountCents: money.discount,
       manualDiscountCents: money.typedDiscount || undefined,
@@ -1135,6 +1152,9 @@ function Register() {
           tipCents: l.tipCents,
           staffMemberId: l.staffMemberId || undefined,
           appointmentId: l.apptId || undefined,
+          walkInId: l.walkInId || undefined,
+          walkInLineId: l.walkInLineId || undefined,
+          guestName: l.guestName || undefined,
         };
       }),
       tenders: tenderList,
@@ -1298,6 +1318,8 @@ function Register() {
         isAddon: l.isAddon,
         tech: l.staffMemberId ? staffName(l.staffMemberId) : null,
         tipCents: l.tipCents,
+        // A party's bill prints person by person (lib/receipt.ts).
+        guest: l.guestName ?? null,
       })),
       subtotal: money.subtotal,
       discount: money.discount,
@@ -1403,8 +1425,26 @@ function Register() {
           awaitingPayment: Boolean(w.awaitingPayment),
         };
       });
-      list.sort((a, b2) => Number(b2.awaitingPayment) - Number(a.awaitingPayment));
-      setWaiting(list);
+      // Friends who came in together are ONE card: "👥 Nhóm A · Anna, Linh, Mai".
+      const byGroup = new Map<string, { names: string[]; size: number; done: number; waiting: number; tag: string; awaiting: boolean; first: WaitingTicket }>();
+      const merged: WaitingTicket[] = [];
+      rows.forEach((w, i) => {
+        const gid = (w.groupId as string | null | undefined) ?? null;
+        const g = (w.group as { tag?: string; size?: number; done?: number; serving?: number; waiting?: number } | null | undefined) ?? null;
+        if (!gid) { merged.push(list[i]); return; }
+        const cur = byGroup.get(gid);
+        if (cur) { cur.names.push(list[i].name || L('Khách', 'Guest')); cur.awaiting = cur.awaiting || list[i].awaitingPayment; return; }
+        byGroup.set(gid, { names: [list[i].name || L('Khách', 'Guest')], size: g?.size ?? 1, done: g?.done ?? 0, waiting: g?.waiting ?? 0, tag: g?.tag ?? '', awaiting: list[i].awaitingPayment, first: list[i] });
+      });
+      for (const [gid, g] of byGroup) {
+        merged.push({
+          id: `party:${gid}`, groupId: gid, customerId: g.first.customerId, awaitingPayment: g.awaiting,
+          name: `👥 ${L('Nhóm', 'Party')}${g.tag ? ' ' + g.tag : ''} · ${g.names.join(', ')}`,
+          what: `${g.size} ${L('người', 'people')}${g.waiting ? ` · ${g.waiting} ${L('chờ', 'waiting')}` : ''}${g.done ? ` · ${g.done} ${L('xong', 'done')}` : ''}`,
+        });
+      }
+      merged.sort((a, b2) => Number(b2.awaitingPayment) - Number(a.awaitingPayment));
+      setWaiting(merged);
     } catch { setWaiting([]); }
   }, [token, online, staff]);
   useEffect(() => {
@@ -1477,7 +1517,7 @@ function Register() {
   /** Start a clean bill: nothing from the last sale — customer, booking, promo — carries over. */
   function newBill() {
     clearCart();
-    setAppointmentId(null); setWalkInId(null); setGroupId(null); setGroupApptIds([]);
+    setAppointmentId(null); setWalkInId(null); setGroupId(null); setGroupApptIds([]); setWalkInIds([]); setPartyGroupId(null); setPartyOpen(false); setEqualParts(null);
     setCustomerId(null); setCustomerLabel(null); setCustomerPoints(0); setBookingCustomer(null);
     setPromo(null); setPromoInput(''); setPromoErr(null); setBookedOffer(null);
     setTendered(''); setSplit(false); setParts([]); setCustomTip(''); setTipMode(null);
@@ -1485,8 +1525,33 @@ function Register() {
     setDone(null); setNextVisit(null); setShowRebook(false); setFbReq(null); setStep('register'); setMobileView('catalog'); setPrefilled(true);
     try { window.history.replaceState(null, '', '/salon/pos'); } catch { /* ignore */ }
   }
+  /** The party sheet composed a bill: put it on the till and go straight to payment. */
+  function composeParty(c: Composed) {
+    const gid = partyGroupId;
+    newBill();
+    setPartyGroupId(gid);
+    setCart(c.lines.map((l) => ({
+      uid: `u${uidSeq++}`, kind: 'SERVICE' as const, refId: l.refId, name: l.name,
+      origUnitPriceCents: l.origUnitPriceCents, unitPriceCents: l.unitPriceCents, discountPercent: l.discountPercent,
+      quantity: 1, tipCents: l.tipCents, staffMemberId: l.staffMemberId,
+      walkInId: l.walkInId, walkInLineId: l.walkInLineId, guestName: l.guestName,
+    })));
+    setWalkInIds(c.walkInIds);
+    setWalkInId(c.walkInId);
+    setCustomerId(c.customerId);
+    setCustomerLabel(c.customerLabel);
+    setBookingCustomer(c.customerLabel);
+    setEqualParts(c.equalParts ?? null);
+    setPrefilled(true);
+    autoPayRef.current = true;
+  }
   /** Open a waiting client's floor ticket on this till. */
   function openWaiting(w: WaitingTicket) {
+    if (w.groupId) {
+      if (cart.length > 0 && !partyGroupId && !window.confirm(L('Thay bill đang mở bằng bill của nhóm này?', 'Replace the open bill with this party’s?'))) return;
+      setPartyGroupId(w.groupId); setPartyOpen(true);
+      return;
+    }
     if (walkInId === w.id && cart.length) { if (layout === 'phone') setMobileView('ticket'); return; }
     if (cart.length > 0 && !window.confirm(L('Thay bill đang mở bằng bill của khách này?', 'Replace the open bill with this client’s?'))) return;
     newBill();
@@ -1505,6 +1570,24 @@ function Register() {
     setError(null); setOkMsg(null); setEditUid(null);
     setStep('pay');
   }
+  // The party sheet composed a bill: the cart is set, go straight to payment.
+  useEffect(() => {
+    if (!autoPayRef.current || cart.length === 0) return;
+    autoPayRef.current = false;
+    setPartyOpen(false);
+    setStep('pay');
+    if (layout === 'phone') setMobileView('ticket');
+  }, [cart, layout]);
+  // "Chia đều N phần": one bill, N equal tenders, the last one takes the cents.
+  useEffect(() => {
+    if (!equalParts || step !== 'pay' || cart.length === 0) return;
+    const n = equalParts;
+    setEqualParts(null);
+    const each = Math.floor(money.due / n);
+    const method: PayMethod = tillMethods.includes('CARD') ? 'CARD' : tillMethods[0];
+    setSplit(true);
+    setParts(Array.from({ length: n }, (_, i) => ({ method, amount: fromMinorUnits(i === n - 1 ? money.due - each * (n - 1) : each, currency) })));
+  }, [equalParts, step, cart.length, money.due, tillMethods, currency]);
   /** The cash keypad types into "khách đưa" the way a register does: digits fill from the right. */
   function keypad(k: string) {
     const cur = money.tenderedCents;
@@ -2392,6 +2475,13 @@ function Register() {
         </div>
         <div style={{ display: 'flex', gap: 12, marginTop: 'auto' }}>
           <a href="/salon/orders" style={{ height: 60, padding: '0 22px', borderRadius: 14, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', fontSize: 15, fontWeight: 600, color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', textDecoration: 'none', whiteSpace: 'nowrap' }}>{L('Xem đơn hàng', 'Orders')}</a>
+          {/* A split party: the next person is waiting to pay — back to the sheet, not to an empty till. */}
+          {partyGroupId && (
+            <button type="button" onClick={() => { const gid = partyGroupId; newBill(); setPartyGroupId(gid); setPartyRefresh((n) => n + 1); setPartyOpen(true); }}
+              style={{ flex: 1, height: 60, borderRadius: 14, border: '1px solid rgba(99,102,241,0.45)', background: 'rgba(99,102,241,0.18)', color: 'var(--cc7d2fe)', fontSize: 17, fontWeight: 700, cursor: 'pointer' }}>
+              👥 {L('Tiếp tục nhóm', 'Back to the party')}
+            </button>
+          )}
           <button type="button" onClick={newBill} style={{ flex: 1, height: 60, borderRadius: 14, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer' }}>{L('Bill mới', 'New bill')}</button>
         </div>
       </div>
@@ -2483,6 +2573,11 @@ function Register() {
           </div>
         </div>, document.body)}
 
+      {partyOpen && partyGroupId && typeof document !== 'undefined' && createPortal(
+        <PartyPanel groupId={partyGroupId} token={token} currency={currency} tipsOn={tipsOn} lang={lang} staff={staff} refreshKey={partyRefresh}
+          onClose={() => setPartyOpen(false)} onCompose={composeParty} />,
+        document.body,
+      )}
       {showRebook && done && token && typeof document !== 'undefined' && createPortal(
         <RebookSheet
           token={token}
@@ -2550,7 +2645,7 @@ function Register() {
   );
 }
 
-interface WaitingTicket { id: string; customerId: string | null; name: string; what: string; awaitingPayment: boolean }
+interface WaitingTicket { id: string; customerId: string | null; name: string; what: string; awaitingPayment: boolean; groupId?: string | null }
 
 /** Category dots and technician avatars: accents, the same in light and dark. */
 const CAT_COLORS = ['#db2777', '#0891b2', '#7c3aed', '#ea580c', '#2563eb', '#059669', '#ca8a04', '#64748b'];

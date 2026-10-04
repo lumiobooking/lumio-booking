@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type CSSProperties } from 'react';
 import { ui, formatPrice } from '../../../lib/ui';
+import { PartyChip } from '../../../components/PartyChip';
 
 /**
  * The walk-in board, two more ways of looking at the same data the list shows.
@@ -90,8 +91,9 @@ export function TechBoard({ board, vi, currency, isMobile, onAssign, onOpen, onC
           outline: focusId === w.id ? '2px solid #f59e0b' : 'none', outlineOffset: 2 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <b style={{ fontSize: 14, color: 'var(--cf1f5f9)', minWidth: 0, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {w.customerName || 'Walk-in'}{w.partySize > 1 ? ` · ${w.partySize}` : ''}
+            {w.customerName || 'Walk-in'}{!w.group && w.partySize > 1 ? ` · ${w.partySize}` : ''}
           </b>
+          <PartyChip group={w.group} />
           <span style={{ fontSize: 12, fontWeight: 700, color: late ? 'var(--ink-bad)' : 'var(--c94a3b8)', whiteSpace: 'nowrap', flexShrink: 0 }}>⏱ {waited}′</span>
           {!isBetween && (
             <button type="button" onClick={() => onCancel(w.id)} aria-label={L('Huỷ', 'Cancel')} title={L('Huỷ khách này', 'Cancel this walk-in')}
@@ -133,6 +135,7 @@ export function TechBoard({ board, vi, currency, isMobile, onAssign, onOpen, onC
       <div key={w.id + techId} style={{ ...card, boxShadow: `inset 3px 0 0 ${techColor(staff, techId)}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <b style={{ fontSize: 14, color: 'var(--cf1f5f9)', minWidth: 0, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</b>
+          <PartyChip group={w.group} />
           <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-good)', whiteSpace: 'nowrap' }}>{formatPrice(total, currency)}</span>
         </div>
         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

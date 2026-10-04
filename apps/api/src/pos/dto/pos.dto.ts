@@ -56,6 +56,12 @@ export class OrderItemDto {
   // party. Used only during checkout, to write each person's price back onto
   // their OWN appointment instead of piling the group's total onto one.
   @IsOptional() @IsString() appointmentId?: string;
+  // On a party ticket: the floor ticket (and its line) this line came from, and
+  // whose service it is — kept on the row so a reload of the till still knows
+  // which of a party's lines are paid, and the receipt reads person by person.
+  @IsOptional() @IsString() walkInId?: string;
+  @IsOptional() @IsString() @MaxLength(64) walkInLineId?: string;
+  @IsOptional() @IsString() @MaxLength(80) guestName?: string;
 }
 
 export class TenderDto {
@@ -71,6 +77,10 @@ export class CreateOrderDto {
   @IsOptional() @IsArray() @IsString({ each: true }) appointmentIds?: string[];
   // When checking out a walk-in, its id — the walk-in is marked Done on payment.
   @IsOptional() @IsString() walkInId?: string;
+  // Every floor ticket this sale settles in full (a party paying on one bill,
+  // or a split where one person's last line is paid by a friend). Each one is
+  // marked Done on payment, exactly like walkInId.
+  @IsOptional() @IsArray() @IsString({ each: true }) walkInIds?: string[];
   @IsOptional() @IsInt() @Min(0) discountCents?: number;
   @IsOptional() @IsInt() @Min(0) redeemPoints?: number; // loyalty points to redeem as a discount
   // The part of discountCents somebody TYPED at the till (not a promo code):

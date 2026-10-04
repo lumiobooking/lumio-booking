@@ -889,6 +889,10 @@ model WalkIn {
   // to the online booking it was checked in from (null for a plain walk-in).
   source        String?
   appointmentId String?
+  // Friends who came in together share one groupId (copied from the booking's
+  // groupId at check-in, or minted at the desk / on the check-in screen), so the
+  // floor shows them as one party and the till can bill them on one receipt.
+  groupId       String?
 
   // Services finished; customer is off the chair, waiting to pay (bill still open).
   // Frees the chair + tech immediately; checkout still closes it out normally.
@@ -903,6 +907,7 @@ model WalkIn {
 
   @@index([tenantId])
   @@index([tenantId, status])
+  @@index([tenantId, groupId])
   @@index([tenantId, assignedStaffId])
   @@index([tenantId, customerId])
   @@index([tenantId, stationId])
@@ -2115,6 +2120,9 @@ model Order {
   // somebody later marked them done by hand.
   appointmentIds  String[] @default([])
   walkInId        String?
+  // Every floor ticket this sale settled in full (a party on one bill, or a
+  // split where a friend paid someone's last line); walkInId keeps the first.
+  walkInIds       String[] @default([])
   // Denormalized channel for accurate source reporting: online | hotline | messenger | walkin | staff.
   source          String?
   createdByUserId String?
@@ -2252,6 +2260,13 @@ model OrderItem {
   lineTotalCents Int // unitPrice*qty - discount (tax/tip tracked separately)
 
   staffMemberId String? // technician credited for this line
+
+  // Party checkout: the floor ticket and line this row came from, and whose
+  // service it is. A reload of the till reads which of a party's lines are
+  // paid from here; the receipt reads person by person.
+  walkInId     String?
+  walkInLineId String?
+  guestName    String?
 
   createdAt DateTime @default(now())
 

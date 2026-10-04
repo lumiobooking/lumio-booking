@@ -54,6 +54,9 @@ describe('self check-in for a party', () => {
     expect(lisa.items.map((i: any) => i.serviceId)).toEqual(['pedi']);
     expect(lisa.items[0].priceCents).toBe(5100);
     expect(lisa.note).toContain('With anna nguy');
+    // One party, one groupId — the floor shows them together, the till can bill them together.
+    expect(anna.groupId).toMatch(/^ci-/);
+    expect(lisa.groupId).toBe(anna.groupId);
     expect(walkins.seatSelfCheckIn).toHaveBeenCalledWith('tenant-a', 'w1');
     expect(walkins.seatSelfCheckIn).toHaveBeenCalledWith('tenant-a', 'w2');
     // One CRM record — the person holding the phone — never one per guest.
@@ -75,6 +78,7 @@ describe('self check-in for a party', () => {
     expect(r).toEqual({ ok: true, id: 'w1', queued: true, seated: false });
     expect(prisma._created).toHaveLength(1);
     expect(prisma._created[0].note).toBeNull();
+    expect(prisma._created[0].groupId).toBeNull();
   });
 
   it('a service id from another salon never lands on any ticket', async () => {

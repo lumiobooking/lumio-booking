@@ -60,6 +60,18 @@ interface Booking {
   table?: { id: string; name: string; seats: number } | null;
 }
 
+/**
+ * "👥 2/3": this booking is the second of three made together, so the desk
+ * can see at a glance which rows of the day belong to one party and whether
+ * the whole party is on the page. A lone booking shows nothing.
+ */
+function partyLabel(b: { id: string; groupId?: string | null }, all: { id: string; groupId?: string | null; startTime: string; createdAt?: string }[]): string {
+  if (!b.groupId) return '';
+  const mates = all.filter((x) => x.groupId === b.groupId).sort((x, y) => +new Date(x.startTime) - +new Date(y.startTime) || x.id.localeCompare(y.id));
+  const i = mates.findIndex((x) => x.id === b.id);
+  return mates.length > 1 && i >= 0 ? ` 👥 ${i + 1}/${mates.length}` : ' 👥';
+}
+
 // Six operational buckets the front desk actually tracks. The 8 raw enum values
 // fold into these so the calendar reads at a glance (key → bilingual label via
 // `cal.st<Key>`; color → dot/stripe).
@@ -846,7 +858,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--cf8fafc)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
-                        <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.groupId ? ' 👥' : ''}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
+                        <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{partyLabel(b, items)}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
                         <span style={{ width: 26, height: 26, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 12, fontWeight: 600, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
@@ -955,7 +967,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx, onQuick }: {
                       </div>
                       <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--cf8fafc)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{svcLabel(b) || '—'}{b.groupId ? ' 👥' : ''}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</span>
+                        <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{svcLabel(b) || '—'}{partyLabel(b, items)}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</span>
                         <OriginChip b={b} t={t} />
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 1 }}>

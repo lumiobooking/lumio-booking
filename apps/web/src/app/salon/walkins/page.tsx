@@ -11,6 +11,7 @@ import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useLiveEvents } from '../../../lib/useLiveEvents';
 import { useIsMobile } from '../../../lib/responsive';
 import { FloorStats, TechBoard } from './TechBoard';
+import { PartyChip, type PartyInfo } from '../../../components/PartyChip';
 
 interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null; legId?: string }
 /** One part of a visit done by one technician (hands, feet, …) — see walkin-legs.ts in the API. */
@@ -33,7 +34,12 @@ interface WalkIn {
   phase?: string;
   /** Minutes past the visit's expected finish (server-computed); amber from 15, red from 45. */
   overdueMinutes?: number | null;
+  /** The party this ticket belongs to (friends who came in together), or null. */
+  groupId?: string | null;
+  group?: PartyInfo | null;
 }
+/** Someone who came in with the customer: a ticket of their own in the same party. */
+interface GuestDraft { name: string; serviceIds: string[]; staffChoice: string }
 interface StaffTurn {
   id: string; name: string; avatarUrl: string | null; turns: number; busy: boolean; nextUp: boolean;
   /** Minutes left on what she is doing (rough). */
@@ -98,6 +104,8 @@ function Inner() {
   const [form, setForm] = useState(BLANK_FORM);
   // A walk-in rarely wants exactly one thing; the picker adds to this list.
   const [pickedIds, setPickedIds] = useState<string[]>([]);
+  // The people who came in with her — one ticket each, linked as one party.
+  const [guests, setGuests] = useState<GuestDraft[]>([]);
   // The form is a drawer, not a permanent header: reception looks at the board
   // all day and only needs the form when someone walks in.
   const [formOpen, setFormOpen] = useState(false);
@@ -400,7 +408,7 @@ function Inner() {
   }
   function startNew() {
     setQrOn(false);
-    setForm(BLANK_FORM); setPickedIds([]); setFormOpen(true);
+    setForm(BLANK_FORM); setPickedIds([]); setGuests([]); setFormOpen(true);
     // Push immediately: the customer should see the form the moment it opens.
     setTimeout(() => pushToScreen('form'), 0);
   }
@@ -418,8 +426,15 @@ function Inner() {
         serviceId: pickedIds[0] || undefined,
         serviceIds: pickedIds.length > 1 ? pickedIds.slice(1) : undefined,
         extraMinutes: parseInt(form.extraMinutes, 10) || undefined,
-        partySize: parseInt(form.partySize, 10) || 1,
+        partySize: guests.length + 1,
         station: form.station.trim() || undefined,
+        guests: guests.length
+          ? guests.map((g) => ({
+              firstName: g.name.trim() || undefined,
+              serviceIds: g.serviceIds,
+              assignedStaffId: g.staffChoice !== 'auto' && g.staffChoice !== 'wait' ? g.staffChoice : undefined,
+            }))
+          : undefined,
       };
       // 'auto' = give it to the up-next free tech; a staff id = a requested tech;
       // 'wait' = just add to the waiting list (assign later).
@@ -428,7 +443,7 @@ function Inner() {
       await apiFetch('/walkins', { method: 'POST', token, body });
       pushToScreen('thanks');
       setQrOn(false);
-      setForm(BLANK_FORM); setPickedIds([]); setFormOpen(false);
+      setForm(BLANK_FORM); setPickedIds([]); setGuests([]); setFormOpen(false);
       // Leave the thank-you up for a moment, then reset the customer screen.
       setTimeout(() => pushToScreen('idle'), 6000);
       await load();
@@ -536,9 +551,57 @@ function Inner() {
           </div>
 
           <div>
+            <SecHead label={t('wi.secGuests')} extra={guests.length ? `${guests.length + 1} ${t('wi.people')}` : undefined} />
+            <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.45 }}>{t('wi.guestsHint')}</p>
+            {guests.map((g, i) => (
+              <div key={i} style={{ border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 12px', marginBottom: 8, background: 'var(--c0f172a)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--cc7d2fe)', whiteSpace: 'nowrap' }}>👥 {t('wi.guestN').replace('{n}', String(i + 2))}</span>
+                  <input style={{ ...ui.input, marginBottom: 0, flex: 1 }} value={g.name} placeholder={t('wi.guestNamePh')} onChange={(e) => setGuests((v) => v.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+                  <button type="button" aria-label={t('wi.removeGuest')} onClick={() => setGuests((v) => v.filter((_, j) => j !== i))} style={{ background: 'none', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                </div>
+                {g.serviceIds.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {g.serviceIds.map((id) => {
+                      const sv = services.find((x) => x.id === id);
+                      return (
+                        <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--c1e3a8a)', color: 'var(--cdbeafe)', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
+                          {sv?.name ?? id}
+                          <button type="button" onClick={() => setGuests((v) => v.map((x, j) => (j === i ? { ...x, serviceIds: x.serviceIds.filter((y) => y !== id) } : x)))} style={{ background: 'none', border: 'none', color: 'var(--c93c5fd)', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                <div style={wiGrid}>
+                  <label style={{ gridColumn: 'span 2', minWidth: 0 }}>
+                    <WiLabel text={t('wi.service')} opt={t('wi.optional')} />
+                    <ServiceSearchSelect
+                      services={services} value=""
+                      onChange={(id) => { if (id) setGuests((v) => v.map((x, j) => (j === i && !x.serviceIds.includes(id) ? { ...x, serviceIds: [...x.serviceIds, id] } : x))); }}
+                      placeholder={t('wi.serviceSearch')}
+                    />
+                  </label>
+                  <label><WiLabel text={lang === 'vi' ? 'Thợ' : 'Technician'} />
+                    <select style={ui.input} value={g.staffChoice} onChange={(e) => setGuests((v) => v.map((x, j) => (j === i ? { ...x, staffChoice: e.target.value } : x)))}>
+                      <option value="auto">{lang === 'vi' ? 'Tự động — thợ tới lượt' : 'Auto — up next'}</option>
+                      {(board?.staff ?? []).map((sm) => <option key={sm.id} value={sm.id}>{sm.name}{sm.busy ? (lang === 'vi' ? ' · đang bận' : ' · busy') : ''}</option>)}
+                    </select>
+                  </label>
+                </div>
+              </div>
+            ))}
+            {guests.length < 9 && (
+              <button type="button" onClick={() => setGuests((v) => [...v, { name: '', serviceIds: [], staffChoice: 'auto' }])}
+                style={{ ...ui.input, width: 'auto', cursor: 'pointer', fontWeight: 600, color: 'var(--cc7d2fe)', borderStyle: 'dashed', marginBottom: 0 }}>
+                + {t('wi.addGuest')}
+              </button>
+            )}
+          </div>
+
+          <div>
             <SecHead label={t('wi.secSeat')} />
             <div style={wiGrid}>
-              <label><WiLabel text={t('wi.partySize')} /><input style={ui.input} type="number" min={1} max={20} value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} /></label>
               <label><WiLabel text={t('wi.station')} opt={t('wi.optional')} /><input style={ui.input} value={form.station} placeholder={t('wi.stationPh')} onChange={(e) => setForm({ ...form, station: e.target.value })} /></label>
               <label style={{ gridColumn: 'span 2', minWidth: 0 }}><WiLabel text={lang === 'vi' ? 'Thợ' : 'Technician'} />
                 <select style={ui.input} value={form.staffChoice} onChange={(e) => setForm({ ...form, staffChoice: e.target.value })}>
@@ -856,8 +919,9 @@ function WaitingRow({ w, pos, staff, currency, t, isMobile, sel, onPick, open, o
         <span style={{ width: 24, height: 24, borderRadius: 8, background: 'var(--c1e293b)', color: 'var(--c94a3b8)', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{pos}</span>
         <div style={{ minWidth: 0, flex: isMobile ? '1 1 140px' : '0 0 128px' }}>
           <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {w.customerName || 'Walk-in'}{w.partySize > 1 ? <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}> · {w.partySize} {t('wi.people')}</span> : null}
+            {w.customerName || 'Walk-in'}{!w.group && w.partySize > 1 ? <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}> · {w.partySize} {t('wi.people')}</span> : null}
           </div>
+          {w.group && <PartyChip group={w.group} />}
           {w.phone && <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.phone}</div>}
         </div>
         <div style={{ minWidth: 0, flex: '1 1 160px', order: isMobile ? 5 : 0, ...(isMobile ? { flexBasis: '100%' } : null) }}>
@@ -943,6 +1007,7 @@ function ServingRow({ w, staff, currency, t, isMobile, onOpen }: {
         <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
         <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{since}′{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}</div>
       </div>
+      {w.group && <PartyChip group={w.group} />}
       <OverdueBadge minutes={w.overdueMinutes} t={t} />
       {legs.length > 1
         // Several parts: one chip per part, each with its technician.

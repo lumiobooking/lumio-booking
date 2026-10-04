@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
-import { AppointmentStatus, Prisma, WalkInStatus } from '@prisma/client';
+import { AppointmentStatus, OrderStatus, Prisma, WalkInStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomersService } from '../customers/customers.service';
@@ -8,10 +8,11 @@ import { PushService } from '../push/push.service';
 import { normalizeSource } from '../common/source.util';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import {
-  attachLines, busyTechs, canRunTogether, isStale, itemsOf as legItemsOf, LegItem, legsOf, minutesLeft, newLegId, overdueMinutes, patchLeg, phaseOf, pickTech,
+  attachLines, busyTechs, canRunTogether, isStale, itemsOf as legItemsOf, LegItem, legsOf, minutesLeft, newLegId, overdueMinutes, partyTags, patchLeg, phaseOf, pickTech,
   planDispatch, syncTicket, TechInfo, TicketLike, turnsFromTickets, upgradeItems, Zone, zoneOf,
 } from './walkin-legs';
 import { tzPartsOf } from '../common/salon-time';
+import { inPromoWindow, salonYmd } from '../settings/promo-window';
 
 /**
  * One queue change at a time per salon. Two techs pressing "Xong" in the same
@@ -50,6 +51,8 @@ export interface AddWalkInDto {
   assignedStaffId?: string;
   autoAssign?: boolean;
   station?: string;
+  /** People who came in with the customer: a ticket each, one party. */
+  guests?: { firstName?: string; serviceIds?: string[]; assignedStaffId?: string }[];
 }
 
 const INCLUDE = {
@@ -367,15 +370,22 @@ export class WalkinsService {
           birthDate: dto.birthDate,
         })
       : null;
+    // A PARTY is one ticket per person, linked by a groupId: each guest has
+    // their own services, their own technician and their own line at the
+    // till, and the board shows them side by side as one group.
+    const guests = (Array.isArray(dto.guests) ? dto.guests : []).slice(0, 9);
+    const groupId = guests.length ? `wk-${randomUUID()}` : null;
+    const partySize = Math.max(1, Math.min(20, Math.round(Math.max(dto.partySize ?? 1, guests.length + 1))));
+    const leaderName = dto.customerName?.trim().slice(0, 80) || null;
     const created = await this.prisma.walkIn.create({
       data: {
         tenantId,
         serviceId,
         customerId: linked?.id ?? null,
-        customerName: dto.customerName?.trim().slice(0, 80) || null,
+        customerName: leaderName,
         phone: dto.phone?.trim().slice(0, 40) || null,
         note: dto.note?.trim().slice(0, 300) || null,
-        partySize: Math.max(1, Math.min(20, Math.round(dto.partySize ?? 1))),
+        partySize,
         extraMinutes: dto.extraMinutes ? Math.max(0, Math.min(600, Math.round(dto.extraMinutes))) : null,
         // A requested technician with no services yet: the ticket itself waits for her.
         assignedStaffId: staffId,
@@ -383,14 +393,47 @@ export class WalkinsService {
         station: dto.station?.trim().slice(0, 24) || null,
         source: 'walkin',
         status: WalkInStatus.WAITING,
+        ...({ groupId } as object),
       },
       select: { id: true },
     });
+    const guestIds: string[] = [];
+    let anyRequested = !!staffId;
+    for (let i = 0; i < guests.length; i++) {
+      const g = guests[i] ?? {};
+      const gStaff = g.assignedStaffId
+        ? (await this.prisma.staffMember.findFirst({ where: { id: g.assignedStaffId, tenantId, takesAppointments: true }, select: { id: true } }))?.id ?? null
+        : null;
+      anyRequested = anyRequested || !!gStaff;
+      const gLines: (LegItem & { zone: Zone })[] = [];
+      for (const sid of [...new Set((g.serviceIds ?? []).filter(Boolean))]) {
+        try { gLines.push(await this.buildItem(tenantId, sid, gStaff)); } catch { /* removed from the menu */ }
+      }
+      const row = await this.prisma.walkIn.create({
+        data: {
+          tenantId,
+          serviceId: gLines[0]?.serviceId ?? null,
+          customerId: null,
+          customerName: (g.firstName ?? '').trim().slice(0, 80) || `Guest ${i + 2}`,
+          phone: null,
+          note: leaderName ? `With ${leaderName}` : null,
+          partySize,
+          assignedStaffId: gStaff,
+          items: attachLines([], gLines) as unknown as Prisma.InputJsonValue,
+          source: 'walkin',
+          status: WalkInStatus.WAITING,
+          ...({ groupId } as object),
+        },
+        select: { id: true },
+      });
+      guestIds.push(row.id);
+    }
     // Never ahead of anybody already waiting: the dispatcher serves the queue
     // in arrival order, so a newcomer only starts when nobody is before them
     // (or the technician they asked for is free).
-    if (staffId || dto.autoAssign) await this.settle(tenantId);
-    return this.row(tenantId, created.id);
+    if (anyRequested || dto.autoAssign) await this.settle(tenantId);
+    const lead = await this.row(tenantId, created.id);
+    return guestIds.length ? { ...lead, guestIds } : lead;
   }
 
   /**
@@ -517,20 +560,36 @@ export class WalkinsService {
     const now = new Date();
     const open = f.open as unknown as TicketLike[];
     const busy = busyTechs(open);
+    // Parties: tickets that came in together wear one letter (A, B, C…) so
+    // the desk sees at a glance who belongs with whom and how far along the
+    // group is — "A · 2/3 in a chair, 1 waiting".
+    const groups = partyTags([...f.open, ...f.doneToday] as unknown as (TicketLike & { groupId?: string | null })[]);
+    const tagged = <T extends object>(w: T) => {
+      const gid = (w as { groupId?: string | null }).groupId;
+      const g = gid ? groups.get(gid) : undefined;
+      return { ...this.view(w), group: g ?? null };
+    };
     // Waiting-to-pay: the technician is finished, so she is free.
-    const waiting = f.open.filter((w) => w.status === WalkInStatus.WAITING).map((w) => this.view(w));
-    const serving = f.open.filter((w) => w.status === WalkInStatus.SERVING).sort((a, b) => +(a.assignedAt ?? a.createdAt) - +(b.assignedAt ?? b.createdAt)).map((w) => this.view(w));
+    const waiting = f.open.filter((w) => w.status === WalkInStatus.WAITING).map((w) => tagged(w));
+    const serving = f.open.filter((w) => w.status === WalkInStatus.SERVING).sort((a, b) => +(a.assignedAt ?? a.createdAt) - +(b.assignedAt ?? b.createdAt)).map((w) => tagged(w));
 
     // Today's online bookings not yet arrived — shown in the floor's "Booked today"
     // strip so walk-ins and appointments live on one screen.
     const tomorrow = new Date(f.today.getTime() + 86400000);
     const bookedRaw = await this.prisma.appointment.findMany({
       where: { tenantId, startTime: { gte: f.today, lt: tomorrow }, status: { in: [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED] } },
-      select: { id: true, startTime: true, source: true, customer: { select: { firstName: true, lastName: true } }, service: { select: { name: true } }, assignedStaff: { select: { id: true, firstName: true, lastName: true } } },
+      select: { id: true, startTime: true, source: true, groupId: true, customer: { select: { firstName: true, lastName: true } }, service: { select: { name: true } }, assignedStaff: { select: { id: true, firstName: true, lastName: true } } },
       orderBy: { startTime: 'asc' }, take: 60,
     });
+    // How many are booked together: the ones still to come plus the ones of
+    // the same party already on the floor.
+    const partyCount = (gid: string | null) => (gid
+      ? bookedRaw.filter((x) => x.groupId === gid).length + f.open.filter((w) => (w as { groupId?: string | null }).groupId === gid).length
+      : 1);
     const booked = bookedRaw.map((a) => ({
       id: a.id,
+      groupId: a.groupId ?? null,
+      groupSize: partyCount(a.groupId ?? null),
       startTime: a.startTime,
       source: normalizeSource(a.source),
       customerName: a.customer ? `${a.customer.firstName}${a.customer.lastName ? ' ' + a.customer.lastName : ''}`.trim() : null,
@@ -556,8 +615,91 @@ export class WalkinsService {
 
     // Finished today, most recent first: a ticket marked Done by mistake (or done
     // before the customer paid) has to be reachable again for checkout.
-    const done = f.doneToday.slice(0, 20).map((w) => this.view(w));
+    const done = f.doneToday.slice(0, 20).map((w) => tagged(w));
     return { waiting, serving, booked, done, staff, nextUpStaffId, restricted: [...f.restricted] };
+  }
+
+  /**
+   * THE TILL'S VIEW OF A PARTY. Everyone who came in together, each with her
+   * own lines, where she is (still in a chair / finished / paid), and which of
+   * her lines a friend already paid for — read back from the paid orders'
+   * rows, so a reload of the till, or a second till, sees the same thing.
+   */
+  async party(user: AuthenticatedUser, groupId: string) {
+    const tenantId = this.tenantId(user);
+    const tickets = await this.prisma.walkIn.findMany({
+      where: { tenantId, ...({ groupId } as object), status: { not: WalkInStatus.CANCELLED } },
+      include: INCLUDE, orderBy: { createdAt: 'asc' },
+    });
+    if (!tickets.length) throw new NotFoundException('Party not found');
+    const ids = tickets.map((t) => t.id);
+    const [f, orders, staff, groupPromo] = await Promise.all([
+      this.floor(tenantId),
+      this.prisma.order.findMany({
+        where: { tenantId, status: OrderStatus.PAID, OR: [{ walkInId: { in: ids } }, { walkInIds: { hasSome: ids } }] } as never,
+        select: { id: true, orderNumber: true, walkInId: true, walkInIds: true, items: { select: { walkInId: true, walkInLineId: true } } } as never,
+      }) as unknown as Promise<{ id: string; orderNumber: number; walkInId: string | null; walkInIds?: string[]; items: { walkInId: string | null; walkInLineId: string | null }[] }[]>,
+      this.prisma.staffMember.findMany({ where: { tenantId, isActive: true }, select: { id: true, firstName: true, lastName: true } }),
+      this.groupPromoFor(tenantId, tickets.length),
+    ]);
+    const tag = partyTags([...f.open, ...f.doneToday] as unknown as (TicketLike & { groupId?: string | null })[]).get(groupId)?.tag ?? null;
+    const now = new Date();
+    // Which lines are paid, and by which receipt.
+    const paidLine = new Map<string, number>(); // `${walkInId}:${lineId}` -> orderNumber
+    const paidWhole = new Map<string, number>(); // walkInId -> orderNumber (settled in full)
+    for (const o of orders) {
+      for (const it of o.items) if (it.walkInId && it.walkInLineId) paidLine.set(`${it.walkInId}:${it.walkInLineId}`, o.orderNumber);
+      for (const wid of [...(o.walkInIds ?? []), ...(o.walkInId ? [o.walkInId] : [])]) paidWhole.set(wid, o.orderNumber);
+    }
+    const members = tickets.map((w) => {
+      const t = w as unknown as TicketLike;
+      const legs = legsOf(t);
+      const items = legItemsOf(t).map((it) => {
+        const by = paidLine.get(`${w.id}:${it.lineId}`) ?? paidWhole.get(w.id) ?? null;
+        return { lineId: it.lineId, serviceId: it.serviceId, name: it.name, priceCents: it.priceCents, durationMinutes: it.durationMinutes ?? 0, staffId: it.staffId ?? null, paid: by !== null, orderNumber: by };
+      });
+      const running = legs.filter((l) => l.status === 'SERVING' && l.startedAt);
+      const minutesLeft = running.length
+        ? Math.max(0, ...running.map((l) => Math.round((l.minutes || 60) - (now.getTime() - new Date(l.startedAt!).getTime()) / 60000)))
+        : null;
+      const finished = w.status === WalkInStatus.DONE || !!w.awaitingPayment || (w.status === WalkInStatus.SERVING && legs.length > 0 && legs.every((l) => l.status === 'DONE'));
+      const paid = w.status === WalkInStatus.DONE || paidWhole.has(w.id) || (items.length > 0 && items.every((i) => i.paid));
+      return {
+        id: w.id, customerName: w.customerName, customerId: w.customerId, phone: w.phone, status: w.status, awaitingPayment: !!w.awaitingPayment,
+        phase: phaseOf(t), minutesLeft, overdueMinutes: overdueMinutes(t, now), source: w.source ?? null, appointmentId: w.appointmentId ?? null,
+        finished, paid, orderNumbers: [...new Set(items.map((i) => i.orderNumber).filter((n): n is number => n !== null))], items,
+      };
+    });
+    const lead = members.find((m) => m.customerId) ?? members.find((m) => m.phone) ?? members[0];
+    return {
+      groupId, tag, leaderId: lead.id, phone: lead.phone, source: lead.source,
+      // The salon's own "N or more people → X% off", when it applies today.
+      groupPromo,
+      members,
+      staff: staff.map((s) => ({ id: s.id, name: `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}` })),
+    };
+  }
+
+  /**
+   * The group programme the owner set up (Services → Khuyến mãi → Nhóm): the
+   * best tier this party's size reaches, if the programme runs today. The same
+   * rule the booking page quotes; here it is offered at the till, where a party
+   * that walked in without booking would otherwise never get it.
+   */
+  private async groupPromoFor(tenantId: string, size: number): Promise<{ percent: number; minSize: number; message: string } | null> {
+    try {
+      if (size < 2) return null;
+      const gr = await this.settings.getGroupDiscount(tenantId);
+      if (!gr?.enabled || !Array.isArray(gr.tiers)) return null;
+      const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone ?? null;
+      if (!inPromoWindow(gr, salonYmd(new Date(), tz))) return null;
+      let best: { percent: number; minSize: number } | null = null;
+      for (const t of gr.tiers) {
+        const min = Number(t?.minSize ?? 99); const pct = Number(t?.percent ?? 0);
+        if (min <= size && pct > 0 && (!best || pct > best.percent)) best = { percent: Math.min(90, pct), minSize: min };
+      }
+      return best ? { ...best, message: gr.message || '' } : null;
+    } catch { return null; }
   }
 
   /** Check in an online booking: place the customer on the floor as a ticket
@@ -569,7 +711,7 @@ export class WalkinsService {
     const appt = await this.prisma.appointment.findFirst({
       where: { id: appointmentId, tenantId },
       select: {
-        id: true, customerId: true, source: true, assignedStaffId: true, addons: true, startTime: true,
+        id: true, customerId: true, source: true, assignedStaffId: true, addons: true, startTime: true, groupId: true,
         customer: { select: { firstName: true, lastName: true, phone: true } },
         service: { select: { id: true, name: true } },
       },
@@ -612,12 +754,48 @@ export class WalkinsService {
         assignedAt: s.assignedAt,
         // In the queue at the time they booked, not at the time they walked in.
         createdAt: appt.startTime && appt.startTime < now ? appt.startTime : now,
+        // Friends booked together stay together on the floor.
+        ...({ groupId: appt.groupId ?? null } as object),
       },
       select: { id: true },
     });
     await this.prisma.appointment.update({ where: { id: appt.id }, data: { status: AppointmentStatus.ARRIVED, arrivedAt: now } });
     await this.settle(tenantId);
     return this.row(tenantId, walkIn.id);
+  }
+
+  /**
+   * "Check in the whole party": the booking named plus everyone booked in the
+   * same group, in this salon, that is still open — each becomes a ticket,
+   * exactly as if the desk had pressed Check-in on every one. A member already
+   * on the floor is reused, not duplicated; one who cancelled is left alone.
+   * Returns the named booking's ticket with the ids of the party's tickets.
+   */
+  async seatParty(user: AuthenticatedUser, appointmentId: string) {
+    const tenantId = this.tenantId(user);
+    const appt = await this.prisma.appointment.findFirst({ where: { id: appointmentId, tenantId }, select: { id: true, groupId: true } });
+    if (!appt) throw new NotFoundException('Appointment not found');
+    const open: AppointmentStatus[] = [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED, AppointmentStatus.ARRIVED];
+    const members = appt.groupId
+      ? await this.prisma.appointment.findMany({ where: { tenantId, groupId: appt.groupId, status: { in: open } }, select: { id: true }, orderBy: { createdAt: 'asc' } })
+      : [{ id: appt.id }];
+    const ids = [...new Set([appt.id, ...members.map((m) => m.id)])];
+    const partyTickets: string[] = [];
+    let lead: Awaited<ReturnType<typeof this.row>> | null = null;
+    for (const id of ids) {
+      const existing = await this.prisma.walkIn.findFirst({
+        where: { tenantId, appointmentId: id, status: { in: [WalkInStatus.WAITING, WalkInStatus.SERVING] } },
+        select: { id: true },
+      });
+      let ticket: Awaited<ReturnType<typeof this.row>>;
+      try {
+        ticket = existing ? await this.row(tenantId, existing.id) : await this.seatAppointment(user, id);
+      } catch { continue; } // a member closed since the list was read
+      partyTickets.push(ticket.id);
+      if (id === appt.id) lead = ticket;
+    }
+    if (!lead) throw new NotFoundException('Appointment not found');
+    return { ...lead, partyTickets };
   }
 
   private async mine(user: AuthenticatedUser, id: string) {

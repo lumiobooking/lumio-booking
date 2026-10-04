@@ -15,6 +15,7 @@ import { cleanTeam, groupSalons, teamSummaries, isNewSalon } from './support-tea
 import { OPS_STAGE_KEY, isOpsStage, opsStageOf } from './ops-stage';
 import { SERVICE_PACKAGE_KEY, SERVICE_PACKAGES, servicePackageOf, setServicePackage } from './service-package';
 import { kindOf, linkFor, titleFor, type NoticeKind } from './team-notices';
+import { connectionsByTenant, sharedConnections } from './connections-audit';
 
 /** One row of the team's bell. `link` is relative to the salon session. */
 export interface TeamNotice {
@@ -110,6 +111,18 @@ export class SupportService {
       ?.groupBy({ by: ['tenantId'], where: { tenantId: { in: rows.map((r) => r.id) }, status: 'scheduled', heldAt: null, approvedAt: { not: null } }, _count: { _all: true }, _max: { approvedAt: true } })
       .catch(() => [] as { tenantId: string; _count: { _all: number }; _max?: { approvedAt?: Date | null } }[]) ?? [];
     const approvedBy = new Map(approved.map((h) => [h.tenantId, { n: h._count._all, at: h._max?.approvedAt ?? null }]));
+    // Which Page, Google location, TikTok account and mailbox each salon
+    // holds — side by side, so an account under the wrong salon shows. Two
+    // queries for the whole list; a failure leaves the column blank.
+    const ids = rows.map((r) => r.id);
+    const [pages, conn] = await Promise.all([
+      this.prisma.messengerPage.findMany({ where: { tenantId: { in: ids } }, select: { tenantId: true, pageName: true, pageId: true, igUsername: true } }).catch(() => []),
+      this.prisma.setting.findMany({ where: { tenantId: { in: ids }, key: { in: ['googleReviews', 'tiktok', 'notifications'] } }, select: { tenantId: true, key: true, value: true } }).catch(() => []),
+    ]);
+    const connections = connectionsByTenant({ pages, settings: conn });
+    const shared = sharedConnections(connections);
+    const sharedBy = new Map<string, string[]>();
+    for (const sh of shared) for (const id of sh.tenantIds) sharedBy.set(id, [...(sharedBy.get(id) ?? []), sh.kind]);
     return rows.map((r) => ({
       ...r,
       opsStage: opsStageOf(byTenant.get(r.id), r.status),
@@ -119,6 +132,9 @@ export class SupportService {
       awaitingApproval: pendingBy.get(r.id) ?? 0,
       approvedPosts: approvedBy.get(r.id)?.n ?? 0,
       lastApprovedAt: approvedBy.get(r.id)?.at ?? null,
+      connections: connections.get(r.id) ?? null,
+      // Kinds of account this salon shares with another salon (google | tiktok | mail).
+      sharedWith: sharedBy.get(r.id) ?? [],
     }));
   }
 

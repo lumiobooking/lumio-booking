@@ -7,14 +7,18 @@
 // platform-managed setup screens unlocked. "Leave salon" on the banner brings
 // them back here.
 //
-// The support account's own token is parked in localStorage while the salon
-// session is active, and restored on leave — so leaving never needs a re-login.
+// The salon session lives in THIS TAB only (sessionStorage — see
+// lib/support-session.ts): an employee setting up three salons in three tabs
+// keeps three sessions, and no tab ever silently becomes another salon. The
+// support account's own login stays in localStorage, so leaving never needs a
+// re-login.
 // ---------------------------------------------------------------------------
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
+import { enterSupportSession } from '../../lib/support-session';
 import { fresh } from '../../lib/live';
 import { groupInbox, groupSummary, type InboxItem } from '../../lib/inbox-groups';
 import { LumioLogo } from '../../components/LumioLogo';
@@ -44,6 +48,10 @@ interface TenantRow {
   lastApprovedAt?: string | null;
   /** Which Lumio service package the shop is on ('' = not recorded). */
   servicePackage?: string;
+  /** The accounts this salon holds — Page, Instagram, Google location, TikTok, mailbox — by name. */
+  connections?: { fbPage: string | null; igUser: string | null; google: string | null; googleEmail: string | null; tiktok: string | null; mail: string | null } | null;
+  /** Kinds of account this salon shares with ANOTHER salon: google | tiktok | mail. Always a mistake. */
+  sharedWith?: string[];
 }
 /** One Lumio service package (GET /support/packages). tier 4 = the most care. */
 interface ServicePackage { key: string; name: string; family: 'social' | 'maps'; priceUsd: number; tier: 1 | 2 | 3 | 4 }
@@ -453,12 +461,7 @@ export default function AgencyPage() {
           capabilities: r.capabilities,
         },
       };
-      try {
-        const home = localStorage.getItem('lumio_auth');
-        if (home) localStorage.setItem('lumio_agency_home', home);
-        localStorage.setItem('lumio_auth', JSON.stringify(session));
-        localStorage.removeItem('lumio_active_branch');
-      } catch { /* private mode: fall through, the assign below will 401 → login */ }
+      enterSupportSession(session);
       window.location.assign(landing);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not enter this salon');
@@ -1165,6 +1168,7 @@ function Row({
           {packages.length > 0 && <PackagePill pkg={pkg} packages={packages} disabled={picking} onChange={(k) => onPackage(t, k)} />}
         </div>
         <div style={{ fontSize: 12, color: 'var(--c64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>/{t.slug}</div>
+        <ConnectionsLine t={t} />
       </div>
 
       <div className="ag-chips">
@@ -1272,6 +1276,40 @@ function Row({
           {opening ? '…' : '→'}
         </span>
       )}
+    </div>
+  );
+}
+
+
+/**
+ * Which accounts this salon holds, by name, under its own row: "FB Glow
+ * Nails · IG @glownails · G Glow Nails & Spa · TT @glow · ✉ hello@glow.com".
+ * A page or mailbox that reads like another salon's name stands out here,
+ * and an account two salons share is marked red — that one is always wrong.
+ */
+function ConnectionsLine({ t }: { t: TenantRow }) {
+  const c = t.connections;
+  if (!c) return null;
+  const shared = new Set(t.sharedWith ?? []);
+  const parts: { k: string; label: string; v: string | null; title: string }[] = [
+    { k: 'fb', label: 'FB', v: c.fbPage, title: 'Facebook Page đang gắn với tiệm này' },
+    { k: 'ig', label: 'IG', v: c.igUser, title: 'Instagram gắn với Page' },
+    { k: 'google', label: 'G', v: c.google, title: `Google Business Profile${c.googleEmail ? ` · ${c.googleEmail}` : ''}` },
+    { k: 'tiktok', label: 'TT', v: c.tiktok, title: 'TikTok' },
+    { k: 'mail', label: '✉', v: c.mail, title: 'Hộp thư gửi email của tiệm' },
+  ].filter((p) => p.v);
+  if (!parts.length) return <div style={{ fontSize: 11.5, color: 'var(--c475569)' }}>Chưa kết nối kênh nào</div>;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 2 }}>
+      {parts.map((p) => {
+        const bad = shared.has(p.k);
+        return (
+          <span key={p.k} title={bad ? `${p.title} — TIỆM KHÁC CŨNG ĐANG DÙNG tài khoản này. Gỡ ở tiệm sai.` : p.title}
+            style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220, color: bad ? '#ef4444' : undefined, fontWeight: bad ? 700 : 400 }}>
+            <b style={{ color: bad ? '#ef4444' : 'var(--c64748b)', fontWeight: 700 }}>{p.label}</b> {p.v}{bad ? ' ⚠' : ''}
+          </span>
+        );
+      })}
     </div>
   );
 }

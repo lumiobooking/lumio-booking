@@ -16,6 +16,24 @@ function activeBranchId(): string | null {
   }
 }
 
+// THE SALON THIS TAB BELIEVES IT IS WORKING IN. Sent with every request as
+// X-Tenant-Id; the API refuses a request whose token is for another salon
+// (SESSION_TENANT_MISMATCH). It is a second lock behind the per-tab session
+// (lib/support-session.ts): were a tab ever to hold a page for salon A and a
+// token for salon B, nothing would be written anywhere — the page reloads
+// into whatever it really is, and says so.
+let sessionTenantId: string | null = null;
+export function setSessionTenant(id: string | null | undefined) { sessionTenantId = id ?? null; }
+function tenantStamp(): Record<string, string> { return sessionTenantId ? { 'X-Tenant-Id': sessionTenantId } : {}; }
+export const SESSION_TENANT_MISMATCH = 'SESSION_TENANT_MISMATCH';
+let reloadedForMismatch = false;
+function onTenantMismatch() {
+  if (typeof window === 'undefined' || reloadedForMismatch) return;
+  reloadedForMismatch = true;
+  notify('error', 'Tab này đang ở một tiệm khác với phiên đăng nhập. Đang tải lại để về đúng tiệm… / This tab was working in a different salon than its session. Reloading…');
+  window.setTimeout(() => window.location.reload(), 1200);
+}
+
 // Global handler invoked when an authenticated request is rejected with 401
 // (i.e. the session/token expired). The AuthProvider registers a handler that
 // clears the session and redirects to /login.
@@ -111,6 +129,7 @@ export function apiStream(
           Accept: 'text/event-stream',
           Authorization: `Bearer ${token}`,
           ...(branch ? { 'X-Branch-Id': branch } : {}),
+          ...tenantStamp(),
         },
         signal: ctrl.signal,
       });
@@ -181,6 +200,7 @@ export function apiUpload(
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     const branch = activeBranchId();
     if (branch) xhr.setRequestHeader('X-Branch-Id', branch);
+    if (sessionTenantId) xhr.setRequestHeader('X-Tenant-Id', sessionTenantId);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
     };
@@ -216,6 +236,7 @@ export function apiUploadForm<T = unknown>(
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     const branch = activeBranchId();
     if (branch) xhr.setRequestHeader('X-Branch-Id', branch);
+    if (sessionTenantId) xhr.setRequestHeader('X-Tenant-Id', sessionTenantId);
     xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(e.loaded, e.total); };
     xhr.onload = () => {
       let body: unknown = null;
@@ -275,6 +296,7 @@ async function fetchOnce<T>(path: string, options: ApiOptions, key: string): Pro
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(branch ? { 'X-Branch-Id': branch } : {}),
+        ...tenantStamp(),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
@@ -296,6 +318,7 @@ async function fetchOnce<T>(path: string, options: ApiOptions, key: string): Pro
     const message =
       (data && typeof data === 'object' && 'message' in data && String((data as any).message)) ||
       `Request failed (${res.status})`;
+    if (res.status === 403 && message === SESSION_TENANT_MISMATCH) { onTenantMismatch(); throw new ApiError(message, res.status, data); }
     // EVERY failure is announced, even where a page also shows its own banner.
     // The complaint this answers is "I pressed it and nothing told me anything"
     // — an error that only lands in a corner of one page is exactly that.

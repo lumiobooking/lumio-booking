@@ -7,15 +7,17 @@ import { apiFetch } from '../lib/api';
 import { ui, formatPrice } from '../lib/ui';
 import { useLiveRefresh } from '../lib/useLiveRefresh';
 import { uiLocale } from '../lib/datetime';
+import { PartyChip, type PartyInfo } from './PartyChip';
 
 interface WItem { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null }
 interface Serving {
   id: string; customerName: string | null; phone: string | null; assignedAt: string | null; stationId: string | null; awaitingPayment: boolean; source: string | null; appointmentId: string | null;
   items: WItem[]; service: { id: string; name: string } | null; assignedStaff: { id: string; firstName: string; lastName: string | null } | null;
+  group?: PartyInfo | null;
 }
-interface Waiting { id: string; customerName: string | null; phone: string | null; createdAt: string; partySize: number; service: { id: string; name: string } | null }
+interface Waiting { id: string; customerName: string | null; phone: string | null; createdAt: string; partySize: number; service: { id: string; name: string } | null; group?: PartyInfo | null }
 interface StaffTurn { id: string; name: string; avatarUrl: string | null; turns: number; busy: boolean; nextUp: boolean }
-interface Booked { id: string; startTime: string; source: string; customerName: string | null; serviceName: string | null; staff: { id: string; name: string } | null }
+interface Booked { id: string; startTime: string; source: string; customerName: string | null; serviceName: string | null; staff: { id: string; name: string } | null; groupId?: string | null; groupSize?: number }
 interface Board { waiting: Waiting[]; serving: Serving[]; booked: Booked[]; staff: StaffTurn[]; nextUpStaffId: string | null }
 interface Station { id: string; name: string; stationType: { id: string; name: string; sortOrder: number } | null; isActive: boolean; sortOrder: number }
 interface Svc { id: string; name: string; priceCents: number; durationMinutes: number }
@@ -90,9 +92,9 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
     const m = srcMeta(source, vi);
     return <span style={{ fontSize: 10, fontWeight: 600, color: m.c, background: m.bg, borderRadius: 20, padding: '1px 7px', whiteSpace: 'nowrap' }}>{m.label}</span>;
   };
-  const seatBooked = async (id: string) => {
+  const seatBooked = async (id: string, party = false) => {
     setError(null);
-    try { await apiFetch(`/walkins/seat-appointment/${id}`, { method: 'POST', token }); await load(); }
+    try { await apiFetch(`/walkins/seat-appointment/${id}`, { method: 'POST', token, body: party ? { party: true } : {} }); await load(); }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not check in'); }
   };
 
@@ -164,7 +166,15 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
                     {tag(b.source)}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--c94a3b8)', margin: '2px 0 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.serviceName ?? ''}{b.staff ? ` · ${b.staff.name}` : ''}</div>
-                  <button onClick={() => seatBooked(b.id)} style={{ ...ui.primaryBtn, width: '100%', padding: '7px', fontSize: 13 }}>{vi ? 'Nhận khách' : 'Seat'}</button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => seatBooked(b.id)} style={{ ...ui.primaryBtn, flex: 1, padding: '7px', fontSize: 13 }}>{vi ? 'Nhận khách' : 'Seat'}</button>
+                    {(b.groupSize ?? 1) > 1 && (
+                      <button onClick={() => seatBooked(b.id, true)} title={vi ? 'Nhận tất cả người trong nhóm còn chưa đến' : 'Seat everyone in the party who has not arrived yet'}
+                        style={{ ...ui.primaryBtn, flex: 1, padding: '7px', fontSize: 13, background: 'rgba(99,102,241,0.18)', color: 'var(--cc7d2fe)', border: '1px solid rgba(99,102,241,0.45)' }}>
+                        👥 {vi ? 'Cả nhóm' : 'Party'} ({b.groupSize})
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

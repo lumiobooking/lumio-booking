@@ -217,6 +217,10 @@ export class PosService {
         // Whose appointment this line belongs to on a group ticket. Not stored
         // on the order row — it only has to survive until the write-back below.
         appointmentId: it.appointmentId ?? null,
+        // Party checkout: where the line came from on the floor. Stored.
+        walkInId: it.walkInId ?? null,
+        walkInLineId: it.walkInLineId ?? null,
+        guestName: it.guestName?.trim().slice(0, 80) || null,
       };
     });
 
@@ -287,6 +291,11 @@ export class PosService {
         ...(dto.appointmentId ? [dto.appointmentId] : []),
         ...(dto.appointmentIds ?? []),
       ].filter(Boolean))];
+      // Every floor ticket this sale settles; the first stays in walkInId.
+      const walkInIds = [...new Set([
+        ...(dto.walkInId ? [dto.walkInId] : []),
+        ...(dto.walkInIds ?? []),
+      ].filter(Boolean))];
       const created = await tx.order.create({
         data: {
           tenantId,
@@ -295,7 +304,8 @@ export class PosService {
           customerId: dto.customerId ?? null,
           appointmentId: dto.appointmentId ?? apptIds[0] ?? null,
           appointmentIds: apptIds,
-          walkInId: dto.walkInId ?? null,
+          walkInId: dto.walkInId ?? walkInIds[0] ?? null,
+          walkInIds,
           source: orderSource,
           createdByUserId: user.userId,
           subtotalCents: subtotal,
@@ -317,7 +327,7 @@ export class PosService {
       // Line items + tenders via createMany (carries the scalar tenantId/orderId).
       await tx.orderItem.createMany({
         // appointmentId is a checkout-time hint, not a column on the row.
-        data: lines.map(({ appointmentId: _owner, ...l }) => ({ ...l, tenantId, orderId: created.id })),
+        data: lines.map(({ appointmentId: _owner, ...l }) => ({ ...l, tenantId, orderId: created.id })) as never,
       });
       if (paid && (dto.tenders ?? []).length > 0) {
         await tx.orderPayment.createMany({
@@ -434,10 +444,11 @@ export class PosService {
           }
           await tx.appointment.updateMany({ where: { id: targetApptId, tenantId }, data: apptData });
         }
-        // Checking out a walk-in marks it Done (front desk doesn't need a second step).
-        if (dto.walkInId) {
+        // Checking out a walk-in marks it Done (front desk doesn't need a second
+        // step); a party on one bill closes every ticket it settled.
+        if (walkInIds.length) {
           await tx.walkIn.updateMany({
-            where: { id: dto.walkInId, tenantId },
+            where: { id: { in: walkInIds }, tenantId },
             data: { status: WalkInStatus.DONE, doneAt: new Date() },
           });
         }
@@ -461,7 +472,7 @@ export class PosService {
     // who has waited longest goes into it now, not when somebody at the desk
     // notices. After the transaction and swallowing its own failure: a payment
     // that is taken must stay taken.
-    if (dto.walkInId) await this.walkins?.seatWaitingQueue(tenantId).catch(() => []);
+    if (dto.walkInId || dto.walkInIds?.length) await this.walkins?.seatWaitingQueue(tenantId).catch(() => []);
 
     await this.audit.log({
       tenantId,

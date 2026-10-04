@@ -3,12 +3,20 @@ import { Observable, interval, merge } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { liveEvents } from '../common/live-events';
 import { UserRole } from '@prisma/client';
-import { IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min, IsBoolean } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min, IsBoolean, ValidateNested, ArrayMaxSize } from 'class-validator';
+import { Type } from 'class-transformer';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { WalkinsService } from './walkins.service';
+
+/** Someone who came in WITH the customer: their own name and services, their own ticket, no contact of their own. */
+class CompanionDto {
+  @IsOptional() @IsString() @MaxLength(80) firstName?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) serviceIds?: string[];
+  @IsOptional() @IsString() assignedStaffId?: string;
+}
 
 class AddWalkInDto {
   @IsOptional() @IsString() @MaxLength(80) customerName?: string;
@@ -26,6 +34,13 @@ class AddWalkInDto {
   @IsOptional() @IsString() assignedStaffId?: string;
   @IsOptional() @IsBoolean() autoAssign?: boolean;
   @IsOptional() @IsString() @MaxLength(24) station?: string;
+  // The people who came in together: one ticket each, linked as one party.
+  @IsOptional() @IsArray() @ArrayMaxSize(9) @ValidateNested({ each: true }) @Type(() => CompanionDto) guests?: CompanionDto[];
+}
+
+class SeatAppointmentDto {
+  // True: check in everyone booked in the same party, not just this one.
+  @IsOptional() @IsBoolean() party?: boolean;
 }
 
 class AssignDto {
@@ -150,9 +165,15 @@ export class WalkinsController {
     return this.nudge(user, id, this.walkins.waitPayment(user, id));
   }
 
+  /** Everyone who came in together, for the till (see WalkinsService.party). */
+  @Get('party/:groupId')
+  party(@CurrentUser() user: AuthenticatedUser, @Param('groupId') groupId: string) {
+    return this.walkins.party(user, groupId);
+  }
+
   @Post('seat-appointment/:id')
-  seatAppointment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.nudge(user, id, this.walkins.seatAppointment(user, id));
+  seatAppointment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto?: SeatAppointmentDto) {
+    return this.nudge(user, id, dto?.party ? this.walkins.seatParty(user, id) : this.walkins.seatAppointment(user, id));
   }
 
   @Post(':id/services')

@@ -10,6 +10,7 @@ import MarketBadge from './MarketBadge';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../lib/auth';
+import { leaveSupportSession } from '../lib/support-session';
 import { apiFetch } from '../lib/api';
 import { useIsMobile } from '../lib/responsive';
 import { useLang, tr, NAV_KEY, defaultLangForMarket, setUiCurrencySymbol } from '../lib/i18n';
@@ -401,6 +402,15 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     </div>
   ) : <NavAccessContext.Provider value={hrefVisible}>{children}</NavAccessContext.Provider>;
 
+  // The salon's name on the browser tab: an employee with five salons open
+  // tells them apart from the tab strip, before clicking into the wrong one.
+  useEffect(() => {
+    if (!user?.supportSession || !user.tenantName || typeof document === 'undefined') return;
+    const prev = document.title;
+    document.title = `${user.tenantName} · Lumio Support`;
+    return () => { document.title = prev; };
+  }, [user?.supportSession, user?.tenantName]);
+
   const supportBanner = user?.supportSession ? (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c312e81)', border: '1px solid #6366f1', color: 'var(--ce0e7ff)', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13.5 }}>
       <span style={{ fontWeight: 600 }}>🛠 Lumio Support</span>
@@ -429,14 +439,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         </span>
       )}
       <button
-        onClick={() => {
-          try {
-            const home = localStorage.getItem('lumio_agency_home');
-            if (home) { localStorage.setItem('lumio_auth', home); localStorage.removeItem('lumio_agency_home'); }
-            else { localStorage.removeItem('lumio_auth'); }
-          } catch { /* ignore */ }
-          window.location.assign('/agency');
-        }}
+        onClick={() => { leaveSupportSession(); window.location.assign('/agency'); }}
         style={{ marginLeft: 'auto', background: '#6366f1', border: 'none', color: 'white', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}
       >{tr('shell.supportLeave', lang)}</button>
     </div>

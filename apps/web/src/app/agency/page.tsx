@@ -1298,15 +1298,15 @@ function ConnectionsLine({ t }: { t: TenantRow }) {
     { k: 'tiktok', label: 'TT', v: c.tiktok, title: 'TikTok' },
     { k: 'mail', label: '✉', v: c.mail, title: 'Hộp thư gửi email của tiệm' },
   ].filter((p) => p.v);
-  if (!parts.length) return <div style={{ fontSize: 11.5, color: 'var(--c475569)' }}>Chưa kết nối kênh nào</div>;
+  if (!parts.length) return <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>Chưa kết nối kênh nào</div>;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 2 }}>
       {parts.map((p) => {
         const bad = shared.has(p.k);
         return (
           <span key={p.k} title={bad ? `${p.title} — TIỆM KHÁC CŨNG ĐANG DÙNG tài khoản này. Gỡ ở tiệm sai.` : p.title}
-            style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220, color: bad ? '#ef4444' : undefined, fontWeight: bad ? 700 : 400 }}>
-            <b style={{ color: bad ? '#ef4444' : 'var(--c64748b)', fontWeight: 700 }}>{p.label}</b> {p.v}{bad ? ' ⚠' : ''}
+            style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220, color: bad ? 'var(--ink-bad)' : undefined, fontWeight: bad ? 700 : 400 }}>
+            <b style={{ color: bad ? 'var(--ink-bad)' : 'var(--c64748b)', fontWeight: 700 }}>{p.label}</b> {p.v}{bad ? ' ⚠' : ''}
           </span>
         );
       })}

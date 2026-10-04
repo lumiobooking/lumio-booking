@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState, CSSProperties } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '../lib/auth';
+import { homeFor, useAuth } from '../lib/auth';
 import { useIsMobile } from '../lib/responsive';
 import { uiLocale } from '../lib/datetime';
 
@@ -128,10 +128,7 @@ export default function HomePage() {
   // harmless until the app redirect met SalonShell's guard: /salon bounced a
   // support account back to /, which redirected to /salon, forever - Safari
   // kills the app at 100 history writes in 10 seconds.
-  const dashHref = user?.role === 'SUPER_ADMIN' ? '/super-admin/tenants'
-    : user?.role === 'STAFF' ? '/staff/today'
-      : user?.role === 'SUPPORT' ? '/agency'
-        : '/salon';
+  const dashHref = homeFor(user);
 
   // Opened as the INSTALLED app (home-screen icon)? Then this marketing page
   // is the wrong room: the person tapped the icon to run their salon, not to

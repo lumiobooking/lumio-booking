@@ -1,4 +1,7 @@
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  ValidateNested,
   IsArray,
   IsBoolean,
   IsEmail,
@@ -13,6 +16,24 @@ import {
   MinLength,
 } from 'class-validator';
 import { PaymentType } from '@prisma/client';
+import { Type } from 'class-transformer';
+
+/**
+ * One more person in a group booked from the ONLINE page: a name and their
+ * own services. Read only by the public booking endpoint, which books them
+ * right after the person who filled the form — same time, same group.
+ */
+export class BookingGuestDto {
+  @IsString()
+  @MaxLength(80)
+  firstName!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(12)
+  @IsString({ each: true })
+  serviceIds!: string[];
+}
 
 /**
  * Create a booking. Used by Salon Admin now; the public/WordPress flow (Step 8)
@@ -21,6 +42,14 @@ import { PaymentType } from '@prisma/client';
 export class CreateBookingDto {
   @IsString()
   serviceId!: string;
+
+  // Group booking from the online page: everyone else in the party.
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(9)
+  @ValidateNested({ each: true })
+  @Type(() => BookingGuestDto)
+  guests?: BookingGuestDto[];
 
   // Optional: book several services in ONE visit. The first is the primary
   // (kept in serviceId); the rest are stored as service line items. When omitted

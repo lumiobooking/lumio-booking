@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
-import { useAuth } from '../../../lib/auth';
+import { useAuth, useCan } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
@@ -58,6 +58,8 @@ export default function CustomersPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const can = useCan();
+  const canDelete = can('customers.delete');
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const isMobile = useIsMobile();
@@ -205,7 +207,7 @@ function Inner() {
                 <MRow label={t('cu.colPoints')}>{c.loyaltyPoints ? <span style={{ color: 'var(--ceab308)', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</MRow>
                 <MRow label={t('cu.colSince')}>{fmtInTz(c.createdAt, { dateStyle: 'short' })}</MRow>
                 <MActions>
-                  <button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button>
+                  {canDelete && <button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button>}
                 </MActions>
               </MCard>
             ))}
@@ -214,7 +216,7 @@ function Inner() {
         </>
       ) : (
         <div>
-          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/customers/${id}`, { method: 'DELETE', token }), load)} />
+          {canDelete && <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/customers/${id}`, { method: 'DELETE', token }), load)} />}
           <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
@@ -251,7 +253,7 @@ function Inner() {
                   </td>
                   <td style={ui.td}>{c.loyaltyPoints ? <span style={{ color: 'var(--ceab308)', fontWeight: 600 }}>{c.loyaltyPoints} {t('cu.pts')}</span> : '—'}</td>
                   <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{fmtInTz(c.createdAt, { dateStyle: 'short' })}</td>
-                  <td style={ui.td}><button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button></td>
+                  <td style={ui.td}>{canDelete && <button onClick={() => remove(c)} style={ui.dangerBtn}>{t('cu.delete')}</button>}</td>
                 </tr>
               ))}
             </tbody>

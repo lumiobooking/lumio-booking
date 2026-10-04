@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Body,
   Controller,
   Delete,
@@ -14,6 +15,7 @@ import { PosService } from './pos.service';
 import { CreateOrderDto, CreateProductDto, RecordTipDto, UpdateProductDto } from './dto/pos.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
+import { hasCapability } from '../auth/capabilities';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 
@@ -81,16 +83,25 @@ export class PosController {
   }
 
   @Post('orders')
-  createOrder(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateOrderDto) {
+  async createOrder(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateOrderDto) {
+    // A discount typed at the till is the owner's to allow, per person. Promo
+    // codes, the menu's own discounts and loyalty points are not "typed" and
+    // stay open to anyone who may check out.
+    if ((dto.manualDiscountCents ?? 0) > 0 && !hasCapability(user.role, user.staffRole, 'pos.discount', user.staffCaps)) {
+      throw new ForbiddenException('You do not have permission to give a discount. Ask the owner or a manager.');
+    }
     return this.pos.createOrder(user, dto);
   }
 
+  // Voiding or deleting a paid ticket moves money backwards: the owner decides who may.
+  @Caps('pos.void')
   @Post('orders/:id/void')
   @HttpCode(200)
   voidOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.pos.voidOrder(user, id);
   }
 
+  @Caps('pos.void')
   @Delete('orders/:id')
   removeOrder(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.pos.removeOrder(user, id);

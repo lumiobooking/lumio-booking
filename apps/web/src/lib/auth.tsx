@@ -109,6 +109,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * May the signed-in person do this? Owners (and the platform team, and Lumio
+ * support working inside a salon) always may; a staff member may when the
+ * owner gave them that permission. The server checks the same rule — this
+ * only keeps buttons that would be refused off the screen.
+ */
+/**
+ * Where a signed-in person's work starts. A staff member is placed by what
+ * they may open, not by the word "staff": a receptionist works at the counter
+ * (/salon/front-desk), a manager on the dashboard, a technician in the
+ * technicians' app. Used by the login page, the home page and the tech app,
+ * so a receptionist can never end up in the technicians' screens.
+ */
+export function homeFor(user: { role: string; staffRole?: string | null; capabilities?: string[] } | null | undefined): string {
+  if (!user) return '/login';
+  if (user.role === 'SUPER_ADMIN') return '/super-admin/tenants';
+  if (user.role === 'SUPPORT') return '/agency';
+  if (user.role !== 'STAFF') return '/salon';
+  const caps = user.capabilities ?? [];
+  // A technician stays in the technicians' app even when the owner lets her
+  // help at the till — those screens are one tap away from the salon menu.
+  if (user.staffRole === 'TECHNICIAN' || !caps.length) return '/staff/today';
+  if (caps.includes('dashboard')) return '/salon';
+  if (caps.includes('walkins')) return '/salon/front-desk';
+  return '/salon';
+}
+
+export function useCan(): (cap: string) => boolean {
+  const { user } = useAuth();
+  return (cap: string) => !!user && (user.role === 'SALON_ADMIN' || user.role === 'SUPER_ADMIN' || (user.capabilities ?? []).includes(cap));
+}
+
 export function useAuth(): AuthState {
   const ctx = useContext(AuthContext);
   if (!ctx) {

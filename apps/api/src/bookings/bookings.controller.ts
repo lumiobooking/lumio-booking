@@ -251,8 +251,9 @@ export class BookingsController {
     return this.bookings.noShow(user, id);
   }
 
+  // Cancelling stays open to the desk; deleting an appointment for good is the owner's call.
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
-  @Caps('bookings')
+  @Caps('bookings.delete')
   @Delete(':id')
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.bookings.remove(user, id);

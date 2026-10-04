@@ -58,6 +58,8 @@ export class CustomersController {
     return this.customers.update(user, id, dto);
   }
 
+  // Deleting a client erases their history; the owner decides who may.
+  @Caps('customers.delete')
   @Delete(':id')
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.customers.remove(user, id);

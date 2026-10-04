@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
-import { useAuth } from '../../../lib/auth';
+import { useAuth, useCan } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
@@ -42,6 +42,8 @@ export default function OrdersPage() {
 
 function Inner() {
   const { token } = useAuth();
+  const can = useCan();
+  const canVoid = can('pos.void');
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const ML: Record<string, string> = { CASH: t('or.mCash'), CARD: t('or.mCard'), OTHER: t('or.mTransfer') };
@@ -172,8 +174,8 @@ function Inner() {
                 <MRow label={t('or.colMethod')}>{o.tenders.map((tn) => ML[tn.method] ?? tn.method).join(', ') || '—'}</MRow>
                 <MActions>
                   <button onClick={() => reprint(o)} style={tiny}>{t('or.reprint')}</button>
-                  {o.status === 'PAID' && <button onClick={() => voidOrder(o.id)} style={ui.dangerBtn}>{t('or.void')}</button>}
-                  <button onClick={() => removeOrder(o)} style={{ ...ui.dangerBtn, opacity: 0.75 }}>{t('or.delete')}</button>
+                  {canVoid && o.status === 'PAID' && <button onClick={() => voidOrder(o.id)} style={ui.dangerBtn}>{t('or.void')}</button>}
+                  {canVoid && <button onClick={() => removeOrder(o)} style={{ ...ui.dangerBtn, opacity: 0.75 }}>{t('or.delete')}</button>}
                 </MActions>
               </MCard>
             ))}
@@ -182,7 +184,7 @@ function Inner() {
         </>
       ) : (
         <div>
-          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/pos/orders/${id}`, { method: 'DELETE', token }), load)} />
+          {canVoid && <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/pos/orders/${id}`, { method: 'DELETE', token }), load)} />}
           <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead><tr style={{ background: 'var(--c1e293b)' }}>
@@ -205,8 +207,8 @@ function Inner() {
                     <td style={ui.td}>
                       <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
                         <button onClick={() => reprint(o)} style={tiny}>{t('or.reprint')}</button>
-                        {o.status === 'PAID' && <button onClick={() => voidOrder(o.id)} style={ui.dangerBtn}>{t('or.void')}</button>}
-                        <button onClick={() => removeOrder(o)} style={{ ...ui.dangerBtn, opacity: 0.75 }} title={t('or.deleteTitle')}>{t('or.delete')}</button>
+                        {canVoid && o.status === 'PAID' && <button onClick={() => voidOrder(o.id)} style={ui.dangerBtn}>{t('or.void')}</button>}
+                        {canVoid && <button onClick={() => removeOrder(o)} style={{ ...ui.dangerBtn, opacity: 0.75 }} title={t('or.deleteTitle')}>{t('or.delete')}</button>}
                       </div>
                     </td>
                   </tr>

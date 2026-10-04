@@ -73,6 +73,9 @@ export class CreateOrderDto {
   @IsOptional() @IsString() walkInId?: string;
   @IsOptional() @IsInt() @Min(0) discountCents?: number;
   @IsOptional() @IsInt() @Min(0) redeemPoints?: number; // loyalty points to redeem as a discount
+  // The part of discountCents somebody TYPED at the till (not a promo code):
+  // what the "give a discount" permission controls.
+  @IsOptional() @IsInt() @Min(0) manualDiscountCents?: number;
   @IsOptional() @IsString() @MaxLength(500) note?: string;
   @IsOptional() @IsString() @MaxLength(64) clientRef?: string; // offline-checkout idempotency key
   // True when a sale queued while offline is being uploaded later. The shift

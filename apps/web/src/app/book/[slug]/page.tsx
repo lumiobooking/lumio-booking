@@ -642,6 +642,10 @@ export default function PublicBookingPage() {
           customerBirthDate: form.birthDate || undefined,
           partySize: isGroup ? extraGuests.length + 1 : (parseInt(form.partySize, 10) || 1),
           ...(isGroup ? { notes: `Group booking (${extraGuests.length + 1} people)` } : {}),
+          // The whole party in ONE request: the server books the guests on the
+          // back of this validated booking (a guest has no phone of their own,
+          // and a separate public booking without one is refused).
+          ...(isGroup ? { guests: extraGuests.map((g, gi) => ({ firstName: g.name.trim() || `Guest ${gi + 2}`, serviceIds: g.serviceIds })) } : {}),
           smsConsent,
           referralCode: (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('ref') : null) || undefined,
           // Campaign attribution: capture UTM from THIS page's URL. For plugin
@@ -687,40 +691,24 @@ export default function PublicBookingPage() {
       const when = `${slot.start.toLocaleDateString(bookLocale(), { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(slot.start)}`;
       const booked = [...done, `${when} · ${allLines.map((l) => l.name).join(', ')}${isGroup ? ` — ${form.firstName || 'You'}` : ''}`];
 
-      // Group guests: one appointment each, SAME start time. Only a name is
-      // sent (no phone/email), so the CRM never merges a friend into the
-      // booker's record and contact velocity limits don't trip.
-      for (let gi = 0; gi < extraGuests.length; gi++) {
-        const g = extraGuests[gi];
+      // Group guests were booked by the server in the same request — read back
+      // what happened to each one. Only a name was sent (no phone/email), so
+      // the CRM never merges a friend into the booker's record.
+      const guestOut = Array.isArray(body?.guests) ? (body.guests as { name: string; ok: boolean; id?: string; priceCents?: number; error?: string }[]) : [];
+      const failed: string[] = [];
+      extraGuests.forEach((g, gi) => {
         const gName = g.name.trim() || `Guest ${gi + 2}`;
-        try {
-          const gr = await fetch(`${base}/bookings`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              serviceId: g.serviceIds[0],
-              serviceIds: g.serviceIds,
-              preferredStaffId: undefined,
-              startTime: salon?.timezone ? wallTimeToISO(slot.start, salon.timezone) : slot.start.toISOString(),
-              customerFirstName: gName,
-              partySize: extraGuests.length + 1,
-              notes: `Group booking with ${form.firstName || 'the main guest'} (${extraGuests.length + 1} people)`,
-              smsConsent: false,
-              paymentType: 'PAY_LATER',
-            }),
-          });
-          const gb = await gr.json().catch(() => null);
-          if (!gr.ok) {
-            setError(`${gName}'s booking could not be created: ${(gb && gb.message) || gr.status}. Your own booking IS confirmed — please call the salon to add them.`);
-          } else {
-            const names = g.serviceIds.map((sid) => services.find((sv) => sv.id === sid)?.name).filter(Boolean).join(', ');
-            booked.push(`${when} · ${names} — ${gName}`);
-            if (gb?.booking?.id) {
-              fireConversion({ id: String(gb.booking.id), valueCents: typeof gb?.booking?.priceCents === 'number' ? gb.booking.priceCents : 0, currency: rules.currency, slug, items: [] });
-            }
-          }
-        } catch {
-          setError(`Network error while adding ${gName}. Your own booking IS confirmed — please call the salon to add them.`);
+        const r = guestOut[gi];
+        if (r?.ok) {
+          const names = g.serviceIds.map((sid) => services.find((sv) => sv.id === sid)?.name).filter(Boolean).join(', ');
+          booked.push(`${when} · ${names} — ${gName}`);
+          if (r.id) fireConversion({ id: String(r.id), valueCents: typeof r.priceCents === 'number' ? r.priceCents : 0, currency: rules.currency, slug, items: [] });
+        } else {
+          failed.push(gName);
         }
+      });
+      if (failed.length) {
+        setError(`${failed.join(', ')}: ${bt('could not be added. Your own booking IS confirmed — please call the salon to add them.')}`);
       }
 
       setBookedVisits(booked);

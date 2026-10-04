@@ -2,7 +2,7 @@
 
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '../../lib/auth';
+import { homeFor, useAuth } from '../../lib/auth';
 import { LumioLogo } from '../../components/LumioLogo';
 
 export default function LoginPage() {
@@ -28,8 +28,7 @@ export default function LoginPage() {
         // Where a staff member starts is decided by what they may open, not by
         // the word "staff": a receptionist lands on the front desk, a manager
         // on the dashboard, a technician in the technicians' app.
-        const caps = user.capabilities ?? [];
-        router.push(caps.includes('dashboard') ? '/salon' : caps.includes('walkins') ? '/salon/front-desk' : caps.length ? '/salon' : '/staff/today');
+        router.push(homeFor(user));
       } else if (user.role === 'SUPPORT') {
         router.push('/agency');
       } else {

@@ -3,7 +3,7 @@
 import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAuth } from '../lib/auth';
+import { homeFor, useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useLang } from '../lib/i18n';
 import { useIsMobile } from '../lib/responsive';
@@ -38,6 +38,11 @@ export function StaffShell({ children, title = 'My Bookings', subtitle, right, w
       router.replace('/login');
     } else if (user && user.role !== 'STAFF') {
       router.replace('/');
+    } else if (user && homeFor(user) !== '/staff/today') {
+      // A receptionist or manager is not a technician: their work is at the
+      // counter, not in this app. Old sessions, bookmarks and home-screen
+      // icons used to drop them here.
+      router.replace(homeFor(user));
     }
   }, [ready, token, user, router]);
 

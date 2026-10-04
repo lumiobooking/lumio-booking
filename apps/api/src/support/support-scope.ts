@@ -49,6 +49,7 @@ export type SupportLevel = 'content' | 'setup' | 'full';
 const MONEY: Capability[] = [
   'dashboard', // the salon's revenue chart and today's takings live here
   'pos', 'orders', 'payments', 'payroll', 'reports', 'billing', 'inventory',
+  'pos.discount', 'pos.void',
 ];
 
 /**
@@ -59,7 +60,7 @@ const MONEY: Capability[] = [
  * an agency. `calendar`/`bookings` are here for the same reason: an appointment
  * IS a named customer at a named time.
  */
-const CLIENT_DATA: Capability[] = ['customers', 'calendar', 'bookings', 'walkins', 'waitlist'];
+const CLIENT_DATA: Capability[] = ['customers', 'calendar', 'bookings', 'walkins', 'waitlist', 'bookings.delete', 'customers.delete'];
 
 const SETUP_CAPS: Capability[] = ALL_CAPS.filter(
   (c) => !MONEY.includes(c) && !CLIENT_DATA.includes(c),
@@ -166,6 +167,10 @@ export const CAP_CATALOG: { id: Capability; label: string; private: boolean }[] 
   { id: 'notifications', label: 'Nhắc hẹn & thông báo', private: false },
   { id: 'integrations', label: 'Kết nối kênh', private: false },
   { id: 'settings', label: 'Cài đặt tiệm', private: false },
+  { id: 'pos.discount', label: 'Giảm giá tay khi tính tiền', private: true },
+  { id: 'pos.void', label: 'Huỷ / xoá hoá đơn đã thu', private: true },
+  { id: 'bookings.delete', label: 'Xoá hẳn lịch hẹn', private: true },
+  { id: 'customers.delete', label: 'Xoá khách hàng', private: true },
 ];
 
 /**

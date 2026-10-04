@@ -19,8 +19,8 @@ type Cap = string;
 
 /** Fallback when the catalogue cannot be read — mirrors api/src/auth/capabilities.ts. */
 const FALLBACK_PRESETS: Record<Role, Cap[]> = {
-  MANAGER: ['dashboard', 'pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist', 'customers', 'services', 'products', 'staff', 'payroll', 'reviews', 'marketing', 'inventory', 'reports', 'payments', 'notifications'],
-  RECEPTIONIST: ['pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist', 'customers'],
+  MANAGER: ['dashboard', 'pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist', 'customers', 'services', 'products', 'staff', 'payroll', 'reviews', 'marketing', 'inventory', 'reports', 'payments', 'notifications', 'pos.discount', 'pos.void', 'bookings.delete', 'customers.delete'],
+  RECEPTIONIST: ['pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist', 'customers', 'pos.discount'],
   TECHNICIAN: [],
 };
 
@@ -36,6 +36,17 @@ export const ACCESS_GROUPS: { id: string; vi: string; en: string; items: { cap: 
       { cap: 'customers', vi: 'Khách hàng', en: 'Customers', hintVi: 'Hồ sơ, lịch sử, ghi chú', hintEn: 'Profiles, history, notes' },
       { cap: 'pos', vi: 'Tính tiền & thẻ quà tặng', en: 'Checkout & gift cards', hintVi: 'Thu tiền, tip, thẻ quà', hintEn: 'Take payment, tips, gift cards' },
       { cap: 'orders', vi: 'Hoá đơn', en: 'Orders', hintVi: 'Xem, in lại hoá đơn', hintEn: 'View and reprint receipts' },
+    ],
+  },
+  {
+    // Not screens but actions at the counter — the ones an owner wants to
+    // decide person by person.
+    id: 'actions', vi: 'Thao tác nhạy cảm tại quầy', en: 'Sensitive counter actions',
+    items: [
+      { cap: 'pos.discount', vi: 'Giảm giá tay khi tính tiền', en: 'Type a discount at checkout', hintVi: 'Mã khuyến mãi, điểm thưởng vẫn dùng được', hintEn: 'Promo codes and points still work' },
+      { cap: 'pos.void', vi: 'Huỷ / xoá hoá đơn đã thu', en: 'Void or delete a paid ticket', hintVi: 'Trả tiền lại cho khách', hintEn: 'Moves money back' },
+      { cap: 'bookings.delete', vi: 'Xoá hẳn lịch hẹn', en: 'Delete a booking for good', hintVi: 'Huỷ lịch thì luôn được', hintEn: 'Cancelling is always allowed' },
+      { cap: 'customers.delete', vi: 'Xoá khách hàng', en: 'Delete a client', hintVi: 'Mất cả lịch sử của khách', hintEn: 'Erases their history' },
     ],
   },
   {

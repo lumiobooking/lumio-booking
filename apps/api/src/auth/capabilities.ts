@@ -26,12 +26,18 @@ export type Capability =
   | 'notifications'
   | 'integrations'
   | 'billing'
-  | 'settings';
+  | 'settings'
+  // Actions at the counter, not screens — the owner decides them per person:
+  | 'pos.discount'      // type a discount at checkout
+  | 'pos.void'          // void or delete a paid ticket
+  | 'bookings.delete'   // delete an appointment for good (cancel stays open)
+  | 'customers.delete'; // delete a client record
 
 export const ALL_CAPS: Capability[] = [
   'dashboard', 'pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist',
   'customers', 'services', 'products', 'staff', 'payroll', 'reviews', 'marketing',
   'inventory', 'reports', 'payments', 'notifications', 'integrations', 'billing', 'settings',
+  'pos.discount', 'pos.void', 'bookings.delete', 'customers.delete',
 ];
 
 // Owner-only areas no staff account is ever handed, whatever its role or the
@@ -45,9 +51,11 @@ export const STAFF_GRANTABLE: Capability[] = ALL_CAPS.filter((c) => !OWNER_ONLY.
 const MANAGER_CAPS: Capability[] = [...STAFF_GRANTABLE];
 
 // Cashier / front desk: greet, book, check in, take payment. No revenue
-// dashboard / reports — they don't see the salon's totals.
+// dashboard / reports — they don't see the salon's totals. A discount at the
+// till is part of the job; voiding a paid ticket or deleting a booking or a
+// client for good is not, until the owner says so for this person.
 const RECEPTIONIST_CAPS: Capability[] = [
-  'pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist', 'customers',
+  'pos', 'orders', 'calendar', 'bookings', 'walkins', 'waitlist', 'customers', 'pos.discount',
 ];
 
 /** What each role starts with — the preset the owner can then adjust per person. */

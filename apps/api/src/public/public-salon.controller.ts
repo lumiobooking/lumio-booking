@@ -8,6 +8,7 @@ import { SettingsService } from '../settings/settings.service';
 import { PaymentOrchestrator } from '../payments-hub/payment-orchestrator.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { deviceSource } from '../bookings/booking.util';
+import { randomUUID } from 'crypto';
 import { Public } from '../auth/decorators/public.decorator';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { verifyCaptcha } from '../common/security/turnstile';
@@ -321,13 +322,54 @@ export class PublicSalonController {
       throw new BadRequestException('Captcha verification failed. Please try again.');
     }
     const tenantId = await this.resolveTenantId(slug);
-    const safeDto: CreateBookingDto = { ...dto, staffId: undefined };
+
+    // GROUP BOOKINGS. The page used to post each friend as a separate public
+    // booking with no phone — and a public booking without a phone is refused,
+    // so every guest failed and the customer was told to call the salon. The
+    // party now travels in ONE request: the person who filled the form (phone,
+    // captcha, all the public checks) and their guests, who ride on that
+    // validated booking and are written server-side with the same time and
+    // group. Their services are checked first, so a bad id books nobody.
+    const guests = Array.isArray(dto.guests) ? dto.guests.slice(0, 9) : [];
+    const groupId = guests.length ? `web-${randomUUID()}` : undefined;
+    const partySize = guests.length + 1;
+    if (guests.length) {
+      const ids = [...new Set(guests.flatMap((g) => g.serviceIds ?? []))];
+      const found = await this.prisma.service.count({ where: { tenantId, id: { in: ids }, isActive: true } });
+      if (found !== ids.length) throw new BadRequestException("One of your guests' services is not available. Please pick again.");
+    }
+    const guestNames = guests.map((g, i) => (g.firstName ?? '').trim().slice(0, 80) || `Guest ${i + 2}`);
+    const safeDto: CreateBookingDto = {
+      ...dto, staffId: undefined, guests: undefined,
+      ...(groupId ? { groupId, partySize, notes: [dto.notes, `Group of ${partySize}: ${[dto.customerFirstName, ...guestNames].join(', ')}`].filter(Boolean).join(' · ').slice(0, 1000) } : {}),
+    };
     // `autoAssign` runs the fair-rotation engine INSIDE createForTenant, before
     // the confirmation is written — the same work that used to happen here, a
     // few milliseconds too late to make it into the customer's email.
     const booking = await this.bookings.createForTenant(
       tenantId, safeDto, null, 'hosted', deviceSource(ua), { autoAssign: true },
     );
+
+    // Each guest: their own appointment at the same time, their own technician,
+    // no contact of their own (the person who booked is the group's contact).
+    const guestResults: { name: string; ok: boolean; id?: string; priceCents?: number; error?: string }[] = [];
+    for (let i = 0; i < guests.length; i++) {
+      const g = guests[i];
+      try {
+        const gb = await this.bookings.createForTenant(tenantId, {
+          serviceId: g.serviceIds[0],
+          ...(g.serviceIds.length > 1 ? { serviceIds: g.serviceIds } : {}),
+          startTime: dto.startTime,
+          customerFirstName: guestNames[i],
+          partySize,
+          groupId,
+          notes: `Group of ${partySize} with ${dto.customerFirstName} (booked online)`,
+        } as CreateBookingDto, null, 'hosted', deviceSource(ua), { autoAssign: true, groupGuest: true });
+        guestResults.push({ name: guestNames[i], ok: true, id: gb.id, priceCents: gb.priceCents });
+      } catch (e) {
+        guestResults.push({ name: guestNames[i], ok: false, error: String((e as Error)?.message || e).slice(0, 200) });
+      }
+    }
 
     // Deposit-to-hold: if the salon requires a deposit (and this customer is in
     // scope), take it as a partial online payment; otherwise honour the chosen
@@ -350,7 +392,7 @@ export class PublicSalonController {
       payment = await this.payments.createForBookingTenant(tenantId, booking.id, dto.paymentType, null);
     }
 
-    return { booking, payment, depositCents, onlineProvider };
+    return { booking, payment, depositCents, onlineProvider, ...(guests.length ? { guests: guestResults } : {}) };
   }
 
   /**

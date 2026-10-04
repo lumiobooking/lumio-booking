@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, FormEvent } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
-import { useAuth } from '../../../lib/auth';
+import { useAuth, useCan } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { wallToInstantISO, instantToWall } from '../../../lib/datetime';
 import { ui } from '../../../lib/ui';
@@ -76,6 +76,8 @@ export default function BookingsPage() {
 
 function BookingsInner() {
   const { token } = useAuth();
+  const can = useCan();
+  const canDelete = can('bookings.delete');
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   // Cards up to tablet width — an iPad gets every field, not a squeezed table.
@@ -299,7 +301,7 @@ function BookingsInner() {
                       checkoutHref={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
                       groupSize={grp.length || 1}
                       onAction={(path, body) => action(b.id, path, body)}
-                      onDelete={() => removeBooking(b.id)}
+                      onDelete={canDelete ? () => removeBooking(b.id) : undefined}
                     />
                   </MActions>
                 </MCard>,
@@ -324,7 +326,7 @@ function BookingsInner() {
                             checkoutHref={`/salon/pos?appointmentId=${m.id}&serviceId=${m.service?.id ?? ''}&staffId=${m.assignedStaff?.id ?? ''}&customerId=${m.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(m.customer))}`}
                             groupSize={1}
                             onAction={(path, body) => action(m.id, path, body)}
-                            onDelete={() => removeBooking(m.id)}
+                            onDelete={canDelete ? () => removeBooking(m.id) : undefined}
                           />
                         </MActions>
                       </MCard>
@@ -339,7 +341,7 @@ function BookingsInner() {
         </>
       ) : (
         <div>
-          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/bookings/${id}`, { method: 'DELETE', token }), load)} />
+          {canDelete && <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/bookings/${id}`, { method: 'DELETE', token }), load)} />}
           <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
@@ -392,7 +394,7 @@ function BookingsInner() {
                         checkoutHref={`/salon/pos?appointmentId=${b.id}&serviceId=${b.service?.id ?? ''}&staffId=${b.assignedStaff?.id ?? ''}&customerId=${b.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(b.customer))}`}
                         groupSize={grp.length || 1}
                         onAction={(path, body) => action(b.id, path, body)}
-                        onDelete={() => removeBooking(b.id)}
+                        onDelete={canDelete ? () => removeBooking(b.id) : undefined}
                       />
                     </td>
                   </tr>,
@@ -421,7 +423,7 @@ function BookingsInner() {
                             checkoutHref={`/salon/pos?appointmentId=${m.id}&serviceId=${m.service?.id ?? ''}&staffId=${m.assignedStaff?.id ?? ''}&customerId=${m.customer?.id ?? ''}&customer=${encodeURIComponent(staffName(m.customer))}`}
                             groupSize={1}
                             onAction={(path, body) => action(m.id, path, body)}
-                            onDelete={() => removeBooking(m.id)}
+                            onDelete={canDelete ? () => removeBooking(m.id) : undefined}
                           />
                         </td>
                       </tr>,
@@ -453,7 +455,7 @@ function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDele
   checkoutHref: string;
   groupSize: number;
   onAction: (path: string, body?: Record<string, unknown>) => void;
-  onDelete: () => void;
+  onDelete?: () => void;
 }) {
   const [menu, setMenu] = useState(false);
   const [panel, setPanel] = useState<'none' | 'move' | 'staff'>('none');
@@ -550,7 +552,7 @@ function BookingActions({ b, staff, t, checkoutHref, groupSize, onAction, onDele
                 <div style={{ height: 1, background: 'var(--line)', margin: '4px 6px' }} />
               </>
             )}
-            <MenuItem label={`🗑 ${t('bk.delete')}`} color="var(--cf87171)" onClick={() => { setMenu(false); onDelete(); }} />
+            {onDelete && <MenuItem label={`🗑 ${t('bk.delete')}`} color="var(--cf87171)" onClick={() => { setMenu(false); onDelete(); }} />}
           </div>
         </>
       )}

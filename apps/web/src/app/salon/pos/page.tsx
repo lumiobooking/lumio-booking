@@ -7,7 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { useIsMobile } from '../../../lib/responsive';
 import { payLabel, tillMethodsFrom, type PayMethod } from '../../../lib/payment-methods';
 import { SalonShell } from '../../../components/SalonShell';
-import { useAuth } from '../../../lib/auth';
+import { useAuth, useCan } from '../../../lib/auth';
 import { apiFetch, ApiError } from '../../../lib/api';
 import { cacheCatalog, readCachedCatalog, genClientRef, queueOrder, queueCount, syncQueue } from '../../../lib/offlinePos';
 import { ui, formatPrice, toMinorUnits, fromMinorUnits } from '../../../lib/ui';
@@ -104,6 +104,8 @@ export default function PosPage() {
 
 function Register() {
   const { token, user } = useAuth();
+  // A discount TYPED at the till is the owner's to allow, per person.
+  const canDiscount = useCan()('pos.discount');
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   /**
@@ -1113,6 +1115,7 @@ function Register() {
       walkInId: walkInId || undefined,
       customerId: customerId || undefined,
       discountCents: money.discount,
+      manualDiscountCents: money.typedDiscount || undefined,
       redeemPoints: money.redeemPts || undefined,
       giftCardCode: giftCard?.code || undefined,
       // A marked-down line is stored as list price + a discount, never as a
@@ -1865,7 +1868,7 @@ function Register() {
 
   const adjButtons = (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-      <button type="button" onClick={() => setAdj(adj === 'discount' ? null : 'discount')} style={adjBtn(adj === 'discount' || !!orderDiscount)}>{orderDiscount ? `${L('Giảm giá', 'Discount')} −${fmt(money.typedDiscount)}` : `+ ${L('Giảm giá', 'Discount')}`}</button>
+      {canDiscount && <button type="button" onClick={() => setAdj(adj === 'discount' ? null : 'discount')} style={adjBtn(adj === 'discount' || !!orderDiscount)}>{orderDiscount ? `${L('Giảm giá', 'Discount')} −${fmt(money.typedDiscount)}` : `+ ${L('Giảm giá', 'Discount')}`}</button>}
       <button type="button" onClick={() => setAdj(adj === 'promo' ? null : 'promo')} style={adjBtn(adj === 'promo' || !!promo)}>{promo ? `${promo.code}${money.promoCents ? ` −${fmt(money.promoCents)}` : ''}` : `+ ${L('Mã ưu đãi', 'Promo code')}`}</button>
       {online && <button type="button" onClick={() => setAdj(adj === 'gift' ? null : 'gift')} style={adjBtn(adj === 'gift' || !!giftCard)}>{giftCard ? `${L('Thẻ quà', 'Gift card')} −${fmt(money.giftApplied)}` : `+ ${L('Thẻ quà', 'Gift card')}`}</button>}
       {loyalty.enabled && customerId && online && customerPoints >= loyalty.minRedeemPoints && (

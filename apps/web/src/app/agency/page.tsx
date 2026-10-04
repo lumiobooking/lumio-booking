@@ -1282,56 +1282,79 @@ function Row({
 
 
 /**
- * THE CHANNEL STRIP — the same five chips, in the same order, under every
- * salon, so the team reads the list like a table: inbox · Instagram · Google ·
- * TikTok · mail. A connected channel is a filled chip with the account's
- * NAME; a missing one is a hollow grey chip, which is itself the information
- * ("this shop has no Google yet"). An account two salons share is red with ⚠ —
- * that is always a mistake. Names only, never a raw page or location id: a
- * number tells the team nothing and tells a reader what sits underneath.
+ * THE CHANNEL STRIP — five small squares, one line, under every salon.
+ *
+ * The first version printed every account's name, and a row became three
+ * lines of chips that all repeated the salon's own name: nothing stood out,
+ * and the salons blurred into one another. Now the strip is five fixed
+ * squares in a fixed order (inbox · Instagram · Google · TikTok · mail) and a
+ * count — same width on every row, so a column of rows reads like a table.
+ * Colour is the whole message: GREEN = connected, GREY = not yet, AMBER =
+ * connected but the account's name does not look like this salon's (the
+ * thing to check first when accounts were mixed up), RED = the same account
+ * sits under another salon too. The name itself is one hover away.
  */
 const CONNECTED = new Set(['connected', 'gmail', 'brevo']);
 function friendly(v: string | null): string | null {
   if (!v) return null;
-  // "connected, Lily Spa" — a nameless page beside a named one.
-  const parts = v.split(', ').map((x) => (CONNECTED.has(x) ? 'Đã kết nối' : x));
-  return parts.join(', ');
+  return v.split(', ').map((x) => (CONNECTED.has(x) ? 'Đã kết nối' : x)).join(', ');
+}
+/** "glow nails & spa" vs "Glow Nails and Spa - Austin": the same shop? Loose on purpose; it flags, never decides. */
+function sameShop(account: string | null, salon: string): boolean {
+  if (!account) return true;
+  const first = account.split(', ')[0];
+  if (CONNECTED.has(first)) return true; // no name to compare
+  // Digits go too: "@5point.nails.spa" is "5 Points Nails & Spa"; a year in a handle is not a different shop.
+  const norm = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/^@/, '').replace(/[^a-z ]+/g, ' ').replace(/\b(nails?|spa|salon|and|the|llc|inc|beauty|studio|lounge|bar)\b/g, ' ').split(/\s+/).filter((w) => w.length > 1);
+  const a = norm(first); const b = norm(salon);
+  if (!a.length || !b.length) return true; // nothing distinctive to compare (e.g. "Nails & Spa")
+  const joinedA = a.join(''); const joinedB = b.join('');
+  if (joinedA.includes(joinedB) || joinedB.includes(joinedA)) return true;
+  const hit = a.filter((w) => b.some((v) => v.includes(w) || w.includes(v))).length;
+  return hit / Math.min(a.length, b.length) >= 0.5;
 }
 function ConnectionsLine({ t }: { t: TenantRow }) {
   const c = t.connections;
   if (!c) return null;
   const shared = new Set(t.sharedWith ?? []);
-  // Messenger is the inbox: a Page is what makes "Hộp thư" and the chat bot
-  // exist for this shop. Say where it stands, not only whether it is there.
-  const inbox = c.fbPage
-    ? `${friendly(c.fbPage)}${t.bot === 'on' ? ' · bot bật' : t.bot === 'off' ? ' · chỉ đăng bài' : ''}`
-    : null;
-  const chips: { k: string; icon: string; label: string; v: string | null; title: string }[] = [
-    { k: 'fb', icon: '💬', label: 'Hộp thư', v: inbox, title: inbox ? `Trang Facebook đã nối với Hộp thư: ${friendly(c.fbPage)}` : 'Chưa nối trang Facebook — Hộp thư và bot chưa hoạt động' },
-    { k: 'ig', icon: '📷', label: 'Instagram', v: friendly(c.igUser), title: c.igUser ? `Instagram: ${c.igUser}` : 'Chưa có Instagram (nối qua trang Facebook)' },
-    { k: 'google', icon: 'G', label: 'Google', v: friendly(c.google), title: c.google ? `Google Business Profile: ${friendly(c.google)}${c.googleEmail ? ` · ${c.googleEmail}` : ''}` : 'Chưa kết nối Google Business Profile' },
-    { k: 'tiktok', icon: '♪', label: 'TikTok', v: friendly(c.tiktok), title: c.tiktok ? `TikTok: ${c.tiktok}` : 'Chưa kết nối TikTok' },
-    { k: 'mail', icon: '✉', label: 'Mail', v: friendly(c.mail), title: c.mail ? `Hộp thư gửi email: ${c.mail}` : 'Chưa cấu hình email gửi đi' },
+  const inboxState = c.fbPage ? (t.bot === 'on' ? 'bot bật' : t.bot === 'off' ? 'chỉ đăng bài' : 'đã nối') : null;
+  const cells: { k: string; icon: string; label: string; v: string | null; mismatch: boolean; extra?: string }[] = [
+    { k: 'fb', icon: '💬', label: 'Hộp thư / Messenger', v: friendly(c.fbPage), mismatch: !sameShop(c.fbPage, t.name), extra: inboxState ?? undefined },
+    { k: 'ig', icon: '📷', label: 'Instagram', v: friendly(c.igUser), mismatch: !sameShop(c.igUser, t.name) },
+    { k: 'google', icon: 'G', label: 'Google', v: friendly(c.google), mismatch: !sameShop(c.google, t.name), extra: c.googleEmail ?? undefined },
+    { k: 'tiktok', icon: '♪', label: 'TikTok', v: friendly(c.tiktok), mismatch: !sameShop(c.tiktok, t.name) },
+    { k: 'mail', icon: '✉', label: 'Email gửi đi', v: friendly(c.mail), mismatch: false },
   ];
-  const n = chips.filter((x) => x.v).length;
+  const n = cells.filter((x) => x.v).length;
+  const worry = cells.filter((x) => x.v && (shared.has(x.k) || x.mismatch));
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 5, alignItems: 'center' }}>
-      {chips.map((x) => {
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
+      {cells.map((x) => {
         const on = !!x.v;
         const bad = shared.has(x.k);
-        const bg = bad ? 'rgba(239,68,68,.12)' : on ? 'rgba(34,197,94,.10)' : 'transparent';
-        const bd = bad ? 'var(--ink-bad)' : on ? 'rgba(34,197,94,.45)' : 'var(--c334155)';
-        const fg = bad ? 'var(--ink-bad)' : on ? 'var(--ce2e8f0)' : 'var(--c64748b)';
+        const warn = on && !bad && x.mismatch;
+        const fg = bad ? 'var(--ink-bad)' : warn ? 'var(--ink-warn)' : on ? 'var(--ink-good)' : 'var(--c64748b)';
+        const bg = bad ? 'rgba(239,68,68,.14)' : warn ? 'rgba(245,158,11,.14)' : on ? 'rgba(34,197,94,.14)' : 'transparent';
+        const bd = bad ? 'var(--ink-bad)' : warn ? 'var(--ink-warn)' : on ? 'rgba(34,197,94,.5)' : 'var(--c334155)';
+        const title = !on
+          ? `${x.label}: chưa kết nối`
+          : bad ? `${x.label}: ${x.v} — TIỆM KHÁC CŨNG ĐANG DÙNG tài khoản này. Gỡ ở tiệm sai.`
+          : warn ? `${x.label}: ${x.v} — tên không giống tên tiệm, kiểm tra xem có nối nhầm không${x.extra ? ` · ${x.extra}` : ''}`
+          : `${x.label}: ${x.v}${x.extra ? ` · ${x.extra}` : ''}`;
         return (
-          <span key={x.k} title={bad ? `${x.title} — TIỆM KHÁC CŨNG ĐANG DÙNG tài khoản này. Gỡ ở tiệm sai.` : x.title}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, maxWidth: 230, height: 22, padding: '0 8px', borderRadius: 999, border: `1px solid ${bd}`, background: bg, color: fg, fontSize: 11.5, fontWeight: on ? 600 : 500, whiteSpace: 'nowrap', opacity: on || bad ? 1 : 0.75 }}>
-            <b style={{ fontSize: 11, fontWeight: 800, color: bad ? 'var(--ink-bad)' : on ? 'var(--ink-good)' : 'var(--c64748b)', width: 12, textAlign: 'center' }}>{x.icon}</b>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{on ? x.v : x.label}</span>
-            {bad && <span>⚠</span>}
+          <span key={x.k} title={title} aria-label={title}
+            style={{ width: 24, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${bd}`, background: bg, color: fg, fontSize: 11, fontWeight: 800, opacity: on || bad ? 1 : 0.55, cursor: 'default', flexShrink: 0 }}>
+            {x.icon}
           </span>
         );
       })}
-      <span style={{ fontSize: 11, color: n === 5 ? 'var(--ink-good)' : 'var(--c64748b)', marginLeft: 2 }}>{n}/5</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: n === 5 ? 'var(--ink-good)' : 'var(--c64748b)', marginLeft: 2, whiteSpace: 'nowrap' }}>{n}/5</span>
+      {/* One short phrase when something needs a look — the only text the strip ever prints. */}
+      {worry.length > 0 && (
+        <span style={{ fontSize: 11, fontWeight: 600, color: worry.some((x) => shared.has(x.k)) ? 'var(--ink-bad)' : 'var(--ink-warn)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+          · {worry.some((x) => shared.has(x.k)) ? 'trùng tài khoản với tiệm khác' : `kiểm tra ${worry.map((x) => x.label.split(' ')[0]).join(', ')}`}
+        </span>
+      )}
     </div>
   );
 }

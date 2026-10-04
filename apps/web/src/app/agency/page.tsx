@@ -1282,34 +1282,56 @@ function Row({
 
 
 /**
- * Which accounts this salon holds, by name, under its own row: "FB Glow
- * Nails · IG @glownails · G Glow Nails & Spa · TT @glow · ✉ hello@glow.com".
- * A page or mailbox that reads like another salon's name stands out here,
- * and an account two salons share is marked red — that one is always wrong.
+ * THE CHANNEL STRIP — the same five chips, in the same order, under every
+ * salon, so the team reads the list like a table: inbox · Instagram · Google ·
+ * TikTok · mail. A connected channel is a filled chip with the account's
+ * NAME; a missing one is a hollow grey chip, which is itself the information
+ * ("this shop has no Google yet"). An account two salons share is red with ⚠ —
+ * that is always a mistake. Names only, never a raw page or location id: a
+ * number tells the team nothing and tells a reader what sits underneath.
  */
+const CONNECTED = new Set(['connected', 'gmail', 'brevo']);
+function friendly(v: string | null): string | null {
+  if (!v) return null;
+  // "connected, Lily Spa" — a nameless page beside a named one.
+  const parts = v.split(', ').map((x) => (CONNECTED.has(x) ? 'Đã kết nối' : x));
+  return parts.join(', ');
+}
 function ConnectionsLine({ t }: { t: TenantRow }) {
   const c = t.connections;
   if (!c) return null;
   const shared = new Set(t.sharedWith ?? []);
-  const parts: { k: string; label: string; v: string | null; title: string }[] = [
-    { k: 'fb', label: 'FB', v: c.fbPage, title: 'Facebook Page đang gắn với tiệm này' },
-    { k: 'ig', label: 'IG', v: c.igUser, title: 'Instagram gắn với Page' },
-    { k: 'google', label: 'G', v: c.google, title: `Google Business Profile${c.googleEmail ? ` · ${c.googleEmail}` : ''}` },
-    { k: 'tiktok', label: 'TT', v: c.tiktok, title: 'TikTok' },
-    { k: 'mail', label: '✉', v: c.mail, title: 'Hộp thư gửi email của tiệm' },
-  ].filter((p) => p.v);
-  if (!parts.length) return <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>Chưa kết nối kênh nào</div>;
+  // Messenger is the inbox: a Page is what makes "Hộp thư" and the chat bot
+  // exist for this shop. Say where it stands, not only whether it is there.
+  const inbox = c.fbPage
+    ? `${friendly(c.fbPage)}${t.bot === 'on' ? ' · bot bật' : t.bot === 'off' ? ' · chỉ đăng bài' : ''}`
+    : null;
+  const chips: { k: string; icon: string; label: string; v: string | null; title: string }[] = [
+    { k: 'fb', icon: '💬', label: 'Hộp thư', v: inbox, title: inbox ? `Trang Facebook đã nối với Hộp thư: ${friendly(c.fbPage)}` : 'Chưa nối trang Facebook — Hộp thư và bot chưa hoạt động' },
+    { k: 'ig', icon: '📷', label: 'Instagram', v: friendly(c.igUser), title: c.igUser ? `Instagram: ${c.igUser}` : 'Chưa có Instagram (nối qua trang Facebook)' },
+    { k: 'google', icon: 'G', label: 'Google', v: friendly(c.google), title: c.google ? `Google Business Profile: ${friendly(c.google)}${c.googleEmail ? ` · ${c.googleEmail}` : ''}` : 'Chưa kết nối Google Business Profile' },
+    { k: 'tiktok', icon: '♪', label: 'TikTok', v: friendly(c.tiktok), title: c.tiktok ? `TikTok: ${c.tiktok}` : 'Chưa kết nối TikTok' },
+    { k: 'mail', icon: '✉', label: 'Mail', v: friendly(c.mail), title: c.mail ? `Hộp thư gửi email: ${c.mail}` : 'Chưa cấu hình email gửi đi' },
+  ];
+  const n = chips.filter((x) => x.v).length;
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 2 }}>
-      {parts.map((p) => {
-        const bad = shared.has(p.k);
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 5, alignItems: 'center' }}>
+      {chips.map((x) => {
+        const on = !!x.v;
+        const bad = shared.has(x.k);
+        const bg = bad ? 'rgba(239,68,68,.12)' : on ? 'rgba(34,197,94,.10)' : 'transparent';
+        const bd = bad ? 'var(--ink-bad)' : on ? 'rgba(34,197,94,.45)' : 'var(--c334155)';
+        const fg = bad ? 'var(--ink-bad)' : on ? 'var(--ce2e8f0)' : 'var(--c64748b)';
         return (
-          <span key={p.k} title={bad ? `${p.title} — TIỆM KHÁC CŨNG ĐANG DÙNG tài khoản này. Gỡ ở tiệm sai.` : p.title}
-            style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220, color: bad ? 'var(--ink-bad)' : undefined, fontWeight: bad ? 700 : 400 }}>
-            <b style={{ color: bad ? 'var(--ink-bad)' : 'var(--c64748b)', fontWeight: 700 }}>{p.label}</b> {p.v}{bad ? ' ⚠' : ''}
+          <span key={x.k} title={bad ? `${x.title} — TIỆM KHÁC CŨNG ĐANG DÙNG tài khoản này. Gỡ ở tiệm sai.` : x.title}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, maxWidth: 230, height: 22, padding: '0 8px', borderRadius: 999, border: `1px solid ${bd}`, background: bg, color: fg, fontSize: 11.5, fontWeight: on ? 600 : 500, whiteSpace: 'nowrap', opacity: on || bad ? 1 : 0.75 }}>
+            <b style={{ fontSize: 11, fontWeight: 800, color: bad ? 'var(--ink-bad)' : on ? 'var(--ink-good)' : 'var(--c64748b)', width: 12, textAlign: 'center' }}>{x.icon}</b>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{on ? x.v : x.label}</span>
+            {bad && <span>⚠</span>}
           </span>
         );
       })}
+      <span style={{ fontSize: 11, color: n === 5 ? 'var(--ink-good)' : 'var(--c64748b)', marginLeft: 2 }}>{n}/5</span>
     </div>
   );
 }

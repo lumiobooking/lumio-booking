@@ -19,9 +19,15 @@ describe('which salon holds which account', () => {
 
   it('names every connection a salon holds, and lists two pages under one salon as the smell it is', () => {
     expect(rows.get('glow')).toEqual({ fbPage: 'Glow Nails', igUser: '@glownails', google: 'Glow Nails & Spa', googleEmail: 'owner@glow.com', tiktok: '@glow.nails', mail: 'hello@glow.com' });
-    expect(rows.get('lily')?.fbPage).toBe('p2, Lily Spa');
+    // A page with no name says "connected", never its raw id.
+    expect(rows.get('lily')?.fbPage).toBe('connected, Lily Spa');
     expect(rows.get('lily')?.mail).toBe('lily@mail.com');
     expect(rows.get('rose')?.tiktok).toBeNull();
+  });
+
+  it('a location with no title is "connected", never its raw id', () => {
+    const r = connectionsByTenant({ pages: [], settings: [{ tenantId: 'x', key: 'googleReviews', value: { connected: true, locationId: 'locations/2169' } }] });
+    expect(r.get('x')?.google).toBe('connected');
   });
 
   it('a Google location under two salons is reported with both', () => {

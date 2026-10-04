@@ -38,7 +38,10 @@ export function connectionsByTenant(src: ConnectionSources): Map<string, Connect
   for (const p of src.pages) {
     const r = row(p.tenantId);
     // Several pages under one salon is itself the smell: list them all.
-    const name = str(p.pageName) ?? p.pageId;
+    // Never the raw page id: a number tells the team nothing and tells a
+    // reader which platform sits underneath. A page with no name reads as
+    // simply "connected".
+    const name = str(p.pageName) ?? 'connected';
     r.fbPage = r.fbPage ? `${r.fbPage}, ${name}` : name;
     if (p.igUsername) r.igUser = r.igUser ? `${r.igUser}, @${p.igUsername}` : `@${p.igUsername}`;
   }
@@ -46,7 +49,8 @@ export function connectionsByTenant(src: ConnectionSources): Map<string, Connect
     const v = obj(s.value);
     const r = row(s.tenantId);
     if (s.key === 'googleReviews' && v.connected === true) {
-      r.google = str(v.locationTitle) ?? (str(v.locationId) ? `location ${v.locationId}` : 'connected');
+      // The location's own name, never its "locations/2169…" id — same reason.
+      r.google = str(v.locationTitle) ?? 'connected';
       r.googleEmail = str(v.connectedEmail);
     } else if (s.key === 'tiktok' && v.connected === true) {
       const c = obj(v.creator);

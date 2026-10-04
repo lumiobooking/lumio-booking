@@ -342,6 +342,10 @@ export class GoogleReviewsService {
         answered,
         waiting: Math.max(0, mirrored - answered),
       },
+      // Reviews on file with no live connection behind them: leftovers of an
+      // earlier connection (possibly another location's). The screen offers
+      // to clear them instead of presenting them as this salon's.
+      stale: !(s.connected && s.refreshToken) && mirrored > 0,
       /**
        * WHICH BUILD IS ANSWERING.
        *
@@ -454,8 +458,40 @@ export class GoogleReviewsService {
   async disconnect(user: AuthenticatedUser) {
     const tenantId = this.tenantId(user);
     await this.writeSettings(tenantId, { connected: false, refreshToken: '', accountId: '', locationId: '', connectedEmail: '' });
+    // The reviews, the totals and the review link all belong to the LOCATION
+    // that was connected, not to the salon. They used to stay behind: a salon
+    // whose screen said "not connected" still showed three hundred reviews of
+    // whichever location somebody had connected before — somebody else's
+    // customers, read as this salon's. Reconnecting pulls the right ones back.
+    await this.purgeMirrored(tenantId);
     await this.audit(tenantId, user.userId, 'google_reviews.disconnected');
     return this.get(user);
+  }
+
+  /**
+   * Drop everything mirrored from a Google location: the reviews, the "N
+   * reviews · 4.5★" totals, the write-a-review link, the sync marker.
+   * Nothing of the salon's own settings (tone, rules, alert email) is touched.
+   */
+  private async purgeMirrored(tenantId: string): Promise<number> {
+    const r = await this.prisma.googleReview.deleteMany({ where: { tenantId } });
+    await this.writeSettings(tenantId, { lastSyncAt: null, placeId: '', newReviewUri: '', locationTitle: '', googleTotal: null, googleRating: null, googleStatsAt: null });
+    return r.count;
+  }
+
+  /**
+   * "Xoá đánh giá của kết nối cũ": the salon is not connected, yet reviews from
+   * an earlier connection are still on the screen. One press clears them.
+   * Refused while connected — there, "Xoá & đồng bộ lại" is the right button,
+   * because an empty inbox would be refilled by the next sync anyway.
+   */
+  async purgeStale(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const s = await this.getSettings(tenantId);
+    if (s.connected && s.refreshToken) throw new BadRequestException('Google is connected — use "Reset & re-sync" instead.');
+    const removed = await this.purgeMirrored(tenantId);
+    await this.audit(tenantId, user.userId, 'google_reviews.stale_purged');
+    return { ...(await this.get(user)), removed };
   }
 
   /** Refresh an access token for the tenant's stored refresh token. */

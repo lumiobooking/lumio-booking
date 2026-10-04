@@ -89,12 +89,26 @@ export function preservesCache(method: string, path: string): boolean {
   return CACHE_PRESERVING.some((rx) => rx.test(p));
 }
 
-/** Paths whose answers must never be served from memory. */
+/**
+ * Paths whose answers must never be served from memory.
+ *
+ * THE LIVE SCREENS ARE HERE ON PURPOSE. The inbox is pushed a nudge the
+ * moment a customer writes and re-reads the thread list and the open
+ * conversation — and both came back from this fifteen-second memory, so the
+ * nudge changed nothing on screen and a new message showed up only when the
+ * slow safety poll ran after the memory had expired. "Phải tải lại trang mới
+ * thấy tin nhắn mới." The same for the walk-in board, which the desk watches
+ * all day. Anything a screen refreshes BECAUSE it was told something changed
+ * must read the server, not the memory.
+ */
 const NEVER_CACHE: RegExp[] = [
   /\/stream/,           // SSE — not a JSON GET, but belt and braces
   /\/healthz/,
   /\/export|\/download/, // files
   /^\/feedback\/orders\//, // the till polls this while the customer answers
+  /^\/messenger\/(threads|activity|turns|leads)(\/|$)/, // the inbox: list, one conversation, turns
+  /^\/walkins\/(board|party|my)(\/|$)/,                 // the floor and the till's party view
+  /^\/notifications(\/|$)/,                              // the bell
 ];
 
 export function cacheable(method: string, path: string): boolean {

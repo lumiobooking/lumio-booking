@@ -37,6 +37,12 @@ export class GoogleReviewsController {
     return this.svc.authUrl(user);
   }
 
+  /** Clear reviews left over from an earlier connection (only while not connected). */
+  @Post('purge-stale')
+  purgeStale(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.purgeStale(user);
+  }
+
   @Post('disconnect')
   disconnect(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.disconnect(user);

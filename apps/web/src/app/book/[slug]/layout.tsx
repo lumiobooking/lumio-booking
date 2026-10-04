@@ -146,6 +146,13 @@ export default async function BookSlugLayout({ children, params }: { children: R
           on top of everything else. */}
       <link rel="preconnect" href={apiOrigin()} crossOrigin="anonymous" />
       <link rel="dns-prefetch" href={apiOrigin()} />
+      {/* And start THE data request itself with the HTML. The page's own
+          fetch of /bootstrap could only begin once its script had downloaded
+          and run — a second or more after the HTML arrived, then another
+          second for the request. Preloaded here, the answer is already in the
+          browser when the script asks for it (same URL, same credentials
+          mode, so the browser hands over the preloaded response). */}
+      <link rel="preload" href={`${API_URL}/public/salons/${encodeURIComponent(params.slug)}/bootstrap`} as="fetch" crossOrigin="anonymous" />
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       <link

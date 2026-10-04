@@ -49,7 +49,7 @@ describe('what the receipt says', () => {
 describe('what may be answered from memory', () => {
   it('plain GETs cache', () => {
     expect(cacheable('GET', '/services')).toBe(true);
-    expect(cacheable('GET', '/messenger/threads')).toBe(true);
+    expect(cacheable('GET', '/customers')).toBe(true);
   });
   it('writes never cache', () => {
     expect(cacheable('POST', '/services')).toBe(false);
@@ -112,5 +112,17 @@ describe('which writes leave the cached world true', () => {
     expect(preservesCache('POST', '/messenger/send')).toBe(false);
     expect(preservesCache('POST', '/salon/settings')).toBe(false);
     expect(preservesCache('DELETE', '/services/s1')).toBe(false);
+  });
+});
+
+
+describe('live screens never answer from memory', () => {
+  it('the inbox, the floor and the bell always read the server — a nudge must show the new message', () => {
+    for (const p of ['/messenger/threads', '/messenger/threads/t1?full=0', '/messenger/activity', '/messenger/turns', '/walkins/board', '/walkins/party/wk-1', '/walkins/my', '/notifications']) {
+      expect(cacheable('GET', p)).toBe(false);
+    }
+  });
+  it('the catalog and settings still do', () => {
+    for (const p of ['/services', '/settings', '/me/tenant', '/messenger/settings', '/walkins/w1']) expect(cacheable('GET', p)).toBe(true);
   });
 });

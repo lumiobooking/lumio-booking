@@ -36,6 +36,8 @@ interface GrSettings {
     total: number | null; rating: number | null; at: string | null;
     mirrored: number; answered: number; waiting: number;
   } | null;
+  /** Reviews on file with no live connection behind them — leftovers of an earlier connection. */
+  stale?: boolean;
 }
 interface GrReview {
   id: string; googleReviewId: string; reviewerName: string | null; reviewerPhoto: string | null;
@@ -167,6 +169,10 @@ const DICT: Record<string, { vi: string; en: string }> = {
     vi: 'Đang tải nốt đánh giá cũ — mỗi lần đồng bộ kéo thêm một ít, vài lần là đủ.',
     en: 'Still pulling older reviews — each sync fetches more; a few rounds and it is complete.',
   },
+  staleTitle: { vi: 'Những đánh giá dưới đây là của kết nối Google TRƯỚC, hiện không còn kết nối.', en: 'The reviews below came from an EARLIER Google connection that is no longer active.' },
+  staleBody: { vi: 'Có thể là địa điểm của tiệm khác. Xoá đi để màn hình chỉ hiện đánh giá của đúng tiệm sau khi kết nối lại Google.', en: 'They may belong to another location. Clear them so the screen shows only this salon’s reviews once Google is connected again.' },
+  stalePurge: { vi: 'Xoá {n} đánh giá của kết nối cũ', en: 'Clear {n} reviews from the old connection' },
+  stalePurged: { vi: 'Đã xoá đánh giá của kết nối cũ.', en: 'Cleared the old connection’s reviews.' },
   totalsNote: {
     vi: 'Số trong các thẻ dưới đây đếm đánh giá Lumio đã tải về, không phải tổng trên Google.',
     en: 'The tab counts below are the reviews Lumio holds, not the Google total.',
@@ -311,6 +317,16 @@ function Inner() {
   async function disconnect() {
     setS(await apiFetch<GrSettings>('/google-reviews/disconnect', { method: 'POST', token }));
     setLocations(null);
+    setReviews([]);
+  }
+  async function purgeStale() {
+    setSyncing(true); setError(null);
+    try {
+      await apiFetch('/google-reviews/purge-stale', { method: 'POST', token });
+      setReviews([]);
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    finally { setSyncing(false); }
   }
   async function loadLocations() {
     setError(null);
@@ -678,6 +694,18 @@ function Inner() {
             The first question an owner asks this screen is "I have 187 reviews,
             why does it say 53?" — and the honest answer is that those were two
             different numbers all along. Both are printed, with the gap named. */}
+        {s.stale && s.google && (
+          <div style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid var(--ink-warn)', borderRadius: 10, padding: '11px 13px', marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink-warn)' }}>⚠ {t('staleTitle')}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', marginTop: 2, lineHeight: 1.5 }}>{t('staleBody')}</div>
+            </div>
+            <button type="button" onClick={purgeStale} disabled={syncing}
+              style={{ ...ui.primaryBtn, background: 'var(--ink-warn)', color: '#111827', whiteSpace: 'nowrap', opacity: syncing ? 0.6 : 1 }}>
+              {t('stalePurge').replace('{n}', String(s.google.mirrored))}
+            </button>
+          </div>
+        )}
         {s.google && (
           <div style={{
             display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',

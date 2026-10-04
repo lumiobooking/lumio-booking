@@ -115,6 +115,13 @@ export class UpdateStaffDto {
   @IsEnum(StaffRole)
   staffRole?: StaffRole;
 
+  // The owner's own pick of screens for this person (capability ids). null =
+  // back to the role's preset. Owner-only areas are dropped server-side.
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  permissions?: string[] | null;
+
   // Bookable technician? Controls visibility in booking / calendar / assignment.
   @IsOptional()
   @IsBoolean()

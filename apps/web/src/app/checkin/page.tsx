@@ -21,6 +21,11 @@
 // toggle: white cards, the salon's accent, ink text. No `var(--c…)` tokens
 // here — the customer never switches themes and the page must look the same
 // on every phone.
+//
+// A PARTY picks per person. "How many of you? 2" used to change nothing but a
+// number on the ticket: one person's services, one price, and the friend was
+// left for the desk to type in. Now each person has their own tab on the
+// services step, and each becomes their own ticket on their own technician.
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useMemo, useState, CSSProperties } from 'react';
@@ -63,6 +68,11 @@ const dealPct = (s: Service) => Math.min(90, Math.max(0, s.promoPercent ?? 0));
 const onSale = (s: Service) => payCents(s) < s.priceCents;
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+/** "45 min" — or nothing, when the salon never set a length (never "0 min"). */
+const mins = (n: number) => (n > 0 ? `${n} min` : '');
+/** The most people the kiosk takes one by one; a bigger group goes to the desk. */
+const MAX_PARTY = 5;
+interface Guest { name: string; picked: string[] }
 
 /** The customer page's own daylight palette. */
 const C = {
@@ -87,6 +97,10 @@ export default function CheckInKiosk() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', email: '', birthDate: '', partySize: 1, note: '' });
   const [picked, setPicked] = useState<string[]>([]);
+  // Everyone after the person holding the phone, each with their own services.
+  const [guests, setGuests] = useState<Guest[]>([]);
+  // Whose services the menu is picking right now: 0 = the main guest.
+  const [who, setWho] = useState(0);
   const [cat, setCat] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -122,7 +136,7 @@ export default function CheckInKiosk() {
 
   const reset = useCallback(() => {
     setForm({ firstName: '', lastName: '', phone: '', email: '', birthDate: '', partySize: 1, note: '' });
-    setPicked([]); setCat(null); setErr(null); setStep(1);
+    setPicked([]); setGuests([]); setWho(0); setCat(null); setErr(null); setStep(1);
   }, []);
 
   // Someone walks away mid-form; the next customer should meet a clean screen.
@@ -130,7 +144,7 @@ export default function CheckInKiosk() {
     if (step === 1 && !form.firstName) return;
     const id = window.setTimeout(() => { if (step !== 4) reset(); }, IDLE_RESET_MS);
     return () => window.clearTimeout(id);
-  }, [step, form, picked, reset]);
+  }, [step, form, picked, guests, who, reset]);
 
   const accent = menu?.accentColor || '#6366f1';
   const cats = useMemo(() => {
@@ -150,16 +164,42 @@ export default function CheckInKiosk() {
   );
   // The chip row: wheel scrolls it, arrows appear on a computer when it overflows.
   const chips = useHorizontalScroll<HTMLDivElement>();
-  const pickedList = useMemo(
-    () => picked.map((id) => (menu?.services ?? []).find((s) => s.id === id)).filter(Boolean) as Service[],
-    [picked, menu],
+  const listOf = useCallback(
+    (ids: string[]) => ids.map((id) => (menu?.services ?? []).find((s) => s.id === id)).filter(Boolean) as Service[],
+    [menu],
   );
-  // What she pays and what she would have paid: the difference is the line
-  // that makes the offer real to her, and it is the number the ticket carries.
-  const totalCents = pickedList.reduce((sum, s) => sum + payCents(s), 0);
-  const fullCents = pickedList.reduce((sum, s) => sum + s.priceCents, 0);
+  const party = Math.max(1, Math.min(MAX_PARTY, form.partySize));
+  const group = party > 1;
+  /** Everyone in the party, in order, with what they picked. */
+  const people = useMemo(
+    () => [
+      { name: form.firstName.trim() || 'You', picked },
+      ...guests.slice(0, party - 1).map((g, i) => ({ name: g.name.trim() || `Guest ${i + 2}`, picked: g.picked })),
+    ].map((p) => ({ ...p, list: listOf(p.picked) })),
+    [form.firstName, picked, guests, party, listOf],
+  );
+  const current = people[Math.min(who, people.length - 1)] ?? people[0];
+  const currentPicked = who === 0 ? picked : (guests[who - 1]?.picked ?? []);
+  const pickedList = current.list;
+  const togglePick = (id: string) => {
+    if (who === 0) { setPicked((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id])); return; }
+    setGuests((gs) => gs.map((g, i) => (i === who - 1 ? { ...g, picked: g.picked.includes(id) ? g.picked.filter((x) => x !== id) : [...g.picked, id] } : g)));
+  };
+  /** The party size buttons also make (or trim) one slot per guest. */
+  const setParty = (n: number) => {
+    setForm((f) => ({ ...f, partySize: n }));
+    setGuests((gs) => Array.from({ length: Math.min(n, MAX_PARTY) - 1 }, (_, i) => gs[i] ?? { name: '', picked: [] }));
+    setWho(0);
+  };
+  // What the party pays and what it would have paid: the difference is the
+  // line that makes the offer real, and it is the number the tickets carry.
+  const everyone = people.flatMap((p) => p.list);
+  const totalCents = everyone.reduce((sum, s) => sum + payCents(s), 0);
+  const fullCents = everyone.reduce((sum, s) => sum + s.priceCents, 0);
   const savedCents = Math.max(0, fullCents - totalCents);
-  const totalMins = pickedList.reduce((sum, s) => sum + s.durationMinutes, 0);
+  const pickedCount = everyone.length;
+  const subtotal = (list: Service[]) => list.reduce((sum, s) => sum + payCents(s), 0);
+  const minutesOf = (list: Service[]) => list.reduce((sum, s) => sum + (s.durationMinutes || 0), 0);
 
   async function pair() {
     const code = pairInput.trim().toUpperCase();
@@ -189,6 +229,8 @@ export default function CheckInKiosk() {
           partySize: form.partySize,
           note: form.note.trim() || undefined,
           serviceIds: picked,
+          // Everyone else in the party: their own services, their own ticket.
+          ...(group ? { guests: guests.slice(0, party - 1).map((g, i) => ({ firstName: g.name.trim() || `Guest ${i + 2}`, serviceIds: g.picked })) } : {}),
         },
       });
       setStep(4);
@@ -245,7 +287,7 @@ export default function CheckInKiosk() {
           <div style={eyebrow}>You&rsquo;re checked in</div>
           <h1 style={{ ...serifTitle, fontSize: 'clamp(30px, 7vw, 42px)', margin: '8px 0 12px' }}>Thank you, {form.firstName}.</h1>
           <p style={{ color: C.ink2, fontSize: 'clamp(17px, 4.6vw, 20px)', lineHeight: 1.55, margin: 0 }}>
-            Please have a seat — we&rsquo;ll be with you shortly.
+            {group ? `Please have a seat — we’ll be with all ${party} of you shortly.` : <>Please have a seat — we&rsquo;ll be with you shortly.</>}
           </p>
           <button onClick={reset} style={{ ...ghostBtn, marginTop: 32 }}>Check in someone else</button>
         </div>
@@ -269,7 +311,7 @@ export default function CheckInKiosk() {
               ? <img src={menu.logoUrl} alt="" style={{ height: 64, width: 'auto', maxWidth: 200, borderRadius: 12, background: 'rgba(255,255,255,0.92)', padding: 6 }} />
               : <Monogram accent={accent} size={64} inverted />}
             <div style={{ ...eyebrow, color: 'rgba(255,255,255,0.72)', marginTop: 28 }}>Welcome to</div>
-            <div style={{ ...serifTitle, color: '#fff', fontSize: 'clamp(30px, 3.2vw, 40px)', lineHeight: 1.12, marginTop: 6 }}>{menu.salonName}</div>
+            <div style={{ ...serifTitle, color: '#fff', fontSize: 'clamp(28px, 3vw, 36px)', lineHeight: 1.15, marginTop: 6 }}>{menu.salonName}</div>
             <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 16.5, lineHeight: 1.55, margin: '14px 0 0', maxWidth: 300 }}>
               Check in here and we&rsquo;ll call you when your technician is ready.
             </p>
@@ -316,7 +358,7 @@ export default function CheckInKiosk() {
               ? <img src={menu.logoUrl} alt="" style={{ height: 40, width: 'auto', borderRadius: 10, background: 'rgba(255,255,255,0.92)', padding: 3 }} />
               : <Monogram accent={accent} size={40} inverted />}
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ ...serifTitle, color: '#fff', fontSize: 20, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{menu.salonName}</div>
+              <div style={{ ...serifTitle, color: '#fff', fontSize: 18, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{menu.salonName}</div>
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.78)' }}>Step {step} of 3 · {STEPS[step - 1]}</div>
             </div>
             <div style={{ display: 'flex', gap: 5 }}>
@@ -354,13 +396,18 @@ export default function CheckInKiosk() {
                       {[1, 2, 3, 4, 5].map((n) => {
                         const on = form.partySize === n;
                         return (
-                          <button key={n} onClick={() => setForm({ ...form, partySize: n })}
+                          <button key={n} type="button" onClick={() => setParty(n)}
                             style={{ flex: 1, minHeight: 50, borderRadius: 12, border: 'none', cursor: 'pointer', fontSize: 17, fontWeight: 700, background: on ? accent : 'transparent', color: on ? '#fff' : C.ink2, boxShadow: on ? `0 6px 14px ${accent}44` : 'none' }}>
                             {n}{n === 5 ? '+' : ''}
                           </button>
                         );
                       })}
                     </div>
+                    {group && (
+                      <span style={{ display: 'block', fontSize: 13.5, color: C.muted, marginTop: 8, lineHeight: 1.45 }}>
+                        Next, you&rsquo;ll pick services for each person.{form.partySize >= MAX_PARTY ? ' More than 5? The front desk will add the rest.' : ''}
+                      </span>
+                    )}
                   </Field>
                 </div>
               </>
@@ -370,13 +417,56 @@ export default function CheckInKiosk() {
             {step === 2 && (
               <>
                 <div className="ck-eyebrow" style={eyebrow}>Step 2 of 3</div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-                  <h2 style={stepTitle}>What would you like today?</h2>
-                  {picked.length > 0 && (
-                    <span style={{ fontSize: 14, fontWeight: 700, borderRadius: 999, padding: '5px 12px', background: accent, color: '#fff' }}>{picked.length} selected</span>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                  <h2 style={stepTitle}>{group ? `What would ${who === 0 ? 'you' : current.name} like?` : 'What would you like today?'}</h2>
+                  {!group && currentPicked.length > 0 && (
+                    <span style={{ fontSize: 13, fontWeight: 700, borderRadius: 999, padding: '4px 11px', background: accent, color: '#fff' }}>{currentPicked.length} selected</span>
                   )}
                 </div>
-                <p style={stepHint}>Tap everything you&rsquo;d like — you can still change it at the chair.</p>
+                <p style={stepHint}>{group ? 'One person at a time — tap a name to switch. Everything can still change at the chair.' : <>Tap everything you&rsquo;d like — you can still change it at the chair.</>}</p>
+                {group && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div role="tablist" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, scrollbarWidth: 'none' }} className="ck-chips">
+                      {people.map((p, i) => {
+                        const on = i === who;
+                        return (
+                          <button key={i} type="button" role="tab" aria-selected={on} onClick={() => setWho(i)}
+                            style={{
+                              flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2, cursor: 'pointer',
+                              minWidth: 120, padding: '10px 14px', borderRadius: 14, textAlign: 'left',
+                              border: `1.5px solid ${on ? accent : C.line}`, background: on ? `${accent}0f` : C.card,
+                              boxShadow: on ? `0 6px 16px ${accent}26` : 'none',
+                            }}>
+                            <span style={{ fontSize: 14.5, fontWeight: 700, color: on ? accent : C.ink, whiteSpace: 'nowrap' }}>{i === 0 ? `${p.name} (you)` : p.name}</span>
+                            <span style={{ fontSize: 12.5, color: C.muted, whiteSpace: 'nowrap' }}>
+                              {p.list.length ? `${p.list.length} · ${money(subtotal(p.list))}` : 'Nothing yet'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {who > 0 && (
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 12 }}>
+                        <label style={{ flex: '1 1 220px' }}>
+                          <span style={{ display: 'block', fontSize: 13.5, color: C.ink2, marginBottom: 6, fontWeight: 600 }}>
+                            Their first name <span style={{ fontWeight: 500, color: C.faint }}>· optional</span>
+                          </span>
+                          <input
+                            value={guests[who - 1]?.name ?? ''}
+                            onChange={(e) => setGuests((gs) => gs.map((g, i) => (i === who - 1 ? { ...g, name: e.target.value } : g)))}
+                            placeholder={`Guest ${who + 1}`} style={{ ...bigInput, minHeight: 52 }} autoCapitalize="words" autoComplete="off"
+                          />
+                        </label>
+                        {picked.length > 0 && (
+                          <button type="button" onClick={() => setGuests((gs) => gs.map((g, i) => (i === who - 1 ? { ...g, picked: [...picked] } : g)))}
+                            style={{ ...ghostBtn, minHeight: 52, padding: '12px 18px', fontSize: 15 }}>
+                            Same as {people[0].name}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {menu.promo && menu.promo.percent > 0 && (
                   // On a phone the welcome panel is folded away, so the offer is said here.
                   <div className="ck-promo-m" style={{ display: 'flex', alignItems: 'center', gap: 10, background: `${accent}10`, border: `1px solid ${accent}40`, borderRadius: 14, padding: '10px 13px', marginBottom: 14 }}>
@@ -387,9 +477,9 @@ export default function CheckInKiosk() {
                 {pickedList.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
                     {pickedList.map((s) => (
-                      <button key={s.id} onClick={() => setPicked((v) => v.filter((x) => x !== s.id))}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: `${accent}14`, border: `1px solid ${accent}`, color: accent, borderRadius: 999, padding: '8px 13px', fontSize: 14.5, fontWeight: 600, cursor: 'pointer' }}>
-                        {s.name}<span style={{ fontSize: 16 }}>✕</span>
+                      <button key={s.id} type="button" onClick={() => togglePick(s.id)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${accent}12`, border: `1px solid ${accent}66`, color: accent, borderRadius: 999, padding: '6px 12px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>
+                        {s.name}<span style={{ fontSize: 13, opacity: 0.8 }}>✕</span>
                       </button>
                     ))}
                   </div>
@@ -419,18 +509,19 @@ export default function CheckInKiosk() {
                 )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(46%, 230px), 1fr))', gap: 'clamp(10px, 2.5vw, 14px)' }}>
                   {shown.map((s) => {
-                    const on = picked.includes(s.id);
+                    const on = currentPicked.includes(s.id);
                     return (
                       <button
                         key={s.id}
-                        onClick={() => setPicked((v) => (on ? v.filter((x) => x !== s.id) : [...v, s.id]))}
+                        type="button"
+                        onClick={() => togglePick(s.id)}
                         style={{
                           position: 'relative', textAlign: 'left', borderRadius: 20,
                           padding: 'clamp(14px, 3.4vw, 18px) clamp(14px, 3.6vw, 20px)', cursor: 'pointer',
                           background: on ? `${accent}0f` : C.card,
                           border: `1.5px solid ${on ? accent : C.line}`,
                           boxShadow: on ? `0 10px 24px ${accent}2e` : '0 1px 3px rgba(23,20,18,0.05)',
-                          color: C.ink, minHeight: 112, display: 'flex', flexDirection: 'column', gap: 8,
+                          color: C.ink, minHeight: 104, display: 'flex', flexDirection: 'column', gap: 6,
                           transition: 'box-shadow .15s ease, border-color .15s ease',
                         }}
                       >
@@ -446,11 +537,11 @@ export default function CheckInKiosk() {
                         ) : s.isFeatured ? (
                           <span style={{ ...badge, background: '#fdf3e0', color: '#8a5a12' }}>★ Popular</span>
                         ) : <span style={{ height: 20 }} />}
-                        <span style={{ fontSize: 'clamp(16px, 4vw, 18.5px)', fontWeight: 600, lineHeight: 1.25, paddingRight: 28 }}>{s.name}</span>
+                        <span style={{ fontSize: 'clamp(15px, 3.8vw, 16.5px)', fontWeight: 600, lineHeight: 1.3, paddingRight: 28, color: C.ink }}>{s.name}</span>
                         <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 'clamp(17px, 4.2vw, 20px)', fontWeight: 700, color: C.ink }}>{money(payCents(s))}</span>
-                          {onSale(s) && <span style={{ fontSize: 13.5, color: C.faint, textDecoration: 'line-through' }}>{money(s.priceCents)}</span>}
-                          <span style={{ fontSize: 13.5, color: C.muted }}>· {s.durationMinutes} min</span>
+                          <span style={{ fontSize: 'clamp(16px, 4vw, 17.5px)', fontWeight: 700, color: C.ink, fontVariantNumeric: 'tabular-nums' }}>{money(payCents(s))}</span>
+                          {onSale(s) && <span style={{ fontSize: 13, color: C.faint, textDecoration: 'line-through' }}>{money(s.priceCents)}</span>}
+                          {mins(s.durationMinutes) && <span style={{ fontSize: 13, color: C.muted }}>· {mins(s.durationMinutes)}</span>}
                         </span>
                       </button>
                     );
@@ -471,29 +562,47 @@ export default function CheckInKiosk() {
                     <Row k="Name" v={`${form.firstName} ${form.lastName}`.trim()} />
                     {form.phone && <Row k="Mobile" v={form.phone} />}
                     {form.email && <Row k="Email" v={form.email} />}
-                    <Row k="People" v={String(form.partySize)} last />
+                    <Row k="People" v={group ? people.map((p) => p.name).join(', ') : '1'} last />
                   </div>
                   <div style={{ ...panel, padding: 0 }}>
-                    <div style={cardHead}>Your services</div>
-                    {pickedList.length === 0 ? (
-                      <div style={{ padding: 20, color: C.muted, fontSize: 17 }}>No services picked — that&rsquo;s fine, we&rsquo;ll ask at the chair.</div>
+                    <div style={cardHead}>{group ? 'Services' : 'Your services'}</div>
+                    {pickedCount === 0 ? (
+                      <div style={{ padding: 20, color: C.muted, fontSize: 16 }}>No services picked — that&rsquo;s fine, we&rsquo;ll ask at the chair.</div>
                     ) : (
                       <>
-                        {pickedList.map((s) => (
-                          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '15px 20px', borderBottom: `1px solid ${C.line}` }}>
-                            <span style={{ flex: 1, fontSize: 17, fontWeight: 600, color: C.ink }}>{s.name}<span style={{ display: 'block', fontSize: 13.5, fontWeight: 500, color: C.muted }}>{s.durationMinutes} min</span></span>
-                            {/* The line shows what she pays today — the same number the
-                                estimate adds up, so the sheet never disagrees with itself. */}
-                            {onSale(s) && <span style={{ fontSize: 14, color: C.faint, textDecoration: 'line-through' }}>{money(s.priceCents)}</span>}
-                            <span style={{ fontSize: 17, fontWeight: 700, color: C.ink }}>{money(payCents(s))}</span>
+                        {people.map((p, i) => (
+                          <div key={i}>
+                            {group && (
+                              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '12px 20px 4px' }}>
+                                <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: accent }}>{i === 0 ? `${p.name} (you)` : p.name}</span>
+                                <span style={{ fontSize: 14, fontWeight: 600, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{p.list.length ? money(subtotal(p.list)) : ''}</span>
+                              </div>
+                            )}
+                            {group && p.list.length === 0 && (
+                              <div style={{ padding: '2px 20px 12px', fontSize: 14.5, color: C.muted, borderBottom: `1px solid ${C.line}` }}>Will choose at the chair</div>
+                            )}
+                            {p.list.map((s) => (
+                              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: group ? '8px 20px 12px' : '14px 20px', borderBottom: `1px solid ${C.line}` }}>
+                                <span style={{ flex: 1, minWidth: 0, fontSize: 15.5, fontWeight: 600, color: C.ink, lineHeight: 1.35 }}>
+                                  {s.name}
+                                  {mins(s.durationMinutes) && <span style={{ display: 'block', fontSize: 13, fontWeight: 500, color: C.muted }}>{mins(s.durationMinutes)}</span>}
+                                </span>
+                                {/* The line shows what they pay today — the same number the
+                                    estimate adds up, so the sheet never disagrees with itself. */}
+                                {onSale(s) && <span style={{ fontSize: 13.5, color: C.faint, textDecoration: 'line-through' }}>{money(s.priceCents)}</span>}
+                                <span style={{ fontSize: 15.5, fontWeight: 700, color: C.ink, fontVariantNumeric: 'tabular-nums' }}>{money(payCents(s))}</span>
+                              </div>
+                            ))}
                           </div>
                         ))}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', background: C.page }}>
                           <span style={{ flex: 1 }}>
-                            <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: C.muted }}>Estimate · {totalMins} min</span>
-                            {savedCents > 0 && <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600, color: C.price }}>You save {money(savedCents)} today</span>}
+                            <span style={{ display: 'block', fontSize: 14.5, fontWeight: 600, color: C.muted }}>
+                              {group ? `Estimate for ${party}` : 'Estimate'}{!group && mins(minutesOf(everyone)) ? ` · ${mins(minutesOf(everyone))}` : ''}
+                            </span>
+                            {savedCents > 0 && <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.price }}>You save {money(savedCents)} today</span>}
                           </span>
-                          <span style={{ ...serifTitle, fontSize: 30, color: C.ink }}>{money(totalCents)}</span>
+                          <span style={{ fontSize: 26, fontWeight: 700, color: C.ink, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>{money(totalCents)}</span>
                         </div>
                       </>
                     )}
@@ -507,12 +616,12 @@ export default function CheckInKiosk() {
           {/* Sticky action bar: thumbs live at the bottom of a tablet */}
           <footer className="ck-foot">
             {step > 1
-              ? <button onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)} style={ghostBtn}>Back</button>
+              ? <button type="button" onClick={() => { if (step === 2 && group && who > 0) setWho(who - 1); else setStep((s) => (s - 1) as 1 | 2 | 3); }} style={ghostBtn}>Back</button>
               : <span className="ck-lock" style={{ fontSize: 14, color: C.muted, display: 'flex', alignItems: 'center', gap: 7 }}><LockIcon /> Seen only by the salon</span>}
-            {step === 2 && picked.length > 0 && (
-              <span style={{ display: 'flex', flexDirection: 'column', gap: 1, fontSize: 16, color: C.ink2, fontWeight: 600 }}>
+            {step === 2 && pickedCount > 0 && (
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 1, fontSize: 15, color: C.ink2, fontWeight: 600 }}>
                 <span>
-                  {picked.length} selected ·{' '}
+                  {group ? `${party} people · ` : `${pickedCount} selected · `}
                   {savedCents > 0 && <span style={{ color: C.faint, textDecoration: 'line-through', fontWeight: 500, marginRight: 6 }}>{money(fullCents)}</span>}
                   <span style={{ color: C.ink }}>{money(totalCents)}</span>
                 </span>
@@ -520,8 +629,13 @@ export default function CheckInKiosk() {
               </span>
             )}
             <span style={{ flex: 1 }} />
-            {step < 3 ? (
-              <button onClick={() => setStep((s) => (s + 1) as 2 | 3)} disabled={!canNext} style={{ ...primary(accent), flex: '1 1 180px', maxWidth: 320, opacity: canNext ? 1 : 0.45 }}>
+            {step === 2 && group && who < people.length - 1 ? (
+              // A party walks through each person before the summary.
+              <button type="button" onClick={() => { setWho(who + 1); setCat(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ ...primary(accent), flex: '1 1 180px', maxWidth: 320 }}>
+                Next: {people[who + 1].name} →
+              </button>
+            ) : step < 3 ? (
+              <button type="button" onClick={() => { setStep((s) => (s + 1) as 2 | 3); window.scrollTo({ top: 0 }); }} disabled={!canNext} style={{ ...primary(accent), flex: '1 1 180px', maxWidth: 320, opacity: canNext ? 1 : 0.45 }}>
                 Continue →
               </button>
             ) : (
@@ -539,7 +653,7 @@ export default function CheckInKiosk() {
 function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: React.ReactNode }) {
   return (
     <label style={{ display: 'block' }}>
-      <span style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: 14.5, color: C.ink2, marginBottom: 8, fontWeight: 600 }}>
+      <span style={{ display: 'flex', alignItems: 'baseline', gap: 6, fontSize: 14, color: C.ink2, marginBottom: 7, fontWeight: 600 }}>
         {label}
         {required && <span style={{ color: C.bad }}>*</span>}
         {hint && <span style={{ fontWeight: 500, color: C.faint, fontSize: 13 }}>· {hint}</span>}
@@ -552,8 +666,8 @@ function Field({ label, required, hint, children }: { label: string; required?: 
 function Row({ k, v, last }: { k: string; v: string; last?: boolean }) {
   return (
     <div style={{ display: 'flex', gap: 12, padding: '14px 20px', borderBottom: last ? 'none' : `1px solid ${C.line}` }}>
-      <span style={{ color: C.muted, fontSize: 15, width: 90, flexShrink: 0 }}>{k}</span>
-      <span style={{ fontSize: 16.5, fontWeight: 600, color: C.ink, minWidth: 0, overflowWrap: 'anywhere' }}>{v}</span>
+      <span style={{ color: C.muted, fontSize: 14.5, width: 84, flexShrink: 0 }}>{k}</span>
+      <span style={{ fontSize: 15.5, fontWeight: 600, color: C.ink, minWidth: 0, overflowWrap: 'anywhere' }}>{v}</span>
     </div>
   );
 }
@@ -584,7 +698,10 @@ const accentVar = (accent: string): CSSProperties => ({ '--ck-accent': accent } 
 /** A quiet depth on the accent: a highlight top-left, a shade bottom-right. */
 const wash = (accent: string) => `radial-gradient(120% 90% at 10% 0%, rgba(255,255,255,0.22), rgba(255,255,255,0) 55%), linear-gradient(165deg, ${accent} 0%, ${accent} 45%, rgba(20,12,24,0.28) 140%)`;
 
-const SERIF = '"Baskerville", "Libre Baskerville", "Didot", "Iowan Old Style", Georgia, "Times New Roman", serif';
+/** One family for the whole page — the app's own Be Vietnam Pro (loaded by the
+ *  root layout), hierarchy by size and weight. The serif display face looked
+ *  like a wedding menu next to a sans form and a sans price list. */
+const FONT = 'var(--font-app), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
 const baseCss = `html,body{background:${C.page}}
 .ck-page input::placeholder{color:#a8a29e}
@@ -598,7 +715,7 @@ const layoutCss = `
 .ck-side{display:none}
 .ck-main{flex:1;min-width:0;display:flex;flex-direction:column;min-height:100dvh}
 .ck-top{display:flex;align-items:center;gap:12px;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;position:sticky;top:0;z-index:5}
-.ck-body{flex:1;padding:clamp(18px,4vw,28px) clamp(16px,4vw,40px) 24px;max-width:980px;width:100%;box-sizing:border-box}
+.ck-body{flex:1;scroll-margin-top:80px;padding:clamp(18px,4vw,28px) clamp(16px,4vw,40px) 24px;max-width:980px;width:100%;box-sizing:border-box}
 .ck-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:16px 18px}
 .ck-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;padding-bottom:max(14px,env(safe-area-inset-bottom));border-top:1px solid ${C.line};background:rgba(250,249,247,0.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);position:sticky;bottom:0;z-index:5}
 @media (min-width: 900px){
@@ -615,7 +732,7 @@ const layoutCss = `
 // action bar sticky instead — that behaves on iOS, Android and a 27" monitor.
 const screen: CSSProperties = {
   minHeight: '100dvh', background: C.page, color: C.ink,
-  fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  fontFamily: FONT,
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   padding: 'clamp(14px, 4vw, 24px)',
   WebkitTapHighlightColor: 'transparent', colorScheme: 'light',
@@ -624,12 +741,12 @@ const panel: CSSProperties = {
   background: C.card, border: `1px solid ${C.line}`, borderRadius: 22, padding: 28, width: '100%',
   boxShadow: '0 10px 40px rgba(23,20,18,0.07)', overflow: 'hidden', boxSizing: 'border-box',
 };
-const cardHead: CSSProperties = { padding: '14px 20px 10px', fontSize: 12.5, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.muted, borderBottom: `1px solid ${C.line}` };
+const cardHead: CSSProperties = { padding: '14px 20px 10px', fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.muted, borderBottom: `1px solid ${C.line}` };
 // 16px is the floor: anything smaller makes iOS Safari zoom the page on focus.
 const bigInput: CSSProperties = {
   width: '100%', boxSizing: 'border-box', padding: '0 18px', borderRadius: 16,
   border: `1.5px solid ${C.line}`, background: C.field, color: C.ink,
-  fontSize: 'clamp(17px, 4.4vw, 19px)', minHeight: 60, fontFamily: 'inherit',
+  fontSize: 17, minHeight: 56, fontFamily: 'inherit',
 };
 const pill: CSSProperties = {
   border: `1.5px solid ${C.line}`, background: C.card, color: C.ink2,
@@ -673,18 +790,18 @@ function ChipArrow({ dir, onClick }: { dir: -1 | 1; onClick: () => void }) {
 
 /** A category chip: one line, never squeezed, never wrapped. */
 const chip: CSSProperties = {
-  ...pill, padding: '10px 18px', minHeight: 44, fontSize: 15.5, whiteSpace: 'nowrap', flexShrink: 0,
+  ...pill, padding: '9px 16px', minHeight: 42, fontSize: 14.5, whiteSpace: 'nowrap', flexShrink: 0,
 };
 const ghostBtn: CSSProperties = {
   border: `1.5px solid ${C.line}`, background: C.card, color: C.ink,
-  borderRadius: 999, padding: '16px 28px', fontSize: 17, fontWeight: 600, cursor: 'pointer', minHeight: 58,
+  borderRadius: 999, padding: '14px 26px', fontSize: 16, fontWeight: 600, cursor: 'pointer', minHeight: 54,
 };
 const primary = (accent: string): CSSProperties => ({
   border: 'none', background: accent, color: '#fff', borderRadius: 999,
-  padding: '16px 36px', fontSize: 18.5, fontWeight: 700, cursor: 'pointer', minHeight: 60, letterSpacing: '0.01em',
+  padding: '14px 32px', fontSize: 17, fontWeight: 700, cursor: 'pointer', minHeight: 56, letterSpacing: '0',
   boxShadow: `0 10px 24px ${accent}40`,
 });
-const serifTitle: CSSProperties = { fontFamily: SERIF, fontWeight: 600, color: C.ink, letterSpacing: '-0.01em', lineHeight: 1.15 };
-const eyebrow: CSSProperties = { fontSize: 12.5, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.faint };
-const stepTitle: CSSProperties = { ...serifTitle, fontSize: 'clamp(26px, 5.6vw, 36px)', margin: '6px 0 8px' };
-const stepHint: CSSProperties = { fontSize: 'clamp(15px, 3.8vw, 17px)', color: C.muted, margin: '0 0 22px', lineHeight: 1.5 };
+const serifTitle: CSSProperties = { fontFamily: FONT, fontWeight: 700, color: C.ink, letterSpacing: '-0.02em', lineHeight: 1.2 };
+const eyebrow: CSSProperties = { fontSize: 12, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: C.faint };
+const stepTitle: CSSProperties = { ...serifTitle, fontSize: 'clamp(22px, 5.2vw, 30px)', margin: '4px 0 6px' };
+const stepHint: CSSProperties = { fontSize: 'clamp(14.5px, 3.6vw, 16px)', color: C.muted, margin: '0 0 20px', lineHeight: 1.5 };

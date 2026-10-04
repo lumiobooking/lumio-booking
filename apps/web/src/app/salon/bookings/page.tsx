@@ -8,7 +8,7 @@ import { wallToInstantISO, instantToWall } from '../../../lib/datetime';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
-import { useIsMobile } from '../../../lib/responsive';
+import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
@@ -78,7 +78,8 @@ function BookingsInner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const isMobile = useIsMobile();
+  // Cards up to tablet width — an iPad gets every field, not a squeezed table.
+  const cardList = useIsMobile(CARD_LIST_MAX);
   const range = useDateRange('all', true); // bookings are future-oriented
   const [q, setQ] = useState('');
   // Arrived from the header search (?q=…): start with that search filled in.
@@ -268,7 +269,7 @@ function BookingsInner() {
 
       {loading && bookings.length === 0 ? (
         <p style={{ color: 'var(--c94a3b8)' }}>{t('bk.loading')}</p>
-      ) : isMobile ? (
+      ) : cardList ? (
         <>
           <MList>
             {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('bk.noBookings')}</p>}

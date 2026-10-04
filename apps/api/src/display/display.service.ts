@@ -107,23 +107,37 @@ export class DisplayService {
 
   /**
    * Kiosk: the customer checks themselves in. The ticket lands in the WAITING
-   * queue — never auto-assigned to a tech, because the front desk decides who
-   * takes it. Staff can add or fix anything afterwards on the walk-in board.
+   * queue and is then seated on the up-next technician when one is free.
+   *
+   * A PARTY is one ticket per person. "How many of you? 2" used to make one
+   * ticket for the person holding the phone — her services, her price, one
+   * technician — with "· 2 people" written on it, and the desk had to create
+   * the friend by hand. Now each guest arrives with their own services and
+   * becomes their own ticket, seated on their own technician, priced on their
+   * own. The guests carry no contact of their own (the person who checked in
+   * is the party's contact) and say who they came with.
    */
   async selfCheckIn(
     token: string,
-    dto: { firstName?: string; lastName?: string; phone?: string; email?: string; birthDate?: string; serviceIds?: string[]; partySize?: number; note?: string },
+    dto: {
+      firstName?: string; lastName?: string; phone?: string; email?: string; birthDate?: string;
+      serviceIds?: string[]; partySize?: number; note?: string;
+      guests?: { firstName?: string; serviceIds?: string[] }[];
+    },
   ) {
     const tenantId = await this.tenantOfToken(token);
     const name = (dto.firstName ?? '').trim().slice(0, 80);
     if (!name) throw new BadRequestException('Please enter your name.');
+    const guests = (Array.isArray(dto.guests) ? dto.guests : []).slice(0, 9);
+    const party = Math.max(1, Math.min(20, Math.round(Math.max(dto.partySize ?? 1, guests.length + 1))));
 
-    // Only services that really belong to this salon and are on the menu.
-    const ids = [...new Set(dto.serviceIds ?? [])].filter(Boolean).slice(0, 12);
-    const [svcs, promos, day] = ids.length
+    // Only services that really belong to this salon and are on the menu —
+    // read once for the whole party.
+    const allIds = [...new Set([...(dto.serviceIds ?? []), ...guests.flatMap((g) => g?.serviceIds ?? [])])].filter((x) => typeof x === 'string' && x).slice(0, 60);
+    const [svcs, promos, day] = allIds.length
       ? await Promise.all([
           this.prisma.service.findMany({
-            where: { id: { in: ids }, tenantId, isActive: true },
+            where: { id: { in: allIds }, tenantId, isActive: true },
             select: { id: true, name: true, priceCents: true, discountPercent: true, durationMinutes: true, category: { select: { id: true, name: true } } },
           }),
           this.promosOf(tenantId),
@@ -134,17 +148,21 @@ export class DisplayService {
     // list price and the ticket applied the discount, so a customer read $65
     // on the wall and $52 on the receipt; and the weekday promotion was never
     // applied to a walk-in at all, only to online bookings.
-    const items = svcs.map((sv) => {
-      const priced = priceService(sv, promos, day);
-      return {
-        lineId: randomBytes(12).toString('base64url'),
-        serviceId: sv.id,
-        name: sv.name,
-        priceCents: priced.netCents,
-        durationMinutes: sv.durationMinutes,
-        staffId: null as string | null,
-      };
-    });
+    const byId = new Map(svcs.map((sv) => [sv.id, sv] as const));
+    const itemsFor = (ids: string[] | undefined) => [...new Set(ids ?? [])].slice(0, 12)
+      .map((id) => byId.get(id))
+      .filter((sv): sv is (typeof svcs)[number] => !!sv)
+      .map((sv) => {
+        const priced = priceService(sv, promos, day);
+        return {
+          lineId: randomBytes(12).toString('base64url'),
+          serviceId: sv.id,
+          name: sv.name,
+          priceCents: priced.netCents,
+          durationMinutes: sv.durationMinutes,
+          staffId: null as string | null,
+        };
+      });
 
     // Build the CRM record so a self-served walk-in is remarketable like any other.
     const linked = (dto.phone?.trim() || dto.email?.trim())
@@ -153,29 +171,59 @@ export class DisplayService {
         })
       : null;
 
+    const fullName = `${name}${dto.lastName?.trim() ? ' ' + dto.lastName.trim() : ''}`.slice(0, 80);
+    const guestNames = guests.map((g, i) => (g?.firstName ?? '').trim().slice(0, 80) || `Guest ${i + 2}`);
+    const partyNote = party > 1 ? `Party of ${party}: ${[name, ...guestNames].join(', ')}` : '';
+    const mainItems = itemsFor(dto.serviceIds);
     const walkIn = await this.prisma.walkIn.create({
       data: {
         tenantId,
-        serviceId: svcs[0]?.id ?? null,
+        serviceId: mainItems[0]?.serviceId ?? null,
         customerId: linked?.id ?? null,
-        customerName: `${name}${dto.lastName?.trim() ? ' ' + dto.lastName.trim() : ''}`.slice(0, 80),
+        customerName: fullName,
         phone: dto.phone?.trim().slice(0, 40) || null,
-        note: dto.note?.trim().slice(0, 300) || null,
-        partySize: Math.max(1, Math.min(20, Math.round(dto.partySize ?? 1))),
-        items: items as unknown as Prisma.InputJsonValue,
+        note: [dto.note?.trim(), guests.length ? partyNote : ''].filter(Boolean).join(' · ').slice(0, 300) || null,
+        partySize: party,
+        items: mainItems as unknown as Prisma.InputJsonValue,
         source: 'walkin',
         status: WalkInStatus.WAITING,
       },
       select: { id: true },
     });
+    const guestIds: string[] = [];
+    for (let i = 0; i < guests.length; i++) {
+      const items = itemsFor(guests[i]?.serviceIds);
+      const g = await this.prisma.walkIn.create({
+        data: {
+          tenantId,
+          serviceId: items[0]?.serviceId ?? null,
+          customerId: null,
+          customerName: guestNames[i],
+          phone: null,
+          note: `With ${fullName} · ${partyNote}`.slice(0, 300),
+          partySize: party,
+          items: items as unknown as Prisma.InputJsonValue,
+          source: 'walkin',
+          status: WalkInStatus.WAITING,
+        },
+        select: { id: true },
+      });
+      guestIds.push(g.id);
+    }
     // Straight onto the "up next" technician — the owner asked that a phone
-    // check-in not sit as a WAITING card until somebody presses "Giao". Best
-    // effort: if nobody is free, or the seating fails, the ticket simply waits.
-    const staffId = this.walkins ? await this.walkins.seatSelfCheckIn(tenantId, walkIn.id).catch(() => null) : null;
+    // check-in not sit as a WAITING card until somebody presses "Giao". Each
+    // person of a party gets their own; whoever cannot be seated simply waits.
+    const seat = async (id: string) => (this.walkins ? await this.walkins.seatSelfCheckIn(tenantId, id).catch(() => null) : null);
+    const staffId = await seat(walkIn.id);
+    let guestsSeated = 0;
+    for (const id of guestIds) if (await seat(id)) guestsSeated += 1;
     // The desk's board is polling; this makes it fetch now, while the
     // customer is still looking up from their phone.
     liveEvents.emit(tenantId, 'walkins', walkIn.id);
-    return { ok: true, id: walkIn.id, queued: !staffId, seated: !!staffId };
+    return {
+      ok: true, id: walkIn.id, queued: !staffId, seated: !!staffId,
+      ...(guestIds.length ? { guestIds, guestsSeated } : {}),
+    };
   }
 
   private tid(user: AuthenticatedUser): string {

@@ -83,6 +83,8 @@ const P: Record<string, React.ReactNode> = {
   // Finance & account
   terminal: <><rect x="6" y="2.8" width="12" height="18.4" rx="2.2" /><rect x="8.5" y="5.5" width="7" height="4.3" rx=".8" /><path d="M9 13.3h.01M12 13.3h.01M15 13.3h.01M9 16.6h.01M12 16.6h.01M15 16.6h.01" /></>,
   crown: <><path d="m4 8 4 3.5L12 5l4 6.5L20 8l-1.6 9.5H5.6L4 8Z" /><path d="M5.6 20.5h12.8" /></>,
+  // A reception counter with the service bell on it.
+  desk: <><path d="M3.5 20.5h17M5 20.5v-6h14v6" /><path d="M8 12a4 4 0 0 1 8 0M12 8V6.5M10.5 6.5h3" /></>,
   drawer: <><path d="M3.5 13.5 5.5 6h13l2 7.5" /><rect x="3.5" y="13.5" width="17" height="6.5" rx="1.5" /><path d="M10 16.7h4M8.5 9.5h7" /></>,
 };
 

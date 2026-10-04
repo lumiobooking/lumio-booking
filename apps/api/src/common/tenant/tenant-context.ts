@@ -18,6 +18,10 @@ export interface AuthenticatedUser {
   homeTenantId?: string | null;
   // STAFF feature-permission sub-role (null for owners/super-admin = full access).
   staffRole?: StaffRole | null;
+  // STAFF only: the owner's own pick of screens for this person, when it
+  // differs from the role's preset. Absent = the preset. Frozen at sign-in;
+  // changing it signs the person out so the new list applies at once.
+  staffCaps?: string[] | null;
   // True on short-lived tokens minted for Lumio SUPPORT staff working inside ONE
   // salon. The token's role/tenantId are a normal SALON_ADMIN scope (isolation
   // unchanged); this flag only unlocks platform-managed setup screens and lets

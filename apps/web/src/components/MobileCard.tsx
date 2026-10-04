@@ -7,15 +7,17 @@ import { ui } from '../lib/ui';
  * Primitives for replacing a dense data TABLE with stacked "cards" on phones.
  * A table row becomes one MCard with a bold MHead (primary value + optional
  * badge on the right), several "Label: value" MRows, and an MActions button row.
- * Desktop keeps the real table; pages render `isMobile ? <MList>…</MList> : <table>`.
+ * Desktop keeps the real table; pages render `cardList ? <MList>…</MList> : <table>`
+ * (cards up to CARD_LIST_MAX — phones AND tablets). On a tablet the cards sit
+ * two or three to a row (globals.css `.m-list`).
  */
 export function MList({ children }: { children: ReactNode }) {
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>{children}</div>;
+  return <div className="m-list" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>{children}</div>;
 }
 
 export function MCard({ children }: { children: ReactNode }) {
   return (
-    <div style={{ ...ui.card, padding: 12, marginBottom: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
+    <div className="m-card" style={{ ...ui.card, padding: 12, marginBottom: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
       {children}
     </div>
   );

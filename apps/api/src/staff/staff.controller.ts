@@ -15,7 +15,10 @@ import { UpdateStaffDto } from './dto/update-staff.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { CreateStaffLoginDto } from './dto/create-staff-login.dto';
 import { ResetStaffPasswordDto } from './dto/reset-staff-password.dto';
+import { UpdateStaffLoginDto } from './dto/update-staff-login.dto';
+import { ROLE_PRESETS, STAFF_GRANTABLE } from '../auth/capabilities';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 
@@ -24,7 +27,10 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 export class StaffController {
   constructor(private readonly staffService: StaffService) {}
 
+  // A manager given "Staff" may SEE the team; every write below stays the owner's.
   @Get()
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('staff')
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.staffService.list(user);
   }
@@ -32,6 +38,8 @@ export class StaffController {
   // Per-technician performance (revenue, tips, reviews, points, top service,
   // recent customers). Declared before ':id' so 'performance' isn't read as an id.
   @Get('performance')
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('staff')
   performance(
     @CurrentUser() user: AuthenticatedUser,
     @Query('from') from?: string,
@@ -53,6 +61,16 @@ export class StaffController {
   @Roles(UserRole.STAFF, UserRole.SALON_ADMIN)
   updateMyProfile(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateMyProfileDto) {
     return this.staffService.updateMyProfile(user, dto);
+  }
+
+  // What each role starts with and what a staff account can be given — the
+  // Staff page draws its permission checklist from this, so the screen and the
+  // guard can never disagree. Declared before ':id'.
+  @Get('access-catalog')
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('staff')
+  accessCatalog() {
+    return { presets: ROLE_PRESETS, grantable: STAFF_GRANTABLE };
   }
 
   @Get(':id')
@@ -87,6 +105,16 @@ export class StaffController {
     @Body() dto: CreateStaffLoginDto,
   ) {
     return this.staffService.createLogin(user, id, dto);
+  }
+
+  // Change an EXISTING login: sign-in email, or switch it off/on.
+  @Patch(':id/login')
+  updateLogin(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateStaffLoginDto,
+  ) {
+    return this.staffService.updateLogin(user, id, dto);
   }
 
   // Reset the password on this staff member's EXISTING login.

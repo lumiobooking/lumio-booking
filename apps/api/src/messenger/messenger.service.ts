@@ -32,7 +32,7 @@ import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { NotificationChannel, UserRole } from '@prisma/client';
+import { AppointmentStatus, NotificationChannel, UserRole } from '@prisma/client';
 import { BookingsService } from '../bookings/bookings.service';
 import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
@@ -3013,13 +3013,22 @@ KEEP IT SIMPLE — these rules beat everything else:
 - If a detail they give now differs from one you already had, the NEW one silently wins. Never ask the customer to choose between two versions of their own phone number, name or time.
 - When they don't know what they want, suggest 2-3 popular services — not the whole menu. Share the full list only if they ask.
 - PICTURES: when they ask what a service looks like, for samples/designs ("có mẫu nào không", "show me some designs"), for the price list, or where the shop is, call send_photos FIRST and then write one short line; the pictures arrive above your words. If it answers NONE, answer in words and say the salon will send photos shortly — never describe pictures that were not sent.
-- No jargon, no policies, no long explanations unless they ask.
+- No jargon, no policies, no long explanations unless they ask. Turn settings into plain words a customer would say: "Do I need to book ahead?" → "Booking ahead holds your spot — I can book you today." Never recite internal numbers like "at least 1 hour in advance, up to 60 days ahead" unless they ask exactly that.
+- PRICES: one short sentence — the price, and the promo in a few words if one applies ("Acrylic full set is $45, and it's 20% off this month"). Never walk through arithmetic (each, both, totals, savings) unless they ask for a total.
 - Off-topic question? Answer in one friendly line, then gently return to the booking.
-If the conversation is just starting and the customer hasn't said what they need, greet briefly and ask which service they'd like (if a greeting was already sent, don't greet again — go straight to helping).
-To book you need ONLY: name, phone number, service, and a specific date & time. Collect the missing piece one question at a time — nothing more.
+- NOT READY: if they say they are not sure yet, just asking, or will let you know — do NOT ask again. One friendly line that they can message any time to book, and stop. Asking for a day and time a second time after "I don't know yet" is pushy.
+- A plain "thanks" / "thank you" that is NOT agreeing to a recap means they are wrapping up: thank them back warmly in one line and leave the door open — never answer thanks by repeating your last question.
+GREETING AND THANKS: open the conversation warmly with the salon's name ("Hi Brenda, thanks for messaging ${salonName}!") — once; if a greeting was already sent, don't greet again. Thank them when the booking is made ("Thank you, Rebecca — you're all set!") and again in the goodbye.
+If the conversation is just starting and the customer hasn't said what they need, greet briefly and ask what they'd like to book.
+WHAT YOU NEED TO BOOK — collect only what is still missing, one question at a time, in this order:
+1. WHO and WHAT: the service(s) for each person. One person can have several services. If they mention someone else ("me and my sister", "for 2"), it is a group: get each person's service(s) — "Does your sister want the same, or something different?" is one question. If their words could mean more than one menu item ("manicure" → regular or gel; "acrylic" → full set or fill), ask which.
+2. WHEN: a specific day and time.
+3. NAMES: their first name, and the first name of each person with them.
+4. PHONE: their mobile number (one number for the whole group).
+A technician preference only if they bring it up. That is everything — nothing more.
 Email is OPTIONAL: mention once that a confirmation email is possible; if they skip it, book without it and never bring it up again.
-Recap ONCE, in one short line ("Gel manicure, Friday 2:00 PM, for Anna — shall I book it?"). Any agreement at all — "yes", "ok", "sure", "thanks", a thumbs-up — means BOOK IT NOW. Never recap a second time and never ask a second confirming question; a customer who has to agree twice thinks the booking failed.
-Use the get_services tool for what's available. When you have name + phone + service + a specific date/time, call create_booking ONCE, listing EVERY service for that visit in the "services" array (id and name copied exactly from get_services; include email only if given). Two services in one visit is ONE call with two entries — never two calls, and never two start times: the salon lengthens the appointment for the extra services by itself, so one person sitting in one chair gets one appointment and one bill. After it succeeds, confirm warmly in one line and say a confirmation is on the way.
+Recap ONCE, in one short line ("Gel manicure, Friday 2:00 PM, for Anna — shall I book it?"; for a group: "Acrylic full sets for Rebecca and Tasha, Saturday 1:00 PM — shall I book it?"). Any agreement at all — "yes", "ok", "sure", "thanks", a thumbs-up — means BOOK IT NOW. Never recap a second time and never ask a second confirming question; a customer who has to agree twice thinks the booking failed.
+Use the get_services tool for what's available. When you have name + phone + service + a specific date/time, call create_booking ONCE, listing EVERY service for that visit in the "services" array (id and name copied exactly from get_services; include email only if given). Two services in one visit is ONE call with two entries — never two calls, and never two start times: the salon lengthens the appointment for the extra services by itself, so one person sitting in one chair gets one appointment and one bill. A GROUP is still ONE call: the person you are chatting with in customerFirstName/services, everyone else in "guests" (each with their own name and services) — they are all booked at the same time, each with their own technician. After it succeeds, thank them and confirm warmly in one line, and say a confirmation is on the way.
 If they ask about an EXISTING appointment ("khi nào lịch của tôi", "đổi giờ được không", "dời sang thứ 7"), NEVER answer from memory: call find_appointment with their phone number first, then read back exactly what it returns. To move one, call reschedule_appointment with the appointment id from find_appointment, their phone, and the new local date & time. The tool decides whether the change is allowed and hands you the sentence to say — say THAT reason, do not invent a policy of your own and do not promise a change the tool refused.
 To CANCEL one, first read the day and time back and ask them to confirm in plain words ("anh/chị xác nhận huỷ lịch ... nhé?"); only after a clear yes, call cancel_appointment with the appointment id and their phone. Never cancel on a hint, on "maybe", or while they are still asking questions — an emptied chair cannot be undone from this chat. If the tool refuses, say ITS reason and offer to have a staff member call back. If they sound like they only want a different time, offer to move it instead — the salon keeps the customer and they keep their slot.
 CRITICAL: Only tell the customer the booking is confirmed if the create_booking tool result starts with "SUCCESS". If the tool returns an error, NEVER claim the booking was made — apologize, briefly explain the problem in plain words, and offer another time or ask for corrected details.
@@ -3052,6 +3061,29 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
             serviceName: { type: 'string', description: 'Only for a single-service visit; prefer `services`.' },
             localDateTime: { type: 'string', description: 'Salon local time in ISO form, e.g. 2026-07-10T14:00. ONE start time for the whole visit — the salon extends the block for the extra services itself.' },
             customerEmail: { type: 'string', description: 'Optional. The customer email for an email confirmation; omit entirely if they did not give one.' },
+            guests: {
+              type: 'array',
+              maxItems: 8,
+              description: 'A GROUP booking only: everyone else coming at the same time, each with their own services. The person you are chatting with is NOT in this list.',
+              items: {
+                type: 'object',
+                properties: {
+                  firstName: { type: 'string', description: 'Their first name as the customer gave it.' },
+                  services: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        serviceId: { type: 'string', description: 'The id copied EXACTLY from get_services.' },
+                        serviceName: { type: 'string', description: 'The name exactly as in get_services.' },
+                      },
+                      required: ['serviceId', 'serviceName'],
+                    },
+                  },
+                },
+                required: ['firstName', 'services'],
+              },
+            },
           },
           required: ['customerFirstName', 'customerPhone', 'localDateTime'],
         },
@@ -4307,6 +4339,24 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const serviceId = ids[0];
         const startTime = wallToUtcISO(local, tz);
 
+        // The others in a group, resolved BEFORE anything is written: one
+        // unknown service must not leave half a party in the book.
+        const rawGuests = Array.isArray(input.guests) ? (input.guests as Record<string, unknown>[]).slice(0, 8) : [];
+        const guests: { firstName: string; ids: string[] }[] = [];
+        for (let gi = 0; gi < rawGuests.length; gi++) {
+          const g = rawGuests[gi] || {};
+          const gName = String(g.firstName ?? '').trim() || `Guest ${gi + 2}`;
+          const gWanted = servicesAsked(g);
+          if (!gWanted.length) return `Missing the service for ${gName}. Ask what they would like.`;
+          const gIds: string[] = [];
+          for (const s of gWanted) {
+            const id = await this.resolveServiceId(tenantId, s.id, s.name);
+            if (!id) return `ERROR — no service matches id "${s.id}" or name "${s.name}" for ${gName}. Call get_services again and use a name from that list EXACTLY.`;
+            if (!gIds.includes(id)) gIds.push(id);
+          }
+          guests.push({ firstName: gName, ids: gIds });
+        }
+
         // The model asked to book again for someone it has just booked. When
         // that second call lands inside the visit already open, it ADDS to that
         // appointment rather than creating a rival to it — see one-visit.ts.
@@ -4321,10 +4371,14 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           return `SUCCESS. Those services are already on appointment ${openBooking.id}. Confirm them together in one warm line; do not book again.`;
         }
 
+        const partySize = guests.length + 1;
+        const groupId = guests.length ? `chat-${crypto.randomUUID()}` : undefined;
+        const names = [firstName, ...guests.map((g) => g.firstName)].join(', ');
         const dto = {
           serviceId, startTime, customerFirstName: firstName, customerPhone: phone,
           ...(ids.length > 1 ? { serviceIds: ids } : {}),
           ...(email && /.+@.+\..+/.test(email) ? { customerEmail: email } : {}),
+          ...(groupId ? { partySize, groupId, notes: `Group of ${partySize} booked by chat: ${names}` } : {}),
         } as CreateBookingDto;
         // The door is the THREAD's channel, not the module's name. Instagram
         // bookings used to be filed as 'messenger', which meant the owner's
@@ -4334,7 +4388,35 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         // owner asking "is the chat widget on my site worth anything?" had no
         // way to answer — the same hole Instagram used to have.
         const bookedVia = ctx?.channel === 'instagram' ? 'instagram' : ctx?.channel === 'web' ? 'web' : 'messenger';
-        const booking = await this.bookings.createForTenant(tenantId, dto, null, bookedVia);
+        // Guests first, the customer last: the one confirmation (theirs) goes
+        // out only once everybody is in. A guest carries no contact of their
+        // own — the person chatting is the group's contact.
+        const guestIds: string[] = [];
+        try {
+          for (const g of guests) {
+            const gb = await this.bookings.createForTenant(tenantId, {
+              serviceId: g.ids[0], ...(g.ids.length > 1 ? { serviceIds: g.ids } : {}), startTime,
+              customerFirstName: g.firstName, partySize, groupId,
+              notes: `Group of ${partySize} with ${firstName} (booked by chat): ${names}`,
+            } as CreateBookingDto, null, bookedVia, null, { autoAssign: true, groupGuest: true });
+            const gid = (gb as { id?: string }).id;
+            if (gid) guestIds.push(gid);
+          }
+        } catch (e) {
+          if (guestIds.length) {
+            await this.prisma.appointment.updateMany({ where: { tenantId, id: { in: guestIds } }, data: { status: AppointmentStatus.CANCELLED } }).catch(() => undefined);
+          }
+          throw e;
+        }
+        let booking: Awaited<ReturnType<BookingsService['createForTenant']>>;
+        try {
+          booking = await this.bookings.createForTenant(tenantId, dto, null, bookedVia);
+        } catch (e) {
+          if (guestIds.length) {
+            await this.prisma.appointment.updateMany({ where: { tenantId, id: { in: guestIds } }, data: { status: AppointmentStatus.CANCELLED } }).catch(() => undefined);
+          }
+          throw e;
+        }
         const b = booking as { id?: string; customerId?: string | null };
         // The one moment this page-scoped id and a real customer are provably
         // the same person: they just gave a name and a phone and a Customer row
@@ -4364,7 +4446,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
             endMs: new Date((booking as { endTime?: Date }).endTime ?? startTime).getTime(),
           };
         }
-        return `SUCCESS. Appointment created (id ${b.id})${ids.length > 1 ? ` with ${ids.length} services on ONE bill` : ''}. Confirm the service${ids.length > 1 ? 's' : ''}, date and time back to the customer warmly${manageUrl ? `, and share this link so they can view or cancel their appointment: ${manageUrl}` : ''}.`;
+        return `SUCCESS. Appointment created (id ${b.id})${ids.length > 1 ? ` with ${ids.length} services on ONE bill` : ''}${guests.length ? `, plus ${guests.length} more for ${guests.map((g) => g.firstName).join(', ')} at the same time — the whole group of ${partySize} is booked` : ''}. Thank them and confirm the service${ids.length > 1 || guests.length ? 's' : ''}, date and time back warmly in one line${manageUrl ? `, and share this link so they can view or cancel their appointment: ${manageUrl}` : ''}.`;
       }
       if (name === 'find_appointment') {
         const phone = String(input.customerPhone || '').trim();

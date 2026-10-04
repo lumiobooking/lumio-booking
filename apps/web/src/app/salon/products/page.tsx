@@ -6,7 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice, toMinorUnits, fromMinorUnits, priceInputStep } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
-import { useIsMobile } from '../../../lib/responsive';
+import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
@@ -34,7 +34,8 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const isMobile = useIsMobile();
+  // Cards up to tablet width — an iPad gets every field, not a squeezed table.
+  const cardList = useIsMobile(CARD_LIST_MAX);
   const [q, setQ] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [taxRate, setTaxRate] = useState('');
@@ -125,7 +126,7 @@ function Inner() {
         <span style={{ color: 'var(--c94a3b8)', fontSize: 13 }}>{visible.length} {t('pd.productsWord')}</span>
       </div>
 
-      {loading ? <p style={{ color: 'var(--c94a3b8)' }}>{t('pd.loading')}</p> : isMobile ? (
+      {loading ? <p style={{ color: 'var(--c94a3b8)' }}>{t('pd.loading')}</p> : cardList ? (
         <>
           <MList>
             {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('pd.empty')}</p>}

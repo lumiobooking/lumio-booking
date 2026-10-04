@@ -39,6 +39,6 @@ export class AuthController {
   // GET /api/auth/me -> requires a valid token; echoes the current principal.
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
-    return { ...user, capabilities: capabilitiesFor(user.role, user.staffRole) };
+    return { ...user, capabilities: capabilitiesFor(user.role, user.staffRole, user.staffCaps) };
   }
 }

@@ -8,7 +8,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
-import { useIsMobile } from '../../../lib/responsive';
+import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
@@ -45,7 +45,8 @@ function Inner() {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const ML: Record<string, string> = { CASH: t('or.mCash'), CARD: t('or.mCard'), OTHER: t('or.mTransfer') };
-  const isMobile = useIsMobile();
+  // Cards up to tablet width — an iPad gets every field, not a squeezed table.
+  const cardList = useIsMobile(CARD_LIST_MAX);
   const range = useDateRange('all');
   const [orders, setOrders] = useState<Order[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -157,7 +158,7 @@ function Inner() {
         <DateRangeBar range={range} />
       </div>
 
-      {loading && orders.length === 0 ? <p style={{ color: 'var(--c94a3b8)' }}>{t('or.loading')}</p> : isMobile ? (
+      {loading && orders.length === 0 ? <p style={{ color: 'var(--c94a3b8)' }}>{t('or.loading')}</p> : cardList ? (
         <>
           <MList>
             {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('or.empty')}</p>}

@@ -25,7 +25,11 @@ export default function LoginPage() {
       } else if (user.role === 'SALON_ADMIN') {
         router.push('/salon');
       } else if (user.role === 'STAFF') {
-        router.push('/staff/today');
+        // Where a staff member starts is decided by what they may open, not by
+        // the word "staff": a receptionist lands on the front desk, a manager
+        // on the dashboard, a technician in the technicians' app.
+        const caps = user.capabilities ?? [];
+        router.push(caps.includes('dashboard') ? '/salon' : caps.includes('walkins') ? '/salon/front-desk' : caps.length ? '/salon' : '/staff/today');
       } else if (user.role === 'SUPPORT') {
         router.push('/agency');
       } else {

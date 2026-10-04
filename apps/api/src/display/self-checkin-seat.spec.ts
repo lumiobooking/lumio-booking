@@ -1,3 +1,9 @@
+// The enum is read at run time; a machine whose generated client predates it
+// must still run this spec.
+jest.mock('@prisma/client', () => ({
+  ...jest.requireActual('@prisma/client'),
+  WalkInStatus: { WAITING: 'WAITING' },
+}));
 import { DisplayService } from './display.service';
 import { liveEvents } from '../common/live-events';
 

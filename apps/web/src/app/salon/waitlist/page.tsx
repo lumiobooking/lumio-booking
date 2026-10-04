@@ -8,7 +8,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
-import { useIsMobile } from '../../../lib/responsive';
+import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
@@ -30,7 +30,8 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const isMobile = useIsMobile();
+  // Cards up to tablet width — an iPad gets every field, not a squeezed table.
+  const cardList = useIsMobile(CARD_LIST_MAX);
   const [rows, setRows] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +74,7 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
       {msg && <div style={{ background: 'var(--c064e3b)', color: 'var(--ca7f3d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
-      {loading && rows.length === 0 ? <p style={{ color: 'var(--c94a3b8)' }}>{t('wl.loading')}</p> : isMobile ? (
+      {loading && rows.length === 0 ? <p style={{ color: 'var(--c94a3b8)' }}>{t('wl.loading')}</p> : cardList ? (
         <>
           <MList>
             {rows.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('wl.empty')}</p>}

@@ -24,3 +24,14 @@ export function useIsMobile(breakpoint = 768): boolean {
     () => false,
   );
 }
+
+/**
+ * Up to this width a data list shows as CARDS instead of a table.
+ *
+ * It used to be the phone breakpoint (768). An iPad — 810 to 1080 wide —
+ * then got the desktop table with half the room, and every column was
+ * squeezed until words broke letter by letter ("Inacti / ve"). Cards hold
+ * every field at any width; from here up the tables have space to breathe
+ * (and scroll inside their frame if they still do not fit).
+ */
+export const CARD_LIST_MAX = 1100;

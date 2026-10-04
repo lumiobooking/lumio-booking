@@ -47,6 +47,38 @@ th {
   overflow-wrap: anywhere;
 }
 
+/* …but never by SQUEEZING a column or a row item below its longest word.
+ *
+ * `anywhere` does more than wrap: it also tells the browser that a box may be
+ * as narrow as ONE CHARACTER when it works out widths. Tables size their
+ * columns that way, and so do flex rows — so on an iPad (wider than the phone
+ * cards, narrower than a desktop) a staff table squeezed its columns until
+ * "Inactive" read "Inacti / ve" and the skills pill stacked "9 / 43 / ser /
+ * vic / es". `break-word` wraps a long URL exactly the same once its box is
+ * full, but keeps whole words while widths are decided; a table that then does
+ * not fit scrolls inside its own frame (every data table has one).
+ *
+ * Inside tables: everywhere. Outside: from tablet width up — phones keep
+ * `anywhere`, where cards (not tables) carry the data and an unbreakable
+ * address must never push the screen sideways. */
+table,
+table * {
+  overflow-wrap: break-word;
+}
+@media (min-width: 769px) {
+  p,
+  h1,
+  h2,
+  h3,
+  a,
+  span,
+  div,
+  td,
+  th {
+    overflow-wrap: break-word;
+  }
+}
+
 /* Form controls inherit the app's typeface.
  *
  * A browser does not give these the page font: <textarea> defaults to
@@ -252,3 +284,17 @@ a:active { opacity: 0.6; }
 /* A strip that swipes (the phone calendar's days): no scrollbar drawn under it. */
 .no-bar { scrollbar-width: none; }
 .no-bar::-webkit-scrollbar { display: none; }
+
+/* Card lists (components/MobileCard) on a tablet: two or three cards to a row
+ * instead of one stretched card per line. Anything in the list that is not a
+ * card (a pager, a "load more") spans the full row. Phones keep one column. */
+@media (min-width: 640px) {
+  .m-list {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    align-items: start;
+  }
+  .m-list > :not(.m-card) {
+    grid-column: 1 / -1;
+  }
+}

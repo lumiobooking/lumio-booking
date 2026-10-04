@@ -2,7 +2,10 @@ import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleIni
 import { personaFor } from '../common/business-persona';
 import { agentLangRule, cannedLines, effectiveLang, isBilingual, menuLines, parseLangChoice, voiceFor, agentFallbackLines, transferLines } from './voice-lang';
 import { isTransientStatus } from '../messenger/agent-fallback';
-import { Prisma, NotificationChannel, NotificationStatus } from '@prisma/client';
+import { Prisma, NotificationChannel, NotificationStatus, AppointmentStatus } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import { wallTimeToUtc } from '../bookings/booking.util';
+import { MenuItem, PartyMember, Tech, nearestTimes, partyFits, partyOpenTimes, resolveService, serviceCode } from './group-booking';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { SettingsService } from '../settings/settings.service';
@@ -77,6 +80,10 @@ export interface UpdateVoiceInput {
   noAnswerAction?: string; awayMessage?: string; voicemailSms?: string;
 }
 interface BotFact { label: string; value: string; on: boolean }
+/** What the tools need from the turn that called them: the coded menu, who works here, and which booking flow applies. */
+interface ToolCtx { menu: MenuItem[]; staff: { id: string; firstName: string; lastName: string | null }[]; groupMode: boolean }
+/** One person of a party, resolved against the menu and the team. */
+interface Member { firstName: string; items: MenuItem[]; techId: string | null; techName: string | null }
 interface AnthropicBlock { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }
 export interface VoiceUsage {
   periodStart: string; aiCalls: number; aiMinutes: number; smsSent: number;
@@ -87,7 +94,14 @@ export interface VoiceUsage {
 }
 export interface TenantVoiceUsage extends VoiceUsage { tenantId: string; name: string }
 
-const MAX_TURNS = 16;
+/**
+ * Turns of the conversation the model sees. Sixteen (eight exchanges) was
+ * fine for "one gel manicure, Friday, Anna" — a party of three, each with
+ * their own services, then the time, then the names, scrolled its own
+ * beginning out of view and the assistant asked again for what it had been
+ * told. Forty keeps a whole long call in sight.
+ */
+const MAX_TURNS = 40;
 const MAX_TOOL_LOOPS = 5;
 const MAX_SILENCE = 2; // reprompts before we politely hang up
 /**
@@ -678,18 +692,27 @@ export class VoiceService implements OnModuleInit {
     const work = (async (): Promise<string> => {
       let result: { reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean };
       let lang2 = lang; let lgFlag2 = lgFlag; let canned2 = canned;
+      // What this call has already booked, so a repeated or late turn never books twice.
+      const alreadyBooked = call.outcome === 'booked' && call.appointmentId ? String(call.appointmentId) : null;
+      const agentRun = this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang2, biline, canTransfer, alreadyBooked);
+      agentRun.catch(() => undefined);
       try {
         // Twilio abandons a webhook after ~15 seconds and HANGS UP — the caller
         // hears dead air, then nothing. Past the deadline we ask them to repeat
         // themselves and the CALL SURVIVES. A phone conversation that dies is
         // worse than one that says "sorry, once more?".
         result = await Promise.race([
-          this.runAgent(call.tenantId, call.fromNumber || '', line.aiInstruction || '', history, speech, lang2, biline, canTransfer),
+          agentRun,
           new Promise<never>((_, rej) => { const tm = setTimeout(() => rej(new Error('turn-deadline')), TURN_DEADLINE_MS); (tm as { unref?: () => void }).unref?.(); }),
         ]);
       } catch (e) {
         const msg = String(e);
         this.logger.warn(`agent error after ${Date.now() - t0}ms: ${msg.slice(0, 160)}`);
+        // Past the deadline the brain is still WORKING — and may be halfway
+        // through writing a booking. Its answer used to be thrown away: the
+        // caller heard "sorry, once more?", the booking existed, and the next
+        // turn had no idea, so it asked for everything again. Keep it.
+        if (msg.includes('turn-deadline')) this.keepLateAnswer(call.id, speech, agentRun);
         // ANY failure — deadline, model abort, tool crash — gets a polite
         // "say that again?" and the call stays ALIVE. Goodbye is only earned by
         // three failures in one call; one bad moment must not end a customer
@@ -788,6 +811,27 @@ export class VoiceService implements OnModuleInit {
     }
   }
 
+  /**
+   * A turn that finished after the caller was already asked to repeat: write
+   * what it did into the call, so the next turn knows. The caller never heard
+   * the reply, and the model is told so — it says it again instead of
+   * assuming they know.
+   */
+  private keepLateAnswer(callId: string, speech: string, run: Promise<{ reply: string; booked: boolean; appointmentId: string | null }>): void {
+    run.then(async (r) => {
+      const fresh = await this.prisma.voiceCall.findUnique({ where: { id: callId } });
+      const prior = (Array.isArray(fresh?.transcript) ? fresh!.transcript : []) as Turn[];
+      const turns = [...prior, { role: 'user', content: speech }, { role: 'assistant', content: `(The line was slow, so the caller did NOT hear this reply — say what matters again:) ${r.reply}` }].slice(-MAX_TURNS);
+      await this.prisma.voiceCall.update({
+        where: { id: callId },
+        data: {
+          transcript: turns as unknown as Prisma.InputJsonValue,
+          ...(r.booked ? { outcome: 'booked', appointmentId: r.appointmentId } : {}),
+        },
+      });
+    }).catch(() => undefined);
+  }
+
   private sweepPending(force: boolean): void {
     const now = Date.now();
     for (const [k, v] of this.pendingTurns) {
@@ -880,6 +924,7 @@ export class VoiceService implements OnModuleInit {
   // ---- AI agent (tool use) — phone-tuned -----------------------------------
   private async runAgent(
     tenantId: string, callerPhone: string, aiInstruction: string, history: Turn[], userText: string, lang = 'en-US', bilingual = false, canTransfer = false,
+    alreadyBooked: string | null = null,
   ): Promise<{ reply: string; done: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     const acc = { wantEnd: false, booked: false, appointmentId: null as string | null, langSwitch: null as string | null, transfer: false };
@@ -920,42 +965,127 @@ export class VoiceService implements OnModuleInit {
       ? `\nTHE ${persona.venueNoun.toUpperCase()} OWNER'S INSTRUCTIONS — follow these on every call. They are this ${persona.venueNoun}'s own rules: when one says to quote a price a certain way or to ask a question for a certain service, do exactly that at that point in the booking steps (one question per turn), in the caller's language:\n${ownerNote}\n`
       : '';
 
-    // Inject the services directly into the prompt so the agent NEVER needs a
-    // separate get_services round-trip — one Claude call per turn instead of two.
-    const services = await this.prisma.service.findMany({
+    // The whole menu, once per turn, in one stable order. Every item gets a
+    // short code (S1, S2…) the model passes to the tools: it used to copy a
+    // 25-character database id out of the prompt, and one wrong character was
+    // "Service not found" read aloud to a customer who had just said yes.
+    const menuRows = await this.prisma.service.findMany({
       where: { tenantId, isActive: true },
       select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true },
-      orderBy: { name: 'asc' }, take: 40,
+      orderBy: { name: 'asc' }, take: 250,
     });
+    const menu: MenuItem[] = menuRows.map((s) => ({ id: s.id, name: s.name, minutes: s.durationMinutes > 0 ? s.durationMinutes : 30 }));
     // Prices are read ALOUD, so they are formatted in the salon's own money —
     // the old "$" + divide-by-100 read a 200,000₫ service as "two thousand
-    // dollars". The count matters too: only the first forty fit here, and a
-    // longer menu is exactly how the assistant ends up booking the nearest
-    // thing it can see, so it is told to look the rest up with get_services.
+    // dollars". Only the first forty are written into the prompt; a longer
+    // menu is searched with get_services, so the assistant never books "the
+    // nearest thing it can see".
     const { locale: menuLocale } = await this.localeInfo(tenantId);
-    let svcCount = services.length;
-    if (services.length >= 40) {
-      // Only worth a query when the block is full; a short menu is complete.
-      try { svcCount = await this.prisma.service.count({ where: { tenantId, isActive: true } }); } catch { svcCount = services.length; }
-    }
-    const servicesBlock = services.length
-      ? 'Bookable services (use the exact id when you call create_booking; never say the id out loud):\n' +
-        services.map((s) => `- ${s.name} — ${formatMoneyShort(s.priceCents, (s as { currency?: string }).currency ?? 'USD', menuLocale)}${(s as { priceFrom?: boolean }).priceFrom ? ' and up (a starting price — say it that way)' : ''}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''} (id: ${s.id})`).join('\n') +
-        (svcCount > services.length ? `\n(Only ${services.length} of this ${persona.venueNoun}'s ${svcCount} services are listed here. If the caller asks for something not on this list, call get_services and search the full menu before saying anything about it.)` : '')
+    const shown = menuRows.slice(0, 40);
+    const servicesBlock = shown.length
+      ? 'Menu (pass the code, e.g. S3, to the tools; never say a code out loud):\n' +
+        shown.map((s, i) => `- ${serviceCode(i)} ${s.name} — ${formatMoneyShort(s.priceCents, (s as { currency?: string }).currency ?? 'USD', menuLocale)}${(s as { priceFrom?: boolean }).priceFrom ? ' and up (a starting price — say it that way)' : ''}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''}`).join('\n') +
+        (menuRows.length > shown.length ? `\n(Only ${shown.length} of this ${persona.venueNoun}'s ${menuRows.length} services are listed here. If the caller asks for something not on this list, call get_services and search the full menu before saying anything about it.)` : '')
       : 'No services are configured yet; take a message and tell them someone will call back.';
 
+    // Group-aware booking is for businesses that book PEOPLE onto STAFF —
+    // salons and appointment businesses. A restaurant's party is one table,
+    // and keeps its own single-reservation flow.
+    const bizType = String((tenant as unknown as { businessType?: string } | null)?.businessType ?? 'SALON').toUpperCase();
+    const groupMode = bizType === 'SALON' || bizType === 'SERVICE';
+    // Best-effort: a missing team list only loses "ask for Kim", never the call.
+    const staff = groupMode
+      ? await Promise.resolve()
+          .then(() => this.prisma.staffMember.findMany({
+            where: { tenantId, isActive: true, takesAppointments: true },
+            select: { id: true, firstName: true, lastName: true },
+            orderBy: { firstName: 'asc' }, take: 60,
+          }))
+          .catch(() => [] as { id: string; firstName: string; lastName: string | null }[])
+      : [];
+    const ctx: ToolCtx = { menu, staff, groupMode };
+
     const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
-    const system = `You are the warm, professional phone receptionist for "${salonName}", ${persona.identity}. Your words are read aloud on a live call. Speak naturally like a friendly human receptionist — usually one relaxed sentence, occasionally two; concise and to the point, but never curt, robotic, or scripted. A little warmth ("Of course!", "Happy to help") is good; rambling is not. No lists, no emojis, no special characters, no URLs.
+    // HOW IT SOUNDS. Owners reported a hotline that "talks too long and never
+    // books": every reply carried a compliment, a restatement of what the
+    // caller had just said and a question. A receptionist says one thing.
+    const style = `Your words are read aloud on a live phone call. Keep EVERY reply short: one sentence, two at most, under 30 words, and ask only ONE thing at a time. Do not repeat back what the caller just said (the only read-back is the final one before booking), do not list the menu unless asked, and never explain what you are doing. One brief warm touch is fine ("Sure!", "Of course."); no long thank-yous. No lists, emojis, special characters or URLs.
+The call has already been answered with the ${persona.venueNoun}'s greeting — do not greet again; go straight to helping. If the caller is not ready to book ("just asking", "I'll call back"), answer their question, say they are welcome to call any time, and do not push. Quote a price in one short sentence; never walk through arithmetic unless they ask for a total. Thank the caller when the booking is made, and thank them for calling in the goodbye.`;
+    const groupScript = `BOOKING A NEW ${persona.bookableNoun.toUpperCase()} — collect only what is still missing; when the caller gives several details at once, take them all and move on:
+- WHO and WHAT: the service or services for each person. One person can have several services ("gel manicure and a pedicure"). A group is several people at the SAME time, each with their own technician. If the caller says "we", "us", "my friend", "my mom and I" or a number of people, find out how many people and what each person wants; otherwise it is just the caller — do not ask how many. If their words could mean more than one menu item (e.g. "manicure" when the menu has a regular and a gel manicure), ask which one; never choose for them. If something is not on the menu, call get_services before saying so.
+- WHEN: the day and time. As soon as you know everyone's services and the day or time, call check_availability. Only offer times it says are open; if theirs is taken, offer the times it gives you.
+- NAMES: the first name of each person, asked once for everybody ("And the first names for each of you?"). Never invent, guess or reuse a name. The caller's phone number is already known — do not ask for it.
+- TECHNICIAN: only if the caller asks for someone by name, pass that name; otherwise anyone is fine — do not ask.
+- CONFIRM: read everything back in ONE sentence and wait for a clear yes, e.g. "So Anna for a gel manicure and pedicure and Lisa for a pedicure, Saturday at 2 PM — is that right?"
+- BOOK: after the yes, call create_booking ONCE with everyone in it. Then say in one short sentence that it is booked and a text confirmation is on the way, and ask if there is anything else.${staff.length ? `\nTechnicians here (first names): ${staff.map((s) => s.firstName).join(', ')}.` : ''}`;
+    const singleScript = `${persona.voiceGoal}
+BOOKING, STEP BY STEP — one question per turn, skipping anything the caller already said: (1) which service; if their words could mean more than one service on the menu, ask which one ("a regular manicure, or the gel manicure?") instead of choosing; if it is not on the menu, call get_services before you answer; (2) the day and time; (3) their first name — never invent or reuse a name; (4) read all of it back in ONE short sentence and wait for a clear yes; (5) only then call create_booking with the service's code.`;
+    const bookedNote = alreadyBooked ? '\nEarlier on this call a booking was already made. Do NOT book the same people again; for a change, use find_appointment and reschedule_appointment.' : '';
+    const system = `You are the warm, professional phone receptionist for "${salonName}", ${persona.identity}. ${style}
 The caller's phone number is ${callerPhone || 'unknown'}.${callerPhone ? ' You already have it — do NOT ask for their phone number; use it when booking.' : ' Politely ask for a good callback number if you need one.'}
-${persona.voiceGoal}
-If the caller asks about a booking they already have ("when is my appointment", "can I move it"), call find_appointment first and read back what it returns — never answer from memory. To move it, call reschedule_appointment; that tool applies the salon's notice policy and hands you the reason when it refuses, so say THAT reason rather than inventing a policy. BOOKING, STEP BY STEP — follow it exactly, one question per turn: (1) ask which service they would like, and if their words could mean more than one service on the menu, ask which one ("a regular manicure, or the gel manicure?") instead of choosing for them; if what they ask for is not on the menu, call get_services and look before you answer, and if it truly is not offered say so rather than booking the nearest thing; (2) ask for the day and time; (3) ask for their first name ("May I have your first name for the ${persona.bookableNoun}?") — never book without asking, and never invent, assume or reuse a name you were not given on this call; (4) read all three back in ONE short sentence and wait for a clear yes: "So that's a gel manicure, Friday at two thirty, for Anna — is that right?"; (5) only after they say yes, call create_booking with the service's exact id.
-Never call create_booking on a service the caller has not named back to you, and never guess between two services — a wrong service means a chair, a technician and a price the ${persona.venueNoun} did not agree to. After it succeeds, warmly repeat the day and time back to confirm, and let them know a text confirmation is on the way. Then ask if there is anything else you can help with, and wait for their reply. Do not hang up right after booking; ending the call the moment they book feels abrupt and disrespectful.
-Speak times naturally (for example, "two thirty PM on Friday"). The ${persona.venueNoun}'s local time right now is ${nowLocal} (timezone ${tz}); interpret "today/tomorrow/this Friday" in that timezone.
-Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours; if they ask for a closed time, tell them the ${persona.venueNoun} is closed then and offer the nearest open time.
-When the conversation is finished — they've booked and have nothing else, or they only had a question and it's answered, or they say goodbye — call end_call to say a warm goodbye and hang up. ${canTransfer ? 'If the caller asks for a real person — a staff member, the owner, a manager, "someone at the ' + persona.venueNoun + '" — or is upset and wants a human, do not argue or keep them: say ONE short sentence that you are connecting them now (no goodbye), and call transfer_to_human. If they ask something you cannot answer from what you were given here (never guess), say you are not sure and offer to connect them to the front desk; if they say yes, call transfer_to_human.' : 'If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. If they ask something you cannot answer from what you were given here, never guess: say a staff member will call them back with the answer.'} Never ask for payment or card details.
-Warmth and pace: sound like a caring human, not a script. Use the caller's name once you know it and react naturally ("Great choice!", "Perfect."). When it is time to end, give an unhurried, friendly goodbye: thank them by name, wish them a great day, and invite them to call back anytime. Never clip the goodbye or hang up mid-thought.
+${groupMode ? groupScript : singleScript}${bookedNote}
+Never book a service the caller has not named back to you, and never guess between two services — a wrong service means a chair, a technician and a price the ${persona.venueNoun} did not agree to. Do not hang up right after booking.
+If the caller asks about a booking they already have ("when is my appointment", "can I move it"), call find_appointment first and read back what it returns — never answer from memory. To move it, call reschedule_appointment; that tool applies the ${persona.venueNoun}'s notice policy and hands you the reason when it refuses, so say THAT reason rather than inventing a policy.
+Speak times naturally ("two thirty PM on Friday"). The ${persona.venueNoun}'s local time right now is ${nowLocal} (timezone ${tz}); interpret "today/tomorrow/this Friday" in that timezone.
+Only state hours, prices, services, address and contact details that are given to you here — never invent them. Never book outside business hours.
+When the conversation is finished — they've booked and have nothing else, or their question is answered, or they say goodbye — call end_call. ${canTransfer ? 'If the caller asks for a real person — a staff member, the owner, a manager, "someone at the ' + persona.venueNoun + '" — or is upset and wants a human, do not argue or keep them: say ONE short sentence that you are connecting them now (no goodbye), and call transfer_to_human. If they ask something you cannot answer from what you were given here (never guess), say you are not sure and offer to connect them to the front desk; if they say yes, call transfer_to_human.' : 'If the caller is upset or asks for a real person, tell them a staff member will call them back, then call end_call. If they ask something you cannot answer from what you were given here, never guess: say a staff member will call them back with the answer.'} Never ask for payment or card details.
 ${servicesBlock}
 ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: ' + facts + '\n' : ''}${ownerRules}${agentLangRule(lang)}${bilingual ? '\nThis line serves BOTH English and Vietnamese callers. If the caller speaks Vietnamese, asks for Vietnamese, or their words look like mis-transcribed Vietnamese, call switch_language with vi-VN immediately and reply in Vietnamese from then on (switch back with en-US if they ask).' : ''}`;
+
+    const personItem = (withName: boolean) => ({
+      type: 'object',
+      properties: {
+        ...(withName ? { firstName: { type: 'string', description: 'This person’s first name, exactly as the caller said it.' } } : {}),
+        services: { type: 'array', items: { type: 'string' }, description: 'Menu codes for this person, e.g. ["S3"] or ["S3","S8"] for two services.' },
+        technician: { type: 'string', description: 'Only when the caller asked for a technician by name.' },
+      },
+      required: withName ? ['firstName', 'services'] : ['services'],
+    });
+    const bookingTools = groupMode
+      ? [
+          {
+            name: 'check_availability',
+            description: 'Look in the book before offering or confirming a time. Each person needs their own free technician at the same start time. Returns whether the asked time works for everyone and the nearest open times.',
+            input_schema: {
+              type: 'object',
+              properties: {
+                date: { type: 'string', description: 'The salon-local day, YYYY-MM-DD.' },
+                time: { type: 'string', description: 'The salon-local start, HH:MM in 24-hour time. Leave out to hear the open times that day.' },
+                people: { type: 'array', minItems: 1, maxItems: 8, items: personItem(false) },
+              },
+              required: ['date', 'people'],
+            },
+          },
+          {
+            name: 'create_booking',
+            description: 'Book everyone at once — one entry per person, all at the same start time. Only after the caller said yes to the full read-back. Never call twice for the same people.',
+            input_schema: {
+              type: 'object',
+              properties: {
+                localDateTime: { type: 'string', description: 'Salon local start time in ISO form, e.g. 2026-07-10T14:00' },
+                people: { type: 'array', minItems: 1, maxItems: 8, items: personItem(true) },
+                customerPhone: { type: 'string', description: 'Optional. Defaults to the caller’s own number; only set if they give a different callback number.' },
+              },
+              required: ['localDateTime', 'people'],
+            },
+          },
+        ]
+      : [
+          {
+            name: 'create_booking',
+            description: 'Create the appointment. Only call after the caller has given their first name, named the service themselves, and said yes to the day, time and service read back to them.',
+            input_schema: {
+              type: 'object',
+              properties: {
+                customerFirstName: { type: 'string' },
+                serviceId: { type: 'string', description: 'The menu code, e.g. S3.' },
+                localDateTime: { type: 'string', description: 'Salon local time in ISO form, e.g. 2026-07-10T14:00' },
+                customerPhone: { type: 'string', description: 'Optional. Defaults to the caller’s own number; only set if they give a different callback number.' },
+              },
+              required: ['customerFirstName', 'serviceId', 'localDateTime'],
+            },
+          },
+        ];
 
     const tools = [
       {
@@ -963,23 +1093,10 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
         // caller asking for something by another name, needs the whole list.
         // Without this the assistant could only pick from what it could see.
         name: 'get_services',
-        description: 'Search the full service menu when the caller asks for something not in the list above, or when two services could match their words. Returns every active service with its id, name, price and length.',
+        description: 'Search the full service menu when the caller asks for something not in the list above, or when two services could match their words. Returns every active service with its code, name, price and length.',
         input_schema: { type: 'object', properties: {}, required: [] as string[] },
       },
-      {
-        name: 'create_booking',
-        description: 'Create the appointment. Only call after the caller has given their first name, named the service themselves, and said yes to the day, time and service read back to them.',
-        input_schema: {
-          type: 'object',
-          properties: {
-            customerFirstName: { type: 'string' },
-            serviceId: { type: 'string' },
-            localDateTime: { type: 'string', description: 'Salon local time in ISO form, e.g. 2026-07-10T14:00' },
-            customerPhone: { type: 'string', description: 'Optional. Defaults to the caller’s own number; only set if they give a different callback number.' },
-          },
-          required: ['customerFirstName', 'serviceId', 'localDateTime'],
-        },
-      },
+      ...bookingTools,
       {
         name: 'find_appointment',
         description: 'Look up the caller’s upcoming appointments. Defaults to the number they are calling from. ALWAYS call this before saying anything about an existing booking — never answer from memory.',
@@ -1039,10 +1156,18 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
       }] : []),
     ];
 
-    const messages: { role: string; content: unknown }[] = [
-      ...history.map((h) => ({ role: h.role, content: h.content })),
-      { role: 'user', content: userText },
-    ];
+    // The model must see user/assistant turns alternating and starting with
+    // the caller. A trimmed or patched transcript can break that (a late
+    // answer, a hand-off note), and a malformed history is an API error —
+    // which the caller hears as "sorry, once more?" on every turn after.
+    const messages: { role: string; content: unknown }[] = [];
+    for (const h of [...history.map((x) => ({ role: x.role, content: x.content })), { role: 'user' as const, content: userText }]) {
+      if (!h.content) continue;
+      if (!messages.length && h.role !== 'user') continue;
+      const last = messages[messages.length - 1];
+      if (last && last.role === h.role) last.content = `${String(last.content)}\n${h.content}`;
+      else messages.push({ role: h.role, content: h.content });
+    }
 
     let apiRetried = false;
     for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
@@ -1078,7 +1203,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
         const results: unknown[] = [];
         for (const blk of blocks) {
           if (blk.type !== 'tool_use') continue;
-          const out = await this.runTool(tenantId, tz, callerPhone, blk.name || '', blk.input || {}, acc);
+          const out = await this.runTool(tenantId, tz, callerPhone, blk.name || '', blk.input || {}, acc, ctx);
           results.push({ type: 'tool_result', tool_use_id: blk.id, content: out });
         }
         messages.push({ role: 'user', content: results });
@@ -1096,8 +1221,11 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
   private async runTool(
     tenantId: string, tz: string, callerPhone: string, name: string, input: Record<string, unknown>,
     acc: { wantEnd: boolean; booked: boolean; appointmentId: string | null; langSwitch?: string | null; transfer?: boolean },
+    ctx: ToolCtx = { menu: [], staff: [], groupMode: false },
   ): Promise<string> {
     try {
+      if (name === 'check_availability') return await this.toolCheckAvailability(tenantId, tz, input, ctx);
+      if (name === 'create_booking' && ctx.groupMode) return await this.toolBookParty(tenantId, tz, callerPhone, input, acc, ctx);
       if (name === 'transfer_to_human') {
         acc.transfer = true;
         return 'TRANSFERRING. Say ONE short, warm sentence telling the caller you are connecting them to a team member now. Do not say goodbye and do not ask anything else.';
@@ -1114,16 +1242,20 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
           orderBy: { name: 'asc' }, take: 250,
         });
         if (!services.length) return 'No services are configured.';
+        // Same order and codes as the menu in the prompt.
+        const codeOf = (id: string) => { const i = ctx.menu.findIndex((m) => m.id === id); return i >= 0 ? serviceCode(i) : id; };
         // The "$" was hard-coded and the amount divided by 100, so the phone
         // assistant read a 200,000₫ service aloud as "two thousand dollars".
         // The take was also 40, which quietly hid the rest of a long menu —
         // the same cut that once made the bot say a service did not exist.
         const { locale: svcLocale } = await this.localeInfo(tenantId);
-        return JSON.stringify(services.map((s) => ({ id: s.id, name: s.name, price: formatMoneyShort(s.priceCents, s.currency, svcLocale) + ((s as { priceFrom?: boolean }).priceFrom ? ' and up' : ''), minutes: s.durationMinutes })));
+        return JSON.stringify(services.map((s) => ({ code: codeOf(s.id), name: s.name, price: formatMoneyShort(s.priceCents, s.currency, svcLocale) + ((s as { priceFrom?: boolean }).priceFrom ? ' and up' : ''), minutes: s.durationMinutes })));
       }
       if (name === 'create_booking') {
         const firstName = String(input.customerFirstName || '').trim();
-        const serviceId = String(input.serviceId || '').trim();
+        // A menu code ("S3") or, from an older prompt, the id itself.
+        const ref = String(input.serviceId || '').trim();
+        const serviceId = (ctx.menu.length ? resolveService(ref, ctx.menu)?.id : null) ?? ref;
         const local = String(input.localDateTime || '').trim();
         // Use a fully-formed spoken number if the caller gave one; otherwise fall
         // back to the verified caller ID. Both normalized to E.164 so Twilio can text it.
@@ -1204,12 +1336,244 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
 
       if (name === 'end_call') {
         acc.wantEnd = true;
-        return 'Give a warm, unhurried goodbye now, a friendly sentence or two: thank them by name if you know it, wish them a lovely day, and if they booked remind them the text confirmation is coming and that they can call back anytime.';
+        return 'Say ONE short, warm goodbye now: thank them for calling, use their name if you know it.';
       }
       return `Unknown tool ${name}.`;
     } catch (e) {
       return `Could not complete "${name}": ${String((e as Error).message || e).slice(0, 160)}. Tell the caller and offer another time or ask for the correct details.`;
     }
+  }
+
+  // ---- party booking (one person or a group) --------------------------------
+
+  /** "Saturday, October 10 at 2:00 PM" in the salon's own clock. */
+  private spoken(d: Date, tz: string, withDay = true): string {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, ...(withDay ? { weekday: 'long', month: 'long', day: 'numeric' } : {}), hour: 'numeric', minute: '2-digit',
+    }).format(d);
+  }
+
+  /**
+   * Who can work on one day, and what already fills their time: bookings
+   * assigned to them, hours outside their shift, and the bookings nobody is
+   * assigned to yet (each of those will take somebody's chair). Every read is
+   * this tenant's — the hotline never looks into another salon's book.
+   */
+  private async staffDay(tenantId: string, dateStr: string, tz: string): Promise<{ techs: Tech[]; unassigned: { start: Date; end: Date }[] }> {
+    const dayStart = wallTimeToUtc(dateStr, '00:00', tz);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 3_600_000);
+    const dow = new Date(`${dateStr}T12:00:00Z`).getUTCDay();
+    const holding = [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED, AppointmentStatus.ARRIVED];
+    const [staff, appts] = await Promise.all([
+      this.prisma.staffMember.findMany({
+        where: { tenantId, isActive: true, takesAppointments: true },
+        select: {
+          id: true, firstName: true,
+          staffServices: { select: { serviceId: true } },
+          workingHours: { where: { isActive: true }, select: { dayOfWeek: true, startTime: true, endTime: true } },
+        },
+      }),
+      this.prisma.appointment.findMany({
+        where: { tenantId, status: { in: holding }, startTime: { lt: dayEnd }, endTime: { gt: dayStart } },
+        select: { assignedStaffId: true, startTime: true, endTime: true },
+      }),
+    ]);
+    const techs: Tech[] = staff.map((st) => {
+      const busy: { start: Date; end: Date }[] = appts
+        .filter((a) => a.assignedStaffId === st.id)
+        .map((a) => ({ start: a.startTime, end: a.endTime }));
+      const hours = st.workingHours ?? [];
+      if (hours.length) {
+        // A tech with a schedule is off outside it; one without follows the salon's hours.
+        const spans = hours.filter((h) => h.dayOfWeek === dow)
+          .map((h) => ({ s: wallTimeToUtc(dateStr, h.startTime, tz), e: wallTimeToUtc(dateStr, h.endTime, tz) }))
+          .filter((x) => x.e.getTime() > x.s.getTime())
+          .sort((a, b) => a.s.getTime() - b.s.getTime());
+        let cursor = dayStart;
+        for (const sp of spans) {
+          if (sp.s.getTime() > cursor.getTime()) busy.push({ start: cursor, end: sp.s });
+          if (sp.e.getTime() > cursor.getTime()) cursor = sp.e;
+        }
+        if (cursor.getTime() < dayEnd.getTime()) busy.push({ start: cursor, end: dayEnd });
+      }
+      return { id: st.id, name: st.firstName, skills: st.staffServices.map((x) => x.serviceId), busy };
+    });
+    const unassigned = appts.filter((a) => !a.assignedStaffId).map((a) => ({ start: a.startTime, end: a.endTime }));
+    return { techs, unassigned };
+  }
+
+  /** The open start times one day has for this party: on the salon's grid, and every 5 minutes (to honour "2:10"). */
+  private async partySlots(tenantId: string, tz: string, dateStr: string, party: PartyMember[]): Promise<{ grid: Date[]; fine: Date[]; tooFar: number | null }> {
+    const rules = await this.settings.getBookingRules(tenantId);
+    const adv = Number(rules.maxAdvanceDays ?? 0);
+    if (adv > 0) {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+      const days = Math.round((Date.parse(`${dateStr}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+      if (days > adv) return { grid: [], fine: [], tooFar: adv };
+    }
+    const { techs, unassigned } = await this.staffDay(tenantId, dateStr, tz);
+    const dow = new Date(`${dateStr}T12:00:00Z`).getUTCDay();
+    const base = {
+      dateStr, tz, party, techs, unassigned,
+      day: (rules.businessHours ?? [])[dow] ?? null,
+      closedToday: (rules.daysOff ?? []).includes(dateStr),
+      now: new Date(Date.now() + Math.max(0, Number(rules.minLeadHours ?? 0)) * 3_600_000),
+    };
+    const grid = partyOpenTimes({ ...base, stepMinutes: Number((rules as { slotStepMinutes?: number }).slotStepMinutes ?? 15) || 15 });
+    const fine = partyOpenTimes({ ...base, stepMinutes: 5 });
+    return { grid, fine, tooFar: null };
+  }
+
+  /**
+   * The party the model described, checked against THIS salon's menu and
+   * team. Anything it cannot place exactly comes back as an instruction to
+   * ask the caller — never a silent guess.
+   */
+  private parseParty(input: Record<string, unknown>, ctx: ToolCtx, needNames: boolean): { members: Member[] } | { error: string } {
+    const raw = Array.isArray(input.people) ? (input.people as Record<string, unknown>[]) : [];
+    if (!raw.length) return { error: 'No people given. Ask who the booking is for and what service each person wants.' };
+    if (raw.length > 8) return { error: 'More than 8 people is a large group — offer to connect them to the salon, or take a message for a call back.' };
+    const members: Member[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      const p = raw[i] || {};
+      const refs = (Array.isArray(p.services) ? p.services : [p.services]).map((x) => String(x ?? '').trim()).filter(Boolean);
+      if (!refs.length) return { error: `Person ${i + 1} has no service yet. Ask what they would like.` };
+      const items: MenuItem[] = [];
+      for (const ref of refs) {
+        const hit = resolveService(ref, ctx.menu);
+        if (!hit) return { error: `"${ref}" is not one exact menu item. Use the menu codes (S1, S2…), call get_services, or ask the caller which one they mean.` };
+        if (!items.some((x) => x.id === hit.id)) items.push(hit);
+      }
+      const firstName = String(p.firstName ?? '').trim();
+      if (needNames && !firstName) return { error: `Person ${i + 1} has no name yet. Ask for the first name of each person.` };
+      let techId: string | null = null; let techName: string | null = null;
+      const wantTech = String(p.technician ?? '').trim();
+      if (wantTech && !/^(any|anyone|no preference)$/i.test(wantTech)) {
+        const key = wantTech.toLowerCase();
+        const hits = ctx.staff.filter((s) => s.firstName.toLowerCase() === key || `${s.firstName} ${s.lastName ?? ''}`.trim().toLowerCase() === key);
+        if (hits.length !== 1) return { error: `There is no single technician called "${wantTech}" here (team: ${ctx.staff.map((s) => s.firstName).join(', ') || 'none listed'}). Tell the caller and ask whether anyone else is fine.` };
+        techId = hits[0].id; techName = hits[0].firstName;
+      }
+      members.push({ firstName, items, techId, techName });
+    }
+    return { members };
+  }
+
+  private partyOf(members: Member[]): PartyMember[] {
+    return members.map((m) => ({ serviceIds: m.items.map((x) => x.id), minutes: m.items.reduce((s, x) => s + x.minutes, 0), techId: m.techId }));
+  }
+
+  /** What to tell the caller when their time does not work: the nearest that do, that day or the next open day. */
+  private async alternatives(tenantId: string, tz: string, dateStr: string, party: PartyMember[], wanted: Date | null, grid: Date[]): Promise<string> {
+    const near = nearestTimes(grid, wanted, 3);
+    if (near.length) return `Nearest open times that day: ${near.map((d) => this.spoken(d, tz, false)).join(', ')}. Offer these and let the caller choose.`;
+    for (let k = 1; k <= 7; k++) {
+      const next = new Date(Date.parse(`${dateStr}T12:00:00Z`) + k * 86_400_000).toISOString().slice(0, 10);
+      const s = await this.partySlots(tenantId, tz, next, party);
+      if (s.tooFar) break;
+      if (s.grid.length) return `Nothing is open that day for ${party.length === 1 ? 'this booking' : `${party.length} people at once`}. The next open day is ${new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long', month: 'long', day: 'numeric' }).format(s.grid[0])}: ${nearestTimes(s.grid, null, 3).map((d) => this.spoken(d, tz, false)).join(', ')}. Offer that.`;
+    }
+    return 'Nothing is open in the next week for this booking. Offer to take a message so the salon calls back, or to connect them to the front desk.';
+  }
+
+  private async toolCheckAvailability(tenantId: string, tz: string, input: Record<string, unknown>, ctx: ToolCtx): Promise<string> {
+    const dateStr = String(input.date ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return 'date must be YYYY-MM-DD in the salon’s local calendar.';
+    const parsed = this.parseParty(input, ctx, false);
+    if ('error' in parsed) return parsed.error;
+    const party = this.partyOf(parsed.members);
+    const time = String(input.time ?? '').trim();
+    if (time && !/^\d{1,2}:\d{2}$/.test(time)) return 'time must be HH:MM in 24-hour salon-local time.';
+    const wanted = time ? wallTimeToUtc(dateStr, time, tz) : null;
+    const s = await this.partySlots(tenantId, tz, dateStr, party);
+    if (s.tooFar) return `That day is too far ahead — the salon books up to ${s.tooFar} days in advance. Ask for an earlier day.`;
+    const who = party.length === 1 ? '' : ` for all ${party.length} people`;
+    if (wanted && s.fine.some((d) => d.getTime() === wanted.getTime())) {
+      return `OPEN: ${this.spoken(wanted, tz)} works${who}. Carry on: get anything still missing (names), then read it all back and confirm.`;
+    }
+    if (!wanted) {
+      if (!s.grid.length) return `NOTHING OPEN that day${who}. ${await this.alternatives(tenantId, tz, dateStr, party, null, s.grid)}`;
+      return `Open start times that day${who}: ${s.grid.slice(0, 6).map((d) => this.spoken(d, tz, false)).join(', ')}${s.grid.length > 6 ? ' (and later ones)' : ''}. Offer two or three, not the whole list.`;
+    }
+    return `NOT OPEN at ${this.spoken(wanted, tz)}${who}. ${await this.alternatives(tenantId, tz, dateStr, party, wanted, s.grid)}`;
+  }
+
+  /**
+   * Book a person or a whole party in one go. The book is checked FIRST —
+   * a time that cannot seat everybody books nobody, instead of booking the
+   * first two and telling the third to call back. Guests are written before
+   * the caller, so the one confirmation text (the caller's) only goes out
+   * once everyone is in; if one fails, the ones already written are cancelled.
+   */
+  private async toolBookParty(
+    tenantId: string, tz: string, callerPhone: string, input: Record<string, unknown>,
+    acc: { booked: boolean; appointmentId: string | null }, ctx: ToolCtx,
+  ): Promise<string> {
+    const parsed = this.parseParty(input, ctx, true);
+    if ('error' in parsed) return parsed.error;
+    const members = parsed.members;
+    const local = String(input.localDateTime ?? '').trim();
+    const lm = /^(\d{4}-\d{2}-\d{2})T(\d{1,2}):(\d{2})/.exec(local);
+    if (!lm) return 'localDateTime must look like 2026-07-10T14:00 (salon local). Ask for the day and time if you do not have them.';
+    const { dial } = await this.localeInfo(tenantId);
+    const phone = toE164(String(input.customerPhone || ''), dial) || toE164(callerPhone, dial);
+    if (!phone) return 'No phone number available; politely ask the caller for a good callback number.';
+    const dateStr = lm[1];
+    // The same wall-clock arithmetic the open-times grid uses, so "14:00" here is the very instant offered there.
+    const start = wallTimeToUtc(dateStr, `${lm[2]}:${lm[3]}`, tz);
+    if (start.getTime() < Date.now()) return 'That time has already passed. Ask for another time.';
+
+    // A repeated turn (a slow line, a caller saying "yes" twice) must not book twice.
+    const dupe = await this.prisma.appointment.findFirst({
+      where: { tenantId, source: 'hotline', startTime: start, createdAt: { gte: new Date(Date.now() - 60 * 60_000) }, customer: { phone } },
+      select: { id: true },
+    }).catch(() => null);
+    if (dupe) {
+      acc.booked = true; acc.appointmentId = dupe.id;
+      return 'ALREADY BOOKED a moment ago — do not book again. Tell the caller they are all set and a text confirmation is on the way, then ask if there is anything else.';
+    }
+
+    const party = this.partyOf(members);
+    const slots = await this.partySlots(tenantId, tz, dateStr, party);
+    if (slots.tooFar) return `That day is too far ahead — the salon books up to ${slots.tooFar} days in advance. Nothing was booked; ask for an earlier day.`;
+    if (!slots.fine.some((d) => d.getTime() === start.getTime())) {
+      return `NOT BOOKED — ${this.spoken(start, tz)} is no longer open${members.length > 1 ? ` for all ${members.length} people` : ''}. ${await this.alternatives(tenantId, tz, dateStr, party, start, slots.grid)}`;
+    }
+
+    const n = members.length;
+    const groupId = n > 1 ? `ph-${randomUUID()}` : undefined;
+    const lead = members[0];
+    const names = members.map((m) => m.firstName).join(', ');
+    const order = [...members.slice(1).map((m, i) => ({ m, i: i + 1 })), { m: lead, i: 0 }];
+    const made: string[] = [];
+    let leadId: string | null = null;
+    try {
+      for (const { m, i } of order) {
+        const isLead = i === 0;
+        const dto = {
+          serviceId: m.items[0].id,
+          ...(m.items.length > 1 ? { serviceIds: m.items.map((x) => x.id) } : {}),
+          startTime: start.toISOString(),
+          customerFirstName: m.firstName,
+          ...(isLead ? { customerPhone: phone } : {}),
+          ...(m.techId ? { preferredStaffId: m.techId } : {}),
+          ...(n > 1 ? { partySize: n, groupId, notes: isLead ? `Group of ${n} booked by phone: ${names}` : `Group of ${n} with ${lead.firstName} (booked by phone): ${names}` } : {}),
+        } as CreateBookingDto;
+        const b = await this.bookings.createForTenant(tenantId, dto, null, 'hotline', null, { autoAssign: true, groupGuest: !isLead });
+        const id = (b as { id?: string }).id;
+        if (id) made.push(id);
+        if (isLead) leadId = id ?? null;
+      }
+    } catch (e) {
+      if (made.length) {
+        await this.prisma.appointment.updateMany({ where: { tenantId, id: { in: made } }, data: { status: AppointmentStatus.CANCELLED } }).catch(() => undefined);
+      }
+      return `NOT BOOKED: ${String((e as Error).message || e).slice(0, 160)}. Nothing was kept. Tell the caller briefly and offer another time, or to connect them to the front desk.`;
+    }
+    acc.booked = true;
+    acc.appointmentId = leadId;
+    const who = members.map((m) => `${m.firstName} (${m.items.map((x) => x.name).join(' + ')}${m.techName ? ` with ${m.techName}` : ''})`).join(', ');
+    return `SUCCESS. Booked ${who} for ${this.spoken(start, tz)}. Thank them and confirm in ONE short sentence, saying a text confirmation is on its way to this number. Then ask if there is anything else — do not end the call yet.`;
   }
 
   // ---- shared prompt context (mirrors messenger) ---------------------------

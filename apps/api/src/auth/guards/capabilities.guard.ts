@@ -24,7 +24,7 @@ export class CapabilitiesGuard implements CanActivate {
     const user = context.switchToHttp().getRequest().user as AuthenticatedUser | undefined;
     if (!user) throw new ForbiddenException('Not authenticated');
 
-    const caps = capabilitiesFor(user.role, user.staffRole);
+    const caps = capabilitiesFor(user.role, user.staffRole, user.staffCaps);
     if (!required.some((c) => caps.includes(c))) {
       throw new ForbiddenException('You do not have permission for this feature');
     }

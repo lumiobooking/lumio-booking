@@ -9,7 +9,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { DateRangeBar, useDateRange } from '../../../components/ListFilter';
 import { useLang, tr } from '../../../lib/i18n';
-import { useIsMobile } from '../../../lib/responsive';
+import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow } from '../../../components/MobileCard';
 import { PayrollRun } from './PayrollRun';
 import { NavIcon } from '../../../components/NavIcon';
@@ -109,7 +109,8 @@ function Performance() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const isMobile = useIsMobile();
+  // Cards up to tablet width — an iPad gets every field, not a squeezed table.
+  const cardList = useIsMobile(CARD_LIST_MAX);
   const range = useDateRange('month');
   const [data, setData] = useState<Perf | null>(null);
   const [loading, setLoading] = useState(true);
@@ -184,7 +185,7 @@ function Performance() {
             <Kpi label={t('pf.kReviews')} value={String(data.totals.reviewCount)} accent="#f59e0b" />
           </div>
 
-          {rows.length === 0 ? <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('pf.empty')}</p> : isMobile ? (
+          {rows.length === 0 ? <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('pf.empty')}</p> : cardList ? (
             <MList>
               {rows.map((r, i) => (
                 <MCard key={r.staffId}>

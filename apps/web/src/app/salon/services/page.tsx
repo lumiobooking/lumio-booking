@@ -7,7 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { compressImageToFit } from '../../../lib/image';
 import { ui, toMinorUnits, fromMinorUnits, priceInputStep } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
-import { useIsMobile } from '../../../lib/responsive';
+import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { useRowDrag } from '../../../lib/useRowDrag';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { ServiceImport } from '../../../components/ServiceImport';
@@ -51,6 +51,8 @@ function ServicesInner() {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const isMobile = useIsMobile();
+  // Cards up to tablet width — an iPad gets every field, not a squeezed table.
+  const cardList = useIsMobile(CARD_LIST_MAX);
   const [q, setQ] = useState('');
   // Arrived from the header search (?q=…): start with that search filled in.
   useEffect(() => { const v = new URLSearchParams(window.location.search).get('q'); if (v) setQ(v); }, []);
@@ -272,7 +274,7 @@ function ServicesInner() {
 
       {loading ? (
         <p style={{ color: 'var(--c94a3b8)' }}>{t('sv.loading')}</p>
-      ) : isMobile ? (
+      ) : cardList ? (
         <div {...drag.containerProps}>
           <DragHint saved={drag.saved} lang={lang} />
           <MList>

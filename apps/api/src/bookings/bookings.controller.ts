@@ -152,7 +152,9 @@ export class BookingsController {
   }
 
   // POST /api/bookings/:id/move { startTime, staffId? } — the calendar drag.
-  @Roles(UserRole.SALON_ADMIN)
+  // The front desk moves appointments all day; @Caps('bookings') still keeps
+  // technicians (no salon screens) out.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
   @Caps('bookings')
   @Post(':id/move')
   @HttpCode(200)
@@ -164,7 +166,9 @@ export class BookingsController {
     return this.bookings.move(user, id, dto.startTime, dto.staffId);
   }
 
-  @Roles(UserRole.SALON_ADMIN)
+  // The front desk moves appointments all day; @Caps('bookings') still keeps
+  // technicians (no salon screens) out.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
   @Caps('bookings')
   @Post(':id/reschedule')
   @HttpCode(200)

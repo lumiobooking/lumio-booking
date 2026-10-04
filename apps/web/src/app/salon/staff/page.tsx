@@ -7,11 +7,12 @@ import { compressImageToFit } from '../../../lib/image';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
-import { useIsMobile } from '../../../lib/responsive';
+import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { PayFields, payBody, payFormFrom, paySummary, type PayForm } from './PayFields';
+import { AccessBlock, LoginSection, PermissionChecklist, RoleMatrix, useAccessCatalog } from './AccessPanel';
 
 interface Service {
   id: string;
@@ -47,7 +48,9 @@ interface StaffMember {
   tipHandle?: string | null;
   staffServices: { serviceId: string }[];
   workingHours: { id: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }[];
-  user: { id: string; email: string } | null;
+  user: { id: string; email: string; isActive?: boolean; lastLoginAt?: string | null } | null;
+  /** The owner's own pick of screens; null = the role's default. */
+  permissions?: string[] | null;
   createdAt?: string;
 }
 
@@ -225,10 +228,14 @@ export default function StaffPage() {
 }
 
 function StaffInner() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  // Only the owner adds, edits, deletes and manages logins. A manager given
+  // "Staff" sees the team (read-only) — the server enforces the same.
+  const canEdit = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN';
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const isMobile = useIsMobile();
+  // Cards up to tablet width — an iPad gets every field, not a squeezed table.
+  const cardList = useIsMobile(CARD_LIST_MAX);
   const [q, setQ] = useState('');
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -237,6 +244,8 @@ function StaffInner() {
   const [showForm, setShowForm] = useState(false);
   const [editFor, setEditFor] = useState<string | null>(null);
   const [loginFor, setLoginFor] = useState<string | null>(null);
+  const [showRoles, setShowRoles] = useState(false);
+  const rolePresets = useAccessCatalog(token);
   const [loginMode, setLoginMode] = useState<'create' | 'reset'>('create');
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [createdMsg, setCreatedMsg] = useState<string | null>(null);
@@ -333,10 +342,22 @@ function StaffInner() {
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <h2 style={{ fontSize: 18, margin: 0 }}>{t('st.title')}</h2>
-        <button onClick={() => setShowForm((s) => !s)} style={ui.primaryBtn}>
-          {showForm ? t('st.close') : t('st.newStaff')}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={() => setShowRoles((v) => !v)} style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)' }}>
+            {lang === 'vi' ? (showRoles ? 'Ẩn vai trò & quyền' : '🔐 Vai trò & quyền') : (showRoles ? 'Hide roles & access' : '🔐 Roles & access')}
+          </button>
+          {canEdit && (
+            <button onClick={() => setShowForm((s) => !s)} style={ui.primaryBtn}>
+              {showForm ? t('st.close') : t('st.newStaff')}
+            </button>
+          )}
+        </div>
       </div>
+      {showRoles && (
+        <div style={{ ...ui.card, marginBottom: 16 }}>
+          <RoleMatrix vi={lang === 'vi'} presets={rolePresets} />
+        </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <SearchBox value={q} onChange={setQ} placeholder={t('st.searchPh')} />
@@ -360,7 +381,7 @@ function StaffInner() {
 
       {loading ? (
         <p style={{ color: 'var(--c94a3b8)' }}>{t('st.loading')}</p>
-      ) : isMobile ? (
+      ) : cardList ? (
         <MList>
           {visible.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('st.empty')}</p>}
           {pg.paged.map((m) => (
@@ -382,16 +403,16 @@ function StaffInner() {
                   {m.user ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ color: 'var(--ink-good)' }}>🔑 {m.user.email}</span>
-                      <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? 'var(--c475569)' : 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}</button>
+                      {canEdit && (<button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? 'var(--c475569)' : 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}</button>)}
                     </span>
                   ) : (
-                    <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '5px 10px', fontSize: 12, background: loginFor === m.id ? 'var(--c475569)' : '#6366f1', color: loginFor === m.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{loginFor === m.id ? t('st.cancel') : t('st.createLogin')}</button>
+                    (canEdit ? <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '5px 10px', fontSize: 12, background: loginFor === m.id ? 'var(--c475569)' : '#6366f1', color: loginFor === m.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{loginFor === m.id ? t('st.cancel') : t('st.createLogin')}</button> : <span style={{ color: 'var(--c94a3b8)' }}>—</span>)
                   )}
                 </MRow>
-                <MActions>
+                {canEdit && <MActions>
                   <button onClick={() => { setEditFor(editFor === m.id ? null : m.id); setLoginFor(null); }} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? 'var(--c475569)' : '#6366f1', color: editFor === m.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>{editFor === m.id ? t('st.close') : t('st.edit')}</button>
                   <button onClick={() => remove(m.id)} style={ui.dangerBtn}>{t('st.delete')}</button>
-                </MActions>
+                </MActions>}
               </MCard>
               {editFor === m.id && <div style={{ padding: 12, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10 }}><StaffEditPanel token={token!} member={m} services={services} onSaved={load} defaultCheckPercent={defaultCheck} /></div>}
               {loginFor === m.id && (
@@ -416,7 +437,7 @@ function StaffInner() {
         </MList>
       ) : (
         <div>
-          <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/staff/${id}`, { method: 'DELETE', token }), load)} />
+          {canEdit && <BulkBar count={bulk.count} ids={bulk.sel} onClear={bulk.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/staff/${id}`, { method: 'DELETE', token }), load)} />}
           <div style={{ border: '1px solid var(--c334155)', borderRadius: 12, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
@@ -464,23 +485,23 @@ function StaffInner() {
                     {m.user ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <span style={{ color: 'var(--ink-good)', fontSize: 13 }}>🔑 {m.user.email}</span>
-                        <button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? 'var(--c475569)' : 'var(--c334155)', color: 'var(--ce2e8f0)' }}>
+                        {canEdit && (<button onClick={() => openReset(m)} style={{ ...ui.primaryBtn, padding: '4px 9px', fontSize: 11, background: loginFor === m.id && loginMode === 'reset' ? 'var(--c475569)' : 'var(--c334155)', color: 'var(--ce2e8f0)' }}>
                           {loginFor === m.id && loginMode === 'reset' ? t('st.cancel') : t('st.resetPw')}
-                        </button>
+                        </button>)}
                       </div>
                     ) : (
-                      <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: loginFor === m.id ? 'var(--c475569)' : '#6366f1', color: loginFor === m.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>
+                      (canEdit ? <button onClick={() => openLogin(m)} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: loginFor === m.id ? 'var(--c475569)' : '#6366f1', color: loginFor === m.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}>
                         {loginFor === m.id ? t('st.cancel') : t('st.createLogin')}
-                      </button>
+                      </button> : <span style={{ color: 'var(--c94a3b8)' }}>—</span>)
                     )}
                   </td>
                   <td style={ui.td}>
-                    <span style={{ color: m.isActive ? 'var(--ink-good)' : 'var(--c94a3b8)' }}>
+                    <span style={{ color: m.isActive ? 'var(--ink-good)' : 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>
                       {m.isActive ? t('st.active') : t('st.inactive')}
                     </span>
                   </td>
                   <td style={ui.td}>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    {canEdit && <div style={{ display: 'flex', gap: 6 }}>
                       <button
                         onClick={() => { setEditFor(editFor === m.id ? null : m.id); setLoginFor(null); }}
                         style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, background: editFor === m.id ? 'var(--c475569)' : '#6366f1', color: editFor === m.id ? 'var(--ce2e8f0)' : ui.primaryBtn.color }}
@@ -490,7 +511,7 @@ function StaffInner() {
                       <button onClick={() => remove(m.id)} style={ui.dangerBtn}>
                         {t('st.delete')}
                       </button>
-                    </div>
+                    </div>}
                   </td>
                 </tr>
                 {editFor === m.id && (
@@ -585,7 +606,7 @@ function StaffEditPanel({
   const vi = lang === 'vi';
   const L = (v: string, e: string) => (vi ? v : e);
   const [pay, setPay] = useState<PayForm>(() => payFormFrom(member));
-  const [tab, setTab] = useState<'profile' | 'schedule' | 'pay' | 'tips'>('profile');
+  const [tab, setTab] = useState<'profile' | 'access' | 'schedule' | 'pay' | 'tips'>('profile');
   const [form, setForm] = useState({
     firstName: member.firstName,
     lastName: member.lastName ?? '',
@@ -600,6 +621,11 @@ function StaffEditPanel({
     tipHandle: member.tipHandle ?? '',
   });
   const [skillIds, setSkillIds] = useState<string[]>(member.staffServices.map((s) => s.serviceId));
+  // The owner's own pick of screens for this person; null = the role's default.
+  const [perms, setPerms] = useState<string[] | null>(Array.isArray(member.permissions) ? member.permissions : null);
+  const presets = useAccessCatalog(token);
+  const accessChanged = form.staffRole !== (member.staffRole ?? 'TECHNICIAN')
+    || JSON.stringify(perms) !== JSON.stringify(Array.isArray(member.permissions) ? member.permissions : null);
   const [hours, setHours] = useState<DayRow[]>(
     DAYS.map((d) => {
       const wins = member.workingHours
@@ -662,6 +688,7 @@ function StaffEditPanel({
           isActive: form.isActive,
           ...payBody(pay),
           staffRole: form.staffRole,
+          permissions: perms,
           takesAppointments: form.takesAppointments,
           bookingPriority: Math.max(0, parseInt(form.bookingPriority, 10) || 0),
           tipQrUrl: form.tipQrUrl || null,
@@ -687,6 +714,7 @@ function StaffEditPanel({
 
   const tabs: { id: typeof tab; label: string }[] = [
     { id: 'profile', label: L('Hồ sơ', 'Profile') },
+    { id: 'access', label: L('Tài khoản & quyền', 'Account & access') },
     { id: 'schedule', label: L('Lịch làm & dịch vụ', 'Schedule & services') },
     { id: 'pay', label: L('Lương', 'Pay') },
     { id: 'tips', label: L('Tip trực tiếp', 'Direct tips') },
@@ -736,11 +764,27 @@ function StaffEditPanel({
             {field(t('st.fPhone'), <input style={ui.input} type="tel" value={form.phone} onChange={(e) => up('phone', e.target.value)} />)}
             {field(t('st.fEmail'), <input style={ui.input} type="email" value={form.email} onChange={(e) => up('email', e.target.value)} />)}
           </div>
-          <RolePicker
-            role={form.staffRole}
-            takesAppointments={form.takesAppointments}
-            onChange={(staffRole, takesAppointments) => { up('staffRole', staffRole); up('takesAppointments', takesAppointments); }}
-          />
+        </div>
+      )}
+
+      {tab === 'access' && (
+        <div style={section}>
+          <AccessBlock title={L('Tài khoản đăng nhập', 'Sign-in account')}>
+            <LoginSection vi={vi} token={token} staffId={member.id} defaultEmail={member.email ?? ''} login={member.user} onChanged={onSaved} />
+          </AccessBlock>
+          <AccessBlock title={L('Vai trò & quyền', 'Role & access')}>
+            <RolePicker
+              role={form.staffRole}
+              takesAppointments={form.takesAppointments}
+              onChange={(staffRole, takesAppointments) => { up('staffRole', staffRole); up('takesAppointments', takesAppointments); setPerms(null); }}
+            />
+            <PermissionChecklist vi={vi} role={form.staffRole} presets={presets} custom={perms} onChange={(v) => { setPerms(v); setSaved(false); }} />
+            {accessChanged && member.user && (
+              <div style={{ fontSize: 12.5, color: 'var(--ink-warn)', lineHeight: 1.45 }}>
+                {L('Khi lưu, người này sẽ được đăng xuất để quyền mới áp dụng ngay. Họ chỉ cần đăng nhập lại.', 'When you save, this person is signed out so the new access applies at once. They just sign in again.')}
+              </div>
+            )}
+          </AccessBlock>
         </div>
       )}
 
@@ -1171,7 +1215,7 @@ function SkillsCell({ m, total, serviceName, t }: {
   if (n === 0) {
     // The one state that costs bookings — loud on purpose.
     return (
-      <span style={{ display: 'inline-block', background: 'rgba(239,68,68,0.12)', border: '1px solid var(--c7f1d1d)', color: 'var(--cfca5a5)', borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 600 }}>
+      <span style={{ display: 'inline-block', background: 'rgba(239,68,68,0.12)', border: '1px solid var(--c7f1d1d)', color: 'var(--cfca5a5)', borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
         ⚠ {t('st.covNone')}
       </span>
     );
@@ -1186,6 +1230,7 @@ function SkillsCell({ m, total, serviceName, t }: {
           border: `1px solid ${all ? 'var(--c166534)' : 'var(--c334155)'}`,
           color: all ? 'var(--c86efac)' : 'var(--ccbd5e1)',
           borderRadius: 999, padding: '3px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          whiteSpace: 'nowrap',
         }}
       >
         {all ? t('st.covAll') : `${n} / ${total} ${t('st.covOf')}`} {open ? '▴' : '▾'}

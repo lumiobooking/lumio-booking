@@ -1,4 +1,5 @@
-import { IsArray, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 
 /** Register → server: the latest customer-facing display state (+ optional
  *  server-only pay ticket used to attribute an after-payment QR tip). */
@@ -17,6 +18,12 @@ export class DisplayTipDto {
   @IsInt() @Min(1) amountCents!: number;
 }
 
+/** One more person in a self check-in party: a name (optional) and their own services. */
+export class CheckInGuestDto {
+  @IsOptional() @IsString() @MaxLength(80) firstName?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(12) @IsString({ each: true }) serviceIds?: string[];
+}
+
 /**
  * Self check-in sent from the paired iPad. Everything is optional except a
  * name — a customer standing at the door should never be blocked by a form.
@@ -30,4 +37,6 @@ export class SelfCheckInDto {
   @IsOptional() @IsArray() @IsString({ each: true }) serviceIds?: string[];
   @IsOptional() @IsInt() @Min(1) @Max(20) partySize?: number;
   @IsOptional() @IsString() @MaxLength(300) note?: string;
+  /** The others in the party, each with their own services → their own ticket. */
+  @IsOptional() @IsArray() @ArrayMaxSize(9) @ValidateNested({ each: true }) @Type(() => CheckInGuestDto) guests?: CheckInGuestDto[];
 }

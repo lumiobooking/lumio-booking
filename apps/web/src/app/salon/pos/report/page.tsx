@@ -7,7 +7,7 @@ import { apiFetch } from '../../../../lib/api';
 import { ui, formatPrice } from '../../../../lib/ui';
 import { DateRangeBar, useDateRange } from '../../../../components/ListFilter';
 import { useLang, tr } from '../../../../lib/i18n';
-import { useIsMobile } from '../../../../lib/responsive';
+import { useIsMobile, CARD_LIST_MAX } from '../../../../lib/responsive';
 import { MList, MCard, MHead, MRow } from '../../../../components/MobileCard';
 
 interface StaffRow {
@@ -31,7 +31,8 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const isMobile = useIsMobile();
+  // Cards up to tablet width — an iPad gets every field, not a squeezed table.
+  const cardList = useIsMobile(CARD_LIST_MAX);
   const range = useDateRange('30d');
   const [data, setData] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,7 +74,7 @@ function Inner() {
             <Kpi label={t('sr.kpiOrders')} value={String(data.totals.orders)} accent="#3b82f6" />
           </div>
 
-          {isMobile ? (
+          {cardList ? (
             <MList>
               {data.staff.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('sr.empty')}</p>}
               {data.staff.map((r) => (

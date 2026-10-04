@@ -673,6 +673,10 @@ model StaffMember {
 
   // Feature-permission role for this staff member's login (if they have one).
   staffRole StaffRole @default(TECHNICIAN)
+  // The owner's own pick of what this person may open, when it differs from
+  // the role's preset: a JSON array of capability ids. Null = the role's preset.
+  // Never wider than a manager's (billing, integrations, settings stay the owner's).
+  permissions Json?
 
   // Whether this person is a bookable technician: shows in the booking page,
   // calendar, walk-in assignment and the auto-assign engine. Receptionists and

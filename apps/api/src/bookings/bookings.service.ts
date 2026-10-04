@@ -455,7 +455,15 @@ export class BookingsService {
      * later — so every hosted booking told the customer "To be assigned" even
      * though a tech had been chosen by the time they opened the mail.
      */
-    opts?: { autoAssign?: boolean },
+    /**
+     * `groupGuest` — SERVER-SIDE CALLERS ONLY, never read from a request body.
+     * The second, third… person in a group the hotline books: "me and my two
+     * friends" gives one phone number and three first names. The guests carry
+     * no contact of their own (their own number would merge them into the
+     * caller's customer record), so the phone rule below is waived for them —
+     * the person who called is the group's contact.
+     */
+    opts?: { autoAssign?: boolean; groupGuest?: boolean },
   ) {
     // Contact rules. Online (public) customer bookings MUST include a phone number
     // — it is the salon's primary way to reach the client and it cuts down on spam
@@ -465,7 +473,7 @@ export class BookingsService {
     const contactEmail = dto.customerEmail?.trim();
     const contactPhone = dto.customerPhone?.trim();
     const isPublicBooking = actorUserId === null;
-    if (isPublicBooking && !contactPhone) {
+    if (isPublicBooking && !contactPhone && !opts?.groupGuest) {
       throw new BadRequestException('A phone number is required to book.');
     }
     if (contactPhone && !isValidPhoneNumber(contactPhone)) {
@@ -481,7 +489,11 @@ export class BookingsService {
       const recent = await this.prisma.appointment.count({
         where: { tenantId, createdAt: { gte: since }, customer: { phone: contactPhone } },
       });
-      if (recent >= 6) {
+      // A phone call is not a scripted form: the number is the carrier's
+      // caller ID and every minute is metered. A family booking twice in a day
+      // by phone used to hit the web form's cap and the assistant could only
+      // say "please call the salon" — to someone already calling the salon.
+      if (recent >= (source === 'hotline' ? 20 : 6)) {
         throw new BadRequestException('You have reached the maximum number of online bookings for today. Please call the salon to book again.');
       }
     }

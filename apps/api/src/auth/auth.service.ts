@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { hashSecret, verifySecret } from './password.util';
 import { canBootstrap, passwordProblem } from './bootstrap.guard';
 import { JwtPayload } from './strategies/jwt.strategy';
-import { capabilitiesFor } from './capabilities';
+import { capabilitiesFor, cleanStaffCaps } from './capabilities';
 
 @Injectable()
 export class AuthService {
@@ -109,9 +109,12 @@ export class AuthService {
 
     // A STAFF login carries its feature-permission sub-role (cashier/tech/manager).
     let staffRole: StaffRole | null = null;
+    // …and, when the owner adjusted this person, their own list of screens.
+    let staffCaps: string[] | undefined;
     if (user.role === UserRole.STAFF) {
-      const sm = await this.prisma.staffMember.findFirst({ where: { userId: user.id }, select: { staffRole: true } });
+      const sm = await this.prisma.staffMember.findFirst({ where: { userId: user.id }, select: { staffRole: true, permissions: true } as never }) as { staffRole: StaffRole | null; permissions?: unknown } | null;
       staffRole = sm?.staffRole ?? null;
+      staffCaps = cleanStaffCaps(sm?.permissions) ?? undefined;
     }
 
     const payload: JwtPayload = {
@@ -120,6 +123,7 @@ export class AuthService {
       role: user.role,
       tenantId: user.tenantId,
       staffRole,
+      ...(staffCaps ? { staffCaps } : {}),
     };
 
     const accessToken = await this.jwt.signAsync(payload, {
@@ -137,7 +141,7 @@ export class AuthService {
         firstName: user.firstName,
         lastName: user.lastName,
         staffRole,
-        capabilities: capabilitiesFor(user.role, staffRole),
+        capabilities: capabilitiesFor(user.role, staffRole, staffCaps),
       },
     };
   }

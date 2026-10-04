@@ -17,13 +17,15 @@ import { UpdateStaffDto } from './dto/update-staff.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { CreateStaffLoginDto } from './dto/create-staff-login.dto';
 import { ResetStaffPasswordDto } from './dto/reset-staff-password.dto';
+import { UpdateStaffLoginDto } from './dto/update-staff-login.dto';
+import { cleanStaffCaps } from '../auth/capabilities';
 
 const STAFF_INCLUDE = {
   staffServices: { select: { serviceId: true } },
   workingHours: {
     select: { id: true, dayOfWeek: true, startTime: true, endTime: true, isActive: true },
   },
-  user: { select: { id: true, email: true } },
+  user: { select: { id: true, email: true, isActive: true, lastLoginAt: true } },
 };
 
 /**
@@ -338,7 +340,15 @@ export class StaffService {
 
   async update(user: AuthenticatedUser, id: string, dto: UpdateStaffDto) {
     const tenantId = this.tenantId(user);
-    await this.getById(user, id); // tenant ownership / 404
+    const before = await this.getById(user, id) as unknown as { staffRole: StaffRole; permissions?: unknown; userId: string | null; firstName: string; lastName: string | null }; // tenant ownership / 404
+
+    // Per-person screens: undefined = untouched, null = back to the role's
+    // preset, a list = exactly those (owner-only areas dropped).
+    const perms = dto.permissions === undefined ? undefined
+      : dto.permissions === null ? null
+        : cleanStaffCaps(dto.permissions);
+    const accessChanged = (dto.staffRole !== undefined && dto.staffRole !== before.staffRole)
+      || (perms !== undefined && JSON.stringify(perms) !== JSON.stringify(cleanStaffCaps(before.permissions)));
 
     if (dto.serviceIds) {
       await this.assertServicesBelongToTenant(tenantId, dto.serviceIds);
@@ -361,10 +371,29 @@ export class StaffService {
           baseCents: dto.baseCents,
           ...payFields(dto),
           staffRole: dto.staffRole,
+          ...(perms === undefined ? {} : { permissions: perms === null ? Prisma.DbNull : perms }),
           takesAppointments: dto.takesAppointments,
           bookingPriority: dto.bookingPriority,
         } as never,
       });
+
+      // The login carries the person's name too (the header, the audit trail):
+      // a rename here used to leave the account saying the old name.
+      if (before.userId && (dto.firstName !== undefined || dto.lastName !== undefined)) {
+        await tx.user.updateMany({
+          where: { id: before.userId, tenantId },
+          data: {
+            ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
+            ...(dto.lastName !== undefined ? { lastName: dto.lastName || null } : {}),
+          },
+        });
+      }
+      // What a person may open is frozen into their session at sign-in. When
+      // the owner changes it, the session ends, so a removed permission is
+      // removed NOW — not whenever they next happen to sign out.
+      if (before.userId && accessChanged) {
+        await tx.user.updateMany({ where: { id: before.userId, tenantId }, data: { passwordChangedAt: new Date() } });
+      }
 
       // Replace skills when provided.
       if (dto.serviceIds) {
@@ -391,6 +420,16 @@ export class StaffService {
       resourceId: id,
       metadata: { fields: Object.keys(dto) },
     });
+    if (accessChanged) {
+      await this.audit.log({
+        tenantId,
+        userId: user.userId,
+        action: 'staff.access_changed',
+        resourceType: 'staff_member',
+        resourceId: id,
+        metadata: { staffRole: dto.staffRole ?? before.staffRole, permissions: perms === undefined ? 'unchanged' : perms ?? 'role preset', signedOut: Boolean(before.userId) },
+      });
+    }
 
     return this.getById(user, id);
   }
@@ -502,6 +541,45 @@ export class StaffService {
     });
 
     return { staffMemberId: staffId, email: account.email, reset: true };
+  }
+
+  /**
+   * Change an EXISTING login: its sign-in email, and whether it may sign in at
+   * all. The owner used to be stuck with whatever address was typed the day
+   * the login was made — a typo meant deleting the person and starting again.
+   * Scoped to this tenant twice over: this salon's staff member, and a user
+   * row that belongs to this salon.
+   */
+  async updateLogin(user: AuthenticatedUser, staffId: string, dto: UpdateStaffLoginDto) {
+    const tenantId = this.tenantId(user);
+    const staff = await this.prisma.staffMember.findFirst({ where: { id: staffId, tenantId }, select: { id: true, userId: true } });
+    if (!staff) throw new NotFoundException('Staff member not found');
+    if (!staff.userId) throw new BadRequestException('This staff member has no login yet — create one first.');
+    const account = await this.prisma.user.findFirst({ where: { id: staff.userId, tenantId }, select: { id: true, email: true, isActive: true } });
+    if (!account) throw new NotFoundException('Login account not found');
+
+    const data: { email?: string; isActive?: boolean } = {};
+    if (dto.email !== undefined) {
+      const email = dto.email.trim().toLowerCase();
+      if (email !== account.email) {
+        const taken = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
+        if (taken && taken.id !== account.id) throw new ConflictException('A user with this email already exists');
+        data.email = email;
+      }
+    }
+    if (dto.active !== undefined && dto.active !== account.isActive) data.isActive = dto.active;
+    if (!Object.keys(data).length) return { staffMemberId: staffId, email: account.email, active: account.isActive, changed: false };
+
+    const updated = await this.prisma.user.update({ where: { id: account.id }, data, select: { email: true, isActive: true } });
+    await this.audit.log({
+      tenantId,
+      userId: user.userId,
+      action: 'staff.login_updated',
+      resourceType: 'staff_member',
+      resourceId: staffId,
+      metadata: { ...(data.email ? { from: account.email, to: data.email } : {}), ...(data.isActive !== undefined ? { active: data.isActive } : {}) },
+    });
+    return { staffMemberId: staffId, email: updated.email, active: updated.isActive, changed: true };
   }
 
   private async createWorkingHours(

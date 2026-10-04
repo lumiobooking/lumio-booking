@@ -8,7 +8,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr, Lang } from '../../../lib/i18n';
-import { useIsMobile } from '../../../lib/responsive';
+import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { uiLocale } from '../../../lib/datetime';
@@ -26,7 +26,8 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const isMobile = useIsMobile();
+  // Cards up to tablet width — an iPad gets every field, not a squeezed table.
+  const cardList = useIsMobile(CARD_LIST_MAX);
   const [settings, setSettings] = useState<ReviewSettings | null>(null);
   const [slug, setSlug] = useState('');
   const [board, setBoard] = useState<LeaderRow[]>([]);
@@ -118,7 +119,7 @@ function Inner() {
           {ym !== currentYm() && <button onClick={() => setYm(currentYm())} style={{ ...miniBtn, marginLeft: 4 }}>{t('rv.thisMonth')}</button>}
         </div>
       </div>
-      {isMobile ? (
+      {cardList ? (
         <MList>
           {board.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('rv.noStaff')}</p>}
           {board.map((s, i) => (

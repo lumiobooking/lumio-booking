@@ -26,6 +26,8 @@ export const DASHBOARD: NavItem = { href: '/salon', label: 'Dashboard', icon: 'h
 // now lives inside Billing & plan, so it is no longer a separate nav item.
 export const GROUPS: NavGroup[] = [
   { id: 'ops', label: 'Operations', items: [
+    // The receptionist's home: arriving, waiting, in a chair, ready to pay.
+    { href: '/salon/front-desk', label: 'Front desk', icon: 'desk' },
     { href: '/salon/calendar', label: 'Calendar', icon: 'calendarDays' },
     { href: '/salon/bookings', label: 'Bookings', icon: 'calendarCheck' },
     // Front-desk check-in board: seat a customer, run their ticket, hand it to
@@ -124,7 +126,7 @@ export interface Section {
  */
 export const SECTIONS: Section[] = [
   { id: 'ops', vi: 'Vận hành', en: 'Operations', viDesc: 'Điều hành tiệm hằng ngày', enDesc: 'Run the floor day to day', icon: 'store',
-    hrefs: ['/salon', '/salon/calendar', '/salon/bookings', '/salon/walkins', '/salon/pos', '/salon/orders', '/salon/waitlist', '/salon/activity', '/salon/tables', '/salon/menu'],
+    hrefs: ['/salon', '/salon/front-desk', '/salon/calendar', '/salon/bookings', '/salon/walkins', '/salon/pos', '/salon/orders', '/salon/waitlist', '/salon/activity', '/salon/tables', '/salon/menu'],
     lessUsed: ['/salon/waitlist', '/salon/activity'] },
   { id: 'clients', vi: 'Khách hàng', en: 'Clients', viDesc: 'Khách, tin nhắn, góp ý', enDesc: 'Clients, messages, feedback', icon: 'users',
     hrefs: ['/salon/customers', '/salon/inbox', '/salon/feedback', '/salon/reviews', '/salon/gift-cards'] },

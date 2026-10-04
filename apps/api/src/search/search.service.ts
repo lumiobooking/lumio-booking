@@ -26,7 +26,7 @@ const EMPTY: SearchResults = { customers: [], appointments: [], services: [], or
 /** What this caller may see — the same answer the guards give. */
 export function searchCaps(user: AuthenticatedUser): Set<Capability> {
   if (user.supportSession) return new Set(capsFor(levelOf(user.supportLevel), user.supportCaps));
-  return new Set(capabilitiesFor(user.role, user.staffRole));
+  return new Set(capabilitiesFor(user.role, user.staffRole, user.staffCaps));
 }
 
 @Injectable()

@@ -14,6 +14,8 @@ export interface JwtPayload {
   role: UserRole;
   tenantId: string | null;
   staffRole?: StaffRole | null; // STAFF sub-role (optional; absent on older tokens)
+  /** STAFF: the owner's per-person list of screens, when set (absent = the role's preset). */
+  staffCaps?: string[];
   supportSession?: boolean;
   /** SUPPORT sessions: the level baked in when the employee entered the salon. */
   supportLevel?: string; // short-lived per-salon session for Lumio SUPPORT staff
@@ -66,6 +68,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: payload.role,
       tenantId: payload.tenantId ?? null,
       staffRole: payload.staffRole ?? null,
+      staffCaps: Array.isArray(payload.staffCaps) ? payload.staffCaps.map((c) => String(c)) : null,
       supportSession: payload.supportSession === true,
     // Carried through verbatim. The level is decided once, at enter-salon time,
     // from the employee's own row — so changing somebody's level takes effect

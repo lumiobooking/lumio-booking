@@ -345,6 +345,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'wi.legWaiting': { en: 'Waiting for a technician', vi: 'Chờ thợ' },
   'wi.legWaitingShort': { en: 'waiting', vi: 'chờ thợ' },
   'wi.legServing': { en: 'In progress', vi: 'Đang làm' },
+  'wi.overdue': { en: 'Over', vi: 'Quá giờ' },
+  'wi.overdueHint': { en: 'Past the time the services add up to. At 45 minutes over, the visit moves to Waiting to pay by itself so the technician is free; the bill stays open.', vi: 'Khách đã quá thời gian của các dịch vụ. Quá 45 phút, hệ thống tự chuyển sang Chờ thanh toán để thợ rảnh; hoá đơn vẫn còn để tính tiền.' },
   'wi.legDone': { en: 'Done', vi: 'Xong' },
   'wi.legAuto': { en: 'Auto — whoever is up next', vi: 'Tự động — thợ tới lượt' },
   'wi.legStartNow': { en: 'Start now', vi: 'Bắt đầu ngay' },
@@ -483,6 +485,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'bk.guestLabel': { en: 'Guest', vi: 'Khách đi cùng' },
   'bk.groupNote': { en: 'Group booking', vi: 'Đặt theo nhóm' },
   'bk.staffFree': { en: 'free at that time', vi: 'thợ trống giờ đó' },
+  'bk.missed': { en: 'Not arrived', vi: 'Chưa đến' },
   'bk.staffShort': {
     en: 'Only {free} staff free at that time — you are booking {n} people. You can still create it.',
     vi: 'Giờ đó chỉ còn {free} thợ trống — bạn đang đặt {n} người. Vẫn tạo được nếu tiệm xoay được.',
@@ -1271,6 +1274,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'cal.stArrived': { en: 'Checked-in', vi: 'Đã đến' },
   'cal.stCompleted': { en: 'Completed', vi: 'Hoàn thành' },
   'cal.stNoShow': { en: 'No-show', vi: 'Vắng mặt' },
+  'cal.stMissed': { en: 'Not arrived', vi: 'Chưa đến' },
   'cal.stCancelled': { en: 'Cancelled', vi: 'Đã huỷ' },
   // Integrations
   'in.bookingLinkTitle': { en: 'Your online booking link', vi: 'Link đặt lịch trực tuyến của bạn' },

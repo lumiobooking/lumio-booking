@@ -41,6 +41,7 @@ import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-c
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
 import { addMinutes, parseStartTime, BLOCKING_STATUSES, wallTimeToUtc, planLineTechnician } from './booking.util';
+import { dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { openTimesFor, type BusyBlock } from './open-times';
 import { hasPromoWindow, inPromoWindow, salonYmd, type PromoWindow } from '../settings/promo-window';
 
@@ -3239,12 +3240,37 @@ export class BookingsService {
 
   /**
    * Finds ASSIGNED bookings whose response deadline has passed, records a
-   * NO_RESPONSE for the silent staff, and reassigns each. In production this is
-   * triggered by a scheduled job/queue; for the MVP an admin can call it.
+   * NO_RESPONSE for the silent staff, and reassigns each (or returns the
+   * booking to PENDING for the desk when nobody else is free). The scheduler
+   * runs this for every salon every few minutes; an admin can also call it.
    */
   async processTimeouts(user: AuthenticatedUser) {
-    const tenantId = this.tenantId(user);
-    const now = new Date();
+    return this.expireAssigned(this.tenantId(user), user.userId);
+  }
+
+  /**
+   * The same sweep for every salon at once — one salon's failure never stops
+   * the next, and every write below is scoped to the row's own tenantId.
+   */
+  async processTimeoutsEverywhere(now = new Date()): Promise<{ tenants: number; processed: number; reassigned: number }> {
+    const rows = await this.prisma.appointment.findMany({
+      where: { status: AppointmentStatus.ASSIGNED, responseDeadline: { lt: now }, assignedStaffId: { not: null } },
+      select: { tenantId: true }, distinct: ['tenantId'],
+    });
+    let processed = 0;
+    let reassigned = 0;
+    for (const r of rows) {
+      try {
+        const out = await this.expireAssigned(r.tenantId, null, now);
+        processed += out.processed; reassigned += out.reassigned;
+      } catch (e) {
+        this.logger.warn(`response-timeout sweep failed for tenant ${r.tenantId}: ${(e as Error).message}`);
+      }
+    }
+    return { tenants: rows.length, processed, reassigned };
+  }
+
+  private async expireAssigned(tenantId: string, actorUserId: string | null, now = new Date()) {
     const expired = await this.prisma.appointment.findMany({
       where: {
         tenantId,
@@ -3267,10 +3293,56 @@ export class BookingsService {
           },
         });
       }
-      const result = await this.reassign(tenantId, appt.id, user.userId);
+      const result = await this.reassign(tenantId, appt.id, actorUserId);
       if (result.reassigned) reassigned += 1;
     }
 
     return { processed: expired.length, reassigned };
+  }
+
+  /**
+   * Yesterday's bookings nobody touched. A customer who never came, on a
+   * booking the desk never marked, stayed "Confirmed" on the calendar for
+   * ever: it inflated the day's count, hid the no-show from her record, and
+   * left a slot that looked taken. Once the salon's own day has ended, every
+   * still-open booking from before it (pending, assigned, accepted or
+   * confirmed — never one that ARRIVED) becomes NO_SHOW, keeping any deposit,
+   * exactly as the desk's own No-show button does.
+   */
+  async closeMissedEverywhere(now = new Date()): Promise<{ tenants: number; closed: number }> {
+    const open: AppointmentStatus[] = [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED];
+    // Anything that ended more than a day ago is from before today anywhere on Earth;
+    // the per-tenant pass below uses the salon's own midnight for the rest.
+    const rows = await this.prisma.appointment.findMany({
+      where: { status: { in: open }, endTime: { lt: new Date(now.getTime() - 60 * 60 * 1000) } },
+      select: { tenantId: true }, distinct: ['tenantId'],
+    });
+    let closed = 0;
+    for (const r of rows) {
+      try { closed += await this.closeMissed(r.tenantId, now); }
+      catch (e) { this.logger.warn(`no-show sweep failed for tenant ${r.tenantId}: ${(e as Error).message}`); }
+    }
+    return { tenants: rows.length, closed };
+  }
+
+  private async closeMissed(tenantId: string, now: Date): Promise<number> {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+    const tz = t?.timezone || 'UTC';
+    const today = startOfDayTz(dayKeyTz(now, tz), tz); // the salon's own midnight
+    const open: AppointmentStatus[] = [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED];
+    const missed = await this.prisma.appointment.findMany({
+      where: { tenantId, status: { in: open }, startTime: { lt: today } },
+      select: { id: true },
+    });
+    if (!missed.length) return 0;
+    const ids = missed.map((m) => m.id);
+    const res = await this.prisma.appointment.updateMany({
+      where: { id: { in: ids }, tenantId, status: { in: open } },
+      data: { status: AppointmentStatus.NO_SHOW, updatedAt: now },
+    });
+    for (const id of ids) {
+      await this.audit.log({ tenantId, userId: null, action: 'booking.no_show_auto', resourceType: 'appointment', resourceId: id }).catch(() => undefined);
+    }
+    return res.count;
   }
 }

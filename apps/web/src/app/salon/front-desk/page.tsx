@@ -30,6 +30,8 @@ interface Ticket {
   assignedStaff?: { id: string; firstName: string; lastName: string | null } | null;
   items?: { name?: string }[];
   phase?: 'WAITING' | 'SERVING' | 'BETWEEN' | 'DONE';
+  /** Minutes past the visit's expected finish (server-computed). */
+  overdueMinutes?: number | null;
 }
 interface Booked { id: string; startTime: string; customerName: string | null; serviceName: string | null; staff: { id: string; name: string } | null; source?: string }
 interface StaffChip { id: string; name: string; busy: boolean; busyFor: number | null; nextUp: boolean; turns: number }
@@ -199,6 +201,12 @@ function FrontDesk() {
                 <span style={{ display: 'block', ...name }}>{w.customerName || L('Khách', 'Guest')}</span>
                 <span style={{ display: 'block', ...sub }}>{[techName(w), services(w)].filter(Boolean).join(' · ')}</span>
               </span>
+              {w.overdueMinutes != null && w.overdueMinutes >= 15 && (
+                <span title={L('Khách đã quá thời gian dịch vụ. Quá 45′ hệ thống tự chuyển sang Chờ thanh toán để thợ rảnh.', 'Past the services\u2019 time. At 45′ over, the visit moves to Waiting to pay by itself so the technician is free.')}
+                  style={{ fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', borderRadius: 999, padding: '2px 8px', color: w.overdueMinutes >= 45 ? 'var(--ink-bad)' : 'var(--ink-warn)', background: w.overdueMinutes >= 45 ? 'rgba(239,68,68,0.14)' : 'var(--wash-amber-2)' }}>
+                  ⏰ {L('Quá giờ', 'Over')} +{w.overdueMinutes}′
+                </span>
+              )}
               <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{minsSince(w.assignedAt ?? w.createdAt, now)}′</span>
               {may('pos') && <a href={checkoutHref(w)} style={{ ...smallBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{L('Tính tiền', 'Check out')}</a>}
             </div>

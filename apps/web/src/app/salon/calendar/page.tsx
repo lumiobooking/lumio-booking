@@ -9,6 +9,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
+import { missedMinutes } from '../../../lib/missed';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useIsMobile } from '../../../lib/responsive';
 import { StaffDayView } from './StaffDayView';
@@ -69,8 +70,11 @@ const STATUS_BUCKETS: { key: string; color: string }[] = [
   { key: 'Completed', color: '#8b5cf6' },
   { key: 'NoShow', color: 'var(--ink-bad)' },
   { key: 'Cancelled', color: 'var(--c64748b)' },
+  // A still-open booking an hour past its start: nobody came (yet).
+  { key: 'Missed', color: '#f97316' },
 ];
-function statusBucket(status: string): { key: string; color: string } {
+function statusBucket(status: string, startTime?: string): { key: string; color: string } {
+  if (startTime && missedMinutes({ status, startTime }) !== null) return STATUS_BUCKETS[6];
   switch (status) {
     case 'PENDING': case 'ASSIGNED': case 'REJECTED': return STATUS_BUCKETS[0];
     case 'ACCEPTED': case 'CONFIRMED': return STATUS_BUCKETS[1];
@@ -588,7 +592,7 @@ function Inner() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {items.map((b) => {
-                    const m = statusBucket(b.status);
+                    const m = statusBucket(b.status, b.startTime);
                     const struck = b.status === 'CANCELLED';
                     return (
                       <div key={b.id} onClick={() => setSelected(b)}
@@ -644,7 +648,7 @@ function Inner() {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     {items.slice(0, 4).map((b) => {
-                      const m = statusBucket(b.status);
+                      const m = statusBucket(b.status, b.startTime);
                       const dim = m.key === 'Cancelled' || m.key === 'NoShow';
                       const strike = m.key === 'Cancelled' ? 'line-through' : 'none';
                       return (
@@ -813,7 +817,7 @@ function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
               </div>
             )}
             {pos.map(({ b, s, e, col, cols }) => {
-              const m = statusBucket(b.status);
+              const m = statusBucket(b.status, b.startTime);
               const top = (s - gStart) / 60 * HP;
               const h = Math.max(44, (e - s) / 60 * HP - 4);
               const dim = b.status === 'CANCELLED' || b.status === 'NO_SHOW';
@@ -926,7 +930,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx, onQuick }: {
               <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.5, color: 'var(--c64748b)', textTransform: 'uppercase', marginBottom: 8 }}>{pg.label} · {pg.list.length}</div>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(258px, 1fr))', gap: 10 }}>
                 {pg.list.map((b) => {
-                  const m = statusBucket(b.status);
+                  const m = statusBucket(b.status, b.startTime);
                   const dim = b.status === 'CANCELLED' || b.status === 'NO_SHOW';
                   const struck = b.status === 'CANCELLED';
                   const client = b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—';
@@ -1035,7 +1039,7 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
         <div style={{ textAlign: 'center', marginBottom: 16 }}>
           <div style={{ fontSize: 20, fontWeight: 600 }}>{b.service?.name ?? t('cal.service')}</div>
           <div style={{ marginTop: 8 }}>
-            <StatusBadge status={b.status} />
+            <StatusBadge status={b.status} startTime={b.startTime} />
           </div>
         </div>
 
@@ -1368,9 +1372,9 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, startTime }: { status: string; startTime?: string }) {
   const { lang } = useLang();
-  const m = statusBucket(status);
+  const m = statusBucket(status, startTime);
   return <span style={{ color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '3px 12px', fontSize: 12, fontWeight: 600 }}>{tr('cal.st' + m.key, lang)}</span>;
 }
 

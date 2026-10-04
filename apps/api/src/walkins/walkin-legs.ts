@@ -452,3 +452,52 @@ export function minutesLeft(tickets: TicketLike[], staffId: string, now: Date): 
   }
   return null;
 }
+
+// ------------------------------------------------------------------ stale chairs
+
+/**
+ * A ticket nobody closed. "anna nguy · Sang · 107′" on a 60-minute service:
+ * the customer left, the technician forgot to tap Done, and the board kept
+ * Sang "busy" all afternoon — the dispatcher skipped her, her turn never
+ * counted, the free-chair count lied. Nothing ever released it.
+ *
+ * The board now says how late a visit is, and a sweeper parks a visit that is
+ * late by STALE_GRACE_MIN (or still open after closing) at "waiting to pay":
+ * the bill stays open for the till, the chair and the technician are free.
+ */
+export const LATE_WARN_MIN = 15;
+export const STALE_GRACE_MIN = 45;
+/** A running leg with no durations on its lines is assumed this long. */
+const ASSUMED_LEG_MIN = 60;
+
+/**
+ * Minutes past the expected finish of the visit's running legs — the most
+ * overdue one. Null when nothing is running, or it is already parked at the
+ * till, or no running leg has a start time. Negative is "still within time".
+ */
+export function overdueMinutes(t: TicketLike, now: Date): number | null {
+  if (t.status !== 'SERVING' || t.awaitingPayment) return null;
+  let worst: number | null = null;
+  for (const leg of legsOf(t)) {
+    if (leg.status !== 'SERVING' || !leg.startedAt) continue;
+    const spent = (now.getTime() - new Date(leg.startedAt).getTime()) / 60000;
+    const over = Math.round(spent - (leg.minutes || ASSUMED_LEG_MIN));
+    if (worst === null || over > worst) worst = over;
+  }
+  return worst;
+}
+
+/**
+ * True when EVERY running leg is past its time by `grace` — one technician
+ * still inside her pedicure keeps the whole visit on the floor.
+ */
+export function isStale(t: TicketLike, now: Date, grace = STALE_GRACE_MIN): boolean {
+  if (t.status !== 'SERVING' || t.awaitingPayment) return false;
+  const running = legsOf(t).filter((l) => l.status === 'SERVING');
+  if (!running.length) return false;
+  return running.every((leg) => {
+    if (!leg.startedAt) return false;
+    const spent = (now.getTime() - new Date(leg.startedAt).getTime()) / 60000;
+    return spent >= (leg.minutes || ASSUMED_LEG_MIN) + grace;
+  });
+}

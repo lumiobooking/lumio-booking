@@ -31,6 +31,8 @@ interface WalkIn {
   legs?: Leg[];
   /** WAITING | SERVING | BETWEEN (one part done, the next one waiting for a technician) | DONE */
   phase?: string;
+  /** Minutes past the visit's expected finish (server-computed); amber from 15, red from 45. */
+  overdueMinutes?: number | null;
 }
 interface StaffTurn {
   id: string; name: string; avatarUrl: string | null; turns: number; busy: boolean; nextUp: boolean;
@@ -904,6 +906,21 @@ function WaitingRow({ w, pos, staff, currency, t, isMobile, sel, onPick, open, o
   );
 }
 
+/**
+ * "Quá giờ +47′": the visit is past the time its services add up to. Amber
+ * from 15 minutes over, red from 45 — at 45 the server parks it at the till by
+ * itself, so a red badge means "this one is about to leave the floor".
+ */
+function OverdueBadge({ minutes, t }: { minutes: number | null | undefined; t: (k: string) => string }) {
+  if (minutes == null || minutes < 15) return null;
+  const red = minutes >= 45;
+  return (
+    <span title={t('wi.overdueHint')} style={{ fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, borderRadius: 999, padding: '2px 8px', color: red ? 'var(--ink-bad)' : 'var(--ink-warn)', background: red ? 'rgba(239,68,68,0.14)' : 'var(--wash-amber-2)' }}>
+      ⏰ {t('wi.overdue')} +{minutes}′
+    </span>
+  );
+}
+
 /** One line for one customer in a chair: who, with whom, what, for how long, checkout. */
 function ServingRow({ w, staff, currency, t, isMobile, onOpen }: {
   w: WalkIn; staff: StaffTurn[]; currency: string; t: (k: string) => string; isMobile: boolean; onOpen: () => void;
@@ -926,6 +943,7 @@ function ServingRow({ w, staff, currency, t, isMobile, onOpen }: {
         <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
         <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{since}′{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}</div>
       </div>
+      <OverdueBadge minutes={w.overdueMinutes} t={t} />
       {legs.length > 1
         // Several parts: one chip per part, each with its technician.
         ? <div style={{ flexShrink: 0 }}><LegChips legs={legs} staff={staff} t={t} /></div>

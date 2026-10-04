@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { wallToInstantISO, instantToWall } from '../../../lib/datetime';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { missedMinutes } from '../../../lib/missed';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
@@ -52,6 +53,11 @@ interface Payment {
   appointmentId: string | null;
   status: string;
   type: string;
+}
+
+/** "Chưa đến": an hour past its start and nobody came. The desk calls, or marks the no-show. */
+function MissedTag({ t }: { t: (k: string) => string }) {
+  return <span style={{ color: '#f97316', background: 'rgba(249,115,22,0.14)', borderRadius: 999, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>{t('bk.missed')}</span>;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -281,12 +287,15 @@ function BookingsInner() {
               const grp = gid ? bookings.filter((x) => x.groupId === gid) : [];
               const open = !!gid && openGroups.has(gid);
               const members = grp.filter((x) => x.id !== b.id);
-              const pill = (st: string) => (
-                <span style={{ color: STATUS_COLORS[st] ?? 'var(--c94a3b8)', border: `1px solid ${STATUS_COLORS[st] ?? 'var(--c94a3b8)'}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{st}</span>
+              const pill = (st: string, startTime?: string) => (
+                <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                  {startTime && missedMinutes({ status: st, startTime }, now) !== null && <MissedTag t={t} />}
+                  <span style={{ color: STATUS_COLORS[st] ?? 'var(--c94a3b8)', border: `1px solid ${STATUS_COLORS[st] ?? 'var(--c94a3b8)'}`, borderRadius: 999, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{st}</span>
+                </span>
               );
               const cards = [
                 <MCard key={b.id}>
-                  <MHead right={pill(b.status)}>
+                  <MHead right={pill(b.status, b.startTime)}>
                     {b.customer?.id
                       ? <a href={`/salon/customers/${b.customer.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{staffName(b.customer)}</a>
                       : staffName(b.customer)}
@@ -312,7 +321,7 @@ function BookingsInner() {
                   cards.push(
                     <div key={m.id} style={{ marginLeft: 14, borderLeft: '2px solid var(--c312e81)', paddingLeft: 8 }}>
                       <MCard>
-                        <MHead right={pill(m.status)}>
+                        <MHead right={pill(m.status, m.startTime)}>
                           <span style={{ color: 'var(--c64748b)' }}>↳ </span>
                           {m.customer?.id
                             ? <a href={`/salon/customers/${m.customer.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none' }}>{staffName(m.customer)}</a>
@@ -370,8 +379,11 @@ function BookingsInner() {
                 const grp = gid ? bookings.filter((x) => x.groupId === gid) : [];
                 const open = !!gid && openGroups.has(gid);
                 const members = grp.filter((x) => x.id !== b.id);
-                const pill = (st: string) => (
-                  <span style={{ display: 'inline-block', whiteSpace: 'nowrap', color: STATUS_COLORS[st] ?? 'var(--c94a3b8)', border: `1px solid ${STATUS_COLORS[st] ?? 'var(--c94a3b8)'}`, borderRadius: 999, padding: '3px 10px', fontSize: 11, fontWeight: 600 }}>{st}</span>
+                const pill = (st: string, startTime?: string) => (
+                  <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                    {startTime && missedMinutes({ status: st, startTime }, now) !== null && <MissedTag t={t} />}
+                    <span style={{ display: 'inline-block', whiteSpace: 'nowrap', color: STATUS_COLORS[st] ?? 'var(--c94a3b8)', border: `1px solid ${STATUS_COLORS[st] ?? 'var(--c94a3b8)'}`, borderRadius: 999, padding: '3px 10px', fontSize: 11, fontWeight: 600 }}>{st}</span>
+                  </span>
                 );
                 const rows = [
                   <tr key={b.id} style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(b.id) ? 'var(--c1e1b4b)' : undefined }}>
@@ -385,7 +397,7 @@ function BookingsInner() {
                     </td>
                     <td style={ui.td}><ServiceCell b={b} /></td>
                     <td style={ui.td}><StaffCell b={b} staff={staff} /></td>
-                    <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>{pill(b.status)}</td>
+                    <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>{pill(b.status, b.startTime)}</td>
                     <td style={ui.td}>
                       <PaymentCell payment={paymentByBooking.get(b.id)} />
                     </td>
@@ -414,7 +426,7 @@ function BookingsInner() {
                         </td>
                         <td style={ui.td}><ServiceCell b={m} /></td>
                         <td style={ui.td}><StaffCell b={m} staff={staff} /></td>
-                        <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>{pill(m.status)}</td>
+                        <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>{pill(m.status, m.startTime)}</td>
                         <td style={ui.td}>
                           <PaymentCell payment={paymentByBooking.get(m.id)} />
                         </td>

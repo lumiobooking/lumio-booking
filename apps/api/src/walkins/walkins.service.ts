@@ -8,9 +8,10 @@ import { PushService } from '../push/push.service';
 import { normalizeSource } from '../common/source.util';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import {
-  attachLines, busyTechs, canRunTogether, itemsOf as legItemsOf, LegItem, legsOf, minutesLeft, newLegId, patchLeg, phaseOf, pickTech,
+  attachLines, busyTechs, canRunTogether, isStale, itemsOf as legItemsOf, LegItem, legsOf, minutesLeft, newLegId, overdueMinutes, patchLeg, phaseOf, pickTech,
   planDispatch, syncTicket, TechInfo, TicketLike, turnsFromTickets, upgradeItems, Zone, zoneOf,
 } from './walkin-legs';
+import { tzPartsOf } from '../common/salon-time';
 
 /**
  * One queue change at a time per salon. Two techs pressing "Xong" in the same
@@ -160,7 +161,62 @@ export class WalkinsService {
   /** A ticket as the board shows it: its legs and where the visit is at. */
   private view<T extends object>(w: T) {
     const t = w as unknown as TicketLike;
-    return { ...w, legs: legsOf(t), phase: phaseOf(t) };
+    // overdueMinutes: how far past its expected finish the visit is (the board
+    // turns it amber); null when nothing is running or it is parked at the till.
+    return { ...w, legs: legsOf(t), phase: phaseOf(t), overdueMinutes: overdueMinutes(t, new Date()) };
+  }
+
+  /**
+   * Park the visits nobody closed. A ticket late by STALE_GRACE_MIN on every
+   * running leg, or any ticket still in a chair an hour after the salon's
+   * closing time, moves to "waiting to pay" exactly as the desk's own button
+   * does: the bill stays open for the till, the technician is free, and the
+   * dispatcher gives her the next customer. Returns the parked ticket ids.
+   */
+  async parkStale(tenantId: string, now = new Date()): Promise<string[]> {
+    const open = await this.prisma.walkIn.findMany({
+      where: { tenantId, status: WalkInStatus.SERVING, awaitingPayment: false },
+      select: { id: true, status: true, assignedStaffId: true, createdAt: true, assignedAt: true, doneAt: true, awaitingPayment: true, items: true },
+    });
+    if (!open.length) return [];
+    const afterHours = await this.afterHours(tenantId, now);
+    const stale = (open as unknown as TicketLike[]).filter((t) => afterHours || isStale(t, now)).map((t) => t.id);
+    if (!stale.length) return [];
+    await this.prisma.walkIn.updateMany({
+      where: { id: { in: stale }, tenantId, status: WalkInStatus.SERVING, awaitingPayment: false },
+      data: { awaitingPayment: true, stationId: null },
+    });
+    await this.settle(tenantId);
+    return stale;
+  }
+
+  /** Every salon with someone still in a chair, one after another; one salon's error never stops the next. */
+  async parkStaleEverywhere(now = new Date()): Promise<{ tenants: number; parked: number }> {
+    const rows = await this.prisma.walkIn.findMany({
+      where: { status: WalkInStatus.SERVING, awaitingPayment: false },
+      select: { tenantId: true }, distinct: ['tenantId'],
+    });
+    let parked = 0;
+    for (const r of rows) {
+      try { parked += (await this.parkStale(r.tenantId, now)).length; } catch { /* next salon */ }
+    }
+    return { tenants: rows.length, parked };
+  }
+
+  /** True from an hour after the salon's closing time until the next day begins. A day marked
+   *  closed says nothing (a salon that opens on its day off is still working), so only the
+   *  late-by-grace rule applies then. */
+  private async afterHours(tenantId: string, now: Date): Promise<boolean> {
+    try {
+      const [t, rules] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }),
+        this.settings.getBookingRules(tenantId),
+      ]);
+      const parts = tzPartsOf(now, t?.timezone || 'UTC');
+      const day = rules.businessHours?.[parts.wd];
+      if (!day || day.closed) return false;
+      return parts.h * 60 + parts.mi >= day.closeMinutes + 60;
+    } catch { return false; }
   }
 
   /** Re-read one ticket (after the dispatcher may have moved it on). */

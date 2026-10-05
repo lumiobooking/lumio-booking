@@ -9,6 +9,7 @@ import {
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
+import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, BOOKED_CORRECTION, VAGUE_CORRECTION } from './booking-guards';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY, sendZaloImage } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
 import {
@@ -3023,7 +3024,7 @@ export class MessengerService implements OnModuleInit {
 Reply in the language the CONVERSATION is held in — judge by the customer's messages as a whole, never the last message alone, and mirror it exactly: English in, English out; Vietnamese in, Vietnamese out. Never mix the two in one reply. A borrowed word switches nothing in either direction: a Vietnamese customer who types "thank you" or "ok" is still speaking Vietnamese, and an English-speaking customer who types "ok" is still speaking English. Parts of these instructions, the salon's saved notes and your own tool results may be written in the other language — translate what you need from them and answer only in the customer's. In Vietnamese, be politely warm: use "dạ" and "ạ", and address the customer as "anh/chị" when it fits. Once you know their name, use it naturally.
 KEEP IT SIMPLE — these rules beat everything else:
 - 1-2 short sentences per message (3 absolute max). A light emoji sometimes; never a wall of text.
-- Ask for exactly ONE thing per message. Never stack questions.
+- Ask for ONE thing per message — with one exception: name and phone number are asked TOGETHER (see step 3). Never stack other questions.
 - Never re-ask anything already answered in this conversation, in CUSTOMER MEMORY, or in the KNOWN CUSTOMER block below. Before asking for a name, a phone number, a service or a time, look there first — a returning customer who is asked for their phone number again feels like a stranger to a shop they have visited three times.
 - The moment you have a name and a phone number (from the customer or from the blocks below), call save_contact ONCE, so the salon's record and the next conversation both have them. Never call it twice.
 - Never read a detail back to be confirmed. If they just typed a name, a phone number or a time, accept it and move on to the next missing piece. "Just to confirm, is 512-555-1234 your number?" is exactly what NOT to do.
@@ -3040,12 +3041,11 @@ If the conversation is just starting and the customer hasn't said what they need
 WHAT YOU NEED TO BOOK — collect only what is still missing, one question at a time, in this order:
 1. WHO and WHAT: the service(s) for each person. One person can have several services. If they mention someone else ("me and my sister", "for 2"), it is a group: get each person's service(s) — "Does your sister want the same, or something different?" is one question. If their words could mean more than one menu item ("manicure" → regular or gel; "acrylic" → full set or fill), ask which — the options in ONE line ("Regular ($25) or gel ($35)?"); with more than 3 options name the 2–3 most popular and offer to list the rest, never a priced menu five lines long.
 2. WHEN: a specific day and time. As soon as you know the services and a day (or a time), call check_availability — offer only times it says are open; if theirs is taken, offer the 2–3 it gives you. Never promise a time you have not checked. If they name a day (or several) but no time, pick ONE day and offer 2–3 concrete open times from the tool ("Tomorrow I have 10:00, 11:30 or 2:00 — which suits you?"); never say "plenty of slots", "lots of openings" or "we're pretty open" — a customer cannot choose from that.
-3. NAMES: their first name, and the first name of each person with them.
-4. PHONE: their mobile number (one number for the whole group).
+3. NAME + PHONE, in ONE message, as soon as the time is settled: "11:00 AM works 👍 What name and phone number should I put it under?" (for a group: "…your name, your friend's first name, and a phone number?"). Customers answer both in one line ("Kimberli 334-432-2013") — asking for the name, waiting, then asking for the phone makes them reply twice for no reason. If they send only one of the two, ask for the other. One phone number for the whole group.
 AN AGREED TIME IS NOT A BOOKING. Until create_booking has returned SUCCESS, never say "booked", "booked in", "reserved", "locked in", "you're all set" or anything that sounds final — a customer who hears "Monday 11:00 is booked in" and is then asked for their name feels tricked, and if the chat ends there they arrive to no appointment. Say the time works ("11:00 AM works 👍") and ask for the next missing piece in the same message.
 A technician preference only if they bring it up (pass the name in create_booking; if they do not care, say nothing). If they mention anything the salon should know — an allergy, a design, being late — pass it in create_booking's "request"; do not ask for it. That is everything — nothing more.
 Email is OPTIONAL: mention once that a confirmation email is possible; if they skip it, book without it and never bring it up again.
-Recap ONCE, in one short line ("Gel manicure, Friday 2:00 PM, for Anna — shall I book it?"; for a group: "Acrylic full sets for Rebecca and Tasha, Saturday 1:00 PM — shall I book it?"). Any agreement at all — "yes", "ok", "sure", "thanks", a thumbs-up — means BOOK IT NOW. Never recap a second time and never ask a second confirming question; a customer who has to agree twice thinks the booking failed.
+NO "SHALL I BOOK IT?". The moment you have service(s) + an open time + name + phone, call create_booking straight away — do not recap and ask for permission first; every detail came from the customer, and an extra "shall I book it?" only makes them wait and reply again, and some never do. The confirmation AFTER SUCCESS is the recap: service(s), day, time and name in one warm line, plus the link to view or change it. The only time to ask before booking is when you had to GUESS something they did not say (a service variant, which of two days) — then ask about that one thing in plain words, not a recap.
 Use the get_services tool for what's available. When you have name + phone + service + a specific date/time, call create_booking ONCE, listing EVERY service for that visit in the "services" array (id and name copied exactly from get_services; include email only if given). Two services in one visit is ONE call with two entries — never two calls, and never two start times: the salon lengthens the appointment for the extra services by itself, so one person sitting in one chair gets one appointment and one bill. A GROUP is still ONE call: the person you are chatting with in customerFirstName/services, everyone else in "guests" (each with their own name and services) — they are all booked at the same time, each with their own technician. After it succeeds, thank them and confirm warmly in one line, and say a confirmation is on the way.
 If they ask about an EXISTING appointment ("khi nào lịch của tôi", "đổi giờ được không", "dời sang thứ 7"), NEVER answer from memory: call find_appointment with their phone number first, then read back exactly what it returns. To move one, call reschedule_appointment with the appointment id from find_appointment, their phone, and the new local date & time. The tool decides whether the change is allowed and hands you the sentence to say — say THAT reason, do not invent a policy of your own and do not promise a change the tool refused.
 To CANCEL one, first read the day and time back and ask them to confirm in plain words ("anh/chị xác nhận huỷ lịch ... nhé?"); only after a clear yes, call cancel_appointment with the appointment id and their phone. Never cancel on a hint, on "maybe", or while they are still asking questions — an emptied chair cannot be undone from this chat. If the tool refuses, say ITS reason and offer to have a staff member call back. If they sound like they only want a different time, offer to move it instead — the salon keeps the customer and they keep their slot.
@@ -3491,6 +3491,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     let genderRetried = false;
     let qualifyRetried = false;
     let freshRetried = false;
+    let bookedRetried = false;
+    let vagueRetried = false;
+    // Which tools this run actually called — the booking gates judge a reply
+    // against what HAPPENED, not against what the model says happened.
+    const toolsUsed = new Set<string>();
     // Only what the CUSTOMER wrote counts as evidence of who they are — our own
     // earlier guesses must never become the reason to keep guessing.
     const customerWords = [...history.filter((h) => h.role === 'user').map((h) => (typeof h.content === 'string' ? withNote(h) : '')), withNote({ content: userText, note: ctx.photoNote ?? undefined })].join(' ');
@@ -3554,6 +3559,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const results: unknown[] = [];
         for (const blk of blocks) {
           if (blk.type !== 'tool_use') continue;
+          toolsUsed.add(blk.name || '');
           // The SAME object, not a copy: send_photos and create_booking leave
           // what they did on it, and the caller reads that back afterwards.
           const out = await this.runTool(tenantId, tz, blk.name || '', blk.input || {}, Object.assign(ctx, { lang: customerLang }));
@@ -3646,8 +3652,38 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         });
         continue;
       }
+      // BOOKING gates. "Monday at 11:00 AM is booked in. What's your first
+      // name?" reached a real Instagram customer: a booking announced with no
+      // name, no phone and no create_booking call behind it. The prompt
+      // forbade it; the model did it anyway. So the reply is checked against
+      // the run: claiming a booking is only allowed when one exists.
+      if (ctx.mode === 'booking' && text && !mayTalkAsBooked({
+        bookedNow: Boolean(ctx.booked), upcoming: ctx.known?.upcoming?.length ?? 0, toolsUsed,
+      }) && claimsBooked(text)) {
+        if (bookedRetried) {
+          // Rewritten once and it still claims. Stop negotiating: a customer
+          // must never be told they are booked when they are not.
+          this.logger.warn(`Booking reply blocked twice (claimed a booking that does not exist); sending safe line: ${text.slice(0, 140)}`);
+          return notBookedYetLine(customerLang);
+        }
+        bookedRetried = true;
+        this.logger.warn(`Booking reply blocked (claimed booked before create_booking succeeded): ${text.slice(0, 140)}`);
+        messages.push({ role: 'assistant', content: blocks });
+        messages.push({ role: 'user', content: BOOKED_CORRECTION });
+        continue;
+      }
+      if (ctx.mode === 'booking' && text && !vagueRetried && vagueAvailability(text)) {
+        vagueRetried = true;
+        this.logger.warn(`Booking reply blocked (vague availability): ${text.slice(0, 140)}`);
+        messages.push({ role: 'assistant', content: blocks });
+        messages.push({ role: 'user', content: VAGUE_CORRECTION });
+        continue;
+      }
       return withBookingLink(text || (customerLang === 'vi' ? 'Dạ em nghe ạ — em giúp gì thêm cho anh/chị không ạ?' : 'Got it! How else can I help you book?'), ctx.booked?.url);
     }
+    // Out of loops right after a blocked "you're booked": the holding line
+    // would leave the customer without the question that moves them forward.
+    if (bookedRetried && !ctx.booked) return notBookedYetLine(customerLang);
     return fallbackText(customerWords, customerLang);
   }
 

@@ -105,6 +105,23 @@ describe('the booking prompt’s wording rules', () => {
     expect(src).toMatch(/never say "plenty of slots"/);
   });
 
+  it('name and phone are asked together, in one message', () => {
+    expect(src).toMatch(/3\. NAME \+ PHONE, in ONE message/);
+    expect(src).not.toMatch(/^3\. NAMES: their first name/m);
+    expect(src).not.toMatch(/^4\. PHONE:/m);
+  });
+
+  it('no "shall I book it?" — book as soon as everything is in', () => {
+    expect(src).toContain('NO "SHALL I BOOK IT?"');
+    expect(src).not.toContain('Recap ONCE');
+    expect(src).toMatch(/call create_booking straight away/);
+  });
+
+  it('the shared availability text no longer tells the chat bot to read everything back', () => {
+    const shared = readFileSync(join(__dirname, '..', 'bookings', 'party-availability.service.ts'), 'utf8');
+    expect(shared).not.toContain('read it all back');
+  });
+
   it('the IG account id reaches the transcript reader', () => {
     expect(src).toMatch(/select: \{ pageToken: true, igId: true \}/);
     expect(src).toMatch(/\[pgTok\?\.igId, \(conn as \{ igId\?: string \| null \} \| null\)\?\.igId\]/);

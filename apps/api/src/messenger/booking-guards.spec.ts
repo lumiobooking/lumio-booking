@@ -1,0 +1,144 @@
+/**
+ * "Great — Monday at 11:00 AM is booked in. What's your first name?" reached a
+ * real customer before any booking existed. These tests hold the gate that
+ * now stops that sentence, both as pure string rules and inside the real
+ * agent loop with a scripted model.
+ */
+jest.mock('@prisma/client', () => ({
+  ...jest.requireActual('@prisma/client'),
+  AppointmentStatus: { CANCELLED: 'CANCELLED' },
+}));
+jest.mock('../common/llm', () => ({
+  ...jest.requireActual('../common/llm'),
+  chat: jest.fn(),
+}));
+import { chat } from '../common/llm';
+import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine } from './booking-guards';
+import { MessengerService } from './messenger.service';
+
+describe('claimsBooked — a reply that says the booking exists', () => {
+  it.each([
+    "Great — Monday at 11:00 AM is booked in. What's your first name?",
+    "You're booked for Friday at 2!",
+    "I've booked you in for 10:30 tomorrow.",
+    "You're all set for Saturday 👍",
+    'That slot is reserved for you.',
+    'Your appointment is confirmed.',
+    'See you then!',
+    'See you on Monday!',
+    'Dạ em đã đặt lịch cho chị lúc 11h thứ Hai ạ.',
+    'Dạ lịch của anh/chị đã được xác nhận ạ.',
+    'Dạ đặt lịch thành công rồi ạ!',
+    'Hẹn gặp chị vào thứ Hai nhé!',
+  ])('blocks: %s', (s) => expect(claimsBooked(s)).toBe(true));
+
+  it.each([
+    '11:00 AM works 👍 What’s your first name?',
+    'Tomorrow I have 10:00, 11:30 or 2:00 — which suits you?',
+    'Once you’re booked you’ll get a text confirmation.',
+    'Shall I book it?',
+    'Gel manicure, Friday 2:00 PM, for Anna — shall I book it?',
+    'Dạ giờ đó còn trống ạ, chị cho em xin tên nhé?',
+    'Dạ anh/chị đã đặt lịch bên em trước đây chưa ạ?',
+    'Sau khi em đặt xong, chị sẽ nhận tin nhắn xác nhận ạ.',
+    '',
+  ])('lets through: %s', (s) => expect(claimsBooked(s)).toBe(false));
+});
+
+describe('vagueAvailability', () => {
+  it('blocks "plenty of slots" with no time named', () => {
+    expect(vagueAvailability('Tomorrow (Monday) and Wednesday both have plenty of slots. Which works?')).toBe(true);
+    expect(vagueAvailability("We're pretty open on Monday!")).toBe(true);
+    expect(vagueAvailability('Dạ thứ Hai còn nhiều giờ trống lắm ạ')).toBe(true);
+  });
+  it('lets through a reply that offers concrete times', () => {
+    expect(vagueAvailability('Plenty of room tomorrow — 10:00 AM, 11:30 or 2 PM?')).toBe(false);
+    expect(vagueAvailability('Dạ thứ Hai còn nhiều giờ trống, 10h hoặc 14h ạ?')).toBe(false);
+    expect(vagueAvailability('What day works for you?')).toBe(false);
+  });
+});
+
+describe('mayTalkAsBooked', () => {
+  const none = new Set<string>();
+  it('only after a real booking, an existing appointment, or a lookup', () => {
+    expect(mayTalkAsBooked({ bookedNow: false, upcoming: 0, toolsUsed: none })).toBe(false);
+    expect(mayTalkAsBooked({ bookedNow: true, upcoming: 0, toolsUsed: none })).toBe(true);
+    expect(mayTalkAsBooked({ bookedNow: false, upcoming: 1, toolsUsed: none })).toBe(true);
+    expect(mayTalkAsBooked({ bookedNow: false, upcoming: 0, toolsUsed: new Set(['find_appointment']) })).toBe(true);
+    // Checking availability is NOT a booking.
+    expect(mayTalkAsBooked({ bookedNow: false, upcoming: 0, toolsUsed: new Set(['check_availability', 'get_services']) })).toBe(false);
+  });
+  it('the safe line asks for name and phone, in the customer’s language', () => {
+    expect(notBookedYetLine('en')).toMatch(/name and phone/);
+    expect(notBookedYetLine('vi')).toMatch(/tên và số điện thoại/);
+    expect(claimsBooked(notBookedYetLine('en'))).toBe(false);
+    expect(claimsBooked(notBookedYetLine('vi'))).toBe(false);
+  });
+});
+
+describe('inside the agent loop', () => {
+  const mocked = chat as unknown as jest.Mock;
+  const reply = (text: string) => ({ ok: true, reply: { stop_reason: 'end_turn', content: [{ type: 'text', text }], usage: {} } });
+  let prevKey: string | undefined;
+  beforeAll(() => { prevKey = process.env.ANTHROPIC_API_KEY; process.env.ANTHROPIC_API_KEY = 'test-placeholder'; });
+  afterAll(() => { if (prevKey === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = prevKey; });
+  beforeEach(() => mocked.mockReset());
+
+  function svc() {
+    const prisma = {
+      tenant: { findUnique: async () => ({ name: 'Zb Nails & Spa', timezone: 'America/Chicago', contactPhone: null, contactEmail: null, businessType: 'nail_salon', market: 'US' }) },
+      setting: { findFirst: async () => null },
+    };
+    const settings = { getAiNotes: async () => ({ text: '' }) };
+    const s = new MessengerService(prisma as never, {} as never, settings as never, {} as never, {} as never, {} as never);
+    (s as unknown as { systemKnowledge: unknown }).systemKnowledge = async () => '';
+    return s as unknown as { runAgent: (...a: unknown[]) => Promise<string> };
+  }
+  const hist = [
+    { role: 'user', content: 'Hi, can I get a pedicure?' },
+    { role: 'assistant', content: 'Perfect! When would you like to come in?' },
+  ];
+
+  it('a premature "booked in" is rewritten before the customer sees it', async () => {
+    mocked
+      .mockResolvedValueOnce(reply("Great — Monday at 11:00 AM is booked in. What's your first name?"))
+      .mockResolvedValueOnce(reply("11:00 AM Monday works 👍 What's your first name?"));
+    const out = await svc().runAgent('t1', '', hist, 'Monday 11am', { mode: 'booking', leadEmail: null, channel: 'instagram' });
+    expect(out).toBe("11:00 AM Monday works 👍 What's your first name?");
+    expect(mocked).toHaveBeenCalledTimes(2);
+    const second = mocked.mock.calls[1][0] as { messages: { content: unknown }[] };
+    expect(JSON.stringify(second.messages[second.messages.length - 1].content)).toContain('SYSTEM CORRECTION');
+  });
+
+  it('claiming it twice sends our own line asking for name and phone', async () => {
+    mocked
+      .mockResolvedValueOnce(reply("You're booked for Monday at 11!"))
+      .mockResolvedValueOnce(reply("You're all set for Monday at 11!"));
+    const out = await svc().runAgent('t1', '', hist, 'Monday 11am', { mode: 'booking', leadEmail: null, channel: 'instagram' });
+    expect(out).toBe(notBookedYetLine('en'));
+  });
+
+  it('a customer with an appointment already on the calendar may hear "you’re all set"', async () => {
+    mocked.mockResolvedValueOnce(reply("You're all set — see you Monday at 11!"));
+    const out = await svc().runAgent('t1', '', hist, 'thanks!', {
+      mode: 'booking', leadEmail: null, channel: 'instagram',
+      known: { firstName: 'Lan', upcoming: [{ service: 'Pedicure', when: 'Mon 11:00 AM' }] },
+    });
+    expect(out).toContain("You're all set");
+    expect(mocked).toHaveBeenCalledTimes(1);
+  });
+
+  it('"plenty of slots" is sent back for concrete times', async () => {
+    mocked
+      .mockResolvedValueOnce(reply('Tomorrow (Monday) and Wednesday both have plenty of slots. What time works?'))
+      .mockResolvedValueOnce(reply('Tomorrow I have 10:00 AM, 11:00 AM or 2:00 PM — which suits you?'));
+    const out = await svc().runAgent('t1', '', hist, 'tomorrow or wednesday', { mode: 'booking', leadEmail: null, channel: 'instagram' });
+    expect(out).toContain('10:00 AM');
+  });
+
+  it('the sales bot is untouched by the booking gates', async () => {
+    mocked.mockResolvedValueOnce(reply("You're all set — our team will call you today."));
+    const out = await svc().runAgent('t1', '', hist, 'ok', { mode: 'sales', leadEmail: null, channel: 'messenger' });
+    expect(out).toContain("You're all set");
+  });
+});

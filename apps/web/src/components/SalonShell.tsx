@@ -139,6 +139,13 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   const [postAlerts, setPostAlerts] = useState(0);
   /** Open "not quite" cases, for the Feedback badge. */
   const [fbOpen, setFbOpen] = useState(0);
+  /**
+   * Conversations nobody has opened since the last message — the Inbox badge.
+   * Fed by InboxAlerts, which also rings the chime. Both used to exist only in
+   * a Lumio support session: the salon's own owner and front desk had no
+   * badge and no sound at all, and found new messages by reloading.
+   */
+  const [inboxUnread, setInboxUnread] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
   const isMobile = useIsMobile();
@@ -248,6 +255,15 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     && (item.market !== 'na' || isNorthAmerica(market))
     && can(item.href);
   const hrefVisible = (href: string) => { const it = ITEM_BY_HREF[href]; return it ? itemVisible(it) : can(href); };
+  const badgeOf = (href: string) => href === '/salon/content' ? postAlerts
+    : href === '/salon/feedback' ? fbOpen
+      : href === '/salon/inbox' ? inboxUnread : 0;
+  // Everyone who may open the inbox gets its alerts — owner, front desk,
+  // Lumio support — not only a support session as before.
+  const inboxOk = hrefVisible('/salon/inbox');
+  const inboxAlerts = (compact: boolean) => inboxOk
+    ? <InboxAlerts href="/salon/inbox" label={lang === 'vi' ? 'Hộp thư' : 'Inbox'} compact={compact} onCount={setInboxUnread} />
+    : null;
   const visibleGroups = GROUPS
     .map((g) => ({ ...g, items: g.items.filter(itemVisible) }))
     .filter((g) => g.items.length > 0);
@@ -451,7 +467,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
     // Only one nav item carries a count today, and it carries it for a reason:
     // a scheduled post that failed to publish is otherwise silent, and the
     // salon goes on believing its Facebook Page is being looked after.
-    const badge = item.href === '/salon/content' ? postAlerts : item.href === '/salon/feedback' ? fbOpen : 0;
+    const badge = badgeOf(item.href);
     return (
       <Link
         key={item.href}
@@ -505,6 +521,14 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {tr(GROUP_KEY[grp.id], lang)}
                 {hasActive && !open && <span style={{ width: 6, height: 6, borderRadius: 999, background: '#6366f1' }} />}
+                {/* A badge inside a folded group would be invisible — and the
+                    Inbox lives inside one. The folded header carries the sum. */}
+                {!open && (() => {
+                  const n = grp.items.reduce((sum, it) => sum + badgeOf(it.href), 0);
+                  return n > 0 ? (
+                    <span style={{ minWidth: 17, height: 17, padding: '0 5px', borderRadius: 20, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, letterSpacing: 0, display: 'grid', placeItems: 'center' }}>{n > 9 ? '9+' : n}</span>
+                  ) : null;
+                })()}
               </span>
               <span style={{ fontSize: 10, opacity: 0.8, transition: 'transform .15s', transform: open ? 'rotate(90deg)' : 'none' }}>▸</span>
             </button>
@@ -568,7 +592,8 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       <ShellV2
         banner={supportBanner}
         visible={itemVisible}
-        badges={{ '/salon/content': postAlerts, '/salon/feedback': fbOpen }}
+        badges={{ '/salon/content': postAlerts, '/salon/feedback': fbOpen, '/salon/inbox': inboxUnread }}
+        inboxAlerts={inboxAlerts(false)}
         token={token}
         email={user.email}
         salonName={user.tenantName}
@@ -600,6 +625,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         <header style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: 'var(--c111827)', borderBottom: '1px solid var(--c1f2937)' }}>
           <LumioLogo size={28} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {inboxAlerts(true)}
             <NotificationBell />
             <button onClick={() => setDrawerOpen(true)} aria-label="Menu"
               style={{ width: 42, height: 42, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 20, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
@@ -672,7 +698,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           )}
           {tryNew}
           <ThemeToggle />
-          {isSupport && <InboxAlerts href="/salon/inbox" label={lang === 'vi' ? 'Hộp thư' : 'Inbox'} />}
+          {inboxAlerts(false)}
           <NotificationBell />
         </header>
         <main style={{ padding: '22px 32px 40px', color: 'var(--ce2e8f0)', minWidth: 0 }}>{supportBanner}{gated}</main>

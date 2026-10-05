@@ -174,7 +174,7 @@ export class PartyAvailabilityService {
     if (s.tooFar) return `That day is too far ahead — the salon books up to ${s.tooFar} days in advance. Ask for an earlier day.`;
     const who = party.length === 1 ? '' : ` for all ${party.length} people`;
     if (wanted && s.fine.some((d) => d.getTime() === wanted.getTime())) {
-      return `OPEN: ${this.spoken(wanted, tz)} works${who}. Carry on: get anything still missing (names, phone).`;
+      return `OPEN: ${this.spoken(wanted, tz)} works${who}. Carry on: get anything still missing (names, phone), then read it all back and confirm.`;
     }
     if (!wanted) {
       if (!s.grid.length) return `NOTHING OPEN that day${who}. ${await this.alternatives(tenantId, tz, dateStr, party, null, s.grid)}`;

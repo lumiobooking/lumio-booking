@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation';
 import { NavIcon } from '../NavIcon';
 import { ThemeToggle } from '../ThemeToggle';
 import { NotificationBell } from '../NotificationBell';
-import { InboxAlerts } from '../InboxAlerts';
 import { ShareBookingLink } from '../ShareBookingLink';
 import { InstallAppButton } from '../InstallAppButton';
 import { MobileTabBar } from '../MobileTabBar';
@@ -40,6 +39,8 @@ export interface ShellV2Props {
   email: string;
   salonName?: string;
   isSupport: boolean;
+  /** The inbox alert block (chime, toasts, unread count), built by the shell that knows who may see the inbox. */
+  inboxAlerts?: ReactNode;
   lang: 'en' | 'vi';
   setLang: (l: 'en' | 'vi') => void;
   logout: () => void;
@@ -49,7 +50,7 @@ export interface ShellV2Props {
 
 const SUB_KEY = 'lumio_nav2_sub';
 
-export function ShellV2({ children, banner, visible, badges, token, email, salonName, isSupport, lang, setLang, logout, onClassic, branchSwitcher }: ShellV2Props) {
+export function ShellV2({ children, banner, visible, badges, token, email, salonName, isSupport, lang, setLang, logout, onClassic, branchSwitcher, inboxAlerts }: ShellV2Props) {
   const pathname = usePathname();
   const phone = useIsMobile();
   const narrow = useIsMobile(1180);
@@ -388,7 +389,7 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
           {createButton(tablet)}
           {langToggle}
           <ThemeToggle />
-          {isSupport && <InboxAlerts href="/salon/inbox" label={L('Hộp thư', 'Inbox')} />}
+          {inboxAlerts}
           <NotificationBell />
         </header>
         <main style={{ padding: tablet ? '18px 18px 32px' : '22px 28px 40px', color: 'var(--ce2e8f0)', minWidth: 0 }}>{banner}{children}</main>

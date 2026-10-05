@@ -92,7 +92,7 @@ export const BOOKED_CORRECTION =
   'SYSTEM CORRECTION — that reply was blocked before it was sent.\n'
   + 'You told the customer the appointment is booked/confirmed, but create_booking has NOT returned SUCCESS in this conversation — nothing is on the calendar.\n'
   + 'Rewrite: say the time works (do not say booked, reserved, confirmed, all set or see you), then ask for whatever is still missing — name and phone number together in ONE question if both are missing. '
-  + 'If you already have name + phone + service + time, call create_booking now instead of writing text. Same language as the conversation. Send only the new reply.';
+  + 'If you already have name + phone + service + time and the customer has NOT yet said yes to a recap, send the one-line recap and ask them to confirm; if they HAVE already confirmed, call create_booking now instead of writing text. Same language as the conversation. Send only the new reply.';
 
 export const VAGUE_CORRECTION =
   'SYSTEM CORRECTION — that reply was blocked before it was sent.\n'

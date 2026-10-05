@@ -8,6 +8,7 @@ import {
   AlertRow, Alert, AlertMemory, emptyMemory, nextAlerts, unreadCount, tabTitle, alertHeadline,
 } from '../lib/inbox-alerts';
 import { PushState, pushState, subscribeToPush, pushMessage } from '../lib/push-client';
+import { playChime, unlockSound, installSoundUnlock, openConversation } from '../lib/inbox-sound';
 
 /**
  * The thing that tells somebody a customer is waiting.
@@ -36,33 +37,13 @@ import { PushState, pushState, subscribeToPush, pushMessage } from '../lib/push-
 
 const MUTE_KEY = 'lumio.inbox.muted';
 
-/** A short two-note chime, synthesised. No audio file to 404 or fail to load. */
-function playChime() {
-  try {
-    const Ctx = (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext });
-    const AudioCtor = Ctx.AudioContext || Ctx.webkitAudioContext;
-    if (!AudioCtor) return;
-    const ctx = new AudioCtor();
-    const now = ctx.currentTime;
-    [880, 1170].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      // A quick fade in and out. A square-edged tone clicks, and a click is
-      // what people describe as "that horrible noise".
-      gain.gain.setValueAtTime(0.0001, now + i * 0.16);
-      gain.gain.exponentialRampToValueAtTime(0.22, now + i * 0.16 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.16 + 0.30);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(now + i * 0.16);
-      osc.stop(now + i * 0.16 + 0.32);
-    });
-    setTimeout(() => void ctx.close().catch(() => undefined), 1200);
-  } catch { /* a browser that will not make a noise is not a reason to fail */ }
-}
-
-export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?: string; label?: string }) {
+export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox', compact = false, onCount }: {
+  href?: string; label?: string;
+  /** Phone header: just the icon, the count and the bell. */
+  compact?: boolean;
+  /** The unread number, for the sidebar's Inbox badge. */
+  onCount?: (n: number) => void;
+}) {
   const { token } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
@@ -74,9 +55,19 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
   const [pushNote, setPushNote] = useState<string | null>(null);
   const [pushKey, setPushKey] = useState<string | null>(null);
 
+  // The browser refused to make a sound (nobody has clicked the page since it
+  // loaded). Shown as a bright "click to turn the chime on" instead of the
+  // silent failure it used to be.
+  const [soundBlocked, setSoundBlocked] = useState(false);
+  const onCountRef = useRef(onCount);
+  onCountRef.current = onCount;
+
   const memRef = useRef<AlertMemory>(emptyMemory());
   const mutedRef = useRef(false);
   const baseTitle = useRef<string>('');
+
+  // The first click or key press anywhere in the app unlocks sound for the tab.
+  useEffect(() => installSoundUnlock(window, () => setSoundBlocked(false)), []);
 
   useEffect(() => {
     baseTitle.current = document.title;
@@ -124,7 +115,7 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
   const fire = useCallback((alerts: Alert[]) => {
     if (!alerts.length) return;
 
-    if (!mutedRef.current) playChime();
+    if (!mutedRef.current) void playChime().then((r) => setSoundBlocked(r === 'blocked'));
 
     // Newest first, and only ever three on screen. A stack of eleven cards is
     // not information, it is a wall the person has to dismiss before working.
@@ -149,10 +140,12 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
     try {
       const rows = await apiFetch<AlertRow[]>('/messenger/threads', { token });
       const list = Array.isArray(rows) ? rows : [];
-      setCount(unreadCount(list));
-      // The conversation on screen is excluded by the inbox page itself, which
-      // knows which one is open; here in the shell nothing is open.
-      const { memory, alerts } = nextAlerts(memRef.current, list, {});
+      const n = unreadCount(list);
+      setCount(n);
+      onCountRef.current?.(n);
+      // The conversation the person is reading right now is not news — the
+      // inbox page tells us which one that is (see lib/inbox-sound).
+      const { memory, alerts } = nextAlerts(memRef.current, list, { openId: openConversation() });
       memRef.current = memory;
       fire(alerts);
     } catch { /* a failed poll is not worth telling anybody about */ }
@@ -188,6 +181,13 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
     document.title = tabTitle(baseTitle.current, count);
   }, [count]);
 
+  /** From a click, so the browser allows it: unlock, and ring once to prove it. */
+  const enableSound = () => {
+    unlockSound(window);
+    if (mutedRef.current) { setMuted(false); mutedRef.current = false; try { window.localStorage.setItem(MUTE_KEY, '0'); } catch { /* private mode */ } }
+    void playChime().then((r) => setSoundBlocked(r === 'blocked'));
+  };
+
   const toggleMute = () => {
     const next = !muted;
     setMuted(next); mutedRef.current = next;
@@ -214,7 +214,7 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
         background: count > 0 ? 'var(--c7f1d1d)' : 'transparent',
         color: 'var(--ce2e8f0)', fontSize: 13, textDecoration: 'none', fontWeight: count > 0 ? 700 : 400,
       }}>
-        💬 {label}
+        💬{compact ? '' : ` ${label}`}
         {count > 0 && (
           <span style={{
             marginLeft: 7, background: '#ef4444', color: '#fff', borderRadius: 999,
@@ -223,14 +223,25 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox' }: { href?:
         )}
       </a>
 
+      {soundBlocked && !muted ? (
+        // The browser is holding the chime back until someone touches the
+        // page. Say so, loudly, and fix it in one click.
+        <button onClick={enableSound}
+          title={vi ? 'Trình duyệt đang chặn âm thanh cho tới khi bạn bấm vào trang' : 'The browser blocks sound until the page is clicked'}
+          style={{
+            padding: '8px 10px', borderRadius: 8, border: '1px solid var(--ink-warn)',
+            background: 'rgba(245,158,11,0.14)', color: 'var(--ink-warn)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+          }}>🔔 {compact ? '' : (vi ? 'Bấm để bật chuông' : 'Click to enable sound')}</button>
+      ) : (
       <button onClick={toggleMute} title={muted ? (vi ? 'Bật tiếng' : 'Unmute') : (vi ? 'Tắt tiếng' : 'Mute')}
         aria-label={muted ? 'Unmute' : 'Mute'}
         style={{
           padding: '8px 10px', borderRadius: 8, border: '1px solid var(--c475569)',
           background: 'transparent', color: muted ? 'var(--c64748b)' : 'var(--ce2e8f0)', fontSize: 13, cursor: 'pointer',
         }}>{muted ? '🔇' : '🔔'}</button>
+      )}
 
-      {push !== 'ready' && (
+      {push !== 'ready' && !compact && (
         // Asked with a button, never on page load. A browser shows the
         // permission box once; spending it the second somebody logs in, before
         // they know what the app is, is how you get a permanent "Block".

@@ -32,6 +32,7 @@ import { Linkified } from './Linkified';
 import { PushSetup } from './PushSetup';
 import type { TurnsView } from './ChatTurnsPanel';
 import { useLang } from '../lib/i18n';
+import { setOpenConversation } from '../lib/inbox-sound';
 import { uiLocale } from '../lib/datetime';
 import {
   InboxRow, InboxFilter, channelBrand, channelLabel, channelMark, stateLabel, stateOf,
@@ -636,6 +637,13 @@ export function InboxView() {
    *  closure on every change would tear down the event stream. */
   const keepUnreadRef = useRef<string | null>(null);
   openRef.current = openId;
+
+  // Tell the shell's alert engine which conversation is on screen, so it does
+  // not chime for the message the person is reading as it arrives.
+  useEffect(() => {
+    setOpenConversation(openId);
+    return () => setOpenConversation(null);
+  }, [openId]);
 
   useEffect(() => {
     if (!token) return;

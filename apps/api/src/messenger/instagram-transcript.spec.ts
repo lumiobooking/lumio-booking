@@ -111,15 +111,18 @@ describe('the booking prompt’s wording rules', () => {
     expect(src).not.toMatch(/^4\. PHONE:/m);
   });
 
-  it('no "shall I book it?" — book as soon as everything is in', () => {
-    expect(src).toContain('NO "SHALL I BOOK IT?"');
-    expect(src).not.toContain('Recap ONCE');
-    expect(src).toMatch(/call create_booking straight away/);
+  it('confirms ONCE with a full recap before booking — the owner wants this step kept', () => {
+    expect(src).toContain('CONFIRM BEFORE BOOKING — always, exactly once.');
+    expect(src).toMatch(/do not call create_booking yet/);
+    expect(src).toMatch(/Always the weekday AND the date, every service, every person's name for a group, and the phone/);
+    expect(src).toMatch(/Any agreement[^\n]*means call create_booking NOW/);
+    expect(src).toMatch(/Never recap a second time/);
+    expect(src).not.toContain('NO "SHALL I BOOK IT?"');
   });
 
-  it('the shared availability text no longer tells the chat bot to read everything back', () => {
+  it('the shared availability text tells both assistants to read it back and confirm', () => {
     const shared = readFileSync(join(__dirname, '..', 'bookings', 'party-availability.service.ts'), 'utf8');
-    expect(shared).not.toContain('read it all back');
+    expect(shared).toContain('then read it all back and confirm');
   });
 
   it('the IG account id reaches the transcript reader', () => {

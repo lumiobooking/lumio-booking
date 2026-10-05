@@ -64,8 +64,15 @@ function makeSvc(o: { staff?: Row[]; appts?: Row[]; failOnCall?: number; dupe?: 
   const t1Staff = staff.filter((s) => s.tenantId === 't1').map((s) => ({ id: s.id, firstName: s.firstName, lastName: null }));
   const ctx = { menu, staff: t1Staff, groupMode: true };
   const acc = { wantEnd: false, booked: false, appointmentId: null as string | null };
+  // A booking is only made once the caller said yes to a read-back with the
+  // number's last four digits (phone-readback.ts). The cases below are about
+  // the party itself, so they pass that confirmation unless they set it.
   const tool = (name: string, input: Row) =>
-    (svc as unknown as { runTool: (...a: unknown[]) => Promise<string> }).runTool('t1', TZ, '+17145550000', name, input, acc, ctx);
+    (svc as unknown as { runTool: (...a: unknown[]) => Promise<string> }).runTool(
+      't1', TZ, '+17145550000', name,
+      name === 'create_booking' && !('phoneConfirmed' in input) ? { ...input, phoneConfirmed: true } : input,
+      acc, ctx,
+    );
   return { tool, calls, created, updates, acc };
 }
 
@@ -194,3 +201,28 @@ describe('tenant isolation', () => {
     expect(created).toHaveLength(0);
   });
 });
+
+describe('the phone number is read back before a hotline booking', () => {
+  it('without the caller’s yes to the last four digits, nobody is booked', async () => {
+    const { tool, created } = makeSvc();
+    const out = await tool('create_booking', { localDateTime: `${DAY}T14:00`, people: party3, phoneConfirmed: false });
+    expect(out).toMatch(/^NOT BOOKED YET/);
+    expect(out).toContain('ending in 0, 0, 0, 0'); // caller ID +17145550000
+    expect(created).toHaveLength(0);
+  });
+
+  it('a different number the caller gave is the one booked', async () => {
+    const { tool, created } = makeSvc();
+    const out = await tool('create_booking', { localDateTime: `${DAY}T14:00`, people: [{ firstName: 'Anna', services: ['S1'] }], customerPhone: '714 555 0147' });
+    expect(out).toMatch(/^SUCCESS/);
+    expect(created.map((c) => c.dto.customerPhone).filter(Boolean)).toEqual(['+17145550147']);
+  });
+
+  it('a garbled number is asked for again — never swapped for the caller ID', async () => {
+    const { tool, created } = makeSvc();
+    const out = await tool('create_booking', { localDateTime: `${DAY}T14:00`, people: [{ firstName: 'Anna', services: ['S1'] }], customerPhone: '555 01' });
+    expect(out).toMatch(/not a complete phone number/);
+    expect(created).toHaveLength(0);
+  });
+});
+

@@ -16,6 +16,7 @@ import { AiUsageService } from '../common/ai-usage.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { toE164 as normalizeE164, dialCodeFor } from '../common/phone';
+import { bookingPhone, spokenLast4 } from './phone-readback';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 
 /** Convert a salon-local wall time ("2026-07-10T14:00") to the correct UTC ISO
@@ -1027,16 +1028,18 @@ The call has already been answered with the ${persona.venueNoun}'s greeting — 
     const groupScript = `BOOKING A NEW ${persona.bookableNoun.toUpperCase()} — collect only what is still missing; when the caller gives several details at once, take them all and move on:
 - WHO and WHAT: the service or services for each person. One person can have several services ("gel manicure and a pedicure"). A group is several people at the SAME time, each with their own technician. If the caller says "we", "us", "my friend", "my mom and I" or a number of people, find out how many people and what each person wants; otherwise it is just the caller — do not ask how many. If their words could mean more than one menu item (e.g. "manicure" when the menu has a regular and a gel manicure), ask which one; never choose for them. If something is not on the menu, call get_services before saying so.
 - WHEN: the day and time. As soon as you know everyone's services and the day or time, call check_availability. Only offer times it says are open; if theirs is taken, offer the times it gives you.
-- NAMES: the first name of each person, asked once for everybody ("And the first names for each of you?"). Never invent, guess or reuse a name. The caller's phone number is already known — do not ask for it.
+- NAMES: the first name of each person, asked once for everybody ("And the first names for each of you?"). Never invent, guess or reuse a name. Do not ask the caller to read out a phone number — it is confirmed in the read-back below.
 - TECHNICIAN: only if the caller asks for someone by name, pass that name; otherwise anyone is fine — do not ask.
 - REQUESTS: if they mention anything the salon should know (an allergy, a design, being late), pass it in create_booking's "request" — do not ask for it.
-- CONFIRM: read everything back in ONE sentence and wait for a clear yes, e.g. "So Anna for a gel manicure and pedicure and Lisa for a pedicure, Saturday at 2 PM — is that right?"
-- BOOK: after the yes, call create_booking ONCE with everyone in it. Then say in one short sentence that it is booked and a text confirmation is on the way, and ask if there is anything else.${staff.length ? `\nTechnicians here (first names): ${staff.map((s) => s.firstName).join(', ')}.` : ''}`;
+- CONFIRM: read everything back in ONE sentence INCLUDING the last four digits of the phone number, and wait for a clear yes, e.g. "So Anna for a gel manicure and pedicure and Lisa for a pedicure, Saturday October 10 at 2 PM, under the number ending in 0, 1, 4, 7 — is that right?" If they give a different number, pass it as customerPhone and read back once more with ITS last four digits.
+- BOOK: after the yes, call create_booking ONCE with everyone in it and phoneConfirmed: true. Then say in one short sentence that it is booked and a text confirmation is on the way, and ask if there is anything else.${staff.length ? `\nTechnicians here (first names): ${staff.map((s) => s.firstName).join(', ')}.` : ''}`;
     const singleScript = `${persona.voiceGoal}
-BOOKING, STEP BY STEP — one question per turn, skipping anything the caller already said: (1) which service; if their words could mean more than one service on the menu, ask which one ("a regular manicure, or the gel manicure?") instead of choosing; if it is not on the menu, call get_services before you answer; (2) the day and time; (3) their first name — never invent or reuse a name; (4) read all of it back in ONE short sentence and wait for a clear yes; (5) only then call create_booking with the service's code.`;
+BOOKING, STEP BY STEP — one question per turn, skipping anything the caller already said: (1) which service; if their words could mean more than one service on the menu, ask which one ("a regular manicure, or the gel manicure?") instead of choosing; if it is not on the menu, call get_services before you answer; (2) the day and time; (3) their first name — never invent or reuse a name; (4) read all of it back in ONE short sentence INCLUDING "under the number ending in" and the phone's last four digits, and wait for a clear yes — if they give a different number, pass it as customerPhone and read back once more with its last four digits; (5) only then call create_booking with the service's code and phoneConfirmed: true.`;
     const bookedNote = alreadyBooked ? '\nEarlier on this call a booking was already made. Do NOT book the same people again; for a change, use find_appointment and reschedule_appointment.' : '';
     const system = `You are the warm, professional phone receptionist for "${salonName}", ${persona.identity}. ${style}
-The caller's phone number is ${callerPhone || 'unknown'}.${callerPhone ? ' You already have it — do NOT ask for their phone number; use it when booking.' : ' Politely ask for a good callback number if you need one.'}
+${callerPhone && spokenLast4(callerPhone)
+  ? `The caller is calling from ${callerPhone} (ending in ${spokenLast4(callerPhone)}). Do NOT ask them to read out a phone number. Instead, in the read-back before booking, say the booking will be "under the number ending in ${spokenLast4(callerPhone)}" so they can confirm it or give another. If they give another, take it as customerPhone; if it sounds incomplete, ask them to repeat it digit by digit. Always say the four digits one at a time.`
+  : 'The caller\'s number is hidden. Before the read-back, ask for a good callback number, then include its last four digits (one at a time) in the read-back.'}
 ${groupMode ? groupScript : singleScript}${bookedNote}
 Never book a service the caller has not named back to you, and never guess between two services — a wrong service means a chair, a technician and a price the ${persona.venueNoun} did not agree to. Do not hang up right after booking.
 If the caller asks about a booking they already have ("when is my appointment", "can I move it"), call find_appointment first and read back what it returns — never answer from memory. To move it, call reschedule_appointment; that tool applies the ${persona.venueNoun}'s notice policy and hands you the reason when it refuses, so say THAT reason rather than inventing a policy.
@@ -1072,23 +1075,24 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
           },
           {
             name: 'create_booking',
-            description: 'Book everyone at once — one entry per person, all at the same start time. Only after the caller said yes to the full read-back. Never call twice for the same people.',
+            description: 'Book everyone at once — one entry per person, all at the same start time. Only after the caller said yes to the full read-back, including the phone number’s last four digits. Never call twice for the same people.',
             input_schema: {
               type: 'object',
               properties: {
                 localDateTime: { type: 'string', description: 'Salon local start time in ISO form, e.g. 2026-07-10T14:00' },
                 people: { type: 'array', minItems: 1, maxItems: 8, items: personItem(true) },
                 customerPhone: { type: 'string', description: 'Optional. Defaults to the caller’s own number; only set if they give a different callback number.' },
+                phoneConfirmed: { type: 'boolean', description: 'true ONLY after the caller said yes to a read-back that included the last four digits of the number this booking goes under.' },
                 request: { type: 'string', description: 'Optional. Anything the caller asked the salon to know, in their words: an allergy, a design they want, "running 10 minutes late". Leave out if nothing.' },
               },
-              required: ['localDateTime', 'people'],
+              required: ['localDateTime', 'people', 'phoneConfirmed'],
             },
           },
         ]
       : [
           {
             name: 'create_booking',
-            description: 'Create the appointment. Only call after the caller has given their first name, named the service themselves, and said yes to the day, time and service read back to them.',
+            description: 'Create the appointment. Only call after the caller has given their first name, named the service themselves, and said yes to the day, time, service and the phone number’s last four digits read back to them.',
             input_schema: {
               type: 'object',
               properties: {
@@ -1096,8 +1100,9 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
                 serviceId: { type: 'string', description: 'The menu code, e.g. S3.' },
                 localDateTime: { type: 'string', description: 'Salon local time in ISO form, e.g. 2026-07-10T14:00' },
                 customerPhone: { type: 'string', description: 'Optional. Defaults to the caller’s own number; only set if they give a different callback number.' },
+                phoneConfirmed: { type: 'boolean', description: 'true ONLY after the caller said yes to a read-back that included the last four digits of the number this booking goes under.' },
               },
-              required: ['customerFirstName', 'serviceId', 'localDateTime'],
+              required: ['customerFirstName', 'serviceId', 'localDateTime', 'phoneConfirmed'],
             },
           },
         ];
@@ -1272,12 +1277,15 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
         const ref = String(input.serviceId || '').trim();
         const serviceId = (ctx.menu.length ? resolveService(ref, ctx.menu)?.id : null) ?? ref;
         const local = String(input.localDateTime || '').trim();
-        // Use a fully-formed spoken number if the caller gave one; otherwise fall
-        // back to the verified caller ID. Both normalized to E.164 so Twilio can text it.
-        const { dial: bkDial } = await this.localeInfo(tenantId);
-        const phone = toE164(String(input.customerPhone || ''), bkDial) || toE164(callerPhone, bkDial);
         if (!firstName || !serviceId || !local) return 'Missing required info; ask the caller for what is missing.';
-        if (!phone) return 'No phone number available; politely ask the caller for a good callback number.';
+        // The number the caller gave, else the caller ID — and either way only
+        // once the caller has heard its last four digits and said yes. A
+        // garbled number is asked for again, never swapped for the caller ID.
+        // See phone-readback.ts.
+        const { dial: bkDial } = await this.localeInfo(tenantId);
+        const pd = bookingPhone({ given: input.customerPhone, callerPhone, confirmed: input.phoneConfirmed, norm: (r) => toE164(r, bkDial) });
+        if (!pd.ok) return pd.say;
+        const phone = pd.phone;
         const startTime = wallToUtcISO(local, tz);
         const dto = { serviceId, startTime, customerFirstName: firstName, customerPhone: phone } as CreateBookingDto;
         const booking = await this.bookings.createForTenant(tenantId, dto, null, 'hotline');
@@ -1388,8 +1396,10 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
     const lm = /^(\d{4}-\d{2}-\d{2})T(\d{1,2}):(\d{2})/.exec(local);
     if (!lm) return 'localDateTime must look like 2026-07-10T14:00 (salon local). Ask for the day and time if you do not have them.';
     const { dial } = await this.localeInfo(tenantId);
-    const phone = toE164(String(input.customerPhone || ''), dial) || toE164(callerPhone, dial);
-    if (!phone) return 'No phone number available; politely ask the caller for a good callback number.';
+    // Confirmed with the caller, last four digits read back — see phone-readback.ts.
+    const pd = bookingPhone({ given: input.customerPhone, callerPhone, confirmed: input.phoneConfirmed, norm: (r) => toE164(r, dial) });
+    if (!pd.ok) return pd.say;
+    const phone = pd.phone;
     const dateStr = lm[1];
     // The same wall-clock arithmetic the open-times grid uses, so "14:00" here is the very instant offered there.
     const start = wallTimeToUtc(dateStr, `${lm[2]}:${lm[3]}`, tz);

@@ -14,6 +14,7 @@ import { ui } from '../../../lib/ui';
 import { ChatTurnsPanel } from '../../../components/ChatTurnsPanel';
 import { useLang } from '../../../lib/i18n';
 import { AiNotesBox } from '../../../components/AiNotesBox';
+import { FollowUpBox } from '../../../components/FollowUpBox';
 import { uiLocale } from '../../../lib/datetime';
 
 interface BotFact { label: string; value: string; on: boolean; from?: string | null; until?: string | null }
@@ -1181,6 +1182,8 @@ function Inner() {
         <AiNotesBox token={token} vi={lang === 'vi'} />
         <label style={ui.label}>{t('extraNotes')}</label>
         <textarea value={c.aiInstruction} placeholder={t('extraNotesPh')} rows={3} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
+        {/* Follow-up for quiet booking chats — each salon's own switch, off by default. */}
+        {c.botMode !== 'sales' && <FollowUpBox token={token} vi={lang === 'vi'} />}
       </div>
 
       {/* Knowledge import: website / fanpage → proposed facts → human approves */}

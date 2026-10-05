@@ -214,16 +214,119 @@ export function saysStop(text: string): boolean {
  * be a person checking back — the bot does not claim to be human anywhere else
  * either.
  */
+// "anh/chị", never "chị": nothing in a quiet thread says which the customer
+// is, and the booking prompt forbids guessing for the same reason.
 export const NUDGE_TEMPLATES: { vi: string; en: string }[] = [
   {
-    vi: 'Dạ chị ơi, mình còn cần em giữ khung giờ nào không ạ? Em xem lịch rồi báo chị ngay.',
+    vi: 'Dạ anh/chị ơi, mình còn cần em giữ khung giờ nào không ạ? Em xem lịch rồi báo anh/chị ngay.',
     en: 'Still want me to hold a time for you? Tell me roughly when and I will check the book.',
   },
   {
-    vi: 'Dạ em vẫn đây ạ — chị cần em báo giá dịch vụ nào hay xem giờ trống hôm nào thì nhắn em nhé.',
+    vi: 'Dạ em vẫn đây ạ — anh/chị cần em báo giá dịch vụ nào hay xem giờ trống hôm nào thì nhắn em nhé.',
     en: 'I am still here — say the word if you want a price or the open times for a day.',
   },
 ];
+
+/**
+ * The nudge that fits WHERE the customer stopped.
+ *
+ * A generic "still there?" to someone who was one phone number away from a
+ * booking wastes the nudge. The last thing the bot asked decides the line:
+ * waiting on a yes to the recap → ask for the yes; missing name/phone → ask
+ * for them; a time question → offer to check the book; otherwise general.
+ */
+export type NudgeKind = 'confirm' | 'contact' | 'time' | 'general';
+
+export function nudgeKindFor(lastBotText: string | null | undefined): NudgeKind {
+  const t = String(lastBotText ?? '');
+  if (/(shall i book|should i book|want me to book|book it\?|is that right\?|đặt lịch luôn|em đặt luôn|chốt lịch|xác nhận lại)/i.test(t)) return 'confirm';
+  if (/(first name|your name|phone|number|tên|số điện thoại|sđt|sdt)/i.test(t)) return 'contact';
+  if (/(when|what time|which day|what day|which time|suits you|works for you|giờ nào|hôm nào|ngày nào|mấy giờ|khung giờ)/i.test(t)) return 'time';
+  return 'general';
+}
+
+/** The nudge for the nth follow-up. A second nudge is always the softer general line. */
+export function contextualNudge(lastBotText: string | null | undefined, vi: boolean, nth = 1): string {
+  const kind = nth > 1 ? 'general' : nudgeKindFor(lastBotText);
+  switch (kind) {
+    case 'confirm':
+      return vi
+        ? 'Dạ anh/chị ơi, em đặt lịch như trên cho mình luôn nhé? Anh/chị chỉ cần trả lời "ok" là xong ạ 😊'
+        : 'Still want me to book that for you? Just reply "yes" and it is done 😊';
+    case 'contact':
+      return vi
+        ? 'Dạ anh/chị ơi, anh/chị gửi em tên và số điện thoại là em giữ lịch cho mình liền nhé 😊'
+        : 'Just checking in — send me your name and phone number and I will get your appointment set up 😊';
+    case 'time':
+      return vi ? NUDGE_TEMPLATES[0].vi : NUDGE_TEMPLATES[0].en;
+    default:
+      return vi ? NUDGE_TEMPLATES[1].vi : NUDGE_TEMPLATES[1].en;
+  }
+}
+
+/** Where each salon's choice is stored (settings table, one row per tenant). */
+export const CHAT_FOLLOWUP_KEY = 'chat_followup';
+
+/**
+ * A salon's stored settings, validated. Nothing stored = DEFAULT_FOLLOWUP,
+ * which is OFF: messages to a salon's customers go out only once that salon
+ * has switched this on for itself.
+ */
+export function followUpSettingsFrom(raw: unknown): FollowUpSettings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_FOLLOWUP };
+  return cleanFollowUp({ ...DEFAULT_FOLLOWUP, ...(raw as Record<string, unknown>) });
+}
+
+/** One turn as the thread stores it — only what the follow-up reads. */
+export interface StoredTurn {
+  role: 'user' | 'assistant';
+  content?: unknown;
+  at?: string | null;
+  manual?: boolean;
+  nudge?: boolean;
+}
+
+/**
+ * The thread's state for decideFollowUp, read from its own history (no new
+ * columns). Nudges are turns marked `nudge`, counted only since the
+ * customer's last message — a reply opens a new allowance.
+ */
+export function threadStateFrom(o: {
+  history: StoredTurn[];
+  lastCustomerAt: Date | string | null;
+  lastMessageAt: Date | string | null;
+  handoff: boolean;
+  assigned: boolean;
+  booked: boolean;
+}): ThreadState & { lastBotText: string | null } {
+  const h = Array.isArray(o.history) ? o.history.filter(Boolean) : [];
+  const inbound = ms(o.lastCustomerAt);
+  const last = h[h.length - 1];
+  const bots = h.filter((t) => t.role === 'assistant');
+  // What the customer was last ASKED — the nudges themselves do not count.
+  const lastAsk = [...bots].reverse().find((t) => !t.nudge);
+  const lastBot = bots[bots.length - 1];
+  const lastBotAt = ms(lastBot?.at ?? null);
+  // A bot turn written without a clock: the thread's own last-message stamp
+  // stands in, but only when that turn IS the last thing in the thread.
+  const outbound = lastBotAt ?? (last?.role === 'assistant' ? ms(o.lastMessageAt) : null);
+  const since = inbound ?? 0;
+  const nudges = bots.filter((t) => t.nudge && (ms(t.at ?? null) ?? 0) >= since);
+  const lastNudge = nudges[nudges.length - 1];
+  return {
+    lastCustomerAt: o.lastCustomerAt,
+    // The customer wrote last in our buffer → they are owed a reply, not a nudge.
+    lastOutboundAt: last?.role === 'user' ? null : (outbound !== null ? new Date(outbound) : null),
+    nudges: nudges.length,
+    lastNudgeAt: lastNudge?.at ?? null,
+    booked: o.booked,
+    // A person has the floor — taken over, assigned, or the salon's last
+    // word was typed by a human. The bot does not nudge over them.
+    botMaySpeak: !o.handoff && !o.assigned && !(lastBot?.manual),
+    optedOut: h.some((t) => t.role === 'user' && saysStop(String(t.content ?? ''))),
+    lastBotText: lastAsk ? String(lastAsk.content ?? '') : null,
+  };
+}
 
 /** One line, chosen so the same customer does not get the same sentence twice. */
 export function nudgeText(nth: number, vi: boolean): string {

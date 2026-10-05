@@ -1,4 +1,5 @@
 import { dialCodeFor } from '../common/phone';
+import { CHAT_FOLLOWUP_KEY, followUpSettingsFrom, type FollowUpSettings } from '../messenger/followup';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
@@ -268,6 +269,28 @@ export class SettingsService {
     await this.writeKey(tenantId, AI_NOTES_KEY, { text });
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.ai_notes_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { length: text.length } });
     return { text };
+  }
+
+  /** The salon's follow-up for quiet chats (see messenger/followup). Off until the salon turns it on. */
+  async getChatFollowUp(user: AuthenticatedUser): Promise<FollowUpSettings> {
+    const tenantId = this.tenantId(user);
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: CHAT_FOLLOWUP_KEY } } });
+    return followUpSettingsFrom(row?.value);
+  }
+
+  async updateChatFollowUp(user: AuthenticatedUser, dto: Record<string, unknown>): Promise<FollowUpSettings> {
+    const tenantId = this.tenantId(user);
+    const current = await this.getChatFollowUp(user);
+    const pick = (k: keyof FollowUpSettings) => (dto && Object.prototype.hasOwnProperty.call(dto, k) ? { [k]: dto[k] } : {});
+    const next = followUpSettingsFrom({
+      ...current,
+      ...pick('enabled'), ...pick('firstAfterMin'), ...pick('secondAfterMin'), ...pick('hourFrom'), ...pick('hourTo'),
+    });
+    // A second nudge only counts when there is a delay for it.
+    next.maxPerWindow = next.secondAfterMin > 0 ? 2 : 1;
+    await this.writeKey(tenantId, CHAT_FOLLOWUP_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.chat_followup_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { enabled: next.enabled, firstAfterMin: next.firstAfterMin, secondAfterMin: next.secondAfterMin, hourFrom: next.hourFrom, hourTo: next.hourTo } });
+    return next;
   }
 
   async getBusinessProfile(tenantId: string): Promise<BusinessProfileSettings> {

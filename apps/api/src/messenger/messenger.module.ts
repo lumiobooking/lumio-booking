@@ -15,10 +15,12 @@ import { WebChatAdminController, WebChatPublicController } from './web-chat.cont
 import { ChatTurnsService } from './chat-turns.service';
 import { ChatTurnsController } from './chat-turns.controller';
 
+import { ChatFollowUpScheduler } from './followup.scheduler';
+
 @Module({
   imports: [BookingsModule, SettingsModule, NotificationsModule, PushModule],
   controllers: [MessengerController, ChatTurnsController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController, WebChatAdminController, WebChatPublicController],
-  providers: [InboxEventsService, ChatTurnsService, MessengerService, ZaloOaService, WebChatService],
+  providers: [InboxEventsService, ChatTurnsService, MessengerService, ZaloOaService, WebChatService, ChatFollowUpScheduler],
   exports: [InboxEventsService, MessengerService, ChatTurnsService],
 })
 export class MessengerModule {}

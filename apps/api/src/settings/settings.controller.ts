@@ -111,6 +111,17 @@ export class SettingsController {
     return this.settings.updateAiNotes(user, dto);
   }
 
+  // Follow-up for quiet Messenger / Instagram booking chats — per salon, off by default.
+  @Get('chat-followup')
+  chatFollowUp(@CurrentUser() user: AuthenticatedUser) {
+    return this.settings.getChatFollowUp(user);
+  }
+
+  @Patch('chat-followup')
+  updateChatFollowUp(@CurrentUser() user: AuthenticatedUser, @Body() dto: { enabled?: boolean; firstAfterMin?: number; secondAfterMin?: number; hourFrom?: number; hourTo?: number }) {
+    return this.settings.updateChatFollowUp(user, dto as Record<string, unknown>);
+  }
+
   @Patch('business-profile')
   updateBusinessProfile(
     @CurrentUser() user: AuthenticatedUser,

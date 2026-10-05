@@ -9,6 +9,7 @@ import {
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
+import { decideFollowUp, threadStateFrom, contextualNudge, followUpSettingsFrom, CHAT_FOLLOWUP_KEY, WINDOW_MS, type StoredTurn } from './followup';
 import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, BOOKED_CORRECTION, VAGUE_CORRECTION } from './booking-guards';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY, sendZaloImage } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
@@ -79,6 +80,8 @@ function wallToUtcISO(local: string, tz: string): string {
 
 type Turn = {
   role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean;
+  /** A follow-up the bot sent after the customer went quiet (see ./followup). */
+  nudge?: boolean;
   /** Meta's message id. Lets mergeHistory join our copy to Meta's on the id
    *  rather than on the text — see markManual in ./history-merge. */
   messageId?: string | null;
@@ -5089,6 +5092,111 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       this.logger.warn(`image send failed: ${String(e).slice(0, 120)}`);
       return { ok: false, error: String(e) };
     }
+  }
+
+  /**
+   * NHẮN LẠI KHÁCH IM LẶNG — the follow-up for a booking chat that went quiet.
+   *
+   * Opt-in per salon (settings key chat_followup, OFF until the salon turns
+   * it on in Messenger settings). The rules — Meta's 24-hour window, we spoke
+   * last, nothing booked, no human on the thread, opt-out words, the salon's
+   * hours, at most 1–2 nudges — live in ./followup and are tested there; this
+   * gathers each thread's facts, asks decideFollowUp, and sends. Messenger and
+   * Instagram only: the website chat has nobody to reach once the tab is
+   * closed, and Zalo has its own sending rules. Every read and write is scoped
+   * to the salon the thread belongs to.
+   */
+  private followUpRunning = false;
+
+  async sendFollowUpsEverywhere(now: Date = new Date()): Promise<{ sent: number; salons: number }> {
+    if (this.followUpRunning) return { sent: 0, salons: 0 };
+    this.followUpRunning = true;
+    try {
+      // Only salons that switched it on — one cheap query, not one per salon.
+      const rows = await this.prisma.setting.findMany({ where: { key: CHAT_FOLLOWUP_KEY }, select: { tenantId: true, value: true } });
+      const on = rows.filter((r) => followUpSettingsFrom(r.value).enabled).map((r) => r.tenantId);
+      let sent = 0;
+      for (const tenantId of on) {
+        sent += await this.sendFollowUpsFor(tenantId, now).catch((e) => {
+          this.logger.warn(`follow-up sweep failed for ${tenantId}: ${String(e).slice(0, 120)}`);
+          return 0;
+        });
+      }
+      return { sent, salons: on.length };
+    } finally {
+      this.followUpRunning = false;
+    }
+  }
+
+  async sendFollowUpsFor(tenantId: string, now: Date = new Date()): Promise<number> {
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_FOLLOWUP_KEY }, select: { value: true } }).catch(() => null);
+    const settings = followUpSettingsFrom(row?.value);
+    if (!settings.enabled) return 0;
+    // A booking bot only — the sales bot (Lumio's own page) has its own lead flow.
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { enabled: true, botMode: true } as never }).catch(() => null) as { enabled?: boolean; botMode?: string } | null;
+    if (!conn?.enabled || (conn.botMode && conn.botMode !== 'booking')) return 0;
+    const tz = await this.tzOf(tenantId);
+    const salonHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hourCycle: 'h23' }).format(now)) % 24;
+    if (salonHour < settings.hourFrom || salonHour >= settings.hourTo) return 0;
+    const minWait = Math.min(settings.firstAfterMin, settings.secondAfterMin > 0 ? settings.secondAfterMin : settings.firstAfterMin);
+
+    const threads = await this.prisma.messengerThread.findMany({
+      where: {
+        tenantId,
+        channel: { in: ['messenger', 'instagram'] },
+        status: 'open',
+        handoff: false,
+        lastCustomerAt: { gte: new Date(now.getTime() - WINDOW_MS) },
+        lastMessageAt: { lte: new Date(now.getTime() - minWait * 60_000) },
+      } as never,
+      select: { id: true, pageId: true, senderId: true, history: true, summary: true, handoff: true, assignedUserId: true, lastCustomerAt: true, lastMessageAt: true, customerId: true, channel: true } as never,
+      take: 200,
+    }) as unknown as {
+      id: string; pageId: string; senderId: string; history: unknown; summary: string | null; handoff: boolean;
+      assignedUserId: string | null; lastCustomerAt: Date | null; lastMessageAt: Date | null; customerId: string | null; channel: string;
+    }[];
+
+    let sent = 0;
+    for (const t of threads) {
+      const history = (Array.isArray(t.history) ? t.history : []) as Turn[];
+      // Booked from this conversation: the customer it is linked to has a live
+      // appointment made since the chat began. Nudging them would read as
+      // "you were not listening". A failed lookup counts as booked — silence
+      // is the safe side.
+      const booked = t.customerId
+        ? (await this.prisma.appointment.count({
+          where: {
+            tenantId, customerId: t.customerId,
+            createdAt: { gte: new Date((t.lastCustomerAt ?? now).getTime() - WINDOW_MS) },
+            status: { notIn: ['CANCELLED'] },
+          } as never,
+        }).catch(() => 1)) > 0
+        : false;
+      const state = threadStateFrom({
+        history: history as unknown as StoredTurn[],
+        lastCustomerAt: t.lastCustomerAt, lastMessageAt: t.lastMessageAt,
+        handoff: t.handoff, assigned: Boolean(t.assignedUserId), booked,
+      });
+      const d = decideFollowUp(state, settings, now, salonHour);
+      if (!d.send) continue;
+
+      // The page must belong to THIS salon — a thread never borrows another
+      // tenant's token.
+      const pg = await this.prisma.messengerPage.findFirst({ where: { pageId: t.pageId, tenantId }, select: { pageToken: true, enabled: true } }).catch(() => null);
+      const legacy = pg ? null : await this.prisma.messengerConnection.findFirst({ where: { tenantId, pageId: t.pageId }, select: { pageToken: true, enabled: true } }).catch(() => null);
+      const token = pg?.pageToken || legacy?.pageToken;
+      if (!token || (pg ? !pg.enabled : !legacy?.enabled)) continue;
+
+      const lang = conversationLang(history.filter((h) => h.role === 'user').map((h) => String(h.content ?? ''))) ?? await this.defaultLangOf(tenantId);
+      const text = contextualNudge(state.lastBotText, lang === 'vi', d.nth);
+      const r = await this.sendText(token, t.senderId, text, t.channel === 'instagram' ? 'instagram' : 'messenger', tenantId);
+      if (!r.ok) continue;
+      await this.appendTurns(t.id, history, this.threadSummary(t), [{ role: 'assistant', content: text, at: now.toISOString(), nudge: true }]);
+      this.events.publish(tenantId, 'message');
+      sent += 1;
+      this.logger.log(`follow-up #${d.nth} sent on thread ${t.id} (${t.channel})`);
+    }
+    return sent;
   }
 
   private async sendText(pageToken: string, recipientId: string, text: string, channel?: Channel, tenantId?: string): Promise<{ ok: boolean; error?: string }> {

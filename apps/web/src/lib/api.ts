@@ -1,6 +1,18 @@
 // Thin client for the Lumio Booking backend API.
 import { writeKind, successText, cacheable, cacheKey, GetCache, SLOW_NOTICE_MS, slowText, preservesCache } from './api-feedback';
 import { notify } from './feedback';
+import { networkNotice, isAbortError, GET_RETRY_DELAY_MS } from './net-notice';
+
+// The page is leaving (reload, link, an OAuth consent redirect). Requests the
+// browser cancels on the way out are not a lost connection — see net-notice.
+let pageUnloading = false;
+let lastNetNoticeAt = 0;
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => { pageUnloading = true; });
+  window.addEventListener('pageshow', () => { pageUnloading = false; });
+  // beforeunload can be cancelled; if the page is still here a moment later it did not leave.
+  window.addEventListener('beforeunload', () => { pageUnloading = true; window.setTimeout(() => { pageUnloading = false; }, 4000); });
+}
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 
 // Multi-branch: the salon owner/manager's currently selected branch. Read fresh
@@ -286,26 +298,43 @@ async function fetchOnce<T>(path: string, options: ApiOptions, key: string): Pro
   // take tens of seconds, and a wordless spinner that long reads as "broken".
   const slowTimer = setTimeout(() => notify('info', slowText(toastVi)), SLOW_NOTICE_MS);
 
-  let res: Response;
+  const send = () => fetch(`${API_URL}${path}`, {
+    method,
+    headers: {
+      // Only with a body. A Content-Type on a GET made every request
+      // "non-simple", which cost a CORS preflight on each one.
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(branch ? { 'X-Branch-Id': branch } : {}),
+      ...tenantStamp(),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  let res: Response | null = null;
+  let failure: unknown = null;
   try {
-    res = await fetch(`${API_URL}${path}`, {
-      method,
-      headers: {
-        // Only with a body. A Content-Type on a GET made every request
-        // "non-simple", which cost a CORS preflight on each one.
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(branch ? { 'X-Branch-Id': branch } : {}),
-        ...tenantStamp(),
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    res = await send();
   } catch (e) {
-    clearTimeout(slowTimer);
-    notify('error', toastVi ? 'Mất kết nối mạng' : 'Network error');
-    throw e;
+    failure = e;
+    // A read that failed is tried once more, quietly: a laptop waking from
+    // sleep, a Wi-Fi hand-off or a deploy swapping servers are all gone a
+    // second later. A WRITE is never repeated here — it might have landed.
+    if (method === 'GET' && !isAbortError(e) && !pageUnloading) {
+      await new Promise((r) => setTimeout(r, GET_RETRY_DELAY_MS));
+      try { res = await send(); failure = null; } catch (e2) { failure = e2; }
+    }
   }
   clearTimeout(slowTimer);
+  if (!res) {
+    const notice = networkNotice({
+      method, aborted: isAbortError(failure), unloading: pageUnloading,
+      online: typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean' ? navigator.onLine : null,
+      now: Date.now(), lastShownAt: lastNetNoticeAt, vi: toastVi,
+    });
+    if (notice) { lastNetNoticeAt = Date.now(); notify(notice.kind, notice.text); }
+    throw failure;
+  }
 
   const data = await res.json().catch(() => null);
 

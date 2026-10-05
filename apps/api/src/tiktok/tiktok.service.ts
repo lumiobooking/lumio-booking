@@ -7,6 +7,7 @@ import {
   TIKTOK_KEY, TIKTOK_DEFAULTS, TIKTOK_FILE_MAX_BYTES, TIKTOK_WHOLE_FETCH_MAX, type TikTokSettings, type TikTokPostOptions, type CreatorInfo,
   tiktokAuthorizeUrl, settingsFromToken, parseCreatorInfo, publicTikTok, accessStale, needsReconnect, targetOf,
   initBody, chunkPlan, explainTikTokError, tiktokViewLink, readPublishStatus,
+  isReplayedCallback,
 } from './tiktok';
 import { oauthBase } from '../common/public-url.util';
 
@@ -141,26 +142,54 @@ export class TikTokService {
       const cur = await this.getSettings(tenantId);
       const next = settingsFromToken({ ...cur, connectedAt: '' }, data);
       if (!res.ok || !next) {
+        // The same callback again — a reload of the page that was still
+        // waiting — after this salon connected moments ago. TikTok refuses
+        // the spent code; the connection itself is fine. See isReplayedCallback.
+        if (isReplayedCallback(cur)) {
+          this.logger.log(`tiktok callback replayed for ${tenantId} (already connected ${cur.connectedAt}) — treating as connected`);
+          return back('tiktok=connected');
+        }
         this.logger.warn(`tiktok token exchange failed for ${tenantId}: ${data.error ?? res.status} ${data.error_description ?? ''}`);
         return back(`tiktok=error&msg=${encodeURIComponent(data.error || (data.scope && !String(data.scope).includes('video.publish') ? 'scope_video_publish_missing' : 'token_exchange_failed'))}`);
       }
-      // Who this is — the guidelines want the creator's name on screen.
-      const me = await this.userInfo(next.accessToken).catch(() => null);
+      // Save the connection and send the browser back NOW. The name, avatar
+      // and posting options are fetched behind the redirect: they used to be
+      // awaited here, two more TikTok round-trips (up to 20 s each) during
+      // which the page sat blank — long enough that people reloaded it.
       const saved = await this.writeSettings(tenantId, {
         ...next,
-        displayName: me?.display_name || cur.displayName || '',
+        displayName: cur.displayName || '',
         // Not asked for any more — see userInfo. Kept so a value saved by an
         // older build survives a reconnect rather than being blanked.
         username: cur.username || '',
-        avatarUrl: me?.avatar_url || cur.avatarUrl || '',
+        avatarUrl: cur.avatarUrl || '',
       });
-      await this.refreshCreatorInfo(tenantId, saved).catch(() => undefined);
       await this.audit(tenantId, null, 'tiktok.connected');
+      void this.fillProfile(tenantId, saved).catch((e) => this.logger.warn(`tiktok profile fill failed for ${tenantId}: ${String(e).slice(0, 120)}`));
       return back('tiktok=connected');
     } catch (e) {
       this.logger.error(`tiktok callback failed: ${String(e)}`);
       return back('tiktok=error&msg=exception');
     }
+  }
+
+  /**
+   * Who the account is (name, avatar) and what it may post (creator_info),
+   * fetched after the connect redirect. Only written if the connection it was
+   * started for is still the current one — a disconnect or a different
+   * account connected in the meantime is never overwritten.
+   */
+  private async fillProfile(tenantId: string, saved: TikTokSettings): Promise<void> {
+    const me = await this.userInfo(saved.accessToken).catch(() => null);
+    const now = await this.getSettings(tenantId);
+    if (now.accessToken !== saved.accessToken) return;
+    const filled = (me?.display_name || me?.avatar_url)
+      ? await this.writeSettings(tenantId, {
+        displayName: me?.display_name || now.displayName || '',
+        avatarUrl: me?.avatar_url || now.avatarUrl || '',
+      })
+      : now;
+    await this.refreshCreatorInfo(tenantId, filled).catch(() => undefined);
   }
 
   async disconnect(user: AuthenticatedUser) {

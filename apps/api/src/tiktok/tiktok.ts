@@ -111,6 +111,23 @@ export const TIKTOK_DEFAULTS: TikTokSettings = {
   creator: null, lastError: null,
 };
 
+/**
+ * A TikTok callback that arrives again for a connection that JUST succeeded.
+ *
+ * The callback page used to wait on three TikTok calls in a row before
+ * sending the browser back, so people reloaded it — and a reload re-sends a
+ * one-time code TikTok has already spent. That second exchange fails, and the
+ * salon was shown "Kết nối không thành công" over a connection that had in
+ * fact been saved a moment earlier. A failed exchange right after a
+ * successful one is that reload, not a failure.
+ */
+export const CALLBACK_REPLAY_MS = 10 * 60_000;
+export function isReplayedCallback(s: TikTokSettings, now = Date.now()): boolean {
+  if (!s.connected || !s.accessToken || !s.refreshToken || !s.connectedAt) return false;
+  const at = Date.parse(s.connectedAt);
+  return Number.isFinite(at) && now - at >= 0 && now - at < CALLBACK_REPLAY_MS;
+}
+
 /** What the screen may know — the tokens stay on the server. */
 export function publicTikTok(s: TikTokSettings) {
   return {

@@ -56,6 +56,8 @@ function Inner() {
   const [gbp, setGbp] = useState<Load<GbpConf>>({ state: 'loading' });
   const [tt, setTt] = useState<Load<TikTokConf>>({ state: 'loading' });
   const [busy, setBusy] = useState<string | null>(null);
+  // Back from a consent screen: one more look a few seconds later (see below).
+  const [refreshSoon, setRefreshSoon] = useState(false);
 
   const pull = useCallback(async <T,>(path: string, set: (v: Load<T>) => void) => {
     try { set({ state: 'ok', data: await apiFetch<T>(path, { token }) }); }
@@ -71,11 +73,22 @@ function Inner() {
   }, [token, pull]);
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!refreshSoon) return;
+    const id = window.setTimeout(() => { void load(); }, 5000);
+    return () => window.clearTimeout(id);
+  }, [refreshSoon, load]);
+
   // Back from a consent screen: say how it went.
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const g = q.get('gbp'); const t = q.get('tiktok');
-    if (g === 'connected' || t === 'connected') notify('success', T('Đã kết nối.', 'Connected.'));
+    if (g === 'connected' || t === 'connected') {
+      notify('success', T('Đã kết nối.', 'Connected.'));
+      // The account's name and avatar are fetched just after the redirect
+      // (the callback no longer waits for them), so look once more shortly.
+      setRefreshSoon(true);
+    }
     if (g === 'error' || t === 'error') notify('error', `${T('Kết nối không thành công', 'Connection failed')} (${q.get('msg') || 'error'}).`);
     if (g || t) window.history.replaceState({}, '', window.location.pathname);
     // eslint-disable-next-line react-hooks/exhaustive-deps

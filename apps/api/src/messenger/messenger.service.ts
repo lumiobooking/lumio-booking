@@ -8,7 +8,7 @@ import {
 } from './sales-guards';
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
-import { mergeHistory, isHidden, turnKeys } from './history-merge';
+import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY, sendZaloImage } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
 import {
@@ -1259,13 +1259,16 @@ export class MessengerService implements OnModuleInit {
     let turns = localTurns;
     if (full && row.pageId && row.senderId) {
       const pgTok = await this.prisma.messengerPage
-        .findUnique({ where: { pageId: String(row.pageId) }, select: { pageToken: true } })
+        .findUnique({ where: { pageId: String(row.pageId) }, select: { pageToken: true, igId: true } })
         .catch(() => null);
       const tok = pgTok?.pageToken || (conn as { pageToken?: string } | null)?.pageToken;
       if (tok) {
         const meta = await this.fetchMetaHistory(
           String(row.pageId), tok, String(row.senderId),
           (row as { channel?: string }).channel === 'instagram' ? 'INSTAGRAM' : 'MESSENGER',
+          // The IG account id is who the salon IS on Instagram. Without it
+          // every bot reply in an Instagram thread was drawn as the customer.
+          [pgTok?.igId, (conn as { igId?: string | null } | null)?.igId],
         );
         if (meta && meta.length) historySource = 'meta';
         turns = mergeHistory(meta as never, localTurns as never) as unknown as Turn[];
@@ -3035,10 +3038,11 @@ KEEP IT SIMPLE — these rules beat everything else:
 GREETING AND THANKS: open the conversation warmly with the salon's name ("Hi Brenda, thanks for messaging ${salonName}!") — once; if a greeting was already sent, don't greet again. Thank them when the booking is made ("Thank you, Rebecca — you're all set!") and again in the goodbye.
 If the conversation is just starting and the customer hasn't said what they need, greet briefly and ask what they'd like to book.
 WHAT YOU NEED TO BOOK — collect only what is still missing, one question at a time, in this order:
-1. WHO and WHAT: the service(s) for each person. One person can have several services. If they mention someone else ("me and my sister", "for 2"), it is a group: get each person's service(s) — "Does your sister want the same, or something different?" is one question. If their words could mean more than one menu item ("manicure" → regular or gel; "acrylic" → full set or fill), ask which.
-2. WHEN: a specific day and time. As soon as you know the services and a day (or a time), call check_availability — offer only times it says are open; if theirs is taken, offer the 2–3 it gives you. Never promise a time you have not checked.
+1. WHO and WHAT: the service(s) for each person. One person can have several services. If they mention someone else ("me and my sister", "for 2"), it is a group: get each person's service(s) — "Does your sister want the same, or something different?" is one question. If their words could mean more than one menu item ("manicure" → regular or gel; "acrylic" → full set or fill), ask which — the options in ONE line ("Regular ($25) or gel ($35)?"); with more than 3 options name the 2–3 most popular and offer to list the rest, never a priced menu five lines long.
+2. WHEN: a specific day and time. As soon as you know the services and a day (or a time), call check_availability — offer only times it says are open; if theirs is taken, offer the 2–3 it gives you. Never promise a time you have not checked. If they name a day (or several) but no time, pick ONE day and offer 2–3 concrete open times from the tool ("Tomorrow I have 10:00, 11:30 or 2:00 — which suits you?"); never say "plenty of slots", "lots of openings" or "we're pretty open" — a customer cannot choose from that.
 3. NAMES: their first name, and the first name of each person with them.
 4. PHONE: their mobile number (one number for the whole group).
+AN AGREED TIME IS NOT A BOOKING. Until create_booking has returned SUCCESS, never say "booked", "booked in", "reserved", "locked in", "you're all set" or anything that sounds final — a customer who hears "Monday 11:00 is booked in" and is then asked for their name feels tricked, and if the chat ends there they arrive to no appointment. Say the time works ("11:00 AM works 👍") and ask for the next missing piece in the same message.
 A technician preference only if they bring it up (pass the name in create_booking; if they do not care, say nothing). If they mention anything the salon should know — an allergy, a design, being late — pass it in create_booking's "request"; do not ask for it. That is everything — nothing more.
 Email is OPTIONAL: mention once that a confirmation email is possible; if they skip it, book without it and never bring it up again.
 Recap ONCE, in one short line ("Gel manicure, Friday 2:00 PM, for Anna — shall I book it?"; for a group: "Acrylic full sets for Rebecca and Tasha, Saturday 1:00 PM — shall I book it?"). Any agreement at all — "yes", "ok", "sure", "thanks", a thumbs-up — means BOOK IT NOW. Never recap a second time and never ask a second confirming question; a customer who has to agree twice thinks the booking failed.
@@ -4787,7 +4791,12 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
   private async fetchMetaHistory(
     pageId: string, pageToken: string, psid: string,
     platform: 'MESSENGER' | 'INSTAGRAM' = 'MESSENGER',
+    // Every id the salon writes under: the Facebook Page AND the Instagram
+    // professional account. On Instagram the business's messages are `from`
+    // the IG id, never the Page id — see metaRole for the bug that caused.
+    ownIds: readonly (string | null | undefined)[] = [],
   ): Promise<Turn[] | null> {
+    const own = new Set<string>([pageId, ...ownIds].map((x) => String(x ?? '').trim()).filter(Boolean));
     try {
       // user_id narrows the Page's conversation list to this one customer, so
       // this is a single request rather than a walk over every conversation.
@@ -4826,12 +4835,15 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       const metaNote = /(đã trả lời (một )?quảng cáo|replied to (your|an|the) ad\b|responded to (your|an|the) ad\b|đã phản hồi quảng cáo)/i;
       const turns: Turn[] = msgs
         .filter((m) => String(m?.message ?? '').trim())
-        .filter((m) => !(String(m.from?.id ?? '') === pageId && metaNote.test(String(m.message))))
+        .filter((m) => !(metaRole(m.from?.id, psid, own) === 'assistant' && metaNote.test(String(m.message))))
         .map((m) => ({
-          // from.id is the PAGE on anything we sent — the bot's replies and the
-          // staff's replies both go out through the Page, so Meta cannot tell
-          // them apart and neither can this. They are merged back in below.
-          role: (String(m.from?.id ?? '') === pageId ? 'assistant' : 'user') as Turn['role'],
+          // Anything the salon sent — the bot's replies and the staff's
+          // replies both go out through the Page (or the IG account), so Meta
+          // cannot tell them apart and neither can this. They are merged back
+          // in below. metaRole, not `=== pageId`: on Instagram the business
+          // writes as its IG id, and the Page-id test tagged every bot reply
+          // as the customer's.
+          role: metaRole(m.from?.id, psid, own) as Turn['role'],
           content: String(m.message).trim(),
           at: m.created_time ? new Date(m.created_time).toISOString() : undefined,
           // Carried so mergeHistory can say which Page messages a PERSON typed
@@ -4854,10 +4866,13 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const out = new Map<string, string>();
     try {
       const url = `${GRAPH}/${encodeURIComponent(pageId)}/conversations`
-        + `?platform=${platform}&fields=participants&limit=100&access_token=${encodeURIComponent(pageToken)}`;
+        // Instagram participants are described by username; Messenger's by name.
+        // Asked for explicitly only on Instagram — `username` is not a field of
+        // a Messenger participant and Graph refuses the whole call over it.
+        + `?platform=${platform}&fields=${platform === 'INSTAGRAM' ? 'participants{id,username}' : 'participants'}&limit=100&access_token=${encodeURIComponent(pageToken)}`;
       const r = await fetch(url);
       const j = (await r.json().catch(() => ({}))) as {
-        data?: { participants?: { data?: { id?: string; name?: string }[] } }[];
+        data?: { participants?: { data?: { id?: string; name?: string; username?: string }[] } }[];
         error?: { message?: string; code?: number };
       };
       if (j.error) {
@@ -4869,7 +4884,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           // Every conversation lists the Page itself as a participant. Skip it,
           // or every thread would be named after the salon.
           if (!p?.id || p.id === pageId) continue;
-          const name = String(p.name ?? '').trim();
+          // Instagram participants often carry only a `username` — no `name` —
+          // which is why IG threads sat in the inbox as "Customer 383843".
+          const name = String(p.name ?? '').trim() || (String(p.username ?? '').trim() ? `@${String(p.username).trim()}` : '');
           if (name) out.set(String(p.id), name);
         }
       }

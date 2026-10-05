@@ -72,6 +72,37 @@ export function isHidden(t: HistoryTurn, hidden: readonly string[] | null | unde
   return turnKeys(t).some((k) => set.has(k));
 }
 
+/**
+ * Who wrote a message in Meta's transcript: the customer, or the salon.
+ *
+ * THE INSTAGRAM BUG THIS CLOSES
+ *
+ * The old test was `from.id === pageId`. On Messenger that is true for every
+ * message the Page sent. On Instagram it is true for NONE of them: a business
+ * message in an Instagram conversation is `from` the Instagram professional
+ * account (its IG id), not the Facebook Page. So every reply the bot had ever
+ * sent came back tagged as the CUSTOMER's words, and the merge — which keys on
+ * role + text — then kept our own copy (role assistant) beside Meta's (role
+ * user). Each bot reply was drawn twice: once as a grey "Customer" bubble and
+ * once as the bot. An owner reading that saw the bot talking to itself.
+ *
+ * Decision: a message is the customer's only when it is `from` the customer
+ * (the PSID the conversation was fetched for). Anything else in a 1:1 Page
+ * conversation is the salon — the Page, the IG account, or an id we were never
+ * told about. The known own ids are still passed so an empty/missing `from`
+ * can be classified conservatively (unknown author = customer, the old
+ * behaviour, which only ever errs towards showing a message as inbound).
+ */
+export function metaRole(fromId: string | null | undefined, psid: string, ownIds: Iterable<string>): HistoryTurn['role'] {
+  const id = String(fromId ?? '').trim();
+  if (!id) return 'user';
+  if (id === String(psid).trim()) return 'user';
+  for (const own of ownIds) if (own && String(own) === id) return 'assistant';
+  // Neither the customer nor an id we know: in a conversation fetched for ONE
+  // customer the only other party is the business.
+  return 'assistant';
+}
+
 const key = (t: HistoryTurn) => `${t.role}:${String(t?.content ?? '').trim()}`;
 const txt = (t: HistoryTurn) => String(t?.content ?? '').trim();
 const ms = (t: HistoryTurn) => {

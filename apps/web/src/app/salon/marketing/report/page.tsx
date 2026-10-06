@@ -7,6 +7,7 @@ import { useAuth } from '../../../../lib/auth';
 import { apiFetch } from '../../../../lib/api';
 import { ui, formatPrice } from '../../../../lib/ui';
 import { useLang } from '../../../../lib/i18n';
+import { ind } from '../../../../lib/ui-industry';
 
 type Src = 'website' | 'lumiolink' | 'online' | 'hotline' | 'messenger' | 'walkin' | 'staff';
 interface Channel { key: Src; bookings: number; showed: number; revenueCents: number }
@@ -36,7 +37,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
 
   const [from, setFrom] = useState(() => presetRangeInTz('thisMonth').from);
   const [to, setTo] = useState(() => presetRangeInTz('thisMonth').to);

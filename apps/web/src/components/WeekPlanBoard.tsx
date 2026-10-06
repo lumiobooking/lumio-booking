@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { dayKeyInTz } from '../lib/datetime';
+import { ind } from '../lib/ui-industry';
 
 /**
  * One week of a salon's marketing work, as a document a person can hand over
@@ -168,7 +169,7 @@ export function WeekPlanBoard({
   onSaveOffer?: (o: OfferForm) => Promise<void>;
   currencySign?: string;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const canEdit = Boolean(meta?.canEdit) && !isPast;
   const lang: 'vi' | 'en' = vi ? 'vi' : 'en';
   const [saving, setSaving] = useState(false);
@@ -779,7 +780,7 @@ function JobRow({
   onMove: (by: number) => void;
   onMoveDay: (target: number) => void;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const brief = job.brief ?? null;
   const steps = brief?.steps ?? [];
   const done = steps.length ? steps.filter((_, i) => ticked.includes(i)).length : 0;
@@ -1065,7 +1066,7 @@ export function Inline({
 function OfferCard({ offer, vi, currencySign, onSave }: {
   offer: OfferForm; vi: boolean; currencySign: string; onSave: (o: OfferForm) => Promise<void>;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [o, setO] = useState<OfferForm>(offer);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);

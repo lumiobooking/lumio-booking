@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useLang } from '../lib/i18n';
 import { useIsMobile } from '../lib/responsive';
+import { ind } from '../lib/ui-industry';
 
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? 'dev';
 
@@ -25,7 +26,7 @@ export function PwaRegister() {
   // stop — so it comes back in ten minutes.
   const [snoozed, setSnoozed] = useState(false);
   const { lang } = useLang();
-  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const L = (vi: string, en: string) => ind(lang === 'vi' ? vi : en);
   const isMobile = useIsMobile();
 
   useEffect(() => {

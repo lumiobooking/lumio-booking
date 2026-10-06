@@ -7,6 +7,7 @@ import { ui } from '../lib/ui';
 import { useIsMobile } from '../lib/responsive';
 import { checkRows, parseMenuText, rowsToItems, templateCsv, templateRows, type CheckedRow } from '../lib/service-import';
 import { readXlsx, writeXlsx } from '../lib/xlsx-lite';
+import { ind } from '../lib/ui-industry';
 
 /**
  * Import a whole menu: download the template, fill it, upload it, check, go.
@@ -37,7 +38,7 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
   existingNames: string[];
   onDone: () => void;
 }) {
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const isMobile = useIsMobile();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [rows, setRows] = useState<CheckedRow[] | null>(null);

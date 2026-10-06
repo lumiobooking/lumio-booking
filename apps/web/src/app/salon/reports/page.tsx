@@ -10,6 +10,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
+import { ind } from '../../../lib/ui-industry';
 
 /* ---------------------------------------------------------------- types --- */
 type Src = 'website' | 'lumiolink' | 'online' | 'hotline' | 'messenger' | 'walkin' | 'staff';
@@ -69,7 +70,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
 
   // Default: this month.
   const [from, setFrom] = useState(() => presetRangeInTz('thisMonth').from);

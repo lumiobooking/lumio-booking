@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { setFeedbackLang } from './api';
 import { applyCurrency, onUiCurrencyChange } from './ui-currency';
+import { ind, onUiIndustryChange } from './ui-industry';
 
 export type Lang = 'en' | 'vi';
 const KEY = 'lumio_lang';
@@ -27,6 +28,8 @@ export function LangProvider({ children }: { children: ReactNode }) {
   // first paint.
   const [, bump] = useState(0);
   useEffect(() => onUiCurrencyChange(() => bump((n) => n + 1)), []);
+  // Same for the salon's line of business: every label is re-worded (thợ → bác sĩ…).
+  useEffect(() => onUiIndustryChange(() => bump((n) => n + 1)), []);
   // The API client's toasts speak whatever the app speaks. It is a plain
   // module with no access to this context, so the provider tells it.
   useEffect(() => { setFeedbackLang(lang === 'vi'); }, [lang]);
@@ -1873,7 +1876,8 @@ export { setUiCurrencySymbol } from './ui-currency';
 
 export function tr(key: string, lang: Lang): string {
   const e = DICT[key] ?? SETTINGS_DICT[key];
-  return applyCurrency(e ? e[lang] : key);
+  // In this salon's own words (see ui-industry): identity for a nail salon.
+  return ind(applyCurrency(e ? e[lang] : key));
 }
 
 /** Map a sidebar nav href to its translation key. */

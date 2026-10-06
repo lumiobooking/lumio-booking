@@ -13,6 +13,7 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { ListTenantsDto } from './dto/list-tenants.dto';
 import { uniqueSlug } from './slug.util';
+import { INDUSTRY_KEY, industryDef, resolveIndustry, writeIndustry } from '../common/industry';
 import { presetFor } from '../common/markets';
 import {
   BOOKING_RULES_KEY, COMPANY_EXTRA_KEY, POS_SETTINGS_KEY,
@@ -147,7 +148,7 @@ export class TenantsService {
         { slug: { contains: filters.search, mode: 'insensitive' } },
       ];
     }
-    return this.prisma.tenant.findMany({
+    const rows = await this.prisma.tenant.findMany({
       where,
       select: {
         ...TENANT_PUBLIC_SELECT,
@@ -159,6 +160,12 @@ export class TenantsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    // Each salon's industry, read in one query (key = industry, scoped to these ids).
+    const inds = rows.length
+      ? await this.prisma.setting.findMany({ where: { key: INDUSTRY_KEY, tenantId: { in: rows.map((r) => r.id) } }, select: { tenantId: true, value: true } }).catch(() => [])
+      : [];
+    const byTenant = new Map(inds.map((r) => [r.tenantId, r.value]));
+    return rows.map((r) => ({ ...r, industry: resolveIndustry(byTenant.get(r.id) ?? null, (r as { businessType?: string }).businessType ?? null) }));
   }
 
   async getById(id: string) {
@@ -267,6 +274,11 @@ export class TenantsService {
   async update(id: string, dto: UpdateTenantDto, actor: AuthenticatedUser) {
     await this.getById(id); // 404 if missing
 
+    // An industry carries its businessType with it (Nha khoa → SERVICE, Cà phê → RESTAURANT…).
+    const industry = dto.industry ? industryDef(dto.industry) : undefined;
+    if (dto.industry && !industry) throw new BadRequestException('Unknown industry');
+    if (industry) dto.businessType = industry.businessType;
+
     if (dto.planId) {
       const plan = await this.prisma.plan.findUnique({ where: { id: dto.planId } });
       if (!plan) {
@@ -353,6 +365,9 @@ export class TenantsService {
         else await this.prisma.setting.create({ data: { tenantId: id, key: 'company_extra', value: next as never } }).catch(() => undefined);
       }
     }
+
+    // The setting, and the marketing trade, for THIS tenant only.
+    if (industry) await writeIndustry(this.prisma as never, id, industry.key);
 
     await this.audit.log({
       tenantId: id,

@@ -16,8 +16,9 @@
 
 import { CSSProperties, ReactNode, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ind } from '../../lib/ui-industry';
 
-export const L = (vi: boolean, viText: string, enText: string) => (vi ? viText : enText);
+export const L = (vi: boolean, viText: string, enText: string) => ind(vi ? viText : enText);
 
 /** Turns can be halves (a small add-on is worth ½): 1.5 → "1½". */
 export function fmtTurns(n: number): string {

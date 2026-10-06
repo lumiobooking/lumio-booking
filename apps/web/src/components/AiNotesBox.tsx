@@ -13,12 +13,13 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
+import { ind } from '../lib/ui-industry';
 
 export function AiNotesBox({ token, vi }: { token: string | null; vi: boolean }) {
   const [text, setText] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
 
   useEffect(() => {
     if (!token) return;

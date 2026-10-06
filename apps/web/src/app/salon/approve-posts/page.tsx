@@ -30,6 +30,7 @@ import { PushEnable } from '../../../components/PushEnable';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { useLang } from '../../../lib/i18n';
+import { ind } from '../../../lib/ui-industry';
 
 type Tab = 'work' | 'approve';
 
@@ -45,7 +46,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
 
   const [tab, setTab] = useState<Tab>('work');
   const [picked, setPicked] = useState(false);

@@ -9,6 +9,7 @@ import { apiFetch } from '../../../lib/api';
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { TimezonePicker } from '../../../components/TimezonePicker';
 import { uiLocale } from '../../../lib/datetime';
+import { INDUSTRY_GROUPS, INDUSTRY_OPTIONS } from '../../../lib/ui-industry';
 
 interface Tenant {
   id: string;
@@ -18,6 +19,8 @@ interface Tenant {
   timezone: string;
   contactEmail: string | null;
   businessType?: string;
+  /** Finer line of business (NAIL, LASH, DENTAL, CAFE…), see lib/ui-industry. */
+  industry?: string;
   market?: string; // US | CA | VN — absent on older rows, which means US
   // Null until someone fills it in; the content engine then falls back to the
   // Settings address, and finally to admitting it does not know.
@@ -120,11 +123,14 @@ export default function TenantsPage() {
     }
   }, [ready, token, user, loadData]);
 
-  async function changeBiz(id: string, businessType: string) {
+  // The industry carries its businessType (Nha khoa → SERVICE, Cà phê → RESTAURANT…).
+  async function changeIndustry(id: string, industry: string) {
     try {
-      await apiFetch(`/tenants/${id}`, { method: 'PATCH', token, body: { businessType } });
+      await apiFetch(`/tenants/${id}`, { method: 'PATCH', token, body: { industry } });
       await loadData();
-    } catch { /* ignore */ }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not change industry');
+    }
   }
 
   async function changePlan(id: string, planId: string) {
@@ -313,15 +319,16 @@ export default function TenantsPage() {
                       {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                     <select
-                      value={t.businessType ?? 'SALON'}
-                      onChange={(e) => changeBiz(t.id, e.target.value)}
-                      style={{ ...inp, padding: '5px 8px', width: 'auto', minWidth: 96 }}
-                      title="Business type"
+                      value={t.industry ?? (t.businessType === 'RESTAURANT' ? 'RESTAURANT' : t.businessType === 'REAL_ESTATE' ? 'REAL_ESTATE' : t.businessType === 'SERVICE' ? 'SERVICE' : 'NAIL')}
+                      onChange={(e) => changeIndustry(t.id, e.target.value)}
+                      style={{ ...inp, padding: '5px 8px', width: 'auto', minWidth: 120 }}
+                      title="Ngành nghề — đổi thuật ngữ và menu của tiệm"
                     >
-                      <option value="SALON">Salon</option>
-                      <option value="RESTAURANT">Restaurant</option>
-                      <option value="REAL_ESTATE">Real estate</option>
-                      <option value="SERVICE">Other services</option>
+                      {INDUSTRY_GROUPS.map((g) => (
+                        <optgroup key={g.id} label={g.vi}>
+                          {INDUSTRY_OPTIONS.filter((o) => o.group === g.id).map((o) => <option key={o.key} value={o.key}>{o.vi}</option>)}
+                        </optgroup>
+                      ))}
                     </select>
                   </div>
                 </td>

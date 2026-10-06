@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { moveItem } from '../lib/reorder';
 import { dayKeyInTz, hourInTz, fmtInTz } from '../lib/datetime';
+import { ind } from '../lib/ui-industry';
 
 /**
  * Planning a month of posts, and seeing what it will look like before it exists.
@@ -259,7 +260,7 @@ export function MonthCalendar({
     window.addEventListener('scroll', close, true);
     return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true); };
   }, [menu]);
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
 
   const days = useMemo(() => {
     const first = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -840,7 +841,7 @@ const navBtn: React.CSSProperties = {
  * this wall, not the captions.
  */
 export function IgGrid({ posts, onPick, vi }: { posts: StudioPost[]; onPick: (id: string) => void; vi: boolean }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   if (!posts.length) {
     return (
       <div style={{ padding: 24, textAlign: 'center', fontSize: 13.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
@@ -931,7 +932,7 @@ export function PostPreview({ channel, message, media, pageName, igUsername, vi 
   igUsername: string | null;
   vi: boolean;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const fold = channel === 'instagram' ? IG_FOLD : FB_FOLD;
   const text = (message ?? '').trim();
   const cut = text.length > fold;
@@ -1065,7 +1066,7 @@ export function MediaList({ media, onChange, vi }: {
   onChange: (m: MediaItem[]) => void;
   vi: boolean;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [from, setFrom] = useState<number | null>(null);
 
   return (

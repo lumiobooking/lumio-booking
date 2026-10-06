@@ -8,6 +8,7 @@ import { enqueue, installOutbox, useOutbox, retryFailed, discardBatch, cancelBat
 import { ShopWeek, HolidayOffers, type ShopWeekData, type HolidayIdea, type LastWeek, type AdsReceipt, type AdsPlan } from './ShopWeek';
 import type { ShopPlanSheet } from './ShopWeek';
 import type { MonthBriefData } from './MonthBrief';
+import { ind } from '../lib/ui-industry';
 
 /** A shop whose month is planned but whose week has no jobs yet still gets the
  *  month brief and the calendar — the week section below them simply stays
@@ -100,7 +101,7 @@ export function SalonWorkspace({ token, vi, onCount }: {
   /** How many suggestions are still waiting on the shop, for the tab badge. */
   onCount?: (waiting: number) => void;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [sugg, setSugg] = useState<SuggestionFeed | null>(null);
   const [week, setWeek] = useState<ClientWeek | null>(null);
   const [weekKey, setWeekKey] = useState<string | null>(null);
@@ -299,7 +300,7 @@ function SuggestionCard({
   s: Suggestion; token: string | null; vi: boolean;
   onDone: () => void; onError: (m: string | null) => void;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState('');
@@ -461,7 +462,7 @@ function SuggestionCard({
 function OutboxBar({ vi, pending, running, online, pct }: {
   vi: boolean; pending: BatchView[]; running: boolean; online: boolean; pct: number;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   if (!pending.length) return null;
   const files = pending.reduce((n, b) => n + b.files.length, 0);
   const failed = pending.filter((b) => b.status === 'failed' || b.files.some((f) => f.status === 'failed'));
@@ -550,7 +551,7 @@ function SendAnything({ token, vi, onDone, onError, openRef }: {
   /** Handed up so the week's one ask can open this picker with its own button. */
   openRef?: React.MutableRefObject<(() => void) | null>;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [note, setNote] = useState('');
   const busy = false;
   const [sent, setSent] = useState<number | null>(null);

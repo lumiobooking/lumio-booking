@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
+import { ind } from '../lib/ui-industry';
 
 interface FollowUp { enabled: boolean; firstAfterMin: number; secondAfterMin: number; maxPerWindow: number; hourFrom: number; hourTo: number }
 
@@ -23,7 +24,7 @@ const hh = (h: number) => `${String(h % 24).padStart(2, '0')}:00`;
 export function FollowUpBox({ token, vi }: { token: string | null; vi: boolean }) {
   const [s, setS] = useState<FollowUp | null>(null);
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
 
   useEffect(() => {
     if (!token) return;

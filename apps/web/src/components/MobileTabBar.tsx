@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useLang } from '../lib/i18n';
+import { ind } from '../lib/ui-industry';
 
 // Icon paths (stroke, 24x24). Kept inline so the tab bar has no extra deps.
 const IC: Record<string, string> = {
@@ -43,7 +44,7 @@ export function MobileTabBar() {
   const { lang } = useLang();
   const pathname = usePathname();
   const [unread, setUnread] = useState(0);
-  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const L = (vi: string, en: string) => ind(lang === 'vi' ? vi : en);
 
   const pos = typeof window !== 'undefined' && window.localStorage.getItem('lumio_pos_enabled') === '1';
 

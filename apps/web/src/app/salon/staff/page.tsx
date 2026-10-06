@@ -14,6 +14,7 @@ import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../c
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { PayFields, payBody, payFormFrom, paySummary, type PayForm } from './PayFields';
 import { AccessBlock, LoginSection, PermissionChecklist, RoleMatrix, useAccessCatalog } from './AccessPanel';
+import { ind } from '../../../lib/ui-industry';
 
 interface Service {
   id: string;
@@ -538,7 +539,7 @@ function StaffEditPanel({
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const vi = lang === 'vi';
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const [pay, setPay] = useState<PayForm>(() => payFormFrom(member));
   const [tab, setTab] = useState<'profile' | 'access' | 'schedule' | 'pay' | 'tips'>(initialTab ?? 'profile');
   const [form, setForm] = useState({

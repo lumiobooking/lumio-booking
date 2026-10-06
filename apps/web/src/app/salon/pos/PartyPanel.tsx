@@ -27,6 +27,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { apiFetch } from '../../../lib/api';
 import { formatPrice } from '../../../lib/ui';
 import { useIsMobile } from '../../../lib/responsive';
+import { ind } from '../../../lib/ui-industry';
 
 export interface PartyItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes: number; staffId: string | null; paid: boolean; orderNumber: number | null }
 export interface PartyMember {
@@ -72,7 +73,7 @@ export function PartyPanel({ groupId, token, currency, tipsOn, lang, staff, onCl
   onClose: () => void; onCompose: (c: Composed) => void; refreshKey?: number;
 }) {
   const vi = lang === 'vi';
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const fmt = (c: number) => formatPrice(c, currency);
   const mobile = useIsMobile(820);
   const [party, setParty] = useState<PartyView | null>(null);

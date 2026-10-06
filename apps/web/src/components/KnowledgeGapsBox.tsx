@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
+import { ind } from '../lib/ui-industry';
 
 interface Gap {
   id: string; question: string; count: number; source: 'bot' | 'staff' | string; status: string;
@@ -36,7 +37,7 @@ export function KnowledgeGapsBox({ token, vi, onTaught }: {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
 
   const load = useCallback(async () => {
     if (!token) return;

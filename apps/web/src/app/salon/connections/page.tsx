@@ -9,6 +9,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { uiLocale } from '../../../lib/datetime';
+import { ind } from '../../../lib/ui-industry';
 
 interface Item {
   key: string;
@@ -44,7 +45,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
 
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);

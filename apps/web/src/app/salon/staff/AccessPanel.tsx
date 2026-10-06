@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { ind } from '../../../lib/ui-industry';
 
 export type Role = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN';
 type Cap = string;
@@ -213,7 +214,7 @@ interface LoginInfo { id: string; email: string; isActive?: boolean; lastLoginAt
 export function LoginSection({ vi, token, staffId, defaultEmail, login, onChanged }: {
   vi: boolean; token: string; staffId: string; defaultEmail: string; login: LoginInfo | null; onChanged: () => void;
 }) {
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const [email, setEmail] = useState(login?.email ?? defaultEmail);
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState<string | null>(null);

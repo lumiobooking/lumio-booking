@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linkified } from './Linkified';
+import { ind } from '../lib/ui-industry';
 
 export interface ReviewPost {
   id: string;
@@ -75,7 +76,7 @@ export function PostReview({ api, vi, onCount }: {
    */
   onCount?: (waiting: number) => void;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [feed, setFeed] = useState<ReviewFeed | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -348,7 +349,7 @@ function Detail(props: {
   onChanged: () => void;
 }) {
   const { p, feedMeta, api, vi, fmtDay, fmtTime, onClose, onChanged } = props;
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const hasIg = p.channels.includes('instagram');
   const hasFb = p.channels.includes('facebook');
   const [mode, setMode] = useState<'facebook' | 'instagram'>(hasFb ? 'facebook' : 'instagram');

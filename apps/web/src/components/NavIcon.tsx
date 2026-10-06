@@ -19,6 +19,8 @@
  * caps, so they read as one family.
  */
 
+import { iconFor, uiIndustry } from '../lib/ui-industry';
+
 const P: Record<string, React.ReactNode> = {
   home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5.5 8.8V21h13V8.8" /><path d="M9.5 21v-6h5v6" /></>,
   calendar: <><rect x="3.5" y="5" width="17" height="16" rx="2.5" /><path d="M3.5 10h17M8 2.8V7M16 2.8V7" /></>,
@@ -63,6 +65,7 @@ const P: Record<string, React.ReactNode> = {
   // ── 2026-10: one icon per screen (no two screens share one), drawn for a nail salon ──
   // Areas of the new rail
   store: <><path d="M4 9.5 5.6 4.5h12.8L20 9.5" /><path d="M4 9.5c0 1.5 1.2 2.6 2.7 2.6s2.6-1.1 2.6-2.6c0 1.5 1.2 2.6 2.7 2.6s2.7-1.1 2.7-2.6c0 1.5 1.1 2.6 2.6 2.6S20 11 20 9.5" /><path d="M5.5 12v8.5h13V12M10 20.5v-5h4v5" /></>,
+  tooth: <><path d="M7.2 3.5c-2.3 0-3.7 1.9-3.7 4.4 0 2 .8 3.3 1.4 5 .6 1.8.7 4 1.3 6 .4 1.3 1 2.1 1.9 2.1 1.3 0 1.4-2 1.7-3.8.3-1.6.8-2.7 1.9-2.7h.6c1.1 0 1.6 1.1 1.9 2.7.3 1.8.4 3.8 1.7 3.8.9 0 1.5-.8 1.9-2.1.6-2 .7-4.2 1.3-6 .6-1.7 1.4-3 1.4-5 0-2.5-1.4-4.4-3.7-4.4-1.9 0-2.9 1.1-4.8 1.1S9.1 3.5 7.2 3.5Z" /></>,
   nailPolish: <><rect x="9.5" y="2.8" width="5" height="5.4" rx="1" /><path d="M6.8 11.4a3.2 3.2 0 0 1 3.2-3.2h4a3.2 3.2 0 0 1 3.2 3.2V19a2 2 0 0 1-2 2H8.8a2 2 0 0 1-2-2v-7.6Z" /><path d="M9.8 12.5v5" /></>,
   wallet: <><path d="M17 7.5V5.8A1.3 1.3 0 0 0 15.5 4.5L5.3 6.4A1.6 1.6 0 0 0 4 8" /><rect x="4" y="7.5" width="16" height="12.5" rx="2" /><path d="M20 11.5h-3.5a2 2 0 0 0 0 4H20" /></>,
   cog: <><circle cx="12" cy="12" r="2.8" /><path d="M10.4 3.5h3.2l.5 2.4 1.7 1 2.3-.8 1.6 2.8-1.8 1.6v2l1.8 1.6-1.6 2.8-2.3-.8-1.7 1-.5 2.4h-3.2l-.5-2.4-1.7-1-2.3.8-1.6-2.8 1.8-1.6v-2L4.3 8.9l1.6-2.8 2.3.8 1.7-1 .5-2.4Z" /></>,
@@ -92,7 +95,8 @@ const P: Record<string, React.ReactNode> = {
 export const hasNavIcon = (name: string): boolean => Object.prototype.hasOwnProperty.call(P, name);
 
 export function NavIcon({ name, size = 17 }: { name: string; size?: number }) {
-  const paths = P[name] ?? P.cog;
+  // The trade's own icon where one names the trade (nail polish → tooth for a clinic).
+  const paths = P[iconFor(name, uiIndustry())] ?? P[name] ?? P.cog;
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden

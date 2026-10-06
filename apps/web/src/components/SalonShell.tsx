@@ -25,6 +25,7 @@ import { NotificationBell } from './NotificationBell';
 import { LumioLogo } from './LumioLogo';
 import { DASHBOARD, GROUPS, ITEM_BY_HREF, type NavItem } from './shell/nav-map';
 import { ShellV2 } from './shell/ShellV2';
+import { hiddenHrefsFor, setUiIndustry, uiIndustry, type IndustryKey } from '../lib/ui-industry';
 
 // The menu itself (DASHBOARD + GROUPS) lives in shell/nav-map.ts, shared with
 // the new two-tier layout so both always list the same screens.
@@ -163,6 +164,10 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   // country's items until some unrelated state happened to update it. Seeded
   // from the same cache so the first paint is already right.
   const [market, setMarket] = useState<string>(() => { initUiMarket(); return uiMarket(); });
+  // The salon's line of business (Nail, Nha khoa, Nhà hàng…): the menu drops
+  // screens that make no sense for it, and every label is re-worded. State so
+  // the menu re-draws; seeded from the cache so the first paint is right.
+  const [industry, setIndustry] = useState<IndustryKey>(() => uiIndustry());
   // New layout (opt-in, per device). Kept above the early return like every hook here.
   const [ui2, setUi2] = useState<boolean>(() => readUi2());
   const switchUi = useCallback((on: boolean) => {
@@ -249,6 +254,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
   const itemVisible = (item: NavItem) => (item.feature !== 'pos' || posOk)
     && (!item.team || isTeam)
     && (item.biz !== 'restaurant' || isRestaurant)
+    && !hiddenHrefsFor(industry).includes(item.href)
     // An unknown market counts as North America: every salon here before
     // Vietnam is in it, and a request still in flight must never blank out a
     // screen someone uses every day.
@@ -297,9 +303,10 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         setHiddenHrefs(hidden); writeCachedHidden(hidden);
       })
       .catch(() => {});
-    apiFetch<{ businessType?: string; timezone?: string; market?: string; currency?: string }>('/me/tenant', { token })
+    apiFetch<{ businessType?: string; timezone?: string; market?: string; currency?: string; industry?: string }>('/me/tenant', { token })
       .then((r) => {
         const on = r?.businessType === 'RESTAURANT'; setIsRestaurant(on); writeCachedRestaurant(on);
+        if (r?.industry) { setUiIndustry(r.industry); setIndustry(uiIndustry()); }
         // The market, for the screens that must show different things in
         // different countries — the Vietnamese carrier panel, the American
         // card gateways, the US Census figures. Cached so the next load

@@ -11,6 +11,7 @@ import { PushEnable } from '../../../components/PushEnable';
 import { BookingDetailSheet } from '../../../components/BookingDetailSheet';
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { uiLocale, dayKeyInTz } from '../../../lib/datetime';
+import { ind } from '../../../lib/ui-industry';
 
 interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed' | 'postReview'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
 
@@ -38,7 +39,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const router = useRouter();
-  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const L = (vi: string, en: string) => ind(lang === 'vi' ? vi : en);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed' | 'postReview'>('all');

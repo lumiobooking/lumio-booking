@@ -7,6 +7,7 @@ import {
   AIR, TAG_COLORS, pillarOf, formatOf, emptyEntry, entryHasContent, entryReady, monthWeeks, monthTitle, sheetProgress, tagsOr, tagViews,
   type PlanEntry, type PlanPatch, type Air, type SheetDay, type PlanTag, type PlanTags, type TagView,
 } from './plan-sheet';
+import { ind } from '../lib/ui-industry';
 
 /**
  * THE PLAN SHEET — a month of posts, one card per day, one editor at a time.
@@ -99,7 +100,7 @@ export function PlanSheet({
    */
   onIdeas?: (day: string, again: boolean) => Promise<DayIdeas>;
 }) {
-  const T = (a: string, b: string) => (vi ? a : b);
+  const T = (a: string, b: string) => ind(vi ? a : b);
   const tagSet = useMemo(() => tagsOr(tags), [tags]);
   const pillars = useMemo(() => tagViews(tagSet.pillars), [tagSet]);
   const formats = useMemo(() => tagViews(tagSet.formats), [tagSet]);
@@ -409,7 +410,7 @@ function DayPanel({
   onClose: () => void;
   onMove: (n: number) => void;
 }) {
-  const T = (a: string, b: string) => (vi ? a : b);
+  const T = (a: string, b: string) => ind(vi ? a : b);
   const [local, setLocal] = useState<PlanEntry>(entry);
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   // Ideas for this day, fetched only when asked. Stuck for the day: a
@@ -698,7 +699,7 @@ function TagEditor({ kind, list, vi, isMobile, onClose, onSave }: {
   onClose: () => void;
   onSave: (list: PlanTag[]) => Promise<void>;
 }) {
-  const T = (a: string, b: string) => (vi ? a : b);
+  const T = (a: string, b: string) => ind(vi ? a : b);
   const [rows, setRows] = useState<(PlanTag & { key: string })[]>(() => list.map((t, i) => ({ ...t, key: t.id || `n${i}` })));
   const [palette, setPalette] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

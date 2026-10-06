@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useLang } from '../lib/i18n';
 import { isNativeApp } from '../lib/native';
+import { ind } from '../lib/ui-industry';
 
 // VAPID public key (base64url) -> Uint8Array for pushManager.subscribe.
 function urlB64ToUint8Array(base64String: string): Uint8Array {
@@ -26,7 +27,7 @@ function urlB64ToUint8Array(base64String: string): Uint8Array {
 export function PushEnable({ about = 'bookings' }: { about?: 'bookings' | 'posts' } = {}) {
   const { token } = useAuth();
   const { lang } = useLang();
-  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const L = (vi: string, en: string) => ind(lang === 'vi' ? vi : en);
   const [state, setState] = useState<'hidden' | 'prompt' | 'busy' | 'denied'>('hidden');
 
   useEffect(() => {

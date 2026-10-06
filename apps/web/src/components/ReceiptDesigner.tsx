@@ -8,6 +8,7 @@ import {
   buildReceiptHtml, buildReceiptText, DEFAULT_RECEIPT_DESIGN, missingHeader, printHtml, receiptLabels, withDefaults,
   type ReceiptData, type ReceiptDesign, type ReceiptShop,
 } from '../lib/receipt';
+import { ind } from '../lib/ui-industry';
 
 /**
  * Settings → Hoá đơn in. The owner shapes the paper their customers take
@@ -27,7 +28,7 @@ export function ReceiptDesigner({ shop, design, currency, onSave, onOpenCompany 
 }) {
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const isMobile = useIsMobile();
   const [d, setD] = useState<ReceiptDesign>(() => withDefaults(design));
   const [saving, setSaving] = useState(false);

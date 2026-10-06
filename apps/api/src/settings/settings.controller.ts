@@ -111,6 +111,18 @@ export class SettingsController {
     return this.settings.updateAiNotes(user, dto);
   }
 
+  // The line of business (Nail, Mi, Nha khoa, Nhà hàng…): decides the words
+  // and the menu on this salon's screens. Owner only (class @Roles).
+  @Get('industry')
+  industry(@CurrentUser() user: AuthenticatedUser) {
+    return this.settings.getIndustryFor(user);
+  }
+
+  @Patch('industry')
+  updateIndustry(@CurrentUser() user: AuthenticatedUser, @Body() dto: { industry?: string }) {
+    return this.settings.updateIndustry(user, dto?.industry);
+  }
+
   // Follow-up for quiet Messenger / Instagram booking chats — per salon, off by default.
   @Get('chat-followup')
   chatFollowUp(@CurrentUser() user: AuthenticatedUser) {

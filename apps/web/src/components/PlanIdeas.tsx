@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import type { Job } from './WeekPlanBoard';
 import { dayKeyInTz } from '../lib/datetime';
 import { layoutGrid, KIND_ICON, WD_VI, WD_EN, MONTH_VI, MONTH_EN, mondayIndex, daysBetween, type AheadBlock } from './plan-grid';
+import { ind } from '../lib/ui-industry';
 
 /**
  * WHAT THE SYSTEM SUGGESTS FOR THE NEXT THIRTY DAYS — as ideas, not orders.
@@ -40,7 +41,7 @@ export function PlanIdeas({
   onPlan: (job: Job, dayKey: string) => void;
   onOpenSheet?: () => void;
 }) {
-  const T = (a: string, b: string) => (vi ? a : b);
+  const T = (a: string, b: string) => ind(vi ? a : b);
   const todayKey = dayKeyInTz(new Date(), tz);
   const days = useMemo(() => layoutGrid(blocks, [], todayKey, tz).filter((d) => d.inWindow && d.jobs.length > 0), [blocks, todayKey, tz]);
   const [kind, setKind] = useState<string>('all');

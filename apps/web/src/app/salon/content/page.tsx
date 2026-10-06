@@ -55,6 +55,7 @@ import { SendSuggestion, type SuggestionDraft } from '../../../components/SendSu
 import type { TrendCard } from '../../../components/TrendsTab';
 import { fitForSocial, videoPosterDataUrl } from '../../../lib/image';
 import { PromoStrategyCard, type StrategyView } from '../../../components/PromoStrategyCard';
+import { ind } from '../../../lib/ui-industry';
 
 interface Idea {
   id: string;
@@ -676,7 +677,7 @@ function Inner() {
   const { token, user } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
 
   const [data, setData] = useState<Payload | null>(null);
   // Both renderings are held; `plan` below is whichever one the language switch
@@ -6484,7 +6485,7 @@ function Inner() {
 function CampaignReview({ review, token, vi, onDone }: {
   review: AdsReview; token: string | null; vi: boolean; onDone: () => void | Promise<void>;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   const [copied, setCopied] = useState(false);

@@ -10,6 +10,7 @@ import { DateRangeBar, useDateRange } from '../../../../components/ListFilter';
 import { useLang } from '../../../../lib/i18n';
 import { useIsMobile } from '../../../../lib/responsive';
 import { ShiftSheet, printSheet, type ShiftSummary, type ShiftView } from '../../../../components/CashShiftPanel';
+import { ind } from '../../../../lib/ui-industry';
 
 /**
  * Every cashier shift the till has run: who opened it, who closed it, what
@@ -30,7 +31,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const isMobile = useIsMobile();
   const range = useDateRange('30d');
   const [rows, setRows] = useState<ShiftRow[] | null>(null);

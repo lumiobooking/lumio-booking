@@ -22,6 +22,7 @@ import { FeedbackStatus } from '../../../components/feedback/FeedbackStatus';
 import { PartyPanel, type Composed } from './PartyPanel';
 import { uiLocale } from '../../../lib/datetime';
 import { buildReceiptHtml as buildBillHtml, buildReceiptText as buildBillText, withDefaults as receiptDesignOf, type ReceiptData, type ReceiptProfile } from '../../../lib/receipt';
+import { ind } from '../../../lib/ui-industry';
 
 interface Service { id: string; name: string; priceCents: number; discountPercent?: number; durationMinutes: number; isActive: boolean; priceFrom?: boolean; imageUrl?: string | null; category?: { id: string; name: string } | null }
 interface Product { id: string; name: string; priceCents: number; discountPercent?: number; isActive: boolean; trackStock: boolean; stockQty: number; barcode?: string | null; imageUrl?: string | null }
@@ -1459,7 +1460,7 @@ function Register() {
     if (tillMethods.length && !tillMethods.includes(payMethod)) setPayMethod(tillMethods[0]);
   }, [tillMethods, payMethod]);
 
-  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const L = (vi: string, en: string) => ind(lang === 'vi' ? vi : en);
   const fmt = (c: number) => posMoney(c, currency);
   /** Buttons: $140 rather than $140.00 when the amount is whole. */
   const fmtShort = (c: number) => fmt(c).replace(/[.,]00(?=\D*$)/, '');

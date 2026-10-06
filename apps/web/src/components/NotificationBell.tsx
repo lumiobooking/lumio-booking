@@ -9,6 +9,7 @@ import { apiFetch } from '../lib/api';
 import { useLang } from '../lib/i18n';
 import { useIsMobile } from '../lib/responsive';
 import { BookingDetailSheet } from './BookingDetailSheet';
+import { ind } from '../lib/ui-industry';
 
 interface Item { id: string; type: 'booking' | 'cancel' | 'payment' | 'report' | 'postFailed' | 'postReview'; customer: string; detail: string; at: string; when: string | null; appointmentId?: string | null; link?: string | null }
 
@@ -42,7 +43,7 @@ export function NotificationBell() {
   const { lang } = useLang();
   const isMobile = useIsMobile();
   const router = useRouter();
-  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const L = (vi: string, en: string) => ind(lang === 'vi' ? vi : en);
   const [items, setItems] = useState<Item[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);

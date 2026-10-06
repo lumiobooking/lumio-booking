@@ -5,6 +5,7 @@ import { ui } from '../../../lib/ui';
 import { formatPrice, fromMinorUnits, priceInputStep, toMinorUnits } from '../../../lib/money';
 import { uiCurrency } from '../../../lib/ui-currency';
 import { NavIcon } from '../../../components/NavIcon';
+import { ind } from '../../../lib/ui-industry';
 
 /**
  * HOW THIS PERSON IS PAID — the pay part of the staff form.
@@ -107,7 +108,7 @@ export function PayFields({ value, onChange, vi, defaultCheckPercent }: {
   /** The salon's default check share, shown when the tech follows it. */
   defaultCheckPercent?: number;
 }) {
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const cur = uiCurrency();
   const step = priceInputStep(cur);
   const set = (patch: Partial<PayForm>) => onChange({ ...value, ...patch });
@@ -234,7 +235,7 @@ function currencySymbol(cur: string): string {
 
 /** A worked example with the typed numbers, in the owner's words. */
 export function exampleLine(f: PayForm, vi: boolean, cur: string): string | null {
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const fm = (minor: number) => formatPrice(Math.round(minor), cur).replace(/[.,]00(?=\D*$)/, '');
   const minor = (v: string) => Math.max(0, toMinorUnits(v || '0', cur) || 0);
   const unit = minor('1'); // one whole currency unit, in minor units

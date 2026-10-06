@@ -9,6 +9,7 @@ import { apiFetch } from '../../../../lib/api';
 import { ui, formatPrice } from '../../../../lib/ui';
 import { useLang } from '../../../../lib/i18n';
 import { uiLocale } from '../../../../lib/datetime';
+import { ind } from '../../../../lib/ui-industry';
 
 interface SpendRow { id?: string; channel: string; amountCents: number; reach?: number | null; clicks?: number | null; leads?: number | null; }
 interface WorkRow { id: string; category: string; title: string; createdAt: string; }
@@ -82,7 +83,7 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
 
   const [month, setMonth] = useState(thisMonth());
   const [mode, setMode] = useState<'view' | 'edit'>('view');
@@ -638,7 +639,7 @@ function esc(s: string) { return (s || '').replace(/&/g, '&amp;').replace(/</g, 
 function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: number) => string, salonName = '') {
   if (!data) return;
   const o = data.outcome; const b = data.blended; const d = data.deltas;
-  const t = (v: string, e: string) => (vi ? v : e);
+  const t = (v: string, e: string) => ind(vi ? v : e);
   const L = (it?: Item) => (vi ? (it?.vi || it?.en) : (it?.en || it?.vi)) || '';
   const eff = data.effectiveness || 'organic';
   const effMap: Record<string, [string, string]> = {
@@ -1200,7 +1201,7 @@ function DataSources({ token, vi, month, syncRes, onSyncAll, syncing, reviews, o
   token: string | null; vi: boolean; month: string; syncRes: SyncAllResult | null; onSyncAll: () => void; syncing: boolean;
   reviews: GbpData['reviews'] | null; onChanged: () => void;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   interface Ch { platform: string; label: string; enabled: boolean; hasSpend: boolean; connected: boolean; status: string | null; accountName: string | null; externalAccountId: string | null; keyHint: string | null; lastSyncedAt: string | null; lastError: string | null; }
   const [chs, setChs] = useState<Ch[] | null>(null);
   useEffect(() => {
@@ -1281,7 +1282,7 @@ function DataSources({ token, vi, month, syncRes, onSyncAll, syncing, reviews, o
 }
 
 function ChannelsSection({ token, vi, month, onSynced, bare }: { token: string | null; vi: boolean; month: string; onSynced: () => void; bare?: boolean }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   interface Ch { platform: string; label: string; enabled: boolean; hasSpend: boolean; connected: boolean; status: string | null; accountName: string | null; externalAccountId: string | null; keyHint: string | null; lastSyncedAt: string | null; lastError: string | null; }
   const [chs, setChs] = useState<Ch[]>([]);
   const [openP, setOpenP] = useState<string | null>(null);

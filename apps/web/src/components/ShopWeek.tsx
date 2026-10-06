@@ -18,6 +18,7 @@ export interface ShopPlanSheet {
 }
 import { Inline } from './WeekPlanBoard';
 import { ItemComments } from './ContentChat';
+import { ind } from '../lib/ui-industry';
 
 /**
  * The shop's week, in the order the owner actually asks her questions.
@@ -187,7 +188,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
   onChanged: () => Promise<void> | void; onError: (m: string | null) => void;
 }) {
   const mobile = useIsMobile(720);
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState<{ dayIndex: number; kind: typeof SHOP_KINDS[number]; text: string } | null>(null);
   // Editing needs a week to address and an id per job. An older API sends
@@ -618,7 +619,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
 function AdsYes({ token, vi, label, onError }: {
   token: string | null; vi: boolean; label: string; onError: (m: string | null) => void;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   if (sent) {
@@ -665,7 +666,7 @@ function PitchRow({ st, n, last, vi }: {
   st: { title: string; head: string; body: string; when?: string | null; whenTitle?: string | null; detail?: string | null; detailTitle?: string | null };
   n: number; last: boolean; vi: boolean;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [open, setOpen] = useState(false);
   return (
     <div style={{ display: 'flex', gap: 10, marginBottom: last ? 0 : 11 }}>
@@ -753,7 +754,7 @@ function AskDetail({ j, vi, canEdit, days, onText, onSteps, onMove }: {
   j: ShopJob; vi: boolean; canEdit: boolean; days: string[];
   onText: (t: string) => void; onSteps: (s: string[]) => void; onMove: (d: number) => void;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const steps = j.steps ?? [];
   return (
     <div style={{ marginBottom: 10 }}>
@@ -786,7 +787,7 @@ function JobLine({ j, vi, canEdit, busy, days, onText, onSteps, onMove, onRemove
   onText: (t: string) => void; onSteps: (s: string[]) => void; onMove: (d: number) => void; onRemove: () => void;
   onTick: (step: number, done: boolean) => void;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const steps = j.steps ?? [];
   const done = new Set(j.done ?? []);
   const auto = new Set(j.auto ?? []);
@@ -868,7 +869,7 @@ function JobLine({ j, vi, canEdit, busy, days, onText, onSteps, onMove, onRemove
 export function HolidayOffers({ token, vi, ideas, onError }: {
   token: string | null; vi: boolean; ideas: HolidayIdea[]; onError: (m: string | null) => void;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [sent, setSent] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [own, setOwn] = useState('');

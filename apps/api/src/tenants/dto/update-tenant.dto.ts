@@ -44,6 +44,11 @@ export class UpdateTenantDto {
   @IsIn(['SALON', 'RESTAURANT', 'REAL_ESTATE', 'SERVICE'])
   businessType?: 'SALON' | 'RESTAURANT' | 'REAL_ESTATE' | 'SERVICE';
 
+  /** Finer line of business (NAIL, LASH, DENTAL, CAFE…) — sets businessType with it. See common/industry. */
+  @IsOptional()
+  @IsIn(['NAIL', 'LASH', 'HAIR', 'SPA', 'MASSAGE', 'DENTAL', 'RESTAURANT', 'FAST_FOOD', 'CAFE', 'REAL_ESTATE', 'SERVICE'])
+  industry?: string;
+
   /**
    * Where the salon actually stands.
    *

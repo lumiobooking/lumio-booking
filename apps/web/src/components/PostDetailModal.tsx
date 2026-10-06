@@ -3,6 +3,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { instantToWall } from '../lib/datetime';
 import { useIsMobile } from '../lib/responsive';
+import { ind } from '../lib/ui-industry';
 
 /**
  * ONE POST, IN FULL, WITHOUT LEAVING THE CALENDAR.
@@ -84,7 +85,7 @@ export function PostDetailModal({
   onCancel?: (() => void) | null;
   busy?: boolean;
 }) {
-  const T = (a: string, b: string) => (vi ? a : b);
+  const T = (a: string, b: string) => ind(vi ? a : b);
   const mobile = useIsMobile(760);
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };

@@ -17,6 +17,7 @@ import { wallToInstantISO, instantToWall } from '../../../lib/datetime';
 import { todayInZone } from '../../../lib/salon-clock';
 import { TableDayView } from './TableDayView';
 import { uiLocale } from '../../../lib/datetime';
+import { ind } from '../../../lib/ui-industry';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string; staffMemberId?: string }
 /** Pill/label text: primary service plus a +N badge for the extra lines. */
@@ -899,7 +900,7 @@ function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx, onQuick }: {
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const L = (vi: string, en: string) => ind(lang === 'vi' ? vi : en);
   const fmtT = (iso: string) => new Date(iso).toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
   const hourInTz = (iso: string) => {
     const d = new Date(iso);

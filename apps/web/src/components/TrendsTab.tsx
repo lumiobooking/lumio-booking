@@ -28,6 +28,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { fmtInTz } from '../lib/datetime';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
+import { ind } from '../lib/ui-industry';
 
 export interface TrendCard {
   id: string; source: 'youtube' | 'instagram' | 'google'; title: string; url: string;
@@ -100,7 +101,7 @@ function timeAgo(iso: string | null, vi: boolean): string | null {
 
 export function TrendsTab({ token, vi, isMobile, extraLinks, onMakePost, onSendToSalon, canRefresh, section = 'all' }: Props) {
   const show = (k: 'videos' | 'keywords' | 'lookup') => section === 'all' || section === k;
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [raw, setRaw] = useState<Envelope | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

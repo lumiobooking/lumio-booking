@@ -15,6 +15,7 @@ import { useIsMobile } from '../../lib/responsive';
 import { tr, NAV_KEY } from '../../lib/i18n';
 import { CommandPalette, type PaletteItem } from './CommandPalette';
 import { activeHref, ITEM_BY_HREF, SECTIONS, sectionFor, type NavItem, type Section, type SectionId } from './nav-map';
+import { ind } from '../../lib/ui-industry';
 
 /**
  * The new salon-admin layout ("Giao diện mới"), one component for every screen size.
@@ -56,7 +57,7 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
   const narrow = useIsMobile(1180);
   const tablet = narrow && !phone;
   const vi = lang === 'vi';
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
 
   const label = useCallback((href: string) => {
     const it = ITEM_BY_HREF[href];
@@ -110,7 +111,7 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
   }, []);
 
   const pages: PaletteItem[] = useMemo(() => sections.flatMap((s) => s.items.map((i) => ({
-    href: i.href, label: label(i.href), icon: i.icon, section: vi ? s.vi : s.en,
+    href: i.href, label: label(i.href), icon: i.icon, section: ind(vi ? s.vi : s.en),
   }))), [sections, label, vi]);
 
   const can = (href: string) => allVisible.includes(href);
@@ -183,7 +184,7 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
     const main = s.items.filter((i) => !less.has(i.href));
     const rest = s.items.filter((i) => less.has(i.href));
     return (
-      <nav aria-label={vi ? s.vi : s.en} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <nav aria-label={ind(vi ? s.vi : s.en)} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {main.map((i) => navLink(i, big))}
         {rest.length > 0 && <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color: 'var(--c64748b)', padding: '14px 11px 4px' }}>{L('Ít dùng hơn', 'Less used')}</div>}
         {rest.map((i) => navLink(i, big))}
@@ -200,8 +201,8 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
         : { position: 'sticky', top: 0, height: '100dvh' }),
     }}>
       <div style={{ padding: '0 6px 10px' }}>
-        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--cf8fafc)' }}>{vi ? s.vi : s.en}</div>
-        <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{vi ? s.viDesc : s.enDesc}</div>
+        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--cf8fafc)' }}>{ind(vi ? s.vi : s.en)}</div>
+        <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{ind(vi ? s.viDesc : s.enDesc)}</div>
       </div>
       {s.id === 'ops' && branchSwitcher}
       {sectionMenu(s)}
@@ -301,7 +302,7 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
                     <button key={s.id} type="button" onClick={() => setShown(s.id)}
                       style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', borderRadius: 999, fontSize: 13, fontWeight: 700, cursor: 'pointer',
                         border: `1px solid ${on ? '#4f46e5' : 'var(--line)'}`, background: on ? '#4f46e5' : 'transparent', color: on ? '#fff' : 'var(--ccbd5e1)' }}>
-                      <NavIcon name={s.icon} size={15} />{vi ? s.vi : s.en}
+                      <NavIcon name={s.icon} size={15} />{ind(vi ? s.vi : s.en)}
                       {b > 0 && <span style={{ width: 7, height: 7, borderRadius: '50%', background: on ? '#fff' : '#ef4444' }} />}
                     </button>
                   );
@@ -345,8 +346,8 @@ export function ShellV2({ children, banner, visible, badges, token, email, salon
           const isHere = s.id === here && !on;
           const b = sectionBadge(s);
           return (
-            <button key={s.id} type="button" onClick={() => pickSection(s.id)} aria-label={vi ? s.vi : s.en}
-              title={isHere ? `${vi ? s.vi : s.en} · ${L('trang bạn đang mở', 'the page you are on')}` : (vi ? s.vi : s.en)} aria-pressed={on} aria-current={s.id === here ? 'location' : undefined}
+            <button key={s.id} type="button" onClick={() => pickSection(s.id)} aria-label={ind(vi ? s.vi : s.en)}
+              title={isHere ? `${ind(vi ? s.vi : s.en)} · ${L('trang bạn đang mở', 'the page you are on')}` : (ind(vi ? s.vi : s.en))} aria-pressed={on} aria-current={s.id === here ? 'location' : undefined}
               style={{ position: 'relative', width: 48, height: 48, borderRadius: 14, border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center',
                 background: on ? '#4f46e5' : isHere ? 'var(--c1e293b)' : 'transparent', color: on ? '#ffffff' : isHere ? 'var(--ca5b4fc)' : 'var(--c94a3b8)',
                 boxShadow: on ? '0 8px 18px -8px #4f46e5' : 'none', transition: 'background-color .15s ease, color .15s ease, box-shadow .15s ease' }}>

@@ -18,6 +18,7 @@ import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { PartyChip, type PartyInfo } from '../../../components/PartyChip';
 import { arrivalState, clockIn, minutesText, salonDayLabel } from '../../../lib/desk-time';
+import { ind } from '../../../lib/ui-industry';
 
 interface Ticket {
   id: string;
@@ -64,7 +65,7 @@ function FrontDesk() {
   const { token, user } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const caps = useMemo(() => new Set(user?.capabilities ?? []), [user?.capabilities]);
   const owner = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN';
   const may = (c: string) => owner || caps.has(c);

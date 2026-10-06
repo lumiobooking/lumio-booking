@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { compactCount, ageOf } from '../lib/counts';
+import { ind } from '../lib/ui-industry';
 
 /**
  * Writing the one line a shop will read, before it is sent.
@@ -57,7 +58,7 @@ export function SendSuggestion({
   onSend: (d: SuggestionDraft) => void;
   onClose: () => void;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [attach, setAttach] = useState(true);

@@ -21,11 +21,12 @@ import { PartyChip } from '../../../components/PartyChip';
  */
 
 import { fmtTurns, floorSummary, LONG_WAIT_MIN, mins, techColor, techsOn, type BoardData, type BoardWalkIn } from '../../../lib/walkin-floor';
+import { ind } from '../../../lib/ui-industry';
 
 export type { BoardData } from '../../../lib/walkin-floor';
 
 export function FloorStats({ board, vi, onLongest }: { board: BoardData; vi: boolean; onLongest: (id: string) => void }) {
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const s = floorSummary(board);
   const stat = (n: number | string, label: string, tone?: string) => (
     <div style={{ display: 'grid', gap: 1, minWidth: 0 }}>
@@ -62,7 +63,7 @@ export function TechBoard({ board, vi, currency, isMobile, onAssign, onOpen, onC
   onCancel: (walkInId: string) => void;
   focusId?: string | null;
 }) {
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const { staff, nextUpStaffId } = board;
   const [pick, setPick] = useState<Record<string, string>>({});
   const [dragId, setDragId] = useState<string | null>(null);

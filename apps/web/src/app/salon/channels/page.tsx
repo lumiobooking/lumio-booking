@@ -26,6 +26,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { notify } from '../../../lib/feedback';
+import { ind } from '../../../lib/ui-industry';
 
 interface MetaConf {
   connected: boolean; pageName: string; enabled: boolean; fbConfigured: boolean;
@@ -49,7 +50,7 @@ function Inner() {
   const { token, user } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const canConnect = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN' || Boolean(user?.supportSession);
 
   const [meta, setMeta] = useState<Load<MetaConf>>({ state: 'loading' });

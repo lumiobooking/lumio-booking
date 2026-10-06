@@ -14,6 +14,7 @@ import { EditDialog } from '../../../components/EditDialog';
 import { ServiceImport } from '../../../components/ServiceImport';
 import { SearchBox, matchesQuery } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
+import { ind } from '../../../lib/ui-industry';
 
 interface Service {
   id: string;
@@ -340,7 +341,7 @@ interface SharedAddon { id: string; name: string; durationMinutes: number; price
 function SharedAddonsCard({ token, categories, currency, fmt, vi }: {
   token: string; categories: Category[]; currency: string; fmt: (c: number) => string; vi: boolean;
 }) {
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const [items, setItems] = useState<SharedAddon[]>([]);
   const [form, setForm] = useState({ name: '', duration: '10', price: '5', scope: '' });
   const [error, setError] = useState<string | null>(null);
@@ -1678,7 +1679,7 @@ function DateDiscountCard({ token, categories, defaultOpen, onSaved }: { token: 
 function BulkServiceEdit({ ids, services, categories, currency, token, vi, onDone }: {
   ids: string[]; services: Service[]; categories: Category[]; currency: string; token: string; vi: boolean; onDone: () => Promise<void> | void;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const KEEP = '__keep__';
   const [cat, setCat] = useState<string>(KEEP);
   const [dur, setDur] = useState('');

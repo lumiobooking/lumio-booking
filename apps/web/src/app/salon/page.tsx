@@ -13,6 +13,7 @@ import { useLang, tr } from '../../lib/i18n';
 import { useLiveRefresh } from '../../lib/useLiveRefresh';
 import { useIsMobile } from '../../lib/responsive';
 import { uiCurrency } from '../../lib/ui-currency';
+import { ind } from '../../lib/ui-industry';
 
 /* =============================================================================
  * THE OWNER'S HOME SCREEN — as drawn in the approved mockup ("Lumio Dashboard
@@ -73,7 +74,7 @@ function Inner() {
   const { token, user } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const t = (k: string) => tr(k, lang);
   const canOpen = useNavAccess();
   // The layout follows the room the page actually has, not the window: the

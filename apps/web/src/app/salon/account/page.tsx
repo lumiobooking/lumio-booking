@@ -6,6 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { ind } from '../../../lib/ui-industry';
 
 export default function SalonAccountPage() {
   return (
@@ -104,7 +105,7 @@ function Inner() {
 function DeleteAccount() {
   const { token, logout } = useAuth();
   const { lang } = useLang();
-  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const L = (vi: string, en: string) => ind(lang === 'vi' ? vi : en);
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState('');
   const [word, setWord] = useState('');

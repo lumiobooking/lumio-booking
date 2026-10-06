@@ -8,6 +8,7 @@ import { toMinorUnits, fromMinorUnits, priceInputStep, minorUnitDigits } from '.
 import { uiCurrency } from '../../../lib/ui-currency';
 import { useIsMobile } from '../../../lib/responsive';
 import { NavIcon } from '../../../components/NavIcon';
+import { ind } from '../../../lib/ui-industry';
 
 /**
  * PAYROLL FOR ONE PAY PERIOD — what each person is owed, how it was worked
@@ -62,7 +63,7 @@ export function payTypeName(t: string, vi: boolean) {
 
 export function PayrollRun({ vi }: { vi: boolean }) {
   const { token } = useAuth();
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const isMobile = useIsMobile(767);
   const [data, setData] = useState<Preview | null>(null);
   const [range, setRange] = useState<{ from: string; to: string } | null>(null);
@@ -337,7 +338,7 @@ function SlipDetail({ s, vi, frozen, period, onSave, onPrint }: {
   s: Slip; vi: boolean; frozen: boolean; period: { from: string; to: string };
   onSave: (o: Override) => void; onPrint: () => void;
 }) {
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const cur = uiCurrency();
   const [hours, setHours] = useState<string>(s.payType === 'HOURLY' && s.hours !== s.hoursFromSchedule ? String(s.hours) : '');
   const [offDays, setOffDays] = useState<string[]>(s.days.filter((d) => d.off).map((d) => d.day));
@@ -437,7 +438,7 @@ function SlipDetail({ s, vi, frozen, period, onSave, onPrint }: {
 
 function SettingsPanel({ vi, value, onSaved }: { vi: boolean; value: Settings; onSaved: () => void }) {
   const { token } = useAuth();
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const cur = uiCurrency();
   const [f, setF] = useState({
     payPeriod: value.payPeriod, periodAnchor: value.periodAnchor,

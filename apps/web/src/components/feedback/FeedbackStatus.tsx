@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../lib/api';
 import { fmtInTz } from '../../lib/datetime';
+import { ind } from '../../lib/ui-industry';
 
 type Req = { orderId: string; status: string; onScreen: boolean };
 type Status = {
@@ -30,7 +31,7 @@ const SCREEN_WINDOW_MS = 150_000;
  * WHETHER the customer answered, never what they said.
  */
 export function FeedbackStatus({ token, req, lang }: { token: string; req: Req; lang: string }) {
-  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const L = (vi: string, en: string) => ind(lang === 'vi' ? vi : en);
   const [st, setSt] = useState<Status>({ status: req.status });
   const [busy, setBusy] = useState<'' | 'skip' | 'send'>('');
   const [err, setErr] = useState('');

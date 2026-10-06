@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
+import { ind } from '../lib/ui-industry';
 
 /**
  * Chat turns ("chia turn") — the salon admin's rules for handing each new
@@ -50,7 +51,7 @@ const REASON: Record<string, [string, string]> = {
 };
 
 export function ChatTurnsPanel({ token, vi }: { token: string | null; vi: boolean }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [view, setView] = useState<TurnsView | null>(null);
   const [draft, setDraft] = useState<TurnSettings | null>(null);
   const [busy, setBusy] = useState(false);

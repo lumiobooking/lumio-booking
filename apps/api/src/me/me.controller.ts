@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
+import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 import { hashSecret, verifySecret } from '../auth/password.util';
 
 /**
@@ -48,7 +49,14 @@ export class MeController {
       select: { value: true },
     });
     const currency = (rules?.value as { currency?: string } | null)?.currency || 'USD';
-    return { ...tenant, currency };
+    // The line of business decides the words and the menu on every salon screen
+    // (thợ / bác sĩ / nhân viên…). Never chosen = today's nail screens.
+    const ind = await this.prisma.setting.findUnique({
+      where: { tenantId_key: { tenantId, key: INDUSTRY_KEY } },
+      select: { value: true },
+    }).catch(() => null);
+    const industry = resolveIndustry(ind?.value ?? null, tenant.businessType);
+    return { ...tenant, currency, industry };
   }
 
   // GET /api/me/plan -> the salon's plan feature flags (for UI gating).

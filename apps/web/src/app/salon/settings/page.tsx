@@ -10,6 +10,7 @@ import { useLang, tr, DAY_LABEL } from '../../../lib/i18n';
 import { useIsMobile } from '../../../lib/responsive';
 import { TimezonePicker } from '../../../components/TimezonePicker';
 import { ReceiptDesigner } from '../../../components/ReceiptDesigner';
+import { IndustryPicker } from '../../../components/IndustryPicker';
 import type { ReceiptDesign } from '../../../lib/receipt';
 
 interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number; intervals?: { open: number; close: number }[] }
@@ -175,7 +176,7 @@ function Inner() {
 
         {/* Active section */}
         <div style={{ maxWidth: tab === 'receipt' ? 1000 : 620, minWidth: 0 }}>
-          {tab === 'company' && <CompanySection data={data} onSave={save} />}
+          {tab === 'company' && <><IndustryPicker /><CompanySection data={data} onSave={save} /></>}
           {tab === 'hours' && <HoursSection data={data} onSave={save} />}
           {tab === 'daysoff' && <DaysOffSection data={data} onSave={save} />}
           {tab === 'rules' && <RulesSection data={data} onSave={save} />}

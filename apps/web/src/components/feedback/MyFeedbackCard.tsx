@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../lib/api';
 import { useLang } from '../../lib/i18n';
+import { ind } from '../../lib/ui-industry';
 
 interface Mine {
   visible: boolean;
@@ -22,7 +23,7 @@ const REASON_VI: Record<string, string> = {
  */
 export function MyFeedbackCard({ token }: { token: string | null }) {
   const { lang } = useLang();
-  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const L = (vi: string, en: string) => ind(lang === 'vi' ? vi : en);
   const [d, setD] = useState<Mine | null>(null);
 
   useEffect(() => {

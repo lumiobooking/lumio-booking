@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLive, fresh } from '../lib/live';
 import { apiFetch } from '../lib/api';
+import { ind } from '../lib/ui-industry';
 
 /**
  * The team's half of the loop: what the shop actually sent back.
@@ -101,7 +102,7 @@ export function SuggestionInbox({
   /** Open the composer with these files already attached (public addresses). */
   onMakePost: (s: TeamSuggestion) => void;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [feed, setFeed] = useState<TeamFeed | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [page, setPage] = useState(0);
@@ -345,7 +346,7 @@ function Card({ s, vi, border, me, closing, note, setNote, busy, onClose, onPutA
   closing: boolean; note: string; setNote: (v: string) => void; busy: boolean;
   onClose: () => void; onPutAway: () => void; actions: React.ReactNode;
 }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   return (
     <div style={{ background: 'var(--c0f172a)', border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <Thumb media={s.media} vi={vi} />
@@ -386,7 +387,7 @@ function Card({ s, vi, border, me, closing, note, setNote, busy, onClose, onPutA
 
 /** The first file, big; a count when there are more; a play mark for a clip. */
 function Thumb({ media, vi, small }: { media: MediaItem[]; vi: boolean; small?: boolean }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const first = media[0];
   const size = small ? 56 : undefined;
   const box: React.CSSProperties = small

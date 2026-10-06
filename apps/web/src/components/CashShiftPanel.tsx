@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { fmtInTz } from '../lib/datetime';
 import { fromMinorUnits, toMinorUnits, ui } from '../lib/ui';
+import { ind } from '../lib/ui-industry';
 
 /**
  * The cashier shift ("ca thu ngân") on the till.
@@ -43,7 +44,7 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
   onClose: () => void;
   onHistory?: () => void;
 }) {
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const [st, setSt] = useState<ShiftState | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -240,7 +241,7 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
 
 /** The frozen hand-over sheet: what the cashier signed for. Also the history page's detail. */
 export function ShiftSheet({ shift, summary, vi, fmt }: { shift: ShiftView; summary: ShiftSummary; vi: boolean; fmt: (c: number) => string }) {
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const tenders = Object.entries(summary.byTender ?? {}).filter(([, v]) => v > 0);
   return (
     <div style={{ borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)', padding: 12, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13.5, color: 'var(--ce2e8f0)' }}>
@@ -277,7 +278,7 @@ export function ShiftSheet({ shift, summary, vi, fmt }: { shift: ShiftView; summ
 /** Plain-paper version of the sheet for the receipt printer / AirPrint. */
 export function printSheet(shift: ShiftView, summary: ShiftSummary, vi: boolean, fmt: (c: number) => string, salonName?: string) {
   if (typeof document === 'undefined') return;
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
   const row = (k: string, v: string, b = false) => `<tr><td style="padding:2px 0">${esc(k)}</td><td style="padding:2px 0;text-align:right;${b ? 'font-weight:700' : ''}">${esc(v)}</td></tr>`;
   const when = (iso: string) => fmtInTz(iso, { day: '2-digit', month: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit' });

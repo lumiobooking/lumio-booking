@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ui } from '../lib/ui';
+import { ind } from '../lib/ui-industry';
 
 /**
  * This salon's own promotion plan, as the owner should read it.
@@ -52,7 +53,7 @@ const ICON: Record<string, string> = {
 };
 
 export function PromoStrategyCard({ s, vi }: { s: StrategyView; vi: boolean }) {
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
   const [copied, setCopied] = useState<string | null>(null);
   const copy = (key: string, text: string) => {
     try {

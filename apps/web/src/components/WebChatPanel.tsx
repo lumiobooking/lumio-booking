@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
 import { useLang } from '../lib/i18n';
+import { ind } from '../lib/ui-industry';
 
 /**
  * Chat on the salon's own website — the bot's fourth mouth.
@@ -55,7 +56,7 @@ export function WebChatPanel({ token }: { token: string | null }) {
     try { await navigator.clipboard.writeText(st.snippet); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* the box is selectable */ }
   };
 
-  const T = (v: string, e: string) => (vi ? v : e);
+  const T = (v: string, e: string) => ind(vi ? v : e);
 
   return (
     <div style={{ ...ui.card, marginBottom: 16 }}>

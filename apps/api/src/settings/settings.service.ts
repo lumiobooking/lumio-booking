@@ -3,6 +3,7 @@ import { CHAT_FOLLOWUP_KEY, followUpSettingsFrom, type FollowUpSettings } from '
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
+import { INDUSTRIES, INDUSTRY_KEY, isIndustry, resolveIndustry, writeIndustry } from '../common/industry';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -293,6 +294,29 @@ export class SettingsService {
     await this.writeKey(tenantId, CHAT_FOLLOWUP_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.chat_followup_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { enabled: next.enabled, firstAfterMin: next.firstAfterMin, secondAfterMin: next.secondAfterMin, hourFrom: next.hourFrom, hourTo: next.hourTo } });
     return next;
+  }
+
+  /** The salon's industry (Nail, Nha khoa, Nhà hàng…), resolved against its businessType. */
+  async getIndustry(tenantId: string): Promise<string> {
+    const [t, row] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } }),
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: INDUSTRY_KEY } } }),
+    ]);
+    return resolveIndustry(row?.value ?? null, (t as { businessType?: string } | null)?.businessType ?? null);
+  }
+
+  async getIndustryFor(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    return { industry: await this.getIndustry(tenantId), options: INDUSTRIES.map(({ key, vi, en, group }) => ({ key, vi, en, group })) };
+  }
+
+  /** The owner puts THEIR salon in an industry: words, menu, businessType and marketing trade move together. */
+  async updateIndustry(user: AuthenticatedUser, industry: unknown) {
+    const tenantId = this.tenantId(user);
+    if (!isIndustry(industry)) throw new BadRequestException('Unknown industry.');
+    const def = await writeIndustry(this.prisma as never, tenantId, String(industry).toUpperCase());
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.industry_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { industry: def.key, businessType: def.businessType } });
+    return this.getIndustryFor(user);
   }
 
   async getBusinessProfile(tenantId: string): Promise<BusinessProfileSettings> {

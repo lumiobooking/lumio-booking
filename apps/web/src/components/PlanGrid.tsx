@@ -5,6 +5,7 @@ import type { Job } from './WeekPlanBoard';
 import { instantToWall, dayKeyInTz } from '../lib/datetime';
 import { useIsMobile } from '../lib/responsive';
 import { layoutGrid, mondayIndex, KIND_ICON, CH_DOT, WD_VI, WD_EN, MONTH_VI, MONTH_EN, type AheadBlock, type GridPost, type GridDay } from './plan-grid';
+import { ind } from '../lib/ui-industry';
 export type { AheadBlock, GridPost, GridDay } from './plan-grid';
 
 /**
@@ -54,7 +55,7 @@ export function PlanGrid({
   /** Read the job's working sheet (opens the week view on that day). */
   onOpenJob?: (job: Job, weekKey: string) => void;
 }) {
-  const T = (a: string, b: string) => (vi ? a : b);
+  const T = (a: string, b: string) => ind(vi ? a : b);
   const mobile = useIsMobile(720);
   const todayKey = dayKeyInTz(new Date(), tz);
   const days = useMemo(() => layoutGrid(blocks, posts, todayKey, tz), [blocks, posts, todayKey, tz]);

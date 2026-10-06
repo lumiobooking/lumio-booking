@@ -7,6 +7,7 @@ import { formatPrice } from '../../lib/ui';
 import { fmtInTz } from '../../lib/datetime';
 import { matchesQuery } from '../../lib/search-fold';
 import { NavIcon } from '../NavIcon';
+import { ind } from '../../lib/ui-industry';
 
 /**
  * The header search (Ctrl+K / ⌘K, or the search box): one place to jump to a
@@ -35,7 +36,7 @@ export function CommandPalette({ open, onClose, token, vi, pages, phone }: {
   open: boolean; onClose: () => void; token: string | null; vi: boolean; pages: PaletteItem[]; phone: boolean;
 }) {
   const router = useRouter();
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const [q, setQ] = useState('');
   const [res, setRes] = useState<SearchResults | null>(null);
   const [busy, setBusy] = useState(false);

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { ind } from '../lib/ui-industry';
 
 /**
  * THE MONTH, IN THE OWNER'S WORDS.
@@ -42,7 +43,7 @@ const PARTS: { k: 'focus' | 'goals' | 'direction'; icon: string; vi: string; en:
 /* ---------------------------------------------------------------- shop */
 
 export function MonthBriefView({ brief, vi, salonName }: { brief: MonthBriefData; vi: boolean; salonName?: string | null }) {
-  const T = (a: string, b: string) => (vi ? a : b);
+  const T = (a: string, b: string) => ind(vi ? a : b);
   const parts = PARTS.filter((p) => brief[p.k]);
   return (
     <div style={{ borderRadius: 14, border: '1px solid #6366f1', background: 'linear-gradient(160deg, rgba(99,102,241,.16), rgba(99,102,241,.04))', padding: '16px 16px 14px', marginBottom: 12 }}>
@@ -89,7 +90,7 @@ export function MonthBriefEditor({
   onPickMonth: (month: string) => void;
   onSave: (draft: { month: string; focus: string; goals: string; direction: string; needs: string[] }) => Promise<void>;
 }) {
-  const T = (a: string, b: string) => (vi ? a : b);
+  const T = (a: string, b: string) => ind(vi ? a : b);
   const [draft, setDraft] = useState({ focus: brief.focus, goals: brief.goals, direction: brief.direction, needsText: brief.needs.join('\n') });
   const [open, setOpen] = useState(!brief.focus);
   useEffect(() => {

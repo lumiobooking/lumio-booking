@@ -44,7 +44,7 @@ export type BusinessTypeKey = 'SALON' | 'RESTAURANT' | 'REAL_ESTATE' | 'SERVICE'
  * nail salon both book an appointment and both say "salon", so neither needs
  * an entry; a bakery taking a cake order for Saturday needs one.
  */
-export type TradePersonaKey = 'CAFE' | 'BAKERY' | 'BUBBLE_TEA' | 'FAST_FOOD';
+export type TradePersonaKey = 'CAFE' | 'BAKERY' | 'BUBBLE_TEA' | 'FAST_FOOD' | 'DENTAL';
 
 export interface BusinessPersona {
   key: BusinessTypeKey;
@@ -129,6 +129,14 @@ const TRADE_PERSONAS: Record<TradePersonaKey, Partial<BusinessPersona> & { label
     voiceGoal: 'Goal: ANSWER the question. Callers want the hours, the address, the menu, toppings, or sugar and ice levels — answer from the notes below and nothing else. This shop does not take table reservations, so do not offer one. What it does take in advance is a LARGE or catering order: for that you need their first name, roughly how many drinks, and a specific pickup date and time.',
     bookableNoun: 'order',
     venueNoun: 'shop',
+  },
+  // A clinic is a SERVICE in the enum; what it books is an exam, for a patient.
+  DENTAL: {
+    labelEn: 'Dental / Clinic', labelVi: 'Nha khoa / Phòng khám',
+    identity: 'a dental clinic',
+    voiceGoal: 'Goal: book an exam or treatment appointment. You still need the patient\'s first name, what they need (check-up, cleaning, a tooth that hurts, a follow-up…), and a specific date and time. Ask for what is missing, ONE thing at a time, and confirm details by repeating them back. Never diagnose, never quote a treatment price that is not written here, and for severe pain, swelling or bleeding tell them to come in as soon as possible or seek emergency care.',
+    bookableNoun: 'appointment',
+    venueNoun: 'clinic',
   },
   FAST_FOOD: {
     labelEn: 'Takeaway / Quick service', labelVi: 'Quán ăn nhanh / Mang đi',

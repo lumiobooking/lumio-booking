@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
 import { dayKeyInTz, fmtInTz } from '../lib/datetime';
+import { ind } from '../lib/ui-industry';
 
 /**
  * "Same again in two weeks?" — the next visit, booked at the till.
@@ -39,7 +40,7 @@ export function RebookSheet({ token, lang, customerId, customerLabel, lines, ser
   onBooked: (r: RebookResult) => void;
 }) {
   const vi = lang === 'vi';
-  const L = (v: string, e: string) => (vi ? v : e);
+  const L = (v: string, e: string) => ind(vi ? v : e);
   const staffName = (s: RebookStaff | undefined) => (s ? `${s.firstName} ${s.lastName ?? ''}`.trim() : '');
 
   // ---- what the bill already told us ------------------------------------

@@ -15,6 +15,7 @@ import { apiFetch } from '../lib/api';
 import { ui } from '../lib/ui';
 import { Preset } from '../lib/emailPresets';
 import { uiLocale } from '../lib/datetime';
+import { ind } from '../lib/ui-industry';
 
 export interface Campaign {
   id: string; name: string; subject: string; status: string;
@@ -132,7 +133,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
   const [auto, setAuto] = useState<Automation | null>(null);
   const [mine, setMine] = useState<SavedTemplate[]>([]);
 
-  const t = (v: string, e: string) => (vi ? v : e);
+  const t = (v: string, e: string) => ind(vi ? v : e);
 
   const loadList = useCallback(async () => {
     if (!token) return;
@@ -1067,7 +1068,7 @@ export function EmailCampaigns({ base, vi, defaultFromName, presets = [] }: { ba
 }
 
 function CampaignSheet({ c, vi, onClose }: { c: CampaignDetail; vi: boolean; onClose: () => void }) {
-  const t = (v: string, e: string) => (vi ? v : e);
+  const t = (v: string, e: string) => ind(vi ? v : e);
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(2,6,23,0.75)', display: 'grid', placeItems: 'center', padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: '100%', maxWidth: 880, maxHeight: '86vh', overflowY: 'auto' }}>

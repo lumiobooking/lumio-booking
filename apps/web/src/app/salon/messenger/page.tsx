@@ -15,6 +15,7 @@ import { ChatTurnsPanel } from '../../../components/ChatTurnsPanel';
 import { useLang } from '../../../lib/i18n';
 import { AiNotesBox } from '../../../components/AiNotesBox';
 import { FollowUpBox } from '../../../components/FollowUpBox';
+import { KnowledgeGapsBox } from '../../../components/KnowledgeGapsBox';
 import { uiLocale } from '../../../lib/datetime';
 
 interface BotFact { label: string; value: string; on: boolean; from?: string | null; until?: string | null }
@@ -1179,6 +1180,12 @@ function Inner() {
         <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-6px 0 12px', lineHeight: 1.5 }}>
           {lang === 'vi' ? 'Bot không dán nguyên văn — nó chào tạm biệt theo đúng tinh thần câu này, bằng ngôn ngữ của khách.' : 'Not pasted verbatim — the bot says goodbye in the spirit of this line, in the customer\u2019s language.'}
         </p>
+        {/* What the bot could not answer — answered once here, known to the bot from then on. */}
+        <KnowledgeGapsBox token={token} vi={lang === 'vi'} onTaught={(label, value) => setFacts((rows) => {
+          const i = rows.findIndex((r) => r.label.trim().toLowerCase() === label.trim().toLowerCase());
+          if (i >= 0) { const next = [...rows]; next[i] = { ...next[i], value, on: true }; return next; }
+          return [...rows, { label, value, on: true, from: null, until: null, custom: true }];
+        })} />
         <AiNotesBox token={token} vi={lang === 'vi'} />
         <label style={ui.label}>{t('extraNotes')}</label>
         <textarea value={c.aiInstruction} placeholder={t('extraNotesPh')} rows={3} onChange={(e) => setC({ ...c, aiInstruction: e.target.value })} onBlur={() => save({})} style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />

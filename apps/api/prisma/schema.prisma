@@ -285,6 +285,7 @@ model Tenant {
   googleReviews     GoogleReview[]
   messengerConnection MessengerConnection?
   messengerThreads  MessengerThread[]
+  botKnowledgeGaps  BotKnowledgeGap[]
   waitlistEntries   WaitlistEntry[]
   walkIns           WalkIn[]
   stations          Station[]
@@ -3424,3 +3425,27 @@ model StaffCoaching {
   @@map("staff_coaching")
 }
 
+// Questions the bot could not answer from what the salon has told it, or that
+// a person answered by hand. The owner answers each one once; the answer
+// becomes a bot fact and the bot knows it from then on. Per salon, always.
+model BotKnowledgeGap {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key      String // normalised wording, so the same question asked again is counted, not listed twice
+  question String // the latest wording, phone numbers and emails removed
+  count    Int    @default(1)
+  threadId String? // the last conversation it came up in
+  source   String @default("bot") // 'bot' = the bot could not answer · 'staff' = a person answered it
+  suggestedAnswer String? // what a person replied, offered to the owner as the answer
+  status   String @default("open") // 'open' | 'answered' | 'dismissed'
+  answer   String?
+  answeredBy String?
+  answeredAt DateTime?
+  firstAt  DateTime @default(now())
+  lastAt   DateTime @default(now())
+
+  @@unique([tenantId, key])
+  @@index([tenantId, status, lastAt])
+  @@map("bot_knowledge_gaps")
+}

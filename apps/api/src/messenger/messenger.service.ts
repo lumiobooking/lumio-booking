@@ -9,6 +9,8 @@ import {
 import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
+import { KnowledgeGapsService } from './knowledge-gaps.service';
+import { isUnknownReply } from './knowledge-gaps';
 import { decideFollowUp, threadStateFrom, contextualNudge, followUpSettingsFrom, CHAT_FOLLOWUP_KEY, WINDOW_MS, type StoredTurn } from './followup';
 import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, BOOKED_CORRECTION, VAGUE_CORRECTION, repeatCorrection, notRepeatLine, asksQuestion, aboutTheBooking, isBookingRecap, questionFirstCorrection, answersBeforeRecap, endsOnFiller, customerWrappingUp, FILLER_CORRECTION } from './booking-guards';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY, sendZaloImage } from './zalo-oa';
@@ -189,7 +191,25 @@ export class MessengerService implements OnModuleInit {
     // "Is there room for all of us at two?" — the same diary arithmetic the
     // hotline uses (bookings module). Optional so the older specs still run.
     @Optional() private readonly party?: PartyAvailabilityService,
+    // What the bot did not know, kept for the owner to answer once (./knowledge-gaps).
+    // Optional so a storage problem can never stop the bot answering.
+    @Optional() private readonly gaps?: KnowledgeGapsService,
   ) {}
+
+  /**
+   * A person answered a customer's question by hand — in Lumio's inbox or in
+   * Meta's. That answer is offered to the owner as what the bot should say
+   * next time (never used before the owner approves it).
+   */
+  private noteStaffAnswer(tenantId: string, thread: { id: string; history?: unknown }, answer: string): void {
+    if (!this.gaps || !answer.trim()) return;
+    const hist = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+    const lastUser = [...hist].reverse().find((t) => t.role === 'user');
+    const lastAny = hist[hist.length - 1];
+    // Only when the person is answering the customer's latest message, and it asked something.
+    if (!lastUser || lastAny?.role !== 'user' || !asksQuestion(String(lastUser.content ?? ''))) return;
+    void this.gaps.record({ tenantId, threadId: thread.id, question: String(lastUser.content), source: 'staff', suggestedAnswer: answer });
+  }
 
   private get parties(): PartyAvailabilityService {
     if (!this.party) (this as unknown as { party?: PartyAvailabilityService }).party = new PartyAvailabilityService(this.prisma, this.settings);
@@ -1776,6 +1796,7 @@ export class MessengerService implements OnModuleInit {
       ? await this.prisma.messengerThread.findFirst({ where: { id: threadId, tenantId } })
       : await this.prisma.messengerThread.findFirst({ where: { tenantId }, orderBy: { updatedAt: 'desc' } });
     if (!thread) throw new NotFoundException('No conversation yet — the customer must message the Page first (24h messaging window).');
+    this.noteStaffAnswer(tenantId, thread as unknown as { id: string; history?: unknown }, body);
 
     // A website thread needs no Page and no token: the reply is written into
     // the history the visitor's browser is polling. A person answering puts
@@ -2295,6 +2316,7 @@ export class MessengerService implements OnModuleInit {
     if (!thread) return;
     const body = (text || '').trim();
     if (body) {
+      this.noteStaffAnswer(page.tenantId, thread as unknown as { id: string; history?: unknown }, body);
       const hist = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
       const last = hist[hist.length - 1];
       // sendManual already stored this exact message — its echo must not duplicate it
@@ -2884,6 +2906,11 @@ export class MessengerService implements OnModuleInit {
     // is not the robot thinking, and a line a person typed is the salon's own
     // work — none of the three is charged. See messenger/chat-billing.ts.
     if (sent.ok) this.countBotReply(conn.tenantId);
+    // The bot had to say "let me check with the salon": keep the question for
+    // the owner to answer once (./knowledge-gaps). Never awaited, never fatal.
+    if (this.gaps && asksQuestion(text) && isUnknownReply(reply)) {
+      void this.gaps.record({ tenantId: conn.tenantId, threadId, question: text, source: 'bot' });
+    }
     // Inbound = Meta's own webhook timestamp (ms epoch); outbound = when we actually sent.
     const inAt = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
     const outAt = new Date().toISOString();

@@ -16,11 +16,12 @@ import { ChatTurnsService } from './chat-turns.service';
 import { ChatTurnsController } from './chat-turns.controller';
 
 import { ChatFollowUpScheduler } from './followup.scheduler';
+import { KnowledgeGapsService } from './knowledge-gaps.service';
 
 @Module({
   imports: [BookingsModule, SettingsModule, NotificationsModule, PushModule],
   controllers: [MessengerController, ChatTurnsController, MessengerWebhookController, ZaloController, ZaloWebhookController, SiteVerificationController, WebChatAdminController, WebChatPublicController],
-  providers: [InboxEventsService, ChatTurnsService, MessengerService, ZaloOaService, WebChatService, ChatFollowUpScheduler],
+  providers: [InboxEventsService, ChatTurnsService, MessengerService, ZaloOaService, WebChatService, ChatFollowUpScheduler, KnowledgeGapsService],
   exports: [InboxEventsService, MessengerService, ChatTurnsService],
 })
 export class MessengerModule {}

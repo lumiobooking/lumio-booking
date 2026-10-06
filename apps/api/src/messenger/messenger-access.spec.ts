@@ -50,6 +50,9 @@ const STAFF_MUST_NOT = [
   // Deleting a label strips it off every conversation in the shop. Creating one
   // is not destructive; deleting one is, and it is not undoable from the inbox.
   'deleteLabel',
+  // What the bot could not answer. Answering one writes a bot fact — what the
+  // bot will tell EVERY customer from then on — so it is the owner's call.
+  'knowledgeGaps', 'answerGap', 'dismissGap',
 ];
 
 describe('what a technician can reach in the inbox', () => {

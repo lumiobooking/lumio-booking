@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { UserRole } from '@prisma/client';
 import { MessengerService } from './messenger.service';
 import { InboxEventsService } from './inbox-events.service';
+import { KnowledgeGapsService } from './knowledge-gaps.service';
 import { HandoffDto, LeadStatusDto, RenameThreadDto, SendTestDto, SuggestGreetingDto, UpdateMessengerDto } from './dto/messenger.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -32,7 +33,25 @@ export class MessengerController {
   constructor(
     private readonly svc: MessengerService,
     private readonly events: InboxEventsService,
+    private readonly gaps: KnowledgeGapsService,
   ) {}
+
+  // What the bot could not answer — the owner answers once, the bot knows from then on.
+  // Salon admin only (class default); every query is scoped to the caller's salon.
+  @Get('knowledge-gaps')
+  knowledgeGaps(@CurrentUser() user: AuthenticatedUser) {
+    return this.gaps.list(user);
+  }
+
+  @Post('knowledge-gaps/:id/answer')
+  answerGap(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: { answer?: string }) {
+    return this.gaps.answer(user, id, String(dto?.answer ?? ''));
+  }
+
+  @Post('knowledge-gaps/:id/dismiss')
+  dismissGap(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.gaps.dismiss(user, id);
+  }
 
   @Get()
   get(@CurrentUser() user: AuthenticatedUser) {

@@ -13,7 +13,7 @@ jest.mock('../common/llm', () => ({
   chat: jest.fn(),
 }));
 import { chat } from '../common/llm';
-import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine } from './booking-guards';
+import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, notRepeatLine, asksQuestion, aboutTheBooking, isBookingRecap } from './booking-guards';
 import { MessengerService } from './messenger.service';
 
 describe('claimsBooked — a reply that says the booking exists', () => {
@@ -43,6 +43,32 @@ describe('claimsBooked — a reply that says the booking exists', () => {
     'Sau khi em đặt xong, chị sẽ nhận tin nhắn xác nhận ạ.',
     '',
   ])('lets through: %s', (s) => expect(claimsBooked(s)).toBe(false));
+});
+
+describe('questions first', () => {
+  it.each([
+    'Delois Jones 3343904874 when is your grand opening',
+    'how much is a gel fill',
+    'Do you take walk-ins?',
+    'chị ơi có làm gel không',
+    'bên em mấy giờ đóng cửa',
+  ])('hears a question in: %s', (t) => expect(asksQuestion(t)).toBe(true));
+
+  it.each(['yes', 'Grand opening day', 'Kim 512-555-0147', 'ok em', ''])('no question in: %s', (t) => expect(asksQuestion(t)).toBe(false));
+
+  it('a question about the booking itself is answered by the recap, so it is not held back', () => {
+    expect(aboutTheBooking('can I come at 3pm?')).toBe(true);
+    expect(aboutTheBooking('is Saturday available?')).toBe(true);
+    expect(aboutTheBooking('ngày mai còn chỗ không')).toBe(true);
+    expect(aboutTheBooking('when is your grand opening')).toBe(false);
+    expect(aboutTheBooking('how much is a gel fill')).toBe(false);
+  });
+
+  it('recognises the recap', () => {
+    expect(isBookingRecap('Just to confirm: basic pedicure, Friday October 9 at 1:00 PM for Delois · 334-390-4874 — shall I book it?')).toBe(true);
+    expect(isBookingRecap('Dạ em xác nhận lại: … em đặt lịch luôn nhé?')).toBe(true);
+    expect(isBookingRecap('Our grand opening is October 9 🎉 Any other questions?')).toBe(false);
+  });
 });
 
 describe('vagueAvailability', () => {
@@ -134,6 +160,58 @@ describe('inside the agent loop', () => {
       .mockResolvedValueOnce(reply('Tomorrow I have 10:00 AM, 11:00 AM or 2:00 PM — which suits you?'));
     const out = await svc().runAgent('t1', '', hist, 'tomorrow or wednesday', { mode: 'booking', leadEmail: null, channel: 'instagram' });
     expect(out).toContain('10:00 AM');
+  });
+
+  // "Grand opening day" — the customer's answer to the recap — got the same
+  // recap back, which the old duplicate filter then dropped: total silence.
+  const recap = 'Just to confirm: basic pedicure and eyebrows, Friday October 9 at 1:00 PM for Delois Jones · 334-390-4874 — shall I book it?';
+  const recapHist = [
+    { role: 'user', content: 'Delois Jones 3343904874 when is your grand opening' },
+    { role: 'assistant', content: recap, at: new Date().toISOString() },
+  ];
+
+  it('a word-for-word repeat goes back for a rewrite that answers the customer', async () => {
+    mocked
+      .mockResolvedValueOnce(reply(recap))
+      .mockResolvedValueOnce(reply('Friday October 9 is our grand opening 🎉 — shall I book you in at 1:00 PM that day?'));
+    const out = await svc().runAgent('t1', '', recapHist, 'Grand opening day', { mode: 'booking', leadEmail: null, channel: 'messenger' });
+    expect(out).toMatch(/grand opening/);
+    const second = mocked.mock.calls[1][0] as { messages: { content: unknown }[] };
+    const correction = JSON.stringify(second.messages[second.messages.length - 1].content);
+    expect(correction).toContain('word for word your previous message');
+    expect(correction).toContain('Grand opening day');
+  });
+
+  it('repeating twice gets a clarifying question from us — never silence', async () => {
+    mocked.mockResolvedValueOnce(reply(recap)).mockResolvedValueOnce(reply(recap));
+    const out = await svc().runAgent('t1', '', recapHist, 'Grand opening day', { mode: 'booking', leadEmail: null, channel: 'messenger' });
+    expect(out).toBe(notRepeatLine('en', recap));
+    expect(out).not.toBe(recap);
+    expect(out).toMatch(/book it/);
+  });
+
+  it('the clarifying line fits what was asked, in the customer’s language', () => {
+    expect(notRepeatLine('vi', 'Dạ em xác nhận lại: … em đặt lịch luôn nhé?')).toMatch(/đặt lịch/);
+    expect(notRepeatLine('en', 'What day works for you?')).toMatch(/tell me a little more/);
+    expect(claimsBooked(notRepeatLine('en', recap))).toBe(false);
+  });
+
+  it('a recap sent over the customer’s question is rewritten to answer the question first', async () => {
+    mocked
+      .mockResolvedValueOnce(reply('Just to confirm: basic pedicure and eyebrows, Friday October 9 at 1:00 PM for Delois Jones · 334-390-4874 — shall I book it?'))
+      .mockResolvedValueOnce(reply('Our grand opening is Friday, October 9 🎉 Any other questions before I set up your appointment?'));
+    const out = await svc().runAgent('t1', '', hist, 'Delois Jones 3343904874 when is your grand opening', { mode: 'booking', leadEmail: null, channel: 'messenger' });
+    expect(out).toMatch(/grand opening is/);
+    expect(out).not.toMatch(/shall I book/);
+    const second = mocked.mock.calls[1][0] as { messages: { content: unknown }[] };
+    expect(JSON.stringify(second.messages[second.messages.length - 1].content)).toContain('when is your grand opening');
+  });
+
+  it('"can I come at 3pm?" may be answered with the recap — that IS the answer', async () => {
+    mocked.mockResolvedValueOnce(reply('3:00 PM works 👍 Pedicure, Tuesday October 6 at 3:00 PM for Kim · 512-555-0147 — shall I book it?'));
+    const out = await svc().runAgent('t1', '', hist, 'can I come at 3pm?', { mode: 'booking', leadEmail: null, channel: 'messenger' });
+    expect(out).toMatch(/shall I book it/);
+    expect(mocked).toHaveBeenCalledTimes(1);
   });
 
   it('the sales bot is untouched by the booking gates', async () => {

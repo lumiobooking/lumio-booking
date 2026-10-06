@@ -10,7 +10,7 @@ import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
 import { decideFollowUp, threadStateFrom, contextualNudge, followUpSettingsFrom, CHAT_FOLLOWUP_KEY, WINDOW_MS, type StoredTurn } from './followup';
-import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, BOOKED_CORRECTION, VAGUE_CORRECTION } from './booking-guards';
+import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, BOOKED_CORRECTION, VAGUE_CORRECTION, repeatCorrection, notRepeatLine, asksQuestion, aboutTheBooking, isBookingRecap, questionFirstCorrection } from './booking-guards';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY, sendZaloImage } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
 import {
@@ -82,6 +82,9 @@ type Turn = {
   role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean;
   /** A follow-up the bot sent after the customer went quiet (see ./followup). */
   nudge?: boolean;
+  /** Set on a customer turn written the moment it arrived (before the bot's
+   *  reply), so the reply step can recognise it instead of adding it again. */
+  rid?: string;
   /** Meta's message id. Lets mergeHistory join our copy to Meta's on the id
    *  rather than on the text — see markManual in ./history-merge. */
   messageId?: string | null;
@@ -2369,6 +2372,18 @@ export class MessengerService implements OnModuleInit {
     }
   }
 
+  /** Add what a photo said to turns already written on arrival (see replyAndRecord). */
+  private async noteOnTurns(threadId: string, rids: Set<string>, note: string): Promise<void> {
+    const live = await this.prisma.messengerThread.findUnique({ where: { id: threadId }, select: { history: true } });
+    const hist = (Array.isArray(live?.history) ? live!.history : []) as Turn[];
+    let changed = false;
+    const next = hist.map((t) => {
+      if (t?.rid && rids.has(t.rid) && t.images?.length && !t.note) { changed = true; return { ...t, note }; }
+      return t;
+    });
+    if (changed) await this.prisma.messengerThread.update({ where: { id: threadId }, data: { history: next as unknown as Prisma.InputJsonValue } });
+  }
+
   /** Merge soon-to-be-forgotten turns into the permanent customer profile. */
   private async distillThreadSummary(threadId: string, prevIgnored: string | null, dropped: Turn[]): Promise<void> {
     const key = process.env.ANTHROPIC_API_KEY || '';
@@ -2555,10 +2570,31 @@ export class MessengerService implements OnModuleInit {
       await this.prisma.messengerThread.update({ where: { id: thread.id }, data: { handoff: false, handoffAt: null } as never });
     }
 
+    // INTO THE CONVERSATION NOW, not after the bot has answered.
+    //
+    // The customer's turn used to be written only once the reply was ready —
+    // a 4-second gather window plus the whole AI run — so for all that time
+    // the inbox showed nothing: the conversation did not open on it, the list
+    // did not move it up, the unread mark and the chime waited too. "Khách đã
+    // nhắn mà màn hình Inbox chưa hiện." Each turn carries an id (rid) so the
+    // reply step knows exactly which turns are already there, even when more
+    // arrive while the bot is still thinking. The website chat keeps the old
+    // order: its visitor already sees their own message on their screen.
+    let rid: string | undefined;
+    if (channel !== 'web') {
+      rid = crypto.randomUUID();
+      const histArr = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
+      const inIso = eventTs && Number.isFinite(eventTs) ? new Date(eventTs).toISOString() : new Date().toISOString();
+      try {
+        await this.appendTurns(thread.id, histArr, this.threadSummary(thread), [{ role: 'user', content: text, at: inIso, rid, ...imgTurn }]);
+        this.events.publish(page.tenantId, 'message');
+      } catch { rid = undefined; }
+    }
+
     // NOT answered here. The customer may still be typing, or tapping the same
     // button again because the first tap felt slow — so the reply is queued
     // and a whole burst is answered once. See ./burst.
-    this.queueReply({ ...conn, pageToken: page.pageToken }, thread.id, senderId, text, eventTs, imgTurn);
+    this.queueReply({ ...conn, pageToken: page.pageToken }, thread.id, senderId, text, eventTs, imgTurn, rid);
   }
 
   /**
@@ -2569,14 +2605,15 @@ export class MessengerService implements OnModuleInit {
    * next one they send. The alternative — a row per thread in the database,
    * written twice a second while somebody types — costs more than the problem.
    */
-  private readonly bursts = new Map<string, { texts: string[]; ts?: number; running: boolean; images: string[]; media: InboundMedia[] }>();
+  private readonly bursts = new Map<string, { texts: string[]; ts?: number; running: boolean; images: string[]; media: InboundMedia[]; rids: string[] }>();
 
   private queueReply(
     conn: { tenantId: string; pageToken: string; aiInstruction: string | null; botFacts: unknown },
-    threadId: string, senderId: string, text: string, eventTs?: number, attach: Partial<Turn> = {},
+    threadId: string, senderId: string, text: string, eventTs?: number, attach: Partial<Turn> = {}, rid?: string,
   ): void {
-    const q = this.bursts.get(threadId) ?? { texts: [], ts: eventTs, running: false, images: [], media: [] };
+    const q = this.bursts.get(threadId) ?? { texts: [], ts: eventTs, running: false, images: [], media: [], rids: [] };
     q.texts.push(text);
+    if (rid) q.rids.push(rid);
     // A photo and its caption often arrive as two events a second apart;
     // the burst joins them so the model sees the picture WITH the words.
     if (attach.images?.length) q.images.push(...attach.images);
@@ -2606,10 +2643,11 @@ export class MessengerService implements OnModuleInit {
         const texts = q.texts.splice(0, q.texts.length);
         const images = q.images.splice(0, q.images.length).slice(0, 3);
         const media = q.media.splice(0, q.media.length);
+        const rids = q.rids.splice(0, q.rids.length);
         const ts = q.ts;
         q.ts = undefined;
         const merged = mergeBurst(texts);
-        if (merged) await this.replyAndRecord(conn, threadId, senderId, merged, ts, { ...(images.length ? { images } : {}), ...(media.length ? { media } : {}) });
+        if (merged) await this.replyAndRecord(conn, threadId, senderId, merged, ts, { ...(images.length ? { images } : {}), ...(media.length ? { media } : {}) }, rids);
         if (!this.bursts.get(threadId)?.texts.length) break;
         await beat();
       }
@@ -2675,6 +2713,8 @@ export class MessengerService implements OnModuleInit {
     text: string,
     eventTs?: number,
     attach: Partial<Turn> = {},
+    /** Ids of this burst's customer turns already written on arrival. */
+    rids: string[] = [],
   ): Promise<void> {
     const fresh = await this.prisma.messengerThread.findUnique({ where: { id: threadId } });
     if (!fresh) return;
@@ -2701,7 +2741,21 @@ export class MessengerService implements OnModuleInit {
     // human-handled stretch) — never store it twice. Two photos in a row carry
     // the same placeholder text, so a turn WITH a picture is never "already".
     const lastTurn = history[history.length - 1];
-    const userAlready = Boolean(lastTurn && lastTurn.role === 'user' && lastTurn.content === text && !inImages.length);
+    // This burst's turns, written the moment they arrived (handleMessage).
+    // Recognised by id, wherever they sit — more messages may have landed
+    // behind them while the previous reply was being written.
+    const ridSet = new Set(rids);
+    const arrived = ridSet.size ? history.filter((h) => h.rid && ridSet.has(h.rid)) : [];
+    const userAlready = arrived.length > 0
+      || Boolean(lastTurn && lastTurn.role === 'user' && lastTurn.content === text && !inImages.length);
+    // The conversation BEFORE this burst — what the model reads as history,
+    // with the burst itself handed over as the new message.
+    const prior: Turn[] = arrived.length
+      ? history.filter((h) => !(h.rid && ridSet.has(h.rid)))
+      : (userAlready ? history.slice(0, -1) : history);
+    // What the photo said was read just now; the turn it belongs to was
+    // written before that, so the note is added to it in place.
+    if (arrived.length && photoNote) await this.noteOnTurns(threadId, ridSet, photoNote).catch(() => undefined);
     // Long-term memory + how long they were away (returning-customer handling).
     const memory = this.threadSummary(fresh);
     // The lead row this very bot wrote. It used to be write-only: the agent
@@ -2719,7 +2773,7 @@ export class MessengerService implements OnModuleInit {
     // the calendar for them. Read every turn; it is what stops the bot
     // asking a returning customer for a phone number it has on file.
     const known = await this.knownCustomerFor(conn.tenantId, fresh as unknown as { customerId?: string | null; senderName?: string | null }).catch(() => null);
-    const prevTurn = userAlready ? history[history.length - 2] : lastTurn;
+    const prevTurn = prior[prior.length - 1];
     const prevAtMs = prevTurn?.at ? new Date(prevTurn.at).getTime() : 0;
     const gapDays = prevAtMs ? Math.floor((Date.now() - prevAtMs) / 86_400_000) : 0;
     let reply: string;
@@ -2733,7 +2787,7 @@ export class MessengerService implements OnModuleInit {
       const cx = conn as unknown as { botMode?: string; leadEmail?: string | null };
       // Hard deadline over the WHOLE agent run (model + tools + card images).
       // Whatever stalls, the customer still gets an answer instead of silence.
-      reply = await this.withDeadline(this.runAgent(conn.tenantId, instruction, userAlready ? history.slice(0, -1) : history, text, agentCtx = {
+      reply = await this.withDeadline(this.runAgent(conn.tenantId, instruction, prior, text, agentCtx = {
         mode: cx.botMode === 'sales' ? 'sales' : 'booking',
         leadEmail: cx.leadEmail ?? null,
         threadId,
@@ -2773,6 +2827,17 @@ export class MessengerService implements OnModuleInit {
     // they cannot already see on their screen, and sending it makes the page
     // look broken. The customer's turn is still recorded, so the thread — and
     // the person who opens the inbox — has the whole story.
+    // Only a TRUE duplicate stays silent: the customer's own message is the
+    // same as their previous one too (a double delivery or a double tap).
+    // Anything else is a customer who said something new and must hear back —
+    // runAgent has already rewritten a repeat, and if one still slips through
+    // it becomes a clarifying question instead of nothing.
+    const prevUser = [...prior].reverse().find((h) => h.role === 'user');
+    const sameAsBefore = String(prevUser?.content ?? '').trim().toLowerCase() === String(text ?? '').trim().toLowerCase();
+    if (alreadySaid(history, reply) && !sameAsBefore) {
+      const prevBot = [...history].reverse().find((h) => h.role === 'assistant');
+      reply = notRepeatLine(conversationLang([...history.filter((h) => h.role === 'user').map((h) => String(h.content ?? '')), text]) ?? await this.defaultLangOf(conn.tenantId), String(prevBot?.content ?? ''));
+    }
     if (alreadySaid(history, reply)) {
       this.logger.log(`suppressed a repeat reply on thread ${threadId}`);
       if (!userAlready) {
@@ -3051,8 +3116,9 @@ Email is OPTIONAL: mention once that a confirmation email is possible; if they s
 CONFIRM BEFORE BOOKING — always, exactly once. The moment you have service(s) + an open time + name + phone, send ONE short recap with everything and ask for a yes — do not call create_booking yet: "Acrylic full set + deluxe spa pedicure, Monday Oct 6 at 11:00 AM, for Kimberli · 334-432-2013 — shall I book it?" (Vietnamese: "Dạ em xác nhận lại: … lúc 11:00 thứ Hai 6/10, tên Kimberli, SĐT 334-432-2013 — em đặt lịch luôn nhé?"). Always the weekday AND the date, every service, every person's name for a group, and the phone. Then:
 - Any agreement — "yes", "ok", "correct", "sure", "đúng rồi", "ok em", a thumbs-up — means call create_booking NOW, in this same reply. Never recap a second time and never ask a second confirming question.
 - If they correct something (another time, a different service, a typo in the number), apply it — re-check the time with check_availability if the time changed — and send the recap ONCE more with the correction.
-- If they ask a question instead, answer it in one line and ask again for the yes in the same message.
-Use the get_services tool for what's available. When the customer has said yes to your recap, call create_booking ONCE, listing EVERY service for that visit in the "services" array (id and name copied exactly from get_services; include email only if given). Two services in one visit is ONE call with two entries — never two calls, and never two start times: the salon lengthens the appointment for the extra services by itself, so one person sitting in one chair gets one appointment and one bill. A GROUP is still ONE call: the person you are chatting with in customerFirstName/services, everyone else in "guests" (each with their own name and services) — they are all booked at the same time, each with their own technician. After it succeeds, thank them and confirm warmly in one line, and say a confirmation is on the way.
+- If they ask a question instead of saying yes, answer it (see QUESTIONS FIRST) and ask if there is anything else; once they have no more questions, ask for the yes in one short line — repeat the full recap only if something changed.
+QUESTIONS FIRST — this beats every booking step above: whenever the customer's latest message asks something ("when is your grand opening", "how much is a gel fill", "do you take walk-ins", "có làm gel không"), answer EXACTLY that, specifically, from the salon's facts, hours, prices and notes in this prompt — the real date, time or price, not a general line. If the answer is not in what you were given, say you will check with the salon; never guess and never dodge. In that message do NOT send the booking recap or ask to book: end by asking if they have any other questions. Keep any name, phone, service or time they gave — the recap comes once their questions are answered. Example: "Jane 512-555-0147, when is your grand opening?" → "Our grand opening is <the date written in this salon's notes> 🎉 Any other questions before I set up your appointment?" (use this salon's real date; if its notes give none, say you will check).
+The SERVICES list in this prompt IS the menu: when the service they want is on it, use its name exactly as written there — the part before the [category] and the price — for check_availability and create_booking (put that same exact name in both serviceId and serviceName) — no need to call get_services first. Call get_services only for something not on that list. When the customer has said yes to your recap, call create_booking ONCE, listing EVERY service for that visit in the "services" array (include email only if given). Two services in one visit is ONE call with two entries — never two calls, and never two start times: the salon lengthens the appointment for the extra services by itself, so one person sitting in one chair gets one appointment and one bill. A GROUP is still ONE call: the person you are chatting with in customerFirstName/services, everyone else in "guests" (each with their own name and services) — they are all booked at the same time, each with their own technician. After it succeeds, thank them and confirm warmly in one line, and say a confirmation is on the way.
 If they ask about an EXISTING appointment ("khi nào lịch của tôi", "đổi giờ được không", "dời sang thứ 7"), NEVER answer from memory: call find_appointment with their phone number first, then read back exactly what it returns. To move one, call reschedule_appointment with the appointment id from find_appointment, their phone, and the new local date & time. The tool decides whether the change is allowed and hands you the sentence to say — say THAT reason, do not invent a policy of your own and do not promise a change the tool refused.
 To CANCEL one, first read the day and time back and ask them to confirm in plain words ("anh/chị xác nhận huỷ lịch ... nhé?"); only after a clear yes, call cancel_appointment with the appointment id and their phone. Never cancel on a hint, on "maybe", or while they are still asking questions — an emptied chair cannot be undone from this chat. If the tool refuses, say ITS reason and offer to have a staff member call back. If they sound like they only want a different time, offer to move it instead — the salon keeps the customer and they keep their slot.
 CRITICAL: Only tell the customer the booking is confirmed if the create_booking tool result starts with "SUCCESS". If the tool returns an error, NEVER claim the booking was made — apologize, briefly explain the problem in plain words, and offer another time or ask for corrected details.
@@ -3075,7 +3141,7 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
               items: {
                 type: 'object',
                 properties: {
-                  services: { type: 'array', items: { type: 'string' }, description: 'Service names (or ids) exactly as in get_services.' },
+                  services: { type: 'array', items: { type: 'string' }, description: 'Service names exactly as written in the SERVICES list of this prompt (or ids from get_services).' },
                   technician: { type: 'string', description: 'Only when they asked for someone by name.' },
                 },
                 required: ['services'],
@@ -3099,8 +3165,8 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
               items: {
                 type: 'object',
                 properties: {
-                  serviceId: { type: 'string', description: 'The id copied EXACTLY from get_services.' },
-                  serviceName: { type: 'string', description: 'The name exactly as it appears in get_services — used to recover if the id was mistyped.' },
+                  serviceId: { type: 'string', description: 'The id from get_services, or the service name exactly as written in the SERVICES list of this prompt.' },
+                  serviceName: { type: 'string', description: 'The service name exactly as written in the SERVICES list (or in get_services).' },
                 },
                 required: ['serviceId', 'serviceName'],
               },
@@ -3124,8 +3190,8 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
                     items: {
                       type: 'object',
                       properties: {
-                        serviceId: { type: 'string', description: 'The id copied EXACTLY from get_services.' },
-                        serviceName: { type: 'string', description: 'The name exactly as in get_services.' },
+                        serviceId: { type: 'string', description: 'The id from get_services, or the service name exactly as written in the SERVICES list of this prompt.' },
+                        serviceName: { type: 'string', description: 'The service name exactly as written in the SERVICES list (or in get_services).' },
                       },
                       required: ['serviceId', 'serviceName'],
                     },
@@ -3499,6 +3565,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     let freshRetried = false;
     let bookedRetried = false;
     let vagueRetried = false;
+    let repeatRetried = false;
+    let questionRetried = false;
     // Which tools this run actually called — the booking gates judge a reply
     // against what HAPPENED, not against what the model says happened.
     const toolsUsed = new Set<string>();
@@ -3658,6 +3726,22 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         });
         continue;
       }
+      // REPEAT gate — both modes. The duplicate filter after the run used to
+      // drop a word-for-word repeat SILENTLY; the customer, who had just
+      // answered, saw nothing. A repeat goes back for one rewrite, and a
+      // second repeat becomes a short question from us. See booking-guards.
+      if (text && alreadySaid(history as never, text)) {
+        if (repeatRetried) {
+          this.logger.warn(`Reply repeated twice; sending a clarifying line instead: ${text.slice(0, 140)}`);
+          const prevBot = [...history].reverse().find((h) => h.role === 'assistant');
+          return notRepeatLine(customerLang, typeof prevBot?.content === 'string' ? prevBot.content : '');
+        }
+        repeatRetried = true;
+        this.logger.warn(`Reply blocked (word-for-word repeat of the previous message): ${text.slice(0, 140)}`);
+        messages.push({ role: 'assistant', content: blocks });
+        messages.push({ role: 'user', content: repeatCorrection(userText) });
+        continue;
+      }
       // BOOKING gates. "Monday at 11:00 AM is booked in. What's your first
       // name?" reached a real Instagram customer: a booking announced with no
       // name, no phone and no create_booking call behind it. The prompt
@@ -3676,6 +3760,17 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         this.logger.warn(`Booking reply blocked (claimed booked before create_booking succeeded): ${text.slice(0, 140)}`);
         messages.push({ role: 'assistant', content: blocks });
         messages.push({ role: 'user', content: BOOKED_CORRECTION });
+        continue;
+      }
+      // QUESTIONS FIRST: the customer asked something and the reply is the
+      // booking recap. Rewritten once to answer the question; a second recap
+      // goes through (the owner asked for questions first, not for a bot that
+      // can never get to the booking).
+      if (ctx.mode === 'booking' && text && !questionRetried && !ctx.booked && asksQuestion(userText) && !aboutTheBooking(userText) && isBookingRecap(text)) {
+        questionRetried = true;
+        this.logger.warn(`Booking reply blocked (recap sent over an unanswered question): ${text.slice(0, 140)}`);
+        messages.push({ role: 'assistant', content: blocks });
+        messages.push({ role: 'user', content: questionFirstCorrection(userText) });
         continue;
       }
       if (ctx.mode === 'booking' && text && !vagueRetried && vagueAvailability(text)) {

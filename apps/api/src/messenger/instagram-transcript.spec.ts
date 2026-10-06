@@ -125,6 +125,26 @@ describe('the booking prompt’s wording rules', () => {
     expect(shared).toContain('then read it all back and confirm');
   });
 
+  it('questions first: answered specifically, and no recap in that message', () => {
+    expect(src).toMatch(/QUESTIONS FIRST — this beats every booking step above/);
+    expect(src).toMatch(/In that message do NOT send the booking recap or ask to book/);
+  });
+
+  it('the shared prompt carries no one salon’s facts (it is read by every salon)', () => {
+    expect(src).not.toContain('Friday, October 9');
+    expect(src).not.toContain('Delois');
+  });
+
+  it('books straight from the menu in the prompt — no get_services round-trip for listed services', () => {
+    expect(src).toMatch(/The SERVICES list in this prompt IS the menu/);
+    expect(src).not.toContain("'The id copied EXACTLY from get_services.'");
+  });
+
+  it('only a true duplicate (same customer message) is ever answered with silence', () => {
+    expect(src).toMatch(/if \(alreadySaid\(history, reply\) && !sameAsBefore\)/);
+    expect(src).toMatch(/if \(text && alreadySaid\(history as never, text\)\)/);
+  });
+
   it('the IG account id reaches the transcript reader', () => {
     expect(src).toMatch(/select: \{ pageToken: true, igId: true \}/);
     expect(src).toMatch(/\[pgTok\?\.igId, \(conn as \{ igId\?: string \| null \} \| null\)\?\.igId\]/);

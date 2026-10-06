@@ -98,3 +98,74 @@ export const VAGUE_CORRECTION =
   'SYSTEM CORRECTION — that reply was blocked before it was sent.\n'
   + 'You described availability vaguely ("plenty of slots"). A customer cannot pick from that.\n'
   + 'Call check_availability for ONE day (the first day they mentioned) if you have not, then offer 2–3 concrete open times from its answer in one short line and ask which suits them. Same language as the conversation. Send only the new reply.';
+
+// ---------------------------------------------------------------------------
+// REPEATS. "Grand opening day" — the customer's answer to a recap — got the
+// identical recap back from the model, and the old duplicate filter dropped
+// it without a word: the customer saw nothing at all. A repeat is now sent
+// back for a rewrite once, and if the model still repeats itself we send a
+// short question ourselves. Silence is never the answer to a customer.
+// ---------------------------------------------------------------------------
+
+export function repeatCorrection(customerText: string): string {
+  return 'SYSTEM CORRECTION — that reply was blocked before it was sent.\n'
+    + `It is word for word your previous message. The customer has answered it since: "${String(customerText).slice(0, 300)}".\n`
+    + 'Respond to THAT. If it agrees to your recap (a yes, or the same day/time you proposed), call create_booking now. '
+    + 'If it changes or adds a detail, use it (re-check availability if the day or time changed) and recap once with the change. '
+    + 'If you genuinely cannot tell what they mean, ask ONE short, specific question about the unclear part. Never send a previous message again. Same language as the conversation. Send only the new reply.';
+}
+
+/** Sent by us when the model repeats itself twice — a question, never silence. */
+export function notRepeatLine(lang: string | null | undefined, previousBot: string | null | undefined): string {
+  const wasRecap = /(shall i book|should i book|book it\?|đặt lịch luôn|em đặt luôn|xác nhận lại)/i.test(String(previousBot ?? ''));
+  if (lang === 'vi') {
+    return wasRecap
+      ? 'Dạ để em chắc chắn — em đặt lịch như trên cho mình luôn nhé? Anh/chị trả lời "ok" là em đặt liền ạ.'
+      : 'Dạ em chưa hiểu rõ ý anh/chị lắm — anh/chị nói rõ hơn giúp em một chút được không ạ?';
+  }
+  return wasRecap
+    ? 'Just to be sure — shall I go ahead and book it as above? A quick "yes" is all I need 😊'
+    : 'Sorry, I want to get this right — could you tell me a little more about what you mean?';
+}
+
+// ---------------------------------------------------------------------------
+// QUESTIONS FIRST. "Delois Jones 3343904874 when is your grand opening" got a
+// booking recap back and no date. The owner's rule (Oct 2026): a customer's
+// question is answered — specifically — before the bot asks to book, and the
+// recap waits until they have nothing left to ask.
+// ---------------------------------------------------------------------------
+
+/** Does the customer's message ask something? Errs on the side of yes. */
+export function asksQuestion(text: string | null | undefined): boolean {
+  const t = String(text ?? '').trim();
+  if (!t) return false;
+  if (/\?/.test(t)) return true;
+  if (/\b(when|what|where|how|why|which|who|whats|what's|how much|how long|do you|does|did you|are you|is there|is it|can i|can you|could you|will you|would you)\b/i.test(t)) return true;
+  // Vietnamese — no \b (ASCII-only boundaries break on diacritics).
+  if (/(khi nào|bao giờ|mấy giờ|bao nhiêu|ở đâu|chỗ nào|có .{0,30}không|được không|phải không|đúng không|thế nào|như nào|ra sao|tại sao|vì sao|là gì|gì vậy|gì ạ|nào vậy|chưa ạ|chưa vậy)/i.test(t)) return true;
+  return false;
+}
+
+/** Is this reply the booking recap / a request for the go-ahead? */
+export function isBookingRecap(reply: string | null | undefined): boolean {
+  return /(shall i book|should i book|want me to book|book it\?|go ahead and book|is that right\?|em đặt lịch luôn|em đặt luôn|xác nhận lại|chốt lịch)/i.test(String(reply ?? ''));
+}
+
+export function questionFirstCorrection(customerText: string): string {
+  return 'SYSTEM CORRECTION — that reply was blocked before it was sent.\n'
+    + `The customer asked something: "${String(customerText).slice(0, 300)}". You sent a booking recap instead of answering.\n`
+    + 'Rewrite: answer exactly what they asked, specifically, using the salon facts, hours, prices and notes in this prompt (dates, times, prices — the actual answer, not a general line). '
+    + 'If the answer is not in what you were given, say you will check with the salon — never guess. '
+    + 'Do NOT include the booking recap or ask for the go-ahead in this message: end with one short line asking if they have any other questions. '
+    + 'If they already gave a name, phone, service or time, keep it — you will confirm the booking once their questions are answered. Same language as the conversation. Send only the new reply.';
+}
+
+/**
+ * A question about the booking itself — "can I come at 3pm?", "is Saturday
+ * available?" — is answered BY the recap, so it is not held back by the
+ * questions-first rule. Only questions about something else are.
+ */
+export function aboutTheBooking(text: string | null | undefined): boolean {
+  const t = String(text ?? '');
+  return /(\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.)|\b\d{1,2}:\d{2}\b|\b(today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|available|availability|book|booking|appointment|slot|spot|works for)\b|\d{1,2}\s*(h|giờ)\b|giờ trống|còn chỗ|còn lịch|đặt lịch|lịch hẹn|hôm nay|ngày mai|thứ (hai|ba|tư|năm|sáu|bảy)|chủ nhật)/i.test(t);
+}

@@ -114,3 +114,43 @@ describe('no technician chosen at the desk: the system picks one', () => {
     expect((spy.mock.calls[1][1] as { outsideHours?: boolean }).outsideHours).toBe(true);
   });
 });
+
+describe('moving a booking at the desk is held to the same opening hours', () => {
+  // A 10:00 AM booking (LA) for tenant-a, assigned to staff-1.
+  const TEN_AM = new Date('2099-06-20T17:00:00.000Z');
+  function withBooking() {
+    const m = make();
+    const booking = { id: 'b1', tenantId: 'tenant-a', status: 'CONFIRMED', startTime: TEN_AM, endTime: new Date(TEN_AM.getTime() + 3600_000), assignedStaffId: 'staff-1' };
+    (m.prisma.appointment as any).findFirst = jest.fn(async ({ where }: any) => (where.id === 'b1' && where.tenantId === 'tenant-a' ? booking : null)); // eslint-disable-line @typescript-eslint/no-explicit-any
+    const tx = { $executeRaw: jest.fn(async () => 1), appointment: { findFirst: jest.fn(async () => null), updateMany: jest.fn(async () => ({ count: 1 })) } };
+    (m.prisma as any).$transaction = jest.fn(async (cb: any) => { const r = await cb(tx); return r ?? booking; }); // eslint-disable-line @typescript-eslint/no-explicit-any
+    return { ...m, tx };
+  }
+
+  it('dragging it to 11:40 PM is refused for the receptionist', async () => {
+    const { svc, tx } = withBooking();
+    await expect(svc.reschedule(desk, 'b1', AT_1140_PM)).rejects.toThrow(/OUTSIDE_HOURS: Sat 2099-06-20 23:40/);
+    await expect(svc.move(desk, 'b1', AT_1140_PM, 'staff-2')).rejects.toThrow(/OUTSIDE_HOURS/);
+    expect(tx.appointment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('11:40 AM moves; the owner may move it after hours on purpose; a receptionist’s override is ignored', async () => {
+    const { svc, tx } = withBooking();
+    await svc.reschedule(desk, 'b1', AT_1140_AM);
+    await expect(svc.reschedule(desk, 'b1', AT_1140_PM, true)).rejects.toThrow(/OUTSIDE_HOURS/);
+    await svc.reschedule(owner, 'b1', AT_1140_PM, true);
+    expect(tx.appointment.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('handing it to another technician at the SAME time is never blocked', async () => {
+    const { svc, tx, prisma } = withBooking();
+    (prisma.staffMember as any).findFirst = jest.fn(async () => ({ id: 'staff-2', isActive: true })); // eslint-disable-line @typescript-eslint/no-explicit-any
+    await svc.move(desk, 'b1', TEN_AM.toISOString(), 'staff-2');
+    expect(tx.appointment.updateMany).toHaveBeenCalled();
+  });
+
+  it('another salon’s booking is not found, whatever the time', async () => {
+    const { svc } = withBooking();
+    await expect(svc.reschedule(deskB, 'b1', AT_1140_AM)).rejects.toThrow(/not found/i);
+  });
+});

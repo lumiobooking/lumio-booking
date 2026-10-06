@@ -26,6 +26,7 @@ import { LumioLogo } from './LumioLogo';
 import { DASHBOARD, GROUPS, ITEM_BY_HREF, type NavItem } from './shell/nav-map';
 import { ShellV2 } from './shell/ShellV2';
 import { hiddenHrefsFor, setUiIndustry, setUiIndustryNames, uiIndustry, type IndustryKey } from '../lib/ui-industry';
+import { ind } from '../lib/ui-industry';
 
 // The menu itself (DASHBOARD + GROUPS) lives in shell/nav-map.ts, shared with
 // the new two-tier layout so both always list the same screens.
@@ -697,7 +698,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
           </button>
           {!isSupport && (
             <a href="/salon/calendar" style={{ height: 40, padding: '0 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>{lang === 'vi' ? 'Lịch hẹn mới' : 'New booking'}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>{ind(lang === 'vi' ? 'Lịch hẹn mới' : 'New booking')}
             </a>
           )}
           {!isSupport && posOk && (

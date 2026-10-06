@@ -8,6 +8,7 @@ import { ui, formatPrice } from '../lib/ui';
 import { useLiveRefresh } from '../lib/useLiveRefresh';
 import { uiLocale } from '../lib/datetime';
 import { PartyChip, type PartyInfo } from './PartyChip';
+import { ind } from '../lib/ui-industry';
 
 interface WItem { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null }
 interface Serving {
@@ -127,9 +128,9 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 13, color: freeCount > 0 ? 'var(--ink-good)' : 'var(--ink-warn)', background: freeCount > 0 ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)', borderRadius: 8, padding: '5px 10px', fontWeight: 600 }}>
-            {active.length === 0 ? (vi ? 'Chưa có ghế' : 'No chairs yet') : `${freeCount} ${vi ? 'ghế trống' : 'free'}`}
+            {active.length === 0 ? (vi ? 'Chưa có ghế' : 'No chairs yet') : `${freeCount} ${ind(vi ? 'ghế trống' : 'free')}`}
           </span>
-          {active.length === 0 && <a href="/salon/stations" style={{ fontSize: 12, color: 'var(--c818cf8)', textDecoration: 'none' }}>{vi ? 'Khai báo ghế →' : 'Set up chairs →'}</a>}
+          {active.length === 0 && <a href="/salon/stations" style={{ fontSize: 12, color: 'var(--c818cf8)', textDecoration: 'none' }}>{ind(vi ? 'Khai báo ghế →' : 'Set up chairs →')}</a>}
         </div>
         <button onClick={() => setQuick(true)} style={{ ...ui.primaryBtn, padding: '9px 16px' }}>+ {vi ? 'Lên bill' : 'New bill'}</button>
       </div>
@@ -144,7 +145,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--c111827)', border: '1px solid var(--line)', borderRadius: 10, padding: '8px 12px', marginBottom: 14 }}>
-        <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{vi ? 'Thợ đang rảnh' : 'Idle techs'}</span>
+        <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{ind(vi ? 'Thợ đang rảnh' : 'Idle techs')}</span>
         {idle.length === 0 ? <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{vi ? 'Tất cả đang bận' : 'all busy'}</span>
           : idle.map((s) => (
             <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ce2e8f0)', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 20, padding: '3px 10px' }}>
@@ -167,7 +168,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--c94a3b8)', margin: '2px 0 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.serviceName ?? ''}{b.staff ? ` · ${b.staff.name}` : ''}</div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => seatBooked(b.id)} style={{ ...ui.primaryBtn, flex: 1, padding: '7px', fontSize: 13 }}>{vi ? 'Nhận khách' : 'Seat'}</button>
+                    <button onClick={() => seatBooked(b.id)} style={{ ...ui.primaryBtn, flex: 1, padding: '7px', fontSize: 13 }}>{ind(vi ? 'Nhận khách' : 'Seat')}</button>
                     {(b.groupSize ?? 1) > 1 && (
                       <button onClick={() => seatBooked(b.id, true)} title={vi ? 'Nhận tất cả người trong nhóm còn chưa đến' : 'Seat everyone in the party who has not arrived yet'}
                         style={{ ...ui.primaryBtn, flex: 1, padding: '7px', fontSize: 13, background: 'rgba(99,102,241,0.18)', color: 'var(--cc7d2fe)', border: '1px solid rgba(99,102,241,0.45)' }}>
@@ -184,7 +185,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
 
       {noChair.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 12, color: 'var(--cfcd34d)', marginBottom: 6 }}>{vi ? 'Đang làm, chưa có ghế — chọn ghế bên dưới (hoặc kéo vào ô ghế trống):' : 'In service, no chair — pick a chair below (or drag onto a free chair):'}</div>
+          <div style={{ fontSize: 12, color: 'var(--cfcd34d)', marginBottom: 6 }}>{ind(vi ? 'Đang làm, chưa có ghế — chọn ghế bên dưới (hoặc kéo vào ô ghế trống):' : 'In service, no chair — pick a chair below (or drag onto a free chair):')}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {noChair.map((w) => (
               <div key={w.id} style={{ background: 'var(--c1e293b)', border: '1px solid #f59e0b', borderRadius: 10, padding: '8px 12px', minWidth: 200 }}>
@@ -193,7 +194,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
                   <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{fullName(w.assignedStaff)} · {formatPrice(w.items.reduce((a, it) => a + it.priceCents, 0), currency)}</div>
                 </div>
                 <select value="" onChange={(e) => e.target.value && move(w.id, e.target.value)} style={{ ...ui.input, width: '100%', boxSizing: 'border-box', marginTop: 6, padding: '5px 8px', fontSize: 12 }}>
-                  <option value="">{vi ? 'Xếp vào ghế…' : 'Seat at chair…'}</option>
+                  <option value="">{ind(vi ? 'Xếp vào ghế…' : 'Seat at chair…')}</option>
                   {freeStations.map((st) => <option key={st.id} value={st.id}>{st.name}{st.stationType ? ` · ${st.stationType.name}` : ''}</option>)}
                 </select>
               </div>
@@ -270,7 +271,7 @@ export function FloorView({ token, lang }: { token: string | null; lang: string 
                   <div style={{ display: 'flex', gap: 6 }}>
                     <a href={href} style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '8px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>{vi ? '💳 Thu ngân' : '💳 Checkout'}</a>
                     <select value="" onChange={(e) => e.target.value && move(w.id, e.target.value)} style={{ ...ui.input, width: 'auto', padding: '8px', fontSize: 12 }}>
-                      <option value="">{vi ? 'Về ghế…' : 'To chair…'}</option>
+                      <option value="">{ind(vi ? 'Về ghế…' : 'To chair…')}</option>
                       {freeStations.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
                     </select>
                   </div>
@@ -343,8 +344,8 @@ function QuickBill({ vi, services, currency, onClose, onCreate }: {
     <div onClick={onClose} style={overlay}>
       <div onClick={(e) => e.stopPropagation()} style={{ ...ui.card, width: 'min(460px, 96vw)', padding: 18 }}>
         <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>{vi ? 'Lên bill nhanh' : 'Quick bill'}</div>
-        <p style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '0 0 14px' }}>{vi ? 'Hệ thống tự chọn ghế trống + thợ tới lượt. Đổi sau bằng cách kéo trên sơ đồ.' : 'Auto-picks a free chair + the up-next tech. Drag on the floor to change.'}</p>
-        <label style={{ display: 'block', marginBottom: 10 }}><span style={ui.label}>{vi ? 'Tên khách (tuỳ chọn)' : 'Customer (optional)'}</span>
+        <p style={{ fontSize: 12, color: 'var(--c94a3b8)', margin: '0 0 14px' }}>{ind(vi ? 'Hệ thống tự chọn ghế trống + thợ tới lượt. Đổi sau bằng cách kéo trên sơ đồ.' : 'Auto-picks a free chair + the up-next tech. Drag on the floor to change.')}</p>
+        <label style={{ display: 'block', marginBottom: 10 }}><span style={ui.label}>{ind(vi ? 'Tên khách (tuỳ chọn)' : 'Customer (optional)')}</span>
           <input style={ui.input} value={name} placeholder="Walk-in" onChange={(e) => setName(e.target.value)} /></label>
         <label style={{ display: 'block', marginBottom: 10 }}><span style={ui.label}>{vi ? 'Điện thoại (tuỳ chọn)' : 'Phone (optional)'}</span>
           <input style={ui.input} value={phone} inputMode="tel" onChange={(e) => setPhone(e.target.value)} /></label>
@@ -381,7 +382,7 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{w.customerName || 'Walk-in'}</div>
-            <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{vi ? 'Thợ' : 'Tech'} <strong style={{ color: 'var(--ccbd5e1)' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
+            <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{ind(vi ? 'Thợ' : 'Tech')} <strong style={{ color: 'var(--ccbd5e1)' }}>{fullName(w.assignedStaff) || '—'}</strong></div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <select value={w.stationId ?? ''} onChange={(e) => onMove(w.id, e.target.value)} style={{ ...ui.input, width: 'auto', padding: '7px 8px' }}>
@@ -420,7 +421,7 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
               <ServicePick services={services} onPick={(sid) => setPendingSvc(services.find((s) => s.id === sid) || null)} placeholder={vi ? 'Chọn dịch vụ…' : 'Pick a service…'} />
             )}
             <select value={techId} onChange={(e) => setTechId(e.target.value)} style={{ ...ui.input, width: 'auto', maxWidth: 150, padding: '9px 10px' }}>
-              <option value="">{vi ? 'Cùng thợ' : 'Same tech'}</option>
+              <option value="">{ind(vi ? 'Cùng thợ' : 'Same tech')}</option>
               {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
             <button disabled={!pendingSvc} onClick={() => { if (pendingSvc) { onAdd(w.id, pendingSvc.id, techId); setPendingSvc(null); setTechId(''); } }}
@@ -430,14 +431,14 @@ function TicketSheet({ vi, w, stations, staff, services, currency, onClose, onAd
             <a href={checkoutHref} style={{ ...ui.primaryBtn, flex: 1, textAlign: 'center', padding: '12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{vi ? '💳 Thu ngân' : '💳 Checkout'} · {formatPrice(subtotal, currency)}</a>
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button onClick={onWaitPay} title={vi ? 'Khách xong — rời ghế cho khách mới, giữ bill để tính sau' : 'Free the chair, keep the bill open to pay later'}
+            <button onClick={onWaitPay} title={ind(vi ? 'Khách xong — rời ghế cho khách mới, giữ bill để tính sau' : 'Free the chair, keep the bill open to pay later')}
               style={{ ...ui.primaryBtn, flex: 1, background: 'rgba(245,158,11,0.15)', color: 'var(--cfbbf24)', border: '1px solid #f59e0b', padding: '11px' }}>{vi ? '💤 Chờ thanh toán' : '💤 Waiting to pay'}</button>
             <button
               onClick={() => { if (window.confirm(vi ? 'Kết thúc khách này mà KHÔNG thu tiền? Chỉ dùng khi khách bỏ về hoặc không tính tiền.' : 'Finish this client WITHOUT taking payment? Only use this for a walk-out or a comp.')) onDone(); }}
               title={vi ? 'Kết thúc không thu tiền' : 'Finish without payment'}
               style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)', padding: '11px 14px' }}>{vi ? 'Xong' : 'Done'}</button>
           </div>
-          <p style={{ fontSize: 11, color: 'var(--c64748b)', margin: '10px 0 0', lineHeight: 1.5 }}>{vi ? 'Chờ thanh toán = khách xong, rời ghế cho khách mới, bill vẫn mở để tính sau. Thu ngân = tính tiền & kết thúc. Xong = kết thúc KHÔNG thu tiền.' : 'Waiting to pay frees the chair, bill stays open. Checkout takes payment & finishes. Done finishes with no sale.'}</p>
+          <p style={{ fontSize: 11, color: 'var(--c64748b)', margin: '10px 0 0', lineHeight: 1.5 }}>{ind(vi ? 'Chờ thanh toán = khách xong, rời ghế cho khách mới, bill vẫn mở để tính sau. Thu ngân = tính tiền & kết thúc. Xong = kết thúc KHÔNG thu tiền.' : 'Waiting to pay frees the chair, bill stays open. Checkout takes payment & finishes. Done finishes with no sale.')}</p>
         </div>
       </div>
     </div>

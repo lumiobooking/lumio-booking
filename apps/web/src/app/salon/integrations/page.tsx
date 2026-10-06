@@ -8,6 +8,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { uiLocale } from '../../../lib/datetime';
+import { ind } from '../../../lib/ui-industry';
 
 interface ApiKey {
   id: string;
@@ -187,7 +188,7 @@ function Inner() {
         <ol style={{ color: 'var(--ccbd5e1)', fontSize: 13.5, lineHeight: 1.9, margin: '8px 0 12px', paddingLeft: 20 }}>
           <li>{lang === 'vi' ? 'Mở Google Business Profile của tiệm (nút dưới), đăng nhập tài khoản sở hữu hồ sơ.' : 'Open the salon\'s Google Business Profile (button below); sign in with the owning account.'}</li>
           <li>{lang === 'vi' ? 'Edit profile → Bookings / Appointment links.' : 'Edit profile → Bookings / Appointment links.'}</li>
-          <li>{lang === 'vi' ? 'Add appointment link → dán ĐÚNG link /gbp ở trên (đừng dán link thường — sẽ mất định danh nguồn Google) → Save.' : 'Add appointment link → paste the /gbp link above (not the plain link — you would lose Google attribution) → Save.'}</li>
+          <li>{ind(lang === 'vi' ? 'Add appointment link → dán ĐÚNG link /gbp ở trên (đừng dán link thường — sẽ mất định danh nguồn Google) → Save.' : 'Add appointment link → paste the /gbp link above (not the plain link — you would lose Google attribution) → Save.')}</li>
           <li>{lang === 'vi' ? 'Chờ 24–48h Google duyệt → nút “Book online” hiện ra.' : 'Wait 24–48h for Google to approve → the “Book online” button appears.'}</li>
           <li style={{ color: 'var(--ink-warn)' }}>{lang === 'vi' ? 'KHÔNG dùng link này làm Final URL trong Google Ads — Ads dùng URL riêng + auto-tagging (gclid) để hệ thống phân biệt đơn từ quảng cáo và đơn từ Maps.' : 'Do NOT use this link as a Google Ads Final URL — Ads needs its own URL with auto-tagging (gclid) so paid and Maps bookings stay separate.'}</li>
         </ol>
@@ -338,7 +339,7 @@ function Inner() {
           : 'Why only one? A GTM container usually already includes the Google Tag (GA4) — loading GA4 directly as well would double-count every pageview and booking. The system loads exactly one method and fires exactly one booking_completed per order.'}
       </p>
       <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 14px', marginTop: 12, maxWidth: 640 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>{lang === 'vi' ? '⚡ Tiệm mới? Import mẫu GTM dựng sẵn (2 phút)' : '⚡ New salon? Import the ready-made GTM template (2 min)'}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>{ind(lang === 'vi' ? '⚡ Tiệm mới? Import mẫu GTM dựng sẵn (2 phút)' : '⚡ New salon? Import the ready-made GTM template (2 min)')}</div>
         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
           {lang === 'vi'
             ? 'Tải file mẫu → GTM Admin → Import Container → chọn file → Merge → sửa MỘT biến "CONST - GA4 Measurement ID" thành G-ID của tiệm → Publish. Có sẵn: Google Tag nền, purchase (booking) và click_call — khỏi tạo tay từng biến/trigger/tag.'
@@ -348,7 +349,7 @@ function Inner() {
           {lang === 'vi' ? '⬇ Tải mẫu GTM container' : '⬇ Download GTM container template'}
         </a>
       </div>
-      <h3 style={{ fontSize: 15, margin: '22px 0 4px' }}>🎯 {lang === 'vi' ? 'Google Ads — chuyển đổi đặt lịch (không cần GTM)' : 'Google Ads — booking conversions (no GTM needed)'}</h3>
+      <h3 style={{ fontSize: 15, margin: '22px 0 4px' }}>🎯 {ind(lang === 'vi' ? 'Google Ads — chuyển đổi đặt lịch (không cần GTM)' : 'Google Ads — booking conversions (no GTM needed)')}</h3>
       <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 10px', lineHeight: 1.6, maxWidth: 680 }}>
         {lang === 'vi'
           ? 'Dán 2 mã từ Google Ads, trang đặt lịch sẽ tự gửi 1 chuyển đổi cho mỗi lịch hẹn (kèm giá trị và mã lịch hẹn để Google không đếm trùng). Lấy mã: Google Ads → Mục tiêu → Chuyển đổi → chọn hành động chuyển đổi (vd "Đặt lịch") → Thiết lập thẻ → "Sử dụng Google Tag Manager" → copy "ID chuyển đổi" và "Nhãn chuyển đổi". Có thể dán cả chuỗi AW-…/nhãn vào ô đầu.'

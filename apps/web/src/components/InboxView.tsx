@@ -40,6 +40,7 @@ import {
   InboxLabel, followUpState, followUpLabel, followUpCount, channelCounts, channelOf, humanAgentNotice,
   windowNotice, type WindowInfo, spamCount, isSpamRow,
 } from '../lib/inbox-view';
+import { ind } from '../lib/ui-industry';
 
 /**
  * Avatar with the channel mark tucked into its corner, coloured by PAGE.
@@ -1146,7 +1147,7 @@ export function InboxView() {
         <div style={{ display: 'flex', gap: 8 }}>
           <label style={{ flex: 1, minWidth: 0, height: narrow ? 42 : 38, boxSizing: 'border-box', padding: '0 12px', borderRadius: 10, border: '1px solid var(--c334155)', background: narrow ? 'var(--c0f172a)' : 'var(--c0b1220)', display: 'flex', alignItems: 'center', gap: 8 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--c64748b)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-            <input value={query} onChange={(e) => setQuery(e.target.value)} aria-label={vi ? 'Tìm khách' : 'Search'}
+            <input value={query} onChange={(e) => setQuery(e.target.value)} aria-label={ind(vi ? 'Tìm khách' : 'Search')}
               placeholder={vi ? 'Tìm tên, số điện thoại, nội dung…' : 'Search name, phone, message…'}
               style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: narrow ? 16 : 13.5, color: 'var(--ce2e8f0)', fontFamily: 'inherit' }} />
           </label>
@@ -1270,7 +1271,7 @@ export function InboxView() {
         return (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16, minHeight: 0 }}>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
-              <Box n={waiting} label={vi ? 'khách đang chờ' : 'waiting for a reply'} tone={waiting > 0 ? 'alarm' : 'calm'} sub={waiting > 0 ? (vi ? `lâu nhất ${mins(oldest)}` : `longest ${mins(oldest)}`) : (vi ? 'không ai phải đợi' : 'nobody is waiting')} />
+              <Box n={waiting} label={ind(vi ? 'khách đang chờ' : 'waiting for a reply')} tone={waiting > 0 ? 'alarm' : 'calm'} sub={waiting > 0 ? (vi ? `lâu nhất ${mins(oldest)}` : `longest ${mins(oldest)}`) : (vi ? 'không ai phải đợi' : 'nobody is waiting')} />
               <Box n={dueCount} label={vi ? 'cần theo dõi hôm nay' : 'follow-ups due'} tone={dueCount > 0 ? 'warn' : 'calm'} sub={vi ? 'đã hẹn quay lại' : 'you said you would come back'} />
               <Box n={unreadCount} label={vi ? 'chưa đọc' : 'unread'} tone="calm" sub={vi ? 'trong toàn bộ hộp thư' : 'across the inbox'} />
             </div>
@@ -1319,7 +1320,7 @@ export function InboxView() {
               </span>
               <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {channelBrand(detail.channel).name}{detail.pageName ? <> · <strong style={{ color: 'var(--ccbd5e1)', fontWeight: 600 }}>{detail.pageName}</strong></> : null}
-                {since && <> · {vi ? 'khách nhắn' : 'wrote'} <strong style={{ color: state === 'unclaimed' ? 'var(--ink-warn)' : 'var(--ccbd5e1)', fontWeight: 600 }}>{since}</strong></>}
+                {since && <> · {ind(vi ? 'khách nhắn' : 'wrote')} <strong style={{ color: state === 'unclaimed' ? 'var(--ink-warn)' : 'var(--ccbd5e1)', fontWeight: 600 }}>{since}</strong></>}
                 {!narrow && <> · {stateText}</>}
               </span>
             </div>
@@ -1335,7 +1336,7 @@ export function InboxView() {
               ? <button disabled={busy} onClick={() => void act('status', { status: 'done' })} style={{ height: 36, padding: '0 14px', borderRadius: 10, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0, background: '#4f46e5', color: '#fff' }}>✓ {vi ? 'Xong' : 'Done'}</button>
               : <button disabled={busy} onClick={() => void act('status', { status: 'open' })} style={{ height: 36, padding: '0 12px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>{vi ? 'Mở lại' : 'Reopen'}</button>)}
             {compact && !narrow && (
-              <button onClick={() => setShowInfo((v) => !v)} aria-label={vi ? 'Thông tin khách' : 'Customer info'} aria-pressed={showInfo}
+              <button onClick={() => setShowInfo((v) => !v)} aria-label={ind(vi ? 'Thông tin khách' : 'Customer info')} aria-pressed={showInfo}
                 style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${showInfo ? '#6366f1' : 'var(--c334155)'}`, background: showInfo ? 'var(--c1e1b4b)' : 'var(--c0f172a)', color: showInfo ? 'var(--ca5b4fc)' : 'var(--ccbd5e1)', fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>ⓘ</button>
             )}
             <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -1345,7 +1346,7 @@ export function InboxView() {
                 <div style={{ position: 'absolute', right: 0, top: 40, zIndex: 20, minWidth: 200, background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 12, boxShadow: '0 12px 30px -12px rgba(15,42,82,.45)', padding: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {[
                     { k: 'unread', label: `● ${vi ? 'Để lại chưa đọc' : 'Mark unread'}`, run: () => markUnread(detail.id) },
-                    { k: 'rename', label: `✎ ${vi ? 'Đặt tên khách' : 'Set customer name'}`, run: () => renameThread() },
+                    { k: 'rename', label: `✎ ${ind(vi ? 'Đặt tên khách' : 'Set customer name')}`, run: () => renameThread() },
                     ...(isSpamRow(detail)
                       ? [{ k: 'unspam', label: vi ? 'Không phải spam' : 'Not spam', run: () => act('status', { status: 'open' }) }]
                       : [{ k: 'spam', label: `⊘ ${vi ? 'Chuyển vào Spam' : 'Move to Spam'}`, run: () => act('status', { status: 'spam' }) }]),
@@ -1447,7 +1448,7 @@ export function InboxView() {
             {state === 'unclaimed' && !isSpamRow(detail) && (
               <div style={{ alignSelf: 'center', textAlign: 'center', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 999, background: 'var(--wash-amber-3)', color: 'var(--ink-warn)', fontSize: 12.5, fontWeight: 600, lineHeight: 1.4 }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M12 9v4M12 17h.01" /><circle cx="12" cy="12" r="9" /></svg>
-                {vi ? 'Bot đã bàn giao — khách đang chờ người thật' : 'The bot handed over — the customer is waiting for a person'}{typeof detail.waitingMinutes === 'number' ? ` · ${detail.waitingMinutes} ${vi ? 'phút' : 'min'}` : ''}
+                {ind(vi ? 'Bot đã bàn giao — khách đang chờ người thật' : 'The bot handed over — the customer is waiting for a person')}{typeof detail.waitingMinutes === 'number' ? ` · ${detail.waitingMinutes} ${vi ? 'phút' : 'min'}` : ''}
               </div>
             )}
             {(detail.notes ?? []).slice(-1).map((n) => (
@@ -1455,7 +1456,7 @@ export function InboxView() {
                 <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--wash-amber-2)', border: '1px solid var(--c78350f)', color: 'var(--cfde68a)', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{initialsOf(n.authorName).slice(0, 1)}</span>
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <span style={{ padding: '9px 12px', borderRadius: 12, background: 'var(--wash-amber)', border: '1px dashed var(--c78350f)', fontSize: 13, lineHeight: 1.5, color: 'var(--cfde68a)', whiteSpace: 'pre-wrap' }}><strong>{vi ? 'Ghi chú nội bộ' : 'Internal note'}</strong> · {n.authorName}: {n.text}</span>
-                  <span style={{ fontSize: 11, color: 'var(--c64748b)', paddingLeft: 4 }}>{vi ? 'Chỉ tiệm thấy' : 'Only the salon sees this'} · {fmtInTz(n.createdAt, { timeStyle: 'short' })}</span>
+                  <span style={{ fontSize: 11, color: 'var(--c64748b)', paddingLeft: 4 }}>{ind(vi ? 'Chỉ tiệm thấy' : 'Only the salon sees this')} · {fmtInTz(n.createdAt, { timeStyle: 'short' })}</span>
                 </span>
               </div>
             ))}
@@ -1467,16 +1468,16 @@ export function InboxView() {
             paddingBottom: narrow ? 'calc(8px + env(safe-area-inset-bottom))' : 0 }}>
             {narrow ? (
               <div style={{ display: 'flex', background: 'var(--c0b1220)', border: '1px solid var(--c334155)', borderRadius: 12, padding: 3, margin: '8px 12px 0' }}>
-                <button onClick={() => setComposerMode('reply')} style={composerMode === 'reply' ? { flex: 1, height: 32, border: 'none', borderRadius: 9, background: 'var(--c0f172a)', color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 700, boxShadow: '0 1px 2px rgba(15,42,82,.12)', cursor: 'pointer', fontFamily: 'inherit' } : { flex: 1, height: 32, border: 'none', borderRadius: 9, background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{vi ? 'Trả lời khách' : 'Reply to customer'}</button>
+                <button onClick={() => setComposerMode('reply')} style={composerMode === 'reply' ? { flex: 1, height: 32, border: 'none', borderRadius: 9, background: 'var(--c0f172a)', color: 'var(--ca5b4fc)', fontSize: 13, fontWeight: 700, boxShadow: '0 1px 2px rgba(15,42,82,.12)', cursor: 'pointer', fontFamily: 'inherit' } : { flex: 1, height: 32, border: 'none', borderRadius: 9, background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{ind(vi ? 'Trả lời khách' : 'Reply to customer')}</button>
                 <button onClick={() => setComposerMode('note')} style={composerMode === 'note' ? { flex: 1, height: 32, border: 'none', borderRadius: 9, background: 'var(--c0f172a)', color: 'var(--ink-warn)', fontSize: 13, fontWeight: 700, boxShadow: '0 1px 2px rgba(15,42,82,.12)', cursor: 'pointer', fontFamily: 'inherit' } : { flex: 1, height: 32, border: 'none', borderRadius: 9, background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{vi ? 'Ghi chú nội bộ' : 'Internal note'}</button>
               </div>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 8px 0', borderBottom: '1px solid var(--line)' }}>
-                <button onClick={() => setComposerMode('reply')} style={{ height: 34, padding: '0 12px', border: 'none', borderBottom: `2px solid ${composerMode === 'reply' ? '#4f46e5' : 'transparent'}`, background: 'transparent', color: composerMode === 'reply' ? 'var(--ca5b4fc)' : 'var(--c94a3b8)', fontSize: 13, fontWeight: composerMode === 'reply' ? 700 : 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>{vi ? 'Trả lời khách' : 'Reply to customer'}</button>
+                <button onClick={() => setComposerMode('reply')} style={{ height: 34, padding: '0 12px', border: 'none', borderBottom: `2px solid ${composerMode === 'reply' ? '#4f46e5' : 'transparent'}`, background: 'transparent', color: composerMode === 'reply' ? 'var(--ca5b4fc)' : 'var(--c94a3b8)', fontSize: 13, fontWeight: composerMode === 'reply' ? 700 : 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>{ind(vi ? 'Trả lời khách' : 'Reply to customer')}</button>
                 <button onClick={() => setComposerMode('note')} style={{ height: 34, padding: '0 12px', border: 'none', borderBottom: `2px solid ${composerMode === 'note' ? '#d97706' : 'transparent'}`, background: 'transparent', color: composerMode === 'note' ? 'var(--ink-warn)' : 'var(--c94a3b8)', fontSize: 13, fontWeight: composerMode === 'note' ? 700 : 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>{vi ? 'Ghi chú nội bộ' : 'Internal note'}</button>
                 <span style={{ flex: 1 }} />
                 {composerMode === 'reply' && detail.pageName && wide && <span style={{ fontSize: 12, color: 'var(--c64748b)', paddingRight: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{vi ? 'Gửi với tư cách' : 'Sending as'} <strong style={{ color: 'var(--ccbd5e1)' }}>{detail.pageName}</strong></span>}
-                {composerMode === 'note' && <span style={{ fontSize: 12, color: 'var(--ink-warn)', paddingRight: 6, whiteSpace: 'nowrap' }}>{vi ? 'Khách không thấy ghi chú này' : 'The customer never sees this'}</span>}
+                {composerMode === 'note' && <span style={{ fontSize: 12, color: 'var(--ink-warn)', paddingRight: 6, whiteSpace: 'nowrap' }}>{ind(vi ? 'Khách không thấy ghi chú này' : 'The customer never sees this')}</span>}
               </div>
             )}
 
@@ -1508,7 +1509,7 @@ export function InboxView() {
               ) : (
                 <textarea value={note} onChange={(e) => setNote(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void addNote(); } }}
-                  placeholder={vi ? 'Ghi chú cho team — khách không thấy (Enter để lưu)' : 'Note for the team — the customer never sees it (Enter to save)'} disabled={busy} rows={narrow ? 1 : 2} aria-label={vi ? 'Ghi chú nội bộ' : 'Internal note'}
+                  placeholder={ind(vi ? 'Ghi chú cho team — khách không thấy (Enter để lưu)' : 'Note for the team — the customer never sees it (Enter to save)')} disabled={busy} rows={narrow ? 1 : 2} aria-label={vi ? 'Ghi chú nội bộ' : 'Internal note'}
                   style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', minHeight: narrow ? 40 : 52, padding: '10px 12px', borderRadius: 12, border: '1px solid var(--c78350f)', background: 'var(--wash-amber)', resize: 'none', fontSize: narrow ? 16 : 14, lineHeight: 1.5, color: 'var(--ce2e8f0)', outline: 'none', fontFamily: 'inherit' }} />
               )}
               {narrow && (composerMode === 'reply'
@@ -1523,7 +1524,7 @@ export function InboxView() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px 8px' }}>
                 {composerMode === 'reply' && inSalonPortal() && (
                   <button onClick={() => { void bookFor(detail); }} style={{ height: 34, padding: '0 10px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>{vi ? 'Đặt lịch cho khách' : 'Book this customer'}
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>{ind(vi ? 'Đặt lịch cho khách' : 'Book this customer')}
                   </button>
                 )}
                 {composerMode === 'reply' && wide && <span style={{ fontSize: 11.5, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>{vi ? 'Enter gửi · Shift+Enter xuống dòng' : 'Enter sends · Shift+Enter for a new line'}</span>}
@@ -1554,7 +1555,7 @@ export function InboxView() {
       )}
       {!detail ? (
         <p style={{ color: 'var(--c64748b)', fontSize: 12.5, margin: 0, lineHeight: 1.5 }}>
-          {vi ? 'Chọn một hội thoại để xem khách là ai với tiệm: lịch hẹn, thợ quen, nhãn, hẹn theo dõi và ghi chú nội bộ.' : 'Pick a conversation to see who this is to the salon: appointments, usual tech, labels, follow-up and the team’s notes.'}
+          {ind(vi ? 'Chọn một hội thoại để xem khách là ai với tiệm: lịch hẹn, thợ quen, nhãn, hẹn theo dõi và ghi chú nội bộ.' : 'Pick a conversation to see who this is to the salon: appointments, usual tech, labels, follow-up and the team’s notes.')}
         </p>
       ) : (() => {
         const cust = detail.customer;
@@ -1577,14 +1578,14 @@ export function InboxView() {
               </span>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {inSalonPortal() && <button onClick={() => { void bookFor(detail); }} style={{ flex: 1, height: narrow ? 44 : 38, borderRadius: 10, border: 'none', fontSize: narrow ? 14 : 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: '#4f46e5', color: '#fff' }}>📅 {vi ? 'Đặt lịch cho khách' : 'Book for this customer'}</button>}
+              {inSalonPortal() && <button onClick={() => { void bookFor(detail); }} style={{ flex: 1, height: narrow ? 44 : 38, borderRadius: 10, border: 'none', fontSize: narrow ? 14 : 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: '#4f46e5', color: '#fff' }}>📅 {ind(vi ? 'Đặt lịch cho khách' : 'Book for this customer')}</button>}
               {cust?.phone && <a href={`tel:${String(cust.phone).replace(/[^+\d]/g, '')}`} style={{ ...softBtn, height: narrow ? 44 : 38, display: 'flex', alignItems: 'center', textDecoration: 'none' }}>☎ {vi ? 'Gọi' : 'Call'}</a>}
               {cust?.phone && <button onClick={() => { void copyContact(detail); }} style={{ ...softBtn, height: narrow ? 44 : 38 }}>{copied ? `✓ ${vi ? 'Đã chép' : 'Copied'}` : `⧉ ${vi ? 'Chép' : 'Copy'}`}</button>}
             </div>
             {cust && (cust.phone || cust.usualTech || cust.email) && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 10px' }}>
                 {cust.phone && <Stat label={vi ? 'Điện thoại' : 'Phone'} value={String(cust.phone)} />}
-                {cust.usualTech && <Stat label={vi ? 'Thợ quen' : 'Usual tech'} value={cust.usualTech} />}
+                {cust.usualTech && <Stat label={ind(vi ? 'Thợ quen' : 'Usual tech')} value={cust.usualTech} />}
                 {cust.email && <Stat label="Email" value={cust.email} />}
               </div>
             )}
@@ -1595,10 +1596,10 @@ export function InboxView() {
                   {upcoming.status && pill(apptTone(upcoming.status), apptStatusLabel(upcoming.status, vi))}
                 </div>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{fmtInTz(upcoming.startTime, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
-                <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--c94a3b8)' }}>{[upcoming.service?.name, upcoming.assignedStaff?.firstName && `${vi ? 'thợ' : 'with'} ${upcoming.assignedStaff.firstName}`].filter(Boolean).join(' · ') || (vi ? 'chưa rõ dịch vụ' : 'service not set')}</p>
+                <p style={{ margin: '2px 0 0', fontSize: 12.5, color: 'var(--c94a3b8)' }}>{[upcoming.service?.name, upcoming.assignedStaff?.firstName && `${ind(vi ? 'thợ' : 'with')} ${upcoming.assignedStaff.firstName}`].filter(Boolean).join(' · ') || (vi ? 'chưa rõ dịch vụ' : 'service not set')}</p>
               </div>
             ) : (
-              <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c64748b)' }}>{vi ? 'Chưa có lịch hẹn sắp tới.' : 'No upcoming appointment.'}</p>
+              <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c64748b)' }}>{ind(vi ? 'Chưa có lịch hẹn sắp tới.' : 'No upcoming appointment.')}</p>
             ))}
             {past.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1611,7 +1612,7 @@ export function InboxView() {
                 ))}
               </div>
             )}
-            {!cust && <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5 }}>{vi ? 'Sẽ tự nối khi khách đặt lịch từ hội thoại này.' : 'It links itself when they book from this conversation.'}</p>}
+            {!cust && <p style={{ margin: 0, fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.5 }}>{ind(vi ? 'Sẽ tự nối khi khách đặt lịch từ hội thoại này.' : 'It links itself when they book from this conversation.')}</p>}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1629,7 +1630,7 @@ export function InboxView() {
                 </div>
               </div>
             )}
-            {!labels.length && !showLabelForm && <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c64748b)', lineHeight: 1.5 }}>{vi ? 'Chưa có nhãn. Tạo theo cách tiệm bán hàng: "Đã báo giá", "Chờ chốt", "Không quan tâm".' : 'No labels yet. Create the stages your salon actually uses.'}</p>}
+            {!labels.length && !showLabelForm && <p style={{ margin: 0, fontSize: 12.5, color: 'var(--c64748b)', lineHeight: 1.5 }}>{ind(vi ? 'Chưa có nhãn. Tạo theo cách tiệm bán hàng: "Đã báo giá", "Chờ chốt", "Không quan tâm".' : 'No labels yet. Create the stages your salon actually uses.')}</p>}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {labels.map((l) => {
                 const on = (detail.labels ?? []).some((x) => x.id === l.id);
@@ -1655,7 +1656,7 @@ export function InboxView() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {infoHead(vi ? 'Ghi chú nội bộ' : 'Internal notes', <span style={{ fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: 'var(--ink-warn)' }}>{vi ? 'khách không thấy' : 'customer never sees'}</span>)}
+            {infoHead(vi ? 'Ghi chú nội bộ' : 'Internal notes', <span style={{ fontWeight: 500, letterSpacing: 0, textTransform: 'none', color: 'var(--ink-warn)' }}>{ind(vi ? 'khách không thấy' : 'customer never sees')}</span>)}
             <textarea value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void addNote(); } }}
               placeholder={vi ? 'Nhập ghi chú (Enter để lưu)' : 'Add a note (Enter to save)'} rows={2} aria-label={vi ? 'Ghi chú nội bộ' : 'Internal note'}
               style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', borderRadius: 10, border: '1px solid var(--c78350f)', background: 'var(--wash-amber)', fontSize: narrow ? 16 : 13, color: 'var(--ce2e8f0)', resize: 'none', outline: 'none', fontFamily: 'inherit' }} />
@@ -1700,7 +1701,7 @@ export function InboxView() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap', minWidth: 0 }}>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--cf1f5f9)', letterSpacing: -0.2 }}>{vi ? 'Hộp thư' : 'Inbox'}</h1>
           {unreadCount > 0 && <span style={{ height: 26, padding: '0 10px', borderRadius: 999, background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4f46e5' }} />{unreadCount} {vi ? 'chưa đọc' : 'unread'}</span>}
-          {waiting > 0 && <span style={{ height: 26, padding: '0 10px', borderRadius: 999, background: 'var(--wash-amber-3)', color: 'var(--ink-warn)', fontSize: 12.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: '#d97706' }} />{waiting} {vi ? 'khách đang chờ người thật' : 'waiting for a person'}</span>}
+          {waiting > 0 && <span style={{ height: 26, padding: '0 10px', borderRadius: 999, background: 'var(--wash-amber-3)', color: 'var(--ink-warn)', fontSize: 12.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: '#d97706' }} />{waiting} {ind(vi ? 'khách đang chờ người thật' : 'waiting for a person')}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             {!loaded ? (
               <span style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>{vi ? 'Đang tải…' : 'Loading…'}</span>

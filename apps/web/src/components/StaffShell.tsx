@@ -11,6 +11,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { LumioLogo } from './LumioLogo';
 import { IC, Icon, TAB_H, BOTTOM_SAFE } from './staff/kit';
 import { setUiIndustry, setUiIndustryNames } from '../lib/ui-industry';
+import { ind } from '../lib/ui-industry';
 
 /**
  * Layout + auth guard for the Staff (technician) portal.
@@ -132,7 +133,7 @@ export function StaffShell({ children, title = 'My Bookings', subtitle, right, w
         <div>
           <h1 style={{ fontSize: 22, margin: 0 }}>{title}</h1>
           <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 13 }}>
-            {subtitle ?? <>{vi ? 'Thợ' : 'Technician'} · {user.email}</>}
+            {subtitle ?? <>{ind(vi ? 'Thợ' : 'Technician')} · {user.email}</>}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

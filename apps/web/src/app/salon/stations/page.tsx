@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { useLang } from '../../../lib/i18n';
+import { ind } from '../../../lib/ui-industry';
 
 interface SType { id: string; name: string; keywords: string | null; sortOrder: number; isActive: boolean }
 interface Station { id: string; name: string; stationTypeId: string | null; stationType: { id: string; name: string } | null; isActive: boolean; sortOrder: number }
@@ -97,7 +98,7 @@ function Inner() {
 
   return (
     <section>
-      <h2 style={{ fontSize: 18, margin: '0 0 2px' }}>{vi ? 'Ghế / Bàn của tiệm' : 'Chairs & stations'}</h2>
+      <h2 style={{ fontSize: 18, margin: '0 0 2px' }}>{ind(vi ? 'Ghế / Bàn của tiệm' : 'Chairs & stations')}</h2>
       <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>
         {vi ? 'Khai báo các loại ghế và ghế của tiệm. Sơ đồ ghế trong Calendar dùng danh sách này để tự xếp khách vào ghế trống đúng loại.'
             : 'Set up your chair types and chairs. The floor view in Calendar uses this to auto-seat walk-ins in a free chair of the right type.'}
@@ -107,7 +108,7 @@ function Inner() {
 
       {/* Chair types + auto-seat keywords: automatic, but you control the words */}
       <div style={{ ...ui.card, marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>{vi ? 'Loại ghế & từ khóa tự xếp' : 'Chair types & auto-seat keywords'}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 4 }}>{ind(vi ? 'Loại ghế & từ khóa tự xếp' : 'Chair types & auto-seat keywords')}</div>
         <p style={{ fontSize: 12, color: 'var(--c64748b)', margin: '0 0 12px', lineHeight: 1.5 }}>{vi
           ? 'Dịch vụ có tên hoặc nhóm chứa một trong các "từ khóa" này sẽ TỰ ĐỘNG được xếp vào loại ghế đó — không cần gán tay từng dịch vụ. Chỉ sửa từ khóa khi có ngoại lệ (vd thêm "combo" vào Pedi).'
           : 'A service whose name or category contains any of these keywords is auto-seated at that chair type — no per-service setup. Edit the words only to fix exceptions.'}</p>
@@ -124,7 +125,7 @@ function Inner() {
           ))}
         </div>
         <form onSubmit={addType} style={{ display: 'flex', gap: 8 }}>
-          <input value={newType} onChange={(e) => setNewType(e.target.value)} placeholder={vi ? 'Thêm loại mới (vd: Ghế trẻ em)' : 'Add a type (e.g. Kids chair)'}
+          <input value={newType} onChange={(e) => setNewType(e.target.value)} placeholder={ind(vi ? 'Thêm loại mới (vd: Ghế trẻ em)' : 'Add a type (e.g. Kids chair)')}
             style={{ ...ui.input, flex: 1, maxWidth: 320 }} />
           <button type="submit" style={{ ...ui.input, width: 'auto', padding: '9px 16px', cursor: 'pointer' }}>{vi ? '+ Thêm loại' : '+ Add type'}</button>
         </form>
@@ -146,13 +147,13 @@ function Inner() {
       {rows.length > 0 && (
         <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'var(--c94a3b8)', cursor: 'pointer', margin: '0 0 8px' }}>
           <BulkAllBox on={pick.allOn} onChange={pick.toggleAll} />
-          {vi ? 'Chọn tất cả ghế' : 'Select all chairs'}
+          {ind(vi ? 'Chọn tất cả ghế' : 'Select all chairs')}
         </label>
       )}
       <BulkBar count={pick.count} ids={pick.sel} onClear={pick.clear} onDelete={(ids) => runBulkDelete(ids, (id) => apiFetch(`/stations/${id}`, { method: 'DELETE', token }), load)} />
 
       {rows.length === 0 ? (
-        <div style={{ ...ui.card, color: 'var(--c64748b)' }}>{vi ? 'Chưa có ghế nào. Dùng "Thêm nhanh" ở trên để tạo.' : 'No chairs yet. Use "Quick add" above.'}</div>
+        <div style={{ ...ui.card, color: 'var(--c64748b)' }}>{ind(vi ? 'Chưa có ghế nào. Dùng "Thêm nhanh" ở trên để tạo.' : 'No chairs yet. Use "Quick add" above.')}</div>
       ) : groups.map((g) => (
         <div key={g.id || 'none'} style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', margin: '0 0 8px' }}>{g.name} ({g.list.length})</div>

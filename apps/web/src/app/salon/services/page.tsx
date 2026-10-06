@@ -622,7 +622,7 @@ function PromoBoard({ token, categories, promos, sel, onSel, onSaved, vi }: {
         })}
       </div>
       <p style={{ margin: '10px 0 14px', fontSize: 12, color: 'var(--c64748b)' }}>
-        {vi ? 'Khách luôn nhận mức % cao nhất trong các chương trình đang áp dụng — không cộng dồn.' : 'Customers always get the single best % that applies — promotions never stack.'}
+        {ind(vi ? 'Khách luôn nhận mức % cao nhất trong các chương trình đang áp dụng — không cộng dồn.' : 'Customers always get the single best % that applies — promotions never stack.')}
       </p>
       <div ref={editorRef} style={{ scrollMarginTop: 70 }}>
         {current === 'weekday' && <WeekdayDiscountCard key="weekday" token={token} categories={categories} defaultOpen onSaved={onSaved} />}

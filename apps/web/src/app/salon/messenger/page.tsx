@@ -17,6 +17,7 @@ import { AiNotesBox } from '../../../components/AiNotesBox';
 import { FollowUpBox } from '../../../components/FollowUpBox';
 import { KnowledgeGapsBox } from '../../../components/KnowledgeGapsBox';
 import { uiLocale } from '../../../lib/datetime';
+import { ind } from '../../../lib/ui-industry';
 
 interface BotFact { label: string; value: string; on: boolean; from?: string | null; until?: string | null }
 interface MConf {
@@ -673,7 +674,7 @@ function Inner() {
             {lang === 'vi' ? '📄 Facebook cấp nhiều page — chọn ĐÚNG page của tiệm này' : '📄 Facebook granted several Pages — pick THIS salon\'s page'}
           </div>
           <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.5 }}>
-            {lang === 'vi' ? 'Tài khoản của bạn quản lý nhiều page khách. Chỉ page được chọn mới gắn vào tiệm đang setup — các page khác không bị ảnh hưởng.' : 'Your account manages many client pages. Only the page you pick is bound to the salon being set up — the rest are untouched.'}
+            {ind(lang === 'vi' ? 'Tài khoản của bạn quản lý nhiều page khách. Chỉ page được chọn mới gắn vào tiệm đang setup — các page khác không bị ảnh hưởng.' : 'Your account manages many client pages. Only the page you pick is bound to the salon being set up — the rest are untouched.')}
           </p>
           {pickList.length === 0 ? (
             <p style={{ color: 'var(--ink-warn)', fontSize: 13 }}>{lang === 'vi' ? 'Danh sách đã hết hạn — bấm Connect làm lại.' : 'The list expired — press Connect and run the flow again.'}</p>
@@ -683,7 +684,7 @@ function Inner() {
                 <input
                   value={pickSearch}
                   onChange={(e) => setPickSearch(e.target.value)}
-                  placeholder={lang === 'vi' ? `🔎 Tìm trong ${pickList.length} page — gõ tên tiệm hoặc Page ID` : `🔎 Search ${pickList.length} pages — name or Page ID`}
+                  placeholder={ind(lang === 'vi' ? `🔎 Tìm trong ${pickList.length} page — gõ tên tiệm hoặc Page ID` : `🔎 Search ${pickList.length} pages — name or Page ID`)}
                   style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '10px 12px', color: 'var(--ce2e8f0)', fontSize: 13, marginBottom: 2 }}
                 />
               )}
@@ -708,7 +709,7 @@ function Inner() {
                       </span>
                       {canPickMode && (
                         <button onClick={() => choosePage(pg.id, true)} disabled={!!picking}
-                          title={lang === 'vi' ? 'Page bị gắn nhầm tiệm? Chuyển về tiệm đang setup.' : 'Bound to the wrong salon? Move it here.'}
+                          title={ind(lang === 'vi' ? 'Page bị gắn nhầm tiệm? Chuyển về tiệm đang setup.' : 'Bound to the wrong salon? Move it here.')}
                           style={{ background: 'transparent', border: '1px solid #f59e0b', color: 'var(--ink-warn)', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                           {picking === pg.id ? '…' : (lang === 'vi' ? '↪ Chuyển về tiệm này' : '↪ Move here')}
                         </button>
@@ -1093,7 +1094,7 @@ function Inner() {
           <div>
             <label style={ui.label}>{lang === 'vi' ? 'Giới thiệu doanh nghiệp (1 câu bot dùng khi tự giới thiệu) — đừng liệt kê ngành nghề, bot sẽ hiểu là danh sách đóng và từ chối ngành khác' : 'Business intro (one line the bot uses) — avoid listing trades; the bot reads a list as a limit and turns other trades away'}</label>
             <input value={c.bizIntro}
-              placeholder={lang === 'vi' ? 'vd: agency marketing trọn gói cho mọi ngành — website, quảng cáo, chatbot AI, phần mềm đặt lịch' : 'e.g. full-service marketing agency for any trade — websites, ads, AI chat, booking software'}
+              placeholder={ind(lang === 'vi' ? 'vd: agency marketing trọn gói cho mọi ngành — website, quảng cáo, chatbot AI, phần mềm đặt lịch' : 'e.g. full-service marketing agency for any trade — websites, ads, AI chat, booking software')}
               onChange={(e) => setC({ ...c, bizIntro: e.target.value })} onBlur={() => save({})} style={ui.input} />
           </div>
         </div>
@@ -1148,7 +1149,7 @@ function Inner() {
             </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input value={greetKeywords} onChange={(e) => setGreetKeywords(e.target.value)}
-                placeholder={lang === 'vi' ? 'vd: nhấn mạnh bột dip, đang giảm 20% cho khách mới' : 'e.g. highlight dip powder, 20% off for new clients'}
+                placeholder={ind(lang === 'vi' ? 'vd: nhấn mạnh bột dip, đang giảm 20% cho khách mới' : 'e.g. highlight dip powder, 20% off for new clients')}
                 style={{ ...ui.input, flex: 1, minWidth: 220, marginBottom: 0 }} />
               <button type="button" onClick={suggestGreeting} disabled={greetBusy}
                 style={{ background: '#6366f1', border: 'none', color: '#fff', borderRadius: 8, padding: '9px 16px', fontSize: 12.5, fontWeight: 600, cursor: greetBusy ? 'wait' : 'pointer', opacity: greetBusy ? 0.6 : 1 }}>
@@ -1178,7 +1179,7 @@ function Inner() {
           onChange={(e) => setC({ ...c, closing: e.target.value })} onBlur={() => save({})}
           style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5, marginBottom: 12 }} />
         <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '-6px 0 12px', lineHeight: 1.5 }}>
-          {lang === 'vi' ? 'Bot không dán nguyên văn — nó chào tạm biệt theo đúng tinh thần câu này, bằng ngôn ngữ của khách.' : 'Not pasted verbatim — the bot says goodbye in the spirit of this line, in the customer\u2019s language.'}
+          {ind(lang === 'vi' ? 'Bot không dán nguyên văn — nó chào tạm biệt theo đúng tinh thần câu này, bằng ngôn ngữ của khách.' : 'Not pasted verbatim — the bot says goodbye in the spirit of this line, in the customer\u2019s language.')}
         </p>
         {/* What the bot could not answer — answered once here, known to the bot from then on. */}
         <KnowledgeGapsBox token={token} vi={lang === 'vi'} onTaught={(label, value) => setFacts((rows) => {
@@ -1217,7 +1218,7 @@ function Inner() {
           </button>
         </div>
         <div style={{ marginTop: 12 }}>
-          <label style={ui.label}>{lang === 'vi' ? '✍️ Hoặc dán nội dung bạn muốn bot truyền tải (khuyến mãi, bảng giá, cách chào khách…)' : '✍️ Or paste anything the bot should carry (promos, price list, how to greet…)'}</label>
+          <label style={ui.label}>{ind(lang === 'vi' ? '✍️ Hoặc dán nội dung bạn muốn bot truyền tải (khuyến mãi, bảng giá, cách chào khách…)' : '✍️ Or paste anything the bot should carry (promos, price list, how to greet…)')}</label>
           <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={4}
             placeholder={lang === 'vi' ? 'Dán tự do — hệ thống tự nhận ra đâu là thông tin, đâu là giọng điệu, đâu là câu chào/câu cảm ơn.' : 'Paste freely — the system sorts out facts, tone, hello and thank-you lines by itself.'}
             style={{ ...ui.input, resize: 'vertical', lineHeight: 1.5 }} />
@@ -1304,7 +1305,7 @@ function Inner() {
                   <input value={f.value} placeholder={factPh(f.label)} onChange={(e) => setFact(i, { value: e.target.value })} style={{ ...ui.input, flex: 1, minWidth: 160 }} />
                   {/* Dated facts: a grand-opening offer is only told to customers between these
                       days and vanishes from the bot on its own the morning after it ends. */}
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--c94a3b8)', flexShrink: 0 }} title={lang === 'vi' ? 'Chỉ áp dụng trong khoảng ngày này (để trống = luôn áp dụng). Hết hạn là bot tự quên.' : 'Only told to customers between these days (blank = always). The bot forgets it on its own after the end date.'}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: 'var(--c94a3b8)', flexShrink: 0 }} title={ind(lang === 'vi' ? 'Chỉ áp dụng trong khoảng ngày này (để trống = luôn áp dụng). Hết hạn là bot tự quên.' : 'Only told to customers between these days (blank = always). The bot forgets it on its own after the end date.')}>
                     <span>{lang === 'vi' ? 'Từ' : 'From'}</span>
                     <input type="date" value={f.from ?? ''} onChange={(e) => setFact(i, { from: e.target.value || null })} style={{ ...ui.input, width: 138, padding: '5px 6px', fontSize: 12 }} />
                     <span>{lang === 'vi' ? 'đến' : 'to'}</span>

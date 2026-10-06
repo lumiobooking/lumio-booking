@@ -116,7 +116,7 @@ export function RoleMatrix({ vi, presets }: { vi: boolean; presets: Record<Role,
           <thead>
             <tr style={{ background: 'var(--c1e293b)' }}>
               <th style={{ ...cell, borderTop: 'none', textAlign: 'left', color: 'var(--ccbd5e1)' }}>{vi ? 'Mục' : 'Area'}</th>
-              <th style={{ ...cell, borderTop: 'none', color: 'var(--ccbd5e1)' }}>{vi ? 'Chủ tiệm' : 'Owner'}</th>
+              <th style={{ ...cell, borderTop: 'none', color: 'var(--ccbd5e1)' }}>{ind(vi ? 'Chủ tiệm' : 'Owner')}</th>
               {roles.map((r) => <th key={r} style={{ ...cell, borderTop: 'none', color: 'var(--ccbd5e1)' }}>{vi ? ROLE_TEXT[r].vi : ROLE_TEXT[r].en}</th>)}
             </tr>
           </thead>
@@ -179,7 +179,7 @@ export function PermissionChecklist({ vi, role, presets, custom, onChange }: {
       </div>
       {role === 'TECHNICIAN' && current.length === 0 && (
         <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
-          {vi ? 'Thợ không vào trang quản lý — họ dùng app thợ (lịch, khách và thu nhập của chính mình). Tick bên dưới nếu thợ này kiêm thêm việc, ví dụ tính tiền.' : 'Technicians use the tech app (their own schedule, clients and earnings). Tick below if this person also helps out, e.g. at checkout.'}
+          {ind(vi ? 'Thợ không vào trang quản lý — họ dùng app thợ (lịch, khách và thu nhập của chính mình). Tick bên dưới nếu thợ này kiêm thêm việc, ví dụ tính tiền.' : 'Technicians use the tech app (their own schedule, clients and earnings). Tick below if this person also helps out, e.g. at checkout.')}
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
@@ -202,7 +202,7 @@ export function PermissionChecklist({ vi, role, presets, custom, onChange }: {
         ))}
       </div>
       <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
-        🔒 {vi ? 'Chỉ chủ tiệm' : 'Owner only'}: {vi ? OWNER_ONLY_VI : OWNER_ONLY_EN}.
+        🔒 {ind(vi ? 'Chỉ chủ tiệm' : 'Owner only')}: {vi ? OWNER_ONLY_VI : OWNER_ONLY_EN}.
       </div>
     </div>
   );

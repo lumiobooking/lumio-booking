@@ -2769,7 +2769,7 @@ function Inner() {
                   token={token}
                   subject="general"
                   unread={unread.bySubject.general ?? 0}
-                  labelVi={vi ? 'Trao đổi với tiệm' : 'Talk to the shop'}
+                  labelVi={ind(vi ? 'Trao đổi với tiệm' : 'Talk to the shop')}
                   vi={vi}
                   defaultOpen={focusChat === 'general'}
                 />

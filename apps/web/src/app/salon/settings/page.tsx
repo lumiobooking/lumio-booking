@@ -12,6 +12,7 @@ import { TimezonePicker } from '../../../components/TimezonePicker';
 import { ReceiptDesigner } from '../../../components/ReceiptDesigner';
 import { IndustryPicker } from '../../../components/IndustryPicker';
 import type { ReceiptDesign } from '../../../lib/receipt';
+import { ind } from '../../../lib/ui-industry';
 
 interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number; intervals?: { open: number; close: number }[] }
 interface Booking {
@@ -473,7 +474,7 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
           than on/off, because the old wording claimed a free slot the page has
           no appointment data to back — see apps/web/src/lib/opening-bar.ts. */}
       <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>
-        {lang === 'vi' ? 'Nhãn trên trang đặt lịch' : 'Badge on the booking page'}
+        {ind(lang === 'vi' ? 'Nhãn trên trang đặt lịch' : 'Badge on the booking page')}
       </div>
       <div style={{ marginTop: 8, padding: '12px 14px', border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)' }}>
         <select
@@ -699,7 +700,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         badge={data.pos?.cardSurchargeEnabled && (data.pos?.cardSurchargePercent ?? 0) > 0
           ? { text: (lang === 'vi' ? 'Bật ' : 'On ') + (data.pos?.cardSurchargePercent ?? 0) + '%', color: 'var(--ink-good)' }
           : { text: lang === 'vi' ? 'Tắt' : 'Off', color: 'var(--c64748b)' }}
-        hint={lang === 'vi' ? 'Tự cộng % khi khách trả bằng thẻ' : 'Auto-adds % when the customer pays by card'}
+        hint={ind(lang === 'vi' ? 'Tự cộng % khi khách trả bằng thẻ' : 'Auto-adds % when the customer pays by card')}
       >
         <CardSurcharge data={data} onSave={onSave} />
       </Panel>
@@ -709,7 +710,7 @@ function PaymentsSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
         badge={data.pos?.tipsEnabled === false
           ? { text: lang === 'vi' ? 'Tắt' : 'Off', color: 'var(--c64748b)' }
           : { text: lang === 'vi' ? 'Bật' : 'On', color: 'var(--ink-good)' }}
-        hint={lang === 'vi' ? 'Có hỏi khách tiền tip hay không' : 'Whether the customer is asked for a tip'}
+        hint={ind(lang === 'vi' ? 'Có hỏi khách tiền tip hay không' : 'Whether the customer is asked for a tip')}
       >
         <TipsConfig data={data} onSave={onSave} />
       </Panel>
@@ -773,7 +774,7 @@ function TipsConfig({ data, onSave }: { data: SettingsData; onSave: SaveFn }) {
           <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: on ? '#6366f1' : 'var(--c334155)', borderRadius: 24, transition: '.2s' }} />
           <span style={{ position: 'absolute', height: 18, width: 18, left: on ? 21 : 3, top: 3, background: '#fff', borderRadius: '50%', transition: '.2s' }} />
         </label>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? 'Hỏi khách tiền tip' : 'Ask the customer for a tip'}</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{ind(lang === 'vi' ? 'Hỏi khách tiền tip' : 'Ask the customer for a tip')}</div>
       </div>
       <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 8px', lineHeight: 1.5, maxWidth: 640 }}>
         {lang === 'vi'
@@ -825,7 +826,7 @@ function CardSurcharge({ data, onSave }: { data: SettingsData; onSave: SaveFn })
           <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: on ? '#6366f1' : 'var(--c334155)', borderRadius: 24, transition: '.2s' }} />
           <span style={{ position: 'absolute', height: 18, width: 18, left: on ? 21 : 3, top: 3, background: '#fff', borderRadius: '50%', transition: '.2s' }} />
         </label>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? 'Phụ phí khi khách trả bằng thẻ (giá Cash/Card)' : 'Card surcharge (Cash/Card pricing)'}</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{ind(lang === 'vi' ? 'Phụ phí khi khách trả bằng thẻ (giá Cash/Card)' : 'Card surcharge (Cash/Card pricing)')}</div>
       </div>
       <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 8px', lineHeight: 1.5, maxWidth: 640 }}>
         {lang === 'vi'
@@ -928,7 +929,7 @@ function MethodDetails({
           {filled ? (lang === 'vi' ? 'Đã đặt' : 'Set') : (lang === 'vi' ? 'Chưa đặt' : 'Not set')}
         </span>
       </div>
-      <Field label={lang === 'vi' ? 'Thông tin hiện cho khách' : 'Details shown to the customer'}>
+      <Field label={ind(lang === 'vi' ? 'Thông tin hiện cho khách' : 'Details shown to the customer')}>
         <textarea
           rows={3}
           value={text}
@@ -943,7 +944,7 @@ function MethodDetails({
           style={{ ...ui.input, resize: 'vertical', fontFamily: 'inherit' }}
         />
       </Field>
-      <Field label={lang === 'vi' ? 'URL ảnh mã QR — khách quét để trả' : 'QR image URL — the customer scans it'}>
+      <Field label={ind(lang === 'vi' ? 'URL ảnh mã QR — khách quét để trả' : 'QR image URL — the customer scans it')}>
         <input style={ui.input} value={qr} onChange={(e) => setQr(e.target.value)} placeholder="https://…" />
       </Field>
       <div style={{ marginTop: 8 }}>
@@ -1078,7 +1079,7 @@ function RebookingCard({ data, onSave }: { data: SettingsData; onSave: SaveFn })
   return (
     <Card
       title={lang === 'vi' ? 'Nhắc quay lại (rebooking)' : 'Rebooking reminder'}
-      desc={lang === 'vi' ? 'Tự nhắn khách quay lại sau vài tuần — automation ra tiền nhiều nhất cho tiệm nail.' : 'Auto-nudge clients to rebook after a few weeks — the highest-ROI automation for a nail salon.'}
+      desc={ind(lang === 'vi' ? 'Tự nhắn khách quay lại sau vài tuần — automation ra tiền nhiều nhất cho tiệm nail.' : 'Auto-nudge clients to rebook after a few weeks — the highest-ROI automation for a nail salon.')}
     >
       <Toggle on={f.enabled} onChange={(v) => setF({ ...f, enabled: v })} label={lang === 'vi' ? 'Bật nhắc quay lại' : 'Send rebooking reminders'} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 12, opacity: f.enabled ? 1 : 0.5 }}>
@@ -1614,7 +1615,7 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             <input style={ui.input} value={f.accentColor} onChange={(e) => setF({ ...f, accentColor: e.target.value })} />
           </div>
         </Field>
-        <Field label={lang === 'vi' ? 'Chủ đề theo mùa (trang khách)' : 'Seasonal theme (customer page)'}>
+        <Field label={ind(lang === 'vi' ? 'Chủ đề theo mùa (trang khách)' : 'Seasonal theme (customer page)')}>
           <select style={ui.input} value={season} onChange={(e) => setF({ ...f, seasonalTheme: e.target.value })}>
             <option value="off">{lang === 'vi' ? 'Tắt — giữ màu thương hiệu' : 'Off — keep my brand color'}</option>
             <option value="auto">{lang === 'vi' ? 'Tự động theo mùa (US/CA)' : 'Auto by season (US/CA)'}</option>
@@ -1664,7 +1665,7 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <Field label={lang === 'vi' ? 'Ảnh màn hình chào khách (Customer display)' : 'Welcome screen image (customer display)'}>
+        <Field label={ind(lang === 'vi' ? 'Ảnh màn hình chào khách (Customer display)' : 'Welcome screen image (customer display)')}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ width: 96, height: 54, borderRadius: 8, flexShrink: 0, overflow: 'hidden', display: 'grid', placeItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', fontSize: 18 }}>
               {welcomeOk
@@ -1687,7 +1688,7 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
               onChange={(e) => setF({ ...f, welcomeImageUrl: e.target.value })} placeholder={lang === 'vi' ? 'hoặc dán URL https://…/anh.jpg' : 'or paste https://…/photo.jpg'} />
           </div>
           {wErr && <div style={{ color: 'var(--cf87171)', fontSize: 12, marginTop: 4 }}>{wErr}</div>}
-          <div style={{ color: 'var(--c64748b)', fontSize: 11.5, marginTop: 6 }}>{lang === 'vi' ? 'Ảnh ngang, đẹp nhất ~16:9 (vd bàn tay/nail sang trọng). Hiện làm nền màn chào khách kèm logo + chữ "Welcome". Để trống thì dùng màn chào mặc định.' : 'Landscape image, best ~16:9 (e.g. an elegant nail/hand shot). Becomes the welcome-screen background with your logo + a "Welcome" title. Leave blank for the default welcome screen.'}</div>
+          <div style={{ color: 'var(--c64748b)', fontSize: 11.5, marginTop: 6 }}>{ind(lang === 'vi' ? 'Ảnh ngang, đẹp nhất ~16:9 (vd bàn tay/nail sang trọng). Hiện làm nền màn chào khách kèm logo + chữ "Welcome". Để trống thì dùng màn chào mặc định.' : 'Landscape image, best ~16:9 (e.g. an elegant nail/hand shot). Becomes the welcome-screen background with your logo + a "Welcome" title. Leave blank for the default welcome screen.')}</div>
         </Field>
       </div>
 
@@ -1696,24 +1697,24 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
           so these go to the platform's storage and never inline. */}
       <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
         <BotPhotoField
-          label={lang === 'vi' ? 'Ảnh bảng giá (bot gửi khi khách hỏi giá)' : 'Price-list image (the chatbot sends it when asked for prices)'}
-          hint={lang === 'vi' ? 'Một ảnh bảng giá rõ, chụp thẳng. Khách nhắn "cho xem bảng giá" là bot gửi ảnh này kèm câu trả lời.' : 'One clear, straight-on photo of your price list. When a customer asks for prices, the bot sends it with its reply.'}
+          label={ind(lang === 'vi' ? 'Ảnh bảng giá (bot gửi khi khách hỏi giá)' : 'Price-list image (the chatbot sends it when asked for prices)')}
+          hint={ind(lang === 'vi' ? 'Một ảnh bảng giá rõ, chụp thẳng. Khách nhắn "cho xem bảng giá" là bot gửi ảnh này kèm câu trả lời.' : 'One clear, straight-on photo of your price list. When a customer asks for prices, the bot sends it with its reply.')}
           value={f.priceListImageUrl || ''} token={token ?? ''} lang={lang}
           onChange={(u) => setF((prev) => ({ ...prev, priceListImageUrl: u }))}
         />
         <BotPhotoField
-          label={lang === 'vi' ? 'Ảnh mặt tiền tiệm (bot gửi khi khách hỏi đường)' : 'Storefront photo (the chatbot sends it when asked where you are)'}
-          hint={lang === 'vi' ? 'Ảnh mặt tiền ban ngày, thấy bảng hiệu. Khách hỏi "tiệm ở đâu" là bot gửi ảnh này kèm địa chỉ.' : 'A daytime shot of the front with the sign visible. When a customer asks where you are, the bot sends it with the address.'}
+          label={ind(lang === 'vi' ? 'Ảnh mặt tiền tiệm (bot gửi khi khách hỏi đường)' : 'Storefront photo (the chatbot sends it when asked where you are)')}
+          hint={ind(lang === 'vi' ? 'Ảnh mặt tiền ban ngày, thấy bảng hiệu. Khách hỏi "tiệm ở đâu" là bot gửi ảnh này kèm địa chỉ.' : 'A daytime shot of the front with the sign visible. When a customer asks where you are, the bot sends it with the address.')}
           value={f.storefrontImageUrl || ''} token={token ?? ''} lang={lang}
           onChange={(u) => setF((prev) => ({ ...prev, storefrontImageUrl: u }))}
         />
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <Field label={lang === 'vi' ? 'Badge đánh giá (trang khách)' : 'Rating badge (customer page)'}>
+        <Field label={ind(lang === 'vi' ? 'Badge đánh giá (trang khách)' : 'Rating badge (customer page)')}>
           <select style={ui.input} value={f.ratingMode ?? 'auto'} onChange={(e) => setF({ ...f, ratingMode: e.target.value })}>
             <option value="auto">{lang === 'vi' ? 'Tự động — từ đánh giá trong Lumio' : 'Auto — from in-app reviews'}</option>
-            <option value="manual">{lang === 'vi' ? 'Nhập tay — ví dụ rating Google của tiệm' : 'Manual — e.g. your Google rating'}</option>
+            <option value="manual">{ind(lang === 'vi' ? 'Nhập tay — ví dụ rating Google của tiệm' : 'Manual — e.g. your Google rating')}</option>
             <option value="off">{lang === 'vi' ? 'Ẩn badge' : 'Hide badge'}</option>
           </select>
         </Field>

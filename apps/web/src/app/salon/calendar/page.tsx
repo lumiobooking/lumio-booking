@@ -18,6 +18,7 @@ import { todayInZone } from '../../../lib/salon-clock';
 import { TableDayView } from './TableDayView';
 import { uiLocale } from '../../../lib/datetime';
 import { ind } from '../../../lib/ui-industry';
+import { withHoursOverride } from '../../../lib/desk-hours';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string; staffMemberId?: string }
 /** Pill/label text: primary service plus a +N badge for the extra lines. */
@@ -104,7 +105,9 @@ export default function CalendarPage() {
 }
 
 function Inner() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  // Only the owner may put a booking outside opening hours on purpose.
+  const isOwner = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN';
   const { lang } = useLang();
   const isMobile = useIsMobile();
   const t = (k: string) => tr(k, lang);
@@ -316,7 +319,12 @@ function Inner() {
 
   async function action(id: string, path: string, body?: unknown) {
     try {
-      const updated = await apiFetch<Booking>(`/bookings/${id}/${path}`, { method: 'POST', token, body });
+      // A move outside opening hours: the owner is asked once and may go ahead.
+      const timed = path === 'reschedule' || path === 'move';
+      const updated = await withHoursOverride(
+        (o) => apiFetch<Booking>(`/bookings/${id}/${path}`, { method: 'POST', token, body: o && timed ? { ...(body as object), outsideHours: true } : body }),
+        { owner: isOwner && timed, vi: lang === 'vi' },
+      );
       // Status changes and visit edits keep the drawer open showing the new
       // state; the one-shot actions (arrive/complete/cancel) close it as before.
       if ((path === 'status' || path === 'lines' || path === 'line-staff' || path === 'assign') && updated && typeof updated === 'object') setSelected(updated);
@@ -354,7 +362,7 @@ function Inner() {
             <button onClick={() => setMode('month')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewMonth')}</button>
             <button onClick={() => setMode('day')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewDay')}</button>
             <button onClick={() => setMode('staff')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{isRestaurant ? t('cal.viewTables') : t('cal.viewStaff')}</button>
-            <button onClick={() => setMode('floor')} style={{ ...segBtn(true), ...(isMobile ? { flex: 1 } : {}) }}>{lang === 'vi' ? 'Sơ đồ ghế' : 'Floor'}</button>
+            <button onClick={() => setMode('floor')} style={{ ...segBtn(true), ...(isMobile ? { flex: 1 } : {}) }}>{ind(lang === 'vi' ? 'Sơ đồ ghế' : 'Floor')}</button>
           </div>
         </div>
         <FloorView token={token} lang={lang} />
@@ -393,7 +401,7 @@ function Inner() {
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <h1 style={{ fontSize: 22, margin: 0, flex: 1, minWidth: 0, letterSpacing: -0.2 }}>{t('cal.title')}</h1>
-                <button type="button" onClick={() => { setSearchOpen((o) => !o); if (searchOpen) setSearch(''); }} aria-label={lang === 'vi' ? 'Tìm khách' : 'Search'} style={{ ...navIconBtn, background: searchOpen ? '#4f46e5' : 'var(--c0f172a)', color: searchOpen ? '#fff' : 'var(--ccbd5e1)' }}>
+                <button type="button" onClick={() => { setSearchOpen((o) => !o); if (searchOpen) setSearch(''); }} aria-label={ind(lang === 'vi' ? 'Tìm khách' : 'Search')} style={{ ...navIconBtn, background: searchOpen ? '#4f46e5' : 'var(--c0f172a)', color: searchOpen ? '#fff' : 'var(--ccbd5e1)' }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
                 </button>
                 <button type="button" style={{ ...navBtn, height: 40, padding: '0 14px', fontWeight: 600, borderRadius: 10, background: 'var(--c0f172a)' }} onClick={() => { setMonthFocus(null); setMonthPage(0); if (mode === 'month') setView(new Date(today.getFullYear(), today.getMonth(), 1)); else goDay(today); }}>{t('cal.today')}</button>
@@ -407,7 +415,7 @@ function Inner() {
               {searchOpen && (
                 <div style={{ position: 'relative', marginBottom: 10 }}>
                   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--c94a3b8)" strokeWidth="2" strokeLinecap="round" style={{ position: 'absolute', left: 13, top: 13 }}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-                  <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder={lang === 'vi' ? 'Tìm khách theo tên hoặc số điện thoại…' : 'Search customer by name or phone…'} style={{ width: '100%', boxSizing: 'border-box', height: 44, padding: '0 40px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 16 }} />
+                  <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder={ind(lang === 'vi' ? 'Tìm khách theo tên hoặc số điện thoại…' : 'Search customer by name or phone…')} style={{ width: '100%', boxSizing: 'border-box', height: 44, padding: '0 40px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 16 }} />
                   {search && <button onClick={() => setSearch('')} aria-label="Clear" style={{ position: 'absolute', right: 6, top: 6, width: 32, height: 32, border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 18, cursor: 'pointer' }}>✕</button>}
                 </div>
               )}
@@ -445,7 +453,7 @@ function Inner() {
                   {mode === 'month' && <> {lang === 'vi' ? 'trong tháng' : 'this month'} · {t('cal.todayLabel')} <strong style={{ color: 'var(--cf1f5f9)', fontWeight: 700 }}>{todayStats.total}</strong></>}
                   {mode !== 'month' && revenue > 0 && <> · {t('cal.expected')} <strong style={{ color: 'var(--ink-good)', fontWeight: 700 }}>{formatPrice(revenue, currency).replace(/[.,]00(?=\D*$)/, '')}</strong></>}
                   {pendingN > 0 && <> · <span style={{ color: 'var(--ink-warn)', fontWeight: 600 }}>{pendingN} {t('cal.stPending').toLowerCase()}</span></>}
-                  {mode !== 'month' && dayDate.getTime() === today.getTime() && walkinNow > 0 && <> · <span style={{ color: 'var(--ink-warn)', fontWeight: 600 }}>{walkinNow} {lang === 'vi' ? 'khách vãng lai' : 'walk-in'}</span></>}
+                  {mode !== 'month' && dayDate.getTime() === today.getTime() && walkinNow > 0 && <> · <span style={{ color: 'var(--ink-warn)', fontWeight: 600 }}>{walkinNow} {ind(lang === 'vi' ? 'khách vãng lai' : 'walk-in')}</span></>}
                 </span>
                 {mode === 'day' && (
                   <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 9, overflow: 'hidden', flexShrink: 0 }}>
@@ -481,7 +489,7 @@ function Inner() {
           <button onClick={() => setMode('month')} style={{ ...segBtn(mode === 'month'), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewMonth')}</button>
           <button onClick={() => setMode('day')} style={{ ...segBtn(mode === 'day'), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewDay')}</button>
           <button onClick={() => setMode('staff')} style={{ ...segBtn(mode === 'staff'), ...(isMobile ? { flex: 1 } : {}) }}>{isRestaurant ? t('cal.viewTables') : t('cal.viewStaff')}</button>
-          {!isRestaurant && <button onClick={() => setMode('floor')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{lang === 'vi' ? 'Sơ đồ ghế' : 'Floor'}</button>}
+          {!isRestaurant && <button onClick={() => setMode('floor')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{ind(lang === 'vi' ? 'Sơ đồ ghế' : 'Floor')}</button>}
         </div>
       </div>
 
@@ -517,7 +525,7 @@ function Inner() {
         if (!legend.length) return null;
         return (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 1.2, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{lang === 'vi' ? 'Nguồn khách' : 'Sources'}</span>
+            <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 1.2, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{ind(lang === 'vi' ? 'Nguồn khách' : 'Sources')}</span>
             {legend.map(({ meta, count }) => (
               <SourceChip key={meta.key} meta={meta} count={count} vi={lang === 'vi'}
                 active={srcFilter === meta.key}
@@ -534,7 +542,7 @@ function Inner() {
 
       {/* Row 3: search + full screen */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={lang === 'vi' ? 'Tìm khách theo tên hoặc số điện thoại…' : 'Search customer by name or phone…'} style={{ flex: '1 1 240px', maxWidth: isMobile ? undefined : 380, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14 }} />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={ind(lang === 'vi' ? 'Tìm khách theo tên hoặc số điện thoại…' : 'Search customer by name or phone…')} style={{ flex: '1 1 240px', maxWidth: isMobile ? undefined : 380, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14 }} />
         {search && <button onClick={() => setSearch('')} style={navBtn} title="Clear">✕</button>}
         <button onClick={toggleFull} style={{ ...navBtn, marginLeft: 'auto' }} title={fullscreen ? (lang === 'vi' ? 'Thoát toàn màn hình' : 'Exit full screen') : (lang === 'vi' ? 'Toàn màn hình' : 'Full screen')}>{fullscreen ? '✕' : '⛶'}{isMobile ? '' : (fullscreen ? (lang === 'vi' ? ' Thoát' : ' Exit') : (lang === 'vi' ? ' Toàn màn hình' : ' Full screen'))}</button>
       </div>
@@ -554,7 +562,7 @@ function Inner() {
           {t('cal.todayLabel')}: <strong style={{ color: 'var(--ce2e8f0)' }}>{todayStats.total}</strong> {t('cal.apptWord')}
           {todayStats.pending > 0 && <> · <span style={{ color: 'var(--ink-warn)' }}>{todayStats.pending} {t('cal.stPending')}</span></>}
           {todayStats.arrived > 0 && <> · <span style={{ color: '#10b981' }}>{todayStats.arrived} {t('cal.stArrived')}</span></>}
-          {walkinNow > 0 && <> · <span style={{ color: 'var(--ink-warn)' }}>{walkinNow} {lang === 'vi' ? 'khách vãng lai' : 'walk-in'}</span></>}
+          {walkinNow > 0 && <> · <span style={{ color: 'var(--ink-warn)' }}>{walkinNow} {ind(lang === 'vi' ? 'khách vãng lai' : 'walk-in')}</span></>}
         </div>
       </div>
 

@@ -82,3 +82,57 @@ export function hoursMessage(local: string, c: HoursCheck, vi: boolean): string 
     ? `${when} nằm ngoài giờ làm việc (${c.open}). Kiểm tra lại SA/CH (sáng/chiều) hoặc chọn giờ khác.`
     : `${when} is outside opening hours (${c.open}). Check AM/PM, or pick another time.`;
 }
+
+// ---------------------------------------------------------------- server refusals
+
+const VI_WD: Record<string, string> = { Sun: 'Chủ nhật', Mon: 'Thứ Hai', Tue: 'Thứ Ba', Wed: 'Thứ Tư', Thu: 'Thứ Năm', Fri: 'Thứ Sáu', Sat: 'Thứ Bảy' };
+
+/** True for the server's opening-hours refusal (message or body starts with OUTSIDE_HOURS). */
+export function isOutsideHours(e: unknown): boolean {
+  const body = (e as { body?: { message?: unknown } } | null)?.body;
+  const raw = typeof body?.message === 'string' ? body.message : e instanceof Error ? e.message : String(e ?? '');
+  return /^OUTSIDE_HOURS/.test(raw);
+}
+
+/**
+ * The server's refusal, readable. The API speaks English with a code in front;
+ * a receptionist reads "Thứ Bảy 20/6 lúc 23:40 nằm ngoài giờ mở cửa (…)".
+ * Anything else comes back untouched.
+ */
+export function outsideHoursText(raw: string, vi: boolean): string {
+  if (!/^OUTSIDE_HOURS/.test(raw || '')) return raw;
+  const body = raw.replace(/^OUTSIDE_HOURS:\s*/, '');
+  const m = /^(\w{3}) (\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}) \(salon time\) is outside opening hours \((.*)\)\./.exec(body);
+  if (m) {
+    const [, wd, , mo, d, hh, mi, open] = m;
+    return vi
+      ? `${VI_WD[wd] ?? wd} ${Number(d)}/${Number(mo)} lúc ${Number(hh)}:${mi} (giờ tiệm) nằm ngoài giờ mở cửa (${open}). Kiểm tra lại SA/CH hoặc chọn giờ khác.`
+      : body;
+  }
+  const off = /^(\d{4})-(\d{2})-(\d{2}) is marked as a day off/.exec(body);
+  if (off) return vi ? `Ngày ${Number(off[3])}/${Number(off[2])} tiệm nghỉ. Chọn ngày khác.` : body;
+  const closed = /^the salon is closed on (\w{3})/.exec(body);
+  if (closed) return vi ? `Tiệm không mở cửa ${VI_WD[closed[1]] ?? closed[1]}. Chọn ngày khác.` : body;
+  return body;
+}
+
+/**
+ * Run a move/booking; when the server refuses it as outside opening hours and
+ * the person is the OWNER, ask once and retry on purpose. Everyone else gets
+ * the readable refusal. `ask` is window.confirm in the app, a stub in tests.
+ */
+export async function withHoursOverride<T>(
+  run: (outsideHours: boolean) => Promise<T>,
+  o: { owner: boolean; vi: boolean; ask?: (q: string) => boolean },
+): Promise<T> {
+  try {
+    return await run(false);
+  } catch (e) {
+    if (!isOutsideHours(e)) throw e;
+    const raw = (e as { body?: { message?: string } })?.body?.message ?? (e instanceof Error ? e.message : '');
+    const text = outsideHoursText(raw, o.vi);
+    const ask = o.ask ?? ((q: string) => (typeof window !== 'undefined' ? window.confirm(q) : false));
+    if (o.owner && ask(`${text}\n\n${o.vi ? 'Bạn là chủ tiệm: vẫn đặt vào giờ này?' : 'You are the owner: book this time anyway?'}`)) return run(true);
+    throw new Error(text);
+  }
+}

@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { arrivalState, clockIn, minutesText, salonDayLabel } from './desk-time';
-import { deskHoursCheck, hoursMessage, wallLabel, wallParts } from './desk-hours';
+import { deskHoursCheck, hoursMessage, isOutsideHours, outsideHoursText, wallLabel, wallParts, withHoursOverride } from './desk-hours';
 
 /**
  * The front desk from the screenshots: 10:00 AM bookings shown as "0:00", an
@@ -91,5 +91,49 @@ describe('wired into the screens', () => {
     const src = read('app', 'salon', 'walkins', 'page.tsx');
     expect(src).toMatch(/filter\(\(w\) => !w\.awaitingPayment && w\.phase !== 'BETWEEN'\)/);
     expect(src).toMatch(/const toPay = board\.serving\.filter\(\(w\) => w\.awaitingPayment\)/);
+  });
+});
+
+describe('moving a booking outside opening hours', () => {
+  const RAW = 'OUTSIDE_HOURS: Mon 2026-10-05 23:40 (salon time) is outside opening hours (9:00 AM–6:00 PM). Check AM/PM, or pick another time.';
+  const refusal = () => Object.assign(new Error(RAW), { body: { message: RAW } });
+
+  it('the server’s refusal reads as a sentence, in Vietnamese too', () => {
+    expect(outsideHoursText(RAW, true)).toBe('Thứ Hai 5/10 lúc 23:40 (giờ tiệm) nằm ngoài giờ mở cửa (9:00 AM–6:00 PM). Kiểm tra lại SA/CH hoặc chọn giờ khác.');
+    expect(outsideHoursText(RAW, false)).toMatch(/^Mon 2026-10-05 23:40/);
+    expect(outsideHoursText('OUTSIDE_HOURS: 2026-11-26 is marked as a day off. Pick another date.', true)).toBe('Ngày 26/11 tiệm nghỉ. Chọn ngày khác.');
+    expect(outsideHoursText('Booking not found', true)).toBe('Booking not found');
+    expect(isOutsideHours(refusal())).toBe(true);
+  });
+
+  it('a receptionist gets the refusal; nothing is retried', async () => {
+    const run = jest.fn(async (o: boolean) => { if (!o) throw refusal(); return 'moved'; });
+    const ask = jest.fn(() => true);
+    await expect(withHoursOverride(run, { owner: false, vi: true, ask })).rejects.toThrow(/nằm ngoài giờ mở cửa/);
+    expect(ask).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('the owner is asked once, and only a yes moves it', async () => {
+    const run = jest.fn(async (o: boolean) => { if (!o) throw refusal(); return 'moved'; });
+    await expect(withHoursOverride(run, { owner: true, vi: true, ask: () => true })).resolves.toBe('moved');
+    expect(run.mock.calls.map((c) => c[0])).toEqual([false, true]);
+    const run2 = jest.fn(async (o: boolean) => { if (!o) throw refusal(); return 'moved'; });
+    await expect(withHoursOverride(run2, { owner: true, vi: true, ask: () => false })).rejects.toThrow();
+    expect(run2).toHaveBeenCalledTimes(1);
+  });
+
+  it('any other error passes through untouched', async () => {
+    await expect(withHoursOverride(async () => { throw new Error('Conflict'); }, { owner: true, vi: true, ask: () => true })).rejects.toThrow('Conflict');
+  });
+
+  it('wired: the calendar drag, the calendar sheet and the bookings list all go through it', () => {
+    const read = (...p: string[]) => readFileSync(join(__dirname, '..', ...p), 'utf8');
+    expect(read('app', 'salon', 'calendar', 'StaffDayView.tsx')).toMatch(/withHoursOverride\(/);
+    expect(read('app', 'salon', 'calendar', 'page.tsx')).toMatch(/withHoursOverride\(/);
+    expect(read('app', 'salon', 'bookings', 'page.tsx')).toMatch(/withHoursOverride\(/);
+    expect(read('lib', 'api.ts')).toMatch(/outsideHoursText\(message, toastVi\)/);
+    // No link to a screen the trade does not have.
+    expect(read('app', 'salon', 'front-desk', 'page.tsx')).toMatch(/walkinsPage && \{ href: '\/salon\/walkins\?new=1'/);
   });
 });

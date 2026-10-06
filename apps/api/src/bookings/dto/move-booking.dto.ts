@@ -1,4 +1,4 @@
-import { IsISO8601, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsISO8601, IsOptional, IsString } from 'class-validator';
 
 /** The calendar's drag: a new start and, optionally, a different technician. */
 export class MoveBookingDto {
@@ -10,4 +10,9 @@ export class MoveBookingDto {
   @IsOptional()
   @IsString()
   staffId?: string;
+
+  /** Owner only: move it outside opening hours on purpose. */
+  @IsOptional()
+  @IsBoolean()
+  outsideHours?: boolean;
 }

@@ -14,7 +14,9 @@ import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileC
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { uiLocale } from '../../../lib/datetime';
-import { deskHoursCheck, hoursMessage, wallLabel, type HoursRules } from '../../../lib/desk-hours';
+import { deskHoursCheck, hoursMessage, wallLabel, withHoursOverride, type HoursRules } from '../../../lib/desk-hours';
+import { ind } from '../../../lib/ui-industry';
+
 
 interface NamedRef {
   id: string;
@@ -166,7 +168,12 @@ function BookingsInner() {
 
   async function action(id: string, path: string, body?: unknown) {
     try {
-      await apiFetch(`/bookings/${id}/${path}`, { method: 'POST', token, body });
+      // A move outside opening hours: the owner is asked once and may go ahead.
+      const timed = path === 'reschedule' || path === 'move';
+      await withHoursOverride(
+        (o) => apiFetch(`/bookings/${id}/${path}`, { method: 'POST', token, body: o && timed ? { ...(body as object), outsideHours: true } : body }),
+        { owner: isOwner && timed, vi: lang === 'vi' },
+      );
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed');
@@ -917,13 +924,13 @@ function CreateBookingForm({
               {/* Read back in words — "11:40 (tối)" makes an AM/PM slip obvious. */}
               {form.startLocal && (
                 <span style={{ display: 'block', marginTop: 5, fontSize: 12, fontWeight: 600, color: outside ? 'var(--ink-bad)' : 'var(--c94a3b8)' }}>
-                  {outside ? `⚠ ${hoursMessage(form.startLocal, hoursCheck, vi)}` : `🕒 ${wallLabel(form.startLocal, vi)}${vi ? ' — giờ của tiệm' : ' — salon time'}`}
+                  {outside ? `⚠ ${hoursMessage(form.startLocal, hoursCheck, vi)}` : `🕒 ${wallLabel(form.startLocal, vi)}${ind(vi ? ' — giờ của tiệm' : ' — salon time')}`}
                 </span>
               )}
               {outside && isOwner && (
                 <button type="button" onClick={() => { setOverrideAt(form.startLocal); setError(null); }}
                   style={{ marginTop: 6, padding: '5px 10px', fontSize: 12, borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer' }}>
-                  {vi ? 'Vẫn đặt ngoài giờ (chủ tiệm)' : 'Book outside hours anyway (owner)'}
+                  {ind(vi ? 'Vẫn đặt ngoài giờ (chủ tiệm)' : 'Book outside hours anyway (owner)')}
                 </button>
               )}
             </label>
@@ -941,7 +948,7 @@ function CreateBookingForm({
             <label>
               <FieldLabel raw={t('bk.assignStaff')} optionalWord={t('bk.optional')} />
               <select style={ui.input} value={form.staffId} onChange={(e) => up('staffId', e.target.value)}>
-                <option value="">{vi ? '⚡ Tự chọn thợ (theo lượt, đúng tay nghề)' : '⚡ Pick automatically (turns + skills)'}</option>
+                <option value="">{ind(vi ? '⚡ Tự chọn thợ (theo lượt, đúng tay nghề)' : '⚡ Pick automatically (turns + skills)')}</option>
                 <option value="__none">{t('bk.leaveUnassigned')}</option>
                 {staff.map((s) => (
                   <option key={s.id} value={s.id}>

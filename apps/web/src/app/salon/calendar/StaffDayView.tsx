@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SourceDot } from '../../../components/SourceChip';
 import { useAuth } from '../../../lib/auth';
+import { withHoursOverride } from '../../../lib/desk-hours';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { uiLocale, wallToInstantISO } from '../../../lib/datetime';
+import { ind } from '../../../lib/ui-industry';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string }
 interface Booking {
@@ -85,7 +87,7 @@ function srcMeta(s: string | null | undefined, t: (k: string) => string): { icon
 export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChanged }: {
   date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onChanged?: () => void;
 }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [staff, setStaff] = useState<StaffLite[]>([]);
@@ -248,7 +250,11 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
     const prev = b.assignedStaff ? { id: b.id, startTime: b.startTime, staffId: b.assignedStaff.id } : null;
     setBusy(true); setUndo(null);
     try {
-      await apiFetch(`/bookings/${b.id}/move`, { method: 'POST', token, body: { startTime: target === orig ? b.startTime : wallToInstantISO(wall(target), tz), ...(toTech ? { staffId: col.id } : {}) } });
+      // Dropped outside opening hours: refused for the desk; the owner is asked once.
+      await withHoursOverride(
+        (o) => apiFetch(`/bookings/${b.id}/move`, { method: 'POST', token, body: { startTime: target === orig ? b.startTime : wallToInstantISO(wall(target), tz), ...(toTech ? { staffId: col.id } : {}), ...(o ? { outsideHours: true } : {}) } }),
+        { owner: user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN', vi },
+      );
       const who = b.customer?.firstName ?? (vi ? 'Lịch hẹn' : 'Booking');
       flash(vi ? `Đã chuyển ${who} → ${toTech ? col.name + ' · ' : ''}${clock(target)}` : `Moved ${who} → ${toTech ? col.name + ' · ' : ''}${clock(target)}`, 7000);
       setUndo(prev);
@@ -263,7 +269,8 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
     const u = undo; if (!u) return;
     setUndo(null); setBusy(true);
     try {
-      await apiFetch(`/bookings/${u.id}/move`, { method: 'POST', token, body: { startTime: u.startTime, staffId: u.staffId } });
+      // Back to where it was — even if the owner had put it outside hours (ignored for anyone else).
+      await apiFetch(`/bookings/${u.id}/move`, { method: 'POST', token, body: { startTime: u.startTime, staffId: u.staffId, outsideHours: true } });
       flash(vi ? 'Đã hoàn tác' : 'Undone');
       onChanged?.();
     } catch (e) {
@@ -356,12 +363,12 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
         const shiftEnd = r.shift?.e ?? aE;
         if (next) {
           const gap = span(next).s - nowMin;
-          if (gap >= 30) return { text: `${vi ? 'Trống đến' : 'Free until'} ${hm(span(next).s)} · ${vi ? 'nhận khách vãng lai được' : 'can take a walk-in'}`, tone: 'good' };
+          if (gap >= 30) return { text: `${vi ? 'Trống đến' : 'Free until'} ${hm(span(next).s)} · ${ind(vi ? 'nhận khách vãng lai được' : 'can take a walk-in')}`, tone: 'good' };
           return { text: `${vi ? 'Kế tiếp' : 'Next'} ${hm(span(next).s)} · ${custName(next)}`, tone: 'muted' };
         }
         if (n === 0) return { text: vi ? 'Trống cả ngày' : 'Free all day', tone: 'good' };
         if (r.shift && nowMin >= shiftEnd) return { text: vi ? 'Đã xong ca' : 'Shift over', tone: 'muted' };
-        return { text: `${vi ? 'Trống đến hết ca' : 'Free for the rest of the shift'} · ${vi ? 'nhận khách vãng lai được' : 'can take a walk-in'}`, tone: 'good' };
+        return { text: `${vi ? 'Trống đến hết ca' : 'Free for the rest of the shift'} · ${ind(vi ? 'nhận khách vãng lai được' : 'can take a walk-in')}`, tone: 'good' };
       }
       if (n === 0) return { text: vi ? 'Trống cả ngày' : 'Free all day', tone: 'good' };
       const first = r.live[0];
@@ -420,7 +427,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                 <span style={{ width: 36, height: 36, flexShrink: 0, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--ccbd5e1)', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</span>
                 <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
                   <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{t('cal.unassignedCol')}</span>
-                  <span style={{ fontSize: 12.5, color: 'var(--ink-warn)', fontWeight: 600 }}>{vi ? 'Bấm vào lịch để chọn thợ' : 'Tap a booking to pick a technician'}</span>
+                  <span style={{ fontSize: 12.5, color: 'var(--ink-warn)', fontWeight: 600 }}>{ind(vi ? 'Bấm vào lịch để chọn thợ' : 'Tap a booking to pick a technician')}</span>
                 </span>
                 <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{unassigned.length} {t('cal.apptWord')}</span>
               </div>
@@ -583,7 +590,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
             )}
           </div>
         </div>
-        <span style={{ fontSize: 12, color: 'var(--c64748b)', padding: '2px 0 8px' }}>{vi ? 'Vuốt trái/phải để sang thợ khác · Đổi thợ cho một lịch: mở lịch → “Đổi thợ”.' : 'Swipe left/right for the next technician · To reassign one booking: open it → “Change tech”.'}</span>
+        <span style={{ fontSize: 12, color: 'var(--c64748b)', padding: '2px 0 8px' }}>{ind(vi ? 'Vuốt trái/phải để sang thợ khác · Đổi thợ cho một lịch: mở lịch → “Đổi thợ”.' : 'Swipe left/right for the next technician · To reassign one booking: open it → “Change tech”.')}</span>
       </div>
     );
   }
@@ -706,7 +713,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                     ))}
                     {g && (
                       <div style={{ position: 'absolute', top: (g.min - gStart) / 60 * HP, height: Math.max(22, g.dur / 60 * HP - 3), left: 3, right: 3, boxSizing: 'border-box', borderRadius: 8, border: `1.5px dashed ${g.clash ? '#ef4444' : '#6366f1'}`, background: g.clash ? 'rgba(239,68,68,0.12)' : 'rgba(99,102,241,0.10)', color: g.clash ? 'var(--ink-bad)' : 'var(--ink-link)', fontSize: 11.5, fontWeight: 700, padding: '3px 7px', pointerEvents: 'none', zIndex: 2 }}>
-                        {g.drag ? `${clock(g.min)} – ${clock(g.min + g.dur)}${g.clash ? (vi ? ' · trùng lịch' : ' · clash') : ''}` : `+ ${clock(g.min)} · ${vi ? 'đặt lịch' : 'book'}`}
+                        {g.drag ? `${clock(g.min)} – ${clock(g.min + g.dur)}${g.clash ? (vi ? ' · trùng lịch' : ' · clash') : ''}` : `+ ${clock(g.min)} · ${ind(vi ? 'đặt lịch' : 'book')}`}
                       </div>
                     )}
                     {pos.map(({ b, s, e, col, cols }) => {

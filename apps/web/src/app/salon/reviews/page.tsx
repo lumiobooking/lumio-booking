@@ -12,6 +12,7 @@ import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { usePaged, Pager } from '../../../components/ListFilter';
 import { uiLocale } from '../../../lib/datetime';
+import { ind } from '../../../lib/ui-industry';
 
 interface ReviewSettings { enabled: boolean; reviewMode: 'direct' | 'rate_first'; googlePlaceId: string; googleReviewUrl: string; staffPointsPerFeedback: number; staffBonusFor5Star: number; customerPoints: number; minRatingForGoogle: number; requireRealVisit: boolean; visitWindowHours: number; dailyCapPerStaff: number; dedupDays: number; staffPointsPerSend: number; sendDailyCap: number; sendDedupHours: number; anchorToVisits: boolean; visitBuffer: number; onlyBusinessHours: boolean; postVisitEnabled: boolean; postVisitDelayMinutes: number; postVisitEmail: boolean; postVisitSms: boolean; postVisitCooldownDays: number; googleAuto?: { url: string; placeId: string; locationTitle: string } | null }
 interface LeaderRow { id: string; name: string; avatarUrl: string | null; balance: number; earnedMonth: number; sendsMonth: number; blockedMonth: number; feedbackMonth: number; avgMonth: number; flagged: boolean }
@@ -371,7 +372,7 @@ function SettingsCard({ token, initial, onSaved }: { token: string; initial: Rev
       <div style={{ marginBottom: 14, padding: 14, background: 'var(--c0f172a)', borderRadius: 12, border: '1px solid var(--c334155)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <Toggle on={f.postVisitEnabled} onChange={(v) => setF({ ...f, postVisitEnabled: v })} />
-          <span style={{ fontWeight: 600, color: 'var(--ce2e8f0)' }}>{lang === 'vi' ? '🤖 Tự xin review khi khách đang làm' : '🤖 Auto review request (mid-visit)'}</span>
+          <span style={{ fontWeight: 600, color: 'var(--ce2e8f0)' }}>{ind(lang === 'vi' ? '🤖 Tự xin review khi khách đang làm' : '🤖 Auto review request (mid-visit)')}</span>
         </div>
         <p style={{ color: 'var(--c94a3b8)', fontSize: 12.5, margin: '0 0 12px', lineHeight: 1.6 }}>
           {lang === 'vi'

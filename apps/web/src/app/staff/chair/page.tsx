@@ -16,6 +16,7 @@ import { ui, formatPrice } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useLiveEvents } from '../../../lib/useLiveEvents';
+import { ind } from '../../../lib/ui-industry';
 
 interface Svc { id: string; name: string; priceCents: number; durationMinutes: number }
 interface ChairOpt { id: string; name: string; type: string; takenBy: string | null }
@@ -263,11 +264,11 @@ function ChairCard({ w, services, chairs, currency, t, vi, me, techNames, busy, 
 
       <div style={{ marginBottom: 12 }}>
         <label style={{ display: 'block', fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 6 }}>
-          {vi ? 'Ghế / bàn khách đang ngồi' : 'Chair the client is sitting in'}
+          {ind(vi ? 'Ghế / bàn khách đang ngồi' : 'Chair the client is sitting in')}
         </label>
         <select value={w.stationId ?? ''} disabled={busy} onChange={(e) => onChair(w.id, e.target.value)}
           style={{ ...ui.input, width: '100%', cursor: 'pointer' }}>
-          <option value="">{vi ? '— Chưa chọn ghế —' : '— No chair yet —'}</option>
+          <option value="">{ind(vi ? '— Chưa chọn ghế —' : '— No chair yet —')}</option>
           {chairs.map((c) => {
             const taken = !!c.takenBy && c.id !== w.stationId;
             return (
@@ -279,7 +280,7 @@ function ChairCard({ w, services, chairs, currency, t, vi, me, techNames, busy, 
         </select>
         {chairs.length === 0 && (
           <p style={{ color: 'var(--cfbbf24)', fontSize: 12, margin: '6px 0 0' }}>
-            {vi ? 'Tiệm chưa khai báo ghế. Nhờ quản lý thêm ở mục Ghế.' : 'No chairs set up yet. Ask your manager to add them under Chairs.'}
+            {ind(vi ? 'Tiệm chưa khai báo ghế. Nhờ quản lý thêm ở mục Ghế.' : 'No chairs set up yet. Ask your manager to add them under Chairs.')}
           </p>
         )}
         {chair && (
@@ -348,7 +349,7 @@ function ChairCard({ w, services, chairs, currency, t, vi, me, techNames, busy, 
       )}
       {othersOpen.length > 0 && !confirm && !adding && (
         <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '8px 0 0' }}>
-          {vi ? 'Khách trả tiền khi xong mọi phần — thợ làm phần cuối sẽ đưa khách ra quầy.' : 'The client pays once every part is done — the last technician sends them to the desk.'}
+          {ind(vi ? 'Khách trả tiền khi xong mọi phần — thợ làm phần cuối sẽ đưa khách ra quầy.' : 'The client pays once every part is done — the last technician sends them to the desk.')}
         </p>
       )}
       {confirm && (

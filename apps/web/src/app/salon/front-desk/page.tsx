@@ -18,7 +18,7 @@ import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { PartyChip, type PartyInfo } from '../../../components/PartyChip';
 import { arrivalState, clockIn, minutesText, salonDayLabel } from '../../../lib/desk-time';
-import { ind } from '../../../lib/ui-industry';
+import { hiddenHrefsFor, ind, uiIndustry } from '../../../lib/ui-industry';
 
 interface Ticket {
   id: string;
@@ -69,6 +69,9 @@ function FrontDesk() {
   const caps = useMemo(() => new Set(user?.capabilities ?? []), [user?.capabilities]);
   const owner = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN';
   const may = (c: string) => owner || caps.has(c);
+  // The turn board is out of the menu for some trades (a clinic, a restaurant,
+  // an office): no link to it either. Checking a booking in still works here.
+  const walkinsPage = may('walkins') && !hiddenHrefsFor(uiIndustry()).includes('/salon/walkins');
   const [board, setBoard] = useState<Board | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -111,7 +114,7 @@ function FrontDesk() {
   const cameIn = (w: Ticket) => `${L('vào', 'in')} ${time(w.arrivedAt ?? w.createdAt)}`;
 
   const actions = [
-    may('walkins') && { href: '/salon/walkins?new=1', icon: '🚶', t: L('Khách walk-in', 'New walk-in'), d: L('Nhận khách vào hàng chờ', 'Add to the queue') },
+    walkinsPage && { href: '/salon/walkins?new=1', icon: '🚶', t: L('Khách walk-in', 'New walk-in'), d: L('Nhận khách vào hàng chờ', 'Add to the queue') },
     may('bookings') && { href: '/salon/bookings?new=1', icon: '📅', t: L('Đặt lịch', 'New booking'), d: L('Khách gọi / hẹn lần sau', 'Phone or next visit') },
     may('pos') && { href: '/salon/pos', icon: '💳', t: L('Tính tiền', 'Check out'), d: L('Mở máy tính tiền', 'Open the register') },
     may('customers') && { href: '/salon/customers', icon: '🔎', t: L('Tìm khách', 'Find a client'), d: L('Tên hoặc số điện thoại', 'Name or phone') },
@@ -173,7 +176,7 @@ function FrontDesk() {
         <h2 style={{ fontSize: 20, margin: 0 }}>{L('Quầy lễ tân', 'Front desk')}</h2>
         <span style={{ fontSize: 13.5, color: 'var(--c94a3b8)', textTransform: 'capitalize' }}>{today}</span>
         <span style={{ flex: 1 }} />
-        {may('walkins') && <a href="/salon/walkins" style={{ fontSize: 13, color: 'var(--ink-link)', textDecoration: 'none' }}>{L('Mở bảng Walk-ins & xoay tua →', 'Open Walk-ins & turns →')}</a>}
+        {walkinsPage && <a href="/salon/walkins" style={{ fontSize: 13, color: 'var(--ink-link)', textDecoration: 'none' }}>{L('Mở bảng Walk-ins & xoay tua →', 'Open Walk-ins & turns →')}</a>}
       </div>
 
       {err && <div style={ui.banner}>{err}</div>}
@@ -226,7 +229,7 @@ function FrontDesk() {
           {waiting.map((w) => {
             const m = minsSince(w.arrivedAt ?? w.createdAt, now);
             return (
-              <a key={w.id} href="/salon/walkins" style={{ ...row, textDecoration: 'none' }}>
+              <a key={w.id} href={walkinsPage ? '/salon/walkins' : undefined} style={{ ...row, textDecoration: 'none' }}>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', ...name }}>{w.customerName || L('Khách', 'Guest')}{!w.group && (w.partySize ?? 1) > 1 ? ` · ${w.partySize}` : ''}</span>
                   <span style={{ display: 'block', ...sub }}>{services(w) || L('Chưa chọn dịch vụ', 'No service yet')}</span>

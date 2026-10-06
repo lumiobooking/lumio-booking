@@ -2397,9 +2397,9 @@ export class BookingsService {
    * Same rules as reschedule() (finished bookings stay put) and assign()
    * (a confirmed/arrived visit keeps its status).
    */
-  async move(user: AuthenticatedUser, id: string, startTimeIso: string, staffId?: string | null) {
+  async move(user: AuthenticatedUser, id: string, startTimeIso: string, staffId?: string | null, outsideHours = false) {
     const booking = await this.getById(user, id);
-    if (!staffId || staffId === booking.assignedStaffId) return this.reschedule(user, id, startTimeIso);
+    if (!staffId || staffId === booking.assignedStaffId) return this.reschedule(user, id, startTimeIso, outsideHours);
     const tenantId = this.tenantId(user);
     const finalStates: AppointmentStatus[] = [
       AppointmentStatus.CANCELLED, AppointmentStatus.COMPLETED,
@@ -2410,6 +2410,7 @@ export class BookingsService {
     }
     const newStart = new Date(startTimeIso);
     if (Number.isNaN(newStart.getTime())) throw new BadRequestException('Invalid start time');
+    await this.assertDeskHours(user, tenantId, booking.startTime, newStart, outsideHours);
     await this.assertStaffActive(tenantId, staffId);
     const newEnd = new Date(newStart.getTime() + (booking.endTime.getTime() - booking.startTime.getTime()));
     const keepStatus = booking.status === AppointmentStatus.CONFIRMED || booking.status === AppointmentStatus.ARRIVED;
@@ -2443,10 +2444,52 @@ export class BookingsService {
     return updated;
   }
 
+  /**
+   * The desk's opening-hours rule for a MOVE (same as for a new booking, see
+   * createForTenant): the new start must be while the salon is open. Only a
+   * change of time is checked — handing a booking to another technician at the
+   * time it already has is never blocked. The owner may override on purpose.
+   * If the hours cannot be read, the move goes through (a typo guard, not a lock).
+   */
+  private async assertDeskHours(user: AuthenticatedUser, tenantId: string, from: Date, to: Date, outsideHours: boolean): Promise<void> {
+    if (from.getTime() === to.getTime()) return;
+    const owner = user.role === 'SALON_ADMIN' || user.role === 'SUPER_ADMIN';
+    if (owner && outsideHours) return;
+    let read: { tz: string; rules: { businessHours?: unknown[]; daysOff?: string[] } } | null = null;
+    try {
+      const [t, rules] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }),
+        this.settings.getBookingRules(tenantId),
+      ]);
+      read = { tz: t?.timezone || 'UTC', rules: rules as never };
+    } catch { return; }
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: read.tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(to);
+    const g = (k: string) => parts.find((x) => x.type === k)?.value ?? '';
+    const wd = g('weekday');
+    const hh = Number(g('hour')) % 24; const mm = Number(g('minute'));
+    const dateStr = `${g('year')}-${g('month')}-${g('day')}`;
+    const at = `${wd} ${dateStr} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    if ((read.rules.daysOff ?? []).includes(dateStr)) {
+      throw new BadRequestException(`OUTSIDE_HOURS: ${dateStr} is marked as a day off. Pick another date (the owner can still move it there on purpose).`);
+    }
+    const dayIndex = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd);
+    const day = dayIndex >= 0 ? (read.rules.businessHours ?? [])[dayIndex] as never : undefined;
+    if (dayIndex < 0 || !Number.isFinite(hh) || !Number.isFinite(mm) || !Array.isArray(read.rules.businessHours)) return;
+    if (!startsInBusinessHours({ day, startMinutes: hh * 60 + mm })) {
+      const open = describeWindows(day);
+      throw new BadRequestException(open === 'closed'
+        ? `OUTSIDE_HOURS: the salon is closed on ${wd}. Pick another day (the owner can still move it there on purpose).`
+        : `OUTSIDE_HOURS: ${at} (salon time) is outside opening hours (${open}). Check AM/PM, or pick another time.`);
+    }
+  }
+
   /** Move a booking to a new date & time (admin reschedule). Duration and
    *  status are preserved; the assigned technician's calendar is re-checked
    *  race-safely so the move can never create a double booking. */
-  async reschedule(user: AuthenticatedUser, id: string, startTimeIso: string) {
+  async reschedule(user: AuthenticatedUser, id: string, startTimeIso: string, outsideHours = false) {
     const tenantId = this.tenantId(user);
     const booking = await this.getById(user, id);
     const finalStates: AppointmentStatus[] = [
@@ -2458,6 +2501,7 @@ export class BookingsService {
     }
     const newStart = new Date(startTimeIso);
     if (Number.isNaN(newStart.getTime())) throw new BadRequestException('Invalid start time');
+    await this.assertDeskHours(user, tenantId, booking.startTime, newStart, outsideHours);
     const durationMs = booking.endTime.getTime() - booking.startTime.getTime();
     const newEnd = new Date(newStart.getTime() + durationMs);
     const staffId = booking.assignedStaffId;

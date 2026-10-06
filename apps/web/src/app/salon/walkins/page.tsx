@@ -14,6 +14,7 @@ import { FloorStats, TechBoard } from './TechBoard';
 import { PartyChip, type PartyInfo } from '../../../components/PartyChip';
 import { clockIn } from '../../../lib/desk-time';
 import { salonTz, uiLocale } from '../../../lib/datetime';
+import { ind } from '../../../lib/ui-industry';
 
 interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null; legId?: string }
 /** One part of a visit done by one technician (hands, feet, …) — see walkin-legs.ts in the API. */
@@ -595,9 +596,9 @@ function Inner() {
                       placeholder={t('wi.serviceSearch')}
                     />
                   </label>
-                  <label><WiLabel text={lang === 'vi' ? 'Thợ' : 'Technician'} />
+                  <label><WiLabel text={ind(lang === 'vi' ? 'Thợ' : 'Technician')} />
                     <select style={ui.input} value={g.staffChoice} onChange={(e) => setGuests((v) => v.map((x, j) => (j === i ? { ...x, staffChoice: e.target.value } : x)))}>
-                      <option value="auto">{lang === 'vi' ? 'Tự động — thợ tới lượt' : 'Auto — up next'}</option>
+                      <option value="auto">{ind(lang === 'vi' ? 'Tự động — thợ tới lượt' : 'Auto — up next')}</option>
                       {(board?.staff ?? []).map((sm) => <option key={sm.id} value={sm.id}>{sm.name}{sm.busy ? (lang === 'vi' ? ' · đang bận' : ' · busy') : ''}</option>)}
                     </select>
                   </label>
@@ -616,9 +617,9 @@ function Inner() {
             <SecHead label={t('wi.secSeat')} />
             <div style={wiGrid}>
               <label><WiLabel text={t('wi.station')} opt={t('wi.optional')} /><input style={ui.input} value={form.station} placeholder={t('wi.stationPh')} onChange={(e) => setForm({ ...form, station: e.target.value })} /></label>
-              <label style={{ gridColumn: 'span 2', minWidth: 0 }}><WiLabel text={lang === 'vi' ? 'Thợ' : 'Technician'} />
+              <label style={{ gridColumn: 'span 2', minWidth: 0 }}><WiLabel text={ind(lang === 'vi' ? 'Thợ' : 'Technician')} />
                 <select style={ui.input} value={form.staffChoice} onChange={(e) => setForm({ ...form, staffChoice: e.target.value })}>
-                  <option value="auto">{lang === 'vi' ? 'Tự động — thợ tới lượt' : 'Auto — up next'}</option>
+                  <option value="auto">{ind(lang === 'vi' ? 'Tự động — thợ tới lượt' : 'Auto — up next')}</option>
                   {(board?.staff ?? []).map((sm) => <option key={sm.id} value={sm.id}>{sm.name}{sm.busy ? (lang === 'vi' ? ' · đang bận' : ' · busy') : ''}</option>)}
                   <option value="wait">{lang === 'vi' ? 'Chỉ thêm vào hàng chờ' : 'Add to waiting'}</option>
                 </select>

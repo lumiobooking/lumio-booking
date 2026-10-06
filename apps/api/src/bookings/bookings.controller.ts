@@ -163,7 +163,7 @@ export class BookingsController {
     @Param('id') id: string,
     @Body() dto: MoveBookingDto,
   ) {
-    return this.bookings.move(user, id, dto.startTime, dto.staffId);
+    return this.bookings.move(user, id, dto.startTime, dto.staffId, dto.outsideHours === true);
   }
 
   // The front desk moves appointments all day; @Caps('bookings') still keeps
@@ -177,7 +177,7 @@ export class BookingsController {
     @Param('id') id: string,
     @Body() dto: RescheduleBookingDto,
   ) {
-    return this.bookings.reschedule(user, id, dto.startTime);
+    return this.bookings.reschedule(user, id, dto.startTime, dto.outsideHours === true);
   }
 
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)

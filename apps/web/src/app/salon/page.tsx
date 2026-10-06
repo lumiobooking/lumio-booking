@@ -13,7 +13,7 @@ import { useLang, tr } from '../../lib/i18n';
 import { useLiveRefresh } from '../../lib/useLiveRefresh';
 import { useIsMobile } from '../../lib/responsive';
 import { uiCurrency } from '../../lib/ui-currency';
-import { ind } from '../../lib/ui-industry';
+import { hiddenHrefsFor, ind, uiIndustry } from '../../lib/ui-industry';
 
 /* =============================================================================
  * THE OWNER'S HOME SCREEN — as drawn in the approved mockup ("Lumio Dashboard
@@ -75,6 +75,8 @@ function Inner() {
   const { lang } = useLang();
   const vi = lang === 'vi';
   const L = (v: string, e: string) => ind(vi ? v : e);
+  // Trades without the turn board (clinic, restaurant, office) see the floor on the front desk.
+  const floorHref = hiddenHrefsFor(uiIndustry()).includes('/salon/walkins') ? '/salon/front-desk' : '/salon/walkins';
   const t = (k: string) => tr(k, lang);
   const canOpen = useNavAccess();
   // The layout follows the room the page actually has, not the window: the
@@ -178,7 +180,7 @@ function Inner() {
   const paidCount = k.avgBookingValueCents > 0 ? Math.round(k.revenueCents / k.avgBookingValueCents) : 0;
   const occupancy = home.chairs.total > 0 ? Math.round((home.chairs.busy / home.chairs.total) * 100) : null;
   const attentionRows = [
-    { key: 'pay', n: home.attention.awaitingPayment, title: L(`${home.attention.awaitingPayment} khách xong, chưa thu tiền`, `${home.attention.awaitingPayment} finished, not yet paid`), detail: home.now.filter((r) => r.current?.awaitingPayment).map((r) => `${r.name} · ${r.current?.customer}`).join(' · '), href: '/salon/walkins', tone: 'warn' },
+    { key: 'pay', n: home.attention.awaitingPayment, title: L(`${home.attention.awaitingPayment} khách xong, chưa thu tiền`, `${home.attention.awaitingPayment} finished, not yet paid`), detail: home.now.filter((r) => r.current?.awaitingPayment).map((r) => `${r.name} · ${r.current?.customer}`).join(' · '), href: floorHref, tone: 'warn' },
     { key: 'pending', n: home.attention.pendingBookings, title: L(`${home.attention.pendingBookings} lịch đặt online chờ xác nhận`, `${home.attention.pendingBookings} online bookings to confirm`), detail: L('Xác nhận và chọn thợ', 'Confirm and assign a technician'), href: '/salon/bookings?status=PENDING', tone: 'accent' },
     { key: 'wait', n: home.attention.waitlist, title: L(`${home.attention.waitlist} khách trong danh sách chờ`, `${home.attention.waitlist} on the waitlist`), detail: home.now.find((r) => !r.current) ? L(`${home.now.find((r) => !r.current)?.name} đang trống — gán ngay`, `${home.now.find((r) => !r.current)?.name} is free — assign now`) : L('Chưa có ghế trống', 'No chair free yet'), href: '/salon/waitlist', tone: 'accent' },
     { key: 'reviews', n: home.attention.reviews, title: L(`${home.attention.reviews} đánh giá Google chưa trả lời`, `${home.attention.reviews} Google reviews to answer`), detail: L('Trả lời trong ngày giữ điểm tốt trên Google', 'Answer today to keep your Google rating'), href: '/salon/reviews-replies', tone: 'star' },
@@ -273,10 +275,10 @@ function Inner() {
         {narrow && <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 500, color: 'var(--c94a3b8)' }}>{fmtInTz(new Date(), { hour: 'numeric', minute: '2-digit' })}</span>}
       </span>
       <div style={narrow ? { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 } : { display: 'flex', alignItems: 'baseline', gap: tablet ? 18 : 26, minWidth: 0, flexWrap: 'wrap' }}>
-        {liveStat(fl.inService, L('đang làm', 'in service'), '/salon/walkins')}
-        {liveStat(fl.waiting, L('đang chờ', 'waiting'), '/salon/walkins', 'warn')}
+        {liveStat(fl.inService, L('đang làm', 'in service'), floorHref)}
+        {liveStat(fl.waiting, L('đang chờ', 'waiting'), floorHref, 'warn')}
         {liveStat(fl.nextHour, phone ? L('hẹn trong 1 giờ', 'next hour') : L('hẹn trong 1 giờ tới', 'booked next hour'), '/salon/calendar')}
-        {liveStat(fl.freeTechs, L('thợ rảnh', 'techs free'), '/salon/walkins', 'good')}
+        {liveStat(fl.freeTechs, L('thợ rảnh', 'techs free'), floorHref, 'good')}
       </div>
       {fl.longestWait && (
         <a href={`/salon/walkins?focus=${encodeURIComponent(fl.longestWait.id)}`}
@@ -293,7 +295,7 @@ function Inner() {
     { key: 'book', href: '/salon/bookings?new=1', page: '/salon/bookings', icon: 'calendarCheck', title: L('Lịch hẹn mới', 'New booking'), sub: L('Chọn thợ và giờ', 'Pick a tech and a time') },
     { key: 'pos', href: '/salon/pos', page: '/salon/pos', icon: 'receipt', title: L('Thu tiền', 'Check out'), sub: L('Mở quầy thu ngân', 'Open the till') },
     { key: 'cal', href: '/salon/calendar', page: '/salon/calendar', icon: 'calendar', title: L('Lịch hôm nay', "Today's calendar"), sub: L(`${home.today.upcoming} lịch sắp tới`, `${home.today.upcoming} still to come`) },
-  ].filter((q) => canOpen(q.page));
+  ].filter((q) => canOpen(q.page) && !(q.key === 'walkin' && floorHref !== '/salon/walkins'));
   const quickActions = quick.length > 0 ? (
     <nav aria-label={L('Thao tác nhanh', 'Quick actions')} style={{ display: 'grid', gridTemplateColumns: narrow && !phone ? 'repeat(2, minmax(0, 1fr))' : `repeat(${quick.length}, minmax(0, 1fr))`, gap: phone ? 8 : 12 }}>
       {quick.map((q) => (
@@ -321,7 +323,7 @@ function Inner() {
     const action = c?.awaitingPayment
       ? <a href={c.kind === 'walkin' ? `/salon/pos?walkInId=${c.id}` : `/salon/pos?appointmentId=${c.id}`} style={{ height: 32, padding: '0 12px', borderRadius: 8, background: '#4f46e5', color: '#fff', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', textDecoration: 'none', whiteSpace: 'nowrap' }}>{L('Thu tiền', 'Charge')}</a>
       : c
-        ? <a href={c.kind === 'walkin' ? '/salon/walkins' : '/salon/calendar'} style={{ height: 32, padding: '0 12px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', textDecoration: 'none', whiteSpace: 'nowrap' }}>{L('Chi tiết', 'Details')}</a>
+        ? <a href={c.kind === 'walkin' ? floorHref : '/salon/calendar'} style={{ height: 32, padding: '0 12px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', textDecoration: 'none', whiteSpace: 'nowrap' }}>{L('Chi tiết', 'Details')}</a>
         : home.attention.waitlist > 0
           ? <a href="/salon/waitlist" style={{ height: 32, padding: '0 12px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', textDecoration: 'none', whiteSpace: 'nowrap' }}>{L('Gán khách chờ', 'Assign waitlist')}</a>
           : null;
@@ -526,7 +528,7 @@ function shortDate(key: string): string {
 function SourcesPanel({ rows, vi, hint }: { rows: { source: string | null; utmSource: string | null; attrReferrer?: string | null; attrLandingUrl?: string | null }[]; vi: boolean; hint: string }) {
   const counts = sourceCounts(rows);
   const total = rows.length || 1;
-  if (!counts.length) return <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: 0 }}>{vi ? 'Chưa có lịch hẹn trong khoảng này.' : 'No bookings in this range.'}</p>;
+  if (!counts.length) return <p style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: 0 }}>{ind(vi ? 'Chưa có lịch hẹn trong khoảng này.' : 'No bookings in this range.')}</p>;
   return (
     <div>
       <p style={{ color: 'var(--c64748b)', fontSize: 12.5, margin: '0 0 10px' }}>{hint}</p>

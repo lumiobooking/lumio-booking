@@ -42,6 +42,8 @@ function Inner() {
   const [ga4Id, setGa4Id] = useState('');
   const [gtmId, setGtmId] = useState('');
   const [anMode, setAnMode] = useState('');
+  const [adsId, setAdsId] = useState('');
+  const [adsLabel, setAdsLabel] = useState('');
   const [savingAn, setSavingAn] = useState(false);
   const [anMsg, setAnMsg] = useState<string | null>(null);
 
@@ -53,13 +55,15 @@ function Inner() {
       const [keyList, tenant, settings] = await Promise.all([
         apiFetch<ApiKey[]>('/api-keys', { token }),
         apiFetch<{ slug: string }>('/me/tenant', { token }),
-        apiFetch<{ analytics?: { ga4Id?: string; gtmId?: string; mode?: string } }>('/settings', { token }).catch(() => null),
+        apiFetch<{ analytics?: { ga4Id?: string; gtmId?: string; mode?: string; adsId?: string; adsLabel?: string } }>('/settings', { token }).catch(() => null),
       ]);
       setKeys(keyList);
       setSlug(tenant?.slug ?? null);
       setGa4Id(settings?.analytics?.ga4Id ?? '');
       setGtmId(settings?.analytics?.gtmId ?? '');
       setAnMode(settings?.analytics?.mode ?? '');
+      setAdsId(settings?.analytics?.adsId ?? '');
+      setAdsLabel(settings?.analytics?.adsLabel ?? '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load integrations');
     } finally {
@@ -84,8 +88,18 @@ function Inner() {
   async function saveAnalytics() {
     setSavingAn(true); setAnMsg(null); setError(null);
     try {
-      await apiFetch('/settings/analytics', { method: 'PATCH', token, body: { ga4Id: ga4Id.trim(), gtmId: gtmId.trim(), mode: anMode } });
-      setAnMsg(lang === 'vi' ? '✓ Đã lưu. Trang đặt lịch của tiệm sẽ nạp GA4/GTM này.' : '✓ Saved. Your booking page now loads this GA4/GTM.');
+      const saved = await apiFetch<{ analytics?: { adsId?: string; adsLabel?: string } }>('/settings/analytics', {
+        method: 'PATCH', token, body: { ga4Id: ga4Id.trim(), gtmId: gtmId.trim(), mode: anMode, adsId: adsId.trim(), adsLabel: adsLabel.trim() },
+      });
+      // The server keeps the old value for anything malformed — show what was really stored.
+      const gotId = saved?.analytics?.adsId ?? adsId.trim();
+      const gotLabel = saved?.analytics?.adsLabel ?? adsLabel.trim();
+      setAdsId(gotId); setAdsLabel(gotLabel);
+      const typedId = adsId.trim().split('/')[0].toUpperCase();
+      const adsRejected = (typedId !== '' && typedId !== gotId) || (adsLabel.trim() !== '' && adsLabel.trim() !== gotLabel);
+      setAnMsg(adsRejected
+        ? (lang === 'vi' ? '⚠ Đã lưu GA4/GTM, nhưng Google Ads ID hoặc nhãn chuyển đổi không đúng định dạng (ID dạng AW-123456789) — giữ giá trị cũ.' : '⚠ Saved GA4/GTM, but the Google Ads ID or label is not in the right format (ID looks like AW-123456789) — kept the previous value.')
+        : (lang === 'vi' ? '✓ Đã lưu. Trang đặt lịch của tiệm sẽ nạp các mã này.' : '✓ Saved. Your booking page now loads these tags.'));
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not save analytics'); }
     finally { setSavingAn(false); }
   }
@@ -334,7 +348,26 @@ function Inner() {
           {lang === 'vi' ? '⬇ Tải mẫu GTM container' : '⬇ Download GTM container template'}
         </a>
       </div>
-      {anMsg && <div style={{ color: '#34d399', fontSize: 13, marginTop: 8 }}>{anMsg}</div>}
+      <h3 style={{ fontSize: 15, margin: '22px 0 4px' }}>🎯 {lang === 'vi' ? 'Google Ads — chuyển đổi đặt lịch (không cần GTM)' : 'Google Ads — booking conversions (no GTM needed)'}</h3>
+      <p style={{ color: 'var(--c94a3b8)', fontSize: 13, margin: '0 0 10px', lineHeight: 1.6, maxWidth: 680 }}>
+        {lang === 'vi'
+          ? 'Dán 2 mã từ Google Ads, trang đặt lịch sẽ tự gửi 1 chuyển đổi cho mỗi lịch hẹn (kèm giá trị và mã lịch hẹn để Google không đếm trùng). Lấy mã: Google Ads → Mục tiêu → Chuyển đổi → chọn hành động chuyển đổi (vd "Đặt lịch") → Thiết lập thẻ → "Sử dụng Google Tag Manager" → copy "ID chuyển đổi" và "Nhãn chuyển đổi". Có thể dán cả chuỗi AW-…/nhãn vào ô đầu.'
+          : 'Paste two values from Google Ads and the booking page sends one conversion per appointment (with value and the booking id, so Google never counts it twice). Where: Google Ads → Goals → Conversions → your conversion action (e.g. "Booking") → Tag setup → "Use Google Tag Manager" → copy "Conversion ID" and "Conversion label". You can also paste the whole AW-…/label into the first box.'}
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, maxWidth: 640 }}>
+        <label style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{lang === 'vi' ? 'Google Ads ID (ID chuyển đổi)' : 'Google Ads ID (Conversion ID)'}
+          <input style={{ ...ui.input, marginTop: 4 }} value={adsId} onChange={(e) => setAdsId(e.target.value)} placeholder="AW-123456789" autoComplete="off" spellCheck={false} />
+        </label>
+        <label style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{lang === 'vi' ? 'Nhãn chuyển đổi (Conversion label)' : 'Conversion label'}
+          <input style={{ ...ui.input, marginTop: 4 }} value={adsLabel} onChange={(e) => setAdsLabel(e.target.value)} placeholder="AbCdEfGhIjKlMn" autoComplete="off" spellCheck={false} />
+        </label>
+      </div>
+      <p style={{ color: 'var(--ink-warn)', fontSize: 12, margin: '8px 0 0', maxWidth: 640, lineHeight: 1.5 }}>
+        {lang === 'vi'
+          ? 'Lưu ý: nếu đã dùng cách này thì KHÔNG import thêm sự kiện purchase/booking_completed từ GA4 vào Google Ads làm chuyển đổi CHÍNH, và không tạo thêm thẻ chuyển đổi Ads trong GTM — nếu không mỗi lịch hẹn sẽ bị tính 2 lần. Chỉ áp dụng khi khách mở trực tiếp trang đặt lịch; form nhúng trên website vẫn do GTM/GA4 của website đo.'
+          : 'Note: with this on, do NOT also import the GA4 purchase/booking_completed event into Google Ads as a PRIMARY conversion, and do not add another Ads conversion tag in GTM — or every booking counts twice. Applies when customers open the booking page directly; the form embedded on a website is still measured by that website\'s GTM/GA4.'}
+      </p>
+      {anMsg && <div style={{ color: anMsg.startsWith('⚠') ? 'var(--ink-warn)' : 'var(--ink-good)', fontSize: 13, marginTop: 8 }}>{anMsg}</div>}
       <button onClick={saveAnalytics} disabled={savingAn} style={{ ...ui.primaryBtn, marginTop: 12 }}>
         {savingAn ? '…' : (lang === 'vi' ? 'Lưu Analytics' : 'Save analytics')}
       </button>

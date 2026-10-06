@@ -361,3 +361,54 @@ describe('the technician’s day on her phone', () => {
     expect(again.id).toBe(w.id);
   });
 });
+
+describe('the front desk board tells the time right', () => {
+  it('sends the salon timezone, so every clock on the desk is the salon’s', async () => {
+    const f = floor();
+    expect((await f.svc.board(admin)).timezone).toBe('America/Los_Angeles');
+  });
+
+  it('a checked-in booking shows when she CAME IN, not the time she was booked for', async () => {
+    const booked = new Date(Date.now() - 4 * 3600_000);
+    const came = new Date(Date.now() - 3 * 60_000);
+    const f = floor({
+      walkIns: [{ id: 'hw', status: 'WAITING', createdAt: booked, appointmentId: 'appt-hw' }],
+      appts: [{ id: 'appt-hw', tenantId: T1, startTime: booked, arrivedAt: came }],
+      staff: [],
+    });
+    const w = (await f.svc.board(admin)).waiting.find((x) => x.id === 'hw') as unknown as { arrivedAt: Date; bookedAt: Date; createdAt: Date };
+    expect(w.arrivedAt).toEqual(came);
+    expect(w.bookedAt).toEqual(booked);
+    expect(w.createdAt).toEqual(booked); // queue position is unchanged
+  });
+
+  it('a plain walk-in arrived when her ticket was made', async () => {
+    const made = new Date(Date.now() - 12 * 60_000);
+    const f = floor({ walkIns: [{ id: 'ana', status: 'WAITING', createdAt: made }], staff: [] });
+    const w = (await f.svc.board(admin)).waiting[0] as unknown as { arrivedAt: Date; bookedAt: Date | null };
+    expect(w.arrivedAt).toEqual(made);
+    expect(w.bookedAt).toBeNull();
+  });
+
+  it('never reads another salon’s appointment for the arrival time', async () => {
+    const made = new Date(Date.now() - 12 * 60_000);
+    const f = floor({
+      walkIns: [{ id: 'x', status: 'WAITING', createdAt: made, appointmentId: 'appt-other' }],
+      appts: [{ id: 'appt-other', tenantId: 't2', startTime: new Date(0), arrivedAt: new Date(1) }],
+      staff: [],
+    });
+    const w = (await f.svc.board(admin)).waiting[0] as unknown as { arrivedAt: Date; bookedAt: Date | null };
+    expect(w.arrivedAt).toEqual(made);
+    expect(w.bookedAt).toBeNull();
+  });
+
+  it('a technician with a customer in her chair is busy — "Thợ rảnh" counts only the free ones', async () => {
+    const f = floor({
+      walkIns: [{ id: 'ana', status: 'SERVING', assignedStaffId: 'hana', assignedAt: new Date(Date.now() - 5 * 60_000), createdAt: new Date(Date.now() - 5 * 60_000),
+        items: [{ lineId: 'l1', legId: 'g1', serviceId: 'mani', name: 'Full Body Massage', priceCents: 8500, durationMinutes: 60, zone: 'BODY', legStatus: 'SERVING', staffId: 'hana', startedAt: new Date(Date.now() - 5 * 60_000).toISOString() }] }],
+    });
+    const b = await f.svc.board(admin);
+    expect(b.staff.find((s) => s.id === 'hana')!.busy).toBe(true);
+    expect(b.staff.filter((s) => !s.busy).map((s) => s.id)).toEqual(['lisa']);
+  });
+});

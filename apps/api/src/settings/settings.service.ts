@@ -54,6 +54,8 @@ import {
   RebookingSettings,
   DEFAULT_REBOOKING_SETTINGS,
   AnalyticsSettings,
+  ADS_ID_RE,
+  ADS_LABEL_RE,
   DEFAULT_ANALYTICS_SETTINGS,
   ReviewSettings,
   DEFAULT_REVIEW_SETTINGS,
@@ -353,16 +355,26 @@ export class SettingsService {
 
   /** Save the salon's GA4 / GTM IDs. Both are public front-end IDs (not secrets);
    *  we still validate the shape so a typo can't inject arbitrary script. */
-  async updateAnalytics(user: AuthenticatedUser, dto: { ga4Id?: string; gtmId?: string; mode?: string }) {
+  async updateAnalytics(user: AuthenticatedUser, dto: { ga4Id?: string; gtmId?: string; mode?: string; adsId?: string; adsLabel?: string }) {
     const tenantId = this.tenantId(user);
     const cur = await this.getAnalyticsSettings(tenantId);
     const ga = typeof dto.ga4Id === 'string' ? dto.ga4Id.trim().toUpperCase() : cur.ga4Id;
     const gtm = typeof dto.gtmId === 'string' ? dto.gtmId.trim().toUpperCase() : cur.gtmId;
+    // People paste "AW-123456789/AbC-xyz" (the send_to) into one box — split it.
+    const adsRaw = typeof dto.adsId === 'string' ? dto.adsId.trim().replace(/\s+/g, '') : null;
+    const [adsPart, labelFromId] = adsRaw !== null ? adsRaw.split('/') : [null, undefined];
+    const ads = adsPart !== null ? adsPart.toUpperCase() : (cur.adsId ?? '');
+    const adsLabel = typeof dto.adsLabel === 'string' && dto.adsLabel.trim() !== ''
+      ? dto.adsLabel.trim()
+      : labelFromId ? labelFromId.trim()
+      : typeof dto.adsLabel === 'string' ? '' : (cur.adsLabel ?? '');
     const mode = typeof dto.mode === 'string' && ['', 'none', 'ga4', 'gtm'].includes(dto.mode) ? (dto.mode as AnalyticsSettings['mode']) : (cur.mode ?? '');
     const next: AnalyticsSettings = {
       ga4Id: ga === '' || /^G-[A-Z0-9]{4,20}$/.test(ga) ? ga : cur.ga4Id,
       gtmId: gtm === '' || /^GTM-[A-Z0-9]{4,12}$/.test(gtm) ? gtm : cur.gtmId,
       mode,
+      adsId: ads === '' || ADS_ID_RE.test(ads) ? ads : (cur.adsId ?? ''),
+      adsLabel: adsLabel === '' || ADS_LABEL_RE.test(adsLabel) ? adsLabel : (cur.adsLabel ?? ''),
     };
     await this.writeKey(tenantId, ANALYTICS_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.analytics_updated', resourceType: 'tenant', resourceId: tenantId });

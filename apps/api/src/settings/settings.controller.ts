@@ -89,7 +89,7 @@ export class SettingsController {
   }
 
   @Patch('analytics')
-  updateAnalytics(@CurrentUser() user: AuthenticatedUser, @Body() dto: { ga4Id?: string; gtmId?: string; mode?: string }) {
+  updateAnalytics(@CurrentUser() user: AuthenticatedUser, @Body() dto: { ga4Id?: string; gtmId?: string; mode?: string; adsId?: string; adsLabel?: string }) {
     return this.settings.updateAnalytics(user, dto);
   }
 

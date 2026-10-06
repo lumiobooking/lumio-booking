@@ -11,7 +11,7 @@ import { signingSecret } from '../common/secret.util';
 import { publicWebBase } from '../common/public-url.util';
 import { formatMoney, localeForCountry } from '../common/money';
 import { toE164, dialCodeFor } from '../common/phone';
-import { fitsBusinessHours, describeWindows } from '../settings/business-hours';
+import { fitsBusinessHours, describeWindows, startsInBusinessHours } from '../settings/business-hours';
 import { canSelfReschedule } from './self-reschedule';
 import { canSelfCancel } from './self-cancel';
 import { AppointmentStatus, NotificationChannel, PaymentStatus, Prisma, RejectionType } from '@prisma/client';
@@ -399,7 +399,14 @@ export class BookingsService {
 
   // Salon Admin create (tenant from the JWT).
   create(user: AuthenticatedUser, dto: CreateBookingDto, source?: string) {
-    return this.createForTenant(this.tenantId(user), dto, user.userId, source);
+    // Booking outside opening hours on purpose is the owner's call alone.
+    const owner = user.role === 'SALON_ADMIN' || user.role === 'SUPER_ADMIN';
+    const clean = Object.assign(Object.create(Object.getPrototypeOf(dto)), dto, { outsideHours: owner ? dto.outsideHours === true : false }) as CreateBookingDto;
+    // No technician chosen at the desk: the engine picks one now (turns, skills,
+    // who is free at that time), exactly as for an online booking — the salon's
+    // assignment mode still decides. `autoAssign: false` leaves it open on purpose.
+    const autoAssign = !clean.staffId && clean.autoAssign !== false;
+    return this.createForTenant(this.tenantId(user), clean, user.userId, source, null, { autoAssign });
   }
 
   /**
@@ -593,11 +600,22 @@ export class BookingsService {
     // rule above uses: staff at the desk must still be able to write down a
     // walk-in at 8pm or a favour for a regular. This protects the salon from the
     // outside; it does not tell the owner what to do inside their own shop.
-    if (isPublicBooking) {
+    // The DESK is held to the start time (startsInBusinessHours): a typed
+    // 11:40 PM for 11:40 AM was going straight onto the calendar. The owner may
+    // still book outside hours on purpose (dto.outsideHours, owner-only — see create()).
+    const deskHours = !isPublicBooking && dto.outsideHours !== true;
+    const readHours = async () => {
       const [hoursTenant, hoursRules] = await Promise.all([
         this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }),
         this.settings.getBookingRules(tenantId),
       ]);
+      return { hoursTenant, hoursRules };
+    };
+    // Public: no hours, no booking. Desk: a typo guard — if the hours cannot be
+    // read, the receptionist's booking still goes through.
+    const hoursRead = isPublicBooking ? await readHours() : deskHours ? await readHours().catch(() => null) : null;
+    if (hoursRead) {
+      const { hoursTenant, hoursRules } = hoursRead;
       const tz = hoursTenant?.timezone || 'UTC';
       // Weekday and clock time AS THE SALON SEES THEM. Comparing a UTC instant
       // against opening hours is how a 9am booking becomes 2am somewhere else.
@@ -617,13 +635,23 @@ export class BookingsService {
       // knocked on a dark shop.
       const dateStr = `${parts.find((x) => x.type === 'year')?.value}-${parts.find((x) => x.type === 'month')?.value}-${parts.find((x) => x.type === 'day')?.value}`;
       if ((hoursRules.daysOff ?? []).includes(dateStr)) {
-        throw new BadRequestException('The salon is closed that day. Please pick another date.');
+        throw new BadRequestException(isPublicBooking
+          ? 'The salon is closed that day. Please pick another date.'
+          : `OUTSIDE_HOURS: ${dateStr} is marked as a day off. Pick another date (the owner can still book it on purpose).`);
       }
 
       if (dayIndex >= 0 && Number.isFinite(hh) && Number.isFinite(mm)) {
         // hour12:false reports midnight as 24 in some environments.
         const startMinutes = (hh % 24) * 60 + mm;
-        if (!fitsBusinessHours({ day, startMinutes, durationMin: totalDuration })) {
+        if (!isPublicBooking) {
+          if (!startsInBusinessHours({ day, startMinutes })) {
+            const open = describeWindows(day);
+            const at = `${wd} ${dateStr} ${String(hh % 24).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+            throw new BadRequestException(open === 'closed'
+              ? `OUTSIDE_HOURS: the salon is closed on ${at.split(' ')[0]}. Pick another day (the owner can still book it on purpose).`
+              : `OUTSIDE_HOURS: ${at} (salon time) is outside opening hours (${open}). Check AM/PM, or pick another time.`);
+          }
+        } else if (!fitsBusinessHours({ day, startMinutes, durationMin: totalDuration })) {
           const open = describeWindows(day);
           throw new BadRequestException(
             open === 'closed'

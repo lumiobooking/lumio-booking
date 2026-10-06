@@ -30,6 +30,7 @@ import { planOpeningBar } from '../../../lib/opening-bar';
 import { bookLangForCountry, setBookLang, bt, btf, bookLocale } from '../../../lib/i18n-book';
 import { afterPct, anyDealPct, dayKey, lineDeal, nextDeal, promoDeal, windowEnded, type Promos } from '../../../lib/booking-promos';
 import { gbpAttribution, gbpSearch, isGbpPath } from '../../../lib/gbp-source';
+import { adsConfigFrom, conversionRoute, loadAdsTag, sendAdsConversion, type AdsConfig, type TagDocument, type TagWindow } from '../../../lib/ads-tag';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const INK = '#0f2a52';        // ink for text (headings, rows)
@@ -132,6 +133,8 @@ interface Salon {
   rating?: { value: number; count: number } | null;
   /** ISO country of the salon; decides the language this page speaks. */
   country?: string;
+  /** Public front-end tag ids (never secrets). adsId/adsLabel: Google Ads conversion. */
+  analytics?: { ga4Id?: string; gtmId?: string; mode?: string; adsId?: string; adsLabel?: string } | null;
 }
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number }
 interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; imageUrl?: string | null; addons: Addon[] }
@@ -212,6 +215,8 @@ function wallTimeToISO(local: Date, timeZone: string): string {
  * ever included — only booking id, value, currency and service names.
  */
 const firedBookings = new Set<string>();
+/** Each salon's Google Ads conversion, keyed by its slug so a booking can only ever report into its own salon's account. */
+const adsBySlug = new Map<string, AdsConfig>();
 function fireConversion(data: { id: string; valueCents: number; currency: string; slug: string; items: { id?: string; name: string; priceCents: number }[] }) {
   if (typeof window === 'undefined') return;
   if (!data.id) return; // transaction_id must be the backend booking id — never empty
@@ -229,12 +234,18 @@ function fireConversion(data: { id: string; valueCents: number; currency: string
   if (!inFrame) {
     try {
       const w = window as unknown as { dataLayer?: Record<string, unknown>[]; gtag?: (...a: unknown[]) => void; google_tag_manager?: unknown };
-      if (w.google_tag_manager) {
+      const route = conversionRoute(w as unknown as TagWindow);
+      if (route === 'gtm') {
         w.dataLayer = w.dataLayer || [];
         w.dataLayer.push({ event: 'booking_completed', ...payload });
-      } else if (typeof w.gtag === 'function') {
+      } else if (route === 'ga4' && typeof w.gtag === 'function') {
         w.gtag('event', 'purchase', payload);
       }
+    } catch { /* ignore */ }
+    // Google Ads straight from the booking page, when the salon pasted its
+    // conversion ID + label in Lumio. Separate from GTM/GA4 above.
+    try {
+      sendAdsConversion(adsBySlug.get(data.slug), { transaction_id: payload.transaction_id, value: payload.value, currency: payload.currency }, window as unknown as TagWindow);
     } catch { /* ignore */ }
   }
   // Embedded only: hand the conversion to the PARENT site — to a verified
@@ -293,6 +304,24 @@ export default function PublicBookingPage() {
    * uncredited page_view. That is strictly better than today, where nothing
    * fires it at all, and it is the earliest point that is guaranteed to run.
    */
+  /**
+   * This salon's Google Ads tag (conversion ID pasted in Lumio). Loaded from
+   * here rather than the layout: an effect always runs, and the values come
+   * with the page's own data. Top window only — an embedded form leaves
+   * measurement to the salon's website.
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined' || !salon) return;
+    let top = true;
+    try { top = window.self === window.top; } catch { top = false; }
+    if (!top) return;
+    const cfg = adsConfigFrom(salon.analytics);
+    // Keyed by the URL slug — the same value every fireConversion call passes.
+    if (!cfg.adsId) { adsBySlug.delete(slug); return; }
+    adsBySlug.set(slug, cfg);
+    try { loadAdsTag(cfg.adsId, window as unknown as TagWindow, document as unknown as TagDocument); } catch { /* ignore */ }
+  }, [salon, slug]);
+
   useEffect(() => {
     if (typeof window === 'undefined' || !isGbpPath(window.location.pathname)) return;
     const next = gbpSearch(window.location.search);

@@ -79,6 +79,20 @@ export function fitsBusinessHours(args: {
 }
 
 /**
+ * The desk's rule: the appointment must START while the salon is open.
+ *
+ * Bookings made by staff used to have no hours check at all, so 11:40 PM picked
+ * for 11:40 AM in a 12-hour time picker went straight onto the calendar. The
+ * desk is held to the start time only — a 60-minute service at 5:30 when the
+ * salon closes at 6 is a human call the receptionist makes, not a typo.
+ */
+export function startsInBusinessHours(args: { day: DayHoursLike | null | undefined; startMinutes: number }): boolean {
+  const start = Math.round(Number(args.startMinutes));
+  if (!Number.isFinite(start) || start < 0) return false;
+  return windowsForDay(args.day).some((w) => start >= w.open && start < w.close);
+}
+
+/**
  * Hours that are legal but almost certainly a mistake.
  *
  * A US salon's Sunday was saved as 00:00–17:00 and the booking page dutifully

@@ -12,6 +12,8 @@ import { useLiveEvents } from '../../../lib/useLiveEvents';
 import { useIsMobile } from '../../../lib/responsive';
 import { FloorStats, TechBoard } from './TechBoard';
 import { PartyChip, type PartyInfo } from '../../../components/PartyChip';
+import { clockIn } from '../../../lib/desk-time';
+import { salonTz, uiLocale } from '../../../lib/datetime';
 
 interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null; legId?: string }
 /** One part of a visit done by one technician (hands, feet, …) — see walkin-legs.ts in the API. */
@@ -37,6 +39,17 @@ interface WalkIn {
   /** The party this ticket belongs to (friends who came in together), or null. */
   groupId?: string | null;
   group?: PartyInfo | null;
+  /** Finished in the chair (or parked by the sweeper): the bill is open, the technician is free. */
+  awaitingPayment?: boolean;
+  /** When the customer actually came in — a booking's check-in, not its booked time. */
+  arrivedAt?: string | null;
+  bookedAt?: string | null;
+}
+/** "vào 10:02" / "in 10:02 AM" — salon clock. */
+function cameInText(w: WalkIn): string {
+  const vi = uiLocale().startsWith('vi');
+  const at = clockIn(w.arrivedAt ?? w.createdAt, salonTz() || null, vi);
+  return at ? `${vi ? 'vào' : 'in'} ${at}` : '';
 }
 /** Someone who came in with the customer: a ticket of their own in the same party. */
 interface GuestDraft { name: string; serviceIds: string[]; staffChoice: string }
@@ -799,7 +812,7 @@ function Inner() {
       <div>
       <div style={listHead}>
         <span>{t('wi.inService')}</span>
-        <span style={countPill(board?.serving.length ?? 0)}>{board?.serving.length ?? 0}</span>
+        <span style={countPill((board?.serving ?? []).filter((w) => !w.awaitingPayment).length)}>{(board?.serving ?? []).filter((w) => !w.awaitingPayment).length}</span>
       </div>
       {(!board || board.serving.length === 0) ? (
         <div style={{ ...ui.card, color: 'var(--c64748b)', marginBottom: 20, padding: '16px 18px', fontSize: 13.5 }}>{t('wi.noInService')}</div>
@@ -807,8 +820,12 @@ function Inner() {
         // A customer whose hands are done and whose feet wait for a technician
         // is not "in service" — she is sitting there. Shown apart, so the desk
         // sees at a glance who is stuck between two parts of a visit.
-        const inChair = board.serving.filter((w) => w.phase !== 'BETWEEN');
-        const between = board.serving.filter((w) => w.phase === 'BETWEEN');
+        // Waiting to pay is NOT in a chair: the technician is finished and free
+        // (the turn board says "Rảnh"). Listing it under "Đang làm" with a green
+        // dot made the two halves of this screen contradict each other.
+        const inChair = board.serving.filter((w) => !w.awaitingPayment && w.phase !== 'BETWEEN');
+        const between = board.serving.filter((w) => !w.awaitingPayment && w.phase === 'BETWEEN');
+        const toPay = board.serving.filter((w) => w.awaitingPayment);
         return (
           <div style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
             {inChair.map((w) => (
@@ -821,6 +838,15 @@ function Inner() {
               </div>
             )}
             {between.map((w) => (
+              <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} />
+            ))}
+            {toPay.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: 'rgba(239,68,68,0.10)', borderBottom: '1px solid var(--line)', fontSize: 12, fontWeight: 600, color: 'var(--ink-bad)' }}>
+                <span>💳 {uiLocale().startsWith('vi') ? 'Chờ thanh toán — thợ đã rảnh' : 'Waiting to pay — technician is free'}</span>
+                <span style={{ marginLeft: 'auto' }}>{toPay.length}</span>
+              </div>
+            )}
+            {toPay.map((w) => (
               <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} />
             ))}
           </div>
@@ -908,7 +934,7 @@ function WaitingRow({ w, pos, staff, currency, t, isMobile, sel, onPick, open, o
   const total = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
   const mins = items.reduce((sum, it) => sum + (it.durationMinutes || 0), 0);
   const names = items.length ? items.map((it) => it.name).join(' · ') : (w.service?.name ?? t('wi.noService'));
-  const waited = waitedMins(w.createdAt);
+  const waited = waitedMins(w.arrivedAt ?? w.createdAt);
   // A wait that is getting long turns amber, then red — the row asks for
   // attention before the customer does.
   const waitColor = waited >= 40 ? 'var(--ink-bad)' : waited >= 20 ? 'var(--ink-warn)' : 'var(--c94a3b8)';
@@ -1002,17 +1028,17 @@ function ServingRow({ w, staff, currency, t, isMobile, onOpen }: {
   const checkoutHref = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
   return (
     <div className="wi-serving" onClick={onOpen} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '10px 12px' : '9px 14px', borderBottom: '1px solid var(--line)', cursor: 'pointer', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
-      <span style={{ width: 8, height: 8, borderRadius: '50%', background: between ? '#f59e0b' : '#22c55e', flexShrink: 0 }} />
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: w.awaitingPayment ? '#ef4444' : between ? '#f59e0b' : '#22c55e', flexShrink: 0 }} />
       <div style={{ minWidth: 0, flex: isMobile ? '1 1 120px' : '0 0 140px' }}>
         <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
-        <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{since}′{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}</div>
+        <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{w.awaitingPayment ? '' : `${since}′ · `}{cameInText(w)}{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}</div>
       </div>
       {w.group && <PartyChip group={w.group} />}
       <OverdueBadge minutes={w.overdueMinutes} t={t} />
       {legs.length > 1
         // Several parts: one chip per part, each with its technician.
         ? <div style={{ flexShrink: 0 }}><LegChips legs={legs} staff={staff} t={t} /></div>
-        : <span style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, color: 'var(--ink-warn)', background: 'var(--wash-amber-2)', borderRadius: 999, padding: '2px 9px', maxWidth: isMobile ? 'none' : 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>{between ? '⏸' : '✂'} {techText}</span>}
+        : <span style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, color: 'var(--ink-warn)', background: 'var(--wash-amber-2)', borderRadius: 999, padding: '2px 9px', maxWidth: isMobile ? 'none' : 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.awaitingPayment ? '💳' : between ? '⏸' : '✂'} {techText}</span>}
       <div style={{ minWidth: 0, flex: '1 1 140px', ...(isMobile ? { flexBasis: '100%', order: 5 } : null) }}>
         {(legs.length <= 1 || isMobile) && <div style={{ color: 'var(--ccbd5e1)', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{names}</div>}
       </div>

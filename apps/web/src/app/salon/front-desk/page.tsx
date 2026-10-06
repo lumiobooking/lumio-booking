@@ -17,6 +17,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { PartyChip, type PartyInfo } from '../../../components/PartyChip';
+import { arrivalState, clockIn, minutesText, salonDayLabel } from '../../../lib/desk-time';
 
 interface Ticket {
   id: string;
@@ -34,10 +35,14 @@ interface Ticket {
   /** Minutes past the visit's expected finish (server-computed). */
   overdueMinutes?: number | null;
   group?: PartyInfo | null;
+  /** When the customer actually walked in (a booking's check-in time). */
+  arrivedAt?: string | null;
+  /** The booked time, for a checked-in appointment. */
+  bookedAt?: string | null;
 }
 interface Booked { id: string; startTime: string; customerName: string | null; serviceName: string | null; staff: { id: string; name: string } | null; source?: string; groupId?: string | null; groupSize?: number }
 interface StaffChip { id: string; name: string; busy: boolean; busyFor: number | null; nextUp: boolean; turns: number }
-interface Board { waiting: Ticket[]; serving: Ticket[]; booked: Booked[]; staff: StaffChip[] }
+interface Board { waiting: Ticket[]; serving: Ticket[]; booked: Booked[]; staff: StaffChip[]; timezone?: string | null }
 
 export default function FrontDeskPage() {
   return (
@@ -88,13 +93,21 @@ function FrontDesk() {
     finally { setBusy(null); }
   }
 
-  const upcoming = board?.booked ?? [];
+  // Every clock on this screen is the SALON's (board.timezone), never the browser's.
+  const tz = board?.timezone || (typeof window !== 'undefined' ? window.localStorage.getItem('lumio_tz') : null) || null;
+  const booked = board?.booked ?? [];
+  // Still to come today, soonest first — and, apart, the ones whose time has
+  // passed without a check-in (late, or a no-show to call).
+  const upcoming = booked.filter((b) => arrivalState(b.startTime, now).kind !== 'late');
+  const late = booked.filter((b) => arrivalState(b.startTime, now).kind === 'late');
   const waiting = board?.waiting ?? [];
   const inChair = (board?.serving ?? []).filter((w) => !w.awaitingPayment);
   const toPay = (board?.serving ?? []).filter((w) => w.awaitingPayment);
   const free = (board?.staff ?? []).filter((s) => !s.busy);
-  const time = (iso: string) => new Date(iso).toLocaleTimeString(vi ? 'vi-VN' : 'en-US', { hour: 'numeric', minute: '2-digit' });
-  const today = new Date(now).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+  const time = (iso: string | null | undefined) => clockIn(iso, tz, vi);
+  const today = salonDayLabel(now, tz, vi);
+  /** "vào 10:02" — when the customer came in, salon time. */
+  const cameIn = (w: Ticket) => `${L('vào', 'in')} ${time(w.arrivedAt ?? w.createdAt)}`;
 
   const actions = [
     may('walkins') && { href: '/salon/walkins?new=1', icon: '🚶', t: L('Khách walk-in', 'New walk-in'), d: L('Nhận khách vào hàng chờ', 'Add to the queue') },
@@ -116,6 +129,42 @@ function FrontDesk() {
   const name: React.CSSProperties = { fontWeight: 600, fontSize: 14, color: 'var(--ce2e8f0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
   const sub: React.CSSProperties = { fontSize: 12.5, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
   const smallBtn: React.CSSProperties = { ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap', textDecoration: 'none', flexShrink: 0 };
+
+  /** One booking: its time (salon clock), how soon / how late, who, and check-in. */
+  const bookedRow = (b: Booked) => {
+    const st = arrivalState(b.startTime, now);
+    const tone = st.kind === 'late' ? 'var(--ink-warn)' : st.kind === 'now' || st.kind === 'soon' ? 'var(--ink-good)' : 'var(--c94a3b8)';
+    const when = st.kind === 'late' ? L(`trễ ${minutesText(st.minutes, vi)}`, `${minutesText(st.minutes, vi)} late`)
+      : st.kind === 'now' ? L('đến giờ', 'due now')
+      : L(`còn ${minutesText(st.minutes, vi)}`, `in ${minutesText(st.minutes, vi)}`);
+    const hot = st.kind === 'now' || st.kind === 'soon';
+    return (
+      <div key={b.id} style={{ ...row, ...(hot ? { background: 'rgba(34,197,94,0.08)', boxShadow: 'inset 3px 0 0 #22c55e' } : null) }}>
+        <span style={{ width: 66, flexShrink: 0 }}>
+          <span style={{ display: 'block', fontWeight: 700, fontSize: 13.5, color: st.kind === 'late' ? 'var(--ink-warn)' : 'var(--ce2e8f0)' }}>{time(b.startTime)}</span>
+          <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: tone, whiteSpace: 'nowrap' }}>{when}</span>
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', ...name }}>{b.customerName || L('Khách', 'Guest')}</span>
+          <span style={{ display: 'block', ...sub }}>{[b.serviceName, b.staff?.name ?? L('chưa giao thợ', 'no technician yet')].filter(Boolean).join(' · ')}</span>
+        </span>
+        {may('walkins') && (
+          <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
+            {/* A party: one press seats everyone booked together who is still to come. */}
+            {(b.groupSize ?? 1) > 1 && (
+              <button type="button" disabled={busy === b.id} onClick={() => arrive(b.id, true)} title={L('Nhận tất cả người trong nhóm còn chưa đến', 'Seat everyone in the party who has not arrived yet')}
+                style={{ ...smallBtn, background: 'rgba(99,102,241,0.18)', color: 'var(--cc7d2fe)', border: '1px solid rgba(99,102,241,0.45)', opacity: busy === b.id ? 0.6 : 1 }}>
+                {busy === b.id ? '…' : `👥 ${L('Cả nhóm', 'Party')} (${b.groupSize})`}
+              </button>
+            )}
+            <button type="button" disabled={busy === b.id} onClick={() => arrive(b.id)} style={{ ...smallBtn, opacity: busy === b.id ? 0.6 : 1 }}>
+              {busy === b.id ? '…' : L('Đã đến', 'Arrived')}
+            </button>
+          </span>
+        )}
+      </div>
+    );
+  };
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -157,40 +206,24 @@ function FrontDesk() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, alignItems: 'start' }}>
         <div style={col}>
           {head(L('Sắp đến', 'Arriving today'), upcoming.length, '#6366f1')}
-          {board && !upcoming.length && empty(L('Không còn lịch hẹn nào hôm nay.', 'No more bookings today.'))}
-          {upcoming.map((b) => {
-            const late = new Date(b.startTime).getTime() < now;
-            return (
-              <div key={b.id} style={row}>
-                <span style={{ width: 62, flexShrink: 0, fontWeight: 700, fontSize: 13.5, color: late ? 'var(--ink-warn)' : 'var(--ce2e8f0)' }}>{time(b.startTime)}</span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', ...name }}>{b.customerName || L('Khách', 'Guest')}</span>
-                  <span style={{ display: 'block', ...sub }}>{[b.serviceName, b.staff?.name].filter(Boolean).join(' · ')}</span>
-                </span>
-                {may('walkins') && (
-                  <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
-                    {/* A party: one press seats everyone booked together who is still to come. */}
-                    {(b.groupSize ?? 1) > 1 && (
-                      <button type="button" disabled={busy === b.id} onClick={() => arrive(b.id, true)} title={L('Nhận tất cả người trong nhóm còn chưa đến', 'Seat everyone in the party who has not arrived yet')}
-                        style={{ ...smallBtn, background: 'rgba(99,102,241,0.18)', color: 'var(--cc7d2fe)', border: '1px solid rgba(99,102,241,0.45)', opacity: busy === b.id ? 0.6 : 1 }}>
-                        {busy === b.id ? '…' : `👥 ${L('Cả nhóm', 'Party')} (${b.groupSize})`}
-                      </button>
-                    )}
-                    <button type="button" disabled={busy === b.id} onClick={() => arrive(b.id)} style={{ ...smallBtn, opacity: busy === b.id ? 0.6 : 1 }}>
-                      {busy === b.id ? '…' : L('Đã đến', 'Arrived')}
-                    </button>
-                  </span>
-                )}
+          {board && !upcoming.length && empty(L('Không còn khách hẹn nào sắp tới hôm nay.', 'No more bookings to come today.'))}
+          {upcoming.map((b) => bookedRow(b))}
+          {late.length > 0 && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: 'var(--wash-amber-2)', borderBottom: '1px solid var(--line)', fontSize: 12, fontWeight: 700, color: 'var(--ink-warn)' }}>
+                <span>⏰ {L('Quá giờ hẹn, chưa đến', 'Past their time, not here yet')}</span>
+                <span style={{ marginLeft: 'auto' }}>{late.length}</span>
               </div>
-            );
-          })}
+              {late.map((b) => bookedRow(b))}
+            </>
+          )}
         </div>
 
         <div style={col}>
           {head(L('Đang chờ', 'Waiting'), waiting.length, '#f59e0b')}
           {board && !waiting.length && empty(L('Không có khách đang chờ.', 'Nobody is waiting.'))}
           {waiting.map((w) => {
-            const m = minsSince(w.createdAt, now);
+            const m = minsSince(w.arrivedAt ?? w.createdAt, now);
             return (
               <a key={w.id} href="/salon/walkins" style={{ ...row, textDecoration: 'none' }}>
                 <span style={{ flex: 1, minWidth: 0 }}>
@@ -198,7 +231,10 @@ function FrontDesk() {
                   <span style={{ display: 'block', ...sub }}>{services(w) || L('Chưa chọn dịch vụ', 'No service yet')}</span>
                 </span>
                 <PartyChip group={w.group} />
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: m >= 20 ? 'var(--ink-bad)' : m >= 10 ? 'var(--ink-warn)' : 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{m}′</span>
+                <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: m >= 20 ? 'var(--ink-bad)' : m >= 10 ? 'var(--ink-warn)' : 'var(--c94a3b8)' }}>{minutesText(m, vi)}</span>
+                  <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)' }}>{cameIn(w)}</span>
+                </span>
               </a>
             );
           })}
@@ -220,7 +256,10 @@ function FrontDesk() {
                   ⏰ {L('Quá giờ', 'Over')} +{w.overdueMinutes}′
                 </span>
               )}
-              <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{minsSince(w.assignedAt ?? w.createdAt, now)}′</span>
+              <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <span style={{ display: 'block', fontSize: 12.5, color: 'var(--c94a3b8)' }} title={L('Đã làm được', 'In the chair for')}>{minutesText(minsSince(w.assignedAt ?? w.createdAt, now), vi)}</span>
+                <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)' }}>{cameIn(w)}</span>
+              </span>
               {may('pos') && <a href={checkoutHref(w)} style={{ ...smallBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{L('Tính tiền', 'Check out')}</a>}
             </div>
           ))}
@@ -234,6 +273,7 @@ function FrontDesk() {
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', ...name }}>{w.customerName || L('Khách', 'Guest')}</span>
                 <span style={{ display: 'block', ...sub }}>{[techName(w), services(w)].filter(Boolean).join(' · ')}</span>
+                <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)' }}>{cameIn(w)}</span>
               </span>
               {may('pos') && <a href={checkoutHref(w)} style={smallBtn}>{L('Tính tiền', 'Check out')}</a>}
             </div>

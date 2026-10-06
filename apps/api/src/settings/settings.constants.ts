@@ -255,8 +255,16 @@ export const DEFAULT_REBOOKING_SETTINGS: RebookingSettings = { enabled: false, d
 /** mode: which ONE tracking method runs on the booking page.
  *  '' (legacy/auto) = prefer GTM when set, else GA4 — never both, so a GTM
  *  container that already includes the Google Tag can never double-count. */
-export interface AnalyticsSettings { ga4Id: string; gtmId: string; mode: '' | 'none' | 'ga4' | 'gtm' }
-export const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = { ga4Id: '', gtmId: '', mode: '' };
+/** adsId + adsLabel: a Google Ads conversion (AW-… / label). Independent of mode —
+ *  the booking page loads the Ads tag itself and sends ONE conversion per booking,
+ *  so the salon needs no GTM or GA4 import to count bookings in Google Ads. */
+export interface AnalyticsSettings { ga4Id: string; gtmId: string; mode: '' | 'none' | 'ga4' | 'gtm'; adsId: string; adsLabel: string }
+export const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = { ga4Id: '', gtmId: '', mode: '', adsId: '', adsLabel: '' };
+
+/** Google Ads conversion ID as shown in Google Ads ("AW-" + digits). */
+export const ADS_ID_RE = /^AW-\d{6,15}$/;
+/** Conversion label (letters, digits, - and _). */
+export const ADS_LABEL_RE = /^[A-Za-z0-9_-]{4,64}$/;
 
 // Review-reward program: customer rates on our page, then is invited to Google.
 export interface ReviewSettings {

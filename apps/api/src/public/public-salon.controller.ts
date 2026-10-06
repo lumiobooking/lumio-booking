@@ -158,7 +158,7 @@ export class PublicSalonController {
       this.settings.getCompanyExtra(tenant.id).catch(() => ({} as { address?: string; country?: string })),
       this.prisma.feedback.aggregate({ where: { tenantId: tenant.id }, _avg: { rating: true }, _count: { _all: true } }).catch(() => null),
       // Was a sequential await after the batch — folded in so it runs in parallel.
-      this.settings.getAnalyticsSettings(tenant.id).catch(() => ({ ga4Id: '', gtmId: '', mode: '' as const })),
+      this.settings.getAnalyticsSettings(tenant.id).catch(() => ({ ga4Id: '', gtmId: '', mode: '' as const, adsId: '', adsLabel: '' })),
     ]);
     const brand = this.settings.brandingFrom(tenant.branding);
     const autoCount = (ratingAgg as { _count?: { _all?: number } } | null)?._count?._all ?? 0;

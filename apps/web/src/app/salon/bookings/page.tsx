@@ -14,6 +14,7 @@ import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileC
 import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { uiLocale } from '../../../lib/datetime';
+import { deskHoursCheck, hoursMessage, wallLabel, type HoursRules } from '../../../lib/desk-hours';
 
 interface NamedRef {
   id: string;
@@ -82,9 +83,12 @@ export default function BookingsPage() {
 }
 
 function BookingsInner() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const can = useCan();
   const canDelete = can('bookings.delete');
+  // Only the owner may book outside opening hours on purpose (the server agrees).
+  const isOwner = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN';
+  const [hours, setHours] = useState<HoursRules | null>(null);
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   // Cards up to tablet width — an iPad gets every field, not a squeezed table.
@@ -123,18 +127,23 @@ function BookingsInner() {
     setLoading(true);
     setError(null);
     try {
+      // Payments are the owner's (GET /payments is owner-only). A receptionist
+      // used to get "Insufficient role for this action" for the WHOLE page —
+      // no services, no booking form — because one of these five failed. The
+      // paid column simply stays empty for her now.
       const [b, s, st, p, settings] = await Promise.all([
         apiFetch<Booking[]>('/bookings', { token }),
         apiFetch<Service[]>('/services', { token }),
         apiFetch<Staff[]>('/staff', { token }),
-        apiFetch<Payment[]>('/payments', { token }),
-        apiFetch<{ company?: { timezone?: string } }>('/settings', { token }).catch(() => ({} as { company?: { timezone?: string } })),
+        apiFetch<Payment[]>('/payments', { token }).catch(() => [] as Payment[]),
+        apiFetch<{ company?: { timezone?: string }; booking?: HoursRules }>('/settings', { token }).catch(() => ({} as { company?: { timezone?: string }; booking?: HoursRules })),
       ]);
       setBookings(b);
       setServices(s);
       setStaff(st);
       setPayments(p);
       if (settings?.company?.timezone) setSalonTz(settings.company.timezone);
+      setHours(settings?.booking ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load bookings');
     } finally {
@@ -269,6 +278,9 @@ function BookingsInner() {
           staff={staff.filter((s) => s.isActive)}
           bookings={bookings}
           initial={prefill ?? undefined}
+          salonTz={salonTz}
+          hours={hours}
+          isOwner={isOwner}
           onCreated={async () => {
             setShowForm(false);
             await load();
@@ -660,6 +672,9 @@ function CreateBookingForm({
   staff,
   bookings,
   initial,
+  salonTz,
+  hours,
+  isOwner,
   onCreated,
 }: {
   token: string;
@@ -667,10 +682,17 @@ function CreateBookingForm({
   staff: Staff[];
   bookings: Booking[];
   initial?: { staffId?: string; startLocal?: string };
+  /** The salon's timezone: the picker is the SALON's wall clock, whoever is typing. */
+  salonTz?: string;
+  hours?: HoursRules | null;
+  isOwner?: boolean;
   onCreated: () => void;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
+  const vi = lang === 'vi';
+  // The owner pressed "book outside hours anyway" for THIS time.
+  const [overrideAt, setOverrideAt] = useState<string | null>(null);
   // One row per person in the party; index 0 is the booker. Friends coming
   // together rarely want the same thing — one takes gel, one takes a pedicure —
   // so each person carries their own service list and their own name.
@@ -740,7 +762,7 @@ function CreateBookingForm({
       ...people.map((p) => p.serviceIds.reduce((sum, id) => sum + (services.find((s) => s.id === id)?.durationMinutes ?? 0), 0)),
     );
     if (!form.startLocal || longest <= 0) return null;
-    const start = new Date(form.startLocal);
+    const start = new Date(wallToInstantISO(form.startLocal, salonTz || undefined));
     if (Number.isNaN(start.getTime())) return null;
     const end = new Date(start.getTime() + longest * 60_000);
     const DEAD = new Set(['CANCELLED', 'COMPLETED', 'NO_SHOW']);
@@ -754,6 +776,12 @@ function CreateBookingForm({
     return { free: active.filter((s) => !busy.has(s.id)).length, total: active.length };
   })();
   const staffShort = freeStaff !== null && partyN > freeStaff.free;
+  // Opening hours, checked the moment a time is picked (the server checks too).
+  const hoursCheck = form.startLocal ? deskHoursCheck(form.startLocal, hours, vi) : ({ ok: true } as const);
+  const outside = !hoursCheck.ok && overrideAt !== form.startLocal;
+  // '' = let the system pick by turn; '__none' = leave it for later on purpose.
+  const autoPick = form.staffId !== '__none';
+  const chosenStaff = form.staffId && form.staffId !== '__none' ? form.staffId : '';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -766,10 +794,13 @@ function CreateBookingForm({
       .filter(({ p }) => p.serviceIds.length === 0)
       .map(({ p, i }) => (i === 0 ? (form.customerFirstName.trim() || t('bk.you')) : (p.name.trim() || `${t('bk.guestLabel')} ${i + 1}`)));
     if (empty.length > 0) { setError(t('bk.missingSvc').replace('{who}', empty.join(', '))); return; }
+    if (outside) { setError(hoursMessage(form.startLocal, hoursCheck, vi)); return; }
     setSubmitting(true);
     // form.startLocal is the SALON's wall clock — the receptionist typed the
-    // customer's hour, not their own browser's.
-    const startTime = wallToInstantISO(form.startLocal);
+    // customer's hour, not their own browser's. The salon's zone is passed in
+    // explicitly: the stored one in the browser can be missing or another salon's.
+    const startTime = wallToInstantISO(form.startLocal, salonTz || undefined);
+    const outsideOk = !hoursCheck.ok && overrideAt === form.startLocal;
     const groupNote = partyN > 1 ? `${t('bk.groupNote')} (${partyN})` : undefined;
     // One id shared by the whole party. The note is for humans; this is what
     // the calendar and the till read.
@@ -787,7 +818,10 @@ function CreateBookingForm({
           serviceIds: people[0].serviceIds,
           // datetime-local is local time; convert to a UTC ISO string.
           startTime,
-          staffId: form.staffId || undefined,
+          staffId: chosenStaff || undefined,
+          // No technician picked: the system chooses one by turn and skill.
+          autoAssign: chosenStaff ? undefined : autoPick,
+          ...(outsideOk ? { outsideHours: true } : {}),
           customerFirstName: form.customerFirstName,
           customerLastName: form.customerLastName || undefined,
           // Birthday is opt-in and only used for birthday campaigns.
@@ -817,6 +851,8 @@ function CreateBookingForm({
               serviceIds: g.serviceIds,
               startTime,
               customerFirstName: g.name.trim() || `${t('bk.guestLabel')} ${i}`,
+              autoAssign: autoPick,
+              ...(outsideOk ? { outsideHours: true } : {}),
               partySize: partyN,
               groupId,
               notes: `${groupNote} — ${form.customerFirstName || ''}`.trim(),
@@ -838,7 +874,9 @@ function CreateBookingForm({
       }
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Create failed');
+      const msg = err instanceof Error ? err.message : 'Create failed';
+      // The server's own hours check, in the reader's language.
+      setError(/^OUTSIDE_HOURS/.test(msg) ? (hoursMessage(form.startLocal, deskHoursCheck(form.startLocal, hours, vi), vi) || msg.replace(/^OUTSIDE_HOURS:\s*/, '')) : msg);
     } finally {
       setSubmitting(false);
     }
@@ -876,6 +914,18 @@ function CreateBookingForm({
                 onChange={(e) => up('startLocal', e.target.value)}
                 required
               />
+              {/* Read back in words — "11:40 (tối)" makes an AM/PM slip obvious. */}
+              {form.startLocal && (
+                <span style={{ display: 'block', marginTop: 5, fontSize: 12, fontWeight: 600, color: outside ? 'var(--ink-bad)' : 'var(--c94a3b8)' }}>
+                  {outside ? `⚠ ${hoursMessage(form.startLocal, hoursCheck, vi)}` : `🕒 ${wallLabel(form.startLocal, vi)}${vi ? ' — giờ của tiệm' : ' — salon time'}`}
+                </span>
+              )}
+              {outside && isOwner && (
+                <button type="button" onClick={() => { setOverrideAt(form.startLocal); setError(null); }}
+                  style={{ marginTop: 6, padding: '5px 10px', fontSize: 12, borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer' }}>
+                  {vi ? 'Vẫn đặt ngoài giờ (chủ tiệm)' : 'Book outside hours anyway (owner)'}
+                </button>
+              )}
             </label>
             <label>
               <FieldLabel raw={t('bk.partySize')} optionalWord={t('bk.optional')} hint={`👥 ${t('bk.partyHint')}`} />
@@ -891,7 +941,8 @@ function CreateBookingForm({
             <label>
               <FieldLabel raw={t('bk.assignStaff')} optionalWord={t('bk.optional')} />
               <select style={ui.input} value={form.staffId} onChange={(e) => up('staffId', e.target.value)}>
-                <option value="">{t('bk.leaveUnassigned')}</option>
+                <option value="">{vi ? '⚡ Tự chọn thợ (theo lượt, đúng tay nghề)' : '⚡ Pick automatically (turns + skills)'}</option>
+                <option value="__none">{t('bk.leaveUnassigned')}</option>
                 {staff.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.firstName} {s.lastName ?? ''}

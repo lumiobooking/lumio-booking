@@ -8,7 +8,7 @@ import { PushService } from '../push/push.service';
 import { normalizeSource } from '../common/source.util';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import {
-  attachLines, busyTechs, canRunTogether, isStale, itemsOf as legItemsOf, LegItem, legsOf, minutesLeft, newLegId, overdueMinutes, partyTags, patchLeg, phaseOf, pickTech,
+  attachLines, busyTechs, canRunTogether, isStale, staleAfterHours, itemsOf as legItemsOf, LegItem, legsOf, minutesLeft, newLegId, overdueMinutes, partyTags, patchLeg, phaseOf, pickTech,
   planDispatch, syncTicket, TechInfo, TicketLike, turnsFromTickets, upgradeItems, Zone, zoneOf,
 } from './walkin-legs';
 import { tzPartsOf } from '../common/salon-time';
@@ -183,7 +183,7 @@ export class WalkinsService {
     });
     if (!open.length) return [];
     const afterHours = await this.afterHours(tenantId, now);
-    const stale = (open as unknown as TicketLike[]).filter((t) => afterHours || isStale(t, now)).map((t) => t.id);
+    const stale = (open as unknown as TicketLike[]).filter((t) => (afterHours ? staleAfterHours(t, now) : false) || isStale(t, now)).map((t) => t.id);
     if (!stale.length) return [];
     await this.prisma.walkIn.updateMany({
       where: { id: { in: stale }, tenantId, status: WalkInStatus.SERVING, awaitingPayment: false },
@@ -564,10 +564,29 @@ export class WalkinsService {
     // the desk sees at a glance who belongs with whom and how far along the
     // group is — "A · 2/3 in a chair, 1 waiting".
     const groups = partyTags([...f.open, ...f.doneToday] as unknown as (TicketLike & { groupId?: string | null })[]);
+    // WHEN THE CUSTOMER CAME IN. A checked-in booking's ticket is queued at its
+    // booked time (createdAt), so createdAt is not the arrival; the appointment's
+    // arrivedAt is. A plain walk-in arrived when the ticket was made.
+    const apptIds = [...f.open, ...f.doneToday].map((w) => (w as { appointmentId?: string | null }).appointmentId).filter((x): x is string => !!x);
+    // Display only — a failed read never costs the desk its board.
+    const [apptTimes, tenantRow] = await Promise.all([
+      (async () => {
+        if (!apptIds.length) return [] as { id: string; arrivedAt: Date | null; startTime: Date }[];
+        try { return await this.prisma.appointment.findMany({ where: { tenantId, id: { in: apptIds } }, select: { id: true, arrivedAt: true, startTime: true } }); } catch { return []; }
+      })(),
+      (async () => { try { return await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }); } catch { return null; } })(),
+    ]);
+    const apptById = new Map(apptTimes.map((a) => [a.id, a]));
     const tagged = <T extends object>(w: T) => {
       const gid = (w as { groupId?: string | null }).groupId;
       const g = gid ? groups.get(gid) : undefined;
-      return { ...this.view(w), group: g ?? null };
+      const appt = apptById.get((w as { appointmentId?: string | null }).appointmentId ?? '');
+      const createdAt = (w as { createdAt: Date }).createdAt;
+      return {
+        ...this.view(w), group: g ?? null,
+        arrivedAt: appt?.arrivedAt ?? createdAt,
+        bookedAt: appt?.startTime ?? null,
+      };
     };
     // Waiting-to-pay: the technician is finished, so she is free.
     const waiting = f.open.filter((w) => w.status === WalkInStatus.WAITING).map((w) => tagged(w));
@@ -616,7 +635,9 @@ export class WalkinsService {
     // Finished today, most recent first: a ticket marked Done by mistake (or done
     // before the customer paid) has to be reachable again for checkout.
     const done = f.doneToday.slice(0, 20).map((w) => tagged(w));
-    return { waiting, serving, booked, done, staff, nextUpStaffId, restricted: [...f.restricted] };
+    // The salon's timezone: every clock on the desk is read in it, never in
+    // the browser's (a manager in Vietnam saw 10:00 AM bookings as 0:00).
+    return { waiting, serving, booked, done, staff, nextUpStaffId, restricted: [...f.restricted], timezone: tenantRow?.timezone ?? null };
   }
 
   /**

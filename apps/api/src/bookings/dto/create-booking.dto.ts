@@ -106,6 +106,20 @@ export class CreateBookingDto {
   @IsBoolean()
   confirmNow?: boolean;
 
+  // Desk only (ignored on public requests). With no technician chosen, the
+  // engine picks one by turn/skill/availability (the salon's assignment mode
+  // still decides). false = leave it unassigned on purpose.
+  @IsOptional()
+  @IsBoolean()
+  autoAssign?: boolean;
+
+  // Desk only, OWNER only: book a start time outside opening hours on purpose.
+  // Anyone else gets "outside opening hours" — a typed 11:40 PM for 11:40 AM
+  // is caught before it reaches the calendar.
+  @IsOptional()
+  @IsBoolean()
+  outsideHours?: boolean;
+
   // The customer's preferred technician (stored as a preference when unassigned).
   @IsOptional()
   @IsString()

@@ -11,7 +11,7 @@ jest.mock('@prisma/client', () => {
   };
 });
 import { WalkinsService } from './walkins.service';
-import { isStale, overdueMinutes, STALE_GRACE_MIN, TicketLike } from './walkin-legs';
+import { isStale, overdueMinutes, staleAfterHours, STALE_GRACE_MIN, TicketLike } from './walkin-legs';
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const NOW = new Date('2026-10-04T20:00:00Z');
@@ -86,12 +86,25 @@ describe('the sweeper parks stale visits at the till, per salon', () => {
     for (const u of updates) expect(u.tenantId).toBe('t1');
   });
 
-  it('an hour after closing, everyone still in a chair goes to the till', async () => {
-    const fresh = ticket({ id: 'fresh', startedMinAgo: 20 });
-    const { svc } = make([fresh], { closeMinutes: 13 * 60 }); // closed at 1 PM; it is 3 PM
-    expect(await svc.parkStale('t1', NOW)).toEqual(['fresh']);
-    const { svc: open } = make([ticket({ id: 'fresh2', startedMinAgo: 20 })], { closeMinutes: 14 * 60 + 30 }); // closed at 2:30: not yet an hour
+  it('an hour after closing, a visit that has run its time goes to the till — no grace needed', async () => {
+    const done = ticket({ id: 'done', startedMinAgo: 61 });
+    const { svc } = make([done], { closeMinutes: 13 * 60 }); // closed at 1 PM; it is 3 PM
+    expect(await svc.parkStale('t1', NOW)).toEqual(['done']);
+    const { svc: open } = make([ticket({ id: 'done2', startedMinAgo: 61 })], { closeMinutes: 14 * 60 + 30 }); // closed at 2:30: not yet an hour
     expect(await open.parkStale('t1', NOW)).toEqual([]);
+  });
+
+  it('after closing, a customer seated a few minutes ago STAYS in the chair (her technician is busy)', async () => {
+    // The screenshot: "ana · Hana · 5′" on a 60-minute massage, seated late at
+    // night — the desk showed her under "Ready to pay" and Hana as free.
+    const ana = ticket({ id: 'ana', startedMinAgo: 5 });
+    const { svc } = make([ana], { closeMinutes: 13 * 60 });
+    expect(await svc.parkStale('t1', NOW)).toEqual([]);
+    expect(ana.awaitingPayment).toBe(false);
+    expect(staleAfterHours(ana as TicketLike, NOW)).toBe(false);
+    expect(staleAfterHours(ticket({ startedMinAgo: 60 }) as TicketLike, NOW)).toBe(true);
+    // Hands done, feet still running: not before the feet are due.
+    expect(staleAfterHours(ticket({ startedMinAgo: 0, legs: [{ startedMinAgo: 150, minutes: 45, status: 'DONE' }, { startedMinAgo: 10, minutes: 45 }] }) as TicketLike, NOW)).toBe(false);
   });
 
   it('the all-salons sweep visits each salon with its own tenantId', async () => {

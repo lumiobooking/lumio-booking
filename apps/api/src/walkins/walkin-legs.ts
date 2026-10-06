@@ -502,6 +502,28 @@ export function isStale(t: TicketLike, now: Date, grace = STALE_GRACE_MIN): bool
   });
 }
 
+/**
+ * After closing time a visit is parked once it has run its expected length
+ * (no grace) — never the moment it starts. The old rule parked EVERY chair an
+ * hour after closing, so a customer seated at 7:05 PM by a salon working late
+ * jumped straight to "waiting to pay" and her technician showed as free.
+ * A leg with no start time falls back to when the ticket was seated.
+ */
+export function staleAfterHours(t: TicketLike, now: Date): boolean {
+  if (t.status !== 'SERVING' || t.awaitingPayment) return false;
+  const running = legsOf(t).filter((l) => l.status === 'SERVING');
+  const seatedAt = (t as { assignedAt?: Date | string | null }).assignedAt ?? t.createdAt;
+  if (!running.length) {
+    const spent = (now.getTime() - new Date(seatedAt as Date).getTime()) / 60000;
+    return spent >= ASSUMED_LEG_MIN;
+  }
+  return running.every((leg) => {
+    const from = leg.startedAt ?? seatedAt;
+    const spent = (now.getTime() - new Date(from as Date).getTime()) / 60000;
+    return spent >= (leg.minutes || ASSUMED_LEG_MIN);
+  });
+}
+
 // ------------------------------------------------------------------ parties
 
 export interface PartyInfo {

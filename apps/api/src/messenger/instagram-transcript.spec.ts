@@ -125,9 +125,10 @@ describe('the booking prompt’s wording rules', () => {
     expect(shared).toContain('then read it all back and confirm');
   });
 
-  it('questions first: answered specifically, and no recap in that message', () => {
-    expect(src).toMatch(/QUESTIONS FIRST — this beats every booking step above/);
-    expect(src).toMatch(/In that message do NOT send the booking recap or ask to book/);
+  it('answer first, then move to the booking in the SAME message — never "any other questions?"', () => {
+    expect(src).toMatch(/ANSWER, THEN MOVE TO THE BOOKING — in ONE message/);
+    expect(src).toMatch(/Never end a message with "any other questions\?"/);
+    expect(src).not.toMatch(/QUESTIONS FIRST — this beats/);
   });
 
   it('the shared prompt carries no one salon’s facts (it is read by every salon)', () => {

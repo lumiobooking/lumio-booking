@@ -153,12 +153,43 @@ export function isBookingRecap(reply: string | null | undefined): boolean {
 
 export function questionFirstCorrection(customerText: string): string {
   return 'SYSTEM CORRECTION — that reply was blocked before it was sent.\n'
-    + `The customer asked something: "${String(customerText).slice(0, 300)}". You sent a booking recap instead of answering.\n`
-    + 'Rewrite: answer exactly what they asked, specifically, using the salon facts, hours, prices and notes in this prompt (dates, times, prices — the actual answer, not a general line). '
+    + `The customer asked something: "${String(customerText).slice(0, 300)}". You went straight to the booking recap without answering it.\n`
+    + 'Rewrite as ONE message: the first line answers exactly what they asked, specifically, from the salon facts, hours, prices and notes in this prompt (the real date, time or price). '
     + 'If the answer is not in what you were given, say you will check with the salon — never guess. '
-    + 'Do NOT include the booking recap or ask for the go-ahead in this message: end with one short line asking if they have any other questions. '
-    + 'If they already gave a name, phone, service or time, keep it — you will confirm the booking once their questions are answered. Same language as the conversation. Send only the new reply.';
+    + 'Then, in the same message, move to the booking: the recap with "shall I book it?" if you have the service, time, name and phone; otherwise ask only for the next missing detail. '
+    + 'Never end with "any other questions?". Same language as the conversation. Send only the new reply.';
 }
+
+/**
+ * Did the reply answer something BEFORE the recap? The recap is fine after a
+ * question — the owner wants the answer and the push to book in one message —
+ * but not a recap that skips the answer ("Just to confirm: …" as line one).
+ */
+export function answersBeforeRecap(reply: string | null | undefined): boolean {
+  const t = String(reply ?? '');
+  const cue = /(just to confirm|to confirm|confirming|here'?s the recap|dạ em xác nhận lại|em xác nhận lại|xác nhận lại|shall i book|should i book|book it\?|go ahead and book)/i.exec(t);
+  if (!cue) return true;
+  const before = t.slice(0, cue.index)
+    // pleasantries are not an answer
+    .replace(/\b(great|perfect|awesome|sure|of course|got it|okay|ok|thanks|thank you|wonderful|lovely|noted)\b[!.,]*/gi, '')
+    .replace(/(dạ|vâng|okie|ok ạ|tuyệt|cảm ơn( anh\/chị| chị| anh)?)[!.,]*/gi, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+  return before.length >= 12;
+}
+
+/** A closing line that leads nowhere — before the booking, every message should end on a step towards it. */
+export function endsOnFiller(reply: string | null | undefined): boolean {
+  const lines = String(reply ?? '').trim().split(/(?<=[.!?…])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
+  const last = lines[lines.length - 1] ?? '';
+  return /(any other questions|anything else (i can|you'?d like|you need)|is there anything else|let me know if you have|feel free to (ask|reach)|còn (câu hỏi|thắc mắc) (nào|gì)|cần hỏi thêm gì|có gì thắc mắc|cứ nhắn em nhé|cần gì cứ nhắn)/i.test(last);
+}
+
+export const FILLER_CORRECTION =
+  'SYSTEM CORRECTION — that reply was blocked before it was sent.\n'
+  + 'It ends with a line like "any other questions?" that leads nowhere. Before a booking is made, every message ends with one easy step towards it.\n'
+  + 'Rewrite: keep your answer, and replace the closing line with the next step — the recap with "shall I book it?" if you have the service, time, name and phone; otherwise the ONE next missing detail (or 2–3 open times to pick from). '
+  + 'Same language as the conversation. Send only the new reply.';
 
 /**
  * A question about the booking itself — "can I come at 3pm?", "is Saturday
@@ -168,4 +199,9 @@ export function questionFirstCorrection(customerText: string): string {
 export function aboutTheBooking(text: string | null | undefined): boolean {
   const t = String(text ?? '');
   return /(\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.)|\b\d{1,2}:\d{2}\b|\b(today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|available|availability|book|booking|appointment|slot|spot|works for)\b|\d{1,2}\s*(h|giờ)\b|giờ trống|còn chỗ|còn lịch|đặt lịch|lịch hẹn|hôm nay|ngày mai|thứ (hai|ba|tư|năm|sáu|bảy)|chủ nhật)/i.test(t);
+}
+
+/** The customer is not ready or is wrapping up — the polite "message us any time" is right then, not filler. */
+export function customerWrappingUp(text: string | null | undefined): boolean {
+  return /(not sure|let you know|i'?ll think|think about it|maybe later|just asking|just looking|just wondering|no thanks|thanks|thank you|\bbye\b|see you|chưa chắc|để (em|chị|anh|mình|tôi) (xem|suy nghĩ|tính)|hỏi thôi|hỏi trước thôi|cảm ơn|thôi ạ|khi khác)/i.test(String(text ?? ''));
 }

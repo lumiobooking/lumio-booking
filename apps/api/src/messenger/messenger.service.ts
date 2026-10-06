@@ -10,7 +10,7 @@ import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
 import { decideFollowUp, threadStateFrom, contextualNudge, followUpSettingsFrom, CHAT_FOLLOWUP_KEY, WINDOW_MS, type StoredTurn } from './followup';
-import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, BOOKED_CORRECTION, VAGUE_CORRECTION, repeatCorrection, notRepeatLine, asksQuestion, aboutTheBooking, isBookingRecap, questionFirstCorrection } from './booking-guards';
+import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, BOOKED_CORRECTION, VAGUE_CORRECTION, repeatCorrection, notRepeatLine, asksQuestion, aboutTheBooking, isBookingRecap, questionFirstCorrection, answersBeforeRecap, endsOnFiller, customerWrappingUp, FILLER_CORRECTION } from './booking-guards';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY, sendZaloImage } from './zalo-oa';
 import { isWebPage, webPageId } from './web-chat';
 import {
@@ -3116,8 +3116,8 @@ Email is OPTIONAL: mention once that a confirmation email is possible; if they s
 CONFIRM BEFORE BOOKING — always, exactly once. The moment you have service(s) + an open time + name + phone, send ONE short recap with everything and ask for a yes — do not call create_booking yet: "Acrylic full set + deluxe spa pedicure, Monday Oct 6 at 11:00 AM, for Kimberli · 334-432-2013 — shall I book it?" (Vietnamese: "Dạ em xác nhận lại: … lúc 11:00 thứ Hai 6/10, tên Kimberli, SĐT 334-432-2013 — em đặt lịch luôn nhé?"). Always the weekday AND the date, every service, every person's name for a group, and the phone. Then:
 - Any agreement — "yes", "ok", "correct", "sure", "đúng rồi", "ok em", a thumbs-up — means call create_booking NOW, in this same reply. Never recap a second time and never ask a second confirming question.
 - If they correct something (another time, a different service, a typo in the number), apply it — re-check the time with check_availability if the time changed — and send the recap ONCE more with the correction.
-- If they ask a question instead of saying yes, answer it (see QUESTIONS FIRST) and ask if there is anything else; once they have no more questions, ask for the yes in one short line — repeat the full recap only if something changed.
-QUESTIONS FIRST — this beats every booking step above: whenever the customer's latest message asks something ("when is your grand opening", "how much is a gel fill", "do you take walk-ins", "có làm gel không"), answer EXACTLY that, specifically, from the salon's facts, hours, prices and notes in this prompt — the real date, time or price, not a general line. If the answer is not in what you were given, say you will check with the salon; never guess and never dodge. In that message do NOT send the booking recap or ask to book: end by asking if they have any other questions. Keep any name, phone, service or time they gave — the recap comes once their questions are answered. Example: "Jane 512-555-0147, when is your grand opening?" → "Our grand opening is <the date written in this salon's notes> 🎉 Any other questions before I set up your appointment?" (use this salon's real date; if its notes give none, say you will check).
+- If they ask a question instead of saying yes, answer it in one line and ask for the yes again in the same message — repeat the full recap only if something changed.
+ANSWER, THEN MOVE TO THE BOOKING — in ONE message, like a real receptionist texting: whenever the customer's latest message asks something ("when is your grand opening", "how much is a gel fill", "do you take walk-ins", "có làm gel không"), the FIRST line answers exactly that, specifically, from the salon's facts, hours, prices and notes in this prompt — the real date, time or price, not a general line; if the answer is not in what you were given, say you will check with the salon, never guess and never dodge. The SAME message then moves them toward booking: if you already have the service, an open time, the name and the phone, add the recap and "shall I book it?"; otherwise ask for only the NEXT missing piece, or offer 2–3 open times to pick from. Never end a message with "any other questions?", "anything else?", "let me know" or "feel free to ask" before a booking is made — every message before the booking ends with one easy step towards it. No filler ("Great question!", "Thanks for asking"). Examples: "Jane 512-555-0147, when is your grand opening?" with a pedicure Friday 1 PM already agreed → "Our grand opening is <the date in this salon's notes> 🎉 Just to confirm: pedicure, Friday <date> at 1:00 PM for Jane · 512-555-0147 — shall I book it?". "How much is a gel manicure?" with nothing else known → "Gel manicure is <price from the menu> 💅 What day would you like to come in?"
 The SERVICES list in this prompt IS the menu: when the service they want is on it, use its name exactly as written there — the part before the [category] and the price — for check_availability and create_booking (put that same exact name in both serviceId and serviceName) — no need to call get_services first. Call get_services only for something not on that list. When the customer has said yes to your recap, call create_booking ONCE, listing EVERY service for that visit in the "services" array (include email only if given). Two services in one visit is ONE call with two entries — never two calls, and never two start times: the salon lengthens the appointment for the extra services by itself, so one person sitting in one chair gets one appointment and one bill. A GROUP is still ONE call: the person you are chatting with in customerFirstName/services, everyone else in "guests" (each with their own name and services) — they are all booked at the same time, each with their own technician. After it succeeds, thank them and confirm warmly in one line, and say a confirmation is on the way.
 If they ask about an EXISTING appointment ("khi nào lịch của tôi", "đổi giờ được không", "dời sang thứ 7"), NEVER answer from memory: call find_appointment with their phone number first, then read back exactly what it returns. To move one, call reschedule_appointment with the appointment id from find_appointment, their phone, and the new local date & time. The tool decides whether the change is allowed and hands you the sentence to say — say THAT reason, do not invent a policy of your own and do not promise a change the tool refused.
 To CANCEL one, first read the day and time back and ask them to confirm in plain words ("anh/chị xác nhận huỷ lịch ... nhé?"); only after a clear yes, call cancel_appointment with the appointment id and their phone. Never cancel on a hint, on "maybe", or while they are still asking questions — an emptied chair cannot be undone from this chat. If the tool refuses, say ITS reason and offer to have a staff member call back. If they sound like they only want a different time, offer to move it instead — the salon keeps the customer and they keep their slot.
@@ -3567,6 +3567,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     let vagueRetried = false;
     let repeatRetried = false;
     let questionRetried = false;
+    let fillerRetried = false;
     // Which tools this run actually called — the booking gates judge a reply
     // against what HAPPENED, not against what the model says happened.
     const toolsUsed = new Set<string>();
@@ -3762,15 +3763,24 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         messages.push({ role: 'user', content: BOOKED_CORRECTION });
         continue;
       }
-      // QUESTIONS FIRST: the customer asked something and the reply is the
-      // booking recap. Rewritten once to answer the question; a second recap
-      // goes through (the owner asked for questions first, not for a bot that
-      // can never get to the booking).
-      if (ctx.mode === 'booking' && text && !questionRetried && !ctx.booked && asksQuestion(userText) && !aboutTheBooking(userText) && isBookingRecap(text)) {
+      // ANSWER FIRST: the customer asked something and the reply jumps straight
+      // into the booking recap without answering it. Rewritten once so the
+      // first line answers and the recap (or the next missing detail) follows
+      // in the same message. A recap that DOES answer first goes through.
+      if (ctx.mode === 'booking' && text && !questionRetried && !ctx.booked && asksQuestion(userText) && !aboutTheBooking(userText) && isBookingRecap(text) && !answersBeforeRecap(text)) {
         questionRetried = true;
         this.logger.warn(`Booking reply blocked (recap sent over an unanswered question): ${text.slice(0, 140)}`);
         messages.push({ role: 'assistant', content: blocks });
         messages.push({ role: 'user', content: questionFirstCorrection(userText) });
+        continue;
+      }
+      // No dead-end endings: before the booking exists, a message never closes
+      // on "any other questions?" — it closes on the next step to the booking.
+      if (ctx.mode === 'booking' && text && !fillerRetried && !ctx.booked && !(ctx.known?.upcoming?.length) && !customerWrappingUp(userText) && endsOnFiller(text)) {
+        fillerRetried = true;
+        this.logger.warn(`Booking reply blocked (dead-end closing line): ${text.slice(-120)}`);
+        messages.push({ role: 'assistant', content: blocks });
+        messages.push({ role: 'user', content: FILLER_CORRECTION });
         continue;
       }
       if (ctx.mode === 'booking' && text && !vagueRetried && vagueAvailability(text)) {

@@ -13,7 +13,7 @@ jest.mock('../common/llm', () => ({
   chat: jest.fn(),
 }));
 import { chat } from '../common/llm';
-import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, notRepeatLine, asksQuestion, aboutTheBooking, isBookingRecap } from './booking-guards';
+import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, notRepeatLine, asksQuestion, aboutTheBooking, isBookingRecap, answersBeforeRecap, endsOnFiller, customerWrappingUp } from './booking-guards';
 import { MessengerService } from './messenger.service';
 
 describe('claimsBooked — a reply that says the booking exists', () => {
@@ -62,6 +62,23 @@ describe('questions first', () => {
     expect(aboutTheBooking('ngày mai còn chỗ không')).toBe(true);
     expect(aboutTheBooking('when is your grand opening')).toBe(false);
     expect(aboutTheBooking('how much is a gel fill')).toBe(false);
+  });
+
+  it('tells a recap that answered first from one that skipped the answer', () => {
+    expect(answersBeforeRecap('Just to confirm: basic pedicure, Friday October 9 at 1:00 PM for Delois · 334-390-4874 — shall I book it?')).toBe(false);
+    expect(answersBeforeRecap('Great! Just to confirm: pedicure Friday 1 PM — shall I book it?')).toBe(false);
+    expect(answersBeforeRecap('Our grand opening is Friday, October 9 🎉 Just to confirm: pedicure, Friday October 9 at 1:00 PM for Delois · 334-390-4874 — shall I book it?')).toBe(true);
+    expect(answersBeforeRecap('Gel manicure is $44 💅 What day would you like to come in?')).toBe(true);
+  });
+
+  it('spots a dead-end closing line, and lets a polite goodbye through', () => {
+    expect(endsOnFiller('Our grand opening is October 9 🎉 Any other questions?')).toBe(true);
+    expect(endsOnFiller('Gel is $44. Let me know if you have any questions!')).toBe(true);
+    expect(endsOnFiller('Dạ gel là $44 ạ. Anh/chị còn câu hỏi nào nữa không ạ?')).toBe(true);
+    expect(endsOnFiller('Gel manicure is $44 💅 What day would you like to come in?')).toBe(false);
+    expect(customerWrappingUp('not sure yet, I will let you know')).toBe(true);
+    expect(customerWrappingUp('Dạ để chị suy nghĩ thêm')).toBe(true);
+    expect(customerWrappingUp('how much is a gel fill')).toBe(false);
   });
 
   it('recognises the recap', () => {
@@ -196,15 +213,39 @@ describe('inside the agent loop', () => {
     expect(claimsBooked(notRepeatLine('en', recap))).toBe(false);
   });
 
-  it('a recap sent over the customer’s question is rewritten to answer the question first', async () => {
+  it('a recap that skips the customer’s question is rewritten: answer first, then the recap, in one message', async () => {
     mocked
       .mockResolvedValueOnce(reply('Just to confirm: basic pedicure and eyebrows, Friday October 9 at 1:00 PM for Delois Jones · 334-390-4874 — shall I book it?'))
-      .mockResolvedValueOnce(reply('Our grand opening is Friday, October 9 🎉 Any other questions before I set up your appointment?'));
+      .mockResolvedValueOnce(reply('Our grand opening is Friday, October 9 🎉 Just to confirm: basic pedicure and eyebrows, Friday October 9 at 1:00 PM for Delois Jones · 334-390-4874 — shall I book it?'));
     const out = await svc().runAgent('t1', '', hist, 'Delois Jones 3343904874 when is your grand opening', { mode: 'booking', leadEmail: null, channel: 'messenger' });
-    expect(out).toMatch(/grand opening is/);
-    expect(out).not.toMatch(/shall I book/);
+    expect(out).toMatch(/^Our grand opening is/);
+    expect(out).toMatch(/shall I book it\?$/);
     const second = mocked.mock.calls[1][0] as { messages: { content: unknown }[] };
     expect(JSON.stringify(second.messages[second.messages.length - 1].content)).toContain('when is your grand opening');
+  });
+
+  it('an answer followed by the recap goes straight through — no extra round-trip', async () => {
+    mocked.mockResolvedValueOnce(reply('Our grand opening is Friday, October 9 🎉 Just to confirm: pedicure, Friday October 9 at 1:00 PM for Delois · 334-390-4874 — shall I book it?'));
+    const out = await svc().runAgent('t1', '', hist, 'Delois 3343904874 when is your grand opening', { mode: 'booking', leadEmail: null, channel: 'messenger' });
+    expect(out).toMatch(/shall I book it/);
+    expect(mocked).toHaveBeenCalledTimes(1);
+  });
+
+  it('"any other questions?" is replaced by a step towards the booking', async () => {
+    mocked
+      .mockResolvedValueOnce(reply('Gel manicure is $44 💅 Any other questions?'))
+      .mockResolvedValueOnce(reply('Gel manicure is $44 💅 What day would you like to come in?'));
+    const out = await svc().runAgent('t1', '', hist, 'how much is a gel manicure', { mode: 'booking', leadEmail: null, channel: 'messenger' });
+    expect(out).toBe('Gel manicure is $44 💅 What day would you like to come in?');
+    const second = mocked.mock.calls[1][0] as { messages: { content: unknown }[] };
+    expect(JSON.stringify(second.messages[second.messages.length - 1].content)).toContain('leads nowhere');
+  });
+
+  it('a customer who is not ready may still be told "message us any time" — no pushing', async () => {
+    mocked.mockResolvedValueOnce(reply('No problem at all! Feel free to reach out whenever you are ready 😊'));
+    const out = await svc().runAgent('t1', '', hist, 'not sure yet, I will let you know', { mode: 'booking', leadEmail: null, channel: 'messenger' });
+    expect(out).toMatch(/whenever you are ready/);
+    expect(mocked).toHaveBeenCalledTimes(1);
   });
 
   it('"can I come at 3pm?" may be answered with the recap — that IS the answer', async () => {

@@ -51,6 +51,12 @@ describe('every other trade speaks its own language', () => {
     expect(industryText('khách khách', 'DENTAL')).toBe('bệnh nhân bệnh nhân');
   });
 
+  it('never rewrites a {placeholder} or the business’s own name', () => {
+    expect(industryText('Texts from {salon} about your appointment', 'DENTAL')).toBe('Texts from {salon} about your appointment');
+    expect(industryText('Lumio Salon — salon hours', 'DENTAL', ['Lumio Salon'])).toBe('Lumio Salon — clinic hours');
+    expect(industryText('Tiệm Lumio Salon', 'DENTAL', ['Lumio Salon'])).toBe('Phòng khám Lumio Salon');
+  });
+
   it('the icon on Services names the trade', () => {
     expect(iconFor('nailPolish', 'DENTAL')).toBe('tooth');
     expect(iconFor('nailPolish', 'HAIR')).toBe('scissors');
@@ -74,5 +80,23 @@ describe('the list matches the server and is wired in', () => {
     expect(read('app', 'salon', 'front-desk', 'page.tsx')).toMatch(/=> ind\(vi \? v : e\)/);
     expect(read('app', 'super-admin', 'tenants', 'page.tsx')).toMatch(/body: \{ industry \}/);
     expect(read('app', 'salon', 'settings', 'page.tsx')).toMatch(/<IndustryPicker \/>/);
+    // The customer page too: bt() speaks the salon's trade.
+    expect(read('lib', 'i18n-book.ts')).toMatch(/industryText\(out, currentIndustry, currentNames\)/);
+    expect(read('app', 'book', '[slug]', 'page.tsx')).toMatch(/setBookIndustry\(salon\?\.industry, salon\?\.name\)/);
+  });
+});
+
+describe('the customer booking page', () => {
+  it('a clinic’s patients read "dentist"; a nail salon’s page is untouched', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const b = require('./i18n-book') as typeof import('./i18n-book');
+    b.setBookLang('en');
+    b.setBookIndustry('NAIL', 'Zb Nails');
+    expect(b.bt('Choose your nail tech')).toBe('Choose your nail tech');
+    b.setBookIndustry('DENTAL', 'Smile Salon Dental');
+    expect(b.bt('Choose your nail tech')).toBe('Choose your dentist');
+    expect(b.bt('Any technician')).toBe('Any dentist');
+    b.setBookIndustry('nonsense', null);
+    expect(b.bt('Any technician')).toBe('Any technician');
   });
 });

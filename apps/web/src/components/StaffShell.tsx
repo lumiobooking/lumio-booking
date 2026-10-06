@@ -10,7 +10,7 @@ import { useIsMobile } from '../lib/responsive';
 import { ThemeToggle } from './ThemeToggle';
 import { LumioLogo } from './LumioLogo';
 import { IC, Icon, TAB_H, BOTTOM_SAFE } from './staff/kit';
-import { setUiIndustry } from '../lib/ui-industry';
+import { setUiIndustry, setUiIndustryNames } from '../lib/ui-industry';
 
 /**
  * Layout + auth guard for the Staff (technician) portal.
@@ -51,10 +51,11 @@ export function StaffShell({ children, title = 'My Bookings', subtitle, right, w
   // technician's schedule shows the SALON's hours even from another timezone.
   useEffect(() => {
     if (!token) return;
-    apiFetch<{ timezone?: string; industry?: string }>('/me/tenant', { token })
+    apiFetch<{ timezone?: string; industry?: string; name?: string }>('/me/tenant', { token })
       .then((r) => {
         if (r?.timezone) { try { window.localStorage.setItem('lumio_tz', r.timezone); } catch { /* ignore */ } }
         // The staff app speaks the salon's trade too (thợ / bác sĩ / nhân viên…).
+        setUiIndustryNames([r?.name]);
         if (r?.industry) setUiIndustry(r.industry);
       })
       .catch(() => { /* offline: yesterday's cached value still applies */ });

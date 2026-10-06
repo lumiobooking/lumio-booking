@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
-import { personaFor } from '../common/business-persona';
+import { chosenIndustry, personaFor } from '../common/business-persona';
 import { dayKeyTz } from '../common/salon-time';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import {
@@ -3077,12 +3077,19 @@ export class MessengerService implements OnModuleInit {
     // coffee shop must not open by offering a table reservation. The declared
     // trade refines the type where it has something to say; where it does not,
     // the type answers alone and nothing changes.
-    const tradeRow = await this.prisma.setting
-      .findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } })
-      .catch(() => null);
+    const [tradeRow, industryRow] = await Promise.all([
+      this.prisma.setting
+        .findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } })
+        .catch(() => null),
+      // The industry the owner CHOSE (Mi, Tóc, Spa, Nha khoa…) — names the business correctly.
+      this.prisma.setting
+        .findFirst({ where: { tenantId, key: 'industry' }, select: { value: true } })
+        .catch(() => null),
+    ]);
     const persona = personaFor(
       (tenant as unknown as { businessType?: string } | null)?.businessType,
       (tradeRow?.value as { trade?: string } | null)?.trade ?? null,
+      chosenIndustry(industryRow?.value),
     );
     const salonName = tenant?.name || 'our salon';
     const tz = tenant?.timezone || 'America/New_York';

@@ -25,7 +25,7 @@ import { NotificationBell } from './NotificationBell';
 import { LumioLogo } from './LumioLogo';
 import { DASHBOARD, GROUPS, ITEM_BY_HREF, type NavItem } from './shell/nav-map';
 import { ShellV2 } from './shell/ShellV2';
-import { hiddenHrefsFor, setUiIndustry, uiIndustry, type IndustryKey } from '../lib/ui-industry';
+import { hiddenHrefsFor, setUiIndustry, setUiIndustryNames, uiIndustry, type IndustryKey } from '../lib/ui-industry';
 
 // The menu itself (DASHBOARD + GROUPS) lives in shell/nav-map.ts, shared with
 // the new two-tier layout so both always list the same screens.
@@ -303,9 +303,11 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
         setHiddenHrefs(hidden); writeCachedHidden(hidden);
       })
       .catch(() => {});
-    apiFetch<{ businessType?: string; timezone?: string; market?: string; currency?: string; industry?: string }>('/me/tenant', { token })
+    apiFetch<{ businessType?: string; timezone?: string; market?: string; currency?: string; industry?: string; name?: string }>('/me/tenant', { token })
       .then((r) => {
         const on = r?.businessType === 'RESTAURANT'; setIsRestaurant(on); writeCachedRestaurant(on);
+        // The salon's own name stays as written inside re-worded labels.
+        setUiIndustryNames([r?.name]);
         if (r?.industry) { setUiIndustry(r.industry); setIndustry(uiIndustry()); }
         // The market, for the screens that must show different things in
         // different countries — the Vietnamese carrier panel, the American

@@ -147,20 +147,45 @@ const TRADE_PERSONAS: Record<TradePersonaKey, Partial<BusinessPersona> & { label
   },
 };
 
+/**
+ * Beauty studios that are not nail salons. Only applied when the owner (or
+ * Super Admin) EXPLICITLY chose the industry — never from the marketing trade,
+ * which the profile scan may have guessed. A nail salon that never chose keeps
+ * "a nail salon", word for word.
+ */
+const BEAUTY_IDENTITIES: Record<string, Partial<BusinessPersona>> = {
+  LASH: { identity: 'a lash and brow studio', venueNoun: 'studio' },
+  HAIR: { identity: 'a hair salon' },
+  SPA: { identity: 'a day spa', venueNoun: 'spa' },
+  MASSAGE: { identity: 'a massage studio', venueNoun: 'studio' },
+};
+
 /** Unknown/legacy values fall back to SALON — the product's original truth,
  *  so existing tenants keep byte-identical prompts. */
 export function personaFor(
   businessType: string | null | undefined,
   /** The finer trade the tenant declared, when it has one. */
   trade?: string | null,
+  /** The industry the tenant EXPLICITLY chose (settings `industry`), when it did. */
+  industry?: string | null,
 ): BusinessPersona {
   const k = String(businessType || '').toUpperCase() as BusinessTypeKey;
   const base = PERSONAS[k] ?? PERSONAS.SALON;
+  // An explicit industry wins over the (possibly guessed) trade.
+  const ik = String(industry || '').toUpperCase();
+  if (ik && TRADE_PERSONAS[ik as TradePersonaKey]) return { ...base, ...TRADE_PERSONAS[ik as TradePersonaKey], key: base.key };
+  if (ik && base.key === 'SALON' && BEAUTY_IDENTITIES[ik]) return { ...base, ...BEAUTY_IDENTITIES[ik], key: base.key };
   // A declared trade refines; it never invents. An unknown trade — including
   // every beauty trade, which has nothing to add here — leaves the base alone.
   const t = String(trade || '').toUpperCase() as TradePersonaKey;
   const fine = TRADE_PERSONAS[t];
   return fine ? { ...base, ...fine, key: base.key } : base;
+}
+
+/** The explicitly chosen industry from a settings `industry` row value, or null. */
+export function chosenIndustry(value: unknown): string | null {
+  const k = (value as { key?: string } | null)?.key;
+  return typeof k === 'string' && k ? k.toUpperCase() : null;
 }
 
 export const ALL_PERSONAS: BusinessPersona[] = Object.values(PERSONAS);

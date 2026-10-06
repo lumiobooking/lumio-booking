@@ -12,6 +12,7 @@ import { randomUUID } from 'crypto';
 import { Public } from '../auth/decorators/public.decorator';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { verifyCaptcha } from '../common/security/turnstile';
+import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 
 /**
  * Hosted "online booking link" flow. Unlike the WordPress plugin (which is
@@ -146,7 +147,7 @@ export class PublicSalonController {
 
   private async buildSalon(tenant: { id: string; name: string; slug: string; businessType: string; timezone: string; branding: unknown; contactPhone: string | null }) {
     // Read the settings rows in parallel (avoids sequential DB round-trips).
-    const [booking, weekdayDiscounts, dateDiscounts, deposit, firstVisit, groupDiscount, pos, areaRows, extra, ratingAgg, analytics] = await Promise.all([
+    const [booking, weekdayDiscounts, dateDiscounts, deposit, firstVisit, groupDiscount, pos, areaRows, extra, ratingAgg, analytics, industryRow] = await Promise.all([
       this.settings.getBookingRules(tenant.id),
       this.settings.getWeekdayDiscounts(tenant.id),
       this.settings.getDateDiscounts(tenant.id),
@@ -159,6 +160,8 @@ export class PublicSalonController {
       this.prisma.feedback.aggregate({ where: { tenantId: tenant.id }, _avg: { rating: true }, _count: { _all: true } }).catch(() => null),
       // Was a sequential await after the batch — folded in so it runs in parallel.
       this.settings.getAnalyticsSettings(tenant.id).catch(() => ({ ga4Id: '', gtmId: '', mode: '' as const, adsId: '', adsLabel: '' })),
+      // The line of business: the page says "dentist" to a clinic's patients, not "nail tech".
+      (async () => { try { return await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId: tenant.id, key: INDUSTRY_KEY } }, select: { value: true } }); } catch { return null; } })(),
     ]);
     const brand = this.settings.brandingFrom(tenant.branding);
     const autoCount = (ratingAgg as { _count?: { _all?: number } } | null)?._count?._all ?? 0;
@@ -201,6 +204,7 @@ export class PublicSalonController {
       cardFee: { enabled: !!pos?.cardSurchargeEnabled && (pos?.cardSurchargePercent ?? 0) > 0, percent: pos?.cardSurchargePercent ?? 0 },
       analytics,
       rating,
+      industry: resolveIndustry(industryRow?.value ?? null, tenant.businessType),
     };
   }
 

@@ -1042,7 +1042,11 @@ function ServingRow({ w, staff, currency, t, isMobile, onOpen }: {
       <div style={{ minWidth: 0, flex: '1 1 140px', ...(isMobile ? { flexBasis: '100%', order: 5 } : null) }}>
         {(legs.length <= 1 || isMobile) && <div style={{ color: 'var(--ccbd5e1)', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{names}</div>}
       </div>
-      <span style={{ color: 'var(--ink-good)', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: isMobile ? 'auto' : 0 }}>{formatPrice(subtotal, currency)}</span>
+      {/* No service yet (a friend checked in with the party, nothing picked): "$0.00"
+          read as a free visit. Say what it is and send the desk to fill it in. */}
+      {items.length === 0
+        ? <span style={{ color: 'var(--ink-warn)', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: isMobile ? 'auto' : 0 }}>⚠ {t('wi.noService')}</span>
+        : <span style={{ color: 'var(--ink-good)', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: isMobile ? 'auto' : 0 }}>{formatPrice(subtotal, currency)}</span>}
       <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexShrink: 0, ...(isMobile ? { flexBasis: '100%', order: 6 } : null) }}>
         <a href={checkoutHref} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, textDecoration: 'none', whiteSpace: 'nowrap', ...(isMobile ? { flex: 1, textAlign: 'center' as const } : null) }}>{t('wi.checkout')}</a>
         <button onClick={onOpen} style={{ padding: '7px 10px', background: 'transparent', border: '1px solid var(--c334155)', borderRadius: 8, color: 'var(--ccbd5e1)', cursor: 'pointer', fontSize: 12.5, whiteSpace: 'nowrap' }}>{t('wi.manage')} ›</button>

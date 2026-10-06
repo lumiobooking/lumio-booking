@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AiUsageService } from '../common/ai-usage.service';
-import { personaFor } from '../common/business-persona';
+import { chosenIndustry, personaFor } from '../common/business-persona';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { explainLocalPost404, bareLocationId } from './gbp-post-404';
 import { oauthBase } from '../common/public-url.util';
@@ -1229,12 +1229,13 @@ Output ONLY the final reply text: no quotes, no preamble.${extra}`;
    */
   private async businessIdentity(tenantId: string | null): Promise<string> {
     if (!tenantId) return personaFor(null).identity;
-    const [t, row] = await Promise.all([
+    const [t, row, ind] = await Promise.all([
       this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } }).catch(() => null),
       this.prisma.setting.findFirst({ where: { tenantId, key: 'business_profile' }, select: { value: true } }).catch(() => null),
+      this.prisma.setting.findFirst({ where: { tenantId, key: 'industry' }, select: { value: true } }).catch(() => null),
     ]);
     const trade = (row?.value as { trade?: string } | null)?.trade ?? null;
-    return personaFor((t as { businessType?: string } | null)?.businessType ?? null, trade).identity;
+    return personaFor((t as { businessType?: string } | null)?.businessType ?? null, trade, chosenIndustry(ind?.value)).identity;
   }
 
   private async alertManager(tenantId: string, reviewRowId: string, stars: number, r: GoogleApiReview, s: GbrSettings, salonName: string) {

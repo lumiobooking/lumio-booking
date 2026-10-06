@@ -124,11 +124,36 @@ function compile(k: IndustryKey) {
   return c;
 }
 
-/** Rewrite one label into an industry's words. Pure; exported for tests. */
-export function industryText(text: string, k: IndustryKey): string {
+/**
+ * Rewrite one label into an industry's words. Pure; exported for tests.
+ *
+ * Two things are never touched: {placeholders} ("{salon}" is a slot the page
+ * fills, not a word), and proper names — the business's own name. "Lumio
+ * Salon" is a name; a clinic called that is still called that.
+ */
+export function industryText(text: string, k: IndustryKey, names: string[] = []): string {
   if (!text || k === 'NAIL') return text;
   const c = compile(k);
   if (!c) return text;
+  const keep = keepPattern(names);
+  return text.split(keep).map((part, i) => (i % 2 === 1 ? part : rewrite(part, c))).join('');
+}
+
+const keepCache = new Map<string, RegExp>();
+function keepPattern(names: string[]): RegExp {
+  const clean = [...new Set(names.map((n) => String(n ?? '').trim()).filter((n) => n.length >= 2))].sort((a, b) => b.length - a.length);
+  const key = clean.join('\u0001');
+  let re = keepCache.get(key);
+  if (!re) {
+    const alts = ['\\{[^{}]*\\}', ...clean.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))];
+    re = new RegExp(`(${alts.join('|')})`, 'giu');
+    keepCache.set(key, re);
+  }
+  re.lastIndex = 0;
+  return re;
+}
+
+function rewrite(text: string, c: { re: RegExp; map: Map<string, string> }): string {
   return text.replace(c.re, (_all, pre: string, m: string) => {
     const to = c.map.get(m.toLowerCase()) ?? m;
     if (m.length > 1 && m === m.toUpperCase() && m !== m.toLowerCase()) return pre + to.toUpperCase();
@@ -144,6 +169,8 @@ export function iconFor(name: string, k: IndustryKey): string { return ICONS[k]?
 
 const STORE = 'lumio_industry';
 let current: IndustryKey = 'NAIL';
+/** Names that are never re-worded: the business's own name. */
+let names: string[] = [];
 let loaded = false;
 const listeners = new Set<() => void>();
 const cache = new Map<string, string>();
@@ -170,6 +197,15 @@ export function setUiIndustry(next: unknown): void {
   for (const fn of listeners) { try { fn(); } catch { /* next */ } }
 }
 
+/** The business's own name(s), kept as written inside re-worded labels. */
+export function setUiIndustryNames(next: (string | null | undefined)[]): void {
+  const v = next.map((n) => String(n ?? '').trim()).filter(Boolean);
+  if (v.join('\u0001') === names.join('\u0001')) return;
+  names = v;
+  cache.clear();
+  for (const fn of listeners) { try { fn(); } catch { /* next */ } }
+}
+
 export function onUiIndustryChange(fn: () => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
@@ -181,7 +217,7 @@ export function ind(text: string): string {
   if (k === 'NAIL' || !text) return text;
   const hit = cache.get(text);
   if (hit !== undefined) return hit;
-  const out = industryText(text, k);
+  const out = industryText(text, k, names);
   if (cache.size > 5000) cache.clear();
   cache.set(text, out);
   return out;

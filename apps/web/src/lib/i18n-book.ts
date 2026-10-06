@@ -1,3 +1,4 @@
+import { industryText, isIndustryKey, type IndustryKey } from './ui-industry';
 /**
  * Wording for the page CUSTOMERS book on.
  *
@@ -369,9 +370,23 @@ export function setBookLang(lang: BookLang): void {
   currentLang = lang;
 }
 
+/**
+ * The salon's line of business, for the same reason: one salon per page. A
+ * dental clinic's patients read "Choose your dentist", not "Choose your nail
+ * tech"; the salon's own name is kept as written. NAIL changes nothing.
+ */
+let currentIndustry: IndustryKey = 'NAIL';
+let currentNames: string[] = [];
+
+export function setBookIndustry(industry: unknown, salonName?: string | null): void {
+  currentIndustry = isIndustryKey(String(industry ?? '').toUpperCase()) ? (String(industry).toUpperCase() as IndustryKey) : 'NAIL';
+  currentNames = salonName ? [salonName] : [];
+}
+
 /** Translate a customer-facing string; unknown keys fall back to the English. */
 export function bt(s: string): string {
-  return (TABLES[currentLang] ?? {})[s] ?? s;
+  const out = (TABLES[currentLang] ?? {})[s] ?? s;
+  return currentIndustry === 'NAIL' ? out : industryText(out, currentIndustry, currentNames);
 }
 
 /** Translate and fill placeholders: btf('Open until {time}', { time }). */

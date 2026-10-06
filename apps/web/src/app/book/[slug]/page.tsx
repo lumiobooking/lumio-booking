@@ -27,7 +27,7 @@ import { InstallAppButton } from '../../../components/InstallAppButton';
 import { uiLocale } from '../../../lib/datetime';
 import { todayInZone } from '../../../lib/salon-clock';
 import { planOpeningBar } from '../../../lib/opening-bar';
-import { bookLangForCountry, setBookLang, bt, btf, bookLocale } from '../../../lib/i18n-book';
+import { bookLangForCountry, setBookLang, setBookIndustry, bt, btf, bookLocale } from '../../../lib/i18n-book';
 import { afterPct, anyDealPct, dayKey, lineDeal, nextDeal, promoDeal, windowEnded, type Promos } from '../../../lib/booking-promos';
 import { gbpAttribution, gbpSearch, isGbpPath } from '../../../lib/gbp-source';
 import { adsConfigFrom, conversionRoute, loadAdsTag, sendAdsConversion, type AdsConfig, type TagDocument, type TagWindow } from '../../../lib/ads-tag';
@@ -135,6 +135,8 @@ interface Salon {
   country?: string;
   /** Public front-end tag ids (never secrets). adsId/adsLabel: Google Ads conversion. */
   analytics?: { ga4Id?: string; gtmId?: string; mode?: string; adsId?: string; adsLabel?: string } | null;
+  /** Line of business (NAIL, DENTAL, CAFE…): the words this page uses. */
+  industry?: string;
 }
 interface Addon { id: string; name: string; durationMinutes: number; priceCents: number }
 interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; imageUrl?: string | null; addons: Addon[] }
@@ -277,6 +279,8 @@ export default function PublicBookingPage() {
   // The page speaks the salon's language, not the visitor's. A Vietnamese shop
   // serves Vietnamese customers on any browser; a US shop keeps its English.
   setBookLang(bookLangForCountry(salon?.country));
+  // …and in its trade's words (a clinic says "dentist"); NAIL until it loads.
+  setBookIndustry(salon?.industry, salon?.name);
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);

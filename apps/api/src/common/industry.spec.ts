@@ -5,7 +5,7 @@
  */
 import { BadRequestException } from '@nestjs/common';
 import { defaultIndustryFor, INDUSTRIES, industryDef, isIndustry, resolveIndustry, writeIndustry } from './industry';
-import { personaFor } from './business-persona';
+import { chosenIndustry, personaFor } from './business-persona';
 import { SettingsService } from '../settings/settings.service';
 
 function db() {
@@ -52,7 +52,18 @@ describe('the industry list', () => {
     expect(resolveIndustry({ key: 'nonsense' }, 'SERVICE')).toBe('SERVICE');
   });
 
+  it('a lash studio’s AI names it — but ONLY when the industry was chosen, never from a guessed trade', () => {
+    expect(personaFor('SALON', 'LASH', 'LASH').identity).toBe('a lash and brow studio');
+    expect(personaFor('SALON', null, 'HAIR').identity).toBe('a hair salon');
+    expect(personaFor('SALON', 'SPA', null).identity).toBe('a nail salon'); // scan guessed SPA: unchanged
+    expect(personaFor('SALON', null, null).identity).toBe('a nail salon');
+    expect(personaFor('SALON', null, 'NAIL').identity).toBe('a nail salon');
+    expect(chosenIndustry({ key: 'lash' })).toBe('LASH');
+    expect(chosenIndustry(null)).toBeNull();
+  });
+
   it('a dental clinic’s AI is a dental clinic, never a nail salon', () => {
+    expect(personaFor('SERVICE', null, 'DENTAL').identity).toBe('a dental clinic');
     expect(personaFor('SERVICE', 'DENTAL').identity).toBe('a dental clinic');
     expect(personaFor('SERVICE', 'DENTAL').voiceGoal).not.toMatch(/nail/i);
   });

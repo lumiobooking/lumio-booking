@@ -1,5 +1,5 @@
 import { UserRole } from '@prisma/client';
-import { cleanLayout, tableStates, withDefaults, TableLike, ResLike } from './floor';
+import { cleanLayout, tableStates, waitingForTable, withDefaults, TableLike, ResLike } from './floor';
 import { TablesService } from './tables.service';
 
 const T = (id: string, seats = 4, area: string | null = 'Main', sortOrder = 0, isActive = true): TableLike => ({ id, name: id.toUpperCase(), seats, area, isActive, sortOrder });
@@ -61,6 +61,15 @@ describe('floor map — tableStates', () => {
   });
 });
 
+describe('floor map — waitingForTable', () => {
+  it('lists live reservations with no table, from 1h ago to 3h ahead, earliest first', () => {
+    const free = (id: string, start: number, status = 'CONFIRMED'): ResLike => ({ ...R(id, 'x', start, 60, status), tableId: null });
+    const out = waitingForTable([free('late', 200), free('b', 90), free('a', -30), free('old', -90), free('gone', 10, 'CANCELLED'), R('seated', 'a', 5, 60)], AT);
+    expect(out.map((w) => w.id)).toEqual(['a', 'b']);
+    expect(out[0]).toMatchObject({ party: 2, name: 'Ann' });
+  });
+});
+
 describe('TablesService floor — tenant isolation', () => {
   const owner = (tenantId: string) => ({ userId: 'u-' + tenantId, role: UserRole.SALON_ADMIN, tenantId } as never);
   function make() {
@@ -80,6 +89,7 @@ describe('TablesService floor — tenant isolation', () => {
     expect(prisma.setting.findUnique.mock.calls[0][0].where.tenantId_key.tenantId).toBe('t1');
     expect(prisma.appointment.findMany.mock.calls[0][0].where.tenantId).toBe('t1');
     expect(Object.keys(out.layout)).toEqual(['a']); // a foreign id in the stored blob never surfaces
+    expect(out.waiting).toEqual([]);
   });
 
   it('saves the layout under the caller\'s tenant, drops other restaurants\' table ids, audits', async () => {

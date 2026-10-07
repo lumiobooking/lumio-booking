@@ -54,6 +54,24 @@ export class CustomersController {
     return this.customers.followUps(user);
   }
 
+  // A dental clinic's recall list ("Đến hạn tái khám").
+  @Get('recalls')
+  recalls(@CurrentUser() user: AuthenticatedUser) {
+    return this.customers.recalls(user);
+  }
+
+  @Post('recalls/:id/contacted')
+  recallContacted(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.customers.markRecallContacted(user, id);
+  }
+
+  // The desk (bookings capability) sees ⚠ allergies / dietary needs while booking and on arrivals.
+  @Caps('bookings')
+  @Get('record-alerts')
+  recordAlerts(@CurrentUser() user: AuthenticatedUser, @Query('phone') phone?: string, @Query('ids') ids?: string) {
+    return this.customers.recordAlerts(user, { phone, ids });
+  }
+
   @Get('search')
   search(@CurrentUser() user: AuthenticatedUser, @Query('q') q: string) {
     return this.customers.search(user, q ?? '');

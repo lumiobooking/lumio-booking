@@ -1,10 +1,11 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
-import { AppointmentStatus, OrderStatus, Prisma, WalkInStatus } from '@prisma/client';
+import { AppointmentStatus, OrderStatus, Prisma, UserRole, WalkInStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomersService } from '../customers/customers.service';
 import { SettingsService } from '../settings/settings.service';
 import { PushService } from '../push/push.service';
+import { LATE_WARNED_KEY, NamedTicket, deskUserIds, lateAlert, newlyLate, parkedAlert, rememberWarned } from './overdue-alert';
 import { normalizeSource } from '../common/source.util';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import {
@@ -179,11 +180,14 @@ export class WalkinsService {
   async parkStale(tenantId: string, now = new Date()): Promise<string[]> {
     const open = await this.prisma.walkIn.findMany({
       where: { tenantId, status: WalkInStatus.SERVING, awaitingPayment: false },
-      select: { id: true, status: true, assignedStaffId: true, createdAt: true, assignedAt: true, doneAt: true, awaitingPayment: true, items: true },
+      select: { id: true, status: true, assignedStaffId: true, createdAt: true, assignedAt: true, doneAt: true, awaitingPayment: true, items: true, customerName: true },
     });
     if (!open.length) return [];
     const afterHours = await this.afterHours(tenantId, now);
     const stale = (open as unknown as TicketLike[]).filter((t) => (afterHours ? staleAfterHours(t, now) : false) || isStale(t, now)).map((t) => t.id);
+    // The desk's phones: visits that just ran +15′ late (once each), and the ones parked below.
+    await this.alertDesk(tenantId, (open as unknown as NamedTicket[]).filter((t) => !stale.includes(t.id)), now,
+      (open as unknown as NamedTicket[]).filter((t) => stale.includes(t.id)).map((t) => (t.customerName || '').trim() || 'Walk-in'));
     if (!stale.length) return [];
     await this.prisma.walkIn.updateMany({
       where: { id: { in: stale }, tenantId, status: WalkInStatus.SERVING, awaitingPayment: false },
@@ -191,6 +195,36 @@ export class WalkinsService {
     });
     await this.settle(tenantId);
     return stale;
+  }
+
+  /**
+   * Push to the people running the floor (walkins/overdue-alert.ts). Best
+   * effort: no push set up, or any error, and the sweep carries on.
+   */
+  private async alertDesk(tenantId: string, running: NamedTicket[], now: Date, parkedNames: string[]): Promise<void> {
+    if (!this.push) return;
+    try {
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: LATE_WARNED_KEY } } });
+      const warned = ((row?.value as { ids?: unknown } | null)?.ids ?? []) as string[];
+      const late = newlyLate(running, now, Array.isArray(warned) ? warned : []);
+      const late1 = lateAlert(late);
+      const parked = parkedAlert(parkedNames);
+      if (!late1 && !parked) return;
+      const [admins, staff] = await Promise.all([
+        this.prisma.user.findMany({ where: { tenantId, role: UserRole.SALON_ADMIN, isActive: true }, select: { id: true } }),
+        this.prisma.staffMember.findMany({ where: { tenantId, userId: { not: null } }, select: { userId: true, staffRole: true, permissions: true } as never }) as unknown as Promise<{ userId: string | null; staffRole: string | null; permissions?: unknown }[]>,
+      ]);
+      const to = deskUserIds(admins, staff);
+      if (late1) {
+        const ids = rememberWarned(warned, late.map((l) => l.id));
+        await this.prisma.setting.upsert({
+          where: { tenantId_key: { tenantId, key: LATE_WARNED_KEY } },
+          update: { value: { ids } as never }, create: { tenantId, key: LATE_WARNED_KEY, value: { ids } as never },
+        });
+        await this.push.sendToTenant(tenantId, late1, { onlyUserIds: to });
+      }
+      if (parked) await this.push.sendToTenant(tenantId, parked, { onlyUserIds: to });
+    } catch { /* the board's badge is still there */ }
   }
 
   /** Every salon with someone still in a chair, one after another; one salon's error never stops the next. */
@@ -597,7 +631,7 @@ export class WalkinsService {
     const tomorrow = new Date(f.today.getTime() + 86400000);
     const bookedRaw = await this.prisma.appointment.findMany({
       where: { tenantId, startTime: { gte: f.today, lt: tomorrow }, status: { in: [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED] } },
-      select: { id: true, startTime: true, source: true, groupId: true, customer: { select: { firstName: true, lastName: true } }, service: { select: { name: true } }, assignedStaff: { select: { id: true, firstName: true, lastName: true } } },
+      select: { id: true, startTime: true, source: true, groupId: true, customerId: true, customer: { select: { firstName: true, lastName: true } }, service: { select: { name: true } }, assignedStaff: { select: { id: true, firstName: true, lastName: true } } },
       orderBy: { startTime: 'asc' }, take: 60,
     });
     // How many are booked together: the ones still to come plus the ones of
@@ -610,6 +644,7 @@ export class WalkinsService {
       groupId: a.groupId ?? null,
       groupSize: partyCount(a.groupId ?? null),
       startTime: a.startTime,
+      customerId: a.customerId ?? null,
       source: normalizeSource(a.source),
       customerName: a.customer ? `${a.customer.firstName}${a.customer.lastName ? ' ' + a.customer.lastName : ''}`.trim() : null,
       serviceName: a.service?.name ?? null,

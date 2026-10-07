@@ -195,16 +195,17 @@ export class PushService {
   async sendToTenant(
     tenantId: string,
     payload: { title: string; body: string; url?: string; tag?: string },
-    opts: { exceptUserId?: string | null } = {},
+    opts: { exceptUserId?: string | null; onlyUserIds?: string[] } = {},
   ): Promise<void> {
     if (!this.enabled()) return;
+    if (opts.onlyUserIds && !opts.onlyUserIds.length) return;
     // Typed explicitly rather than inferred: a `select` narrows the row type,
     // and the sandbox's generated Prisma client is old enough to infer `{}`
     // here — which compiles into implicit-any downstream and then fails on the
     // real build. Naming the shape once makes both agree.
     type SubRow = { id: string; userId: string; endpoint: string; p256dh: string; auth: string };
     const subs: SubRow[] = await this.prisma.pushSubscription
-      .findMany({ where: { tenantId }, select: { id: true, userId: true, endpoint: true, p256dh: true, auth: true } })
+      .findMany({ where: { tenantId, ...(opts.onlyUserIds ? { userId: { in: opts.onlyUserIds } } : {}) }, select: { id: true, userId: true, endpoint: true, p256dh: true, auth: true } })
       .catch(() => []) as unknown as SubRow[];
 
     // Who to wake, and never the same device twice. See push-payload.spec.ts.

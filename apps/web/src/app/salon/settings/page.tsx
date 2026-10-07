@@ -11,6 +11,7 @@ import { useIsMobile } from '../../../lib/responsive';
 import { TimezonePicker } from '../../../components/TimezonePicker';
 import { ReceiptDesigner } from '../../../components/ReceiptDesigner';
 import { IndustryPicker } from '../../../components/IndustryPicker';
+import { NoShowPolicyCard } from '../../../components/NoShowPolicyCard';
 import type { ReceiptDesign } from '../../../lib/receipt';
 import { ind } from '../../../lib/ui-industry';
 
@@ -196,7 +197,7 @@ function Inner() {
           )}
           {tab === 'notifications' && <NotificationsSection data={data} onSave={save} />}
           {tab === 'reminders' && <><RemindersSection data={data} onSave={save} /><RebookingCard data={data} onSave={save} /></>}
-          {tab === 'deposit' && <DepositSection data={data} onSave={save} />}
+          {tab === 'deposit' && <><DepositSection data={data} onSave={save} /><NoShowPolicyCard /></>}
           {tab === 'branding' && <BrandingSection data={data} onSave={save} />}
         </div>
       </div>

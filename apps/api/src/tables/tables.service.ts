@@ -4,7 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateTableDto } from './dto/update-table.dto';
-import { cleanLayout, tableStates, withDefaults } from './floor';
+import { cleanLayout, tableStates, waitingForTable, withDefaults } from './floor';
 
 /** Per restaurant: where each table stands on the floor map (tables/floor.ts). */
 const LAYOUT_KEY = 'table_layout';
@@ -40,15 +40,18 @@ export class TablesService {
       this.prisma.restaurantTable.findMany({ where: { tenantId }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
       this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: LAYOUT_KEY } } }),
       this.prisma.appointment.findMany({
-        where: { tenantId, tableId: { not: null }, startTime: { lt: dayEnd }, endTime: { gt: dayStart } },
+        where: { tenantId, startTime: { lt: dayEnd }, endTime: { gt: dayStart } },
         select: { id: true, tableId: true, startTime: true, endTime: true, status: true, partySize: true, customer: { select: { firstName: true } } },
       }),
     ]);
     const layout = withDefaults(tables, cleanLayout(row?.value ?? {}, tables.map((t) => t.id)));
-    const states = tableStates(tables, res.map((r) => ({
+    const rows = res.map((r) => ({
       id: r.id, tableId: r.tableId, startTime: r.startTime, endTime: r.endTime, status: String(r.status), partySize: r.partySize ?? 1, customerName: r.customer?.firstName ?? null,
-    })), at);
-    return { at: at.toISOString(), tables, layout, states };
+    }));
+    const states = tableStates(tables, rows, at);
+    // Only a restaurant with tables seats anyone; a salon's bookings never show here.
+    const waiting = tables.length ? waitingForTable(rows, at) : [];
+    return { at: at.toISOString(), tables, layout, states, waiting };
   }
 
   /** Save where the tables stand. Owner only (class @Roles). Unknown ids are dropped. */

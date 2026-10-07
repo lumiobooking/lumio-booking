@@ -1,6 +1,9 @@
 import { profileFrom } from '../common/customer-profile';
 import { cleanIndustryFields, fieldsFor } from '../common/industry-fields';
 import { dueFollowUps, todayIn, type LeadRow } from './follow-ups';
+import { alertsFor, idList, samePhone, type AlertRow } from './record-alerts';
+import { CONTACTED_KEY, pruneContacted, recallList, type RecallRow } from './recall-list';
+import { recallMonthsOf } from '../bookings/recall';
 import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -48,6 +51,73 @@ export class CustomersService {
       take: 5000,
     }).catch(() => [])) as unknown as LeadRow[];
     return { today, items: dueFollowUps(rows, today) };
+  }
+
+  /**
+   * Warning fields (allergies, dietary needs, sensitivities) for the desk:
+   * by a phone being typed into the booking form, or for a list of customer
+   * ids on the arrivals board. One salon's customers only.
+   */
+  async recordAlerts(user: AuthenticatedUser, q: { phone?: string; ids?: string }) {
+    const tenantId = this.tenantId(user);
+    const select = { id: true, phone: true, industryFields: true } as never;
+    let rows: (AlertRow & { phone?: string | null })[] = [];
+    const ids = idList(q.ids);
+    if (ids.length) {
+      rows = (await this.prisma.customer.findMany({ where: { tenantId, id: { in: ids } }, select })) as unknown as AlertRow[];
+    } else if (q.phone && q.phone.replace(/\D/g, '').length >= 7) {
+      const digits = q.phone.replace(/\D/g, '');
+      const found = (await this.prisma.customer.findMany({ where: { tenantId, phone: { contains: digits.slice(-7) } }, select, take: 20 })) as unknown as (AlertRow & { phone: string | null })[];
+      rows = found.filter((r) => samePhone(q.phone as string, r.phone));
+    }
+    if (!rows.length) return { items: [] };
+    const industry = await this.industryOf(tenantId);
+    return { items: alertsFor(industry, rows) };
+  }
+
+  /**
+   * A dental clinic's recall list (customers/recall-list.ts): patients due
+   * for their check-up with nothing booked. Other trades: empty. One clinic only.
+   */
+  async recalls(user: AuthenticatedUser, now = new Date()) {
+    const tenantId = this.tenantId(user);
+    if ((await this.industryOf(tenantId)) !== 'DENTAL') return { items: [] };
+    const custs = (await this.prisma.customer.findMany({
+      where: { tenantId },
+      select: { id: true, firstName: true, lastName: true, phone: true, rebookRemindedAt: true, industryFields: true } as never,
+      take: 5000,
+    })) as unknown as { id: string; firstName: string; lastName: string | null; phone: string | null; rebookRemindedAt: Date | null; industryFields: unknown }[];
+    const withRecall = custs.map((c) => ({ c, months: recallMonthsOf(c.industryFields) })).filter((x) => x.months !== null).slice(0, 2000);
+    if (!withRecall.length) return { items: [] };
+    const ids = withRecall.map((x) => x.c.id);
+    const [done, upcoming, row] = await Promise.all([
+      this.prisma.appointment.findMany({ where: { tenantId, customerId: { in: ids }, status: 'COMPLETED' }, select: { customerId: true, endTime: true }, orderBy: { endTime: 'desc' } }),
+      this.prisma.appointment.findMany({ where: { tenantId, customerId: { in: ids }, startTime: { gt: now }, status: { in: ['PENDING', 'ASSIGNED', 'ACCEPTED', 'CONFIRMED'] } }, select: { customerId: true } }),
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: CONTACTED_KEY } } }),
+    ]);
+    const last = new Map<string, Date>();
+    for (const a of done) if (a.customerId && !last.has(a.customerId)) last.set(a.customerId, a.endTime);
+    const booked = new Set(upcoming.map((a) => a.customerId));
+    const rows: RecallRow[] = withRecall.map(({ c, months }) => ({
+      id: c.id, name: `${c.firstName}${c.lastName ? ' ' + c.lastName : ''}`.trim(), phone: c.phone, months: months as number,
+      lastVisitEnd: last.get(c.id) ?? null, hasUpcoming: booked.has(c.id), remindedAt: c.rebookRemindedAt ?? null,
+    }));
+    return { items: recallList(rows, now, pruneContacted(row?.value, now)) };
+  }
+
+  /** "Đã liên hệ": hide this patient from the recall list for 14 days. */
+  async markRecallContacted(user: AuthenticatedUser, customerId: string, now = new Date()) {
+    const tenantId = this.tenantId(user);
+    const c = await this.prisma.customer.findFirst({ where: { id: customerId, tenantId }, select: { id: true } });
+    if (!c) throw new NotFoundException('Customer not found');
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: CONTACTED_KEY } } });
+    const next = { ...pruneContacted(row?.value, now), [c.id]: now.toISOString() };
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: CONTACTED_KEY } },
+      update: { value: next as never }, create: { tenantId, key: CONTACTED_KEY, value: next as never },
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'customer.recall_contacted', resourceType: 'customer', resourceId: c.id });
+    return { ok: true };
   }
 
   /** The record fields this salon's industry keeps on a customer, for the form. */

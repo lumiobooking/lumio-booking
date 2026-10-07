@@ -50,7 +50,7 @@ const GROUP_KEY: Record<string, string> = {
 const HREF_CAP: Record<string, string> = {
   '/salon': 'dashboard', '/salon/pos': 'pos', '/salon/orders': 'orders',
   '/salon/calendar': 'calendar', '/salon/bookings': 'bookings', '/salon/walkins': 'walkins', '/salon/front-desk': 'walkins',
-  '/salon/waitlist': 'waitlist', '/salon/customers': 'customers', '/salon/services': 'services',
+  '/salon/tables': 'bookings', '/salon/waitlist': 'waitlist', '/salon/customers': 'customers', '/salon/services': 'services',
   '/salon/products': 'products', '/salon/gift-cards': 'pos', '/salon/staff': 'staff', '/salon/stations': 'staff', '/salon/payroll': 'payroll',
   '/salon/reviews': 'reviews', '/salon/feedback': 'reviews', '/salon/marketing': 'marketing', '/salon/content': 'marketing', '/salon/channels': 'marketing', '/salon/inventory': 'inventory',
   '/salon/pos/report': 'reports', '/salon/pos/shifts': 'reports', '/salon/reports': 'reports', '/salon/payments': 'payments', '/salon/notifications': 'notifications',

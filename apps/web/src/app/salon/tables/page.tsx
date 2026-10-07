@@ -43,7 +43,9 @@ export default function TablesPage() {
 }
 
 function Inner() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  // The host at the door (staff with `bookings`) works the floor map; the table list is the owner's.
+  const owner = user?.role !== 'STAFF';
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [tables, setTables] = useState<Table[]>([]);
@@ -55,10 +57,10 @@ function Inner() {
   const vi = lang === 'vi';
 
   const load = useCallback(async () => {
-    if (!token) return;
+    if (!token || !owner) return;
     try { setTables(await apiFetch<Table[]>('/tables', { token })); }
     catch (e) { setErr(e instanceof Error ? e.message : 'Failed to load'); }
-  }, [token]);
+  }, [token, owner]);
   useEffect(() => { load(); }, [load]);
 
   async function add(e: React.FormEvent) {
@@ -113,18 +115,18 @@ function Inner() {
   }
 
   return (
-    <section style={{ maxWidth: view === 'map' ? 1040 : 720 }}>
+    <section style={{ maxWidth: view === 'map' || !owner ? 1040 : 720 }}>
       <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>{t('tb.title')}</h1>
       <p style={{ color: 'var(--c94a3b8)', fontSize: 14, marginTop: 0 }}>{t('tb.subtitle')}</p>
-      <div role="tablist" style={{ display: 'inline-flex', gap: 4, padding: 3, borderRadius: 10, border: '1px solid var(--c334155)', marginBottom: 14 }}>
+      {owner && <div role="tablist" style={{ display: 'inline-flex', gap: 4, padding: 3, borderRadius: 10, border: '1px solid var(--c334155)', marginBottom: 14 }}>
         {(['list', 'map'] as const).map((v) => (
           <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
             style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13, background: view === v ? 'var(--c1e293b)' : 'transparent', color: 'var(--ccbd5e1)' }}>
             {v === 'list' ? (vi ? 'Danh sách' : 'List') : (vi ? 'Sơ đồ bàn' : 'Floor map')}
           </button>
         ))}
-      </div>
-      {view === 'map' ? <FloorMap token={token} vi={vi} canArrange /> : <>
+      </div>}
+      {view === 'map' || !owner ? <FloorMap token={token} vi={vi} canArrange={owner} /> : <>
       {err && <div style={ui.banner}>{err}</div>}
 
       <ImportCsv token={token} endpoint="/tables" header="name,seats,area" sample={SAMPLE_TABLES} existing={() => new Set(tables.map((tb) => tb.name.toLowerCase()))} buildBody={(c) => ({ name: c[0], seats: parseInt(c[1], 10) || 2, area: c[2] || undefined })} onDone={load} />

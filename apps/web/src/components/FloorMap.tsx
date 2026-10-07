@@ -6,6 +6,9 @@
  * seated (a reservation running), soon (next one within the hour), free.
  * The owner can switch to "Arrange" and drag tables where they stand in the
  * room; the layout is stored per restaurant on the server.
+ * Reservations with no table yet are listed beside the map: pick one, then
+ * tap a table to seat it (POST /bookings/:id/table — the server refuses a
+ * table already taken for that time).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../lib/api';
@@ -20,7 +23,8 @@ interface State {
   current: { name: string | null; party: number; until: string } | null;
   next: { name: string | null; party: number; at: string } | null;
 }
-interface Floor { at: string; tables: Table[]; layout: Record<string, Spot>; states: State[] }
+interface Waiting { id: string; name: string | null; party: number; at: string; until: string }
+interface Floor { at: string; tables: Table[]; layout: Record<string, Spot>; states: State[]; waiting?: Waiting[] }
 
 const INK: Record<State['state'], string> = { seated: 'var(--ink-bad)', soon: 'var(--ink-warn)', free: 'var(--ink-good)' };
 const SIZE: Record<Shape, { w: number; h: number; r: string }> = {
@@ -38,6 +42,7 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
   const [picked, setPicked] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [seat, setSeat] = useState<string | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ id: string; dx: number; dy: number; moved: boolean } | null>(null);
   const dirtyRef = useRef(false);
@@ -92,6 +97,16 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
     finally { setSaving(false); }
   }
+  async function seatAt(tableId: string) {
+    if (!seat) return;
+    setSaving(true); setErr(null);
+    try {
+      await apiFetch(`/bookings/${seat}/table`, { method: 'POST', token, body: { tableId } });
+      setSeat(null);
+      await load();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    finally { setSaving(false); }
+  }
   function cancel() { setDirty(false); setArrange(false); if (floor) setDraft(floor.layout); }
   function setShape(id: string, shape: Shape) { setDraft((m) => ({ ...m, [id]: { ...m[id], shape } })); setDirty(true); }
 
@@ -101,6 +116,9 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
   for (const s of floor?.states ?? []) count[s.state]++;
   const label = { seated: vi ? 'Đang có khách' : 'Seated', soon: vi ? 'Sắp có khách (≤1 giờ)' : 'Soon (≤1h)', free: vi ? 'Trống' : 'Free' };
   const pickedT = tables.find((t) => t.id === picked) ?? null;
+  const waiting = floor?.waiting ?? [];
+  const seating = seat ? waiting.find((w) => w.id === seat) ?? null : null;
+  const fits = (t: Table) => !seating || (t.seats >= seating.party && states.get(t.id)?.state !== 'seated');
   const pickedS = picked ? states.get(picked) : undefined;
   const btn = (on = false): React.CSSProperties => ({ padding: '6px 11px', borderRadius: 8, border: '1px solid var(--c334155)', background: on ? 'var(--c1e293b)' : 'transparent', color: 'var(--ccbd5e1)', fontSize: 13, cursor: 'pointer' });
 
@@ -116,7 +134,7 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
           onChange={(e) => e.target.value && setAt(wallToInstantISO(e.target.value, tz))}
           style={{ padding: '5px 8px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', fontSize: 13 }} />
         <span style={{ flex: 1 }} />
-        {canArrange && !arrange && <button type="button" style={btn()} onClick={() => { setArrange(true); setPicked(null); }}>{vi ? 'Sắp xếp bàn' : 'Arrange tables'}</button>}
+        {canArrange && !arrange && <button type="button" style={btn()} onClick={() => { setArrange(true); setPicked(null); setSeat(null); }}>{vi ? 'Sắp xếp bàn' : 'Arrange tables'}</button>}
         {arrange && <>
           <button type="button" style={btn()} onClick={cancel} disabled={saving}>{vi ? 'Huỷ' : 'Cancel'}</button>
           <button type="button" style={{ ...btn(true), borderColor: 'var(--ink-good)', color: 'var(--ink-good)' }} onClick={save} disabled={saving || !dirty}>{saving ? '…' : vi ? 'Lưu sơ đồ' : 'Save layout'}</button>
@@ -134,6 +152,25 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
 
       {err && <div style={{ color: 'var(--ink-bad)', fontSize: 13, marginBottom: 8 }}>{err}</div>}
 
+      {!arrange && waiting.length > 0 && (
+        <div style={{ marginBottom: 10, padding: 10, borderRadius: 10, border: '1px solid var(--c334155)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', marginBottom: 6 }}>
+            {vi ? `Chờ xếp bàn (${waiting.length})` : `To seat (${waiting.length})`}
+            <span style={{ fontWeight: 400, color: 'var(--c94a3b8)', marginLeft: 8 }}>
+              {seating ? (vi ? `Bấm vào bàn trống đủ ${seating.party} chỗ để xếp.` : `Tap a free table with ${seating.party}+ seats.`) : (vi ? 'Chọn một lịch đặt, rồi bấm vào bàn.' : 'Pick a reservation, then tap a table.')}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {waiting.map((w) => (
+              <button key={w.id} type="button" onClick={() => { setSeat((x) => (x === w.id ? null : w.id)); setPicked(null); }}
+                style={{ ...btn(seat === w.id), borderColor: seat === w.id ? 'var(--ink-warn)' : 'var(--c334155)' }}>
+                {clockIn(w.at, tz, vi)} · {w.name || (vi ? 'Khách' : 'Guest')} · {w.party} {vi ? 'người' : 'ppl'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div ref={box} style={{ position: 'relative', width: '100%', height: 520, borderRadius: 12, border: '1px solid var(--c334155)', overflow: 'hidden', touchAction: arrange ? 'none' : 'auto',
         backgroundImage: arrange ? 'linear-gradient(var(--c1e293b) 1px, transparent 1px), linear-gradient(90deg, var(--c1e293b) 1px, transparent 1px)' : undefined, backgroundSize: '5% 5%' }}>
         {floor && tables.length === 0 && <p style={{ padding: 16, color: 'var(--c64748b)', fontSize: 14 }}>{vi ? 'Chưa có bàn — thêm bàn ở tab Danh sách.' : 'No tables yet — add them in the List tab.'}</p>}
@@ -145,12 +182,12 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
           return (
             <div key={t.id} role="button" tabIndex={0} title={t.area ?? undefined}
               onPointerDown={(e) => onDown(e, t.id)} onPointerMove={onMove} onPointerUp={() => onUp(t.id)}
-              onClick={() => { if (!arrange) setPicked((p) => (p === t.id ? null : t.id)); }}
+              onClick={() => { if (arrange) return; if (seat) { if (fits(t)) void seatAt(t.id); return; } setPicked((p) => (p === t.id ? null : t.id)); }}
               onKeyDown={(e) => { if (e.key === 'Enter') setPicked(t.id); }}
               style={{ position: 'absolute', left: `${spot.x}%`, top: `${spot.y}%`, width: z.w, height: z.h, borderRadius: z.r,
                 border: `2px solid ${ink}`, background: `color-mix(in srgb, ${ink} 16%, transparent)`, color: 'var(--ccbd5e1)',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.15,
-                cursor: arrange ? 'grab' : 'pointer', userSelect: 'none', outline: picked === t.id ? '2px solid var(--ccbd5e1)' : 'none', outlineOffset: 2 }}>
+                cursor: arrange ? 'grab' : seating && !fits(t) ? 'not-allowed' : 'pointer', userSelect: 'none', opacity: fits(t) ? 1 : 0.35, outline: picked === t.id ? '2px solid var(--ccbd5e1)' : 'none', outlineOffset: 2 }}>
               <strong style={{ fontSize: 13 }}>{t.name}</strong>
               <span style={{ fontSize: 10, color: 'var(--c94a3b8)' }}>{t.seats} {vi ? 'chỗ' : 'seats'}</span>
               {sub && <span style={{ fontSize: 10, color: ink }}>{sub}</span>}

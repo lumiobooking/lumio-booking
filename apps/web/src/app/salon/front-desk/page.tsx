@@ -17,6 +17,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { PartyChip, type PartyInfo } from '../../../components/PartyChip';
+import { RecordAlertChip, useRecordAlerts } from '../../../components/RecordAlert';
 import { arrivalState, clockIn, minutesText, salonDayLabel } from '../../../lib/desk-time';
 import { hiddenHrefsFor, ind, uiIndustry } from '../../../lib/ui-industry';
 
@@ -41,7 +42,7 @@ interface Ticket {
   /** The booked time, for a checked-in appointment. */
   bookedAt?: string | null;
 }
-interface Booked { id: string; startTime: string; customerName: string | null; serviceName: string | null; staff: { id: string; name: string } | null; source?: string; groupId?: string | null; groupSize?: number }
+interface Booked { id: string; startTime: string; customerId?: string | null; customerName: string | null; serviceName: string | null; staff: { id: string; name: string } | null; source?: string; groupId?: string | null; groupSize?: number }
 interface StaffChip { id: string; name: string; busy: boolean; busyFor: number | null; nextUp: boolean; turns: number }
 interface Board { waiting: Ticket[]; serving: Ticket[]; booked: Booked[]; staff: StaffChip[]; timezone?: string | null }
 
@@ -89,6 +90,9 @@ function FrontDesk() {
     const b = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => { window.clearInterval(a); window.clearInterval(b); };
   }, [load]);
+  // ⚠ allergies / dietary needs / sensitivities from the customer records on this board.
+  const alertIds = useMemo(() => [...(board?.booked ?? []).map((b) => b.customerId), ...(board?.waiting ?? []).map((w) => w.customerId), ...(board?.serving ?? []).map((w) => w.customerId)], [board]);
+  const alerts = useRecordAlerts(token, alertIds, may('bookings'));
 
   async function arrive(id: string, party = false) {
     setBusy(id);
@@ -150,6 +154,7 @@ function FrontDesk() {
         </span>
         <span style={{ flex: 1, minWidth: 0 }}>
           <span style={{ display: 'block', ...name }}>{b.customerName || L('Khách', 'Guest')}</span>
+          {b.customerId && alerts.get(b.customerId) && <span style={{ display: 'block', marginTop: 2 }}><RecordAlertChip warnings={alerts.get(b.customerId)} vi={vi} /></span>}
           <span style={{ display: 'block', ...sub }}>{[b.serviceName, b.staff?.name ?? L('chưa giao thợ', 'no technician yet')].filter(Boolean).join(' · ')}</span>
         </span>
         {may('walkins') && (
@@ -234,6 +239,7 @@ function FrontDesk() {
                   <span style={{ display: 'block', ...name }}>{w.customerName || L('Khách', 'Guest')}{!w.group && (w.partySize ?? 1) > 1 ? ` · ${w.partySize}` : ''}</span>
                   <span style={{ display: 'block', ...sub }}>{services(w) || L('Chưa chọn dịch vụ', 'No service yet')}</span>
                 </span>
+                {w.customerId && <RecordAlertChip warnings={alerts.get(w.customerId)} vi={vi} />}
                 <PartyChip group={w.group} />
                 <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: m >= 20 ? 'var(--ink-bad)' : m >= 10 ? 'var(--ink-warn)' : 'var(--c94a3b8)' }}>{minutesText(m, vi)}</span>
@@ -253,6 +259,7 @@ function FrontDesk() {
                 <span style={{ display: 'block', ...name }}>{w.customerName || L('Khách', 'Guest')}</span>
                 <span style={{ display: 'block', ...sub }}>{[techName(w), services(w)].filter(Boolean).join(' · ')}</span>
               </span>
+              {w.customerId && <RecordAlertChip warnings={alerts.get(w.customerId)} vi={vi} />}
               <PartyChip group={w.group} />
               {w.overdueMinutes != null && w.overdueMinutes >= 15 && (
                 <span title={L('Khách đã quá thời gian dịch vụ. Quá 45′ hệ thống tự chuyển sang Chờ thanh toán để thợ rảnh.', 'Past the services\u2019 time. At 45′ over, the visit moves to Waiting to pay by itself so the technician is free.')}

@@ -15,6 +15,7 @@ import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '.
 import { AskedNotBookedBox } from '../../../components/AskedNotBookedBox';
 import { uiIndustry } from '../../../lib/ui-industry';
 import { LeadFollowUpsBox } from '../../../components/LeadFollowUpsBox';
+import { RecallBox } from '../../../components/RecallBox';
 import { uiLocale } from '../../../lib/datetime';
 
 interface Customer {
@@ -182,6 +183,7 @@ function Inner() {
 
       {/* Real estate: call-backs due today / overdue (the morning push opens this). */}
       {isLeads && <LeadFollowUpsBox vi={lang === 'vi'} />}
+      {uiIndustry() === 'DENTAL' && <RecallBox vi={lang === 'vi'} />}
 
       {/* Real estate: the lead pipeline — how many at each stage, tap to filter. */}
       {isLeads && (

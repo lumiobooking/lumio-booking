@@ -12,6 +12,7 @@ import { publicWebBase } from '../common/public-url.util';
 import { formatMoney, localeForCountry } from '../common/money';
 import { toE164, dialCodeFor } from '../common/phone';
 import { fitsBusinessHours, describeWindows, startsInBusinessHours } from '../settings/business-hours';
+import { NO_SHOW_BLOCK_MESSAGE, NO_SHOW_POLICY_KEY, NoShowPolicy, cleanNoShowPolicy, noShowVerdict, windowStart } from './no-show-policy';
 import { rebookCopy, recallDue, recallMonthsOf } from './recall';
 import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 import { canSelfReschedule } from './self-reschedule';
@@ -506,6 +507,12 @@ export class BookingsService {
       if (recent >= (source === 'hotline' ? 20 : 6)) {
         throw new BadRequestException('You have reached the maximum number of online bookings for today. Please call the salon to book again.');
       }
+    }
+
+    // The salon's no-show policy (bookings/no-show-policy.ts): off unless the
+    // owner set "refuse online from N no-shows". The desk can always book.
+    if (isPublicBooking && contactPhone && !opts?.groupGuest) {
+      await this.assertNoShowPolicy(tenantId, contactPhone);
     }
 
     const service = await this.prisma.service.findFirst({
@@ -2621,6 +2628,68 @@ export class BookingsService {
    * to the tenant, and blocked if the target table already has an overlapping
    * reservation, so a table is never double-booked.
    */
+  // ------------------------------------------------------------ no-show policy
+
+  async noShowPolicyFor(tenantId: string): Promise<NoShowPolicy> {
+    try {
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: NO_SHOW_POLICY_KEY } } });
+      return cleanNoShowPolicy(row?.value ?? {});
+    } catch { return cleanNoShowPolicy({}); }
+  }
+
+  getNoShowPolicy(user: AuthenticatedUser) {
+    return this.noShowPolicyFor(this.tenantId(user));
+  }
+
+  async updateNoShowPolicy(user: AuthenticatedUser, dto: Partial<NoShowPolicy>) {
+    const tenantId = this.tenantId(user);
+    const next = cleanNoShowPolicy(dto, await this.noShowPolicyFor(tenantId));
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: NO_SHOW_POLICY_KEY } },
+      update: { value: next as never }, create: { tenantId, key: NO_SHOW_POLICY_KEY, value: next as never },
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.no_show_policy_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { ...next } });
+    return next;
+  }
+
+  /** This salon's customers with this number, however it was typed (last 9 digits). */
+  private async customerIdsByPhone(tenantId: string, raw: string): Promise<string[]> {
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length < 7) return [];
+    const tail = digits.slice(-9);
+    const rows = await this.prisma.customer.findMany({ where: { tenantId, phone: { contains: digits.slice(-7) } }, select: { id: true, phone: true }, take: 20 });
+    return rows.filter((r) => (r.phone ?? '').replace(/\D/g, '').endsWith(tail)).map((r) => r.id);
+  }
+
+  private async noShowCount(tenantId: string, customerIds: string[], policy: NoShowPolicy, now = new Date()): Promise<number> {
+    if (!customerIds.length) return 0;
+    return this.prisma.appointment.count({
+      where: { tenantId, customerId: { in: customerIds }, status: AppointmentStatus.NO_SHOW, startTime: { gte: windowStart(policy, now) } },
+    });
+  }
+
+  /** For the desk while booking: how often this client didn't come, and whether to warn. */
+  async noShowCheck(user: AuthenticatedUser, q: { phone?: string; customerId?: string }) {
+    const tenantId = this.tenantId(user);
+    const policy = await this.noShowPolicyFor(tenantId);
+    let ids: string[] = [];
+    if (q.customerId) {
+      const c = await this.prisma.customer.findFirst({ where: { id: q.customerId, tenantId }, select: { id: true } });
+      if (c) ids = [c.id];
+    } else if (q.phone) {
+      ids = await this.customerIdsByPhone(tenantId, q.phone);
+    }
+    const count = await this.noShowCount(tenantId, ids, policy);
+    return { count, months: policy.months, ...noShowVerdict(count, policy) };
+  }
+
+  private async assertNoShowPolicy(tenantId: string, phone: string): Promise<void> {
+    const policy = await this.noShowPolicyFor(tenantId);
+    if (policy.blockOnlineAt === null) return;
+    const count = await this.noShowCount(tenantId, await this.customerIdsByPhone(tenantId, phone), policy);
+    if (noShowVerdict(count, policy).blockOnline) throw new BadRequestException(NO_SHOW_BLOCK_MESSAGE);
+  }
+
   async assignTable(user: AuthenticatedUser, id: string, tableId: string) {
     const tenantId = this.tenantId(user);
     const booking = await this.getById(user, id);

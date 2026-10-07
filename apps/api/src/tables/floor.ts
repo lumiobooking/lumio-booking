@@ -77,3 +77,18 @@ export function tableStates(tables: TableLike[], res: ResLike[], at: Date): Tabl
     };
   });
 }
+
+export interface Waiting { id: string; name: string | null; party: number; at: string; until: string }
+
+/**
+ * Reservations with no table yet, from an hour ago to three hours ahead of
+ * `at` — the host's "to seat" list. Earliest first.
+ */
+export function waitingForTable(res: ResLike[], at: Date): Waiting[] {
+  const from = at.getTime() - 60 * 60_000;
+  const to = at.getTime() + 3 * 60 * 60_000;
+  return res
+    .filter((r) => !r.tableId && LIVE.has(r.status) && r.startTime.getTime() >= from && r.startTime.getTime() <= to)
+    .sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
+    .map((r) => ({ id: r.id, name: r.customerName, party: r.partySize, at: r.startTime.toISOString(), until: r.endTime.toISOString() }));
+}

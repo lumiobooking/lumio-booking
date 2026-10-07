@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   HttpCode,
@@ -20,6 +21,7 @@ import { RejectBookingDto } from './dto/reject-booking.dto';
 import { SetStatusDto } from './dto/set-status.dto';
 import { LineStaffDto } from './dto/line-staff.dto';
 import { EditLinesDto } from './dto/edit-lines.dto';
+import { NoShowPolicyDto } from './dto/no-show-policy.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -86,6 +88,28 @@ export class BookingsController {
   ) {
     const m = minutes ? parseInt(minutes, 10) : undefined;
     return this.bookings.openTimes(user, { date, staffId: staffId || undefined, minutes: m !== undefined && Number.isFinite(m) ? m : undefined });
+  }
+
+  // No-show policy (bookings/no-show-policy.ts). Declared before ':id'.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Get('no-show-policy')
+  noShowPolicy(@CurrentUser() user: AuthenticatedUser) {
+    return this.bookings.getNoShowPolicy(user);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Patch('no-show-policy')
+  updateNoShowPolicy(@CurrentUser() user: AuthenticatedUser, @Body() dto: NoShowPolicyDto) {
+    return this.bookings.updateNoShowPolicy(user, dto);
+  }
+
+  // The desk, while booking: "⚠ didn't show 3 times".
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Get('no-show-check')
+  noShowCheck(@CurrentUser() user: AuthenticatedUser, @Query('phone') phone?: string, @Query('customerId') customerId?: string) {
+    return this.bookings.noShowCheck(user, { phone, customerId });
   }
 
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF, UserRole.SUPER_ADMIN)

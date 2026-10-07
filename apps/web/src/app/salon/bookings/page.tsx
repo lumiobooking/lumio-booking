@@ -7,6 +7,8 @@ import { apiFetch } from '../../../lib/api';
 import { wallToInstantISO, instantToWall } from '../../../lib/datetime';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { NoShowWarning } from '../../../components/NoShowWarning';
+import { RecordAlertByPhone } from '../../../components/RecordAlert';
 import { missedMinutes } from '../../../lib/missed';
 import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
@@ -114,13 +116,15 @@ function BookingsInner() {
   // "/salon/bookings?new=1&staff=<id>&at=YYYY-MM-DDTHH:mm" — the phone
   // calendar's "+ Đặt cho <thợ>" lands here with the form open and the
   // technician / slot already chosen. Read once, on the client only.
-  const [prefill, setPrefill] = useState<{ staffId?: string; startLocal?: string } | null>(null);
+  // Also "&first=&last=&phone=" — the recall list's "Đặt lịch" books that patient.
+  const [prefill, setPrefill] = useState<{ staffId?: string; startLocal?: string; firstName?: string; lastName?: string; phone?: string } | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const q = new URLSearchParams(window.location.search);
     if (q.get('new') !== '1') return;
     const at = q.get('at') ?? '';
-    setPrefill({ staffId: q.get('staff') ?? undefined, startLocal: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at) ? at : undefined });
+    const txt = (k: string) => (q.get(k) ?? '').slice(0, 80) || undefined;
+    setPrefill({ staffId: q.get('staff') ?? undefined, startLocal: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at) ? at : undefined, firstName: txt('first'), lastName: txt('last'), phone: txt('phone') });
     setShowForm(true);
   }, []);
 
@@ -688,7 +692,7 @@ function CreateBookingForm({
   services: Service[];
   staff: Staff[];
   bookings: Booking[];
-  initial?: { staffId?: string; startLocal?: string };
+  initial?: { staffId?: string; startLocal?: string; firstName?: string; lastName?: string; phone?: string };
   /** The salon's timezone: the picker is the SALON's wall clock, whoever is typing. */
   salonTz?: string;
   hours?: HoursRules | null;
@@ -713,11 +717,11 @@ function CreateBookingForm({
     startLocal: initial?.startLocal ?? '',
     staffId: initial?.staffId ?? '',
     partySize: '1',
-    customerFirstName: '',
-    customerLastName: '',
+    customerFirstName: initial?.firstName ?? '',
+    customerLastName: initial?.lastName ?? '',
     customerBirthDate: '',
     customerEmail: '',
-    customerPhone: '',
+    customerPhone: initial?.phone ?? '',
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -994,6 +998,8 @@ function CreateBookingForm({
             <label>
               <FieldLabel raw={t('bk.fPhone')} optionalWord={t('bk.optional')} />
               <input style={ui.input} value={form.customerPhone} onChange={(e) => up('customerPhone', e.target.value)} placeholder="+1 512 886 8189" />
+              <NoShowWarning token={token} phone={form.customerPhone} vi={lang === 'vi'} />
+              <RecordAlertByPhone token={token} phone={form.customerPhone} vi={lang === 'vi'} />
             </label>
             <label>
               <FieldLabel raw={t('bk.fEmail')} optionalWord={t('bk.optional')} />

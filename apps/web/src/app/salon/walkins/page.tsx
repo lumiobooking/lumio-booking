@@ -15,6 +15,7 @@ import { PartyChip, type PartyInfo } from '../../../components/PartyChip';
 import { clockIn } from '../../../lib/desk-time';
 import { salonTz, uiLocale } from '../../../lib/datetime';
 import { ind } from '../../../lib/ui-industry';
+import { TurnDrawer } from '../../../components/TurnDrawer';
 
 interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null; legId?: string }
 /** One part of a visit done by one technician (hands, feet, …) — see walkin-legs.ts in the API. */
@@ -104,6 +105,7 @@ function Inner() {
   // The owner's own account, or a Lumio support session inside this salon.
   // A technician signed in on the floor is excluded on purpose — see the API.
   const canDelete = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN' || Boolean(user?.supportSession);
+  const [turnsOpen, setTurnsOpen] = useState(false);
   const { lang } = useLang();
   const isMobile = useIsMobile();
   // iPad landscape and up: the intake form slides in from the right and the
@@ -742,7 +744,13 @@ function Inner() {
           onCancel={(id) => act(`${id}/cancel`)}
         />
       ) : (<>
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', margin: '4px 0 8px' }}>{t('wi.turnsToday')}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 8px' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)' }}>{t('wi.turnsToday')}</span>
+        <button type="button" onClick={() => setTurnsOpen(true)} style={{ background: 'transparent', border: '1px solid var(--line-strong)', borderRadius: 8, color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, padding: '3px 10px', cursor: 'pointer' }}>
+          {lang === 'vi' ? 'Chi tiết tua · quy tắc' : 'Turn details · rules'}
+        </button>
+      </div>
+      {turnsOpen && <TurnDrawer vi={lang === 'vi'} isOwner={canDelete} onClose={() => setTurnsOpen(false)} />}
       {staff.length === 0 ? (
         <div style={{ ...ui.card, color: 'var(--c94a3b8)' }}>{t('wi.noStaff')}</div>
       ) : (

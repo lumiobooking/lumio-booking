@@ -318,6 +318,7 @@ model Tenant {
   payrollRuns          PayrollRun[]
   timeEntries          TimeEntry[]
   timeOffRequests      TimeOffRequest[]
+  turnAdjustments      TurnAdjustment[]
   voiceLine            VoiceLine?
   contentIdeas         ContentIdea[]
   contentSuggestions   ContentSuggestion[]
@@ -714,6 +715,7 @@ model StaffMember {
   tipLogs            TipLog[]
   timeEntries        TimeEntry[]
   timeOffRequests    TimeOffRequest[]
+  turnAdjustments    TurnAdjustment[]
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -3538,4 +3540,26 @@ model TimeOffRequest {
   @@index([tenantId, staffId, startDate])
   @@index([tenantId, status, startDate])
   @@map("time_off_requests")
+}
+
+// CHIA TUA — a turn the owner added or took away by hand (a penalty, a
+// correction, a skipped customer), with the reason. Turns = what the floor
+// counted + these. One salon's rows only.
+model TurnAdjustment {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  staffId String
+  staff   StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  day       String // salon-local "YYYY-MM-DD" the adjustment belongs to
+  delta     Float  // +1, -1, +0.5 …
+  reason    String?
+  byUserId  String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, day])
+  @@index([tenantId, staffId, day])
+  @@map("turn_adjustments")
 }

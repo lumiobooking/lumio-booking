@@ -10,8 +10,10 @@ import { normalizeSource } from '../common/source.util';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import {
   attachLines, busyTechs, canRunTogether, isStale, staleAfterHours, itemsOf as legItemsOf, LegItem, legsOf, minutesLeft, newLegId, overdueMinutes, partyTags, patchLeg, phaseOf, pickTech,
-  planDispatch, syncTicket, TechInfo, TicketLike, turnsFromTickets, upgradeItems, Zone, zoneOf,
+  planDispatch, syncTicket, TechInfo, TicketLike, turnsFromTickets, upgradeItems, Zone, zoneOf, lastDoneFromTickets, moneyFromTickets, legPrice,
 } from './walkin-legs';
+import { appointmentTurns, cleanTurnRules, DEFAULT_TURN_RULES, legTurns, tieCompare, TURN_RULES_KEY, TurnRules } from './turn-rules';
+import { AuditService } from '../audit/audit.service';
 import { tzPartsOf } from '../common/salon-time';
 import { inPromoWindow, salonYmd } from '../settings/promo-window';
 
@@ -80,7 +82,23 @@ export class WalkinsService {
     private readonly customers: CustomersService,
     private readonly settings: SettingsService,
     @Optional() private readonly push?: PushService,
+    @Optional() private readonly audit?: AuditService,
   ) {}
+
+  /** The salon's turn rules (turn-rules.ts); the defaults are the floor's old behaviour. */
+  async turnRules(tenantId: string): Promise<TurnRules> {
+    try {
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: TURN_RULES_KEY } } });
+      return cleanTurnRules(row?.value ?? null);
+    } catch { return DEFAULT_TURN_RULES; }
+  }
+
+  /** Today's date as it reads on the salon's wall clock. */
+  private async todayKey(tenantId: string): Promise<string> {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+    try { return new Intl.DateTimeFormat('en-CA', { timeZone: t?.timezone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
+    catch { return new Date().toISOString().slice(0, 10); }
+  }
 
   /**
    * Tell a technician she has a customer: a push to her phone (when push is
@@ -490,7 +508,9 @@ export class WalkinsService {
    */
   private async floor(tenantId: string) {
     const today = await this.startOfToday(tenantId);
-    const [open, doneToday, staff, links, completedAppts] = await Promise.all([
+    const rules = await this.turnRules(tenantId);
+    const dayKey = await this.todayKey(tenantId);
+    const [open, doneToday, staff, links, completedAppts, adjustments, clockIns] = await Promise.all([
       this.prisma.walkIn.findMany({ where: { tenantId, status: { in: [WalkInStatus.WAITING, WalkInStatus.SERVING] } }, include: INCLUDE, orderBy: { createdAt: 'asc' } }),
       this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.DONE, doneAt: { gte: today } }, include: INCLUDE, orderBy: { doneAt: 'desc' } }),
       this.prisma.staffMember.findMany({
@@ -499,12 +519,36 @@ export class WalkinsService {
         orderBy: [{ bookingPriority: 'desc' }, { firstName: 'asc' }],
       }),
       this.prisma.staffService.findMany({ where: { tenantId }, select: { staffMemberId: true, serviceId: true } }).catch(() => [] as { staffMemberId: string; serviceId: string }[]),
-      this.prisma.appointment.groupBy({ by: ['assignedStaffId'], where: { tenantId, status: AppointmentStatus.COMPLETED, completedAt: { gte: today }, assignedStaffId: { not: null } }, _count: { _all: true } }),
+      this.prisma.appointment.findMany({
+        where: { tenantId, status: AppointmentStatus.COMPLETED, completedAt: { gte: today }, assignedStaffId: { not: null } },
+        select: { id: true, assignedStaffId: true, completedAt: true, priceCents: true, customer: { select: { firstName: true, lastName: true } }, service: { select: { name: true, turnValue: true } as never } } as never,
+      }) as unknown as Promise<{ id: string; assignedStaffId: string | null; completedAt: Date | null; priceCents: number | null; customer: { firstName: string; lastName: string | null } | null; service: { name: string; turnValue?: number | null } | null }[]>,
+      // Turns the owner added or took away by hand today (turn_adjustments).
+      (this.db.turnAdjustment?.findMany({ where: { tenantId, day: dayKey }, orderBy: { createdAt: 'asc' } }).catch(() => []) ?? Promise.resolve([])) as Promise<{ id: string; staffId: string; delta: number; reason: string | null; createdAt: Date }[]>,
+      // Who clocked in when (the CLOCK_IN tie-break); nothing when the salon has no clock.
+      (this.db.timeEntry?.findMany({ where: { tenantId, clockIn: { gte: today } }, select: { staffId: true, clockIn: true }, orderBy: { clockIn: 'asc' } }).catch(() => []) ?? Promise.resolve([])) as Promise<{ staffId: string; clockIn: Date }[]>,
     ]);
-    // Turns: each finished leg is worth its service's turn value (a ticket from
-    // before legs keeps the old one-per-technician rule), plus completed bookings.
-    const turns = turnsFromTickets([...open, ...doneToday] as unknown as TicketLike[], today);
-    for (const r of completedAppts) if (r.assignedStaffId) turns.set(r.assignedStaffId, (turns.get(r.assignedStaffId) ?? 0) + r._count._all);
+    const tickets = [...open, ...doneToday] as unknown as TicketLike[];
+    // Turns: each finished leg is worth its service's turn value under the
+    // salon's rules (a ticket from before legs keeps the old one-per-technician
+    // rule), plus completed bookings — EXCEPT a booking that was seated on the
+    // floor: its ticket already counted, so the same visit is not two turns.
+    const turns = turnsFromTickets(tickets, today, rules);
+    const seatedApptIds = new Set([...open, ...doneToday].map((w) => (w as { appointmentId?: string | null }).appointmentId).filter((x): x is string => !!x));
+    const countedAppts = completedAppts.filter((a) => a.assignedStaffId && !seatedApptIds.has(a.id));
+    for (const a of countedAppts) {
+      const v = appointmentTurns(a.service?.turnValue, rules);
+      if (v > 0) turns.set(a.assignedStaffId!, Math.round(((turns.get(a.assignedStaffId!) ?? 0) + v) * 100) / 100);
+    }
+    for (const adj of adjustments) turns.set(adj.staffId, Math.round(((turns.get(adj.staffId) ?? 0) + adj.delta) * 100) / 100);
+    // MONEY mode: service money today, bookings included.
+    const money = moneyFromTickets(tickets, today);
+    for (const a of countedAppts) money.set(a.assignedStaffId!, (money.get(a.assignedStaffId!) ?? 0) + (a.priceCents ?? 0));
+    const lastDone = lastDoneFromTickets(tickets, today);
+    for (const a of countedAppts) if (a.completedAt && (lastDone.get(a.assignedStaffId!) ?? 0) < a.completedAt.getTime()) lastDone.set(a.assignedStaffId!, a.completedAt.getTime());
+    const clockIn = new Map<string, number>();
+    for (const c of clockIns) if (!clockIn.has(c.staffId)) clockIn.set(c.staffId, new Date(c.clockIn).getTime());
+    const pick = { rules, facts: { lastDone, clockIn }, money };
     const skills = new Map<string, string[]>();
     for (const l of links ?? []) skills.set(l.staffMemberId, [...(skills.get(l.staffMemberId) ?? []), l.serviceId]);
     const techs: TechInfo[] = staff.map((s) => ({
@@ -514,7 +558,95 @@ export class WalkinsService {
       skills: skills.get(s.id) ?? [],
     }));
     const restricted = new Set((links ?? []).map((l) => l.serviceId));
-    return { today, open, doneToday, staff, techs, skills, turns, restricted };
+    return { today, dayKey, open, doneToday, staff, techs, skills, turns, restricted, rules, money, lastDone, clockIn, pick, adjustments, countedAppts };
+  }
+
+  // ---------------------------------------------------------------- chia tua: the board, by hand, the rules
+
+  /**
+   * TUA HÔM NAY, line by line: every technician's turns and where each one
+   * came from (a leg, a booking, a correction), so a dispute is settled by
+   * reading, not by memory. This salon's floor only.
+   */
+  async turnsToday(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const f = await this.floor(tenantId);
+    const busy = busyTechs(f.open as unknown as TicketLike[]);
+    const free = f.techs.filter((t) => !busy.has(t.id));
+    const order: string[] = [];
+    // The rotation as the dispatcher would run it from here: pick, remove, pick again.
+    let pool = [...free];
+    while (pool.length) { const t = pickTech(pool, [], f.turns, f.pick); if (!t) break; order.push(t.id); pool = pool.filter((x) => x.id !== t.id); }
+    const name = (id: string) => f.techs.find((t) => t.id === id)?.name ?? '';
+    type Entry = { at: Date; staffId: string; kind: 'leg' | 'appointment' | 'adjust'; value: number; label: string; pinned: boolean; priceCents: number | null; byUserId?: string | null };
+    const entries: Entry[] = [];
+    for (const t of [...f.open, ...f.doneToday] as unknown as (TicketLike & { customerName?: string | null })[]) {
+      const closed = t.status === 'DONE';
+      for (const leg of legsOf(t)) {
+        if (!leg.staffId) continue;
+        const finished = leg.status === 'DONE' || (closed && leg.status !== 'WAITING') || (t.awaitingPayment && leg.status !== 'WAITING');
+        if (!finished) continue;
+        const when = leg.doneAt ? new Date(leg.doneAt) : t.doneAt ? new Date(t.doneAt) : null;
+        if (!when || when < f.today) continue;
+        const price = legPrice(t, leg);
+        entries.push({ at: when, staffId: leg.staffId, kind: 'leg', value: legTurns({ turnValue: leg.turnValue, pinned: leg.pinned, priceCents: price }, f.rules), label: `${t.customerName || 'Walk-in'} · ${leg.names.join(', ')}`, pinned: leg.pinned, priceCents: price });
+      }
+    }
+    for (const a of f.countedAppts) {
+      entries.push({ at: a.completedAt ?? f.today, staffId: a.assignedStaffId!, kind: 'appointment', value: appointmentTurns(a.service?.turnValue, f.rules), label: `${a.customer ? `${a.customer.firstName}${a.customer.lastName ? ' ' + a.customer.lastName : ''}` : ''} · ${a.service?.name ?? ''}`.trim(), pinned: false, priceCents: a.priceCents ?? null });
+    }
+    for (const adj of f.adjustments) entries.push({ at: adj.createdAt, staffId: adj.staffId, kind: 'adjust', value: adj.delta, label: adj.reason || '', pinned: false, priceCents: null });
+    entries.sort((a, b) => a.at.getTime() - b.at.getTime());
+    const techs = f.techs.map((t) => ({
+      id: t.id, name: t.name, priority: t.priority,
+      turns: f.turns.get(t.id) ?? 0, moneyCents: f.money.get(t.id) ?? 0,
+      busy: busy.has(t.id), rank: order.indexOf(t.id) + 1 || null,
+      lastDoneAt: f.lastDone.has(t.id) ? new Date(f.lastDone.get(t.id)!) : null,
+      clockInAt: f.clockIn.has(t.id) ? new Date(f.clockIn.get(t.id)!) : null,
+      fromLegs: entries.filter((e) => e.staffId === t.id && e.kind === 'leg').reduce((s, e) => s + e.value, 0),
+      fromAppointments: entries.filter((e) => e.staffId === t.id && e.kind === 'appointment').reduce((s, e) => s + e.value, 0),
+      fromAdjustments: entries.filter((e) => e.staffId === t.id && e.kind === 'adjust').reduce((s, e) => s + e.value, 0),
+    }));
+    return { day: f.dayKey, rules: f.rules, techs, entries: entries.map((e) => ({ ...e, name: name(e.staffId) })) };
+  }
+
+  /** The owner adds or takes away a turn by hand, with the reason — written to the log. */
+  async adjustTurn(user: AuthenticatedUser, dto: { staffId: string; delta: number; reason?: string }) {
+    const tenantId = this.tenantId(user);
+    const st = await this.prisma.staffMember.findFirst({ where: { id: dto.staffId, tenantId }, select: { id: true, firstName: true } });
+    if (!st) throw new NotFoundException('Staff member not found');
+    const delta = Math.round(Number(dto.delta) * 2) / 2;
+    if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 20) throw new BadRequestException('delta must be ±0.5 … ±20');
+    const reason = (dto.reason ?? '').trim().slice(0, 200) || null;
+    const day = await this.todayKey(tenantId);
+    const row = await this.db.turnAdjustment.create({ data: { tenantId, staffId: st.id, day, delta, reason, byUserId: user.userId } });
+    await this.audit?.log({ tenantId, userId: user.userId, action: 'turn.adjusted', resourceType: 'staff_member', resourceId: st.id, metadata: { day, delta, reason } });
+    return { id: row.id, day, delta, reason };
+  }
+
+  async removeAdjustment(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.db.turnAdjustment.findFirst({ where: { id, tenantId } });
+    if (!cur) throw new NotFoundException('Adjustment not found');
+    await this.db.turnAdjustment.deleteMany({ where: { id, tenantId } });
+    await this.audit?.log({ tenantId, userId: user.userId, action: 'turn.adjustment_removed', resourceType: 'staff_member', resourceId: cur.staffId, metadata: { day: cur.day, delta: cur.delta } });
+    return { ok: true };
+  }
+
+  async getTurnRules(user: AuthenticatedUser) {
+    return this.turnRules(this.tenantId(user));
+  }
+
+  async updateTurnRules(user: AuthenticatedUser, raw: unknown) {
+    const tenantId = this.tenantId(user);
+    const next = cleanTurnRules({ ...(await this.turnRules(tenantId)), ...((raw && typeof raw === 'object' ? raw : {}) as object) });
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: TURN_RULES_KEY } },
+      update: { value: next as unknown as Prisma.InputJsonValue },
+      create: { tenantId, key: TURN_RULES_KEY, value: next as unknown as Prisma.InputJsonValue },
+    });
+    await this.audit?.log({ tenantId, userId: user.userId, action: 'settings.turn_rules_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { ...next } });
+    return next;
   }
 
   /**
@@ -549,7 +681,7 @@ export class WalkinsService {
         tickets.push({ ...w, items: raw });
       }
     }
-    const plan = planDispatch(tickets as unknown as TicketLike[], f.techs, f.turns, { restricted: f.restricted });
+    const plan = planDispatch(tickets as unknown as TicketLike[], f.techs, f.turns, { restricted: f.restricted, ...f.pick });
     const now = new Date();
     const seated: string[] = [];
     for (const t of tickets) {
@@ -653,7 +785,7 @@ export class WalkinsService {
 
     // Next up = the free technician the dispatcher would pick for a plain job.
     const free = f.techs.filter((t) => !busy.has(t.id));
-    const nextUpStaffId = pickTech(free, [], f.turns)?.id ?? null;
+    const nextUpStaffId = pickTech(free, [], f.turns, f.pick)?.id ?? null;
     const staff = f.staff.map((s) => ({
       id: s.id,
       name: `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`,
@@ -1243,9 +1375,10 @@ export class WalkinsService {
     const turnsOf = (id: string) => f.turns.get(id) ?? 0;
     // The rotation as the dispatcher reads it: fewest turns, then priority, then
     // the salon's own list order (a stable sort keeps it).
-    const sorted = [...f.techs].sort((a, b) => (turnsOf(a.id) - turnsOf(b.id)) || (b.priority - a.priority));
+    const scoreOf = (id: string) => (f.rules.mode === 'MONEY' ? (f.money.get(id) ?? 0) : turnsOf(id));
+    const sorted = [...f.techs].sort((a, b) => (scoreOf(a.id) - scoreOf(b.id)) || tieCompare(a, b, f.rules, f.pick.facts));
     const freeOrder = sorted.filter((t) => !busy.has(t.id));
-    const nextUpStaffId = pickTech(freeOrder, [], f.turns)?.id ?? null;
+    const nextUpStaffId = pickTech(freeOrder, [], f.turns, f.pick)?.id ?? null;
     const techs = sorted.map((t, i) => ({
       id: t.id, name: t.name, rank: i + 1, turns: turnsOf(t.id),
       busy: busy.has(t.id), busyFor: busy.has(t.id) ? minutesLeft(open, t.id, now) : null,

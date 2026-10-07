@@ -23,6 +23,8 @@
  * directly in walkin-legs.spec.ts.
  */
 
+import { DEFAULT_TURN_RULES, legTurns, TieFacts, tieCompare, TurnRules } from './turn-rules';
+
 export type Zone = 'HAND' | 'FOOT' | 'OTHER';
 export type LegStatus = 'WAITING' | 'SERVING' | 'DONE';
 
@@ -294,7 +296,7 @@ export function phaseOf(t: TicketLike): 'WAITING' | 'SERVING' | 'BETWEEN' | 'DON
  * whoever did it. A ticket closed at the till counts its legs as finished
  * then. Old tickets keep the old rule (one turn per technician on the ticket).
  */
-export function turnsFromTickets(tickets: TicketLike[], since: Date): Map<string, number> {
+export function turnsFromTickets(tickets: TicketLike[], since: Date, rules: TurnRules = DEFAULT_TURN_RULES): Map<string, number> {
   const turns = new Map<string, number>();
   const add = (id: string | null | undefined, v: number) => { if (id && v > 0) turns.set(id, Math.round(((turns.get(id) ?? 0) + v) * 100) / 100); };
   for (const t of tickets) {
@@ -317,10 +319,52 @@ export function turnsFromTickets(tickets: TicketLike[], since: Date): Map<string
       if (!finished) continue;
       const when = leg.doneAt ? new Date(leg.doneAt) : t.doneAt ? new Date(t.doneAt) : null;
       if (when && when < since) continue;
-      add(leg.staffId, leg.turnValue);
+      add(leg.staffId, legTurns({ turnValue: leg.turnValue, pinned: leg.pinned, priceCents: legPrice(t, leg) }, rules));
     }
   }
   return turns;
+}
+
+/** The lines of a leg added up — what the leg is worth in money. */
+export function legPrice(t: TicketLike, leg: Leg): number {
+  const ids = new Set(leg.lineIds);
+  return itemsOf(t).filter((it) => ids.has(it.lineId)).reduce((s, it) => s + (Number(it.priceCents) || 0), 0);
+}
+
+/**
+ * Service money per technician since `since` — the MONEY rule's score: the
+ * one who has made the least today goes first. Same finished-leg rule as
+ * turns; a requested client's money still counts (it is money she made).
+ */
+export function moneyFromTickets(tickets: TicketLike[], since: Date): Map<string, number> {
+  const out = new Map<string, number>();
+  const add = (id: string | null | undefined, v: number) => { if (id && v > 0) out.set(id, (out.get(id) ?? 0) + v); };
+  for (const t of tickets) {
+    const closed = t.status === 'DONE';
+    for (const leg of legsOf(t)) {
+      if (!leg.staffId) continue;
+      const finished = leg.status === 'DONE' || (closed && leg.status !== 'WAITING') || (t.awaitingPayment && leg.status !== 'WAITING');
+      if (!finished) continue;
+      const when = leg.doneAt ? new Date(leg.doneAt) : t.doneAt ? new Date(t.doneAt) : null;
+      if (when && when < since) continue;
+      add(leg.staffId, legPrice(t, leg));
+    }
+  }
+  return out;
+}
+
+/** When each technician last finished a leg (ms since epoch) — the LAST_FINISHED tie-break. */
+export function lastDoneFromTickets(tickets: TicketLike[], since: Date): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const t of tickets) {
+    for (const leg of legsOf(t)) {
+      if (!leg.staffId || leg.status !== 'DONE') continue;
+      const when = leg.doneAt ? new Date(leg.doneAt) : t.doneAt ? new Date(t.doneAt) : null;
+      if (!when || when < since) continue;
+      if ((out.get(leg.staffId) ?? 0) < when.getTime()) out.set(leg.staffId, when.getTime());
+    }
+  }
+  return out;
 }
 
 /** Technicians working on something right now (a SERVING leg of an open ticket). */
@@ -349,22 +393,31 @@ export function canDo(tech: TechInfo, serviceIds: string[]): boolean {
   return serviceIds.every((id) => tech.skills.includes(id));
 }
 
-/** The fairest free technician for these services: fewest turns, then priority, then list order. */
-export function pickTech(free: TechInfo[], serviceIds: string[], turns: Map<string, number>): TechInfo | null {
+/** How the salon breaks ties and, in MONEY mode, what the score is. */
+export interface PickOptions { rules?: TurnRules; facts?: TieFacts; /** MONEY mode: service cents per technician. */ money?: Map<string, number> }
+
+/**
+ * The fairest free technician for these services: lowest score (turns, or
+ * money under the MONEY rule), then the salon's tie-break (turn-rules.ts),
+ * then the owner's priority, then list order.
+ */
+export function pickTech(free: TechInfo[], serviceIds: string[], turns: Map<string, number>, opts: PickOptions = {}): TechInfo | null {
   const able = free.filter((t) => canDo(t, serviceIds));
   if (!able.length) return null;
+  const rules = opts.rules ?? DEFAULT_TURN_RULES;
+  const score = rules.mode === 'MONEY' && opts.money ? opts.money : turns;
   return able.reduce((best, t) => {
-    const a = turns.get(best.id) ?? 0;
-    const b = turns.get(t.id) ?? 0;
+    const a = score.get(best.id) ?? 0;
+    const b = score.get(t.id) ?? 0;
     if (b < a) return t;
-    if (b === a && t.priority > best.priority) return t;
+    if (b === a && tieCompare(t, best, rules, opts.facts) < 0) return t;
     return best;
   });
 }
 
 export interface Assignment { ticketId: string; legId: string; staffId: string }
 
-export interface DispatchOptions {
+export interface DispatchOptions extends PickOptions {
   /**
    * Services at least one technician is ticked for. A service nobody is set up
    * for yet (a new menu item, an add-on) is open to everyone — otherwise one
@@ -428,7 +481,7 @@ export function planDispatch(tickets: TicketLike[], techs: TechInfo[], turns: Ma
         tech = free.find((f) => f.id === leg.staffId) ?? null;
       } else {
         const need = needFor(leg, techs, opts);
-        tech = pickTech(free.filter((f) => !reserved.has(f.id)), need, turns) ?? pickTech(free, need, turns);
+        tech = pickTech(free.filter((f) => !reserved.has(f.id)), need, turns, opts) ?? pickTech(free, need, turns, opts);
       }
       if (!tech) continue;
       out.push({ ticketId: t.id, legId: leg.legId, staffId: tech.id });

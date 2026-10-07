@@ -3,7 +3,7 @@ import { Observable, interval, merge } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { liveEvents } from '../common/live-events';
 import { UserRole } from '@prisma/client';
-import { IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min, IsBoolean, ValidateNested, ArrayMaxSize } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, IsBoolean, ValidateNested, ArrayMaxSize } from 'class-validator';
 import { Type } from 'class-transformer';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
@@ -74,6 +74,21 @@ class StationDto {
   @IsOptional() @IsString() @MaxLength(24) station?: string;
 }
 
+class TurnAdjustDto {
+  @IsString() staffId!: string;
+  @IsNumber() @Min(-20) @Max(20) delta!: number;
+  @IsOptional() @IsString() @MaxLength(200) reason?: string;
+}
+
+/** turn-rules.ts cleans every value; the DTO only keeps the shape honest. */
+class TurnRulesDto {
+  @IsOptional() @IsIn(['COUNT', 'MONEY', 'HYBRID']) mode?: string;
+  @IsOptional() @IsInt() @Min(0) @Max(100_000_000) halfBelowCents?: number;
+  @IsOptional() @IsIn(['PRIORITY_LIST', 'LAST_FINISHED', 'CLOCK_IN']) tieBreak?: string;
+  @IsOptional() @IsIn([1, 0.5, 0]) requestWeight?: number;
+  @IsOptional() @IsIn(['ONE', 'BY_SERVICE', 'NONE']) appointmentWeight?: string;
+}
+
 class ChairDto {
   @IsOptional() @IsString() @MaxLength(60) stationId?: string;
 }
@@ -111,6 +126,35 @@ export class WalkinsController {
     const r = await work;
     liveEvents.emit(resolveTenantScope(user), 'walkins', id ?? undefined);
     return r;
+  }
+
+  // ---- Chia tua: today's turns line by line, corrections, the rules. Declared before ':id'.
+  @Get('turns')
+  turns(@CurrentUser() user: AuthenticatedUser) {
+    return this.walkins.turnsToday(user);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('turns/adjust')
+  adjustTurn(@CurrentUser() user: AuthenticatedUser, @Body() dto: TurnAdjustDto) {
+    return this.nudge(user, null, this.walkins.adjustTurn(user, dto));
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Delete('turns/adjust/:id')
+  removeAdjustment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.nudge(user, null, this.walkins.removeAdjustment(user, id));
+  }
+
+  @Get('turn-rules')
+  turnRules(@CurrentUser() user: AuthenticatedUser) {
+    return this.walkins.getTurnRules(user);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Patch('turn-rules')
+  updateTurnRules(@CurrentUser() user: AuthenticatedUser, @Body() dto: TurnRulesDto) {
+    return this.nudge(user, null, this.walkins.updateTurnRules(user, dto));
   }
 
   @Get('my')

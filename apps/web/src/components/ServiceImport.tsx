@@ -107,6 +107,8 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
       kind: r.kind, category: r.category, name: r.name, priceCents: r.priceCents, priceFrom: r.priceFrom,
       durationMinutes: r.durationMinutes,
       ...(r.turnValue !== undefined ? { turnValue: r.turnValue } : {}),
+      ...(r.walkInOnly ? { walkInOnly: true } : {}),
+      ...(r.askAtBooking ? { askAtBooking: true } : {}),
       ...(r.description ? { description: r.description } : {}),
       ...(r.imageUrl ? { imageUrl: r.imageUrl } : {}),
     }));
@@ -250,7 +252,7 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
                   <tr key={`${r.line}-${r.name}`} style={{ borderBottom: '1px solid var(--c1f2937)', background: r.status === 'error' ? 'rgba(239,68,68,.07)' : r.status === 'duplicate' ? 'rgba(245,158,11,.05)' : 'transparent' }}>
                     <td style={{ padding: '7px 10px', color: 'var(--c64748b)' }}>{r.line}</td>
                     <td style={{ padding: '7px 10px', color: 'var(--c94a3b8)' }}>{r.category || '—'}</td>
-                    <td style={{ padding: '7px 10px', fontWeight: 600 }}>{r.name || <i style={{ color: 'var(--c64748b)' }}>{L('(trống)', '(blank)')}</i>}{r.kind === 'addon' && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-sky)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 5px' }}>{L('tuỳ chọn', 'add-on')}{!r.category ? ` · ${L('cả menu', 'all')}` : ''}</span>}{r.kind === 'service' && r.turnValue !== undefined && r.turnValue !== 1 && <span style={{ marginLeft: 6, fontSize: 10.5, color: 'var(--c94a3b8)' }}>{r.turnValue} {L('tua', 'turn')}</span>}</td>
+                    <td style={{ padding: '7px 10px', fontWeight: 600 }}>{r.name || <i style={{ color: 'var(--c64748b)' }}>{L('(trống)', '(blank)')}</i>}{r.kind === 'addon' && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-sky)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 5px' }}>{L('tuỳ chọn', 'add-on')}{r.askAtBooking ? ` · ${L('hỏi khi đặt', 'asked')}` : ''}{!r.category ? ` · ${L('cả menu', 'all')}` : ''}</span>}{r.walkInOnly && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-warn)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 5px' }}>walk-in</span>}{r.kind === 'service' && r.turnValue !== undefined && r.turnValue !== 1 && <span style={{ marginLeft: 6, fontSize: 10.5, color: 'var(--c94a3b8)' }}>{r.turnValue} {L('tua', 'turn')}</span>}</td>
                     <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{r.status === 'error' && !r.priceCents ? '—' : `${r.priceFrom ? L('từ ', 'from ') : ''}${formatPrice(r.priceCents, currency)}`}</td>
                     <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: 'var(--c94a3b8)' }}>{r.durationMinutes} {L('phút', 'min')}</td>
                     <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 600, color: r.status === 'new' ? 'var(--ink-good)' : r.status === 'duplicate' ? 'var(--ink-warn)' : 'var(--ink-bad)' }}>

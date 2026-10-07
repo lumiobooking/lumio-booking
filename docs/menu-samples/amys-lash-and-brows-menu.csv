@@ -1,0 +1,33 @@
+﻿Category,Service name,Price,Starting price (yes/no),Duration (min),Description,Row type (service / walk-in / add-on / add-on ask),Turn (1/0.5/0)
+Permanent Makeup,Ombre Eyebrows,350,no,150,Soft powdered ombre brows,service,1
+Permanent Makeup,Microshading,400,no,150,"Shaded, natural-looking brows",service,1
+Permanent Makeup,Sexy Brows (Hairstroke),450,no,180,Hairstroke brows — the most natural look,service,1
+Permanent Makeup,Touch Up Brows,200,no,90,Touch-up for existing permanent brows,service,1
+Permanent Makeup,Upper Eyeliner,425,no,120,Permanent upper eyeliner,service,1
+Permanent Makeup,Lower Eyeliner,300,no,90,Permanent lower eyeliner,service,1
+Permanent Makeup,Combo Upper + Lower Eyeliner,650,no,150,Upper + lower eyeliner together — $650 (was $725),service,1
+Permanent Makeup,Touch Up Eyeliner,200,yes,60,Touch-up for existing permanent eyeliner — from $200,service,1
+Permanent Makeup,Lip Color,400,no,150,Permanent lip color / lip blush,service,1
+Permanent Makeup,Touch Up Lip,250,yes,90,Touch-up for existing lip color — from $250,service,1
+Lash Extensions,Classic Full Set,130,no,90,One extension per natural lash,service,1
+Lash Extensions,Hybrid Full Set,130,no,105,Mix of classic and volume,service,1
+Lash Extensions,Volume Full Set,140,no,120,Handmade volume fans,service,1
+Lash Extensions,Mega Volume Full Set,150,no,150,"Fullest, most dramatic look",service,1
+Lash Extensions,Wispy Full Set,150,no,120,"Wispy, textured look",service,1
+Lash Extensions,Refill 2 Weeks,90,yes,60,Refill within 2 weeks of your last visit — from $90,service,1
+Lash Extensions,Refill 3 Weeks,95,yes,75,Refill within 3 weeks of your last visit — from $95,service,1
+Lash Extensions,Removal & Deep Clean,20,yes,30,Extension removal and deep clean — $20–$25,service,0.5
+Lash Extensions,Add Color,10,no,10,Colored lashes added to your set,add-on,
+Lash Extensions,Change Style,5,no,10,Switch to a different style — from $5,add-on,
+"Brow Wax, Lash Lift & Tint",Eyebrow Wax,15,no,15,,service,0.5
+"Brow Wax, Lash Lift & Tint",Eyebrow Tint,20,no,15,,service,0.5
+"Brow Wax, Lash Lift & Tint",Wax + Tint Combo,30,no,25,Eyebrow wax and tint together,service,0.5
+"Brow Wax, Lash Lift & Tint",Lash Tint,20,no,15,,service,0.5
+"Brow Wax, Lash Lift & Tint",Lash Lift,90,no,60,Lifts and curls your natural lashes,service,1
+"Brow Wax, Lash Lift & Tint",Lash Lift + Tint Combo,100,no,75,Lash lift and tint together,service,1
+"Brow Wax, Lash Lift & Tint",Teeth Whitening,80,no,60,NEW — professional teeth whitening,service,1
+Plasma Skin Treatment,Forehead Lift,499,no,60,Plasma Fibroblast skin tightening — forehead,service,1
+Plasma Skin Treatment,Neck Lift,699,yes,90,"Plasma Fibroblast skin tightening — neck, $699 & up",service,1
+Plasma Skin Treatment,Full Face Treatment,1200,no,120,Plasma Fibroblast full face — $1200 (was $2500),service,1
+Plasma Skin Treatment,Upper & Lower Eyes,500,no,60,Plasma Fibroblast upper & lower eyelids — $500 (was $1000),service,1
+Plasma Skin Treatment,Mini Upper Eyes Lift,400,no,45,Plasma Fibroblast mini upper eyelid lift — $400 (was $700),service,1

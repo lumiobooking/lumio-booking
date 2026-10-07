@@ -1,4 +1,4 @@
-﻿Category,Service name,Price,Starting price (yes/no),Duration (min),Description,Row type (service/add-on),Turn (1/0.5/0)
+﻿Category,Service name,Price,Starting price (yes/no),Duration (min),Description,Row type (service / walk-in / add-on / add-on ask),Turn (1/0.5/0)
 Pedicure,Fresh Start Pedicure,35,no,35,Nail trim & shape · Cuticle care · Callus removal · Sugar scrub · Lotion · 6-minute massage · Regular polish,service,1
 Pedicure,Silk Touch Pedicure,45,no,45,Nail trim & shape · Cuticle care · Callus removal · Sugar scrub · Lotion · Paraffin treatment · 10-minute massage · Regular polish,service,1
 Pedicure,Signature Pedicure,50,no,55,Nail trim & shape · Cuticle care · Callus removal · Fresh flower soak · Exfoliating sugar scrub · Hot towel · Nourishing lotion · Hydrating mask · Paraffin treatment · 15-minute relaxing massage · Regular polish,service,1

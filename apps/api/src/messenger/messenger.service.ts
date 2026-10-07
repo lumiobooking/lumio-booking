@@ -40,7 +40,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AppointmentStatus, NotificationChannel, UserRole } from '@prisma/client';
-import { BookingsService } from '../bookings/bookings.service';
+import { BookingsService, walkInOnlyMessage } from '../bookings/bookings.service';
 import { SettingsService } from '../settings/settings.service';
 import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -3212,6 +3212,7 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
             customerEmail: { type: 'string', description: 'Optional. The customer email for an email confirmation; omit entirely if they did not give one.' },
             technician: { type: 'string', description: 'Only when the customer asked for a technician by name (first name as the salon lists it). Leave out otherwise.' },
             request: { type: 'string', description: 'Optional. Anything the customer wants the salon to know, in their words: an allergy, a design, "running 10 minutes late". Leave out if nothing.' },
+            extras: { type: 'array', items: { type: 'string' }, description: 'The ASK BEFORE BOOKING extras the customer said YES to, by exact name (e.g. "Design"). Leave out when none.' },
             guests: {
               type: 'array',
               maxItems: 8,
@@ -4242,8 +4243,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // fails (learned the hard way).
     type SvcRow = {
       name: string; priceCents: number; durationMinutes: number; discountPercent: number;
-      currency: string; description: string | null; category: { name: string } | null;
+      currency: string; description: string | null; category: { name: string } | null; categoryId?: string | null; walkInOnly?: boolean;
     };
+    type AskRow = { name: string; priceCents: number; durationMinutes: number; currency: string; serviceId: string | null; categoryId: string | null; service: { name: string } | null; category: { name: string } | null };
     type StaffRow = { firstName: string; lastName: string | null };
     let services: SvcRow[] = [];
     let staff: StaffRow[] = [];
@@ -4251,11 +4253,20 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     try {
       services = await this.prisma.service.findMany({
         where: { tenantId, isActive: true },
-        select: { name: true, priceCents: true, durationMinutes: true, discountPercent: true, currency: true, description: true, category: { select: { name: true } } },
+        select: { name: true, priceCents: true, durationMinutes: true, discountPercent: true, currency: true, description: true, categoryId: true, category: { select: { name: true } }, ...({ walkInOnly: true } as object) } as never,
         orderBy: [{ discountPercent: 'desc' }, { name: 'asc' }],
         take: 60,
-      });
+      }) as unknown as SvcRow[];
     } catch { /* menu is best-effort */ }
+    // "Ask before booking" extras (Design?): the salon wants the question asked every time.
+    let asks: AskRow[] = [];
+    try {
+      asks = await this.prisma.serviceAddon.findMany({
+        where: { tenantId, isActive: true, ...({ askAtBooking: true } as object) } as never,
+        select: { name: true, priceCents: true, durationMinutes: true, currency: true, serviceId: true, categoryId: true, service: { select: { name: true } }, category: { select: { name: true } } } as never,
+        take: 20,
+      }) as unknown as AskRow[];
+    } catch { /* best-effort */ }
     try {
       staff = await this.prisma.staffMember.findMany({
         where: { tenantId, isActive: true },
@@ -4272,7 +4283,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // bot as "2000" with no symbol at all — and the bot then said it out loud.
       const money = (c: number, cur: string) => formatMoneyShort(c, cur, promptLocale);
       out.push('SERVICES (live from the salon\'s own menu — these prices are authoritative):');
+      const walkIn = services.filter((sv) => sv.walkInOnly);
       for (const sv of services) {
+        if (sv.walkInOnly) continue;
         const off = sv.discountPercent > 0;
         const final = Math.round(sv.priceCents * (100 - sv.discountPercent) / 100);
         const price = off
@@ -4281,6 +4294,19 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const cat = sv.category?.name ? ` [${sv.category.name}]` : '';
         const desc = sv.description ? ` — ${sv.description.slice(0, 90)}` : '';
         out.push(`- ${sv.name}${cat}: ${price} · ${sv.durationMinutes} min${desc}`);
+      }
+      if (walkIn.length) {
+        const money = (c: number, cur: string) => formatMoneyShort(c, cur, promptLocale);
+        out.push(`WALK-IN ONLY — NEVER BOOK THESE (first come, first served): ${walkIn.map((sv) => `${sv.name} (${money(sv.priceCents, sv.currency)})`).join(', ')}. If someone asks to book one of these, say in one line that the salon takes it walk-in only — no appointment needed, just come in — and do NOT call create_booking for it.`);
+      }
+      if (asks.length) {
+        const money = (c: number, cur: string) => formatMoneyShort(c, cur, promptLocale);
+        out.push('ASK BEFORE BOOKING — the salon REQUIRES these questions, because a yes makes the visit longer and the next client late:');
+        for (const a of asks) {
+          const scope = a.serviceId ? `booking ${a.service?.name ?? 'that service'}` : a.categoryId ? `booking any ${a.category?.name ?? ''} service` : 'every booking';
+          const cost = [a.priceCents > 0 ? `+${money(a.priceCents, a.currency)}` : '', a.durationMinutes > 0 ? `+${a.durationMinutes} min` : ''].filter(Boolean).join(', ');
+          out.push(`- Before ${scope}: ask "Would you like ${a.name}?"${cost ? ` (${cost})` : ''}. If YES, put "${a.name}" in create_booking's extras so the time is blocked; if no, book without it. Ask it once, in the same message as the next step.`);
+        }
       }
       const promos = services.filter((sv) => sv.discountPercent > 0);
       out.push(promos.length
@@ -4546,9 +4572,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (name === 'get_services') {
         const services = await this.prisma.service.findMany({
           where: { tenantId, isActive: true },
-          select: { id: true, name: true, priceCents: true, durationMinutes: true, discountPercent: true, currency: true },
+          select: { id: true, name: true, priceCents: true, durationMinutes: true, discountPercent: true, currency: true, ...({ walkInOnly: true } as object) } as never,
           orderBy: { name: 'asc' }, take: 250,
-        });
+        }) as unknown as { id: string; name: string; priceCents: number; durationMinutes: number; discountPercent: number; currency: string; walkInOnly?: boolean }[];
         if (!services.length) return 'No services are configured.';
         const toolLocale = await this.customerLocale(tenantId);
         return JSON.stringify(services.map((sv) => {
@@ -4562,6 +4588,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
             price: formatMoneyShort(final, sv.currency, toolLocale),
             ...(sv.discountPercent > 0 ? { wasPrice: formatMoneyShort(sv.priceCents, sv.currency, toolLocale), discountPercent: sv.discountPercent } : {}),
             minutes: sv.durationMinutes,
+            ...(sv.walkInOnly ? { walkInOnly: true, note: 'WALK-IN ONLY — first come, first served; never book this, tell them to just come in.' } : {}),
           };
         }));
       }
@@ -4587,6 +4614,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           if (!ids.includes(id)) ids.push(id);
         }
         const serviceId = ids[0];
+        // First come, first served: the salon never books these — say so instead.
+        let walkInHit: { name: string } | null = null;
+        try { walkInHit = await this.prisma.service.findFirst({ where: { tenantId, id: { in: ids }, ...({ walkInOnly: true } as object) } as never, select: { name: true } }); } catch { walkInHit = null; }
+        if (walkInHit) return `NOT BOOKED — ${walkInOnlyMessage(walkInHit.name)} Tell the customer exactly that in one friendly line (no appointment needed, just come in; mention the hours if they ask). Do not offer times for it. Only book the OTHER services, if any, when they confirm.`;
         const startTime = wallToUtcISO(local, tz);
 
         // The others in a group, resolved BEFORE anything is written: one
@@ -4635,6 +4666,18 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           techId = hits[0].id; techName = hits[0].firstName;
         }
         const request = String(input.request ?? '').trim().slice(0, 300);
+        // Extras the customer said yes to (Design?): this salon's add-ons offered on these services.
+        const extraNames = Array.isArray(input.extras) ? (input.extras as unknown[]).map((x) => String(x ?? '').trim()).filter(Boolean).slice(0, 8) : [];
+        const addonIds: string[] = [];
+        if (extraNames.length) {
+          const offered = await this.addonsOffered(tenantId, ids);
+          for (const want of extraNames) {
+            const key = want.toLowerCase();
+            const hit = offered.find((a) => a.name.toLowerCase() === key) ?? offered.find((a) => a.name.toLowerCase().includes(key) || key.includes(a.name.toLowerCase()));
+            if (!hit) return `ERROR — no extra called "${want}" is offered on these services (offered: ${offered.map((a) => a.name).join(', ') || 'none'}). Use the exact name from ASK BEFORE BOOKING, or leave extras out and put it in "request".`;
+            if (!addonIds.includes(hit.id)) addonIds.push(hit.id);
+          }
+        }
         const noteLang = noteLangForMarket((await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } as never }).catch(() => null) as { market?: string } | null)?.market);
         const channel: AiChannel = ctx?.channel === 'instagram' ? 'instagram' : ctx?.channel === 'web' ? 'web' : ctx?.channel === 'zalo' ? 'zalo' : 'messenger';
         const svcNames = await this.serviceNames(tenantId, ids);
@@ -4644,7 +4687,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           ...(email && /.+@.+\..+/.test(email) ? { customerEmail: email } : {}),
           ...(techId ? { preferredStaffId: techId } : {}),
           ...(groupId ? { partySize, groupId } : {}),
-          notes: aiBookingNote({ channel, lang: noteLang, phone, techName, partyNames: groupId ? partyNames : undefined, services: svcNames, request }),
+          ...(addonIds.length ? { addonIds } : {}),
+          notes: aiBookingNote({ channel, lang: noteLang, phone, techName, partyNames: groupId ? partyNames : undefined, services: svcNames, request: [extraNames.length ? `+ ${extraNames.join(', ')}` : '', request].filter(Boolean).join(' · ') || request }),
         } as CreateBookingDto;
         // The door is the THREAD's channel, not the module's name. Instagram
         // bookings used to be filed as 'messenger', which meant the owner's
@@ -4906,6 +4950,17 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     if (!ids.length) return [];
     const rows: { id: string; name: string }[] = await this.prisma.service.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, name: true } }).catch(() => []);
     return ids.map((id) => rows.find((r) => r.id === id)?.name).filter((x): x is string => !!x);
+  }
+
+  /** The active extras this salon offers on these services: their own, their categories', and the whole-menu ones. */
+  private async addonsOffered(tenantId: string, serviceIds: string[]): Promise<{ id: string; name: string }[]> {
+    const svcs = await this.prisma.service.findMany({ where: { tenantId, id: { in: serviceIds } }, select: { id: true, categoryId: true } });
+    const cats = svcs.map((s) => s.categoryId).filter((c): c is string => !!c);
+    const rows = await this.prisma.serviceAddon.findMany({
+      where: { tenantId, isActive: true, OR: [{ serviceId: { in: serviceIds } }, { serviceId: null, categoryId: null }, ...(cats.length ? [{ serviceId: null, categoryId: { in: cats } }] : [])] } as never,
+      select: { id: true, name: true },
+    }).catch(() => [] as { id: string; name: string }[]);
+    return rows;
   }
 
   private async resolveServiceId(tenantId: string, id: string, name: string): Promise<string | null> {

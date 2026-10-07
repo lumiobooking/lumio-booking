@@ -139,7 +139,7 @@ interface Salon {
   /** Line of business (NAIL, DENTAL, CAFE…): the words this page uses. */
   industry?: string;
 }
-interface Addon { id: string; name: string; durationMinutes: number; priceCents: number }
+interface Addon { id: string; name: string; durationMinutes: number; priceCents: number; askAtBooking?: boolean }
 interface Service { id: string; name: string; description?: string | null; durationMinutes: number; priceCents: number; discountPercent?: number; categoryId?: string | null; isFeatured?: boolean; priceFrom?: boolean; imageUrl?: string | null; addons: Addon[] }
 interface Category { id: string; name: string; icon?: string | null }
 interface Staff {
@@ -284,6 +284,10 @@ export default function PublicBookingPage() {
   setBookIndustry(salon?.industry, salon?.name);
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  // Lines the salon takes walk-in only (never an appointment): a note, not a choice.
+  const [walkInOnly, setWalkInOnly] = useState<{ id: string; name: string }[]>([]);
+  // "Would you like a design?" — the salon requires an answer (yes or no) before the booking goes on.
+  const [askAnswers, setAskAnswers] = useState<Record<string, 'yes' | 'no'>>({});
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -404,6 +408,9 @@ export default function PublicBookingPage() {
   }, [staff]);
   const serviceAddons = service?.addons ?? [];
   const selectedAddons = serviceAddons.filter((a) => addonIds.includes(a.id));
+  // The extras the salon insists on asking about, and whether each has been answered.
+  const askAddons = serviceAddons.filter((a) => a.askAtBooking);
+  const askPending = askAddons.filter((a) => !askAnswers[a.id] && !addonIds.includes(a.id));
   const fmt = useCallback((c: number) => fmtMoney(c, rules), [rules]);
 
   // ---- cart -----------------------------------------------------------------
@@ -496,7 +503,7 @@ export default function PublicBookingPage() {
       const bRes = await fetch(`${base}/bootstrap`);
       if (bRes.ok) {
         const boot = await bRes.json();
-        setSalon(boot.salon); setServices(boot.services ?? []); setStaff(boot.staff ?? []); setCategories(boot.categories ?? []);
+        setSalon(boot.salon); setServices(boot.services ?? []); setStaff(boot.staff ?? []); setCategories(boot.categories ?? []); setWalkInOnly(Array.isArray(boot.walkInOnly) ? boot.walkInOnly : []);
       } else if (bRes.status === 404) {
         // Distinguish "no salon" from "old backend without /bootstrap".
         const sRes = await fetch(base);
@@ -867,7 +874,7 @@ export default function PublicBookingPage() {
   if (salon && salon.businessType === 'RESTAURANT') return <RestaurantReserve slug={slug} salon={salon} />;
 
   const canContinue =
-    step === 1 ? (pickedServiceIds.length > 0 && extraGuests.every((g) => g.serviceIds.length > 0)) :
+    step === 1 ? (pickedServiceIds.length > 0 && extraGuests.every((g) => g.serviceIds.length > 0) && askPending.length === 0) :
     step === 2 ? true :
     step === 3 ? !!slot :
     step === 4 ? infoOk && !submitting : false;
@@ -1136,11 +1143,42 @@ export default function PublicBookingPage() {
                     fmt={fmt} accent={accent} cardFee={salon?.cardFee} dealFor={menuDeal}
                     subscribe={subscribe} pinning={pinning} stickyTop={fullscreen ? 58 : 64}
                   />
-                  {activeGuest === 0 && serviceAddons.length > 0 && (
+                  {walkInOnly.length > 0 && (
+                    <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 12, background: '#f8fafc', border: '1px dashed #cbd5e1', color: '#475569', fontSize: 13, lineHeight: 1.5 }}>
+                      <b style={{ color: '#334155' }}>Walk-in only — no appointment needed:</b> {walkInOnly.map((w) => w.name).join(', ')}. First come, first served — just come in.
+                    </div>
+                  )}
+                  {activeGuest === 0 && askAddons.length > 0 && (
+                    <div style={{ marginTop: 22 }}>
+                      <SectionLabel accent={accent}>A quick question</SectionLabel>
+                      <div style={{ display: 'grid', gap: 10 }}>
+                        {askAddons.map((a) => {
+                          const yes = addonIds.includes(a.id);
+                          const no = !yes && askAnswers[a.id] === 'no';
+                          const pick = (v: 'yes' | 'no') => {
+                            setAskAnswers((p) => ({ ...p, [a.id]: v }));
+                            setAddonIds((p) => (v === 'yes' ? (p.includes(a.id) ? p : [...p, a.id]) : p.filter((x) => x !== a.id)));
+                            setSlot(null);
+                          };
+                          return (
+                            <div key={a.id} style={{ ...rowCard, display: 'block', borderColor: yes || no ? '#e6eaf2' : accent, background: '#fff' }}>
+                              <div style={rowTitle}>Would you like {a.name}?</div>
+                              <div style={rowMeta}>{a.durationMinutes > 0 && <>⏳ +{a.durationMinutes} min <span style={{ color: 'var(--ccbd5e1)' }}>|</span> </>}<b style={{ color: accent }}>+{fmt(a.priceCents)}</b>{a.durationMinutes > 0 ? ' · we block the extra time so you are never rushed' : ''}</div>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                                <button type="button" onClick={() => pick('yes')} style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: `2px solid ${yes ? accent : '#e6eaf2'}`, background: yes ? '#fffaf0' : '#fff', color: '#1e293b', fontWeight: 700, cursor: 'pointer' }}>Yes, please</button>
+                                <button type="button" onClick={() => pick('no')} style={{ flex: 1, padding: '10px 12px', borderRadius: 10, border: `2px solid ${no ? accent : '#e6eaf2'}`, background: no ? '#fffaf0' : '#fff', color: '#1e293b', fontWeight: 700, cursor: 'pointer' }}>No, thanks</button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {activeGuest === 0 && serviceAddons.length > askAddons.length && (
                     <div style={{ marginTop: 22 }}>
                       <SectionLabel accent={accent}>Add-ons for {service?.name}</SectionLabel>
                       <div style={{ display: 'grid', gap: 10, alignContent: 'start', alignItems: 'start', gridAutoRows: 'min-content' }}>
-                        {serviceAddons.map((a) => {
+                        {serviceAddons.filter((a) => !a.askAtBooking).map((a) => {
                           const on = addonIds.includes(a.id);
                           return (
                             <button key={a.id} type="button" className="lumio-row"

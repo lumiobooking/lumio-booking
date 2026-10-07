@@ -89,4 +89,10 @@ export class CreateServiceDto {
   @Min(0)
   @Max(5)
   turnValue?: number;
+
+  // First come, first served: never booked as an appointment (polish change,
+  // take-off, nail cut). Hidden from the booking page; the AI says "just come in".
+  @IsOptional()
+  @IsBoolean()
+  walkInOnly?: boolean;
 }

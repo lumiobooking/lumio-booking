@@ -32,6 +32,8 @@ interface Service {
   imageUrl?: string | null;
   sortOrder?: number;
   turnValue?: number;
+  /** First come, first served: never booked as an appointment. */
+  walkInOnly?: boolean;
   staffServices?: { staffMemberId: string }[];
 }
 
@@ -331,7 +333,7 @@ function ServicesInner() {
 
 // ---- Shared add-ons: one extra for a whole category, or the whole menu --------
 
-interface SharedAddon { id: string; name: string; durationMinutes: number; priceCents: number; currency: string; isActive: boolean; categoryId: string | null; category: { id: string; name: string } | null }
+interface SharedAddon { id: string; name: string; durationMinutes: number; priceCents: number; currency: string; isActive: boolean; askAtBooking?: boolean; categoryId: string | null; category: { id: string; name: string } | null }
 
 /**
  * "Take Off $5" belongs on every Manicure — set it once here instead of on
@@ -343,7 +345,7 @@ function SharedAddonsCard({ token, categories, currency, fmt, vi }: {
 }) {
   const L = (v: string, e: string) => ind(vi ? v : e);
   const [items, setItems] = useState<SharedAddon[]>([]);
-  const [form, setForm] = useState({ name: '', duration: '10', price: '5', scope: '' });
+  const [form, setForm] = useState({ name: '', duration: '10', price: '5', scope: '', ask: false });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -360,7 +362,7 @@ function SharedAddonsCard({ token, categories, currency, fmt, vi }: {
     try {
       await apiFetch('/services/addons/shared', {
         method: 'POST', token,
-        body: { name: form.name.trim(), durationMinutes: parseInt(form.duration, 10) || 0, priceCents: toMinorUnits(form.price, currency), categoryId: form.scope || null },
+        body: { name: form.name.trim(), durationMinutes: parseInt(form.duration, 10) || 0, priceCents: toMinorUnits(form.price, currency), categoryId: form.scope || null, askAtBooking: form.ask },
       });
       setForm({ ...form, name: '' });
       await load();
@@ -395,7 +397,7 @@ function SharedAddonsCard({ token, categories, currency, fmt, vi }: {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {g.items.map((a) => (
               <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, padding: '8px 10px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }}>
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}{a.askAtBooking && <span title={L('Bot và trang đặt lịch luôn hỏi khách món này trước khi đặt', 'The bot and the booking page always ask about this before booking')} style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: 'var(--ink-sky)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 6px' }}>❓ {L('hỏi khi đặt', 'asked at booking')}</span>}</span>
                 <span style={{ color: 'var(--c94a3b8)', fontSize: 13, whiteSpace: 'nowrap' }}>{a.durationMinutes} {L('phút', 'min')}</span>
                 <span style={{ color: 'var(--ink-good)', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmt(a.priceCents)}</span>
                 <button type="button" onClick={() => remove(a)} style={{ ...ui.dangerBtn, padding: '3px 8px', fontSize: 12 }}>{L('Xoá', 'Remove')}</button>
@@ -425,6 +427,10 @@ function SharedAddonsCard({ token, categories, currency, fmt, vi }: {
           <input style={ui.input} type="number" min={0} step={priceInputStep(currency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
         </div>
         <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, padding: '9px 14px', opacity: busy ? 0.6 : 1 }}>{L('Thêm', 'Add')}</button>
+        <label style={{ flexBasis: '100%', display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.4 }}>
+          <input type="checkbox" checked={form.ask} onChange={(e) => setForm({ ...form, ask: e.target.checked })} style={{ marginTop: 3 }} />
+          <span>{L('Luôn hỏi khách trước khi đặt lịch (vd "Có làm design không?") — bot điện thoại / chat và trang đặt lịch sẽ hỏi; khách chọn có thì lịch tự cộng thêm phút, thợ không bị trễ khách sau.', 'Always ask before booking (e.g. "Would you like a design?") — the phone/chat bot and the booking page ask; a yes adds the minutes so the next client is not late.')}</span>
+        </label>
       </form>
     </div>
   );
@@ -658,7 +664,7 @@ function hintFor(k: PromoKey, vi: boolean): string {
  */
 
 interface Addon {
-  id: string; name: string; durationMinutes: number; priceCents: number; currency: string;
+  id: string; name: string; durationMinutes: number; priceCents: number; currency: string; askAtBooking?: boolean;
   /** Set on a shared extra (whole category / whole menu) listed under a service: read-only here. */
   shared?: 'category' | 'all'; scopeName?: string | null;
 }
@@ -735,7 +741,7 @@ function FragmentRow({ service: s, token, categories, staff, catName, fmt, onTog
               <span style={{ marginLeft: 6, background: '#ef4444', color: '#fff', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>-{s.discountPercent}%</span>
             </span>
           ) : (
-            <>{fmt(s.priceCents)}{s.priceFrom ? <span title={lang === 'vi' ? 'Giá từ (trở lên)' : 'From price (and up)'} style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}>+</span> : null}</>
+            <>{fmt(s.priceCents)}{s.priceFrom ? <span title={lang === 'vi' ? 'Giá từ (trở lên)' : 'From price (and up)'} style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}>+</span> : null}{s.walkInOnly ? <span title={t('sv.walkInOnlyHelp')} style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-warn)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 5px', whiteSpace: 'nowrap' }}>{t('sv.walkInOnlyBadge')}</span> : null}</>
           )}
         </td>
         <td style={{ ...ui.td, whiteSpace: 'nowrap' }}>
@@ -842,6 +848,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
     priceFrom: service.priceFrom ?? false,
     imageUrl: service.imageUrl ?? '',
     turnValue: typeof service.turnValue === 'number' ? service.turnValue : 1,
+    walkInOnly: service.walkInOnly ?? false,
   });
   const [staffIds, setStaffIds] = useState<string[]>(service.staffServices?.map((x) => x.staffMemberId) ?? []);
   const [error, setError] = useState<string | null>(null);
@@ -867,6 +874,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           priceFrom: form.priceFrom,
           imageUrl: form.imageUrl.trim(),
           turnValue: form.turnValue,
+          walkInOnly: form.walkInOnly,
           staffIds,
         },
       });
@@ -882,6 +890,7 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           priceFrom: updated.priceFrom ?? false,
           imageUrl: updated.imageUrl ?? '',
           turnValue: typeof updated.turnValue === 'number' ? updated.turnValue : form.turnValue,
+          walkInOnly: updated.walkInOnly ?? form.walkInOnly,
         });
       }
       setSaved(true);
@@ -917,6 +926,9 @@ function EditServicePanel({ service, token, categories, staff, onSaved }: { serv
           <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> {t('sv.fromPrice')}
         </label>
         <TurnSelect value={form.turnValue} onChange={(v) => { setForm({ ...form, turnValue: v }); setSaved(false); }} t={t} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8 }} title={t('sv.walkInOnlyHelp')}>
+          <input type="checkbox" checked={form.walkInOnly} onChange={(e) => { setForm({ ...form, walkInOnly: e.target.checked }); setSaved(false); }} /> {t('sv.walkInOnly')}
+        </label>
       </div>
       <label style={{ display: 'block', marginTop: 10 }}>
         <span style={ui.label}>{t('sv.fDescription')}</span>
@@ -942,7 +954,7 @@ function AddonsPanel({ serviceId, token, fmt, currency = 'USD' }: { serviceId: s
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const [addons, setAddons] = useState<Addon[]>([]);
-  const [form, setForm] = useState({ name: '', duration: '15', price: '15' });
+  const [form, setForm] = useState({ name: '', duration: '15', price: '15', ask: false });
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -961,9 +973,9 @@ function AddonsPanel({ serviceId, token, fmt, currency = 'USD' }: { serviceId: s
     try {
       await apiFetch(`/services/${serviceId}/addons`, {
         method: 'POST', token,
-        body: { name: form.name, durationMinutes: parseInt(form.duration, 10) || 0, priceCents: toMinorUnits(form.price, currency) },
+        body: { name: form.name, durationMinutes: parseInt(form.duration, 10) || 0, priceCents: toMinorUnits(form.price, currency), askAtBooking: form.ask },
       });
-      setForm({ name: '', duration: '15', price: '15' });
+      setForm({ name: '', duration: '15', price: '15', ask: false });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed');
@@ -991,6 +1003,7 @@ function AddonsPanel({ serviceId, token, fmt, currency = 'USD' }: { serviceId: s
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
               <span style={{ flex: 1 }}>
                 {a.name}
+                {a.askAtBooking && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: 'var(--ink-sky)', border: '1px solid var(--line)', borderRadius: 6, padding: '0 6px' }}>❓ {lang === 'vi' ? 'hỏi khi đặt' : 'asked at booking'}</span>}
                 {a.shared && (
                   <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--ink-link)', border: '1px solid currentColor', borderRadius: 999, padding: '0 7px' }}>
                     {lang === 'vi' ? 'Dùng chung' : 'Shared'} · {a.shared === 'all' ? (lang === 'vi' ? 'mọi dịch vụ' : 'all services') : a.scopeName}
@@ -1025,6 +1038,10 @@ function AddonsPanel({ serviceId, token, fmt, currency = 'USD' }: { serviceId: s
           <input style={ui.input} type="number" min={0} step={priceInputStep(currency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
         </div>
         <button type="submit" style={{ ...ui.primaryBtn, padding: '9px 14px' }}>{t('sv.add')}</button>
+        <label style={{ flexBasis: '100%', display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12.5, color: 'var(--ce2e8f0)', lineHeight: 1.4 }}>
+          <input type="checkbox" checked={form.ask} onChange={(e) => setForm({ ...form, ask: e.target.checked })} style={{ marginTop: 2 }} />
+          <span>{lang === 'vi' ? 'Luôn hỏi khách trước khi đặt lịch (vd "Có làm design không?") — khách chọn có thì lịch tự cộng thêm phút.' : 'Always ask before booking (e.g. "Would you like a design?") — a yes adds the minutes to the appointment.'}</span>
+        </label>
       </form>
     </div>
   );
@@ -1033,7 +1050,7 @@ function AddonsPanel({ serviceId, token, fmt, currency = 'USD' }: { serviceId: s
 function CreateServiceForm({ token, categories, staff, currency, onCreated }: { token: string; categories: Category[]; staff: Staff[]; currency: string; onCreated: () => void }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
-  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false, imageUrl: '', turnValue: 1 });
+  const [form, setForm] = useState({ name: '', description: '', durationMinutes: '30', price: '25', discount: '0', categoryId: '', isFeatured: false, priceFrom: false, imageUrl: '', turnValue: 1, walkInOnly: false });
   const [staffIds, setStaffIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -1057,6 +1074,7 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
           priceFrom: form.priceFrom,
           imageUrl: form.imageUrl.trim() || undefined,
           turnValue: form.turnValue,
+          walkInOnly: form.walkInOnly,
           staffIds,
         },
       });
@@ -1129,6 +1147,9 @@ function CreateServiceForm({ token, categories, staff, currency, onCreated }: { 
           <input type="checkbox" checked={form.priceFrom} onChange={(e) => setForm({ ...form, priceFrom: e.target.checked })} /> {t('sv.fromPrice')}
         </label>
         <TurnSelect value={form.turnValue} onChange={(v) => setForm({ ...form, turnValue: v })} t={t} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', paddingBottom: 8 }} title={t('sv.walkInOnlyHelp')}>
+          <input type="checkbox" checked={form.walkInOnly} onChange={(e) => setForm({ ...form, walkInOnly: e.target.checked })} /> {t('sv.walkInOnly')}
+        </label>
       </div>
       <label style={{ display: 'block', marginTop: 12 }}>
         <span style={ui.label}>{t('sv.fDescription')}</span>

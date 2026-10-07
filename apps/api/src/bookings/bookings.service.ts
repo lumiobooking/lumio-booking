@@ -526,6 +526,12 @@ export class BookingsService {
     if (!service) {
       throw new NotFoundException('Service not found or inactive');
     }
+    // First come, first served: the salon takes this line walk-in only.
+    // Online, chat, hotline and the desk alike — the walk-in board is where
+    // it belongs (the owner clears the flag on the service to book it again).
+    if ((service as { walkInOnly?: boolean }).walkInOnly) {
+      throw new BadRequestException(walkInOnlyMessage(service.name));
+    }
 
     // Where it happens, when not at the business (a property to view, a client's home).
     const location = dto.location?.replace(/\s+/g, ' ').trim().slice(0, 300) || null;
@@ -589,6 +595,8 @@ export class BookingsService {
     if (extraServices.length !== extraIds.length) {
       throw new BadRequestException('One or more selected services are unavailable.');
     }
+    const walkInExtra = extraServices.find((x) => (x as { walkInOnly?: boolean }).walkInOnly);
+    if (walkInExtra) throw new BadRequestException(walkInOnlyMessage(walkInExtra.name));
     const extraItems: { id: string; name: string; priceCents: number; durationMinutes: number; kind: 'service' }[] = [];
     for (const s of extraServices) {
       const disc = Math.min(90, Math.max(0, s.discountPercent ?? 0));
@@ -2137,20 +2145,29 @@ export class BookingsService {
       this.publicServiceRows(tenantId),
       this.prisma.serviceAddon.findMany({
         where: { tenantId, isActive: true, serviceId: null } as never,
-        select: { id: true, name: true, durationMinutes: true, priceCents: true, currency: true, categoryId: true } as never,
+        select: { id: true, name: true, durationMinutes: true, priceCents: true, currency: true, categoryId: true, askAtBooking: true } as never,
         orderBy: { createdAt: 'asc' },
       }).catch(() => []) as Promise<unknown>,
     ]);
-    const extras = shared as Array<{ id: string; name: string; durationMinutes: number; priceCents: number; currency: string; categoryId: string | null }>;
-    if (!extras.length) return rows;
-    return rows.map((s) => {
+    const extras = shared as Array<{ id: string; name: string; durationMinutes: number; priceCents: number; currency: string; categoryId: string | null; askAtBooking?: boolean }>;
+    // First come, first served: a walk-in-only line is not on the booking page.
+    const bookable = rows.filter((s) => !(s as { walkInOnly?: boolean }).walkInOnly);
+    if (!extras.length) return bookable;
+    return bookable.map((s) => {
       const cat = (s as { categoryId?: string | null }).categoryId ?? null;
       const mine = extras.filter((a) => !a.categoryId || a.categoryId === cat).map(({ categoryId: _c, ...a }) => a);
       return mine.length ? { ...s, addons: [...(s.addons ?? []), ...mine] } : s;
     });
   }
 
-  private publicServiceRows(tenantId: string) {
+  /** The menu lines the salon takes walk-in only (never an appointment) — the booking page says so. */
+  async walkInOnlyServices(tenantId: string): Promise<{ id: string; name: string }[]> {
+    try {
+      return await this.prisma.service.findMany({ where: { tenantId, isActive: true, walkInOnly: true } as never, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+    } catch { return []; }
+  }
+
+  private publicServiceRows(tenantId: string): Promise<PublicServiceRow[]> {
     return this.prisma.service.findMany({
       where: { tenantId, isActive: true },
       select: {
@@ -2166,14 +2183,15 @@ export class BookingsService {
         priceFrom: true,
         imageUrl: true,
         sortOrder: true,
+        ...({ walkInOnly: true } as object),
         addons: {
           where: { isActive: true },
-          select: { id: true, name: true, durationMinutes: true, priceCents: true, currency: true },
+          select: { id: true, name: true, durationMinutes: true, priceCents: true, currency: true, ...({ askAtBooking: true } as object) },
           orderBy: { createdAt: 'asc' },
         },
-      },
+      } as never,
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-    });
+    }) as unknown as Promise<PublicServiceRow[]>;
   }
 
   /** Active menu categories for the public booking page (ordered). */
@@ -3772,4 +3790,16 @@ export class BookingsService {
     }
     return res.count;
   }
+}
+
+/** A menu line as the public booking page receives it. */
+export interface PublicServiceRow {
+  id: string; name: string; description: string | null; durationMinutes: number; priceCents: number; discountPercent: number; currency: string;
+  categoryId: string | null; isFeatured: boolean; priceFrom: boolean; imageUrl: string | null; sortOrder: number; walkInOnly?: boolean;
+  addons: { id: string; name: string; durationMinutes: number; priceCents: number; currency: string; askAtBooking?: boolean }[];
+}
+
+/** The one sentence every channel says about a walk-in-only service. */
+export function walkInOnlyMessage(serviceName: string): string {
+  return `${serviceName} is walk-in only at this salon (first come, first served) — no appointment needed, just come in.`;
 }

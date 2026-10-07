@@ -234,7 +234,7 @@ export class ServicesService {
           isFeatured: dto.isFeatured ?? false,
           priceFrom: dto.priceFrom ?? false,
           imageUrl: cleanImageUrl(dto.imageUrl),
-          ...({ turnValue: cleanTurnValue(dto.turnValue) ?? 1 } as Record<string, unknown>),
+          ...({ turnValue: cleanTurnValue(dto.turnValue) ?? 1, walkInOnly: dto.walkInOnly ?? false } as Record<string, unknown>),
         },
       });
       if (staffIds.length > 0) {
@@ -278,6 +278,7 @@ export class ServicesService {
     };
     if (dto.imageUrl !== undefined) data.imageUrl = cleanImageUrl(dto.imageUrl);
     if (dto.turnValue !== undefined) (data as Record<string, unknown>).turnValue = cleanTurnValue(dto.turnValue) ?? 1;
+    if (dto.walkInOnly !== undefined) (data as Record<string, unknown>).walkInOnly = !!dto.walkInOnly;
     // categoryId: only touch when provided (null clears it).
     if (dto.categoryId !== undefined) {
       data.categoryId = dto.categoryId ? await this.validCategoryId(tenantId, dto.categoryId) : null;
@@ -384,7 +385,7 @@ export class ServicesService {
 
   async bulkImport(
     user: AuthenticatedUser,
-    items: Array<{ kind?: 'service' | 'addon'; category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string; turnValue?: number }>,
+    items: Array<{ kind?: 'service' | 'addon'; category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string; turnValue?: number; walkInOnly?: boolean; askAtBooking?: boolean }>,
     targetTenantId?: string,
   ) {
     // Super admin may aim at any salon; a salon admin is pinned to their own by
@@ -448,6 +449,7 @@ export class ServicesService {
           imageUrl: cleanImageUrl(raw.imageUrl),
           categoryId, sortOrder: order, isActive: true, currency,
           ...(turnOf(raw.turnValue) !== undefined ? ({ turnValue: turnOf(raw.turnValue) } as object) : {}),
+          ...(raw.walkInOnly ? ({ walkInOnly: true } as object) : {}),
         } as never,
       });
       have.add(name.toLowerCase());
@@ -468,6 +470,7 @@ export class ServicesService {
           durationMinutes: Math.min(600, Math.max(0, Math.round(Number(raw.durationMinutes) || 0))),
           priceCents: Math.max(0, Math.round(Number(raw.priceCents) || 0)),
           isActive: true, serviceId: null, categoryId,
+          ...(raw.askAtBooking ? ({ askAtBooking: true } as object) : {}),
         } as never,
       });
       haveAddon.add(key);
@@ -509,7 +512,7 @@ export class ServicesService {
   listSharedAddons(user: AuthenticatedUser) {
     return this.prisma.serviceAddon.findMany({
       where: { tenantId: this.tenantId(user), serviceId: null } as never,
-      select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, isActive: true, categoryId: true, category: { select: { id: true, name: true } } } as never,
+      select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, isActive: true, askAtBooking: true, categoryId: true, category: { select: { id: true, name: true } } } as never,
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -531,6 +534,7 @@ export class ServicesService {
         durationMinutes: dto.durationMinutes,
         priceCents: dto.priceCents,
         isActive: dto.isActive ?? true,
+        ...({ askAtBooking: !!dto.askAtBooking } as object),
       } as never,
     });
     await this.audit.log({
@@ -560,7 +564,7 @@ export class ServicesService {
     // that would remove them from every other service too.
     const shared = (await this.prisma.serviceAddon.findMany({
       where: { tenantId, serviceId: null, isActive: true, OR: [{ categoryId: null }, ...(svc.categoryId ? [{ categoryId: svc.categoryId }] : [])] } as never,
-      select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, categoryId: true, category: { select: { name: true } } } as never,
+      select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, askAtBooking: true, categoryId: true, category: { select: { name: true } } } as never,
       orderBy: { createdAt: 'asc' },
     }).catch(() => [])) as unknown as Array<{ categoryId: string | null; category: { name: string } | null }>;
     return [...own, ...shared.map(({ category, ...a }) => ({ ...a, shared: a.categoryId ? 'category' : 'all', scopeName: category?.name ?? null }))];
@@ -577,7 +581,8 @@ export class ServicesService {
         durationMinutes: dto.durationMinutes,
         priceCents: dto.priceCents,
         isActive: dto.isActive ?? true,
-      },
+        ...({ askAtBooking: !!dto.askAtBooking } as object),
+      } as never,
     });
     await this.audit.log({
       tenantId,

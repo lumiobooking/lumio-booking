@@ -76,13 +76,17 @@ describe('add-ons and turns in the same file', () => {
       ['All', 'Take Off', '10', '15', 'tuỳ chọn', ''],
       ['', 'Polish change', '15', '20', '', '½'],
       ['Waxing', 'Lip', '8', '10', 'service', '0.5'],
+      ['Manicure', 'Polish Change', '15', '20', 'walk-in', '0.5'],
+      ['Manicure', 'Design', '10', '20', 'add-on ask', ''],
     ]);
-    expect(rows.map((r) => [r.kind, r.category, r.name, r.turnValue])).toEqual([
-      ['service', 'Full Set', 'Pink & White', 1],
-      ['addon', 'Full Set', 'Chrome', undefined],
-      ['addon', '', 'Take Off', undefined],
-      ['service', '', 'Polish change', 0.5],
-      ['service', 'Waxing', 'Lip', 0.5],
+    expect(rows.map((r) => [r.kind, r.category, r.name, r.turnValue, r.walkInOnly, r.askAtBooking])).toEqual([
+      ['service', 'Full Set', 'Pink & White', 1, undefined, undefined],
+      ['addon', 'Full Set', 'Chrome', undefined, undefined, undefined],
+      ['addon', '', 'Take Off', undefined, undefined, undefined],
+      ['service', '', 'Polish change', 0.5, undefined, undefined],
+      ['service', 'Waxing', 'Lip', 0.5, undefined, undefined],
+      ['service', 'Manicure', 'Polish Change', 0.5, true, undefined],
+      ['addon', 'Manicure', 'Design', undefined, undefined, true],
     ]);
     expect(rows[0].priceFrom).toBe(true);
     // The same extra on two categories is two rows; an existing SERVICE name does not block an add-on.
@@ -98,9 +102,11 @@ describe('the template', () => {
       expect(rows).toHaveLength(templateRows(vi, cur).length - 1);
       expect(rows.every((r) => r.name && !('err' in r && r.err))).toBe(true);
       expect(rows.some((r) => r.priceFrom)).toBe(true);
-      expect(rows.filter((r) => r.kind === 'addon')).toHaveLength(2);
+      expect(rows.filter((r) => r.kind === 'addon')).toHaveLength(3);
       expect(rows.find((r) => r.kind === 'addon' && !r.category)).toBeTruthy();
       expect(rows.some((r) => r.turnValue === 0.5)).toBe(true);
+      expect(rows.filter((r) => r.walkInOnly)).toHaveLength(1);
+      expect(rows.filter((r) => r.askAtBooking)).toHaveLength(1);
     }
   });
   it('folds Vietnamese headers', () => {

@@ -73,11 +73,13 @@ export class PublicSalonController {
   @Header('Cache-Control', 'public, max-age=30, stale-while-revalidate=60')
   async bootstrap(@Param('slug') slug: string, @Req() req?: Request) {
     const tenant = await this.lookupOpenTenant(slug);
-    const [salon, services, categories, staff] = await Promise.all([
+    const [salon, services, categories, staff, walkInOnly] = await Promise.all([
       this.buildSalon(tenant),
       this.bookings.publicServices(tenant.id),
       this.bookings.publicCategories(tenant.id),
       this.bookings.publicStaff(tenant.id),
+      // Lines the salon takes walk-in only: shown as a note, never as a choice.
+      this.bookings.walkInOnlyServices(tenant.id),
     ]);
     // PICTURES LEAVE THE JSON. Service photos and staff avatars are stored
     // as base64 data URIs when a salon has no file storage — up to 130 KB
@@ -92,7 +94,7 @@ export class PublicSalonController {
     const stf = (staff as { id: string; avatarUrl?: string | null }[]).map((x) => ({
       ...x, avatarUrl: x.avatarUrl && x.avatarUrl.startsWith('data:') ? `${base}/img/staff/${x.id}` : x.avatarUrl,
     }));
-    return { salon, services: svc, categories, staff: stf };
+    return { salon, services: svc, categories, staff: stf, walkInOnly };
   }
 
   /** The absolute URL of this controller for one salon, as the browser sees it (behind Render's proxy). */

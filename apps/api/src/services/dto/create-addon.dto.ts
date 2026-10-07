@@ -18,6 +18,12 @@ export class CreateServiceAddonDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // The AI and the booking page must ASK about this extra before booking
+  // ("Design?") — a yes makes the visit longer.
+  @IsOptional()
+  @IsBoolean()
+  askAtBooking?: boolean;
 }
 
 /**

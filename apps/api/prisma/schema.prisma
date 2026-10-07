@@ -555,6 +555,10 @@ model Service {
   priceFrom  Boolean          @default(false) // show "from $X" (price varies)
   imageUrl   String?          // optional photo shown on the booking menu; hidden when null
   turnValue  Float            @default(1) // walk-in turns this service is worth (1, ½ for a small add-on, 0 = none)
+  // First come, first served: a polish change or a take-off is never booked as
+  // an appointment (hidden from the booking page; the AI tells the caller to
+  // walk in). The walk-in board still takes it.
+  walkInOnly Boolean          @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -623,6 +627,10 @@ model ServiceAddon {
   priceCents      Int     @default(0)
   currency        String  @default("USD")
   isActive        Boolean @default(true)
+  // "Ask before booking": the AI and the booking page must ask "Would you like
+  // <this>?" on every service it applies to ("Design?" on a manicure), because
+  // a yes makes the visit longer and the next client late.
+  askAtBooking    Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

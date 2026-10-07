@@ -990,12 +990,25 @@ export class VoiceService implements OnModuleInit {
     // short code (S1, S2…) the model passes to the tools: it used to copy a
     // 25-character database id out of the prompt, and one wrong character was
     // "Service not found" read aloud to a customer who had just said yes.
-    const menuRows = await this.prisma.service.findMany({
+    const allRows = await this.prisma.service.findMany({
       where: { tenantId, isActive: true },
-      select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true },
+      select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true, categoryId: true, ...({ walkInOnly: true } as object) } as never,
       orderBy: { name: 'asc' }, take: 250,
-    });
+    }) as unknown as { id: string; name: string; priceCents: number; durationMinutes: number; currency: string; priceFrom: boolean; categoryId: string | null; walkInOnly?: boolean }[];
+    // First come, first served: a walk-in-only line is never a code the model can book.
+    const walkInRows = allRows.filter((s) => s.walkInOnly);
+    const menuRows = allRows.filter((s) => !s.walkInOnly);
     const menu: MenuItem[] = menuRows.map((s) => ({ id: s.id, name: s.name, minutes: s.durationMinutes > 0 ? s.durationMinutes : 30 }));
+    // "Ask before booking" extras (Design?) the salon requires on some services.
+    type AskRow = { id: string; name: string; priceCents: number; durationMinutes: number; currency: string; serviceId: string | null; categoryId: string | null; service: { name: string } | null; category: { name: string } | null };
+    let asks: AskRow[] = [];
+    try {
+      asks = await this.prisma.serviceAddon.findMany({
+        where: { tenantId, isActive: true, ...({ askAtBooking: true } as object) } as never,
+        select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, serviceId: true, categoryId: true, service: { select: { name: true } }, category: { select: { name: true } } } as never,
+        take: 20,
+      }) as unknown as AskRow[];
+    } catch { asks = []; }
     // Prices are read ALOUD, so they are formatted in the salon's own money —
     // the old "$" + divide-by-100 read a 200,000₫ service as "two thousand
     // dollars". Only the first forty are written into the prompt; a longer
@@ -1006,7 +1019,13 @@ export class VoiceService implements OnModuleInit {
     const servicesBlock = shown.length
       ? 'Menu (pass the code, e.g. S3, to the tools; never say a code out loud):\n' +
         shown.map((s, i) => `- ${serviceCode(i)} ${s.name} — ${formatMoneyShort(s.priceCents, (s as { currency?: string }).currency ?? 'USD', menuLocale)}${(s as { priceFrom?: boolean }).priceFrom ? ' and up (a starting price — say it that way)' : ''}${s.durationMinutes ? `, ${s.durationMinutes} min` : ''}`).join('\n') +
-        (menuRows.length > shown.length ? `\n(Only ${shown.length} of this ${persona.venueNoun}'s ${menuRows.length} services are listed here. If the caller asks for something not on this list, call get_services and search the full menu before saying anything about it.)` : '')
+        (menuRows.length > shown.length ? `\n(Only ${shown.length} of this ${persona.venueNoun}'s ${menuRows.length} services are listed here. If the caller asks for something not on this list, call get_services and search the full menu before saying anything about it.)` : '') +
+        (walkInRows.length ? `\nWALK-IN ONLY — never booked, first come, first served: ${walkInRows.map((s) => `${s.name} (${formatMoneyShort(s.priceCents, s.currency ?? 'USD', menuLocale)})`).join(', ')}. If the caller wants one of these, say the ${persona.venueNoun} takes it walk-in only — no appointment needed, just come in — and do not book it.` : '') +
+        (asks.length ? `\nASK BEFORE BOOKING — the ${persona.venueNoun} requires these questions (a yes makes the visit longer):\n` + asks.map((a) => {
+          const scope = a.serviceId ? `booking ${a.service?.name ?? 'that service'}` : a.categoryId ? `booking any ${a.category?.name ?? ''} service` : 'every booking';
+          const cost = [a.priceCents > 0 ? `+${formatMoneyShort(a.priceCents, a.currency ?? 'USD', menuLocale)}` : '', a.durationMinutes > 0 ? `+${a.durationMinutes} min` : ''].filter(Boolean).join(', ');
+          return `- Before ${scope}: ask "Would you like ${a.name}?"${cost ? ` (${cost})` : ''}. Ask once, as its own question. If YES, put "${a.name}" in that person's "extras" in check_availability and create_booking so the time is blocked.`;
+        }).join('\n') : '')
       : 'No services are configured yet; take a message and tell them someone will call back.';
 
     // Group-aware booking is for businesses that book PEOPLE onto STAFF —
@@ -1062,6 +1081,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
         ...(withName ? { firstName: { type: 'string', description: 'This person’s first name, exactly as the caller said it.' } } : {}),
         services: { type: 'array', items: { type: 'string' }, description: 'Menu codes for this person, e.g. ["S3"] or ["S3","S8"] for two services.' },
         technician: { type: 'string', description: 'Only when the caller asked for a technician by name.' },
+        extras: { type: 'array', items: { type: 'string' }, description: 'ASK BEFORE BOOKING extras this person said YES to, by exact name (e.g. ["Design"]). Leave out when none.' },
       },
       required: withName ? ['firstName', 'services'] : ['services'],
     });
@@ -1265,9 +1285,9 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
       if (name === 'get_services') {
         const services = await this.prisma.service.findMany({
           where: { tenantId, isActive: true },
-          select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true },
+          select: { id: true, name: true, priceCents: true, durationMinutes: true, currency: true, priceFrom: true, ...({ walkInOnly: true } as object) } as never,
           orderBy: { name: 'asc' }, take: 250,
-        });
+        }) as unknown as { id: string; name: string; priceCents: number; durationMinutes: number; currency: string; priceFrom?: boolean; walkInOnly?: boolean }[];
         if (!services.length) return 'No services are configured.';
         // Same order and codes as the menu in the prompt.
         const codeOf = (id: string) => { const i = ctx.menu.findIndex((m) => m.id === id); return i >= 0 ? serviceCode(i) : id; };
@@ -1276,7 +1296,7 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
         // The take was also 40, which quietly hid the rest of a long menu —
         // the same cut that once made the bot say a service did not exist.
         const { locale: svcLocale } = await this.localeInfo(tenantId);
-        return JSON.stringify(services.map((s) => ({ code: codeOf(s.id), name: s.name, price: formatMoneyShort(s.priceCents, s.currency, svcLocale) + ((s as { priceFrom?: boolean }).priceFrom ? ' and up' : ''), minutes: s.durationMinutes })));
+        return JSON.stringify(services.map((s) => ({ code: s.walkInOnly ? 'WALK-IN ONLY (never book — first come, first served, just come in)' : codeOf(s.id), name: s.name, price: formatMoneyShort(s.priceCents, s.currency, svcLocale) + ((s as { priceFrom?: boolean }).priceFrom ? ' and up' : ''), minutes: s.durationMinutes })));
       }
       if (name === 'create_booking') {
         const firstName = String(input.customerFirstName || '').trim();
@@ -1389,6 +1409,16 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
    * the caller, so the one confirmation text (the caller's) only goes out
    * once everyone is in; if one fails, the ones already written are cancelled.
    */
+  /** The active extras this salon offers on these services: their own, their categories', and the whole-menu ones. */
+  private async addonsOffered(tenantId: string, serviceIds: string[]): Promise<{ id: string; name: string }[]> {
+    const svcs = await this.prisma.service.findMany({ where: { tenantId, id: { in: serviceIds } }, select: { id: true, categoryId: true } });
+    const cats = svcs.map((s) => s.categoryId).filter((c): c is string => !!c);
+    return this.prisma.serviceAddon.findMany({
+      where: { tenantId, isActive: true, OR: [{ serviceId: { in: serviceIds } }, { serviceId: null, categoryId: null }, ...(cats.length ? [{ serviceId: null, categoryId: { in: cats } }] : [])] } as never,
+      select: { id: true, name: true },
+    }).catch(() => [] as { id: string; name: string }[]);
+  }
+
   private async toolBookParty(
     tenantId: string, tz: string, callerPhone: string, input: Record<string, unknown>,
     acc: { booked: boolean; appointmentId: string | null }, ctx: ToolCtx,
@@ -1427,6 +1457,25 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
     if (!open.ok) return `NOT BOOKED — ${open.reason}`;
     const noteLang = noteLangForMarket((await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } as never }).catch(() => null) as { market?: string } | null)?.market);
 
+    // Extras each person said yes to (Design?), resolved against this salon's add-ons before anything is written.
+    const rawPeople = Array.isArray(input.people) ? (input.people as Record<string, unknown>[]) : [];
+    const extrasOf: string[][] = [];
+    const extraNamesOf: string[][] = [];
+    for (let i = 0; i < members.length; i++) {
+      const names = Array.isArray(rawPeople[i]?.extras) ? (rawPeople[i].extras as unknown[]).map((x) => String(x ?? '').trim()).filter(Boolean).slice(0, 6) : [];
+      const picked: string[] = [];
+      if (names.length) {
+        const offered = await this.addonsOffered(tenantId, members[i].items.map((x) => x.id));
+        for (const want of names) {
+          const key = want.toLowerCase();
+          const hit = offered.find((a) => a.name.toLowerCase() === key) ?? offered.find((a) => a.name.toLowerCase().includes(key) || key.includes(a.name.toLowerCase()));
+          if (!hit) return `NOT BOOKED — no extra called "${want}" is offered on ${members[i].firstName}'s services (offered: ${offered.map((a) => a.name).join(', ') || 'none'}). Use the exact name from ASK BEFORE BOOKING, or leave extras out and mention it in "request".`;
+          if (!picked.includes(hit.id)) picked.push(hit.id);
+        }
+      }
+      extrasOf.push(picked); extraNamesOf.push(names);
+    }
+
     const n = members.length;
     const groupId = n > 1 ? `ph-${randomUUID()}` : undefined;
     const lead = members[0];
@@ -1444,11 +1493,12 @@ ${infoBlock ? infoBlock + '\n' : ''}${facts ? cap(persona.venueNoun) + ' notes: 
           ...(isLead ? { customerPhone: phone } : {}),
           ...(m.techId ? { preferredStaffId: m.techId } : {}),
           ...(n > 1 ? { partySize: n, groupId } : {}),
+          ...(extrasOf[i].length ? { addonIds: extrasOf[i] } : {}),
           notes: aiBookingNote({
             channel: 'hotline', lang: noteLang, phone, techName: m.techName,
             partyNames: n > 1 ? [lead.firstName, ...members.slice(1).map((x) => x.firstName)] : undefined,
             services: m.items.map((x) => x.name),
-            request: isLead ? request : (request ? `(${lead.firstName}) ${request}` : null),
+            request: [extraNamesOf[i].length ? `+ ${extraNamesOf[i].join(', ')}` : '', isLead ? request : (request ? `(${lead.firstName}) ${request}` : '')].filter(Boolean).join(' · ') || null,
           }),
         } as CreateBookingDto;
         const b = await this.bookings.createForTenant(tenantId, dto, null, 'hotline', null, { autoAssign: true, groupGuest: !isLead });

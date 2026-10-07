@@ -25,6 +25,10 @@ export interface ImportRow {
   imageUrl?: string;
   /** Walk-in turns the service is worth (1, ½, 0…); omitted = the default (1). */
   turnValue?: number;
+  /** Service: first come, first served, never an appointment (row type "walk-in"). */
+  walkInOnly?: boolean;
+  /** Add-on: the bot / booking page must ask about it before booking (row type "add-on ask"). */
+  askAtBooking?: boolean;
 }
 
 export type RowStatus = 'new' | 'duplicate' | 'error';
@@ -54,9 +58,16 @@ const ADDON_WORDS = new Set(['addon', 'add-on', 'add on', 'extra', 'option', 'tu
 /** Category cells that mean "the whole menu" on an add-on row. */
 const ALL_WORDS = new Set(['all', '*', 'all services', 'tat ca', 'toan bo', 'ca menu', 'moi dich vu']);
 export const isAllCategory = (cell: string) => ALL_WORDS.has(fold(cell));
+/** "add-on ask" / "tuỳ chọn hỏi": an extra the bot must ask about before booking. */
+const ASK_WORDS = new Set(['addon ask', 'add-on ask', 'add on ask', 'ask', 'extra ask', 'tuy chon hoi', 'hoi khi dat', 'hoi']);
+/** "walk-in" / "chỉ walk-in": a service that is never an appointment. */
+const WALKIN_WORDS = new Set(['walk-in', 'walkin', 'walk in', 'walk-in only', 'walk in only', 'chi walk-in', 'chi walkin', 'khong dat lich']);
 export function kindOf(cell: string): 'service' | 'addon' {
-  return ADDON_WORDS.has(fold(cell)) ? 'addon' : 'service';
+  const f = fold(cell);
+  return ADDON_WORDS.has(f) || ASK_WORDS.has(f) ? 'addon' : 'service';
 }
+export const isAskKind = (cell: string) => ASK_WORDS.has(fold(cell));
+export const isWalkInKind = (cell: string) => WALKIN_WORDS.has(fold(cell));
 /** "1", "0.5", "½", "1/2" → a turn value; anything else = not given. */
 export function turnOf(cell: string): number | undefined {
   const t = fold(cell).replace(',', '.').replace('½', '0.5').replace('1/2', '0.5');
@@ -74,7 +85,7 @@ export function fold(s: string): string {
 }
 
 function headerField(cell: string): Field | null {
-  const f = fold(cell).replace(/\s*\((yes\/no|co\/khong|min|phut|dich vu\/tuy chon|service\/add-on|1\/0\.5\/0)\)\s*$/, '').trim();
+  const f = fold(cell).replace(/\s*\((yes\/no|co\/khong|min|phut|dich vu\/tuy chon|service\/add-on|1\/0\.5\/0|dich vu \/ walk-in \/ tuy chon \/ tuy chon hoi|service \/ walk-in \/ add-on \/ add-on ask)\)\s*$/, '').trim();
   if (!f) return null;
   for (const key of Object.keys(ALIASES) as Field[]) {
     if (ALIASES[key].includes(f)) return key;
@@ -209,7 +220,8 @@ export function rowsToItems(grid: string[][], currency = 'USD'): Array<ImportRow
     const fromCell = fold(at(r, 'from'));
     // A blank category in a later row belongs to the group above it — that is
     // how people lay out a menu in a sheet.
-    const kind = kindOf(at(r, 'kind'));
+    const kindCell = at(r, 'kind');
+    const kind = kindOf(kindCell);
     let cat = at(r, 'category') || lastCategory;
     lastCategory = cat;
     // "All" on an add-on row = an extra for the whole menu (and nothing for the next blank row to inherit).
@@ -228,6 +240,8 @@ export function rowsToItems(grid: string[][], currency = 'USD'): Array<ImportRow
       ...(desc ? { description: desc } : {}),
       ...(/^https?:\/\//i.test(img) ? { imageUrl: img } : {}),
       ...(turn !== undefined ? { turnValue: turn } : {}),
+      ...(kind === 'service' && isWalkInKind(kindCell) ? { walkInOnly: true } : {}),
+      ...(kind === 'addon' && isAskKind(kindCell) ? { askAtBooking: true } : {}),
       err: price ? undefined : 'price',
     };
   });
@@ -273,8 +287,8 @@ export function checkRows(
 /** The template: header plus a few rows in the salon's language and money. */
 export function templateRows(vi: boolean, currency = 'USD'): string[][] {
   const header = vi
-    ? ['Danh mục', 'Tên dịch vụ', 'Giá', 'Giá từ (có/không)', 'Thời gian (phút)', 'Mô tả', 'Loại dòng (dịch vụ/tuỳ chọn)', 'Tua (1/0.5/0)']
-    : ['Category', 'Service name', 'Price', 'Starting price (yes/no)', 'Duration (min)', 'Description', 'Row type (service/add-on)', 'Turn (1/0.5/0)'];
+    ? ['Danh mục', 'Tên dịch vụ', 'Giá', 'Giá từ (có/không)', 'Thời gian (phút)', 'Mô tả', 'Loại dòng (dịch vụ / walk-in / tuỳ chọn / tuỳ chọn hỏi)', 'Tua (1/0.5/0)']
+    : ['Category', 'Service name', 'Price', 'Starting price (yes/no)', 'Duration (min)', 'Description', 'Row type (service / walk-in / add-on / add-on ask)', 'Turn (1/0.5/0)'];
   const zero = minorUnitDigits(currency) === 0;
   const p = (usd: number, vnd: number) => (zero ? String(vnd) : String(usd));
   const Y = vi ? 'có' : 'yes';
@@ -285,7 +299,9 @@ export function templateRows(vi: boolean, currency = 'USD'): string[][] {
         ['Tay', 'Móng bột full set', p(55, 350000), Y, '75', 'Giá tuỳ độ dài và kiểu dáng', 'dịch vụ', '1'],
         ['Chân', 'Chăm sóc chân spa', p(45, 200000), N, '60', '', 'dịch vụ', '1'],
         ['Wax', 'Wax chân mày', p(12, 80000), N, '15', '', 'dịch vụ', '0.5'],
+        ['Tay', 'Thay sơn', p(15, 80000), N, '20', 'walk-in = ai tới trước làm trước, không đặt lịch', 'walk-in', '0.5'],
         ['Tay', 'Vẽ 2 ngón', p(10, 50000), N, '10', 'Tuỳ chọn thêm cho mọi dịch vụ Tay', 'tuỳ chọn', ''],
+        ['Tay', 'Design', p(10, 50000), N, '20', 'tuỳ chọn hỏi = bot luôn hỏi "Có làm design không?" trước khi đặt', 'tuỳ chọn hỏi', ''],
         ['Tất cả', 'Tháo móng', p(10, 50000), N, '15', 'Danh mục "Tất cả" = tuỳ chọn cho cả menu', 'tuỳ chọn', ''],
       ]
     : [
@@ -293,7 +309,9 @@ export function templateRows(vi: boolean, currency = 'USD'): string[][] {
         ['Acrylic', 'Full Set', p(55, 350000), Y, '75', 'Price depends on length and shape', 'service', '1'],
         ['Pedicure', 'Spa Pedicure', p(45, 200000), N, '60', '', 'service', '1'],
         ['Waxing', 'Eyebrow Wax', p(12, 80000), N, '15', '', 'service', '0.5'],
+        ['Manicure', 'Polish Change', p(15, 80000), N, '20', 'walk-in = first come, first served, never booked', 'walk-in', '0.5'],
         ['Acrylic', 'Design 2 fingers', p(10, 50000), N, '10', 'An extra offered on every Acrylic service', 'add-on', ''],
+        ['Acrylic', 'Design', p(10, 50000), N, '20', 'add-on ask = the bot always asks "Would you like a design?" before booking', 'add-on ask', ''],
         ['All', 'Take off', p(10, 50000), N, '15', 'Category "All" = an extra for the whole menu', 'add-on', ''],
       ];
   return [header, ...rows];

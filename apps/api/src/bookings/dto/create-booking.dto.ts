@@ -235,3 +235,13 @@ export class CreateBookingDto {
   @MaxLength(3000)
   captchaToken?: string;
 }
+
+/** "Hẹn lần sau" from the technician's chair: her client, her next slot. */
+export class MyRebookDto {
+  @IsOptional() @IsString() walkInId?: string;
+  @IsOptional() @IsString() appointmentId?: string;
+  @IsString() serviceId!: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) serviceIds?: string[];
+  @IsString() startTime!: string;
+  @IsOptional() @IsString() @MaxLength(300) notes?: string;
+}

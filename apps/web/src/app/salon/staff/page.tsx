@@ -14,6 +14,7 @@ import { SearchBox, matchesQuery, sortNewest, usePaged, Pager } from '../../../c
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { PayFields, payBody, payFormFrom, paySummary, type PayForm } from './PayFields';
 import { AccessBlock, LoginSection, PermissionChecklist, RoleMatrix, useAccessCatalog } from './AccessPanel';
+import { TimeOffPanel } from './TimeOffPanel';
 import { ind } from '../../../lib/ui-industry';
 
 interface Service {
@@ -249,6 +250,16 @@ function StaffInner() {
   // the list jump straight to Account & access.
   const [editTab, setEditTab] = useState<'profile' | 'access'>('profile');
   const [showRoles, setShowRoles] = useState(false);
+  // Time off (nghỉ phép): opened by the button, or straight from the owner's push (?timeoff=1).
+  const [showTimeOff, setShowTimeOff] = useState(false);
+  const [pendingOff, setPendingOff] = useState(0);
+  useEffect(() => {
+    try { if (new URLSearchParams(window.location.search).get('timeoff')) setShowTimeOff(true); } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ pending: number }>('/time-off?status=PENDING', { token }).then((d) => setPendingOff(d.pending)).catch(() => undefined);
+  }, [token]);
   const rolePresets = useAccessCatalog(token);
   const [createdMsg, setCreatedMsg] = useState<string | null>(null);
   // The salon's default check share, shown on each tech's pay card. Only an
@@ -316,6 +327,9 @@ function StaffInner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <h2 style={{ fontSize: 18, margin: 0 }}>{t('st.title')}</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={() => setShowTimeOff((v) => !v)} style={{ ...ui.primaryBtn, background: pendingOff ? 'var(--wash-amber-2)' : 'var(--c334155)', color: pendingOff ? 'var(--ink-warn)' : 'var(--ce2e8f0)' }}>
+            {lang === 'vi' ? (showTimeOff ? 'Ẩn ngày nghỉ' : '🏖 Ngày nghỉ') : (showTimeOff ? 'Hide time off' : '🏖 Time off')}{pendingOff ? ` · ${pendingOff}` : ''}
+          </button>
           <button type="button" onClick={() => setShowRoles((v) => !v)} style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)' }}>
             {lang === 'vi' ? (showRoles ? 'Ẩn vai trò & quyền' : '🔐 Vai trò & quyền') : (showRoles ? 'Hide roles & access' : '🔐 Roles & access')}
           </button>
@@ -329,6 +343,11 @@ function StaffInner() {
       {showRoles && (
         <div style={{ ...ui.card, marginBottom: 16 }}>
           <RoleMatrix vi={lang === 'vi'} presets={rolePresets} />
+        </div>
+      )}
+      {showTimeOff && (
+        <div style={{ marginBottom: 16 }}>
+          <TimeOffPanel vi={lang === 'vi'} staff={staff} onPending={setPendingOff} />
         </div>
       )}
 

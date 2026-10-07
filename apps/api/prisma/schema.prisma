@@ -316,6 +316,8 @@ model Tenant {
   giftCardTransactions GiftCardTransaction[]
   tipLogs              TipLog[]
   payrollRuns          PayrollRun[]
+  timeEntries          TimeEntry[]
+  timeOffRequests      TimeOffRequest[]
   voiceLine            VoiceLine?
   contentIdeas         ContentIdea[]
   contentSuggestions   ContentSuggestion[]
@@ -710,6 +712,8 @@ model StaffMember {
   reviewClicks       ReviewClick[]
   walkIns            WalkIn[]               @relation("WalkInStaff")
   tipLogs            TipLog[]
+  timeEntries        TimeEntry[]
+  timeOffRequests    TimeOffRequest[]
 
   @@index([tenantId])
   @@index([tenantId, isActive])
@@ -3472,4 +3476,66 @@ model BotKnowledgeGap {
   @@unique([tenantId, key])
   @@index([tenantId, status, lastAt])
   @@map("bot_knowledge_gaps")
+}
+
+// Chấm công: when a technician started and ended a shift (payroll/time-clock.ts).
+// Clocked in her app or entered/corrected by the owner. With the salon's payroll
+// setting hoursSource = CLOCK, hourly pay and the daily guarantee use these
+// instead of the schedule. Always one salon's rows.
+model TimeEntry {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  staffId String
+  staff   StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  clockIn  DateTime
+  clockOut DateTime? // null while the shift is open
+  source   String    @default("app") // app | owner
+  note     String?
+
+  createdByUserId String?
+  editedByUserId  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, staffId, clockIn])
+  @@index([tenantId, clockIn])
+  @@map("time_entries")
+}
+
+// NGHỈ PHÉP. A technician asks for days off in her app; the owner approves or
+// declines. An APPROVED request blocks the assignment engine, the online
+// booking page and the desk's open-times for those days (or that part of a
+// day), and counts as a day off in payroll. Every row belongs to one salon.
+model TimeOffRequest {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  staffId String
+  staff   StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  // Salon-local days, "YYYY-MM-DD", inclusive.
+  startDate String
+  endDate   String
+  // Set together for PART of one day ("HH:mm", salon time); null = whole days.
+  startTime String?
+  endTime   String?
+
+  reason String?
+  status String  @default("PENDING") // PENDING | APPROVED | DENIED | CANCELLED
+
+  requestedByUserId String?
+  decidedByUserId   String?
+  decidedAt         DateTime?
+  decisionNote      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, staffId, startDate])
+  @@index([tenantId, status, startDate])
+  @@map("time_off_requests")
 }

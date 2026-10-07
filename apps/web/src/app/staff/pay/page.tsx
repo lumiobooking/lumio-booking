@@ -10,6 +10,7 @@
 // deductions, check / cash. Never a colleague's line, never the salon's totals.
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { StaffShell } from '../../../components/StaffShell';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
@@ -22,7 +23,7 @@ interface PayDay { day: string; serviceCents: number; commissionCents: number; g
 interface Slip {
   payType: 'COMMISSION' | 'HOURLY' | 'DAILY_GUARANTEE' | 'SALARY'; commissionPercent: number; productCommissionPercent: number;
   serviceCents: number; productCents: number; serviceCount: number; visits: number; supplyFeeCents: number;
-  serviceCommissionCents: number; productCommissionCents: number; hours: number; hourlyRateCents: number; hourlyPayCents: number;
+  serviceCommissionCents: number; productCommissionCents: number; hours: number; hourlyRateCents: number; hourlyPayCents: number; hoursSource?: 'SCHEDULE' | 'CLOCK';
   daysWorked: number; dailyGuaranteeCents: number; guaranteeTopUpCents: number; salaryForPeriodCents: number; earningsCents: number;
   tipsCents: number; cardTipsCents: number; cardTipFeeCents: number; tipsNetCents: number;
   adjustments: Adjustment[]; adjustmentsCents: number; netPayCents: number; checkPercent: number; checkCents: number; cashCents: number; days: PayDay[];
@@ -126,7 +127,7 @@ function Inner() {
             {s.supplyFeeCents > 0 && row(L(vi, 'Phí nguyên liệu', 'Supply fee'), `− ${money(s.supplyFeeCents)}`)}
             {(s.serviceCommissionCents > 0 || s.commissionPercent > 0) && row(L(vi, `Hoa hồng dịch vụ (${s.commissionPercent}%)`, `Service commission (${s.commissionPercent}%)`), money(s.serviceCommissionCents))}
             {s.productCommissionCents > 0 && row(L(vi, `Hoa hồng bán lẻ (${s.productCommissionPercent}%)`, `Retail commission (${s.productCommissionPercent}%)`), money(s.productCommissionCents), L(vi, `Bán lẻ ${money(s.productCents)}`, `Retail ${money(s.productCents)}`))}
-            {s.hourlyPayCents > 0 && row(L(vi, 'Lương giờ', 'Hourly pay'), money(s.hourlyPayCents), `${s.hours} × ${money(s.hourlyRateCents)}`)}
+            {s.hourlyPayCents > 0 && row(L(vi, 'Lương giờ', 'Hourly pay'), money(s.hourlyPayCents), `${s.hours} × ${money(s.hourlyRateCents)}${s.hoursSource === 'CLOCK' ? L(vi, ' · theo chấm công', ' · from the time clock') : ''}`)}
             {s.guaranteeTopUpCents > 0 && row(L(vi, 'Bù lương tối thiểu ngày', 'Daily guarantee top-up'), money(s.guaranteeTopUpCents), L(vi, `${s.daysWorked} ngày làm · bảo đảm ${money(s.dailyGuaranteeCents)}/ngày`, `${s.daysWorked} days · ${money(s.dailyGuaranteeCents)}/day guaranteed`))}
             {s.salaryForPeriodCents > 0 && row(L(vi, 'Lương cố định kỳ này', 'Base salary this period'), money(s.salaryForPeriodCents))}
             {row(L(vi, 'Tip', 'Tips'), money(s.tipsCents), s.cardTipsCents ? L(vi, `trong đó quẹt thẻ ${money(s.cardTipsCents)}`, `card ${money(s.cardTipsCents)}`) : undefined)}
@@ -149,6 +150,14 @@ function Inner() {
           )}
         </>
       )}
+
+      <Link href="/staff/pay/year" style={{ ...st.card, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{L(vi, 'Bảng thu nhập cả năm', 'Year earnings statement')}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{L(vi, 'Tổng các kỳ đã chốt · in hoặc lưu PDF cho khai thuế', 'All closed periods · print or save as PDF for your taxes')}</div>
+        </div>
+        <span style={{ color: 'var(--c94a3b8)', fontSize: 18 }}>›</span>
+      </Link>
     </div>
   );
 }

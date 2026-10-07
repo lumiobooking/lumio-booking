@@ -26,7 +26,7 @@ interface Slip {
   staffId: string; name: string; payType: PayType; commissionPercent: number; productCommissionPercent: number;
   serviceCents: number; productCents: number; serviceCount: number; visits: number; supplyFeeCents: number;
   serviceCommissionCents: number; productCommissionCents: number;
-  hours: number; hoursFromSchedule: number; hourlyRateCents: number; hourlyPayCents: number;
+  hours: number; hoursFromSchedule: number; hoursSource?: 'SCHEDULE' | 'CLOCK'; clockedHours?: number; leaveDays?: string[]; hourlyRateCents: number; hourlyPayCents: number;
   daysWorked: number; dailyGuaranteeCents: number; guaranteeTopUpCents: number;
   salaryCents: number; salaryForPeriodCents: number; earningsCents: number;
   tipsCents: number; cardTipsCents: number; cardTipFeeCents: number; tipsNetCents: number;
@@ -38,6 +38,7 @@ interface Settings {
   supplyFeeMode: 'NONE' | 'PER_SERVICE' | 'PERCENT'; supplyFeeCents: number; supplyFeePercent: number;
   cardTipFeePercent: number; defaultCheckPercent: number;
   staffPayView?: 'LIVE' | 'FINAL' | 'OFF';
+  hoursSource?: 'SCHEDULE' | 'CLOCK';
 }
 interface Preview {
   period: { from: string; to: string }; today: string; running: boolean; settings: Settings;
@@ -320,8 +321,8 @@ export function PayrollRun({ vi }: { vi: boolean }) {
         </div>
       )}
       <p style={{ margin: 0, fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
-        {L('Doanh thu dịch vụ = tiền dịch vụ của thợ đã trừ giảm giá trên bill (không gồm thuế, tip). Lịch hẹn hoàn thành mà không thu qua quầy được tính theo giá lịch hẹn. Giờ làm và ngày làm lấy theo lịch làm việc của thợ, chỉnh được trong Chi tiết trước khi chốt.',
-          'Service sales = the tech\'s service lines after ticket discounts (no tax, no tips). Bookings completed without the till count at their price. Hours and days come from the work schedule and can be corrected under Details before closing.')}
+        {L('Doanh thu dịch vụ = tiền dịch vụ của thợ đã trừ giảm giá trên bill (không gồm thuế, tip). Lịch hẹn hoàn thành mà không thu qua quầy được tính theo giá lịch hẹn. Giờ làm và ngày làm lấy theo lịch làm việc của thợ (hoặc theo chấm công nếu tiệm chọn trong Cài đặt), chỉnh được trong Chi tiết trước khi chốt.',
+          'Service sales = the tech\'s service lines after ticket discounts (no tax, no tips). Bookings completed without the till count at their price. Hours and days come from the work schedule (or the time clock, if chosen in Settings) and can be corrected under Details before closing.')}
       </p>
     </div>
   );
@@ -341,7 +342,9 @@ function SlipDetail({ s, vi, frozen, period, onSave, onPrint }: {
 }) {
   const L = (v: string, e: string) => ind(vi ? v : e);
   const cur = uiCurrency();
-  const [hours, setHours] = useState<string>(s.payType === 'HOURLY' && s.hours !== s.hoursFromSchedule ? String(s.hours) : '');
+  // The hours the payslip would use untouched: the time clock's when the salon pays by it, else the schedule's.
+  const baseHours = s.hoursSource === 'CLOCK' ? (s.clockedHours ?? 0) : s.hoursFromSchedule;
+  const [hours, setHours] = useState<string>(s.payType === 'HOURLY' && s.hours !== baseHours ? String(s.hours) : '');
   const [offDays, setOffDays] = useState<string[]>(s.days.filter((d) => d.off).map((d) => d.day));
   const [adj, setAdj] = useState<{ label: string; amount: string; sign: 1 | -1 }[]>(
     s.adjustments.map((a) => ({ label: a.label, amount: fromMinorUnits(Math.abs(a.cents), cur), sign: a.cents < 0 ? -1 : 1 })),
@@ -372,7 +375,8 @@ function SlipDetail({ s, vi, frozen, period, onSave, onPrint }: {
         {s.supplyFeeCents > 0 && line(L('Phí nguyên liệu', 'Supply fee'), money(s.supplyFeeCents), { minus: true })}
         {(s.serviceCommissionCents > 0 || s.payType === 'COMMISSION') && line(L(`Hoa hồng dịch vụ ${s.commissionPercent}%`, `Service commission ${s.commissionPercent}%`), money(s.serviceCommissionCents))}
         {s.productCents > 0 && line(L(`Hoa hồng sản phẩm ${s.productCommissionPercent}% × ${money(s.productCents)}`, `Retail ${s.productCommissionPercent}% × ${money(s.productCents)}`), money(s.productCommissionCents))}
-        {s.payType === 'HOURLY' && line(<>{s.hours} {L('giờ', 'h')} × {money(s.hourlyRateCents)} <span style={{ color: 'var(--c94a3b8)' }}>({s.hours === s.hoursFromSchedule ? L('theo lịch', 'from schedule') : L('đã chỉnh', 'corrected')})</span></>, money(s.hourlyPayCents))}
+        {(s.leaveDays?.length ?? 0) > 0 && line(<>{L('Nghỉ phép đã duyệt', 'Approved time off')} <span style={{ color: 'var(--c94a3b8)' }}>({s.leaveDays!.length} {L('ngày', 'days')} · {s.leaveDays!.map((d) => shortDay(d, vi)).join(', ')})</span></>, '')}
+        {s.payType === 'HOURLY' && line(<>{s.hours} {L('giờ', 'h')} × {money(s.hourlyRateCents)} <span style={{ color: 'var(--c94a3b8)' }}>({s.hours !== baseHours ? L('đã chỉnh', 'corrected') : s.hoursSource === 'CLOCK' ? L('theo chấm công', 'from the time clock') : L('theo lịch', 'from schedule')})</span></>, money(s.hourlyPayCents))}
         {s.payType === 'DAILY_GUARANTEE' && line(L(`Bù cho đủ mức bao ${money(s.dailyGuaranteeCents)}/ngày · ${s.daysWorked} ngày`, `Guarantee top-up ${money(s.dailyGuaranteeCents)}/day · ${s.daysWorked} days`), money(s.guaranteeTopUpCents))}
         {s.payType === 'SALARY' && line(L(`Lương ${money(s.salaryCents)} tính theo số ngày của kỳ`, `Salary ${money(s.salaryCents)} prorated to the period`), money(s.salaryForPeriodCents))}
         {line(L('Lương / hoa hồng', 'Earnings'), money(s.earningsCents), { strong: false })}
@@ -389,8 +393,8 @@ function SlipDetail({ s, vi, frozen, period, onSave, onPrint }: {
 
         {s.payType === 'HOURLY' && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={detailLabel}>{L(`Số giờ làm (theo lịch: ${s.hoursFromSchedule} giờ)`, `Hours worked (schedule: ${s.hoursFromSchedule} h)`)}</span>
-            <input type="number" min={0} step="0.25" disabled={!editable} value={hours} placeholder={String(s.hoursFromSchedule)} onChange={(e) => setHours(e.target.value)} style={{ ...ui.input, maxWidth: 180 }} />
+            <span style={detailLabel}>{s.hoursSource === 'CLOCK' ? L(`Số giờ làm (chấm công: ${baseHours} giờ · lịch: ${s.hoursFromSchedule} giờ)`, `Hours worked (clock: ${baseHours} h · schedule: ${s.hoursFromSchedule} h)`) : L(`Số giờ làm (theo lịch: ${s.hoursFromSchedule} giờ)`, `Hours worked (schedule: ${s.hoursFromSchedule} h)`)}</span>
+            <input type="number" min={0} step="0.25" disabled={!editable} value={hours} placeholder={String(baseHours)} onChange={(e) => setHours(e.target.value)} style={{ ...ui.input, maxWidth: 180 }} />
           </label>
         )}
 
@@ -399,13 +403,14 @@ function SlipDetail({ s, vi, frozen, period, onSave, onPrint }: {
             <span style={detailLabel}>{L('Ngày làm — bấm để đánh dấu ngày nghỉ (không bao lương)', 'Days — tap to mark a day off (no guarantee)')}</span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
               {s.days.map((d) => {
-                const off = offDays.includes(d.day);
+                const leave = (s.leaveDays ?? []).includes(d.day);
+                const off = leave || offDays.includes(d.day);
                 return (
-                  <button key={d.day} type="button" disabled={!editable} onClick={() => setOffDays((x) => (off ? x.filter((y) => y !== d.day) : [...x, d.day]))}
-                    title={`${L('Doanh thu', 'Sales')} ${money(d.serviceCents)} · ${L('Hoa hồng', 'Commission')} ${money(d.commissionCents)} · ${L('Được', 'Paid')} ${money(d.paidCents)}`}
+                  <button key={d.day} type="button" disabled={!editable || leave} onClick={() => setOffDays((x) => (off ? x.filter((y) => y !== d.day) : [...x, d.day]))}
+                    title={leave ? L('Nghỉ phép đã duyệt (sửa trên trang Thợ → Ngày nghỉ)', 'Approved time off (change it on Staff → Time off)') : `${L('Doanh thu', 'Sales')} ${money(d.serviceCents)} · ${L('Hoa hồng', 'Commission')} ${money(d.commissionCents)} · ${L('Được', 'Paid')} ${money(d.paidCents)}`}
                     style={{ padding: '6px 9px', borderRadius: 9, cursor: editable ? 'pointer' : 'default', fontSize: 12, lineHeight: 1.25, textAlign: 'center',
                       border: off ? '1px dashed var(--c475569)' : '1px solid var(--line)', background: off ? 'transparent' : 'var(--c0f172a)', color: off ? 'var(--c94a3b8)' : 'var(--ce2e8f0)', textDecoration: off ? 'line-through' : 'none' }}>
-                    <b>{weekday(d.day, vi)} {shortDay(d.day, vi)}</b><br />{money(d.paidCents)}
+                    <b>{weekday(d.day, vi)} {shortDay(d.day, vi)}</b><br />{leave ? L('nghỉ phép', 'leave') : money(d.paidCents)}
                   </button>
                 );
               })}
@@ -446,6 +451,7 @@ function SettingsPanel({ vi, value, onSaved }: { vi: boolean; value: Settings; o
     supplyFeeMode: value.supplyFeeMode, supplyFee: value.supplyFeeMode === 'PER_SERVICE' ? fromMinorUnits(value.supplyFeeCents, cur) : String(value.supplyFeePercent || ''),
     cardTipFeePercent: String(value.cardTipFeePercent || ''), defaultCheckPercent: String(value.defaultCheckPercent),
     staffPayView: value.staffPayView ?? 'LIVE',
+    hoursSource: value.hoursSource ?? 'SCHEDULE',
   });
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -459,6 +465,7 @@ function SettingsPanel({ vi, value, onSaved }: { vi: boolean; value: Settings; o
         cardTipFeePercent: Math.max(0, Math.min(20, Number(f.cardTipFeePercent) || 0)),
         defaultCheckPercent: Math.max(0, Math.min(100, Math.round(Number(f.defaultCheckPercent) || 0))),
         staffPayView: f.staffPayView,
+        hoursSource: f.hoursSource,
       } });
       onSaved();
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); } finally { setSaving(false); }
@@ -507,6 +514,14 @@ function SettingsPanel({ vi, value, onSaved }: { vi: boolean; value: Settings; o
             <option value="OFF">{L('Không cho xem', 'Not shown')}</option>
           </select>
         ), L('Mỗi thợ chỉ thấy lương của chính mình.', 'Each tech sees only their own pay.'))}
+        {lab(L('Giờ làm & ngày công tính theo', 'Hours and days worked come from'), (
+          <select value={f.hoursSource} onChange={(e) => setF({ ...f, hoursSource: e.target.value as 'SCHEDULE' | 'CLOCK' })} style={ui.input}>
+            <option value="SCHEDULE">{L('Lịch làm việc', 'The work schedule')}</option>
+            <option value="CLOCK">{L('Chấm công (thợ bấm Vào ca / Ra ca)', 'The time clock (techs clock in / out)')}</option>
+          </select>
+        ), f.hoursSource === 'CLOCK'
+          ? L('Dùng cho lương theo giờ và lương bảo đảm theo ngày. Thợ thấy nút Vào ca / Ra ca trong app; ngày không chấm công thì không tính bảo đảm.', 'Used for hourly pay and the daily guarantee. Techs get a Clock in / out button; a day not clocked earns no guarantee.')
+          : L('Chọn "Chấm công" để thợ bấm Vào ca / Ra ca trong app.', 'Pick "time clock" to give techs a Clock in / out button.'))}
       </div>
       {err && <div style={ui.banner}>{err}</div>}
       <div><button type="button" onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? L('Đang lưu…', 'Saving…') : L('Lưu cài đặt', 'Save settings')}</button></div>

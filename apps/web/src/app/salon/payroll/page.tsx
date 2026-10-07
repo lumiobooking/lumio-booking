@@ -12,6 +12,7 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow } from '../../../components/MobileCard';
 import { PayrollRun } from './PayrollRun';
+import { TimeClockTab } from './TimeClockTab';
 import { NavIcon } from '../../../components/NavIcon';
 import { uiLocale } from '../../../lib/datetime';
 
@@ -30,6 +31,8 @@ export default function PayrollPage() {
   return <SalonShell><Hub /></SalonShell>;
 }
 
+type PayTab = 'performance' | 'payroll' | 'clock';
+
 /** One place for everything about the team: how each tech is performing, and the
  *  payroll that follows from it. Two tabs so the owner isn't hunting across pages. */
 function Hub() {
@@ -37,12 +40,12 @@ function Hub() {
   const t = (k: string) => tr(k, lang);
   // The tab is remembered per device: an owner who runs payroll every Monday
   // lands on it, one who checks performance lands there.
-  const [tab, setTabState] = useState<'performance' | 'payroll'>('payroll');
+  const [tab, setTabState] = useState<PayTab>('payroll');
   useEffect(() => {
-    try { const v = window.localStorage.getItem('lumio_pay_tab'); if (v === 'performance' || v === 'payroll') setTabState(v); } catch { /* ignore */ }
+    try { const v = window.localStorage.getItem('lumio_pay_tab'); if (v === 'performance' || v === 'payroll' || v === 'clock') setTabState(v); } catch { /* ignore */ }
   }, []);
-  const setTab = (v: 'performance' | 'payroll') => { setTabState(v); try { window.localStorage.setItem('lumio_pay_tab', v); } catch { /* ignore */ } };
-  const tabBtn = (id: 'performance' | 'payroll', label: string, icon: string) => (
+  const setTab = (v: PayTab) => { setTabState(v); try { window.localStorage.setItem('lumio_pay_tab', v); } catch { /* ignore */ } };
+  const tabBtn = (id: PayTab, label: string, icon: string) => (
     <button role="tab" aria-selected={tab === id} onClick={() => setTab(id)} style={{
       display: 'inline-flex', alignItems: 'center', gap: 8,
       padding: '9px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600,
@@ -56,8 +59,9 @@ function Hub() {
       <div role="tablist" style={{ display: 'inline-flex', gap: 4, padding: 4, marginBottom: 18, borderRadius: 12, background: 'var(--c111827)', border: '1px solid var(--line)' }}>
         {tabBtn('payroll', t('pf.tabPayroll'), 'banknote')}
         {tabBtn('performance', t('pf.tabPerformance'), 'chart')}
+        {tabBtn('clock', lang === 'vi' ? 'Chấm công' : 'Time clock', 'clock')}
       </div>
-      {tab === 'performance' ? <Performance /> : <PayrollRun vi={lang === 'vi'} />}
+      {tab === 'performance' ? <Performance /> : tab === 'clock' ? <TimeClockTab vi={lang === 'vi'} /> : <PayrollRun vi={lang === 'vi'} />}
     </section>
   );
 }

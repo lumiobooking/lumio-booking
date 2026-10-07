@@ -3,6 +3,7 @@ import { AppointmentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { wallTimeToUtc } from './booking.util';
+import { busySpansFor, loadApprovedTimeOff } from '../staff/time-off';
 import { MenuItem, PartyMember, Tech, nearestTimes, partyOpenTimes, resolveService } from './group-booking';
 
 /** One person of a party, resolved against the menu and the team. */
@@ -58,10 +59,13 @@ export class PartyAvailabilityService {
         select: { assignedStaffId: true, startTime: true, endTime: true },
       }),
     ]);
+    const leave = await loadApprovedTimeOff(this.prisma, tenantId, dateStr, dateStr, staff.map((s) => s.id));
     const techs: Tech[] = staff.map((st) => {
       const busy: { start: Date; end: Date }[] = appts
         .filter((a) => a.assignedStaffId === st.id)
         .map((a) => ({ start: a.startTime, end: a.endTime }));
+      // Approved time off (nghỉ phép) takes the day, or the part of it.
+      busy.push(...busySpansFor(leave, st.id, dateStr, tz));
       const hours = st.workingHours ?? [];
       if (hours.length) {
         // A tech with a schedule is off outside it; one without follows the salon's hours.

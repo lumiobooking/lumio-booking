@@ -59,6 +59,8 @@ export interface PayrollSettings {
    * FINAL = closed payslips only; OFF = nothing.
    */
   staffPayView: 'LIVE' | 'FINAL' | 'OFF';
+  /** Where worked hours / days come from: the schedule (default) or the time clock (time_entries). */
+  hoursSource: 'SCHEDULE' | 'CLOCK';
 }
 
 export const DEFAULT_PAYROLL_SETTINGS: PayrollSettings = {
@@ -70,6 +72,7 @@ export const DEFAULT_PAYROLL_SETTINGS: PayrollSettings = {
   cardTipFeePercent: 0,
   defaultCheckPercent: 100,
   staffPayView: 'LIVE',
+  hoursSource: 'SCHEDULE',
 };
 
 export interface Adjustment { label: string; cents: number }
@@ -107,6 +110,11 @@ export interface Payslip {
   productCommissionCents: number;
   hours: number;
   hoursFromSchedule: number;
+  /** Where hours / worked days came from, and the clocked hours when it was the clock. */
+  hoursSource?: 'SCHEDULE' | 'CLOCK';
+  clockedHours?: number;
+  /** Whole days off that came from approved time off (nghỉ phép), not the owner's chips. */
+  leaveDays?: string[];
   hourlyRateCents: number;
   hourlyPayCents: number;
   daysWorked: number;
@@ -178,6 +186,8 @@ export function computePayslip(input: {
   upTo?: string;
   settings: PayrollSettings;
   override?: PayOverride | null;
+  /** Clocked minutes per salon day (payroll/time-clock.ts) — used when settings.hoursSource is CLOCK. */
+  clock?: Record<string, number> | null;
 }): Payslip {
   const { cfg, settings: s, period } = input;
   const payType = normalizePayType(cfg.payType);
@@ -201,13 +211,17 @@ export function computePayslip(input: {
   const sched = last >= period.from ? scheduledMinutes(cfg, period.from, last) : {};
   const schedMinutes = Object.entries(sched).filter(([d]) => !off.has(d)).reduce((a, [, m]) => a + m, 0);
   const hoursFromSchedule = Math.round((schedMinutes / 60) * 100) / 100;
+  // The time clock, when the salon pays by it: clocked minutes in the period, minus days marked off.
+  const useClock = s.hoursSource === 'CLOCK' && !!input.clock;
+  const clocked = useClock ? Object.fromEntries(Object.entries(input.clock ?? {}).filter(([d, m]) => d >= period.from && d <= last && m > 0 && !off.has(d))) : {};
+  const clockedHours = Math.round((Object.values(clocked).reduce((a, m) => a + m, 0) / 60) * 100) / 100;
 
   let hours = 0, hourlyPayCents = 0, guaranteeTopUpCents = 0, salaryForPeriodCents = 0, daysWorked = 0;
   const days: PayDay[] = [];
   let earningsCents = serviceCommissionCents + productCommissionCents;
 
   if (payType === 'HOURLY') {
-    hours = ov.hours != null && Number.isFinite(Number(ov.hours)) ? Math.max(0, Number(ov.hours)) : hoursFromSchedule;
+    hours = ov.hours != null && Number.isFinite(Number(ov.hours)) ? Math.max(0, Number(ov.hours)) : useClock ? clockedHours : hoursFromSchedule;
     hourlyPayCents = Math.round(hours * Math.max(0, cfg.hourlyRateCents));
     earningsCents += hourlyPayCents;
   } else if (payType === 'SALARY') {
@@ -216,14 +230,16 @@ export function computePayslip(input: {
   } else if (payType === 'DAILY_GUARANTEE') {
     // Every day the tech was scheduled (and not marked off), plus any day they
     // actually sold — the guarantee is per day, against that day's commission.
-    const dayKeys = new Set<string>([...Object.keys(sched), ...Object.keys(led?.days ?? {}).filter((d) => d >= period.from && d <= period.to)]);
+    // With the time clock, the days she clocked in replace the schedule's days.
+    const dayKeys = new Set<string>([...Object.keys(useClock ? clocked : sched), ...Object.keys(led?.days ?? {}).filter((d) => d >= period.from && d <= period.to)]);
     let sum = 0;
     for (const day of [...dayKeys].sort()) {
       const b = led?.days?.[day];
       const svc = b?.serviceCents ?? 0;
       const fee = b ? supplyFee(b, s) : 0;
       const commission = pct(svc - fee, cPct) + pct(b?.productCents ?? 0, pPct);
-      const isOff = off.has(day);
+      // Clock mode: a day she sold but never clocked in earns its commission only.
+      const isOff = off.has(day) || (useClock && !clocked[day]);
       const guarantee = isOff ? 0 : Math.max(0, cfg.dailyGuaranteeCents);
       const paid = Math.max(guarantee, commission);
       if (!isOff) daysWorked += 1;
@@ -235,7 +251,7 @@ export function computePayslip(input: {
     guaranteeTopUpCents = Math.max(0, sum - (serviceCommissionCents + productCommissionCents));
     earningsCents = sum;
   }
-  if (payType !== 'DAILY_GUARANTEE') daysWorked = Object.keys(sched).filter((d) => !off.has(d)).length;
+  if (payType !== 'DAILY_GUARANTEE') daysWorked = useClock ? Object.keys(clocked).length : Object.keys(sched).filter((d) => !off.has(d)).length;
 
   const tipsCents = led?.tipsCents ?? 0;
   const cardTipsCents = led?.cardTipsCents ?? 0;
@@ -257,7 +273,7 @@ export function computePayslip(input: {
     commissionPercent: cPct, productCommissionPercent: pPct,
     serviceCents, productCents, serviceCount, visits: led?.visits ?? 0, supplyFeeCents: supply,
     serviceCommissionCents, productCommissionCents,
-    hours: Math.round(hours * 100) / 100, hoursFromSchedule, hourlyRateCents: cfg.hourlyRateCents, hourlyPayCents,
+    hours: Math.round(hours * 100) / 100, hoursFromSchedule, hoursSource: useClock ? 'CLOCK' : 'SCHEDULE', clockedHours: useClock ? clockedHours : undefined, hourlyRateCents: cfg.hourlyRateCents, hourlyPayCents,
     daysWorked, dailyGuaranteeCents: cfg.dailyGuaranteeCents, guaranteeTopUpCents,
     salaryCents: cfg.salaryCents, salaryForPeriodCents,
     earningsCents,
@@ -285,6 +301,7 @@ export function sanitizeSettings(raw: Partial<PayrollSettings> | null | undefine
     cardTipFeePercent: Math.min(20, Math.max(0, Math.round((Number(r.cardTipFeePercent) || 0) * 100) / 100)),
     defaultCheckPercent: clampPct(r.defaultCheckPercent, 100),
     staffPayView: r.staffPayView === 'FINAL' || r.staffPayView === 'OFF' ? r.staffPayView : 'LIVE',
+    hoursSource: r.hoursSource === 'CLOCK' ? 'CLOCK' : 'SCHEDULE',
   };
 }
 

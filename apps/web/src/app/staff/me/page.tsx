@@ -18,6 +18,7 @@ import { useLang } from '../../../lib/i18n';
 import { IC, Icon, L, fmtTurns, st } from '../../../components/staff/kit';
 import { PushSetup } from '../../../components/PushSetup';
 import { ChangePassword } from '../../../components/staff/ChangePassword';
+import { GoalsCard } from '../../../components/staff/GoalsCard';
 
 interface DayMoney { day: number; serviceCents: number; services: number; tipsCents: number; directTipsCents: number }
 interface MyDay { currency: string; turns: number; today: Omit<DayMoney, 'day'>; week: DayMoney[]; todayIndex: number }
@@ -123,6 +124,8 @@ function Inner() {
         )}
       </div>
 
+      <GoalsCard token={token} vi={vi} />
+
       <Link href="/staff/pay" style={{ ...st.card, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
         <Icon d={IC.money} size={22} color="var(--ink-good)" />
         <div style={{ flex: 1 }}>
@@ -149,6 +152,7 @@ function Inner() {
       <div style={{ ...st.card, padding: 0, overflow: 'hidden' }}>
         {[
           { href: '/staff/profile', label: L(vi, 'Hồ sơ & ảnh', 'Profile & photo') },
+          { href: '/staff/timeoff', label: L(vi, 'Xin nghỉ / ngày nghỉ', 'Time off') },
           { href: '/staff/tips', label: L(vi, 'Mã QR nhận tip', 'Tip QR code') },
           { href: '/staff/reviews', label: L(vi, 'Đánh giá của tôi', 'My reviews') },
           { href: '/staff/inbox', label: L(vi, 'Tin nhắn', 'Messages') },

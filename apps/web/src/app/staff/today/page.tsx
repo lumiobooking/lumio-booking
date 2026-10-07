@@ -22,6 +22,8 @@ import { useLiveRefresh } from '../../../lib/useLiveRefresh';
 import { useLiveEvents } from '../../../lib/useLiveEvents';
 import { dayKeyInTz, fmtInTz } from '../../../lib/datetime';
 import { BOTTOM_SAFE, IC, Icon, L, SectionLabel, Sheet, TAB_H, Toast, fmtTurns, minsSince, st, useToast } from '../../../components/staff/kit';
+import { ClockCard } from '../../../components/staff/ClockCard';
+import { NextVisitClient, NextVisitSheet } from '../../../components/staff/NextVisitSheet';
 import { BookingSheet, StaffBooking, bookingName, bookingServices, bookingMinutes, canStart } from '../../../components/staff/BookingSheet';
 
 interface Item { lineId: string; serviceId: string; name: string; priceCents: number; staffId: string | null; legId?: string }
@@ -38,7 +40,7 @@ interface MyDay {
   staffId: string | null; currency: string; turns: number; busy: boolean; freeRank: number | null; queue: number;
   today: { serviceCents: number; services: number; tipsCents: number; directTipsCents: number };
 }
-interface Svc { id: string; name: string; priceCents: number }
+interface Svc { id: string; name: string; priceCents: number; durationMinutes?: number }
 interface ChairOpt { id: string; name: string; type: string; takenBy: string | null }
 
 const LIVE = ['ASSIGNED', 'ACCEPTED', 'CONFIRMED', 'ARRIVED'];
@@ -89,6 +91,7 @@ function Inner() {
   const [sheet, setSheet] = useState<{ kind: 'finish' | 'add' | 'chair'; id: string } | null>(null);
   const [open, setOpen] = useState<{ b: StaffBooking; reject: boolean } | null>(null);
   const [banner, setBanner] = useState<{ name: string; part: string } | null>(null);
+  const [nextVisit, setNextVisit] = useState<NextVisitClient | null>(null);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState('');
   const { toast, show, clear } = useToast();
@@ -113,6 +116,9 @@ function Inner() {
   useLiveEvents('/my-chair/events', token, () => { void load(); });
 
   // The menu and the chairs only matter once a sheet asks for them.
+  useEffect(() => {
+    if (token && nextVisit && services.length === 0) apiFetch<Svc[]>('/my-chair/services', { token }).then(setServices).catch(() => undefined);
+  }, [token, nextVisit, services.length]);
   useEffect(() => {
     if (!token || !sheet || sheet.kind === 'finish') return;
     if (sheet.kind === 'add' && services.length === 0) apiFetch<Svc[]>('/my-chair/services', { token }).then(setServices).catch(() => undefined);
@@ -161,11 +167,15 @@ function Inner() {
     finally { setBusy(false); }
   }
 
-  async function finish(w: Chair) {
+  async function finish(w: Chair, thenRebook = false) {
     const v = view(w, me);
     const part = v.othersOpen.length > 0;
     setSheet(null);
+    // "Hẹn lần sau": the ticket leaves her chair once it is done, so the
+    // client is captured now and the sheet opens right after.
+    const client: NextVisitClient = { walkInId: w.id, name: w.customerName || 'Walk-in', serviceIds: [...new Set(v.lines.map((it) => it.serviceId))] };
     if (await call(`/my-chair/${w.id}/done`, 'PATCH')) {
+      if (thenRebook) setNextVisit(client);
       show(part ? L(vi, `Xong phần của bạn · +${fmtTurns(v.turns)} lượt`, `Your part is done · +${fmtTurns(v.turns)} turn`) : L(vi, `Xong khách · +${fmtTurns(v.turns)} lượt`, `Client done · +${fmtTurns(v.turns)} turn`),
         L(vi, 'Hoàn tác', 'Undo'), () => { clear(); void call(`/my-chair/${w.id}/reactivate`, 'PATCH'); });
     }
@@ -211,6 +221,9 @@ function Inner() {
           </div>
         </div>
       )}
+
+      {/* ---- chấm công (only where the salon uses it) ---- */}
+      <ClockCard token={token} vi={vi} onToast={(t) => show(t)} />
 
       {/* ---- 2. Right now ---- */}
       <div>
@@ -316,10 +329,17 @@ function Inner() {
                 <button type="button" onClick={() => setSheet(null)} style={{ ...st.ghost, flex: 1, height: 56 }}>{L(vi, 'Chưa xong', 'Not yet')}</button>
                 <button type="button" disabled={busy} onClick={() => finish(sheetTicket)} style={{ ...st.done, flex: 2 }}>{L(vi, 'Xác nhận xong', 'Confirm')}</button>
               </div>
+              {!v.othersOpen.length && (
+                <button type="button" disabled={busy} onClick={() => finish(sheetTicket, true)} style={{ ...st.ghost, width: '100%', height: 52, marginTop: 10 }}>
+                  {L(vi, 'Xong & hẹn lần sau', 'Done & book the next visit')}
+                </button>
+              )}
             </div>
           );
         })()}
       </Sheet>
+
+      <NextVisitSheet client={nextVisit} services={services} token={token} vi={vi} onClose={() => setNextVisit(null)} onBooked={(t) => show(t)} />
 
       <Sheet open={sheet?.kind === 'add'} onClose={() => setSheet(null)} label={L(vi, 'Thêm dịch vụ', 'Add a service')}>
         <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{L(vi, 'Thêm dịch vụ bạn vừa làm', 'Add what you did')}</div>

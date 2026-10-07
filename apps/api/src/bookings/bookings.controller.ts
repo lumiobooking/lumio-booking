@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { BookingsService } from './bookings.service';
-import { CreateBookingDto } from './dto/create-booking.dto';
+import { CreateBookingDto, MyRebookDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
 import { AssignBookingDto } from './dto/assign-booking.dto';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
@@ -43,6 +43,28 @@ export class BookingsController {
   @Get('my')
   myBookings(@CurrentUser() user: AuthenticatedUser, @Query() filters: ListBookingsDto) {
     return this.bookings.listMyAssignments(user, filters);
+  }
+
+  // Her own open times and "Hẹn lần sau" from the chair. Declared before ':id'.
+  @Roles(UserRole.STAFF)
+  @Get('my-open-times')
+  myOpenTimes(@CurrentUser() user: AuthenticatedUser, @Query('date') date: string, @Query('minutes') minutes?: string) {
+    const m = minutes ? parseInt(minutes, 10) : undefined;
+    return this.bookings.myOpenTimes(user, { date, minutes: m !== undefined && Number.isFinite(m) ? m : undefined });
+  }
+
+  @Roles(UserRole.STAFF)
+  @Post('my-rebook')
+  myRebook(@CurrentUser() user: AuthenticatedUser, @Body() dto: MyRebookDto) {
+    return this.bookings.myRebook(user, dto);
+  }
+
+  // GET /api/bookings/:id/client-card -> what the technician should know
+  // about this client before they sit down. Hers only; the desk sees any.
+  @Roles(UserRole.STAFF, UserRole.SALON_ADMIN)
+  @Get(':id/client-card')
+  clientCard(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.bookings.clientCard(user, id);
   }
 
   @Roles(UserRole.STAFF)

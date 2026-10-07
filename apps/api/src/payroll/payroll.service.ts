@@ -8,6 +8,10 @@ import { loadLedger } from './ledger-loader';
 import { UNASSIGNED } from './sales-ledger';
 import { computePayslip, PayConfig, PayOverride, PayrollSettings, Payslip, sanitizeSettings } from './pay-calc';
 import { daysBetween, isDayKey, periodContaining, recentPeriods } from './pay-period';
+import { minutesByStaff } from './time-clock';
+import { yearSummary, yearsWithPay } from './year-summary';
+import { cleanGoal, goalProgress, weekAndMonth } from './goals';
+import { loadApprovedTimeOff, wholeDaysOff } from '../staff/time-off';
 
 export const PAYROLL_SETTINGS_KEY = 'payroll';
 
@@ -104,9 +108,25 @@ export class PayrollService {
       }[]>,
     ]);
 
+    // Time clock: clocked minutes per technician per salon day (payroll/time-clock.ts).
+    let clock = new Map<string, { minutes: Record<string, number>; stale: string[] }>();
+    if (settings.hoursSource === 'CLOCK') {
+      const entries = await (this.prisma as any).timeEntry.findMany({ // eslint-disable-line @typescript-eslint/no-explicit-any
+        where: { tenantId, clockIn: { gte: from, lte: to } }, select: { id: true, staffId: true, clockIn: true, clockOut: true },
+      }).catch(() => []);
+      clock = minutesByStaff(entries, tz, new Date());
+    }
+
+    // Approved whole days off (nghỉ phép) are days off on the payslip, like the
+    // owner's own day chips; a day the owner un-marks by hand stays marked here.
+    const leave = wholeDaysOff(await loadApprovedTimeOff(this.prisma, tenantId, period.from, period.to), period.from, period.to);
+
     const slips: Payslip[] = [];
     for (const s of staff) {
       const led = ledger.get(s.id);
+      const ov = overrides[s.id];
+      const leaveDays = leave.get(s.id) ?? [];
+      const override = leaveDays.length ? { ...(ov ?? {}), offDays: [...new Set([...(ov?.offDays ?? []), ...leaveDays])] } : ov;
       const cfg: PayConfig = {
         staffId: s.id,
         name: `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`,
@@ -121,7 +141,8 @@ export class PayrollService {
         // A tech who has left earns nothing by the schedule any more.
         workingHours: s.isActive ? s.workingHours : [],
       };
-      const slip = computePayslip({ cfg, ledger: led, period, upTo: today, settings, override: overrides[s.id] });
+      const slip = computePayslip({ cfg, ledger: led, period, upTo: today, settings, override, clock: settings.hoursSource === 'CLOCK' ? (clock.get(s.id)?.minutes ?? {}) : null });
+      if (leaveDays.length) slip.leaveDays = leaveDays;
       // Everyone on the team, plus anyone who has left but still has money in this period.
       const owed = slip.netPayCents !== 0 || slip.serviceCents > 0 || slip.productCents > 0 || slip.tipsCents > 0;
       if (s.isActive || owed) slips.push(slip);
@@ -185,6 +206,86 @@ export class PayrollService {
       slip = live.slips.find((x) => x.staffId === me.id) ?? null;
     }
     return { view, period, today, running: period.to >= today, frozen, slip, history, currency: await this.currencyOf(tenantId), payPeriod: settings.payPeriod };
+  }
+
+  /**
+   * THU NHẬP CẢ NĂM — her own closed payslips of one year, added up
+   * (payroll/year-summary.ts), for the statement she prints for her taxes.
+   * Nothing when the owner has switched pay off in the app.
+   */
+  async myYear(user: AuthenticatedUser, yearRaw?: string, now = new Date()) {
+    const tenantId = this.tenantId(user);
+    const me = await this.prisma.staffMember.findFirst({ where: { tenantId, userId: user.userId }, select: { id: true, firstName: true, lastName: true } });
+    if (!me) throw new NotFoundException('No staff profile for this login');
+    const [settings, tenant, currency] = await Promise.all([
+      this.readSettings(tenantId),
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, timezone: true } }).catch(() => null),
+      this.currencyOf(tenantId),
+    ]);
+    const name = `${me.firstName}${me.lastName ? ' ' + me.lastName : ''}`;
+    const salon = tenant?.name ?? '';
+    if (settings.staffPayView === 'OFF') return { view: 'OFF', year: null, years: [], name, salon, currency, rows: [], totals: null };
+    const runs = await this.prisma.payrollRun.findMany({
+      where: { tenantId, status: 'FINAL' }, orderBy: { periodFrom: 'asc' }, take: 400,
+      select: { periodFrom: true, periodTo: true, finalizedAt: true, lines: true },
+    });
+    const years = yearsWithPay(runs, me.id);
+    const thisYear = Number(dayKeyTz(now, tenant?.timezone || 'UTC').slice(0, 4));
+    const wanted = Number(yearRaw);
+    const year = Number.isInteger(wanted) && wanted >= 2000 && wanted <= thisYear + 1 ? wanted : (years[0] ?? thisYear);
+    const { rows, totals } = yearSummary(runs, me.id, year);
+    return { view: settings.staffPayView, year, years, name, salon, currency, rows, totals, generatedAt: now };
+  }
+
+  // ---------------------------------------------------------------- mục tiêu riêng
+
+  private goalKey(staffId: string) { return `staff_goal:${staffId}`; }
+
+  /**
+   * MỤC TIÊU RIÊNG — her own week / month targets and where she stands
+   * (payroll/goals.ts). Her service sales and visits come from the same
+   * ledger payroll uses; nobody else's numbers are read or returned.
+   */
+  async myGoals(user: AuthenticatedUser, now = new Date()) {
+    const tenantId = this.tenantId(user);
+    const me = await this.prisma.staffMember.findFirst({ where: { tenantId, userId: user.userId }, select: { id: true } });
+    if (!me) throw new NotFoundException('No staff profile for this login');
+    const [tz, row, currency] = await Promise.all([
+      this.tzOf(tenantId),
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: this.goalKey(me.id) } } }).catch(() => null),
+      this.currencyOf(tenantId),
+    ]);
+    const goal = cleanGoal(row?.value ?? null);
+    const today = dayKeyTz(now, tz);
+    const { week, month } = weekAndMonth(today);
+    const from = week.from < month.from ? week.from : month.from;
+    const { ledger } = await loadLedger(this.prisma, tenantId, tz, startOfDayTz(from, tz), now);
+    const mine = ledger.get(me.id);
+    const sum = (range: { from: string; to: string }): { serviceCents: number; visits: number } => {
+      const out = { serviceCents: 0, visits: 0 };
+      for (const [day, b] of Object.entries(mine?.days ?? {})) {
+        if (day >= range.from && day <= range.to) { out.serviceCents += b.serviceCents; out.visits += b.visits; }
+      }
+      return out;
+    };
+    const w = sum(week);
+    const m = sum(month);
+    return { today, currency, goal, week: { ...week, ...w }, month: { ...month, ...m }, progress: goalProgress(goal, w, m) };
+  }
+
+  async saveMyGoals(user: AuthenticatedUser, raw: unknown) {
+    const tenantId = this.tenantId(user);
+    const me = await this.prisma.staffMember.findFirst({ where: { tenantId, userId: user.userId }, select: { id: true } });
+    if (!me) throw new NotFoundException('No staff profile for this login');
+    const goal = cleanGoal(raw);
+    const key = this.goalKey(me.id);
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key } },
+      update: { value: goal as unknown as Prisma.InputJsonValue },
+      create: { tenantId, key, value: goal as unknown as Prisma.InputJsonValue },
+    });
+    // Private: no audit line with the numbers; the setting itself is the record.
+    return goal;
   }
 
   private async currencyOf(tenantId: string): Promise<string> {

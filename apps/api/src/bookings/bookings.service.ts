@@ -16,10 +16,13 @@ import { NO_SHOW_BLOCK_MESSAGE, NO_SHOW_POLICY_KEY, NoShowPolicy, cleanNoShowPol
 import { rebookCopy, recallDue, recallMonthsOf } from './recall';
 import { buildPreOrder, preOrderText } from './pre-order';
 import { skilledFor } from '../assignment/assignment.util';
+import { busySpansFor, loadApprovedTimeOff } from '../staff/time-off';
 import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
+import { buildClientCard, CardVisit } from './client-card';
+import { capabilitiesFor } from '../auth/capabilities';
 import { canSelfReschedule } from './self-reschedule';
 import { canSelfCancel } from './self-cancel';
-import { AppointmentStatus, NotificationChannel, PaymentStatus, Prisma, RejectionType } from '@prisma/client';
+import { AppointmentStatus, NotificationChannel, OrderStatus, PaymentStatus, Prisma, RejectionType, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AssignmentService } from '../assignment/assignment.service';
@@ -2255,6 +2258,8 @@ export class BookingsService {
         select: { startTime: true, endTime: true },
       });
       for (const a of appts) busy.push({ start: a.startTime, end: a.endTime });
+      // Approved time off blocks the day the same way it does on the online page.
+      for (const b of busySpansFor(await loadApprovedTimeOff(this.prisma, tenantId, q.date, q.date, [st.id]), st.id, q.date, tz)) busy.push(b);
       // Off-shift hours block the day the same way they do on the online page.
       const hours = st.workingHours ?? [];
       if (hours.length > 0) {
@@ -2359,7 +2364,10 @@ export class BookingsService {
     const dayStartUtc = wallTimeToUtc(dateStr, '00:00', tz);
     const dayEndUtc = new Date(dayStartUtc.getTime() + 24 * 3_600_000);
     const dayOfWeek = new Date(`${dateStr}T12:00:00Z`).getUTCDay();
+    // Approved time off (nghỉ phép): the day, or the part of it, is busy.
+    const leave = await loadApprovedTimeOff(this.prisma, tenantId, dateStr, dateStr, ids);
     for (const st of eligible) {
+      for (const b of busySpansFor(leave, st.id, dateStr, tz)) staffBusy[st.id].push({ start: b.start.toISOString(), end: b.end.toISOString() });
       const hours = st.workingHours ?? [];
       if (hours.length === 0) continue; // unconfigured -> follows salon hours only
       const today = hours.filter((h) => h.dayOfWeek === dayOfWeek);
@@ -3164,6 +3172,115 @@ export class BookingsService {
       include: BOOKING_INCLUDE,
       orderBy: { startTime: 'asc' },
     });
+  }
+
+  /** Her own open start times on one day — her shift, her bookings, her leave — for "Hẹn lần sau". */
+  async myOpenTimes(user: AuthenticatedUser, q: { date: string; minutes?: number }) {
+    const staffId = await this.staffMemberIdForUser(user);
+    return this.openTimes(user, { ...q, staffId });
+  }
+
+  /**
+   * "HẸN LẦN SAU" from the chair: while the client is still with her, the
+   * technician books the next visit on HERSELF, confirmed at once (like the
+   * till's rebook — source `counter`). The client comes from her own ticket
+   * (the walk-in's customer record, or its name and phone) or from one of her
+   * bookings; she can never book a client onto another technician, and never
+   * from another salon's ticket.
+   */
+  async myRebook(user: AuthenticatedUser, dto: { walkInId?: string; appointmentId?: string; serviceId: string; serviceIds?: string[]; startTime: string; notes?: string }) {
+    const tenantId = this.tenantId(user);
+    const staffId = await this.staffMemberIdForUser(user);
+    let customerId: string | null = null;
+    let first = '';
+    let last: string | undefined;
+    let phone: string | undefined;
+    if (dto.walkInId) {
+      const w = await this.prisma.walkIn.findFirst({ where: { id: dto.walkInId, tenantId }, select: { customerId: true, customerName: true, phone: true } });
+      if (!w) throw new NotFoundException('Ticket not found');
+      customerId = w.customerId ?? null;
+      const parts = (w.customerName ?? '').trim().split(/\s+/).filter(Boolean);
+      first = parts[0] ?? '';
+      last = parts.slice(1).join(' ') || undefined;
+      phone = w.phone ?? undefined;
+    } else if (dto.appointmentId) {
+      const a = await this.prisma.appointment.findFirst({ where: { id: dto.appointmentId, tenantId }, select: { customerId: true, assignedStaffId: true, customer: { select: { firstName: true, lastName: true, phone: true } } } });
+      if (!a) throw new NotFoundException('Booking not found');
+      if (a.assignedStaffId !== staffId) throw new ForbiddenException('This booking is not assigned to you');
+      customerId = a.customerId ?? null;
+      first = a.customer?.firstName ?? '';
+      last = a.customer?.lastName ?? undefined;
+      phone = a.customer?.phone ?? undefined;
+    } else {
+      throw new BadRequestException('walkInId or appointmentId is required');
+    }
+    if (!customerId && !phone) throw new BadRequestException('This client has no phone on file — the desk can add one, then book.');
+    const clean = Object.assign(new CreateBookingDto(), {
+      serviceId: dto.serviceId, serviceIds: dto.serviceIds?.length ? dto.serviceIds : undefined, startTime: dto.startTime, staffId, confirmNow: true,
+      customerId: customerId ?? undefined, customerFirstName: first || 'Khách', customerLastName: last, customerPhone: phone,
+      notes: (dto.notes ?? '').trim().slice(0, 300) || undefined,
+    }) as CreateBookingDto;
+    return this.create(user, clean, 'counter');
+  }
+
+  /**
+   * THẺ KHÁCH for the technician's booking sheet (bookings/client-card.ts).
+   * A technician only reads it for a booking assigned to HER; the desk and
+   * the owner for any booking of this salon. One salon's rows only.
+   */
+  async clientCard(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const appt = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { customerId: true, assignedStaffId: true } });
+    if (!appt) throw new NotFoundException('Booking not found');
+    let me: string | null = appt.assignedStaffId;
+    if (user.role === UserRole.STAFF) {
+      const sm = await this.prisma.staffMember.findFirst({ where: { tenantId, userId: user.userId }, select: { id: true, staffRole: true, permissions: true } as never }) as unknown as { id: string; staffRole?: string; permissions?: unknown } | null;
+      if (!sm) throw new NotFoundException('No staff profile for this login');
+      // Her own booking — or she runs the desk (a manager / receptionist with the bookings capability).
+      const desk = capabilitiesFor(UserRole.STAFF, (sm.staffRole ?? 'TECHNICIAN') as never, sm.permissions).includes('bookings' as never);
+      if (appt.assignedStaffId !== sm.id && !desk) throw new ForbiddenException('This booking is not assigned to you');
+      if (appt.assignedStaffId === sm.id) me = sm.id;
+    }
+    if (!appt.customerId) return { card: null };
+    const [customer, tenant, industry] = await Promise.all([
+      this.prisma.customer.findFirst({
+        where: { id: appt.customerId, tenantId },
+        select: {
+          firstName: true, lastName: true, notes: true, loyaltyPoints: true, birthDate: true, createdAt: true,
+          industryFields: true, importedVisits: true, lastVisitAt: true,
+          appointments: {
+            where: { status: AppointmentStatus.COMPLETED, id: { not: id } },
+            select: { startTime: true, assignedStaffId: true, service: { select: { name: true } }, assignedStaff: { select: { firstName: true } } },
+            orderBy: { startTime: 'desc' }, take: 100,
+          },
+        } as never,
+      }) as unknown as Promise<{
+        firstName: string; lastName: string | null; notes: string | null; loyaltyPoints: number; birthDate: Date | null; createdAt: Date;
+        industryFields?: unknown; importedVisits?: number; lastVisitAt?: Date | null;
+        appointments: { startTime: Date; assignedStaffId: string | null; service: { name: string } | null; assignedStaff: { firstName: string } | null }[];
+      } | null>,
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null),
+      this.industryOfTenant(tenantId),
+    ]);
+    if (!customer) return { card: null };
+    // Walk-in sales at the till are visits too (a regular who never books online).
+    const orders = await this.prisma.order.findMany({
+      where: { tenantId, customerId: appt.customerId, status: OrderStatus.PAID, appointmentId: null },
+      select: { createdAt: true, items: { select: { name: true, staffMemberId: true } } },
+      orderBy: { createdAt: 'desc' }, take: 100,
+    }).catch(() => [] as { createdAt: Date; items: { name: string; staffMemberId: string | null }[] }[]);
+    const techIds = [...new Set(orders.flatMap((o) => o.items.map((i) => i.staffMemberId)).filter((x): x is string => !!x))];
+    const techs = techIds.length ? await this.prisma.staffMember.findMany({ where: { tenantId, id: { in: techIds } }, select: { id: true, firstName: true } }) : [];
+    const techName = new Map(techs.map((t) => [t.id, t.firstName]));
+    const visits: CardVisit[] = [
+      ...customer.appointments.map((a) => ({ at: a.startTime, services: [a.service?.name ?? ''].filter(Boolean), staff: a.assignedStaff?.firstName ?? null, withMe: !!me && a.assignedStaffId === me })),
+      ...orders.map((o) => ({
+        at: o.createdAt, services: o.items.map((i) => i.name).filter(Boolean),
+        staff: techName.get(o.items.find((i) => i.staffMemberId)?.staffMemberId ?? '') ?? null,
+        withMe: !!me && o.items.some((i) => i.staffMemberId === me),
+      })),
+    ];
+    return { card: buildClientCard({ industry, customer: { ...customer, industryFields: customer.industryFields ?? {} }, visits, tz: tenant?.timezone ?? null }) };
   }
 
   /** Staff accepts a booking that is assigned to them. */

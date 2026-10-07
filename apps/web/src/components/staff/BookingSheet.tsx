@@ -15,6 +15,8 @@ import { useEffect, useState } from 'react';
 import { fmtInTz } from '../../lib/datetime';
 import { formatPrice } from '../../lib/ui';
 import { IC, Icon, L, Pill, Sheet, st } from './kit';
+import { ClientCard } from './ClientCard';
+import { useAuth } from '../../lib/auth';
 
 export interface StaffBooking {
   id: string;
@@ -84,6 +86,7 @@ export function BookingSheet({ booking, vi, currency, onClose, onAccept, onRejec
   /** Open straight on the "why not?" step (the inline "Không nhận" button). */
   startReject?: boolean;
 }) {
+  const { token } = useAuth();
   const [step, setStep] = useState<'view' | 'reject'>('view');
   const [reason, setReason] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -119,6 +122,8 @@ export function BookingSheet({ booking, vi, currency, onClose, onAccept, onRejec
               {b.notes}
             </div>
           )}
+          {/* the client, close up — hers only (bookings/client-card) */}
+          {b.customer && <ClientCard bookingId={b.id} token={token} vi={vi} />}
           {phone && (
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
               <a href={`tel:${phone}`} style={{ ...st.ghost, flex: 1 }}><Icon d={IC.phone} size={18} />{L(vi, 'Gọi khách', 'Call')}</a>

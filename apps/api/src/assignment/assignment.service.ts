@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { AppointmentStatus, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BLOCKING_STATUSES } from '../bookings/booking.util';
+import { dayKeyTz } from '../common/salon-time';
+import { blocksSlot, loadApprovedTimeOff } from '../staff/time-off';
 import {
   CandidateInput,
   DEFAULT_RULES,
@@ -97,6 +99,9 @@ export class AssignmentService {
       (appt.endTime.getTime() - appt.startTime.getTime()) / 60_000,
     );
     const slot = getLocalSlot(appt.startTime, durationMinutes, timeZone);
+    // Approved time off (nghỉ phép) on that salon day: she is not on shift.
+    const dayKey = dayKeyTz(appt.startTime, timeZone);
+    const leave = await loadApprovedTimeOff(this.prisma, tenantId, dayKey, dayKey, staff.map((st) => st.id));
 
     const rejWindow = rejectionWindowDays(rules);
     const noRespWindow = noResponseWindowDays(rules);
@@ -107,8 +112,9 @@ export class AssignmentService {
     const candidates: CandidateInput[] = [];
 
     for (const s of staff) {
-      // Hard filter 1: must be working at that local time.
+      // Hard filter 1: must be working at that local time — on shift, and not on leave.
       if (!isWithinWorkingHours(slot, s.workingHours)) continue;
+      if (leave.some((o) => o.staffId === s.id && blocksSlot(o, dayKey, slot.startMinutes, slot.endMinutes))) continue;
 
       // Hard filter 2: must not already have a blocking overlapping booking.
       const conflict = await this.prisma.appointment.findFirst({
@@ -183,7 +189,10 @@ export class AssignmentService {
     const unclaimed = !takes.some((st) => st.staffServices.some((l) => l.serviceId === appt.serviceId));
     const skilled = skilledFor(takes, appt.serviceId);
     const slot = getLocalSlot(appt.startTime, Math.round((appt.endTime.getTime() - appt.startTime.getTime()) / 60_000), tz);
-    const onShift = skilled.filter((s) => isWithinWorkingHours(slot, s.workingHours));
+    const dayKey = dayKeyTz(appt.startTime, tz);
+    const leave = await loadApprovedTimeOff(this.prisma, tenantId, dayKey, dayKey, skilled.map((s) => s.id));
+    const scheduled = skilled.filter((s) => isWithinWorkingHours(slot, s.workingHours));
+    const onShift = scheduled.filter((s) => !leave.some((o) => o.staffId === s.id && blocksSlot(o, dayKey, slot.startMinutes, slot.endMinutes)));
     const free: string[] = [];
     for (const s of onShift) {
       const clash = await this.prisma.appointment.findFirst({
@@ -192,6 +201,6 @@ export class AssignmentService {
       });
       if (!clash) free.push(`${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`);
     }
-    return { team: all.length, takesAppointments: takes.length, serviceUnclaimed: unclaimed, skilled: skilled.length, onShift: onShift.length, free };
+    return { team: all.length, takesAppointments: takes.length, serviceUnclaimed: unclaimed, skilled: skilled.length, onShift: onShift.length, onLeave: scheduled.length - onShift.length, free };
   }
 }

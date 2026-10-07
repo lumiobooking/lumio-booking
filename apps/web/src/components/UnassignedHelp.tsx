@@ -13,8 +13,9 @@ import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ind } from '../lib/ui-industry';
+import { leaveReason } from '../lib/time-off-ui';
 
-export interface AssignCheck { mode: 'none' | 'auto'; assigned: boolean; team: number; takesAppointments: number; serviceUnclaimed: boolean; skilled: number; onShift: number; free: string[] }
+export interface AssignCheck { mode: 'none' | 'auto'; assigned: boolean; team: number; takesAppointments: number; serviceUnclaimed: boolean; skilled: number; onShift: number; onLeave?: number; free: string[] }
 
 /** The one sentence that explains it. Pure — exported for the spec. */
 export function assignReason(c: AssignCheck, vi: boolean): string {
@@ -22,6 +23,8 @@ export function assignReason(c: AssignCheck, vi: boolean): string {
   if (c.team === 0) return L('Tiệm chưa có thợ nào trong danh sách Thợ.', 'There are no technicians on the Staff page yet.');
   if (c.takesAppointments === 0) return L('Chưa thợ nào bật "Nhận lịch hẹn" trong hồ sơ thợ.', 'No technician has "Takes appointments" turned on.');
   if (c.skilled === 0) return L('Không thợ nào có dịch vụ này trong kỹ năng.', 'No technician has this service in their skills.');
+  const leave = leaveReason(c.onShift, c.onLeave, vi);
+  if (leave) return ind(leave);
   if (c.onShift === 0) return L('Không thợ nào có ca làm vào giờ này (xem Giờ làm của thợ).', 'No technician works at this time (check staff hours).');
   if (c.free.length === 0) return L('Tất cả thợ làm được đều đã có khách vào giờ này.', 'Every technician who can do it is booked at this time.');
   const names = c.free.slice(0, 4).join(', ');

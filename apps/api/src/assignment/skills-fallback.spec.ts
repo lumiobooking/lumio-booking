@@ -58,7 +58,7 @@ describe('the engine, one salon at a time', () => {
   it('explains why nobody: all busy', async () => {
     const { svc } = make([T('lisa', ['gel']), T('kim', ['pedi'], 't1', { takesAppointments: false })], ['lisa']);
     const why = await svc.explain('t1', appt);
-    expect(why).toEqual({ team: 2, takesAppointments: 1, serviceUnclaimed: true, skilled: 1, onShift: 1, free: [] });
+    expect(why).toEqual({ team: 2, takesAppointments: 1, serviceUnclaimed: true, skilled: 1, onShift: 1, onLeave: 0, free: [] });
   });
 
   it('BLOCKING statuses are what make a technician busy', () => {

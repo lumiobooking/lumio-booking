@@ -774,6 +774,20 @@ export const DEFAULT_NOTIFICATION_TEMPLATES: NotificationTemplates = {
       '%salon_name% — %salon_contact%',
     smsBody: '%salon_name%: %service_name% on %appointment_date% at %appointment_time%. Tech: %staff_name%. Total: %total_price%. Reply STOP to opt out.',
   }),
+  // A booking confirmed with "to be assigned", and given a technician later
+  // (by the desk, or by the "auto-assign" button): tell the customer who it is.
+  // Goes out on the channels the confirmation itself uses.
+  customer_staff_assigned: t({
+    sms: true,
+    subject: 'Your technician for %appointment_date% — %salon_name%',
+    body:
+      'Hi %customer_name%,\n\n' +
+      'Good news — %staff_name% will take care of your %service_name% on %appointment_date% at %appointment_time%.\n\n' +
+      'Booking reference: %booking_ref%\n' +
+      'Services & technicians: %service_lineup%\n\n' +
+      'See you soon!\n%salon_name% — %salon_contact%',
+    smsBody: '%salon_name%: your technician for %service_name% on %appointment_date% at %appointment_time% is %staff_name%. Reply STOP to opt out.',
+  }),
   customer_booking_pending: t({
     enabled: false,
     subject: 'We received your booking — %salon_name%',
@@ -964,6 +978,16 @@ export const VN_NOTIFICATION_TEXTS: Partial<NotificationSettings> = {
 /** Same overlay for the per-event template catalog (customer-facing events;
  *  staff alerts stay English — the target reader is the salon's own team). */
 export const VN_TEMPLATE_TEXTS: Record<string, Partial<Pick<NotifTemplate, 'subject' | 'body' | 'smsBody'>>> = {
+  customer_staff_assigned: {
+    subject: 'Thợ phụ trách lịch hẹn ngày %appointment_date% — %salon_name%',
+    body: toHtmlBody(
+      'Chào %customer_name%,\n\n' +
+      '%staff_name% sẽ phục vụ bạn dịch vụ %service_name% ngày %appointment_date% lúc %appointment_time%.\n\n' +
+      'Mã lịch: %booking_ref%\n' +
+      'Dịch vụ & thợ: %service_lineup%\n\n' +
+      'Hẹn gặp bạn!\n%salon_name% — %salon_contact%',
+    ),
+  },
   customer_booking_confirmed: {
     subject: 'Lịch hẹn %service_name% đã được xác nhận — %salon_name%',
     body: toHtmlBody(

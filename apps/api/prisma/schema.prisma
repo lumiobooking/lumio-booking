@@ -1091,6 +1091,16 @@ model Customer {
   // Loyalty points balance (earned on paid visits, spent on rewards).
   loyaltyPoints Int @default(0)
 
+  // History brought over from the salon's previous system (customers/import-rows.ts):
+  // what the client spent and how often they came BEFORE Lumio, their last visit
+  // there, and where the record came from. Added to the profile's totals and used
+  // as a last visit by the win-back programmes; never counted as Lumio revenue.
+  importedSpentCents Int       @default(0)
+  importedVisits     Int       @default(0)
+  lastVisitAt        DateTime?
+  importSource       String?
+  importedAt         DateTime?
+
   // Explicit opt-in for promotional SMS (A2P 10DLC). Transactional reminders do
   // not depend on this; marketing messages must respect it. smsConsentAt records
   // when consent was captured, as proof.

@@ -2,6 +2,7 @@ import { profileFrom } from '../common/customer-profile';
 import { cleanIndustryFields, fieldsFor } from '../common/industry-fields';
 import { dueFollowUps, todayIn, type LeadRow } from './follow-ups';
 import { alertsFor, idList, samePhone, type AlertRow } from './record-alerts';
+import { normalizeImportRow, phoneTail, type ImportIn } from './import-rows';
 import { CONTACTED_KEY, pruneContacted, recallList, type RecallRow } from './recall-list';
 import { recallMonthsOf } from '../bookings/recall';
 import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
@@ -118,6 +119,104 @@ export class CustomersService {
     });
     await this.audit.log({ tenantId, userId: user.userId, action: 'customer.recall_contacted', resourceType: 'customer', resourceId: c.id });
     return { ok: true };
+  }
+
+  /**
+   * NHẬP KHÁCH CŨ — a chunk (≤1000) of the salon's old client list
+   * (customers/import-rows.ts). A row matching an existing client by phone
+   * (last 9 digits) or email fills what is missing and records the old
+   * system's history; otherwise a client is created. Points from the old
+   * system are credited ONCE per client (a re-import updates history but never
+   * adds points again). SMS marketing consent is taken only when the row says
+   * so AND the owner attested it. One salon only. Owner only (controller).
+   */
+  async importCustomers(user: AuthenticatedUser, dto: { rows?: unknown[]; source?: string; consentAttested?: boolean }, now = new Date()) {
+    const tenantId = this.tenantId(user);
+    const rows = Array.isArray(dto.rows) ? dto.rows.slice(0, 1000) : [];
+    const source = String(dto.source ?? '').replace(/\s+/g, ' ').trim().slice(0, 40) || 'CSV';
+    type Ex = { id: string; lastName: string | null; phone: string | null; email: string | null; birthDate: Date | null; notes: string | null; smsConsent: boolean; importedAt: Date | null };
+    const existing = (await this.prisma.customer.findMany({
+      where: { tenantId },
+      select: { id: true, lastName: true, phone: true, email: true, birthDate: true, notes: true, smsConsent: true, importedAt: true } as never,
+      take: 50_000,
+    })) as unknown as Ex[];
+    const byPhone = new Map<string, Ex>(); const byEmail = new Map<string, Ex>();
+    const index = (c: Ex) => { const t = phoneTail(c.phone); if (t && !byPhone.has(t)) byPhone.set(t, c); if (c.email) byEmail.set(c.email.toLowerCase(), c); };
+    existing.forEach(index);
+
+    const out = { created: 0, updated: 0, skipped: 0, pointsAdded: 0, pointsSkipped: 0, errors: [] as { row: number; reason: string }[] };
+    for (let i = 0; i < rows.length; i++) {
+      const r = normalizeImportRow((rows[i] ?? {}) as ImportIn);
+      if (!r) { out.skipped++; if (out.errors.length < 50) out.errors.push({ row: i + 1, reason: 'no name, phone or email' }); continue; }
+      const match = (r.phone ? byPhone.get(phoneTail(r.phone)) : undefined) ?? (r.email ? byEmail.get(r.email) : undefined) ?? null;
+      const consent = r.smsOptIn && dto.consentAttested === true;
+      const history = {
+        ...(r.spentCents ? { importedSpentCents: r.spentCents } : {}),
+        ...(r.visits ? { importedVisits: r.visits } : {}),
+        ...(r.lastVisitAt ? { lastVisitAt: r.lastVisitAt } : {}),
+        importSource: source, importedAt: now,
+      };
+      try {
+        if (match) {
+          const wasImported = Boolean(match.importedAt);
+          const data: Record<string, unknown> = { ...history };
+          if (!match.lastName && r.lastName) data.lastName = r.lastName;
+          if (!match.phone && r.phone) data.phone = r.phone;
+          if (!match.email && r.email && !byEmail.has(r.email)) data.email = r.email;
+          if (!match.birthDate && r.birthDate) data.birthDate = r.birthDate;
+          if (r.notes && !(match.notes ?? '').includes(r.notes)) data.notes = [match.notes, r.notes].filter(Boolean).join('\n').slice(0, 2000);
+          if (consent && !match.smsConsent) { data.smsConsent = true; data.smsConsentAt = now; }
+          await this.prisma.customer.updateMany({ where: { id: match.id, tenantId }, data: data as never });
+          if (r.points) {
+            if (wasImported) out.pointsSkipped++;
+            else out.pointsAdded += await this.creditPoints(tenantId, match.id, r.points, `Imported from ${source}`, 'import');
+          }
+          match.importedAt = now; if (data.email) { match.email = r.email; index(match); } if (data.phone) { match.phone = r.phone; index(match); }
+          out.updated++;
+        } else {
+          const email = r.email && !byEmail.has(r.email) ? r.email : null;
+          const c = (await this.prisma.customer.create({
+            data: {
+              tenantId, firstName: r.firstName, lastName: r.lastName, phone: r.phone, email, birthDate: r.birthDate, notes: r.notes,
+              ...history, ...(consent ? { smsConsent: true, smsConsentAt: now } : {}),
+            } as never,
+            select: { id: true },
+          })) as { id: string };
+          if (r.points) out.pointsAdded += await this.creditPoints(tenantId, c.id, r.points, `Imported from ${source}`, 'import');
+          index({ id: c.id, lastName: r.lastName, phone: r.phone, email, birthDate: r.birthDate, notes: r.notes, smsConsent: consent, importedAt: now });
+          out.created++;
+        }
+      } catch (e) {
+        out.skipped++;
+        if (out.errors.length < 50) out.errors.push({ row: i + 1, reason: String((e as Error)?.message ?? e).slice(0, 120) });
+      }
+    }
+    await this.audit.log({ tenantId, userId: user.userId, action: 'customers.imported', resourceType: 'tenant', resourceId: tenantId, metadata: { source, rows: rows.length, created: out.created, updated: out.updated, skipped: out.skipped, consentAttested: dto.consentAttested === true } });
+    return out;
+  }
+
+  /** Add (or, negative, take away) points with a ledger line; the balance never goes below 0. */
+  private async creditPoints(tenantId: string, customerId: string, points: number, reason: string, refType: string): Promise<number> {
+    const c = await this.prisma.customer.findFirst({ where: { id: customerId, tenantId }, select: { loyaltyPoints: true } });
+    if (!c) return 0;
+    const balanceAfter = Math.max(0, c.loyaltyPoints + points);
+    const delta = balanceAfter - c.loyaltyPoints;
+    if (!delta) return 0;
+    await this.prisma.customer.updateMany({ where: { id: customerId, tenantId }, data: { loyaltyPoints: balanceAfter } });
+    await this.prisma.loyaltyTransaction.create({ data: { tenantId, customerId, points: delta, balanceAfter, reason: reason.slice(0, 200), refType, refId: customerId } });
+    return delta;
+  }
+
+  /** "Cộng / trừ điểm" by hand, with a reason. Owner only (controller). */
+  async adjustPoints(user: AuthenticatedUser, id: string, dto: { points: number; reason?: string }) {
+    const tenantId = this.tenantId(user);
+    const c = await this.prisma.customer.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!c) throw new NotFoundException('Customer not found');
+    const pts = Math.round(Number(dto.points));
+    if (!Number.isFinite(pts) || pts === 0) throw new BadRequestException('Enter the points to add or remove.');
+    const delta = await this.creditPoints(tenantId, id, pts, (dto.reason ?? '').trim() || (pts > 0 ? 'Added by the salon' : 'Removed by the salon'), 'manual');
+    await this.audit.log({ tenantId, userId: user.userId, action: 'customer.points_adjusted', resourceType: 'customer', resourceId: id, metadata: { points: delta } });
+    return this.getById(user, id);
   }
 
   /** The record fields this salon's industry keeps on a customer, for the form. */
@@ -381,7 +480,12 @@ export class CustomersService {
     ], tz);
 
     // Read on its own (typed loosely): the generated client on a dev machine may predate the column.
-    const rec = await this.prisma.customer.findFirst({ where: { id, tenantId }, select: { industryFields: true } as never }).catch(() => null) as { industryFields?: unknown } | null;
+    const rec = await this.prisma.customer.findFirst({
+      where: { id, tenantId },
+      select: { industryFields: true, importedSpentCents: true, importedVisits: true, lastVisitAt: true, importSource: true, importedAt: true, smsConsent: true } as never,
+    }).catch(() => null) as { industryFields?: unknown; importedSpentCents?: number; importedVisits?: number; lastVisitAt?: Date | null; importSource?: string | null; importedAt?: Date | null; smsConsent?: boolean } | null;
+    // What the client spent and how often they came in the salon's previous system.
+    const past = { spentCents: rec?.importedSpentCents ?? 0, visits: rec?.importedVisits ?? 0, lastVisitAt: rec?.lastVisitAt ?? null, source: rec?.importSource ?? null, importedAt: rec?.importedAt ?? null };
 
     return {
       ...customer,
@@ -393,11 +497,14 @@ export class CustomersService {
         completed,
         noShows,
         // Every paid visit, whether it started as a booking or a walk-in.
-        visits: completed + walkInSales.length,
+        // The old system's history counts too (shown apart as `past`).
+        visits: completed + walkInSales.length + past.visits,
         walkInSales: walkInSales.length,
-        totalSpentCents,
-        lastVisit,
+        totalSpentCents: totalSpentCents + past.spentCents,
+        lastVisit: lastVisit && past.lastVisitAt ? (lastVisit > past.lastVisitAt ? lastVisit : past.lastVisitAt) : (lastVisit ?? past.lastVisitAt),
       },
+      past,
+      smsConsent: rec?.smsConsent ?? false,
     };
   }
 
@@ -405,7 +512,7 @@ export class CustomersService {
   async update(
     user: AuthenticatedUser,
     id: string,
-    dto: { birthDate?: string | null; firstName?: string; lastName?: string | null; email?: string | null; phone?: string | null; notes?: string | null; industryFields?: Record<string, unknown> },
+    dto: { birthDate?: string | null; firstName?: string; lastName?: string | null; email?: string | null; phone?: string | null; notes?: string | null; industryFields?: Record<string, unknown>; pastSpentCents?: number; pastVisits?: number; lastVisitAt?: string | null },
   ) {
     const tenantId = this.tenantId(user);
     const existing = await this.prisma.customer.findFirst({ where: { id, tenantId }, select: { id: true, industryFields: true } as never }) as { id: string; industryFields?: unknown } | null;
@@ -420,12 +527,16 @@ export class CustomersService {
     if (dto.email !== undefined) data.email = dto.email || null;
     if (dto.phone !== undefined) data.phone = dto.phone || null;
     if (dto.notes !== undefined) data.notes = dto.notes || null;
+    // History from the old system, entered by hand (same fields the import fills).
+    if (dto.pastSpentCents !== undefined) data.importedSpentCents = Math.max(0, Math.round(Number(dto.pastSpentCents) || 0));
+    if (dto.pastVisits !== undefined) data.importedVisits = Math.max(0, Math.round(Number(dto.pastVisits) || 0));
+    if ('lastVisitAt' in dto) { const v = dto.lastVisitAt ? new Date(dto.lastVisitAt) : null; data.lastVisitAt = v && !isNaN(v.getTime()) ? v : null; }
     // The line-of-business record: only THIS salon's industry's own fields.
     if (dto.industryFields !== undefined) {
       data.industryFields = cleanIndustryFields(await this.industryOf(tenantId), dto.industryFields, existing.industryFields);
     }
     // Scope the write by tenantId too (a forged id can't touch another tenant).
-    await this.prisma.customer.updateMany({ where: { id, tenantId }, data });
+    await this.prisma.customer.updateMany({ where: { id, tenantId }, data: data as never });
     await this.audit.log({ tenantId, userId: user.userId, action: 'customer.updated', resourceType: 'customer', resourceId: id });
     return this.getById(user, id);
   }

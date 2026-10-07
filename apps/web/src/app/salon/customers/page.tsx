@@ -17,6 +17,7 @@ import { uiIndustry } from '../../../lib/ui-industry';
 import { LeadFollowUpsBox } from '../../../components/LeadFollowUpsBox';
 import { RecallBox } from '../../../components/RecallBox';
 import { LeadBoard } from '../../../components/LeadBoard';
+import { CustomerImport } from '../../../components/CustomerImport';
 import { uiLocale } from '../../../lib/datetime';
 
 interface Customer {
@@ -70,7 +71,10 @@ export default function CustomersPage() {
 }
 
 function Inner() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  // Bringing the old system's client list over is the owner's job.
+  const isOwner = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN';
+  const [importOpen, setImportOpen] = useState(false);
   const can = useCan();
   const canDelete = can('customers.delete');
   const { lang } = useLang();
@@ -185,13 +189,21 @@ function Inner() {
           <h1 style={{ fontSize: 24, margin: 0 }}>{t('cu.title')}</h1>
           <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>{filtered.length} {t('cu.of')} {customers.length} · 🎂 {withBirthday}</p>
         </div>
-        <input
-          placeholder={t('cu.searchPh')}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          style={{ ...ui.input, maxWidth: 280 }}
-        />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {isOwner && (
+            <button type="button" onClick={() => setImportOpen(true)} style={{ padding: '9px 13px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              ⬆ {lang === 'vi' ? 'Nhập khách cũ' : 'Import clients'}
+            </button>
+          )}
+          <input
+            placeholder={t('cu.searchPh')}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            style={{ ...ui.input, maxWidth: 280 }}
+          />
+        </div>
       </div>
+      {importOpen && <CustomerImport vi={lang === 'vi'} onClose={() => setImportOpen(false)} onDone={load} />}
 
       {/* Warm leads first: asked on chat / hotline, never booked. Collapsed here. */}
       <AskedNotBookedBox compact />

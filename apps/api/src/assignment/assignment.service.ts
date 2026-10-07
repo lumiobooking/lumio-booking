@@ -12,6 +12,7 @@ import {
   noResponseWindowDays,
   rankCandidates,
   rejectionWindowDays,
+  skilledFor,
 } from './assignment.util';
 
 /** Minimal appointment shape the engine needs to find a staff member. */
@@ -84,18 +85,13 @@ export class AssignmentService {
     // Candidate pool: active staff who can perform the service. Skills are read
     // PER TECHNICIAN (mirrors public availability): a tech with a registered
     // skill list only takes those services; a tech with no list takes anything.
-    const staffAll = await this.prisma.staffMember.findMany({
-      where: {
-        tenantId,
-        isActive: true,
-        takesAppointments: true,
-        id: exclude.size ? { notIn: [...exclude] } : undefined,
-      },
+    // The whole team is read (not only the non-excluded) so "does anybody list
+    // this service?" sees everyone — see skilledFor.
+    const team = await this.prisma.staffMember.findMany({
+      where: { tenantId, isActive: true, takesAppointments: true },
       include: { workingHours: true, staffServices: { select: { serviceId: true } } },
     });
-    const staff = staffAll.filter(
-      (st) => st.staffServices.length === 0 || st.staffServices.some((l) => l.serviceId === appt.serviceId),
-    );
+    const staff = skilledFor(team, appt.serviceId).filter((st) => !exclude.has(st.id));
 
     const durationMinutes = Math.round(
       (appt.endTime.getTime() - appt.startTime.getTime()) / 60_000,
@@ -170,5 +166,32 @@ export class AssignmentService {
       orderedStaffIds: ranked.filter((r) => !r.excluded).map((r) => r.staffId),
       ranked,
     };
+  }
+
+  /**
+   * Why the engine would find nobody for this booking — for the desk's
+   * "chưa có thợ" box. Counts at each hard filter, in the engine's order.
+   * Reads only; one salon's rows only.
+   */
+  async explain(tenantId: string, appt: AppointmentForAssignment) {
+    const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone ?? 'UTC';
+    const all = await this.prisma.staffMember.findMany({
+      where: { tenantId, isActive: true },
+      include: { workingHours: true, staffServices: { select: { serviceId: true } } },
+    });
+    const takes = all.filter((s) => s.takesAppointments);
+    const unclaimed = !takes.some((st) => st.staffServices.some((l) => l.serviceId === appt.serviceId));
+    const skilled = skilledFor(takes, appt.serviceId);
+    const slot = getLocalSlot(appt.startTime, Math.round((appt.endTime.getTime() - appt.startTime.getTime()) / 60_000), tz);
+    const onShift = skilled.filter((s) => isWithinWorkingHours(slot, s.workingHours));
+    const free: string[] = [];
+    for (const s of onShift) {
+      const clash = await this.prisma.appointment.findFirst({
+        where: { tenantId, assignedStaffId: s.id, status: { in: BLOCKING_STATUSES }, startTime: { lt: appt.endTime }, endTime: { gt: appt.startTime }, id: { not: appt.id } },
+        select: { id: true },
+      });
+      if (!clash) free.push(`${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`);
+    }
+    return { team: all.length, takesAppointments: takes.length, serviceUnclaimed: unclaimed, skilled: skilled.length, onShift: onShift.length, free };
   }
 }

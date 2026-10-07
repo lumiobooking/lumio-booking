@@ -673,6 +673,12 @@ export class SettingsService {
       const raw = await this.rawKey(tenantId, NOTIFICATION_SETTINGS_KEY);
       if (raw.smsCustomerOnBooking === undefined) out.smsCustomerOnBooking = true;
     }
+    // Any market: a field still holding an OLDER default verbatim (saved as-is,
+    // never edited) follows the current default — which names the technician.
+    for (const [k, olds] of Object.entries(LEGACY_NOTIFICATION_DEFAULTS)) {
+      const key = k as keyof NotificationSettings;
+      if ((olds ?? []).includes(out[key] as string)) (out as unknown as Record<string, unknown>)[key] = DEFAULT_NOTIFICATION_SETTINGS[key];
+    }
     if (out.market === 'VN') {
       for (const [k, vnText] of Object.entries(VN_NOTIFICATION_TEXTS)) {
         const key = k as keyof NotificationSettings;
@@ -848,6 +854,16 @@ export class SettingsService {
     const out: NotificationTemplates = {};
     for (const [id, def] of Object.entries(DEFAULT_NOTIFICATION_TEMPLATES)) {
       out[id] = { ...def, ...(stored[id] ?? {}) };
+    }
+    // Any market: a template field still holding an OLDER default verbatim
+    // follows the current default (which names the technician). Edited text is kept.
+    for (const [id, legacy] of Object.entries(LEGACY_TEMPLATE_DEFAULTS)) {
+      const def = DEFAULT_NOTIFICATION_TEMPLATES[id];
+      if (!def || !out[id]) continue;
+      for (const [f, olds] of Object.entries(legacy)) {
+        const field = f as 'subject' | 'body' | 'smsBody';
+        if ((olds ?? []).includes(out[id][field])) out[id][field] = def[field];
+      }
     }
     // Vietnamese catalog overlay — same rule as getNotificationSettings: only
     // fields still equal to the English default are translated, so a salon's

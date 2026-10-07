@@ -488,12 +488,20 @@ export class CampaignsService {
       where: { tenantId, status: AppointmentStatus.COMPLETED },
       _max: { startTime: true },
     });
+    const inSystem = new Set(grouped.map((g) => g.customerId));
     const ids = grouped
       .filter((g) => {
         const last = g._max?.startTime;
         return !!last && last >= lower && last < upper;
       })
       .map((g) => g.customerId);
+    // Clients brought over from the old system with no visit here yet: their
+    // last visit THERE is their last visit (customers/import-rows.ts).
+    const imported = (await this.prisma.customer.findMany({
+      where: { tenantId, lastVisitAt: { gte: lower, lt: upper } } as never,
+      select: { id: true },
+    }).catch(() => [])) as { id: string }[];
+    for (const c of imported) if (!inSystem.has(c.id)) ids.push(c.id);
     if (ids.length === 0) return [];
     // Drop anyone with a later visit or an upcoming booking (they're already returning).
     const later = await this.prisma.appointment.findMany({

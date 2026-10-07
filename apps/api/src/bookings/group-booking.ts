@@ -59,7 +59,9 @@ const overlaps = (a: { start: Date; end: Date }, s: Date, e: Date) => a.start.ge
 
 /** Techs able to do this person's visit: every service on their list, else the first one. */
 function skilled(m: PartyMember, techs: Tech[]): Tech[] {
-  const can = (t: Tech, ids: string[]) => t.skills.length === 0 || ids.every((id) => t.skills.includes(id));
+  // A service nobody lists is anybody's (the same rule as assignment/assignment.util skilledFor).
+  const claimed = new Set(techs.flatMap((t) => t.skills));
+  const can = (t: Tech, ids: string[]) => t.skills.length === 0 || ids.every((id) => t.skills.includes(id) || !claimed.has(id));
   const all = techs.filter((t) => can(t, m.serviceIds));
   return all.length ? all : techs.filter((t) => can(t, m.serviceIds.slice(0, 1)));
 }

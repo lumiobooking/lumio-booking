@@ -225,3 +225,21 @@ export function pickBest(candidates: CandidateInput[], rules: EngineRule[]): str
   const ranked = rankCandidates(candidates, rules).filter((r) => !r.excluded);
   return ranked.length ? ranked[0].staffId : null;
 }
+
+// ---------------------------------------------------------------------------
+// Skills
+// ---------------------------------------------------------------------------
+
+/**
+ * Who can do this service. A technician with a registered skill list only
+ * does what is on it; one with no list does anything. And when NOBODY lists
+ * the service at all — a service added to the menu after the team's skills
+ * were set, the commonest setup gap — every technician counts, as on the
+ * booking page ("Any tech" stays bookable). Otherwise that booking could never
+ * be assigned by turn and sat "unassigned" until someone noticed.
+ */
+export function skilledFor<T extends { staffServices: { serviceId: string }[] }>(staff: T[], serviceId: string): T[] {
+  const claimed = staff.some((st) => st.staffServices.some((l) => l.serviceId === serviceId));
+  if (!claimed) return staff;
+  return staff.filter((st) => st.staffServices.length === 0 || st.staffServices.some((l) => l.serviceId === serviceId));
+}

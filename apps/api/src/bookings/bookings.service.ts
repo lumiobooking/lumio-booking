@@ -15,6 +15,7 @@ import { fitsBusinessHours, describeWindows, startsInBusinessHours } from '../se
 import { NO_SHOW_BLOCK_MESSAGE, NO_SHOW_POLICY_KEY, NoShowPolicy, cleanNoShowPolicy, noShowVerdict, windowStart } from './no-show-policy';
 import { rebookCopy, recallDue, recallMonthsOf } from './recall';
 import { buildPreOrder, preOrderText } from './pre-order';
+import { skilledFor } from '../assignment/assignment.util';
 import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 import { canSelfReschedule } from './self-reschedule';
 import { canSelfCancel } from './self-cancel';
@@ -1239,6 +1240,8 @@ export class BookingsService {
       service: { name: string } | null;
       assignedStaff?: { firstName: string; lastName: string | null } | null;
     },
+    /** techUpdate: the booking just got its technician — tell the customer who (customer_staff_assigned), nobody else. */
+    opts: { techUpdate?: boolean } = {},
   ) {
     const n = await this.settings.getNotificationSettings(tenantId);
     const tenant = await this.prisma.tenant.findUnique({
@@ -1380,8 +1383,10 @@ export class BookingsService {
     // inline templates in NotificationSettings.
     const templates = await this.settings.getNotificationTemplates(tenantId);
     const confirmTpl = templates['customer_booking_confirmed'];
+    const staffTpl = templates['customer_staff_assigned'];
+    if (opts.techUpdate && !(staffTpl && staffTpl.enabled && appointment.assignedStaff)) return;
     // Narrowable nullable: when present + enabled, drive the message from it.
-    const tpl = confirmTpl && confirmTpl.enabled ? confirmTpl : null;
+    const tpl = opts.techUpdate ? staffTpl : confirmTpl && confirmTpl.enabled ? confirmTpl : null;
     const pct: Record<string, string> = {
       salon_name: d.salon,
       customer_name: d.customer,
@@ -1409,8 +1414,11 @@ export class BookingsService {
       manage_url: manageUrl,
     };
 
-    const emailCustomer = tpl ? tpl.email : n.emailCustomerOnBooking;
-    const smsCustomer = tpl ? tpl.sms : n.smsCustomerOnBooking;
+    // The technician update rides the channels the confirmation uses; never the
+    // VN carrier SMS (its text must match a registered template).
+    const confOn = confirmTpl && confirmTpl.enabled ? { email: confirmTpl.email, sms: confirmTpl.sms } : { email: n.emailCustomerOnBooking, sms: n.smsCustomerOnBooking };
+    const emailCustomer = opts.techUpdate ? Boolean(tpl?.email && confOn.email) : tpl ? tpl.email : n.emailCustomerOnBooking;
+    const smsCustomer = opts.techUpdate ? Boolean(tpl?.sms && confOn.sms && (n.market ?? 'US').toUpperCase() !== 'VN') : tpl ? tpl.sms : n.smsCustomerOnBooking;
 
     if (emailCustomer && custEmail) {
       if (tpl) {
@@ -1461,6 +1469,8 @@ export class BookingsService {
         ...related,
       }));
     }
+    // The technician update is for the customer only: the salon made the change.
+    if (opts.techUpdate) { await Promise.allSettled(jobs); return; }
     // Admin notification: who gets it = the Admin email, falling back to the
     // sender email so the salon is never left un-notified.
     const adminTo = n.adminEmail || n.senderEmail || n.gmail.senderEmail || '';
@@ -1484,7 +1494,8 @@ export class BookingsService {
       jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: n.adminPhone, body: fill(n.smsAdmin, d), twilio: n.twilio, ...related }));
     }
     // Web push to the owner's phone (fire-and-forget; no-op unless VAPID is set).
-    this.push.sendToTenant(tenantId, { title: 'Booking mới 🗓️', body: `${d.customer} • ${d.service}`, url: '/salon/activity' }).catch(() => undefined);
+    // Who, what, when and with whom — the owner can act on the lock screen.
+    this.push.sendToTenant(tenantId, { title: 'Booking mới 🗓️', body: `${d.customer} • ${d.service} • ${fmtD(start)} ${fmtT(start)} • 👤 ${d.technician}`, url: '/salon/activity' }).catch(() => undefined);
     await Promise.allSettled(jobs);
   }
 
@@ -2287,9 +2298,9 @@ export class BookingsService {
         },
       },
     });
-    const eligible = allStaff.filter(
-      (st) => st.staffServices.length === 0 || st.staffServices.some((l) => l.serviceId === serviceId),
-    );
+    // A service nobody lists is anybody's — the same rule the assignment engine
+    // uses (assignment.util skilledFor), so what the page offers is what gets assigned.
+    const eligible = skilledFor(allStaff, serviceId);
     const ids = eligible.map((s) => s.id);
     if (ids.length === 0) {
       // Two very different situations, and they used to look identical to the booking
@@ -2495,8 +2506,17 @@ export class BookingsService {
 
     // Notify the assigned technician (fire-and-forget).
     this.sendStaffAssignmentEmail(tenantId, id).catch(() => undefined);
+    // The customer was told "to be assigned": now tell them who.
+    if (!booking.assignedStaffId && updated) this.tellCustomerTech(tenantId, updated as never);
 
     return updated;
+  }
+
+  /** customer_staff_assigned, for an upcoming live booking that had nobody on it. Fire-and-forget. */
+  private tellCustomerTech(tenantId: string, b: Parameters<BookingsService['sendBookingConfirmation']>[1] & { status?: string }) {
+    const live = ['PENDING', 'ASSIGNED', 'ACCEPTED', 'CONFIRMED'].includes(String(b.status ?? ''));
+    if (!live || b.startTime.getTime() < Date.now() || !b.assignedStaff) return;
+    this.sendBookingConfirmation(tenantId, b, { techUpdate: true }).catch(() => undefined);
   }
 
   /**
@@ -3216,13 +3236,19 @@ export class BookingsService {
   /** Super/Salon admin asks the engine to assign a PENDING booking. */
   async autoAssign(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
-    await this.getById(user, id); // tenant ownership / 404
+    const before = await this.getById(user, id); // tenant ownership / 404
     const res = await this.reassign(tenantId, id, user.userId);
     // Multi-service visits: give every extra line its own eligible tech too.
     // The public booking flow already does this; the front-desk button used to
     // stop at the primary, leaving the other services technically unowned.
     await this.assignExtraServiceLines(tenantId, id).catch(() => undefined);
+    if (!before.assignedStaffId && (res as { reassigned?: boolean }).reassigned) await this.tellCustomerTechById(tenantId, id);
     return res;
+  }
+
+  private async tellCustomerTechById(tenantId: string, id: string) {
+    const b = await this.prisma.appointment.findFirst({ where: { id, tenantId }, include: BOOKING_INCLUDE }).catch(() => null);
+    if (b) this.tellCustomerTech(tenantId, b as never);
   }
 
   /**
@@ -3272,6 +3298,46 @@ export class BookingsService {
       metadata: { serviceId: dto.serviceId, staffId: dto.staffId ?? null },
     });
     return this.getById(user, id);
+  }
+
+  /**
+   * "Why is nobody on this booking?" — the assignment mode and the engine's
+   * filters, counted (assignment.service explain). For the desk's drawer.
+   */
+  async assignCheck(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const b = await this.prisma.appointment.findFirst({
+      where: { id, tenantId },
+      select: { id: true, serviceId: true, startTime: true, endTime: true, preferredStaffId: true, assignedStaffId: true },
+    });
+    if (!b) throw new NotFoundException('Booking not found');
+    const [rules, why] = await Promise.all([
+      this.settings.getBookingRules(tenantId),
+      this.assignment.explain(tenantId, { id: b.id, serviceId: b.serviceId, startTime: b.startTime, endTime: b.endTime, preferredStaffId: b.preferredStaffId }),
+    ]);
+    return { mode: rules.assignmentMode, assigned: Boolean(b.assignedStaffId), ...why };
+  }
+
+  /**
+   * "Giao tự động các lịch chưa có thợ": every upcoming PENDING booking of
+   * this salon with nobody on it goes through the engine once (fair turn,
+   * skills, shifts). For after the owner fixed a setup gap. At most 100.
+   */
+  async autoAssignOpen(user: AuthenticatedUser, now = new Date()) {
+    const tenantId = this.tenantId(user);
+    const rows = await this.prisma.appointment.findMany({
+      where: { tenantId, assignedStaffId: null, status: AppointmentStatus.PENDING, startTime: { gte: now } },
+      select: { id: true }, orderBy: { startTime: 'asc' }, take: 100,
+    });
+    let assigned = 0;
+    for (const r of rows) {
+      try {
+        const res = await this.autoAssignForTenant(tenantId, r.id);
+        if ((res as { reassigned?: boolean } | null)?.reassigned) { assigned++; await this.tellCustomerTechById(tenantId, r.id); }
+      } catch { /* the next one */ }
+    }
+    await this.audit.log({ tenantId, userId: user.userId, action: 'booking.auto_assign_open', resourceType: 'tenant', resourceId: tenantId, metadata: { checked: rows.length, assigned } });
+    return { checked: rows.length, assigned };
   }
 
   async autoAssignForTenant(tenantId: string, bookingId: string) {

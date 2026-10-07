@@ -10,6 +10,7 @@ import { usePaged, Pager } from '../../../../components/ListFilter';
 import { useLang, tr } from '../../../../lib/i18n';
 import { ind } from '../../../../lib/ui-industry';
 import { IndustryRecordCard } from '../../../../components/IndustryRecordCard';
+import { PastHistoryCard, type Past } from '../../../../components/PastHistoryCard';
 import { uiLocale } from '../../../../lib/datetime';
 
 interface Pay { id: string; amountCents: number; currency: string; status: string; type: string; createdAt: string }
@@ -36,6 +37,9 @@ interface CustomerDetail {
   stats: { bookings: number; completed: number; noShows?: number; visits?: number; walkInSales?: number; totalSpentCents: number; lastVisit: string | null };
   /** The line-of-business record (api common/industry-fields). */
   industryFields?: Record<string, string | number>;
+  /** History from the salon's previous system (import or typed by the owner). */
+  past?: Past;
+  smsConsent?: boolean;
   /** Her habits from finished visits (api common/customer-profile). */
   profile?: { visits: number; favourites: { name: string; count: number }[]; preferredStaff: { name: string; count: number } | null; usualWeekday: number | null; usualPart: 'morning' | 'afternoon' | 'evening' | null; avgSpendCents: number | null; lastServices: string[]; lastStaff: string | null };
 }
@@ -55,7 +59,8 @@ export default function CustomerDetailPage() {
 }
 
 function Inner() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isOwner = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN';
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
   const params = useParams();
@@ -145,6 +150,7 @@ function Inner() {
 
       {/* The record this line of business keeps: patient record, lead, guest notes, lash map… */}
       <IndustryRecordCard token={token} customerId={c.id} values={c.industryFields} vi={lang === 'vi'} onSaved={load} />
+      <PastHistoryCard token={token} customerId={c.id} past={c.past} smsConsent={c.smsConsent} currency={currency} vi={lang === 'vi'} isOwner={isOwner} onSaved={load} />
 
       {/* Her habits — the same profile the chat bot reads to offer "same as last time?". */}
       {c.profile && c.profile.visits >= 2 && (() => {

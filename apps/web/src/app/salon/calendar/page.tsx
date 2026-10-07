@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { UnassignedBanner, UnassignedHelp } from '../../../components/UnassignedHelp';
 import { SourceChip, SourceDot } from '../../../components/SourceChip';
 import { srcKey, srcMetaOf, sourceCounts } from '../../../lib/booking-sources';
 import { SalonShell } from '../../../components/SalonShell';
@@ -479,6 +480,7 @@ function Inner() {
                 );
               })()}
               {error && <div style={ui.banner}>{error}</div>}
+              <UnassignedBanner bookings={bookings} vi={lang === 'vi'} onDone={load} />
             </>
           );
         })()
@@ -550,6 +552,7 @@ function Inner() {
       </div>
 
       {error && <div style={ui.banner}>{error}</div>}
+      <UnassignedBanner bookings={bookings} vi={lang === 'vi'} onDone={load} />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
@@ -1070,6 +1073,7 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
         <DetailRow label={t('cal.dTime')} value={`${fmtTime(start, tz)} – ${fmtTime(end, tz)}`} />
         <DetailRow label={t('cal.dDuration')} value={`${duration} ${t('cal.min')}`} />
         {active && <QuickEdit b={b} onAction={onAction} />}
+        {active && !b.assignedStaff && <UnassignedHelp bookingId={b.id} vi={lang === 'vi'} onAssign={() => onAction(b.id, 'auto-assign')} />}
         <DetailRow label={t('cal.dSource')} value={<SourceChip b={b} vi={lang === 'vi'} />} />
         {String(b.status).toUpperCase() === 'CANCELLED' && (() => {
           // "Đã huỷ" must answer BY WHOM — an authorless cancellation starts

@@ -1467,6 +1467,8 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'nt.desc.customer_booking_pending': { en: 'Sent when a booking is received and awaiting confirmation.', vi: 'Gửi khi nhận lịch và đang chờ xác nhận.' },
   'nt.lbl.customer_booking_cancelled': { en: 'Booking cancelled', vi: 'Đã huỷ lịch' },
   'nt.desc.customer_booking_cancelled': { en: 'Sent when a booking is cancelled.', vi: 'Gửi khi một lịch bị huỷ.' },
+  'nt.lbl.customer_staff_assigned': { en: 'Technician assigned', vi: 'Đã có thợ phụ trách' },
+  'nt.desc.customer_staff_assigned': { en: 'Sent when a booking confirmed without a technician gets one.', vi: 'Gửi khi lịch đã xác nhận nhưng chưa có thợ, nay đã được giao thợ.' },
   'nt.lbl.customer_booking_rescheduled': { en: 'Rescheduled', vi: 'Đã đổi lịch' },
   'nt.desc.customer_booking_rescheduled': { en: 'Sent when the date or time changes.', vi: 'Gửi khi ngày hoặc giờ thay đổi.' },
   'nt.lbl.customer_reminder': { en: 'Appointment reminder', vi: 'Nhắc lịch hẹn' },

@@ -34,6 +34,7 @@ interface CatalogItem {
 // Stable ids must match the backend default catalog.
 const CATALOG: CatalogItem[] = [
   { id: 'customer_booking_confirmed', audience: 'customer', group: 'Booking', label: 'Booking confirmed', desc: 'Sent right after a booking is confirmed. Drives the live confirmation email/SMS.' },
+  { id: 'customer_staff_assigned', audience: 'customer', group: 'Booking', label: 'Technician assigned', desc: 'Sent when a booking confirmed without a technician gets one.' },
   { id: 'customer_booking_pending', audience: 'customer', group: 'Booking', label: 'Booking received (pending)', desc: 'Sent when a booking is received and awaiting confirmation.' },
   { id: 'customer_booking_cancelled', audience: 'customer', group: 'Booking', label: 'Booking cancelled', desc: 'Sent when a booking is cancelled.' },
   { id: 'customer_booking_rescheduled', audience: 'customer', group: 'Booking', label: 'Rescheduled', desc: 'Sent when the date or time changes.' },

@@ -135,6 +135,23 @@ export class BookingsController {
     return this.bookings.create(user, dto, 'counter');
   }
 
+  // Every upcoming booking with nobody on it, through the engine once.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Post('auto-assign-open')
+  @HttpCode(200)
+  autoAssignOpen(@CurrentUser() user: AuthenticatedUser) {
+    return this.bookings.autoAssignOpen(user);
+  }
+
+  // Why nobody is on this booking (mode + the engine's filters, counted).
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Get(':id/assign-check')
+  assignCheck(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.bookings.assignCheck(user, id);
+  }
+
   // Run the assignment engine on a pending booking.
   @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
   @Caps('bookings')

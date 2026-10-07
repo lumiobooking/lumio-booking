@@ -15,6 +15,9 @@ class AddServiceDto {
 class ChairDto {
   @IsOptional() @IsString() @MaxLength(60) stationId?: string;
 }
+class SkipReasonDto {
+  @IsOptional() @IsString() @MaxLength(200) reason?: string;
+}
 
 /**
  * The technician's own chair.
@@ -49,9 +52,9 @@ export class MyChairController {
   }
 
   /** Run a change, then tell every open board and chair of this salon to look again. */
-  private async nudge<T>(user: AuthenticatedUser, id: string, work: Promise<T>): Promise<T> {
+  private async nudge<T>(user: AuthenticatedUser, id: string | null, work: Promise<T>): Promise<T> {
     const r = await work;
-    liveEvents.emit(resolveTenantScope(user), 'walkins', id);
+    liveEvents.emit(resolveTenantScope(user), 'walkins', id ?? undefined);
     return r;
   }
 
@@ -74,6 +77,23 @@ export class MyChairController {
   }
 
   /** The salon's price list (so the tech can add what they actually did). */
+  /** Tạm nghỉ / quay lại — her own break. */
+  @Post('break')
+  breakStart(@CurrentUser() user: AuthenticatedUser) {
+    return this.nudge(user, null, this.walkins.setMyBreak(user, true));
+  }
+
+  @Post('back')
+  breakEnd(@CurrentUser() user: AuthenticatedUser) {
+    return this.nudge(user, null, this.walkins.setMyBreak(user, false));
+  }
+
+  /** She passes this customer on (bỏ qua), with a reason; the rule says what it costs. */
+  @Post(':id/legs/:legId/skip')
+  skip(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('legId') legId: string, @Body() dto: SkipReasonDto) {
+    return this.nudge(user, id, this.walkins.skipLeg(user, id, legId, dto.reason));
+  }
+
   @Get('services')
   services(@CurrentUser() user: AuthenticatedUser) {
     return this.walkins.servicesForChair(user);

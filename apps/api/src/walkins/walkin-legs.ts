@@ -23,7 +23,7 @@
  * directly in walkin-legs.spec.ts.
  */
 
-import { DEFAULT_TURN_RULES, legTurns, TieFacts, tieCompare, TurnRules } from './turn-rules';
+import { DEFAULT_TURN_RULES, legTurns, TieFacts, tieCompare, TurnRules, isReverseLeg } from './turn-rules';
 
 export type Zone = 'HAND' | 'FOOT' | 'OTHER';
 export type LegStatus = 'WAITING' | 'SERVING' | 'DONE';
@@ -45,6 +45,8 @@ export interface LegItem {
   doneAt?: string | null;
   /** How many turns this service is worth (snapshot of Service.turnValue). */
   turnValue?: number;
+  /** Technicians who passed this leg on (bỏ qua): the dispatcher never hands it back to them. */
+  skippedBy?: string[];
 }
 
 export interface Leg {
@@ -60,6 +62,8 @@ export interface Leg {
   names: string[];
   minutes: number;
   turnValue: number;
+  /** Technicians who passed this leg on — never offered it again. */
+  skippedBy: string[];
   /** True for a ticket written before legs existed (one leg = the whole ticket). */
   legacy?: boolean;
 }
@@ -140,7 +144,7 @@ export function legsOf(t: TicketLike): Leg[] {
         pinned: !!it.pinned,
         startedAt: it.startedAt ?? null,
         doneAt: it.doneAt ?? null,
-        lineIds: [], serviceIds: [], names: [], minutes: 0, turnValue: 0,
+        lineIds: [], serviceIds: [], names: [], minutes: 0, turnValue: 0, skippedBy: [],
       };
       byId.set(it.legId, leg);
       legs.push(leg);
@@ -150,6 +154,7 @@ export function legsOf(t: TicketLike): Leg[] {
     leg.names.push(it.name);
     leg.minutes += it.durationMinutes ?? 0;
     leg.turnValue = Math.max(leg.turnValue, typeof it.turnValue === 'number' ? it.turnValue : 1);
+    for (const id of it.skippedBy ?? []) if (!leg.skippedBy.includes(id)) leg.skippedBy.push(id);
     if (!leg.staffId && it.staffId) leg.staffId = it.staffId;
   }
   if (legacyLines.length || (!items.length)) {
@@ -169,6 +174,7 @@ export function legsOf(t: TicketLike): Leg[] {
       names: legacyLines.map((it) => it.name),
       minutes: legacyLines.reduce((s, it) => s + (it.durationMinutes ?? 0), 0),
       turnValue: legacyLines.length ? Math.max(...legacyLines.map((it) => (typeof it.turnValue === 'number' ? it.turnValue : 1))) : 1,
+      skippedBy: [...new Set(legacyLines.flatMap((it) => it.skippedBy ?? []))],
       legacy: true,
     });
   }
@@ -394,7 +400,13 @@ export function canDo(tech: TechInfo, serviceIds: string[]): boolean {
 }
 
 /** How the salon breaks ties and, in MONEY mode, what the score is. */
-export interface PickOptions { rules?: TurnRules; facts?: TieFacts; /** MONEY mode: service cents per technician. */ money?: Map<string, number> }
+export interface PickOptions {
+  rules?: TurnRules; facts?: TieFacts;
+  /** MONEY mode: service cents per technician. */
+  money?: Map<string, number>;
+  /** Technicians who only take clients that asked for them (the owner out of the rotation). */
+  manualOnly?: Set<string>;
+}
 
 /**
  * The fairest free technician for these services: lowest score (turns, or
@@ -402,14 +414,16 @@ export interface PickOptions { rules?: TurnRules; facts?: TieFacts; /** MONEY mo
  * then the owner's priority, then list order.
  */
 export function pickTech(free: TechInfo[], serviceIds: string[], turns: Map<string, number>, opts: PickOptions = {}): TechInfo | null {
-  const able = free.filter((t) => canDo(t, serviceIds));
+  const able = free.filter((t) => canDo(t, serviceIds) && !opts.manualOnly?.has(t.id));
   if (!able.length) return null;
   const rules = opts.rules ?? DEFAULT_TURN_RULES;
   const score = rules.mode === 'MONEY' && opts.money ? opts.money : turns;
+  // "Tua ngược": the unwanted little service goes to whoever is furthest ahead.
+  const reverse = isReverseLeg(serviceIds, rules);
   return able.reduce((best, t) => {
     const a = score.get(best.id) ?? 0;
     const b = score.get(t.id) ?? 0;
-    if (b < a) return t;
+    if (reverse ? b > a : b < a) return t;
     if (b === a && tieCompare(t, best, rules, opts.facts) < 0) return t;
     return best;
   });
@@ -481,7 +495,9 @@ export function planDispatch(tickets: TicketLike[], techs: TechInfo[], turns: Ma
         tech = free.find((f) => f.id === leg.staffId) ?? null;
       } else {
         const need = needFor(leg, techs, opts);
-        tech = pickTech(free.filter((f) => !reserved.has(f.id)), need, turns, opts) ?? pickTech(free, need, turns, opts);
+        // Never back to someone who passed this leg on.
+        const able = free.filter((f) => !leg.skippedBy.includes(f.id));
+        tech = pickTech(able.filter((f) => !reserved.has(f.id)), need, turns, opts) ?? pickTech(able, need, turns, opts);
       }
       if (!tech) continue;
       out.push({ ticketId: t.id, legId: leg.legId, staffId: tech.id });

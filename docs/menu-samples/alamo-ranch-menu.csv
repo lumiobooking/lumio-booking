@@ -1,0 +1,88 @@
+﻿Category,Service name,Price,Starting price (yes/no),Duration (min),Description,Row type (service/add-on),Turn (1/0.5/0)
+Pedicure,Fresh Start Pedicure,35,no,35,Nail trim & shape · Cuticle care · Callus removal · Sugar scrub · Lotion · 6-minute massage · Regular polish,service,1
+Pedicure,Silk Touch Pedicure,45,no,45,Nail trim & shape · Cuticle care · Callus removal · Sugar scrub · Lotion · Paraffin treatment · 10-minute massage · Regular polish,service,1
+Pedicure,Signature Pedicure,50,no,55,Nail trim & shape · Cuticle care · Callus removal · Fresh flower soak · Exfoliating sugar scrub · Hot towel · Nourishing lotion · Hydrating mask · Paraffin treatment · 15-minute relaxing massage · Regular polish,service,1
+Pedicure,Bath Bomb Spa Pedicure,62,no,60,Hot stone therapy · Fresh flower soak · Sugar & salt scrub · Nourishing lotion · Hydrating mask · Paraffin treatment · 20-minute relaxing massage · Regular polish. Signature scents: Matcha or Honey,service,1
+Pedicure,Seasonal Escape Pedicure,72,no,70,Fresh seasonal fruit · Fresh flower soak · Mineral sea salt soak · Sugar scrub · Nourishing lotion · Hydrating mask · Hot stone therapy · Paraffin treatment · 25-minute massage · Regular polish,service,1
+Pedicure,Jelly Luxe Pedicure,85,no,75,Jelly foot soak · Sugar scrub · Nourishing lotion · Hydrating mask · Fresh fruit · Warm neck wrap · Neck & shoulder massage · Warm massage candle · 35-minute foot massage · Regular polish,service,1
+Pedicure,Herbal Wellness Ritual Pedicure,105,no,90,"Traditional herbal foot soak · Lava foot treatment · Herbal treatment · Paraffin treatment · Warm herbal neck wrap · Relaxing eye mask · 50-minute foot, leg, neck & shoulder massage · Regular polish",service,1
+Manicure,Fresh Start Manicure,25,no,25,Nail trim & shape · Cuticle care · Sugar scrub · Lotion · 6-minute massage · Regular polish,service,0.5
+Manicure,Silk Touch Manicure,35,no,35,Nail trim & shape · Cuticle care · Sugar scrub · Lotion · Paraffin treatment · 10-minute massage · Regular polish,service,1
+Manicure,Signature Manicure,40,no,40,Nail trim & shape · Cuticle care · Fresh flower soak · Exfoliating sugar scrub · Hot towel · Nourishing lotion · Hydrating mask · Paraffin treatment · 15-minute relaxing massage · Regular polish,service,1
+Manicure,Bath Bomb Spa Manicure,52,no,45,Hot stone therapy · Fresh flower soak · Sugar & salt scrub · Nourishing lotion · Hydrating mask · Paraffin treatment · 20-minute relaxing massage · Regular polish,service,1
+Manicure,Seasonal Escape Manicure,62,no,50,Fresh seasonal fruit · Fresh flower soak · Mineral sea salt soak · Sugar scrub · Nourishing lotion · Hydrating mask · Hot stone therapy · Paraffin treatment · 25-minute massage · Regular polish,service,1
+Manicure,Jelly Luxe Manicure,75,no,55,Jelly soak · Sugar scrub · Nourishing lotion · Hydrating mask · Fresh fruit · Warm neck wrap · Neck & shoulder massage · Warm massage candle · 35-minute massage · Regular polish,service,1
+Manicure,Herbal Wellness Ritual Manicure,95,no,60,"Traditional herbal soak · Lava treatment · Herbal treatment · Paraffin treatment · Warm herbal neck wrap · Relaxing eye mask · 50-minute hand, arm, neck & shoulder massage · Regular polish",service,1
+Manicure,Regular Polish Change – Hands,15,no,20,Regular polish on natural nails (no manicure),service,0.5
+Manicure,Gel Polish Change – Natural Nails,25,no,30,Gel polish on natural nails (no manicure),service,0.5
+Manicure,Gel Polish Change – Acrylic,30,no,30,Gel polish on your existing acrylic / enhancement set,service,0.5
+Full Set,Full Set Powder + Gel,55,yes,60,Price varies with length and shape,service,1
+Full Set,Full Set Color Powder,55,yes,60,Price varies with length and shape,service,1
+Full Set,White / Pearl Tip,55,yes,60,Price varies with length and shape,service,1
+Full Set,Pink and White,65,yes,75,Price varies with length and shape,service,1
+Full Set,Ombre,65,yes,75,Price varies with length and shape,service,1
+Full Set,Builder Gel,65,yes,70,Price varies with length and shape,service,1
+Full Set,Tap Gel,65,yes,70,Price varies with length and shape,service,1
+Full Set,Gel-X,65,yes,70,Price varies with length and shape,service,1
+Full Set,Dip on Real Nail,48,yes,50,Price varies with length and shape. Dip sets have no fill — a new set each visit.,service,1
+Full Set,Dip with Tip,55,yes,60,Price varies with length and shape. Dip sets have no fill — a new set each visit.,service,1
+Full Set,Dip Pink & White Real Nail,55,yes,60,Price varies with length and shape. Dip sets have no fill — a new set each visit.,service,1
+Full Set,Dip Ombre,65,yes,70,Price varies with length and shape. Dip sets have no fill — a new set each visit.,service,1
+Full Set,Dip Ombre + Tip,65,yes,70,Price varies with length and shape. Dip sets have no fill — a new set each visit.,service,1
+Full Set,Dip Pink & White,65,yes,70,Price varies with length and shape. Dip sets have no fill — a new set each visit.,service,1
+Fill In,Fill – Powder + Gel,45,yes,45,Maintenance on your existing set (2–3 weeks),service,1
+Fill In,Fill – Color Powder,50,yes,45,Maintenance on your existing set (2–3 weeks),service,1
+Fill In,Fill – White / Pearl Tip,45,yes,45,Maintenance on your existing set (2–3 weeks),service,1
+Fill In,Fill – Pink and White,55,yes,60,Maintenance on your existing set (2–3 weeks),service,1
+Fill In,Fill – Ombre,55,yes,60,Maintenance on your existing set (2–3 weeks),service,1
+Fill In,Fill – Builder Gel,55,yes,50,Maintenance on your existing set (2–3 weeks),service,1
+Fill In,Fill – Tap Gel,55,yes,50,Maintenance on your existing set (2–3 weeks),service,1
+Fill In,Fill – Gel-X,55,yes,50,Maintenance on your existing set (2–3 weeks),service,1
+Kids (Under 10),Kids Manicure,18,no,20,For children under 10,service,0.5
+Kids (Under 10),Kids Pedicure,25,no,30,For children under 10,service,0.5
+Kids (Under 10),Kids Gel Manicure,30,no,30,For children under 10,service,0.5
+Kids (Under 10),Kids Gel Pedicure,40,no,40,For children under 10,service,1
+Kids (Under 10),Kids Regular Polish – Hands,10,no,10,For children under 10,service,0.5
+Kids (Under 10),Kids Regular Polish – Toes,10,no,10,For children under 10,service,0.5
+Kids (Under 10),Kids Gel Polish – Hands,15,no,15,For children under 10,service,0.5
+Kids (Under 10),Kids Gel Polish – Toes,20,no,15,For children under 10,service,0.5
+Kids (Under 10),Kids Full Set,50,no,50,For children under 10,service,1
+Kids (Under 10),Kids Fill,45,no,40,For children under 10,service,1
+Waxing,Eyebrows,12,no,15,Please tell us about any allergies,service,0.5
+Waxing,Lip,8,no,10,Please tell us about any allergies,service,0.5
+Waxing,Chin,10,yes,10,Please tell us about any allergies,service,0.5
+Waxing,Whole Face,40,yes,30,Please tell us about any allergies,service,1
+Waxing,Sideburns,20,no,15,Please tell us about any allergies,service,0.5
+Waxing,Underarm,30,no,20,Please tell us about any allergies,service,0.5
+Waxing,Half Legs,50,no,30,Please tell us about any allergies,service,1
+Pedicure,Gel Polish Upgrade,20,no,15,Gel polish instead of regular polish,add-on,
+Manicure,Gel Polish Upgrade,20,no,15,Gel polish instead of regular polish,add-on,
+Pedicure,Scent: Rose Bloom,0,no,0,Choose your signature scent,add-on,
+Pedicure,Scent: Lavender Calm,0,no,0,Choose your signature scent,add-on,
+Pedicure,Scent: Citrus Sunrise,0,no,0,Choose your signature scent,add-on,
+Pedicure,Scent: Green Tea Detox,0,no,0,Choose your signature scent,add-on,
+Full Set,Cuticle Trimming,10,no,10,,add-on,
+Full Set,French,10,no,10,,add-on,
+Full Set,Shape,5,no,5,,add-on,
+Full Set,Design 2 Fingers,10,no,10,,add-on,
+Full Set,Design 10 Fingers,30,no,25,,add-on,
+Full Set,Cut Down / Trim Down,5,no,5,,add-on,
+Full Set,French Nature,10,no,10,,add-on,
+Full Set,Deep French,20,no,15,,add-on,
+Full Set,Chrome,15,no,10,,add-on,
+Full Set,Cat Eye,15,no,10,,add-on,
+Full Set,Long Length,5,no,10,,add-on,
+Fill In,Cuticle Trimming,10,no,10,,add-on,
+Fill In,French,10,no,10,,add-on,
+Fill In,Shape,5,no,5,,add-on,
+Fill In,Design 2 Fingers,10,no,10,,add-on,
+Fill In,Design 10 Fingers,30,no,25,,add-on,
+Fill In,Cut Down / Trim Down,5,no,5,,add-on,
+Fill In,French Nature,10,no,10,,add-on,
+Fill In,Deep French,20,no,15,,add-on,
+Fill In,Chrome,15,no,10,,add-on,
+Fill In,Cat Eye,15,no,10,,add-on,
+Fill In,Long Length,5,no,10,,add-on,
+All,Take Off Only,20,no,15,Remove your current set,add-on,
+All,Take Off – switch to Polish / Manicure,10,no,15,,add-on,
+All,Take Off Shellac Only,10,no,10,,add-on,

@@ -67,6 +67,30 @@ describe('the preview says what the import will do', () => {
   });
 });
 
+describe('add-ons and turns in the same file', () => {
+  it('a row typed add-on becomes an extra for its category, "All" = the whole menu; turns read ½ and 0.5', () => {
+    const rows = rowsToItems([
+      ['Category', 'Service name', 'Price', 'Duration', 'Row type', 'Turn'],
+      ['Full Set', 'Pink & White', '65+', '75', 'service', '1'],
+      ['Full Set', 'Chrome', '15', '10', 'add-on', ''],
+      ['All', 'Take Off', '10', '15', 'tuỳ chọn', ''],
+      ['', 'Polish change', '15', '20', '', '½'],
+      ['Waxing', 'Lip', '8', '10', 'service', '0.5'],
+    ]);
+    expect(rows.map((r) => [r.kind, r.category, r.name, r.turnValue])).toEqual([
+      ['service', 'Full Set', 'Pink & White', 1],
+      ['addon', 'Full Set', 'Chrome', undefined],
+      ['addon', '', 'Take Off', undefined],
+      ['service', '', 'Polish change', 0.5],
+      ['service', 'Waxing', 'Lip', 0.5],
+    ]);
+    expect(rows[0].priceFrom).toBe(true);
+    // The same extra on two categories is two rows; an existing SERVICE name does not block an add-on.
+    const st = checkRows(rowsToItems([['Category', 'Name', 'Price', 'Type'], ['Full Set', 'Chrome', '15', 'add-on'], ['Fill In', 'Chrome', '15', 'add-on'], ['Fill In', 'Chrome', '15', 'add-on'], ['Full Set', 'Chrome', '15', '']]), ['chrome'], false).map((r) => r.status);
+    expect(st).toEqual(['new', 'new', 'duplicate', 'duplicate']);
+  });
+});
+
 describe('the template', () => {
   it('reads back through the importer exactly', () => {
     for (const [vi, cur] of [[true, 'VND'], [false, 'USD'], [false, 'AUD']] as const) {
@@ -74,6 +98,9 @@ describe('the template', () => {
       expect(rows).toHaveLength(templateRows(vi, cur).length - 1);
       expect(rows.every((r) => r.name && !('err' in r && r.err))).toBe(true);
       expect(rows.some((r) => r.priceFrom)).toBe(true);
+      expect(rows.filter((r) => r.kind === 'addon')).toHaveLength(2);
+      expect(rows.find((r) => r.kind === 'addon' && !r.category)).toBeTruthy();
+      expect(rows.some((r) => r.turnValue === 0.5)).toBe(true);
     }
   });
   it('folds Vietnamese headers', () => {

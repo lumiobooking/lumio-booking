@@ -13,7 +13,7 @@ jest.mock('@prisma/client', () => {
 });
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WalkinsService } from './walkins.service';
-import { cleanTurnRules, DEFAULT_TURN_RULES, legTurns, appointmentTurns, tieCompare } from './turn-rules';
+import { cleanTurnRules, DEFAULT_TURN_RULES, legTurns, appointmentTurns, tieCompare, minutesLate, latePenalty, toBottomDelta, isReverseLeg, newTechBoost } from './turn-rules';
 import { lastDoneFromTickets, moneyFromTickets, pickTech, turnsFromTickets, TicketLike } from './walkin-legs';
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -22,8 +22,32 @@ describe('rules', () => {
   it('defaults = the old floor; junk is cleaned', () => {
     expect(cleanTurnRules(null)).toEqual(DEFAULT_TURN_RULES);
     expect(cleanTurnRules({ mode: 'MONEY', tieBreak: 'LAST_FINISHED', requestWeight: 0.5, appointmentWeight: 'NONE', halfBelowCents: 2500.4 }))
-      .toEqual({ mode: 'MONEY', tieBreak: 'LAST_FINISHED', requestWeight: 0.5, appointmentWeight: 'NONE', halfBelowCents: 2500 });
+      .toEqual({ ...DEFAULT_TURN_RULES, mode: 'MONEY', tieBreak: 'LAST_FINISHED', requestWeight: 0.5, appointmentWeight: 'NONE', halfBelowCents: 2500 });
+    expect(cleanTurnRules({ breakPolicy: 'BOTTOM', skipPolicy: 'COUNT_AS_TURN', latePolicy: 'PLUS_HALF', lateGraceMin: 10 })).toMatchObject({ breakPolicy: 'BOTTOM', skipPolicy: 'COUNT_AS_TURN', latePolicy: 'PLUS_HALF', lateGraceMin: 10 });
     expect(cleanTurnRules({ mode: 'X', requestWeight: 3, halfBelowCents: -5 })).toEqual(DEFAULT_TURN_RULES);
+    // Phase 3: the unwanted services, the new technician's head start, the owner out of the rotation.
+    expect(cleanTurnRules({ reverseServiceIds: ['a', 'a', 7, ''], newTechDays: 30.4, newTechBoost: 1, ownerInRotation: false }))
+      .toMatchObject({ reverseServiceIds: ['a'], newTechDays: 30, newTechBoost: 1, ownerInRotation: false });
+    expect(cleanTurnRules({ newTechDays: -2, newTechBoost: 3, ownerInRotation: 'yes' })).toMatchObject({ newTechDays: 0, newTechBoost: 0.5, ownerInRotation: true });
+  });
+  it('tua ngược and the new technician\'s head start', () => {
+    const r = { ...DEFAULT_TURN_RULES, reverseServiceIds: ['polish'], newTechDays: 14, newTechBoost: 1 as const };
+    expect(isReverseLeg(['polish'], r)).toBe(true);
+    expect(isReverseLeg(['polish', 'gel'], r)).toBe(false);
+    expect(isReverseLeg([], r)).toBe(false);
+    expect(isReverseLeg(['polish'], DEFAULT_TURN_RULES)).toBe(false);
+    const now = new Date('2026-10-09T12:00:00Z');
+    expect(newTechBoost(new Date('2026-10-01T12:00:00Z'), now, r)).toBe(-1);
+    expect(newTechBoost(new Date('2026-09-01T12:00:00Z'), now, r)).toBe(0);
+    expect(newTechBoost(new Date('2026-10-01T12:00:00Z'), now, DEFAULT_TURN_RULES)).toBe(0);
+    expect(newTechBoost(null, now, r)).toBe(0);
+    // The pick: the polish change goes to whoever is furthest ahead; the owner out of the rotation is never auto-picked.
+    const techs = [{ id: 'kim', name: 'kim', priority: 0, skills: [] }, { id: 'lisa', name: 'lisa', priority: 0, skills: [] }];
+    const turns = new Map([['kim', 3], ['lisa', 1]]);
+    expect(pickTech(techs, ['gel'], turns, { rules: r })?.id).toBe('lisa');
+    expect(pickTech(techs, ['polish'], turns, { rules: r })?.id).toBe('kim');
+    expect(pickTech(techs, ['gel'], turns, { rules: r, manualOnly: new Set(['lisa']) })?.id).toBe('kim');
+    expect(pickTech(techs, ['gel'], turns, { rules: r, manualOnly: new Set(['kim', 'lisa']) })).toBeNull();
   });
   it('what a leg and a booking are worth', () => {
     expect(legTurns({ turnValue: 1 })).toBe(1);
@@ -35,6 +59,18 @@ describe('rules', () => {
     expect(appointmentTurns(0.5)).toBe(1);
     expect(appointmentTurns(0.5, { ...DEFAULT_TURN_RULES, appointmentWeight: 'BY_SERVICE' })).toBe(0.5);
     expect(appointmentTurns(1, { ...DEFAULT_TURN_RULES, appointmentWeight: 'NONE' })).toBe(0);
+  });
+  it('late to the schedule, and the way to the end of the line', () => {
+    const day = Date.parse('2026-10-09T00:00:00Z');
+    expect(minutesLate(day + 9 * 3600_000, day, '09:00', 15)).toBe(0);           // on time
+    expect(minutesLate(day + 9.5 * 3600_000, day, '09:00', 15)).toBe(15);        // 30 late, 15 grace
+    expect(minutesLate(day + 10 * 3600_000, day, null, 15)).toBe(0);             // no schedule → never late
+    expect(latePenalty({ ...DEFAULT_TURN_RULES, latePolicy: 'PLUS_ONE' }, 15)).toBe(1);
+    expect(latePenalty({ ...DEFAULT_TURN_RULES, latePolicy: 'PLUS_HALF' }, 15)).toBe(0.5);
+    expect(latePenalty(DEFAULT_TURN_RULES, 15)).toBe(0);
+    expect(toBottomDelta(1, [3, 2])).toBe(2);
+    expect(toBottomDelta(3, [3, 2])).toBe(0);
+    expect(toBottomDelta(0, [])).toBe(0);
   });
   it('tie-breaks: free longest, or in first, then priority', () => {
     const a = { id: 'a', priority: 0 }, b = { id: 'b', priority: 5 };
@@ -121,6 +157,61 @@ describe('the floor applies the salon\'s rules — one salon at a time', () => {
   const admin = { userId: 'own', tenantId: 'A', role: 'SALON_ADMIN' } as never;
   const adminB = { userId: 'own-b', tenantId: 'B', role: 'SALON_ADMIN' } as never;
   const legItem = (staffId: string, price = 3000, extra: Row = {}) => ({ lineId: `l-${staffId}`, serviceId: 'svc', name: 'Gel', priceCents: price, staffId, legId: `L-${staffId}`, zone: 'HAND', legStatus: 'DONE', doneAt: new Date().toISOString(), turnValue: 1, ...extra });
+
+  it('a break takes her out of the rotation; back from it under BOTTOM she goes to the end; a skipped leg never returns to her and costs what the rule says', async () => {
+    const { svc, prisma } = make({
+      rules: { breakPolicy: 'BOTTOM', skipPolicy: 'COUNT_AS_TURN' },
+      walkIns: [
+        { id: 'w1', status: 'DONE', customerName: 'Mai', items: [legItem('lisa')] },
+        { id: 'w2', status: 'DONE', customerName: 'Ann', items: [legItem('lisa', 3000, { lineId: 'l-lisa-2', legId: 'L-lisa-2' })] },
+        { id: 'w3', status: 'SERVING', customerName: 'Zed', assignedStaffId: 'kim', items: [legItem('kim', 4000, { legStatus: 'SERVING', doneAt: null, startedAt: new Date().toISOString() })] },
+      ],
+    });
+    // Kim on a break: she is not in the running order.
+    await svc.setBreak(admin, 'kim', true);
+    let r: Row = await svc.turnsToday(admin);
+    expect(r.techs.find((t: Row) => t.id === 'kim')).toMatchObject({ onBreak: true, rank: null });
+    // Back: lisa has 2 turns, kim 0 → a +2 correction puts kim at the end.
+    await svc.setBreak(admin, 'kim', false);
+    r = await svc.turnsToday(admin);
+    expect(r.techs.find((t: Row) => t.id === 'kim')).toMatchObject({ onBreak: false, turns: 2, fromAdjustments: 2 });
+    expect(prisma.turnAdjustment.rows[0].reason).toMatch(/xuống cuối/);
+    // Kim passes Zed on: the leg is back in the queue, never for kim; COUNT_AS_TURN charges her the turn.
+    (svc as unknown as Row).writeItems = async (t: Row, items: Row[]) => { prisma.walkIn.rows.find((x: Row) => x.id === t.id).items = items; };
+    (svc as unknown as Row).mine = async (_u: unknown, id: string) => prisma.walkIn.rows.find((x: Row) => x.id === id);
+    (svc as unknown as Row).legItems = async (_t: string, t: Row, legId: string) => ({ items: t.items, legId });
+    (svc as unknown as Row).row = async () => ({ ok: true });
+    await svc.skipLeg(admin, 'w3', 'L-kim', 'không làm chân');
+    const w3 = prisma.walkIn.rows.find((x: Row) => x.id === 'w3');
+    // The dispatcher handed Zed straight to lisa (free, not on the skipped list) — never back to kim.
+    expect(w3.items[0]).toMatchObject({ staffId: 'lisa', legStatus: 'SERVING', skippedBy: ['kim'] });
+    expect(prisma.turnAdjustment.rows.some((a: Row) => a.staffId === 'kim' && a.delta === 1 && /Bỏ qua khách/.test(a.reason))).toBe(true);
+    // Another salon's owner cannot put kim on a break.
+    await expect(svc.setBreak(adminB, 'kim', true)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('the owner out of the rotation takes requested clients only; a new technician starts a turn behind', async () => {
+    const waiting = (id: string, name: string, extra: Row = {}) => ({ id, status: 'WAITING', customerName: name, doneAt: null, items: [{ lineId: `l-${id}`, serviceId: 'svc', name: 'Gel', priceCents: 3000, staffId: null, legId: `L-${id}`, zone: 'HAND', legStatus: 'WAITING', turnValue: 1, ...extra }] });
+    const { svc, prisma } = make({
+      rules: { ownerInRotation: false, newTechDays: 30, newTechBoost: 1 },
+      walkIns: [waiting('w1', 'Mai', { staffId: 'kim', pinned: true }), waiting('w2', 'Ann')],
+    });
+    // kim is the owner (her login is the salon admin) with a higher priority; lisa started last week.
+    const kim = prisma.staffMember.rows.find((r: Row) => r.id === 'kim'); kim.user = { role: 'SALON_ADMIN' }; kim.bookingPriority = 5; kim.createdAt = new Date('2024-01-01');
+    const lisa = prisma.staffMember.rows.find((r: Row) => r.id === 'lisa'); lisa.createdAt = new Date(Date.now() - 7 * 86400000);
+    const r: Row = await svc.turnsToday(admin);
+    expect(r.techs.find((t: Row) => t.id === 'kim')).toMatchObject({ inRotation: false, rank: null, turns: 0 });
+    expect(r.techs.find((t: Row) => t.id === 'lisa')).toMatchObject({ inRotation: true, rank: 1, turns: -1, fromBoost: -1 });
+    expect(r.entries.find((e: Row) => e.kind === 'boost')).toMatchObject({ staffId: 'lisa', value: -1 });
+    // Dispatch: Mai asked for kim → kim; Ann goes to lisa (kim would have won on priority inside the rotation).
+    (svc as unknown as Row).writeItems = async (t: Row, items: Row[]) => { prisma.walkIn.rows.find((x: Row) => x.id === t.id).items = items; };
+    await svc.seatWaitingQueue('A');
+    expect(prisma.walkIn.rows.find((x: Row) => x.id === 'w1').items[0]).toMatchObject({ staffId: 'kim', legStatus: 'SERVING' });
+    expect(prisma.walkIn.rows.find((x: Row) => x.id === 'w2').items[0]).toMatchObject({ staffId: 'lisa', legStatus: 'SERVING' });
+    // The other salon sees none of it.
+    const rb: Row = await svc.turnsToday(adminB);
+    expect(rb.techs.map((t: Row) => t.id)).toEqual(['zoe']);
+  });
 
   it('a booking seated on the floor is ONE turn, not a ticket turn plus a booking turn', async () => {
     const now = new Date();

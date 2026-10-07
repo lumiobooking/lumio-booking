@@ -56,6 +56,7 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
     const fresh = r.filter((x) => x.status === 'new');
     return {
       fresh: fresh.length,
+      addons: fresh.filter((x) => x.kind === 'addon').length,
       skip: r.filter((x) => x.status === 'duplicate').length,
       bad: r.filter((x) => x.status === 'error').length,
       cats: new Set(fresh.map((x) => x.category.trim().toLowerCase()).filter(Boolean)).size,
@@ -103,20 +104,21 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
 
   async function run() {
     const items = (rows ?? []).filter((r) => r.status === 'new').map((r) => ({
-      category: r.category, name: r.name, priceCents: r.priceCents, priceFrom: r.priceFrom,
+      kind: r.kind, category: r.category, name: r.name, priceCents: r.priceCents, priceFrom: r.priceFrom,
       durationMinutes: r.durationMinutes,
+      ...(r.turnValue !== undefined ? { turnValue: r.turnValue } : {}),
       ...(r.description ? { description: r.description } : {}),
       ...(r.imageUrl ? { imageUrl: r.imageUrl } : {}),
     }));
     if (!items.length) return;
     setBusy(true); setResult(null);
     try {
-      const r = await apiFetch<{ createdCategories: number; createdServices: number; skipped: number }>(
+      const r = await apiFetch<{ createdCategories: number; createdServices: number; createdAddons?: number; skipped: number }>(
         '/services/import', { method: 'POST', token, body: { items } },
       );
       setResult({ ok: true, text: L(
-        `✓ Đã thêm ${r.createdServices} dịch vụ, ${r.createdCategories} danh mục mới${r.skipped ? ` (${r.skipped} bỏ qua)` : ''}.`,
-        `✓ Added ${r.createdServices} services and ${r.createdCategories} new categories${r.skipped ? ` (${r.skipped} skipped)` : ''}.`,
+        `✓ Đã thêm ${r.createdServices} dịch vụ, ${r.createdCategories} danh mục mới${r.createdAddons ? `, ${r.createdAddons} tuỳ chọn thêm` : ''}${r.skipped ? ` (${r.skipped} bỏ qua)` : ''}.`,
+        `✓ Added ${r.createdServices} services and ${r.createdCategories} new categories${r.createdAddons ? `, ${r.createdAddons} add-ons` : ''}${r.skipped ? ` (${r.skipped} skipped)` : ''}.`,
       ) });
       setTimeout(onDone, 1200);
     } catch (e) {
@@ -225,6 +227,7 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
             <span style={{ fontSize: 13, color: 'var(--c94a3b8)', marginRight: 4 }}>📎 {source}</span>
             {pill(`✓ ${counts.fresh} ${L('mới', 'new')}`, 'var(--ink-good)', '#166534')}
             {counts.cats > 0 && pill(`${counts.cats} ${L('danh mục', 'categories')}`, 'var(--c94a3b8)', 'var(--c334155)')}
+            {counts.addons > 0 && pill(`+ ${counts.addons} ${L('tuỳ chọn thêm', 'add-ons')}`, 'var(--ink-sky)', 'var(--c334155)')}
             {counts.skip > 0 && pill(`↷ ${counts.skip} ${L('bỏ qua', 'skipped')}`, 'var(--ink-warn)', '#92400e')}
             {counts.bad > 0 && pill(`✗ ${counts.bad} ${L('lỗi', 'errors')}`, 'var(--ink-bad)', '#7f1d1d')}
             {(counts.skip > 0 || counts.bad > 0) && (
@@ -247,7 +250,7 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
                   <tr key={`${r.line}-${r.name}`} style={{ borderBottom: '1px solid var(--c1f2937)', background: r.status === 'error' ? 'rgba(239,68,68,.07)' : r.status === 'duplicate' ? 'rgba(245,158,11,.05)' : 'transparent' }}>
                     <td style={{ padding: '7px 10px', color: 'var(--c64748b)' }}>{r.line}</td>
                     <td style={{ padding: '7px 10px', color: 'var(--c94a3b8)' }}>{r.category || '—'}</td>
-                    <td style={{ padding: '7px 10px', fontWeight: 600 }}>{r.name || <i style={{ color: 'var(--c64748b)' }}>{L('(trống)', '(blank)')}</i>}</td>
+                    <td style={{ padding: '7px 10px', fontWeight: 600 }}>{r.name || <i style={{ color: 'var(--c64748b)' }}>{L('(trống)', '(blank)')}</i>}{r.kind === 'addon' && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--ink-sky)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 5px' }}>{L('tuỳ chọn', 'add-on')}{!r.category ? ` · ${L('cả menu', 'all')}` : ''}</span>}{r.kind === 'service' && r.turnValue !== undefined && r.turnValue !== 1 && <span style={{ marginLeft: 6, fontSize: 10.5, color: 'var(--c94a3b8)' }}>{r.turnValue} {L('tua', 'turn')}</span>}</td>
                     <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{r.status === 'error' && !r.priceCents ? '—' : `${r.priceFrom ? L('từ ', 'from ') : ''}${formatPrice(r.priceCents, currency)}`}</td>
                     <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: 'var(--c94a3b8)' }}>{r.durationMinutes} {L('phút', 'min')}</td>
                     <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 600, color: r.status === 'new' ? 'var(--ink-good)' : r.status === 'duplicate' ? 'var(--ink-warn)' : 'var(--ink-bad)' }}>
@@ -260,7 +263,7 @@ export function ServiceImport({ token, currency = 'USD', vi, existingNames, onDo
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12 }}>
             <button type="button" onClick={run} disabled={busy || counts.fresh === 0} style={{ ...ui.primaryBtn, opacity: busy || counts.fresh === 0 ? 0.55 : 1 }}>
-              {busy ? L('Đang nhập…', 'Importing…') : L(`Nhập ${counts.fresh} dịch vụ`, `Import ${counts.fresh} service${counts.fresh === 1 ? '' : 's'}`)}
+              {busy ? L('Đang nhập…', 'Importing…') : L(`Nhập ${counts.fresh} dòng`, `Import ${counts.fresh} row${counts.fresh === 1 ? '' : 's'}`)}
             </button>
             <button type="button" onClick={clear} style={ghostBtn}>{L('Chọn file khác', 'Choose another file')}</button>
             {counts.bad > 0 && !result && (

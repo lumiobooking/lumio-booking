@@ -59,6 +59,8 @@ interface StaffTurn {
   id: string; name: string; avatarUrl: string | null; turns: number; busy: boolean; nextUp: boolean;
   /** Minutes left on what she is doing (rough). */
   busyFor?: number | null;
+  /** Lunch / a break: not offered a client until she is back. */
+  onBreak?: boolean;
   /** Services she does; empty = all of them. */
   skills?: string[];
 }
@@ -601,7 +603,7 @@ function Inner() {
                   <label><WiLabel text={ind(lang === 'vi' ? 'Thợ' : 'Technician')} />
                     <select style={ui.input} value={g.staffChoice} onChange={(e) => setGuests((v) => v.map((x, j) => (j === i ? { ...x, staffChoice: e.target.value } : x)))}>
                       <option value="auto">{ind(lang === 'vi' ? 'Tự động — thợ tới lượt' : 'Auto — up next')}</option>
-                      {(board?.staff ?? []).map((sm) => <option key={sm.id} value={sm.id}>{sm.name}{sm.busy ? (lang === 'vi' ? ' · đang bận' : ' · busy') : ''}</option>)}
+                      {(board?.staff ?? []).map((sm) => <option key={sm.id} value={sm.id}>{sm.name}{sm.busy ? (lang === 'vi' ? ' · đang bận' : ' · busy') : sm.onBreak ? (lang === 'vi' ? ' · tạm nghỉ' : ' · on break') : ''}</option>)}
                     </select>
                   </label>
                 </div>
@@ -769,14 +771,15 @@ function Inner() {
           {staff.map((s) => {
             const isNext = s.nextUp;
             const border = isNext ? '#22c55e' : s.busy ? '#f59e0b' : 'var(--c334155)';
+            const status = isNext ? t('wi.nextUp') : s.busy ? (s.busyFor != null ? `${isMobile ? '○' : t('wi.serving') + ' ·'} ${t('wi.freeIn').replace('{m}', String(s.busyFor))}` : t('wi.serving')) : s.onBreak ? `☕ ${t('wi.onBreak')}` : t('wi.free');
             return (
-              <div key={s.id} style={{ background: isNext ? 'rgba(34,197,94,0.10)' : 'var(--c1e293b)', border: `1.5px solid ${border}`, borderRadius: 12, padding: isMobile ? '10px 8px' : '8px 12px', textAlign: 'center', ...(isMobile ? { flex: '0 0 104px' } : { flex: '0 0 auto', minWidth: 108 }) }}>
+              <div key={s.id} style={{ background: isNext ? 'rgba(34,197,94,0.10)' : 'var(--c1e293b)', border: `1.5px solid ${border}`, borderRadius: 12, opacity: s.onBreak && !s.busy ? 0.6 : 1, padding: isMobile ? '10px 8px' : '8px 12px', textAlign: 'center', ...(isMobile ? { flex: '0 0 104px' } : { flex: '0 0 auto', minWidth: 108 }) }}>
                 <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
                 <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--cf8fafc)', lineHeight: 1.1, margin: '3px 0 2px' }}>
                   {fmtTurns(s.turns)}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--c94a3b8)', marginLeft: 4 }}>{t('wi.turns')}</span>
                 </div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: isNext ? 'var(--ink-good)' : s.busy ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
-                  {isNext ? t('wi.nextUp') : s.busy ? (s.busyFor != null ? `${isMobile ? '○' : t('wi.serving') + ' ·'} ${t('wi.freeIn').replace('{m}', String(s.busyFor))}` : t('wi.serving')) : t('wi.free')}
+                  {status}
                 </div>
               </div>
             );

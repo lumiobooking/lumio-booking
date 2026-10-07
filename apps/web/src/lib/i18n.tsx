@@ -317,6 +317,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'wi.nextUp': { en: '● UP NEXT', vi: '● TỚI LƯỢT' },
   'wi.serving': { en: '○ Serving', vi: '○ Đang làm' },
   'wi.free': { en: 'Available', vi: 'Rảnh' },
+  'wi.onBreak': { en: 'On break', vi: 'Tạm nghỉ' },
   'wi.turns': { en: 'turns', vi: 'lượt' },
   'wi.waiting': { en: 'Waiting', vi: 'Đang chờ' },
   'wi.noWaiting': { en: 'No one waiting.', vi: 'Không có khách chờ.' },

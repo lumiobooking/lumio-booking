@@ -384,7 +384,7 @@ export class ServicesService {
 
   async bulkImport(
     user: AuthenticatedUser,
-    items: Array<{ category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string }>,
+    items: Array<{ kind?: 'service' | 'addon'; category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string; turnValue?: number }>,
     targetTenantId?: string,
   ) {
     // Super admin may aim at any salon; a salon admin is pinned to their own by
@@ -394,9 +394,11 @@ export class ServicesService {
     if (!Array.isArray(items) || items.length === 0) throw new BadRequestException('Nothing to import');
     if (items.length > 500) throw new BadRequestException('Too many rows (max 500)');
 
-    const [cats, svcs] = await Promise.all([
+    const [cats, svcs, sharedAddons] = await Promise.all([
       this.prisma.serviceCategory.findMany({ where: { tenantId }, select: { id: true, name: true } }),
       this.prisma.service.findMany({ where: { tenantId }, select: { name: true } }),
+      // Extras already shared on a category or the whole menu, so a re-import adds none twice.
+      this.prisma.serviceAddon.findMany({ where: { tenantId, serviceId: null }, select: { name: true, categoryId: true } }).catch(() => [] as { name: string; categoryId: string | null }[]),
     ]);
     // The salon's own currency, read here rather than trusted from the client.
     // This used to write 'USD' on every imported row, so a Vietnamese or
@@ -409,10 +411,14 @@ export class ServicesService {
     const catByName = new Map(cats.map((c) => [c.name.toLowerCase(), c.id]));
     const have = new Set(svcs.map((s) => s.name.toLowerCase()));
     let sort = cats.length;
-    let createdCategories = 0, createdServices = 0, skipped = 0;
+    let createdCategories = 0, createdServices = 0, createdAddons = 0, skipped = 0;
     const orderByCat = new Map<string, number>();
+    const haveAddon = new Set(sharedAddons.map((a) => `${a.categoryId ?? ''}:${a.name.trim().toLowerCase()}`));
+    const turnOf = (v: unknown) => { const n = Number(v); return v !== undefined && v !== null && v !== '' && Number.isFinite(n) && n >= 0 && n <= 5 ? Math.round(n * 2) / 2 : undefined; };
 
-    for (const raw of items) {
+    // Services first, so an extra on a category the same file introduces finds it.
+    const addonRows = items.filter((r) => r?.kind === 'addon');
+    for (const raw of items.filter((r) => r?.kind !== 'addon')) {
       const name = (raw?.name ?? '').trim();
       if (!name) { skipped++; continue; }
       if (have.has(name.toLowerCase())) { skipped++; continue; }
@@ -441,13 +447,34 @@ export class ServicesService {
           priceFrom: !!raw.priceFrom,
           imageUrl: cleanImageUrl(raw.imageUrl),
           categoryId, sortOrder: order, isActive: true, currency,
-        },
+          ...(turnOf(raw.turnValue) !== undefined ? ({ turnValue: turnOf(raw.turnValue) } as object) : {}),
+        } as never,
       });
       have.add(name.toLowerCase());
       createdServices++;
     }
-    await this.audit.log({ tenantId, userId: user.userId, action: 'service.bulk_import', resourceType: 'tenant', resourceId: tenantId, metadata: { createdCategories, createdServices, skipped } });
-    return { createdCategories, createdServices, skipped };
+    // Extras: on every service of a category (by name; created above or already there), or on the whole menu.
+    for (const raw of addonRows) {
+      const name = (raw?.name ?? '').trim();
+      if (!name) { skipped++; continue; }
+      const catName = (raw.category ?? '').trim();
+      const categoryId = catName ? catByName.get(catName.toLowerCase()) ?? null : null;
+      if (catName && !categoryId) { skipped++; continue; } // an extra for a category the salon does not have
+      const key = `${categoryId ?? ''}:${name.toLowerCase()}`;
+      if (haveAddon.has(key)) { skipped++; continue; }
+      await this.prisma.serviceAddon.create({
+        data: {
+          tenantId, name: name.slice(0, 120), currency,
+          durationMinutes: Math.min(600, Math.max(0, Math.round(Number(raw.durationMinutes) || 0))),
+          priceCents: Math.max(0, Math.round(Number(raw.priceCents) || 0)),
+          isActive: true, serviceId: null, categoryId,
+        } as never,
+      });
+      haveAddon.add(key);
+      createdAddons++;
+    }
+    await this.audit.log({ tenantId, userId: user.userId, action: 'service.bulk_import', resourceType: 'tenant', resourceId: tenantId, metadata: { createdCategories, createdServices, createdAddons, skipped } });
+    return { createdCategories, createdServices, createdAddons, skipped };
   }
 
   // ---- Service add-ons (extras) ------------------------------------------

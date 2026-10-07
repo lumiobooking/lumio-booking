@@ -37,7 +37,9 @@ interface Chair {
 }
 interface MyChair { staffId: string | null; currency: string; serving: Chair[]; techNames?: Record<string, string> }
 interface MyDay {
-  staffId: string | null; currency: string; turns: number; busy: boolean; freeRank: number | null; queue: number;
+  staffId: string | null; currency: string; turns: number; busy: boolean; onBreak?: boolean; freeRank: number | null; queue: number;
+  /** The rotation as the dispatcher reads it, in order — so "why not me yet" has an answer. */
+  techs?: { id: string; name: string; rank: number; turns: number; busy: boolean; busyFor?: number | null; onBreak?: boolean; inRotation?: boolean; me: boolean; nextUp: boolean }[];
   today: { serviceCents: number; services: number; tipsCents: number; directTipsCents: number };
 }
 interface Svc { id: string; name: string; priceCents: number; durationMinutes?: number }
@@ -88,7 +90,8 @@ function Inner() {
   const [chairs, setChairs] = useState<ChairOpt[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sheet, setSheet] = useState<{ kind: 'finish' | 'add' | 'chair'; id: string } | null>(null);
+  const [sheet, setSheet] = useState<{ kind: 'finish' | 'add' | 'chair' | 'skip'; id: string } | null>(null);
+  const [skipReason, setSkipReason] = useState('');
   const [open, setOpen] = useState<{ b: StaffBooking; reject: boolean } | null>(null);
   const [banner, setBanner] = useState<{ name: string; part: string } | null>(null);
   const [nextVisit, setNextVisit] = useState<NextVisitClient | null>(null);
@@ -230,7 +233,18 @@ function Inner() {
         <SectionLabel right={<span style={{ fontSize: 12, fontWeight: 700, color: serving.length ? 'var(--ink-good)' : 'var(--ink-link)' }}>{serving.length ? L(vi, '● Đang làm', '● Working') : L(vi, '● Rảnh', '● Free')}</span>}>
           {L(vi, 'Bây giờ', 'Right now')}
         </SectionLabel>
-        {serving.length === 0 ? (
+        {serving.length === 0 && day?.onBreak ? (
+          <div style={{ ...st.card, display: 'flex', alignItems: 'center', gap: 16, borderColor: 'var(--ink-warn)' }}>
+            <div style={{ width: 64, height: 64, borderRadius: 999, background: 'var(--wash-amber-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Icon d={IC.clock} size={28} color="var(--ink-warn)" />
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{L(vi, 'Đang tạm nghỉ', 'On a break')}</div>
+              <div style={{ fontSize: 14, color: 'var(--c94a3b8)', marginTop: 4, lineHeight: 1.45 }}>{L(vi, 'Hệ thống không giao khách cho bạn. Bấm "Quay lại" khi sẵn sàng.', 'No clients are handed to you. Tap "Back" when ready.')}</div>
+            </div>
+            <button type="button" disabled={busy} onClick={() => call('/my-chair/back', 'POST').then((ok) => ok && show(L(vi, 'Đã quay lại vòng tua', 'Back in the rotation')))} style={{ ...st.primary, height: 48 }}>{L(vi, 'Quay lại', 'Back')}</button>
+          </div>
+        ) : serving.length === 0 ? (
           <div style={{ ...st.card, display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ width: 64, height: 64, borderRadius: 999, background: 'var(--c1e1b4b)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <span style={{ fontSize: 26, fontWeight: 800, color: 'var(--cc7d2fe)', lineHeight: 1 }}>{day?.freeRank ?? '–'}</span>
@@ -246,6 +260,18 @@ function Inner() {
                     : L(vi, 'Có khách, hệ thống sẽ tự giao cho bạn.', 'Clients are handed out automatically.')}
                 {day && day.queue > 0 ? L(vi, ` · ${day.queue} khách đang chờ.`, ` · ${day.queue} waiting.`) : ''}
               </div>
+              {day?.freeRank && day.freeRank > 1 && (day.techs ?? []).length > 0 && (
+                <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 6, lineHeight: 1.5 }}>
+                  {L(vi, 'Vì sao: ', 'Why: ')}
+                  {(day.techs ?? []).filter((t) => !t.me && !t.busy && !t.onBreak && t.inRotation !== false && t.rank < ((day.techs ?? []).find((x) => x.me)?.rank ?? 99))
+                    .map((t) => `${t.name} ${t.turns % 1 === 0 ? t.turns : t.turns.toFixed(1)} ${vi ? 'tua' : ''}`.trim()).join(' · ')}
+                  {' '}{L(vi, `— bạn ${day.turns % 1 === 0 ? day.turns : day.turns.toFixed(1)} tua.`, `— you ${day.turns % 1 === 0 ? day.turns : day.turns.toFixed(1)}.`)}
+                </div>
+              )}
+              <button type="button" disabled={busy} onClick={() => call('/my-chair/break', 'POST').then((ok) => ok && show(L(vi, 'Đã tạm nghỉ — không nhận khách', 'On a break — no clients for now')))}
+                style={{ background: 'transparent', border: 'none', color: 'var(--ink-link)', fontSize: 13, fontWeight: 700, padding: '8px 0 0', cursor: 'pointer' }}>
+                {L(vi, 'Tạm nghỉ (ăn trưa, ra ngoài)', 'Take a break')}
+              </button>
             </div>
           </div>
         ) : (
@@ -256,7 +282,8 @@ function Inner() {
                 onFinish={() => setSheet({ kind: 'finish', id: w.id })}
                 onAdd={() => { setQuery(''); setSheet({ kind: 'add', id: w.id }); }}
                 onChair={() => setSheet({ kind: 'chair', id: w.id })}
-                onPay={() => call(`/my-chair/${w.id}/wait-payment`, 'PATCH').then((ok) => ok && show(L(vi, 'Đã báo quầy: khách ra trả tiền', 'Sent to the desk to pay')))} />
+                onPay={() => call(`/my-chair/${w.id}/wait-payment`, 'PATCH').then((ok) => ok && show(L(vi, 'Đã báo quầy: khách ra trả tiền', 'Sent to the desk to pay')))}
+                onSkip={() => { setSkipReason(''); setSheet({ kind: 'skip', id: w.id }); }} />
             ))}
           </div>
         )}
@@ -339,6 +366,31 @@ function Inner() {
         })()}
       </Sheet>
 
+      <Sheet open={sheet?.kind === 'skip' && !!sheetTicket} onClose={() => setSheet(null)} label={L(vi, 'Bỏ qua khách', 'Pass on')}>
+        {sheetTicket && (
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{L(vi, `Không nhận ${sheetTicket.customerName || 'khách này'}?`, `Pass ${sheetTicket.customerName || 'this client'} on?`)}</div>
+            <div style={{ fontSize: 14, color: 'var(--c94a3b8)', marginTop: 4, lineHeight: 1.5 }}>{L(vi, 'Khách về lại hàng chờ và được giao cho thợ rảnh tiếp theo. Tuỳ quy tắc của tiệm, lượt này có thể vẫn tính là tua của bạn.', 'The client goes back to the queue for the next free technician. Under the salon’s rules this may still count as your turn.')}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 14 }}>
+              {[L(vi, 'Không làm dịch vụ này', "I don't do this service"), L(vi, 'Khách yêu cầu thợ khác', 'Client wants someone else'), L(vi, 'Cần nghỉ gấp', 'Need a break now'), L(vi, 'Lý do khác', 'Other reason')].map((r) => (
+                <button key={r} type="button" onClick={() => setSkipReason(r)} aria-pressed={skipReason === r}
+                  style={{ minHeight: 52, padding: '8px 10px', borderRadius: 12, border: `1.5px solid ${skipReason === r ? '#6366f1' : 'var(--line-strong)'}`, background: skipReason === r ? 'var(--c1e1b4b)' : 'var(--c0f172a)', color: skipReason === r ? 'var(--cc7d2fe)' : 'var(--ce2e8f0)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>{r}</button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <button type="button" onClick={() => setSheet(null)} style={{ ...st.ghost, flex: 1, height: 56 }}>{L(vi, 'Giữ khách', 'Keep')}</button>
+              <button type="button" disabled={!skipReason || busy} onClick={async () => {
+                const v = view(sheetTicket, me);
+                const leg = v.mine[0];
+                if (!leg) return;
+                setSheet(null);
+                if (await call(`/my-chair/${sheetTicket.id}/legs/${leg.legId}/skip`, 'POST', { reason: skipReason })) show(L(vi, 'Đã chuyển khách về hàng chờ', 'Client sent back to the queue'));
+              }} style={{ ...st.primary, flex: 2, height: 56, opacity: skipReason ? 1 : 0.45 }}>{L(vi, 'Bỏ qua', 'Pass on')}</button>
+            </div>
+          </div>
+        )}
+      </Sheet>
+
       <NextVisitSheet client={nextVisit} services={services} token={token} vi={vi} onClose={() => setNextVisit(null)} onBooked={(t) => show(t)} />
 
       <Sheet open={sheet?.kind === 'add'} onClose={() => setSheet(null)} label={L(vi, 'Thêm dịch vụ', 'Add a service')}>
@@ -400,9 +452,9 @@ function Inner() {
   );
 }
 
-function NowCard({ w, me, vi, currency, techNames, busy, inlineFinish, onFinish, onAdd, onChair, onPay }: {
+function NowCard({ w, me, vi, currency, techNames, busy, inlineFinish, onFinish, onAdd, onChair, onPay, onSkip }: {
   w: Chair; me: string | null; vi: boolean; currency: string; techNames: Record<string, string>; busy: boolean; inlineFinish: boolean;
-  onFinish: () => void; onAdd: () => void; onChair: () => void; onPay: () => void;
+  onFinish: () => void; onAdd: () => void; onChair: () => void; onPay: () => void; onSkip?: () => void;
 }) {
   const v = view(w, me);
   const fresh = minsSince(v.startedAt) < 3;
@@ -455,6 +507,12 @@ function NowCard({ w, me, vi, currency, techNames, busy, inlineFinish, onFinish,
         <button type="button" disabled={busy} onClick={onAdd} style={{ ...st.ghost, flex: 1, padding: '0 10px' }}><Icon d={IC.plus} size={18} stroke={2.2} />{L(vi, 'Thêm dịch vụ', 'Add service')}</button>
         <button type="button" disabled={busy} onClick={onChair} style={{ ...st.ghost, flex: 1, padding: '0 10px' }}><Icon d={IC.chair} size={18} />{L(vi, 'Ghế', 'Chair')}</button>
       </div>
+      {/* Pass the customer on — only while the leg is fresh, so a half-done job is never bounced. */}
+      {onSkip && fresh && (
+        <button type="button" disabled={busy} onClick={onSkip} style={{ background: 'transparent', border: 'none', color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 600, padding: '10px 0 0', cursor: 'pointer', width: '100%' }}>
+          {L(vi, 'Không nhận khách này (bỏ qua)', 'Pass this client on')}
+        </button>
+      )}
       {v.othersOpen.length === 0 && (
         w.awaitingPayment
           ? <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: 'var(--ink-warn)', textAlign: 'center' }}>{L(vi, 'Khách đang chờ trả tiền ở quầy', 'Waiting to pay at the desk')}</div>

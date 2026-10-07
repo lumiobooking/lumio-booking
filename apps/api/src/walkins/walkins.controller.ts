@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, MessageEvent, Param, Patch, Post, Sse } from '@nestjs/common';
+import { Body, Controller, Delete, Get, MessageEvent, Param, Patch, Post, Query, Sse } from '@nestjs/common';
 import { Observable, interval, merge } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { liveEvents } from '../common/live-events';
@@ -74,6 +74,9 @@ class StationDto {
   @IsOptional() @IsString() @MaxLength(24) station?: string;
 }
 
+class BreakDto { @IsBoolean() on!: boolean; }
+class SkipDto { @IsOptional() @IsString() @MaxLength(200) reason?: string; }
+
 class TurnAdjustDto {
   @IsString() staffId!: string;
   @IsNumber() @Min(-20) @Max(20) delta!: number;
@@ -87,6 +90,14 @@ class TurnRulesDto {
   @IsOptional() @IsIn(['PRIORITY_LIST', 'LAST_FINISHED', 'CLOCK_IN']) tieBreak?: string;
   @IsOptional() @IsIn([1, 0.5, 0]) requestWeight?: number;
   @IsOptional() @IsIn(['ONE', 'BY_SERVICE', 'NONE']) appointmentWeight?: string;
+  @IsOptional() @IsIn(['HOLD', 'BOTTOM']) breakPolicy?: string;
+  @IsOptional() @IsIn(['FREE', 'COUNT_AS_TURN', 'BOTTOM']) skipPolicy?: string;
+  @IsOptional() @IsIn(['NONE', 'PLUS_HALF', 'PLUS_ONE']) latePolicy?: string;
+  @IsOptional() @IsInt() @Min(0) @Max(240) lateGraceMin?: number;
+  @IsOptional() @IsArray() @IsString({ each: true }) @MaxLength(64, { each: true }) reverseServiceIds?: string[];
+  @IsOptional() @IsInt() @Min(0) @Max(365) newTechDays?: number;
+  @IsOptional() @IsIn([0.5, 1]) newTechBoost?: number;
+  @IsOptional() @IsBoolean() ownerInRotation?: boolean;
 }
 
 class ChairDto {
@@ -134,6 +145,12 @@ export class WalkinsController {
     return this.walkins.turnsToday(user);
   }
 
+  /** The week (or any range ≤ 62 days) per technician: turns, money, requests, skips, days. */
+  @Get('turn-report')
+  turnReport(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.walkins.turnReport(user, from, to);
+  }
+
   @Roles(UserRole.SALON_ADMIN)
   @Post('turns/adjust')
   adjustTurn(@CurrentUser() user: AuthenticatedUser, @Body() dto: TurnAdjustDto) {
@@ -144,6 +161,12 @@ export class WalkinsController {
   @Delete('turns/adjust/:id')
   removeAdjustment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.nudge(user, null, this.walkins.removeAdjustment(user, id));
+  }
+
+  /** The desk puts a technician on a break, or takes her off it. */
+  @Post('techs/:staffId/break')
+  setBreak(@CurrentUser() user: AuthenticatedUser, @Param('staffId') staffId: string, @Body() dto: BreakDto) {
+    return this.nudge(user, null, this.walkins.setBreak(user, staffId, dto.on));
   }
 
   @Get('turn-rules')
@@ -184,6 +207,12 @@ export class WalkinsController {
   }
 
   /** One leg finished; the ticket stays open for the next one. */
+  /** The desk passes a customer on from her technician (bỏ qua), with the reason. */
+  @Post(':id/legs/:legId/skip')
+  skipLeg(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('legId') legId: string, @Body() dto: SkipDto) {
+    return this.nudge(user, id, this.walkins.skipLeg(user, id, legId, dto.reason));
+  }
+
   @Patch(':id/legs/:legId/done')
   doneLeg(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('legId') legId: string) {
     return this.nudge(user, id, this.walkins.doneLeg(user, id, legId));

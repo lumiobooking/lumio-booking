@@ -123,7 +123,7 @@ export class ServicesController {
   @Roles(UserRole.SALON_ADMIN, UserRole.SUPER_ADMIN)
   bulkImport(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { tenantId?: string; items: Array<{ category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string }> },
+    @Body() dto: { tenantId?: string; items: Array<{ kind?: 'service' | 'addon'; category?: string; name: string; priceCents: number; durationMinutes?: number; priceFrom?: boolean; description?: string; imageUrl?: string; turnValue?: number }> },
   ) {
     return this.servicesService.bulkImport(user, dto?.items ?? [], dto?.tenantId);
   }

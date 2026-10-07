@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { chosenIndustry, personaFor } from '../common/business-persona';
+import { statesPrice, noQuoteLine, NO_QUOTE_RULE } from './quote-guards';
 import { dayKeyTz } from '../common/salon-time';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import {
@@ -159,7 +160,7 @@ export class MessengerService implements OnModuleInit {
   }
 
   private async resubscribeAllPages(): Promise<void> {
-    const FIELDS = 'messages,messaging_postbacks,message_reactions,message_echoes';
+    const FIELDS = 'messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers';
     const seen = new Set<string>();
     const subscribe = async (pageId: string, token: string) => {
       if (!pageId || !token || seen.has(pageId)) return;
@@ -365,6 +366,7 @@ export class MessengerService implements OnModuleInit {
       aiInstruction: c?.aiInstruction ?? '',
       botFacts: Array.isArray(c?.botFacts) ? (c!.botFacts as unknown as BotFact[]) : [],
       botMode: ((c as unknown as { botMode?: string } | null)?.botMode === 'sales' ? 'sales' : 'booking'),
+      quotePolicy: ((c as unknown as { quotePolicy?: string } | null)?.quotePolicy === 'facts' ? 'facts' : 'sales'),
       leadEmail: (c as unknown as { leadEmail?: string | null } | null)?.leadEmail ?? '',
       aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
       webhookUrl: `${this.apiBase()}/api/messenger/webhook`,
@@ -627,7 +629,7 @@ export class MessengerService implements OnModuleInit {
   private async subscribeIgAccount(igId: string, pageToken: string): Promise<void> {
     try {
       const res = await fetch(
-        `${GRAPH}/${igId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes&access_token=${encodeURIComponent(pageToken)}`,
+        `${GRAPH}/${igId}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers&access_token=${encodeURIComponent(pageToken)}`,
         { method: 'POST', signal: AbortSignal.timeout(8000) },
       );
       const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string } };
@@ -703,7 +705,7 @@ export class MessengerService implements OnModuleInit {
         }).catch(() => undefined);
       }
       if (known || legacy) {
-        await fetch(`${GRAPH}/${p.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes&access_token=${encodeURIComponent(p.access_token)}`, { method: 'POST' }).catch(() => undefined);
+        await fetch(`${GRAPH}/${p.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers&access_token=${encodeURIComponent(p.access_token)}`, { method: 'POST' }).catch(() => undefined);
         healed += 1;
       }
     }
@@ -756,7 +758,7 @@ export class MessengerService implements OnModuleInit {
     // the salon found out from a customer.
     // Subscribe the Page to our app's webhook so messages start flowing.
     await fetch(
-      `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes&access_token=${encodeURIComponent(page.access_token)}`,
+      `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers&access_token=${encodeURIComponent(page.access_token)}`,
       { method: 'POST' },
     ).catch(() => undefined);
     await this.setupMessengerProfile(page.access_token, greeting);
@@ -951,7 +953,7 @@ export class MessengerService implements OnModuleInit {
 
   async updateSettings(
     user: AuthenticatedUser,
-    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; closing?: string; agentName?: string; bizIntro?: string; aiInstruction?: string; botFacts?: BotFact[]; botMode?: 'booking' | 'sales'; leadEmail?: string; humanActiveMins?: number; graceMins?: number; chatAssignMode?: string; chatMaxOpenPerAgent?: number; chatPreferUsualTech?: boolean },
+    dto: { pageId?: string; igId?: string; pageToken?: string; enabled?: boolean; greeting?: string; closing?: string; agentName?: string; bizIntro?: string; aiInstruction?: string; botFacts?: BotFact[]; botMode?: 'booking' | 'sales'; quotePolicy?: 'sales' | 'facts'; leadEmail?: string; humanActiveMins?: number; graceMins?: number; chatAssignMode?: string; chatMaxOpenPerAgent?: number; chatPreferUsualTech?: boolean },
   ) {
     const tenantId = this.tenantId(user);
     const cur = await this.prisma.messengerConnection.findUnique({ where: { tenantId } });
@@ -996,6 +998,8 @@ export class MessengerService implements OnModuleInit {
       botMode: (user.supportSession === true || user.role === UserRole.SUPER_ADMIN) && (dto.botMode === 'sales' || dto.botMode === 'booking')
         ? dto.botMode
         : ((cur as unknown as { botMode?: string } | null)?.botMode ?? 'booking'),
+      // Who names a price (sales mode): the page owner's call, nothing platform-level about it.
+      ...(dto.quotePolicy === 'sales' || dto.quotePolicy === 'facts' ? ({ quotePolicy: dto.quotePolicy } as object) : {}),
       leadEmail: (user.supportSession === true || user.role === UserRole.SUPER_ADMIN) && typeof dto.leadEmail === 'string'
         ? (dto.leadEmail.trim().slice(0, 200) || null)
         : ((cur as unknown as { leadEmail?: string | null } | null)?.leadEmail ?? null),
@@ -1997,7 +2001,10 @@ export class MessengerService implements OnModuleInit {
         .map((f) => (typeof f === 'string' ? f : f?.name || ''))
         .filter(Boolean);
       out.fields = names;
-      const need = ['messages', 'messaging_postbacks', 'message_echoes'];
+      // messaging_handovers: so a Page whose conversations another app holds
+      // (Meta's Business Agent) still reaches us — see the standby branch of
+      // handleWebhook. Page-object only; Instagram has no handover edge here.
+      const need = object === 'page' ? ['messages', 'messaging_postbacks', 'message_echoes', 'messaging_handovers'] : ['messages', 'messaging_postbacks', 'message_echoes'];
       const missing = need.filter((n) => !names.includes(n));
       if (!missing.length) {
         out.echoOk = true;
@@ -2182,7 +2189,7 @@ export class MessengerService implements OnModuleInit {
 
   /** Meta POSTs message events here. We ack immediately and process async. */
   async handleWebhook(body: unknown): Promise<void> {
-    const b = body as { object?: string; entry?: { id?: string; messaging?: MessagingEvent[] }[] };
+    const b = body as { object?: string; entry?: { id?: string; messaging?: MessagingEvent[]; standby?: MessagingEvent[] }[] };
     // Instagram Direct and Messenger arrive on the SAME webhook; the object tells
     // them apart. We keep the channel on the conversation so the dashboard (and
     // an App Review reviewer) can see which surface each message came from.
@@ -2191,6 +2198,35 @@ export class MessengerService implements OnModuleInit {
     if ((b?.object !== 'page' && b?.object !== 'instagram') || !Array.isArray(b.entry)) return;
     for (const entry of b.entry) {
       const entryId = entry.id || ''; // Page id (Messenger) or IG account id (Instagram)
+      // STANDBY. When another app owns the conversation under Meta's Handover
+      // Protocol — Meta's own "Business Agent" AI switched on in Business
+      // Suite, or any other automation set as Primary Receiver — the Page's
+      // messages reach us HERE instead of in `messaging`, and used to be
+      // dropped on the floor: the inbox stayed empty while Meta's AI chatted
+      // with the salon's customers. "Other pages work, this one does not."
+      // A customer line in standby is recorded like any other (the inbox and
+      // the phones see it), and, when the salon's bot is on, we take the
+      // thread back first so our reply is the one that lands.
+      for (const ev of entry.standby || []) {
+        const senderId = ev.sender?.id;
+        if (!senderId) continue;
+        if (ev.message?.is_echo) {
+          // A person typing in Business Suite's inbox echoes through the Page
+          // Inbox app: that is a human holding the chat, and the bot yields as
+          // it always has. Any other app's echo is the automation we displace.
+          const appId = ev.message.app_id != null ? String(ev.message.app_id) : '';
+          if (appId === PAGE_INBOX_APP_ID && ev.recipient?.id) await this.pauseForHuman(entryId, ev.recipient.id, ev.message?.text).catch(() => undefined);
+          continue;
+        }
+        const text = ev.message?.text;
+        const media = metaAttachments(ev.message);
+        if (!text && !media.length) continue;
+        this.logger.log(`standby message on ${entryId} (another app holds the thread) — taking control`);
+        await this.takeThreadControl(entryId, senderId).catch((e) => this.logger.warn(`take_thread_control failed: ${String(e).slice(0, 160)}`));
+        await this.handleMessage(entryId, senderId, text || describeMedia(media), ev.timestamp, channel, media).catch((e) =>
+          this.logger.warn(`handleMessage (standby) failed: ${String(e).slice(0, 160)}`),
+        );
+      }
       for (const ev of entry.messaging || []) {
         const senderId = ev.sender?.id;
         if (!senderId) continue;
@@ -2298,6 +2334,35 @@ export class MessengerService implements OnModuleInit {
    * page row + its tenant. New pages live in messenger_pages; connections made
    * before the multi-page era fall back to the legacy columns.
    */
+  /**
+   * Handover Protocol: pull the conversation back from whichever app holds it
+   * (Meta's Business Agent, a chat tool the salon tried before). As Primary
+   * Receiver `take_thread_control` works outright; as Secondary we can only
+   * `request_thread_control`, which the Page Inbox and Meta's agent grant.
+   * Only when this salon's bot is ON — a salon that turned the bot off keeps
+   * whatever it set up on Meta's side, and the message is still recorded.
+   */
+  private async takeThreadControl(entryId: string, customerId: string): Promise<'taken' | 'requested' | 'skipped'> {
+    const page = await this.pageByEntry(entryId);
+    if (!page || !page.enabled) return 'skipped';
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId: page.tenantId }, select: { enabled: true } });
+    if (!conn?.enabled) return 'skipped';
+    const body = JSON.stringify({ recipient: { id: customerId }, metadata: 'LUMIO_BOT' });
+    const call = async (edge: 'take_thread_control' | 'request_thread_control') => {
+      const res = await fetch(`${GRAPH}/${page.pageId}/${edge}?access_token=${encodeURIComponent(page.pageToken)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(8000),
+      });
+      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string } };
+      if (!res.ok || !json.success) throw new Error(json.error?.message || `${edge} HTTP ${res.status}`);
+    };
+    try { await call('take_thread_control'); return 'taken'; }
+    catch (e) {
+      this.logger.log(`take_thread_control refused (${String(e).slice(0, 100)}) — requesting instead`);
+      await call('request_thread_control');
+      return 'requested';
+    }
+  }
+
   private async pageByEntry(entryId: string): Promise<{ tenantId: string; pageId: string; pageToken: string; enabled: boolean } | null> {
     const pg = await this.prisma.messengerPage.findFirst({ where: { OR: [{ pageId: entryId }, { igId: entryId }] } });
     if (pg) return { tenantId: pg.tenantId, pageId: pg.pageId, pageToken: pg.pageToken, enabled: pg.enabled };
@@ -2492,7 +2557,12 @@ export class MessengerService implements OnModuleInit {
     // conn.enabled is the Messenger/Instagram switch. The website widget has
     // its own (web_chat.enabled, checked before this is called), so a salon
     // sold chat-on-website without the Facebook bot still gets answered.
-    if (!conn.enabled && channel !== 'web') return;
+    // The Messenger/Instagram bot switch. OFF used to drop the message here —
+    // nothing in the inbox, no chime, no push — so a salon that had not turned
+    // the AI on yet saw "no conversations" while its customers were writing.
+    // Now OFF only means "nobody answers automatically": the conversation is
+    // recorded and the phones are woken; the reply is left to a person.
+    const botOff = !conn.enabled && channel !== 'web';
     const pageId = page.pageId;
     const thread = await this.prisma.messengerThread.upsert({
       where: { pageId_senderId: { pageId, senderId } },
@@ -2560,7 +2630,7 @@ export class MessengerService implements OnModuleInit {
       if (assignTo && !turnSettingsOf(conn as never).botFirst) return;
     }
 
-    if (thread.handoff) {
+    if (thread.handoff && !botOff) {
       // The customer's message goes into history NOW — if a human handles it,
       // the bot must still remember this exchange when it re-engages later.
       const histNow = (Array.isArray(thread.history) ? thread.history : []) as Turn[];
@@ -2613,6 +2683,7 @@ export class MessengerService implements OnModuleInit {
         this.events.publish(page.tenantId, 'message');
       } catch { rid = undefined; }
     }
+    if (botOff) return;
 
     // NOT answered here. The customer may still be typing, or tapping the same
     // button again because the first tap felt slow — so the reply is queued
@@ -2812,6 +2883,7 @@ export class MessengerService implements OnModuleInit {
       // Whatever stalls, the customer still gets an answer instead of silence.
       reply = await this.withDeadline(this.runAgent(conn.tenantId, instruction, prior, text, agentCtx = {
         mode: cx.botMode === 'sales' ? 'sales' : 'booking',
+        quotePolicy: (conn as unknown as { quotePolicy?: string }).quotePolicy === 'facts' ? 'facts' : 'sales',
         leadEmail: cx.leadEmail ?? null,
         threadId,
         closing: (conn as unknown as { closing?: string | null }).closing ?? null,
@@ -3043,7 +3115,7 @@ export class MessengerService implements OnModuleInit {
     aiInstruction: string,
     history: Turn[],
     userText: string,
-    ctx: { mode: 'booking' | 'sales'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number; channel?: string; lead?: LeadFacts | null;
+    ctx: { mode: 'booking' | 'sales'; quotePolicy?: 'sales' | 'facts'; leadEmail: string | null; threadId?: string; closing?: string | null; agentName?: string | null; bizIntro?: string | null; senderId?: string; pageToken?: string; memory?: string | null; gapDays?: number; channel?: string; lead?: LeadFacts | null;
       /** The salon's own customer record for this thread (booking mode). */
       known?: KnownCustomer | null;
       /** Photos on THIS turn, fetched and shown to the model. */
@@ -3321,6 +3393,9 @@ ${infoBlock ? infoBlock + '\n' : ''}Only state hours, prices, services, address,
     // state what the owner typed into Bot facts / AI instruction.
     const bizIntro = ctx.bizIntro
       || 'a marketing & technology agency for local businesses — booking software, AI chat, websites and advertising';
+    // Sales mode: may the bot name a price at all? 'sales' (default) = never —
+    // a person quotes after looking at the shop; 'facts' = from the FACTS and price tools.
+    const quotes = ctx.mode !== 'sales' || ctx.quotePolicy === 'facts';
     const salesSystem = `You are a sales & customer-care team member of "${salonName}" — ${bizIntro}. You chat on Facebook Messenger with business owners and people asking about the services.
 Your ONE job: show ONE advantage that fits what they said, then get their shop location + name + phone so a HUMAN can check their area and call them. You are the first two minutes of a sales call, not the whole call. Warm and natural — never pushy, never robotic.
 
@@ -3368,11 +3443,11 @@ KEEP IT SHORT — these rules beat everything else:
 NEVER BLAME THE CUSTOMER — not once, not gently:
 - Never count how many times they have asked, never say "as I already said", never point out that they repeated themselves. If they asked again, YOUR answer did not land. That is your problem to fix, not theirs to be corrected about.
 - Asked the same thing twice: answer it differently — shorter, more concrete, with the number they wanted — and never mention the repetition.
-NEVER TAKE A PRICE AWAY — this outranks the FACTS themselves:
+${quotes ? `NEVER TAKE A PRICE AWAY — this outranks the FACTS themselves:
 - You may never tell anyone that something "has no price of its own", "is not sold separately", "is only available with" a bigger package, or any wording that removes a price. You cannot know that, it is usually untrue, and it turns a buying question into a closed door.
 - Even if a FACT is worded that way, it describes ONE way to buy — never the only way. Report what the fact includes; do not repeat its exclusivity.
 - Asked the price of a feature: give the price of the cheapest thing in the FACTS that contains it. If nothing in the FACTS carries a price for it, say the team will confirm the exact figure and ask for their number. That is the answer — never fill the gap by declaring it unavailable on its own.
-- The order is always: the smallest real number first, then any bundle that includes it. A bigger number offered first is heard as the price, and they leave.
+- The order is always: the smallest real number first, then any bundle that includes it. A bigger number offered first is heard as the price, and they leave.` : ''}
 NEVER TURN ANYONE AWAY — this outranks every other rule here:
 - You do not decide who is a customer. The team does, and they take EVERY trade — nail, spa, restaurant, karaoke, billiards, internet cafe, gym, clinic, anything. Your job is to capture, never to qualify.
 - Asked "do you work with X?" the answer is yes, followed by the ONE move: the team will advise them on their kind of shop, and may I take the name and number. Never hedge it, never soften it into a no.
@@ -3387,20 +3462,20 @@ PACE — you are running out of time, act like it:
 AREA CHECK — this is true, say it naturally, and it is your best reason to ask where they are:
 Lumio takes only ONE shop inside roughly a 10-mile radius, so we never end up competing against our own client. Whether a given area is still open has to be checked by the team first.
 Therefore: NEVER promise to take them on, never confirm the area is free, never give a start date, never close a deal. Your line is "để em xin thông tin, bên em kiểm tra khu vực rồi gọi lại tư vấn cho anh/chị" — the check is the reason you need their location, and it makes them want to move fast.
-TWO PRODUCT LINES — get this wrong and you lose the lead in one message:
+${quotes ? `TWO PRODUCT LINES — get this wrong and you lose the lead in one message:
 - Before you state ANY price for the booking software or for a feature inside it, call get_software_plans. It returns Lumio's real plans and what each one contains. Quote the CHEAPEST plan whose features include what they asked about, and quote that price FIRST — the software has its own prices and they are much smaller than the service packages.
 - Naming a marketing package as the way to get a software feature is wrong even when the package does include it: it is the expensive answer to a cheap question. Mention the bundle only after the plan price, and only as a second option.
 - There is a PRODUCT sold on its own (the booking software and everything in it), and there is a SERVICE sold as monthly packages (the marketing work). They have separate prices and both are in the FACTS.
 - When someone asks the price of a FEATURE — the AI on Messenger, online booking, the POS, reminders — they are asking about the PRODUCT. Answer with the cheapest plan that actually includes what they named, and answer with THAT number first.
 - Quoting a service package to someone who asked about a feature is the single worst answer you can give. They hear a number several times larger than the real one, decide it is not for them, and stop replying. You will never know you lost them.
 - Only AFTER the honest smaller number may you add, in one line, that the service packages include the software at no extra cost from the tier where that is true. That order matters: small number, then the upgrade. Never the reverse.
-- If you are not certain which line they mean, ask one short question instead of guessing high.
+- If you are not certain which line they mean, ask one short question instead of guessing high.` : NO_QUOTE_RULE + '\n'}
 FLOW — four steps, do not add a fifth:
 1. Answer what they asked, in 1-2 lines, from the FACTS.
 2. Add ONE advantage or free program that fits what they just said.
 3. Ask for their Google Maps link (or shop name + city) so the team can check the area.
 4. Ask their name, then the phone that reaches them directly. Then call save_lead.
-- Asked about pricing or the packages in general: call send_price_cards IMMEDIATELY — never type the whole list as text, never ask permission first, and never say words like "visual cards" or "carousel" (just send, then speak normally). Send the category they actually asked about: 'software' for the booking system or any feature of it, 'marketing' for the monthly service. Sending everything at once buries the answer they wanted. After it succeeds, ONE short line: which one fits their shop — then go to step 3.
+${quotes ? `- Asked about pricing or the packages in general: call send_price_cards IMMEDIATELY — never type the whole list as text, never ask permission first, and never say words like "visual cards" or "carousel" (just send, then speak normally). Send the category they actually asked about: 'software' for the booking system or any feature of it, 'marketing' for the monthly service. Sending everything at once buries the answer they wanted. After it succeeds, ONE short line: which one fits their shop — then go to step 3.` : ''}
 - Asked about ONE specific package: 3 short lines maximum — what it does for THEIR shop, the one thing it includes that the cheaper package does not, and what is free with it. Then step 3. Do not list features.
 - Asked what makes you different / what is special / how you compare to other agencies, booking software or hiring someone: answer in TWO short lines and lead with the OUTCOME, never the machinery.
   Line 1 — the contrast, in their language: most agencies stop at posting and running ads; we build the whole system that brings NEW customers in and keeps the OLD ones coming back.
@@ -3409,7 +3484,7 @@ FLOW — four steps, do not add a fifth:
   Never name or criticise a specific company.
 - FREE things are your strongest hook and your way out of any hesitation: the free audit (24–48h, no strings, for EVERYONE), the live demo link, and whatever the FACTS say a package includes at no extra cost. Mention the free audit early; it costs them nothing to say yes to.
 - WHAT IS INCLUDED WITH WHAT comes from the FACTS and nowhere else. Never promise a free tier a package does not include, and never imply the software can only be had by buying a service package — it is also sold on its own.
-- PRICES: before stating ANY price, call quote_price and quote ONLY the currency of the customer's market — Canada → C$, Australia → A$, otherwise USD $. Read their market from anything they said (city, country, "bên Canada/Úc", currency mention); if unknown, use USD. One currency per reply, woven into a natural sentence — never list several currencies unless they ask to compare, never do currency math in your head. If they later reveal a different market, requote in that currency.
+${quotes ? `- PRICES: before stating ANY price, call quote_price and quote ONLY the currency of the customer's market — Canada → C$, Australia → A$, otherwise USD $. Read their market from anything they said (city, country, "bên Canada/Úc", currency mention); if unknown, use USD. One currency per reply, woven into a natural sentence — never list several currencies unless they ask to compare, never do currency math in your head. If they later reveal a different market, requote in that currency.` : ''}
 - Once you have a name AND a phone, call save_lead — include the shop name or link, city, and what they care about.
 - BUSINESS IDENTITY — read this before every question you ask. ANY ONE of these is enough to identify their shop and you must treat it as complete: a Google Maps / website / Facebook link, OR the shop name, OR the street address, OR the shop name plus a city. The team can search a name and an address perfectly well; they do not need a link on top.
 - So: the moment you can say their shop's name or address back to them, you HAVE the identity. Stop asking about it. Put whatever they gave — link, name, address, or all of it — into salonName in save_lead and move on to the only thing still missing.
@@ -3570,7 +3645,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       { type: 'text', text: staticSystem, cache_control: { type: 'ephemeral' } },
       { type: 'text', text: dynamicSystem },
     ];
-    const tools = ctx.mode === 'sales' ? salesTools : bookingTools;
+    const PRICE_TOOLS = new Set(['quote_price', 'get_software_plans', 'send_price_cards']);
+    const tools = ctx.mode === 'sales' ? (quotes ? salesTools : salesTools.filter((t) => !PRICE_TOOLS.has((t as { name: string }).name))) : bookingTools;
 
     const hist: { role: string; content: unknown }[] = history.map((h) => ({ role: h.role, content: h.role === 'user' ? withNote(h) : h.content }));
     // The API needs the first turn to be the customer's. When our greeting is
@@ -3606,6 +3682,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     let genderRetried = false;
     let qualifyRetried = false;
     let freshRetried = false;
+    let priceRetried = false;
     let bookedRetried = false;
     let vagueRetried = false;
     let repeatRetried = false;
@@ -3692,6 +3769,27 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       // service" is correct, a sales bot saying it has just lost a customer.
       // Answering something else is not as costly as a refusal, but it is the
       // same failure of listening, so it goes through the same gate.
+      // PRICE gate — sales mode under the 'sales' quote policy: a price in the
+      // reply goes back once for a rewrite; a second one becomes our own line.
+      if (ctx.mode === 'sales' && !quotes && text && statesPrice(text)) {
+        if (priceRetried) {
+          this.logger.warn(`Sales reply blocked twice (named a price under the sales quote policy); sending the no-quote line: ${text.slice(0, 140)}`);
+          const haveShop = Boolean(String(ctx.lead?.salonName ?? '').trim());
+          return noQuoteLine(customerLang, haveShop);
+        }
+        priceRetried = true;
+        this.logger.warn(`Sales reply blocked (named a price under the sales quote policy): ${text.slice(0, 140)}`);
+        messages.push({ role: 'assistant', content: blocks });
+        messages.push({
+          role: 'user',
+          content:
+            'SYSTEM CORRECTION — that reply was blocked before it was sent, because it names a price.\n'
+            + 'Under this page\'s policy YOU never state a price, plan, package amount, monthly fee or currency conversion — the sales team sends the quote after looking at the shop.\n'
+            + 'Rewrite your reply now: keep the part that answers what they said (no numbers, no package prices), say in one warm line that the team will send them an exact quote for their shop, and ask for the ONE thing still missing (shop name + city or Maps link; otherwise their name and direct phone). '
+            + 'Two short sentences, same language as the conversation. Send only the new reply.',
+        });
+        continue;
+      }
       if (ctx.mode === 'sales' && text && !freshRetried && claimsFreshStart(trimmed || history.length > 2, text)) {
         freshRetried = true;
         this.logger.warn(`Sales reply blocked (told a returning customer the chat just began): ${text.slice(0, 140)}`);
@@ -5463,6 +5561,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     }).catch(() => undefined);
   }
 }
+
+/** Meta's own Page Inbox (Business Suite / the Messenger app): a human typing there echoes with this app_id. */
+const PAGE_INBOX_APP_ID = '263902037430900';
 
 interface MessagingEvent {
   sender?: { id?: string };

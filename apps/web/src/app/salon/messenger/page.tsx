@@ -24,7 +24,7 @@ interface BotFact { label: string; value: string; on: boolean; from?: string | n
 interface MConf {
   connected: boolean; pageId: string; pageName: string; igId: string; enabled: boolean; greeting: string; aiInstruction: string;
   aiEnabled: boolean; webhookUrl: string; verifyToken: string; threads: number; fbConfigured: boolean; botFacts: BotFact[];
-  botMode: 'booking' | 'sales'; leadEmail: string; closing: string; agentName: string; bizIntro: string;
+  botMode: 'booking' | 'sales'; quotePolicy?: 'sales' | 'facts'; leadEmail: string; closing: string; agentName: string; bizIntro: string;
   pages: { pageId: string; pageName: string | null; igId: string | null; igUsername?: string | null; enabled: boolean; createdAt: string }[];
   humanActiveMins: number; graceMins: number;
   chatAssignMode: 'off' | 'round-robin'; chatMaxOpenPerAgent: number; chatPreferUsualTech: boolean;
@@ -538,7 +538,7 @@ function Inner() {
     setSaving(true); setError(null); setSaved(false);
     try {
       const next = await apiFetch<MConf>('/messenger/settings', { method: 'POST', token, body: {
-        pageId: c.pageId, igId: c.igId, enabled: c.enabled, greeting: c.greeting, closing: c.closing, agentName: c.agentName, bizIntro: c.bizIntro, aiInstruction: c.aiInstruction, botMode: c.botMode, leadEmail: c.leadEmail, humanActiveMins: c.humanActiveMins, graceMins: c.graceMins,
+        pageId: c.pageId, igId: c.igId, enabled: c.enabled, greeting: c.greeting, closing: c.closing, agentName: c.agentName, bizIntro: c.bizIntro, aiInstruction: c.aiInstruction, botMode: c.botMode, quotePolicy: c.quotePolicy ?? 'sales', leadEmail: c.leadEmail, humanActiveMins: c.humanActiveMins, graceMins: c.graceMins,
         chatAssignMode: c.chatAssignMode, chatMaxOpenPerAgent: c.chatMaxOpenPerAgent, chatPreferUsualTech: c.chatPreferUsualTech, ...patch,
       } });
       setC(next); setPageToken(''); setSaved(true); setTimeout(() => setSaved(false), 2000);
@@ -1078,6 +1078,23 @@ function Inner() {
             <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '0 0 12px', lineHeight: 1.5 }}>{t('modeHint')}</p>
             {c.botMode === 'sales' && (
               <>
+                <label style={ui.label}>{lang === 'vi' ? 'Ai báo giá trong chat' : 'Who names the price in chat'}</label>
+                <div style={{ display: 'inline-flex', border: '1px solid var(--c334155)', borderRadius: 10, overflow: 'hidden', marginBottom: 6 }}>
+                  {(['sales', 'facts'] as const).map((q) => {
+                    const on = (c.quotePolicy ?? 'sales') === q;
+                    return (
+                      <button key={q} type="button" onClick={() => { setC({ ...c, quotePolicy: q }); save({ quotePolicy: q }); }}
+                        style={{ padding: '8px 16px', fontSize: 13, border: 'none', cursor: 'pointer', background: on ? '#6366f1' : 'transparent', color: on ? '#fff' : 'var(--c64748b)', fontWeight: on ? 700 : 500 }}>
+                        {q === 'sales' ? (lang === 'vi' ? 'Sale báo giá (bot không nói giá)' : 'Sales team quotes (bot never)') : (lang === 'vi' ? 'Bot báo giá theo FACTS' : 'Bot quotes from FACTS')}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p style={{ color: 'var(--c64748b)', fontSize: 11.5, margin: '0 0 12px', lineHeight: 1.5 }}>
+                  {lang === 'vi'
+                    ? '"Sale báo giá": bot không bao giờ nêu giá, gói, phí tháng hay quy đổi tiền tệ — kể cả khi khách hỏi; bot xin tên tiệm + tên + số điện thoại để team gửi báo giá. Giá lỡ lọt vào câu trả lời sẽ bị chặn trước khi gửi. "Bot báo giá": bot nêu giá có trong FACTS / thẻ giá.'
+                    : '"Sales team quotes": the bot never states a price, plan, monthly fee or currency conversion — even when asked; it collects shop + name + phone so the team sends the quote. A price that slips into a reply is blocked before it is sent. "Bot quotes": the bot may state prices from its FACTS / price cards.'}
+                </p>
                 <label style={ui.label}>{t('leadEmail')}</label>
                 <input value={c.leadEmail} placeholder={t('leadEmailPh')}
                   onChange={(e) => setC({ ...c, leadEmail: e.target.value })} onBlur={() => save({})}

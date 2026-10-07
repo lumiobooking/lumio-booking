@@ -1734,6 +1734,10 @@ model MessengerConnection {
   aiInstruction String? // brand-voice / extra guidance for the bot
   botFacts  Json  @default("[]") // structured FAQ facts [{label,value,on}] injected into the bot
   botMode   String  @default("booking") // 'booking' = salon appointment bot · 'sales' = Lumio agency sales/CS bot
+  // Sales mode only: who names a price. 'sales' = the bot never states a price,
+  // plan or package amount — it collects the shop + name + phone and a person
+  // quotes. 'facts' = the bot may quote the prices in its FACTS / price tools.
+  quotePolicy String @default("sales")
   leadEmail String? // sales mode: where new-lead alerts are emailed
 
   createdAt DateTime @default(now())

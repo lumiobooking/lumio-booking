@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { TablesService } from './tables.service';
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateTableDto } from './dto/update-table.dto';
+import { SaveLayoutDto } from './dto/save-layout.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 
@@ -16,6 +18,20 @@ export class TablesController {
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.tables.list(user);
+  }
+
+  // The floor map. The host at the door works it too: staff holding `bookings`.
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('bookings')
+  @Get('floor')
+  floor(@CurrentUser() user: AuthenticatedUser, @Query('at') at?: string) {
+    return this.tables.floor(user, at);
+  }
+
+  // Moving tables on the map: owner only (class @Roles).
+  @Patch('layout')
+  saveLayout(@CurrentUser() user: AuthenticatedUser, @Body() dto: SaveLayoutDto) {
+    return this.tables.saveLayout(user, dto.layout);
   }
 
   @Post()

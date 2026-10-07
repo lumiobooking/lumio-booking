@@ -57,5 +57,12 @@ export class ReminderService implements OnModuleInit, OnModuleDestroy {
     } catch (e) {
       this.logger.warn(`Rebooking tick failed: ${(e as Error).message}`);
     }
+    // Dental recall: "time for your check-up", N months after the last visit (opt-in, same switch).
+    try {
+      const rc = await this.bookings.processDueRecalls();
+      if (rc.sent > 0) this.logger.log(`Sent ${rc.sent} recall reminder(s).`);
+    } catch (e) {
+      this.logger.warn(`Recall tick failed: ${(e as Error).message}`);
+    }
   }
 }

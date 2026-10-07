@@ -916,6 +916,18 @@ export function InboxView() {
   // IS the screen, and auto-opening would hide it behind a chat nobody asked
   // for. Re-fires whenever nothing is open, so changing a filter lands on the
   // first row of the new filter rather than on nothing.
+  // "/salon/inbox?thread=<id>" opens that conversation (from the "asked but
+  // not booked" list). Once, as soon as there is a token to load it with.
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    if (deepLinked.current || !token || typeof window === 'undefined') return;
+    deepLinked.current = true;
+    const id = new URLSearchParams(window.location.search).get('thread') ?? '';
+    if (!/^[\w-]{6,64}$/.test(id)) return;
+    setOpenId(id);
+    void loadThread(id);
+  }, [token, loadThread]);
+
   useEffect(() => {
     if (narrow || openId || !firstId) return;
     setOpenId(firstId);

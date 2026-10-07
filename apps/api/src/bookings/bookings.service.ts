@@ -12,6 +12,8 @@ import { publicWebBase } from '../common/public-url.util';
 import { formatMoney, localeForCountry } from '../common/money';
 import { toE164, dialCodeFor } from '../common/phone';
 import { fitsBusinessHours, describeWindows, startsInBusinessHours } from '../settings/business-hours';
+import { rebookCopy, recallDue, recallMonthsOf } from './recall';
+import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 import { canSelfReschedule } from './self-reschedule';
 import { canSelfCancel } from './self-cancel';
 import { AppointmentStatus, NotificationChannel, PaymentStatus, Prisma, RejectionType } from '@prisma/client';
@@ -1761,6 +1763,65 @@ export class BookingsService {
     return true;
   }
 
+  /** A tenant's industry (common/industry) — decides the reminder's wording. */
+  private async industryOfTenant(tenantId: string): Promise<string> {
+    try {
+      const [t, row] = await Promise.all([
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } }),
+        this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: INDUSTRY_KEY } } }),
+      ]);
+      return resolveIndustry(row?.value ?? null, (t as { businessType?: string } | null)?.businessType ?? null);
+    } catch { return 'NAIL'; }
+  }
+
+  /**
+   * RECALL for patients whose record says "recall every N months" (dental
+   * clinics, see bookings/recall.ts). Uses the salon's own "rebooking
+   * reminder" switch and channels — off unless the clinic turned it on —
+   * and the same once-per-visit stamp (rebookRemindedAt). One clinic at a
+   * time; every read and write carries its tenantId.
+   */
+  async processDueRecalls(now = new Date()): Promise<{ sent: number }> {
+    const rows = await this.prisma.setting.findMany({ where: { key: INDUSTRY_KEY }, select: { tenantId: true, value: true } }).catch(() => [] as { tenantId: string; value: unknown }[]);
+    const clinics = rows.filter((r) => String((r.value as { key?: string } | null)?.key ?? '').toUpperCase() === 'DENTAL').map((r) => r.tenantId);
+    let sent = 0;
+    for (const tenantId of clinics) {
+      try {
+        if ((await this.industryOfTenant(tenantId)) !== 'DENTAL') continue;
+        const rb = await this.settings.getRebookingSettings(tenantId);
+        if (!rb.enabled || (!rb.email && !rb.sms)) continue;
+        const custs = (await this.prisma.customer.findMany({
+          where: { tenantId },
+          select: { id: true, firstName: true, email: true, phone: true, rebookRemindedAt: true, industryFields: true } as never,
+          take: 5000,
+        })) as unknown as { id: string; firstName: string; email: string | null; phone: string | null; rebookRemindedAt: Date | null; industryFields: unknown }[];
+        let perTenant = 0;
+        for (const c of custs) {
+          if (perTenant >= 200) break;
+          const months = recallMonthsOf(c.industryFields);
+          if (!months || (!c.email && !c.phone)) continue;
+          const last = await this.prisma.appointment.findFirst({
+            where: { tenantId, customerId: c.id, status: AppointmentStatus.COMPLETED },
+            orderBy: { endTime: 'desc' }, select: { id: true, endTime: true, service: { select: { name: true } } },
+          });
+          if (!last) continue;
+          const upcoming = await this.prisma.appointment.findFirst({
+            where: { tenantId, customerId: c.id, startTime: { gt: now }, status: { in: [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED, AppointmentStatus.ARRIVED] } },
+            select: { id: true },
+          });
+          if (!recallDue({ lastVisitEnd: last.endTime, months, remindedAt: c.rebookRemindedAt, hasUpcoming: !!upcoming, now })) continue;
+          if (await this.messagedWithin(tenantId, [c.email, c.phone], 48)) continue;
+          const ok = await this.sendRebookingFor(tenantId, rb, { firstName: c.firstName ?? null, email: c.email, phone: c.phone, service: last.service?.name ?? null, refId: last.id }, { industry: 'DENTAL', months }).catch(() => false);
+          await this.prisma.customer.updateMany({ where: { id: c.id, tenantId }, data: { rebookRemindedAt: new Date() } });
+          if (ok !== false) { sent++; perTenant++; }
+        }
+      } catch (e) {
+        this.logger.warn(`Recall pass failed for ${tenantId}: ${String(e).slice(0, 120)}`);
+      }
+    }
+    return { sent };
+  }
+
   /**
    * Rebooking reminder: N days after a visit (default ~3 weeks for nails), if the
    * customer has NOT already booked their next visit, send a warm "time for a refill"
@@ -1778,6 +1839,8 @@ export class BookingsService {
     });
     const cache = new Map<string, RebookingSettings>();
     const getRb = async (t: string) => { let rb = cache.get(t); if (!rb) { rb = await this.settings.getRebookingSettings(t); cache.set(t, rb); } return rb; };
+    const indCache = new Map<string, string>();
+    const getInd = async (t: string) => { let k = indCache.get(t); if (!k) { k = await this.industryOfTenant(t); indCache.set(t, k); } return k; };
     const seen = new Set<string>(); // only the LATEST completed visit per customer (desc order)
     let sent = 0;
     for (const a of appts) {
@@ -1795,7 +1858,13 @@ export class BookingsService {
       });
       if (upcoming) continue; // already rebooked
       if (await this.messagedWithin(a.tenantId, [a.customer?.email, a.customer?.phone], 48)) continue;
-      const ok = await this.sendRebookingFor(a.tenantId, rb, { firstName: a.customer?.firstName ?? null, email: a.customer?.email ?? null, phone: a.customer?.phone ?? null, service: a.service?.name ?? null, refId: a.id }).catch(() => false);
+      const industry = await getInd(a.tenantId);
+      if (industry === 'DENTAL') {
+        // A patient with a recall interval is handled by processDueRecalls, on their own schedule.
+        const rec = await this.prisma.customer.findFirst({ where: { id: a.customerId, tenantId: a.tenantId }, select: { industryFields: true } as never }).catch(() => null) as { industryFields?: unknown } | null;
+        if (recallMonthsOf(rec?.industryFields)) continue;
+      }
+      const ok = await this.sendRebookingFor(a.tenantId, rb, { firstName: a.customer?.firstName ?? null, email: a.customer?.email ?? null, phone: a.customer?.phone ?? null, service: a.service?.name ?? null, refId: a.id }, { industry, months: null }).catch(() => false);
       await this.prisma.customer.updateMany({ where: { id: a.customerId, tenantId: a.tenantId }, data: { rebookRemindedAt: new Date() } });
       if (ok !== false) sent++;
     }
@@ -1807,6 +1876,7 @@ export class BookingsService {
     tenantId: string,
     rb: RebookingSettings,
     tgt: { firstName: string | null; email: string | null; phone: string | null; service: string | null; refId: string },
+    trade: { industry: string; months: number | null } = { industry: 'NAIL', months: null },
   ): Promise<boolean> {
     const custEmail = tgt.email;
     const custPhone = tgt.phone;
@@ -1834,6 +1904,22 @@ export class BookingsService {
       + `<p style="font-size:12px;color:#94a3b8;margin-top:18px">See you soon! ✨</p></div></div>`;
     const text = `Hi ${cust}! It's been a few weeks — your nails are probably ready for a refresh${svcLine}. Book your next visit at ${salon}: ${bookUrl} — see you soon! 💅`;
     const smsText = `${salon}: Hi ${cust}! 💅 Ready for a refresh? Book your next visit in a few taps: ${bookUrl} Reply STOP to opt out.`;
+    // Not a nail salon: the trade's own words (a clinic's check-up, a neutral next visit).
+    const copy = rebookCopy(trade.industry, { salon, cust, service: tgt.service, months: trade.months, url: bookUrl });
+    const esc = (x: string) => x.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string));
+    const mail = copy
+      ? {
+        subject: copy.subject, text: copy.text, sms: copy.sms,
+        html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:8px">`
+          + `<div style="background:linear-gradient(120deg,${accent},${accentDark});padding:28px 24px;border-radius:16px 16px 0 0;text-align:center">`
+          + `<div style="color:#fff;font-size:22px;font-weight:800;letter-spacing:-0.2px">${esc(salon)}</div>`
+          + `<div style="color:rgba(255,255,255,0.9);font-size:14px;margin-top:6px">${esc(copy.tagline)}</div></div>`
+          + `<div style="background:#fff;padding:26px 24px;border:1px solid #eef1f6;border-top:none;border-radius:0 0 16px 16px;text-align:center">`
+          + `<p style="font-size:17px;color:#0f2a52;margin:6px 0 6px;font-weight:800">${esc(copy.headline)}</p>`
+          + `<p style="font-size:14px;color:#5b6b85;line-height:1.65;margin:0 0 22px">${esc(copy.body)}</p>`
+          + `<a href="${bookUrl}" style="display:inline-block;background:${accent};color:#fff;text-decoration:none;padding:15px 30px;border-radius:999px;font-weight:800;font-size:15px">${esc(copy.button)}</a></div></div>`,
+      }
+      : { subject, text, sms: smsText, html };
 
     const senderName = n.senderName || salon;
     const replyTo = n.replyTo || n.senderEmail || undefined;
@@ -1850,10 +1936,10 @@ export class BookingsService {
 
     const jobs: Promise<unknown>[] = [];
     if (rb.email && custEmail) {
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail, subject, body: text, html, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.EMAIL, recipient: custEmail, subject: mail.subject, body: mail.text, html: mail.html, smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related }));
     }
     if (rb.sms && custPhone) {
-      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, kind: 'marketing', recipient: custPhone, body: smsText, twilio: n.twilio, ...related }));
+      jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, kind: 'marketing', recipient: custPhone, body: mail.sms, twilio: n.twilio, ...related }));
     }
     await Promise.allSettled(jobs);
     return true;

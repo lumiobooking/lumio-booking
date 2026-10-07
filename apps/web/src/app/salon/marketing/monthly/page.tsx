@@ -51,6 +51,8 @@ interface SocialInsight {
   followers: number | null; newFollowers: number | null;
   reach: number | null; views: number | null; engagement: number | null;
   profileViews: number | null; postsCount: number | null;
+  /** 'lumio' = counted from posts Lumio published (TikTok gives no count without video.list). */
+  postsSource?: 'lumio' | null;
   posts?: PostRow[];
   series?: { date: string; value: number }[];
   monthlySeries?: { month: string; followers: number }[];
@@ -1500,7 +1502,7 @@ function SocialCard({ s, vi, T }: { s: SocialInsight; vi: boolean; T: (v: string
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
         <span style={{ width: 9, height: 9, borderRadius: 3, background: color, display: 'inline-block' }} />
         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{name}</span>
-        {s.postsCount != null && <span style={{ fontSize: 10.5, color: 'var(--c64748b)', marginLeft: 'auto' }}>{s.postsCount} {T('bài', 'posts')}</span>}
+        {s.postsCount != null && <span title={s.postsSource === 'lumio' ? T('Đếm từ các bài Lumio đã đăng — không gồm bài tiệm tự đăng trong app TikTok', 'Counted from posts Lumio published — not those posted by hand in the TikTok app') : undefined} style={{ fontSize: 10.5, color: 'var(--c64748b)', marginLeft: 'auto' }}>{s.postsCount} {T('bài', 'posts')}{s.postsSource === 'lumio' ? T(' · qua Lumio', ' · via Lumio') : ''}</span>}
       </div>
       {empty
         ? <div style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{T('Chưa có số liệu tháng này.', 'No data for this month yet.')}</div>

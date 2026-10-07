@@ -12,6 +12,9 @@ import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow, MActions } from '../../../components/MobileCard';
 import { DateRangeBar, useDateRange, usePaged, Pager } from '../../../components/ListFilter';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
+import { AskedNotBookedBox } from '../../../components/AskedNotBookedBox';
+import { uiIndustry } from '../../../lib/ui-industry';
+import { LeadFollowUpsBox } from '../../../components/LeadFollowUpsBox';
 import { uiLocale } from '../../../lib/datetime';
 
 interface Customer {
@@ -24,8 +27,16 @@ interface Customer {
   birthDate?: string | null;
   loyaltyPoints?: number;
   noShowCount?: number;
+  /** The line-of-business record; for real estate `stage` drives the pipeline. */
+  industryFields?: Record<string, string | number>;
   _count: { appointments: number };
 }
+
+/** A real-estate office's lead stages — same values as api common/industry-fields. */
+const LEAD_STAGES: { v: string; vi: string; en: string }[] = [
+  { v: 'new', vi: 'Mới', en: 'New' }, { v: 'contacted', vi: 'Đã liên hệ', en: 'Contacted' }, { v: 'viewing', vi: 'Đang xem nhà', en: 'Viewing' },
+  { v: 'negotiating', vi: 'Đàm phán', en: 'Negotiating' }, { v: 'won', vi: 'Đã chốt', en: 'Won' }, { v: 'lost', vi: 'Ngừng', en: 'Lost' },
+];
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -73,6 +84,9 @@ function Inner() {
   // Arrived from the header search (?q=…): start with that search filled in.
   useEffect(() => { const v = new URLSearchParams(window.location.search).get('q'); if (v) setQ(v); }, []);
   const [bMonth, setBMonth] = useState(0); // 0 = any birthday month
+  // Real estate: the lead pipeline ('' = all, '_none' = no stage yet).
+  const isLeads = uiIndustry() === 'REAL_ESTATE';
+  const [stage, setStage] = useState('');
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'since', dir: 'desc' });
 
   const load = useCallback(async () => {
@@ -112,6 +126,10 @@ function Inner() {
     const list = customers.filter((c) => {
       if (!range.inRange(c.createdAt)) return false;
       if (bMonth && birthMonth(c.birthDate) !== bMonth) return false;
+      if (isLeads && stage) {
+        const st = String(c.industryFields?.stage ?? '');
+        if (stage === '_none' ? st !== '' : st !== stage) return false;
+      }
       const s = `${c.firstName} ${c.lastName ?? ''} ${c.email ?? ''} ${c.phone ?? ''}`.toLowerCase();
       return s.includes(q.toLowerCase());
     });
@@ -132,7 +150,7 @@ function Inner() {
       if (typeof va === 'string' && typeof vb === 'string') return va.localeCompare(vb) * dir;
       return ((va as number) - (vb as number)) * dir;
     });
-  }, [customers, range, bMonth, q, sort]);
+  }, [customers, range, bMonth, q, sort, isLeads, stage]);
 
   const pg = usePaged(filtered, 20);
   const bulk = useBulkSelect(pg.paged.map((r) => r.id));
@@ -158,6 +176,28 @@ function Inner() {
           style={{ ...ui.input, maxWidth: 280 }}
         />
       </div>
+
+      {/* Warm leads first: asked on chat / hotline, never booked. Collapsed here. */}
+      <AskedNotBookedBox compact />
+
+      {/* Real estate: call-backs due today / overdue (the morning push opens this). */}
+      {isLeads && <LeadFollowUpsBox vi={lang === 'vi'} />}
+
+      {/* Real estate: the lead pipeline — how many at each stage, tap to filter. */}
+      {isLeads && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+          {[{ v: '', vi: 'Tất cả', en: 'All' }, ...LEAD_STAGES, { v: '_none', vi: 'Chưa phân loại', en: 'No stage' }].map((s0) => {
+            const n = s0.v === '' ? customers.length : customers.filter((c) => (s0.v === '_none' ? !c.industryFields?.stage : c.industryFields?.stage === s0.v)).length;
+            const on = stage === s0.v;
+            return (
+              <button key={s0.v || 'all'} type="button" onClick={() => setStage(s0.v)}
+                style={{ padding: '6px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`, background: on ? 'var(--c312e81)' : 'transparent', color: 'var(--ce2e8f0)' }}>
+                {lang === 'vi' ? s0.vi : s0.en} <span style={{ color: 'var(--c94a3b8)' }}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -240,7 +280,9 @@ function Inner() {
               {pg.paged.map((c) => (
                 <tr key={c.id} style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(c.id) ? 'var(--c1e1b4b)' : undefined }}>
                   <td style={{ ...ui.td, width: 34 }}><BulkRowBox on={bulk.has(c.id)} onChange={() => bulk.toggle(c.id)} /></td>
-                  <td style={ui.td}><a href={`/salon/customers/${c.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none', fontWeight: 600 }}>{c.firstName} {c.lastName ?? ''}</a></td>
+                  <td style={ui.td}><a href={`/salon/customers/${c.id}`} style={{ color: 'var(--c818cf8)', textDecoration: 'none', fontWeight: 600 }}>{c.firstName} {c.lastName ?? ''}</a>
+                    {isLeads && c.industryFields?.stage && (() => { const st = LEAD_STAGES.find((x) => x.v === c.industryFields?.stage); return st ? <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: 'var(--c1e293b)', color: 'var(--ccbd5e1)' }}>{lang === 'vi' ? st.vi : st.en}</span> : null; })()}
+                  </td>
                   <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{c.email ?? '—'}</td>
                   <td style={{ ...ui.td, color: 'var(--c94a3b8)' }}>{c.phone ?? '—'}</td>
                   <td style={ui.td}>{c.birthDate ? <span style={{ color: '#f0abfc', fontWeight: 600 }}>🎂 {fmtBirthday(c.birthDate)}</span> : <span style={{ color: 'var(--ink-faint)' }}>—</span>}</td>

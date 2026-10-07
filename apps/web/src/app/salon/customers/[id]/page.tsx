@@ -8,6 +8,8 @@ import { apiFetch } from '../../../../lib/api';
 import { ui, formatPrice } from '../../../../lib/ui';
 import { usePaged, Pager } from '../../../../components/ListFilter';
 import { useLang, tr } from '../../../../lib/i18n';
+import { ind } from '../../../../lib/ui-industry';
+import { IndustryRecordCard } from '../../../../components/IndustryRecordCard';
 import { uiLocale } from '../../../../lib/datetime';
 
 interface Pay { id: string; amountCents: number; currency: string; status: string; type: string; createdAt: string }
@@ -32,6 +34,10 @@ interface CustomerDetail {
   appointments: Appt[];
   orders?: OrderRow[];
   stats: { bookings: number; completed: number; noShows?: number; visits?: number; walkInSales?: number; totalSpentCents: number; lastVisit: string | null };
+  /** The line-of-business record (api common/industry-fields). */
+  industryFields?: Record<string, string | number>;
+  /** Her habits from finished visits (api common/customer-profile). */
+  profile?: { visits: number; favourites: { name: string; count: number }[]; preferredStaff: { name: string; count: number } | null; usualWeekday: number | null; usualPart: 'morning' | 'afternoon' | 'evening' | null; avgSpendCents: number | null; lastServices: string[]; lastStaff: string | null };
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -136,6 +142,35 @@ function Inner() {
         <Kpi label={t('cu.kNoShows')} value={String(c.stats.noShows ?? 0)} accent={(c.stats.noShows ?? 0) >= 2 ? '#ef4444' : 'var(--c64748b)'} />
         <Kpi label={t('cu.kLastVisit')} value={c.stats.lastVisit ? fmtDate(c.stats.lastVisit, salonTz) : '—'} accent="#06b6d4" />
       </div>
+
+      {/* The record this line of business keeps: patient record, lead, guest notes, lash map… */}
+      <IndustryRecordCard token={token} customerId={c.id} values={c.industryFields} vi={lang === 'vi'} onSaved={load} />
+
+      {/* Her habits — the same profile the chat bot reads to offer "same as last time?". */}
+      {c.profile && c.profile.visits >= 2 && (() => {
+        const p = c.profile;
+        const vi = lang === 'vi';
+        const days = vi ? ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'] : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const part = p.usualPart ? (vi ? { morning: 'buổi sáng', afternoon: 'buổi chiều', evening: 'buổi tối' }[p.usualPart] : `${p.usualPart}s`) : '';
+        const chip = (label: string, value: string) => (
+          <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--c334155)', borderRadius: 10, padding: '8px 12px', minWidth: 0 }}>
+            <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{label}</div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{value}</div>
+          </div>
+        );
+        return (
+          <div style={{ ...ui.card, marginBottom: 18 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--cf1f5f9)', marginBottom: 8 }}>✨ {ind(vi ? 'Thói quen của khách' : 'Her habits')}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
+              {p.favourites.length > 0 && chip(ind(vi ? 'Hay làm' : 'Usually books'), p.favourites.map((f) => `${f.name} ×${f.count}`).join(', '))}
+              {p.preferredStaff && chip(ind(vi ? 'Thợ quen' : 'Usual technician'), `${p.preferredStaff.name} (${p.preferredStaff.count}/${p.visits})`)}
+              {(p.usualWeekday != null || part) && chip(vi ? 'Hay đến' : 'Usually comes', [p.usualWeekday != null ? days[p.usualWeekday] : '', part].filter(Boolean).join(' '))}
+              {p.avgSpendCents != null && chip(vi ? 'Chi trung bình / lần' : 'Average per visit', formatPrice(p.avgSpendCents, currency))}
+              {p.lastServices.length > 0 && chip(vi ? 'Lần trước' : 'Last time', `${p.lastServices.join(' + ')}${p.lastStaff ? ` · ${p.lastStaff}` : ''}`)}
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={{ ...ui.card, marginBottom: 18, display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
         <label>

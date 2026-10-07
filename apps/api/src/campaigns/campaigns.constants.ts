@@ -59,6 +59,8 @@ export interface CampaignSettings {
   winBack: LapsedCampaign;
   reactivation: LapsedCampaign;
   birthday: CampaignMessage;
+  /** Asked (chat or hotline) but never booked. daysSince = days after they asked. See asked-not-booked.ts. */
+  askedNotBooked: LapsedCampaign;
 }
 
 export const DEFAULT_CAMPAIGN_SETTINGS: CampaignSettings = {
@@ -98,9 +100,22 @@ export const DEFAULT_CAMPAIGN_SETTINGS: CampaignSettings = {
       'Happy birthday from %salon_name%, %customer_name%! 🎉 %offer_sms%Book: %booking_link% Reply STOP to opt out.',
     offer: { enabled: false, kind: 'gift', value: 0, gift: 'a free birthday add-on — nail art or a 10-minute hand massage', code: '', expiryDays: 30 },
   },
+  askedNotBooked: {
+    enabled: false,
+    email: true,
+    sms: false,
+    daysSince: 2,
+    subject: 'Still thinking about it, %customer_name%?%offer_subject%',
+    body:
+      'Hi %customer_name%,\n\nThanks for reaching out to %salon_name% the other day. If you are still deciding, the easiest way is to pick a time that suits you online — it takes a minute and you will get a confirmation straight away.\n\n%offer_block%Any question at all, just reply to this email or give us a call.\n\nSee you soon,\n%salon_name% · %salon_contact%',
+    smsBody:
+      '%salon_name%: Hi %customer_name%, thanks for reaching out! %offer_sms%Pick a time here: %booking_link% Reply STOP to opt out.',
+    offer: { enabled: false, kind: 'percent', value: 10, gift: '', code: '', expiryDays: 14 },
+  },
 };
 
-export type CampaignKey = 'winBack' | 'reactivation' | 'birthday';
+export type CampaignKey = 'winBack' | 'reactivation' | 'birthday' | 'askedNotBooked';
+export const CAMPAIGN_KEYS: CampaignKey[] = ['winBack', 'reactivation', 'birthday', 'askedNotBooked'];
 
 /** relatedType stored on the notification log, used for dedup + stats. */
 export const campaignRelatedType = (key: CampaignKey) => `campaign:${key}`;

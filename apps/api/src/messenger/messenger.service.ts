@@ -30,6 +30,7 @@ import { isSameVisit, servicesAsked, type OpenVisit } from './one-visit';
 import { PartyAvailabilityService } from '../bookings/party-availability.service';
 import { aiBookingNote, noteLangForMarket, type AiChannel } from '../bookings/ai-booking-note';
 import { leadDossier, rawMemoryFallback, LeadFacts, customerDossier, type KnownCustomer } from './lead-memory';
+import { habitLine, profileFrom } from '../common/customer-profile';
 import { InboxEventsService } from './inbox-events.service';
 import { PushService } from '../push/push.service';
 import { pushPayload } from '../notifications/push-payload';
@@ -4180,7 +4181,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null))?.timezone || 'America/New_York';
     const loc = await this.customerLocale(tenantId).catch(() => 'en-US');
     const fmt = (d: Date) => new Intl.DateTimeFormat(loc, { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: loc !== 'vi-VN' }).format(d);
-    const [upcoming, last, visits] = await Promise.all([
+    const [upcoming, last, visits, history] = await Promise.all([
       this.prisma.appointment.findMany({
         where: { tenantId, customerId: c.id, startTime: { gte: now }, status: { notIn: ['CANCELLED', 'REJECTED', 'NO_SHOW'] as never } },
         orderBy: { startTime: 'asc' }, take: 3,
@@ -4192,8 +4193,26 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         select: { startTime: true, service: { select: { name: true } } },
       }).catch(() => null),
       this.prisma.appointment.count({ where: { tenantId, customerId: c.id, status: { in: ['COMPLETED'] as never } } }).catch(() => 0),
+      // Her habits: the last 30 finished visits (common/customer-profile).
+      this.prisma.appointment.findMany({
+        where: { tenantId, customerId: c.id, status: { in: ['COMPLETED'] as never } },
+        orderBy: { startTime: 'desc' }, take: 30,
+        select: { startTime: true, priceCents: true, addons: true, service: { select: { name: true } }, assignedStaff: { select: { firstName: true } } },
+      }).catch(() => []),
     ]);
+    const profile = profileFrom((history as { startTime: Date; priceCents: number; addons: unknown; service?: { name: string } | null; assignedStaff?: { firstName: string } | null }[]).map((a) => ({
+      at: a.startTime,
+      services: [a.service?.name ?? '', ...(Array.isArray(a.addons) ? (a.addons as { kind?: string; name?: string }[]).filter((x) => x?.kind === 'service' && x.name).map((x) => String(x.name)) : [])].filter(Boolean),
+      staff: a.assignedStaff?.firstName ?? null,
+      priceCents: a.priceCents,
+    })), tz);
+    const en = !/^vi/i.test(loc);
+    const lastTime = profile.visits >= 1 && profile.lastServices.length
+      ? `${profile.lastServices.join(' + ')}${profile.lastStaff ? (en ? ` with ${profile.lastStaff}` : ` với thợ ${profile.lastStaff}`) : ''}`
+      : null;
     return {
+      usual: habitLine(profile, en) || null,
+      lastTime,
       firstName: c.firstName, lastName: c.lastName, phone: c.phone, email: c.email, displayName,
       upcoming: (upcoming as { startTime: Date; service?: { name: string } | null; assignedStaff?: { firstName: string } | null }[]).map((a) => ({
         service: a.service?.name ?? '', when: fmt(a.startTime), staff: a.assignedStaff?.firstName ?? null,

@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { MessengerService } from './messenger.service';
 import { InboxEventsService } from './inbox-events.service';
 import { KnowledgeGapsService } from './knowledge-gaps.service';
+import { BotReportService } from './bot-report.service';
 import { HandoffDto, LeadStatusDto, RenameThreadDto, SendTestDto, SuggestGreetingDto, UpdateMessengerDto } from './dto/messenger.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -34,7 +35,15 @@ export class MessengerController {
     private readonly svc: MessengerService,
     private readonly events: InboxEventsService,
     private readonly gaps: KnowledgeGapsService,
+    private readonly report: BotReportService,
   ) {}
+
+  // How the bot is doing: conversations → bookings, where the rest stopped, next steps.
+  // Salon admin only (class default); one salon's rows only.
+  @Get('bot-report')
+  botReport(@CurrentUser() user: AuthenticatedUser, @Query('days') days?: string) {
+    return this.report.report(user, days ? Number(days) : undefined);
+  }
 
   // What the bot could not answer — the owner answers once, the bot knows from then on.
   // Salon admin only (class default); every query is scoped to the caller's salon.

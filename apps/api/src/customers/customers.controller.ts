@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { IsEmail, IsISO8601, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
+import { IsEmail, IsISO8601, IsObject, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 import { CustomersService } from './customers.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
@@ -15,6 +15,9 @@ class UpdateCustomerDto {
   @IsOptional() @ValidateIf((_o, v) => v !== null && v !== '') @IsEmail() email?: string | null;
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(40) phone?: string | null;
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(2000) notes?: string | null;
+  // The line-of-business record; keys and values are checked against the
+  // salon's industry in the service (common/industry-fields).
+  @IsOptional() @IsObject() industryFields?: Record<string, unknown>;
 }
 
 class CreateCustomerDto {
@@ -38,6 +41,19 @@ export class CustomersController {
   }
 
   // NOTE: declared before ':id' so "/customers/search" isn't captured as an id.
+  // Which record fields this salon's line of business keeps (dental history,
+  // a lead's stage…). Declared before ':id' so it is not read as an id.
+  @Get('industry-fields')
+  industryFields(@CurrentUser() user: AuthenticatedUser) {
+    return this.customers.industryFieldDefs(user);
+  }
+
+  // A real-estate office's call-backs that are due (today or overdue).
+  @Get('follow-ups')
+  followUps(@CurrentUser() user: AuthenticatedUser) {
+    return this.customers.followUps(user);
+  }
+
   @Get('search')
   search(@CurrentUser() user: AuthenticatedUser, @Query('q') q: string) {
     return this.customers.search(user, q ?? '');

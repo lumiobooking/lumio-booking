@@ -1,3 +1,4 @@
+import { lumioPostsOn, monthBounds } from './lumio-posts';
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { AppointmentStatus, PaymentStatus, UserRole, TenantStatus, NotificationChannel } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -394,6 +395,31 @@ export class MarketingService {
         newFollowers: socDelta(r.newFollowers, prevSoc.get(r.platform)?.newFollowers),
       },
     }));
+
+    // TikTok posts, counted from Lumio's own publish log when TikTok itself
+    // gave no count (the app has no video.list permission — see lumio-posts.ts).
+    try {
+      const { from, to } = monthBounds(month);
+      const published = await this.prisma.scheduledPost.findMany({
+        where: { tenantId, status: 'posted', postedAt: { gte: from, lt: to } },
+        select: { postedAt: true, results: true },
+      });
+      const tt = lumioPostsOn(published as never, 'tiktok', from, to);
+      const row: any = socialInsights.find((x: any) => x.platform === 'tiktok');
+      if (row && (row.postsCount == null || row.postsCount === 0) && tt.length) {
+        row.postsCount = tt.length;
+        row.postsSource = 'lumio';
+        if (!row.posts?.length) row.posts = tt.map((p) => ({ id: p.id, type: 'video', timestamp: p.timestamp, permalink: p.url }));
+      } else if (!row && tt.length) {
+        socialInsights.push({
+          platform: 'tiktok', followers: null, newFollowers: null, monthlySeries: [], reach: null, views: null, engagement: null,
+          profileViews: null, postsCount: tt.length, postsSource: 'lumio',
+          posts: tt.map((p) => ({ id: p.id, type: 'video', timestamp: p.timestamp, permalink: p.url })),
+          series: [], audience: null, fbDebug: null, igDebug: null, syncedAt: null,
+          vsPrev: { followers: null, reach: null, views: null, engagement: null, newFollowers: null },
+        } as any);
+      }
+    } catch { /* the report never fails over a count */ }
 
     // --- Google Business Profile (Maps) monthly performance — its own deck ---
     const gbpRow = (socRows as any[]).find((r: any) => r.platform === 'gbp');

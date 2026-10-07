@@ -1078,6 +1078,11 @@ model Customer {
   email     String?
   phone     String?
   notes     String?
+  // The salon's line-of-business record for this person (common/industry-fields):
+  // a clinic's allergies and history, a real-estate lead's stage and budget, a
+  // restaurant guest's dietary needs, a lash client's map. Keys are validated
+  // against the industry's own list; unknown keys are dropped.
+  industryFields Json @default("{}")
 
   // Date of birth (optional) — drives the automated birthday campaign. Only the
   // month/day are used for matching; the year is informational.

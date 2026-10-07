@@ -1,4 +1,5 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { askedFromTranscript, askedNotBooked, CALL_ASK_OUTCOMES, dueForMessage, phoneKey, type AskRow } from './asked-not-booked';
 import { localeForCountry } from '../common/money';
 import { AppointmentStatus, NotificationChannel, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,7 +21,11 @@ import {
   offerTeaser,
   CampaignOffer,
   DEFAULT_OFFER,
+  CAMPAIGN_KEYS,
 } from './campaigns.constants';
+
+/** Per salon: which askers the desk already dealt with (key → when). */
+const ASKED_HANDLED_KEY = 'asked_not_booked';
 
 /** What a PATCH may carry: every field optional, including inside the offer. */
 type CampaignPatch = Partial<Omit<CampaignMessage, 'offer'>> & { offer?: Partial<CampaignOffer> };
@@ -159,6 +164,7 @@ export class CampaignsService {
       winBack: { ...mergeMsg(d.winBack, stored.winBack), daysSince: this.posInt(stored.winBack?.daysSince, d.winBack.daysSince) },
       reactivation: { ...mergeMsg(d.reactivation, stored.reactivation), daysSince: this.posInt(stored.reactivation?.daysSince, d.reactivation.daysSince) },
       birthday: mergeMsg(d.birthday, stored.birthday),
+      askedNotBooked: { ...mergeMsg(d.askedNotBooked, stored.askedNotBooked), daysSince: Math.min(30, this.posInt(stored.askedNotBooked?.daysSince, d.askedNotBooked.daysSince)) },
     };
   }
 
@@ -193,6 +199,7 @@ export class CampaignsService {
       winBack?: CampaignPatch & { daysSince?: number };
       reactivation?: CampaignPatch & { daysSince?: number };
       birthday?: CampaignPatch;
+      askedNotBooked?: CampaignPatch & { daysSince?: number };
     },
   ): Promise<CampaignSettings> {
     const tenantId = this.tid(user);
@@ -212,6 +219,7 @@ export class CampaignsService {
       winBack: { ...msg(cur.winBack, dto.winBack), daysSince: this.posInt(dto.winBack?.daysSince, cur.winBack.daysSince) },
       reactivation: { ...msg(cur.reactivation, dto.reactivation), daysSince: this.posInt(dto.reactivation?.daysSince, cur.reactivation.daysSince) },
       birthday: msg(cur.birthday, dto.birthday),
+      askedNotBooked: { ...msg(cur.askedNotBooked, dto.askedNotBooked), daysSince: Math.min(30, this.posInt(dto.askedNotBooked?.daysSince, cur.askedNotBooked.daysSince)) },
     };
     await this.prisma.setting.upsert({
       where: { tenantId_key: { tenantId, key: CAMPAIGN_SETTINGS_KEY } },
@@ -225,13 +233,13 @@ export class CampaignsService {
   async getStats(user: AuthenticatedUser): Promise<Record<CampaignKey, number>> {
     const tenantId = this.tid(user);
     const since = new Date(Date.now() - 30 * DAY);
-    const keys: CampaignKey[] = ['winBack', 'reactivation', 'birthday'];
+    const keys: CampaignKey[] = CAMPAIGN_KEYS;
     const rows = await this.prisma.notification.groupBy({
       by: ['relatedType'],
       where: { tenantId, createdAt: { gte: since }, relatedType: { in: keys.map(campaignRelatedType) } },
       _count: { _all: true },
     });
-    const out: Record<CampaignKey, number> = { winBack: 0, reactivation: 0, birthday: 0 };
+    const out: Record<CampaignKey, number> = { winBack: 0, reactivation: 0, birthday: 0, askedNotBooked: 0 };
     for (const k of keys) {
       const r = rows.find((x) => x.relatedType === campaignRelatedType(k));
       out[k] = r?._count._all ?? 0;
@@ -313,7 +321,7 @@ export class CampaignsService {
     for (const r of rows) {
       try {
         const c = await this.runForTenant(r.tenantId, false);
-        sent += c.winBack + c.reactivation + c.birthday;
+        sent += c.winBack + c.reactivation + c.birthday + c.askedNotBooked;
       } catch (e) {
         this.logger.warn(`Campaign run failed for tenant ${r.tenantId}: ${(e as Error).message}`);
       }
@@ -324,9 +332,9 @@ export class CampaignsService {
   // ---- engine -------------------------------------------------------------
 
   private async runForTenant(tenantId: string, ignoreHour: boolean): Promise<Record<CampaignKey, number>> {
-    const counts: Record<CampaignKey, number> = { winBack: 0, reactivation: 0, birthday: 0 };
+    const counts: Record<CampaignKey, number> = { winBack: 0, reactivation: 0, birthday: 0, askedNotBooked: 0 };
     const cs = await this.getForTenant(tenantId);
-    if (!cs.winBack.enabled && !cs.reactivation.enabled && !cs.birthday.enabled) return counts;
+    if (!cs.winBack.enabled && !cs.reactivation.enabled && !cs.birthday.enabled && !cs.askedNotBooked.enabled) return counts;
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -387,7 +395,87 @@ export class CampaignsService {
       }
     }
 
+    // Asked but never booked — KNOWN customers only (email, or SMS with consent).
+    // A stranger who only exists as a page-scoped id is on the list for the
+    // desk, never on an automatic send.
+    const ask = cs.askedNotBooked;
+    if (ask.enabled && (ask.email || ask.sms) && used < SEND_CAP_PER_RUN) {
+      const rows = dueForMessage(await this.askedRows(tenantId, ask.daysSince + 2), new Date(), ask.daysSince);
+      const ids = new Set<string>(rows.map((r) => r.customerId).filter((x): x is string => !!x));
+      // A hotline caller is reachable when their number belongs to one of THIS salon's customers.
+      const callerKeys = rows.filter((r) => r.kind === 'call').map((r) => phoneKey(r.phone)).filter(Boolean);
+      if (callerKeys.length) {
+        const withPhone = await this.prisma.customer.findMany({ where: { tenantId, phone: { not: null } }, select: { id: true, phone: true } });
+        for (const c of withPhone) if (callerKeys.includes(phoneKey(c.phone))) ids.add(c.id);
+      }
+      if (ids.size) {
+        const custs = await this.prisma.customer.findMany({ where: { tenantId, id: { in: [...ids] } }, select: { id: true, firstName: true, email: true, phone: true, smsConsent: true } });
+        const dedupSince = new Date(Date.now() - 30 * DAY);
+        for (const c of custs) {
+          if (used >= SEND_CAP_PER_RUN) break;
+          if (await this.alreadySent(tenantId, 'askedNotBooked', c.id, dedupSince)) continue;
+          if (await this.sendToCustomer(tenantId, c, ask, 'askedNotBooked', basePct, transport, n)) { counts.askedNotBooked++; used++; }
+        }
+      }
+    }
+
     return counts;
+  }
+
+  // ---- asked but not booked ------------------------------------------------
+
+  /** Everyone who asked in the last `days` and has not booked since — THIS salon's rows only. */
+  private async askedRows(tenantId: string, days: number): Promise<AskRow[]> {
+    const now = new Date();
+    const since = new Date(now.getTime() - days * DAY);
+    const [threads, calls, bookings, handledRow] = await Promise.all([
+      this.prisma.messengerThread.findMany({
+        where: { tenantId, lastCustomerAt: { gte: since } },
+        select: { id: true, senderName: true, channel: true, lastText: true, lastCustomerAt: true, status: true, customerId: true, customer: { select: { firstName: true, phone: true, email: true } } },
+        orderBy: { lastCustomerAt: 'desc' }, take: 500,
+      }),
+      this.prisma.voiceCall.findMany({
+        where: { tenantId, createdAt: { gte: since }, fromNumber: { not: null }, outcome: { in: CALL_ASK_OUTCOMES } },
+        select: { id: true, fromNumber: true, outcome: true, createdAt: true, transcript: true },
+        orderBy: { createdAt: 'desc' }, take: 500,
+      }).catch(() => []),
+      this.prisma.appointment.findMany({
+        where: { tenantId, OR: [{ createdAt: { gte: new Date(since.getTime() - 3 * DAY) } }, { startTime: { gte: now } }] },
+        select: { customerId: true, createdAt: true, startTime: true, customer: { select: { phone: true } } },
+        take: 5000,
+      }),
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: ASKED_HANDLED_KEY } } }),
+    ]);
+    return askedNotBooked({
+      threads: threads.map((t) => ({ id: t.id, name: t.senderName, channel: t.channel, lastText: t.lastText, lastCustomerAt: t.lastCustomerAt, status: t.status, customerId: t.customerId, customer: t.customer })),
+      calls: (calls as { id: string; fromNumber: string | null; outcome: string; createdAt: Date; transcript: unknown }[])
+        .map((c) => ({ id: c.id, fromNumber: c.fromNumber, outcome: c.outcome, createdAt: c.createdAt, lastText: askedFromTranscript(c.transcript) })),
+      bookings: bookings.map((b) => ({ customerId: b.customerId, createdAt: b.createdAt, startTime: b.startTime, phone: b.customer?.phone ?? null })),
+      handled: ((handledRow?.value as { handled?: Record<string, string> } | null)?.handled) ?? {},
+      now, days,
+    });
+  }
+
+  /** The desk's list: who asked and has not booked (14 days by default). */
+  async askedNotBookedList(user: AuthenticatedUser, days?: number): Promise<{ rows: AskRow[]; days: number }> {
+    const tenantId = this.tid(user);
+    const d = Math.min(60, Math.max(1, Math.round(Number(days) || 14)));
+    return { rows: await this.askedRows(tenantId, d), days: d };
+  }
+
+  /** "Đã xử lý" — off the list until they ask again. Kept per salon, newest 500. */
+  async markAskedHandled(user: AuthenticatedUser, key: string): Promise<{ ok: true }> {
+    const tenantId = this.tid(user);
+    if (!/^(chat|call):[\w-]{1,64}$/.test(String(key ?? ''))) throw new BadRequestException('Bad key');
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: ASKED_HANDLED_KEY } } });
+    const cur = ((row?.value as { handled?: Record<string, string> } | null)?.handled) ?? {};
+    const next = Object.fromEntries([...Object.entries({ ...cur, [key]: new Date().toISOString() })].sort((a, b) => b[1].localeCompare(a[1])).slice(0, 500));
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: ASKED_HANDLED_KEY } },
+      update: { value: { handled: next } as unknown as Prisma.InputJsonValue },
+      create: { tenantId, key: ASKED_HANDLED_KEY, value: { handled: next } as unknown as Prisma.InputJsonValue },
+    });
+    return { ok: true };
   }
 
   /** Customers whose most recent COMPLETED visit was ~daysSince ago and who have no later/upcoming appointment. */
@@ -440,6 +528,7 @@ export class CampaignsService {
       ['winBack', cs.winBack],
       ['reactivation', cs.reactivation],
       ['birthday', cs.birthday],
+      ['askedNotBooked', cs.askedNotBooked],
     ];
     for (const [key, camp] of entries) {
       const o = camp.offer;

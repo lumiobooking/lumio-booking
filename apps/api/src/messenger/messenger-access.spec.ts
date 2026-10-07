@@ -52,7 +52,7 @@ const STAFF_MUST_NOT = [
   'deleteLabel',
   // What the bot could not answer. Answering one writes a bot fact — what the
   // bot will tell EVERY customer from then on — so it is the owner's call.
-  'knowledgeGaps', 'answerGap', 'dismissGap',
+  'knowledgeGaps', 'answerGap', 'dismissGap', 'botReport',
 ];
 
 describe('what a technician can reach in the inbox', () => {

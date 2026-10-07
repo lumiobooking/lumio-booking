@@ -6,13 +6,14 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
+import { AskedNotBookedBox } from '../../../components/AskedNotBookedBox';
 
 interface Offer { enabled: boolean; kind: 'percent' | 'amount' | 'gift'; value: number; gift: string; code: string; expiryDays: number }
 interface Msg { enabled: boolean; email: boolean; sms: boolean; subject: string; body: string; smsBody: string; offer?: Offer }
 interface Lapsed extends Msg { daysSince: number }
-interface CampaignSettings { sendHour: number; winBack: Lapsed; reactivation: Lapsed; birthday: Msg }
-type Stats = { winBack: number; reactivation: number; birthday: number };
-type CampKey = 'winBack' | 'reactivation' | 'birthday';
+interface CampaignSettings { sendHour: number; winBack: Lapsed; reactivation: Lapsed; birthday: Msg; askedNotBooked?: Lapsed }
+type Stats = { winBack: number; reactivation: number; birthday: number; askedNotBooked?: number };
+type CampKey = 'winBack' | 'reactivation' | 'birthday' | 'askedNotBooked';
 
 export default function MarketingPage() {
   return <SalonShell><Inner /></SalonShell>;
@@ -63,7 +64,7 @@ function Inner() {
     setRunning(true); setError(null);
     try {
       const r = await apiFetch<Stats>('/campaigns/run-now', { method: 'POST', token });
-      const n = (r.winBack || 0) + (r.reactivation || 0) + (r.birthday || 0);
+      const n = (r.winBack || 0) + (r.reactivation || 0) + (r.birthday || 0) + (r.askedNotBooked || 0);
       alert(t('mk.runResult').replace('{n}', String(n)));
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
@@ -104,6 +105,17 @@ function Inner() {
       <CampaignCard t={t} campKey="winBack" token={token} adminEmail={adminEmail} title={t('mk.winBack')} desc={t('mk.winBackDesc')} sent={stats.winBack} hasDays camp={f.winBack} suggested={defaults?.winBack} onChange={(p) => patchCamp('winBack', p)} />
       <CampaignCard t={t} campKey="reactivation" token={token} adminEmail={adminEmail} title={t('mk.reactivation')} desc={t('mk.reactivationDesc')} sent={stats.reactivation} hasDays camp={f.reactivation} suggested={defaults?.reactivation} onChange={(p) => patchCamp('reactivation', p)} />
       <CampaignCard t={t} campKey="birthday" token={token} adminEmail={adminEmail} title={t('mk.birthday')} desc={t('mk.birthdayDesc')} sent={stats.birthday} camp={f.birthday} suggested={defaults?.birthday} onChange={(p) => patchCamp('birthday', p)} />
+      {/* 5th programme: asked on chat / hotline, never booked. The list is for the
+          desk; the automatic message reaches KNOWN customers only (email, or SMS
+          with consent) — a stranger on Messenger cannot be written to after 24h. */}
+      <AskedNotBookedBox compact />
+      {f.askedNotBooked && (
+        <CampaignCard t={t} campKey="askedNotBooked" token={token} adminEmail={adminEmail}
+          title={lang === 'vi' ? 'Khách hỏi nhưng chưa đặt' : 'Asked but not booked'}
+          desc={lang === 'vi' ? 'Gửi một tin nhắc nhẹ kèm link đặt lịch cho khách quen đã hỏi qua tin nhắn/hotline mà chưa đặt. Chỉ gửi cho khách đã có hồ sơ (email, hoặc SMS khi khách đồng ý); mỗi người tối đa 1 lần/30 ngày.' : 'A gentle note with the booking link to known customers who asked on chat/hotline and did not book. Only customers on file (email, or SMS with consent); at most once per person per 30 days.'}
+          daysLabel={lang === 'vi' ? 'Gửi sau khi khách hỏi (ngày)' : 'Send this many days after they asked'}
+          sent={stats.askedNotBooked ?? 0} hasDays camp={f.askedNotBooked} suggested={defaults?.askedNotBooked} onChange={(p) => patchCamp('askedNotBooked', p)} />
+      )}
 
       <ReferralSection token={token} t={t} />
 
@@ -115,8 +127,8 @@ function Inner() {
   );
 }
 
-function CampaignCard({ t, campKey, token, adminEmail, title, desc, sent, camp, hasDays, suggested, onChange }: {
-  t: (k: string) => string; campKey: CampKey; token: string | null; adminEmail?: string; title: string; desc: string; sent: number; camp: Lapsed | Msg; hasDays?: boolean; suggested?: Msg; onChange: (p: Partial<Lapsed>) => void;
+function CampaignCard({ t, campKey, token, adminEmail, title, desc, sent, camp, hasDays, daysLabel, suggested, onChange }: {
+  t: (k: string) => string; campKey: CampKey; token: string | null; adminEmail?: string; title: string; desc: string; sent: number; camp: Lapsed | Msg; hasDays?: boolean; daysLabel?: string; suggested?: Msg; onChange: (p: Partial<Lapsed>) => void;
 }) {
   const c = camp as Lapsed;
   const [testing, setTesting] = useState(false);
@@ -149,7 +161,7 @@ function CampaignCard({ t, campKey, token, adminEmail, title, desc, sent, camp, 
         <Check label={t('mk.sms')} checked={camp.sms} onChange={(v) => onChange({ sms: v })} />
         {hasDays && (
           <label>
-            <span style={ui.label}>{t('mk.daysSince')}</span>
+            <span style={ui.label}>{daysLabel ?? t('mk.daysSince')}</span>
             <input style={{ ...ui.input, width: 110 }} type="number" min={1} max={3650} value={c.daysSince} onChange={(e) => onChange({ daysSince: Math.max(1, Number(e.target.value)) })} />
           </label>
         )}

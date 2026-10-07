@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Patch, Post, Param } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Param, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { Caps } from '../auth/decorators/caps.decorator';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -41,10 +42,11 @@ class UpdateCampaignsDto {
   @IsOptional() @ValidateNested() @Type(() => LapsedCampaignDto) winBack?: LapsedCampaignDto;
   @IsOptional() @ValidateNested() @Type(() => LapsedCampaignDto) reactivation?: LapsedCampaignDto;
   @IsOptional() @ValidateNested() @Type(() => CampaignMessageDto) birthday?: CampaignMessageDto;
+  @IsOptional() @ValidateNested() @Type(() => LapsedCampaignDto) askedNotBooked?: LapsedCampaignDto;
 }
 
 class TestSendDto {
-  @IsIn(['winBack', 'reactivation', 'birthday']) campaign!: CampaignKey;
+  @IsIn(['winBack', 'reactivation', 'birthday', 'askedNotBooked']) campaign!: CampaignKey;
   @IsOptional() @ValidateIf((_o, v) => v !== '') @IsEmail() email?: string;
   @IsOptional() @IsString() @MaxLength(40) phone?: string;
 }
@@ -103,5 +105,24 @@ export class CampaignsController {
   @Post('test')
   test(@CurrentUser() user: AuthenticatedUser, @Body() dto: TestSendDto) {
     return this.campaigns.testSend(user, dto);
+  }
+
+  /**
+   * "Hỏi nhưng chưa đặt": who asked (chat or hotline) and has not booked.
+   * The front desk works this list too, so STAFF holding `customers` may read
+   * it and tick people off; settings and sending stay owner-only.
+   */
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('customers')
+  @Get('asked-not-booked')
+  askedNotBooked(@CurrentUser() user: AuthenticatedUser, @Query('days') days?: string) {
+    return this.campaigns.askedNotBookedList(user, days ? Number(days) : undefined);
+  }
+
+  @Roles(UserRole.SALON_ADMIN, UserRole.STAFF)
+  @Caps('customers')
+  @Post('asked-not-booked/handled')
+  askedHandled(@CurrentUser() user: AuthenticatedUser, @Body() dto: { key?: string }) {
+    return this.campaigns.markAskedHandled(user, String(dto?.key ?? ''));
   }
 }

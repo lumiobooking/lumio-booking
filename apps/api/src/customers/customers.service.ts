@@ -1,3 +1,7 @@
+import { profileFrom } from '../common/customer-profile';
+import { cleanIndustryFields, fieldsFor } from '../common/industry-fields';
+import { dueFollowUps, todayIn, type LeadRow } from './follow-ups';
+import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { OrderStatus } from '@prisma/client';
@@ -19,6 +23,37 @@ export class CustomersService {
     const id = resolveTenantScope(user);
     if (!id) throw new NotFoundException('No tenant context');
     return id;
+  }
+
+  /** The salon's industry (common/industry), for its customer record fields. */
+  private async industryOf(tenantId: string): Promise<string> {
+    const [t, row] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { businessType: true } }).catch(() => null),
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: INDUSTRY_KEY } } }).catch(() => null),
+    ]);
+    return resolveIndustry(row?.value ?? null, (t as { businessType?: string } | null)?.businessType ?? null);
+  }
+
+  /** Leads whose "call back" date has come (customers/follow-ups.ts) — THIS office only. */
+  async followUps(user: AuthenticatedUser) {
+    return this.followUpsForTenant(this.tenantId(user));
+  }
+
+  async followUpsForTenant(tenantId: string, now = new Date()) {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null);
+    const today = todayIn(t?.timezone, now);
+    const rows = (await this.prisma.customer.findMany({
+      where: { tenantId },
+      select: { id: true, firstName: true, lastName: true, phone: true, industryFields: true } as never,
+      take: 5000,
+    }).catch(() => [])) as unknown as LeadRow[];
+    return { today, items: dueFollowUps(rows, today) };
+  }
+
+  /** The record fields this salon's industry keeps on a customer, for the form. */
+  async industryFieldDefs(user: AuthenticatedUser) {
+    const industry = await this.industryOf(this.tenantId(user));
+    return { industry, ...fieldsFor(industry) };
   }
 
   /** List the salon's customers, newest first, with booking + no-show counts. */
@@ -47,7 +82,14 @@ export class CustomersService {
       _count: { _all: true },
     });
     const noShowById = new Map(grouped.map((g) => [g.customerId, g._count._all]));
-    return customers.map((c) => ({ ...c, noShowCount: noShowById.get(c.id) ?? 0 }));
+    // The line-of-business record (a real-estate lead's stage shows in the list).
+    // Read on its own, typed loosely: a dev machine's client may predate the column.
+    const recs = (await this.prisma.customer.findMany({
+      where: { tenantId, id: { in: customers.map((c) => c.id) } },
+      select: { id: true, industryFields: true } as never,
+    }).catch(() => [])) as unknown as { id: string; industryFields?: unknown }[];
+    const recById = new Map(recs.map((r) => [r.id, r.industryFields]));
+    return customers.map((c) => ({ ...c, noShowCount: noShowById.get(c.id) ?? 0, industryFields: (recById.get(c.id) ?? {}) as Record<string, string | number> }));
   }
 
   /** Typeahead for the POS/front desk: match by name or phone. Tenant-scoped. */
@@ -257,9 +299,25 @@ export class CustomersService {
       ? (lastApptVisit > lastSale ? lastApptVisit : lastSale)
       : (lastApptVisit ?? lastSale);
 
+    // Her habits — favourite services, usual technician, usual day/time (common/customer-profile).
+    const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null))?.timezone ?? null;
+    const profile = profileFrom([
+      ...customer.appointments.filter((a) => a.status === 'COMPLETED').map((a) => ({
+        at: a.startTime, services: [a.service?.name ?? ''].filter(Boolean),
+        staff: a.assignedStaff ? a.assignedStaff.firstName : null,
+        priceCents: a.payments.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountCents, 0) || null,
+      })),
+      ...walkInSales.map((o) => ({ at: o.createdAt, services: o.items.map((i) => i.name), staff: null, priceCents: o.totalCents })),
+    ], tz);
+
+    // Read on its own (typed loosely): the generated client on a dev machine may predate the column.
+    const rec = await this.prisma.customer.findFirst({ where: { id, tenantId }, select: { industryFields: true } as never }).catch(() => null) as { industryFields?: unknown } | null;
+
     return {
       ...customer,
+      industryFields: (rec?.industryFields && typeof rec.industryFields === 'object' ? rec.industryFields : {}) as Record<string, string | number>,
       orders,
+      profile,
       stats: {
         bookings: customer.appointments.length,
         completed,
@@ -277,10 +335,10 @@ export class CustomersService {
   async update(
     user: AuthenticatedUser,
     id: string,
-    dto: { birthDate?: string | null; firstName?: string; lastName?: string | null; email?: string | null; phone?: string | null; notes?: string | null },
+    dto: { birthDate?: string | null; firstName?: string; lastName?: string | null; email?: string | null; phone?: string | null; notes?: string | null; industryFields?: Record<string, unknown> },
   ) {
     const tenantId = this.tenantId(user);
-    const existing = await this.prisma.customer.findFirst({ where: { id, tenantId }, select: { id: true } });
+    const existing = await this.prisma.customer.findFirst({ where: { id, tenantId }, select: { id: true, industryFields: true } as never }) as { id: string; industryFields?: unknown } | null;
     if (!existing) throw new NotFoundException('Customer not found');
     const data: Record<string, unknown> = {};
     if ('birthDate' in dto) {
@@ -292,6 +350,10 @@ export class CustomersService {
     if (dto.email !== undefined) data.email = dto.email || null;
     if (dto.phone !== undefined) data.phone = dto.phone || null;
     if (dto.notes !== undefined) data.notes = dto.notes || null;
+    // The line-of-business record: only THIS salon's industry's own fields.
+    if (dto.industryFields !== undefined) {
+      data.industryFields = cleanIndustryFields(await this.industryOf(tenantId), dto.industryFields, existing.industryFields);
+    }
     // Scope the write by tenantId too (a forged id can't touch another tenant).
     await this.prisma.customer.updateMany({ where: { id, tenantId }, data });
     await this.audit.log({ tenantId, userId: user.userId, action: 'customer.updated', resourceType: 'customer', resourceId: id });

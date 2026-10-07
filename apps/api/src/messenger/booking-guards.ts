@@ -205,3 +205,29 @@ export function aboutTheBooking(text: string | null | undefined): boolean {
 export function customerWrappingUp(text: string | null | undefined): boolean {
   return /(not sure|let you know|i'?ll think|think about it|maybe later|just asking|just looking|just wondering|no thanks|thanks|thank you|\bbye\b|see you|chưa chắc|để (em|chị|anh|mình|tôi) (xem|suy nghĩ|tính)|hỏi thôi|hỏi trước thôi|cảm ơn|thôi ạ|khi khác)/i.test(String(text ?? ''));
 }
+
+// ---------------------------------------------------------------------------
+// ONE VERDICT for a reply — the same gates, in the same order, as runAgent
+// applies them on the first pass. Used by the replay suite (replay/), so a
+// real failure that once reached a customer is re-checked on every change.
+// ---------------------------------------------------------------------------
+export type GateVerdict = 'ok' | 'booked' | 'answer-first' | 'filler' | 'vague';
+
+export function gateVerdict(o: {
+  customerText: string; reply: string;
+  /** create_booking succeeded in this run */
+  bookedNow?: boolean;
+  /** the customer already has this many upcoming appointments */
+  upcoming?: number;
+  toolsUsed?: string[];
+}): GateVerdict {
+  const text = String(o.reply ?? '');
+  if (!text) return 'ok';
+  const booked = Boolean(o.bookedNow);
+  const upcoming = o.upcoming ?? 0;
+  if (!mayTalkAsBooked({ bookedNow: booked, upcoming, toolsUsed: new Set(o.toolsUsed ?? []) }) && claimsBooked(text)) return 'booked';
+  if (!booked && asksQuestion(o.customerText) && !aboutTheBooking(o.customerText) && isBookingRecap(text) && !answersBeforeRecap(text)) return 'answer-first';
+  if (!booked && !upcoming && !customerWrappingUp(o.customerText) && endsOnFiller(text)) return 'filler';
+  if (vagueAvailability(text)) return 'vague';
+  return 'ok';
+}

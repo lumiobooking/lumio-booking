@@ -4,6 +4,10 @@ import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateTableDto } from './dto/create-table.dto';
 import { UpdateTableDto } from './dto/update-table.dto';
+import { cleanLayout, tableStates, withDefaults } from './floor';
+
+/** Per restaurant: where each table stands on the floor map (tables/floor.ts). */
+const LAYOUT_KEY = 'table_layout';
 
 /**
  * Restaurant tables — the bookable resource for RESTAURANT tenants (the
@@ -21,6 +25,43 @@ export class TablesService {
     const id = resolveTenantScope(user);
     if (!id) throw new NotFoundException('No tenant context');
     return id;
+  }
+
+  /**
+   * The floor map: tables, their spots (settings `table_layout`) and their
+   * state at `at` (default now). One restaurant's rows only.
+   */
+  async floor(user: AuthenticatedUser, atIso?: string) {
+    const tenantId = this.tenantId(user);
+    const at = atIso && !Number.isNaN(Date.parse(atIso)) ? new Date(atIso) : new Date();
+    const dayStart = new Date(at.getTime() - 12 * 3600_000);
+    const dayEnd = new Date(at.getTime() + 12 * 3600_000);
+    const [tables, row, res] = await Promise.all([
+      this.prisma.restaurantTable.findMany({ where: { tenantId }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: LAYOUT_KEY } } }),
+      this.prisma.appointment.findMany({
+        where: { tenantId, tableId: { not: null }, startTime: { lt: dayEnd }, endTime: { gt: dayStart } },
+        select: { id: true, tableId: true, startTime: true, endTime: true, status: true, partySize: true, customer: { select: { firstName: true } } },
+      }),
+    ]);
+    const layout = withDefaults(tables, cleanLayout(row?.value ?? {}, tables.map((t) => t.id)));
+    const states = tableStates(tables, res.map((r) => ({
+      id: r.id, tableId: r.tableId, startTime: r.startTime, endTime: r.endTime, status: String(r.status), partySize: r.partySize ?? 1, customerName: r.customer?.firstName ?? null,
+    })), at);
+    return { at: at.toISOString(), tables, layout, states };
+  }
+
+  /** Save where the tables stand. Owner only (class @Roles). Unknown ids are dropped. */
+  async saveLayout(user: AuthenticatedUser, layout: unknown) {
+    const tenantId = this.tenantId(user);
+    const tables = await this.prisma.restaurantTable.findMany({ where: { tenantId }, select: { id: true } });
+    const clean = cleanLayout(layout, tables.map((t) => t.id));
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: LAYOUT_KEY } },
+      update: { value: clean as never }, create: { tenantId, key: LAYOUT_KEY, value: clean as never },
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'tables.layout_updated', resourceType: 'tenant', resourceId: tenantId });
+    return { layout: clean };
   }
 
   list(user: AuthenticatedUser) {

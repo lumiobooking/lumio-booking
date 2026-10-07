@@ -16,6 +16,7 @@ import { useLang } from '../../../lib/i18n';
 import { AiNotesBox } from '../../../components/AiNotesBox';
 import { FollowUpBox } from '../../../components/FollowUpBox';
 import { KnowledgeGapsBox } from '../../../components/KnowledgeGapsBox';
+import { BotReportBox } from '../../../components/BotReportBox';
 import { uiLocale } from '../../../lib/datetime';
 import { ind } from '../../../lib/ui-industry';
 
@@ -1182,6 +1183,7 @@ function Inner() {
           {ind(lang === 'vi' ? 'Bot không dán nguyên văn — nó chào tạm biệt theo đúng tinh thần câu này, bằng ngôn ngữ của khách.' : 'Not pasted verbatim — the bot says goodbye in the spirit of this line, in the customer\u2019s language.')}
         </p>
         {/* What the bot could not answer — answered once here, known to the bot from then on. */}
+        <BotReportBox token={token} vi={lang === 'vi'} />
         <KnowledgeGapsBox token={token} vi={lang === 'vi'} onTaught={(label, value) => setFacts((rows) => {
           const i = rows.findIndex((r) => r.label.trim().toLowerCase() === label.trim().toLowerCase());
           if (i >= 0) { const next = [...rows]; next[i] = { ...next[i], value, on: true }; return next; }

@@ -120,6 +120,10 @@ export interface KnownCustomer {
   /** The most recent finished visit, if any. */
   lastVisit?: { service: string; when: string } | null;
   visits?: number | null;
+  /** Her habits from finished visits ("Gel manicure · with Ivy · Saturday mornings"), see common/customer-profile. */
+  usual?: string | null;
+  /** What she had last time, for "same as last time?". */
+  lastTime?: string | null;
   /** The name the platform shows for this person (Facebook profile), when no record exists yet. */
   displayName?: string | null;
 }
@@ -141,7 +145,15 @@ export function customerDossier(c: KnownCustomer | null | undefined, lang: Reply
   }
   if (c.lastVisit) add('Lần ghé gần nhất', 'Last visit', `${c.lastVisit.service} · ${c.lastVisit.when}`);
   if (c.visits && c.visits > 1) add('Số lần đã ghé', 'Visits so far', String(c.visits));
+  add('Thói quen', 'Usual', c.usual);
   if (!rows.length) return '';
+  // A regular who wants to book without saying what: offer last time's visit in ONE line.
+  const same = String(c.lastTime ?? '').trim();
+  if (same) {
+    rows.push(en
+      ? `- If they want to book but have not said which service (or ask for "the usual"), offer in one line: "Same as last time — ${same}?" — and on yes, move straight to the time.`
+      : `- Nếu khách muốn đặt mà chưa nói dịch vụ (hoặc nói "như mọi lần"), gợi ý trong một câu: "Như lần trước — ${same} nhé?" — khách đồng ý thì chuyển ngay sang chọn giờ.`);
+  }
   if (en) {
     return '\nKNOWN CUSTOMER — the salon\'s own record of this person (from the database; THIS IS FACT). Never ask for anything listed here; use it. To book, you still need only what is MISSING from this list plus the service and time. If they ask about their appointment, the upcoming one is right here — do not ask for their phone number to look it up:\n'
       + rows.join('\n')

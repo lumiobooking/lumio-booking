@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
 import { useLang, tr } from '../../../lib/i18n';
 import { ImportCsv } from '../../../components/ImportCsv';
+import { FloorMap } from '../../../components/FloorMap';
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 
 interface Table { id: string; name: string; seats: number; area: string | null; isActive: boolean; sortOrder: number }
@@ -50,6 +51,8 @@ function Inner() {
   const [err, setErr] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', seats: '2', area: '' });
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<'list' | 'map'>('list');
+  const vi = lang === 'vi';
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -110,9 +113,18 @@ function Inner() {
   }
 
   return (
-    <section style={{ maxWidth: 720 }}>
+    <section style={{ maxWidth: view === 'map' ? 1040 : 720 }}>
       <h1 style={{ fontSize: 22, margin: '0 0 4px' }}>{t('tb.title')}</h1>
       <p style={{ color: 'var(--c94a3b8)', fontSize: 14, marginTop: 0 }}>{t('tb.subtitle')}</p>
+      <div role="tablist" style={{ display: 'inline-flex', gap: 4, padding: 3, borderRadius: 10, border: '1px solid var(--c334155)', marginBottom: 14 }}>
+        {(['list', 'map'] as const).map((v) => (
+          <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
+            style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13, background: view === v ? 'var(--c1e293b)' : 'transparent', color: 'var(--ccbd5e1)' }}>
+            {v === 'list' ? (vi ? 'Danh sách' : 'List') : (vi ? 'Sơ đồ bàn' : 'Floor map')}
+          </button>
+        ))}
+      </div>
+      {view === 'map' ? <FloorMap token={token} vi={vi} canArrange /> : <>
       {err && <div style={ui.banner}>{err}</div>}
 
       <ImportCsv token={token} endpoint="/tables" header="name,seats,area" sample={SAMPLE_TABLES} existing={() => new Set(tables.map((tb) => tb.name.toLowerCase()))} buildBody={(c) => ({ name: c[0], seats: parseInt(c[1], 10) || 2, area: c[2] || undefined })} onDone={load} />
@@ -159,6 +171,7 @@ function Inner() {
           </div>
         ))}
       </div>
+      </>}
     </section>
   );
 }

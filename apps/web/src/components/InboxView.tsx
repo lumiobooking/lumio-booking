@@ -1718,7 +1718,7 @@ export function InboxView() {
             {!loaded ? (
               <span style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>{vi ? 'Đang tải…' : 'Loading…'}</span>
             ) : sources.length === 0 ? (
-              <span style={{ fontSize: 12.5, color: 'var(--ink-warn)' }}>{vi ? 'Chưa nối kênh nào — vào Kênh kết nối để nối Trang.' : 'No channel connected — open Channels to connect a Page.'}</span>
+              <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{vi ? 'Chưa có hội thoại nào. Page đã nối mà vẫn trống? Mở Marketing → Messenger bot để xem Facebook có gửi sự kiện về không, hoặc nhập hội thoại gần đây từ Page.' : 'No conversations yet. Page connected but still empty? Open Marketing → Messenger bot to see whether Facebook is delivering events, or import the Page’s recent conversations.'}</span>
             ) : (<>
               <span style={{ display: 'flex', alignItems: 'center' }}>
                 {sources.slice(0, 6).map((src, i) => (

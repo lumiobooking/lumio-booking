@@ -2112,18 +2112,86 @@ export class MessengerService implements OnModuleInit {
       }
       ig = { enabled: true, igId: pg?.igId ?? null, igUsername, appObject: igSub.fields, appError: igSub.error, accountSub };
     }
+    const trace = this.webhookTrace.get(c.pageId) ?? null;
+    const threads = await this.prisma.messengerThread.count({ where: { tenantId } }).catch(() => 0);
     return {
       connected: true as const,
       instagram: ig,
       pageId: c.pageId,
       pageName,
       subscribed,
+      // The last event Facebook delivered for this Page since the server
+      // started (null = nothing yet), and how many conversations are stored.
+      lastEvent: trace ? { at: new Date(trace.at).toISOString(), count: trace.count, lane: trace.lane, preview: trace.preview } : null,
+      threads,
       fields,
       appFields: appSub.fields,
       echoOk: appSub.echoOk && fields.includes('message_echoes'),
       verifiedAt: new Date().toISOString(),
       webhookUrl: `${this.apiBase()}/api/messenger/webhook`,
     };
+  }
+
+  /**
+   * Pull the Page's recent conversations from Meta into the inbox — the chats
+   * that happened BEFORE the Page was connected (or while another app held
+   * them), which the webhook can never replay. Each becomes a thread with its
+   * last turns, marked so the bot never answers them unprompted; from the next
+   * customer message on, the webhook takes over as usual. Needs
+   * pages_messaging on the Page token; a Page without it returns Meta's reason
+   * instead of silently importing nothing. This salon's Pages only.
+   */
+  async importConversations(user: AuthenticatedUser, limit = 50) {
+    const tenantId = this.tenantId(user);
+    const pages = await this.prisma.messengerPage.findMany({ where: { tenantId, enabled: true }, select: { pageId: true, pageToken: true, pageName: true } }).catch(() => [] as { pageId: string; pageToken: string; pageName: string | null }[]);
+    const conn = pages.length ? null : await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageId: true, pageToken: true, pageName: true } });
+    const targets = pages.length ? pages : conn?.pageId && conn.pageToken ? [{ pageId: conn.pageId, pageToken: conn.pageToken, pageName: conn.pageName }] : [];
+    if (!targets.length) throw new BadRequestException('No Page connected');
+    const take = Math.min(100, Math.max(1, Math.round(limit) || 50));
+    let imported = 0, updated = 0, skipped = 0;
+    const errors: string[] = [];
+    for (const pg of targets) {
+      const url = `${GRAPH}/${pg.pageId}/conversations?platform=messenger&limit=${take}&fields=id,updated_time,participants,messages.limit(20){message,from,created_time}&access_token=${encodeURIComponent(pg.pageToken)}`;
+      let json: { data?: { id: string; updated_time?: string; participants?: { data?: { id: string; name?: string }[] }; messages?: { data?: { message?: string; from?: { id: string; name?: string }; created_time?: string }[] } }[]; error?: { message?: string; code?: number } };
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+        json = (await res.json().catch(() => ({}))) as typeof json;
+      } catch (e) { errors.push(`${pg.pageName || pg.pageId}: ${String(e).slice(0, 120)}`); continue; }
+      if (json.error) { errors.push(`${pg.pageName || pg.pageId}: ${json.error.message || 'Graph error'} (code ${json.error.code ?? '?'})`); continue; }
+      for (const conv of json.data || []) {
+        const other = (conv.participants?.data || []).find((p) => p.id !== pg.pageId);
+        if (!other) { skipped++; continue; }
+        const msgs = [...(conv.messages?.data || [])].filter((m) => m.message && m.created_time).reverse(); // oldest first
+        if (!msgs.length) { skipped++; continue; }
+        const turns: Turn[] = msgs.map((m) => ({ role: m.from?.id === pg.pageId ? 'assistant' : 'user', content: String(m.message).slice(0, 2000), at: new Date(m.created_time!).toISOString() }));
+        const lastCustomer = [...msgs].reverse().find((m) => m.from?.id !== pg.pageId);
+        const lastAny = msgs[msgs.length - 1];
+        const existing = await this.prisma.messengerThread.findUnique({ where: { pageId_senderId: { pageId: pg.pageId, senderId: other.id } } }).catch(() => null);
+        if (existing) {
+          // Only turns the thread does not already hold; never touch handoff or status.
+          const hist = (Array.isArray(existing.history) ? existing.history : []) as Turn[];
+          const before = hist.length;
+          await this.appendTurns(existing.id, hist, this.threadSummary(existing), turns);
+          const after = await this.prisma.messengerThread.findUnique({ where: { id: existing.id }, select: { history: true } }).catch(() => null);
+          if ((Array.isArray(after?.history) ? after!.history.length : before) > before) updated++; else skipped++;
+          continue;
+        }
+        await this.prisma.messengerThread.create({
+          data: {
+            tenantId, pageId: pg.pageId, senderId: other.id, senderName: other.name || null, channel: 'messenger',
+            lastText: String(lastAny.message).slice(0, 300),
+            lastCustomerAt: lastCustomer?.created_time ? new Date(lastCustomer.created_time) : null,
+            history: turns as unknown as Prisma.InputJsonValue,
+            // Imported history is for the people in the inbox; the bot waits for the customer's NEXT message.
+            status: 'open',
+          } as never,
+        });
+        imported++;
+      }
+    }
+    if (imported || updated) this.events.publish(tenantId, 'message');
+    await this.audit(tenantId, 'messenger.conversations_imported').catch(() => undefined);
+    return { imported, updated, skipped, errors };
   }
 
   /** Flatten recent conversation turns into a chronological activity log
@@ -2210,6 +2278,7 @@ export class MessengerService implements OnModuleInit {
       for (const ev of entry.standby || []) {
         const senderId = ev.sender?.id;
         if (!senderId) continue;
+        this.traceWebhook(entryId, ev.message?.is_echo ? 'echo' : 'standby', ev.message?.text || '');
         if (ev.message?.is_echo) {
           // A person typing in Business Suite's inbox echoes through the Page
           // Inbox app: that is a human holding the chat, and the bot yields as
@@ -2230,6 +2299,7 @@ export class MessengerService implements OnModuleInit {
       for (const ev of entry.messaging || []) {
         const senderId = ev.sender?.id;
         if (!senderId) continue;
+        this.traceWebhook(entryId, ev.message?.is_echo ? 'echo' : ev.message || ev.postback ? 'messaging' : 'other', ev.message?.text || ev.postback?.title || '');
         // "Get Started" tap: the customer opened the chat but hasn't typed yet.
         // This is the salon's ONE chance to speak first — greet immediately.
         // A package tap is read BEFORE the "and no message" guard. That guard
@@ -5096,6 +5166,18 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    *  is approved. Falls back to null — callers keep showing the PSID. */
   // Per-thread cooldown for profile lookups (in-memory; resets on restart).
   private readonly nameLookupTriedAt = new Map<string, number>();
+  /**
+   * The last thing Facebook sent us for each Page, kept in memory: when, how
+   * many events since the server started, and which lane it came down
+   * (messaging / standby / echo). "Is Facebook sending anything at all?" is
+   * the first question when an inbox stays empty, and until now the only
+   * answer was in the Render logs.
+   */
+  readonly webhookTrace = new Map<string, { at: number; count: number; lane: 'messaging' | 'standby' | 'echo' | 'other'; preview: string }>();
+  private traceWebhook(entryId: string, lane: 'messaging' | 'standby' | 'echo' | 'other', preview: string) {
+    const cur = this.webhookTrace.get(entryId);
+    this.webhookTrace.set(entryId, { at: Date.now(), count: (cur?.count ?? 0) + 1, lane, preview: preview.slice(0, 60) });
+  }
 
   /**
    * Names for many conversations in ONE call, the way Business Suite gets them.

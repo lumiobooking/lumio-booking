@@ -79,7 +79,13 @@ function StateBadge({ th, lang }: { th: MThread; lang: string }) {
   return pill('var(--c312e81)', 'var(--cc7d2fe)', vi ? 'Bot' : 'Bot');
 }
 interface FactRow extends BotFact { custom: boolean }
-interface WebhookStatus { connected: boolean; pageId?: string; pageName?: string; subscribed?: boolean; fields?: string[]; appFields?: string[]; echoOk?: boolean; verifiedAt?: string; webhookUrl?: string }
+interface WebhookStatus {
+  connected: boolean; pageId?: string; pageName?: string; subscribed?: boolean; fields?: string[]; appFields?: string[]; echoOk?: boolean; verifiedAt?: string; webhookUrl?: string;
+  /** The last event Facebook delivered for this Page since the server started; null = nothing yet. */
+  lastEvent?: { at: string; count: number; lane: 'messaging' | 'standby' | 'echo' | 'other'; preview: string } | null;
+  /** Conversations stored for this salon. */
+  threads?: number;
+}
 interface ActivityEv { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean; channel?: string }
 interface ActivityRes { page: string; pageId: string; events: ActivityEv[] }
 
@@ -263,6 +269,8 @@ function Inner() {
   const [infoOpen, setInfoOpen] = useState(true);     // fold the business-info checklist
   const [convoSearch, setConvoSearch] = useState(''); // filter the conversations list
   const [wh, setWh] = useState<WebhookStatus | null>(null);       // live webhook subscription status
+  const [convImporting, setConvImporting] = useState(false);
+  const [convImportMsg, setConvImportMsg] = useState<string | null>(null);
   const [whFail, setWhFail] = useState(false);                    // status check itself failed (≠ "not subscribed")
   const [whTries, setWhTries] = useState(0);                      // cold-start retries
   const [whBusy, setWhBusy] = useState(false);                    // polling right after a connect
@@ -878,6 +886,34 @@ function Inner() {
               {(wh?.fields && wh.fields.length ? wh.fields : ['messages', 'messaging_postbacks', 'message_reactions']).map((f) => `\u2713 ${f}`).join('   ')}
             </div>
             {wh?.verifiedAt && <div style={{ color: 'var(--c64748b)', marginTop: 6 }}>{t('lastVerified')}: {fmtInTz(wh.verifiedAt, { dateStyle: 'short', timeStyle: 'short' })}</div>}
+            {wh && 'lastEvent' in wh && (
+              <div style={{ marginTop: 6, color: wh.lastEvent ? 'var(--ce2e8f0)' : 'var(--ink-warn)' }}>
+                {wh.lastEvent
+                  ? (lang === 'vi'
+                    ? `✓ Sự kiện gần nhất từ Facebook: ${fmtInTz(wh.lastEvent.at, { dateStyle: 'short', timeStyle: 'short' })} · ${wh.lastEvent.count} sự kiện từ lúc máy chủ chạy · kênh "${wh.lastEvent.lane}"${wh.lastEvent.lane === 'standby' ? ' (app khác đang giữ hội thoại — Lumio tự giành lại)' : ''}${wh.lastEvent.preview ? ` · "${wh.lastEvent.preview}"` : ''}`
+                    : `✓ Last event from Facebook: ${fmtInTz(wh.lastEvent.at, { dateStyle: 'short', timeStyle: 'short' })} · ${wh.lastEvent.count} since the server started · lane "${wh.lastEvent.lane}"${wh.lastEvent.lane === 'standby' ? ' (another app holds the thread — Lumio takes it back)' : ''}${wh.lastEvent.preview ? ` · "${wh.lastEvent.preview}"` : ''}`)
+                  : (lang === 'vi'
+                    ? '⚠ Chưa nhận sự kiện nào từ Facebook cho Page này kể từ lúc máy chủ khởi động. Nhắn thử vào Page từ một tài khoản khác rồi tải lại trang này; nếu vẫn không có, Facebook chưa gửi gì tới Lumio (kiểm tra Meta Business Agent / app khác đang giữ Page).'
+                    : '⚠ No event from Facebook for this Page since the server started. Message the Page from another account and reload; if still nothing, Facebook is not delivering to Lumio (check Meta Business Agent / another app holding the Page).')}
+                {typeof wh.threads === 'number' && <span style={{ color: 'var(--c64748b)' }}> · {lang === 'vi' ? `${wh.threads} hội thoại đã lưu` : `${wh.threads} conversations stored`}</span>}
+              </div>
+            )}
+            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button type="button" disabled={convImporting} onClick={async () => {
+                setConvImporting(true); setConvImportMsg(null);
+                try {
+                  const r = await apiFetch<{ imported: number; updated: number; skipped: number; errors: string[] }>('/messenger/import-conversations', { method: 'POST', token, body: { limit: 50 } });
+                  setConvImportMsg((lang === 'vi'
+                    ? `Đã nhập ${r.imported} hội thoại mới, cập nhật ${r.updated}${r.skipped ? `, bỏ qua ${r.skipped}` : ''}.`
+                    : `Imported ${r.imported} new conversations, updated ${r.updated}${r.skipped ? `, skipped ${r.skipped}` : ''}.`) + (r.errors.length ? ` ${r.errors.join(' · ')}` : ''));
+                } catch (e) { setConvImportMsg(e instanceof Error ? e.message : 'Import failed'); }
+                finally { setConvImporting(false); }
+              }} style={{ ...ui.input, width: 'auto', cursor: 'pointer', padding: '6px 12px' }}>
+                {convImporting ? (lang === 'vi' ? 'Đang nhập…' : 'Importing…') : (lang === 'vi' ? '⤓ Nhập hội thoại gần đây từ Page vào Inbox' : '⤓ Import the Page’s recent conversations into the Inbox')}
+              </button>
+              <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{lang === 'vi' ? 'Các chat có trước khi nối Page (webhook không gửi lại). Bot không tự trả lời chat cũ; từ tin nhắn tiếp theo của khách thì chạy như thường.' : 'Chats from before the Page was connected (the webhook never replays them). The bot does not answer old chats; from the customer’s next message on it runs as usual.'}</span>
+            </div>
+            {convImportMsg && <div style={{ marginTop: 6, color: /failed|error|code/i.test(convImportMsg) ? 'var(--ink-warn)' : 'var(--ink-good)' }}>{convImportMsg}</div>}
             {typeof wh?.echoOk === 'boolean' && (
               <div style={{ color: wh.echoOk ? '#34d399' : 'var(--ink-warn)', marginTop: 6 }}>
                 {wh.echoOk

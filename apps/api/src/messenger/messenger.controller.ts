@@ -281,6 +281,12 @@ export class MessengerController {
     return this.svc.renameThread(user, id, dto.name);
   }
 
+  /** Pull the Page's recent conversations into the inbox (the chats from before the connection). */
+  @Post('import-conversations')
+  importConversations(@CurrentUser() user: AuthenticatedUser, @Body() dto: { limit?: number }) {
+    return this.svc.importConversations(user, Number(dto?.limit) || 50);
+  }
+
   /** Read the salon's website or connected Page and propose Bot-facts rows. */
   @Post('import-facts')
   @UseGuards(FeaturePolicyGuard)

@@ -345,7 +345,9 @@ function SharedAddonsCard({ token, categories, currency, fmt, vi }: {
 }) {
   const L = (v: string, e: string) => ind(vi ? v : e);
   const [items, setItems] = useState<SharedAddon[]>([]);
-  const [form, setForm] = useState({ name: '', duration: '10', price: '5', scope: '', ask: false });
+  // `scopes`: the categories this extra goes on — several at once ("Design" on
+  // Manicure AND Full Set AND Fill-in is one form, not three); empty = every service.
+  const [form, setForm] = useState({ name: '', duration: '10', price: '5', scopes: [] as string[], ask: false });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -360,10 +362,13 @@ function SharedAddonsCard({ token, categories, currency, fmt, vi }: {
     if (!form.name.trim()) return;
     setBusy(true); setError(null);
     try {
-      await apiFetch('/services/addons/shared', {
-        method: 'POST', token,
-        body: { name: form.name.trim(), durationMinutes: parseInt(form.duration, 10) || 0, priceCents: toMinorUnits(form.price, currency), categoryId: form.scope || null, askAtBooking: form.ask },
-      });
+      // One row per chosen category (the API stores one scope per extra).
+      for (const categoryId of form.scopes.length ? form.scopes : [null]) {
+        await apiFetch('/services/addons/shared', {
+          method: 'POST', token,
+          body: { name: form.name.trim(), durationMinutes: parseInt(form.duration, 10) || 0, priceCents: toMinorUnits(form.price, currency), categoryId, askAtBooking: form.ask },
+        });
+      }
       setForm({ ...form, name: '' });
       await load();
     } catch (err) { setError(err instanceof Error ? err.message : 'Create failed'); }
@@ -411,12 +416,15 @@ function SharedAddonsCard({ token, categories, currency, fmt, vi }: {
           <span style={ui.label}>{L('Tên món thêm', 'Add-on name')}</span>
           <input style={ui.input} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={L('vd: Take Off, French tips', 'e.g. Take Off, French tips')} required />
         </div>
-        <div style={{ flex: '1 1 150px' }}>
-          <span style={ui.label}>{L('Áp dụng cho', 'Applies to')}</span>
-          <select style={ui.input} value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })}>
-            <option value="">{L('Tất cả dịch vụ', 'All services')}</option>
-            {categories.map((c) => <option key={c.id} value={c.id}>{L('Cả danh mục', 'All of')} {c.name}</option>)}
-          </select>
+        <div style={{ flexBasis: '100%', order: 3 }}>
+          <span style={ui.label}>{L('Áp dụng cho — chọn một hoặc nhiều nhóm', 'Applies to — pick one or more groups')}</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+            {[{ id: '', name: L('Tất cả dịch vụ', 'All services') }, ...categories].map((c) => {
+              const on = c.id ? form.scopes.includes(c.id) : form.scopes.length === 0;
+              const toggle = () => setForm({ ...form, scopes: !c.id ? [] : on ? form.scopes.filter((x) => x !== c.id) : [...form.scopes, c.id] });
+              return <button key={c.id || 'all'} type="button" onClick={toggle} style={{ ...ui.input, width: 'auto', cursor: 'pointer', padding: '5px 10px', fontSize: 13, borderColor: on ? '#6366f1' : undefined, color: on ? 'var(--ink-link)' : undefined, fontWeight: on ? 700 : 500 }}>{on ? '✓ ' : ''}{c.name}</button>;
+            })}
+          </div>
         </div>
         <div style={{ width: 80 }}>
           <span style={ui.label}>{L('Phút', 'Min')}</span>
@@ -426,11 +434,19 @@ function SharedAddonsCard({ token, categories, currency, fmt, vi }: {
           <span style={ui.label}>{L('Giá', 'Price')}</span>
           <input style={ui.input} type="number" min={0} step={priceInputStep(currency)} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
         </div>
-        <button type="submit" disabled={busy} style={{ ...ui.primaryBtn, padding: '9px 14px', opacity: busy ? 0.6 : 1 }}>{L('Thêm', 'Add')}</button>
-        <label style={{ flexBasis: '100%', display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.4 }}>
+        <label style={{ flexBasis: '100%', order: 4, display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.4 }}>
           <input type="checkbox" checked={form.ask} onChange={(e) => setForm({ ...form, ask: e.target.checked })} style={{ marginTop: 3 }} />
           <span>{L('Luôn hỏi khách trước khi đặt lịch (vd "Có làm design không?") — bot điện thoại / chat và trang đặt lịch sẽ hỏi; khách chọn có thì lịch tự cộng thêm phút, thợ không bị trễ khách sau.', 'Always ask before booking (e.g. "Would you like a design?") — the phone/chat bot and the booking page ask; a yes adds the minutes so the next client is not late.')}</span>
         </label>
+        {form.ask && (
+          <div style={{ flexBasis: '100%', order: 5, fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5, padding: '8px 10px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--c334155)' }}>
+            {L(`Cách chạy: khách đặt bất kỳ dịch vụ nào trong nhóm đã chọn → bot / trang đặt lịch hỏi "Có làm ${form.name.trim() || 'design'} không?" → khách nói có → "${form.name.trim() || 'Design'}" vào lịch, lịch dài thêm ${parseInt(form.duration, 10) || 0} phút và + ${fmt(toMinorUnits(form.price, currency))}; khách nói không → đặt như thường. Ví dụ Glow: Design · chọn MANICURE, FULL SET, FILL-IN, DIPPING POWDER · 20 phút · $10.`,
+               `How it runs: the client books any service in the chosen groups → the bot / booking page asks "Would you like ${form.name.trim() || 'a design'}?" → yes → "${form.name.trim() || 'Design'}" is added to the booking, ${parseInt(form.duration, 10) || 0} more minutes and + ${fmt(toMinorUnits(form.price, currency))}; no → booked as usual.`)}
+          </div>
+        )}
+        <button type="submit" disabled={busy || !form.name.trim()} style={{ ...ui.primaryBtn, padding: '9px 14px', order: 6, opacity: busy || !form.name.trim() ? 0.6 : 1 }}>
+          {L(`Lưu ${form.scopes.length > 1 ? `(${form.scopes.length} nhóm)` : ''}`.trim(), `Save ${form.scopes.length > 1 ? `(${form.scopes.length} groups)` : ''}`.trim())}
+        </button>
       </form>
     </div>
   );

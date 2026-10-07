@@ -8,6 +8,7 @@ import { apiFetch } from '../lib/api';
 import { useLang } from '../lib/i18n';
 import { useIsMobile } from '../lib/responsive';
 import { ThemeToggle } from './ThemeToggle';
+import { PushBanner } from './PushBanner';
 import { LumioLogo } from './LumioLogo';
 import { IC, Icon, TAB_H, BOTTOM_SAFE } from './staff/kit';
 import { setUiIndustry, setUiIndustryNames } from '../lib/ui-industry';
@@ -84,7 +85,7 @@ export function StaffShell({ children, title = 'My Bookings', subtitle, right, w
     { href: '/staff/today', label: vi ? 'Hôm nay' : 'Today', icon: IC.home, also: ['/staff/chair'] },
     { href: '/staff/bookings', label: vi ? 'Lịch' : 'Schedule', icon: IC.calendar, badge: pending },
     { href: '/staff/turns', label: vi ? 'Lượt' : 'Turns', icon: IC.turns },
-    { href: '/staff/me', label: vi ? 'Tôi' : 'Me', icon: IC.me, also: ['/staff/profile', '/staff/tips', '/staff/reviews', '/staff/inbox'] },
+    { href: '/staff/me', label: vi ? 'Tôi' : 'Me', icon: IC.me, also: ['/staff/profile', '/staff/tips', '/staff/reviews', '/staff/inbox', '/staff/pay'] },
   ];
   const isOn = (t: { href: string; also?: string[] }) => pathname === t.href || pathname.startsWith(t.href + '/') || (t.also ?? []).some((a) => pathname.startsWith(a));
 
@@ -99,6 +100,7 @@ export function StaffShell({ children, title = 'My Bookings', subtitle, right, w
           {right}
         </header>
         <main style={{ padding: '4px 16px 0', paddingBottom: `calc(${TAB_H + 24}px + ${BOTTOM_SAFE})` }}>
+          <PushBanner />
           {children}
         </main>
         <nav aria-label={vi ? 'Mục chính' : 'Main'} style={{
@@ -148,6 +150,7 @@ export function StaffShell({ children, title = 'My Bookings', subtitle, right, w
           </button>
         </div>
       </header>
+      <PushBanner />
       {children}
       <a href="https://lumioagency.com/" target="_blank" rel="noopener noreferrer"
         style={{ display: 'block', textAlign: 'center', marginTop: 28, fontSize: 11, color: 'var(--c64748b)', textDecoration: 'none' }}>

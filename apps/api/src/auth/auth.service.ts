@@ -145,4 +145,19 @@ export class AuthService {
       },
     };
   }
+
+  /**
+   * "Đổi mật khẩu" — anyone signed in changes their OWN password, proving the
+   * current one. Support sessions cannot (they are not the account's owner).
+   */
+  async changeOwnPassword(user: { userId: string; supportSession?: boolean }, current: string, next: string) {
+    if (user.supportSession) throw new UnauthorizedException('A support session cannot change this password.');
+    if (typeof next !== 'string' || next.length < 8) throw new BadRequestException('The new password must be at least 8 characters.');
+    if (next === current) throw new BadRequestException('The new password must be different.');
+    const row = await this.prisma.user.findUnique({ where: { id: user.userId }, select: { id: true, passwordHash: true, isActive: true } });
+    if (!row || !row.isActive) throw new UnauthorizedException();
+    if (!(await verifySecret(String(current ?? ''), row.passwordHash))) throw new BadRequestException('The current password is not right.');
+    await this.prisma.user.update({ where: { id: row.id }, data: { passwordHash: await hashSecret(next) } });
+    return { ok: true };
+  }
 }

@@ -53,6 +53,12 @@ export interface PayrollSettings {
   cardTipFeePercent: number;
   /** Share of net pay paid by check when the tech has no ratio of their own. */
   defaultCheckPercent: number;
+  /**
+   * What a technician sees of her own pay in her app (Thu nhập):
+   * LIVE = the running estimate of the open period plus closed payslips;
+   * FINAL = closed payslips only; OFF = nothing.
+   */
+  staffPayView: 'LIVE' | 'FINAL' | 'OFF';
 }
 
 export const DEFAULT_PAYROLL_SETTINGS: PayrollSettings = {
@@ -63,6 +69,7 @@ export const DEFAULT_PAYROLL_SETTINGS: PayrollSettings = {
   supplyFeePercent: 0,
   cardTipFeePercent: 0,
   defaultCheckPercent: 100,
+  staffPayView: 'LIVE',
 };
 
 export interface Adjustment { label: string; cents: number }
@@ -277,6 +284,7 @@ export function sanitizeSettings(raw: Partial<PayrollSettings> | null | undefine
     supplyFeePercent: clampPct(r.supplyFeePercent, 0),
     cardTipFeePercent: Math.min(20, Math.max(0, Math.round((Number(r.cardTipFeePercent) || 0) * 100) / 100)),
     defaultCheckPercent: clampPct(r.defaultCheckPercent, 100),
+    staffPayView: r.staffPayView === 'FINAL' || r.staffPayView === 'OFF' ? r.staffPayView : 'LIVE',
   };
 }
 

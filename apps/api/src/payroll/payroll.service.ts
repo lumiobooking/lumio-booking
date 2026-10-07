@@ -154,6 +154,46 @@ export class PayrollService {
     return { ...head, run: run ? { id: run.id, status: run.status, finalizedAt: null, note: run.note } : null, frozen: false, ...live };
   }
 
+  /**
+   * THU NHẬP — a technician's OWN payslip, in her app. Never anyone else's line,
+   * never the salon's totals. What she may see is the owner's choice
+   * (settings.staffPayView): the running estimate of the open period (LIVE),
+   * only closed payslips (FINAL), or nothing (OFF).
+   */
+  async mySlip(user: AuthenticatedUser, from?: string, to?: string) {
+    const tenantId = this.tenantId(user);
+    const me = await this.prisma.staffMember.findFirst({ where: { tenantId, userId: user.userId }, select: { id: true } });
+    if (!me) throw new NotFoundException('No staff profile for this login');
+    const { tz, settings, today, period } = await this.periodOf(tenantId, from, to);
+    const view = settings.staffPayView;
+    if (view === 'OFF') return { view, period, today, slip: null, frozen: false, history: [], currency: await this.currencyOf(tenantId) };
+    const runs = await this.prisma.payrollRun.findMany({
+      where: { tenantId, status: 'FINAL' }, orderBy: { periodFrom: 'desc' }, take: 12,
+      select: { id: true, periodFrom: true, periodTo: true, finalizedAt: true, lines: true },
+    });
+    const mine = (lines: unknown) => (Array.isArray(lines) ? (lines as Payslip[]).find((l) => l.staffId === me.id) ?? null : null);
+    const history = runs.map((r) => ({ from: r.periodFrom, to: r.periodTo, finalizedAt: r.finalizedAt, netPayCents: mine(r.lines)?.netPayCents ?? 0 }))
+      .filter((h, i) => mine(runs[i].lines));
+    const run = runs.find((r) => r.periodFrom === period.from && r.periodTo === period.to);
+    let slip: Payslip | null = null;
+    let frozen = false;
+    if (run) { slip = mine(run.lines); frozen = true; }
+    else if (view === 'LIVE' && period.from === (await this.periodOf(tenantId)).period.from) {
+      // The running estimate is for the OPEN period only; any other range shows a closed payslip or nothing.
+      const open = await this.prisma.payrollRun.findUnique({ where: { tenantId_periodFrom_periodTo: { tenantId, periodFrom: period.from, periodTo: period.to } } });
+      const live = await this.compute(tenantId, tz, settings, period, today, (open?.overrides as unknown as Overrides) ?? {});
+      slip = live.slips.find((x) => x.staffId === me.id) ?? null;
+    }
+    return { view, period, today, running: period.to >= today, frozen, slip, history, currency: await this.currencyOf(tenantId), payPeriod: settings.payPeriod };
+  }
+
+  private async currencyOf(tenantId: string): Promise<string> {
+    try {
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'booking_rules' } } });
+      return String((row?.value as { currency?: string } | null)?.currency || 'USD');
+    } catch { return 'USD'; }
+  }
+
   /** The owner's correction for one tech on a period still open (hours, days off, bonus / deduction lines). */
   async saveOverride(user: AuthenticatedUser, dto: { from: string; to: string; staffId: string; override: PayOverride }) {
     const tenantId = this.tenantId(user);

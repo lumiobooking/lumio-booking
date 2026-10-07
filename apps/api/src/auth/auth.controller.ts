@@ -7,6 +7,12 @@ import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { capabilitiesFor } from './capabilities';
+import { IsString, MaxLength, MinLength } from 'class-validator';
+
+class ChangePasswordDto {
+  @IsString() @MaxLength(200) currentPassword!: string;
+  @IsString() @MinLength(8) @MaxLength(200) newPassword!: string;
+}
 
 @Controller('auth')
 export class AuthController {
@@ -34,6 +40,14 @@ export class AuthController {
   @HttpCode(200)
   bootstrap(@Body() dto: BootstrapDto) {
     return this.authService.bootstrapSuperAdmin(dto);
+  }
+
+  // POST /api/auth/password -> change MY password (current one required).
+  @RateLimit(10, 60_000)
+  @Post('password')
+  @HttpCode(200)
+  changePassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChangePasswordDto) {
+    return this.authService.changeOwnPassword(user, dto.currentPassword, dto.newPassword);
   }
 
   // GET /api/auth/me -> requires a valid token; echoes the current principal.

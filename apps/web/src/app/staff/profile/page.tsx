@@ -6,6 +6,7 @@ import { useAuth } from '../../../lib/auth';
 import { compressImageToFit } from '../../../lib/image';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
+import { useLang } from '../../../lib/i18n';
 
 interface MyProfile {
   id: string; firstName: string; lastName: string | null;
@@ -26,6 +27,8 @@ export default function StaffProfilePage() {
 }
 
 function Inner() {
+  const { lang } = useLang();
+  const T = (v: string, e: string) => (lang === 'vi' ? v : e);
   const { token } = useAuth();
   const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', avatarUrl: '' });
   const [email, setEmail] = useState<string | null>(null);
@@ -84,8 +87,8 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
       {msg && <div style={{ background: 'var(--c064e3b)', color: 'var(--ca7f3d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{msg}</div>}
 
-      <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', fontWeight: 600, marginBottom: 4 }}>Profile photo</div>
-      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 12px' }}>Clients see this when choosing a technician. A clear, square face photo works best.</p>
+      <div style={{ fontSize: 13, color: 'var(--ccbd5e1)', fontWeight: 600, marginBottom: 4 }}>{T('Ảnh đại diện', 'Profile photo')}</div>
+      <p style={{ color: 'var(--c64748b)', fontSize: 12, margin: '0 0 12px' }}>{T('Khách thấy ảnh này khi chọn thợ. Ảnh vuông, rõ mặt là đẹp nhất.', 'Clients see this when choosing a technician. A clear, square face photo works best.')}</p>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
         {form.avatarUrl
           // eslint-disable-next-line @next/next/no-img-element
@@ -93,25 +96,25 @@ function Inner() {
           : <span style={{ width: 84, height: 84, borderRadius: '50%', background: 'var(--c334155)', color: 'var(--ccbd5e1)', display: 'grid', placeItems: 'center', fontSize: 30, fontWeight: 600 }}>{(form.firstName || '?').charAt(0).toUpperCase()}</span>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <label style={{ ...ui.input, padding: '9px 14px', cursor: 'pointer', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            📷 {busy ? 'Processing…' : form.avatarUrl ? 'Change photo' : 'Upload photo'}
+            📷 {busy ? T('Đang xử lý…', 'Processing…') : form.avatarUrl ? T('Đổi ảnh', 'Change photo') : T('Tải ảnh lên', 'Upload photo')}
             <input type="file" accept="image/*" onChange={pickPhoto} style={{ display: 'none' }} />
           </label>
-          {form.avatarUrl && <button type="button" onClick={() => setForm((f) => ({ ...f, avatarUrl: '' }))} style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>Remove photo</button>}
+          {form.avatarUrl && <button type="button" onClick={() => setForm((f) => ({ ...f, avatarUrl: '' }))} style={{ background: 'none', border: 'none', color: 'var(--ink-bad)', fontSize: 12, cursor: 'pointer', textAlign: 'left', padding: 0 }}>{T('Xoá ảnh', 'Remove photo')}</button>}
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <label><span style={ui.label}>First name</span>
+        <label><span style={ui.label}>{T('Tên', 'First name')}</span>
           <input style={ui.input} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required /></label>
-        <label><span style={ui.label}>Last name</span>
+        <label><span style={ui.label}>{T('Họ', 'Last name')}</span>
           <input style={ui.input} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></label>
       </div>
-      <label style={{ display: 'block', marginTop: 12 }}><span style={ui.label}>Phone</span>
+      <label style={{ display: 'block', marginTop: 12 }}><span style={ui.label}>{T('Số điện thoại', 'Phone')}</span>
         <input style={ui.input} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
-      <label style={{ display: 'block', marginTop: 12 }}><span style={ui.label}>Email (login — ask your manager to change)</span>
+      <label style={{ display: 'block', marginTop: 12 }}><span style={ui.label}>{T('Email đăng nhập (nhờ chủ tiệm đổi)', 'Email (login — ask your manager to change)')}</span>
         <input style={{ ...ui.input, opacity: 0.6 }} value={email ?? ''} readOnly /></label>
 
-      <button type="submit" disabled={saving} style={{ ...ui.primaryBtn, marginTop: 18 }}>{saving ? 'Saving…' : 'Save profile'}</button>
+      <button type="submit" disabled={saving} style={{ ...ui.primaryBtn, marginTop: 18 }}>{saving ? T('Đang lưu…', 'Saving…') : T('Lưu hồ sơ', 'Save profile')}</button>
     </form>
   );
 }

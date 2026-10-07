@@ -1,5 +1,6 @@
 'use client';
 
+import { setAppBadge } from '../lib/app-badge';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/i18n';
@@ -143,6 +144,8 @@ export function InboxAlerts({ href = '/staff/inbox', label = 'Inbox', compact = 
       const n = unreadCount(list);
       setCount(n);
       onCountRef.current?.(n);
+      // The number on the app icon follows what is really unread.
+      if (document.visibilityState === 'visible') setAppBadge(n);
       // The conversation the person is reading right now is not news — the
       // inbox page tells us which one that is (see lib/inbox-sound).
       const { memory, alerts } = nextAlerts(memRef.current, list, { openId: openConversation() });

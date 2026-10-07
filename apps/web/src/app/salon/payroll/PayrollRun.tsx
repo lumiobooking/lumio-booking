@@ -37,6 +37,7 @@ interface Settings {
   payPeriod: 'WEEKLY' | 'BIWEEKLY' | 'SEMIMONTHLY' | 'MONTHLY'; periodAnchor: string;
   supplyFeeMode: 'NONE' | 'PER_SERVICE' | 'PERCENT'; supplyFeeCents: number; supplyFeePercent: number;
   cardTipFeePercent: number; defaultCheckPercent: number;
+  staffPayView?: 'LIVE' | 'FINAL' | 'OFF';
 }
 interface Preview {
   period: { from: string; to: string }; today: string; running: boolean; settings: Settings;
@@ -444,6 +445,7 @@ function SettingsPanel({ vi, value, onSaved }: { vi: boolean; value: Settings; o
     payPeriod: value.payPeriod, periodAnchor: value.periodAnchor,
     supplyFeeMode: value.supplyFeeMode, supplyFee: value.supplyFeeMode === 'PER_SERVICE' ? fromMinorUnits(value.supplyFeeCents, cur) : String(value.supplyFeePercent || ''),
     cardTipFeePercent: String(value.cardTipFeePercent || ''), defaultCheckPercent: String(value.defaultCheckPercent),
+    staffPayView: value.staffPayView ?? 'LIVE',
   });
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -456,6 +458,7 @@ function SettingsPanel({ vi, value, onSaved }: { vi: boolean; value: Settings; o
         supplyFeePercent: f.supplyFeeMode === 'PERCENT' ? Math.max(0, Math.min(100, Number(f.supplyFee) || 0)) : 0,
         cardTipFeePercent: Math.max(0, Math.min(20, Number(f.cardTipFeePercent) || 0)),
         defaultCheckPercent: Math.max(0, Math.min(100, Math.round(Number(f.defaultCheckPercent) || 0))),
+        staffPayView: f.staffPayView,
       } });
       onSaved();
     } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); } finally { setSaving(false); }
@@ -497,6 +500,13 @@ function SettingsPanel({ vi, value, onSaved }: { vi: boolean; value: Settings; o
         {lab(L('Mặc định trả bằng check (%)', 'Default paid by check (%)'), (
           <input type="number" min={0} max={100} value={f.defaultCheckPercent} onChange={(e) => setF({ ...f, defaultCheckPercent: e.target.value })} style={ui.input} />
         ), L('Phần còn lại trả tiền mặt. Từng thợ có thể đặt riêng.', 'The rest is cash. Each tech can override.'))}
+        {lab(L('Thợ xem lương trong app', 'Techs see their pay in the app'), (
+          <select value={f.staffPayView} onChange={(e) => setF({ ...f, staffPayView: e.target.value as 'LIVE' | 'FINAL' | 'OFF' })} style={ui.input}>
+            <option value="LIVE">{L('Tạm tính kỳ này + bảng lương đã chốt', 'Running estimate + closed payslips')}</option>
+            <option value="FINAL">{L('Chỉ bảng lương đã chốt', 'Closed payslips only')}</option>
+            <option value="OFF">{L('Không cho xem', 'Not shown')}</option>
+          </select>
+        ), L('Mỗi thợ chỉ thấy lương của chính mình.', 'Each tech sees only their own pay.'))}
       </div>
       {err && <div style={ui.banner}>{err}</div>}
       <div><button type="button" onClick={save} disabled={saving} style={ui.primaryBtn}>{saving ? L('Đang lưu…', 'Saving…') : L('Lưu cài đặt', 'Save settings')}</button></div>

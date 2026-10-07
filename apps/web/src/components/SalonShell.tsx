@@ -1,5 +1,6 @@
 'use client';
 
+import { PushBanner } from './PushBanner';
 import { ReactNode, createContext, useContext, useCallback, useEffect, useState } from 'react';
 import { InboxAlerts } from './InboxAlerts';
 import { ThemeToggle } from './ThemeToggle';
@@ -436,7 +437,7 @@ function SalonShellChrome({ children }: { children: ReactNode }) {
       <h2 style={{ margin: '0 0 10px', fontSize: 19, color: 'var(--cf8fafc)' }}>{gateText(lang === 'vi').title}</h2>
       <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.65, color: 'var(--c94a3b8)' }}>{gateText(lang === 'vi').body}</p>
     </div>
-  ) : <NavAccessContext.Provider value={hrefVisible}>{children}</NavAccessContext.Provider>;
+  ) : <NavAccessContext.Provider value={hrefVisible}><PushBanner />{children}</NavAccessContext.Provider>;
 
   const supportBanner = user?.supportSession ? (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c312e81)', border: '1px solid #6366f1', color: 'var(--ce0e7ff)', borderRadius: 10, padding: '8px 12px', marginBottom: 14, fontSize: 13.5 }}>

@@ -16,6 +16,8 @@ import { apiFetch } from '../../../lib/api';
 import { formatPrice } from '../../../lib/ui';
 import { useLang } from '../../../lib/i18n';
 import { IC, Icon, L, fmtTurns, st } from '../../../components/staff/kit';
+import { PushSetup } from '../../../components/PushSetup';
+import { ChangePassword } from '../../../components/staff/ChangePassword';
 
 interface DayMoney { day: number; serviceCents: number; services: number; tipsCents: number; directTipsCents: number }
 interface MyDay { currency: string; turns: number; today: Omit<DayMoney, 'day'>; week: DayMoney[]; todayIndex: number }
@@ -121,6 +123,15 @@ function Inner() {
         )}
       </div>
 
+      <Link href="/staff/pay" style={{ ...st.card, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Icon d={IC.money} size={22} color="var(--ink-good)" />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{L(vi, 'Thu nhập & bảng lương', 'Pay & payslips')}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{L(vi, 'Hoa hồng, tip, thưởng — kỳ này và các kỳ đã chốt', 'Commission, tips, bonuses — this period and closed ones')}</div>
+        </div>
+        <Icon d={IC.chevron} size={18} color="var(--c94a3b8)" />
+      </Link>
+
       <Link href="/staff/reviews" style={{ ...st.card, textDecoration: 'none', display: 'block' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 26, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{avg != null ? avg.toFixed(1) : '–'}</span>
@@ -130,6 +141,10 @@ function Inner() {
         </div>
         {latest && <div style={{ fontSize: 14, color: 'var(--ccbd5e1)', marginTop: 10, lineHeight: 1.5 }}>“{latest.comment}”</div>}
       </Link>
+
+      <div style={st.label}>{L(vi, 'Tài khoản', 'Account')}</div>
+      <PushSetup compact />
+      <ChangePassword vi={vi} />
 
       <div style={{ ...st.card, padding: 0, overflow: 'hidden' }}>
         {[

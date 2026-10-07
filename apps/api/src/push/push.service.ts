@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { pushAudience, isDeadEndpoint } from '../notifications/push-payload';
+import { UserRole } from '@prisma/client';
+import { capabilitiesFor } from '../auth/capabilities';
 import { FCM_PREFIX, FcmClient, isFcmEndpoint, loadServiceAccount } from './fcm';
 
 // `web-push` is declared in package.json and installed on Render. It's required
@@ -192,6 +194,24 @@ export class PushService {
     return targets.length;
   }
 
+  /** Logins of this salon that are staff with no desk permission at all (a technician's own app). */
+  private async techOnlyUsers(tenantId: string, userIds: string[]): Promise<Set<string>> {
+    const ids = [...new Set(userIds)];
+    if (!ids.length) return new Set();
+    try {
+      const [users, staff] = await Promise.all([
+        this.prisma.user.findMany({ where: { tenantId, id: { in: ids }, role: UserRole.STAFF }, select: { id: true } }),
+        this.prisma.staffMember.findMany({ where: { tenantId, userId: { in: ids } }, select: { userId: true, staffRole: true, permissions: true } as never }) as unknown as Promise<{ userId: string | null; staffRole: string | null; permissions?: unknown }[]>,
+      ]);
+      const out = new Set<string>();
+      for (const u of users) {
+        const sm = staff.find((x) => x.userId === u.id);
+        if (capabilitiesFor(UserRole.STAFF, (sm?.staffRole ?? 'TECHNICIAN') as never, sm?.permissions).length === 0) out.add(u.id);
+      }
+      return out;
+    } catch { return new Set(); }
+  }
+
   async sendToTenant(
     tenantId: string,
     payload: { title: string; body: string; url?: string; tag?: string },
@@ -208,8 +228,13 @@ export class PushService {
       .findMany({ where: { tenantId, ...(opts.onlyUserIds ? { userId: { in: opts.onlyUserIds } } : {}) }, select: { id: true, userId: true, endpoint: true, p256dh: true, auth: true } })
       .catch(() => []) as unknown as SubRow[];
 
+    // A salon-wide alert (new booking, a customer wrote…) is for the people who
+    // run the salon. A technician's login with no desk permission gets her OWN
+    // alerts (sendToUser: a customer for her, her booking) — not every booking
+    // in the salon with the customer's name on her lock screen.
+    const quiet = opts.onlyUserIds ? new Set<string>() : await this.techOnlyUsers(tenantId, subs.map((x) => x.userId));
     // Who to wake, and never the same device twice. See push-payload.spec.ts.
-    const targets = pushAudience(subs, { exceptUserId: opts.exceptUserId ?? null });
+    const targets = pushAudience(subs.filter((x) => !quiet.has(x.userId)), { exceptUserId: opts.exceptUserId ?? null });
     const byEndpoint = new Map<string, SubRow>(subs.map((s: SubRow) => [s.endpoint, s]));
     const data = {
       title: payload.title,

@@ -11,6 +11,7 @@ export class PayrollSettingsDto {
   @IsOptional() @IsNumber() @Min(0) @Max(100) supplyFeePercent?: number;
   @IsOptional() @IsNumber() @Min(0) @Max(20) cardTipFeePercent?: number;
   @IsOptional() @IsInt() @Min(0) @Max(100) defaultCheckPercent?: number;
+  @IsOptional() @IsIn(['LIVE', 'FINAL', 'OFF']) staffPayView?: 'LIVE' | 'FINAL' | 'OFF';
 }
 
 export class AdjustmentDto {

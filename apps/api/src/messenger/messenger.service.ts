@@ -3494,6 +3494,13 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
     // offers a call, which keeps trust AND platform rules intact.
     const personaRule = `\nPERSONA: ${ctx.agentName ? `Your name is ${ctx.agentName}. Introduce yourself by name, like any team member would — never call yourself an assistant, AI or bot. ` : ''}Never volunteer that this chat is automated. If someone asks point-blank whether you are a bot, do not lie and do not argue: say the ${ctx.mode === 'sales' ? 'team' : 'salon team'} is right behind this chat and offer a quick call back${ctx.mode === 'sales' ? ' (capture the lead)' : ''}.`;
 
+    // People type on phones: no accents, wrong accents, missing letters. "Sơ
+    // diện thoai của nhan so mấy?" is "số điện thoại … số mấy?" — a request
+    // for OUR phone number — and the bot once read "số" as a price question and
+    // answered with the pricing line. Read by sound and context first; when the
+    // words still do not settle it, ask one short question instead of guessing.
+    const readingRule = `\nREAD WHAT THEY MEANT, NOT WHAT THEY TYPED: customers write fast on a phone — no accents, wrong accents, dropped letters, teencode ("Sơ diện thoai" = "số điện thoại", "ko"/"k" = "không", "dc" = "được", "sdt"/"sđt"/"số dt" = "số điện thoại", "bn" = "bao nhiêu", "lm" = "làm"). Sound the message out and read it in the context of the conversation before you decide what it asks. "số điện thoại … số mấy / là gì / bao nhiêu", "sdt", "cho xin số", "số liên hệ", "hotline", "phone number", "number to call" = they want a PHONE NUMBER TO REACH YOU — give the contact number from your FACTS (the one for their region when you know it; if there are several regions and you do not know theirs, give the number and ask which area they are in, in the same line). A question about a phone number is NEVER a price question: do not answer it with pricing, packages, "depends on the shop", or a request for their shop name. Only when the FACTS hold no contact number do you take their name and number for a call back instead. If, after reading by sound, you still cannot tell what they asked, reply with ONE short clarifying question ("Dạ anh/chị hỏi số điện thoại của bên em đúng không ạ?") — never guess and never answer a different question than the one they asked.`;
+
     // Vietnamese small talk is understated — the tell-tale AI openers must go.
     const voiceRule = `\nVOICE: never open or pad replies with exclamations like "Tuyệt vời", "Rất tốt", "Dạ tốt lắm", "Tuyệt quá", "Hoàn hảo", "Chính xác", "Great", "Perfect", "Awesome", "Wonderful". Real chat acknowledges quietly and gets straight to the point — in Vietnamese "Dạ vâng ạ", "Dạ", "Dạ được ạ", "Oke anh/chị"; in English a plain "Sure", "Of course", "Got it". Use only the ones from the customer's own language. No hype words, no cheering.`;
 
@@ -3544,7 +3551,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
      * changing minute and nothing else. Tools sit before the system prompt in
      * the API's prefix, so the one breakpoint below covers them as well.
      */
-    const staticSystem = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + voiceRule + formatRule + channelRule + closingRule;
+    const staticSystem = (ctx.mode === 'sales' ? salesSystem : bookingSystem) + personaRule + readingRule + voiceRule + formatRule + channelRule + closingRule;
     const clockLine = ctx.mode === 'sales'
       ? `\nThe current time is ${nowLocal} (timezone ${tz}).`
       : `\nThe salon's local time right now is: ${nowLocal} (timezone ${tz}). Interpret "today/tomorrow/this Friday" in that timezone.`;

@@ -65,3 +65,6 @@ lumio-booking-*.zip
 0811*/
 tsconfig.scoped-check.tsbuildinfo
 .dts-check/
+
+# VAPID keys written by scripts/vapid-keys.cjs --save (never commit)
+vapid-keys.txt

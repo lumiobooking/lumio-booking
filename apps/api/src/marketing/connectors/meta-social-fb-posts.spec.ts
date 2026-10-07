@@ -84,3 +84,67 @@ describe('Facebook posts counted for the report month', () => {
     expect(out.monthCount).toBe(1);
   });
 });
+
+describe('every post gets its views and viewers; a refused field never hides the month', () => {
+  afterEach(() => jest.restoreAllMocks());
+  type Resp = { ok: boolean; status: number; json: any };
+  const ok = (json: any): Resp => ({ ok: true, status: 200, json });
+  const fail = (msg: string): Resp => ({ ok: false, status: 400, json: { error: { message: msg } } });
+  const run = async (route: (url: string) => Resp) => {
+    jest.spyOn(iface, 'getJson').mockImplementation(async (url: string) => route(url));
+    const conn = new MetaSocialConnector() as any;
+    return conn.fbPostBreakdown('page1', monthWindow('2026-09'), 'tok') as Promise<{ posts: any[]; monthCount: number | null; error: string | null }>;
+  };
+
+  it('photo and multi-media posts read post_media_views / post_total_media_views_unique (2026 names), with the old names as fallback', async () => {
+    const out = await run((url) => {
+      if (/\/page1\?fields=access_token/.test(url)) return ok({ access_token: 'ptok' });
+      if (/\/page1\/published_posts\?/.test(url)) return ok({ data: [
+        { id: 'page1_1', message: 'Tùng Cúc Trúc Mai', from: { id: 'page1' }, created_time: '2026-09-20T01:00:00+0000', permalink_url: 'https://www.facebook.com/page1/posts/1' },
+        { id: 'page1_2', message: 'Một gốc tùng', from: { id: 'page1' }, created_time: '2026-09-22T13:08:00+0000', permalink_url: 'https://www.facebook.com/page1/posts/2' },
+      ] });
+      if (/\/page1\/(feed|posts|video_reels)\?/.test(url)) return ok({ data: [] });
+      if (/\/page1_1\/insights\?metric=post_media_views/.test(url)) return ok({ data: [{ name: 'post_media_views', values: [{ value: 564 }] }, { name: 'post_total_media_views_unique', values: [{ value: 235 }] }] });
+      if (/\/page1_2\/insights\?metric=post_media_views/.test(url)) return fail('(#100) Invalid metric');
+      if (/\/page1_2\/insights\?metric=post_impressions/.test(url)) return ok({ data: [{ name: 'post_impressions', values: [{ value: 767 }] }, { name: 'post_impressions_unique', values: [{ value: 340 }] }] });
+      return fail('unrouted');
+    });
+    expect(out.monthCount).toBe(2);
+    expect(out.posts.find((p) => p.id === 'page1_1')).toMatchObject({ views: 564, reach: 235, type: 'post' });
+    expect(out.posts.find((p) => p.id === 'page1_2')).toMatchObject({ views: 767, reach: 340 });
+    expect(out.error).toBeNull();
+  });
+
+  it('a field the token may not read: the edge is re-asked without it, so the posts still count', async () => {
+    const out = await run((url) => {
+      if (/\/page1\?fields=access_token/.test(url)) return ok({ access_token: 'ptok' });
+      if (/\/page1\/published_posts\?fields=[^&]*\bfrom\b/.test(url)) return fail('(#100) Tried accessing nonexisting field (from)');
+      if (/\/page1\/published_posts\?/.test(url)) return ok({ data: [
+        { id: 'page1_1', message: 'A', created_time: '2026-09-02T10:00:00+0000', permalink_url: 'https://www.facebook.com/page1/posts/1' },
+        { id: 'page1_2', message: 'B', created_time: '2026-09-03T10:00:00+0000', permalink_url: 'https://www.facebook.com/page1/posts/2' },
+        { id: 'page1_3', message: 'C', created_time: '2026-09-04T10:00:00+0000', permalink_url: 'https://www.facebook.com/page1/posts/3' },
+      ] });
+      if (/\/page1\/(feed|posts)\?/.test(url)) return fail('(#10) permission');
+      if (/\/page1\/video_reels\?/.test(url)) return ok({ data: [{ id: '9', description: 'reel', created_time: '2026-09-11T12:11:00+0000' }] });
+      if (/\/insights\?/.test(url)) return fail('no insights');
+      if (/\/9\?fields=views/.test(url)) return ok({ views: 504 });
+      return fail('unrouted');
+    });
+    expect(out.monthCount).toBe(4);
+    expect(out.error).toBeNull();
+  });
+
+  it('Reels only, every post edge refused: the count is kept but the reason is reported', async () => {
+    const out = await run((url) => {
+      if (/\/page1\?fields=access_token/.test(url)) return ok({ access_token: 'ptok' });
+      if (/\/page1\/(published_posts|feed|posts)\?/.test(url)) return fail('(#10) This endpoint requires the pages_read_user_content permission');
+      if (/\/page1\/video_reels\?/.test(url)) return ok({ data: [{ id: '9', description: 'reel', created_time: '2026-09-11T12:11:00+0000' }, { id: '8', description: 'reel 2', created_time: '2026-09-12T12:11:00+0000' }] });
+      if (/\/insights\?/.test(url)) return fail('no insights');
+      if (/\?fields=views/.test(url)) return ok({ views: 1 });
+      return fail('unrouted');
+    });
+    expect(out.monthCount).toBe(2);
+    expect(out.error).toMatch(/bài thường không đọc được/);
+    expect(out.error).toMatch(/pages_read_user_content/);
+  });
+});

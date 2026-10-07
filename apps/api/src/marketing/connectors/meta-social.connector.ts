@@ -142,6 +142,25 @@ export class MetaSocialConnector implements SocialConnector {
   private fb(id: string, metrics: string[], since: string, until: string, token: string) {
     return this.firstInsight(id, metrics, since, until, token, [false]);
   }
+
+  /**
+   * Facebook Page viewers for the month. Meta's 2026 metric
+   * (page_total_media_view_unique) is a UNIQUE count, so it is asked for as
+   * ONE month, never as daily values added up; the retired names follow.
+   */
+  private async fbMonthlyReach(id: string, since: string, until: string, token: string): Promise<number | null> {
+    for (const period of ['month', 'days_28']) {
+      try {
+        const r = await getJson(`${GRAPH}/${encodeURIComponent(id)}/insights?metric=page_total_media_view_unique&period=${period}&since=${since}&until=${until}&access_token=${encodeURIComponent(token)}`);
+        const d = r.ok && Array.isArray(r.json?.data) ? r.json.data[0] : null;
+        const vals = Array.isArray(d?.values) ? d.values : [];
+        // The last full-month value inside the range; days_28 is a rolling window — its last point is the closest to "the month".
+        const v = vals.length ? numOrNull(vals[vals.length - 1]?.value) : null;
+        if (v != null) return v;
+      } catch { /* next */ }
+    }
+    return this.fb(id, ['page_impressions_unique', 'page_impressions_organic_unique'], since, until, token);
+  }
   private ig(id: string, metrics: string[], since: string, until: string, token: string, errs?: string[], fallbackToken?: string) {
     // Newer IG metrics REQUIRE metric_type=total_value; older ones reject it.
     return this.firstInsight(id, metrics, since, until, token, [true, false], errs, fallbackToken);
@@ -321,10 +340,25 @@ export class MetaSocialConnector implements SocialConnector {
     };
     let status = 0;
     let error: string | null = null;
+    // Which edges answered and which refused — kept per edge, so a month that
+    // read only Reels (the three post edges all refused) still says so instead
+    // of reporting "2 bài" as if that were the whole month.
+    const edgeOk = new Set<string>();
+    const edgeErr: Record<string, string> = {};
     for (const [edge, flds] of edges) {
-      const bare = `${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${flds}&limit=100&access_token=${encodeURIComponent(pageToken)}`;
-      let next: string | null = `${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${flds}&limit=100${range}&access_token=${encodeURIComponent(pageToken)}`;
-      let triedBare = false;
+      // Three ways to ask, in order: the month window; the same without a
+      // window (an edge that refuses since/until); and a minimal field list
+      // without `from` / `story` / `shares` (a field the token may not read
+      // makes Graph refuse the WHOLE call — better a post without its author
+      // than no posts at all; the own-post filter then simply has no `from`).
+      const slim = flds.replace(/,(from|story|shares|full_picture)(?=,|$)/g, '');
+      const attempts = [
+        `${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${flds}&limit=100${range}&access_token=${encodeURIComponent(pageToken)}`,
+        `${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${flds}&limit=100&access_token=${encodeURIComponent(pageToken)}`,
+        `${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${slim}&limit=100${range}&access_token=${encodeURIComponent(pageToken)}`,
+      ];
+      let attempt = 0;
+      let next: string | null = attempts[0];
       for (let page = 0; next && page < 5; page++) {
         try {
           const r = await getJson(next);
@@ -332,6 +366,7 @@ export class MetaSocialConnector implements SocialConnector {
           next = null;
           if (r.ok && Array.isArray(r.json?.data)) {
             error = null;
+            edgeOk.add(edge);
             for (const it of r.json.data as Record<string, unknown>[]) {
               const id = String(it?.id ?? '');
               if (!id) continue;
@@ -350,17 +385,27 @@ export class MetaSocialConnector implements SocialConnector {
             }
             const nx = r.json?.paging?.next;
             if (typeof nx === 'string' && nx.startsWith('https://') && r.json.data.length) next = nx;
-          } else if (page === 0 && !triedBare) {
-            // An edge that will not take since/until is read the old way;
-            // the month filter below still applies.
-            triedBare = true;
-            next = bare;
-            page = -1;
-          } else if (!error) {
-            error = r.json?.error?.message ? String(r.json.error.message) : `HTTP ${r.status}`;
+          } else {
+            const msg = r.json?.error?.message ? String(r.json.error.message).slice(0, 140) : `HTTP ${r.status}`;
+            edgeErr[edge] = msg;
+            if (page === 0 && attempt < attempts.length - 1) {
+              // The month filter below still applies to whatever the next way returns.
+              attempt += 1;
+              next = attempts[attempt];
+              page = -1;
+            } else if (!error) {
+              error = msg;
+            }
           }
-        } catch (e) { if (!error) error = String((e as Error).message).slice(0, 120); next = null; }
+        } catch (e) { const msg = String((e as Error).message).slice(0, 120); edgeErr[edge] = msg; if (!error) error = msg; next = null; }
       }
+    }
+    // Reels came in but every ordinary-post edge refused: say which and why,
+    // because the count is then Reels only, not the month.
+    const postEdges = ['published_posts', 'feed', 'posts'];
+    if (!postEdges.some((e) => edgeOk.has(e))) {
+      const why = postEdges.map((e) => edgeErr[e]).find(Boolean);
+      if (why) error = `bài thường không đọc được (${why})`;
     }
     let list = collected;
     // STRICT month filter. The old rule kept anything whose date failed to
@@ -398,13 +443,42 @@ export class MetaSocialConnector implements SocialConnector {
         interactions: (likes ?? 0) + (comments ?? 0) + (shares ?? 0),
       };
     });
-    // FB video/reel view counts + cover image live on the video object (per-object
-    // fetch — keeps the reels edge itself resilient).
-    await Promise.all(posts.filter((p) => p.type === 'reel' || p.type === 'video').map(async (p) => {
-      try {
-        const r = await getJson(`${GRAPH}/${encodeURIComponent(p.id)}?fields=views,picture&access_token=${encodeURIComponent(pageToken)}`);
-        if (r.ok) { p.views = numOrNull(r.json?.views); if (!p.thumbnail && r.json?.picture) p.thumbnail = String(r.json.picture); }
-      } catch { /* views/cover unavailable */ }
+    // Every post's views and viewers, from post insights. Meta's 2026 names
+    // first (post_media_views = "Lượt xem" in Business Suite, post_total_media_
+    // views_unique = "Số người tiếp cận"); the pre-June-2026 names as a
+    // fallback for whatever still answers to them. A photo post has views
+    // too — before, only Reels were asked, so a month of photo posts read "0".
+    const postNodeId = (m: any, p: PostInsight) => String(m?.id ?? p.id);
+    await Promise.all(posts.map(async (p, i) => {
+      const m = list[i] as any;
+      const ins = async (id: string, metrics: string[]): Promise<Record<string, number> | null> => {
+        try {
+          const r = await getJson(`${GRAPH}/${encodeURIComponent(id)}/insights?metric=${metrics.join(',')}&access_token=${encodeURIComponent(pageToken)}`);
+          if (!r.ok || !Array.isArray(r.json?.data)) return null;
+          const out: Record<string, number> = {};
+          for (const d of r.json.data) {
+            const v = Array.isArray(d?.values) ? d.values[0]?.value : d?.value;
+            const n = numOrNull(typeof v === 'object' ? undefined : v);
+            if (d?.name && n != null) out[String(d.name)] = n;
+          }
+          return out;
+        } catch { return null; }
+      };
+      const pid = postNodeId(m, p);
+      let r = await ins(pid, ['post_media_views', 'post_total_media_views_unique']);
+      if (!r || !Object.keys(r).length) r = await ins(pid, ['post_impressions', 'post_impressions_unique']);
+      if (r) {
+        p.views = r.post_media_views ?? r.post_impressions ?? p.views;
+        p.reach = r.post_total_media_views_unique ?? r.post_impressions_unique ?? p.reach;
+      }
+      // A Reel's own play count + cover live on the video object; used when
+      // post insights said nothing (a Reel read from the video_reels edge).
+      if ((p.type === 'reel' || p.type === 'video') && (p.views == null || !p.thumbnail)) {
+        try {
+          const v = await getJson(`${GRAPH}/${encodeURIComponent(p.id)}?fields=views,picture&access_token=${encodeURIComponent(pageToken)}`);
+          if (v.ok) { if (p.views == null) p.views = numOrNull(v.json?.views); if (!p.thumbnail && v.json?.picture) p.thumbnail = String(v.json.picture); }
+        } catch { /* views/cover unavailable */ }
+      }
     }));
     posts.sort((a, b) => (b.interactions ?? 0) - (a.interactions ?? 0));
     return { posts, monthCount: error && !posts.length ? null : fbMonthCount, status, error };
@@ -445,8 +519,8 @@ export class MetaSocialConnector implements SocialConnector {
       if (tk.ok && tk.json?.access_token) fbPageToken = String(tk.json.access_token);
     } catch { /* fall back to the system-user token */ }
     const [fbReach, fbViews, fbEngRaw, fbNewFollowers, fbRes] = await Promise.all([
-      this.fb(pageId, ['page_impressions_unique', 'page_impressions_organic_unique'], since, until, fbPageToken),
-      this.fb(pageId, ['page_impressions', 'page_views_total'], since, until, fbPageToken),
+      this.fbMonthlyReach(pageId, since, until, fbPageToken),
+      this.fb(pageId, ['page_media_view', 'page_media_view_organic', 'page_impressions', 'page_views_total'], since, until, fbPageToken),
       this.fb(pageId, ['page_post_engagements'], since, until, fbPageToken),
       this.fb(pageId, ['page_daily_follows_unique', 'page_fan_adds_unique', 'page_fan_adds'], since, until, fbPageToken),
       this.fbPostBreakdown(pageId, win, token),
@@ -455,17 +529,21 @@ export class MetaSocialConnector implements SocialConnector {
     // Page-level engagement insight is dead; sum per-post like+comment+share (still live) instead.
     const fbEngSum = fbPostList.length ? fbPostList.reduce((acc, p) => acc + (p.interactions ?? 0), 0) : null;
     const fbViewsSum = fbPostList.some((p) => p.views != null) ? fbPostList.reduce((acc, p) => acc + (p.views ?? 0), 0) : null;
+    // No page-level monthly viewers from Meta? The posts' own viewers, added
+    // up (a person reached by two posts counts twice — labelled as such).
+    const fbReachSum = fbPostList.some((p) => p.reach != null) ? fbPostList.reduce((acc, p) => acc + (p.reach ?? 0), 0) : null;
+    const fbReachFinal = fbReach ?? fbReachSum;
     const fb: OrganicMetrics = {
       accountName: page.name ?? null,
       followers: numOrNull(page.followers_count ?? page.fan_count),
       newFollowers: fbNewFollowers,
-      reach: fbReach,
+      reach: fbReachFinal,
       views: fbViewsSum ?? fbViews,
       engagement: fbEngSum ?? fbEngRaw,
       profileViews: null,
       postsCount: fbRes.monthCount,
       posts: fbPostList,
-      raw: { pageId, name: page.name ?? null, fbDebug: { count: fbPostList.length, status: fbRes.status, error: fbRes.error } },
+      raw: { pageId, name: page.name ?? null, fbDebug: { count: fbPostList.length, status: fbRes.status, error: fbRes.error, reachSource: fbReach != null ? 'page' : fbReachSum != null ? 'posts' : null } },
     };
     out.facebook = fb;
 

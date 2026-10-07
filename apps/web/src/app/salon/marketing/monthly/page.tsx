@@ -57,7 +57,7 @@ interface SocialInsight {
   series?: { date: string; value: number }[];
   monthlySeries?: { month: string; followers: number }[];
   audience?: { gender?: Record<string, number>; age?: Record<string, number> } | null;
-  fbDebug?: { count: number; status: number; error: string | null } | null;
+  fbDebug?: { count: number; status: number; error: string | null; reachSource?: 'page' | 'posts' | null } | null;
   igDebug?: { until?: string; posts?: number; errors?: string[] } | null;
   vsPrev?: { followers: SocialDelta | null; reach: SocialDelta | null; views: SocialDelta | null; engagement: SocialDelta | null; newFollowers: SocialDelta | null };
 }
@@ -764,11 +764,12 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   // "—" with a footnote mark, instead of a sentence squeezed into a number
   // column. Rows alternate a faint tint so a row is easy to follow across.
   const pNotes: string[] = [];
-  const na = (why: string) => {
+  const fnote = (why: string) => {
     let i = pNotes.indexOf(why);
     if (i < 0) { pNotes.push(why); i = pNotes.length - 1; }
-    return `<span style="color:#cbd5e1;font-weight:600">—</span><sup style="color:#94a3b8;font-size:9px;font-weight:600;margin-left:1px">${i + 1}</sup>`;
+    return `<sup style="color:#94a3b8;font-size:9px;font-weight:600;margin-left:1px">${i + 1}</sup>`;
   };
+  const na = (why: string) => `<span style="color:#cbd5e1;font-weight:600">—</span>${fnote(why)}`;
   const pill = (dl?: SocialDelta | null) => {
     if (!dl || dl.pct == null) return '';
     const z = dl.pct === 0;
@@ -788,7 +789,7 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     `<td style="text-align:center;padding:0 4px 7px"><span class="t-h3" style="color:${col};display:inline-block;padding-bottom:4px;border-bottom:3px solid ${col}">${name}</span></td>`;
   const pRows = [
     prow(t('Tổng follower', 'Total followers'), fnum(fb?.followers), fb?.vsPrev?.followers, fnum(ig?.followers), ig?.vsPrev?.followers, fnum(tt?.followers), tt?.vsPrev?.followers),
-    prow(t('Người tiếp cận (Reach)', 'Reach'), fb?.reach == null ? na(t('Facebook: Meta đã ngừng cung cấp chỉ số Reach.', 'Facebook: Meta no longer provides Reach.')) : fnum(fb?.reach), fb?.reach == null ? null : fb?.vsPrev?.reach, ig?.reach == null ? na(t('Instagram: chưa có số liệu tháng này.', 'Instagram: no data this month.')) : fnum(ig?.reach), ig?.vsPrev?.reach, na(t('TikTok không có chỉ số Reach.', 'TikTok has no Reach metric.')), null),
+    prow(t('Người tiếp cận (Reach)', 'Reach'), fb?.reach == null ? na(t('Facebook: Meta không trả về chỉ số Reach của trang cho tháng này.', 'Facebook: Meta returned no page Reach for this month.')) : (fb?.fbDebug?.reachSource === 'posts' ? `${fnum(fb?.reach)}${fnote(t('Facebook: tổng người xem của từng bài (một người xem hai bài tính hai), vì Meta không trả về reach của cả trang.', 'Facebook: viewers of each post added up (a person who saw two posts counts twice), as Meta returned no page-level reach.'))}` : fnum(fb?.reach)), fb?.reach == null ? null : fb?.vsPrev?.reach, ig?.reach == null ? na(t('Instagram: chưa có số liệu tháng này.', 'Instagram: no data this month.')) : fnum(ig?.reach), ig?.vsPrev?.reach, na(t('TikTok không có chỉ số Reach.', 'TikTok has no Reach metric.')), null),
     prow(t('Lượt xem (Views)', 'Views'), fnum(fb?.views), fb?.vsPrev?.views, fnum(ig?.views), ig?.vsPrev?.views, fnum(tt?.views), tt?.vsPrev?.views),
     prow(t('Lượt tương tác', 'Engagements'), fnum(fb?.engagement), fb?.vsPrev?.engagement, fnum(ig?.engagement), ig?.vsPrev?.engagement, fnum(tt?.engagement), tt?.vsPrev?.engagement),
     prow(t('Tỉ lệ tương tác', 'Engagement rate'), engR(fb), null, engR(ig), null, engR(tt), null),

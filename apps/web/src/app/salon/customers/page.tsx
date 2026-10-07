@@ -18,6 +18,7 @@ import { LeadFollowUpsBox } from '../../../components/LeadFollowUpsBox';
 import { RecallBox } from '../../../components/RecallBox';
 import { LeadBoard } from '../../../components/LeadBoard';
 import { CustomerImport } from '../../../components/CustomerImport';
+import { NewCustomerForm } from '../../../components/NewCustomerForm';
 import { uiLocale } from '../../../lib/datetime';
 
 interface Customer {
@@ -75,6 +76,8 @@ function Inner() {
   // Bringing the old system's client list over is the owner's job.
   const isOwner = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN';
   const [importOpen, setImportOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addedMsg, setAddedMsg] = useState<string | null>(null);
   const can = useCan();
   const canDelete = can('customers.delete');
   const { lang } = useLang();
@@ -190,6 +193,9 @@ function Inner() {
           <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 14 }}>{filtered.length} {t('cu.of')} {customers.length} · 🎂 {withBirthday}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => { setAddOpen((v) => !v); setAddedMsg(null); }} style={ui.primaryBtn}>
+            {addOpen ? (lang === 'vi' ? 'Đóng' : 'Close') : (lang === 'vi' ? '+ Thêm khách' : '+ Add client')}
+          </button>
           {isOwner && (
             <button type="button" onClick={() => setImportOpen(true)} style={{ padding: '9px 13px', borderRadius: 8, border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--ce2e8f0)', fontSize: 13.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>
               ⬆ {lang === 'vi' ? 'Nhập khách cũ' : 'Import clients'}
@@ -204,6 +210,17 @@ function Inner() {
         </div>
       </div>
       {importOpen && <CustomerImport vi={lang === 'vi'} onClose={() => setImportOpen(false)} onDone={load} />}
+      {addOpen && (
+        <NewCustomerForm vi={lang === 'vi'} isOwner={isOwner} onClose={() => setAddOpen(false)}
+          onCreated={(id) => { setAddOpen(false); setAddedMsg(id); void load(); }} />
+      )}
+      {addedMsg && (
+        <div style={{ background: 'var(--c14532d)', color: 'var(--cbbf7d0)', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span>{lang === 'vi' ? 'Đã thêm khách.' : 'Client added.'}</span>
+          <a href={`/salon/customers/${addedMsg}`} style={{ color: 'inherit', fontWeight: 700 }}>{lang === 'vi' ? 'Mở hồ sơ →' : 'Open profile →'}</a>
+          <button type="button" onClick={() => setAddedMsg(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
+        </div>
+      )}
 
       {/* Warm leads first: asked on chat / hotline, never booked. Collapsed here. */}
       <AskedNotBookedBox compact />
@@ -269,7 +286,7 @@ function Inner() {
       ) : cardList ? (
         <>
           <MList>
-            {filtered.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{t('cu.empty')}</p>}
+            {filtered.length === 0 && <p style={{ color: 'var(--c64748b)', fontSize: 13 }}>{customers.length === 0 ? (lang === 'vi' ? 'Chưa có khách nào. Bấm "+ Thêm khách" để nhập tay, hoặc "Nhập khách cũ" để đưa file từ hệ thống cũ vào.' : 'No clients yet. Use "+ Add client" to type one in, or "Import clients" to bring a file from your old system.') : t('cu.empty')}</p>}
             {pg.paged.map((c) => (
               <MCard key={c.id}>
                 <MHead>
@@ -315,7 +332,7 @@ function Inner() {
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td style={ui.td} colSpan={10}>{t('cu.empty')}</td></tr>
+                <tr><td style={ui.td} colSpan={10}>{customers.length === 0 ? (lang === 'vi' ? 'Chưa có khách nào. Bấm "+ Thêm khách" để nhập tay, hoặc "Nhập khách cũ" để đưa file từ hệ thống cũ vào.' : 'No clients yet. Use "+ Add client" to type one in, or "Import clients" to bring a file from your old system.') : t('cu.empty')}</td></tr>
               )}
               {pg.paged.map((c) => (
                 <tr key={c.id} style={{ borderTop: '1px solid var(--c334155)', background: bulk.has(c.id) ? 'var(--c1e1b4b)' : undefined }}>

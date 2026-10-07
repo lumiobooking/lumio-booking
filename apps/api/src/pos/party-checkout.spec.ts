@@ -86,7 +86,7 @@ describe("the till's view of a party", () => {
       order: { findMany: async ({ where }: Row) => { wheres.push(where); return orders.filter((o) => o.tenantId === where.tenantId); } },
       staffMember: { findMany: async ({ where }: Row) => (where.tenantId === T1 ? [{ id: 'cindy', firstName: 'Cindy', lastName: null, avatarUrl: null, bookingPriority: 0 }] : []) },
       staffService: { findMany: async () => [] },
-      appointment: { groupBy: async () => [] },
+      appointment: { findMany: async () => [], groupBy: async () => [] },
       tenant: { findUnique: async () => ({ timezone: 'America/Chicago' }) },
     };
     const settings: Row = { getBookingRules: async () => ({}), getGroupDiscount: async () => group ?? { enabled: false, tiers: [] } };

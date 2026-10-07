@@ -114,6 +114,10 @@ export class MarketingController {
   testChannel(@CurrentUser() user: AuthenticatedUser, @Param('platform') platform: string, @Query('tenantId') tenantId?: string) {
     return this.marketing.testChannel(user, platform, tenantId);
   }
+  @Post('channels/diagnose/:platform')
+  diagnoseChannel(@CurrentUser() user: AuthenticatedUser, @Param('platform') platform: string, @Query('month') month?: string, @Query('tenantId') tenantId?: string) {
+    return this.marketing.diagnoseChannel(user, platform, month ?? '', tenantId);
+  }
   @Post('channels/sync')
   syncChannel(@CurrentUser() user: AuthenticatedUser, @Body() dto: { platform: string; month: string; tenantId?: string }) {
     return this.marketing.syncChannel(user, dto.platform, dto.month, dto.tenantId);

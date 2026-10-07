@@ -1010,6 +1010,17 @@ export class MarketingService {
     return r;
   }
 
+  /** "Chẩn đoán": what Meta lets this salon's connection read, edge by edge. No secrets in the answer. */
+  async diagnoseChannel(user: AuthenticatedUser, platform: string, month: string, tenantParam?: string) {
+    const tenantId = this.tenantId(user, tenantParam);
+    const { creds, linked } = await this.resolveCreds(tenantId, platform);
+    const connector = this.social.get(platform);
+    if (!connector.diagnose) return { error: 'Kênh này chưa có chẩn đoán.' };
+    const m = /^\d{4}-\d{2}$/.test(month || '') ? month : new Date().toISOString().slice(0, 7);
+    const r = await connector.diagnose(creds, m);
+    return { ...r, linked, tokenSource: creds.token && creds.token === this.agencyCreds(platform)?.token ? 'agency' : 'own' };
+  }
+
   async disconnectChannel(user: AuthenticatedUser, platform: string) {
     const tenantId = this.tenantId(user);
     await this.prisma.marketingChannelConnection.updateMany({ where: { tenantId, platform }, data: { status: 'REVOKED', credentialEnc: null } });

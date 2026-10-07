@@ -1306,6 +1306,12 @@ function ChannelsSection({ token, vi, month, onSynced, bare }: { token: string |
       setNote(T('Đã kết nối.', 'Connected.')); setOpenP(null); setF({ externalAccountId: '', token: '', refreshToken: '', clientId: '', clientSecret: '' }); await load();
     } catch (e) { setErr(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); }
   }
+  const [diag, setDiag] = useState<{ platform: string; data: Record<string, unknown> } | null>(null);
+  async function diagnose(platform: string) {
+    setBusy(platform); setErr(null); setNote(null); setDiag(null);
+    try { const r = await apiFetch<Record<string, unknown>>(`/marketing/channels/diagnose/${platform}?month=${month}`, { method: 'POST', token }); setDiag({ platform, data: r }); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); }
+  }
   async function test(platform: string) { setBusy(platform); setErr(null); setNote(null); try { const r = await apiFetch<{ ok: boolean; error?: string }>(`/marketing/channels/test/${platform}`, { method: 'POST', token }); setNote(r.ok ? T('Kết nối OK ✓', 'Connection OK ✓') : `✗ ${r.error ?? ''}`); await load(); } catch (e) { setErr(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); } }
   async function sync(platform: string) { setBusy(platform); setErr(null); setNote(null); try { await apiFetch('/marketing/channels/sync', { method: 'POST', token, body: { platform, month } }); setNote(T('Đã đồng bộ chi phí về tháng ' + month, 'Synced spend for ' + month)); await load(); onSynced(); } catch (e) { setErr(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); } }
   async function disconnect(platform: string) { if (!confirm(T('Ngắt kết nối kênh này?', 'Disconnect this channel?'))) return; setBusy(platform); try { await apiFetch(`/marketing/channels/${platform}`, { method: 'DELETE', token }); await load(); } catch (e) { setErr(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); } }
@@ -1337,6 +1343,7 @@ function ChannelsSection({ token, vi, month, onSynced, bare }: { token: string |
               {c.enabled && !c.connected && <button onClick={() => { setOpenP(openP === c.platform ? null : c.platform); setErr(null); setNote(null); }} style={miniBtn}>{openP === c.platform ? T('Đóng', 'Close') : T('Kết nối', 'Connect')}</button>}
               {c.connected && <>
                 <button onClick={() => test(c.platform)} disabled={busy === c.platform} style={miniBtn}>{T('Kiểm tra', 'Test')}</button>
+                {c.platform === 'meta_social' && <button onClick={() => diagnose(c.platform)} disabled={busy === c.platform} style={miniBtn}>{T('Chẩn đoán', 'Diagnose')}</button>}
                 <button onClick={() => sync(c.platform)} disabled={busy === c.platform} style={{ ...miniBtn, borderColor: '#6366f1', color: 'var(--cc7d2fe)' }}>{busy === c.platform ? '…' : T('Đồng bộ', 'Sync')}</button>
                 {c.keyHint?.startsWith('LINKED:')
                   /* Nothing to disconnect HERE — the credentials live on the
@@ -1353,6 +1360,13 @@ function ChannelsSection({ token, vi, month, onSynced, bare }: { token: string |
             {c.keyHint === 'LINKED:messenger' && <> · {T('Quản lý ở mục', 'Managed in')} <a href="/salon/messenger" style={{ color: 'var(--c818cf8)' }}>Messenger AI</a></>}
             {c.keyHint === 'LINKED:google-reviews' && <> · {T('Quản lý ở mục', 'Managed in')} <a href="/salon/reviews-replies" style={{ color: 'var(--c818cf8)' }}>Google Reviews</a></>}
           </div>}
+          {diag && diag.platform === c.platform && (
+            <div style={{ marginTop: 8, background: 'var(--c0f172a)', borderRadius: 8, padding: 10, fontSize: 11.5, color: 'var(--ccbd5e1)', lineHeight: 1.6 }}>
+              <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', marginBottom: 4 }}>{T('Meta cho phép kết nối này đọc gì — tháng', 'What Meta lets this connection read — month')} {month}</div>
+              <DiagLines data={diag.data} T={T} />
+              <button type="button" onClick={() => { try { navigator.clipboard.writeText(JSON.stringify(diag.data, null, 2)); setNote(T('Đã sao chép kết quả chẩn đoán.', 'Diagnosis copied.')); } catch { /* ignore */ } }} style={{ ...miniBtn, marginTop: 6 }}>{T('Sao chép', 'Copy')}</button>
+            </div>
+          )}
           {openP === c.platform && (
             <div style={{ marginTop: 8, background: 'var(--c0f172a)', borderRadius: 8, padding: 10, display: 'grid', gap: 6 }}>
               <input style={inp} name="lumio-account-id" autoComplete="off" placeholder={c.platform === 'meta_social' ? 'Facebook Page ID hoặc username (vd: VinaNailsSpa)' : c.platform === 'meta' ? 'Ad Account ID (act_...)' : c.platform === 'gbp' ? 'Location ID — vd: 17202153832315858041' : c.platform === 'tiktok' ? T('Bỏ trống — TikTok nhận diện qua token', 'Leave blank — TikTok is identified by the token') : 'Account ID'} value={f.externalAccountId} onChange={(e) => setF({ ...f, externalAccountId: e.target.value })} />
@@ -1840,6 +1854,30 @@ function Fig({ n, label, accent }: { n: string; label: string; accent?: string }
     <div>
       <div style={{ fontSize: 19, fontWeight: 700, color: accent ?? 'var(--cf1f5f9)', lineHeight: 1.15 }}>{n}</div>
       <div style={{ fontSize: 11, color: 'var(--c94a3b8)', marginTop: 1 }}>{label}</div>
+    </div>
+  );
+}
+
+/** The diagnosis as short lines a person can read (and paste to support). */
+function DiagLines({ data, T }: { data: Record<string, unknown>; T: (vi: string, en: string) => string }) {
+  const j = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v));
+  const perms = data.permissions;
+  const edges = Array.isArray(data.edges) ? (data.edges as Record<string, unknown>[]) : [];
+  const edgeLine = (e: Record<string, unknown>) => {
+    const m = e.month as Record<string, unknown> | undefined;
+    const n = e.newest as Record<string, unknown> | undefined;
+    const one = (x: Record<string, unknown> | undefined) => !x ? '—' : x.error ? `✗ ${j(x.error)}` : `${j(x.returned)} ${T('trả về', 'returned')} · ${j(x.inMonth)} ${T('trong tháng', 'in month')} · ${j(x.ownInMonth)} ${T('của Trang', 'own')}${Array.isArray(x.fromIds) && (x.fromIds as unknown[]).length ? ` · from=${(x.fromIds as unknown[]).join(',')}` : ''}`;
+    return <div key={String(e.edge)}><b>{String(e.edge)}</b>: {T('theo tháng', 'month')} → {one(m)} · {T('mới nhất', 'newest')} → {one(n)}</div>;
+  };
+  return (
+    <div>
+      {data.error ? <div style={{ color: 'var(--ink-bad)' }}>✗ {j(data.error)}</div> : null}
+      <div>Token: {j(data.tokenSource)} · {j(data.token)}</div>
+      <div>{T('Quyền', 'Permissions')}: {Array.isArray(perms) ? (perms as string[]).join(', ') || T('(không có)', '(none)') : j(perms)}</div>
+      {data.page ? <div>Page: {j(data.page)}</div> : null}
+      <div>Page token: {j(data.pageToken)}</div>
+      {edges.map(edgeLine)}
+      {data.postInsights ? <div>Post insights: {j(data.postInsights)}</div> : null}
     </div>
   );
 }

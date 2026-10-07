@@ -95,6 +95,8 @@ export interface SocialConnector {
   /** Whether this platform reports ad spend (Google Maps does not). */
   readonly hasSpend: boolean;
   verify(creds: ChannelCreds): Promise<VerifyResult>;
+  /** Optional: a plain-words readout of what the platform lets this connection read (no secrets). */
+  diagnose?(creds: ChannelCreds, month: string): Promise<Record<string, unknown>>;
   /** month = 'YYYY-MM'. */
   fetchMonthly(creds: ChannelCreds, month: string): Promise<MonthlyMetrics>;
   /** Organic (non-paid) numbers. Only implemented by owned-channel connectors. */

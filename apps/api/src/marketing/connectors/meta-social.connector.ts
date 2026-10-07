@@ -58,6 +58,69 @@ export class MetaSocialConnector implements SocialConnector {
     return { ok: true, accountName: name };
   }
 
+  /**
+   * CHẨN ĐOÁN. What this connection can actually read from Meta, edge by
+   * edge, for one month — so "the report shows 2 posts but the Page has 8"
+   * is answered by Meta's own replies, not by guessing. Never returns a token.
+   */
+  async diagnose(creds: ChannelCreds, month: string): Promise<Record<string, unknown>> {
+    const token = creds.token;
+    const out: Record<string, unknown> = { month, timezone: creds.timezone ?? null };
+    if (!token) return { ...out, error: 'Thiếu agency token trên server (META_AGENCY_TOKEN)' };
+    const ref = this.pageRef(creds);
+    out.pageRef = ref || null;
+    // Whose token, and what it may do.
+    const me = await getJson(`${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(token)}`).catch(() => null);
+    out.token = me?.ok ? { id: me.json?.id ?? null, name: me.json?.name ?? null } : { error: me?.json?.error?.message ?? `HTTP ${me?.status ?? '?'}` };
+    const perms = await getJson(`${GRAPH}/me/permissions?access_token=${encodeURIComponent(token)}`).catch(() => null);
+    out.permissions = perms?.ok && Array.isArray(perms.json?.data)
+      ? perms.json.data.filter((p: any) => p?.status === 'granted').map((p: any) => String(p.permission)).sort()
+      : { error: perms?.json?.error?.message ?? `HTTP ${perms?.status ?? '?'}` };
+    // The Page, and whether a Page token can be minted for it (= the Page is
+    // assigned to this system user; without it, post edges come back EMPTY).
+    const page = await this.node(ref, 'id,name,followers_count,instagram_business_account{username}', token);
+    if (!page?.id) return { ...out, error: 'Không đọc được Trang (kiểm tra Page ID và asset đã gán cho token)' };
+    const pageId = String(page.id);
+    out.page = { id: pageId, name: page.name ?? null, followers: page.followers_count ?? null, instagram: page.instagram_business_account?.username ?? null };
+    let pageToken = token;
+    const tk = await getJson(`${GRAPH}/${encodeURIComponent(pageId)}?fields=access_token&access_token=${encodeURIComponent(token)}`).catch(() => null);
+    out.pageToken = tk?.ok && tk.json?.access_token ? 'minted' : { error: tk?.json?.error?.message ?? (tk?.ok ? 'no access_token field (Page not assigned to this token)' : `HTTP ${tk?.status ?? '?'}`) };
+    if (tk?.ok && tk.json?.access_token) pageToken = String(tk.json.access_token);
+    const win = monthWindow(month, creds.timezone);
+    out.window = { from: new Date(win.from).toISOString(), to: new Date(win.to).toISOString() };
+    const s = Math.floor(win.from / 1000), u = Math.floor(win.to / 1000);
+    const edges: Record<string, unknown>[] = [];
+    for (const edge of ['published_posts', 'feed', 'posts', 'video_reels']) {
+      const flds = edge === 'video_reels' ? 'id,created_time,updated_time' : 'id,created_time,from';
+      const row: Record<string, unknown> = { edge };
+      for (const [how, q] of [['month', `&since=${s}&until=${u}`], ['newest', '']] as const) {
+        try {
+          const r = await getJson(`${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${flds}&limit=25${q}&access_token=${encodeURIComponent(pageToken)}`);
+          if (r.ok && Array.isArray(r.json?.data)) {
+            const items = r.json.data as any[];
+            const inMonth = items.filter((it) => inWindow(it.created_time || it.updated_time, win));
+            const own = inMonth.filter((it) => isOwnFbPost(it, pageId));
+            row[how] = { returned: items.length, inMonth: inMonth.length, ownInMonth: own.length, dates: items.slice(0, 6).map((it) => String(it.created_time || it.updated_time || '').slice(0, 10)), fromIds: [...new Set(items.map((it) => it?.from?.id).filter(Boolean))].slice(0, 3) };
+          } else {
+            row[how] = { error: r.json?.error?.message ?? `HTTP ${r.status}`, code: r.json?.error?.code ?? null };
+          }
+        } catch (e) { row[how] = { error: String((e as Error).message).slice(0, 120) }; }
+      }
+      edges.push(row);
+    }
+    out.edges = edges;
+    // One post's insights, to see whether the 2026 metric names answer.
+    try {
+      const r = await getJson(`${GRAPH}/${encodeURIComponent(pageId)}/published_posts?fields=id&limit=1&access_token=${encodeURIComponent(pageToken)}`);
+      const id = r.ok && r.json?.data?.[0]?.id ? String(r.json.data[0].id) : null;
+      if (id) {
+        const ins = await getJson(`${GRAPH}/${encodeURIComponent(id)}/insights?metric=post_media_views,post_total_media_views_unique&access_token=${encodeURIComponent(pageToken)}`);
+        out.postInsights = ins.ok ? { post: id, values: (ins.json?.data ?? []).map((d: any) => ({ name: d.name, value: d.values?.[0]?.value ?? d.value ?? null })) } : { post: id, error: ins.json?.error?.message ?? `HTTP ${ins.status}` };
+      } else out.postInsights = { error: 'no post to try' };
+    } catch (e) { out.postInsights = { error: String((e as Error).message).slice(0, 120) }; }
+    return out;
+  }
+
   /** meta_social carries no ad spend — organic sync uses fetchOrganic instead. */
   async fetchMonthly(): Promise<MonthlyMetrics> {
     return { raw: { note: 'meta_social is organic-only; use fetchOrganic' } };

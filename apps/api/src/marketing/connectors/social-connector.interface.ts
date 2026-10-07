@@ -26,6 +26,8 @@ export interface ChannelCreds {
    * permission the agency's system-user token has.
    */
   fallbackToken?: string;
+  /** The salon's IANA timezone: a report month runs midnight-to-midnight in it (marketing/month-window.ts). */
+  timezone?: string | null;
 }
 
 export interface MonthlyMetrics {

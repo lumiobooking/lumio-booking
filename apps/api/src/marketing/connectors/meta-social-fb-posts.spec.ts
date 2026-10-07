@@ -1,5 +1,6 @@
 import { MetaSocialConnector } from './meta-social.connector';
 import * as iface from './social-connector.interface';
+import { monthWindow } from '../month-window';
 
 /**
  * "Thống kê nội dung theo tháng đã đúng chưa?" — the Facebook post count for
@@ -18,7 +19,7 @@ describe('Facebook posts counted for the report month', () => {
   const run = async (route: (url: string) => Resp) => {
     jest.spyOn(iface, 'getJson').mockImplementation(async (url: string) => route(url));
     const conn = new MetaSocialConnector() as any;
-    return conn.fbPostBreakdown('page1', '2026-08-01', '2026-08-31', 'tok') as Promise<{ posts: any[]; monthCount: number | null }>;
+    return conn.fbPostBreakdown('page1', monthWindow('2026-08'), 'tok') as Promise<{ posts: any[]; monthCount: number | null }>;
   };
 
   it('a Reel that is both a Page post and on video_reels counts once, with its video views', async () => {

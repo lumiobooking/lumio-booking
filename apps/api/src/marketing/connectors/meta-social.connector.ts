@@ -1,4 +1,5 @@
 import { clip } from '../../common/json-safe';
+import { inWindow, isOwnFbPost, monthWindow, type MonthWindow } from '../month-window';
 import {
   ChannelCreds,
   MonthlyMetrics,
@@ -162,19 +163,34 @@ export class MetaSocialConnector implements SocialConnector {
   /** Instagram per-post breakdown for the month: media list + each post's
    *  interactions (reach/views/saved/shares/total). Resilient — a post whose
    *  insights fail still reports likes/comments from the node fields. */
-  private async igMediaBreakdown(igId: string, since: string, until: string, token: string, fallbackToken?: string, errs?: string[]): Promise<PostInsight[]> {
-    const from = new Date(`${since}T00:00:00Z`).getTime();
-    const to = new Date(`${until}T23:59:59Z`).getTime();
-    const s = Math.floor(from / 1000), u = Math.floor(to / 1000);
+  private async igMediaBreakdown(igId: string, win: MonthWindow, token: string, fallbackToken?: string, errs?: string[]): Promise<{ posts: PostInsight[]; count: number }> {
+    const s = Math.floor(win.from / 1000), u = Math.floor(win.to / 1000);
     let list: any[] = [];
+    // Newest first, 50 a page. The old read took ONE page: a month with more
+    // than 50 posts — or an earlier month once 50 newer posts existed, when
+    // the edge ignores since/until — was cut short. Pages are followed until
+    // the media are older than the month.
+    let next: string | null = `${GRAPH}/${encodeURIComponent(igId)}/media?fields=id,caption,media_type,media_product_type,timestamp,permalink,thumbnail_url,media_url,like_count,comments_count&since=${s}&until=${u}&limit=50&access_token=${encodeURIComponent(token)}`;
     try {
-      const r = await getJson(`${GRAPH}/${encodeURIComponent(igId)}/media?fields=id,caption,media_type,media_product_type,timestamp,permalink,thumbnail_url,media_url,like_count,comments_count&since=${s}&until=${u}&limit=50&access_token=${encodeURIComponent(token)}`);
-      if (r.ok && Array.isArray(r.json?.data)) list = r.json.data;
+      for (let page = 0; next && page < 12; page++) {
+        const r = await getJson(next);
+        next = null;
+        if (!r.ok || !Array.isArray(r.json?.data)) break;
+        const data = r.json.data as any[];
+        list.push(...data);
+        const oldest = Math.min(...data.map((m) => Date.parse(m?.timestamp || '')).filter(Number.isFinite));
+        const nx = r.json?.paging?.next;
+        if (data.length && typeof nx === 'string' && nx.startsWith('https://') && !(oldest < win.from)) next = nx;
+      }
     } catch {
-      return [];
+      if (!list.length) return { posts: [], count: 0 };
     }
-    // The edge's since/until can be loose — keep only media actually posted this month.
-    list = list.filter((m) => { const t = Date.parse(m?.timestamp || ''); return !Number.isFinite(t) || (t >= from && t <= to); }).slice(0, 40);
+    // Strict month filter (salon time): a post that cannot prove its month is not counted.
+    const seen = new Set<string>();
+    list = list.filter((m) => m?.id && !seen.has(String(m.id)) && seen.add(String(m.id)) && inWindow(m?.timestamp, win));
+    // The true monthly count, taken BEFORE the display cap — the count used to stop at 40.
+    const count = list.length;
+    list = list.slice(0, 40);
 
     let postErrs = 0;
     // Per-post insights need instagram_manage_insights; the token that listed
@@ -229,7 +245,7 @@ export class MetaSocialConnector implements SocialConnector {
       };
     }));
     posts.sort((a, b) => (b.interactions ?? 0) - (a.interactions ?? 0));
-    return posts;
+    return { posts, count };
   }
 
   /** Daily new-follows over the month (IG). Frontend turns it into a growth line. */
@@ -266,10 +282,8 @@ export class MetaSocialConnector implements SocialConnector {
   /** Facebook post breakdown for the month. Page-level Insights are deprecated,
    *  but per-post like/comment/share COUNTS still come from node-edge summaries
    *  (published_posts, falling back to /feed) — so FB engagement is still real. */
-  private async fbPostBreakdown(pageId: string, since: string, until: string, token: string): Promise<{ posts: PostInsight[]; monthCount: number | null; status: number; error: string | null }> {
-    const from = new Date(`${since}T00:00:00Z`).getTime();
-    const to = new Date(`${until}T23:59:59Z`).getTime();
-    const s = Math.floor(from / 1000), u = Math.floor(to / 1000);
+  private async fbPostBreakdown(pageId: string, win: MonthWindow, token: string): Promise<{ posts: PostInsight[]; monthCount: number | null; status: number; error: string | null }> {
+    const s = Math.floor(win.from / 1000), u = Math.floor(win.to / 1000);
     // A PAGE access token (minted from the system-user token for the assigned page)
     // is the reliable way to read a page's own posts. Fall back to the agency token.
     let pageToken = token;
@@ -280,7 +294,8 @@ export class MetaSocialConnector implements SocialConnector {
     // Try every place FB content can live: normal posts (published_posts/feed/posts)
     // AND Reels (video_reels — a separate edge). Reels are what most salons post,
     // and crossposted IG Reels land here. Client-side filter by date afterwards.
-    const postFields = 'id,message,story,created_time,permalink_url,full_picture,shares,likes.summary(true),comments.summary(true)';
+    // `from`: the feed also carries visitors' posts on the Page — only the Page's own count.
+    const postFields = 'id,message,story,from,created_time,permalink_url,full_picture,shares,likes.summary(true),comments.summary(true)';
     // created_time is asked for on Reels too: `updated_time` moves whenever a
     // Reel is edited, which put an August Reel into September's count.
     const reelFields = 'id,description,created_time,updated_time,permalink_url,likes.summary(true),comments.summary(true)';
@@ -354,9 +369,8 @@ export class MetaSocialConnector implements SocialConnector {
     // salon read "Tổng bài 40" twelve months in a row. A post that cannot
     // prove its month does not belong in a monthly count.
     list = list.filter((m) => {
-      const mm = m as { created_time?: string; updated_time?: string };
-      const t = Date.parse(String(mm.created_time || mm.updated_time || ''));
-      return Number.isFinite(t) && t >= from && t <= to;
+      const mm = m as { created_time?: string; updated_time?: string; from?: { id?: string }; story?: string; message?: string };
+      return inWindow(mm.created_time || mm.updated_time, win) && isOwnFbPost(mm, pageId);
     });
     // The true monthly count, taken BEFORE the display cap: the report says
     // how many were posted, the list shows at most 40 of them.
@@ -411,6 +425,8 @@ export class MetaSocialConnector implements SocialConnector {
     const today = new Date().toISOString().slice(0, 10);
     const until = bounds.until > today && since <= today ? today : bounds.until;
     const fallback = creds.fallbackToken;
+    // Posts are counted midnight-to-midnight in the salon's own timezone.
+    const win = monthWindow(month, creds.timezone);
 
     const page = await this.node(ref, 'id,name,followers_count,fan_count,instagram_business_account', token);
     if (!page || !page.id) {
@@ -433,7 +449,7 @@ export class MetaSocialConnector implements SocialConnector {
       this.fb(pageId, ['page_impressions', 'page_views_total'], since, until, fbPageToken),
       this.fb(pageId, ['page_post_engagements'], since, until, fbPageToken),
       this.fb(pageId, ['page_daily_follows_unique', 'page_fan_adds_unique', 'page_fan_adds'], since, until, fbPageToken),
-      this.fbPostBreakdown(pageId, since, until, token),
+      this.fbPostBreakdown(pageId, win, token),
     ]);
     const fbPostList = fbRes.posts;
     // Page-level engagement insight is dead; sum per-post like+comment+share (still live) instead.
@@ -465,12 +481,13 @@ export class MetaSocialConnector implements SocialConnector {
         this.ig(igId, ['total_interactions', 'accounts_engaged'], since, until, token, igErrs, fallback),
         this.ig(igId, ['follower_count'], since, until, token, igErrs, fallback),
         this.ig(igId, ['profile_views'], since, until, token, undefined, fallback),
-        this.igMediaBreakdown(igId, since, until, token, fallback, igErrs),
+        this.igMediaBreakdown(igId, win, token, fallback, igErrs),
         this.igFollowerSeries(igId, since, until, token),
         this.igAudience(igId, token),
       ]);
       // The post list with the second token when the first one read nothing.
-      const igPostList = igPostList0.length || !fallback ? igPostList0 : await this.igMediaBreakdown(igId, since, until, fallback);
+      const igRes = igPostList0.posts.length || !fallback ? igPostList0 : await this.igMediaBreakdown(igId, win, fallback);
+      const igPostList = igRes.posts;
       // Account-level numbers missing, but the month's posts were read? Sum
       // what the posts say, exactly as the Facebook side already does. Reach
       // is NOT summed: the same person reached by two posts is one person.
@@ -488,11 +505,11 @@ export class MetaSocialConnector implements SocialConnector {
         // fallback swapped in media_count — the account's LIFETIME total — the
         // moment a month was quiet, which is a different number wearing the
         // same label.
-        postsCount: igPostList.length,
+        postsCount: igRes.count,
         posts: igPostList,
         series: igSeries,
         audience: igAud,
-        raw: { igId, username: igNode?.username ?? null, igDebug: { until, posts: igPostList.length, errors: igErrs.slice(0, 10) } },
+        raw: { igId, username: igNode?.username ?? null, igDebug: { until, posts: igRes.count, errors: igErrs.slice(0, 10) } },
       };
     }
 

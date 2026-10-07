@@ -1,4 +1,5 @@
-import { lumioPostsOn, monthBounds } from './lumio-posts';
+import { lumioPostsOn } from './lumio-posts';
+import { monthWindow } from './month-window';
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { AppointmentStatus, PaymentStatus, UserRole, TenantStatus, NotificationChannel } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -399,7 +400,8 @@ export class MarketingService {
     // TikTok posts, counted from Lumio's own publish log when TikTok itself
     // gave no count (the app has no video.list permission — see lumio-posts.ts).
     try {
-      const { from, to } = monthBounds(month);
+      const w = monthWindow(month, await this.tenantTz(tenantId));
+      const from = new Date(w.from), to = new Date(w.to);
       const published = await this.prisma.scheduledPost.findMany({
         where: { tenantId, status: 'posted', postedAt: { gte: from, lt: to } },
         select: { postedAt: true, results: true },
@@ -1147,6 +1149,8 @@ export class MarketingService {
     const connector = this.social.get(platform);
     if (!connector.fetchOrganic) throw new BadRequestException(`${platform} does not support organic insights`);
     const { creds, linked } = await this.resolveCreds(tenantId, platform);
+    // Count the month in the salon's own clock (marketing/month-window.ts).
+    creds.timezone = await this.tenantTz(tenantId);
     try {
       const res = await connector.fetchOrganic(creds, month);
       const rows: Array<{ ch: string; m: any }> = [];
@@ -1233,6 +1237,14 @@ export class MarketingService {
    * query each and are skipped.
    */
   async syncAllTenants(month?: string): Promise<{ month: string; tenants: number; synced: number; failed: number }> {
+    // The daily run, in the first 3 days of a month, also re-reads the month
+    // that just ended: its last day(s) were posted after the last daily read,
+    // and a salon whose report was already drafted was never read again — its
+    // month stayed short of the posts made at the end.
+    if (!month && new Date().getUTCDate() <= 3) {
+      const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1);
+      await this.syncAllTenants(d.toISOString().slice(0, 7)).catch(() => undefined);
+    }
     const m = month && /^\d{4}-\d{2}$/.test(month) ? month : new Date().toISOString().slice(0, 7);
     const tenants = await this.prisma.tenant.findMany({ where: { status: TenantStatus.ACTIVE, deletedAt: null }, select: { id: true } });
     const sys: AuthenticatedUser = { userId: 'system', email: 'system@lumio.local', role: UserRole.SUPER_ADMIN, tenantId: null };
@@ -1371,6 +1383,13 @@ export class MarketingService {
   }
 
   /** The credentials to use, and whether they are the linked ones. */
+  /** The salon's timezone, or null (then months are UTC, as before). */
+  private async tenantTz(tenantId: string): Promise<string | null> {
+    try {
+      return (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone ?? null;
+    } catch { return null; }
+  }
+
   private async resolveCreds(tenantId: string, platform: string): Promise<{ creds: ChannelCreds; linked: boolean }> {
     const conn = await this.prisma.marketingChannelConnection.findUnique({ where: { tenantId_platform: { tenantId, platform } } });
     // Precedence lives in credsSource (linked-channels.ts): an ACTIVE row here

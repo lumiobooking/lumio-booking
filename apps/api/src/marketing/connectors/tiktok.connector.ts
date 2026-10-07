@@ -1,3 +1,4 @@
+import { monthWindow } from '../month-window';
 import { ChannelCreds, MonthlyMetrics, OrganicMetrics, OrganicResult, PostInsight, SocialConnector, VerifyResult, getJson, postForm } from './social-connector.interface';
 
 const TT = 'https://open.tiktokapis.com/v2';
@@ -41,9 +42,10 @@ export class TikTokOrganicConnector implements SocialConnector {
 
   async fetchOrganic(creds: ChannelCreds, month: string): Promise<OrganicResult> {
     const token = await this.accessToken(creds);
-    const [y, m] = month.split('-').map(Number);
-    const from = Math.floor(Date.UTC(y, m - 1, 1) / 1000);
-    const to = Math.floor(Date.UTC(y, m, 1) / 1000); // exclusive: start of next month
+    // The salon's month, midnight to midnight in its own timezone (marketing/month-window.ts).
+    const win = monthWindow(month, creds.timezone);
+    const from = Math.floor(win.from / 1000);
+    const to = Math.floor(win.to / 1000); // exclusive: start of next month
 
     // --- Account-level stats ---
     const u = await getJson(`${TT}/user/info/?fields=open_id,display_name,follower_count,likes_count,video_count`, { Authorization: `Bearer ${token}` });

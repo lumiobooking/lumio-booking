@@ -1861,23 +1861,26 @@ function Fig({ n, label, accent }: { n: string; label: string; accent?: string }
 /** The diagnosis as short lines a person can read (and paste to support). */
 function DiagLines({ data, T }: { data: Record<string, unknown>; T: (vi: string, en: string) => string }) {
   const j = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v));
-  const perms = data.permissions;
-  const edges = Array.isArray(data.edges) ? (data.edges as Record<string, unknown>[]) : [];
-  const edgeLine = (e: Record<string, unknown>) => {
-    const m = e.month as Record<string, unknown> | undefined;
-    const n = e.newest as Record<string, unknown> | undefined;
-    const one = (x: Record<string, unknown> | undefined) => !x ? '—' : x.error ? `✗ ${j(x.error)}` : `${j(x.returned)} ${T('trả về', 'returned')} · ${j(x.inMonth)} ${T('trong tháng', 'in month')} · ${j(x.ownInMonth)} ${T('của Trang', 'own')}${Array.isArray(x.fromIds) && (x.fromIds as unknown[]).length ? ` · from=${(x.fromIds as unknown[]).join(',')}` : ''}`;
-    return <div key={String(e.edge)}><b>{String(e.edge)}</b>: {T('theo tháng', 'month')} → {one(m)} · {T('mới nhất', 'newest')} → {one(n)}</div>;
-  };
+  const one = (x: Record<string, unknown> | undefined) => !x ? '—' : x.error ? `✗ ${j(x.error)}` : `${j(x.returned)} ${T('trả về', 'returned')} · ${j(x.inMonth)} ${T('trong tháng', 'in month')} · ${j(x.ownInMonth)} ${T('của Trang', 'own')}${Array.isArray(x.fromIds) && (x.fromIds as unknown[]).length ? ` · from=${(x.fromIds as unknown[]).join(',')}` : ''}`;
+  const tokens = Array.isArray(data.tokens) ? (data.tokens as Record<string, unknown>[]) : [];
   return (
     <div>
       {data.error ? <div style={{ color: 'var(--ink-bad)' }}>✗ {j(data.error)}</div> : null}
-      <div>Token: {j(data.tokenSource)} · {j(data.token)}</div>
-      <div>{T('Quyền', 'Permissions')}: {Array.isArray(perms) ? (perms as string[]).join(', ') || T('(không có)', '(none)') : j(perms)}</div>
       {data.page ? <div>Page: {j(data.page)}</div> : null}
-      <div>Page token: {j(data.pageToken)}</div>
-      {edges.map(edgeLine)}
-      {data.postInsights ? <div>Post insights: {j(data.postInsights)}</div> : null}
+      <div>{T('Nguồn token', 'Token source')}: {j(data.tokenSource)}{data.linked ? ` · ${T('dùng kết nối Trang của tiệm', 'salon Page connection')}` : ''}</div>
+      {tokens.map((tk) => {
+        const perms = tk.permissions;
+        const edges = Array.isArray(tk.edges) ? (tk.edges as Record<string, unknown>[]) : [];
+        return (
+          <div key={String(tk.label)} style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--line)' }}>
+            <div><b>{String(tk.label)}</b> · {j(tk.who)}</div>
+            <div>{T('Quyền', 'Permissions')}: {Array.isArray(perms) ? (perms as string[]).join(', ') || T('(không có)', '(none)') : j(perms)}</div>
+            <div>Page token: {j(tk.pageToken)}</div>
+            {edges.map((e) => <div key={String(e.edge)}><b>{String(e.edge)}</b>: {T('theo tháng', 'month')} → {one(e.month as Record<string, unknown>)} · {T('mới nhất', 'newest')} → {one(e.newest as Record<string, unknown>)}</div>)}
+            {tk.postInsights ? <div>Post insights: {j(tk.postInsights)}</div> : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

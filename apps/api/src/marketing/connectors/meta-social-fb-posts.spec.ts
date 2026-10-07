@@ -148,3 +148,44 @@ describe('every post gets its views and viewers; a refused field never hides the
     expect(out.error).toMatch(/pages_read_user_content/);
   });
 });
+
+describe('two tokens: the one Meta lets read the Page wins', () => {
+  afterEach(() => jest.restoreAllMocks());
+  type Resp = { ok: boolean; status: number; json: any };
+  const ok = (json: any): Resp => ({ ok: true, status: 200, json });
+  const fail = (msg: string): Resp => ({ ok: false, status: 400, json: { error: { message: msg } } });
+
+  it('the agency token sees only public Reels; the salon\'s own Page token reads every post — the report takes the Page token\'s answer', async () => {
+    jest.spyOn(iface, 'getJson').mockImplementation(async (url: string) => {
+      const own = /access_token=OWN/.test(url) || /access_token=OWNPAGE/.test(url);
+      if (/\/page1\?fields=access_token/.test(url)) return own ? ok({ access_token: 'OWNPAGE' }) : ok({ id: 'page1' }); // agency: no role → no token
+      if (/\/page1\/(published_posts|feed|posts)\?/.test(url)) return own
+        ? ok({ data: [
+          { id: 'page1_1', message: 'Photo', from: { id: 'page1' }, created_time: '2026-09-20T01:00:00+0000', permalink_url: 'https://www.facebook.com/page1/posts/1' },
+          { id: 'page1_2', message: 'Multi', from: { id: 'page1' }, created_time: '2026-09-22T13:08:00+0000', permalink_url: 'https://www.facebook.com/page1/posts/2' },
+        ] })
+        : ok({ data: [] }); // Meta answers EMPTY, not an error, for a Page the token has no role on
+      if (/\/page1\/video_reels\?/.test(url)) return ok({ data: [{ id: '9', description: 'reel', created_time: '2026-09-11T12:11:00+0000' }] });
+      if (/\/insights\?/.test(url)) return fail('no insights');
+      if (/\?fields=views/.test(url)) return ok({ views: 504 });
+      return fail('unrouted');
+    });
+    const conn = new MetaSocialConnector() as any;
+    const out = await conn.fbPostsWithEitherToken('page1', monthWindow('2026-09'), 'AGENCY', 'OWN');
+    expect(out.monthCount).toBe(3);
+    expect(out.posts.filter((p: any) => p.type === 'post')).toHaveLength(2);
+  });
+
+  it('no second token: the first answer stands', async () => {
+    jest.spyOn(iface, 'getJson').mockImplementation(async (url: string) => {
+      if (/\/page1\?fields=access_token/.test(url)) return ok({ id: 'page1' });
+      if (/\/page1\/(published_posts|feed|posts)\?/.test(url)) return ok({ data: [] });
+      if (/\/page1\/video_reels\?/.test(url)) return ok({ data: [{ id: '9', description: 'reel', created_time: '2026-09-11T12:11:00+0000' }] });
+      if (/\?fields=views/.test(url)) return ok({ views: 1 });
+      return fail('unrouted');
+    });
+    const conn = new MetaSocialConnector() as any;
+    const out = await conn.fbPostsWithEitherToken('page1', monthWindow('2026-09'), 'AGENCY', undefined);
+    expect(out.monthCount).toBe(1);
+  });
+});

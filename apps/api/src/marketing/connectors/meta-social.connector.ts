@@ -64,30 +64,38 @@ export class MetaSocialConnector implements SocialConnector {
    * is answered by Meta's own replies, not by guessing. Never returns a token.
    */
   async diagnose(creds: ChannelCreds, month: string): Promise<Record<string, unknown>> {
-    const token = creds.token;
     const out: Record<string, unknown> = { month, timezone: creds.timezone ?? null };
-    if (!token) return { ...out, error: 'Thiếu agency token trên server (META_AGENCY_TOKEN)' };
+    if (!creds.token) return { ...out, error: 'Thiếu token (chưa kết nối Trang và không có agency token trên server)' };
     const ref = this.pageRef(creds);
     out.pageRef = ref || null;
-    // Whose token, and what it may do.
+    const page = await this.node(ref, 'id,name,followers_count,instagram_business_account{username}', creds.token)
+      ?? (creds.fallbackToken ? await this.node(ref, 'id,name,followers_count,instagram_business_account{username}', creds.fallbackToken) : null);
+    if (!page?.id) return { ...out, error: 'Không đọc được Trang (kiểm tra Page ID và quyền của token)' };
+    const pageId = String(page.id);
+    out.page = { id: pageId, name: page.name ?? null, followers: page.followers_count ?? null, instagram: page.instagram_business_account?.username ?? null };
+    const win = monthWindow(month, creds.timezone);
+    out.window = { from: new Date(win.from).toISOString(), to: new Date(win.to).toISOString() };
+    const tokens: [string, string][] = [['token1', creds.token]];
+    if (creds.fallbackToken && creds.fallbackToken !== creds.token) tokens.push(['token2', creds.fallbackToken]);
+    const reads: Record<string, unknown>[] = [];
+    for (const [label, token] of tokens) reads.push(await this.diagnoseToken(label, token, pageId, win));
+    out.tokens = reads;
+    return out;
+  }
+
+  /** One token's readout: who it is, what it may do, and what each post edge answers. */
+  private async diagnoseToken(label: string, token: string, pageId: string, win: MonthWindow): Promise<Record<string, unknown>> {
+    const out: Record<string, unknown> = { label };
     const me = await getJson(`${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(token)}`).catch(() => null);
-    out.token = me?.ok ? { id: me.json?.id ?? null, name: me.json?.name ?? null } : { error: me?.json?.error?.message ?? `HTTP ${me?.status ?? '?'}` };
+    out.who = me?.ok ? { id: me.json?.id ?? null, name: me.json?.name ?? null } : { error: me?.json?.error?.message ?? `HTTP ${me?.status ?? '?'}` };
     const perms = await getJson(`${GRAPH}/me/permissions?access_token=${encodeURIComponent(token)}`).catch(() => null);
     out.permissions = perms?.ok && Array.isArray(perms.json?.data)
       ? perms.json.data.filter((p: any) => p?.status === 'granted').map((p: any) => String(p.permission)).sort()
       : { error: perms?.json?.error?.message ?? `HTTP ${perms?.status ?? '?'}` };
-    // The Page, and whether a Page token can be minted for it (= the Page is
-    // assigned to this system user; without it, post edges come back EMPTY).
-    const page = await this.node(ref, 'id,name,followers_count,instagram_business_account{username}', token);
-    if (!page?.id) return { ...out, error: 'Không đọc được Trang (kiểm tra Page ID và asset đã gán cho token)' };
-    const pageId = String(page.id);
-    out.page = { id: pageId, name: page.name ?? null, followers: page.followers_count ?? null, instagram: page.instagram_business_account?.username ?? null };
     let pageToken = token;
     const tk = await getJson(`${GRAPH}/${encodeURIComponent(pageId)}?fields=access_token&access_token=${encodeURIComponent(token)}`).catch(() => null);
-    out.pageToken = tk?.ok && tk.json?.access_token ? 'minted' : { error: tk?.json?.error?.message ?? (tk?.ok ? 'no access_token field (Page not assigned to this token)' : `HTTP ${tk?.status ?? '?'}`) };
+    out.pageToken = tk?.ok && tk.json?.access_token ? 'minted' : { error: tk?.json?.error?.message ?? (tk?.ok ? 'no access_token (token has no role on this Page)' : `HTTP ${tk?.status ?? '?'}`) };
     if (tk?.ok && tk.json?.access_token) pageToken = String(tk.json.access_token);
-    const win = monthWindow(month, creds.timezone);
-    out.window = { from: new Date(win.from).toISOString(), to: new Date(win.to).toISOString() };
     const s = Math.floor(win.from / 1000), u = Math.floor(win.to / 1000);
     const edges: Record<string, unknown>[] = [];
     for (const edge of ['published_posts', 'feed', 'posts', 'video_reels']) {
@@ -109,14 +117,13 @@ export class MetaSocialConnector implements SocialConnector {
       edges.push(row);
     }
     out.edges = edges;
-    // One post's insights, to see whether the 2026 metric names answer.
     try {
       const r = await getJson(`${GRAPH}/${encodeURIComponent(pageId)}/published_posts?fields=id&limit=1&access_token=${encodeURIComponent(pageToken)}`);
       const id = r.ok && r.json?.data?.[0]?.id ? String(r.json.data[0].id) : null;
       if (id) {
         const ins = await getJson(`${GRAPH}/${encodeURIComponent(id)}/insights?metric=post_media_views,post_total_media_views_unique&access_token=${encodeURIComponent(pageToken)}`);
         out.postInsights = ins.ok ? { post: id, values: (ins.json?.data ?? []).map((d: any) => ({ name: d.name, value: d.values?.[0]?.value ?? d.value ?? null })) } : { post: id, error: ins.json?.error?.message ?? `HTTP ${ins.status}` };
-      } else out.postInsights = { error: 'no post to try' };
+      } else out.postInsights = { error: 'no post readable with this token' };
     } catch (e) { out.postInsights = { error: String((e as Error).message).slice(0, 120) }; }
     return out;
   }
@@ -364,7 +371,7 @@ export class MetaSocialConnector implements SocialConnector {
   /** Facebook post breakdown for the month. Page-level Insights are deprecated,
    *  but per-post like/comment/share COUNTS still come from node-edge summaries
    *  (published_posts, falling back to /feed) — so FB engagement is still real. */
-  private async fbPostBreakdown(pageId: string, win: MonthWindow, token: string): Promise<{ posts: PostInsight[]; monthCount: number | null; status: number; error: string | null }> {
+  private async fbPostBreakdown(pageId: string, win: MonthWindow, token: string): Promise<{ posts: PostInsight[]; monthCount: number | null; status: number; error: string | null; postEdgesRead: boolean }> {
     const s = Math.floor(win.from / 1000), u = Math.floor(win.to / 1000);
     // A PAGE access token (minted from the system-user token for the assigned page)
     // is the reliable way to read a page's own posts. Fall back to the agency token.
@@ -544,7 +551,25 @@ export class MetaSocialConnector implements SocialConnector {
       }
     }));
     posts.sort((a, b) => (b.interactions ?? 0) - (a.interactions ?? 0));
-    return { posts, monthCount: error && !posts.length ? null : fbMonthCount, status, error };
+    return { posts, monthCount: error && !posts.length ? null : fbMonthCount, status, error, postEdgesRead: postEdges.some((e) => edgeOk.has(e)) };
+  }
+
+  /**
+   * The Page's posts with whichever token Meta lets read them. A salon has up
+   * to two: its OWN Page token (from "Kết nối kênh social") and the agency's
+   * system-user token. The agency token reads only Pages assigned to that
+   * system user; a Page token reads its own Page when it carries
+   * pages_read_engagement. Ask the first; when the ordinary-post edges
+   * came back empty or refused, ask the second and keep the better answer.
+   */
+  private async fbPostsWithEitherToken(pageId: string, win: MonthWindow, token: string, fallback?: string) {
+    const first = await this.fbPostBreakdown(pageId, win, token);
+    const ordinary = first.posts.filter((p) => p.type !== 'reel' && p.type !== 'video').length;
+    if ((first.postEdgesRead && ordinary > 0) || !fallback || fallback === token) return first;
+    const second = await this.fbPostBreakdown(pageId, win, fallback);
+    const better = (second.monthCount ?? 0) > (first.monthCount ?? 0) || (second.postEdgesRead && !first.postEdgesRead);
+    if (!better) return first;
+    return { ...second, error: second.error ?? (first.error ? `token 1: ${first.error}` : null) };
   }
 
   // ---- Organic pull --------------------------------------------------------
@@ -582,11 +607,11 @@ export class MetaSocialConnector implements SocialConnector {
       if (tk.ok && tk.json?.access_token) fbPageToken = String(tk.json.access_token);
     } catch { /* fall back to the system-user token */ }
     const [fbReach, fbViews, fbEngRaw, fbNewFollowers, fbRes] = await Promise.all([
-      this.fbMonthlyReach(pageId, since, until, fbPageToken),
-      this.fb(pageId, ['page_media_view', 'page_media_view_organic', 'page_impressions', 'page_views_total'], since, until, fbPageToken),
-      this.fb(pageId, ['page_post_engagements'], since, until, fbPageToken),
-      this.fb(pageId, ['page_daily_follows_unique', 'page_fan_adds_unique', 'page_fan_adds'], since, until, fbPageToken),
-      this.fbPostBreakdown(pageId, win, token),
+      this.fbMonthlyReach(pageId, since, until, fbPageToken).then((v) => (v == null && fallback && fallback !== token ? this.fbMonthlyReach(pageId, since, until, fallback) : v)),
+      this.firstInsight(pageId, ['page_media_view', 'page_media_view_organic', 'page_impressions', 'page_views_total'], since, until, fbPageToken, [false], undefined, fallback),
+      this.firstInsight(pageId, ['page_post_engagements'], since, until, fbPageToken, [false], undefined, fallback),
+      this.firstInsight(pageId, ['page_daily_follows_unique', 'page_fan_adds_unique', 'page_fan_adds'], since, until, fbPageToken, [false], undefined, fallback),
+      this.fbPostsWithEitherToken(pageId, win, token, fallback),
     ]);
     const fbPostList = fbRes.posts;
     // Page-level engagement insight is dead; sum per-post like+comment+share (still live) instead.

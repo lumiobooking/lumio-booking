@@ -1,4 +1,5 @@
 import { dialCodeFor } from '../common/phone';
+import { PARTY_DEPOSIT_KEY, PartyDeposit, cleanPartyDeposit } from '../payments/party-deposit';
 import { CHAT_FOLLOWUP_KEY, followUpSettingsFrom, type FollowUpSettings } from '../messenger/followup';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as crypto from 'crypto';
@@ -1347,6 +1348,26 @@ export class SettingsService {
     await this.writeKey(tenantId, DEPOSIT_SETTINGS_KEY, next);
     await this.audit.log({ tenantId, userId: user.userId, action: 'settings.deposit_updated', resourceType: 'tenant', resourceId: tenantId });
     return this.get(user);
+  }
+
+  /** Per-guest deposit for big parties (payments/party-deposit.ts). Off by default. */
+  async getPartyDeposit(tenantId: string): Promise<PartyDeposit> {
+    try {
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: PARTY_DEPOSIT_KEY } } });
+      return cleanPartyDeposit(row?.value ?? {});
+    } catch { return cleanPartyDeposit({}); }
+  }
+
+  getPartyDepositFor(user: AuthenticatedUser) {
+    return this.getPartyDeposit(this.tenantId(user));
+  }
+
+  async updatePartyDeposit(user: AuthenticatedUser, dto: Partial<PartyDeposit>) {
+    const tenantId = this.tenantId(user);
+    const next = cleanPartyDeposit(dto, await this.getPartyDeposit(tenantId));
+    await this.writeKey(tenantId, PARTY_DEPOSIT_KEY, next);
+    await this.audit.log({ tenantId, userId: user.userId, action: 'settings.party_deposit_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { ...next } });
+    return next;
   }
 
   async getReminderSettings(tenantId: string): Promise<ReminderSettings> {

@@ -17,7 +17,7 @@ import { DateRangeBar, SearchBox, matchesQuery, useDateRange, sortNewest, usePag
 import { useBulkSelect, BulkBar, BulkAllBox, BulkRowBox, runBulkDelete } from '../../../components/BulkDelete';
 import { uiLocale } from '../../../lib/datetime';
 import { deskHoursCheck, hoursMessage, wallLabel, withHoursOverride, type HoursRules } from '../../../lib/desk-hours';
-import { ind } from '../../../lib/ui-industry';
+import { ind, uiIndustry } from '../../../lib/ui-industry';
 
 
 interface NamedRef {
@@ -722,7 +722,10 @@ function CreateBookingForm({
     customerBirthDate: '',
     customerEmail: '',
     customerPhone: initial?.phone ?? '',
+    // Real estate: the property to view; home services: the client's address.
+    location: '',
   });
+  const askLocation = uiIndustry() === 'REAL_ESTATE' || uiIndustry() === 'SERVICE';
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -842,6 +845,7 @@ function CreateBookingForm({
           partySize: partyN,
           groupId,
           notes: groupNote,
+          location: askLocation ? form.location.trim() || undefined : undefined,
         },
       });
 
@@ -1001,6 +1005,12 @@ function CreateBookingForm({
               <NoShowWarning token={token} phone={form.customerPhone} vi={lang === 'vi'} />
               <RecordAlertByPhone token={token} phone={form.customerPhone} vi={lang === 'vi'} />
             </label>
+            {askLocation && (
+              <label style={{ gridColumn: '1 / -1' }}>
+                <FieldLabel raw={uiIndustry() === 'REAL_ESTATE' ? (vi ? 'Địa chỉ bất động sản cần xem (tuỳ chọn)' : 'Property to view (optional)') : (vi ? 'Địa chỉ làm dịch vụ (tuỳ chọn)' : 'Service address (optional)')} optionalWord={t('bk.optional')} />
+                <input style={ui.input} value={form.location} maxLength={300} onChange={(e) => up('location', e.target.value)} placeholder={vi ? 'Số nhà, đường, quận…' : '123 Main St, City'} />
+              </label>
+            )}
             <label>
               <FieldLabel raw={t('bk.fEmail')} optionalWord={t('bk.optional')} />
               <input style={ui.input} type="email" value={form.customerEmail} onChange={(e) => up('customerEmail', e.target.value)} placeholder="anna@email.com" />

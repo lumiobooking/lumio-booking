@@ -128,6 +128,7 @@ interface Salon {
   name: string; slug: string; businessType?: string; timezone: string; address?: string | null; contactPhone?: string | null;
   branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string }; booking?: BookingRules;
   weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy; cardFee?: { enabled: boolean; percent: number };
+  partyDeposit?: { enabled: boolean; fromParty: number; perPersonCents: number };
   firstVisit?: { enabled: boolean; percent: number; message: string; rules?: { visit: number; percent: number }[] } & PromoWindow;
   groupDiscount?: { enabled: boolean; message: string; tiers: { minSize: number; percent: number }[] } & PromoWindow;
   rating?: { value: number; count: number } | null;
@@ -358,6 +359,9 @@ export default function PublicBookingPage() {
   const [slot, setSlot] = useState<Slot | null>(null);
   const [avail, setAvail] = useState<Availability | null>(null);
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', birthDate: '', partySize: '1' });
+  // Home services (industry SERVICE): where to come. Sent as the booking's location.
+  const [address, setAddress] = useState('');
+  const askAddress = salon?.industry === 'SERVICE';
   const [paymentType, setPaymentType] = useState<'PAY_ONLINE' | 'PAY_LATER'>('PAY_LATER');
   const [smsConsent, setSmsConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -469,9 +473,13 @@ export default function PublicBookingPage() {
   const anyDiscount = savingsCents > 0;
 
   const dep = salon?.deposit;
-  const depositCents = dep?.enabled && dep.scope === 'all' && service && totalCents > 0
+  const salonDepCents = dep?.enabled && dep.scope === 'all' && service && totalCents > 0
     ? Math.min(totalCents, dep.type === 'fixed' ? dep.fixedCents : Math.round((totalCents * dep.percent) / 100))
     : 0;
+  // The per-guest party deposit (sent only when the salon takes payments online); the server asks the larger.
+  const partyCount = isGroup ? extraGuests.length + 1 : partyN;
+  const pd = salon?.partyDeposit;
+  const depositCents = Math.max(salonDepCents, pd?.enabled && partyCount >= pd.fromParty ? partyCount * pd.perPersonCents : 0);
 
   const removeLine = (id: string) => {
     if (addonIds.includes(id)) { setAddonIds((p) => p.filter((x) => x !== id)); return; }
@@ -638,6 +646,7 @@ export default function PublicBookingPage() {
             customerFirstName: form.firstName, customerLastName: form.lastName || undefined,
             customerEmail: form.email || undefined, customerPhone: form.phone || undefined,
             customerBirthDate: form.birthDate || undefined,
+          location: askAddress ? address.trim() || undefined : undefined,
             partySize: parseInt(form.partySize, 10) || 1,
             smsConsent,
             paymentType: 'PAY_LATER',
@@ -673,6 +682,7 @@ export default function PublicBookingPage() {
           customerFirstName: form.firstName, customerLastName: form.lastName || undefined,
           customerEmail: form.email || undefined, customerPhone: form.phone || undefined,
           customerBirthDate: form.birthDate || undefined,
+          location: askAddress ? address.trim() || undefined : undefined,
           partySize: isGroup ? extraGuests.length + 1 : (parseInt(form.partySize, 10) || 1),
           ...(isGroup ? { notes: `Group booking (${extraGuests.length + 1} people)` } : {}),
           // The whole party in ONE request: the server books the guests on the
@@ -790,7 +800,7 @@ export default function PublicBookingPage() {
 
   function reset() {
     setStep(1); setSelectedDate(null); setServiceId(''); setExtraServiceIds([]); setAddonIds([]); setStaffId(''); setSlot(null);
-    setAvail(null); setForm({ firstName: '', lastName: '', email: '', phone: '', birthDate: '', partySize: '1' });
+    setAvail(null); setForm({ firstName: '', lastName: '', email: '', phone: '', birthDate: '', partySize: '1' }); setAddress('');
     setPaymentType('PAY_LATER'); setResult(null); setError(null);
     setVisitCart([]); setBookedVisits([]);
     setExtraGuests([]); setActiveGuest(0);
@@ -1194,6 +1204,7 @@ export default function PublicBookingPage() {
                   depositCents={depositCents} cardFee={salon?.cardFee} rules={rules} paymentType={paymentType} setPaymentType={setPaymentType}
                   form={form} setForm={setForm} smsConsent={smsConsent} setSmsConsent={setSmsConsent}
                   accent={accent} error={error} infoOk={infoOk} isMobile={isMobile}
+                  address={askAddress ? address : undefined} setAddress={setAddress}
                 />
                 {/* The escape hatch for "I also want another day/time" — offered
                     AFTER a visit is fully specified, never asked up front. Groups
@@ -2272,12 +2283,14 @@ function TimePicker({ rules, salon, selectedDate, slot, avail, dealOn, staffId, 
 // ---------------------------------------------------------------------------
 // Step 4 · Confirm — appointment card, services, your details, payment.
 // ---------------------------------------------------------------------------
-function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCents, cardFee, rules, paymentType, setPaymentType, form, setForm, smsConsent, setSmsConsent, accent, error, infoOk, isMobile, party }: {
+function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCents, cardFee, rules, paymentType, setPaymentType, form, setForm, smsConsent, setSmsConsent, accent, error, infoOk, isMobile, party, address, setAddress }: {
   salon: Salon | null; slot: Slot; employee: Staff | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; party?: Party | null;
   depositCents: number; cardFee?: { enabled: boolean; percent: number }; rules: BookingRules; paymentType: 'PAY_ONLINE' | 'PAY_LATER'; setPaymentType: (v: 'PAY_ONLINE' | 'PAY_LATER') => void;
   form: { firstName: string; lastName: string; email: string; phone: string; birthDate: string; partySize: string };
   setForm: (f: { firstName: string; lastName: string; email: string; phone: string; birthDate: string; partySize: string }) => void;
   smsConsent: boolean; setSmsConsent: (v: boolean) => void; accent: string; error: string | null; infoOk: boolean; isMobile: boolean;
+  /** Home services: the client's address (undefined = not asked). */
+  address?: string; setAddress?: (v: string) => void;
 }) {
   const showPhoneError = form.phone.trim().length > 0 && !isValidPhone(form.phone);
   const showEmailError = form.email.trim().length > 0 && !isValidEmail(form.email);
@@ -2355,6 +2368,9 @@ function ConfirmStep({ salon, slot, employee, lines, fmt, totalCents, depositCen
               ? <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{bt("Enter a valid email address.")}</div>
               : <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{bt('We’ll email your receipt 💌')}</div>}
           </Field>
+          {address !== undefined && setAddress && (
+            <Field label={bt('Service address (optional)')}><input style={inputStyle} value={address} maxLength={300} onChange={(e) => setAddress(e.target.value)} placeholder={bt('Street, city')} autoComplete="street-address" /></Field>
+          )}
           <Field label={bt("People")}><input style={inputStyle} type="number" min={1} max={20} value={form.partySize} onChange={(e) => setForm({ ...form, partySize: e.target.value })} /></Field>
           <Field label={bt("🎂 Birthday (optional)")}><BirthdayInput value={form.birthDate} onChange={(iso) => setForm({ ...form, birthDate: iso })} /></Field>
         </div>

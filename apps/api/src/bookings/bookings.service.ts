@@ -14,6 +14,7 @@ import { toE164, dialCodeFor } from '../common/phone';
 import { fitsBusinessHours, describeWindows, startsInBusinessHours } from '../settings/business-hours';
 import { NO_SHOW_BLOCK_MESSAGE, NO_SHOW_POLICY_KEY, NoShowPolicy, cleanNoShowPolicy, noShowVerdict, windowStart } from './no-show-policy';
 import { rebookCopy, recallDue, recallMonthsOf } from './recall';
+import { buildPreOrder, preOrderText } from './pre-order';
 import { INDUSTRY_KEY, resolveIndustry } from '../common/industry';
 import { canSelfReschedule } from './self-reschedule';
 import { canSelfCancel } from './self-cancel';
@@ -522,6 +523,16 @@ export class BookingsService {
       throw new NotFoundException('Service not found or inactive');
     }
 
+    // Where it happens, when not at the business (a property to view, a client's home).
+    const location = dto.location?.replace(/\s+/g, ' ').trim().slice(0, 300) || null;
+    // Dishes ordered ahead (restaurants): only this restaurant's active menu.
+    const preOrder = dto.preOrder?.length
+      ? buildPreOrder(dto.preOrder, await this.prisma.menuItem.findMany({
+          where: { tenantId, isActive: true, id: { in: dto.preOrder.map((l) => l.menuItemId).slice(0, 80) } },
+          select: { id: true, name: true, priceCents: true },
+        }))
+      : [];
+
     // Validate + load selected add-ons: this salon's, and offered on THIS
     // service — its own, its category's shared ones, or the whole menu's.
     const addonIds = [...new Set(dto.addonIds ?? [])];
@@ -714,7 +725,8 @@ export class BookingsService {
           priceCents: totalPrice,
           currency: service.currency,
           addons: lineItems as unknown as Prisma.InputJsonValue,
-          notes: dto.notes ?? null,
+          // Dishes ordered ahead and the address are also written into the notes, which every screen already shows.
+          notes: ([dto.notes, location ? `Address: ${location}` : null, preOrder.length ? `Pre-order: ${preOrderText(preOrder)}` : null].filter(Boolean).join(' · ').slice(0, 2000)) || null,
           source: source ?? (actorUserId ? 'admin' : 'online'),
           device: device ?? null,
           utmSource: dto.utmSource?.slice(0, 120) || null,
@@ -737,6 +749,11 @@ export class BookingsService {
         include: BOOKING_INCLUDE,
       });
     });
+
+    if (preOrder.length || location) {
+      // Its own write, typed loosely: the columns are newer than some generated clients.
+      await this.prisma.appointment.updateMany({ where: { id: appointment.id, tenantId }, data: { ...(preOrder.length ? { preOrder } : {}), ...(location ? { location } : {}) } as never });
+    }
 
     await this.audit.log({
       tenantId,

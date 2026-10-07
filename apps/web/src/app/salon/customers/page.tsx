@@ -16,6 +16,7 @@ import { AskedNotBookedBox } from '../../../components/AskedNotBookedBox';
 import { uiIndustry } from '../../../lib/ui-industry';
 import { LeadFollowUpsBox } from '../../../components/LeadFollowUpsBox';
 import { RecallBox } from '../../../components/RecallBox';
+import { LeadBoard } from '../../../components/LeadBoard';
 import { uiLocale } from '../../../lib/datetime';
 
 interface Customer {
@@ -88,6 +89,8 @@ function Inner() {
   // Real estate: the lead pipeline ('' = all, '_none' = no stage yet).
   const isLeads = uiIndustry() === 'REAL_ESTATE';
   const [stage, setStage] = useState('');
+  // Real estate: list or board (kanban by stage).
+  const [board, setBoard] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'since', dir: 'desc' });
 
   const load = useCallback(async () => {
@@ -115,6 +118,18 @@ function Inner() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }
+
+  /** Board: a lead dragged to another stage. Saved on the record, shown at once. */
+  async function moveStage(id: string, next: string) {
+    const before = customers;
+    setCustomers((cs) => cs.map((c) => (c.id === id ? { ...c, industryFields: { ...(c.industryFields ?? {}), stage: next } } : c)));
+    try {
+      await apiFetch(`/customers/${id}`, { method: 'PATCH', token, body: { industryFields: { stage: next } } });
+    } catch (err) {
+      setCustomers(before);
+      setError(err instanceof Error ? err.message : 'Failed');
     }
   }
 
@@ -198,6 +213,15 @@ function Inner() {
               </button>
             );
           })}
+          <span style={{ flex: 1 }} />
+          <span role="tablist" style={{ display: 'inline-flex', gap: 3, padding: 2, borderRadius: 9, border: '1px solid var(--c334155)' }}>
+            {[false, true].map((b) => (
+              <button key={String(b)} type="button" role="tab" aria-selected={board === b} onClick={() => setBoard(b)}
+                style={{ padding: '5px 11px', borderRadius: 7, border: 'none', fontSize: 12.5, cursor: 'pointer', background: board === b ? 'var(--c1e293b)' : 'transparent', color: 'var(--ce2e8f0)' }}>
+                {b ? (lang === 'vi' ? 'Bảng' : 'Board') : (lang === 'vi' ? 'Danh sách' : 'List')}
+              </button>
+            ))}
+          </span>
         </div>
       )}
 
@@ -228,6 +252,8 @@ function Inner() {
 
       {loading && customers.length === 0 ? (
         <p style={{ color: 'var(--c94a3b8)' }}>{t('cu.loading')}</p>
+      ) : isLeads && board ? (
+        <LeadBoard leads={filtered} stages={LEAD_STAGES} vi={lang === 'vi'} onMove={moveStage} />
       ) : cardList ? (
         <>
           <MList>

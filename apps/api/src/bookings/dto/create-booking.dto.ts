@@ -39,6 +39,17 @@ export class BookingGuestDto {
  * Create a booking. Used by Salon Admin now; the public/WordPress flow (Step 8)
  * reuses the same core service via an API key.
  */
+export class PreOrderLineDto {
+  @IsString()
+  @MaxLength(64)
+  menuItemId!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  qty!: number;
+}
+
 export class CreateBookingDto {
   @IsString()
   serviceId!: string;
@@ -88,6 +99,22 @@ export class CreateBookingDto {
   @IsString()
   @MaxLength(40)
   area?: string;
+
+  // Where it happens, when not at the business: the property to view (real
+  // estate) or the client's address (home services). Free text.
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  location?: string;
+
+  // Restaurant: dishes ordered ahead — menu ids + quantities only; names and
+  // prices are taken from the restaurant's own menu (bookings/pre-order.ts).
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(40)
+  @ValidateNested({ each: true })
+  @Type(() => PreOrderLineDto)
+  preOrder?: PreOrderLineDto[];
 
   // Optionally assign directly to a staff member (must have the skill & be free).
   @IsOptional()

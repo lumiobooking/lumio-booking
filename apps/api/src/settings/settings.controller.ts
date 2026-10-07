@@ -155,6 +155,17 @@ export class SettingsController {
     return this.settings.updateReview(user, dto);
   }
 
+  // Per-guest deposit for big parties (restaurants). Owner only.
+  @Get('party-deposit')
+  partyDeposit(@CurrentUser() user: AuthenticatedUser) {
+    return this.settings.getPartyDepositFor(user);
+  }
+
+  @Patch('party-deposit')
+  updatePartyDeposit(@CurrentUser() user: AuthenticatedUser, @Body() dto: { enabled?: boolean; fromParty?: number; perPersonCents?: number }) {
+    return this.settings.updatePartyDeposit(user, dto);
+  }
+
   @Patch('deposit')
   updateDeposit(
     @CurrentUser() user: AuthenticatedUser,

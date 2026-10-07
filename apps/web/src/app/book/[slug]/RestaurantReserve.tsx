@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useIsMobile } from '../../../lib/responsive';
 import { bt, btf, bookLocale } from '../../../lib/i18n-book';
+import { payDepositOnline } from '../../../lib/deposit-checkout';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 const INK = '#0f2a52';
@@ -50,6 +51,8 @@ interface Salon {
   name: string; slug: string; timezone: string; address?: string | null; contactPhone?: string | null;
   areas?: string[]; branding?: { accentColor?: string; logoUrl?: string; logoScale?: number };
   deposit?: Deposit; rating?: { value: number; count: number } | null;
+  /** Per-guest deposit for big parties — present only when an online provider can take it. */
+  partyDeposit?: { enabled: boolean; fromParty: number; perPersonCents: number };
   booking?: {
     businessHours?: DayHoursPublic[];
     currency?: string; currencySymbol?: string;
@@ -58,7 +61,7 @@ interface Salon {
 }
 interface Svc { id: string; durationMinutes: number }
 interface Avail { tableCount: number; durationMinutes: number; busy: { start: string; end: string }[] }
-interface Dish { name: string; category: string | null; priceCents: number; description: string | null; imageUrl?: string | null }
+interface Dish { id?: string; name: string; category: string | null; priceCents: number; description: string | null; imageUrl?: string | null }
 
 function wallTimeToISO(local: Date, timeZone: string): string {
   const y = local.getFullYear(), mo = local.getMonth(), d = local.getDate(), h = local.getHours(), mi = local.getMinutes();
@@ -108,6 +111,10 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hp, setHp] = useState('');
+  const [depositState, setDepositState] = useState<'none' | 'paying' | 'paid' | 'unpaid'>('none');
+  // Dishes ordered ahead: menu id -> quantity. Optional; paid at the table.
+  const [cart, setCart] = useState<Record<string, number>>({});
+  const setQty = (id: string, q: number) => setCart((c) => { const n = { ...c }; if (q > 0) n[id] = Math.min(50, q); else delete n[id]; return n; });
 
   useEffect(() => { fetch(`${base}/services`).then((r) => r.json()).then((s: Svc[]) => setSvcId(Array.isArray(s) && s[0] ? s[0].id : '')).catch(() => {}); }, [base]);
   useEffect(() => { if (showMenu && !menu) fetch(`${base}/menu`).then((r) => r.json()).then(setMenu).catch(() => setMenu([])); }, [showMenu, menu, base]);
@@ -165,7 +172,11 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
   // The fixed amount used to be printed with a hard "$" and divided by 100 —
   // both wrong for a currency like đồng. dishPrice already knows the symbol,
   // its position and how many decimals the currency actually has.
-  const depLabel = dep?.enabled
+  const pd = salon.partyDeposit;
+  const partyDepCents = pd?.enabled && party >= pd.fromParty ? party * pd.perPersonCents : 0;
+  const depLabel = partyDepCents > 0
+    ? btf('{amount} deposit', { amount: exactPrice(partyDepCents) })
+    : dep?.enabled
     ? (dep.type === 'percent'
         ? btf('{percent}% deposit', { percent: dep.percent })
         : btf('{amount} deposit', { amount: exactPrice(dep.fixedCents) }))
@@ -205,11 +216,17 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
     try {
       const res = await fetch(`${base}/bookings`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ website: hp, serviceId: svcId, startTime: startISO, partySize: party, area: seating !== 'No Preference' ? seating : undefined, customerFirstName: first, customerLastName: rest.join(' ') || undefined, customerPhone: form.phone.trim(), customerEmail: form.email.trim() || undefined, notes: parts.join(' · ') || undefined, paymentType: dep?.enabled ? 'PAY_ONLINE' : 'PAY_LATER' }),
+        body: JSON.stringify({ website: hp, serviceId: svcId, startTime: startISO, partySize: party, area: seating !== 'No Preference' ? seating : undefined, customerFirstName: first, customerLastName: rest.join(' ') || undefined, customerPhone: form.phone.trim(), customerEmail: form.email.trim() || undefined, notes: parts.join(' · ') || undefined, preOrder: Object.entries(cart).map(([menuItemId, qty]) => ({ menuItemId, qty })), paymentType: dep?.enabled || partyDepCents > 0 ? 'PAY_ONLINE' : 'PAY_LATER' }),
       });
       const b = await res.json().catch(() => null);
       if (!res.ok) { setError((b && b.message) || btf('Reservation failed ({code})', { code: res.status })); return; }
       setDone(true); if (typeof window !== 'undefined') window.scrollTo(0, 0);
+      // A deposit is due and the restaurant takes it online: pay it now. The
+      // table is booked either way; an unpaid deposit is settled with the restaurant.
+      if (b?.onlineProvider && (b?.depositCents ?? 0) > 0 && b?.booking?.id) {
+        setDepositState('paying');
+        setDepositState((await payDepositOnline(base, String(b.booking.id))) ? 'paid' : 'unpaid');
+      }
     } catch { setError(bt('Network error. Please try again.')); }
     finally { setSubmitting(false); }
   }
@@ -218,6 +235,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
   // Labels are translated for the eye; the seating, occasion and request VALUES
   // travel to the kitchen in English, which is what the restaurant's own
   // notes field and every downstream report already expect.
+  const cartText = menu ? Object.entries(cart).map(([id, q]) => { const d = menu.find((x) => x.id === id); return d ? `${q}× ${d.name}` : null; }).filter(Boolean).join(', ') : '';
   const resRows: [string, string][] = [
     [bt('Party size'), btf(party === 1 ? '{n} guest' : '{n} guests', { n: party })],
     [bt('Date'), slot ? prettyDate() : (step === 1 ? '—' : prettyDate())],
@@ -225,6 +243,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
     ...(seating !== 'No Preference' ? ([[bt('Seating'), bt(seating)]] as [string, string][]) : []),
     ...(occasion && occasion !== 'None' ? ([[bt('Occasion'), bt(occasion)]] as [string, string][]) : []),
     ...(requests.length ? ([[bt('Requests'), requests.map((r) => bt(r)).join(', ')]] as [string, string][]) : []),
+    ...(cartText ? ([[bt('Pre-order'), cartText]] as [string, string][]) : []),
     ...(infoOk ? ([[bt('Contact'), `${form.name} · ${form.phone}`]] as [string, string][]) : []),
   ];
 
@@ -250,8 +269,11 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 14.5 }}><span style={{ color: 'var(--c94a3b8)' }}>{k}</span><span style={{ color: INK, fontWeight: 600 }}>{v}</span></div>
             ))}
           </div>
-          {depLabel && <p style={{ color: '#b45309', fontSize: 13, marginTop: 14 }}>{btf('A {deposit} may apply to hold your table.', { deposit: depLabel })}</p>}
-          <button onClick={() => { setDone(false); setStep(1); setSlot(null); setAgreed(false); }} style={{ ...primaryBtn, marginTop: 18 }}>{bt('Make another reservation')}</button>
+          {depositState === 'none' && depLabel && <p style={{ color: '#b45309', fontSize: 13, marginTop: 14 }}>{btf('A {deposit} may apply to hold your table.', { deposit: depLabel })}</p>}
+          {depositState === 'paying' && <p style={{ color: '#b45309', fontSize: 13.5, fontWeight: 600, marginTop: 14 }}>{btf('Please complete the {deposit} in the payment window.', { deposit: depLabel ?? '' })}</p>}
+          {depositState === 'paid' && <p style={{ color: '#15803d', fontSize: 13.5, fontWeight: 600, marginTop: 14 }}>{bt('Deposit paid — your table is held.')}</p>}
+          {depositState === 'unpaid' && <p style={{ color: '#b45309', fontSize: 13.5, fontWeight: 600, marginTop: 14 }}>{bt('The deposit was not completed. The restaurant may contact you to hold the table.')}</p>}
+          <button onClick={() => { setDepositState('none'); setDone(false); setStep(1); setSlot(null); setAgreed(false); }} style={{ ...primaryBtn, marginTop: 18 }}>{bt('Make another reservation')}</button>
         </div>
       </div>
     </Shell>
@@ -414,7 +436,7 @@ export function RestaurantReserve({ slug, salon }: { slug: string; salon: Salon 
         </a>
       </div>
 
-      {showMenu && <MenuSheet base={base} accent={accent} menu={menu} onClose={() => setShowMenu(false)} dishPrice={dishPrice} />}
+      {showMenu && <MenuSheet base={base} accent={accent} menu={menu} onClose={() => setShowMenu(false)} dishPrice={dishPrice} cart={cart} setQty={setQty} />}
     </Shell>
   );
 }
@@ -584,7 +606,7 @@ const TAG_COLORS: Record<string, [string, string]> = {
   Vegan: ['#065f46', 'var(--cd1fae5)'], Veg: ['#065f46', 'var(--cd1fae5)'], GF: ['var(--c1e3a8a)', '#dbeafe'], Spicy: ['#9a1c1c', '#fee2e2'],
 };
 
-function DishRow({ d, accent, dishPrice }: { d: Dish; accent: string; dishPrice: (cents: number) => string }) {
+function DishRow({ d, accent, dishPrice, qty = 0, setQty }: { d: Dish; accent: string; dishPrice: (cents: number) => string; qty?: number; setQty?: (id: string, q: number) => void }) {
   const img = !!d.imageUrl && (d.imageUrl.startsWith('http') || d.imageUrl.startsWith('data:') || d.imageUrl.startsWith('/'));
   const tags = menuTags(d);
   return (
@@ -603,12 +625,21 @@ function DishRow({ d, accent, dishPrice }: { d: Dish; accent: string; dishPrice:
           </div>
         )}
         {d.description && <div style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontSize: 12.5, color: '#7d8ba4', marginTop: 5, lineHeight: 1.45 }}>{d.description}</div>}
+        {setQty && d.id && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
+            {qty > 0 && <button type="button" aria-label={bt('Remove')} onClick={() => setQty(d.id as string, qty - 1)} style={qtyBtn(accent, false)}>−</button>}
+            {qty > 0 && <span style={{ minWidth: 18, textAlign: 'center', fontWeight: 700, color: INK }}>{qty}</span>}
+            <button type="button" aria-label={bt('Add')} onClick={() => setQty(d.id as string, qty + 1)} style={qtyBtn(accent, true)}>+</button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+const qtyBtn = (accent: string, on: boolean): React.CSSProperties => ({ width: 30, height: 30, borderRadius: '50%', border: `1px solid ${accent}`, background: on ? accent : '#fff', color: on ? '#fff' : accent, fontSize: 17, fontWeight: 700, lineHeight: 1, cursor: 'pointer' });
 
-function MenuSheet({ base, accent, menu, onClose, dishPrice }: { base: string; accent: string; menu: Dish[] | null; onClose: () => void; dishPrice: (cents: number) => string }) {
+function MenuSheet({ base, accent, menu, onClose, dishPrice, cart, setQty }: { base: string; accent: string; menu: Dish[] | null; onClose: () => void; dishPrice: (cents: number) => string; cart?: Record<string, number>; setQty?: (id: string, q: number) => void }) {
+  const ordered = cart ? Object.values(cart).reduce((a, b) => a + b, 0) : 0;
   const grouped = useMemo(() => menu ? Object.entries(menu.reduce((acc: Record<string, Dish[]>, d) => { const k = d.category || bt('Other'); (acc[k] ||= []).push(d); return acc; }, {})) : [], [menu]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState(0);
@@ -626,6 +657,7 @@ function MenuSheet({ base, accent, menu, onClose, dishPrice }: { base: string; a
             <div style={{ fontFamily: DISPLAY, fontSize: 23, fontWeight: 700, color: INK }}>{bt('Menu')}{menu && menu.length ? <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c94a3b8)', marginLeft: 8 }}>{btf('{n} dishes', { n: menu.length })}</span> : null}</div>
             <button onClick={onClose} aria-label={bt("Close")} style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid #e6eaf2', background: '#fff', color: 'var(--c64748b)', fontSize: 19, cursor: 'pointer', lineHeight: 1 }}>×</button>
           </div>
+          {setQty && menu && menu.some((d) => d.id) && <div style={{ fontSize: 12.5, color: '#7d8ba4', marginTop: 4 }}>{bt('Tap + to order dishes ahead — optional, paid at the table.')}</div>}
           {grouped.length > 1 && (
             <div className="lumio-tabs" style={{ display: 'flex', gap: 7, overflowX: 'auto', marginTop: 11, paddingBottom: 2 }}>
               {grouped.map(([cat, list], i) => <button key={cat} onClick={() => jump(i)} style={chip(active === i)}>{cat} <span style={{ opacity: 0.6 }}>{list.length}</span></button>)}
@@ -642,10 +674,16 @@ function MenuSheet({ base, accent, menu, onClose, dishPrice }: { base: string; a
                   <span style={{ fontSize: 13, fontWeight: 700, color: INK, textTransform: 'uppercase', letterSpacing: 0.5 }}>{cat}</span>
                   <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{dishes.length}</span>
                 </div>
-                {dishes.map((d) => <DishRow key={d.name} d={d} accent={accent} dishPrice={dishPrice} />)}
+                {dishes.map((d) => <DishRow key={d.id ?? d.name} d={d} accent={accent} dishPrice={dishPrice} qty={d.id ? cart?.[d.id] ?? 0 : 0} setQty={setQty} />)}
               </div>
             ))}
         </div>
+        {ordered > 0 && (
+          <div style={{ padding: '12px 18px', borderTop: '1px solid #eef1f6', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: INK }}>{btf('{n} dishes ordered', { n: ordered })}</span>
+            <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 10, border: 'none', background: accent, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>{bt('Done')}</button>
+          </div>
+        )}
       </div>
     </div>
   );

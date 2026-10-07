@@ -11,7 +11,9 @@ import { useIsMobile } from '../../../lib/responsive';
 import { TimezonePicker } from '../../../components/TimezonePicker';
 import { ReceiptDesigner } from '../../../components/ReceiptDesigner';
 import { IndustryPicker } from '../../../components/IndustryPicker';
+import { uiIndustry } from '../../../lib/ui-industry';
 import { NoShowPolicyCard } from '../../../components/NoShowPolicyCard';
+import { PartyDepositCard } from '../../../components/PartyDepositCard';
 import type { ReceiptDesign } from '../../../lib/receipt';
 import { ind } from '../../../lib/ui-industry';
 
@@ -197,7 +199,7 @@ function Inner() {
           )}
           {tab === 'notifications' && <NotificationsSection data={data} onSave={save} />}
           {tab === 'reminders' && <><RemindersSection data={data} onSave={save} /><RebookingCard data={data} onSave={save} /></>}
-          {tab === 'deposit' && <><DepositSection data={data} onSave={save} /><NoShowPolicyCard /></>}
+          {tab === 'deposit' && <><DepositSection data={data} onSave={save} />{['RESTAURANT', 'FAST_FOOD', 'CAFE'].includes(uiIndustry()) && <PartyDepositCard />}<NoShowPolicyCard /></>}
           {tab === 'branding' && <BrandingSection data={data} onSave={save} />}
         </div>
       </div>

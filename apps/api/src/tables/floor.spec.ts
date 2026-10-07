@@ -1,5 +1,5 @@
 import { UserRole } from '@prisma/client';
-import { cleanLayout, tableStates, waitingForTable, withDefaults, TableLike, ResLike } from './floor';
+import { cleanLayout, preOrderOf, tableStates, waitingForTable, withDefaults, TableLike, ResLike } from './floor';
 import { TablesService } from './tables.service';
 
 const T = (id: string, seats = 4, area: string | null = 'Main', sortOrder = 0, isActive = true): TableLike => ({ id, name: id.toUpperCase(), seats, area, isActive, sortOrder });
@@ -58,6 +58,14 @@ describe('floor map — tableStates', () => {
   });
   it('leaves inactive tables off the map', () => {
     expect(by.x).toBeUndefined();
+  });
+});
+
+describe('floor map — pre-order from the notes', () => {
+  it('reads the dishes written by the booking', () => {
+    expect(preOrderOf('Window · Pre-order: 2× Phở bò, 1× Gỏi cuốn')).toBe('2× Phở bò, 1× Gỏi cuốn');
+    expect(preOrderOf('Pre-order: 1× Cà phê · Note: allergy')).toBe('1× Cà phê');
+    expect(preOrderOf(null)).toBeNull();
   });
 });
 

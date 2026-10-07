@@ -35,6 +35,8 @@ interface Booking {
   priceCents: number;
   currency: string;
   notes: string | null;
+  /** Where it happens when not at the business (a property to view, a client's home). */
+  location?: string | null;
   preferredStaff?: { id: string; firstName: string; lastName: string | null } | null;
   source?: string | null;
   utmSource?: string | null;
@@ -1121,6 +1123,9 @@ function BookingDetail({ booking: b, all, tz, onClose, onAction }: {
             and it is the one thing the desk must know before moving a booking. */}
         {b.preferredStaff && b.preferredStaff.id !== b.assignedStaff?.id && (
           <DetailRow label={t('cal.dPreferred')} value={<span style={{ color: 'var(--cfcd34d)', fontWeight: 600 }}>★ {`${b.preferredStaff.firstName} ${b.preferredStaff.lastName ?? ''}`.trim()}</span>} />
+        )}
+        {b.location && (
+          <DetailRow label="📍" value={<a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.location)}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c818cf8)', textDecoration: 'none', textAlign: 'right' }}>{b.location}</a>} />
         )}
         {b.notes && <NoteBox label={t('cal.dNote')} text={b.notes} />}
 

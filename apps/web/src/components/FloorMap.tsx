@@ -20,10 +20,10 @@ interface Spot { x: number; y: number; shape: Shape }
 interface Table { id: string; name: string; seats: number; area: string | null; isActive: boolean }
 interface State {
   id: string; state: 'seated' | 'soon' | 'free';
-  current: { name: string | null; party: number; until: string } | null;
-  next: { name: string | null; party: number; at: string } | null;
+  current: { name: string | null; party: number; until: string; preOrder?: string | null } | null;
+  next: { name: string | null; party: number; at: string; preOrder?: string | null } | null;
 }
-interface Waiting { id: string; name: string | null; party: number; at: string; until: string }
+interface Waiting { id: string; name: string | null; party: number; at: string; until: string; preOrder?: string | null }
 interface Floor { at: string; tables: Table[]; layout: Record<string, Spot>; states: State[]; waiting?: Waiting[] }
 
 const INK: Record<State['state'], string> = { seated: 'var(--ink-bad)', soon: 'var(--ink-warn)', free: 'var(--ink-good)' };
@@ -162,9 +162,9 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {waiting.map((w) => (
-              <button key={w.id} type="button" onClick={() => { setSeat((x) => (x === w.id ? null : w.id)); setPicked(null); }}
+              <button key={w.id} type="button" title={w.preOrder ? `${vi ? 'Gọi trước' : 'Pre-order'}: ${w.preOrder}` : undefined} onClick={() => { setSeat((x) => (x === w.id ? null : w.id)); setPicked(null); }}
                 style={{ ...btn(seat === w.id), borderColor: seat === w.id ? 'var(--ink-warn)' : 'var(--c334155)' }}>
-                {clockIn(w.at, tz, vi)} · {w.name || (vi ? 'Khách' : 'Guest')} · {w.party} {vi ? 'người' : 'ppl'}
+                {clockIn(w.at, tz, vi)} · {w.name || (vi ? 'Khách' : 'Guest')} · {w.party} {vi ? 'người' : 'ppl'}{w.preOrder ? ' · 🍽' : ''}
               </button>
             ))}
           </div>
@@ -212,7 +212,9 @@ export function FloorMap({ token, vi, canArrange }: { token: string | null; vi: 
               {pickedS?.current
                 ? <div style={{ color: INK.seated }}>{vi ? 'Đang ngồi' : 'Seated'}: {pickedS.current.name || (vi ? 'Khách' : 'Guest')} · {pickedS.current.party} {vi ? 'người' : 'ppl'} · {vi ? 'đến' : 'until'} {clockIn(pickedS.current.until, tz, vi)}</div>
                 : <div style={{ color: INK.free }}>{vi ? 'Bàn đang trống' : 'Table is free'}</div>}
+              {pickedS?.current?.preOrder && <div>🍽 {vi ? 'Gọi trước' : 'Pre-order'}: {pickedS.current.preOrder}</div>}
               {pickedS?.next && <div>{vi ? 'Kế tiếp' : 'Next'}: {pickedS.next.name || (vi ? 'Khách' : 'Guest')} · {pickedS.next.party} {vi ? 'người' : 'ppl'} · {clockIn(pickedS.next.at, tz, vi)}</div>}
+              {pickedS?.next?.preOrder && <div>🍽 {vi ? 'Gọi trước' : 'Pre-order'}: {pickedS.next.preOrder}</div>}
             </div>
           )}
         </div>

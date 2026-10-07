@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { PartyDeposit, partyDepositCents } from './party-deposit';
 import { PaymentStatus, PaymentType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -217,6 +218,21 @@ export class PaymentsService {
     }
     const cents = d.type === 'fixed' ? d.fixedCents : Math.round((priceCents * d.percent) / 100);
     return Math.min(Math.max(0, cents), priceCents);
+  }
+
+  /**
+   * The deposit a booking needs: the salon's deposit rule, or the per-guest
+   * party deposit (payments/party-deposit.ts), whichever is larger. The ONE
+   * place the amount is decided, so booking, online checkout and confirm agree.
+   */
+  async depositFor(
+    tenantId: string,
+    appt: { customerId: string | null; priceCents: number; partySize?: number | null },
+    d: Parameters<PaymentsService['requiredDeposit']>[3],
+    party: PartyDeposit,
+  ): Promise<number> {
+    const base = await this.requiredDeposit(tenantId, appt.customerId, appt.priceCents, d);
+    return Math.max(base, partyDepositCents(appt.partySize, party));
   }
 
   /** Take a partial DEPOSIT online for a booking (runs through the PaymentProvider). */

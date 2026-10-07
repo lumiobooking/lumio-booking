@@ -45,3 +45,16 @@ describe('the record each line of business keeps', () => {
     expect(read('app', 'salon', 'customers', '[id]', 'page.tsx')).toMatch(/c\.profile && c\.profile\.visits >= 2/);
   });
 });
+
+describe('the real-estate lead board', () => {
+  it('the customers page offers List | Board and saves a moved lead\'s stage on its record', () => {
+    const page = read('app', 'salon', 'customers', 'page.tsx');
+    expect(page).toMatch(/<LeadBoard leads=\{filtered\} stages=\{LEAD_STAGES\}/);
+    expect(page).toMatch(/body: \{ industryFields: \{ stage: next \} \}/);
+  });
+  it('a card can be moved by dragging or with the ‹ › buttons', () => {
+    const b = read('components', 'LeadBoard.tsx');
+    expect(b).toMatch(/onDrop=/);
+    expect(b).toMatch(/move\(l\.id, next\.v\)/);
+  });
+});

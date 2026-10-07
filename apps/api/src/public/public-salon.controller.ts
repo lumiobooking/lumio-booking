@@ -147,7 +147,7 @@ export class PublicSalonController {
 
   private async buildSalon(tenant: { id: string; name: string; slug: string; businessType: string; timezone: string; branding: unknown; contactPhone: string | null }) {
     // Read the settings rows in parallel (avoids sequential DB round-trips).
-    const [booking, weekdayDiscounts, dateDiscounts, deposit, firstVisit, groupDiscount, pos, areaRows, extra, ratingAgg, analytics, industryRow] = await Promise.all([
+    const [booking, weekdayDiscounts, dateDiscounts, deposit, firstVisit, groupDiscount, pos, areaRows, extra, ratingAgg, analytics, industryRow, partyDep] = await Promise.all([
       this.settings.getBookingRules(tenant.id),
       this.settings.getWeekdayDiscounts(tenant.id),
       this.settings.getDateDiscounts(tenant.id),
@@ -162,6 +162,8 @@ export class PublicSalonController {
       this.settings.getAnalyticsSettings(tenant.id).catch(() => ({ ga4Id: '', gtmId: '', mode: '' as const, adsId: '', adsLabel: '' })),
       // The line of business: the page says "dentist" to a clinic's patients, not "nail tech".
       (async () => { try { return await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId: tenant.id, key: INDUSTRY_KEY } }, select: { value: true } }); } catch { return null; } })(),
+      // Per-guest deposit for big parties (payments/party-deposit.ts).
+      this.settings.getPartyDeposit(tenant.id),
     ]);
     const brand = this.settings.brandingFrom(tenant.branding);
     const autoCount = (ratingAgg as { _count?: { _all?: number } } | null)?._count?._all ?? 0;
@@ -196,6 +198,8 @@ export class PublicSalonController {
       weekdayDiscounts,
       dateDiscounts,
       deposit,
+      // Shown only when a real online provider can take it (see createBooking).
+      ...(partyDep.enabled && (await this.hub.onlineProviderFor(tenant.id).catch(() => null)) ? { partyDeposit: partyDep } : {}),
       // Program promos (public-safe): shown as banners; the % is applied
       // server-side at booking time so it can never be spoofed client-side.
       firstVisit: firstVisit.enabled && (firstVisit.rules?.length ?? 0) > 0 ? firstVisit : { enabled: false, percent: 0, message: '', rules: [] },
@@ -228,7 +232,8 @@ export class PublicSalonController {
     return this.prisma.menuItem.findMany({
       where: { tenantId, isActive: true },
       orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
-      select: { name: true, category: true, priceCents: true, description: true, imageUrl: true },
+      // id: the reservation page sends dish ids for a pre-order (bookings/pre-order.ts).
+      select: { id: true, name: true, category: true, priceCents: true, description: true, imageUrl: true },
     });
   }
 
@@ -380,12 +385,16 @@ export class PublicSalonController {
     // pay-online/pay-later option. Runs through the PaymentProvider, so a real
     // gateway added later charges for real with no code change here.
     const deposit = await this.settings.getDepositSettings(tenantId);
-    const depositCents = await this.payments.requiredDeposit(tenantId, booking.customerId, booking.priceCents, deposit);
 
     // If the salon has connected a REAL online provider, don't settle the deposit
     // here — the customer pays in the provider's hosted modal and we only mark it
     // paid after verifying server-side. Salons with no provider keep the old flow.
     const onlineProvider = await this.hub.onlineProviderFor(tenantId).catch(() => null);
+    // The per-guest party deposit (payments/party-deposit.ts) is only ever asked
+    // through a real provider: without one there is nobody to take the money,
+    // and nothing may be recorded as paid that was not.
+    const partyDep = onlineProvider ? await this.settings.getPartyDeposit(tenantId) : { enabled: false, fromParty: 0, perPersonCents: 0 };
+    const depositCents = await this.payments.depositFor(tenantId, { customerId: booking.customerId, priceCents: booking.priceCents, partySize: (booking as { partySize?: number }).partySize }, deposit, partyDep);
 
     let payment = null;
     if (depositCents > 0) {
@@ -410,12 +419,12 @@ export class PublicSalonController {
     const tenantId = await this.resolveTenantId(slug);
     const appt = await this.prisma.appointment.findFirst({
       where: { id, tenantId },
-      select: { id: true, priceCents: true, currency: true, customerId: true },
+      select: { id: true, priceCents: true, currency: true, customerId: true, partySize: true },
     });
     if (!appt) throw new NotFoundException('Booking not found');
 
     const deposit = await this.settings.getDepositSettings(tenantId);
-    const baseDeposit = await this.payments.requiredDeposit(tenantId, appt.customerId, appt.priceCents, deposit);
+    const baseDeposit = await this.payments.depositFor(tenantId, appt, deposit, await this.settings.getPartyDeposit(tenantId));
     if (baseDeposit <= 0) throw new BadRequestException('No deposit is required for this booking');
     // Online payment is card-not-present, so the salon's card surcharge (dual
     // pricing) applies to it exactly like an in-salon card charge.
@@ -434,7 +443,7 @@ export class PublicSalonController {
     const tenantId = await this.resolveTenantId(slug);
     const appt = await this.prisma.appointment.findFirst({
       where: { id, tenantId },
-      select: { id: true, priceCents: true, currency: true, customerId: true },
+      select: { id: true, priceCents: true, currency: true, customerId: true, partySize: true },
     });
     if (!appt) throw new NotFoundException('Booking not found');
 
@@ -445,7 +454,7 @@ export class PublicSalonController {
     if (!res.approved) return { ok: false, reason: 'not_approved' };
 
     const deposit = await this.settings.getDepositSettings(tenantId);
-    const baseDeposit = await this.payments.requiredDeposit(tenantId, appt.customerId, appt.priceCents, deposit);
+    const baseDeposit = await this.payments.depositFor(tenantId, appt, deposit, await this.settings.getPartyDeposit(tenantId));
     const expected = await this.withCardSurcharge(tenantId, baseDeposit);
     if (res.amountCents !== undefined && res.amountCents + 1 < expected) {
       return { ok: false, reason: 'amount_mismatch' };

@@ -41,12 +41,12 @@ export class TablesService {
       this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: LAYOUT_KEY } } }),
       this.prisma.appointment.findMany({
         where: { tenantId, startTime: { lt: dayEnd }, endTime: { gt: dayStart } },
-        select: { id: true, tableId: true, startTime: true, endTime: true, status: true, partySize: true, customer: { select: { firstName: true } } },
+        select: { id: true, tableId: true, startTime: true, endTime: true, status: true, partySize: true, notes: true, customer: { select: { firstName: true } } },
       }),
     ]);
     const layout = withDefaults(tables, cleanLayout(row?.value ?? {}, tables.map((t) => t.id)));
     const rows = res.map((r) => ({
-      id: r.id, tableId: r.tableId, startTime: r.startTime, endTime: r.endTime, status: String(r.status), partySize: r.partySize ?? 1, customerName: r.customer?.firstName ?? null,
+      id: r.id, tableId: r.tableId, startTime: r.startTime, endTime: r.endTime, status: String(r.status), partySize: r.partySize ?? 1, customerName: r.customer?.firstName ?? null, notes: r.notes,
     }));
     const states = tableStates(tables, rows, at);
     // Only a restaurant with tables seats anyone; a salon's bookings never show here.

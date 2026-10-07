@@ -16,7 +16,13 @@ export interface Spot { x: number; y: number; shape: Shape }
 export type Layout = Record<string, Spot>;
 
 export interface TableLike { id: string; name: string; seats: number; area: string | null; isActive: boolean; sortOrder: number }
-export interface ResLike { id: string; tableId: string | null; startTime: Date; endTime: Date; status: string; partySize: number; customerName: string | null }
+export interface ResLike { id: string; tableId: string | null; startTime: Date; endTime: Date; status: string; partySize: number; customerName: string | null; notes?: string | null }
+
+/** The dishes ordered ahead, as written into the notes by bookings/pre-order.ts. */
+export function preOrderOf(notes: string | null | undefined): string | null {
+  const m = /Pre-order: ([^·]+)/.exec(notes ?? '');
+  return m ? m[1].trim() : null;
+}
 
 const LIVE = new Set(['PENDING', 'ASSIGNED', 'ACCEPTED', 'CONFIRMED', 'ARRIVED']);
 const clamp = (n: number) => Math.min(96, Math.max(0, Math.round(n * 10) / 10));
@@ -58,8 +64,8 @@ export function withDefaults(tables: TableLike[], layout: Layout): Layout {
 export interface TableState {
   id: string;
   state: 'seated' | 'soon' | 'free';
-  current: { id: string; name: string | null; party: number; until: string } | null;
-  next: { id: string; name: string | null; party: number; at: string } | null;
+  current: { id: string; name: string | null; party: number; until: string; preOrder: string | null } | null;
+  next: { id: string; name: string | null; party: number; at: string; preOrder: string | null } | null;
 }
 
 export function tableStates(tables: TableLike[], res: ResLike[], at: Date): TableState[] {
@@ -72,13 +78,13 @@ export function tableStates(tables: TableLike[], res: ResLike[], at: Date): Tabl
     return {
       id: t.id,
       state: cur ? 'seated' : soon ? 'soon' : 'free',
-      current: cur ? { id: cur.id, name: cur.customerName, party: cur.partySize, until: cur.endTime.toISOString() } : null,
-      next: nxt ? { id: nxt.id, name: nxt.customerName, party: nxt.partySize, at: nxt.startTime.toISOString() } : null,
+      current: cur ? { id: cur.id, name: cur.customerName, party: cur.partySize, until: cur.endTime.toISOString(), preOrder: preOrderOf(cur.notes) } : null,
+      next: nxt ? { id: nxt.id, name: nxt.customerName, party: nxt.partySize, at: nxt.startTime.toISOString(), preOrder: preOrderOf(nxt.notes) } : null,
     };
   });
 }
 
-export interface Waiting { id: string; name: string | null; party: number; at: string; until: string }
+export interface Waiting { id: string; name: string | null; party: number; at: string; until: string; preOrder: string | null }
 
 /**
  * Reservations with no table yet, from an hour ago to three hours ahead of
@@ -90,5 +96,5 @@ export function waitingForTable(res: ResLike[], at: Date): Waiting[] {
   return res
     .filter((r) => !r.tableId && LIVE.has(r.status) && r.startTime.getTime() >= from && r.startTime.getTime() <= to)
     .sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
-    .map((r) => ({ id: r.id, name: r.customerName, party: r.partySize, at: r.startTime.toISOString(), until: r.endTime.toISOString() }));
+    .map((r) => ({ id: r.id, name: r.customerName, party: r.partySize, at: r.startTime.toISOString(), until: r.endTime.toISOString(), preOrder: preOrderOf(r.notes) }));
 }

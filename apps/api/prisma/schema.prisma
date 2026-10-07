@@ -1256,6 +1256,15 @@ model Appointment {
   // [{ "id": "...", "name": "Nail art", "priceCents": 1500, "durationMinutes": 15 }]
   addons Json @default("[]")
 
+  // Restaurant: dishes ordered ahead with the reservation (bookings/pre-order.ts), e.g.
+  // [{ "id": "<menuItemId>", "name": "Phở bò", "qty": 2, "priceCents": 1500 }]. Checked
+  // against this restaurant's own active menu on the server; informational for the kitchen.
+  preOrder Json @default("[]")
+
+  // Where the appointment happens when it is not at the business: the property
+  // to view (real estate) or the client's address (home services). Free text.
+  location String?
+
   // Deadline for the assigned staff to accept/reject before reassignment.
   responseDeadline DateTime?
 

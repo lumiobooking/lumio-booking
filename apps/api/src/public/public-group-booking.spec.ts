@@ -33,8 +33,8 @@ function make(o: { failGuest?: string } = {}) {
       return { id: `ap${created.length}`, customerId: 'c1', priceCents: 5000 };
     },
   };
-  const payments: any = { requiredDeposit: async () => 0, createForBookingTenant: async () => null };
-  const settings: any = { getDepositSettings: async () => ({}) };
+  const payments: any = { requiredDeposit: async () => 0, depositFor: async () => 0, createForBookingTenant: async () => null };
+  const settings: any = { getDepositSettings: async () => ({}), getPartyDeposit: async () => ({ enabled: false, fromParty: 8, perPersonCents: 1000 }) };
   const hub: any = { onlineProviderFor: async () => null };
   const ctl = new PublicSalonController(prisma, bookings, payments, settings, hub);
   return { ctl, created };

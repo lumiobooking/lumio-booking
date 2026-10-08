@@ -40,7 +40,7 @@ describe('Instagram: every page read, the real count kept', () => {
   const realFetch = (globalThis as { fetch?: unknown }).fetch;
   afterAll(() => { (globalThis as { fetch?: unknown }).fetch = realFetch; });
 
-  it('63 posts in October across two pages, plus older ones: 63, not 40 or 50', async () => {
+  it('63 posts in October across two pages, plus older ones: 63, not 50', async () => {
     const oct = (i: number) => ({ id: `m${i}`, timestamp: new Date(Date.UTC(2026, 9, 31, 20) - i * 10 * 3600_000).toISOString(), media_type: 'IMAGE' });
     const page1 = Array.from({ length: 50 }, (_, i) => oct(i));
     const page2 = [...Array.from({ length: 13 }, (_, i) => oct(50 + i)), { id: 'sep', timestamp: '2026-09-20T12:00:00Z' }];
@@ -60,7 +60,7 @@ describe('Instagram: every page read, the real count kept', () => {
     const r = await (c as { igMediaBreakdown: (id: string, w: unknown, t: string) => Promise<{ posts: unknown[]; count: number }> })
       .igMediaBreakdown('ig1', monthWindow('2026-10', 'America/Edmonton'), 'tok');
     expect(r.count).toBe(63);
-    expect(r.posts).toHaveLength(40);
+    expect(r.posts).toHaveLength(63); // every post is kept (cap is 100) — each becomes a social_posts row
     expect(calls.some((u) => /after=p3/.test(u))).toBe(false); // stopped once the month was passed
   });
 });

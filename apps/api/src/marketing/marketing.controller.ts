@@ -69,6 +69,12 @@ export class MarketingController {
     return this.marketing.saveGbpReviews(user, dto);
   }
 
+  // ---- Content facts: posts / interactions / top 5, computed from stored posts ----
+  @Get('month-facts')
+  monthFacts(@CurrentUser() user: AuthenticatedUser, @Query('month') month: string, @Query('tenantId') tenantId?: string) {
+    return this.marketing.monthFacts(user, month, tenantId);
+  }
+
   // ---- Monthly report (AI draft → review → approve) ----
   @Get('report')
   getReport(@CurrentUser() user: AuthenticatedUser, @Query('month') month: string, @Query('tenantId') tenantId?: string) {

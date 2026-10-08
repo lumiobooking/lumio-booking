@@ -1,6 +1,6 @@
 import { lumioPostsOn } from './lumio-posts';
 import { monthWindow } from './month-window';
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, Optional } from '@nestjs/common';
 import { AppointmentStatus, PaymentStatus, UserRole, TenantStatus, NotificationChannel } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
@@ -15,6 +15,8 @@ import { SettingsService } from '../settings/settings.service';
 import { publicWebBase } from '../common/public-url.util';
 import { jsonSafe } from '../common/json-safe';
 import { linkedCredsFor, LinkedCreds, LINKABLE_PLATFORMS, credsSource, type SyncAllLine } from './linked-channels';
+import { SocialPostsService, type StoredPost } from './social-posts.service';
+import { monthFacts as computeMonthFacts, prevMonthKey, type MonthFacts } from './month-facts';
 
 /**
  * Marketing module — Phase 0 (read-only).
@@ -42,7 +44,33 @@ export class MarketingService {
     private readonly social: SocialRegistry,
     private readonly notifications: NotificationsService,
     private readonly settings: SettingsService,
+    // Optional so the older specs that build the service bare still do; in
+    // the app it is always there (same module).
+    @Optional() private readonly socialPosts?: SocialPostsService,
   ) {}
+
+  /**
+   * THE MONTH'S CONTENT NUMBERS — posts, interactions, top 5 — from the
+   * social_posts table (month-facts.ts). Months stored before that table
+   * existed are written out of social_insights.raw the first time they are
+   * asked for, so an old report keeps the numbers it showed.
+   */
+  async monthFacts(user: AuthenticatedUser, month: string, tenantParam?: string): Promise<MonthFacts | null> {
+    const tenantId = this.tenantId(user, tenantParam);
+    if (!/^\d{4}-\d{2}$/.test(month || '')) throw new BadRequestException('month must be YYYY-MM');
+    if (!this.socialPosts) return null;
+    const tz = await this.tenantTz(tenantId);
+    const prev = prevMonthKey(month);
+    let [cur, before] = await Promise.all([this.socialPosts.postsForMonth(tenantId, month), this.socialPosts.postsForMonth(tenantId, prev)]);
+    if (!cur.length || !before.length) {
+      const rows = (await this.prisma.socialInsight.findMany({ where: { tenantId, periodMonth: { in: [month, prev] }, platform: { in: ['facebook', 'instagram', 'tiktok'] } }, select: { platform: true, periodMonth: true, raw: true } })) as Array<{ platform: string; periodMonth: string; raw: unknown }>;
+      let changed = 0;
+      if (!cur.length) changed += await this.socialPosts.backfillFromInsights(tenantId, month, rows.filter((r) => r.periodMonth === month), tz);
+      if (!before.length) changed += await this.socialPosts.backfillFromInsights(tenantId, prev, rows.filter((r) => r.periodMonth === prev), tz);
+      if (changed) [cur, before] = await Promise.all([this.socialPosts.postsForMonth(tenantId, month), this.socialPosts.postsForMonth(tenantId, prev)]);
+    }
+    return computeMonthFacts(month, cur as StoredPost[], before as StoredPost[], dayKeyTz(new Date(), tz || 'UTC'));
+  }
 
   private tenantId(user: AuthenticatedUser, requested?: string): string {
     const id = resolveTenantScope(user, requested);
@@ -450,7 +478,9 @@ export class MarketingService {
       };
     }
 
-    return { month, range: { from: fromStr, to: toStr }, outcome: ov, spend, workLog, blended, prevMonth: prev, deltas, channelTrends, socialInsights, gbp, effectiveness };
+    // Posts / interactions / top 5 from the stored posts (never from raw).
+    const facts = await this.monthFacts(user, month, tenantParam).catch(() => null);
+    return { month, range: { from: fromStr, to: toStr }, outcome: ov, spend, workLog, blended, prevMonth: prev, deltas, channelTrends, socialInsights, gbp, effectiveness, facts };
   }
 
   // ---- AI draft (Anthropic, same pattern as the voice/messenger agents) ----
@@ -660,6 +690,13 @@ export class MarketingService {
         topPosts: (si.posts ?? []).slice(0, 5).map((pp: any) => ({ type: pp.type, likes: pp.likes, comments: pp.comments, reach: pp.reach, views: pp.views, caption: pp.caption })),
       })),
       effectiveness: (data as any).effectiveness,
+      // Code-computed content numbers: the AI quotes these, never re-derives them.
+      contentFacts: (data as any).facts ? (() => { const f = (data as any).facts; return {
+        state: f.state, daysCovered: f.daysCovered,
+        posts: f.posts.total, postsVsPrevPct: f.posts.vsPrev.pct, byPlatform: f.posts.byPlatform.map((b: any) => ({ platform: b.platform, posts: b.posts, interactions: b.interactions, views: b.views })),
+        interactions: f.interactions.total, interactionsVsPrevPct: f.interactions.vsPrev.pct, views: f.views.total,
+        topPosts: f.top.map((t: any) => ({ platform: t.platform, type: t.type, interactions: t.interactions, views: t.views, likes: t.likes, comments: t.comments, caption: t.caption })),
+      }; })() : null,
       last4Months: history,
       workDone: data.workLog.map((w: any) => ({ category: w.category, title: w.title })),
     });
@@ -1169,6 +1206,11 @@ export class MarketingService {
       if (res.instagram) rows.push({ ch: 'instagram', m: res.instagram });
       if (res.tiktok) rows.push({ ch: 'tiktok', m: res.tiktok });
       for (const { ch, m } of rows) {
+        // Every post the network listed becomes/updates a social_posts row —
+        // the report's counts come from there, not from this month's upsert.
+        if (this.socialPosts && (ch === 'facebook' || ch === 'instagram' || ch === 'tiktok')) {
+          await this.socialPosts.record(tenantId, ch, m.posts ?? [], creds.timezone ?? null).catch((e: Error) => this.logger.warn(`social_posts (${tenantId}/${ch}): ${e.message}`));
+        }
         const data = {
           followers: m.followers ?? null,
           newFollowers: m.newFollowers ?? null,

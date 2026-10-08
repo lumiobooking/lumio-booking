@@ -26,6 +26,8 @@ interface Monthly {
   socialInsights?: SocialInsight[];
   gbp?: GbpData;
   effectiveness?: 'good' | 'ok' | 'low' | 'organic';
+  /** Posts / interactions / top 5, computed by the API from stored posts (month-facts). */
+  facts?: MonthFactsUi | null;
 }
 interface Item { vi: string; en: string }
 interface ChEval { name: string; verdict: 'good' | 'ok' | 'weak' | 'nodata'; vi: string; en: string }
@@ -37,6 +39,17 @@ interface AutoStatus {
   lastNotice: { month: string | null; recipient: string; status: string; at: string } | null;
 }
 interface SocialDelta { value: number | null; prev: number | null; pct: number | null }
+interface TopPostUi {
+  id: string; platform: 'facebook' | 'instagram' | 'tiktok'; type: string; publishedAt: string; permalink: string | null; thumbnailUrl: string | null; caption: string | null;
+  views: number | null; reach: number | null; likes: number | null; comments: number | null; shares: number | null; saves: number | null; interactions: number | null; viaLumio: boolean;
+}
+interface MonthFactsUi {
+  month: string; state: 'closed' | 'to-date'; daysCovered: number;
+  posts: { total: number; byPlatform: { platform: string; posts: number; byType: Record<string, number>; interactions: number | null; views: number | null; viaLumio: number }[]; vsPrev: SocialDelta };
+  interactions: { total: number | null; vsPrev: SocialDelta };
+  views: { total: number | null; vsPrev: SocialDelta };
+  top: TopPostUi[]; measuredAt: string | null; notes: string[];
+}
 interface GbpData {
   impressions?: number | null; mapsImpr?: number | null; searchImpr?: number | null; desktopImpr?: number | null; mobileImpr?: number | null;
   calls?: number | null; directions?: number | null; websiteClicks?: number | null; bookings?: number | null; conversations?: number | null;
@@ -843,20 +856,29 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
   const reels = igP.filter((x) => x.type === 'reel' || x.type === 'video').length;
   const fbP = fb?.posts ?? [];
   const fbReels = fbP.filter((x) => x.type === 'reel' || x.type === 'video').length;
-  const fbTot = fb?.postsCount ?? (fbP.length || null);
+  const factsFb = data.facts?.posts.byPlatform.find((b) => b.platform === 'facebook');
+  const factsIg = data.facts?.posts.byPlatform.find((b) => b.platform === 'instagram');
+  const fbTot = factsFb?.posts ?? fb?.postsCount ?? (fbP.length || null);
+  const igTot = factsIg?.posts ?? ig?.postsCount ?? igP.length;
   const contentTable = `<table class="t-body" style="width:100%;border-collapse:collapse">
     <tr class="t-cap" style="color: #94a3b8"><td></td><td style="text-align:right"><b style="color:#1877f2">FB</b></td><td style="text-align:right"><b style="color:#e1306c">IG</b></td></tr>
-    <tr><td style="padding:3px 0;color: #475569">${t('Tổng bài', 'Total posts')}</td><td style="text-align:right;font-weight:600">${fbTot ?? '—'}</td><td style="text-align:right;font-weight:600">${ig?.postsCount ?? igP.length}</td></tr>
+    <tr><td style="padding:3px 0;color: #475569">${t('Tổng bài', 'Total posts')}</td><td style="text-align:right;font-weight:600">${fbTot ?? '—'}</td><td style="text-align:right;font-weight:600">${igTot}</td></tr>
     <tr><td style="padding:3px 0;color: #475569">Reels/Video</td><td style="text-align:right;font-weight:600">${fbP.length ? fbReels : '—'}</td><td style="text-align:right;font-weight:600">${reels}</td></tr>
     <tr><td style="padding:3px 0;color: #475569">${t('Bài ảnh', 'Photos')}</td><td style="text-align:right;font-weight:600">${fbP.length ? (fbP.length - fbReels) : '—'}</td><td style="text-align:right;font-weight:600">${igP.length - reels}</td></tr>
   </table>`;
   // Top posts across BOTH Facebook and Instagram, ranked by views (highest first).
-  const topAll = [
-    ...fbP.map((p) => ({ ...p, _pf: 'FB', _col: '#1877f2' })),
-    ...igP.map((p) => ({ ...p, _pf: 'IG', _col: '#e1306c' })),
-  ].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 4);
-  const top3 = topAll.map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div class="t-cap" style="width:34px;height:34px;border-radius:6px;background:${p._col}22;color: ${p._col};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700">${p._pf}</div>`; const badge = `<span class="t-cap" style="font-weight:700;color: #fff;background:${p._col};border-radius:4px;padding:1px 5px;margin-right:5px">${p._pf}</span>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div class="t-cap" style="color: #475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${badge}${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div class="t-cap" style="color: #0f2a52"><b>${fnum(p.views)}</b> ${t('xem', 'views')}${p.reach != null ? ` · <b>${fnum(p.reach)}</b> reach` : ''} · <b>${fnum((p.likes ?? 0) + (p.comments ?? 0))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div class="t-body" style="color: #94a3b8;">—</div>`;
-  const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;min-width:0;border-left:1px solid #eef1f6;padding-left:12px"><div class="t-cap" style="color: #94a3b8;margin-bottom:2px">${t('TOP BÀI (FB + IG) — theo lượt xem', 'TOP POSTS (FB + IG) — by views')}</div>${top3}</div></div>`;
+  // From the stored posts (month-facts) when the API has them — ranked by
+  // interactions, every channel — else the old per-channel lists by views.
+  const F = data.facts ?? null;
+  const pfOf = (pf: string) => (pf === 'facebook' ? { _pf: 'FB', _col: '#1877f2' } : pf === 'instagram' ? { _pf: 'IG', _col: '#e1306c' } : { _pf: 'TT', _col: '#0f172a' });
+  const topAll = F && F.top.length
+    ? F.top.slice(0, 5).map((p) => ({ ...pfOf(p.platform), thumbnail: p.thumbnailUrl, caption: p.caption, type: p.type, views: p.views, reach: p.reach, likes: p.likes, comments: p.comments, shares: p.shares, interactions: p.interactions }))
+    : [
+      ...fbP.map((p) => ({ ...p, _pf: 'FB', _col: '#1877f2', interactions: null as number | null })),
+      ...igP.map((p) => ({ ...p, _pf: 'IG', _col: '#e1306c', interactions: null as number | null })),
+    ].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 4);
+  const top3 = topAll.map((p) => { const th = p.thumbnail && p.thumbnail.startsWith('http') ? `<img src="${esc(p.thumbnail)}" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0"/>` : `<div class="t-cap" style="width:34px;height:34px;border-radius:6px;background:${p._col}22;color: ${p._col};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700">${p._pf}</div>`; const badge = `<span class="t-cap" style="font-weight:700;color: #fff;background:${p._col};border-radius:4px;padding:1px 5px;margin-right:5px">${p._pf}</span>`; return `<div style="display:flex;gap:8px;align-items:center;margin:5px 0">${th}<div style="flex:1;min-width:0"><div class="t-cap" style="color: #475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${badge}${esc(p.caption || (p.type === 'reel' ? 'Reel' : 'Post'))}</div><div class="t-cap" style="color: #0f2a52"><b>${fnum(p.views)}</b> ${t('xem', 'views')}${p.reach != null ? ` · <b>${fnum(p.reach)}</b> reach` : ''} · <b>${fnum(p.interactions ?? ((p.likes ?? 0) + (p.comments ?? 0)))}</b> ${t('tương tác', 'eng')}</div></div></div>`; }).join('') || `<div class="t-body" style="color: #94a3b8;">—</div>`;
+  const contentPanel = `<div style="display:flex;gap:14px"><div style="flex:0 0 40%">${contentTable}</div><div style="flex:1;min-width:0;border-left:1px solid #eef1f6;padding-left:12px"><div class="t-cap" style="color: #94a3b8;margin-bottom:2px">${F && F.top.length ? t('TOP 5 BÀI — theo tương tác', 'TOP 5 POSTS — by interactions') : t('TOP BÀI (FB + IG) — theo lượt xem', 'TOP POSTS (FB + IG) — by views')}</div>${top3}</div></div>`;
   const adsPanel = spendLine
     ? `<div class="t-body" style="color: #0f2a52">${t('Tổng chi', 'Spend')}: <b>${money(total)}</b><div class="t-body" style="color: #6b7280;margin-top:4px">${spendLine}</div></div>`
     : `<div class="t-body" style="color: #94a3b8;line-height:1.6">${t('Chưa chạy quảng cáo tháng này. Khi bật quảng cáo, mục này hiển thị Chi phí · Reach · Click · CPC · CTR · ROAS.', 'No paid ads this month. Once ads run, this shows Spend · Reach · Clicks · CPC · CTR · ROAS.')}</div>`;
@@ -1393,6 +1415,88 @@ function ChannelsSection({ token, vi, month, onSynced, bare }: { token: string |
   );
 }
 
+/**
+ * The three numbers a client asks first — posts this month, interactions, the
+ * best five — exactly as the API computed them from social_posts. No arrow on
+ * a number that has nothing to compare with; "—" for a number nobody measured.
+ */
+function ContentFactsCard({ f, T }: { f: MonthFactsUi; T: (v: string, e: string) => string }) {
+  const num = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString(uiLocale()));
+  const arrow = (d: SocialDelta) => (d.pct == null ? null
+    : <span style={{ fontSize: 11, fontWeight: 700, color: d.pct >= 0 ? 'var(--ink-good)' : 'var(--ink-bad)', marginLeft: 6 }}>{d.pct >= 0 ? '▲' : '▼'}{Math.abs(d.pct)}%</span>);
+  const pfName = (p: string) => (p === 'facebook' ? 'Facebook' : p === 'instagram' ? 'Instagram' : 'TikTok');
+  const pfColor = (p: string) => (p === 'facebook' ? '#1877f2' : p === 'instagram' ? '#e1306c' : 'var(--ink-sky)');
+  const typeLabel = (t: string) => (t === 'reel' ? 'Reel' : t === 'video' ? 'Video' : t === 'carousel' ? 'Album' : t === 'photo' ? T('Ảnh', 'Photo') : T('Bài', 'Post'));
+  const tile = (label: string, v: string, d: SocialDelta, hint?: string | null) => (
+    <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px', minWidth: 0 }}>
+      <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--cf8fafc)', lineHeight: 1.2 }}>{v}{arrow(d)}</div>
+      {hint && <div style={{ fontSize: 10.5, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}
+    </div>
+  );
+  const toDate = f.state === 'to-date';
+  const noMetrics = f.notes.includes('no-metrics');
+  return (
+    <div style={pv}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={pvL}>{T('NỘI DUNG THÁNG — BÀI ĐĂNG & TƯƠNG TÁC', 'CONTENT — POSTS & INTERACTIONS')}</div>
+        <span style={{ fontSize: 11, color: 'var(--c64748b)' }}>
+          {toDate
+            ? T(`Tính đến ngày ${f.daysCovered} · so với ${f.daysCovered} ngày đầu tháng trước`, `Through day ${f.daysCovered} · vs the first ${f.daysCovered} days of last month`)
+            : T('Tháng đã khép · so với tháng trước', 'Month closed · vs last month')}
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginTop: 10 }}>
+        {tile(T('Bài đăng', 'Posts'), String(f.posts.total), f.posts.vsPrev,
+          f.posts.byPlatform.length ? f.posts.byPlatform.map((b) => `${pfName(b.platform)} ${b.posts}${b.viaLumio ? ` (${b.viaLumio} ${T('qua Lumio', 'via Lumio')})` : ''}`).join(' · ') : null)}
+        {tile(T('Tương tác', 'Interactions'), num(f.interactions.total), f.interactions.vsPrev,
+          noMetrics ? T('Có bài nhưng chưa đọc được lượt tương tác — kiểm tra quyền kết nối', 'Posts found, reactions not readable — check the connection’s permissions') : T('thích + bình luận + chia sẻ + lưu', 'likes + comments + shares + saves'))}
+        {tile(T('Lượt xem', 'Views'), num(f.views.total), f.views.vsPrev, f.measuredAt ? T(`đo lúc ${fmtInTz(f.measuredAt, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, `measured ${fmtInTz(f.measuredAt, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`) : null)}
+      </div>
+      {f.top.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', fontWeight: 600, marginBottom: 6 }}>{T('TOP 5 BÀI TỐT NHẤT', 'TOP 5 POSTS')} <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}>· {T('theo tương tác, rồi lượt xem', 'by interactions, then views')}</span></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {f.top.map((p, i) => {
+              const img = !!p.thumbnailUrl;
+              return (
+                <div key={p.id} style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: '8px 10px' }}>
+                  <span style={{ width: 22, textAlign: 'center', fontSize: 13, fontWeight: 800, color: 'var(--ca5b4fc)', flexShrink: 0 }}>{i + 1}</span>
+                  {img
+                    ? <span style={{ width: 46, height: 46, borderRadius: 8, flexShrink: 0, background: `var(--c1e293b) center/cover no-repeat url(${p.thumbnailUrl})` }} />
+                    : <span style={{ width: 46, height: 46, borderRadius: 8, flexShrink: 0, background: 'var(--c1e293b)', display: 'grid', placeItems: 'center', fontSize: 18 }}>📷</span>}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: pfColor(p.platform), background: 'var(--c1e293b)', borderRadius: 4, padding: '1px 6px' }}>{pfName(p.platform)}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--ca5b4fc)', background: 'var(--c1e293b)', borderRadius: 4, padding: '1px 6px' }}>{typeLabel(p.type)}</span>
+                      <span style={{ fontSize: 11, color: 'var(--c64748b)', flexShrink: 0 }}>{fmtInTz(p.publishedAt, { month: 'short', day: 'numeric' })}</span>
+                      {p.caption && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.caption}</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4, fontSize: 11.5, color: 'var(--ce2e8f0)' }}>
+                      <span><b style={{ color: 'var(--cf8fafc)' }}>{num(p.interactions)}</b> <span style={{ color: 'var(--c64748b)' }}>{T('tương tác', 'interactions')}</span></span>
+                      {p.views != null && <span><b style={{ color: 'var(--cf8fafc)' }}>{num(p.views)}</b> <span style={{ color: 'var(--c64748b)' }}>{T('xem', 'views')}</span></span>}
+                      {p.likes != null && <span><b style={{ color: 'var(--cf8fafc)' }}>{num(p.likes)}</b> <span style={{ color: 'var(--c64748b)' }}>{T('thích', 'likes')}</span></span>}
+                      {p.comments != null && <span><b style={{ color: 'var(--cf8fafc)' }}>{num(p.comments)}</b> <span style={{ color: 'var(--c64748b)' }}>{T('bình luận', 'comments')}</span></span>}
+                      {p.shares != null && p.shares > 0 && <span><b style={{ color: 'var(--cf8fafc)' }}>{num(p.shares)}</b> share</span>}
+                    </div>
+                  </div>
+                  {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer" style={{ color: 'var(--c818cf8)', fontSize: 11, textDecoration: 'none', flexShrink: 0 }}>{T('Xem', 'Open')} ↗</a>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {f.posts.total === 0 && (
+        <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 8 }}>{T('Chưa ghi nhận bài nào trong tháng. Bài Lumio đăng được ghi ngay; bài tiệm tự đăng xuất hiện sau lần đồng bộ kế tiếp.', 'No posts recorded this month yet. Posts Lumio publishes are recorded at once; posts made by hand appear after the next sync.')}</div>
+      )}
+      <div style={{ fontSize: 10.5, color: 'var(--ink-faint)', marginTop: 8, lineHeight: 1.5 }}>
+        {T('Đếm từ từng bài đã lưu (Facebook, Instagram, TikTok) theo lịch của tiệm — không phải số ước tính. Mũi tên chỉ hiện khi có số tháng trước để so.', 'Counted from each stored post (Facebook, Instagram, TikTok) on the salon’s calendar — never an estimate. An arrow appears only when last month has a number to compare with.')}
+      </div>
+    </div>
+  );
+}
+
 function PostRowView({ p, T }: { p: PostRow; T: (v: string, e: string) => string }) {
   const img = !!p.thumbnail && p.thumbnail.startsWith('http');
   const dt = p.timestamp ? fmtInTz(p.timestamp, { month: 'short', day: 'numeric' }) : '';
@@ -1695,6 +1799,9 @@ function ReportView({ data, content, vi, money, onEdit, onPrint, onWord, wordBus
           <div style={{ fontSize: 15, color: 'var(--cd1fae5)' }}>{T('Mỗi', 'Every')} <b>$1</b> {T('chi ra', 'spent')} → <b>${b.revenuePerSpend}</b> {T('doanh thu', 'revenue')}{b.costPerNewCustomerCents != null && <> · {T('chi phí mỗi khách mới', 'cost / new customer')}: <b>{money(b.costPerNewCustomerCents)}</b></>}</div>
         </div>
       )}
+
+      {/* Posts · interactions · top 5 — from the stored posts, computed by the API */}
+      {data.facts && (data.facts.posts.total > 0 || (data.socialInsights ?? []).length > 0) && <ContentFactsCard f={data.facts} T={T} />}
 
       {/* Organic Facebook / Instagram (owned channels) */}
       {(data.socialInsights ?? []).length > 0 && (

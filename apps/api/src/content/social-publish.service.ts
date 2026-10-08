@@ -18,6 +18,7 @@ import { GoogleDriveService } from '../uploads/google-drive.service';
 import { GoogleReviewsService } from '../google-reviews/google-reviews.service';
 import { TikTokService } from '../tiktok/tiktok.service';
 import { cleanTikTokOptions, type TikTokPostOptions, type TikTokTarget } from '../tiktok/tiktok';
+import { lumioPostRow } from '../marketing/social-posts';
 import { AiUsageService } from '../common/ai-usage.service';
 import { cleanGbpOptions, resolveGbpCta, gbpCtaProblem, DEFAULT_GBP_BUTTON, type GbpPostOptions, type GbpCtaContext } from './gbp-cta';
 import { checkGbpPost, gbpImageHeaderProblem, gbpSummary, unacceptedRisks, type GbpCheck, type Issue } from './gbp-policy';
@@ -1184,11 +1185,44 @@ export class SocialPublishService {
       return { ok: false, error, results };
     }
 
+    const postedAt = new Date();
     await this.posts?.update({
       where: { id: row.id },
-      data: { status: 'posted', postedAt: new Date(), results: results as never, lastError: null },
+      data: { status: 'posted', postedAt, results: results as never, lastError: null },
     }).catch(() => undefined);
+    await this.recordSocialPosts(row, fresh, postedAt, media);
     return { ok: true, error: null, results };
+  }
+
+  /**
+   * The month's report counts posts from social_posts (marketing/social-posts.ts).
+   * A post Lumio just put up is written there NOW, under this tenant, so the
+   * count includes it before any channel sync runs. Best-effort: publishing
+   * never fails over bookkeeping.
+   */
+  private async recordSocialPosts(row: PostRow, fresh: PublishResult[], postedAt: Date, media: MediaItem[]): Promise<void> {
+    try {
+      const db = this.prisma as unknown as {
+        tenant: { findUnique: (a: unknown) => Promise<{ timezone?: string | null } | null> };
+        socialPost?: { count: (a: unknown) => Promise<number>; create: (a: unknown) => Promise<unknown>; updateMany: (a: unknown) => Promise<unknown> };
+      };
+      if (!db.socialPost) return;
+      const tenant = await db.tenant.findUnique({ where: { id: row.tenantId }, select: { timezone: true } }).catch(() => null);
+      const thumb = media.find((m) => m && typeof (m as { url?: unknown }).url === 'string')?.url ?? row.imageUrl ?? null;
+      for (const r of fresh) {
+        if (!r || r.error || r.unsure || !r.id) continue;
+        const post = lumioPostRow({ channel: r.channel, id: r.id, url: r.url, postedAt, caption: row.message, thumbnail: thumb, tz: tenant?.timezone ?? null, type: r.channel === 'tiktok' ? 'video' : null });
+        if (!post) continue;
+        const where = { tenantId: row.tenantId, platform: post.platform, externalId: post.externalId };
+        if (await db.socialPost.count({ where })) {
+          await db.socialPost.updateMany({ where, data: { publishedVia: 'lumio', scheduledPostId: row.id } });
+        } else {
+          await db.socialPost.create({ data: { tenantId: row.tenantId, ...post, publishedVia: 'lumio', scheduledPostId: row.id } });
+        }
+      }
+    } catch (e) {
+      this.log.warn(`social_posts bookkeeping for ${row.id}: ${(e as Error).message}`);
+    }
   }
 
   private async fail(row: PostRow, error: string, results: PublishResult[] = [], stop = false) {

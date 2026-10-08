@@ -337,6 +337,8 @@ model Tenant {
   marketingReports     MarketingReport[]
   marketingChannels    MarketingChannelConnection[]
   socialInsights       SocialInsight[]
+  socialPosts          SocialPost[]
+  socialPostMetrics    SocialPostMetric[]
   invoices             Invoice[]
 
   tables             RestaurantTable[]
@@ -2842,6 +2844,79 @@ model SocialInsight {
   @@unique([tenantId, platform, periodMonth])
   @@index([tenantId, periodMonth])
   @@map("social_insights")
+}
+
+/// ONE ROW PER POST the salon put on a channel (Facebook / Instagram / TikTok),
+/// whether Lumio published it or the salon posted by hand. The monthly report's
+/// "posts this month", "total interactions" and "top 5" are COUNT / SUM /
+/// ORDER BY over this table — never a number re-read from the network at
+/// report time. Rows are written by the channel sync and by Lumio's own
+/// publisher; a sync that fails to read the network leaves the rows alone.
+model SocialPost {
+  id          String @id @default(uuid())
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // facebook | instagram | tiktok
+  platform    String
+  // The network's own id for the post (Graph post/media id, TikTok video id).
+  externalId  String
+  publishedAt DateTime
+  // The salon's calendar: 'YYYY-MM-DD' and 'YYYY-MM' in the tenant's timezone.
+  publishedDay String
+  periodMonth  String
+  // reel | video | photo | carousel | post
+  type        String  @default("post")
+  permalink   String?
+  thumbnailUrl String?
+  caption     String?
+  // lumio = Lumio published it (scheduledPostId set); platform = found on the network.
+  publishedVia String  @default("platform")
+  scheduledPostId String?
+  // Latest measurement, denormalised so top-N is one indexed query. The
+  // history is in SocialPostMetric. null = the network never gave it.
+  views        Int?
+  reach        Int?
+  likes        Int?
+  comments     Int?
+  shares       Int?
+  saves        Int?
+  interactions Int?
+  metricsAt    DateTime?
+  // Set when the network no longer lists the post (deleted on the platform).
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  metrics      SocialPostMetric[]
+
+  @@unique([tenantId, platform, externalId])
+  @@index([tenantId, periodMonth])
+  @@index([tenantId, publishedAt])
+  @@map("social_posts")
+}
+
+/// Append-only measurements of one post: every sync adds a row, so a number
+/// can be traced to the moment it was read, and a month can be re-stated as
+/// it stood on any day.
+model SocialPostMetric {
+  id          String @id @default(uuid())
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  postId      String
+  post        SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  capturedAt  DateTime @default(now())
+  views        Int?
+  reach        Int?
+  likes        Int?
+  comments     Int?
+  shares       Int?
+  saves        Int?
+  interactions Int?
+  // Where the numbers came from: 'api' (channel sync) | 'lumio' (our publisher).
+  source      String @default("api")
+
+  @@index([postId, capturedAt])
+  @@index([tenantId, capturedAt])
+  @@map("social_post_metrics")
 }
 
 /// Recycle bin. Anything deleted in the app is snapshotted here first and only

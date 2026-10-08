@@ -15,6 +15,11 @@ import {
 // Version is env-overridable: Meta retires older versions ~2 years out and
 // gates metric availability by version, so bumping it must NOT need a code change.
 const GRAPH = 'https://graph.facebook.com/' + (process.env.META_GRAPH_VERSION || 'v21.0');
+// How many of a month's posts get their own insights read (newest first). The
+// month's COUNT is taken before this cap; the cap only bounds Graph calls.
+// 40 left a busy page's best post out of the top 5 when it was not among the
+// 40 newest — every post now lands in social_posts, so the cap is generous.
+const POST_LIST_CAP = 100;
 const numOrNull = (v: any) => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
 
 /**
@@ -279,7 +284,7 @@ export class MetaSocialConnector implements SocialConnector {
     list = list.filter((m) => m?.id && !seen.has(String(m.id)) && seen.add(String(m.id)) && inWindow(m?.timestamp, win));
     // The true monthly count, taken BEFORE the display cap — the count used to stop at 40.
     const count = list.length;
-    list = list.slice(0, 40);
+    list = list.slice(0, POST_LIST_CAP);
 
     let postErrs = 0;
     // Per-post insights need instagram_manage_insights; the token that listed
@@ -490,7 +495,7 @@ export class MetaSocialConnector implements SocialConnector {
     // The true monthly count, taken BEFORE the display cap: the report says
     // how many were posted, the list shows at most 40 of them.
     const fbMonthCount = list.length;
-    list = list.slice(0, 40);
+    list = list.slice(0, POST_LIST_CAP);
     const posts: PostInsight[] = list.map((m: any) => {
       const likes = numOrNull(m?.likes?.summary?.total_count);
       const comments = numOrNull(m?.comments?.summary?.total_count);

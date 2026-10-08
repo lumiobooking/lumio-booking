@@ -1,6 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { chosenIndustry, personaFor } from '../common/business-persona';
 import { statesPrice, noQuoteLine, NO_QUOTE_RULE } from './quote-guards';
+import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
+import { isUnknownReply } from './knowledge-gaps';
 import { dayKeyTz } from '../common/salon-time';
 import { formatMoneyShort, localeForCountry } from '../common/money';
 import {
@@ -11,7 +13,6 @@ import { ownershipOf, waitingMinutes, replyWindow } from './thread-ownership';
 import { blockMessage, customerLastWroteAt, replyWindowState, windowState } from './human-agent';
 import { mergeHistory, isHidden, turnKeys, metaRole } from './history-merge';
 import { KnowledgeGapsService } from './knowledge-gaps.service';
-import { isUnknownReply } from './knowledge-gaps';
 import { decideFollowUp, threadStateFrom, contextualNudge, followUpSettingsFrom, CHAT_FOLLOWUP_KEY, WINDOW_MS, type StoredTurn } from './followup';
 import { claimsBooked, vagueAvailability, mayTalkAsBooked, notBookedYetLine, BOOKED_CORRECTION, VAGUE_CORRECTION, repeatCorrection, notRepeatLine, asksQuestion, aboutTheBooking, isBookingRecap, questionFirstCorrection, answersBeforeRecap, endsOnFiller, customerWrappingUp, FILLER_CORRECTION } from './booking-guards';
 import { fetchZaloProfile, sendZaloText, ZALO_SEND_TRACE_KEY, sendZaloImage } from './zalo-oa';
@@ -159,6 +160,10 @@ export class MessengerService implements OnModuleInit {
       }
     }, 90 * 1000); // well after boot
     t.unref?.();
+    // "Learn, then answer": a change anywhere in the salon's data re-reads its
+    // open conversations (bot-refresh.ts). Debounced per salon so ten edits in
+    // a row become one pass, 20 s after the last.
+    onBotCatchUp((tenantId, reason) => this.scheduleCatchUp(tenantId, reason));
     // The conversation mirror under the webhook: every MESSENGER_SYNC_SECONDS
     // (default 60, 0 = off). The webhook is the real-time path; this is the
     // guard that catches what it drops, within a minute. One light Graph call
@@ -921,6 +926,84 @@ export class MessengerService implements OnModuleInit {
 
   private async audit(tenantId: string, action: string): Promise<void> {
     try { await this.prisma.auditLog.create({ data: { tenantId, action, resourceType: 'messenger' } }); } catch { /* never break */ }
+    if (/^messenger\.(settings|facts|turn)/.test(action)) requestBotCatchUp(tenantId, action);
+  }
+
+  // ---------------------------------------------------------------- learn, then answer
+  private readonly catchUpTimers = new Map<string, NodeJS.Timeout>();
+  /** Threads being re-asked after an update: a reply that is still "I'll check" is not sent again. */
+  private readonly reasking = new Set<string>();
+
+  private scheduleCatchUp(tenantId: string, reason: string): void {
+    const prev = this.catchUpTimers.get(tenantId);
+    if (prev) clearTimeout(prev);
+    const t = setTimeout(() => {
+      this.catchUpTimers.delete(tenantId);
+      void this.catchUp(tenantId, reason).catch((e) => this.logger.warn(`catch-up (${tenantId}) failed: ${String(e).slice(0, 160)}`));
+    }, CATCH_UP_DEBOUNCE_MS);
+    t.unref?.();
+    this.catchUpTimers.set(tenantId, t);
+  }
+
+  /**
+   * After the salon changed something: every open conversation of the last
+   * 24 hours (Meta's reply window) that is either
+   *   - UNANSWERED — the customer's line is the last one (a dropped webhook,
+   *     a model outage), or
+   *   - PARKED — the bot's last line was "I'll check with the salon" and the
+   *     customer has not written since,
+   * is run through the bot again with the salon's data as it is NOW. A parked
+   * question whose answer is still not in the data stays silent: the bot
+   * never says "I'll check" twice. A conversation a person holds, or one the
+   * customer closed, is left alone. One salon at a time, its own threads only.
+   */
+  async catchUp(tenantId: string, reason = 'update'): Promise<{ unanswered: number; parked: number }> {
+    const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId } }).catch(() => null);
+    if (!conn || !conn.enabled) return { unanswered: 0, parked: 0 };
+    const since = new Date(Date.now() - 24 * 3600 * 1000);
+    const threads = await this.prisma.messengerThread.findMany({
+      where: { tenantId, status: 'open', handoff: false, lastCustomerAt: { gte: since } } as never,
+      select: { id: true, pageId: true, senderId: true, history: true, channel: true, assignedUserId: true },
+      orderBy: { lastCustomerAt: 'desc' } as never,
+      take: 50,
+    }) as unknown as { id: string; pageId: string; senderId: string; history: unknown; channel: string | null; assignedUserId?: string | null }[];
+    // A conversation routed to a person, in a salon where the person answers
+    // first, is theirs — the bot does not jump in because a price changed.
+    const botFirst = turnSettingsOf(conn as never).botFirst;
+    let unanswered = 0, parked = 0;
+    for (const t of threads) {
+      if (t.assignedUserId && !botFirst) continue;
+      const hist = (Array.isArray(t.history) ? t.history : []) as Turn[];
+      const last = hist[hist.length - 1];
+      if (!last) continue;
+      const page = await this.pageByEntry(t.pageId).catch(() => null);
+      if (!page || !page.enabled || page.tenantId !== tenantId) continue;
+      const connLike = { ...conn, pageToken: page.pageToken };
+      if (last.role === 'user') {
+        // Nobody answered: answer. The turn is already in history — by its id
+        // when it has one, else by matching text (replyAndRecord's userAlready).
+        unanswered++;
+        this.queueReply(connLike, t.id, t.senderId, last.content, last.at ? new Date(last.at).getTime() : undefined, {}, last.rid);
+        continue;
+      }
+      if (last.role === 'assistant' && !last.manual && !last.nudge && isUnknownReply(last.content)) {
+        // Parked: find the question the bot could not answer and ask it again
+        // with today's data. Its turn gets an id so it is re-used, not re-added.
+        const qi = [...hist].map((h, i) => ({ h, i })).reverse().find((x) => x.h.role === 'user');
+        if (!qi) continue;
+        const q = qi.h;
+        const rid = q.rid || crypto.randomUUID();
+        if (!q.rid) {
+          const next = hist.map((h, i) => (i === qi.i ? { ...h, rid } : h));
+          await this.prisma.messengerThread.update({ where: { id: t.id }, data: { history: next as unknown as Prisma.InputJsonValue } }).catch(() => undefined);
+        }
+        parked++;
+        this.reasking.add(t.id);
+        this.queueReply(connLike, t.id, t.senderId, q.content, q.at ? new Date(q.at).getTime() : undefined, {}, rid);
+      }
+    }
+    if (unanswered || parked) this.logger.log(`catch-up after ${reason} (${tenantId}): ${unanswered} unanswered, ${parked} parked question(s) re-asked`);
+    return { unanswered, parked };
   }
 
   /** Facebook "Data Deletion Request" callback. Verify the signed_request, delete
@@ -2272,7 +2355,7 @@ export class MessengerService implements OnModuleInit {
             const lastCustomer = [...toWrite].reverse().find((t) => t.role === 'user');
             await this.prisma.messengerThread.update({
               where: { id: existing.id },
-              data: { lastText: toWrite[toWrite.length - 1].content.slice(0, 300), ...(lastCustomer ? { lastCustomerAt: new Date(lastCustomer.at!) } : {}), ...(other.name && !existing.senderName ? { senderName: other.name } : {}) } as never,
+              data: { lastText: toWrite[toWrite.length - 1].content.slice(0, 300), lastMessageAt: new Date(toWrite[toWrite.length - 1].at!), ...(lastCustomer ? { lastCustomerAt: new Date(lastCustomer.at!) } : {}), ...(other.name && !existing.senderName ? { senderName: other.name } : {}) } as never,
             }).catch(() => undefined);
             updated++;
           }
@@ -2282,6 +2365,9 @@ export class MessengerService implements OnModuleInit {
             data: {
               tenantId, pageId: pg.pageId, senderId: other.id, senderName: other.name || null, channel: 'messenger',
               lastText: toWrite[toWrite.length - 1].content.slice(0, 300),
+              // The conversation's own clock, so a mirrored chat from September
+              // sits where September belongs — not at the top as "just now".
+              lastMessageAt: new Date(toWrite[toWrite.length - 1].at!),
               lastCustomerAt: lastCustomer ? new Date(lastCustomer.at!) : null,
               history: toWrite as unknown as Prisma.InputJsonValue,
               status: 'open',
@@ -3187,6 +3273,12 @@ export class MessengerService implements OnModuleInit {
         }
         return;
       }
+    }
+    // A parked question asked again after an update: if the bot still does
+    // not know, it says nothing — "I'll check" a second time helps nobody.
+    if (this.reasking.has(threadId)) {
+      this.reasking.delete(threadId);
+      if (isUnknownReply(reply) || agentFailed) { this.logger.log(`catch-up: still no answer on thread ${threadId}, staying quiet`); return; }
     }
     const sent = await this.sendText(conn.pageToken, senderId, reply, freshCh === 'zalo' ? 'zalo' : freshCh === 'web' ? 'web' : undefined, conn.tenantId);
     // The billable event, and the only one: a reply the ROBOT produced and the
@@ -5191,9 +5283,17 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
           }).catch(() => null);
         }
         if (ctx?.threadId) {
+          // The conversation keeps the name Facebook/Instagram shows for this
+          // person. The name they typed for the booking goes to the Customer
+          // record, not over the profile name — "Quỳnh Lê" turning into "Lyli"
+          // in the inbox the moment she booked read as the system renaming
+          // the salon's customers. Only a thread with NO name yet (a website
+          // visitor, a profile Meta would not show) takes the typed one.
+          const cur = await this.prisma.messengerThread.findUnique({ where: { id: ctx.threadId }, select: { senderName: true } }).catch(() => null);
+          const nameless = !String(cur?.senderName ?? '').trim();
           await this.prisma.messengerThread.update({
             where: { id: ctx.threadId },
-            data: { ...(nm ? { senderName: nm } : {}), ...(customer?.id ? { customerId: customer.id } : {}) } as never,
+            data: { ...(nm && nameless ? { senderName: nm } : {}), ...(customer?.id ? { customerId: customer.id } : {}) } as never,
           }).catch(() => undefined);
         }
         return 'SUCCESS. Contact saved — do not repeat it back or ask for it again; carry on with what they wanted.';
@@ -5798,6 +5898,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
   }
 }
 
+/** Edits come in bursts; the bot re-reads a salon's conversations once, this long after the last one. */
+const CATCH_UP_DEBOUNCE_MS = 20_000;
 /** Meta's own Page Inbox (Business Suite / the Messenger app): a human typing there echoes with this app_id. */
 const PAGE_INBOX_APP_ID = '263902037430900';
 

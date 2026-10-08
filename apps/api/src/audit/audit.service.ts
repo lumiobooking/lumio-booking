@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { botRelevantAction, requestBotCatchUp } from '../messenger/bot-refresh';
 
 export interface AuditLogInput {
   tenantId?: string | null;
@@ -39,5 +40,8 @@ export class AuditService {
     } catch (err) {
       this.logger.error(`Failed to write audit log "${input.action}": ${String(err)}`);
     }
+    // A change the bot should know about: it re-reads the salon's open
+    // conversations and answers what it can now (see messenger/bot-refresh.ts).
+    if (input.tenantId && botRelevantAction(input.action)) requestBotCatchUp(input.tenantId, input.action);
   }
 }

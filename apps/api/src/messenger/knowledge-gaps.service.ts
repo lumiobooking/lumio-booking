@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { requestBotCatchUp } from './bot-refresh';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { factLabel, gapKey, redact, type GapSource } from './knowledge-gaps';
 
@@ -111,6 +112,8 @@ export class KnowledgeGapsService {
       data: { status: 'answered', answer, answeredBy: user.userId ?? null, answeredAt: new Date() },
     });
     await this.audit(tenantId, user.userId ?? null, 'messenger.knowledge_gap_answered', gap.id);
+    // The customer who asked is still waiting: the bot re-reads that conversation and answers now.
+    requestBotCatchUp(tenantId, 'messenger.knowledge_gap_answered');
     return { ok: true, label };
   }
 

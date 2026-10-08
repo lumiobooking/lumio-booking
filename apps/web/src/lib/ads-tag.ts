@@ -88,6 +88,41 @@ export function loadAdsTag(adsId: string, w: TagWindow, d: TagDocument): 'loaded
   return 'loaded';
 }
 
+/**
+ * The same tag, but IN THE HTML. Rendered by the booking page's server
+ * layout right after the salon's GA4/GTM snippet, so the Ads tag is on the
+ * page from the first byte — not a second or two later, once React has
+ * hydrated and the page's effect has run. Two reasons that matters:
+ *  - Google Ads judges "is the Google tag on this site" from tag ACTIVITY
+ *    and from what it finds on the landing page. A visitor who clicks the ad
+ *    and leaves in a second never reached the effect, so the page view was
+ *    never reported — and the campaign showed "your website is missing the
+ *    Google tag".
+ *  - A crawler-style check reads the HTML; a tag injected by script after
+ *    the fact is invisible to it.
+ * Same rules as loadAdsTag: top window only, one salon per document (reload
+ * rather than mix), reuse gtag.js when GA4 already loaded it, consent
+ * defaults only when no GA4/GTM set them. Marks `__lumioAds`, so the later
+ * effect call returns 'already' and nothing runs twice.
+ * Returns '' for anything but a well-formed id — the string goes into the
+ * page verbatim, so it is built only from a value that matched ADS_ID_RE.
+ */
+export function adsInlineSnippet(adsId: string): string {
+  const id = String(adsId ?? '').trim().toUpperCase();
+  if (!ADS_ID_RE.test(id)) return '';
+  return `(function(){try{if(window.self!==window.top)return}catch(e){return}`
+    + `if(window.__lumioAds==='${id}')return;`
+    + `if(window.__lumioAds&&window.__lumioAds!=='${id}'){location.reload();return}`
+    + `window.__lumioAds='${id}';`
+    + `var dl=window.dataLayer=window.dataLayer||[];var own=typeof window.gtag!=='function';`
+    + `if(own){window.gtag=function(){dl.push(arguments)}}`
+    + `if(!window.__lumioTag){window.gtag('consent','default',{ad_storage:'granted',ad_user_data:'granted',ad_personalization:'granted',analytics_storage:'granted',wait_for_update:500});`
+    + `if(!window.lumioConsentUpdate){window.lumioConsentUpdate=function(c){window.gtag('consent','update',c)}}}`
+    + `if(!document.querySelector('script[src*="googletagmanager.com/gtag/js"]')){var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id=${id}';document.head.appendChild(s)}`
+    + `if(own){window.gtag('js',new Date())}`
+    + `window.gtag('config','${id}');})();`;
+}
+
 /** Send ONE booking to Google Ads. Returns true when it was handed to gtag. */
 export function sendAdsConversion(
   c: AdsConfig | null | undefined,

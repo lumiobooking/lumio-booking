@@ -6,6 +6,7 @@
 // generic booking competitors don't do.
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import { adsInlineSnippet } from '../../../lib/ads-tag';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
 /** Just the scheme + host of the API, for the preconnect hint. */
@@ -29,7 +30,7 @@ interface Seo {
   priceFromCents: number | null;
   hours: { day: number; closed: boolean; open: string; close: string; intervals?: { open: string; close: string }[] }[];
   rating: { value: number; count: number } | null;
-  analytics?: { ga4Id?: string; gtmId?: string; mode?: string } | null;
+  analytics?: { ga4Id?: string; gtmId?: string; mode?: string; adsId?: string } | null;
 }
 
 async function getSeo(slug: string): Promise<Seo | null> {
@@ -135,6 +136,9 @@ export default async function BookSlugLayout({ children, params }: { children: R
     : gtmIdRaw ? 'gtm' : ga4IdRaw ? 'ga4' : 'none';
   const ga4Id = effective === 'ga4' ? ga4IdRaw : '';
   const gtmId = effective === 'gtm' ? gtmIdRaw : '';
+  // The salon's Google Ads tag, in the HTML (see adsInlineSnippet). '' unless
+  // the stored id is well-formed — nothing else can reach the page.
+  const adsSnippet = adsInlineSnippet(s?.analytics?.adsId ?? '');
   return (
     <>
       {/* The booking page is the only thing a customer ever sees of the salon —
@@ -193,6 +197,13 @@ export default async function BookSlugLayout({ children, params }: { children: R
       {gtmId && (
         // eslint-disable-next-line react/no-danger
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{if(window.self!==window.top)return}catch(e){return}if(window.__lumioTag&&window.__lumioTag!=='${gtmId}'){location.reload();return}window.__lumioTag='${gtmId}';window.dataLayer=window.dataLayer||[];function g(){dataLayer.push(arguments)}g('consent','default',{ad_storage:'granted',ad_user_data:'granted',ad_personalization:'granted',analytics_storage:'granted',wait_for_update:500});window.lumioConsentUpdate=function(c){g('consent','update',c)};(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${gtmId}');})();` }} />
+      )}
+      {/* This salon's Google Ads tag — after the GA4/GTM snippet, so it reuses
+          their gtag.js and consent. The page's effect still calls loadAdsTag
+          and finds __lumioAds already set. */}
+      {adsSnippet && (
+        // eslint-disable-next-line react/no-danger
+        <script dangerouslySetInnerHTML={{ __html: adsSnippet }} />
       )}
       {children}
     </>

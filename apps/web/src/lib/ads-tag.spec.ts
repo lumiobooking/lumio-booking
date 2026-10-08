@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { adsConfigFrom, canSendConversion, loadAdsTag, sendAdsConversion, conversionRoute, TagWindow, TagDocument } from './ads-tag';
+import { adsConfigFrom, adsInlineSnippet, canSendConversion, loadAdsTag, sendAdsConversion, conversionRoute, TagWindow, TagDocument } from './ads-tag';
 
 function fakeDoc(existingGtagJs = false) {
   const appended: { async?: boolean; src?: string }[] = [];
@@ -103,5 +103,72 @@ describe('wired into the booking page and settings', () => {
   it('the owner can paste the ID and label', () => {
     expect(integ).toMatch(/adsId/);
     expect(integ).toMatch(/adsLabel/);
+  });
+});
+
+describe('the Ads tag in the HTML (server-rendered snippet)', () => {
+  type Sandbox = { w: Record<string, any>; appended: { src?: string }[]; reloads: number };
+  // Runs the snippet the way a browser would, against a stub window.
+  function run(snippet: string, opts: { top?: boolean; tag?: string; ads?: string; gtag?: boolean; gtagJs?: boolean } = {}): Sandbox {
+    const appended: { src?: string }[] = [];
+    const reloadBox = { n: 0 };
+    const w: Record<string, any> = { __lumioTag: opts.tag, __lumioAds: opts.ads };
+    w.self = w; w.top = opts.top === false ? {} : w;
+    if (opts.gtag) { w.dataLayer = []; w.gtag = (...a: unknown[]) => w.dataLayer.push(a); }
+    const d = { querySelector: () => (opts.gtagJs ? {} : null), createElement: () => ({}), head: { appendChild: (el: { src?: string }) => appended.push(el) } };
+    const location = { reload: () => { reloadBox.n += 1; } };
+    // eslint-disable-next-line no-new-func
+    new Function('window', 'document', 'location', snippet)(w, d, location);
+    return { w, appended, reloads: reloadBox.n };
+  }
+  const calls2 = (w: Record<string, any>) => (w.dataLayer ?? []).map((a: ArrayLike<unknown>) => Array.from(a));
+
+  it('is built only from a well-formed id', () => {
+    expect(adsInlineSnippet('aw-18473564020')).toContain("gtag/js?id=AW-18473564020");
+    expect(adsInlineSnippet("AW-1');alert(1)//")).toBe('');
+    expect(adsInlineSnippet('')).toBe('');
+    expect(adsInlineSnippet('G-QHVWYWS2RE')).toBe('');
+  });
+  it('alone on the page: consent defaults, gtag.js, js, config', () => {
+    const { w, appended } = run(adsInlineSnippet('AW-18473564020'));
+    expect(w.__lumioAds).toBe('AW-18473564020');
+    expect(appended[0].src).toBe('https://www.googletagmanager.com/gtag/js?id=AW-18473564020');
+    const c = calls2(w);
+    expect(c[0][0]).toBe('consent');
+    expect(c.some((x: unknown[]) => x[0] === 'js')).toBe(true);
+    expect(c[c.length - 1]).toEqual(['config', 'AW-18473564020']);
+  });
+  it('after the salon’s GTM: no second consent, loads gtag.js for the AW id', () => {
+    const { w, appended } = run(adsInlineSnippet('AW-18473564020'), { tag: 'GTM-NRC4GHRN' });
+    expect(appended).toHaveLength(1);
+    expect(calls2(w).some((x: unknown[]) => x[0] === 'consent')).toBe(false);
+    expect(calls2(w)).toContainEqual(['config', 'AW-18473564020']);
+  });
+  it('after the salon’s GA4: reuses its gtag.js and only adds the destination', () => {
+    const { w, appended } = run(adsInlineSnippet('AW-18473564020'), { tag: 'G-QHVWYWS2RE', gtag: true, gtagJs: true });
+    expect(appended).toHaveLength(0);
+    expect(calls2(w)).toEqual([['config', 'AW-18473564020']]);
+  });
+  it('once per document; another salon’s id reloads; the effect then finds it already there', () => {
+    const snip = adsInlineSnippet('AW-18473564020');
+    const a = run(snip, { ads: 'AW-18473564020', gtag: true });
+    expect(calls2(a.w)).toEqual([]);
+    const b = run(snip, { ads: 'AW-99999999', gtag: true });
+    expect(b.reloads).toBe(1);
+    expect(calls2(b.w)).toEqual([]);
+    const c = run(snip);
+    const d = { querySelector: () => ({}), createElement: () => ({}), head: { appendChild: () => ({}) } };
+    expect(loadAdsTag('AW-18473564020', c.w as TagWindow, d as unknown as TagDocument)).toBe('already');
+  });
+  it('stays silent inside an embedded form (iframe)', () => {
+    const { w, appended } = run(adsInlineSnippet('AW-18473564020'), { top: false });
+    expect(w.__lumioAds).toBeUndefined();
+    expect(appended).toHaveLength(0);
+  });
+  it('the booking layout renders it after the GA4/GTM snippet', () => {
+    const layout = readFileSync(join(__dirname, '..', 'app', 'book', '[slug]', 'layout.tsx'), 'utf8');
+    expect(layout).toMatch(/adsInlineSnippet\(s\?\.analytics\?\.adsId/);
+    expect(layout.indexOf('{adsSnippet && (')).toBeGreaterThan(layout.indexOf('{gtmId && ('));
+    expect(layout.indexOf('{adsSnippet && (')).toBeLessThan(layout.indexOf('{children}'));
   });
 });

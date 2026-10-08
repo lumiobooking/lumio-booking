@@ -923,7 +923,7 @@ function Inner() {
               }} style={{ ...ui.input, width: 'auto', cursor: 'pointer', padding: '6px 12px' }}>
                 {convImporting ? (lang === 'vi' ? 'Đang nhập…' : 'Importing…') : (lang === 'vi' ? '⤓ Nhập hội thoại gần đây từ Page vào Inbox' : '⤓ Import the Page’s recent conversations into the Inbox')}
               </button>
-              <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{lang === 'vi' ? 'Hệ thống tự đồng bộ hội thoại của Page mỗi 10 phút và ngay khi nối Page; nút này chỉ để đồng bộ ngay lập tức. Tin khách chưa ai trả lời quá 2 phút sẽ được bot trả lời khi bot đang bật.' : 'Conversations sync automatically every 10 minutes and right after connecting; this button syncs now. A customer line unanswered for 2 minutes is answered by the bot when the bot is on.'}</span>
+              <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{lang === 'vi' ? 'Tin nhắn về theo thời gian thực qua webhook; ngoài ra hệ thống tự đối chiếu với Page mỗi phút và ngay khi nối Page, nên tin nào webhook bỏ sót cũng vào Inbox trong vòng 1 phút và được bot trả lời (khi bot bật). Nút này chỉ để đối chiếu ngay.' : 'Messages arrive in real time through the webhook; the system also reconciles with the Page every minute and right after connecting, so anything the webhook drops reaches the Inbox within a minute and is answered by the bot (when on). This button reconciles now.'}</span>
             </div>
             {convImportMsg && <div style={{ marginTop: 6, color: /failed|error|code/i.test(convImportMsg) ? 'var(--ink-warn)' : 'var(--ink-good)' }}>{convImportMsg}</div>}
             {typeof wh?.echoOk === 'boolean' && (

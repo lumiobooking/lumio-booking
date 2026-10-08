@@ -6,6 +6,7 @@ import { RequiresFeature } from '../feature-policy/requires-feature.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { MarketingService } from './marketing.service';
+import { SyncQueueService } from './sync-queue.service';
 
 /**
  * Marketing reporting + monthly-report workflow. Salon admins act on their own
@@ -17,7 +18,7 @@ import { MarketingService } from './marketing.service';
 @RequiresFeature('marketing')
 @Controller('marketing')
 export class MarketingController {
-  constructor(private readonly marketing: MarketingService) {}
+  constructor(private readonly marketing: MarketingService, private readonly queue: SyncQueueService) {}
 
   // ---- Phase 0: live channel overview ----
   @Get('overview')
@@ -67,6 +68,17 @@ export class MarketingController {
   @Post('gbp-reviews')
   saveGbpReviews(@CurrentUser() user: AuthenticatedUser, @Body() dto: { month: string; rating?: number | null; totalReviews?: number | null; newReviews?: number | null; badReviews?: number | null; tenantId?: string }) {
     return this.marketing.saveGbpReviews(user, dto);
+  }
+
+  // ---- Data health: is every connected channel being read, when, and why not ----
+  @Get('health')
+  health(@CurrentUser() user: AuthenticatedUser, @Query('month') month: string, @Query('tenantId') tenantId?: string) {
+    return this.queue.health(user, month, tenantId);
+  }
+  /** Queue a sync of this salon's month (runs within minutes; the screen polls health). */
+  @Post('sync-now')
+  syncNow(@CurrentUser() user: AuthenticatedUser, @Body() dto: { month: string; tenantId?: string }) {
+    return this.queue.syncNow(user, dto.month, dto.tenantId);
   }
 
   // ---- Content facts: posts / interactions / top 5, computed from stored posts ----

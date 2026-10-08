@@ -39,6 +39,11 @@ interface AutoStatus {
   lastNotice: { month: string | null; recipient: string; status: string; at: string } | null;
 }
 interface SocialDelta { value: number | null; prev: number | null; pct: number | null }
+interface HealthChannel { platform: string; level: 'ok' | 'warn' | 'bad' | 'off'; key: 'not-connected' | 'fresh' | 'stale' | 'queued' | 'failed' | 'permission' | 'never'; lastSyncedAt: string | null; detail: string | null }
+interface HealthReport {
+  month: string; channels: HealthChannel[]; posts: { total: number; measuredAt: string | null }; queued: number;
+  jobs: { id: string; platform: string | null; periodMonth: string; reason: string; status: string; attempts: number; runAt: string; finishedAt: string | null; error: string | null }[];
+}
 interface TopPostUi {
   id: string; platform: 'facebook' | 'instagram' | 'tiktok'; type: string; publishedAt: string; permalink: string | null; thumbnailUrl: string | null; caption: string | null;
   views: number | null; reach: number | null; likes: number | null; comments: number | null; shares: number | null; saves: number | null; interactions: number | null; viaLumio: boolean;
@@ -125,6 +130,14 @@ function Inner() {
   // kept so the owner sees what came in and what was skipped.
   const [syncRes, setSyncRes] = useState<SyncAllResult | null>(null);
   const [chKey, setChKey] = useState(0);
+  // Data health: is each connected channel being read, when, and why not.
+  // Fetched on its own so a slow read never holds up the numbers.
+  const [health, setHealth] = useState<HealthReport | null>(null);
+  const loadHealth = useCallback(() => {
+    if (!token) return;
+    apiFetch<HealthReport>(`/marketing/health?month=${month}`, { token }).then(setHealth).catch(() => setHealth(null));
+  }, [token, month]);
+  useEffect(() => { loadHealth(); }, [loadHealth, chKey, syncRes]);
 
   // "Tải Word" — the same report as the print view, as a real .docx the owner
   // can rebalance freely. Charts are painted on canvas at click time; the docx
@@ -292,6 +305,7 @@ function Inner() {
 
       {error && <div style={ui.banner}>{error}</div>}
       {msg && <div style={{ ...ui.banner, background: 'var(--c064e3b)', borderColor: '#059669', color: 'var(--cd1fae5)' }}>{msg}</div>}
+      {health && <HealthStrip h={health} T={T} />}
 
       <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3, marginBottom: 16 }}>
         <button onClick={() => setMode('view')} style={segBtn(mode === 'view')}>{T('Xem báo cáo', 'View report')}</button>
@@ -1411,6 +1425,46 @@ function ChannelsSection({ token, vi, month, onSynced, bare }: { token: string |
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * One line of chips: every channel the report can read, green when it was read
+ * in the last day and a half, amber when waiting or stale, red when a read
+ * failed or a Meta permission is missing — with the reason in plain words.
+ */
+function HealthStrip({ h, T }: { h: HealthReport; T: (v: string, e: string) => string }) {
+  const name = (p: string) => (p === 'meta_social' ? 'Facebook/Instagram' : p === 'meta' ? 'Meta Ads' : p === 'google_ads' ? 'Google Ads' : p === 'gbp' ? 'Google Maps' : p === 'tiktok' ? 'TikTok' : p);
+  const color = (l: HealthChannel['level']) => (l === 'ok' ? 'var(--ink-good)' : l === 'warn' ? 'var(--ink-warn)' : l === 'bad' ? 'var(--ink-bad)' : 'var(--c64748b)');
+  const dot = (l: HealthChannel['level']) => (l === 'ok' ? '●' : l === 'warn' ? '◐' : l === 'bad' ? '●' : '○');
+  const when = (iso: string | null) => (iso ? fmtInTz(iso, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+  const text = (c: HealthChannel) => {
+    switch (c.key) {
+      case 'not-connected': return T('chưa kết nối', 'not connected');
+      case 'fresh': return T(`đọc lúc ${when(c.lastSyncedAt)}`, `read ${when(c.lastSyncedAt)}`);
+      case 'stale': return T(`lần đọc cuối ${when(c.lastSyncedAt)} — đang chờ lượt đọc`, `last read ${when(c.lastSyncedAt)} — waiting for the next read`);
+      case 'queued': return T('đang chờ đọc (vài phút)', 'queued (minutes)');
+      case 'never': return T('chưa đọc lần nào — bấm Đồng bộ tất cả', 'never read — press Sync everything');
+      case 'permission': return T(`thiếu quyền ${c.detail ?? ''} — kết nối lại Facebook và tick đủ quyền`, `missing permission ${c.detail ?? ''} — reconnect Facebook with every permission ticked`);
+      case 'failed': return T(`đọc lỗi: ${c.detail ?? ''}`, `read failed: ${c.detail ?? ''}`);
+    }
+  };
+  const shown = h.channels.filter((c) => c.level !== 'off');
+  if (!shown.length && !h.posts.total) return null;
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, fontSize: 11.5 }}>
+      <span style={{ color: 'var(--c64748b)', fontWeight: 600 }}>{T('Dữ liệu:', 'Data:')}</span>
+      {shown.map((c) => (
+        <span key={c.platform} title={text(c)} style={{ display: 'inline-flex', gap: 5, alignItems: 'center', border: '1px solid var(--line)', borderRadius: 999, padding: '2px 9px', color: 'var(--ce2e8f0)', background: 'var(--c0f172a)' }}>
+          <span style={{ color: color(c.level), fontSize: 10 }}>{dot(c.level)}</span>
+          <b>{name(c.platform)}</b>
+          <span style={{ color: c.level === 'bad' ? 'var(--ink-bad)' : 'var(--c94a3b8)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text(c)}</span>
+        </span>
+      ))}
+      <span style={{ color: 'var(--c64748b)' }}>
+        {h.posts.total} {T('bài đã lưu', 'posts stored')}{h.posts.measuredAt ? ` · ${T('đo lúc', 'measured')} ${when(h.posts.measuredAt)}` : ''}{h.queued ? ` · ${h.queued} ${T('lượt đọc đang chờ', 'read(s) queued')}` : ''}
+      </span>
     </div>
   );
 }

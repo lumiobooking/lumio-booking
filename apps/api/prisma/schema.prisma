@@ -339,6 +339,7 @@ model Tenant {
   socialInsights       SocialInsight[]
   socialPosts          SocialPost[]
   socialPostMetrics    SocialPostMetric[]
+  socialSyncJobs       SocialSyncJob[]
   invoices             Invoice[]
 
   tables             RestaurantTable[]
@@ -2917,6 +2918,39 @@ model SocialPostMetric {
   @@index([postId, capturedAt])
   @@index([tenantId, capturedAt])
   @@map("social_post_metrics")
+}
+
+/// THE SYNC QUEUE, IN THE DATABASE. A marketing sync used to be a timer inside
+/// the API process: a deploy or a Render restart lost the tick, a failing
+/// channel vanished into a catch, and nobody could say when a salon's numbers
+/// were last read. Every sync is now a row here — queued by the daily planner,
+/// by a Page webhook ("the salon just posted") or by a person — claimed by the
+/// worker, retried with backoff, and kept as the salon's data-health record.
+model SocialSyncJob {
+  id          String @id @default(uuid())
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // null = every connected channel of the salon; else one connector platform (meta_social | tiktok | meta | google_ads | gbp).
+  platform    String?
+  periodMonth String
+  // daily | webhook | manual | month-close | retry
+  reason      String  @default("daily")
+  // queued | running | ok | failed
+  status      String  @default("queued")
+  attempts    Int     @default(0)
+  // Not before. Retries push this forward.
+  runAt       DateTime @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  error       String?
+  // Per-channel outcome lines of the last run (SyncAllLine[]).
+  result      Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, runAt])
+  @@index([tenantId, periodMonth, createdAt])
+  @@map("social_sync_jobs")
 }
 
 /// Recycle bin. Anything deleted in the app is snapshotted here first and only

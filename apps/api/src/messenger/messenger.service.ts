@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { isPagePostChange, requestChannelSync } from '../marketing/sync-signals';
 import { chosenIndustry, personaFor } from '../common/business-persona';
 import { statesPrice, noQuoteLine, NO_QUOTE_RULE } from './quote-guards';
 import { onBotCatchUp, requestBotCatchUp } from './bot-refresh';
@@ -186,7 +187,9 @@ export class MessengerService implements OnModuleInit {
    * "Active" (another app was subscribed), and the salon's inbox stayed empty.
    */
   private async subscribePageWebhook(pageId: string, token: string): Promise<boolean> {
-    const FIELDS = 'messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers';
+    // feed: the Page's own posts, so the marketing report learns of a post the
+    // salon made by hand within minutes (marketing/sync-signals.ts).
+    const FIELDS = 'messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers,feed';
     try {
       const res = await fetch(`${GRAPH}/${pageId}/subscribed_apps?subscribed_fields=${FIELDS}&access_token=${encodeURIComponent(token)}`, { method: 'POST', signal: AbortSignal.timeout(10000) });
       const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string } };
@@ -746,7 +749,7 @@ export class MessengerService implements OnModuleInit {
         }).catch(() => undefined);
       }
       if (known || legacy) {
-        await fetch(`${GRAPH}/${p.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers&access_token=${encodeURIComponent(p.access_token)}`, { method: 'POST' }).catch(() => undefined);
+        await fetch(`${GRAPH}/${p.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers,feed&access_token=${encodeURIComponent(p.access_token)}`, { method: 'POST' }).catch(() => undefined);
         healed += 1;
       }
     }
@@ -2137,7 +2140,7 @@ export class MessengerService implements OnModuleInit {
         const callback = sub?.callback_url
           || (await this.pageCallbackUrl(token, id))
           || `${this.apiBase()}/api/messenger/webhook`;
-        const fields = Array.from(new Set([...names, ...need, 'message_reactions'])).join(',');
+        const fields = Array.from(new Set([...names, ...need, 'message_reactions', ...(object === 'page' ? ['feed'] : [])])).join(',');
         const body = new URLSearchParams({
           object,
           callback_url: callback,
@@ -2491,6 +2494,15 @@ export class MessengerService implements OnModuleInit {
     if ((b?.object !== 'page' && b?.object !== 'instagram') || !Array.isArray(b.entry)) return;
     for (const entry of b.entry) {
       const entryId = entry.id || ''; // Page id (Messenger) or IG account id (Instagram)
+      // FEED. The Page published a post (not a visitor, not a reaction): the
+      // marketing queue reads that salon's month again so the report counts
+      // it within minutes instead of at the next daily read.
+      for (const ch of (entry as { changes?: { field?: string; value?: { item?: string; verb?: string; from?: { id?: string } | null; message?: string } }[] }).changes || []) {
+        if (ch?.field !== 'feed') continue;
+        if (!isPagePostChange(ch.value, entryId)) continue;
+        this.traceWebhook(entryId, 'feed', String(ch.value?.message ?? ch.value?.item ?? ''));
+        requestChannelSync(entryId, 'feed');
+      }
       // STANDBY. When another app owns the conversation under Meta's Handover
       // Protocol — Meta's own "Business Agent" AI switched on in Business
       // Suite, or any other automation set as Primary Receiver — the Page's
@@ -5418,7 +5430,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * the first question when an inbox stays empty, and until now the only
    * answer was in the Render logs.
    */
-  readonly webhookTrace = new Map<string, { at: number; count: number; lane: 'messaging' | 'standby' | 'echo' | 'other'; preview: string }>();
+  readonly webhookTrace = new Map<string, { at: number; count: number; lane: 'messaging' | 'standby' | 'echo' | 'other' | 'feed'; preview: string }>();
   /** POSTs to the webhook whose X-Hub-Signature-256 did not match FB_APP_SECRET — Meta IS sending, but from a different app than ours. */
   readonly rejectedWebhooks = { count: 0, at: 0 as number };
   /** When this process started — "no event since the server started" means nothing when that was two minutes ago. */
@@ -5426,7 +5438,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
   noteRejectedWebhook(): void { this.rejectedWebhooks.count += 1; this.rejectedWebhooks.at = Date.now(); }
   /** Pages whose events arrived with no messengerPage row to route them (another salon's Page, or a Page detached since). */
   readonly unroutedWebhooks = new Map<string, { at: number; count: number }>();
-  private traceWebhook(entryId: string, lane: 'messaging' | 'standby' | 'echo' | 'other', preview: string) {
+  private traceWebhook(entryId: string, lane: 'messaging' | 'standby' | 'echo' | 'other' | 'feed', preview: string) {
     const cur = this.webhookTrace.get(entryId);
     this.webhookTrace.set(entryId, { at: Date.now(), count: (cur?.count ?? 0) + 1, lane, preview: preview.slice(0, 60) });
   }

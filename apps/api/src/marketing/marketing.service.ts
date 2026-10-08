@@ -72,6 +72,11 @@ export class MarketingService {
     return computeMonthFacts(month, cur as StoredPost[], before as StoredPost[], dayKeyTz(new Date(), tz || 'UTC'));
   }
 
+  /** The tenant a request acts on (salon admin: their own; super admin: ?tenantId). For sibling services. */
+  resolveTenant(user: AuthenticatedUser, requested?: string): string {
+    return this.tenantId(user, requested);
+  }
+
   private tenantId(user: AuthenticatedUser, requested?: string): string {
     const id = resolveTenantScope(user, requested);
     if (!id) throw new NotFoundException('No tenant context');

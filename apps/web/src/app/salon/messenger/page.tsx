@@ -82,7 +82,7 @@ interface FactRow extends BotFact { custom: boolean }
 interface WebhookStatus {
   connected: boolean; pageId?: string; pageName?: string; subscribed?: boolean; fields?: string[]; appFields?: string[]; echoOk?: boolean; verifiedAt?: string; webhookUrl?: string;
   /** The last event Facebook delivered for this Page since the server started; null = nothing yet. */
-  lastEvent?: { at: string; count: number; lane: 'messaging' | 'standby' | 'echo' | 'other'; preview: string } | null;
+  lastEvent?: { at: string; count: number; lane: 'messaging' | 'standby' | 'echo' | 'other' | 'feed'; preview: string } | null;
   /** Conversations stored for this salon. */
   threads?: number;
   serverStartedAt?: string;

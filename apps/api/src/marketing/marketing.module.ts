@@ -4,6 +4,7 @@ import { MarketingService } from './marketing.service';
 import { MarketingScheduler } from './marketing.scheduler';
 import { SocialPostsService } from './social-posts.service';
 import { SyncQueueService } from './sync-queue.service';
+import { ReportsBoardService } from './reports-board.service';
 import { SocialRegistry } from './connectors/social-registry';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SettingsModule } from '../settings/settings.module';
@@ -11,7 +12,7 @@ import { SettingsModule } from '../settings/settings.module';
 @Module({
   imports: [NotificationsModule, SettingsModule],
   controllers: [MarketingController],
-  providers: [MarketingService, MarketingScheduler, SocialRegistry, SocialPostsService, SyncQueueService],
-  exports: [SocialPostsService, SyncQueueService],
+  providers: [MarketingService, MarketingScheduler, SocialRegistry, SocialPostsService, SyncQueueService, ReportsBoardService],
+  exports: [SocialPostsService, SyncQueueService, ReportsBoardService],
 })
 export class MarketingModule {}

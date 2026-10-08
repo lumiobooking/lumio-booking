@@ -81,6 +81,24 @@ export class MarketingController {
     return this.queue.syncNow(user, dto.month, dto.tenantId);
   }
 
+  // ---- Month lifecycle, send policy, sending ----
+  @Get('lifecycle')
+  lifecycle(@CurrentUser() user: AuthenticatedUser, @Query('month') month: string, @Query('tenantId') tenantId?: string) {
+    return this.marketing.lifecycle(user, month, tenantId);
+  }
+  @Get('report-policy')
+  async reportPolicy(@CurrentUser() user: AuthenticatedUser, @Query('tenantId') tenantId?: string) {
+    return this.marketing.getReportPolicy(this.marketing.resolveTenant(user, tenantId));
+  }
+  @Patch('report-policy')
+  updateReportPolicy(@CurrentUser() user: AuthenticatedUser, @Body() dto: { autoSend?: boolean; sendDay?: number; extraRecipients?: string[]; tenantId?: string }) {
+    return this.marketing.updateReportPolicy(user, dto);
+  }
+  @Post('report/send')
+  sendReport(@CurrentUser() user: AuthenticatedUser, @Body() dto: { month: string; tenantId?: string }) {
+    return this.marketing.sendReport(user, dto.month, dto.tenantId);
+  }
+
   // ---- Content facts: posts / interactions / top 5, computed from stored posts ----
   @Get('month-facts')
   monthFacts(@CurrentUser() user: AuthenticatedUser, @Query('month') month: string, @Query('tenantId') tenantId?: string) {

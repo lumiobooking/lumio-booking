@@ -17,6 +17,8 @@ import { jsonSafe } from '../common/json-safe';
 import { linkedCredsFor, LinkedCreds, LINKABLE_PLATFORMS, credsSource, type SyncAllLine } from './linked-channels';
 import { SocialPostsService, type StoredPost } from './social-posts.service';
 import { monthFacts as computeMonthFacts, prevMonthKey, type MonthFacts } from './month-facts';
+import { guardNarrative, correctionFor, type GuardReport } from './report-guard';
+import { cleanReportPolicy, lifecycleOf, nextActionOf, autoSendDue, DEFAULT_REPORT_POLICY, REPORT_POLICY_KEY, type ReportPolicy } from './report-lifecycle';
 
 /**
  * Marketing module — Phase 0 (read-only).
@@ -643,7 +645,12 @@ export class MarketingService {
     return { headline, tldr, summary, channels, highlights, issues, plan, insights, nextMonth, _ruleBased: true };
   }
 
-  private async draftWithAI(data: Awaited<ReturnType<MarketingService['monthlyData']>>, history: any[] = []): Promise<{ content?: any; model?: string; error?: string }> {
+  private async draftWithAI(
+    data: Awaited<ReturnType<MarketingService['monthlyData']>>,
+    history: any[] = [],
+    // A second pass: the first JSON and what was wrong with it (report-guard.ts).
+    correction?: { prior: string; note: string },
+  ): Promise<{ content?: any; model?: string; error?: string; payload?: unknown }> {
     const key = process.env.ANTHROPIC_API_KEY || '';
     if (!key) return { error: 'ANTHROPIC_API_KEY chưa được đặt trên server' };
     const model = process.env.ANTHROPIC_AGENT_MODEL || 'claude-haiku-4-5-20251001';
@@ -673,8 +680,13 @@ export class MarketingService {
       'nextMonth.kpi = 2-3 MEASURABLE targets computed from current numbers, each citing the current value, e.g. "Reach IG ≥ X (hiện Y)", "Follower +N". Round sensibly. ' +
       'BREVITY IS REQUIRED — the owner wants short, complete notes, NOT an essay. HARD CAPS: headline ≤ 12 words; every other bullet = ONE plain sentence ≤ 18 words in EACH language; keep vi and en equally short. Output ONLY compact minified JSON (no markdown, no comments), based ONLY on the real numbers; never invent.';
 
-    const userText = 'DATA (JSON):\n' + JSON.stringify({
+    const facts = (data as any).facts as MonthFacts | null | undefined;
+    const running = facts?.state === 'to-date';
+    const payload = {
       month: data.month,
+      // A month still in progress is compared only to the same days of last
+      // month; the text must say "to date" and must not sound an alarm.
+      periodState: running ? `IN PROGRESS — numbers through day ${facts!.daysCovered}; every vsPrev compares the same ${facts!.daysCovered} days of last month; write calmly, say "tính đến ngày ${facts!.daysCovered}"` : 'CLOSED — full month',
       bookings: data.outcome.totals.bookings,
       showedUp: data.outcome.totals.showed,
       bookingRevenueCents: data.outcome.totals.revenueCents,
@@ -704,13 +716,16 @@ export class MarketingService {
       }; })() : null,
       last4Months: history,
       workDone: data.workLog.map((w: any) => ({ category: w.category, title: w.title })),
-    });
+    };
+    const userText = 'DATA (JSON):\n' + JSON.stringify(payload);
+    const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [{ role: 'user', content: userText }];
+    if (correction) messages.push({ role: 'assistant', content: correction.prior }, { role: 'user', content: correction.note });
 
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: 8000, system, messages: [{ role: 'user', content: userText }] }),
+        body: JSON.stringify({ model, max_tokens: 8000, system, messages }),
       });
       if (!res.ok) { const body = (await res.text().catch(() => '')).slice(0, 200); this.logger.warn(`Anthropic ${res.status}: ${body}`); return { error: `Anthropic API ${res.status}: ${body}` }; }
       const json = (await res.json()) as { content?: Array<{ type: string; text?: string }>; stop_reason?: string };
@@ -727,7 +742,7 @@ export class MarketingService {
         const cut = json.stop_reason === 'max_tokens' ? ' (bị cắt vì quá dài)' : '';
         return { error: `AI trả về JSON chưa hoàn chỉnh${cut} — bấm Tạo lại` };
       }
-      return { content, model };
+      return { content, model, payload };
     } catch (e) {
       this.logger.warn(`AI draft failed: ${String(e)}`);
       return { error: String((e as Error).message).slice(0, 200) };
@@ -758,12 +773,36 @@ export class MarketingService {
     await this.refreshGbpReviews(tenantId, month).catch(() => undefined);
     const data = await this.monthlyData(user, month, tenantParam);
     const history = await this.monthlyHistory(user, month, tenantParam, 4).catch(() => [] as any[]);
-    const ai = await this.draftWithAI(data, history);
+    let ai = await this.draftWithAI(data, history);
+    const running = ((data as any).facts as MonthFacts | null | undefined)?.state === 'to-date';
+    // Every figure the AI wrote must be in the data it was given, and a month
+    // still running may not be written up as an emergency. One correction
+    // pass; whatever still strays is marked on the content for the editor.
+    let guard: GuardReport | null = null;
+    if (ai.content) {
+      guard = guardNarrative(ai.content, ai.payload, running);
+      if (!guard.ok) {
+        const retry = await this.draftWithAI(data, history, { prior: JSON.stringify(ai.content), note: correctionFor(guard) });
+        if (retry.content) {
+          const g2 = guardNarrative(retry.content, retry.payload, running);
+          if (g2.stray.length + g2.alarms.length <= guard.stray.length + guard.alarms.length) { ai = retry; guard = g2; }
+        }
+      }
+    }
     const ok = !!ai.content;
     const rule = this.ruleBasedDraft(data);
     let content: any;
     if (ok) {
       content = ai.content;
+      if (guard && !guard.ok) {
+        content._guard = { stray: guard.stray, alarms: guard.alarms };
+        // An alarm that survived the correction is replaced by the calm,
+        // rule-based line; a stray figure is left for a person to see.
+        for (const path of guard.alarms) {
+          const key = path.split('.')[0] as 'headline' | 'tldr' | 'summary';
+          content[key] = rule[key];
+        }
+      }
       // Backfill any section the AI left empty so the report is never partial.
       const isEmptyArr = (v: any) => !Array.isArray(v) || v.length === 0;
       for (const k of ['highlights', 'issues', 'insights', 'plan', 'channels']) if (isEmptyArr(content[k])) content[k] = rule[k];
@@ -850,19 +889,7 @@ export class MarketingService {
         + `<p style="margin:16px 0"><a href="${link}" style="background:#6366f1;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600">Open the report</a></p>`
         + `<p style="color:#64748b;font-size:13px">Nothing is sent to anyone until you approve it.</p>`;
 
-      const n = await this.settings.getNotificationSettings(tenantId);
-      const senderName = n.senderName || salon;
-      const replyTo = n.replyTo || n.senderEmail || undefined;
-      const smtp = n.smtp.user && n.smtp.pass
-        ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${senderName} <${n.senderEmail || n.smtp.user}>` }
-        : undefined;
-      const brevo = n.brevo.apiKey && n.senderEmail
-        ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || senderName }
-        : undefined;
-      const gmail = n.gmail.clientId && n.gmail.clientSecret && n.gmail.refreshToken && n.gmail.senderEmail
-        ? { clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken, senderEmail: n.gmail.senderEmail, senderName, replyTo }
-        : undefined;
-
+      const t = await this.mailTransportFor(tenantId, salon);
       await Promise.allSettled(to.map((recipient) => this.notifications.send({
         tenantId,
         channel: NotificationChannel.EMAIL,
@@ -870,18 +897,157 @@ export class MarketingService {
         subject,
         body: text,
         html,
-        smtp,
-        brevo,
-        gmail,
-        mailService: n.mailService,
-        senderName,
-        replyTo,
+        ...t,
         relatedType: 'marketing_report',
         relatedId: month,
       })));
     } catch (e) {
       this.logger.warn(`Draft-ready notice failed for tenant ${tenantId} ${month}: ${String(e)}`);
     }
+  }
+
+  /** The salon's own mail provider — the same chain booking confirmations use. */
+  private async mailTransportFor(tenantId: string, salon: string) {
+    const n = await this.settings.getNotificationSettings(tenantId);
+    const senderName = n.senderName || salon;
+    const replyTo = n.replyTo || n.senderEmail || undefined;
+    const smtp = n.smtp.user && n.smtp.pass
+      ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${senderName} <${n.senderEmail || n.smtp.user}>` }
+      : undefined;
+    const brevo = n.brevo.apiKey && n.senderEmail
+      ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || senderName }
+      : undefined;
+    const gmail = n.gmail.clientId && n.gmail.clientSecret && n.gmail.refreshToken && n.gmail.senderEmail
+      ? { clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken, senderEmail: n.gmail.senderEmail, senderName, replyTo }
+      : undefined;
+    return { smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo };
+  }
+
+  /** Who receives the salon's report: its admins, its contact address, and whoever the policy adds. */
+  private async reportRecipients(tenantId: string, policy: ReportPolicy): Promise<{ to: string[]; salon: string; market: string | null }> {
+    const [tenant, admins] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, contactEmail: true, market: true } }),
+      this.prisma.user.findMany({ where: { tenantId, isActive: true, role: { in: [UserRole.SALON_ADMIN] } }, select: { email: true }, take: 5 }),
+    ]);
+    const to = Array.from(new Set([...admins.map((a) => a.email), tenant?.contactEmail ?? '', ...policy.extraRecipients].map((e) => String(e).trim().toLowerCase()).filter((e) => !!e && e.includes('@'))));
+    return { to, salon: tenant?.name ?? 'your salon', market: tenant?.market ?? null };
+  }
+
+  // ---- Report policy & lifecycle (report-lifecycle.ts) --------------------
+
+  async getReportPolicy(tenantId: string): Promise<ReportPolicy> {
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: REPORT_POLICY_KEY } } }).catch(() => null);
+    return cleanReportPolicy(row?.value ?? {}, DEFAULT_REPORT_POLICY);
+  }
+
+  async updateReportPolicy(user: AuthenticatedUser, dto: { autoSend?: unknown; sendDay?: unknown; extraRecipients?: unknown; tenantId?: string }): Promise<ReportPolicy> {
+    const tenantId = this.tenantId(user, dto.tenantId);
+    const cur = await this.getReportPolicy(tenantId);
+    const next = cleanReportPolicy(dto, cur);
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: REPORT_POLICY_KEY } },
+      update: { value: next as never },
+      create: { tenantId, key: REPORT_POLICY_KEY, value: next as never },
+    });
+    await this.audit(tenantId, user.userId, 'marketing.report_policy', next);
+    return next;
+  }
+
+  /** Where the month stands, what happens next, and every send so far. */
+  async lifecycle(user: AuthenticatedUser, month: string, tenantParam?: string) {
+    const tenantId = this.tenantId(user, tenantParam);
+    if (!/^\d{4}-\d{2}$/.test(month || '')) throw new BadRequestException('month must be YYYY-MM');
+    const [report, policy, tz] = await Promise.all([
+      this.prisma.marketingReport.findUnique({ where: { tenantId_periodMonth: { tenantId, periodMonth: month } }, select: { status: true, approvedAt: true, sentAt: true, createdAt: true, updatedAt: true, content: true } }),
+      this.getReportPolicy(tenantId),
+      this.tenantTz(tenantId),
+    ]);
+    const todayKey = dayKeyTz(new Date(), tz || 'UTC');
+    const state = lifecycleOf(month, report, todayKey);
+    const sends = await this.prisma.notification.findMany({
+      where: { tenantId, relatedType: 'marketing_report_sent', relatedId: month },
+      orderBy: { createdAt: 'desc' }, take: 10,
+      select: { recipient: true, status: true, createdAt: true },
+    });
+    const guard = (report?.content as { _guard?: unknown } | null)?._guard ?? null;
+    return {
+      month, state, todayKey, policy,
+      nextAction: nextActionOf(state, policy),
+      autoSendDue: autoSendDue(month, report, policy, todayKey),
+      report: report ? { status: report.status, approvedAt: report.approvedAt, sentAt: report.sentAt, createdAt: report.createdAt, updatedAt: report.updatedAt } : null,
+      guard,
+      sends: sends.map((n) => ({ recipient: n.recipient, status: n.status, at: n.createdAt })),
+    };
+  }
+
+  /**
+   * Send the month's report to the salon. A draft a person sends is approved
+   * by that act. Nothing is sent twice: a sent report is locked. The e-mail
+   * carries the headline, the executive summary, the month's key numbers and
+   * a link to the full report; every delivery is a Notification row
+   * (relatedType 'marketing_report_sent'), which is the send history.
+   */
+  async sendReport(user: AuthenticatedUser, month: string, tenantParam?: string, opts: { auto?: boolean } = {}) {
+    const tenantId = this.tenantId(user, tenantParam);
+    const existing = await this.prisma.marketingReport.findUnique({ where: { tenantId_periodMonth: { tenantId, periodMonth: month } } });
+    if (!existing) throw new NotFoundException('Report not generated yet');
+    if (existing.status === 'sent' || existing.sentAt) throw new BadRequestException('Report already sent');
+    const policy = await this.getReportPolicy(tenantId);
+    const { to, salon, market } = await this.reportRecipients(tenantId, policy);
+    if (!to.length) throw new BadRequestException('No recipient: the salon has no admin e-mail or contact e-mail');
+    const vi = market === 'VN';
+    const c = (existing.content ?? {}) as Record<string, any>;
+    const L = (x: { vi?: string; en?: string } | undefined) => (x ? (vi ? x.vi || x.en : x.en || x.vi) || '' : '');
+    const snap = (existing.dataSnapshot ?? {}) as Record<string, any>;
+    const facts = snap.facts as MonthFacts | null | undefined;
+    const label = this.monthLabel(month);
+    const link = `${publicWebBase()}/salon/marketing/monthly?month=${month}`;
+    const esc = (x: string) => String(x).replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string));
+    const num = (n: unknown) => (n == null ? '—' : Number(n).toLocaleString(vi ? 'vi-VN' : 'en-US'));
+    const kv: Array<[string, string]> = [
+      [vi ? 'Lịch hẹn' : 'Bookings', num(snap.outcome?.totals?.bookings)],
+      [vi ? 'Khách mới' : 'New customers', num(snap.outcome?.newCustomers)],
+      ...(facts ? [[vi ? 'Bài đăng' : 'Posts', num(facts.posts.total)] as [string, string], [vi ? 'Tương tác' : 'Interactions', num(facts.interactions.total)] as [string, string]] : []),
+    ];
+    const tops = (facts?.top ?? []).slice(0, 3).map((t) => `${t.platform === 'facebook' ? 'FB' : t.platform === 'instagram' ? 'IG' : 'TT'} · ${t.caption || t.type} — ${num(t.interactions)} ${vi ? 'tương tác' : 'interactions'}`);
+    const subject = vi ? `Báo cáo marketing ${label} — ${salon}` : `${label} marketing report — ${salon}`;
+    const headline = L(c.headline), tldr = L(c.tldr);
+    const text = [headline, '', tldr, '', ...kv.map(([k, v]) => `${k}: ${v}`), ...(tops.length ? ['', vi ? 'Bài nổi bật:' : 'Top posts:', ...tops] : []), '', (vi ? 'Xem báo cáo đầy đủ: ' : 'Full report: ') + link].join('\n');
+    const html = `<h2 style="margin:0 0 8px">${esc(headline)}</h2><p style="color:#334155">${esc(tldr)}</p>`
+      + `<table style="border-collapse:collapse;margin:12px 0">${kv.map(([k, v]) => `<tr><td style="padding:4px 14px 4px 0;color:#64748b">${esc(k)}</td><td style="padding:4px 0;font-weight:700">${esc(v)}</td></tr>`).join('')}</table>`
+      + (tops.length ? `<p style="color:#64748b;margin:12px 0 4px">${vi ? 'Bài nổi bật' : 'Top posts'}</p><ul>${tops.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '')
+      + `<p style="margin:16px 0"><a href="${link}" style="background:#6366f1;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600">${vi ? 'Xem báo cáo đầy đủ' : 'Open the full report'}</a></p>`;
+    const t = await this.mailTransportFor(tenantId, salon);
+    const results = await Promise.allSettled(to.map((recipient) => this.notifications.send({
+      tenantId, channel: NotificationChannel.EMAIL, recipient, subject, body: text, html, ...t,
+      relatedType: 'marketing_report_sent', relatedId: month,
+    })));
+    const delivered = results.filter((r) => r.status === 'fulfilled').length;
+    if (!delivered) throw new BadRequestException('E-mail could not be sent — check the salon’s mail settings');
+    const saved = await this.prisma.marketingReport.update({
+      where: { id: existing.id },
+      data: { status: 'sent', sentAt: new Date(), ...(existing.approvedAt ? {} : { approvedAt: new Date(), approvedByUserId: user.userId }) },
+    });
+    await this.audit(tenantId, user.userId, opts.auto ? 'marketing.report_auto_sent' : 'marketing.report_sent', { month, recipients: to.length, delivered });
+    return { ...saved, recipients: to, delivered };
+  }
+
+  /** The daily auto-send: every salon whose policy says so, last month's report, on/after its send day. */
+  async runAutoSend(now = new Date()): Promise<{ sent: number; failed: number }> {
+    const tenants = await this.prisma.tenant.findMany({ where: { status: TenantStatus.ACTIVE, deletedAt: null }, select: { id: true, timezone: true } });
+    const sys: AuthenticatedUser = { userId: 'system', email: 'system@lumio.local', role: UserRole.SUPER_ADMIN, tenantId: null };
+    let sent = 0, failed = 0;
+    for (const t of tenants) {
+      const policy = await this.getReportPolicy(t.id);
+      if (!policy.autoSend) continue;
+      const todayKey = dayKeyTz(now, t.timezone || 'UTC');
+      const month = this.previousMonth(now);
+      const report = await this.prisma.marketingReport.findUnique({ where: { tenantId_periodMonth: { tenantId: t.id, periodMonth: month } }, select: { status: true, sentAt: true } });
+      if (!autoSendDue(month, report, policy, todayKey)) continue;
+      try { await this.sendReport(sys, month, t.id, { auto: true }); sent++; }
+      catch (e) { failed++; this.logger.warn(`auto-send ${t.id} ${month}: ${String((e as Error)?.message ?? e)}`); }
+    }
+    return { sent, failed };
   }
 
   private monthLabel(month: string): string {

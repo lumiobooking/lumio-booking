@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { SupportService, SUPPORT_ROLE } from './support.service';
+import { ReportsBoardService } from '../marketing/reports-board.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -14,7 +15,7 @@ import { CAP_CATALOG, SUPPORT_LEVELS, capsForLevel } from './support-scope';
  */
 @Controller('support')
 export class SupportController {
-  constructor(private readonly svc: SupportService) {}
+  constructor(private readonly svc: SupportService, private readonly reports: ReportsBoardService) {}
 
   /** Thin salon list (name/slug/status) for the picker. */
   @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
@@ -35,6 +36,13 @@ export class SupportController {
   @Get('notifications')
   notifications() {
     return this.svc.notifications();
+  }
+
+  /** Every salon's monthly report on one screen: state, data health, sent or not. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Get('reports')
+  reportsBoard(@Query('month') month: string) {
+    return this.reports.board(month);
   }
 
   /** The salon list grouped for THIS employee: their team open, the rest folded. */

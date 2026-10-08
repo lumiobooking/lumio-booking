@@ -31,7 +31,7 @@ interface Monthly {
 }
 interface Item { vi: string; en: string }
 interface ChEval { name: string; verdict: 'good' | 'ok' | 'weak' | 'nodata'; vi: string; en: string }
-interface Content { headline?: Item; tldr?: Item; summary?: Item; channels?: ChEval[]; highlights?: Item[]; issues?: Item[]; plan?: Item[]; insights?: Item[]; nextMonth?: { content?: Item[]; ads?: Item[]; growth?: Item[]; kpi?: Item[] }; _aiUnavailable?: boolean; _aiError?: string }
+interface Content { headline?: Item; tldr?: Item; summary?: Item; channels?: ChEval[]; highlights?: Item[]; issues?: Item[]; plan?: Item[]; insights?: Item[]; nextMonth?: { content?: Item[]; ads?: Item[]; growth?: Item[]; kpi?: Item[] }; _aiUnavailable?: boolean; _aiError?: string; _guard?: { stray: { path: string; figure: string }[]; alarms: string[] } | null }
 interface Report { periodMonth: string; status: string; content: Content; aiModel?: string | null; approvedAt?: string | null; }
 interface AutoStatus {
   enabled: boolean;
@@ -39,6 +39,14 @@ interface AutoStatus {
   lastNotice: { month: string | null; recipient: string; status: string; at: string } | null;
 }
 interface SocialDelta { value: number | null; prev: number | null; pct: number | null }
+interface ReportPolicy { autoSend: boolean; sendDay: number; extraRecipients: string[] }
+interface Lifecycle {
+  month: string; state: 'collecting' | 'closing' | 'draft' | 'approved' | 'sent' | 'none'; todayKey: string; policy: ReportPolicy;
+  nextAction: 'wait' | 'closing' | 'review' | 'send' | 'auto-send' | 'done' | 'generate'; autoSendDue: boolean;
+  report: { status: string; approvedAt: string | null; sentAt: string | null; createdAt: string; updatedAt: string } | null;
+  guard: { stray: { path: string; figure: string }[]; alarms: string[] } | null;
+  sends: { recipient: string; status: string; at: string }[];
+}
 interface HealthChannel { platform: string; level: 'ok' | 'warn' | 'bad' | 'off'; key: 'not-connected' | 'fresh' | 'stale' | 'queued' | 'failed' | 'permission' | 'never'; lastSyncedAt: string | null; detail: string | null }
 interface HealthReport {
   month: string; channels: HealthChannel[]; posts: { total: number; measuredAt: string | null }; queued: number;
@@ -138,6 +146,32 @@ function Inner() {
     apiFetch<HealthReport>(`/marketing/health?month=${month}`, { token }).then(setHealth).catch(() => setHealth(null));
   }, [token, month]);
   useEffect(() => { loadHealth(); }, [loadHealth, chKey, syncRes]);
+  // Where the month stands (collecting → closing → draft → approved → sent) and the send policy.
+  const [life, setLife] = useState<Lifecycle | null>(null);
+  const loadLife = useCallback(() => {
+    if (!token) return;
+    apiFetch<Lifecycle>(`/marketing/lifecycle?month=${month}`, { token }).then(setLife).catch(() => setLife(null));
+  }, [token, month]);
+  useEffect(() => { loadLife(); }, [loadLife, report]);
+  // The screen opens on what the month needs: numbers while it is being
+  // collected, the client's report once a draft exists. Picked once per month;
+  // the person can still switch.
+  const [autoModeFor, setAutoModeFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!life || autoModeFor === life.month) return;
+    setAutoModeFor(life.month);
+    setMode(life.state === 'draft' || life.state === 'approved' || life.state === 'sent' ? 'view' : 'edit');
+  }, [life, autoModeFor]);
+  async function savePolicy(p: Partial<ReportPolicy>) {
+    try { const r = await apiFetch<ReportPolicy>('/marketing/report-policy', { method: 'PATCH', token, body: p }); setLife((l) => (l ? { ...l, policy: r } : l)); setMsg(T('Đã lưu chính sách gửi.', 'Send policy saved.')); }
+    catch (e) { setError(e instanceof Error ? e.message : 'error'); }
+  }
+  async function send() {
+    if (!window.confirm(T('Gửi báo cáo tháng này cho tiệm qua email? Sau khi gửi, nội dung sẽ khoá.', 'Send this month’s report to the salon by e-mail? The text locks after sending.'))) return;
+    setBusy('send');
+    try { const r = await apiFetch<Report & { recipients: string[] }>('/marketing/report/send', { method: 'POST', token, body: { month } }); setReport(r); setMsg(T(`Đã gửi tới ${r.recipients.join(', ')}.`, `Sent to ${r.recipients.join(', ')}.`)); }
+    catch (e) { setError(e instanceof Error ? e.message : 'error'); } finally { setBusy(null); }
+  }
 
   // "Tải Word" — the same report as the print view, as a real .docx the owner
   // can rebalance freely. Charts are painted on canvas at click time; the docx
@@ -292,7 +326,7 @@ function Inner() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div>
           <h2 style={{ fontSize: 18, margin: 0 }}>{T('Báo cáo marketing tháng', 'Monthly marketing report')}</h2>
-          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 13 }}>{T('Số liệu tự đồng bộ mỗi ngày từ các kênh đã kết nối. Chỉ cần: kiểm tra → nhập chi phí quảng cáo (nếu có) → duyệt báo cáo.', 'Numbers sync daily from connected channels. All you do: check → enter ad spend (if any) → approve the report.')}</p>
+          <p style={{ color: 'var(--c94a3b8)', margin: '4px 0 0', fontSize: 13 }}>{T('Số liệu tự đọc từ các kênh đã kết nối; cuối tháng hệ thống tự chốt số, viết nháp và (nếu bật) tự gửi. Bạn chỉ xem lại khi dải trạng thái báo cần.', 'Numbers are read from connected channels by themselves; at month end the system closes the numbers, drafts the report and (if on) sends it. You step in only when the status bar says so.')}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input type="month" value={month} onChange={(e) => { setMonth(e.target.value); setSyncRes(null); }} style={dateInput} />
@@ -306,10 +340,11 @@ function Inner() {
       {error && <div style={ui.banner}>{error}</div>}
       {msg && <div style={{ ...ui.banner, background: 'var(--c064e3b)', borderColor: '#059669', color: 'var(--cd1fae5)' }}>{msg}</div>}
       {health && <HealthStrip h={health} T={T} />}
+      {life && <LifecycleBar l={life} T={T} busy={busy} onSend={send} onPolicy={savePolicy} onGenerate={generate} onReview={() => setMode('edit')} />}
 
       <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3, marginBottom: 16 }}>
-        <button onClick={() => setMode('view')} style={segBtn(mode === 'view')}>{T('Xem báo cáo', 'View report')}</button>
-        <button onClick={() => setMode('edit')} style={segBtn(mode === 'edit')}>{T('Chuẩn bị & duyệt', 'Prepare & approve')}</button>
+        <button onClick={() => setMode('view')} style={segBtn(mode === 'view')}>{T('📄 Bản báo cáo (khách xem)', '📄 Report (client view)')}</button>
+        <button onClick={() => setMode('edit')} style={segBtn(mode === 'edit')}>{T('🔧 Số liệu & soạn nháp', '🔧 Numbers & draft')}</button>
       </div>
 
       {mode === 'view' && <ReportView data={data} content={report?.content ?? null} vi={vi} money={money} onEdit={() => setMode('edit')} onPrint={() => openPrint(data, report?.content ?? {}, vi, money, salonName)} onWord={exportWord} wordBusy={wordBusy} T={T} />}
@@ -509,7 +544,7 @@ function Inner() {
       {/* Report */}
       <ReportEditor
         report={report} vi={vi} T={T} busy={busy}
-        onGenerate={generate} onSave={saveReport} onApprove={approve}
+        onGenerate={generate} onSave={saveReport} onApprove={approve} onSend={send}
         printData={data} money={money}
       />
       {auto && <AutoReportCard auto={auto} vi={vi} T={T} onOpen={(m) => setMonth(m)} />}
@@ -572,9 +607,9 @@ function AutoReportCard({ auto, vi, T, onOpen }: { auto: AutoStatus; vi: boolean
   );
 }
 
-function ReportEditor({ report, vi, T, busy, onGenerate, onSave, onApprove, printData, money }: {
+function ReportEditor({ report, vi, T, busy, onGenerate, onSave, onApprove, onSend, printData, money }: {
   report: Report | null; vi: boolean; T: (v: string, e: string) => string; busy: string | null;
-  onGenerate: () => void; onSave: (c: Content) => void; onApprove: () => void; printData: Monthly | null; money: (c: number) => string;
+  onGenerate: () => void; onSave: (c: Content) => void; onApprove: () => void; onSend?: () => void; printData: Monthly | null; money: (c: number) => string;
 }) {
   const [c, setC] = useState<Content>({});
   useEffect(() => { setC(report?.content ?? {}); }, [report]);
@@ -619,11 +654,18 @@ function ReportEditor({ report, vi, T, busy, onGenerate, onSave, onApprove, prin
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onGenerate} disabled={busy === 'gen'} style={ghost}>{busy === 'gen' ? '…' : T('Tạo lại', 'Regenerate')}</button>
           <button onClick={() => onSave(collect())} disabled={busy === 'save'} style={ghost}>{T('Lưu', 'Save')}</button>
-          <button onClick={onApprove} disabled={busy === 'approve'} style={ui.primaryBtn}>{T('Duyệt', 'Approve')}</button>
+          {status !== 'sent' && <button onClick={onApprove} disabled={busy === 'approve'} style={status === 'approved' ? ghost : ui.primaryBtn}>{status === 'approved' ? T('Đã duyệt ✓', 'Approved ✓') : T('Duyệt', 'Approve')}</button>}
+          {status !== 'sent' && onSend && <button onClick={onSend} disabled={busy === 'send'} style={status === 'approved' ? ui.primaryBtn : ghost}>{busy === 'send' ? '…' : T('📨 Gửi cho tiệm', '📨 Send to salon')}</button>}
           <button onClick={() => openPrint(printData, collect(), vi, money)} style={ghost}>{T('Xem bản khách / In', 'Client view / Print')}</button>
         </div>
       </div>
 
+      {report.content._guard && (report.content._guard.stray.length > 0 || report.content._guard.alarms.length > 0) && (
+        <div style={{ ...ui.banner, background: 'var(--wash-amber-3)', borderColor: '#b45309', color: 'var(--cfde68a)', marginBottom: 12, fontSize: 12 }}>
+          {report.content._guard.stray.length > 0 && <div>{T('Kiểm tra số liệu: AI viết các con số KHÔNG có trong dữ liệu — ', 'Number check: the AI wrote figures NOT in the data — ')}<b>{[...new Set(report.content._guard.stray.map((x) => x.figure))].join(', ')}</b>{T(' (mục: ', ' (in: ')}{[...new Set(report.content._guard.stray.map((x) => x.path.replace(/\.(vi|en)$/, '')))].join(', ')}{T('). Sửa hoặc xoá trước khi gửi.', '). Fix or remove before sending.')}</div>}
+          {report.content._guard.alarms.length > 0 && <div>{T('Tháng chưa khép: câu cảnh báo đã được thay bằng câu trung tính.', 'Month still running: the alarm wording was replaced by a neutral line.')}</div>}
+        </div>
+      )}
       {report.content._aiUnavailable && <div style={{ ...ui.banner, background: 'var(--wash-amber-3)', borderColor: '#b45309', color: 'var(--cfde68a)', marginBottom: 12 }}>{T('AI không viết được nháp: ', 'AI could not draft: ')}<b>{report.content._aiError || 'unknown'}</b>{T(' — nhập nhận xét tay bên dưới.', ' — write the notes manually below.')}</div>}
 
       <p style={{ fontSize: 11.5, color: 'var(--c64748b)', margin: '0 0 10px' }}>{T('AI đã điền sẵn — chỉ sửa nếu cần rồi bấm Duyệt. Đang sửa bản ', 'AI filled this in — edit only if needed, then Approve. Editing the ')}<b style={{ color: 'var(--ca5b4fc)' }}>{vi ? 'Tiếng Việt' : 'English'}</b>{T('; bấm VI/EN ở góc trên để sửa bản kia.', ' version; use VI/EN at the top to edit the other.')}</p>
@@ -1430,6 +1472,76 @@ function ChannelsSection({ token, vi, month, onSynced, bare }: { token: string |
 }
 
 /**
+ * The month's path in four steps — Đang thu thập → Chốt số → Nháp & duyệt →
+ * Đã gửi — with the one thing to do next, the salon's send policy (by hand or
+ * by itself on day N) and every send so far.
+ */
+function LifecycleBar({ l, T, busy, onSend, onPolicy, onGenerate, onReview }: {
+  l: Lifecycle; T: (v: string, e: string) => string; busy: string | null;
+  onSend: () => void; onPolicy: (p: Partial<ReportPolicy>) => void; onGenerate: () => void; onReview: () => void;
+}) {
+  const steps: Array<[Lifecycle['state'][], string]> = [
+    [['collecting'], T('Đang thu thập', 'Collecting')],
+    [['closing'], T('Chốt số', 'Closing')],
+    [['draft', 'approved', 'none'], T('Nháp & duyệt', 'Draft & approve')],
+    [['sent'], T('Đã gửi', 'Sent')],
+  ];
+  const order: Lifecycle['state'][] = ['collecting', 'closing', 'none', 'draft', 'approved', 'sent'];
+  const idx = order.indexOf(l.state);
+  const stepIdx = steps.findIndex(([ss]) => ss.includes(l.state));
+  const when = (iso: string | null) => (iso ? fmtInTz(iso, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+  const next = (() => {
+    switch (l.nextAction) {
+      case 'wait': return T('Tháng đang chạy — số liệu cập nhật mỗi ngày; cuối tháng hệ thống tự chốt và viết nháp.', 'Month in progress — numbers refresh daily; at month end the system closes the numbers and drafts the report.');
+      case 'closing': return T('Tháng vừa kết thúc — đang đọc lần cuối, nháp sẽ có trong 1–3 ngày.', 'Month just ended — final read in progress; the draft arrives within 1–3 days.');
+      case 'review': return T('Nháp đã sẵn — đọc, sửa nếu cần, rồi Gửi cho tiệm.', 'Draft ready — read, edit if needed, then Send to salon.');
+      case 'send': return T('Đã duyệt — bấm Gửi cho tiệm.', 'Approved — press Send to salon.');
+      case 'auto-send': return l.autoSendDue ? T('Sẽ tự gửi trong lượt chạy hôm nay.', 'Sends by itself in today’s run.') : T(`Sẽ tự gửi ngày ${l.policy.sendDay} tháng sau, trừ khi bạn sửa hoặc tắt tự gửi.`, `Sends by itself on day ${l.policy.sendDay} of next month unless you edit or turn auto-send off.`);
+      case 'done': return T(`Đã gửi ${when(l.report?.sentAt ?? null)}. Nội dung đã khoá.`, `Sent ${when(l.report?.sentAt ?? null)}. Text is locked.`);
+      case 'generate': return T('Tháng đã khép nhưng chưa có nháp (tiệm không có hoạt động, hoặc viết nháp lỗi) — bấm Tạo báo cáo.', 'Month closed, no draft (no activity, or drafting failed) — press Generate.');
+    }
+  })();
+  return (
+    <div style={{ ...pv, marginBottom: 14, padding: '12px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexWrap: 'wrap' }}>
+        {steps.map(([, label], i) => {
+          const done = i < stepIdx || (l.state === 'sent' && i === stepIdx);
+          const cur = i === stepIdx && l.state !== 'sent';
+          return (
+            <div key={label} style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: cur ? 700 : 500, color: done ? 'var(--ink-good)' : cur ? 'var(--ca5b4fc)' : 'var(--c64748b)' }}>
+                <span style={{ width: 18, height: 18, borderRadius: 999, display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700, background: done ? 'var(--ink-good)' : cur ? '#6366f1' : 'var(--c1e293b)', color: done || cur ? '#fff' : 'var(--c64748b)' }}>{done ? '✓' : i + 1}</span>
+                {label}
+              </span>
+              {i < steps.length - 1 && <span style={{ width: 28, height: 2, background: i < stepIdx ? 'var(--ink-good)' : 'var(--c334155)', margin: '0 8px' }} />}
+            </div>
+          );
+        })}
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--c64748b)' }}>{idx >= 0 ? '' : l.state}</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+        <span style={{ fontSize: 12.5, color: 'var(--ce2e8f0)', flex: 1, minWidth: 240 }}>→ {next}</span>
+        {(l.nextAction === 'review') && <button onClick={onReview} style={ui.primaryBtn}>{T('Xem nháp', 'Open draft')}</button>}
+        {(l.nextAction === 'send' || (l.nextAction === 'auto-send' && l.report)) && <button onClick={onSend} disabled={busy === 'send'} style={ui.primaryBtn}>{busy === 'send' ? '…' : T('📨 Gửi cho tiệm', '📨 Send to salon')}</button>}
+        {l.nextAction === 'generate' && <button onClick={onGenerate} disabled={busy === 'gen'} style={ui.primaryBtn}>{busy === 'gen' ? '…' : T('Tạo báo cáo', 'Generate')}</button>}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 10, fontSize: 11.5, color: 'var(--c94a3b8)' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+          <input type="checkbox" checked={l.policy.autoSend} onChange={(e) => onPolicy({ autoSend: e.target.checked })} />
+          {T('Tự gửi cho tiệm', 'Send to salon by itself')}
+        </label>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {T('vào ngày', 'on day')}
+          <input type="number" min={2} max={28} value={l.policy.sendDay} onChange={(e) => onPolicy({ sendDay: Number(e.target.value) })} style={{ width: 54, background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 6, color: 'var(--ce2e8f0)', padding: '2px 6px', fontSize: 12 }} />
+          {T('tháng sau', 'of next month')}
+        </span>
+        {l.sends.length > 0 && <span>· {T('Đã gửi', 'Sent')}: {l.sends.slice(0, 3).map((x) => `${x.recipient} (${when(x.at)})`).join(', ')}</span>}
+      </div>
+    </div>
+  );
+}
+
+/**
  * One line of chips: every channel the report can read, green when it was read
  * in the last day and a half, amber when waiting or stale, red when a read
  * failed or a Meta permission is missing — with the reason in plain words.
@@ -1481,9 +1593,13 @@ function ContentFactsCard({ f, T }: { f: MonthFactsUi; T: (v: string, e: string)
   const pfName = (p: string) => (p === 'facebook' ? 'Facebook' : p === 'instagram' ? 'Instagram' : 'TikTok');
   const pfColor = (p: string) => (p === 'facebook' ? '#1877f2' : p === 'instagram' ? '#e1306c' : 'var(--ink-sky)');
   const typeLabel = (t: string) => (t === 'reel' ? 'Reel' : t === 'video' ? 'Video' : t === 'carousel' ? 'Album' : t === 'photo' ? T('Ảnh', 'Photo') : T('Bài', 'Post'));
+  const source = T(
+    `Nguồn: bảng bài viết đã lưu (Facebook, Instagram, TikTok), đếm theo lịch của tiệm. ${f.measuredAt ? `Đo lần cuối ${fmtInTz(f.measuredAt, { dateStyle: 'short', timeStyle: 'short' })}.` : 'Chưa có lần đo.'} ${f.state === 'to-date' ? `Tháng đang chạy — tính đến ngày ${f.daysCovered}.` : 'Tháng đã khép.'}`,
+    `Source: stored posts (Facebook, Instagram, TikTok), counted on the salon's calendar. ${f.measuredAt ? `Last measured ${fmtInTz(f.measuredAt, { dateStyle: 'short', timeStyle: 'short' })}.` : 'Not measured yet.'} ${f.state === 'to-date' ? `Month in progress — through day ${f.daysCovered}.` : 'Month closed.'}`,
+  );
   const tile = (label: string, v: string, d: SocialDelta, hint?: string | null) => (
-    <div style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px', minWidth: 0 }}>
-      <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{label}</div>
+    <div title={source} style={{ background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px', minWidth: 0 }}>
+      <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{label} <span style={{ color: 'var(--c64748b)', cursor: 'help' }}>ⓘ</span></div>
       <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--cf8fafc)', lineHeight: 1.2 }}>{v}{arrow(d)}</div>
       {hint && <div style={{ fontSize: 10.5, color: 'var(--c64748b)', marginTop: 2 }}>{hint}</div>}
     </div>

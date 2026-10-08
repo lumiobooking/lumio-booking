@@ -520,6 +520,22 @@ export default function AgencyPage() {
         {/* The bench comes before the salon list: two people running thirty
             clients answer "what now" far more often than "open which salon". */}
         <a
+          href="/agency/reports"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',
+            border: '1px solid var(--line)', background: 'var(--c111a2c)', borderRadius: 14,
+            padding: '11px 16px', marginBottom: 10, color: 'var(--ce2e8f0)',
+          }}
+        >
+          <span style={{ fontSize: 20 }}>📊</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Báo cáo tháng — mọi tiệm</div>
+            <div className="ag-today-desc" style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 1 }}>
+              Tiệm nào đã chốt số, nháp chờ đọc, đã gửi; kênh nào đọc lỗi. Tiệm cần người xếp lên đầu.
+            </div>
+          </div>
+        </a>
+        <a
           href="/agency/today"
           style={{
             display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',

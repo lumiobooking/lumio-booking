@@ -15,7 +15,9 @@ import { onChannelSyncRequest } from './sync-signals';
  *     what makes the report screen's sync button optional.
  *  3. MONTH CLOSE (first 5 days of a month, once per month per process): draft
  *     LAST month's report for every salon with activity — left in 'review' so a
- *     human approves before a client sees it.
+ *     human approves before a client sees it. Salons whose policy says so
+ *     (report-lifecycle.ts) get it sent by itself on their send day, from the
+ *     daily beat.
  *
  * A Page webhook ("the salon just posted", sync-signals.ts) queues that
  * salon's month outside the daily beat.
@@ -63,6 +65,9 @@ export class MarketingScheduler implements OnModuleInit, OnModuleDestroy {
       const r = await this.queue.enqueueDaily();
       const gone = await this.queue.cleanup().catch(() => 0);
       this.logger.log(`Daily plan: ${r.jobs} job(s) for ${r.tenants} salon(s), months ${r.months.join(', ')}${gone ? `, ${gone} old row(s) cleared` : ''}.`);
+      // Salons whose policy sends last month's report by itself, on their send day.
+      const a = await this.marketing.runAutoSend().catch((e) => { this.logger.warn(`Auto-send failed: ${(e as Error).message}`); return null; });
+      if (a && (a.sent || a.failed)) this.logger.log(`Auto-send: ${a.sent} sent, ${a.failed} failed.`);
     } catch (e) {
       this.lastDailyPlan = null; // try again next tick
       this.logger.warn(`Daily plan failed: ${(e as Error).message}`);

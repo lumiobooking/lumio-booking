@@ -45,6 +45,9 @@ const STAFF_MUST_NOT = [
   // and where posts go. Owner and Lumio staff only, like disconnect.
   'keepOnly',
   'importFacts', 'suggestGreeting',
+  // Pulling the Page's past conversations into the inbox reads the Page token
+  // and writes threads for the whole shop — the owner's (or Lumio's) call.
+  'importConversations',
   'leads', 'leadStatus', 'webhookStatus', 'activity',
   'clearReviewData', 'clearConversations',
   // Deleting a label strips it off every conversation in the shop. Creating one

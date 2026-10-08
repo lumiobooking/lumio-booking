@@ -32,6 +32,10 @@ export class MessengerWebhookController {
     // silently dropped (still 200 so Meta doesn't retry a forged request).
     if (verifyMetaSignature(req)) {
       this.svc.handleWebhook(body).catch(() => undefined);
+    } else {
+      // Counted, so the status page can say "Meta is sending, but from another
+      // app" instead of looking identical to "Meta is not sending at all".
+      this.svc.noteRejectedWebhook();
     }
     return 'EVENT_RECEIVED';
   }

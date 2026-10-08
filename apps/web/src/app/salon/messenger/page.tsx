@@ -85,6 +85,8 @@ interface WebhookStatus {
   lastEvent?: { at: string; count: number; lane: 'messaging' | 'standby' | 'echo' | 'other'; preview: string } | null;
   /** Conversations stored for this salon. */
   threads?: number;
+  callbackUrl?: string | null; callbackMatches?: boolean | null; otherApps?: string[]; subscribeError?: string | null;
+  rejected?: { count: number; at: string } | null; unrouted?: { count: number; at: string } | null;
 }
 interface ActivityEv { threadId: string; user: string; direction: 'in' | 'out'; text: string; status: string; at: string; manual: boolean; channel?: string }
 interface ActivityRes { page: string; pageId: string; events: ActivityEv[] }
@@ -898,6 +900,16 @@ function Inner() {
                 {typeof wh.threads === 'number' && <span style={{ color: 'var(--c64748b)' }}> · {lang === 'vi' ? `${wh.threads} hội thoại đã lưu` : `${wh.threads} conversations stored`}</span>}
               </div>
             )}
+            {wh && (
+              <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
+                {wh.callbackMatches === false && <div style={{ color: 'var(--ink-bad)' }}>{lang === 'vi' ? `⛔ Meta đang gửi webhook của app này tới ${wh.callbackUrl} — KHÔNG phải máy chủ này. Mọi Page nối trên máy chủ này đều không nhận được tin. Sửa Callback URL trong Meta App Dashboard → Webhooks → Page, hoặc nối Page trên đúng máy chủ.` : `⛔ Meta delivers this app's webhooks to ${wh.callbackUrl} — NOT this server. No Page connected on this server can receive messages. Fix the Callback URL in Meta App Dashboard → Webhooks → Page, or connect the Page on the right server.`}</div>}
+                {wh.subscribeError && <div style={{ color: 'var(--ink-bad)' }}>{lang === 'vi' ? `⛔ Meta từ chối đăng ký webhook cho Page này: ${wh.subscribeError}` : `⛔ Meta refused to subscribe this Page: ${wh.subscribeError}`}</div>}
+                {wh.subscribed === false && !wh.subscribeError && <div style={{ color: 'var(--ink-bad)' }}>{lang === 'vi' ? '⛔ Page chưa đăng ký với app Lumio (một app khác đang đăng ký). Bấm Reconnect bằng tài khoản admin của Page.' : '⛔ The Page is not subscribed to the Lumio app (another app is). Reconnect with a Page admin account.'}</div>}
+                {!!wh.otherApps?.length && <div style={{ color: 'var(--c94a3b8)' }}>{lang === 'vi' ? `App khác cũng đang nhận tin của Page này: ${wh.otherApps.join(', ')}` : `Other apps also subscribed to this Page: ${wh.otherApps.join(', ')}`}</div>}
+                {wh.rejected && <div style={{ color: 'var(--ink-warn)' }}>{lang === 'vi' ? `⚠ ${wh.rejected.count} sự kiện tới máy chủ này bị từ chối vì chữ ký không khớp (gửi từ app khác, FB_APP_SECRET khác) — gần nhất ${fmtInTz(wh.rejected.at, { dateStyle: 'short', timeStyle: 'short' })}.` : `⚠ ${wh.rejected.count} events reached this server but were rejected (signature from a different app / FB_APP_SECRET) — last ${fmtInTz(wh.rejected.at, { dateStyle: 'short', timeStyle: 'short' })}.`}</div>}
+                {wh.unrouted && <div style={{ color: 'var(--ink-warn)' }}>{lang === 'vi' ? `⚠ ${wh.unrouted.count} sự kiện của Page này tới máy chủ nhưng không có dòng Page để định tuyến (Page đã bị tách / nối ở tiệm khác).` : `⚠ ${wh.unrouted.count} events for this Page reached the server but no Page row routed them (detached / connected under another salon).`}</div>}
+              </div>
+            )}
             <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <button type="button" disabled={convImporting} onClick={async () => {
                 setConvImporting(true); setConvImportMsg(null);
@@ -911,7 +923,7 @@ function Inner() {
               }} style={{ ...ui.input, width: 'auto', cursor: 'pointer', padding: '6px 12px' }}>
                 {convImporting ? (lang === 'vi' ? 'Đang nhập…' : 'Importing…') : (lang === 'vi' ? '⤓ Nhập hội thoại gần đây từ Page vào Inbox' : '⤓ Import the Page’s recent conversations into the Inbox')}
               </button>
-              <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{lang === 'vi' ? 'Các chat có trước khi nối Page (webhook không gửi lại). Bot không tự trả lời chat cũ; từ tin nhắn tiếp theo của khách thì chạy như thường.' : 'Chats from before the Page was connected (the webhook never replays them). The bot does not answer old chats; from the customer’s next message on it runs as usual.'}</span>
+              <span style={{ color: 'var(--c64748b)', fontSize: 12 }}>{lang === 'vi' ? 'Hệ thống tự đồng bộ hội thoại của Page mỗi 10 phút và ngay khi nối Page; nút này chỉ để đồng bộ ngay lập tức. Tin khách chưa ai trả lời quá 2 phút sẽ được bot trả lời khi bot đang bật.' : 'Conversations sync automatically every 10 minutes and right after connecting; this button syncs now. A customer line unanswered for 2 minutes is answered by the bot when the bot is on.'}</span>
             </div>
             {convImportMsg && <div style={{ marginTop: 6, color: /failed|error|code/i.test(convImportMsg) ? 'var(--ink-warn)' : 'var(--ink-good)' }}>{convImportMsg}</div>}
             {typeof wh?.echoOk === 'boolean' && (

@@ -157,16 +157,50 @@ export class MessengerService implements OnModuleInit {
       }
     }, 90 * 1000); // well after boot
     t.unref?.();
+    // The conversation mirror under the webhook: every MESSENGER_SYNC_SECONDS
+    // (default 60, 0 = off). The webhook is the real-time path; this is the
+    // guard that catches what it drops, within a minute. One light Graph call
+    // per Page per tick (ten conversations, five lines each), and only
+    // conversations Meta reports as updated since the last tick are touched.
+    const everySec = Number(process.env.MESSENGER_SYNC_SECONDS ?? '60');
+    if (Number.isFinite(everySec) && everySec > 0) {
+      const first = setTimeout(() => void this.syncAllConversations().catch(() => undefined), 45 * 1000);
+      first.unref?.();
+      this.syncTimer = setInterval(() => void this.syncAllConversations().catch(() => undefined), Math.max(20, everySec) * 1000);
+      this.syncTimer.unref?.();
+    }
+  }
+
+  /** The last reason Meta refused to subscribe a Page to our webhook, per Page (in memory). */
+  private readonly subscribeErrors = new Map<string, string>();
+  /**
+   * Subscribe one Page to our app's webhook, and KEEP the answer: a refusal
+   * used to vanish into `.catch(() => undefined)` while the status page said
+   * "Active" (another app was subscribed), and the salon's inbox stayed empty.
+   */
+  private async subscribePageWebhook(pageId: string, token: string): Promise<boolean> {
+    const FIELDS = 'messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers';
+    try {
+      const res = await fetch(`${GRAPH}/${pageId}/subscribed_apps?subscribed_fields=${FIELDS}&access_token=${encodeURIComponent(token)}`, { method: 'POST', signal: AbortSignal.timeout(10000) });
+      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: { message?: string } };
+      if (json.success) { this.subscribeErrors.delete(pageId); return true; }
+      const why = json.error?.message || `HTTP ${res.status}`;
+      this.subscribeErrors.set(pageId, why);
+      this.logger.warn(`subscribed_apps refused for page ${pageId}: ${why}`);
+      return false;
+    } catch (e) {
+      this.subscribeErrors.set(pageId, String(e).slice(0, 200));
+      return false;
+    }
   }
 
   private async resubscribeAllPages(): Promise<void> {
-    const FIELDS = 'messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers';
     const seen = new Set<string>();
     const subscribe = async (pageId: string, token: string) => {
       if (!pageId || !token || seen.has(pageId)) return;
       if (isWebPage(pageId) || pageId.startsWith('zalo:')) return; // not Graph's to subscribe
       seen.add(pageId);
-      await fetch(`${GRAPH}/${pageId}/subscribed_apps?subscribed_fields=${FIELDS}&access_token=${encodeURIComponent(token)}`, { method: 'POST' }).catch(() => undefined);
+      await this.subscribePageWebhook(pageId, token);
     };
     const pages = await this.prisma.messengerPage.findMany({ select: { pageId: true, pageToken: true } }).catch(() => []);
     for (const pg of pages) await subscribe(pg.pageId, pg.pageToken);
@@ -756,13 +790,14 @@ export class MessengerService implements OnModuleInit {
     // the AI reply?". Forcing it back on here meant that reconnecting a Page
     // for POSTING quietly re-armed a bot the salon had switched off — and
     // the salon found out from a customer.
-    // Subscribe the Page to our app's webhook so messages start flowing.
-    await fetch(
-      `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,message_reactions,message_echoes,messaging_handovers&access_token=${encodeURIComponent(page.access_token)}`,
-      { method: 'POST' },
-    ).catch(() => undefined);
+    // Subscribe the Page to our app's webhook so messages start flowing — and
+    // keep Meta's answer for the status page.
+    await this.subscribePageWebhook(page.id, page.access_token);
     await this.setupMessengerProfile(page.access_token, greeting);
     await this.audit(tenantId, 'messenger.connected');
+    // The Page's existing conversations appear in the inbox right away — not
+    // on the next customer message, and not after a button press.
+    void this.syncConversations(tenantId, { limit: 50, reply: false }).catch((e) => this.logger.warn(`sync after connect failed: ${String(e).slice(0, 160)}`));
     return 'ok';
   }
 
@@ -1982,6 +2017,8 @@ export class MessengerService implements OnModuleInit {
    * via GET, which our webhook answers. Cached 10 minutes.
    */
   private appSubCache: { at: number; fields: string[]; echoOk: boolean } | null = null;
+  /** The callback URL Meta holds for this app's page subscription — where EVERY Page's events go. */
+  private appCallbackUrl: string | null = null;
   private async ensureAppSubscription(force = false, object: 'page' | 'instagram' = 'page'): Promise<{ fields: string[]; echoOk: boolean; error?: string }> {
     if (object === 'page' && !force && this.appSubCache && Date.now() - this.appSubCache.at < 10 * 60_000) {
       return { fields: this.appSubCache.fields, echoOk: this.appSubCache.echoOk };
@@ -1997,6 +2034,7 @@ export class MessengerService implements OnModuleInit {
         data?: { object?: string; callback_url?: string; fields?: ({ name?: string } | string)[] }[];
       };
       const sub = (json.data || []).find((d) => d.object === object);
+      if (object === 'page' && sub?.callback_url) this.appCallbackUrl = sub.callback_url;
       const names = (sub?.fields || [])
         .map((f) => (typeof f === 'string' ? f : f?.name || ''))
         .filter(Boolean);
@@ -2064,6 +2102,8 @@ export class MessengerService implements OnModuleInit {
     let pageName = c.pageName || '';
     let subscribed = false;
     let fields: string[] = [];
+    let otherApps: string[] = [];
+    let subscribeError: string | null = this.subscribeErrors.get(c.pageId) ?? null;
     try {
       // Page name is captured at connect (pages_show_list). Only hit the Graph
       // node as a fallback — a direct name read can require pages_read_engagement.
@@ -2073,10 +2113,16 @@ export class MessengerService implements OnModuleInit {
         pageName = nameJson.name || '';
       }
       const subRes = await fetch(`${GRAPH}/${c.pageId}/subscribed_apps?access_token=${encodeURIComponent(c.pageToken)}`, { signal: AbortSignal.timeout(8000) });
-      const subJson = (await subRes.json().catch(() => ({}))) as { data?: { subscribed_fields?: string[] }[] };
-      const app = (subJson.data || [])[0];
-      subscribed = Boolean(app);
-      fields = app?.subscribed_fields || [];
+      const subJson = (await subRes.json().catch(() => ({}))) as { data?: { id?: string; name?: string; subscribed_fields?: string[] }[]; error?: { message?: string } };
+      // OUR app, by id — not "whichever app is first". A Page subscribed only
+      // to another app (an agency reporting app, Meta's own tools) used to read
+      // as Active here while nothing ever reached this server.
+      const apps = subJson.data || [];
+      const mine = this.appId() ? apps.find((a) => String(a.id) === this.appId()) : apps[0];
+      subscribed = Boolean(mine);
+      fields = mine?.subscribed_fields || [];
+      otherApps = apps.filter((a) => a !== mine).map((a) => a.name || String(a.id || '?'));
+      if (subJson.error?.message) subscribeError = subJson.error.message;
     } catch (e) {
       this.logger.warn(`webhook status check failed: ${String(e).slice(0, 120)}`);
     }
@@ -2114,6 +2160,10 @@ export class MessengerService implements OnModuleInit {
     }
     const trace = this.webhookTrace.get(c.pageId) ?? null;
     const threads = await this.prisma.messengerThread.count({ where: { tenantId } }).catch(() => 0);
+    const myWebhook = `${this.apiBase()}/api/messenger/webhook`;
+    const host = (u: string | null) => { try { return u ? new URL(u).host : null; } catch { return null; } };
+    const callbackUrl = this.appCallbackUrl;
+    const callbackMatches = callbackUrl ? host(callbackUrl) === host(myWebhook) : null;
     return {
       connected: true as const,
       instagram: ig,
@@ -2124,6 +2174,18 @@ export class MessengerService implements OnModuleInit {
       // started (null = nothing yet), and how many conversations are stored.
       lastEvent: trace ? { at: new Date(trace.at).toISOString(), count: trace.count, lane: trace.lane, preview: trace.preview } : null,
       threads,
+      // Where Meta actually delivers this app's events, and whether that is THIS
+      // server — two API deployments share one app only if each has its own.
+      callbackUrl,
+      callbackMatches,
+      // Other apps also subscribed to this Page (Meta's tools, an agency app).
+      otherApps,
+      // The last error Meta gave when we subscribed this Page (null = none).
+      subscribeError,
+      // Events that reached this URL but were signed by a different app secret.
+      rejected: this.rejectedWebhooks.count ? { count: this.rejectedWebhooks.count, at: new Date(this.rejectedWebhooks.at).toISOString() } : null,
+      // Events that arrived for a Page this server has no row for.
+      unrouted: this.unroutedWebhooks.get(c.pageId) ? { count: this.unroutedWebhooks.get(c.pageId)!.count, at: new Date(this.unroutedWebhooks.get(c.pageId)!.at).toISOString() } : null,
       fields,
       appFields: appSub.fields,
       echoOk: appSub.echoOk && fields.includes('message_echoes'),
@@ -2133,65 +2195,130 @@ export class MessengerService implements OnModuleInit {
   }
 
   /**
-   * Pull the Page's recent conversations from Meta into the inbox — the chats
-   * that happened BEFORE the Page was connected (or while another app held
-   * them), which the webhook can never replay. Each becomes a thread with its
-   * last turns, marked so the bot never answers them unprompted; from the next
-   * customer message on, the webhook takes over as usual. Needs
-   * pages_messaging on the Page token; a Page without it returns Meta's reason
-   * instead of silently importing nothing. This salon's Pages only.
+   * MIRROR THE PAGE'S CONVERSATIONS — the inbox must not depend on the
+   * webhook alone. Meta's /conversations edge is read for every connected
+   * Page: on connect, every few minutes (syncAllConversations), and on demand
+   * from the status page. Each conversation becomes a thread with its turns;
+   * turns already held (same side, same text, within two minutes) are not
+   * added twice. A customer message the webhook never delivered — still the
+   * last line of the conversation after two minutes, with nobody answering —
+   * goes through handleMessage like a live one, so the bot answers it. Needs
+   * pages_messaging on the Page token; a refusal is returned, not swallowed.
+   * One salon's Pages only.
    */
-  async importConversations(user: AuthenticatedUser, limit = 50) {
-    const tenantId = this.tenantId(user);
+  /** Per Page: the newest `updated_time` seen, so a sweep touches only what changed. */
+  private readonly syncSeen = new Map<string, string>();
+  async syncConversations(tenantId: string, opts: { limit?: number; reply?: boolean; incremental?: boolean; lines?: number } = {}) {
     const pages = await this.prisma.messengerPage.findMany({ where: { tenantId, enabled: true }, select: { pageId: true, pageToken: true, pageName: true } }).catch(() => [] as { pageId: string; pageToken: string; pageName: string | null }[]);
     const conn = pages.length ? null : await this.prisma.messengerConnection.findUnique({ where: { tenantId }, select: { pageId: true, pageToken: true, pageName: true } });
-    const targets = pages.length ? pages : conn?.pageId && conn.pageToken ? [{ pageId: conn.pageId, pageToken: conn.pageToken, pageName: conn.pageName }] : [];
+    const targets = (pages.length ? pages : conn?.pageId && conn.pageToken ? [{ pageId: conn.pageId, pageToken: conn.pageToken, pageName: conn.pageName }] : [])
+      .filter((p) => !isWebPage(p.pageId) && !p.pageId.startsWith('zalo:'));
     if (!targets.length) throw new BadRequestException('No Page connected');
-    const take = Math.min(100, Math.max(1, Math.round(limit) || 50));
-    let imported = 0, updated = 0, skipped = 0;
+    const take = Math.min(100, Math.max(1, Math.round(opts.limit ?? 50) || 50));
+    const lines = Math.min(20, Math.max(1, Math.round(opts.lines ?? 20) || 20));
+    const reply = opts.reply !== false;
+    // How long an unanswered customer line may wait before the sync treats it as
+    // missed by the webhook: the live path answers within ~20 s (4 s gather +
+    // the model), so 45 s leaves no room for a double reply.
+    const MISSED_AFTER_MS = 45_000;
+    let imported = 0, updated = 0, skipped = 0, answered = 0;
     const errors: string[] = [];
+    const sameTurn = (hist: Turn[], t: Turn) => hist.some((h) => h.role === t.role && h.content === t.content && Math.abs(new Date(h.at || 0).getTime() - new Date(t.at || 0).getTime()) < 120_000);
     for (const pg of targets) {
-      const url = `${GRAPH}/${pg.pageId}/conversations?platform=messenger&limit=${take}&fields=id,updated_time,participants,messages.limit(20){message,from,created_time}&access_token=${encodeURIComponent(pg.pageToken)}`;
+      const url = `${GRAPH}/${pg.pageId}/conversations?platform=messenger&limit=${take}&fields=id,updated_time,participants,messages.limit(${lines}){message,from,created_time}&access_token=${encodeURIComponent(pg.pageToken)}`;
       let json: { data?: { id: string; updated_time?: string; participants?: { data?: { id: string; name?: string }[] }; messages?: { data?: { message?: string; from?: { id: string; name?: string }; created_time?: string }[] } }[]; error?: { message?: string; code?: number } };
       try {
         const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
         json = (await res.json().catch(() => ({}))) as typeof json;
       } catch (e) { errors.push(`${pg.pageName || pg.pageId}: ${String(e).slice(0, 120)}`); continue; }
       if (json.error) { errors.push(`${pg.pageName || pg.pageId}: ${json.error.message || 'Graph error'} (code ${json.error.code ?? '?'})`); continue; }
+      const seenBefore = opts.incremental ? this.syncSeen.get(pg.pageId) ?? null : null;
+      let newest = seenBefore ?? '';
       for (const conv of json.data || []) {
+        if (conv.updated_time && conv.updated_time > newest) newest = conv.updated_time;
+        // Unchanged since the last tick: nothing to read.
+        if (seenBefore && conv.updated_time && conv.updated_time <= seenBefore) { skipped++; continue; }
         const other = (conv.participants?.data || []).find((p) => p.id !== pg.pageId);
         if (!other) { skipped++; continue; }
         const msgs = [...(conv.messages?.data || [])].filter((m) => m.message && m.created_time).reverse(); // oldest first
         if (!msgs.length) { skipped++; continue; }
         const turns: Turn[] = msgs.map((m) => ({ role: m.from?.id === pg.pageId ? 'assistant' : 'user', content: String(m.message).slice(0, 2000), at: new Date(m.created_time!).toISOString() }));
-        const lastCustomer = [...msgs].reverse().find((m) => m.from?.id !== pg.pageId);
-        const lastAny = msgs[msgs.length - 1];
+        const last = turns[turns.length - 1];
+        const lastAgeMs = Date.now() - new Date(last.at!).getTime();
         const existing = await this.prisma.messengerThread.findUnique({ where: { pageId_senderId: { pageId: pg.pageId, senderId: other.id } } }).catch(() => null);
+        const hist = existing ? ((Array.isArray(existing.history) ? existing.history : []) as Turn[]) : [];
+        const fresh = turns.filter((t) => !sameTurn(hist, t));
+        if (!fresh.length) { skipped++; continue; }
+        // A customer line nobody answered, two minutes old and unknown to us:
+        // the webhook missed it. Hand it to the live path — recorded, pushed,
+        // and answered by the bot when the salon has it on.
+        const pending = reply && last.role === 'user' && fresh.includes(last) && lastAgeMs > MISSED_AFTER_MS && !(existing as { handoff?: boolean } | null)?.handoff;
+        const toWrite = pending ? fresh.filter((t) => t !== last) : fresh;
         if (existing) {
-          // Only turns the thread does not already hold; never touch handoff or status.
-          const hist = (Array.isArray(existing.history) ? existing.history : []) as Turn[];
-          const before = hist.length;
-          await this.appendTurns(existing.id, hist, this.threadSummary(existing), turns);
-          const after = await this.prisma.messengerThread.findUnique({ where: { id: existing.id }, select: { history: true } }).catch(() => null);
-          if ((Array.isArray(after?.history) ? after!.history.length : before) > before) updated++; else skipped++;
-          continue;
+          if (toWrite.length) {
+            await this.appendTurns(existing.id, hist, this.threadSummary(existing), toWrite);
+            const lastCustomer = [...toWrite].reverse().find((t) => t.role === 'user');
+            await this.prisma.messengerThread.update({
+              where: { id: existing.id },
+              data: { lastText: toWrite[toWrite.length - 1].content.slice(0, 300), ...(lastCustomer ? { lastCustomerAt: new Date(lastCustomer.at!) } : {}), ...(other.name && !existing.senderName ? { senderName: other.name } : {}) } as never,
+            }).catch(() => undefined);
+            updated++;
+          }
+        } else if (toWrite.length) {
+          const lastCustomer = [...toWrite].reverse().find((t) => t.role === 'user');
+          await this.prisma.messengerThread.create({
+            data: {
+              tenantId, pageId: pg.pageId, senderId: other.id, senderName: other.name || null, channel: 'messenger',
+              lastText: toWrite[toWrite.length - 1].content.slice(0, 300),
+              lastCustomerAt: lastCustomer ? new Date(lastCustomer.at!) : null,
+              history: toWrite as unknown as Prisma.InputJsonValue,
+              status: 'open',
+            } as never,
+          });
+          imported++;
         }
-        await this.prisma.messengerThread.create({
-          data: {
-            tenantId, pageId: pg.pageId, senderId: other.id, senderName: other.name || null, channel: 'messenger',
-            lastText: String(lastAny.message).slice(0, 300),
-            lastCustomerAt: lastCustomer?.created_time ? new Date(lastCustomer.created_time) : null,
-            history: turns as unknown as Prisma.InputJsonValue,
-            // Imported history is for the people in the inbox; the bot waits for the customer's NEXT message.
-            status: 'open',
-          } as never,
-        });
-        imported++;
+        if (pending) {
+          answered++;
+          await this.handleMessage(pg.pageId, other.id, last.content, new Date(last.at!).getTime(), 'messenger').catch((e) => this.logger.warn(`sync reply failed: ${String(e).slice(0, 160)}`));
+        }
       }
+      if (newest) this.syncSeen.set(pg.pageId, newest);
     }
     if (imported || updated) this.events.publish(tenantId, 'message');
+    return { imported, updated, skipped, answered, errors };
+  }
+
+  /** The status page's button: the same mirror, for this salon, now. */
+  async importConversations(user: AuthenticatedUser, limit = 50) {
+    const tenantId = this.tenantId(user);
+    const r = await this.syncConversations(tenantId, { limit });
     await this.audit(tenantId, 'messenger.conversations_imported').catch(() => undefined);
-    return { imported, updated, skipped, errors };
+    return r;
+  }
+
+  /**
+   * Every connected Page, every minute — the safety net under the webhook. Pages are polled a salon at a time; one salon's failure (a dead
+   * token, a revoked permission) is logged and the sweep moves on.
+   */
+  private syncTimer: NodeJS.Timeout | null = null;
+  private syncRunning = false;
+  async syncAllConversations(): Promise<{ salons: number; imported: number; updated: number; answered: number; errors: number }> {
+    if (this.syncRunning) return { salons: 0, imported: 0, updated: 0, answered: 0, errors: 0 };
+    this.syncRunning = true;
+    const out = { salons: 0, imported: 0, updated: 0, answered: 0, errors: 0 };
+    try {
+      const rows = await this.prisma.messengerPage.findMany({ where: { enabled: true }, select: { tenantId: true }, distinct: ['tenantId'] }).catch(() => [] as { tenantId: string }[]);
+      for (const { tenantId } of rows) {
+        out.salons++;
+        try {
+          const r = await this.syncConversations(tenantId, { limit: 10, lines: 5, incremental: true });
+          out.imported += r.imported; out.updated += r.updated; out.answered += r.answered; out.errors += r.errors.length;
+          for (const e of r.errors) this.logger.warn(`conversation sync (${tenantId}): ${e}`);
+        } catch (e) { out.errors++; this.logger.warn(`conversation sync (${tenantId}) failed: ${String(e).slice(0, 160)}`); }
+      }
+      if (out.imported || out.updated || out.answered) this.logger.log(`conversation sync: ${out.imported} new, ${out.updated} updated, ${out.answered} answered across ${out.salons} salon(s)`);
+    } finally { this.syncRunning = false; }
+    return out;
   }
 
   /** Flatten recent conversation turns into a chronological activity log
@@ -2621,7 +2748,13 @@ export class MessengerService implements OnModuleInit {
     // Route by Facebook Page id OR the linked Instagram account id: any of the
     // tenant's pages leads to the SAME brain — one brain, many mouths.
     const page = await this.pageByEntry(entryId);
-    if (!page || !page.enabled) return;
+    if (!page) {
+      const cur = this.unroutedWebhooks.get(entryId);
+      this.unroutedWebhooks.set(entryId, { at: Date.now(), count: (cur?.count ?? 0) + 1 });
+      this.logger.warn(`webhook for ${entryId}: no Page row on this server — not routed`);
+      return;
+    }
+    if (!page.enabled) return;
     const conn = await this.prisma.messengerConnection.findUnique({ where: { tenantId: page.tenantId } });
     if (!conn) return;
     // conn.enabled is the Messenger/Instagram switch. The website widget has
@@ -5174,6 +5307,11 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * answer was in the Render logs.
    */
   readonly webhookTrace = new Map<string, { at: number; count: number; lane: 'messaging' | 'standby' | 'echo' | 'other'; preview: string }>();
+  /** POSTs to the webhook whose X-Hub-Signature-256 did not match FB_APP_SECRET — Meta IS sending, but from a different app than ours. */
+  readonly rejectedWebhooks = { count: 0, at: 0 as number };
+  noteRejectedWebhook(): void { this.rejectedWebhooks.count += 1; this.rejectedWebhooks.at = Date.now(); }
+  /** Pages whose events arrived with no messengerPage row to route them (another salon's Page, or a Page detached since). */
+  readonly unroutedWebhooks = new Map<string, { at: number; count: number }>();
   private traceWebhook(entryId: string, lane: 'messaging' | 'standby' | 'echo' | 'other', preview: string) {
     const cur = this.webhookTrace.get(entryId);
     this.webhookTrace.set(entryId, { at: Date.now(), count: (cur?.count ?? 0) + 1, lane, preview: preview.slice(0, 60) });

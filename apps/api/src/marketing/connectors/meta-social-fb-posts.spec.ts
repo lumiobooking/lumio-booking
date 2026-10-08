@@ -41,6 +41,33 @@ describe('Facebook posts counted for the report month', () => {
     expect(out.posts.filter((p) => p.type === 'post')).toHaveLength(1);
   });
 
+  it('a Page token without pages_read_engagement: the posts are still counted, only their reactions stay blank (Lux Nail Spa, Oct 2026)', async () => {
+    const asked: string[] = [];
+    const out = await run((url) => {
+      if (/\/page1\?fields=access_token/.test(url)) return ok({ access_token: 'ptok' });
+      if (/\/page1\/(published_posts|feed|posts)\?/.test(url)) {
+        asked.push(url);
+        // Any list that asks for likes/comments is refused, as Meta does.
+        if (/likes\.summary|comments\.summary/.test(url)) return fail("(#10) This endpoint requires the 'pages_read_engagement' permission or the 'Page Public Content Access' feature.");
+        return ok({ data: [
+          { id: 'page1_1', message: 'Fall nails', created_time: '2026-08-07T10:00:00+0000', permalink_url: 'https://www.facebook.com/page1/posts/1', full_picture: 'https://x/1.jpg' },
+          { id: 'page1_2', message: 'Pedicure promo', created_time: '2026-08-06T10:00:00+0000', permalink_url: 'https://www.facebook.com/page1/posts/2' },
+          { id: 'page1_3', message: 'Open Sunday', created_time: '2026-08-04T10:00:00+0000', permalink_url: 'https://www.facebook.com/page1/posts/3' },
+        ] });
+      }
+      if (/\/page1\/video_reels\?/.test(url)) return ok({ data: [
+        { id: '900', description: 'Reel', created_time: '2026-08-05T10:00:00+0000', updated_time: '2026-08-05T10:00:00+0000', permalink_url: 'https://www.facebook.com/reel/900' },
+      ] });
+      return fail('unrouted');
+    });
+    expect(out.monthCount).toBe(4); // 3 posts + 1 Reel — not "2 Reels"
+    const post = out.posts.find((p) => p.id === 'page1_1');
+    expect(post).toMatchObject({ type: 'post', caption: 'Fall nails', likes: null, comments: null, thumbnail: 'https://x/1.jpg' });
+    expect(asked.some((u) => !/likes\.summary/.test(u))).toBe(true); // the engagement-free way was tried
+    expect((out as any).error).toMatch(/pages_read_engagement/);
+    expect((out as any).error).toMatch(/đọc được bài/); // not "bài thường không đọc được"
+  });
+
   it('a Reel posted in July but edited in August is not an August post', async () => {
     const out = await run((url) => {
       if (/\/page1\?fields=access_token/.test(url)) return ok({ access_token: 'ptok' });

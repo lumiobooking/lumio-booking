@@ -420,6 +420,8 @@ export class MetaSocialConnector implements SocialConnector {
     // of reporting "2 bài" as if that were the whole month.
     const edgeOk = new Set<string>();
     const edgeErr: Record<string, string> = {};
+    // Set when posts were only readable WITHOUT their likes/comments (see `bare`).
+    let engagementRefused: string | null = null;
     for (const [edge, flds] of edges) {
       // Three ways to ask, in order: the month window; the same without a
       // window (an edge that refuses since/until); and a minimal field list
@@ -427,10 +429,19 @@ export class MetaSocialConnector implements SocialConnector {
       // makes Graph refuse the WHOLE call — better a post without its author
       // than no posts at all; the own-post filter then simply has no `from`).
       const slim = flds.replace(/,(from|story|shares|full_picture)(?=,|$)/g, '');
+      // The fourth way asks for NO engagement at all. `likes.summary` and
+      // `comments.summary` need pages_read_engagement, and a Page token
+      // without it refuses the WHOLE list (#10) — so a month of five posts
+      // read as "2 Reels" while the salon counted five. The post itself (id,
+      // text, time, link, picture) is readable without that permission: the
+      // count and the top-5 list are right, and only the reactions stay
+      // blank until the Page is reconnected with the permission ticked.
+      const bare = slim.replace(/,(likes\.summary\(true\)|comments\.summary\(true\)|description)(?=,|$)/g, '');
       const attempts = [
         `${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${flds}&limit=100${range}&access_token=${encodeURIComponent(pageToken)}`,
         `${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${flds}&limit=100&access_token=${encodeURIComponent(pageToken)}`,
         `${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${slim}&limit=100${range}&access_token=${encodeURIComponent(pageToken)}`,
+        `${GRAPH}/${encodeURIComponent(pageId)}/${edge}?fields=${bare}&limit=100${range}&access_token=${encodeURIComponent(pageToken)}`,
       ];
       let attempt = 0;
       let next: string | null = attempts[0];
@@ -442,6 +453,7 @@ export class MetaSocialConnector implements SocialConnector {
           if (r.ok && Array.isArray(r.json?.data)) {
             error = null;
             edgeOk.add(edge);
+            if (attempt === attempts.length - 1 && edge !== 'video_reels') engagementRefused = edgeErr[edge] || engagementRefused;
             for (const it of r.json.data as Record<string, unknown>[]) {
               const id = String(it?.id ?? '');
               if (!id) continue;
@@ -481,6 +493,11 @@ export class MetaSocialConnector implements SocialConnector {
     if (!postEdges.some((e) => edgeOk.has(e))) {
       const why = postEdges.map((e) => edgeErr[e]).find(Boolean);
       if (why) error = `bài thường không đọc được (${why})`;
+    } else if (engagementRefused) {
+      // The posts are in; only their reactions are not. Say exactly that —
+      // "bài thường không đọc được" would send someone hunting for posts that
+      // are already counted.
+      error = `đọc được bài nhưng không đọc được lượt thích/bình luận — kết nối lại Facebook với quyền pages_read_engagement (${engagementRefused})`;
     }
     let list = collected;
     // STRICT month filter. The old rule kept anything whose date failed to

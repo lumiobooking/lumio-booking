@@ -100,7 +100,8 @@ export function postRowFrom(platform: SocialPlatformKey, p: PostReading, tz: str
     reach: num(p.reach),
     likes, comments, shares, saves,
     // The connector's own total when it has one and we could not add anything up.
-    interactions: known ?? num(p.interactions),
+    // A connector total of 0 with no known parts is "nothing read", not 0.
+    interactions: known ?? (num(p.interactions) || null),
   };
 }
 

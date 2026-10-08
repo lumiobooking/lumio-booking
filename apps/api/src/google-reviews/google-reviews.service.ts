@@ -8,6 +8,7 @@ import { AiUsageService } from '../common/ai-usage.service';
 import { chosenIndustry, personaFor } from '../common/business-persona';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { explainLocalPost404, bareLocationId } from './gbp-post-404';
+import { bareLocation, pickLocation, takenLocations } from './location-match';
 import { oauthBase } from '../common/public-url.util';
 
 // Status is a Prisma enum ('NEW' | 'DRAFTED' | ...). We use plain string literals
@@ -547,13 +548,30 @@ export class GoogleReviewsService {
     const data = (await locRes.json()) as {
       locations?: { name?: string; title?: string; storefrontAddress?: { addressLines?: string[]; locality?: string; administrativeArea?: string } }[];
     };
+    // A location another salon already holds is listed but marked: picking
+    // it would print that salon's reviews, numbers and keywords under this one.
+    const taken = await this.locationsTakenByOthers(tenantId);
     const locations = (data.locations || [])
-      .map((l) => ({ name: l.name || '', title: l.title || l.name || '', address: shortAddress(l.storefrontAddress) }))
+      .map((l) => ({ name: l.name || '', title: l.title || l.name || '', address: shortAddress(l.storefrontAddress), takenByOther: taken.has(bareLocation(l.name)) }))
       .filter((l) => l.name)
-      .sort((a, b) => a.title.localeCompare(b.title));
+      .sort((a, b) => Number(a.takenByOther) - Number(b.takenByOther) || a.title.localeCompare(b.title));
     return { accountId, locations };
   }
 
+  /** Google locations linked to any OTHER salon (bare "locations/…" ids). */
+  private async locationsTakenByOthers(tenantId: string): Promise<Set<string>> {
+    const rows = await this.prisma.setting.findMany({ where: { key: GBR_KEY }, select: { tenantId: true, value: true } }).catch(() => [] as { tenantId: string; value: unknown }[]);
+    return takenLocations(rows, tenantId);
+  }
+
+  /**
+   * After the OAuth callback: link the salon's location ONLY when there is no
+   * doubt (location-match.ts) — the login manages exactly one profile, or
+   * exactly one whose name is this salon's. It used to take the first
+   * location of the first account, which, on the agency's login that manages
+   * dozens of profiles, tied salons to another business. When in doubt
+   * nothing is linked and the reviews screen asks a person to choose.
+   */
   private async detectLocation(tenantId: string): Promise<void> {
     const s = await this.getSettings(tenantId);
     const token = await this.accessToken(s);
@@ -563,14 +581,22 @@ export class GoogleReviewsService {
     const accountId = (accounts as { accounts?: { name?: string }[] }).accounts?.[0]?.name || '';
     if (!accountId) return;
     const locRes = await fetch(
-      `https://mybusinessbusinessinformation.googleapis.com/v1/${accountId}/locations?readMask=name,title&pageSize=1`,
+      `https://mybusinessbusinessinformation.googleapis.com/v1/${accountId}/locations?readMask=name,title&pageSize=100`,
       { headers: { authorization: `Bearer ${token}` } },
     ).then((r) => r.json()).catch(() => ({}));
-    const loc = (locRes as { locations?: { name?: string }[] }).locations?.[0]?.name || '';
-    if (accountId && loc) {
-      await this.writeSettings(tenantId, { accountId, locationId: loc });
-      await this.learnReviewLink(tenantId, token);
+    const list = ((locRes as { locations?: { name?: string; title?: string }[] }).locations ?? [])
+      .map((l) => ({ name: l.name || '', title: l.title || '' }))
+      .filter((l) => l.name);
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }).catch(() => null);
+    const res = pickLocation(list, tenant?.name ?? '', await this.locationsTakenByOthers(tenantId));
+    if (!res.pick) {
+      // Keep the account so the picker can list its locations; no location.
+      await this.writeSettings(tenantId, { accountId, locationId: '', locationTitle: '' });
+      this.logger.log(`GBP location for ${tenantId} left to a person (${res.why}, ${list.length} location(s))`);
+      return;
     }
+    await this.writeSettings(tenantId, { accountId, locationId: res.pick.name, locationTitle: res.pick.title });
+    await this.learnReviewLink(tenantId, token);
   }
 
   /**
@@ -603,6 +629,11 @@ export class GoogleReviewsService {
 
   async setLocation(user: AuthenticatedUser, accountId: string, locationId: string, locationTitle?: string) {
     const tenantId = this.tenantId(user);
+    // One Google location, one salon: the same profile under two salons
+    // puts one business's reviews, numbers and keywords in the other's report.
+    if ((await this.locationsTakenByOthers(tenantId)).has(bareLocation(locationId))) {
+      throw new BadRequestException('Địa điểm Google này đã gắn cho một tiệm khác. Chọn đúng địa điểm của tiệm này, hoặc gỡ địa điểm khỏi tiệm kia trước. / This Google location is already linked to another salon.');
+    }
     const cur = await this.getSettings(tenantId);
     const changed = cur.locationId !== locationId.trim();
     await this.writeSettings(tenantId, {

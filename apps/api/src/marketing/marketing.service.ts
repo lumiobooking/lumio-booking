@@ -16,6 +16,7 @@ import { publicWebBase } from '../common/public-url.util';
 import { jsonSafe } from '../common/json-safe';
 import { linkedCredsFor, LinkedCreds, LINKABLE_PLATFORMS, credsSource, type SyncAllLine } from './linked-channels';
 import { SocialPostsService, type StoredPost } from './social-posts.service';
+import { bareLocation, namesMatch, takenLocations } from '../google-reviews/location-match';
 import { monthFacts as computeMonthFacts, prevMonthKey, type MonthFacts } from './month-facts';
 import { guardNarrative, correctionFor, type GuardReport } from './report-guard';
 import { cleanReportPolicy, lifecycleOf, nextActionOf, autoSendDue, DEFAULT_REPORT_POLICY, REPORT_POLICY_KEY, type ReportPolicy } from './report-lifecycle';
@@ -483,11 +484,39 @@ export class MarketingService {
         series: gbpSeries,
         syncedAt: gbpRow.syncedAt,
       };
+      gbp.profileCheck = await this.gbpProfileCheck(tenantId, cur).catch(() => null);
+      // Search keywords are the clearest tell of whose profile it is: printed
+      // under the wrong salon they read as a fact about that salon. Left out
+      // until the location is right; the screen says why.
+      if (gbp.profileCheck && (gbp.profileCheck.shared || gbp.profileCheck.nameMismatch)) gbp.keywords = [];
     }
 
     // Posts / interactions / top 5 from the stored posts (never from raw).
     const facts = await this.monthFacts(user, month, tenantParam).catch(() => null);
     return { month, range: { from: fromStr, to: toStr }, outcome: ov, spend, workLog, blended, prevMonth: prev, deltas, channelTrends, socialInsights, gbp, effectiveness, facts };
+  }
+
+  /**
+   * Is the Google profile behind this month's Maps numbers really THIS salon's?
+   * Two ways it is not: the same location is linked to another salon, or the
+   * profile's name shares no distinctive word with the salon's (trade words
+   * like "nail", "spa", "salon" do not count). Either one, and the keywords,
+   * views and calls are another business's — the report flags the block and
+   * leaves the keywords out instead of printing "nail salon near me" for a
+   * bonsai garden. Names of other salons are never returned.
+   */
+  private async gbpProfileCheck(tenantId: string, g: { location?: string; locationTitle?: string | null }): Promise<{ shared: boolean; nameMismatch: boolean; locationTitle: string | null }> {
+    const [tenant, own, rows] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
+      this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'googleReviews' } }, select: { value: true } }),
+      this.prisma.setting.findMany({ where: { key: 'googleReviews' }, select: { tenantId: true, value: true } }),
+    ]);
+    const ownV = (own?.value ?? {}) as { locationId?: string; locationTitle?: string };
+    const loc = bareLocation(g.location || ownV.locationId);
+    const title = (g.locationTitle || ownV.locationTitle || '').trim() || null;
+    const shared = !!loc && takenLocations(rows as Array<{ tenantId: string; value: unknown }>, tenantId).has(loc);
+    const nameMismatch = !!title && !!tenant?.name && !namesMatch(title, tenant.name);
+    return { shared, nameMismatch, locationTitle: title };
   }
 
   // ---- AI draft (Anthropic, same pattern as the voice/messenger agents) ----

@@ -17,6 +17,13 @@ export interface ConnectionsRow {
   googleEmail: string | null;
   tiktok: string | null;
   mail: string | null;
+  /**
+   * The linked Google location's id, for comparing — NEVER shown (the caller
+   * strips it before the row leaves the server). Two salons on one location
+   * is the mistake that matters, and a location linked without a title read
+   * "connected" for both, so the name alone could not catch it.
+   */
+  googleLocation?: string | null;
 }
 
 export interface ConnectionSources {
@@ -52,6 +59,8 @@ export function connectionsByTenant(src: ConnectionSources): Map<string, Connect
       // The location's own name, never its "locations/2169…" id — same reason.
       r.google = str(v.locationTitle) ?? 'connected';
       r.googleEmail = str(v.connectedEmail);
+      const loc = str(v.locationId);
+      if (loc) { const i = loc.indexOf('locations/'); r.googleLocation = i >= 0 ? loc.slice(i) : `locations/${loc}`; }
     } else if (s.key === 'tiktok' && v.connected === true) {
       const c = obj(v.creator);
       const u = str(v.username) ?? str(c.username);
@@ -76,7 +85,8 @@ export function sharedConnections(rows: Map<string, ConnectionsRow>): { kind: 'g
   const seen = new Map<string, string[]>();
   for (const [id, r] of rows) {
     for (const kind of ['google', 'tiktok', 'mail'] as const) {
-      const v = r[kind];
+      // Google: compare by the location itself when known, not its title.
+      const v = kind === 'google' && r.googleLocation ? r.googleLocation : r[kind];
       if (!v || v === 'connected' || v === 'gmail' || v === 'brevo') continue;
       const k = `${kind}:${v.toLowerCase()}`;
       seen.set(k, [...(seen.get(k) ?? []), id]);

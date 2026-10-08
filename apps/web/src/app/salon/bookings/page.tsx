@@ -707,7 +707,12 @@ function CreateBookingForm({
   // One row per person in the party; index 0 is the booker. Friends coming
   // together rarely want the same thing — one takes gel, one takes a pedicure —
   // so each person carries their own service list and their own name.
-  const [people, setPeople] = useState<{ name: string; serviceIds: string[] }[]>([{ name: '', serviceIds: [] }]);
+  // Each person also carries their own technician: two friends booked for
+  // the same hour are two chairs, and the salon often knows who takes whom
+  // ("Lan does the gel, Mai's pedicure goes to Tú"). '' = pick by turn and
+  // skill, '__none' = leave for later, else a staff id. The booker's lives in
+  // form.staffId (the field above), the guests' here.
+  const [people, setPeople] = useState<{ name: string; serviceIds: string[]; staffId: string }[]>([{ name: '', serviceIds: [], staffId: '' }]);
   const [who, setWho] = useState(0); // whose services the picker below is editing
   const [svcQ, setSvcQ] = useState(''); // type-to-filter: many salons have 50+ services
   const serviceIds = people[who]?.serviceIds ?? [];
@@ -757,7 +762,7 @@ function CreateBookingForm({
       if (ps.length === partyN) return ps;
       if (ps.length > partyN) return ps.slice(0, partyN);
       const seed = ps[0]?.serviceIds ?? [];
-      return [...ps, ...Array.from({ length: partyN - ps.length }, () => ({ name: '', serviceIds: [...seed] }))];
+      return [...ps, ...Array.from({ length: partyN - ps.length }, () => ({ name: '', serviceIds: [...seed], staffId: '' }))];
     });
     setWho((i) => Math.min(i, partyN - 1));
   }, [partyN]);
@@ -787,8 +792,45 @@ function CreateBookingForm({
         .map((b) => b.assignedStaff!.id),
     );
     const active = staff.filter((s) => s.isActive);
-    return { free: active.filter((s) => !busy.has(s.id)).length, total: active.length };
+    return { free: active.filter((s) => !busy.has(s.id)).length, total: active.length, busy };
   })();
+  // The technician each person is down for, in one list (index 0 = booker).
+  const staffOf = (i: number) => (i === 0 ? form.staffId : people[i]?.staffId ?? '');
+  const setStaffOf = (i: number, v: string) => {
+    if (i === 0) up('staffId', v);
+    else setPeople((ps) => ps.map((p, j) => (j === i ? { ...p, staffId: v } : p)));
+  };
+  const nameOf = (i: number) => (i === 0
+    ? (form.customerFirstName.trim() || t('bk.you'))
+    : (people[i]?.name?.trim() || `${t('bk.guestLabel')} ${i + 1}`));
+  const staffName = (id: string) => { const s = staff.find((x) => x.id === id); return s ? `${s.firstName}${s.lastName ? ` ${s.lastName}` : ''}` : ''; };
+  // One technician named for two people at the same hour: they cannot do both
+  // at once. A warning, not a block — some salons run one tech on two
+  // pedicure chairs, and the owner knows.
+  const doubleBooked = (() => {
+    const seen = new Map<string, number[]>();
+    for (let i = 0; i < partyN; i++) {
+      const id = staffOf(i);
+      if (!id || id === '__none') continue;
+      seen.set(id, [...(seen.get(id) ?? []), i]);
+    }
+    return [...seen.entries()].filter(([, idx]) => idx.length > 1).map(([id, idx]) => ({ name: staffName(id), who: idx.map(nameOf) }));
+  })();
+  const staffSelect = (i: number) => (
+    <select style={ui.input} value={staffOf(i)} onChange={(e) => setStaffOf(i, e.target.value)}>
+      <option value="">{ind(vi ? '⚡ Tự chọn thợ (theo lượt, đúng tay nghề)' : '⚡ Pick automatically (turns + skills)')}</option>
+      <option value="__none">{t('bk.leaveUnassigned')}</option>
+      {staff.filter((s) => s.isActive || s.id === staffOf(i)).map((s) => {
+        const busyThen = freeStaff?.busy.has(s.id);
+        const takenBy = Array.from({ length: partyN }, (_, j) => j).filter((j) => j !== i && staffOf(j) === s.id).map(nameOf);
+        return (
+          <option key={s.id} value={s.id}>
+            {s.firstName} {s.lastName ?? ''}{busyThen ? (vi ? ' · đang có lịch giờ này' : ' · booked then') : ''}{takenBy.length ? (vi ? ` · đã giao cho ${takenBy.join(', ')}` : ` · given to ${takenBy.join(', ')}`) : ''}
+          </option>
+        );
+      })}
+    </select>
+  );
   const staffShort = freeStaff !== null && partyN > freeStaff.free;
   // Opening hours, checked the moment a time is picked (the server checks too).
   const hoursCheck = form.startLocal ? deskHoursCheck(form.startLocal, hours, vi) : ({ ok: true } as const);
@@ -853,7 +895,8 @@ function CreateBookingForm({
       // details. Their names are unknown on a phone call and their numbers are
       // not the booker's, so sending the booker's phone again would merge four
       // strangers into one customer record. Staff rename them on arrival.
-      // Left unassigned on purpose so turn rotation picks the technicians.
+      // Each guest goes to the technician picked for them; a guest left on
+      // "automatic" is placed by turn rotation and skill, like before.
       const failed: string[] = [];
       for (let i = 2; i <= partyN; i++) {
         const g = people[i - 1];
@@ -866,7 +909,8 @@ function CreateBookingForm({
               serviceIds: g.serviceIds,
               startTime,
               customerFirstName: g.name.trim() || `${t('bk.guestLabel')} ${i}`,
-              autoAssign: autoPick,
+              // This guest's own technician; '' = by turn and skill.
+              ...(g.staffId && g.staffId !== '__none' ? { staffId: g.staffId } : { autoAssign: g.staffId !== '__none' }),
               ...(outsideOk ? { outsideHours: true } : {}),
               partySize: partyN,
               groupId,
@@ -954,16 +998,9 @@ function CreateBookingForm({
               />
             </label>
             <label>
-              <FieldLabel raw={t('bk.assignStaff')} optionalWord={t('bk.optional')} />
-              <select style={ui.input} value={form.staffId} onChange={(e) => up('staffId', e.target.value)}>
-                <option value="">{ind(vi ? '⚡ Tự chọn thợ (theo lượt, đúng tay nghề)' : '⚡ Pick automatically (turns + skills)')}</option>
-                <option value="__none">{t('bk.leaveUnassigned')}</option>
-                {staff.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.firstName} {s.lastName ?? ''}
-                  </option>
-                ))}
-              </select>
+              <FieldLabel raw={partyN > 1 ? (vi ? `Thợ cho ${nameOf(0)} (người đặt)` : `Tech for ${nameOf(0)} (booker)`) : t('bk.assignStaff')} optionalWord={t('bk.optional')} />
+              {staffSelect(0)}
+              {partyN > 1 && <span style={{ display: 'block', fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 4 }}>{vi ? 'Thợ cho từng khách đi cùng: chọn ở mục Dịch vụ bên dưới.' : 'Each guest’s tech: pick it under Services below.'}</span>}
             </label>
           </div>
           {/* Capacity, shown the moment a time is picked. Amber when the party
@@ -1048,20 +1085,33 @@ function CreateBookingForm({
                     }}
                   >
                     {label} · {n === 0 ? t('bk.noSvcYet') : t('bk.svcCount').replace('{n}', String(n))}
+                    {' · '}{staffOf(i) === '' ? (vi ? '⚡ tự chọn thợ' : '⚡ auto tech') : staffOf(i) === '__none' ? (vi ? 'chưa giao' : 'unassigned') : `💅 ${staffName(staffOf(i))}`}
                   </button>
                 );
               })}
             </div>
-            {who > 0 && (
-              <label style={{ display: 'block', marginTop: 10, maxWidth: 320 }}>
-                <FieldLabel raw={t('bk.guestName')} optionalWord={t('bk.optional')} />
-                <input
-                  style={ui.input}
-                  value={people[who]?.name ?? ''}
-                  onChange={(e) => setPeople((ps) => ps.map((p, i) => (i === who ? { ...p, name: e.target.value } : p)))}
-                  placeholder="Mai"
-                />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginTop: 10, maxWidth: 680 }}>
+              {who > 0 && (
+                <label style={{ display: 'block' }}>
+                  <FieldLabel raw={t('bk.guestName')} optionalWord={t('bk.optional')} />
+                  <input
+                    style={ui.input}
+                    value={people[who]?.name ?? ''}
+                    onChange={(e) => setPeople((ps) => ps.map((p, i) => (i === who ? { ...p, name: e.target.value } : p)))}
+                    placeholder="Mai"
+                  />
+                </label>
+              )}
+              <label style={{ display: 'block' }}>
+                <FieldLabel raw={vi ? `Thợ cho ${nameOf(who)}` : `Tech for ${nameOf(who)}`} optionalWord={t('bk.optional')} />
+                {staffSelect(who)}
               </label>
+            </div>
+            {doubleBooked.length > 0 && (
+              <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--ink-warn)' }}>
+                ⚠️ {doubleBooked.map((d) => (vi ? `${d.name} đang được giao cho ${d.who.join(' và ')} cùng một giờ` : `${d.name} is given to ${d.who.join(' and ')} at the same time`)).join(' · ')}
+                {vi ? ' — thợ không làm song song được thì chọn thợ khác hoặc để "Tự chọn".' : ' — pick another tech or "automatic" unless they can work both chairs.'}
+              </div>
             )}
           </div>
         )}

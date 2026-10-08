@@ -67,6 +67,8 @@ interface GbpData {
   impressions?: number | null; mapsImpr?: number | null; searchImpr?: number | null; desktopImpr?: number | null; mobileImpr?: number | null;
   calls?: number | null; directions?: number | null; websiteClicks?: number | null; bookings?: number | null; conversations?: number | null;
   keywords?: { keyword: string; count: number | null }[];
+  /** Is this Google profile really the salon's? (shared with another salon / name does not match) */
+  profileCheck?: { shared: boolean; nameMismatch: boolean; locationTitle: string | null } | null;
   vsPrev?: { impressions: SocialDelta | null; calls: SocialDelta | null; directions: SocialDelta | null; websiteClicks: SocialDelta | null; bookings: SocialDelta | null; conversations: SocialDelta | null };
   series?: { month: string; impressions: number | null; calls: number | null; directions: number | null; websiteClicks: number | null; bookings: number | null }[];
   reviews?: { rating: number | null; count: number | null; newThisMonth?: number | null; badCount?: number | null; manual?: boolean; source?: string; syncedAt?: string; recent?: { author: string; rating: number; comment: string; time?: string }[] } | null;
@@ -971,7 +973,11 @@ function openPrint(data: Monthly | null, c: Content, vi: boolean, money: (n: num
     const bar = (label: string, val: number, color: string) => { const pct = totImp > 0 ? Math.round((val / totImp) * 100) : 0; return `<div style="margin:4px 0"><div class="t-body" style="display:flex;justify-content:space-between;color:#475569"><span>${esc(label)}</span><b style="color: #0f2a52">${fnum(val)} · ${pct}%</b></div><div style="height:8px;background:#eef1f6;border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:${color}"></span></div></div>`; };
     const sourcePanel = `${bar(t('Trên Tìm kiếm', 'On Search'), g.searchImpr || 0, '#4285F4')}${bar(t('Trên Maps', 'On Maps'), g.mapsImpr || 0, '#34A853')}<div style="height:6px"></div>${bar('Mobile', g.mobileImpr || 0, '#5b8def')}${bar('Desktop', g.desktopImpr || 0, '#9bb8f0')}`;
     const kw = (g.keywords || []).slice(0, 6);
-    const kwPanel = kw.length ? `<div class="t-body" style="">${kw.map((k) => `<div style="display:flex;justify-content:space-between;margin:2px 0;color: #475569"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k.keyword)}</span><b style="color: #0f2a52;flex-shrink:0;margin-left:8px">${fnum(k.count)}</b></div>`).join('')}</div>` : `<div class="empty">${t('Chưa có dữ liệu từ khoá tháng này.', 'No keyword data this month.')}</div>`;
+    const pc = g.profileCheck;
+    const wrongProfile = !!pc && (pc.shared || pc.nameMismatch);
+    const kwPanel = wrongProfile
+      ? `<div class="t-body" style="color: #b45309;line-height:1.55">${t(`Ẩn từ khoá: hồ sơ Google đang nối${pc!.locationTitle ? ` (“${esc(pc!.locationTitle)}”)` : ''} có vẻ không phải của tiệm này${pc!.shared ? ' — cùng địa điểm đang gắn cho một tiệm khác' : ''}. Chọn lại đúng địa điểm trong Google Reviews.`, `Keywords hidden: the linked Google profile${pc!.locationTitle ? ` (“${esc(pc!.locationTitle)}”)` : ''} does not look like this business${pc!.shared ? ' — the same location is linked to another salon' : ''}. Pick the right location under Google Reviews.`)}</div>`
+      : kw.length ? `<div class="t-body" style="">${kw.map((k) => `<div style="display:flex;justify-content:space-between;margin:2px 0;color: #475569"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k.keyword)}</span><b style="color: #0f2a52;flex-shrink:0;margin-left:8px">${fnum(k.count)}</b></div>`).join('')}</div>` : `<div class="empty">${t('Chưa có dữ liệu từ khoá tháng này.', 'No keyword data this month.')}</div>`;
     const impSeries = (g.series || []).map((x) => x.impressions || 0);
     const trendPanel = impSeries.length > 1 ? sparkD(impSeries, '#1a73e8', (g.series || []).map((x) => x.month)) : `<div class="empty">${t('Cần ≥2 tháng đồng bộ để vẽ xu hướng.', 'Need ≥2 synced months for a trend.')}</div>`;
     const actRate = (val: number | null | undefined) => (totImp > 0 && val != null ? Math.round((val / totImp) * 1000) / 10 : null);
@@ -1867,6 +1873,12 @@ function GbpCard({ g, T }: { g: GbpData; T: (v: string, e: string) => string }) 
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--c64748b)', marginBottom: 2 }}>{T('T\u1eeb kho\u00e1 kh\u00e1ch t\u00ecm', 'Top searches')}</div>
+          {g.profileCheck && (g.profileCheck.shared || g.profileCheck.nameMismatch) && (
+            <div style={{ fontSize: 11.5, color: 'var(--ink-warn)', lineHeight: 1.5, margin: '2px 0 6px' }}>
+              {T(`⚠ Hồ sơ Google đang nối${g.profileCheck.locationTitle ? ` (“${g.profileCheck.locationTitle}”)` : ''} có vẻ không phải của tiệm này${g.profileCheck.shared ? ' — cùng địa điểm đang gắn cho một tiệm khác' : ''}. Từ khoá đã ẩn; số liệu Maps có thể là của doanh nghiệp khác. Vào Google Reviews → chọn lại đúng địa điểm.`,
+                 `⚠ The linked Google profile${g.profileCheck.locationTitle ? ` (“${g.profileCheck.locationTitle}”)` : ''} does not look like this business${g.profileCheck.shared ? ' — the same location is linked to another salon' : ''}. Keywords hidden; Maps numbers may be another business's. Go to Google Reviews → pick the right location.`)}
+            </div>
+          )}
           {kw.length ? kw.map((k, i) => (<div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--ccbd5e1)', margin: '2px 0' }}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k.keyword}</span><b style={{ color: 'var(--ce2e8f0)', marginLeft: 8 }}>{fmt(k.count)}</b></div>)) : <div style={{ fontSize: 11, color: 'var(--c64748b)' }}>{T('Ch\u01b0a c\u00f3', 'None')}</div>}
         </div>
       </div>

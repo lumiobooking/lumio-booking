@@ -132,7 +132,8 @@ export class SupportService {
       awaitingApproval: pendingBy.get(r.id) ?? 0,
       approvedPosts: approvedBy.get(r.id)?.n ?? 0,
       lastApprovedAt: approvedBy.get(r.id)?.at ?? null,
-      connections: connections.get(r.id) ?? null,
+      // The location id is for the comparison above only; it never leaves the server.
+      connections: (() => { const c = connections.get(r.id); if (!c) return null; const { googleLocation: _loc, ...shown } = c; void _loc; return shown; })(),
       // Kinds of account this salon shares with another salon (google | tiktok | mail).
       sharedWith: sharedBy.get(r.id) ?? [],
     }));

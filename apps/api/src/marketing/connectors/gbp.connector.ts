@@ -98,6 +98,11 @@ export class GbpConnector implements SocialConnector {
     const mobileImpr = sum(mMaps, mSearch);
     const impressions = sum(dMaps, dSearch, mMaps, mSearch);
     const keywords = await this.searchKeywords(loc, month, token).catch(() => []);
+    // The profile's own name, kept with the month: the report checks it
+    // against the salon's name, so another business's numbers (a location
+    // linked to the wrong salon) are flagged instead of printed.
+    const info = await getJson(`https://mybusinessbusinessinformation.googleapis.com/v1/${loc}?readMask=title`, { Authorization: `Bearer ${token}` }).catch(() => null);
+    const locationTitle = info?.ok && typeof info.json?.title === 'string' ? info.json.title : null;
     return {
       spendCents: null,
       impressions,
@@ -107,7 +112,7 @@ export class GbpConnector implements SocialConnector {
       bookings,
       conversations,
       reach: impressions,
-      raw: { gbp: { impressions, mapsImpr, searchImpr, desktopImpr, mobileImpr, calls, directions, websiteClicks: website, bookings, conversations, keywords } },
+      raw: { gbp: { impressions, mapsImpr, searchImpr, desktopImpr, mobileImpr, calls, directions, websiteClicks: website, bookings, conversations, keywords, location: loc, locationTitle } },
     };
   }
 }

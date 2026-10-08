@@ -33,4 +33,15 @@ describe('which salon holds which account', () => {
   it('a Google location under two salons is reported with both', () => {
     expect(sharedConnections(rows)).toEqual([{ kind: 'google', value: 'glow nails & spa', tenantIds: ['glow', 'lily'] }]);
   });
+
+  it('two salons on ONE location with no title (the old auto-detect) are caught by the location id — "connected" alone hid it', () => {
+    const r = connectionsByTenant({ pages: [], settings: [
+      { tenantId: 'akita', key: 'googleReviews', value: { connected: true, locationId: 'accounts/1/locations/2169' } },
+      { tenantId: 'top', key: 'googleReviews', value: { connected: true, locationId: 'locations/2169' } },
+      { tenantId: 'rose', key: 'googleReviews', value: { connected: true, locationId: 'locations/9999' } },
+    ] });
+    expect(r.get('akita')?.google).toBe('connected');
+    expect(r.get('akita')?.googleLocation).toBe('locations/2169');
+    expect(sharedConnections(r)).toEqual([{ kind: 'google', value: 'locations/2169', tenantIds: ['akita', 'top'] }]);
+  });
 });

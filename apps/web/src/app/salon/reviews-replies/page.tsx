@@ -242,7 +242,7 @@ function Inner() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [locations, setLocations] = useState<{ name: string; title: string; address: string }[] | null>(null);
+  const [locations, setLocations] = useState<{ name: string; title: string; address: string; takenByOther?: boolean }[] | null>(null);
   const [pickAccount, setPickAccount] = useState('');
   const [pickLoc, setPickLoc] = useState('');
   const [locFilter, setLocFilter] = useState('');
@@ -331,7 +331,7 @@ function Inner() {
   async function loadLocations() {
     setError(null);
     try {
-      const r = await apiFetch<{ accountId: string; locations: { name: string; title: string; address: string }[] }>('/google-reviews/locations', { token });
+      const r = await apiFetch<{ accountId: string; locations: { name: string; title: string; address: string; takenByOther?: boolean }[] }>('/google-reviews/locations', { token });
       setLocations(r.locations); setPickAccount(r.accountId);
       // No silent default. The picker used to preselect locations[0] — on an
       // agency account that is whichever of 59 salons sorts first, and it was
@@ -529,9 +529,12 @@ function Inner() {
                                   type="button"
                                   role="option"
                                   aria-selected={on}
-                                  onClick={() => setPickLoc(l.name)}
+                                  onClick={() => { if (!l.takenByOther) setPickLoc(l.name); }}
+                                  disabled={l.takenByOther}
+                                  title={l.takenByOther ? 'Địa điểm này đã gắn cho một tiệm khác / Linked to another salon' : undefined}
                                   style={{
-                                    display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+                                    opacity: l.takenByOther ? 0.45 : 1,
+                                    display: 'block', width: '100%', textAlign: 'left', cursor: l.takenByOther ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                                     padding: '10px 14px', border: 'none', borderTop: '1px solid var(--line)',
                                     borderLeft: `4px solid ${on ? '#6366f1' : 'transparent'}`,
                                     background: on ? 'rgba(99,102,241,.16)' : 'transparent',
@@ -539,6 +542,7 @@ function Inner() {
                                 >
                                   <div style={{ fontSize: 13.5, fontWeight: on ? 800 : 600, color: 'var(--ce2e8f0)' }}>{on ? '✓ ' : ''}{l.title}</div>
                                   {l.address && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 2 }}>{l.address}</div>}
+                                  {l.takenByOther && <div style={{ fontSize: 11.5, color: 'var(--ink-warn)', marginTop: 2 }}>Đã gắn cho một tiệm khác · Linked to another salon</div>}
                                 </button>
                               );
                             })}

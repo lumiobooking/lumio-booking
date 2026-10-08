@@ -85,6 +85,7 @@ interface WebhookStatus {
   lastEvent?: { at: string; count: number; lane: 'messaging' | 'standby' | 'echo' | 'other'; preview: string } | null;
   /** Conversations stored for this salon. */
   threads?: number;
+  serverStartedAt?: string;
   callbackUrl?: string | null; callbackMatches?: boolean | null; otherApps?: string[]; subscribeError?: string | null;
   rejected?: { count: number; at: string } | null; unrouted?: { count: number; at: string } | null;
 }
@@ -888,18 +889,28 @@ function Inner() {
               {(wh?.fields && wh.fields.length ? wh.fields : ['messages', 'messaging_postbacks', 'message_reactions']).map((f) => `\u2713 ${f}`).join('   ')}
             </div>
             {wh?.verifiedAt && <div style={{ color: 'var(--c64748b)', marginTop: 6 }}>{t('lastVerified')}: {fmtInTz(wh.verifiedAt, { dateStyle: 'short', timeStyle: 'short' })}</div>}
-            {wh && 'lastEvent' in wh && (
-              <div style={{ marginTop: 6, color: wh.lastEvent ? 'var(--ce2e8f0)' : 'var(--ink-warn)' }}>
+            {wh && 'lastEvent' in wh && (() => {
+              // A quiet Page right after a deploy is not a broken Page: the
+              // warning only speaks once the server has been up half an hour.
+              const upMin = wh.serverStartedAt ? (Date.now() - new Date(wh.serverStartedAt).getTime()) / 60000 : 999;
+              const quietIsNormal = !wh.lastEvent && upMin < 30;
+              return (
+              <div style={{ marginTop: 6, color: wh.lastEvent || quietIsNormal ? 'var(--ce2e8f0)' : 'var(--ink-warn)' }}>
                 {wh.lastEvent
                   ? (lang === 'vi'
                     ? `✓ Sự kiện gần nhất từ Facebook: ${fmtInTz(wh.lastEvent.at, { dateStyle: 'short', timeStyle: 'short' })} · ${wh.lastEvent.count} sự kiện từ lúc máy chủ chạy · kênh "${wh.lastEvent.lane}"${wh.lastEvent.lane === 'standby' ? ' (app khác đang giữ hội thoại — Lumio tự giành lại)' : ''}${wh.lastEvent.preview ? ` · "${wh.lastEvent.preview}"` : ''}`
                     : `✓ Last event from Facebook: ${fmtInTz(wh.lastEvent.at, { dateStyle: 'short', timeStyle: 'short' })} · ${wh.lastEvent.count} since the server started · lane "${wh.lastEvent.lane}"${wh.lastEvent.lane === 'standby' ? ' (another app holds the thread — Lumio takes it back)' : ''}${wh.lastEvent.preview ? ` · "${wh.lastEvent.preview}"` : ''}`)
-                  : (lang === 'vi'
-                    ? '⚠ Chưa nhận sự kiện nào từ Facebook cho Page này kể từ lúc máy chủ khởi động. Nhắn thử vào Page từ một tài khoản khác rồi tải lại trang này; nếu vẫn không có, Facebook chưa gửi gì tới Lumio (kiểm tra Meta Business Agent / app khác đang giữ Page).'
-                    : '⚠ No event from Facebook for this Page since the server started. Message the Page from another account and reload; if still nothing, Facebook is not delivering to Lumio (check Meta Business Agent / another app holding the Page).')}
+                  : quietIsNormal
+                    ? (lang === 'vi'
+                      ? `Máy chủ vừa khởi động lại ${Math.max(1, Math.round(upMin))} phút trước; chưa có tin mới nào cho Page này từ đó — bình thường. Hội thoại đã lưu vẫn ở trong Inbox.`
+                      : `The server restarted ${Math.max(1, Math.round(upMin))} min ago; no new message for this Page since — normal. Stored conversations are in the Inbox.`)
+                    : (lang === 'vi'
+                      ? '⚠ Hơn 30 phút không có sự kiện nào từ Facebook cho Page này. Nhắn thử vào Page từ một tài khoản khác rồi tải lại trang; nếu vẫn không có, Facebook chưa gửi gì tới Lumio (kiểm tra Meta Business Agent / app khác đang giữ Page). Trong lúc đó đối chiếu mỗi phút vẫn đưa tin vào Inbox.'
+                      : '⚠ No event from Facebook for this Page in over 30 minutes. Message the Page from another account and reload; if still nothing, Facebook is not delivering to Lumio (check Meta Business Agent / another app holding the Page). Meanwhile the minute-by-minute reconcile still brings messages into the Inbox.')}
                 {typeof wh.threads === 'number' && <span style={{ color: 'var(--c64748b)' }}> · {lang === 'vi' ? `${wh.threads} hội thoại đã lưu` : `${wh.threads} conversations stored`}</span>}
               </div>
-            )}
+              );
+            })()}
             {wh && (
               <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
                 {wh.callbackMatches === false && <div style={{ color: 'var(--ink-bad)' }}>{lang === 'vi' ? `⛔ Meta đang gửi webhook của app này tới ${wh.callbackUrl} — KHÔNG phải máy chủ này. Mọi Page nối trên máy chủ này đều không nhận được tin. Sửa Callback URL trong Meta App Dashboard → Webhooks → Page, hoặc nối Page trên đúng máy chủ.` : `⛔ Meta delivers this app's webhooks to ${wh.callbackUrl} — NOT this server. No Page connected on this server can receive messages. Fix the Callback URL in Meta App Dashboard → Webhooks → Page, or connect the Page on the right server.`}</div>}

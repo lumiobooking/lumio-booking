@@ -84,6 +84,8 @@ function wallToUtcISO(local: string, tz: string): string {
 
 type Turn = {
   role: 'user' | 'assistant'; content: string; at?: string; manual?: boolean; failed?: boolean;
+  /** 'page': sent from the Page outside Lumio (Business Suite, Meta's agent, another tool) and mirrored in by the sync. */
+  source?: 'page';
   /** A follow-up the bot sent after the customer went quiet (see ./followup). */
   nudge?: boolean;
   /** Set on a customer turn written the moment it arrived (before the bot's
@@ -2160,10 +2162,14 @@ export class MessengerService implements OnModuleInit {
     }
     const trace = this.webhookTrace.get(c.pageId) ?? null;
     const threads = await this.prisma.messengerThread.count({ where: { tenantId } }).catch(() => 0);
-    const myWebhook = `${this.apiBase()}/api/messenger/webhook`;
-    const host = (u: string | null) => { try { return u ? new URL(u).host : null; } catch { return null; } };
+    // Does Meta's callback point at THIS server? A Render service answers on
+    // its onrender.com name AND any custom domain (PUBLIC_API_URL), so both
+    // count — and an event that has actually arrived here settles it outright.
+    const host = (u: string | null | undefined) => { try { return u ? new URL(u).host : null; } catch { return null; } };
     const callbackUrl = this.appCallbackUrl;
-    const callbackMatches = callbackUrl ? host(callbackUrl) === host(myWebhook) : null;
+    const myHosts = new Set([host(process.env.PUBLIC_API_URL), host(process.env.RENDER_EXTERNAL_URL), host(this.apiBase())].filter((h): h is string => !!h));
+    const anyEventHere = this.webhookTrace.size > 0 || this.rejectedWebhooks.count > 0;
+    const callbackMatches = callbackUrl ? (anyEventHere || myHosts.has(host(callbackUrl) || '')) : null;
     return {
       connected: true as const,
       instagram: ig,
@@ -2173,6 +2179,7 @@ export class MessengerService implements OnModuleInit {
       // The last event Facebook delivered for this Page since the server
       // started (null = nothing yet), and how many conversations are stored.
       lastEvent: trace ? { at: new Date(trace.at).toISOString(), count: trace.count, lane: trace.lane, preview: trace.preview } : null,
+      serverStartedAt: new Date(this.startedAt).toISOString(),
       threads,
       // Where Meta actually delivers this app's events, and whether that is THIS
       // server — two API deployments share one app only if each has its own.
@@ -2242,7 +2249,12 @@ export class MessengerService implements OnModuleInit {
         if (!other) { skipped++; continue; }
         const msgs = [...(conv.messages?.data || [])].filter((m) => m.message && m.created_time).reverse(); // oldest first
         if (!msgs.length) { skipped++; continue; }
-        const turns: Turn[] = msgs.map((m) => ({ role: m.from?.id === pg.pageId ? 'assistant' : 'user', content: String(m.message).slice(0, 2000), at: new Date(m.created_time!).toISOString() }));
+        // A line sent by the Page outside Lumio (a person in Business Suite,
+        // Meta's Business Agent, another tool) is NOT the bot's: it is marked
+        // like a staff reply, with its origin, so the inbox never shows it as "AI".
+        const turns: Turn[] = msgs.map((m) => (m.from?.id === pg.pageId
+          ? { role: 'assistant' as const, content: String(m.message).slice(0, 2000), at: new Date(m.created_time!).toISOString(), manual: true, source: 'page' as const }
+          : { role: 'user' as const, content: String(m.message).slice(0, 2000), at: new Date(m.created_time!).toISOString() }));
         const last = turns[turns.length - 1];
         const lastAgeMs = Date.now() - new Date(last.at!).getTime();
         const existing = await this.prisma.messengerThread.findUnique({ where: { pageId_senderId: { pageId: pg.pageId, senderId: other.id } } }).catch(() => null);
@@ -5309,6 +5321,8 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
   readonly webhookTrace = new Map<string, { at: number; count: number; lane: 'messaging' | 'standby' | 'echo' | 'other'; preview: string }>();
   /** POSTs to the webhook whose X-Hub-Signature-256 did not match FB_APP_SECRET — Meta IS sending, but from a different app than ours. */
   readonly rejectedWebhooks = { count: 0, at: 0 as number };
+  /** When this process started — "no event since the server started" means nothing when that was two minutes ago. */
+  readonly startedAt = Date.now();
   noteRejectedWebhook(): void { this.rejectedWebhooks.count += 1; this.rejectedWebhooks.at = Date.now(); }
   /** Pages whose events arrived with no messengerPage row to route them (another salon's Page, or a Page detached since). */
   readonly unroutedWebhooks = new Map<string, { at: number; count: number }>();
@@ -5531,8 +5545,10 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         intro = (sp > 60 ? cut.slice(0, sp) : cut) + '…';
       }
     }
-    intro = intro
-      || 'Hi {{user_first_name}}! 👋 Tap Get Started and I\'ll book your nail appointment in a few quick messages.';
+    // No greeting of the salon's own → the Page's Messenger intro is left
+    // exactly as the owner set it on Facebook. Writing a Lumio default here
+    // overwrote salons' own intro text the moment a Page was connected.
+    if (!intro) return;
     const profileUrl = `https://graph.facebook.com/v21.0/me/messenger_profile?access_token=${encodeURIComponent(pageToken)}`;
     await fetch(profileUrl, {
       method: 'POST',

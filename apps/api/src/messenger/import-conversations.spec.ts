@@ -55,6 +55,8 @@ describe('importing the Page’s recent conversations', () => {
     expect(urls[0]).toContain('/p1/conversations?platform=messenger');
     expect(threads[0]).toMatchObject({ tenantId: 't1', pageId: 'p1', senderId: 'u9', senderName: 'Maria Alvarado', lastText: 'We also have a 15% discount' });
     expect(threads[0].history.map((t: Row) => [t.role, t.content])).toEqual([['user', 'Do you take walk-ins?'], ['assistant', 'We also have a 15% discount']]);
+    // The Page's own line (Meta's agent / a person in Business Suite) is never shown as the bot's.
+    expect(threads[0].history[1]).toMatchObject({ manual: true, source: 'page' });
     expect(threads[0].lastCustomerAt.toISOString()).toBe('2026-10-07T07:15:00.000Z');
     expect(events.publish).toHaveBeenCalledWith('t1', 'message');
     const again = await svc.importConversations(admin, 50);

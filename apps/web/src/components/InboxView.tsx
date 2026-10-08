@@ -265,7 +265,7 @@ const Avatar = memo(function Avatar(
   );
 });
 
-interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Photos the customer attached. */ images?: string[] }
+interface Turn { role: 'user' | 'assistant'; content: string; at: string | null; manual: boolean; /** Photos the customer attached. */ images?: string[]; /** 'page': sent from the Page outside Lumio (Business Suite / Meta's agent), mirrored in. */ source?: 'page' }
 interface ApptCtx {
   id: string;
   startTime: string;
@@ -1416,7 +1416,7 @@ export function InboxView() {
               const mine = t.role === 'assistant';
               const prev = i > 0 ? detail.history[i - 1] : null;
               const newDay = Boolean(t.at) && (!prev?.at || dayKeyInTz(t.at as string) !== dayKeyInTz(prev.at as string));
-              const who = mine ? (t.manual ? (vi ? 'Nhân viên' : 'Staff') : 'Bot') : (vi ? 'Khách' : 'Customer');
+              const who = mine ? (t.source === 'page' ? (vi ? 'Từ Page (ngoài Lumio)' : 'From the Page (outside Lumio)') : t.manual ? (vi ? 'Nhân viên' : 'Staff') : 'Bot') : (vi ? 'Khách' : 'Customer');
               return (
                 <Fragment key={i}>
                   {newDay && (

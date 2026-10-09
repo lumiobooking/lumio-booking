@@ -84,7 +84,9 @@ describe('sync queue', () => {
       },
     };
     const { svc, jobs } = make(marketing);
-    await svc.enqueue('t1', '2026-10', 'daily');
+    // runAt pinned: the clock below is fixed, so a job queued at the real
+    // "now" would never be due once the calendar passed Oct 8.
+    await svc.enqueue('t1', '2026-10', 'daily', null, new Date('2026-10-08T09:00:00Z'));
     await svc.enqueue('t2', '2026-10', 'daily', null, new Date('2099-01-01')); // not due
     const now = new Date('2026-10-08T10:00:00Z');
     let r = await svc.runDue(3, now);
@@ -100,7 +102,7 @@ describe('sync queue', () => {
     expect(jobs[0]).toMatchObject({ status: 'failed', attempts: 3 });
     // A new job succeeds and records the lines.
     fail = false;
-    await svc.enqueue('t1', '2026-10', 'manual');
+    await svc.enqueue('t1', '2026-10', 'manual', null, new Date('2026-10-08T12:30:00Z'));
     r = await svc.runDue(3, new Date('2026-10-08T13:00:00Z'));
     expect(r).toEqual({ ran: 1, ok: 1, failed: 0 });
     expect(jobs[2]).toMatchObject({ status: 'ok', error: null });

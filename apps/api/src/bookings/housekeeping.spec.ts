@@ -48,8 +48,10 @@ function make(appts: Row[], tz: Record<string, string>) {
   svc.audit = { log: async (e: Row) => { audits.push(e); } };
   svc.logger = { warn: () => undefined, log: () => undefined };
   svc.reassign = async (tenantId: string, id: string, actor: string | null) => { reassigned.push({ tenantId, id, actor }); return { reassigned: true }; };
+  svc.settings = { getBookingRules: async (tenantId: string) => ({ staffMustAccept: mustAccept.has(tenantId), assignmentMode: 'auto' }) };
   return { svc, writes, audits, rejections, reassigned };
 }
+let mustAccept = new Set<string>(['t1', 't2']);
 
 describe('silent technicians', () => {
   it('every salon with an expired hand-off gets its sweep, each scoped to itself', async () => {
@@ -62,6 +64,22 @@ describe('silent technicians', () => {
     expect(await svc.processTimeoutsEverywhere(NOW)).toEqual({ tenants: 2, processed: 2, reassigned: 2 });
     expect(rejections.map((r) => [r.tenantId, r.appointmentId, r.type])).toEqual([['t1', 'a1', 'NO_RESPONSE'], ['t2', 'a2', 'NO_RESPONSE']]);
     expect(reassigned).toEqual([{ tenantId: 't1', id: 'a1', actor: null }, { tenantId: 't2', id: 'a2', actor: null }]);
+  });
+});
+
+describe('a salon that does not ask technicians to tap Accept', () => {
+  afterEach(() => { mustAccept = new Set(['t1', 't2']); });
+  it('keeps the picked technician: the deadline is cleared, nothing is reassigned or marked', async () => {
+    mustAccept = new Set(['t2']);
+    const appts = [
+      { id: 'a1', tenantId: 't1', status: 'ASSIGNED', assignedStaffId: 'kim', responseDeadline: h(1) },
+      { id: 'a2', tenantId: 't2', status: 'ASSIGNED', assignedStaffId: 'zoe', responseDeadline: h(2) },
+    ];
+    const { svc, rejections, reassigned } = make(appts, {});
+    expect(await svc.processTimeoutsEverywhere(NOW)).toEqual({ tenants: 2, processed: 1, reassigned: 1 });
+    expect(appts[0]).toMatchObject({ assignedStaffId: 'kim', status: 'ASSIGNED', responseDeadline: null });
+    expect(rejections.map((r) => r.tenantId)).toEqual(['t2']);
+    expect(reassigned.map((r) => r.tenantId)).toEqual(['t2']);
   });
 });
 

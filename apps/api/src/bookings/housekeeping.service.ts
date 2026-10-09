@@ -8,9 +8,12 @@ import { BookingsService } from './bookings.service';
  *  - a booking handed to a technician who never tapped Accept — the 30-minute
  *    response deadline existed, but nothing ever enforced it;
  *  - a booking whose customer never came, left "Confirmed" on the calendar.
- * Every few minutes this sweeps both for every salon: silent technicians
- * lose the booking (reassigned, or back to Pending for the desk), and once a
- * salon's own day is over its untouched bookings become No-show.
+ * Every few minutes this sweeps both for every salon: in a salon that
+ * requires technicians to tap Accept (BookingRules.staffMustAccept, off by
+ * default) a silent technician's booking goes to the next free one — and
+ * stays put when nobody else is free; elsewhere the deadline is just cleared
+ * and the technician keeps the booking. Once a salon's own day is over its
+ * untouched bookings become No-show.
  * Disable with HOUSEKEEPING_ENABLED=false.
  */
 @Injectable()
@@ -28,6 +31,13 @@ export class HousekeepingService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     setTimeout(() => this.tick(), 60 * 1000);
+    // Undo, once per boot (idempotent), what the response-deadline sweep did
+    // to salons that never asked technicians to tap Accept.
+    setTimeout(() => {
+      this.bookings.repairStrippedAssignments()
+        .then((r) => { if (r.cleared || r.restaffed) this.logger.log(`Assignment repair: ${r.cleared} no-response mark(s) removed, ${r.restaffed} booking(s) re-staffed across ${r.tenants} salon(s).`); })
+        .catch((e) => this.logger.warn(`Assignment repair failed: ${(e as Error).message}`));
+    }, 30 * 1000);
     this.timer = setInterval(() => this.tick(), this.intervalMs);
     this.timer.unref?.();
     this.logger.log(`Booking housekeeping on (every ${this.intervalMs / 60000}m).`);

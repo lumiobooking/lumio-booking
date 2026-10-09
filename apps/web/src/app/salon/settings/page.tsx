@@ -23,7 +23,7 @@ interface Booking {
   /** Customer self-service from the AI bots — see BookingRules on the API. */
   selfRescheduleEnabled?: boolean; selfRescheduleNoticeHours?: number;
   selfCancelEnabled?: boolean; selfCancelNoticeHours?: number;
-  allowCustomerChooseStaff: boolean; assignmentMode: 'none' | 'auto'; groupPolicy?: 'strict' | 'flexible'; currency: string;
+  allowCustomerChooseStaff: boolean; assignmentMode: 'none' | 'auto'; groupPolicy?: 'strict' | 'flexible'; staffMustAccept?: boolean; currency: string;
   currencySymbol: string; symbolPosition: 'before' | 'after'; priceDecimals: number; defaultPaymentMethod: 'online' | 'onsite';
   onlinePaymentEnabled: boolean; payLaterEnabled: boolean;
   businessHours: DayHours[]; daysOff: string[];
@@ -516,6 +516,18 @@ function RulesSection({ data, onSave }: { data: SettingsData; onSave: SaveFn }) 
                 ? 'ĐANG TẮT — lịch mới để trống thợ (“Chưa xếp thợ”) cho tiệm tự xếp bằng tay.'
                 : 'OFF — new bookings stay unassigned (“Unassigned”) for you to assign manually.')}
         </p>
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
+          <Toggle on={f.staffMustAccept === true} onChange={(v) => setF({ ...f, staffMustAccept: v })} label={lang === 'vi' ? 'Thợ phải bấm “Nhận lịch” trong app' : 'Technicians must tap “Accept” in the app'} />
+          <p style={{ color: 'var(--c64748b)', fontSize: 12.5, margin: '8px 0 0', lineHeight: 1.55 }}>
+            {f.staffMustAccept
+              ? (lang === 'vi'
+                  ? 'ĐANG BẬT — thợ không bấm Nhận trong 30 phút thì lịch chuyển cho thợ rảnh kế tiếp. Không còn ai rảnh thì lịch VẪN giữ thợ cũ. Chỉ bật khi cả tiệm dùng app nhân viên.'
+                  : 'ON — a technician who does not accept within 30 minutes loses the booking to the next free one. If nobody else is free it STAYS with them. Only for teams that all use the staff app.')
+              : (lang === 'vi'
+                  ? 'ĐANG TẮT (khuyên dùng) — thợ được giao (tự động hoặc lễ tân chọn) giữ lịch luôn, không cần bấm gì trong app.'
+                  : 'OFF (recommended) — the technician picked (by the system or the desk) keeps the booking; nothing to tap in the app.')}
+          </p>
+        </div>
       </div>
 
       <div style={{ marginTop: 16, fontWeight: 600, fontSize: 14, color: 'var(--ccbd5e1)' }}>{t('se.ru.group')}</div>

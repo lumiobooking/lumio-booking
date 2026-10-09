@@ -567,6 +567,18 @@ export interface BookingRules {
   // (Vagaro-style). Strict by default — the salon opts INTO flexibility.
   groupPolicy: 'strict' | 'flexible';
   /**
+   * Must a technician TAP "Accept" in the staff app to keep a booking?
+   *
+   * Off by default, and that is the trade's reality: technicians do not sit on
+   * an app. With it on, a booking not accepted within 30 minutes is taken
+   * from the technician and handed to the next free one (and back to the desk
+   * when nobody is free). That ran for every salon from Oct 4 2026 and
+   * stripped the engine's picks — and the desk's own picks — off the
+   * calendar half an hour later, so every salon's book read "Chưa có thợ".
+   * A salon whose team really does answer in the app turns it on.
+   */
+  staffMustAccept: boolean;
+  /**
    * The badge at the top of the booking page.
    *
    *  'hours'   — "Open today 9:00 AM – 5:00 PM". A fact the owner typed in, so
@@ -639,6 +651,7 @@ export const DEFAULT_BOOKING_RULES: BookingRules = {
   onlinePaymentEnabled: true,
   payLaterEnabled: true,
   groupPolicy: 'strict',
+  staffMustAccept: false,
   // Stating the opening hours rather than promising a slot the page cannot
   // verify. A salon that wants the old badge back can pick 'soonest'.
   soonestBar: 'hours',

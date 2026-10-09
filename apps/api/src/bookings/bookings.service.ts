@@ -3587,7 +3587,7 @@ export class BookingsService {
    * everyone already in this booking's rejection log) and assign them race-safe,
    * or fall back to PENDING/unassigned.
    */
-  private async reassign(tenantId: string, id: string, actorUserId: string | null, notify = true) {
+  private async reassign(tenantId: string, id: string, actorUserId: string | null, notify = true, opts: { keepWhenNobody?: boolean } = {}) {
     const booking = await this.prisma.appointment.findFirst({
       where: { id, tenantId },
       select: { id: true, serviceId: true, startTime: true, endTime: true, preferredStaffId: true },
@@ -3615,6 +3615,11 @@ export class BookingsService {
     );
 
     const nextStaffId = orderedStaffIds[0] ?? null;
+
+    if (!nextStaffId && opts.keepWhenNobody) {
+      const kept = await this.prisma.appointment.findFirst({ where: { id, tenantId }, include: BOOKING_INCLUDE });
+      return { reassigned: false, booking: kept };
+    }
 
     if (!nextStaffId) {
       // No one available -> leave it PENDING and unassigned for manual handling.
@@ -3725,6 +3730,21 @@ export class BookingsService {
       },
       select: { id: true, assignedStaffId: true },
     });
+    if (!expired.length) return { processed: 0, reassigned: 0 };
+
+    // Only a salon whose technicians answer in the app loses a silent
+    // technician's booking (BookingRules.staffMustAccept). Everywhere else the
+    // deadline is simply cleared: the technician the engine — or the desk —
+    // picked keeps the booking. Taking it away after 30 minutes is what left
+    // every salon's calendar reading "Chưa có thợ".
+    const rules = await this.settings.getBookingRules(tenantId).catch(() => null);
+    if (!rules?.staffMustAccept) {
+      await this.prisma.appointment.updateMany({
+        where: { id: { in: expired.map((e) => e.id) }, tenantId, status: AppointmentStatus.ASSIGNED },
+        data: { responseDeadline: null },
+      });
+      return { processed: 0, reassigned: 0 };
+    }
 
     let reassigned = 0;
     for (const appt of expired) {
@@ -3738,11 +3758,54 @@ export class BookingsService {
           },
         });
       }
-      const result = await this.reassign(tenantId, appt.id, actorUserId);
+      // Nobody else free: the booking stays with the technician it had —
+      // a booking with someone is better than a booking with no one.
+      const result = await this.reassign(tenantId, appt.id, actorUserId, true, { keepWhenNobody: true });
       if (result.reassigned) reassigned += 1;
+      else await this.prisma.appointment.updateMany({ where: { id: appt.id, tenantId, status: AppointmentStatus.ASSIGNED }, data: { responseDeadline: null } });
     }
 
     return { processed: expired.length, reassigned };
+  }
+
+  /**
+   * ONE-TIME REPAIR of what the response-deadline sweep did between Oct 4 and
+   * the fix: for every salon that does not require "Accept" in the app, the
+   * NO_RESPONSE marks it wrote are removed (they also pushed those technicians
+   * down the rotation), and every upcoming booking it left without a
+   * technician is run through the engine again — in auto-assignment salons
+   * only, exactly as a new booking would be. Idempotent: a booking the engine
+   * staffs is no longer unassigned; one nobody can take stays for the desk.
+   */
+  async repairStrippedAssignments(now = new Date()): Promise<{ tenants: number; cleared: number; restaffed: number }> {
+    const since = new Date('2026-10-04T00:00:00Z');
+    const marks = await this.prisma.bookingRejection.findMany({
+      where: { type: RejectionType.NO_RESPONSE, createdAt: { gte: since } },
+      select: { id: true, tenantId: true, appointmentId: true },
+    });
+    const byTenant = new Map<string, typeof marks>();
+    for (const m of marks) byTenant.set(m.tenantId, [...(byTenant.get(m.tenantId) ?? []), m]);
+    let cleared = 0, restaffed = 0;
+    for (const [tenantId, rows] of byTenant) {
+      try {
+        const rules = await this.settings.getBookingRules(tenantId);
+        if (rules.staffMustAccept) continue;
+        const del = await this.prisma.bookingRejection.deleteMany({ where: { tenantId, id: { in: rows.map((r) => r.id) } } });
+        cleared += del.count;
+        if (rules.assignmentMode !== 'auto') continue;
+        const open = await this.prisma.appointment.findMany({
+          where: { tenantId, id: { in: [...new Set(rows.map((r) => r.appointmentId))] }, assignedStaffId: null, status: AppointmentStatus.PENDING, startTime: { gt: now } },
+          select: { id: true },
+        });
+        for (const a of open) {
+          const res = await this.autoAssignForTenant(tenantId, a.id).catch(() => null);
+          if (res?.reassigned) restaffed += 1;
+        }
+      } catch (e) {
+        this.logger.warn(`assignment repair failed for tenant ${tenantId}: ${(e as Error).message}`);
+      }
+    }
+    return { tenants: byTenant.size, cleared, restaffed };
   }
 
   /**

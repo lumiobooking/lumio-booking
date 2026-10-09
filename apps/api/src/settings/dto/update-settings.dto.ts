@@ -53,6 +53,7 @@ export class UpdateBookingRulesDto {
   @IsOptional() @IsArray() businessHours?: unknown[];
   @IsOptional() @IsArray() @IsString({ each: true }) daysOff?: string[];
   @IsOptional() @IsIn(['strict', 'flexible']) groupPolicy?: 'strict' | 'flexible';
+  @IsOptional() @IsBoolean() staffMustAccept?: boolean;
   @IsOptional() @IsIn(['hours', 'soonest', 'off']) soonestBar?: 'hours' | 'soonest' | 'off';
   // Customer self-service rescheduling from Messenger and the AI hotline.
   //

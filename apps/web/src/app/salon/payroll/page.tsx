@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { fmtInTz } from '../../../lib/datetime';
 import { dayKeyInTz, wallToInstantISO } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
-import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui, formatPrice } from '../../../lib/ui';
 import { DateRangeBar, useDateRange } from '../../../components/ListFilter';
@@ -12,6 +11,8 @@ import { useLang, tr } from '../../../lib/i18n';
 import { useIsMobile, CARD_LIST_MAX } from '../../../lib/responsive';
 import { MList, MCard, MHead, MRow } from '../../../components/MobileCard';
 import { PayrollRun } from './PayrollRun';
+import { SalesImport } from '../../../components/SalesImport';
+import { useAuth } from '../../../lib/auth';
 import { TimeClockTab } from './TimeClockTab';
 import { NavIcon } from '../../../components/NavIcon';
 import { uiLocale } from '../../../lib/datetime';
@@ -45,6 +46,11 @@ function Hub() {
     try { const v = window.localStorage.getItem('lumio_pay_tab'); if (v === 'performance' || v === 'payroll' || v === 'clock') setTabState(v); } catch { /* ignore */ }
   }, []);
   const setTab = (v: PayTab) => { setTabState(v); try { window.localStorage.setItem('lumio_pay_tab', v); } catch { /* ignore */ } };
+  // Past sales from the old system / the paper book (components/SalesImport):
+  // owner only; the payroll reloads after an import.
+  const { user } = useAuth();
+  const [importOpen, setImportOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const tabBtn = (id: PayTab, label: string, icon: string) => (
     <button role="tab" aria-selected={tab === id} onClick={() => setTab(id)} style={{
       display: 'inline-flex', alignItems: 'center', gap: 8,
@@ -61,7 +67,13 @@ function Hub() {
         {tabBtn('performance', t('pf.tabPerformance'), 'chart')}
         {tabBtn('clock', lang === 'vi' ? 'Chấm công' : 'Time clock', 'clock')}
       </div>
-      {tab === 'performance' ? <Performance /> : tab === 'clock' ? <TimeClockTab vi={lang === 'vi'} /> : <PayrollRun vi={lang === 'vi'} />}
+      {user?.role === 'SALON_ADMIN' && (
+        <button type="button" onClick={() => setImportOpen(true)} style={{ marginLeft: 10, padding: '8px 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'transparent', color: 'var(--ccbd5e1)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+          ⇪ {lang === 'vi' ? 'Nhập doanh thu cũ' : 'Import past sales'}
+        </button>
+      )}
+      {importOpen && <SalesImport vi={lang === 'vi'} onClose={() => setImportOpen(false)} onDone={() => setReloadKey((k) => k + 1)} />}
+      {tab === 'performance' ? <Performance key={reloadKey} /> : tab === 'clock' ? <TimeClockTab vi={lang === 'vi'} /> : <PayrollRun key={reloadKey} vi={lang === 'vi'} />}
     </section>
   );
 }

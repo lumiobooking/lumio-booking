@@ -4,6 +4,7 @@
  * not "typed" and stay open to anyone who may check out.
  */
 jest.mock('./pos.service', () => ({ PosService: class {} }));
+jest.mock('./sales-import.service', () => ({ SalesImportService: class {} }));
 // The device's generated client may predate these enums; the spec is about permissions, not the DTO.
 jest.mock('@prisma/client', () => ({
   ...jest.requireActual('@prisma/client'),

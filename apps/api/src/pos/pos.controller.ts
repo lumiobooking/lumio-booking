@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { PosService } from './pos.service';
+import { SalesImportService } from './sales-import.service';
 import { CreateOrderDto, CreateProductDto, RecordTipDto, UpdateProductDto } from './dto/pos.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Caps } from '../auth/decorators/caps.decorator';
@@ -23,7 +24,7 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 @Caps('pos')
 @Controller('pos')
 export class PosController {
-  constructor(private readonly pos: PosService) {}
+  constructor(private readonly pos: PosService, private readonly salesImport: SalesImportService) {}
 
   // ---- The printed bill: salon header + the owner's design (any cashier) ----
   @Get('receipt-profile')
@@ -53,6 +54,38 @@ export class PosController {
   @Delete('products/:id')
   removeProduct(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.pos.removeProduct(user, id);
+  }
+
+  // ---- Old sales brought in (old system / handwritten book) → owner only ----
+  // They land as ordinary paid tickets on their own days, so the sales report,
+  // payroll and the dashboard count them (pos/sales-import.ts).
+  @Roles(UserRole.SALON_ADMIN)
+  @Caps('reports')
+  @Post('import-sales/preview')
+  @HttpCode(200)
+  previewSalesImport(@CurrentUser() user: AuthenticatedUser, @Body() dto: { rows?: unknown; staffMap?: Record<string, string> }) {
+    return this.salesImport.preview(user, dto);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Caps('reports')
+  @Post('import-sales')
+  importSales(@CurrentUser() user: AuthenticatedUser, @Body() dto: { rows?: unknown; staffMap?: Record<string, string>; label?: string }) {
+    return this.salesImport.commit(user, dto);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Caps('reports')
+  @Get('import-sales/batches')
+  salesImportBatches(@CurrentUser() user: AuthenticatedUser) {
+    return this.salesImport.batches(user);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Caps('reports')
+  @Delete('import-sales/:batch')
+  undoSalesImport(@CurrentUser() user: AuthenticatedUser, @Param('batch') batch: string) {
+    return this.salesImport.undo(user, batch);
   }
 
   // ---- Reports ---- (sales + payroll data → managers/owners only)

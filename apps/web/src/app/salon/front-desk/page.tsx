@@ -30,6 +30,7 @@ interface Ticket {
   createdAt: string;
   assignedAt?: string | null;
   awaitingPayment?: boolean;
+  doneAt?: string | null;
   service?: { id: string; name: string } | null;
   assignedStaff?: { id: string; firstName: string; lastName: string | null } | null;
   items?: { name?: string }[];
@@ -44,7 +45,9 @@ interface Ticket {
 }
 interface Booked { id: string; startTime: string; customerId?: string | null; customerName: string | null; serviceName: string | null; staff: { id: string; name: string } | null; source?: string; groupId?: string | null; groupSize?: number }
 interface StaffChip { id: string; name: string; busy: boolean; busyFor: number | null; nextUp: boolean; turns: number }
-interface Board { waiting: Ticket[]; serving: Ticket[]; booked: Booked[]; staff: StaffChip[]; timezone?: string | null }
+interface Board { waiting: Ticket[]; serving: Ticket[]; booked: Booked[]; staff: StaffChip[]; timezone?: string | null;
+  /** Closed without a receipt on an earlier day (last 7 days) — still reachable for the till. */
+  unpaid?: Ticket[] }
 
 export default function FrontDeskPage() {
   return (
@@ -77,6 +80,7 @@ function FrontDesk() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [showUnpaid, setShowUnpaid] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -93,6 +97,15 @@ function FrontDesk() {
   // ⚠ allergies / dietary needs / sensitivities from the customer records on this board.
   const alertIds = useMemo(() => [...(board?.booked ?? []).map((b) => b.customerId), ...(board?.waiting ?? []).map((w) => w.customerId), ...(board?.serving ?? []).map((w) => w.customerId)], [board]);
   const alerts = useRecordAlerts(token, alertIds, may('bookings'));
+
+  /** "Bỏ qua": the customer left without paying here (or paid outside Lumio). */
+  async function skipPay(w: Ticket) {
+    if (!window.confirm(L(`Bỏ ${w.customerName || 'khách này'} khỏi danh sách chờ tính tiền? Không ghi doanh thu; vẫn tính tiền lại được sau.`, `Remove ${w.customerName || 'this guest'} from Ready to pay? No sale is recorded; you can still check them out later.`))) return;
+    setBusy(w.id);
+    try { await apiFetch(`/walkins/${w.id}/done`, { method: 'PATCH', token }); await load(); }
+    catch (e) { setErr(e instanceof Error ? e.message : L('Không cập nhật được', 'Could not update')); }
+    finally { setBusy(null); }
+  }
 
   async function arrive(id: string, party = false) {
     setBusy(id);
@@ -115,7 +128,19 @@ function FrontDesk() {
   const time = (iso: string | null | undefined) => clockIn(iso, tz, vi);
   const today = salonDayLabel(now, tz, vi);
   /** "vào 10:02" — when the customer came in, salon time. */
-  const cameIn = (w: Ticket) => `${L('vào', 'in')} ${time(w.arrivedAt ?? w.createdAt)}`;
+  const dayKey = (at: string | number | null | undefined) => {
+    if (at === null || at === undefined || at === '') return '';
+    try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz || undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(at)); }
+    catch { return new Date(at).toISOString().slice(0, 10); }
+  };
+  /** "05/10" (or "10/5") when the customer came in on an earlier day. */
+  const shortDay = (at: string) => { const [, m, d] = dayKey(at).split('-'); return vi ? `${d}/${m}` : `${Number(m)}/${Number(d)}`; };
+  const cameIn = (w: Ticket) => {
+    const at = w.arrivedAt ?? w.createdAt;
+    const earlier = dayKey(at) !== dayKey(now);
+    return `${L('vào', 'in')} ${time(at)}${earlier ? ` · ${shortDay(at)}` : ''}`;
+  };
+  const unpaid = board?.unpaid ?? [];
 
   const actions = [
     walkinsPage && { href: '/salon/walkins?new=1', icon: '🚶', t: L('Khách walk-in', 'New walk-in'), d: L('Nhận khách vào hàng chờ', 'Add to the queue') },
@@ -286,9 +311,39 @@ function FrontDesk() {
                 <span style={{ display: 'block', ...sub }}>{[techName(w), services(w)].filter(Boolean).join(' · ')}</span>
                 <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)' }}>{cameIn(w)}</span>
               </span>
+              {may('walkins') && <button type="button" onClick={() => skipPay(w)} disabled={busy === w.id} title={L('Khách không tính tiền ở đây', 'Guest not paying here')}
+                style={{ background: 'none', border: '1px solid var(--line)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '6px 9px', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>
+                {L('Bỏ qua', 'Skip')}
+              </button>}
               {may('pos') && <a href={checkoutHref(w)} style={smallBtn}>{L('Tính tiền', 'Check out')}</a>}
             </div>
           ))}
+          {unpaid.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--line)' }}>
+              <button type="button" onClick={() => setShowUnpaid((v) => !v)} aria-expanded={showUnpaid}
+                style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '10px 14px', cursor: 'pointer', fontSize: 12.5, color: 'var(--c94a3b8)', display: 'flex', gap: 6 }}>
+                <span style={{ flex: 1 }}>{showUnpaid ? '▾' : '▸'} {L('Chưa tính tiền ngày trước', 'Unpaid from earlier days')}</span>
+                <b>{unpaid.length}</b>
+              </button>
+              {showUnpaid && (
+                <>
+                  <div style={{ padding: '0 14px 8px', fontSize: 11.5, color: 'var(--c64748b)', lineHeight: 1.5 }}>
+                    {L('Sang ngày mới, khách chưa tính tiền tự rời cột trên (không ghi doanh thu). Danh sách giữ 7 ngày để tính bù nếu cần.', 'When the day changes, unpaid guests leave the column above (no sale recorded). Kept here for 7 days in case they still need checking out.')}
+                  </div>
+                  {unpaid.map((w) => (
+                    <div key={w.id} style={row}>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', ...name }}>{w.customerName || L('Khách', 'Guest')}</span>
+                        <span style={{ display: 'block', ...sub }}>{[techName(w), services(w)].filter(Boolean).join(' · ')}</span>
+                        <span style={{ display: 'block', fontSize: 11, color: 'var(--c64748b)' }}>{cameIn(w)}</span>
+                      </span>
+                      {may('pos') && <a href={checkoutHref(w)} style={{ ...smallBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)' }}>{L('Tính tiền', 'Check out')}</a>}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </section>

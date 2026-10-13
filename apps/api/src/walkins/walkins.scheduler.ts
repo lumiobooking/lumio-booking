@@ -7,6 +7,8 @@ import { WalkinsService } from './walkins.service';
  * minutes this parks, for every salon, the visits that are late by the grace
  * period on every running leg, or still in a chair an hour after closing, at
  * "waiting to pay" — the bill stays open, the chair is free.
+ * Once the salon's day has moved on, what is still parked at the till closes
+ * as Done on its own day, with no order (walkins/unpaid-sweep.ts).
  * Disable with HOUSEKEEPING_ENABLED=false.
  */
 @Injectable()
@@ -36,6 +38,13 @@ export class WalkinsScheduler implements OnModuleInit, OnModuleDestroy {
       if (r.parked) this.logger.log(`Parked ${r.parked} stale visit(s) at the till.`);
     } catch (e) {
       this.logger.warn(`Stale-visit sweep failed: ${(e as Error).message}`);
+    }
+    // A new salon day starts with an empty "waiting to pay" (walkins/unpaid-sweep.ts).
+    try {
+      const r = await this.walkins.closeUnpaidEverywhere();
+      if (r.closed) this.logger.log(`Closed ${r.closed} unpaid visit(s) from earlier days.`);
+    } catch (e) {
+      this.logger.warn(`Unpaid-visit sweep failed: ${(e as Error).message}`);
     }
   }
 }

@@ -13,6 +13,7 @@ import {
   planDispatch, syncTicket, TechInfo, TicketLike, turnsFromTickets, upgradeItems, Zone, zoneOf, lastDoneFromTickets, moneyFromTickets, legPrice,
 } from './walkin-legs';
 import { turnReport, weekOf } from './turn-report';
+import { settledWalkIns, unpaidFromPastDays, UNPAID_LIST_DAYS } from './unpaid-sweep';
 import { appointmentTurns, cleanTurnRules, DEFAULT_TURN_RULES, latePenalty, legTurns, minutesLate, tieCompare, toBottomDelta, TURN_RULES_KEY, TurnRules, newTechBoost } from './turn-rules';
 import { AuditService } from '../audit/audit.service';
 import { tzPartsOf } from '../common/salon-time';
@@ -257,6 +258,69 @@ export class WalkinsService {
       try { parked += (await this.parkStale(r.tenantId, now)).length; } catch { /* next salon */ }
     }
     return { tenants: rows.length, parked };
+  }
+
+  /**
+   * A new day starts with an empty "waiting to pay" (walkins/unpaid-sweep.ts).
+   * Visits parked at the till on an earlier salon day close as Done on their
+   * own day, without an order. Returns the closed ids.
+   */
+  async closeUnpaidPastDays(tenantId: string, now = new Date()): Promise<string[]> {
+    const open = await this.prisma.walkIn.findMany({
+      where: { tenantId, status: WalkInStatus.SERVING, awaitingPayment: true },
+      select: { id: true, status: true, assignedStaffId: true, createdAt: true, assignedAt: true, doneAt: true, awaitingPayment: true, items: true },
+    });
+    if (!open.length) return [];
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+    const tz = t?.timezone || 'UTC';
+    const todo = unpaidFromPastDays(open as unknown as TicketLike[], salonYmd(now, tz), (d) => salonYmd(d, tz));
+    const closed: string[] = [];
+    for (const c of todo) {
+      // Guarded: a till that rang the visit up a second ago wins.
+      const r = await this.prisma.walkIn.updateMany({
+        where: { id: { in: [c.id] }, tenantId, status: WalkInStatus.SERVING, awaitingPayment: true },
+        data: { status: WalkInStatus.DONE, doneAt: c.doneAt },
+      });
+      if (r.count) closed.push(c.id);
+    }
+    if (closed.length) {
+      await this.audit?.log({ tenantId, action: 'walkin.unpaid_closed', resourceType: 'walk_in', resourceId: closed[0], metadata: { count: closed.length, ids: closed.slice(0, 200) } });
+    }
+    return closed;
+  }
+
+  /** Every salon with a visit parked at the till; one salon's error never stops the next. */
+  async closeUnpaidEverywhere(now = new Date()): Promise<{ tenants: number; closed: number }> {
+    const rows = await this.prisma.walkIn.findMany({
+      where: { status: WalkInStatus.SERVING, awaitingPayment: true },
+      select: { tenantId: true }, distinct: ['tenantId'],
+    });
+    let closed = 0;
+    for (const r of rows) {
+      try { closed += (await this.closeUnpaidPastDays(r.tenantId, now)).length; } catch { /* next salon */ }
+    }
+    return { tenants: rows.length, closed };
+  }
+
+  /**
+   * Visits of the last UNPAID_LIST_DAYS days that were closed (by the sweep or
+   * the desk's "Bỏ qua") while parked at the till and that no receipt settled —
+   * the desk's "Chưa tính tiền ngày trước". Today's are in "done" already.
+   */
+  private async unpaidEarlier(tenantId: string, today: Date) {
+    const since = new Date(today.getTime() - UNPAID_LIST_DAYS * 86400000);
+    const rows = await this.prisma.walkIn.findMany({
+      where: { tenantId, status: WalkInStatus.DONE, awaitingPayment: true, doneAt: { gte: since, lt: today } },
+      include: INCLUDE, orderBy: { doneAt: 'desc' }, take: 100,
+    });
+    if (!rows.length) return [];
+    const ids = rows.map((r) => r.id);
+    const orders = await this.prisma.order.findMany({
+      where: { tenantId, OR: [{ walkInId: { in: ids } }, { walkInIds: { hasSome: ids } }, { items: { some: { walkInId: { in: ids } } } }] } as never,
+      select: { walkInId: true, walkInIds: true, items: { select: { walkInId: true } } } as never,
+    }) as unknown as { walkInId: string | null; walkInIds?: string[]; items?: { walkInId: string | null }[] }[];
+    const paid = settledWalkIns(orders);
+    return rows.filter((r) => !paid.has(r.id)).map((w) => ({ ...this.view(w), arrivedAt: (w as { createdAt: Date }).createdAt }));
   }
 
   /** True from an hour after the salon's closing time until the next day begins. A day marked
@@ -975,9 +1039,11 @@ export class WalkinsService {
     // Finished today, most recent first: a ticket marked Done by mistake (or done
     // before the customer paid) has to be reachable again for checkout.
     const done = f.doneToday.slice(0, 20).map((w) => tagged(w));
+    // Closed without a receipt on an earlier day — still reachable for the till.
+    const unpaid = await this.unpaidEarlier(tenantId, f.today).catch(() => []);
     // The salon's timezone: every clock on the desk is read in it, never in
     // the browser's (a manager in Vietnam saw 10:00 AM bookings as 0:00).
-    return { waiting, serving, booked, done, staff, nextUpStaffId, restricted: [...f.restricted], timezone: tenantRow?.timezone ?? null };
+    return { waiting, serving, booked, done, unpaid, staff, nextUpStaffId, restricted: [...f.restricted], timezone: tenantRow?.timezone ?? null };
   }
 
   /**

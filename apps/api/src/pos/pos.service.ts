@@ -447,8 +447,10 @@ export class PosService {
         // Checking out a walk-in marks it Done (front desk doesn't need a second
         // step); a party on one bill closes every ticket it settled.
         if (walkInIds.length) {
+          // A visit already Done (closed unpaid on an earlier day, or "Xong" before
+          // paying) keeps its doneAt: its turn stays on the day the work was done.
           await tx.walkIn.updateMany({
-            where: { id: { in: walkInIds }, tenantId },
+            where: { id: { in: walkInIds }, tenantId, status: { not: WalkInStatus.DONE } },
             data: { status: WalkInStatus.DONE, doneAt: new Date() },
           });
         }

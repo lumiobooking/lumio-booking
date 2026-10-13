@@ -65,7 +65,8 @@ describe('one sale settles the whole party', () => {
     expect(orderData.walkInId).toBe('anna');
     expect(orderData.walkInIds).toEqual(['anna', 'linh']);
     expect(walkInUpdates).toHaveLength(1);
-    expect(walkInUpdates[0].where).toEqual({ id: { in: ['anna', 'linh'] }, tenantId: T1 });
+    // A ticket already Done keeps its doneAt (its turn stays on its own day).
+    expect(walkInUpdates[0].where).toEqual({ id: { in: ['anna', 'linh'] }, tenantId: T1, status: { not: 'DONE' } });
     expect(walkInUpdates[0].data.status).toBe('DONE');
     expect(itemRows.map((r) => [r.walkInId, r.walkInLineId, r.guestName])).toEqual([['anna', 'l1', 'Anna'], ['linh', 'l2', 'Linh']]);
     expect(seat).toHaveBeenCalledWith(T1); // the chairs just freed go to whoever waited longest

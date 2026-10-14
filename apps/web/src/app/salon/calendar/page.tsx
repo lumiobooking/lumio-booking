@@ -20,6 +20,10 @@ import { TableDayView } from './TableDayView';
 import { uiLocale } from '../../../lib/datetime';
 import { ind } from '../../../lib/ui-industry';
 import { withHoursOverride } from '../../../lib/desk-hours';
+import { ListView, type ShiftStaffFull } from './ListView';
+import { C, Seg, IconBtn, Icon, btn, onIndigo, Popover, Sheet, DayStrip, MonthPicker, FilterBody, FilterFooter, ActiveChips, type DayInfo } from './CalParts';
+import { applyFilters, facetCounts, activeFilterCount, NO_FILTERS, stripDays, isClosedDay, capacityMinutes, loadOf, bookedMinutes, addDays, type CalFilters, type HoursDay } from '../../../lib/cal-day';
+import { minutesInZone } from '../../../lib/salon-card';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string; staffMemberId?: string }
 /** Pill/label text: primary service plus a +N badge for the extra lines. */
@@ -184,11 +188,25 @@ function Inner() {
   // Seed from cache so times + the staff/tables label don't reflow (flicker) when
   // the /settings and /me/tenant fetches land a moment after mount.
   const [tz, setTz] = useState<string | undefined>(() => (typeof window !== 'undefined' ? (window.localStorage.getItem('lumio_tz') || undefined) : undefined));
+  // Opening hours + days off (closed days in the date strip) and the techs with
+  // their shifts (how full each day is; the Staff-today card; the filters).
+  const [hours, setHours] = useState<{ week: HoursDay[] | null; daysOff: string[] }>({ week: null, daysOff: [] });
+  const [staffList, setStaffList] = useState<ShiftStaffFull[]>([]);
+  useEffect(() => {
+    if (!token) return;
+    apiFetch<{ id: string; firstName: string; isActive?: boolean; takesAppointments?: boolean; workingHours?: ShiftStaffFull['workingHours'] }[]>('/staff', { token })
+      .then((rows) => setStaffList((rows ?? []).map((r) => ({ id: r.id, name: r.firstName, isActive: r.isActive, takesAppointments: r.takesAppointments, workingHours: r.workingHours }))
+        .sort((a, b) => a.name.localeCompare(b.name))))
+      .catch(() => undefined);
+  }, [token]);
   const [isRestaurant, setIsRestaurant] = useState<boolean>(() => (typeof window !== 'undefined' && window.localStorage.getItem('lumio_is_restaurant') === '1'));
   useEffect(() => {
     if (!token) return;
-    apiFetch<{ company?: { timezone?: string } }>('/settings', { token })
-      .then((s) => { const z = s.company?.timezone || undefined; setTz(z); if (z) { try { window.localStorage.setItem('lumio_tz', z); } catch { /* ignore */ } } })
+    apiFetch<{ company?: { timezone?: string }; booking?: { businessHours?: HoursDay[]; daysOff?: string[] } }>('/settings', { token })
+      .then((s) => {
+        const z = s.company?.timezone || undefined; setTz(z); if (z) { try { window.localStorage.setItem('lumio_tz', z); } catch { /* ignore */ } }
+        setHours({ week: s.booking?.businessHours ?? null, daysOff: s.booking?.daysOff ?? [] });
+      })
       .catch(() => undefined);
   }, [token]);
 
@@ -250,26 +268,25 @@ function Inner() {
   }, []);
 
   const days = useMemo(() => buildMonth(view), [view]);
-  /** Legend filter: null = every source. One click isolates a channel across
-   *  all three views at once; clicking it again lets everyone back in. */
-  const [srcFilter, setSrcFilter] = useState<string | null>(null);
-  const bySource = useMemo(
-    () => (srcFilter ? bookings.filter((b) => srcKey(b) === srcFilter) : bookings),
-    [bookings, srcFilter],
-  );
-
-  const filtered = useMemo(() => {
+  /** The Filters panel (source · technician · status · quick presets). It
+   *  applies to every view; the counts in it are for what is on screen. */
+  const [filters, setFilters] = useState<CalFilters>(NO_FILTERS);
+  // "Not arrived", the Now line and the attention list follow the clock.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const iv = window.setInterval(() => setNow(Date.now()), 60000); return () => window.clearInterval(iv); }, []);
+  const searched = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return bySource;
+    if (!q) return bookings;
     const qd = q.replace(/\D/g, '');
-    return bySource.filter((b) => {
+    return bookings.filter((b) => {
       const c = b.customer;
       const nm = c ? (c.firstName + ' ' + (c.lastName ?? '')).toLowerCase() : '';
       const ph = (c?.phone ?? '').replace(/\D/g, '');
       const em = (c?.email ?? '').toLowerCase();
       return nm.includes(q) || em.includes(q) || (!!qd && ph.includes(qd));
     });
-  }, [bySource, search]);
+  }, [bookings, search]);
+  const filtered = useMemo(() => applyFilters(searched, filters, now), [searched, filters, now]);
   // The legend counts what is ON SCREEN — the month being shown, or the one
   // day in the day / staff views — not the three-month window fetched to
   // catch spill-over days. It ignores the source filter itself, so every
@@ -278,8 +295,43 @@ function Inner() {
     const keys = mode === 'month'
       ? new Set(days.filter((d): d is Date => !!d).map(cellKey))
       : new Set([cellKey(dayDate)]);
-    return bookings.filter((b) => keys.has(dayKeyTz(new Date(b.startTime), tz)));
-  }, [bookings, mode, days, dayDate, tz]);
+    return searched.filter((b) => keys.has(dayKeyTz(new Date(b.startTime), tz)));
+  }, [searched, mode, days, dayDate, tz]);
+  const showsCancelled = filters.statuses.includes('cancelled');
+  const counts = useMemo(() => facetCounts(scopeRows, filters, now, { hideCancelled: !showsCancelled }), [scopeRows, filters, now, showsCancelled]);
+  const groupByDay = (rows: Booking[]) => {
+    const map = new Map<string, Booking[]>();
+    for (const b of rows) { const k = dayKeyTz(new Date(b.startTime), tz); const a = map.get(k) ?? []; a.push(b); map.set(k, a); }
+    return map;
+  };
+  /** Search applied, filters not: the day's numbers in the List and its rail. */
+  const searchedByDay = useMemo(() => groupByDay(searched), [searched, tz]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Everything, for the strip: how many bookings and how full each day is. */
+  const allByDay = useMemo(() => groupByDay(bookings), [bookings, tz]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dayInfo = useCallback((d: Date): DayInfo => {
+    const list = allByDay.get(cellKey(d)) ?? [];
+    const closed = isClosedDay({ date: d, week: hours.week, daysOff: hours.daysOff });
+    const cap = capacityMinutes({ date: d, staff: staffList, week: hours.week, daysOff: hours.daysOff });
+    return { count: list.filter((b) => b.status !== 'CANCELLED').length, load: loadOf(bookedMinutes(list), cap), closed: closed && list.length === 0 };
+  }, [allByDay, hours, staffList]);
+  const monthSearched = useMemo(() => {
+    const keys = new Set(days.filter((d): d is Date => !!d).map(cellKey));
+    return searched.filter((b) => keys.has(dayKeyTz(new Date(b.startTime), tz)));
+  }, [searched, days, tz]);
+  // Screen widths: the 14-day strip, and the right-hand rail of the List.
+  const [wideStrip, setWideStrip] = useState(false);
+  const [railScreen, setRailScreen] = useState(false);
+  useEffect(() => {
+    const a = window.matchMedia('(min-width: 1100px)');
+    const b = window.matchMedia('(min-width: 1360px)');
+    const on = () => { setWideStrip(a.matches); setRailScreen(b.matches); };
+    on();
+    a.addEventListener?.('change', on); b.addEventListener?.('change', on);
+    return () => { a.removeEventListener?.('change', on); b.removeEventListener?.('change', on); };
+  }, []);
+  const [dateOpen, setDateOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [pickMonth, setPickMonth] = useState<Date>(() => new Date(today.getFullYear(), today.getMonth(), 1));
 
   const byDay = useMemo(() => {
     const map = new Map<string, Booking[]>();
@@ -356,223 +408,193 @@ function Inner() {
     }
   }
 
+  // ── the header of every view (approved mockup "Lịch hẹn — thiết kế lại") ──
+  const vi = lang === 'vi';
+  const L = (a: string, b: string) => ind(vi ? a : b);
+  const nF = activeFilterCount(filters);
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const newHref = (() => {
+    let m = 600;
+    if (dayDate.getTime() === today.getTime()) m = Math.min(23 * 60 + 45, Math.ceil((minutesInZone(tz) + 1) / 15) * 15);
+    else {
+      const h = hours.week?.[dayDate.getDay()];
+      const o = Number(h?.intervals?.[0]?.open ?? h?.openMinutes);
+      if (Number.isFinite(o) && o > 0) m = o;
+    }
+    return `/salon/bookings?new=1&at=${encodeURIComponent(`${cellKey(dayDate)}T${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`)}`;
+  })();
+  const rel = (d: Date) => (d.getTime() === today.getTime() ? L('Hôm nay', 'Today')
+    : d.getTime() === addDays(today, 1).getTime() ? L('Ngày mai', 'Tomorrow')
+    : d.getTime() === addDays(today, -1).getTime() ? L('Hôm qua', 'Yesterday') : '');
+  const monthAnchor = monthFocus ?? (view.getMonth() === today.getMonth() && view.getFullYear() === today.getFullYear() ? today : new Date(view.getFullYear(), view.getMonth(), 1));
+  const stripAnchor = mode === 'month' ? monthAnchor : dayDate;
+  const stripSelected = mode === 'month' ? (monthFocus ?? (monthAnchor.getTime() === today.getTime() ? today : new Date(-1))) : dayDate;
+  const step = (delta: number) => {
+    if (mode === 'month') { setView(new Date(view.getFullYear(), view.getMonth() + delta, 1)); setMonthFocus(null); setMonthPage(0); }
+    else goDay(addDays(dayDate, delta));
+  };
+  const goToday = () => { setMonthFocus(null); setMonthPage(0); if (mode === 'month') setView(new Date(today.getFullYear(), today.getMonth(), 1)); else goDay(today); };
+  const pickStrip = (d: Date) => {
+    if (mode === 'month') { setMonthFocus(d); setMonthPage(0); setShowPast(false); if (d.getMonth() !== view.getMonth()) setView(new Date(d.getFullYear(), d.getMonth(), 1)); }
+    else goDay(d);
+  };
+  const openPicker = () => { setPickMonth(new Date((mode === 'month' ? view : dayDate).getFullYear(), (mode === 'month' ? view : dayDate).getMonth(), 1)); setDateOpen((o) => !o); };
+  const pickFromPicker = (d: Date) => {
+    setDateOpen(false);
+    if (mode === 'month') { setView(new Date(d.getFullYear(), d.getMonth(), 1)); setMonthFocus(d); setMonthPage(0); setShowPast(false); }
+    else goDay(d);
+  };
+  const resultCount = (mode === 'month' ? days.flatMap((d) => (d ? byDay.get(cellKey(d)) ?? [] : [])) : byDay.get(cellKey(dayDate)) ?? []).filter((b) => showsCancelled || b.status !== 'CANCELLED').length;
+  const viewItems = ([
+    { key: 'staff', label: isRestaurant ? t('cal.viewTables') : (isMobile ? L('Thợ', 'Staff') : t('cal.viewStaff')) },
+    { key: 'day', label: L('Danh sách', 'List') },
+    { key: 'month', label: t('cal.viewMonth') },
+    ...(isRestaurant ? [] : [{ key: 'floor', label: isMobile ? L('Sơ đồ', 'Floor') : L('Sơ đồ ghế', 'Floor') }]),
+  ] as { key: 'staff' | 'day' | 'month' | 'floor'; label: string }[]);
+  const dateTitle = mode === 'month' ? monthLabel : dayDate.toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric' });
+  const monthCount = days.flatMap((d) => (d ? byDay.get(cellKey(d)) ?? [] : [])).filter((b) => b.status !== 'CANCELLED').length;
+  async function autoAssignOpen() {
+    try { await apiFetch('/bookings/auto-assign-open', { method: 'POST', token }); } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    await load();
+  }
+  const staffOpts = staffList.filter((s) => s.isActive !== false && s.takesAppointments !== false);
+  const filterTitle = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+      <span style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{L('Bộ lọc', 'Filters')}</span>
+      <span style={{ fontSize: 12.5, color: C.muted }}>{mode === 'month' ? monthLabel : dateTitle} · {L('số đếm cập nhật khi bạn chọn', 'counts update as you pick')}</span>
+      <button type="button" onClick={() => setFilterOpen(false)} aria-label="Close" style={{ marginLeft: 'auto', border: 0, background: 'transparent', color: C.muted, cursor: 'pointer', padding: 4 }}><Icon name="x" size={18} /></button>
+    </div>
+  );
+  const picker = (
+    <MonthPicker month={pickMonth} selected={mode === 'month' ? (monthFocus ?? today) : dayDate} today={today} info={dayInfo} vi={vi}
+      onPick={pickFromPicker} onMonth={(dl) => setPickMonth(new Date(pickMonth.getFullYear(), pickMonth.getMonth() + dl, 1))} />
+  );
+  const searchBox = (w: number | string, h: number) => (
+    <div style={{ position: 'relative', width: w, flexShrink: 1, minWidth: 0 }}>
+      <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.muted, pointerEvents: 'none' }}><Icon name="search" size={16} /></span>
+      <input value={search} onChange={(e) => setSearch(e.target.value)} autoFocus={isMobile}
+        placeholder={L('Tìm tên hoặc số điện thoại', 'Search name or phone')} aria-label={L('Tìm khách', 'Search customers')}
+        style={{ width: '100%', boxSizing: 'border-box', height: h, padding: '0 34px 0 36px', borderRadius: 10, border: `1px solid ${C.border}`, background: C.panel, color: C.ink2, fontSize: isMobile ? 16 : 13.5, fontFamily: 'inherit' }} />
+      {search && <button type="button" onClick={() => setSearch('')} aria-label="Clear" style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', width: 28, height: 28, border: 0, background: 'transparent', color: C.muted, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="x" size={15} /></button>}
+    </div>
+  );
+
+  const header = isMobile ? (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <h1 style={{ fontSize: 22, margin: 0, flex: 1, minWidth: 0, letterSpacing: -0.3, color: C.ink }}>{t('cal.title')}</h1>
+        {mode !== 'floor' && <IconBtn name="search" size={40} label={L('Tìm khách', 'Search')} active={searchOpen} onClick={() => { setSearchOpen((o) => !o); if (searchOpen) setSearch(''); }} />}
+        {mode !== 'floor' && <IconBtn name="filter" size={40} label={L('Bộ lọc', 'Filters')} badge={nF} active={nF > 0} onClick={() => setFilterOpen(true)} />}
+        <a href={newHref} aria-label={L('Đặt lịch', 'New booking')} title={L('Đặt lịch', 'New booking')} style={{ width: 40, height: 40, borderRadius: 10, ...onIndigo, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon name="plus" size={20} sw={2.4} /></a>
+      </div>
+      <Seg full h={40} items={viewItems} value={mode} onChange={(v) => setMode(v)} />
+      {searchOpen && mode !== 'floor' && <div style={{ marginTop: 10 }}>{searchBox('100%', 44)}</div>}
+      {mode !== 'floor' && (
+        <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: '4px 6px 6px', margin: '10px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 42 }}>
+            <button type="button" onClick={goToday} style={{ ...btn(false, 32), padding: '0 10px' }}>{t('cal.today')}</button>
+            <button type="button" onClick={() => { setPickMonth(new Date((mode === 'month' ? view : dayDate).getFullYear(), (mode === 'month' ? view : dayDate).getMonth(), 1)); setDateOpen(true); }}
+              style={{ flex: 1, minWidth: 0, height: 38, border: 0, background: 'transparent', color: C.ink, fontFamily: 'inherit', fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, textTransform: 'capitalize' }}>
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{dateTitle}</span><Icon name="down" size={15} color="var(--c94a3b8)" />
+            </button>
+            <button type="button" aria-label={L('Trước', 'Previous')} onClick={() => step(-1)} style={{ width: 36, height: 36, border: 0, background: 'transparent', color: C.sub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="left" size={20} /></button>
+            <button type="button" aria-label={L('Sau', 'Next')} onClick={() => step(1)} style={{ width: 36, height: 36, border: 0, background: 'transparent', color: C.sub, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="right" size={20} /></button>
+          </div>
+          <DayStrip compact solid days={stripDays(stripAnchor, 7)} selected={stripSelected} today={today} info={dayInfo} vi={vi} onPick={pickStrip} />
+        </div>
+      )}
+      {mode !== 'floor' && mode !== 'day' && nF > 0 && <div style={{ marginBottom: 10 }}><ActiveChips f={filters} set={setFilters} staff={staffList} vi={vi} pad="8px 12px" rounded /></div>}
+      {mode === 'month' && (
+        <div style={{ fontSize: 13.5, color: C.sub, marginBottom: 10 }}>
+          <strong style={{ color: C.ink }}>{monthCount} {t('cal.apptWord')}</strong> {L('trong tháng', 'this month')}
+        </div>
+      )}
+      {error && <div style={ui.banner}>{error}</div>}
+      {mode !== 'day' && mode !== 'floor' && <UnassignedBanner bookings={bookings} vi={vi} onDone={load} />}
+      <Sheet open={dateOpen} onClose={() => setDateOpen(false)} title={L('Chọn ngày', 'Pick a day')}>{picker}</Sheet>
+      <Sheet open={filterOpen} onClose={() => setFilterOpen(false)} tall title={L('Bộ lọc', 'Filters')} sub={mode === 'month' ? monthLabel : dateTitle}
+        footer={<FilterFooter f={filters} set={setFilters} result={resultCount} vi={vi} onDone={() => setFilterOpen(false)} />}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <ActiveChips f={filters} set={setFilters} staff={staffList} vi={vi} pad="8px 12px" rounded />
+          <FilterBody f={filters} set={setFilters} counts={counts} staff={staffOpts} vi={vi} columns={false} />
+        </div>
+      </Sheet>
+    </>
+  ) : (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: C.ink, letterSpacing: -0.3 }}>{t('cal.title')}</h1>
+        <Seg items={viewItems} value={mode} onChange={(v) => setMode(v)} />
+        <span style={{ flex: 1 }} />
+        {mode !== 'floor' && searchBox(railScreen ? 260 : 220, 36)}
+        {mode !== 'floor' && (
+          <div style={{ position: 'relative' }}>
+            <button type="button" data-pop-trigger onClick={() => setFilterOpen((o) => !o)} aria-expanded={filterOpen}
+              style={{ ...btn(false), ...(nF ? { background: C.indigoSoft, borderColor: C.indigoLine, color: C.indigoText } : {}) }}>
+              <Icon name="filter" size={16} />{L('Bộ lọc', 'Filters')}
+              {nF > 0 && <span style={{ minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 999, ...onIndigo, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{nF}</span>}
+            </button>
+            <Popover open={filterOpen} onClose={() => setFilterOpen(false)} align="right" width={wideStrip ? 720 : 560}>
+              {filterTitle}
+              <FilterBody f={filters} set={setFilters} counts={counts} staff={staffOpts} vi={vi} columns={wideStrip} />
+              <div style={{ marginTop: 14 }}><FilterFooter f={filters} set={setFilters} result={resultCount} vi={vi} onDone={() => setFilterOpen(false)} /></div>
+            </Popover>
+          </div>
+        )}
+        <IconBtn name={fullscreen ? 'shrink' : 'expand'} label={fullscreen ? L('Thoát toàn màn hình', 'Exit full screen') : L('Toàn màn hình', 'Full screen')} onClick={toggleFull} />
+        <a href={newHref} style={btn(true)}><Icon name="plus" size={16} />{L('Đặt lịch', 'New booking')}</a>
+      </div>
+      {mode !== 'floor' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: '8px 10px 8px 12px', marginBottom: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button type="button" onClick={goToday} style={{ ...btn(false, 32), padding: '0 12px' }}>{t('cal.today')}</button>
+              <IconBtn name="left" size={32} label={mode === 'month' ? L('Tháng trước', 'Previous month') : L('Ngày trước', 'Previous day')} onClick={() => step(-1)} />
+              <IconBtn name="right" size={32} label={mode === 'month' ? L('Tháng sau', 'Next month') : L('Ngày sau', 'Next day')} onClick={() => step(1)} />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <button type="button" data-pop-trigger onClick={openPicker} aria-expanded={dateOpen}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, border: 0, background: 'transparent', padding: '0 2px', cursor: 'pointer', fontFamily: 'inherit', color: C.ink }}>
+                <span style={{ fontSize: 17, fontWeight: 700, whiteSpace: 'nowrap', textTransform: 'capitalize', letterSpacing: -0.2 }}>{dateTitle}</span>
+                <Icon name="down" size={16} color="var(--c94a3b8)" />
+                {mode !== 'month' && rel(dayDate) && <span style={{ fontSize: 12, color: C.muted, marginLeft: 2 }}>{rel(dayDate)}</span>}
+              </button>
+              <Popover open={dateOpen} onClose={() => setDateOpen(false)} width={360}>{picker}</Popover>
+            </div>
+          </div>
+          {mode !== 'month' ? (
+            <>
+              <span style={{ width: 1, alignSelf: 'stretch', background: C.line }} />
+              <DayStrip days={stripDays(dayDate, wideStrip ? 14 : 7)} selected={dayDate} today={today} info={dayInfo} vi={vi} onPick={goDay} short={!railScreen && !wideStrip} />
+            </>
+          ) : (
+            <span style={{ marginLeft: 'auto', fontSize: 13.5, color: C.sub, paddingRight: 6 }}>
+              <strong style={{ color: C.ink }}>{monthCount}</strong> {t('cal.apptWord')} {L('trong tháng', 'this month')}
+              {todayStats.total > 0 && <> · {t('cal.todayLabel')} <strong style={{ color: C.ink }}>{todayStats.total}</strong></>}
+            </span>
+          )}
+        </div>
+      )}
+      {mode !== 'floor' && mode !== 'day' && nF > 0 && <div style={{ marginBottom: 12 }}><ActiveChips f={filters} set={setFilters} staff={staffList} vi={vi} pad="8px 12px" rounded /></div>}
+      {error && <div style={ui.banner}>{error}</div>}
+      {mode !== 'day' && mode !== 'floor' && <UnassignedBanner bookings={bookings} vi={vi} onDone={load} />}
+    </>
+  );
+
+  const sectionStyle: React.CSSProperties | undefined = fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: 'var(--c0b1120)', padding: '14px 18px', paddingTop: 'calc(14px + env(safe-area-inset-top, 0px))', overflow: 'auto' } : undefined;
+
   if (mode === 'floor') {
     return (
-      <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: 'var(--c0b1120)', padding: '14px 18px', paddingTop: 'calc(14px + env(safe-area-inset-top, 0px))', overflow: 'auto' } : undefined}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-          <h1 style={{ fontSize: isMobile ? 20 : 24, margin: 0 }}>{t('cal.title')}</h1>
-          <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3, ...(isMobile ? { flex: '1 1 100%' } : {}) }}>
-            <button onClick={() => setMode('month')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewMonth')}</button>
-            <button onClick={() => setMode('day')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewDay')}</button>
-            <button onClick={() => setMode('staff')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{isRestaurant ? t('cal.viewTables') : t('cal.viewStaff')}</button>
-            <button onClick={() => setMode('floor')} style={{ ...segBtn(true), ...(isMobile ? { flex: 1 } : {}) }}>{ind(lang === 'vi' ? 'Sơ đồ ghế' : 'Floor')}</button>
-          </div>
-        </div>
+      <section style={sectionStyle}>
+        {header}
         <FloorView token={token} lang={lang} />
       </section>
     );
   }
 
   return (
-    <section style={fullscreen ? { position: 'fixed', inset: 0, zIndex: 100, background: 'var(--c0b1120)', padding: '14px 18px', paddingTop: 'calc(14px + env(safe-area-inset-top, 0px))', overflow: 'auto' } : undefined}>
-      {isMobile ? (
-        /* PHONE — as drawn: title · search icon · Today; the view switcher;
-           the week strip (the date above, seven tappable days below); one line
-           that sums the day up, with the list/grid switch; the sources in one
-           row that swipes. The status legend is gone: every card names its
-           status in words. */
-        (() => {
-          const anchor = mode === 'month' ? (monthFocus ?? (view.getMonth() === today.getMonth() && view.getFullYear() === today.getFullYear() ? today : new Date(view.getFullYear(), view.getMonth(), 1))) : dayDate;
-          const stripMonth = mode === 'month' ? view : anchor;
-          const week = Array.from({ length: new Date(stripMonth.getFullYear(), stripMonth.getMonth() + 1, 0).getDate() }, (_, i) => new Date(stripMonth.getFullYear(), stripMonth.getMonth(), i + 1));
-          const shiftWeek = (delta: number) => {
-            if (mode === 'month') { const m = new Date(view.getFullYear(), view.getMonth() + delta, 1); setView(m); setMonthFocus(null); setMonthPage(0); }
-            else goDay(new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + 7 * delta));
-          };
-          const pickDay = (d: Date) => {
-            if (mode === 'month') { setMonthFocus(d); setMonthPage(0); setShowPast(false); if (d.getMonth() !== view.getMonth()) setView(new Date(d.getFullYear(), d.getMonth(), 1)); }
-            else goDay(d);
-          };
-          const dayItems = byDay.get(cellKey(dayDate)) ?? [];
-          const monthItems = days.flatMap((d) => (d ? byDay.get(cellKey(d)) ?? [] : []));
-          const sumItems = mode === 'month' ? monthItems : dayItems;
-          const revenue = sumItems.reduce((acc, b) => acc + (b.status === 'CANCELLED' || b.status === 'NO_SHOW' ? 0 : b.priceCents), 0);
-          const pendingN = sumItems.filter((b) => statusBucket(b.status).key === 'Pending').length;
-          const currency = sumItems[0]?.currency ?? 'USD';
-          const dateLabel = mode === 'month' ? monthLabel : dayDate.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' });
-          return (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <h1 style={{ fontSize: 22, margin: 0, flex: 1, minWidth: 0, letterSpacing: -0.2 }}>{t('cal.title')}</h1>
-                <button type="button" onClick={() => { setSearchOpen((o) => !o); if (searchOpen) setSearch(''); }} aria-label={ind(lang === 'vi' ? 'Tìm khách' : 'Search')} style={{ ...navIconBtn, background: searchOpen ? '#4f46e5' : 'var(--c0f172a)', color: searchOpen ? '#fff' : 'var(--ccbd5e1)' }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-                </button>
-                <button type="button" style={{ ...navBtn, height: 40, padding: '0 14px', fontWeight: 600, borderRadius: 10, background: 'var(--c0f172a)' }} onClick={() => { setMonthFocus(null); setMonthPage(0); if (mode === 'month') setView(new Date(today.getFullYear(), today.getMonth(), 1)); else goDay(today); }}>{t('cal.today')}</button>
-              </div>
-              <div style={{ display: 'flex', background: 'var(--c0f172a)', border: '1px solid var(--line)', borderRadius: 12, padding: 3, marginBottom: 10 }}>
-                <button onClick={() => setMode('month')} style={segBtnPhone(mode === 'month')}>{t('cal.viewMonth')}</button>
-                <button onClick={() => setMode('day')} style={segBtnPhone(mode === 'day')}>{t('cal.viewDay')}</button>
-                <button onClick={() => setMode('staff')} style={segBtnPhone(mode === 'staff')}>{isRestaurant ? t('cal.viewTables') : (lang === 'vi' ? 'Thợ' : 'Staff')}</button>
-                {!isRestaurant && <button onClick={() => setMode('floor')} style={segBtnPhone(false)}>{lang === 'vi' ? 'Sơ đồ' : 'Floor'}</button>}
-              </div>
-              {searchOpen && (
-                <div style={{ position: 'relative', marginBottom: 10 }}>
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--c94a3b8)" strokeWidth="2" strokeLinecap="round" style={{ position: 'absolute', left: 13, top: 13 }}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-                  <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder={ind(lang === 'vi' ? 'Tìm khách theo tên hoặc số điện thoại…' : 'Search customer by name or phone…')} style={{ width: '100%', boxSizing: 'border-box', height: 44, padding: '0 40px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 16 }} />
-                  {search && <button onClick={() => setSearch('')} aria-label="Clear" style={{ position: 'absolute', right: 6, top: 6, width: 32, height: 32, border: 'none', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 18, cursor: 'pointer' }}>✕</button>}
-                </div>
-              )}
-              {/* The week strip */}
-              <div style={{ boxSizing: 'border-box', padding: '8px 8px 6px', borderRadius: 14, background: 'var(--c0f172a)', border: '1px solid var(--line)', marginBottom: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <button type="button" style={{ ...navIconBtn, width: 36, height: 36, border: 'none', background: 'transparent' }} onClick={() => shiftWeek(-1)} aria-label={lang === 'vi' ? 'Trước' : 'Previous'}>‹</button>
-                  <button type="button" onClick={mode === 'month' ? openMonthPicker : openDayPicker} style={{ flex: 1, height: 36, border: 'none', background: 'transparent', color: 'var(--cf1f5f9)', fontSize: 15, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize' }}>{dateLabel} <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}>▾</span></button>
-                  <button type="button" style={{ ...navIconBtn, width: 36, height: 36, border: 'none', background: 'transparent' }} onClick={() => shiftWeek(1)} aria-label={lang === 'vi' ? 'Sau' : 'Next'}>›</button>
-                </div>
-                <div ref={stripRef} className="no-bar" style={{ display: 'flex', gap: 4, marginTop: 4, overflowX: 'auto', scrollSnapType: 'x proximity', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', paddingBottom: 2 }}>
-                  {week.map((d) => {
-                    const list = byDay.get(cellKey(d)) ?? [];
-                    const isToday = d.getTime() === today.getTime();
-                    const isOn = mode === 'month' ? (monthFocus ? d.getTime() === monthFocus.getTime() : isToday) : d.getTime() === dayDate.getTime();
-                    const dot = list.length ? statusBucket(list.find((b) => statusBucket(b.status).key === 'Pending')?.status ?? list[0].status).color : 'transparent';
-                    return (
-                      <button key={d.toDateString()} type="button" data-on={isOn ? '1' : undefined} onClick={() => pickDay(d)} style={isOn
-                        ? { flex: '0 0 calc((100% - 24px) / 7)', scrollSnapAlign: 'start', height: 54, border: 'none', borderRadius: 10, background: '#4f46e5', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: 'pointer', padding: 0 }
-                        : { flex: '0 0 calc((100% - 24px) / 7)', scrollSnapAlign: 'start', height: 54, border: 'none', borderRadius: 10, background: 'transparent', color: 'var(--ce2e8f0)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, cursor: 'pointer', padding: 0 }}>
-                        <span style={{ fontSize: 11, opacity: isOn ? 0.85 : 1, color: isOn ? undefined : 'var(--c94a3b8)' }}>{DAY_LABEL[lang][d.getDay()]}</span>
-                        <span style={{ fontSize: 15, fontWeight: isOn || isToday ? 700 : 600 }}>{d.getDate()}</span>
-                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: isOn ? (list.length ? '#fff' : 'transparent') : dot }} />
-                      </button>
-                    );
-                  })}
-                </div>
-                <input ref={monthInputRef} type="month" value={`${view.getFullYear()}-${String(view.getMonth() + 1).padStart(2, '0')}`} onChange={onMonthPick} style={hiddenInput} tabIndex={-1} aria-hidden="true" />
-                <input ref={dayInputRef} type="date" value={cellKey(dayDate)} onChange={onDayPick} style={hiddenInput} tabIndex={-1} aria-hidden="true" />
-              </div>
-              {/* One line that sums it up (+ list/grid on the day) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  <strong style={{ color: 'var(--cf1f5f9)', fontWeight: 700 }}>{sumItems.length} {t('cal.apptWord')}</strong>
-                  {mode === 'month' && <> {lang === 'vi' ? 'trong tháng' : 'this month'} · {t('cal.todayLabel')} <strong style={{ color: 'var(--cf1f5f9)', fontWeight: 700 }}>{todayStats.total}</strong></>}
-                  {mode !== 'month' && revenue > 0 && <> · {t('cal.expected')} <strong style={{ color: 'var(--ink-good)', fontWeight: 700 }}>{formatPrice(revenue, currency).replace(/[.,]00(?=\D*$)/, '')}</strong></>}
-                  {pendingN > 0 && <> · <span style={{ color: 'var(--ink-warn)', fontWeight: 600 }}>{pendingN} {t('cal.stPending').toLowerCase()}</span></>}
-                  {mode !== 'month' && dayDate.getTime() === today.getTime() && walkinNow > 0 && <> · <span style={{ color: 'var(--ink-warn)', fontWeight: 600 }}>{walkinNow} {ind(lang === 'vi' ? 'khách vãng lai' : 'walk-in')}</span></>}
-                </span>
-                {mode === 'day' && (
-                  <div style={{ display: 'flex', border: '1px solid var(--line)', borderRadius: 9, overflow: 'hidden', flexShrink: 0 }}>
-                    <button type="button" onClick={() => pickDayLayout('grid')} aria-label={lang === 'vi' ? 'Danh sách' : 'List'} style={dayLayout === 'grid' ? { width: 36, height: 32, border: 'none', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' } : { width: 36, height: 32, border: 'none', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h16" /></svg></button>
-                    <button type="button" onClick={() => pickDayLayout('timeline')} aria-label={lang === 'vi' ? 'Lưới giờ' : 'Time grid'} style={dayLayout === 'timeline' ? { width: 36, height: 32, border: 'none', background: '#4f46e5', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' } : { width: 36, height: 32, border: 'none', background: 'var(--c0f172a)', color: 'var(--ccbd5e1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 10h16M4 15h16M10 4v16" /></svg></button>
-                  </div>
-                )}
-              </div>
-              {(() => {
-                const legend = sourceCounts(scopeRows);
-                if (!legend.length) return null;
-                return (
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', overflowX: 'auto', scrollbarWidth: 'none', margin: '0 -16px 10px', padding: '0 16px' }}>
-                    {legend.map(({ meta, count }) => (
-                      <span key={meta.key} style={{ flexShrink: 0 }}>
-                        <SourceChip meta={meta} count={count} vi={lang === 'vi'} active={srcFilter === meta.key} onClick={() => setSrcFilter(srcFilter === meta.key ? null : meta.key)} />
-                      </span>
-                    ))}
-                    {srcFilter && <button onClick={() => setSrcFilter(null)} style={{ flexShrink: 0, background: 'none', border: 'none', color: 'var(--c818cf8)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>{lang === 'vi' ? '✕ Bỏ lọc' : '✕ Clear'}</button>}
-                  </div>
-                );
-              })()}
-              {error && <div style={ui.banner}>{error}</div>}
-              <UnassignedBanner bookings={bookings} vi={lang === 'vi'} onDone={load} />
-            </>
-          );
-        })()
-      ) : (
-        <>
-      {/* Row 1: title + view toggle (toggle is full-width on phones) */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-        <h1 style={{ fontSize: isMobile ? 20 : 24, margin: 0 }}>{t('cal.title')}</h1>
-        <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3, ...(isMobile ? { flex: '1 1 100%' } : {}) }}>
-          <button onClick={() => setMode('month')} style={{ ...segBtn(mode === 'month'), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewMonth')}</button>
-          <button onClick={() => setMode('day')} style={{ ...segBtn(mode === 'day'), ...(isMobile ? { flex: 1 } : {}) }}>{t('cal.viewDay')}</button>
-          <button onClick={() => setMode('staff')} style={{ ...segBtn(mode === 'staff'), ...(isMobile ? { flex: 1 } : {}) }}>{isRestaurant ? t('cal.viewTables') : t('cal.viewStaff')}</button>
-          {!isRestaurant && <button onClick={() => setMode('floor')} style={{ ...segBtn(false), ...(isMobile ? { flex: 1 } : {}) }}>{ind(lang === 'vi' ? 'Sơ đồ ghế' : 'Floor')}</button>}
-        </div>
-      </div>
-
-      {/* Row 2: date navigation. Month mode = month arrows + month picker; Day/Staff = day arrows, month arrows, date picker. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 12, justifyContent: isMobile ? 'center' : 'flex-start' }}>
-        {mode === 'month' ? (
-          <>
-            <button style={navBtn} onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))} aria-label={lang === 'vi' ? 'Tháng trước' : 'Previous month'}>‹</button>
-            <button style={pickerBtn} onClick={openMonthPicker} title={lang === 'vi' ? 'Chọn tháng' : 'Pick a month'}>{monthLabel} ▾</button>
-            <button style={navBtn} onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))} aria-label={lang === 'vi' ? 'Tháng sau' : 'Next month'}>›</button>
-            <button style={navBtn} onClick={() => setView(new Date(today.getFullYear(), today.getMonth(), 1))}>{t('cal.today')}</button>
-          </>
-        ) : (
-          <>
-            <button style={navBtn} onClick={() => dayJumpMonth(-1)} title={lang === 'vi' ? 'Tháng trước' : 'Previous month'} aria-label={lang === 'vi' ? 'Tháng trước' : 'Previous month'}>«</button>
-            <button style={navBtn} onClick={() => goDay(new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate() - 1))} aria-label={lang === 'vi' ? 'Ngày trước' : 'Previous day'}>‹</button>
-            <button style={pickerBtn} onClick={openDayPicker} title={lang === 'vi' ? 'Chọn ngày' : 'Pick a date'}>{dayDate.toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric' })} ▾</button>
-            <button style={navBtn} onClick={() => goDay(new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate() + 1))} aria-label={lang === 'vi' ? 'Ngày sau' : 'Next day'}>›</button>
-            <button style={navBtn} onClick={() => dayJumpMonth(1)} title={lang === 'vi' ? 'Tháng sau' : 'Next month'} aria-label={lang === 'vi' ? 'Tháng sau' : 'Next month'}>»</button>
-            <button style={navBtn} onClick={() => goDay(today)}>{t('cal.today')}</button>
-          </>
-        )}
-        <input ref={monthInputRef} type="month" value={`${view.getFullYear()}-${String(view.getMonth() + 1).padStart(2, '0')}`} onChange={onMonthPick} style={hiddenInput} tabIndex={-1} aria-hidden="true" />
-        <input ref={dayInputRef} type="date" value={cellKey(dayDate)} onChange={onDayPick} style={hiddenInput} tabIndex={-1} aria-hidden="true" />
-      </div>
-
-      {/* The row the owner asked for by name: every source, counted, for the
-          range on screen. "Google Maps 4 · Facebook 7 · Gọi điện 3" — the
-          watching happens HERE, not in a report at the end of the month. One
-          click isolates a channel in all three views; the same click frees it. */}
-      {(() => {
-        const legend = sourceCounts(scopeRows);
-        if (!legend.length) return null;
-        return (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 1.2, color: 'var(--c64748b)', textTransform: 'uppercase' }}>{ind(lang === 'vi' ? 'Nguồn khách' : 'Sources')}</span>
-            {legend.map(({ meta, count }) => (
-              <SourceChip key={meta.key} meta={meta} count={count} vi={lang === 'vi'}
-                active={srcFilter === meta.key}
-                onClick={() => setSrcFilter(srcFilter === meta.key ? null : meta.key)} />
-            ))}
-            {srcFilter && (
-              <button onClick={() => setSrcFilter(null)} style={{ background: 'none', border: 'none', color: 'var(--c818cf8)', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>
-                {lang === 'vi' ? '✕ Bỏ lọc' : '✕ Clear'}
-              </button>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* Row 3: search + full screen */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={ind(lang === 'vi' ? 'Tìm khách theo tên hoặc số điện thoại…' : 'Search customer by name or phone…')} style={{ flex: '1 1 240px', maxWidth: isMobile ? undefined : 380, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 14 }} />
-        {search && <button onClick={() => setSearch('')} style={navBtn} title="Clear">✕</button>}
-        <button onClick={toggleFull} style={{ ...navBtn, marginLeft: 'auto' }} title={fullscreen ? (lang === 'vi' ? 'Thoát toàn màn hình' : 'Exit full screen') : (lang === 'vi' ? 'Toàn màn hình' : 'Full screen')}>{fullscreen ? '✕' : '⛶'}{isMobile ? '' : (fullscreen ? (lang === 'vi' ? ' Thoát' : ' Exit') : (lang === 'vi' ? ' Toàn màn hình' : ' Full screen'))}</button>
-      </div>
-
-      {error && <div style={ui.banner}>{error}</div>}
-      <UnassignedBanner bookings={bookings} vi={lang === 'vi'} onDone={load} />
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          {STATUS_BUCKETS.map((s) => (
-            <span key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ccbd5e1)' }}>
-              <span style={{ width: 9, height: 9, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-              {t('cal.st' + s.key)}
-            </span>
-          ))}
-        </div>
-        <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>
-          {t('cal.todayLabel')}: <strong style={{ color: 'var(--ce2e8f0)' }}>{todayStats.total}</strong> {t('cal.apptWord')}
-          {todayStats.pending > 0 && <> · <span style={{ color: 'var(--ink-warn)' }}>{todayStats.pending} {t('cal.stPending')}</span></>}
-          {todayStats.arrived > 0 && <> · <span style={{ color: '#10b981' }}>{todayStats.arrived} {t('cal.stArrived')}</span></>}
-          {walkinNow > 0 && <> · <span style={{ color: 'var(--ink-warn)' }}>{walkinNow} {ind(lang === 'vi' ? 'khách vãng lai' : 'walk-in')}</span></>}
-        </div>
-      </div>
-
-        </>
-      )}
+    <section style={sectionStyle}>
+      {header}
 
       {mode === 'staff' ? (
         isRestaurant ? (
@@ -581,19 +603,13 @@ function Inner() {
           <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} />
         )
       ) : mode === 'day' ? (
-        <div>
-          {!isMobile && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-              <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 8, padding: 3 }}>
-                <button onClick={() => pickDayLayout('grid')} style={segBtn(dayLayout === 'grid')}>▦ {lang === 'vi' ? 'Lưới' : 'Grid'}</button>
-                <button onClick={() => pickDayLayout('timeline')} style={segBtn(dayLayout === 'timeline')}>☰ {lang === 'vi' ? 'Dòng thời gian' : 'Timeline'}</button>
-              </div>
-            </div>
-          )}
-          {dayLayout === 'grid'
-            ? <DayGrid date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} onQuick={isMobile ? action : undefined} />
-            : <DayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onCtx={(b, x, y) => setCtxMenu({ x, y, b })} />}
-        </div>
+        <ListView
+          all={searchedByDay.get(cellKey(dayDate)) ?? []} rows={byDay.get(cellKey(dayDate)) ?? []} monthRows={monthSearched}
+          date={dayDate} today={today} now={now} tz={tz} vi={vi} isMobile={isMobile} wide={railScreen} staff={staffList}
+          f={filters} setF={setFilters} counts={counts} fmtT={fmtT}
+          onOpen={(b) => setSelected(b as Booking)} onAction={action} onCtx={(b, x, y) => setCtxMenu({ x, y, b: b as Booking })}
+          onAutoAssign={autoAssignOpen} onStaffView={() => setMode('staff')} newHref={newHref} searching={!!search.trim()}
+        />
       ) : isMobile ? (
         /* Phones: the month as a list of days — the day you are on (today, or
            the day tapped on the strip) first and forward from there; the days
@@ -626,7 +642,10 @@ function Inner() {
                         style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '8px 10px', borderRadius: 9, background: 'var(--c1e293b)', borderLeft: `3px solid ${m.color}`, cursor: 'pointer', opacity: struck ? 0.75 : 1 }}>
                         <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: 'var(--cf1f5f9)', fontSize: 14 }}>{fmtT(b.startTime)}</span>
                         <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--cf1f5f9)', fontWeight: 600, fontSize: 14, textDecoration: struck ? 'line-through' : 'none' }}>{name(b.customer)}</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--cf1f5f9)', fontWeight: 600, fontSize: 14, textDecoration: struck ? 'line-through' : 'none' }}>{name(b.customer)}</span>
+                            <SourceDot b={b} vi={lang === 'vi'} />
+                          </span>
                           {svcLabel(b) && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--c94a3b8)', fontSize: 12.5 }}>{svcLabel(b)}</span>}
                         </span>
                         <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 600, color: m.color, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
@@ -742,272 +761,6 @@ function avatarColor(id: string): string {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
-}
-
-function DayView({ date, items, tz, isMobile, onOpen, today, onCtx }: {
-  date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onCtx?: (b: Booking, x: number, y: number) => void;
-}) {
-  const { lang } = useLang();
-  const t = (k: string) => tr(k, lang);
-  const fmtT = (iso: string) => new Date(iso).toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
-  const minInTz = (iso: string) => {
-    const d = new Date(iso);
-    if (!tz) return d.getHours() * 60 + d.getMinutes();
-    const p = new Intl.DateTimeFormat(uiLocale(), { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).formatToParts(d);
-    return (Number(p.find((x) => x.type === 'hour')?.value ?? 0) % 24) * 60 + Number(p.find((x) => x.type === 'minute')?.value ?? 0);
-  };
-
-  const isToday = date.getTime() === today.getTime();
-  const revenue = items.reduce((s, b) => s + (b.status === 'CANCELLED' || b.status === 'NO_SHOW' ? 0 : b.priceCents), 0);
-  const currency = items[0]?.currency ?? 'USD';
-
-  const ev = items
-    .map((b) => {
-      const s = minInTz(b.startTime);
-      let e = minInTz(b.endTime);
-      if (e <= s) e = s + (Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000) || 30);
-      return { b, s, e };
-    })
-    .sort((a, z) => a.s - z.s || a.e - z.e);
-
-  // Tight window: ~1h of air before the first and after the last appointment
-  // (min 6h span), so the day reads compact instead of a mostly-empty grid.
-  let startH = 9, endH = 18;
-  if (ev.length) {
-    startH = Math.floor(ev[0].s / 60) - 1;
-    endH = Math.ceil(Math.max(...ev.map((x) => x.e)) / 60) + 1;
-  }
-  startH = Math.max(6, startH); endH = Math.min(23, endH);
-  while (endH - startH < 6 && endH < 22) endH++;
-  while (endH - startH < 6 && startH > 6) startH--;
-  const gStart = startH * 60;
-  const HP = isMobile ? 60 : 66;
-  const railW = isMobile ? 46 : 60;
-  const total = (endH - startH) * HP;
-
-  type Pos = { b: Booking; s: number; e: number; col: number; cols: number };
-  const pos: Pos[] = [];
-  let cluster: { b: Booking; s: number; e: number; col: number }[] = [];
-  let clusterEnd = -1;
-  const laneEnds: number[] = [];
-  const flush = () => {
-    const cols = Math.max(1, ...cluster.map((c) => c.col + 1));
-    for (const c of cluster) pos.push({ ...c, cols });
-    cluster = []; laneEnds.length = 0;
-  };
-  for (const x of ev) {
-    if (cluster.length && x.s >= clusterEnd) flush();
-    let col = laneEnds.findIndex((end) => end <= x.s);
-    if (col === -1) { col = laneEnds.length; laneEnds.push(x.e); } else laneEnds[col] = x.e;
-    cluster.push({ b: x.b, s: x.s, e: x.e, col });
-    clusterEnd = cluster.length === 1 ? x.e : Math.max(clusterEnd, x.e);
-  }
-  if (cluster.length) flush();
-
-  const nowMin = isToday ? minInTz(new Date().toISOString()) : -1;
-  const nowTop = nowMin >= gStart && nowMin <= endH * 60 ? (nowMin - gStart) / 60 * HP : -1;
-  const nextB = isToday ? (ev.find((x) => x.e > nowMin)?.b ?? null) : null;
-
-  return (
-    <div>
-      <style>{`.cal-day-card{transition:filter .12s ease, box-shadow .12s ease, transform .06s ease}.cal-day-card:hover{filter:brightness(1.14)}.cal-day-card:active{transform:scale(.995)}`}</style>
-      {!isMobile && (
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12, padding: '10px 14px', background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 10 }}>
-        <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.apptWord')}</span></span>
-        <span style={{ color: 'var(--ink-faint)' }}>|</span>
-        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: 'var(--ink-good)' }}>{formatPrice(revenue, currency)}</strong></span>
-        {ev.length > 0 && <><span style={{ color: 'var(--ink-faint)' }}>|</span><span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{fmtT(ev[0].b.startTime)} – {fmtT(ev[ev.length - 1].b.endTime)}</span></>}
-        {nextB && <><span style={{ color: 'var(--ink-faint)' }}>|</span><span style={{ fontSize: 13, color: 'var(--ccbd5e1)' }}>{lang === 'vi' ? 'Kế tiếp' : 'Next'}: <strong style={{ color: 'var(--cf1f5f9)' }}>{fmtT(nextB.startTime)}</strong> {nextB.customer?.firstName ?? ''}</span></>}
-      </div>
-      )}
-
-      {items.length === 0 ? (
-        <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
-      ) : (
-        <div style={{ display: 'flex', background: 'var(--c0f172a)', border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ width: railW, flexShrink: 0, position: 'relative', height: total, borderRight: '1px solid var(--c1f2937)' }}>
-            {Array.from({ length: endH - startH + 1 }, (_, i) => startH + i).map((h) => (
-              <div key={h} style={{ position: 'absolute', top: (h - startH) * HP - 6, right: 8, fontSize: 11, color: 'var(--c64748b)', whiteSpace: 'nowrap' }}>
-                {((h % 12) || 12)}{h < 12 ? 'a' : 'p'}
-              </div>
-            ))}
-          </div>
-          <div style={{ position: 'relative', flex: 1, height: total }}>
-            {Array.from({ length: endH - startH + 1 }, (_, i) => i).map((i) => (
-              <div key={i} style={{ position: 'absolute', top: i * HP, left: 0, right: 0, borderTop: '1px solid var(--line)' }} />
-            ))}
-            {nowTop >= 0 && (
-              <div style={{ position: 'absolute', top: nowTop, left: 0, right: 0, borderTop: '2px solid #ef4444', zIndex: 5 }}>
-                <span style={{ position: 'absolute', left: -1, top: -5, width: 9, height: 9, borderRadius: '50%', background: '#ef4444' }} />
-                <span style={{ position: 'absolute', right: 6, top: -9, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 6px' }}>{fmtT(new Date().toISOString())}</span>
-              </div>
-            )}
-            {pos.map(({ b, s, e, col, cols }) => {
-              const m = statusBucket(b.status, b.startTime);
-              const top = (s - gStart) / 60 * HP;
-              const h = Math.max(44, (e - s) / 60 * HP - 4);
-              const dim = b.status === 'CANCELLED' || b.status === 'NO_SHOW';
-              const struck = b.status === 'CANCELLED';
-              const w = 100 / cols;
-              const wide = cols === 1 && !isMobile;
-              const client = b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—';
-              const tech = b.assignedStaff ? b.assignedStaff.firstName : t('cal.unassigned');
-              const initial = b.assignedStaff ? b.assignedStaff.firstName.charAt(0).toUpperCase() : '?';
-              const aColor = b.assignedStaff ? avatarColor(b.assignedStaff.id) : 'var(--c475569)';
-              const durMin = Math.max(0, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
-              const isNext = nextB?.id === b.id;
-              return (
-                <div key={b.id} onClick={() => onOpen(b)} onContextMenu={(e) => { if (onCtx) { e.preventDefault(); onCtx(b, e.clientX, e.clientY); } }} className="cal-day-card" title={`${fmtT(b.startTime)} · ${client} · ${svcLabel(b)}`}
-                  style={{ position: 'absolute', top, height: h, left: `calc(${col * w}% + 4px)`, width: `calc(${w}% - 8px)`,
-                    background: dim ? 'var(--c161f30)' : `linear-gradient(180deg, ${m.color}26, ${m.color}12)`,
-                    border: `1px solid ${m.color}55`, borderLeft: `4px solid ${m.color}`, borderRadius: 10,
-                    boxShadow: isNext ? `0 0 0 2px ${m.color}, 0 4px 16px ${m.color}44` : '0 1px 3px rgba(0,0,0,0.35)',
-                    padding: wide ? '0 12px' : '5px 9px', overflow: 'hidden', cursor: 'pointer', boxSizing: 'border-box', opacity: dim ? 0.72 : 1,
-                    display: 'flex', flexDirection: wide ? 'row' : 'column', alignItems: wide ? 'center' : 'stretch', gap: wide ? 12 : 1 }}>
-                  {wide ? (
-                    <>
-                      <div style={{ width: 94, flexShrink: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</div>
-                        <div style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{fmtT(b.endTime)} · {durMin}m</div>
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--cf8fafc)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
-                        <div style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{partyLabel(b, items)}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
-                        <span style={{ width: 26, height: 26, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 12, fontWeight: 600, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
-                        <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tech}</span>
-                      </div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink-good)', flexShrink: 0, minWidth: 54, textAlign: 'right' }}>{formatPrice(b.priceCents, b.currency)}</div>
-                      <span style={{ flexShrink: 0, color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '2px 9px', fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: 11.5, fontWeight: 600, color: m.color, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: 'var(--ink-good)', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</span>
-                      </div>
-                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
-                      {h > 50 && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{svcLabel(b)}{b.assignedStaff ? ` · ${tech}` : ''}</div>}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      {!isMobile && <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 10 }}>{t('cal.dayHint')}</p>}
-    </div>
-  );
-}
-
-// Day view as a scannable card grid — grouped by morning / afternoon / evening,
-// wrapping into as many columns as fit. Much easier to read on a busy day than a
-// squished time-axis.
-function DayGrid({ date, items, tz, isMobile, onOpen, today, onCtx, onQuick }: {
-  date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onCtx?: (b: Booking, x: number, y: number) => void;
-  /** Phone: confirm a pending booking from its card, no drawer needed. */
-  onQuick?: (id: string, path: string, body?: unknown) => void;
-}) {
-  const { lang } = useLang();
-  const t = (k: string) => tr(k, lang);
-  const L = (vi: string, en: string) => ind(lang === 'vi' ? vi : en);
-  const fmtT = (iso: string) => new Date(iso).toLocaleTimeString(uiLocale(), { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
-  const hourInTz = (iso: string) => {
-    const d = new Date(iso);
-    if (!tz) return d.getHours();
-    const parts = new Intl.DateTimeFormat(uiLocale(), { hour: '2-digit', hour12: false, timeZone: tz }).formatToParts(d);
-    return Number(parts.find((x) => x.type === 'hour')?.value ?? 0) % 24;
-  };
-
-  const isToday = date.getTime() === today.getTime();
-  const revenue = items.reduce((sum, b) => sum + (b.status === 'CANCELLED' || b.status === 'NO_SHOW' ? 0 : b.priceCents), 0);
-  const currency = items[0]?.currency ?? 'USD';
-  const sorted = [...items].sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
-  const nowTs = Date.now();
-  const nextId = isToday ? (sorted.find((b) => new Date(b.endTime).getTime() > nowTs)?.id ?? null) : null;
-
-  const periods: { label: string; list: Booking[] }[] = [
-    { label: L('Buổi sáng', 'Morning'), list: [] },
-    { label: L('Buổi chiều', 'Afternoon'), list: [] },
-    { label: L('Buổi tối', 'Evening'), list: [] },
-  ];
-  for (const b of sorted) { const h = hourInTz(b.startTime); periods[h < 12 ? 0 : h < 17 ? 1 : 2].list.push(b); }
-
-  return (
-    <div>
-      <style>{`.cal-day-card{transition:filter .12s ease, box-shadow .12s ease, transform .06s ease}.cal-day-card:hover{filter:brightness(1.15)}.cal-day-card:active{transform:scale(.99)}`}</style>
-      {!isMobile && (
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14, padding: '10px 14px', background: 'var(--c111827)', border: '1px solid var(--c1f2937)', borderRadius: 10 }}>
-        <span style={{ fontSize: 14 }}><strong style={{ fontSize: 18 }}>{items.length}</strong> <span style={{ color: 'var(--c94a3b8)' }}>{t('cal.apptWord')}</span></span>
-        <span style={{ color: 'var(--ink-faint)' }}>|</span>
-        <span style={{ fontSize: 14 }}><span style={{ color: 'var(--c94a3b8)' }}>{t('cal.expected')}: </span><strong style={{ color: 'var(--ink-good)' }}>{formatPrice(revenue, currency)}</strong></span>
-      </div>
-      )}
-
-      {items.length === 0 ? (
-        <div style={{ ...ui.card, textAlign: 'center', color: 'var(--c64748b)', padding: '44px 0', fontSize: 14 }}>{t('cal.noAppts')}</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {periods.map((pg, i) => pg.list.length === 0 ? null : (
-            <div key={i}>
-              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.5, color: 'var(--c64748b)', textTransform: 'uppercase', marginBottom: 8 }}>{pg.label} · {pg.list.length}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(258px, 1fr))', gap: 10 }}>
-                {pg.list.map((b) => {
-                  const m = statusBucket(b.status, b.startTime);
-                  const dim = b.status === 'CANCELLED' || b.status === 'NO_SHOW';
-                  const struck = b.status === 'CANCELLED';
-                  const client = b.customer ? `${b.customer.firstName}${b.customer.lastName ? ' ' + b.customer.lastName : ''}` : '—';
-                  const tech = b.assignedStaff ? b.assignedStaff.firstName : t('cal.unassigned');
-                  const initial = b.assignedStaff ? b.assignedStaff.firstName.charAt(0).toUpperCase() : '?';
-                  const aColor = b.assignedStaff ? avatarColor(b.assignedStaff.id) : 'var(--c475569)';
-                  const durMin = Math.max(0, Math.round((new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 60000));
-                  const isNext = b.id === nextId;
-                  return (
-                    <div key={b.id} onClick={() => onOpen(b)} onContextMenu={(e) => { if (onCtx) { e.preventDefault(); onCtx(b, e.clientX, e.clientY); } }} className="cal-day-card"
-                      style={{ background: dim ? 'var(--c161f30)' : 'var(--c111a2c)', border: `1px solid ${m.color}44`, borderLeft: `4px solid ${m.color}`, borderRadius: 10,
-                        padding: '10px 12px', cursor: 'pointer', boxSizing: 'border-box', opacity: dim ? 0.72 : 1,
-                        boxShadow: isNext ? `0 0 0 2px ${m.color}, 0 4px 16px ${m.color}44` : '0 1px 3px rgba(0,0,0,0.3)',
-                        display: 'flex', flexDirection: 'column', gap: 5 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
-                          <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
-                          <span style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>· {durMin}m</span>
-                        </span>
-                        <span style={{ flexShrink: 0, color: m.color, border: `1px solid ${m.color}`, borderRadius: 999, padding: '1px 8px', fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' }}>{t('cal.st' + m.key)}</span>
-                      </div>
-                      <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--cf8fafc)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: struck ? 'line-through' : 'none' }}>{client}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{svcLabel(b) || '—'}{partyLabel(b, items)}{b.partySize && b.partySize > 1 ? ` · ${b.partySize}` : ''}</span>
-                        <OriginChip b={b} t={t} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 1 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                          <span style={{ width: 22, height: 22, borderRadius: '50%', background: aColor, color: '#fff', fontSize: 11, fontWeight: 600, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{initial}</span>
-                          <span style={{ fontSize: 12, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tech}</span>
-                        </span>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink-good)', flexShrink: 0 }}>{formatPrice(b.priceCents, b.currency)}</span>
-                      </div>
-                      {onQuick && m.key === 'Pending' && (
-                        <div style={{ display: 'flex', gap: 8, marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
-                          <button type="button" onClick={() => onQuick(b.id, 'status', { status: 'CONFIRMED' })} style={{ flex: 1, height: 38, borderRadius: 10, border: 'none', background: '#4f46e5', color: '#fff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>{L('Xác nhận', 'Confirm')}</button>
-                          <button type="button" onClick={() => onOpen(b)} style={{ flex: 1, height: 38, borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>{b.assignedStaff ? L('Chi tiết', 'Details') : L('Chọn thợ', 'Assign')}</button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {!isMobile && <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 12 }}>{t('cal.dayHint')}</p>}
-    </div>
-  );
 }
 
 function CtxItem({ label, onClick, color }: { label: string; onClick: () => void; color?: string }) {

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { SourceDot } from '../../../components/SourceChip';
+import { SourceChip, SourceDot } from '../../../components/SourceChip';
+import { srcMetaOf } from '../../../lib/booking-sources';
 import { useAuth } from '../../../lib/auth';
 import { withHoursOverride } from '../../../lib/desk-hours';
 import { apiFetch } from '../../../lib/api';
@@ -434,7 +435,7 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {unassigned.map((b) => (
                   <button key={b.id} type="button" onClick={() => onOpen(b)} style={{ height: 30, padding: '0 10px', borderRadius: 8, border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ color: barColor(b.status), fontWeight: 700 }}>{hm(span(b).s)}</span>{custName(b)}
+                    <span style={{ color: barColor(b.status), fontWeight: 700 }}>{hm(span(b).s)}</span>{custName(b)}<SourceDot b={b} vi={vi} />
                   </button>
                 ))}
               </div>
@@ -574,7 +575,12 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                     <span style={{ fontSize: 12.5, fontWeight: 700, color: cc, whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency).replace(/[.,]00(?=\D*$)/, '')}</span>
                   </div>
                   <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{custName(b)}{b.partySize != null && b.partySize > 1 ? ` ×${b.partySize}` : ''}</span>
-                  {h >= 58 && <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}</span>}
+                  {h >= 58 ? (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                      <SourceChip b={b} vi={vi} />
+                      <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{b.service?.name ?? ''}</span>
+                    </span>
+                  ) : <SourceDot b={b} vi={vi} />}
                   {h > 84 && stLabel && <span style={{ fontSize: 11.5, color: cc, marginTop: 'auto' }}>{stLabel}</span>}
                 </div>
               );
@@ -729,9 +735,12 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                         <div key={b.id} data-card="1" draggable={!dim} onDragStart={(ev) => { setDragId(b.id); setGhost(null); grab.current = ((ev.clientY - ev.currentTarget.getBoundingClientRect().top) / HP) * 60; ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', b.id); }} onDragEnd={() => { setDragId(null); setOverCol(null); setGhost(null); }}
                           onClick={() => onOpen(b)} title={`${fmtT(b.startTime)} · ${b.customer?.firstName ?? ''} · ${b.service?.name ?? ''}`}
                           style={{ position: 'absolute', top: topPx, height: h, left: `calc(${col * w}% + 3px)`, width: `calc(${w}% - 6px)`, boxSizing: 'border-box', background: dim ? 'var(--c18202f)' : `${cc}22`, border: `1px solid ${cc}66`, borderRadius: 8, padding: '3px 7px', overflow: 'hidden', cursor: dim ? 'pointer' : 'grab', opacity: dim ? 0.7 : dragId === b.id ? 0.4 : 1 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 4 }}>
-                            <span style={{ fontSize: 10.5, fontWeight: 600, color: cc, whiteSpace: 'nowrap' }}>{fmtT(b.startTime)}</span>
-                            <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap' }}>{formatPrice(b.priceCents, b.currency)}</span>
+                          {/* Time · where the booking came from · price — the source is
+                              named on every card, short or tall (owner's request). */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                            <span style={{ fontSize: 10.5, fontWeight: 600, color: cc, whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtT(b.startTime)}</span>
+                            <MiniSrc b={b} vi={vi} />
+                            <span style={{ marginLeft: 'auto', fontSize: 10.5, fontWeight: 600, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', flexShrink: 0 }}>{formatPrice(b.priceCents, b.currency).replace(/[.,]00(?=\D*$)/, '')}</span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
                             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: b.status === 'CANCELLED' ? 'line-through' : 'none' }}>
@@ -740,7 +749,6 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
                             <span style={{ display: 'flex', gap: 3, alignItems: 'center', flexShrink: 0 }}>
                               {b.partySize != null && b.partySize > 1 && <span title={t('cal.dParty')} style={{ fontSize: 9, fontWeight: 600, color: 'var(--ce2e8f0)', background: 'var(--c475569)', borderRadius: 4, padding: '0 3px', lineHeight: '13px' }}>×{b.partySize}</span>}
                               {paid > 0 && <span title={`${dep} · ${formatPrice(paid, b.currency)}`} style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />}
-                              <SourceDot b={b} vi={true} />
                             </span>
                           </div>
                           {h > 48 && <div style={{ fontSize: 11, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.service?.name ?? ''}</div>}
@@ -772,3 +780,15 @@ function chip(active: boolean): React.CSSProperties {
 // White text on a coloured (never themed) block: the block's hue is the
 // booking's status, so light mode does not flip it.
 const onHue = (bg: string): React.CSSProperties => ({ background: bg, color: '#fff' });
+
+/** The source on a calendar card: brand colour + name, one line, 15px tall. */
+function MiniSrc({ b, vi }: { b: { source?: string | null; utmSource?: string | null; attrReferrer?: string | null; attrLandingUrl?: string | null }; vi: boolean }) {
+  const m = srcMetaOf(b);
+  const label = vi ? m.labelVi : m.labelEn;
+  return (
+    <span title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, height: 15, padding: '0 6px', borderRadius: 999, background: `${m.color}1f`, color: m.color, fontSize: 9.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0, flexShrink: 1 }}>
+      <span style={{ width: 5, height: 5, borderRadius: '50%', background: m.color, flexShrink: 0 }} />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+    </span>
+  );
+}

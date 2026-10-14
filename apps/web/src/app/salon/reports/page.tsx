@@ -189,11 +189,11 @@ function Inner() {
         {/* Money that came in (cash, card, transfer, online deposits) — it includes
             tax and the techs' tips, so it is named for what it is; sales per
             tech, net of discounts and without tips, are in the Sales report. */}
-        <Kpi label={T('Tiền thu về', 'Money collected')} value={money(k?.revenueCents ?? 0)} hint={`${T('gồm thuế & tip', 'incl. tax & tips')} · ${T('TB/lượt', 'Avg')} ${money(k?.avgBookingValueCents ?? 0)}`} />
+        <Kpi label={T('Tiền thu về', 'Money collected')} value={money(k?.revenueCents ?? 0)} hint={`${T('gồm thuế & tip', 'incl. tax & tips')} · ${T('TB/hoá đơn', 'Avg/ticket')} ${money(k?.avgBookingValueCents ?? 0)}`} />
         <Kpi label={T('Lượt khách', 'Visits')} value={String(visitsTotal)} hint={`${T('đặt', 'booked')} ${booked} · ${T('vãng lai', 'walk-in')} ${walkin}`} />
         <Kpi label={T('Tỷ lệ no-show', 'No-show rate')} value={`${Math.round((k?.noShowRate ?? 0) * 100)}%`} hint={`${k?.noShow ?? 0} ${T('vắng', 'no-shows')}`} accent="var(--ink-warn)" />
         <Kpi label={T('Hoàn tất', 'Completion')} value={`${Math.round((k?.completionRate ?? 0) * 100)}%`} hint={`${k?.completed ?? 0} ${T('xong', 'done')}`} accent="var(--ink-good)" />
-        <Kpi label={T('Khách mới', 'New customers')} value={String(k?.newCustomers ?? 0)} hint={`${pct(k?.newCustomers ?? 0, k?.totalBookings ?? 0)}% ${T('tổng', 'of total')}`} />
+        <Kpi label={T('Khách mới', 'New customers')} value={String(k?.newCustomers ?? 0)} hint={`${Math.min(100, pct(k?.newCustomers ?? 0, visitsTotal))}% ${T('lượt khách', 'of visits')}`} />
       </div>
 
       {/* Trend + Outcomes */}
@@ -270,8 +270,8 @@ function Inner() {
       </Card>
 
       <p style={{ color: 'var(--c64748b)', fontSize: 12, marginTop: 14 }}>
-        {T('Số liệu chỉ tính lịch không huỷ / không no-show cho doanh thu. Chọn khoảng ngày ở trên để đo bất kỳ kỳ nào.',
-           'Revenue counts only non-cancelled / non-no-show bookings. Pick a date range above to measure any period.')}
+        {T('Doanh thu không tính lịch đã huỷ; tiền cọc của lịch no-show vẫn được tính. Khách vãng lai chỉ có doanh thu khi tính tiền qua máy POS. Chọn khoảng ngày ở trên để đo bất kỳ kỳ nào.',
+           'Revenue leaves out cancelled bookings; deposits kept from no-shows still count. Walk-ins show revenue only when checked out at the POS. Pick a date range above to measure any period.')}
       </p>
 
       <style>{`

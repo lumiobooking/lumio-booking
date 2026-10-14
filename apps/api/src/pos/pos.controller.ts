@@ -32,6 +32,12 @@ export class PosController {
     return this.pos.receiptProfile(user);
   }
 
+  /** Money already paid online for the booking(s) on the ticket (deposits). */
+  @Get('prepaid')
+  prepaid(@CurrentUser() user: AuthenticatedUser, @Query('ids') ids?: string) {
+    return this.pos.prepaid(user, ids ?? '');
+  }
+
   // ---- Products ----
   @Get('products')
   listProducts(@CurrentUser() user: AuthenticatedUser) {

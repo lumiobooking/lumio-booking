@@ -14,8 +14,11 @@ import {
 } from './walkin-legs';
 import { turnReport, weekOf } from './turn-report';
 import { settledWalkIns, unpaidFromPastDays, UNPAID_LIST_DAYS } from './unpaid-sweep';
+import { linkWalkInToBooking } from './booking-link';
+import { allocate } from '../payroll/sales-ledger';
 import { appointmentTurns, cleanTurnRules, DEFAULT_TURN_RULES, latePenalty, legTurns, minutesLate, tieCompare, toBottomDelta, TURN_RULES_KEY, TurnRules, newTechBoost } from './turn-rules';
 import { AuditService } from '../audit/audit.service';
+import { hasCapability } from '../auth/capabilities';
 import { tzPartsOf } from '../common/salon-time';
 import { inPromoWindow, salonYmd } from '../settings/promo-window';
 
@@ -514,6 +517,9 @@ export class WalkinsService {
       },
       select: { id: true },
     });
+    // A customer with a booking near now, added as a walk-in: tie the ticket to
+    // the booking, or the midnight sweep marks a customer who came as a no-show.
+    await linkWalkInToBooking(this.prisma as never, tenantId, created.id, linked?.id ?? null).catch(() => null);
     const guestIds: string[] = [];
     let anyRequested = !!staffId;
     for (let i = 0; i < guests.length; i++) {
@@ -604,6 +610,12 @@ export class WalkinsService {
     // floor: its ticket already counted, so the same visit is not two turns.
     const turns = turnsFromTickets(tickets, today, rules);
     const seatedApptIds = new Set([...open, ...doneToday].map((w) => (w as { appointmentId?: string | null }).appointmentId).filter((x): x is string => !!x));
+    // A ticket closed on an earlier day and paid today: its turn stayed on its day.
+    const unseen = completedAppts.map((a) => a.id).filter((id) => !seatedApptIds.has(id));
+    if (unseen.length) {
+      const rows = await (this.prisma.walkIn.findMany({ where: { tenantId, appointmentId: { in: unseen }, status: { not: WalkInStatus.CANCELLED } }, select: { appointmentId: true } }) as Promise<{ appointmentId: string | null }[]>).catch(() => [] as { appointmentId: string | null }[]);
+      for (const r of rows) if (r.appointmentId) seatedApptIds.add(r.appointmentId);
+    }
     const countedAppts = completedAppts.filter((a) => a.assignedStaffId && !seatedApptIds.has(a.id));
     for (const a of countedAppts) {
       const v = appointmentTurns(a.service?.turnValue, rules);
@@ -1144,6 +1156,10 @@ export class WalkinsService {
       },
     });
     if (!appt) throw new NotFoundException('Appointment not found');
+    // Already on the floor (a double tap, two desks, the tech's own start):
+    // the same ticket, never a second one and a second turn.
+    const onFloor = await this.prisma.walkIn.findFirst({ where: { tenantId, appointmentId: appt.id, status: { not: WalkInStatus.CANCELLED } }, select: { id: true } });
+    if (onFloor) return this.row(tenantId, onFloor.id);
     const custName = appt.customer ? `${appt.customer.firstName}${appt.customer.lastName ? ' ' + appt.customer.lastName : ''}`.trim() : null;
     // Every service of the booking, each with the technician it was booked with.
     const extraLines = (Array.isArray(appt.addons) ? (appt.addons as unknown as { id?: string; kind?: string; staffMemberId?: string | null }[]) : [])
@@ -1523,6 +1539,39 @@ export class WalkinsService {
     return staff?.id ?? null;
   }
 
+  /**
+   * A technician (without the front desk's walk-in screen) acts only on a
+   * ticket she works on, and removes only her own lines. Owners and desk staff
+   * are not limited here — they run the whole floor.
+   */
+  private async assertMyTicket(user: AuthenticatedUser, w: { assignedStaffId?: string | null; items?: unknown }, lineId?: string) {
+    if (user.role !== UserRole.STAFF) return;
+    if (hasCapability(user.role, user.staffRole ?? null, 'walkins', user.staffCaps ?? undefined)) return;
+    const me = await this.staffOf(user);
+    const items = legItemsOf(w as unknown as TicketLike) as unknown as { lineId?: string; staffId?: string | null }[];
+    const onTicket = !!me && (w.assignedStaffId === me || items.some((it) => it.staffId === me));
+    if (!onTicket) throw new ForbiddenException('Đây không phải khách của bạn.');
+    if (lineId) {
+      const line = items.find((it) => it.lineId === lineId);
+      if (line && line.staffId && line.staffId !== me) throw new ForbiddenException('Bạn chỉ xoá được dịch vụ do mình làm.');
+    }
+  }
+
+  async removeServiceAsMe(user: AuthenticatedUser, id: string, lineId: string) {
+    await this.assertMyTicket(user, await this.mine(user, id), lineId);
+    return this.removeService(user, id, lineId);
+  }
+
+  async moveToStationAsMe(user: AuthenticatedUser, id: string, stationId?: string) {
+    await this.assertMyTicket(user, await this.mine(user, id));
+    return this.moveToStation(user, id, stationId);
+  }
+
+  async reactivateAsMe(user: AuthenticatedUser, id: string) {
+    await this.assertMyTicket(user, await this.mine(user, id));
+    return this.reactivate(user, id);
+  }
+
   /** Add a service line and ALWAYS credit it to the signed-in technician — a tech
    *  can never (accidentally or otherwise) put their work on someone else's turn count. */
   async addServiceAsMe(user: AuthenticatedUser, id: string, serviceId: string) {
@@ -1640,12 +1689,12 @@ export class WalkinsService {
       const i = Math.floor((new Date(d).getTime() - weekStart.getTime()) / 86400000);
       return i >= 0 && i < 7 ? week[i] : null;
     };
-    type OrderRow = { paidAt: Date | null; appointmentId: string | null; appointmentIds?: string[]; items: { kind: string; lineTotalCents: number; tipCents: number; quantity: number; staffMemberId: string | null }[] };
+    type OrderRow = { paidAt: Date | null; appointmentId: string | null; appointmentIds?: string[]; discountCents?: number | null; items: { kind: string; lineTotalCents: number; tipCents: number; quantity: number; staffMemberId: string | null }[] };
     const orders: OrderRow[] = await this.db.order.findMany({
-      where: { tenantId, status: 'PAID', paidAt: { gte: weekStart } },
+      where: { tenantId, status: 'PAID', paidAt: { gte: weekStart }, items: { some: { staffMemberId: me } } },
       select: {
-        paidAt: true, appointmentId: true, appointmentIds: true,
-        items: { where: { staffMemberId: me }, select: { kind: true, lineTotalCents: true, tipCents: true, quantity: true, staffMemberId: true } },
+        paidAt: true, appointmentId: true, appointmentIds: true, discountCents: true,
+        items: { select: { kind: true, lineTotalCents: true, tipCents: true, quantity: true, staffMemberId: true } },
       },
     }).catch(() => []);
     const paidAppts = new Set<string>();
@@ -1653,9 +1702,12 @@ export class WalkinsService {
       for (const a of [o.appointmentId, ...(o.appointmentIds ?? [])]) if (a) paidAppts.add(a);
       const w = slot(o.paidAt);
       if (!w) continue;
-      for (const l of o.items ?? []) {
+      // The ticket's discount is shared over its lines exactly as the payslip does (payroll/sales-ledger.ts).
+      const items = o.items ?? [];
+      const disc = allocate(o.discountCents ?? 0, items.map((l) => l.lineTotalCents));
+      for (const [i, l] of items.entries()) {
         if (l.staffMemberId !== me) continue;
-        if (l.kind === 'SERVICE') { w.serviceCents += l.lineTotalCents; w.services += l.quantity || 1; }
+        if (l.kind === 'SERVICE') { w.serviceCents += Math.max(0, l.lineTotalCents - (disc[i] ?? 0)); w.services += l.quantity || 1; }
         w.tipsCents += l.tipCents || 0;
       }
     }

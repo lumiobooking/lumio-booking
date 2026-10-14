@@ -8,13 +8,22 @@ import { SkipRateLimit } from '../common/security/rate-limit.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { ZaloOaService } from './zalo-oa.service';
+import { OAuthGate, tenantOfState } from '../common/oauth-gate.service';
 
 /** Salon-admin management of the Zalo OA mouth. Same trust boundary as
  *  connecting a Facebook Page: configuration is the owner's job. */
 @Roles(UserRole.SALON_ADMIN)
 @Controller('zalo')
 export class ZaloController {
-  constructor(private readonly svc: ZaloOaService) {}
+  constructor(private readonly svc: ZaloOaService, private readonly gate: OAuthGate) {}
+
+  /** /oauth/confirm on the web, signed in: apply the parked Zalo grant to THIS salon. */
+  @Post('oauth/confirm')
+  @HttpCode(200)
+  async oauthConfirm(@CurrentUser() user: AuthenticatedUser, @Body() dto: { n?: string; c?: string }) {
+    const q = await this.gate.claim(user, 'zalo', String(dto?.n ?? ''), String(dto?.c ?? ''));
+    return { redirect: await this.svc.oauthCallback(q.code || '', q.oa_id || '', q.state || '') };
+  }
 
   @Get()
   status(@CurrentUser() user: AuthenticatedUser) {
@@ -49,7 +58,7 @@ export class ZaloController {
 @SkipRateLimit()
 @Controller('public/zalo')
 export class ZaloWebhookController {
-  constructor(private readonly svc: ZaloOaService) {}
+  constructor(private readonly svc: ZaloOaService, private readonly gate: OAuthGate) {}
 
   @Public()
   @Get('webhook')
@@ -70,8 +79,9 @@ export class ZaloWebhookController {
     @Query('state') state: string,
     @Res() res: Response,
   ) {
-    const url = await this.svc.oauthCallback(code || '', oaId || '', state || '');
-    res.redirect(url);
+    // The grant is applied only from the salon's own signed-in session (common/oauth-gate.service.ts).
+    const parked = await this.gate.park('zalo', tenantOfState(this.svc, state || ''), { code: code || '', oa_id: oaId || '', state: state || '' });
+    res.redirect(parked ?? await this.svc.oauthCallback(code || '', oaId || '', state || ''));
   }
 
   @Public()

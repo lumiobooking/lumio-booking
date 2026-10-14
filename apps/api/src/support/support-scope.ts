@@ -232,11 +232,13 @@ const PATH_CAPS: [string, Capability][] = [
   ['payments', 'payments'],
   ['billing', 'billing'],
   ['stats', 'reports'],
+  ['branches', 'reports'],
   ['overview', 'dashboard'],
   ['supplies', 'inventory'],
   ['referral', 'billing'],
   // the customer's own data
   ['customers', 'customers'],
+  ['search', 'customers'],
   ['bookings', 'bookings'],
   ['walkins', 'walkins'],
   ['waitlist', 'waitlist'],
@@ -248,11 +250,15 @@ const PATH_CAPS: [string, Capability][] = [
   // Per-technician takings and commission. Money wearing a staff URL — and the
   // reason `staff` alone is not enough to decide this one.
   ['payroll', 'payroll'],
+  ['my-pay', 'payroll'],
+  ['time-clock', 'payroll'],
   ['staff/performance', 'payroll'],
   ['staff', 'staff'],
+  ['time-off', 'staff'],
   ['stations', 'staff'],
   ['my-chair', 'staff'],
   ['reviews', 'reviews'],
+  ['feedback', 'reviews'],
   ['google-reviews', 'reviews'],
   ['marketing', 'marketing'],
   ['campaigns', 'marketing'],
@@ -261,6 +267,8 @@ const PATH_CAPS: [string, Capability][] = [
   ['messenger', 'marketing'],
   ['voice', 'marketing'],
   ['zalo', 'marketing'],
+  ['tiktok', 'marketing'],
+  ['storage/gdrive', 'marketing'],
   ['notifications', 'notifications'],
   ['push', 'notifications'],
   ['integrations', 'integrations'],
@@ -273,13 +281,17 @@ const PATH_CAPS: [string, Capability][] = [
   ['settings/business-profile', 'marketing'],
   ['settings/review', 'reviews'],
   ['settings', 'settings'],
+  ['tenants', 'settings'],
   ['trash', 'settings'],
 ];
 
 /** The path with its leading slash, query string and api prefix removed. */
 export function normalizePath(raw: unknown): string {
   let p = String(raw ?? '').split('?')[0].trim();
-  p = p.replace(/^https?:\/\/[^/]+/i, '');
+  // Express matches routes case-insensitively and decodes the path: so must we.
+  try { p = decodeURIComponent(p); } catch { /* keep as sent */ }
+  p = p.toLowerCase();
+  p = p.replace(/^https?:\/\/[^/]+/i, '').replace(/\/{2,}/g, '/');
   p = p.replace(/^\/+/, '').replace(/\/+$/, '');
   if (p === 'api' || p.startsWith('api/')) p = p.slice(4);
   return p.replace(/^\/+/, '');

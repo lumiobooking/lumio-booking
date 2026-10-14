@@ -77,8 +77,15 @@ export class RateLimitGuard implements CanActivate {
     return true;
   }
 
-  /** Real client IP behind Render's proxy (X-Forwarded-For, first hop). */
+  /**
+   * Real client IP behind Render's proxy. Render sits behind Cloudflare, which
+   * SETS cf-connecting-ip (a value the client sends is overwritten), so that is
+   * the one a caller cannot rotate. The first X-Forwarded-For hop is whatever
+   * the client typed, so it is only the fallback.
+   */
   private clientIp(req: Record<string, any>): string {
+    const cf = req.headers?.['cf-connecting-ip'];
+    if (typeof cf === 'string' && cf.trim()) return cf.trim();
     const xf = req.headers?.['x-forwarded-for'];
     if (typeof xf === 'string' && xf.length) return xf.split(',')[0].trim();
     if (Array.isArray(xf) && xf.length) return String(xf[0]).trim();

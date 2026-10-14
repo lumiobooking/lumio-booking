@@ -93,14 +93,14 @@ const LABELS = {
     tip: 'Tip', cardFee: 'Card fee', saved: 'You saved', total: 'TOTAL', paid: 'Paid', change: 'Change', addon: 'add-on',
     voided: 'VOID', feedback: 'How was your visit?', feedbackCta: 'Scan to tell us', book: 'Book your next visit', thanks: 'Thank you!',
     phone: 'Tel', guestTotal: 'Subtotal for',
-    methods: { CASH: 'Cash', CARD: 'Card', TRANSFER: 'Transfer', GIFT: 'Gift card', GIFT_CARD: 'Gift card', VIETQR: 'VietQR', MOMO: 'MoMo', ZALOPAY: 'ZaloPay', CHECK: 'Check', OTHER: 'Other' } as Record<string, string>,
+    methods: { CASH: 'Cash', CARD: 'Card', TRANSFER: 'Transfer', GIFT: 'Gift card', GIFT_CARD: 'Gift card', DEPOSIT: 'Deposit (paid online)', VIETQR: 'VietQR', MOMO: 'MoMo', ZALOPAY: 'ZaloPay', CHECK: 'Check', OTHER: 'Other' } as Record<string, string>,
   },
   vi: {
     title: 'HOÁ ĐƠN', order: 'Số', customer: 'Khách', subtotal: 'Tạm tính', discount: 'Giảm giá', tax: 'Thuế',
     tip: 'Tip', cardFee: 'Phí thẻ', saved: 'Tiết kiệm', total: 'TỔNG CỘNG', paid: 'Đã trả', change: 'Tiền thối', addon: 'thêm',
     voided: 'ĐÃ HUỶ', feedback: 'Dịch vụ hôm nay thế nào?', feedbackCta: 'Quét để góp ý', book: 'Đặt lịch lần sau', thanks: 'Cảm ơn quý khách!',
     phone: 'ĐT', guestTotal: 'Tạm tính của',
-    methods: { CASH: 'Tiền mặt', CARD: 'Thẻ', TRANSFER: 'Chuyển khoản', GIFT: 'Thẻ quà tặng', GIFT_CARD: 'Thẻ quà tặng', VIETQR: 'VietQR', MOMO: 'MoMo', ZALOPAY: 'ZaloPay', CHECK: 'Séc', OTHER: 'Khác' } as Record<string, string>,
+    methods: { CASH: 'Tiền mặt', CARD: 'Thẻ', TRANSFER: 'Chuyển khoản', GIFT: 'Thẻ quà tặng', GIFT_CARD: 'Thẻ quà tặng', DEPOSIT: 'Tiền cọc (đã trả online)', VIETQR: 'VietQR', MOMO: 'MoMo', ZALOPAY: 'ZaloPay', CHECK: 'Séc', OTHER: 'Khác' } as Record<string, string>,
   },
 };
 

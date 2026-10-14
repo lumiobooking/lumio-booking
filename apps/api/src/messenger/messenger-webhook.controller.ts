@@ -5,6 +5,11 @@ import { MessengerService } from './messenger.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { SkipRateLimit } from '../common/security/rate-limit.guard';
 import { verifyMetaSignature } from '../common/security/webhook-signatures';
+import { OAuthGate, tenantOfState } from '../common/oauth-gate.service';
+import { UserRole } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../common/tenant/tenant-context';
 
 /**
  * Public Meta Messenger webhook. GET verifies the subscription (hub.challenge);
@@ -14,7 +19,7 @@ import { verifyMetaSignature } from '../common/security/webhook-signatures';
 @SkipRateLimit()
 @Controller('messenger')
 export class MessengerWebhookController {
-  constructor(private readonly svc: MessengerService) {}
+  constructor(private readonly svc: MessengerService, private readonly gate: OAuthGate) {}
 
   @Public()
   @Get('webhook')
@@ -54,8 +59,18 @@ export class MessengerWebhookController {
     @Query('error') error: string,
     @Res() res: Response,
   ) {
-    const url = await this.svc.oauthCallback(code || '', state || '', error || '');
-    res.redirect(url);
+    // The grant is applied only from the salon's own signed-in session (common/oauth-gate.service.ts).
+    const parked = error ? null : await this.gate.park('facebook', tenantOfState(this.svc, state || ''), { code: code || '', state: state || '' });
+    res.redirect(parked ?? await this.svc.oauthCallback(code || '', state || '', error || ''));
+  }
+
+  /** /oauth/confirm on the web, signed in: apply the parked Facebook grant to THIS salon. */
+  @Roles(UserRole.SALON_ADMIN, UserRole.SUPER_ADMIN)
+  @Post('oauth/confirm')
+  @HttpCode(200)
+  async oauthConfirm(@CurrentUser() user: AuthenticatedUser, @Body() dto: { n?: string; c?: string }) {
+    const q = await this.gate.claim(user, 'facebook', String(dto?.n ?? ''), String(dto?.c ?? ''));
+    return { redirect: await this.svc.oauthCallback(q.code || '', q.state || '', '') };
   }
 
   /**

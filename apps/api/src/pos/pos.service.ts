@@ -253,7 +253,11 @@ export class PosService {
       if (gp.applicable <= 0) throw new BadRequestException('Gift card has no usable balance');
       giftApplied = Math.min(gp.applicable, totalCents);
     }
-    const amountDue = Math.max(0, totalCents - giftApplied);
+    // Money the customer already paid online for the booking(s) on this ticket
+    // (a deposit, or the whole visit): it is credited, never charged again.
+    const namedAppts = [...new Set([...(dto.appointmentId ? [dto.appointmentId] : []), ...(dto.appointmentIds ?? [])].filter(Boolean))];
+    const depositApplied = namedAppts.length ? Math.min(Math.max(0, totalCents - giftApplied), await this.prepaidCents(tenantId, namedAppts)) : 0;
+    const amountDue = Math.max(0, totalCents - giftApplied - depositApplied);
 
     const tenderSum = (dto.tenders ?? []).reduce((s, t) => s + t.amountCents, 0);
     const hasTenders = (dto.tenders ?? []).length > 0;
@@ -262,8 +266,19 @@ export class PosService {
     }
     // A gift card can close the ticket on its own; otherwise the tenders must
     // cover the remaining amount due.
-    const paid = (giftApplied > 0 || hasTenders) && giftApplied + tenderSum >= totalCents;
-    const changeCents = paid ? Math.max(0, tenderSum - amountDue) : 0;
+    const paid = (giftApplied > 0 || depositApplied > 0 || hasTenders) && giftApplied + depositApplied + tenderSum >= totalCents;
+    // Change is cash handed back. Anything over the due on a card is the card
+    // surcharge (kept in the card's ledger row), never "change".
+    const cashIn = (dto.tenders ?? []).some((t) => t.method === 'CASH');
+    const changeCents = paid && cashIn ? Math.max(0, tenderSum - amountDue) : 0;
+    // A sale rung up offline is dated when it was sold, not when it synced
+    // (bounded: the last 7 days, never the future).
+    const soldAt = (() => {
+      if (!dto.offline || !dto.soldAt) return null;
+      const d = new Date(dto.soldAt);
+      const now = Date.now();
+      return Number.isNaN(d.getTime()) || d.getTime() > now || d.getTime() < now - 7 * 86400000 ? null : d;
+    })();
     const rules = await this.settings.getBookingRules(tenantId);
     const currency = rules.currency || 'USD';
 
@@ -274,6 +289,24 @@ export class PosService {
     if (dto.appointmentId) {
       const appt = await this.prisma.appointment.findFirst({ where: { id: dto.appointmentId, tenantId }, select: { source: true } });
       orderSource = normalizeSource(appt?.source);
+    }
+    // A checked-in booking is paid through its floor ticket, and the till's
+    // links often carry only the ticket. Read the booking off the ticket so the
+    // order names it (payroll then never counts that visit twice) and a booking
+    // still at ARRIVED is completed like any other checkout.
+    let seatedIds: string[] = [];
+    let seatedToClose: string[] = [];
+    const ticketIds = [...new Set([...(dto.walkInId ? [dto.walkInId] : []), ...(dto.walkInIds ?? [])].filter(Boolean))];
+    if (paid && ticketIds.length) {
+      try {
+        const named = new Set([...(dto.appointmentId ? [dto.appointmentId] : []), ...(dto.appointmentIds ?? [])]);
+        const linked = await this.prisma.walkIn.findMany({ where: { tenantId, id: { in: ticketIds }, appointmentId: { not: null } }, select: { appointmentId: true } });
+        seatedIds = [...new Set(linked.map((w) => w.appointmentId).filter((x): x is string => !!x && !named.has(x)))];
+        if (seatedIds.length) {
+          const open = await this.prisma.appointment.findMany({ where: { tenantId, id: { in: seatedIds }, status: AppointmentStatus.ARRIVED }, select: { id: true } });
+          seatedToClose = open.map((a) => a.id);
+        }
+      } catch { seatedIds = []; seatedToClose = []; }
     }
     const order = await this.prisma.$transaction(async (tx) => {
       // Next order number for this tenant.
@@ -290,7 +323,9 @@ export class PosService {
       const apptIds = [...new Set([
         ...(dto.appointmentId ? [dto.appointmentId] : []),
         ...(dto.appointmentIds ?? []),
+        ...seatedToClose,
       ].filter(Boolean))];
+      const linkedApptIds = [...new Set([...apptIds, ...seatedIds])];
       // Every floor ticket this sale settles; the first stays in walkInId.
       const walkInIds = [...new Set([
         ...(dto.walkInId ? [dto.walkInId] : []),
@@ -302,8 +337,8 @@ export class PosService {
           orderNumber,
           status: paid ? OrderStatus.PAID : OrderStatus.OPEN,
           customerId: dto.customerId ?? null,
-          appointmentId: dto.appointmentId ?? apptIds[0] ?? null,
-          appointmentIds: apptIds,
+          appointmentId: dto.appointmentId ?? linkedApptIds[0] ?? null,
+          appointmentIds: linkedApptIds,
           walkInId: dto.walkInId ?? walkInIds[0] ?? null,
           walkInIds,
           source: orderSource,
@@ -313,7 +348,10 @@ export class PosService {
           taxCents,
           tipCents,
           totalCents,
-          paidCents: paid ? giftApplied + tenderSum : 0,
+          paidCents: paid ? giftApplied + depositApplied + tenderSum : 0,
+          // Payroll, the sales report and performance read sales by paidAt.
+          paidAt: paid ? (soldAt ?? new Date()) : null,
+          ...(soldAt ? { createdAt: soldAt } : {}),
           changeCents,
           currency,
           giftCardCode: paid && giftApplied > 0 ? giftCode ?? null : null,
@@ -382,7 +420,7 @@ export class PosService {
                 status: PaymentStatus.PAID,
                 provider: providerFor(method),
                 providerReference: `order:${created.id}`,
-                paidAt: new Date(),
+                paidAt: soldAt ?? new Date(),
               },
             });
           }
@@ -444,6 +482,18 @@ export class PosService {
           }
           await tx.appointment.updateMany({ where: { id: targetApptId, tenantId }, data: apptData });
         }
+        // "Complete" pressed before the checkout wrote a balance row (and points)
+        // for the booking; the till's own rows are the real money now.
+        if (paid && linkedApptIds.length) {
+          const balance = await tx.payment.findMany({
+            where: { tenantId, appointmentId: { in: linkedApptIds }, status: PaymentStatus.PAID, type: PaymentType.PAY_LATER, providerReference: null },
+            select: { id: true },
+          });
+          for (const b of balance) {
+            await tx.payment.updateMany({ where: { id: b.id, tenantId }, data: { status: PaymentStatus.REFUNDED, providerReference: `superseded:order:${created.id}` } });
+            await this.loyalty.reverseForRef(tx, tenantId, 'appointment', b.id, 'Paid at the till');
+          }
+        }
         // Checking out a walk-in marks it Done (front desk doesn't need a second
         // step); a party on one bill closes every ticket it settled.
         if (walkInIds.length) {
@@ -502,9 +552,11 @@ export class PosService {
     const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });
     if (!order) throw new NotFoundException('Order not found');
     if (order.status === OrderStatus.VOID) return order;
+    await this.assertOpenPayroll(tenantId, order);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.order.updateMany({ where: { id, tenantId }, data: { status: OrderStatus.VOID } });
+      if (order.status === OrderStatus.PAID) await this.reopenBookingsOf(tx, tenantId, order);
       // Reverse the revenue mirror.
       await tx.payment.updateMany({
         where: { tenantId, providerReference: `order:${id}`, status: PaymentStatus.PAID },
@@ -536,6 +588,7 @@ export class PosService {
     const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });
     if (!order) throw new NotFoundException('Order not found');
 
+    await this.assertOpenPayroll(tenantId, order);
     // Snapshot the whole receipt (header + lines) before anything is undone, so
     // a deleted sale can be reconstructed from the bin.
     const mirrored = await this.prisma.payment.findMany({ where: { tenantId, providerReference: `order:${id}` } });
@@ -561,6 +614,7 @@ export class PosService {
         await this.recreditGiftCards(tx, tenantId, id, user.userId);
         await this.loyalty.reverseForRef(tx, tenantId, 'order', id, 'Order reversed');
       }
+      if (order.status === OrderStatus.PAID) await this.reopenBookingsOf(tx, tenantId, order);
       // Remove the revenue mirror so the deleted sale never counts.
       await tx.payment.deleteMany({ where: { tenantId, providerReference: `order:${id}` } });
       // Delete the order; order_items + order_payments cascade via FK.
@@ -569,6 +623,57 @@ export class PosService {
 
     await this.audit.log({ tenantId, userId: user.userId, action: 'order.deleted', resourceType: 'order', resourceId: id });
     return { id, deleted: true };
+  }
+
+  /** A paid sale inside a closed (FINAL) payroll is frozen: reopen the payroll first. */
+  private async assertOpenPayroll(tenantId: string, order: { status: string; paidAt?: Date | null; createdAt?: Date | null }) {
+    if (order.status !== OrderStatus.PAID) return;
+    const at = order.paidAt ?? order.createdAt;
+    if (!at) return;
+    const runs = await this.prisma.payrollRun.findMany({ where: { tenantId, status: 'FINAL' }, select: { periodFrom: true, periodTo: true } }).catch(() => [] as { periodFrom: string; periodTo: string }[]);
+    if (!runs.length) return;
+    const day = dayKeyTz(new Date(at), await this.tzOf(tenantId));
+    if (runs.some((r) => day >= String(r.periodFrom) && day <= String(r.periodTo))) {
+      throw new BadRequestException('Bill này nằm trong kỳ lương đã chốt — mở lại kỳ lương trước khi huỷ hoặc xoá.');
+    }
+  }
+
+  /** What was already paid online (deposits, prepaid visits) for these bookings. */
+  private async prepaidCents(tenantId: string, appointmentIds: string[]): Promise<number> {
+    try {
+      const rows = await this.prisma.payment.findMany({
+        where: { tenantId, appointmentId: { in: appointmentIds }, status: PaymentStatus.PAID, type: PaymentType.PAY_ONLINE },
+        select: { amountCents: true },
+      });
+      return rows.reduce((s, r) => s + (r.amountCents ?? 0), 0);
+    } catch { return 0; }
+  }
+
+  /** The till's view of a booking's prepaid money, for the cart. */
+  async prepaid(user: AuthenticatedUser, idsCsv: string) {
+    const tenantId = this.tenantId(user);
+    const ids = String(idsCsv ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 20);
+    if (!ids.length) return { prepaidCents: 0 };
+    return { prepaidCents: await this.prepaidCents(tenantId, ids) };
+  }
+
+  /**
+   * A voided or deleted sale no longer pays for its bookings: they go back to
+   * ARRIVED (the customer did come) so payroll stops paying commission on a
+   * sale that no longer exists — unless another paid ticket still covers them.
+   */
+  private async reopenBookingsOf(tx: Prisma.TransactionClient, tenantId: string, order: { id: string; appointmentId?: string | null; appointmentIds?: string[] | null }) {
+    const ids = [...new Set([...(order.appointmentId ? [order.appointmentId] : []), ...(order.appointmentIds ?? [])])];
+    if (!ids.length) return;
+    const others = await tx.order.findMany({
+      where: { tenantId, status: OrderStatus.PAID, id: { not: order.id }, OR: [{ appointmentId: { in: ids } }, { appointmentIds: { hasSome: ids } }] },
+      select: { appointmentId: true, appointmentIds: true },
+    });
+    const covered = new Set(others.flatMap((o) => [o.appointmentId, ...(o.appointmentIds ?? [])]).filter(Boolean) as string[]);
+    const reopen = ids.filter((x) => !covered.has(x));
+    if (reopen.length) {
+      await tx.appointment.updateMany({ where: { tenantId, id: { in: reopen }, status: AppointmentStatus.COMPLETED }, data: { status: AppointmentStatus.ARRIVED, completedAt: null } });
+    }
   }
 
   /**

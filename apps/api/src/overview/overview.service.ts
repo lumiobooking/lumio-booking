@@ -23,6 +23,13 @@ const REVENUE_EXCLUDED_STATUSES = new Set<string>([
   AppointmentStatus.REJECTED,
 ]);
 
+/** Which ticket a ledger row belongs to: the till's order, else the booking, else itself. */
+function ticketKeyOf(p: { id?: string; appointmentId?: string | null; providerReference?: string | null }): string {
+  if (p.providerReference && p.providerReference.startsWith('order:')) return p.providerReference;
+  if (p.appointmentId) return `a:${p.appointmentId}`;
+  return `p:${p.id ?? Math.random()}`;
+}
+
 @Injectable()
 export class OverviewService {
   constructor(private readonly prisma: PrismaService) {}
@@ -146,6 +153,9 @@ export class OverviewService {
       this.prisma.payment.findMany({
         where: { tenantId, status: PaymentStatus.PAID, paidAt: { gte: from, lte: to } },
         select: {
+          id: true,
+          appointmentId: true,
+          providerReference: true,
           amountCents: true,
           paidAt: true,
           provider: true,
@@ -161,7 +171,8 @@ export class OverviewService {
           },
         },
       }),
-      this.prisma.customer.count({ where: { tenantId, createdAt: { gte: from, lte: to } } }),
+      // New = came in during the range; a list imported from the old system is not.
+      this.prisma.customer.count({ where: { tenantId, createdAt: { gte: from, lte: to }, importedAt: null } as never }),
       this.prisma.appointment.findMany({
         where: { tenantId, status: { in: ACTIVE_STATUSES }, startTime: { gte: now } },
         select: {
@@ -181,7 +192,10 @@ export class OverviewService {
     const totalBookings = appts.length;
     const statusBreakdown: Record<string, number> = {};
     for (const a of appts) statusBreakdown[a.status] = (statusBreakdown[a.status] ?? 0) + 1;
-    const completed = statusBreakdown[AppointmentStatus.COMPLETED] ?? 0;
+    // Checked in and served on the floor without the till still came: once its
+    // time has passed, ARRIVED counts as done.
+    const arrivedPast = appts.filter((a) => a.status === AppointmentStatus.ARRIVED && new Date(a.startTime) < now).length;
+    const completed = (statusBreakdown[AppointmentStatus.COMPLETED] ?? 0) + arrivedPast;
     const noShow = statusBreakdown[AppointmentStatus.NO_SHOW] ?? 0;
     const cancelled =
       (statusBreakdown[AppointmentStatus.CANCELLED] ?? 0) +
@@ -193,7 +207,9 @@ export class OverviewService {
     );
     const revenueCents = countablePayments.reduce((s, p) => s + p.amountCents, 0);
     const paidCount = countablePayments.length;
-    const avgBookingValueCents = paidCount > 0 ? Math.round(revenueCents / paidCount) : 0;
+    // One ticket can be several ledger rows (cash + card, deposit + balance).
+    const tickets = new Set(countablePayments.map(ticketKeyOf)).size;
+    const avgBookingValueCents = tickets > 0 ? Math.round(revenueCents / tickets) : 0;
 
     // Revenue split by payment source/method (for the breakdown + filtering).
     const paymentMethods = { cash: 0, card: 0, transfer: 0, online: 0, onsite: 0 };
@@ -421,23 +437,23 @@ export class OverviewService {
   private async periodKpis(tenantId: string, tz: string, fromKey: string, toKey: string, now: Date) {
     const { from, to } = dayRangeTz(fromKey, toKey, tz, { now });
     const [appts, payments, newCustomers] = await Promise.all([
-      this.prisma.appointment.findMany({ where: { tenantId, startTime: { gte: from, lte: to } }, select: { status: true } }),
+      this.prisma.appointment.findMany({ where: { tenantId, startTime: { gte: from, lte: to } }, select: { status: true, startTime: true } }),
       this.prisma.payment.findMany({
         where: { tenantId, status: PaymentStatus.PAID, paidAt: { gte: from, lte: to } },
-        select: { amountCents: true, appointment: { select: { status: true } } },
+        select: { id: true, appointmentId: true, providerReference: true, amountCents: true, appointment: { select: { status: true } } },
       }),
-      this.prisma.customer.count({ where: { tenantId, createdAt: { gte: from, lte: to } } }),
+      this.prisma.customer.count({ where: { tenantId, createdAt: { gte: from, lte: to }, importedAt: null } as never }),
     ]);
     const countable = payments.filter((p) => !p.appointment || !REVENUE_EXCLUDED_STATUSES.has(p.appointment.status));
     const revenueCents = countable.reduce((sum, p) => sum + p.amountCents, 0);
-    const completed = appts.filter((a) => a.status === AppointmentStatus.COMPLETED).length;
+    const completed = appts.filter((a) => a.status === AppointmentStatus.COMPLETED || (a.status === AppointmentStatus.ARRIVED && new Date(a.startTime) < new Date())).length;
     return {
       totalBookings: appts.length,
       revenueCents,
       newCustomers,
       completed,
       paidCount: countable.length,
-      avgBookingValueCents: countable.length ? Math.round(revenueCents / countable.length) : 0,
+      avgBookingValueCents: (() => { const n = new Set(countable.map(ticketKeyOf)).size; return n ? Math.round(revenueCents / n) : 0; })(),
     };
   }
 

@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { Caps } from '../auth/decorators/caps.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
@@ -61,21 +62,25 @@ export class PaymentsHubController {
     return this.hub.testDevice(user, deviceId);
   }
 
+  @Caps('pos')
   @Post('connection-token/:provider')
   connectionToken(@CurrentUser() user: AuthenticatedUser, @Param('provider') provider: string) {
     return this.hub.connectionToken(user, provider);
   }
 
+  @Caps('pos')
   @Post('charge')
   charge(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChargeDto) {
     return this.hub.charge(user, dto);
   }
 
+  @Caps('pos')
   @Get('intents')
   listIntents(@CurrentUser() user: AuthenticatedUser, @Query('limit') limit?: string, @Query('status') status?: string) {
     return this.hub.listIntents(user, { limit: limit ? parseInt(limit, 10) : undefined, status });
   }
 
+  @Caps('pos')
   @Get('intents/:id')
   getIntent(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.hub.getIntent(user, id);

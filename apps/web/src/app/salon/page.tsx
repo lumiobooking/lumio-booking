@@ -208,7 +208,7 @@ function Inner() {
   const hero = (
     <div style={{ ...card, gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={label}>{L('Doanh thu', 'Revenue')} {periodLabel}</span>
+        <span style={label} title={L('Tiền thực thu: gồm thuế, tip và tiền cọc. Doanh số thuần (chưa thuế, tip) xem ở Báo cáo doanh thu.', 'Money collected: tax, tips and deposits included. Net sales (no tax or tips) are in the Sales report.')}>{L('Tiền thu về', 'Money collected')} {periodLabel}</span>
         {deltaPill(delta(k.revenueCents, pk.revenueCents))}
       </div>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16 }}>

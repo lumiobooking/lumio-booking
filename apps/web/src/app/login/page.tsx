@@ -19,8 +19,17 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const user = await login(email, password);
+      // A "Connect …" that came back while signed out (oauth/confirm) resumes there.
+      let resume = '';
+      try {
+        const raw = window.sessionStorage.getItem('lumio_oauth_resume');
+        window.sessionStorage.removeItem('lumio_oauth_resume');
+        if (raw && raw.startsWith('/oauth/confirm?')) resume = raw;
+      } catch { /* storage refused: normal routing */ }
       // Route by role.
-      if (user.role === 'SUPER_ADMIN') {
+      if (resume) {
+        router.push(resume);
+      } else if (user.role === 'SUPER_ADMIN') {
         router.push('/super-admin/tenants');
       } else if (user.role === 'SALON_ADMIN') {
         router.push('/salon');

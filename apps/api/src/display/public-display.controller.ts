@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { Public } from '../auth/decorators/public.decorator';
+import { RateLimit } from '../common/security/rate-limit.guard';
 import { DisplayService } from './display.service';
 import { DisplayTipDto, PairDto, SelfCheckInDto } from './dto/display.dto';
 
@@ -10,6 +11,8 @@ import { DisplayTipDto, PairDto, SelfCheckInDto } from './dto/display.dto';
 export class PublicDisplayController {
   constructor(private readonly display: DisplayService) {}
 
+  // Six characters from 32: fine for a person, not for a script — ten tries a minute per address.
+  @RateLimit(10, 60_000)
   @Post('pair')
   pair(@Body() dto: PairDto) {
     return this.display.pair(dto.pairCode);

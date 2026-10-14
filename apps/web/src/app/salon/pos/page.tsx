@@ -192,6 +192,8 @@ function Register() {
   const [groupId, setGroupId] = useState<string | null>(() => params.get('groupId'));
   // Settling a whole party on one bill: every appointment in the group.
   const [groupApptIds, setGroupApptIds] = useState<string[]>([]);
+  // Paid online for the booking(s) on this ticket (deposits): credited at the till.
+  const [prepaidCents, setPrepaidCents] = useState(0);
   const [walkInId, setWalkInId] = useState<string | null>(() => params.get('walkInId'));
   // A party of floor tickets (friends who came in together): the sheet that
   // shows them side by side, and every ticket the composed sale settles.
@@ -850,7 +852,8 @@ function Register() {
     // Gift card applied toward the ticket (online-only). Reduces the amount due,
     // never below 0; the order total still reflects full value.
     const giftApplied = giftCard && online ? Math.min(giftCard.balanceCents, total) : 0;
-    const dueBase = Math.max(0, total - giftApplied);
+    const depositApplied = Math.min(prepaidCents, Math.max(0, total - giftApplied));
+    const dueBase = Math.max(0, total - giftApplied - depositApplied);
     // Dual pricing: paying by CARD adds a surcharge on the ticket EXCLUDING the
     // tip (the tip is pass-through to staff) and excluding any gift-covered part.
     // Single-method only — split payments keep the plain cash price to avoid
@@ -864,8 +867,19 @@ function Register() {
     const splitCents = parts.reduce((sum, p) => sum + toMinorUnits(p.amount, currency), 0);
     const change = split ? Math.max(0, splitCents - due) : (payMethod === 'CASH' ? Math.max(0, tenderedCents - due) : 0);
     const splitRemaining = due - splitCents; // >0 = still owed, <0 = change
-    return { subtotal, itemSavings, discount, typedDiscount, promoCents, tax, tip, total, savings, giftApplied, due, tenderedCents, change, redeemDiscount, redeemPts, splitCents, splitRemaining, cardSurcharge };
-  }, [cart, orderDiscount, discountMode, promo, taxRate, tendered, payMethod, cardSurchargePct, cardSurchargeOn, loyalty, customerId, customerPoints, redeemInput, online, giftCard, split, parts]);
+    return { subtotal, itemSavings, discount, typedDiscount, promoCents, tax, tip, total, savings, giftApplied, depositApplied, due, tenderedCents, change, redeemDiscount, redeemPts, splitCents, splitRemaining, cardSurcharge };
+  }, [cart, orderDiscount, discountMode, promo, taxRate, tendered, payMethod, cardSurchargePct, cardSurchargeOn, loyalty, customerId, customerPoints, redeemInput, online, giftCard, split, parts, prepaidCents]);
+
+  // The server credits the same amount (pos.service prepaidCents); this only shows it.
+  useEffect(() => {
+    const ids = groupApptIds.length > 1 ? groupApptIds : appointmentId ? [appointmentId] : [];
+    if (!token || !ids.length) { setPrepaidCents(0); return; }
+    let alive = true;
+    apiFetch<{ prepaidCents: number }>(`/pos/prepaid?ids=${encodeURIComponent(ids.join(','))}`, { token })
+      .then((r) => { if (alive) setPrepaidCents(Math.max(0, r?.prepaidCents ?? 0)); })
+      .catch(() => { if (alive) setPrepaidCents(0); });
+    return () => { alive = false; };
+  }, [token, appointmentId, groupApptIds]);
 
   // ---- Customer-facing display (2nd monitor). Mirrors the live cart to the
   // /pos-display page via BroadcastChannel — same browser, no server, no internet. ----
@@ -1287,10 +1301,12 @@ function Register() {
   // prints "Cash $35 / Card $10" instead of a single lumped "Paid (CASH)".
   // Method KEYS (CASH, CARD, VIETQR…): the bill names them in its own language.
   function paidLines(): { method: string; cents: number }[] {
-    if (money.giftApplied > 0 && cart.length && money.due === 0) {
-      return [{ method: 'GIFT', cents: money.giftApplied }];
-    }
     const lines: { method: string; cents: number }[] = [];
+    if (money.depositApplied > 0) lines.push({ method: 'DEPOSIT', cents: money.depositApplied });
+    if (money.giftApplied > 0 && cart.length && money.due === 0) {
+      return [...lines, { method: 'GIFT', cents: money.giftApplied }];
+    }
+    if (money.depositApplied > 0 && cart.length && money.due === 0) return lines;
     if (money.giftApplied > 0) lines.push({ method: 'GIFT', cents: money.giftApplied });
     if (split) {
       for (const p of parts) {
@@ -2015,6 +2031,7 @@ function Register() {
       {money.tax > 0 && <div style={totRow}><span>{t('po.tax').replace('{r}', String(taxRate))}</span><span>{fmt(money.tax)}</span></div>}
       {tipsOn && svcBase > 0 && <div style={totRow}><span>Tip</span><span>{money.tip > 0 ? fmt(money.tip) : L('Khách chọn khi thanh toán', 'Chosen at payment')}</span></div>}
       {money.giftApplied > 0 && <div style={totRow}><span>{L('Thẻ quà', 'Gift card')}</span><span>−{fmt(money.giftApplied)}</span></div>}
+      {money.depositApplied > 0 && <div style={totRow}><span>{L('Đã cọc online', 'Paid online (deposit)')}</span><span>−{fmt(money.depositApplied)}</span></div>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4, gap: 10 }}>
         <span style={{ fontSize: big > 28 ? 16 : 15, fontWeight: 700, color: 'var(--cf1f5f9)' }}>{dualPrice ? L('Tổng · tiền mặt', 'Total · cash') : t('po.total')}</span>
         <span style={{ fontSize: big, fontWeight: 700, letterSpacing: -0.5, color: 'var(--cf1f5f9)' }}>{fmt(cashDue)}</span>
@@ -2377,6 +2394,7 @@ function Register() {
         {money.tip > 0 && ` + tip ${fmt(money.tip)}`}
         {money.cardSurcharge > 0 && ` + ${L('phí thẻ', 'card fee')} ${fmt(money.cardSurcharge)}`}
         {money.giftApplied > 0 && ` − ${L('thẻ quà', 'gift card')} ${fmt(money.giftApplied)}`}
+        {money.depositApplied > 0 && ` − ${L('đã cọc', 'deposit')} ${fmt(money.depositApplied)}`}
       </span>
     </div>
   );

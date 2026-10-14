@@ -113,13 +113,13 @@ export class MyChairController {
 
   @Delete(':id/services/:lineId')
   removeService(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('lineId') lineId: string) {
-    return this.nudge(user, id, this.walkins.removeService(user, id, lineId));
+    return this.nudge(user, id, this.walkins.removeServiceAsMe(user, id, lineId));
   }
 
   /** Seat this client in a chair (or clear it). */
   @Patch(':id/chair')
   chair(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ChairDto) {
-    return this.nudge(user, id, this.walkins.moveToStation(user, id, dto.stationId));
+    return this.nudge(user, id, this.walkins.moveToStationAsMe(user, id, dto.stationId));
   }
 
   /** Client is finished but hasn't paid: free the chair, keep the bill open. */
@@ -141,6 +141,6 @@ export class MyChairController {
   /** Undo an accidental "Done". */
   @Patch(':id/reactivate')
   reactivate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.nudge(user, id, this.walkins.reactivate(user, id));
+    return this.nudge(user, id, this.walkins.reactivateAsMe(user, id));
   }
 }

@@ -1,6 +1,7 @@
 import {
   IsArray,
   IsBoolean,
+  IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
@@ -92,6 +93,8 @@ export class CreateOrderDto {
   // rule is not applied to it: the money already changed hands, and a 4xx
   // here would make the till drop the sale as unrecoverable.
   @IsOptional() @IsBoolean() offline?: boolean;
+  // When a queued offline sale was actually rung up (ISO). Honoured only with offline.
+  @IsOptional() @IsDateString() soldAt?: string;
   @IsOptional() @IsString() @MaxLength(40) giftCardCode?: string; // redeem a gift card toward this ticket
 
   @IsArray()

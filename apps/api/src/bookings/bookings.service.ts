@@ -22,7 +22,7 @@ import { buildClientCard, CardVisit } from './client-card';
 import { capabilitiesFor } from '../auth/capabilities';
 import { canSelfReschedule } from './self-reschedule';
 import { canSelfCancel } from './self-cancel';
-import { AppointmentStatus, NotificationChannel, OrderStatus, PaymentStatus, Prisma, RejectionType, UserRole } from '@prisma/client';
+import { AppointmentStatus, NotificationChannel, OrderStatus, PaymentStatus, Prisma, RejectionType, UserRole, WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AssignmentService } from '../assignment/assignment.service';
@@ -48,7 +48,8 @@ import { TrashService } from '../maintenance/trash.service';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { ListBookingsDto } from './dto/list-bookings.dto';
-import { addMinutes, parseStartTime, BLOCKING_STATUSES, wallTimeToUtc, planLineTechnician } from './booking.util';
+import { addMinutes, parseStartTime, BLOCKING_STATUSES, wallTimeToUtc, planLineTechnician, lineStaffIds } from './booking.util';
+import { matchMissedToVisits, pairTicketWithBooking } from '../walkins/booking-link';
 import { dayKeyTz, startOfDayTz } from '../common/salon-time';
 import { openTimesFor, type BusyBlock } from './open-times';
 import { hasPromoWindow, inPromoWindow, salonYmd, type PromoWindow } from '../settings/promo-window';
@@ -317,7 +318,7 @@ export class BookingsService {
     }
   }
 
-  private async upsertCustomer(tx: Tx, tenantId: string, dto: CreateBookingDto) {
+  private async upsertCustomer(tx: Tx, tenantId: string, dto: CreateBookingDto, trusted = false) {
     // Only ever upgrade consent to true (never silently revoke a prior opt-in
     // just because a returning customer left the box unchecked this time).
     const consent = dto.smsConsent === true ? { smsConsent: true, smsConsentAt: new Date() } : {};
@@ -336,6 +337,25 @@ export class BookingsService {
     const phone = await this.normalizedPhone(tenantId, dto.customerPhone);
     if (dto.customerEmail) {
       const email = dto.customerEmail.toLowerCase();
+      // Anyone can type an email on the public page, the plugin or a chat. For
+      // them an existing record keeps its name and phone (a surname or a phone
+      // is only ever added) — otherwise typing someone's email re-pointed their
+      // reminders to a stranger's phone. The salon's own staff still update.
+      if (!trusted) {
+        const known = await tx.customer.findUnique({ where: { tenantId_email: { tenantId, email } }, select: { id: true, firstName: true, lastName: true, phone: true } });
+        if (known) {
+          return tx.customer.update({
+            where: { id: known.id },
+            data: {
+              firstName: String(known.firstName ?? '').trim() || dto.customerFirstName,
+              lastName: String(known.lastName ?? '').trim() || dto.customerLastName || null,
+              phone: known.phone || phone,
+              ...consent,
+              ...birthData,
+            },
+          });
+        }
+      }
       return tx.customer.upsert({
         where: { tenantId_email: { tenantId, email } },
         update: {
@@ -706,7 +726,7 @@ export class BookingsService {
 
     const appointment = await this.prisma.$transaction(async (tx) => {
       const customer = (onFile && (await tx.customer.findFirst({ where: { id: onFile, tenantId } })))
-        || (await this.upsertCustomer(tx, tenantId, dto));
+        || (await this.upsertCustomer(tx, tenantId, dto, !!actorUserId));
 
       if (dto.staffId) {
         await this.lockStaffSlot(tx, tenantId, dto.staffId);
@@ -2374,6 +2394,16 @@ export class BookingsService {
         staffBusy[a.assignedStaffId].push({ start: a.startTime.toISOString(), end: a.endTime.toISOString() });
       }
     }
+    // A technician on another visit's extra service line (a group) is busy then too.
+    const withLines = await this.prisma.appointment.findMany({
+      where: { tenantId, status: { in: BLOCKING_STATUSES }, startTime: { lt: to }, endTime: { gt: from } },
+      select: { assignedStaffId: true, startTime: true, endTime: true, addons: true },
+    }).catch(() => [] as { assignedStaffId: string | null; startTime: Date; endTime: Date; addons: unknown }[]);
+    for (const a of withLines) {
+      for (const sid of lineStaffIds(a.addons, a.assignedStaffId)) {
+        if (staffBusy[sid]) staffBusy[sid].push({ start: a.startTime.toISOString(), end: a.endTime.toISOString() });
+      }
+    }
 
     // Per-technician shifts, expressed as BUSY blocks outside the shift. The
     // salon's own timezone anchors the day: a Saturday-only tech must block
@@ -2952,6 +2982,9 @@ export class BookingsService {
 
   async complete(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
+    // Already completed: settling the money and the referral reward again would count them twice.
+    const cur = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { status: true } });
+    if (cur?.status === AppointmentStatus.COMPLETED) return this.getById(user, id);
     const result = await this.transition(user, id, AppointmentStatus.COMPLETED, 'booking.completed', 'completedAt');
     // Completing a visit means the money was collected — settle payment automatically.
     await this.payments.settleOnComplete(tenantId, id, user.userId);
@@ -3099,7 +3132,14 @@ export class BookingsService {
     return updated;
   }
 
-  noShow(user: AuthenticatedUser, id: string) {
+  async noShow(user: AuthenticatedUser, id: string) {
+    const tenantId = this.tenantId(user);
+    const cur = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { status: true } });
+    if (cur?.status === AppointmentStatus.COMPLETED) {
+      throw new BadRequestException('Lịch này đã hoàn tất — dùng "Đổi trạng thái" nếu thật sự cần.');
+    }
+    const onFloor = await this.prisma.walkIn.findFirst({ where: { tenantId, appointmentId: id, status: { not: WalkInStatus.CANCELLED } }, select: { id: true } }).catch(() => null);
+    if (onFloor) throw new BadRequestException('Khách đã check-in và có phiếu trên sàn — không thể đánh vắng mặt.');
     return this.transition(user, id, AppointmentStatus.NO_SHOW, 'booking.no_show', 'updatedAt');
   }
 
@@ -3214,8 +3254,15 @@ export class BookingsService {
     let last: string | undefined;
     let phone: string | undefined;
     if (dto.walkInId) {
-      const w = await this.prisma.walkIn.findFirst({ where: { id: dto.walkInId, tenantId }, select: { customerId: true, customerName: true, phone: true } });
+      const w = await this.prisma.walkIn.findFirst({ where: { id: dto.walkInId, tenantId }, select: { customerId: true, customerName: true, phone: true, assignedStaffId: true, items: true } });
       if (!w) throw new NotFoundException('Ticket not found');
+      // A technician rebooks her own client, never a colleague's (whose phone she would get).
+      if (user.role === UserRole.STAFF) {
+        const lines = (Array.isArray(w.items) ? w.items : []) as { staffId?: string | null }[];
+        if (!staffId || (w.assignedStaffId !== staffId && !lines.some((l) => l?.staffId === staffId))) {
+          throw new ForbiddenException('This client is not yours');
+        }
+      }
       customerId = w.customerId ?? null;
       const parts = (w.customerName ?? '').trim().split(/\s+/).filter(Boolean);
       first = parts[0] ?? '';
@@ -3833,6 +3880,80 @@ export class BookingsService {
     return { tenants: rows.length, closed };
   }
 
+  /** Bookings proven by a same-day ticket of the same customer: paired, returned. */
+  private async pairWithVisits(tenantId: string, tz: string, appts: { id: string; customerId: string | null; startTime: Date }[]): Promise<string[]> {
+    const custIds = [...new Set(appts.map((a) => a.customerId).filter((x): x is string => !!x))];
+    if (!custIds.length) return [];
+    const first = appts.reduce((m, a) => Math.min(m, +new Date(a.startTime)), Infinity);
+    const last = appts.reduce((m, a) => Math.max(m, +new Date(a.startTime)), 0);
+    const tickets = await this.prisma.walkIn.findMany({
+      where: { tenantId, customerId: { in: custIds }, appointmentId: null, status: { not: WalkInStatus.CANCELLED }, createdAt: { gte: new Date(first - 86400000), lte: new Date(last + 86400000) } },
+      select: { id: true, customerId: true, createdAt: true, appointmentId: true, status: true },
+    });
+    const pairs = matchMissedToVisits(appts, tickets as never, (d) => dayKeyTz(d, tz));
+    const done: string[] = [];
+    for (const p of pairs) {
+      if (await pairTicketWithBooking(this.prisma as never, tenantId, p.walkInId, p.appointmentId, p.at)) {
+        done.push(p.appointmentId);
+        await this.audit.log({ tenantId, userId: null, action: 'booking.matched_walkin', resourceType: 'appointment', resourceId: p.appointmentId, metadata: { walkInId: p.walkInId } }).catch(() => undefined);
+      }
+    }
+    return done;
+  }
+
+  /**
+   * Once per boot (idempotent): bookings the midnight sweep marked NO_SHOW in
+   * the last 60 days although the customer was served as a walk-in that day go
+   * back to ARRIVED, tied to that ticket. Only the sweep's own marks
+   * (audit booking.no_show_auto) — never a No-show the desk pressed.
+   */
+  async repairFalseNoShows(now = new Date()): Promise<{ tenants: number; repaired: number }> {
+    const since = new Date(now.getTime() - 60 * 86400000);
+    const marks = await this.prisma.auditLog.findMany({
+      where: { action: 'booking.no_show_auto', createdAt: { gte: since } },
+      select: { tenantId: true, resourceId: true }, take: 20000,
+    });
+    const byTenant = new Map<string, string[]>();
+    for (const m of marks) {
+      if (!m.tenantId || !m.resourceId) continue;
+      const list = byTenant.get(m.tenantId) ?? [];
+      list.push(m.resourceId);
+      byTenant.set(m.tenantId, list);
+    }
+    let repaired = 0;
+    for (const [tenantId, ids] of byTenant) {
+      try {
+        const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
+        const appts = await this.prisma.appointment.findMany({
+          where: { tenantId, id: { in: ids }, status: AppointmentStatus.NO_SHOW },
+          select: { id: true, customerId: true, startTime: true },
+        });
+        if (!appts.length) continue;
+        // Back to open for a moment so the pairing (which only touches open bookings) can move them to ARRIVED.
+        const tz = t?.timezone || 'UTC';
+        const custIds = [...new Set(appts.map((a) => a.customerId).filter((x): x is string => !!x))];
+        if (!custIds.length) continue;
+        const first = appts.reduce((m, a) => Math.min(m, +a.startTime), Infinity);
+        const last = appts.reduce((m, a) => Math.max(m, +a.startTime), 0);
+        const tickets = await this.prisma.walkIn.findMany({
+          where: { tenantId, customerId: { in: custIds }, appointmentId: null, status: { not: WalkInStatus.CANCELLED }, createdAt: { gte: new Date(first - 86400000), lte: new Date(last + 86400000) } },
+          select: { id: true, customerId: true, createdAt: true, appointmentId: true, status: true },
+        });
+        for (const p of matchMissedToVisits(appts, tickets as never, (d) => dayKeyTz(d, tz))) {
+          const w = await this.prisma.walkIn.updateMany({ where: { id: p.walkInId, tenantId, appointmentId: null }, data: { appointmentId: p.appointmentId } });
+          if (!w.count) continue;
+          const a = await this.prisma.appointment.updateMany({ where: { id: p.appointmentId, tenantId, status: AppointmentStatus.NO_SHOW }, data: { status: AppointmentStatus.ARRIVED, arrivedAt: p.at } });
+          if (!a.count) continue;
+          repaired++;
+          await this.audit.log({ tenantId, userId: null, action: 'booking.no_show_reverted', resourceType: 'appointment', resourceId: p.appointmentId, metadata: { walkInId: p.walkInId } }).catch(() => undefined);
+        }
+      } catch (e) {
+        this.logger.warn(`false no-show repair failed for tenant ${tenantId}: ${(e as Error).message}`);
+      }
+    }
+    return { tenants: byTenant.size, repaired };
+  }
+
   private async closeMissed(tenantId: string, now: Date): Promise<number> {
     const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } });
     const tz = t?.timezone || 'UTC';
@@ -3840,10 +3961,14 @@ export class BookingsService {
     const open: AppointmentStatus[] = [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED];
     const missed = await this.prisma.appointment.findMany({
       where: { tenantId, status: { in: open }, startTime: { lt: today } },
-      select: { id: true },
+      select: { id: true, customerId: true, startTime: true },
     });
     if (!missed.length) return 0;
-    const ids = missed.map((m) => m.id);
+    // A customer who came in as a walk-in that day is not a no-show: tie her
+    // ticket to the booking (ARRIVED) instead (walkins/booking-link.ts).
+    const came = new Set(await this.pairWithVisits(tenantId, tz, missed as { id: string; customerId: string | null; startTime: Date }[]).catch(() => [] as string[]));
+    const ids = missed.map((m) => m.id).filter((id) => !came.has(id));
+    if (!ids.length) return 0;
     const res = await this.prisma.appointment.updateMany({
       where: { id: { in: ids }, tenantId, status: { in: open } },
       data: { status: AppointmentStatus.NO_SHOW, updatedAt: now },

@@ -106,7 +106,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'sr.title': { en: 'POS sales report', vi: 'Báo cáo bán hàng' },
   'sr.subtitle': { en: 'Revenue, tips & commission per technician.', vi: 'Doanh thu, tip & hoa hồng theo từng thợ.' },
   'sr.loading': { en: 'Loading…', vi: 'Đang tải…' },
-  'sr.kpiSales': { en: 'Sales (paid)', vi: 'Doanh số (đã trả)' },
+  'sr.kpiSales': { en: 'Net sales (excl. tax & tips)', vi: 'Doanh số thuần (chưa thuế, tip)' },
   'sr.kpiTips': { en: 'Tips', vi: 'Tiền tip' },
   'sr.kpiCommission': { en: 'Commission', vi: 'Hoa hồng' },
   'sr.kpiOrders': { en: 'Orders', vi: 'Đơn hàng' },

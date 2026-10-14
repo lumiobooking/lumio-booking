@@ -77,7 +77,7 @@ export class StatsService {
 
     const [appts, walkins, orders] = await Promise.all([
       this.prisma.appointment.findMany({
-        where: { tenantId, startTime: { gte: from, lte: to }, status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW] } },
+        where: { tenantId, startTime: { gte: from, lte: to }, status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW, AppointmentStatus.REJECTED] } },
         select: { startTime: true, source: true, device: true },
       }),
       this.prisma.walkIn.findMany({

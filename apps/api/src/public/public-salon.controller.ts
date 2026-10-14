@@ -407,7 +407,10 @@ export class PublicSalonController {
       payment = await this.payments.createForBookingTenant(tenantId, booking.id, dto.paymentType, null);
     }
 
-    return { booking, payment, depositCents, onlineProvider, ...(guests.length ? { guests: guestResults } : {}) };
+    // The page needs the booking, not the customer record it matched by phone
+    // (that could be someone else's name and email).
+    const { customer: _c, ...publicBooking } = booking as typeof booking & { customer?: unknown };
+    return { booking: publicBooking, payment, depositCents, onlineProvider, ...(guests.length ? { guests: guestResults } : {}) };
   }
 
   /**

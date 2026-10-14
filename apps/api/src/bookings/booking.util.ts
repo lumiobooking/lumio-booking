@@ -3,13 +3,29 @@ import { AppointmentStatus } from '@prisma/client';
 /**
  * Appointment statuses that occupy a staff member's time and therefore conflict
  * with a new booking in the same slot. CANCELLED / REJECTED / COMPLETED /
- * NO_SHOW do not block a slot.
+ * NO_SHOW do not block a slot; ARRIVED (checked in) does.
  */
 export const BLOCKING_STATUSES: AppointmentStatus[] = [
   AppointmentStatus.ASSIGNED,
   AppointmentStatus.ACCEPTED,
   AppointmentStatus.CONFIRMED,
+  // Checked in: the customer is in the salon and her time is taken.
+  AppointmentStatus.ARRIVED,
 ];
+
+/**
+ * Technicians named on a booking's extra service lines (stored in the addons
+ * JSON). In a group they work at the same time as the booking's own
+ * technician, so they are busy for that window too.
+ */
+export function lineStaffIds(addons: unknown, except?: string | null): string[] {
+  if (!Array.isArray(addons)) return [];
+  const ids = new Set<string>();
+  for (const l of addons as { kind?: string; staffMemberId?: string | null }[]) {
+    if (l && l.kind === 'service' && l.staffMemberId && l.staffMemberId !== except) ids.add(l.staffMemberId);
+  }
+  return [...ids];
+}
 
 /** Adds whole minutes to a date and returns a new Date. */
 export function addMinutes(date: Date, minutes: number): Date {

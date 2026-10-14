@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppointmentStatus, RejectionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { BLOCKING_STATUSES } from '../bookings/booking.util';
+import { BLOCKING_STATUSES, lineStaffIds } from '../bookings/booking.util';
 import { dayKeyTz } from '../common/salon-time';
 import { blocksSlot, loadApprovedTimeOff } from '../staff/time-off';
 import {
@@ -110,8 +110,18 @@ export class AssignmentService {
     const noRespSince = new Date(now.getTime() - noRespWindow * 86_400_000);
 
     const candidates: CandidateInput[] = [];
+    // Technicians on another overlapping visit's extra lines (group bookings).
+    const lineBusy = new Set<string>();
+    try {
+      const around = await this.prisma.appointment.findMany({
+        where: { tenantId, status: { in: BLOCKING_STATUSES }, startTime: { lt: appt.endTime }, endTime: { gt: appt.startTime }, id: { not: appt.id } },
+        select: { assignedStaffId: true, addons: true },
+      });
+      for (const a of around) for (const sid of lineStaffIds(a.addons, a.assignedStaffId)) lineBusy.add(sid);
+    } catch { /* the main conflict check below still runs */ }
 
     for (const s of staff) {
+      if (lineBusy.has(s.id)) continue;
       // Hard filter 1: must be working at that local time — on shift, and not on leave.
       if (!isWithinWorkingHours(slot, s.workingHours)) continue;
       if (leave.some((o) => o.staffId === s.id && blocksSlot(o, dayKey, slot.startMinutes, slot.endMinutes))) continue;

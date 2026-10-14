@@ -1,3 +1,4 @@
+import { OAuthGate } from '../common/oauth-gate.service';
 import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SettingsModule } from '../settings/settings.module';
@@ -9,7 +10,7 @@ import { GoogleReviewsScheduler } from './google-reviews.scheduler';
 @Module({
   imports: [NotificationsModule, SettingsModule],
   controllers: [GoogleReviewsController, GoogleReviewsOAuthController],
-  providers: [GoogleReviewsService, GoogleReviewsScheduler],
+  providers: [GoogleReviewsService, GoogleReviewsScheduler, OAuthGate],
   exports: [GoogleReviewsService],
 })
 export class GoogleReviewsModule {}

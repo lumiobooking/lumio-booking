@@ -7,6 +7,11 @@ import { MockConnector } from './connectors/mock.connector';
 import { StripeTerminalConnector } from './connectors/stripe-terminal.connector';
 import { SquareTerminalConnector } from './connectors/square-terminal.connector';
 import { SumUpConnector } from './connectors/sumup.connector';
+import { HelcimConnector } from './connectors/helcim.connector';
+import { AdyenConnector } from './connectors/adyen.connector';
+import { DejavooSpinCloudAdapter } from './adapters/dejavoo-spin-cloud.adapter';
+import { UsbTerminalAdapter, BluetoothTerminalAdapter } from './adapters/placeholder.adapters';
+import { StripeTerminalAdapter, SquareTerminalAdapter } from './adapters/existing-cloud.adapters';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 
 const adminA: AuthenticatedUser = { userId: 'ua', email: 'a@a.test', role: UserRole.SALON_ADMIN, tenantId: 'tenant-a' };
@@ -66,7 +71,13 @@ describe('PaymentOrchestrator (Payment Hub)', () => {
   beforeEach(() => {
     prisma = makePrisma();
     mock = new MockConnector();
-    const registry = new ProviderRegistry(mock, new StripeTerminalConnector(), new SquareTerminalConnector(), new SumUpConnector());
+    // Same order as the constructor (provider-registry.service.ts).
+    const stripe = new StripeTerminalConnector();
+    const square = new SquareTerminalConnector();
+    const registry = new ProviderRegistry(
+      new HelcimConnector(), stripe, square, new SumUpConnector(), new AdyenConnector(), new DejavooSpinCloudAdapter(), mock,
+      new UsbTerminalAdapter(), new BluetoothTerminalAdapter(), new StripeTerminalAdapter(stripe), new SquareTerminalAdapter(square),
+    );
     hub = new PaymentOrchestrator(prisma, registry, new CredentialStore(prisma));
   });
 

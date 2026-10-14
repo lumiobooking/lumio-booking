@@ -146,6 +146,10 @@ export class PaymentsService {
       select: { id: true, priceCents: true, currency: true, customerId: true },
     });
     if (!appt) return;
+    // Paid at the till already: the ticket is the money; touching the booking's
+    // pay-at-salon rows here would count the visit twice.
+    const coveredByTicket = await this.prisma.order.count({ where: { tenantId, status: 'PAID', OR: [{ appointmentId }, { appointmentIds: { has: appointmentId } }] } as never });
+    if (coveredByTicket > 0) return;
 
     const pays = await this.prisma.payment.findMany({ where: { tenantId, appointmentId }, select: { id: true, status: true, amountCents: true } });
     let paidSoFar = pays.filter((p) => p.status === PaymentStatus.PAID).reduce((s, p) => s + p.amountCents, 0);
@@ -161,7 +165,7 @@ export class PaymentsService {
     if (paidSoFar >= appt.priceCents) return; // fully covered (incl. deposit + balance)
 
     // A paid POS order may already cover the rest — don't double-charge.
-    const paidOrder = await this.prisma.order.count({ where: { tenantId, appointmentId, status: 'PAID' } });
+    const paidOrder = await this.prisma.order.count({ where: { tenantId, status: 'PAID', OR: [{ appointmentId }, { appointmentIds: { has: appointmentId } }] } as never });
     if (paidOrder > 0) return;
 
     // 2) Collect the remaining balance as an at-salon payment.
@@ -187,7 +191,8 @@ export class PaymentsService {
    */
   async unsettleOnUncomplete(tenantId: string, appointmentId: string, actorUserId: string | null) {
     const pays = await this.prisma.payment.findMany({
-      where: { tenantId, appointmentId, status: PaymentStatus.PAID, type: PaymentType.PAY_LATER },
+      // The till's rows (providerReference order:<id>) belong to its ticket, which stays paid.
+      where: { tenantId, appointmentId, status: PaymentStatus.PAID, type: PaymentType.PAY_LATER, OR: [{ providerReference: null }, { NOT: { providerReference: { startsWith: 'order:' } } }] },
       select: { id: true },
     });
     for (const p of pays) {

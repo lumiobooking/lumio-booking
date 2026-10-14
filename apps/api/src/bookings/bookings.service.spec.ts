@@ -30,6 +30,9 @@ function makePrisma(opts: { overlapConflict: boolean; serviceTenantId?: string }
     customer: {
       upsert: jest.fn(async () => ({ id: 'cust-1' })),
       create: jest.fn(async () => ({ id: 'cust-1' })),
+      // A public request reads the email's existing record first (never rewrites its identity).
+      findUnique: jest.fn(async () => null),
+      update: jest.fn(async ({ where }: any) => ({ id: where.id })),
     },
     appointment: {
       // overlap check

@@ -5,9 +5,12 @@ import {
   ConflictException,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { ModuleRef } from '@nestjs/core';
+import { PaymentStatus, PaymentType, UserRole } from '@prisma/client';
+import { ledgerProviderFor } from '../pos/payment-methods';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, assertTenantAccess } from '../common/tenant/tenant-context';
 import { ProviderRegistry } from './provider-registry.service';
@@ -29,6 +32,8 @@ export class PaymentOrchestrator {
     private readonly prisma: PrismaService,
     private readonly registry: ProviderRegistry,
     private readonly creds: CredentialStore,
+    // Resolves the till lazily (no module import cycle) to void a fully refunded sale.
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
   private enabled(): boolean {
@@ -471,7 +476,10 @@ export class PaymentOrchestrator {
         createdByUserId: user.userId,
       },
     });
-    if (ok) await this.prisma.paymentIntentRecord.update({ where: { id: intent.id }, data: { status: 'CANCELED' } });
+    if (ok) {
+      await this.prisma.paymentIntentRecord.update({ where: { id: intent.id }, data: { status: 'CANCELED' } });
+      await this.settleRefund(user, tenantId, intent, intent.amountCents, record.id, true);
+    }
     await this.audit(tenantId, user.userId, 'payment.void', { intentId: intent.id, ok, code: res.code });
     if (!ok) throw new BadRequestException(res.message || 'Void was declined by the terminal');
     return { id: record.id, status: record.status, approvalCode: res.approvalCode, code: res.code };
@@ -500,12 +508,71 @@ export class PaymentOrchestrator {
     });
     if (res.status === 'SUCCEEDED') {
       const agg = await this.prisma.paymentRefund.aggregate({ where: { intentId: intent.id, status: 'SUCCEEDED' }, _sum: { amountCents: true } });
-      if ((agg._sum.amountCents ?? 0) >= intent.amountCents) {
+      const full = (agg._sum.amountCents ?? 0) >= intent.amountCents;
+      if (full) {
         await this.prisma.paymentIntentRecord.update({ where: { id: intent.id }, data: { status: 'CANCELED' } });
       }
+      await this.settleRefund(user, tenantId, intent, updated.amountCents, updated.id, full);
     }
     await this.audit(tenantId, user.userId, 'payment.refund', { intentId: intent.id, amountCents: updated.amountCents, status: res.status });
     return updated;
+  }
+
+  /** The till's sale a card charge paid for: by orderId, else by the till's own clientRef ("<sale ref>-card"). */
+  private async orderOfIntent(tenantId: string, intent: { orderId?: string | null; clientRef?: string | null }) {
+    const select = { id: true, status: true, tenders: { select: { method: true, amountCents: true } } } as const;
+    if (intent.orderId) return this.prisma.order.findFirst({ where: { id: intent.orderId, tenantId }, select });
+    const ref = String(intent.clientRef ?? '');
+    if (!ref.endsWith('-card') || ref.length <= 5) return null;
+    return this.prisma.order.findFirst({ where: { tenantId, clientRef: ref.slice(0, -5) }, select });
+  }
+
+  /**
+   * A card refund or void reaches the books.
+   *  - The WHOLE card payment of a sale paid by card alone goes back: the sale is
+   *    voided exactly as the till's Void does — revenue, the technicians'
+   *    commission and tips, stock, gift cards and points all reverse, and a
+   *    checked-out booking goes back to "arrived".
+   *  - Anything less (part of it, or a sale also paid in cash): one negative card
+   *    row on the day of the refund; the sale itself stands.
+   * A sale inside a closed payroll cannot be voided — it gets the negative row.
+   */
+  private async settleRefund(user: AuthenticatedUser, tenantId: string, intent: { id?: string; orderId?: string | null; clientRef?: string | null; currency?: string | null }, amountCents: number, refundId: string, full: boolean) {
+    const order = await this.orderOfIntent(tenantId, intent).catch(() => null);
+    const cardOnly = !!order && order.status === 'PAID' && order.tenders.length > 0 && order.tenders.every((t) => t.method === 'CARD');
+    if (full && cardOnly && this.moduleRef) {
+      try {
+        const { PosService } = await import('../pos/pos.service');
+        const pos = this.moduleRef.get(PosService, { strict: false });
+        await pos.voidOrder(user, order!.id);
+        await this.audit(tenantId, user.userId, 'payment.refund_order_voided', { intentId: intent.id, orderId: order!.id });
+        return;
+      } catch (e) {
+        await this.audit(tenantId, user.userId, 'payment.refund_order_not_voided', { intentId: intent.id, orderId: order!.id, reason: String((e as Error)?.message ?? e).slice(0, 200) });
+      }
+    }
+    await this.refundToLedger(tenantId, { orderId: order?.id ?? intent.orderId, currency: intent.currency }, amountCents, refundId);
+  }
+
+  /**
+   * Money handed back on the terminal leaves revenue on the day it went back:
+   * one negative card row in the ledger the dashboard and reports read. Tied to
+   * the sale's order when the charge named one (a later void of that order
+   * then neutralises this row with the rest of the order's rows).
+   */
+  private async refundToLedger(tenantId: string, intent: { orderId?: string | null; currency?: string | null }, amountCents: number, refundId: string) {
+    if (!(amountCents > 0)) return;
+    try {
+      await this.prisma.payment.create({
+        data: {
+          tenantId, appointmentId: null, amountCents: -amountCents, currency: intent.currency || 'USD',
+          type: PaymentType.PAY_LATER, status: PaymentStatus.PAID, provider: ledgerProviderFor('CARD'),
+          providerReference: intent.orderId ? `order:${intent.orderId}` : `refund:${refundId}`, paidAt: new Date(),
+        },
+      });
+    } catch (e) {
+      this.logger.warn(`refund ledger row failed: ${String(e)}`);
+    }
   }
 
   async handleWebhook(provider: string, tenantId: string, rawBody: Buffer, signature: string) {

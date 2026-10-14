@@ -7,6 +7,7 @@ import { displayBaseUrl, displayPairUrl } from '../common/public-url.util';
 import { CustomersService } from '../customers/customers.service';
 import { WalkinsService } from '../walkins/walkins.service';
 import { liveEvents } from '../common/live-events';
+import { linkWalkInToBooking } from '../walkins/booking-link';
 import { dayKeyTz, weekdayTz } from '../common/salon-time';
 import { WEEKDAY_DISCOUNTS_KEY, DATE_DISCOUNTS_KEY } from '../settings/settings.constants';
 import { priceService, promoBanner, PromoSettings, SalonDay } from './checkin-pricing';
@@ -194,6 +195,8 @@ export class DisplayService {
       },
       select: { id: true },
     });
+    // A customer with a booking near now checks in on the tablet: she is that booking.
+    await linkWalkInToBooking(this.prisma as never, tenantId, walkIn.id, linked?.id ?? null).catch(() => null);
     const guestIds: string[] = [];
     for (let i = 0; i < guests.length; i++) {
       const items = itemsFor(guests[i]?.serviceIds);

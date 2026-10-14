@@ -154,6 +154,17 @@ export class ZaloOaService {
         'Cần đủ: App ID, OAID, Access token và Refresh token (lấy trong Zalo Developers → Công cụ khai thác API).',
       );
     }
+    if (await this.oaTakenElsewhere(tenantId, cfg.oaid)) {
+      throw new BadRequestException('OA Zalo này đang được kết nối với một tiệm khác.');
+    }
+    // A newly pasted token must belong to the OA it claims, or anyone could
+    // name another salon's OA and receive its messages.
+    if (dto.accessToken || dto.oaid) {
+      const info = await fetchZaloOaInfo(cfg.accessToken).catch(() => null);
+      if (!info?.oaid || info.oaid !== cfg.oaid) {
+        throw new BadRequestException('Không xác minh được Access token với OA này — kiểm tra lại OAID và token.');
+      }
+    }
     await this.applyConfig(tenantId, cfg);
     return this.status(user);
   }
@@ -249,6 +260,7 @@ export class ZaloOaService {
     const info = await fetchZaloOaInfo(tok.accessToken);
     const oaid = info?.oaid || String(oaIdHint || '').trim();
     if (!oaid) return back('zalo=error&msg=no_oa');
+    if (await this.oaTakenElsewhere(tenantId, oaid)) return back('zalo=error&msg=oa_in_use');
 
     const prev = await this.configOf(tenantId);
     await this.applyConfig(tenantId, {
@@ -264,6 +276,12 @@ export class ZaloOaService {
     });
     this.logger.log(`Zalo OA ${oaid} connected to tenant ${tenantId} via OAuth`);
     return back(`zalo=connected&oa=${encodeURIComponent(info?.name || oaid)}`);
+  }
+
+  /** True when this OA is already wired to a different salon. */
+  private async oaTakenElsewhere(tenantId: string, oaid: string): Promise<boolean> {
+    const row = await this.prisma.messengerPage.findUnique({ where: { pageId: oaid }, select: { tenantId: true } });
+    return !!row && row.tenantId !== tenantId;
   }
 
   /** Persist a config and wire the rows that make the brain route this OA. */

@@ -53,6 +53,7 @@ import { AiUsageService } from '../common/ai-usage.service';
 import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
 import { carouselTitles, packageFromPayload, packagePayload, tapAsCustomerLine } from './package-cards';
 import { oauthBase } from '../common/public-url.util';
+import { BOOKED_HERE_KEY, PRIVACY_REFUSAL, isAnonymousChannel, mayChangeBooking, rememberIds, visibleBookings } from './booking-privacy';
 
 // A blank/masked secret must never overwrite a stored Page token.
 function cleanSecret(v: unknown): string | null {
@@ -4583,6 +4584,20 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
    * we can tell, else the salon's country. A date the model reads is a date
    * the model repeats, so this is the customer's language, not the salon's.
    */
+  /** Bookings made in this conversation (website chat privacy, messenger/booking-privacy.ts). */
+  private async bookedHere(tenantId: string, threadId?: string): Promise<Set<string>> {
+    if (!threadId) return new Set();
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: BOOKED_HERE_KEY(threadId) } }, select: { value: true } }).catch(() => null);
+    return new Set(rememberIds(row?.value, []));
+  }
+
+  private async rememberBookedHere(tenantId: string, threadId: string, ids: string[]): Promise<void> {
+    const key = BOOKED_HERE_KEY(threadId);
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key } }, select: { value: true } }).catch(() => null);
+    const value = { ids: rememberIds(row?.value, ids.filter(Boolean)) } as unknown as Prisma.InputJsonValue;
+    await this.prisma.setting.upsert({ where: { tenantId_key: { tenantId, key } }, update: { value }, create: { tenantId, key, value } });
+  }
+
   private async toolLocale(tenantId: string, lang: ReplyLang | null): Promise<string> {
     if (lang) return localeForLang(lang);
     return this.customerLocale(tenantId).catch(() => 'en-US');
@@ -5174,6 +5189,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         // Remember this visit for the rest of the run: the merge check above
         // reads it, and the link below is appended by US rather than left to
         // the model to remember.
+        if (b.id && ctx?.threadId) {
+          await this.rememberBookedHere(tenantId, ctx.threadId, [b.id, ...guestIds]).catch(() => undefined);
+        }
         if (b.id && ctx) {
           ctx.booked = {
             id: b.id, phone, url: manageUrl,
@@ -5185,7 +5203,9 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
       if (name === 'find_appointment') {
         const phone = String(input.customerPhone || '').trim();
         if (!phone) return 'Ask the customer for the phone number they booked with.';
-        const rows = await this.bookings.upcomingForPhone(tenantId, phone);
+        const found = await this.bookings.upcomingForPhone(tenantId, phone);
+        const rows = isAnonymousChannel(ctx?.channel) ? visibleBookings(ctx?.channel, found, await this.bookedHere(tenantId, ctx?.threadId)) : found;
+        if (found.length && !rows.length) return PRIVACY_REFUSAL;
         if (!rows.length) {
           return 'No upcoming appointment found for that number. Ask gently whether they booked under a different number, and do NOT claim they have no booking — they may have used another one.';
         }
@@ -5216,6 +5236,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const phone = String(input.customerPhone || '').trim();
         const local = String(input.localDateTime || '').trim();
         if (!id || !phone || !local) return 'Missing the appointment id, the phone, or the new time; ask for what is missing.';
+        if (!mayChangeBooking(ctx?.channel, id, await this.bookedHere(tenantId, ctx?.threadId))) return PRIVACY_REFUSAL;
         const r = await this.bookings.selfReschedule({
           tenantId, appointmentId: id, phone, newStartIso: wallToUtcISO(local, tz), by: 'messenger',
         });
@@ -5236,6 +5257,7 @@ ${aiInstruction || '(no facts loaded yet — capture the lead and let the team a
         const id = String(input.appointmentId || '').trim();
         const phone = String(input.customerPhone || '').trim();
         if (!id || !phone) return 'Missing the appointment id or the phone; ask for what is missing.';
+        if (!mayChangeBooking(ctx?.channel, id, await this.bookedHere(tenantId, ctx?.threadId))) return PRIVACY_REFUSAL;
         const r = await this.bookings.selfCancel({ tenantId, appointmentId: id, phone, by: 'messenger' });
         if (!r.ok) {
           // The refusal sentence is written by the rule, not by the model —

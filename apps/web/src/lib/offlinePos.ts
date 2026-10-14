@@ -58,7 +58,11 @@ export async function syncQueue(
   let synced = 0;
   for (const item of readQueue()) {
     let r: { ok: boolean; permanent?: boolean };
-    try { r = await post(item.payload); }
+    // The time it was sold rides along, so the sale lands on that day, not the sync day.
+    const payload = item.payload && typeof item.payload === 'object' && item.at
+      ? { ...(item.payload as Record<string, unknown>), soldAt: new Date(item.at).toISOString() }
+      : item.payload;
+    try { r = await post(payload); }
     catch { break; } // network error — try again next time
     if (r.ok) { removeFromQueue(item.clientRef); synced++; }
     else if (r.permanent) { removeFromQueue(item.clientRef); }

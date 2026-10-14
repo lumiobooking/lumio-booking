@@ -158,3 +158,17 @@ describe('the door itself', () => {
     expect(isPrivateCap('services')).toBe(false);
   });
 });
+
+describe('the path is read the way the router reads it', () => {
+  it('upper-case, encoded and doubled slashes cannot slip past the scope', () => {
+    expect(normalizePath('/API/Customers/abc')).toBe('customers/abc');
+    expect(normalizePath('/api/%63ustomers')).toBe('customers');
+    expect(normalizePath('/api//payroll//runs')).toBe('payroll/runs');
+    expect(capForApiPath('/API/CUSTOMERS/abc')).toBe('customers');
+  });
+  it('time clock, feedback and branch reports belong to an area', () => {
+    expect(capForApiPath('/api/time-clock/entries')).toBe('payroll');
+    expect(capForApiPath('/api/feedback/cases')).toBe('reviews');
+    expect(capForApiPath('/api/branches/report')).toBe('reports');
+  });
+});

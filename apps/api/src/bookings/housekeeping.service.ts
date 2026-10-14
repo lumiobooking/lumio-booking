@@ -38,6 +38,15 @@ export class HousekeepingService implements OnModuleInit, OnModuleDestroy {
         .then((r) => { if (r.cleared || r.restaffed) this.logger.log(`Assignment repair: ${r.cleared} no-response mark(s) removed, ${r.restaffed} booking(s) re-staffed across ${r.tenants} salon(s).`); })
         .catch((e) => this.logger.warn(`Assignment repair failed: ${(e as Error).message}`));
     }, 30 * 1000);
+    // Bookings wrongly swept to No-show although the customer was served as a
+    // walk-in (walkins/booking-link.ts): back to ARRIVED. Idempotent, per boot.
+    setTimeout(() => {
+      const run = (this.bookings as { repairFalseNoShows?: () => Promise<{ tenants: number; repaired: number }> }).repairFalseNoShows;
+      if (typeof run !== 'function') return;
+      run.call(this.bookings)
+        .then((r) => { if (r.repaired) this.logger.log(`False no-show repair: ${r.repaired} booking(s) back to arrived.`); })
+        .catch((e) => this.logger.warn(`False no-show repair failed: ${(e as Error).message}`));
+    }, 45 * 1000);
     this.timer = setInterval(() => this.tick(), this.intervalMs);
     this.timer.unref?.();
     this.logger.log(`Booking housekeeping on (every ${this.intervalMs / 60000}m).`);

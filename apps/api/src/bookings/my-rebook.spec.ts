@@ -18,9 +18,10 @@ function make() {
     staffMember: { findFirst: async ({ where }: Row) => (where.userId === 'u-kim' ? { id: where.tenantId === 'A' ? 'kim' : 'kim-b' } : null) },
     walkIn: { findFirst: async ({ where }: Row) => {
       if (where.tenantId !== 'A') return null;
-      if (where.id === 'w1') return { customerId: 'c1', customerName: 'Mai Tran', phone: '+15125550123' };
-      if (where.id === 'w2') return { customerId: null, customerName: 'Walk-in', phone: null };
-      if (where.id === 'w3') return { customerId: null, customerName: 'Linh Nguyen Thi', phone: '+15125550199' };
+      if (where.id === 'w1') return { customerId: 'c1', customerName: 'Mai Tran', phone: '+15125550123', assignedStaffId: 'kim', items: [] };
+      if (where.id === 'w2') return { customerId: null, customerName: 'Walk-in', phone: null, assignedStaffId: 'kim', items: [] };
+      if (where.id === 'w3') return { customerId: null, customerName: 'Linh Nguyen Thi', phone: '+15125550199', assignedStaffId: null, items: [{ staffId: 'kim' }] };
+      if (where.id === 'w4') return { customerId: 'c9', customerName: 'Lisa client', phone: '+15125550777', assignedStaffId: 'lisa', items: [{ staffId: 'lisa' }] };
       return null;
     } },
     appointment: { findFirst: async ({ where }: Row) => {
@@ -40,6 +41,11 @@ const kimB = { userId: 'u-kim', tenantId: 'B', role: 'STAFF' } as never;
 const at = '2026-10-22T16:00:00.000Z';
 
 describe('my rebook', () => {
+  it("a colleague's ticket: no (her client's phone is not mine to take)", async () => {
+    const { svc, created } = make();
+    await expect(svc.myRebook(kim, { walkInId: 'w4', serviceId: 'gel', startTime: at })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(created).toHaveLength(0);
+  });
   it('from her ticket: the client on file, on herself, confirmed, tagged counter', async () => {
     const { svc, created } = make();
     await svc.myRebook(kim, { walkInId: 'w1', serviceId: 'gel', startTime: at });

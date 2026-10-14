@@ -7,6 +7,7 @@ import { ContentAdminService } from './content-admin.service';
 import { TrendFeedService } from './trends/trend-feed.service';
 import { PostReviewService } from './post-review.service';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Caps } from '../auth/decorators/caps.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { EditWeekDto } from './dto/edit-week.dto';
@@ -60,6 +61,7 @@ export class ContentController {
     return this.svc.seoRoadmap(user);
   }
 
+  @Caps('marketing')
   @Post('seo-tier')
   setSeoTier(@CurrentUser() user: AuthenticatedUser, @Body() dto?: { tier?: string }) {
     return this.svc.setSeoTier(user, dto?.tier);
@@ -178,6 +180,7 @@ export class ContentController {
    * The shop saying yes to the suggested ad budget. Files the exact line the
    * pitch quoted, so what the team reads is what the owner agreed to.
    */
+  @Caps('marketing')
   @Post('my-ads/approve')
   @HttpCode(200)
   async approveAds(@CurrentUser() user: AuthenticatedUser) {
@@ -195,6 +198,7 @@ export class ContentController {
   // the terms of the deal, not the one watching the campaign.
 
   /** A person switched the campaign on. Every review date counts from here. */
+  @Caps('marketing')
   @Post('ads-campaign/start')
   @HttpCode(200)
   startCampaign(@CurrentUser() user: AuthenticatedUser, @Body() dto?: { on?: unknown }) {
@@ -327,11 +331,13 @@ export class ContentController {
   }
 
   /** Team only (enforced in the service): the link to drop into the salon's group chat. */
+  @Caps('marketing')
   @Post('review-link')
   reviewLink(@CurrentUser() user: AuthenticatedUser) {
     return this.review.ensureLink(user);
   }
 
+  @Caps('marketing')
   @Delete('review-link')
   revokeReviewLink(@CurrentUser() user: AuthenticatedUser) {
     return this.review.revokeLink(user);
@@ -358,6 +364,7 @@ export class ContentController {
   }
 
   /** The text every new post opens with, for this shop. Empty = back to the built block. */
+  @Caps('marketing')
   @Post('post-footer')
   saveFooter(@CurrentUser() user: AuthenticatedUser, @Body() dto: { text?: string }) {
     return this.publisher.saveFooter(user, dto?.text);
@@ -378,6 +385,7 @@ export class ContentController {
   }
 
   /** Create or edit a queued post. Saving as 'scheduled' validates it first. */
+  @Caps('marketing')
   @Post('posts')
   savePost(@CurrentUser() user: AuthenticatedUser, @Body() body: SavePostDto) {
     return this.publisher.save(user, body);
@@ -409,6 +417,7 @@ export class ContentController {
     return this.publisher.setStage(user, id, body);
   }
 
+  @Caps('marketing')
   @Delete('posts/:id')
   cancelPost(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.publisher.cancel(user, id);
@@ -422,12 +431,14 @@ export class ContentController {
    * record only — what is on Facebook stays on Facebook, and the screen says so
    * before the press.
    */
+  @Caps('marketing')
   @Delete('posts/:id/remove')
   removePost(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.publisher.remove(user, id);
   }
 
   /** Send one right now, instead of waiting for its slot. */
+  @Caps('marketing')
   @Post('posts/:id/publish')
   publishPost(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.publisher.publishNow(user, id);
@@ -585,6 +596,7 @@ export class ContentController {
   }
 
   /** Team only (checked in the service, same reason as editWeek). */
+  @Caps('marketing')
   @Post('offer')
   @HttpCode(200)
   setOffer(@CurrentUser() user: AuthenticatedUser, @Body() dto: unknown) {

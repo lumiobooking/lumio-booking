@@ -24,6 +24,7 @@ import { ListView, type ShiftStaffFull } from './ListView';
 import { C, Seg, IconBtn, Icon, btn, onIndigo, Popover, Sheet, DayStrip, MonthPicker, FilterBody, FilterFooter, ActiveChips, type DayInfo } from './CalParts';
 import { applyFilters, facetCounts, activeFilterCount, NO_FILTERS, stripDays, isClosedDay, capacityMinutes, loadOf, bookedMinutes, addDays, type CalFilters, type HoursDay } from '../../../lib/cal-day';
 import { minutesInZone } from '../../../lib/salon-card';
+import { NewBookingModal, type NewBookingPrefill } from '../../../components/NewBookingModal';
 
 interface Addon { id: string; name: string; priceCents: number; kind?: string; staffMemberId?: string }
 /** Pill/label text: primary service plus a +N badge for the extra lines. */
@@ -120,6 +121,8 @@ function Inner() {
   const t = (k: string) => tr(k, lang);
   const locale = uiLocale(); // dates always render US month/day/year
   const [bookings, setBookings] = useState<Booking[]>([]);
+  /** The booking pop-up, with the time / technician the clicked link carried. */
+  const [newBook, setNewBook] = useState<NewBookingPrefill | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Booking | null>(null);
   // Right-click context menu on a booking chip: { screen position, booking }.
@@ -423,6 +426,38 @@ function Inner() {
     }
     return `/salon/bookings?new=1&at=${encodeURIComponent(`${cellKey(dayDate)}T${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`)}`;
   })();
+  /**
+   * "Đặt lịch" opens as a pop-up over the calendar instead of a page change.
+   * Every booking link in this view (header, empty day, "+ Đặt cho <thợ>",
+   * a free gap in a technician's column) still points at
+   * /salon/bookings?new=1…, so ctrl/⌘-click or a middle click still opens
+   * the full page in a new tab; a plain click is caught here, its time and
+   * technician read from the link, and the form opens in place.
+   */
+  const interceptBook = (e: React.MouseEvent) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+    if (!a) return;
+    let u: URL;
+    try { u = new URL(a.getAttribute('href') ?? '', window.location.href); } catch { return; }
+    if (u.pathname !== '/salon/bookings' || u.searchParams.get('new') !== '1') return;
+    e.preventDefault();
+    const at = u.searchParams.get('at') ?? '';
+    const txt = (k: string) => (u.searchParams.get(k) ?? '').slice(0, 80) || undefined;
+    setNewBook({
+      startLocal: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at) ? at : undefined,
+      staffId: u.searchParams.get('staff') ?? undefined,
+      firstName: txt('first'), lastName: txt('last'), phone: txt('phone'),
+    });
+  };
+  const bookModal = newBook && (
+    <NewBookingModal
+      initial={newBook}
+      bookings={bookings}
+      onClose={() => setNewBook(null)}
+      onCreated={() => { setNewBook(null); void load(); }}
+    />
+  );
   const rel = (d: Date) => (d.getTime() === today.getTime() ? L('Hôm nay', 'Today')
     : d.getTime() === addDays(today, 1).getTime() ? L('Ngày mai', 'Tomorrow')
     : d.getTime() === addDays(today, -1).getTime() ? L('Hôm qua', 'Yesterday') : '');
@@ -585,15 +620,16 @@ function Inner() {
 
   if (mode === 'floor') {
     return (
-      <section style={sectionStyle}>
+      <section style={sectionStyle} onClickCapture={interceptBook}>
         {header}
         <FloorView token={token} lang={lang} />
+        {bookModal}
       </section>
     );
   }
 
   return (
-    <section style={sectionStyle}>
+    <section style={sectionStyle} onClickCapture={interceptBook}>
       {header}
 
       {mode === 'staff' ? (
@@ -747,6 +783,7 @@ function Inner() {
       {selected && (
         <BookingDetail booking={selected} all={bookings} tz={tz} onClose={() => setSelected(null)} onAction={action} />
       )}
+      {bookModal}
     </section>
   );
 }

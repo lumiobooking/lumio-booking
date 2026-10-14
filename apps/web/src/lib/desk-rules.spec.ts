@@ -77,9 +77,14 @@ describe('wired into the screens', () => {
   it('the booking page no longer fails whole for a receptionist (payments are owner-only)', () => {
     const src = read('app', 'salon', 'bookings', 'page.tsx');
     expect(src).toMatch(/apiFetch<Payment\[\]>\('\/payments', \{ token \}\)\.catch\(/);
-    expect(src).toMatch(/deskHoursCheck\(form\.startLocal/);
-    expect(src).toMatch(/wallToInstantISO\(form\.startLocal, salonTz \|\| undefined\)/);
-    expect(src).toMatch(/autoAssign: chosenStaff \? undefined : autoPick/);
+    // The form itself is shared (bookings page + the calendar's pop-up).
+    expect(src).toMatch(/import \{ CreateBookingForm \} from '..\/..\/..\/components\/CreateBookingForm'/);
+    const form = read('components', 'CreateBookingForm.tsx');
+    expect(form).toMatch(/deskHoursCheck\(form\.startLocal/);
+    expect(form).toMatch(/wallToInstantISO\(form\.startLocal, salonTz \|\| undefined\)/);
+    expect(form).toMatch(/autoAssign: chosenStaff \? undefined : autoPick/);
+    // The calendar's "Đặt lịch" opens the same form in place.
+    expect(read('app', 'salon', 'calendar', 'page.tsx')).toMatch(/<NewBookingModal/);
   });
   it('the front desk reads every clock in the salon’s timezone', () => {
     const src = read('app', 'salon', 'front-desk', 'page.tsx');

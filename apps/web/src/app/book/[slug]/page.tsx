@@ -1084,7 +1084,19 @@ export default function PublicBookingPage() {
                   rating={salon.rating} accent={accent} timezone={salon.timezone} today={cardToday} />
               )}
               <Progress step={step} accent={accent} allowStaff={chooseStaff} />
-              <h1 key={step} className="lumio-step" style={{ fontSize: isMobile ? 22 : 27, fontWeight: 700, color: INK, margin: '10px 0 4px' }}>{stepTitle}</h1>
+              {/* The solo flow's way into a group booking sits beside the step title as
+                  a small pill — it used to take a full row of its own above the menu. */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', margin: '10px 0 4px' }}>
+                <h1 key={step} className="lumio-step" style={{ fontSize: isMobile ? 22 : 27, fontWeight: 700, color: INK, margin: 0 }}>{stepTitle}</h1>
+                {step === 1 && !isGroup && visitCart.length === 0 && (
+                  <button type="button"
+                    onClick={() => { setExtraGuests((gs) => [...gs, { name: '', serviceIds: [] }]); setActiveGuest(extraGuests.length + 1); setStaffId(''); setSlot(null); }}
+                    style={{ borderRadius: 999, padding: '6px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap',
+                      border: `1.4px dashed ${tint(accent, 0.6)}`, background: tint(accent, 0.04), color: accent }}>
+                    ＋ {bt("Bringing friends?")}
+                  </button>
+                )}
+              </div>
               {stepHint && <p style={{ margin: '0 0 14px', fontSize: 13.5, color: '#8fa0bb', lineHeight: 1.5 }}>{stepHint}</p>}
 
               {step === 1 && (
@@ -1109,8 +1121,8 @@ export default function PublicBookingPage() {
                   {/* Group tabs. They only exist once the booker adds a friend —
                       the solo flow never shows them. Every guest picks their own
                       services; the whole party shares one time slot. */}
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '2px 0 12px' }}>
-                    {isGroup && [{ name: 'You', serviceIds: pickedServiceIds }, ...extraGuests].map((g, i) => {
+                  {isGroup && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '2px 0 12px' }}>
+                    {[{ name: 'You', serviceIds: pickedServiceIds }, ...extraGuests].map((g, i) => {
                       const on = activeGuest === i;
                       return (
                         <button key={i} type="button" onClick={() => setActiveGuest(i)}
@@ -1135,10 +1147,10 @@ export default function PublicBookingPage() {
                         onClick={() => { setExtraGuests((gs) => [...gs, { name: '', serviceIds: [] }]); setActiveGuest(extraGuests.length + 1); setStaffId(''); setSlot(null); }}
                         style={{ borderRadius: 12, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
                           border: `1.6px dashed ${tint(accent, 0.6)}`, background: tint(accent, 0.03), color: accent }}>
-                        ＋ {isGroup ? bt("Add guest") : bt("Bringing friends?")}
+                        ＋ {bt("Add guest")}
                       </button>
                     )}
-                  </div>
+                  </div>}
                   {isGroup && activeGuest > 0 && (
                     <input
                       value={extraGuests[activeGuest - 1]?.name ?? ''}
@@ -1708,45 +1720,29 @@ function SoonestBar({ rules, services, accent, timezone }: { rules: BookingRules
   }, [rules, services, timezone]);
 
   if (plan.kind === 'off') return null;
+  // 'hours' and 'closed' say exactly what the salon card above already says
+  // (open until / closed today), and on a phone the repeat cost a whole block
+  // of the first screen. Only the 'soonest' mode adds something new.
+  if (plan.kind === 'hours' || plan.kind === 'closed') return null;
 
   const pill = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 999, background: '#fff', fontSize: 12.5, fontWeight: 600 } as React.CSSProperties;
-  const minsToClock = (m: number) => fmtTime(new Date(2000, 0, 1, Math.floor(m / 60), m % 60));
-
+  // Only the 'soonest' mode gets here (see above): one pill, the next free
+  // time. Today's hours and "open until" live on the salon card.
   return (
     <div style={{
-      display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 16,
-      padding: '10px 12px', borderRadius: 14,
+      display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 14,
+      padding: '8px 10px', borderRadius: 14,
       background: `linear-gradient(120deg, ${tint(accent, 0.10)}, rgba(255,255,255,0))`,
       border: `1px solid ${tint(accent, 0.18)}`,
     }}>
-      {plan.kind === 'hours' ? (
-        // Times the owner typed in. Nothing here can be contradicted by the
-        // booking screen, and it says nothing about how busy the shop is.
-        plan.windows.map((w, i) => (
-          <span key={i} style={{ ...pill, border: '1px solid #e9edf4', color: 'var(--c166534)', fontWeight: 700 }}>
-            🕐 {btf('Open today {from} – {to}', { from: minsToClock(w.open), to: minsToClock(w.close) })}
-          </span>
-        ))
-      ) : plan.kind === 'closed' ? (
-        <span style={{ ...pill, border: '1px solid #e9edf4', color: '#5b6b85' }}>
-          {bt('Closed today — pick another date below')}
+      {info ? (
+        <span style={{ ...pill, border: '1px solid #dcfce7', color: 'var(--c166534)', fontWeight: 700, boxShadow: '0 2px 8px -5px rgba(15,42,82,.4)' }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} className="lumio-dot" />
+          {btf('Next opening {when} at {time}', { when: info.when, time: info.time })}
         </span>
-      ) : info ? (
-        <>
-          <span style={{ ...pill, border: '1px solid #dcfce7', color: 'var(--c166534)', fontWeight: 700, boxShadow: '0 2px 8px -5px rgba(15,42,82,.4)' }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} className="lumio-dot" />
-            {btf('Next opening {when} at {time}', { when: info.when, time: info.time })}
-          </span>
-          {info.sameDay && (
-            <span style={{ ...pill, border: '1px solid #e9edf4', color: '#5b6b85' }}>
-              🕐 {btf('Open until {time}', { time: info.close })}
-            </span>
-          )}
-        </>
       ) : (
         <span style={{ fontSize: 12.5, color: '#5b6b85', fontWeight: 600 }}>{bt('Pick a service — we’ll show you every free time.')}</span>
       )}
-      <span style={{ marginLeft: 'auto', fontSize: 12, color: '#8fa0bb' }}>{bt("Choose the time after your service \u2728")}</span>
     </div>
   );
 }

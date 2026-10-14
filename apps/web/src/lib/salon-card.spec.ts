@@ -8,13 +8,13 @@ describe('salon card facts', () => {
   });
 
   it('before opening says when it opens; after closing says closed now', () => {
-    expect(openStatus({ day, nowMinutes: 9 * 60 })).toEqual({ kind: 'later', at: 600 });
+    expect(openStatus({ day, nowMinutes: 9 * 60 })).toEqual({ kind: 'later', at: 600, until: 1200 });
     expect(openStatus({ day, nowMinutes: 20 * 60 })).toEqual({ kind: 'closedNow' });
   });
 
   it('split shifts: the lunch gap reads as opening later, not closed', () => {
     const split = { intervals: [{ open: 540, close: 720 }, { open: 780, close: 1140 }] };
-    expect(openStatus({ day: split, nowMinutes: 750 })).toEqual({ kind: 'later', at: 780 });
+    expect(openStatus({ day: split, nowMinutes: 750 })).toEqual({ kind: 'later', at: 780, until: 1140 });
     expect(openStatus({ day: split, nowMinutes: 800 })).toEqual({ kind: 'open', until: 1140 });
   });
 

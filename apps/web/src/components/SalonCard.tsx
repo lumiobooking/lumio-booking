@@ -63,7 +63,7 @@ function StatusLine({ status }: { status: OpenStatus | null }) {
   if (!status) return null;
   const tone = status.kind === 'open' ? { c: '#15803d', dot: '#22c55e' } : status.kind === 'later' ? { c: '#b45309', dot: '#f59e0b' } : { c: '#64748b', dot: '#94a3b8' };
   const text = status.kind === 'open' ? btf('Open · until {time}', { time: clock(status.until) })
-    : status.kind === 'later' ? btf('Opens today at {time}', { time: clock(status.at) })
+    : status.kind === 'later' ? btf('Opens today {from} – {to}', { from: clock(status.at), to: clock(status.until) })
     : status.kind === 'closedNow' ? bt('Closed now') : bt('Closed today');
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: tone.c, fontWeight: 700, whiteSpace: 'nowrap' }}>

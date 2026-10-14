@@ -127,7 +127,7 @@ const VI: Record<string, string> = {
   'Open until {time}': 'Mở cửa đến {time}',
   // ---- the salon card (option B) ----------------------------------------
   'Open · until {time}': 'Đang mở · đến {time}',
-  'Opens today at {time}': 'Hôm nay mở lúc {time}',
+  'Opens today {from} – {to}': 'Hôm nay mở {from} – {to}',
   'Closed now': 'Đã đóng cửa',
   'Closed today': 'Hôm nay nghỉ',
   'Call': 'Gọi',

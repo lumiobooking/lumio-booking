@@ -26,7 +26,7 @@ export function minutesInZone(timeZone: string | null | undefined, now: Date = n
 
 export type OpenStatus =
   | { kind: 'open'; until: number }
-  | { kind: 'later'; at: number }
+  | { kind: 'later'; at: number; until: number }
   | { kind: 'closedNow' }
   | { kind: 'closedToday' };
 
@@ -44,7 +44,7 @@ export function openStatus(args: { day: DayLike | null | undefined; isDayOff?: b
   const inside = windows.find((w) => now >= w.open && now < w.close);
   if (inside) return { kind: 'open', until: inside.close };
   const next = windows.find((w) => w.open > now);
-  if (next) return { kind: 'later', at: next.open };
+  if (next) return { kind: 'later', at: next.open, until: next.close };
   return { kind: 'closedNow' };
 }
 

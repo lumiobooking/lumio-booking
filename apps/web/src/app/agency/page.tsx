@@ -2,7 +2,7 @@
 
 // ---------------------------------------------------------------------------
 // Lumio setup staff home. One SUPPORT login sees ONLY this: a searchable list
-// of salon names. Picking one mints an 8-hour salon-scoped session (audited
+// of salons. Picking one mints an 8-hour salon-scoped session (audited
 // server-side) and drops the employee into that salon's dashboard with the
 // platform-managed setup screens unlocked. "Leave salon" on the banner brings
 // them back here.
@@ -12,166 +12,138 @@
 // keeps three sessions, and no tab ever silently becomes another salon. The
 // support account's own login stays in localStorage, so leaving never needs a
 // re-login.
+//
+// THE LAYOUT (redesign, Oct 2026)
+//
+// A row carries information, not controls: name, term, package, team, stage,
+// next step, channels. The only colour on it is the service term — red when
+// it has run out, amber when it is about to — so a glance says which shops
+// need a renewal call. Every control that used to sit on the row (stage,
+// next department, team, package, the AI switch) lives in the salon's panel,
+// opened by clicking the row: a drawer on a computer, a sheet on a phone.
+//
+// Filters are one button per group (Thời hạn ▾, Nhóm ▾ …) on a computer or a
+// tablet, and one page behind "Lọc" on a phone. A group in use turns purple
+// and says what it holds; each option shows how many salons it would leave.
 // ---------------------------------------------------------------------------
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../lib/auth';
 import { apiFetch } from '../../lib/api';
 import { enterSupportSession } from '../../lib/support-session';
 import { fresh } from '../../lib/live';
+import { useIsMobile } from '../../lib/responsive';
 import { groupInbox, groupSummary, type InboxItem } from '../../lib/inbox-groups';
 import { LumioLogo } from '../../components/LumioLogo';
 import { TeamBell, noticesByTenant, noticeSummary, ago as agoShort, type RowNotice, type TeamNotice } from '../../components/TeamBell';
-
-interface TenantRow {
-  id: string;
-  name: string;
-  slug: string;
-  status: string;
-  /** Which market the salon is in: US | CA | AU | VN. */
-  market?: string | null;
-  createdAt: string;
-  /** Messenger/Instagram AI: on, off (Page connected for posting only), none (no Page). */
-  bot?: 'on' | 'off' | 'none';
-  /** The team's own label for where this shop is in the work. Not the access switch. */
-  opsStage?: OpsStage;
-  /** Which department is up next, picked by hand ('' = nobody picked). */
-  workNext?: WorkNext | '';
-  /** Scheduled posts the shop sent back with a note — each one is waiting on us. */
-  heldPosts?: number;
-  /** Scheduled posts the shop has not approved yet — waiting on THEM. */
-  awaitingApproval?: number;
-  /** Scheduled posts the shop has approved, still to go out — done on both sides. */
-  approvedPosts?: number;
-  /** The newest of those sign-offs. */
-  lastApprovedAt?: string | null;
-  /** Which Lumio service package the shop is on ('' = not recorded). */
-  servicePackage?: string;
-  /** The accounts this salon holds — Page, Instagram, Google location, TikTok, mailbox — by name. */
-  connections?: { fbPage: string | null; igUser: string | null; google: string | null; googleEmail: string | null; tiktok: string | null; mail: string | null } | null;
-  /** Kinds of account this salon shares with ANOTHER salon: google | tiktok | mail. Always a mistake. */
-  sharedWith?: string[];
-}
-/** One Lumio service package (GET /support/packages). tier 4 = the most care. */
-interface ServicePackage { key: string; name: string; family: 'social' | 'maps'; priceUsd: number; tier: 1 | 2 | 3 | 4 }
-type WorkNext = 'content' | 'design' | 'review' | 'schedule' | 'done';
-/** One thing a shop sent that nobody has made a post from yet. */
-type InboxRow = InboxItem;
-
-/** The salon list as one employee reads it: their team open, the rest folded. */
-interface BoardGroup { team: string; label: string; mine: boolean; open: boolean; newCount?: number; salons: { id: string; name: string; supportTeam?: string | null; isNew?: boolean }[] }
-interface Board { myTeam: string | null; canAssign?: boolean; groups: BoardGroup[]; teams: { team: string; label: string; salons: number; members: string[] }[] }
-
-/** "3 phút trước" — the freshness is the point of the list. */
-function ago(iso: string | null): string {
-  if (!iso) return '';
-  const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
-  if (m < 1) return 'vừa xong';
-  if (m < 60) return `${m} phút trước`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} giờ trước`;
-  const d = Math.round(h / 24);
-  return d === 1 ? 'hôm qua' : `${d} ngày trước`;
-}
+import {
+  activeGroups, applyFilters, clearGroup, facetCounts, NO_FILTERS, rememberedFilters, REMEMBERED, toggleValue,
+  type AgencyFilters, type FilterFacts, type GroupKey,
+} from '../../lib/agency-filters';
+import {
+  fmtDay, needsRenewal, renewBucket, renewState as renewStateOf0, termStatus, todayKey,
+  type RenewState, type ServiceTerm, type TermState,
+} from '../../lib/agency-term';
+import {
+  ago, MARKET_LOOK, MARKET_ORDER, marketOf, NEXT_LOOK, STAGE_LOOK, STAGE_ORDER, TIER_DOT,
+  type Board, type OpsStage, type ServicePackage, type TenantRow, type WorkNext,
+} from './agency-model';
+import {
+  ActiveChips, C, ChannelSquares, ChannelWords, Dot, FilterBar, FilterSheet, Icon, MarketChip, PackageText, RenewAction,
+  SalonPanel, StageText, TERM_LOOK, TermText, type FilterGroupDef,
+} from './AgencyParts';
 
 /**
  * Above this many new salons in one view, the MỚI tag stops being a signal.
- *
- * A badge on half the rows is not a badge, it is a texture — the eye stops
- * seeing it exactly when there is most to see. Past the threshold the tags
- * come off the rows and become one line at the top that filters the list,
- * which is both quieter and more useful: you can act on it.
+ * A badge on half the rows is texture, not information — past the threshold
+ * the tags come off the rows and become one line at the top that filters.
  */
 const NEW_TAGS_MAX = 8;
 
-/** '*' is every salon; '' is the ones nobody has claimed; anything else is a team. */
-const ALL = '*';
+type Tab = 'all' | 'mine' | 'renew' | 'none';
+type SortKey = 'work' | 'pkg' | 'end' | 'name';
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: 'work', label: 'Cần làm trước' },
+  { key: 'end', label: 'Ngày hết hạn' },
+  { key: 'pkg', label: 'Gói lớn trước' },
+  { key: 'name', label: 'Tên A–Z' },
+];
+
+const TERM_SECTIONS: { key: TermState; title: string; dot: string; note?: string }[] = [
+  { key: 'expired', title: 'Hết hạn', dot: '#ef4444', note: 'Báo bộ phận gia hạn' },
+  { key: 'soon', title: 'Sắp hết hạn', dot: '#f59e0b' },
+  { key: 'ok', title: 'Còn hạn', dot: '#22c55e' },
+  { key: 'none', title: 'Chưa có thời hạn', dot: '#64748b' },
+];
+const RENEW_SECTIONS: { key: RenewState; title: string; dot: string; note?: string }[] = [
+  { key: 'untold', title: 'Chưa báo', dot: '#f59e0b', note: 'Cần báo bộ phận gia hạn' },
+  { key: 'told', title: 'Đã báo · chờ gia hạn', dot: '#6366f1' },
+  { key: 'renewed', title: 'Đã gia hạn tháng này', dot: '#22c55e' },
+];
+
+/** The table's columns on a wide screen. */
+const COLS = 'minmax(200px, 1.6fr) 136px 150px 92px 112px 118px 128px 172px';
 
 const cssFor = `
-.ag-cols { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 16px; align-items: start; }
-.ag-side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: calc(16px + env(safe-area-inset-top, 0px)); }
-.ag-group { display: flex; flex-direction: column; gap: 6px; }
-.ag-side-lbl { font-size: 10.5px; font-weight:700; letter-spacing: .8px; text-transform: uppercase; color: var(--c64748b); padding: 0 4px 4px; }
-.ag-row { display: flex; align-items: center; gap: 10px; }
 .ag-row:hover { background: var(--c162032) !important; }
-/* The salon's NAME is the row. It may shrink, never to nothing: without a
-   floor the chips beside it hold their width and the name collapses to zero. */
-.ag-name { flex: 1 1 160px; min-width: 120px; }
-.ag-chips { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.ag-chip { display: inline-flex; align-items: center; gap: 4px; line-height: 1.2; box-sizing: border-box; }
-.ag-pillsel:focus-within { outline: 2px solid #6366f1; outline-offset: 1px; }
-.ag-go { flex: 0 0 auto; }
-.ag-row [data-row-check] { flex: 0 0 auto; }
-@media (max-width: 880px) {
-  .ag-intro { display: none; }
-  .ag-today-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .ag-inbox-status { flex: 1 0 100%; text-align: left !important; margin-left: 0 !important; }
-  .ag-cols { grid-template-columns: minmax(0, 1fr); gap: 10px; }
-  /* The two filters (team, market) each become ONE line of chips that
-     scrolls sideways — teams on top, markets under them — instead of one
-     long line where the markets were off-screen. */
-  .ag-side { position: static; gap: 8px; }
-  .ag-group { flex-direction: row; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
-  .ag-group::-webkit-scrollbar { display: none; }
-  .ag-group > * { flex: 0 0 auto; width: auto !important; }
-  .ag-side-lbl { display: none; }
-  .ag-side-members { display: none; }
-  /* A phone row is a small card, always the same three layers:
-       1. market · NAME ·························· →
-       2. /slug
-       3. one line of small chips (the red "đang chờ" pill, when there is
-          one, takes a whole line above them).
-     Before, every chip wrapped onto its own line at 40px tall and one salon
-     filled half the screen. */
-  .ag-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "check name go" "check chips chips"; column-gap: 0; row-gap: 8px; padding: 12px 14px !important; align-items: center; }
-  .ag-row [data-row-check] { grid-area: check; margin-right: 10px; align-self: start; margin-top: 3px; }
-  .ag-name { grid-area: name; min-width: 0; }
-  .ag-go { grid-area: go; padding-left: 10px; font-size: 18px !important; }
-  .ag-chips { grid-area: chips; justify-content: flex-start; gap: 6px; }
-  .ag-row .ag-chip { min-height: 30px; font-size: 12px !important; padding: 4px 9px !important; }
-  .ag-row .ag-notice { flex: 1 0 100%; order: -1; justify-content: flex-start; font-size: 13px !important; padding: 7px 12px !important; min-height: 36px !important; }
-}
+.ag-row:focus-visible { outline: 2px solid #6366f1; outline-offset: -2px; }
+.ag-scroll { scrollbar-width: none; }
+.ag-scroll::-webkit-scrollbar { display: none; }
 `;
+
+type Note = { text: string; undo?: () => void };
 
 export default function AgencyPage() {
   const { token, user, ready, logout } = useAuth();
   const router = useRouter();
+  /** Phone: cards and a filter page. Tablet (up to 1279): two-line rows. Wider: the table. */
+  const phone = useIsMobile(699);
+  const narrow = useIsMobile(1279);
   const [rows, setRows] = useState<TenantRow[]>([]);
-  const [inbox, setInbox] = useState<InboxRow[]>([]);
-  /** Everything a shop wrote that nobody answered — the bell, and a pill per row. */
+  const [inbox, setInbox] = useState<InboxItem[]>([]);
+  /** Everything a shop wrote that nobody answered — the bell, and a line per row. */
   const [notices, setNotices] = useState<TeamNotice[]>([]);
   const noticeBy = useMemo(() => noticesByTenant(notices), [notices]);
-  const [waitingOnly, setWaitingOnly] = useState(false);
   const [allSalons, setAllSalons] = useState(false);
   const [board, setBoard] = useState<Board | null>(null);
-  const [editing, setEditing] = useState<string | null>(null);
   const groups = useMemo(() => groupInbox(inbox), [inbox]);
-  // Which salons arrived this week, as the API judged it. Searching cuts
-  // across the groups, so the badge has to survive the search too.
+  // Which salons arrived this week, as the API judged it.
   const newIds = useMemo(
     () => new Set((board?.groups ?? []).flatMap((g) => g.salons.filter((x) => x.isNew).map((x) => x.id))),
     [board],
   );
-  /** Which team's list is on screen. Null until the board says which is mine. */
-  const [pick, setPick] = useState<string | null>(null);
-  const [newOnly, setNewOnly] = useState(false);
-  /** Market filter: '' = every market. Remembered on this device. */
-  const [mkt, setMktState] = useState<string>('');
-  useEffect(() => { try { setMktState(window.localStorage.getItem('lumio_agency_market') || ''); } catch { /* private mode */ } }, []);
-  const setMkt = (m: string) => { setMktState(m); try { window.localStorage.setItem('lumio_agency_market', m); } catch { /* ignore */ } };
-  /** Package filter: '' = every package, 'none' = no package recorded, else a key. Remembered. */
-  const [packages, setPackages] = useState<ServicePackage[]>([]);
-  const [pkgF, setPkgFState] = useState<string>('');
-  const [bigFirst, setBigFirstState] = useState(false);
+  /** Which list is on screen. Null until the board says which team is mine. */
+  const [tab, setTab] = useState<Tab | null>(null);
+  const [filters, setFilters] = useState<AgencyFilters>(NO_FILTERS);
+  const [sort, setSortState] = useState<SortKey>('work');
   useEffect(() => {
     try {
-      setPkgFState(window.localStorage.getItem('lumio_agency_pkg') || '');
-      setBigFirstState(window.localStorage.getItem('lumio_agency_bigfirst') === '1');
+      const raw = window.localStorage.getItem('lumio_agency_filters');
+      let f = rememberedFilters(raw ? JSON.parse(raw) : null);
+      if (!raw) {
+        // The old one-choice market / package filters, carried over once.
+        const m = window.localStorage.getItem('lumio_agency_market');
+        const p = window.localStorage.getItem('lumio_agency_pkg');
+        if (m) f = { ...f, market: [m] };
+        if (p) f = { ...f, pkg: [p] };
+      }
+      setFilters(f);
+      const s = window.localStorage.getItem('lumio_agency_sort') as SortKey | null;
+      if (s && SORTS.some((x) => x.key === s)) setSortState(s);
+      else if (window.localStorage.getItem('lumio_agency_bigfirst') === '1') setSortState('pkg');
     } catch { /* private mode */ }
   }, []);
-  const setPkgF = (k: string) => { setPkgFState(k); try { window.localStorage.setItem('lumio_agency_pkg', k); } catch { /* ignore */ } };
-  const setBigFirst = (v: boolean) => { setBigFirstState(v); try { window.localStorage.setItem('lumio_agency_bigfirst', v ? '1' : '0'); } catch { /* ignore */ } };
+  /** Market and package are remembered on this device, as before; the rest are for now. */
+  const updateFilters = useCallback((fn: (f: AgencyFilters) => AgencyFilters) => {
+    setFilters((cur) => {
+      const next = fn(cur);
+      try { window.localStorage.setItem('lumio_agency_filters', JSON.stringify(Object.fromEntries(REMEMBERED.map((g) => [g, next[g]])))); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+  const setSort = (s: SortKey) => { setSortState(s); try { window.localStorage.setItem('lumio_agency_sort', s); } catch { /* ignore */ } };
+  const [packages, setPackages] = useState<ServicePackage[]>([]);
   const pkgByKey = useMemo(() => new Map(packages.map((p) => [p.key, p])), [packages]);
   /** Bulk mode: the tick boxes are showing, and these are the salons ticked. */
   const [picking, setPicking] = useState(false);
@@ -181,7 +153,18 @@ export default function AgencyPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<Note | null>(null);
+  /** The salon whose panel is open. */
+  const [panelId, setPanelId] = useState<string | null>(null);
+  /** Phone: the filter page. */
+  const [sheet, setSheet] = useState(false);
+  const today = todayKey();
+
+  useEffect(() => {
+    if (!note) return;
+    const t = setTimeout(() => setNote(null), 7000);
+    return () => clearTimeout(t);
+  }, [note]);
 
   useEffect(() => {
     if (!ready) return;
@@ -202,7 +185,7 @@ export default function AgencyPage() {
     // picker is open — this is the screen somebody leaves up on a second
     // monitor, and it has to be right when they glance at it.
     const pull = () => {
-      apiFetch<InboxRow[]>(fresh('/support/inbox'), { token }).then(setInbox).catch(() => undefined);
+      apiFetch<InboxItem[]>(fresh('/support/inbox'), { token }).then(setInbox).catch(() => undefined);
       apiFetch<{ count: number; items: TeamNotice[] }>(fresh('/support/notifications'), { token })
         .then((r) => setNotices(r.items ?? [])).catch(() => undefined);
     };
@@ -213,93 +196,181 @@ export default function AgencyPage() {
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); };
   }, [ready, user, token, router]);
 
-  // An employee lands on their own list; the owner, who has no team, lands on
-  // all of them. Only ever set once — after that the choice is the viewer's.
+  // An employee lands on their own team; the owner, who has no team, on all.
+  // Only ever set once — after that the choice is the viewer's.
   useEffect(() => {
-    if (!board || pick !== null) return;
-    setPick(board.myTeam && board.groups.some((g) => g.team === board.myTeam) ? board.myTeam : ALL);
-  }, [board, pick]);
+    if (!board || tab !== null) return;
+    setTab(board.myTeam && board.groups.some((g) => g.team === board.myTeam) ? 'mine' : 'all');
+  }, [board, tab]);
 
   // The browser tab says it too, so a staff member on another page notices.
   useEffect(() => {
     document.title = inbox.length ? `(${inbox.length}) Tiệm vừa gửi · Lumio Support` : 'Lumio Support';
   }, [inbox.length]);
 
-  /**
-   * The salons actually on screen.
-   *
-   * A search cuts across every team, because somebody looking for a name does
-   * not care whose list it is on. Otherwise it is the chosen team's list, in
-   * the order the server put it in — this week's arrivals, then the alphabet.
-   */
-  const listed = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const inMkt = (r: TenantRow) => (!mkt || marketOf(r) === mkt)
-      && (!pkgF || (pkgF === 'none' ? !r.servicePackage : r.servicePackage === pkgF));
-    const tierOf = (r: TenantRow) => (r.servicePackage ? pkgByKey.get(r.servicePackage)?.tier ?? 0 : 0);
-    if (needle) return rows.filter((r) => inMkt(r) && `${r.name} ${r.slug}`.toLowerCase().includes(needle));
-    let out: TenantRow[];
-    if (!board || pick === null || pick === ALL) {
-      out = [...rows].sort((a, b) =>
-        (newIds.has(b.id) ? 1 : 0) - (newIds.has(a.id) ? 1 : 0) || a.name.localeCompare(b.name));
-    } else {
-      const byId = new Map(rows.map((r) => [r.id, r]));
-      out = (board.groups.find((g) => g.team === pick)?.salons ?? [])
-        .map((sg) => byId.get(sg.id))
-        .filter((t): t is TenantRow => Boolean(t));
-    }
-    if (mkt || pkgF) out = out.filter(inMkt);
-    if (newOnly) out = out.filter((t) => newIds.has(t.id));
-    if (waitingOnly) out = out.filter((t) => noticeBy.has(t.id) || (t.heldPosts ?? 0) > 0);
-    // A salon that is waiting on us floats to the top of whatever list this
-    // is, newest wait first. The list is what somebody glances at; the
-    // salons that need a glance most should not be under the fold.
-    const waitAt = (t: TenantRow) => {
-      const n = noticeBy.get(t.id);
-      return n ? Date.parse(n.newest.at) : (t.heldPosts ?? 0) > 0 ? 1 : 0;
-    };
-    // "Gói lớn trước": the biggest packages lead, still waiting-first inside a tier.
-    return [...out].sort((a, b) => (bigFirst ? tierOf(b) - tierOf(a) : 0) || waitAt(b) - waitAt(a));
-  }, [rows, board, pick, q, newOnly, newIds, waitingOnly, noticeBy, mkt, pkgF, pkgByKey, bigFirst]);
-  /** How many salons each package has, for the filter. */
-  const pkgCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const r of rows) { const k = r.servicePackage || 'none'; m.set(k, (m.get(k) ?? 0) + 1); }
-    return m;
-  }, [rows]);
-  /** How many salons each market has, for the filter. */
-  const marketCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const r of rows) m.set(marketOf(r), (m.get(marketOf(r)) ?? 0) + 1);
-    return m;
-  }, [rows]);
-  const waitingHere = useMemo(() => rows.filter((t) => noticeBy.has(t.id) || (t.heldPosts ?? 0) > 0).length, [rows, noticeBy]);
-
-  /** How many of the salons on screen arrived this week. Decides the tags. */
-  const newHere = useMemo(() => listed.filter((t) => newIds.has(t.id)).length, [listed, newIds]);
-  const tagRows = newHere > 0 && newHere <= NEW_TAGS_MAX;
-
-  /** Which team each salon is on, for the chip at the end of a row. */
+  /** Which team each salon is on. */
   const teamOf = useMemo(() => {
     const m = new Map<string, string>();
     for (const g of board?.groups ?? []) for (const sg of g.salons) m.set(sg.id, g.team);
     return m;
   }, [board]);
+  const myTeam = board?.myTeam ?? null;
+  const hasMine = Boolean(myTeam && board?.groups.some((g) => g.team === myTeam));
 
-  /** The sidebar: every team plus the two views that are not teams. */
-  const sideItems = useMemo(() => {
-    const gs = board?.groups ?? [];
-    const teams = gs.filter((g) => g.team).map((g) => ({
-      key: g.team, label: g.label, count: g.salons.length, fresh: g.newCount ?? 0,
-      mine: g.mine, members: board?.teams.find((t) => t.team === g.team)?.members ?? [],
-    }));
-    const none = gs.find((g) => !g.team);
-    return {
-      teams,
-      unassigned: { key: '', label: 'Chưa giao', count: none?.salons.length ?? 0, fresh: none?.newCount ?? 0 },
-      all: { key: ALL, label: 'Tất cả', count: rows.length, fresh: newIds.size },
+  /** The facts the filters and the sections read, worked out once per salon. */
+  const facts = useMemo(() => {
+    const m = new Map<string, FilterFacts>();
+    for (const r of rows) {
+      const flags: string[] = [];
+      if (noticeBy.has(r.id) || (r.heldPosts ?? 0) > 0) flags.push('waiting');
+      if (newIds.has(r.id)) flags.push('new');
+      if (r.status === 'SUSPENDED') flags.push('locked');
+      m.set(r.id, {
+        id: r.id,
+        term: termStatus(r.serviceTerm, today).state,
+        renew: renewBucket(r.serviceTerm, today),
+        team: teamOf.get(r.id) ?? '',
+        pkg: r.servicePackage || '',
+        stage: r.opsStage ?? 'running',
+        market: marketOf(r),
+        flags,
+      });
+    }
+    return m;
+  }, [rows, noticeBy, newIds, teamOf, today]);
+
+  const needle = q.trim().toLowerCase();
+  const activeTab: Tab = tab ?? 'all';
+  /**
+   * The salons the filters work on: the tab's list — or, while searching,
+   * every salon, because somebody looking for a name does not care whose list
+   * it is on.
+   */
+  const base = useMemo(() => rows.filter((r) => {
+    const f = facts.get(r.id)!;
+    if (needle) return `${r.name} ${r.slug}`.toLowerCase().includes(needle);
+    if (activeTab === 'mine') return f.team === myTeam;
+    if (activeTab === 'none') return f.team === '';
+    if (activeTab === 'renew') return f.renew !== null;
+    return true;
+  }), [rows, facts, needle, activeTab, myTeam]);
+  const baseFacts = useMemo(() => base.map((r) => facts.get(r.id)!), [base, facts]);
+  const counts = useMemo(() => facetCounts(baseFacts, filters), [baseFacts, filters]);
+  const shown = useMemo(() => {
+    const keep = new Set(applyFilters(baseFacts, filters).map((f) => f.id));
+    return base.filter((r) => keep.has(r.id));
+  }, [base, baseFacts, filters]);
+  const filtering = activeGroups(filters).length > 0;
+
+  /** The order inside each section. "Cần làm trước": waiting on us, newest wait first; then this week's arrivals. */
+  const sections = useMemo(() => {
+    const waitAt = (t: TenantRow) => {
+      const n = noticeBy.get(t.id);
+      return n ? Date.parse(n.newest.at) : (t.heldPosts ?? 0) > 0 ? 1 : 0;
     };
-  }, [board, rows.length, newIds]);
+    const tierOf = (t: TenantRow) => (t.servicePackage ? pkgByKey.get(t.servicePackage)?.tier ?? 0 : 0);
+    const work = (a: TenantRow, b: TenantRow) => waitAt(b) - waitAt(a) || (newIds.has(b.id) ? 1 : 0) - (newIds.has(a.id) ? 1 : 0);
+    const cmp = (a: TenantRow, b: TenantRow) => {
+      if (sort === 'name') return a.name.localeCompare(b.name);
+      if (sort === 'pkg') return tierOf(b) - tierOf(a) || work(a, b) || a.name.localeCompare(b.name);
+      if (sort === 'end') {
+        const ea = a.serviceTerm?.end ?? '9999-99-99'; const eb = b.serviceTerm?.end ?? '9999-99-99';
+        return ea < eb ? -1 : ea > eb ? 1 : a.name.localeCompare(b.name);
+      }
+      return work(a, b) || a.name.localeCompare(b.name);
+    };
+    const sorted = [...shown].sort(cmp);
+    if (activeTab === 'renew' && !needle) {
+      return RENEW_SECTIONS.map((s) => ({ ...s, key: s.key as string, rows: sorted.filter((r) => facts.get(r.id)!.renew === s.key) }));
+    }
+    return TERM_SECTIONS.map((s) => ({ ...s, key: s.key as string, rows: sorted.filter((r) => facts.get(r.id)!.term === s.key) }));
+  }, [shown, sort, activeTab, needle, facts, noticeBy, pkgByKey, newIds]);
+  const filled = sections.filter((s) => s.rows.length);
+  // Until anybody records a term, every salon is "Chưa có thời hạn": one
+  // heading over the whole list says nothing, so it is left off.
+  const headings = (activeTab === 'renew' && !needle) || filled.length > 1 || (filled.length === 1 && filled[0].key !== 'none');
+
+  /** The numbers on the tabs, and on the renewal line. */
+  const tabCounts = useMemo(() => {
+    let mine = 0; let none = 0; let renewAll = 0; let expired = 0; let soon = 0;
+    for (const f of facts.values()) {
+      if (myTeam && f.team === myTeam) mine++;
+      if (f.team === '') none++;
+      if (f.renew !== null) renewAll++;
+    }
+    for (const r of rows) {
+      if (!needsRenewal(r.serviceTerm, today)) continue;
+      if (termStatus(r.serviceTerm, today).state === 'expired') expired++; else soon++;
+    }
+    return { all: rows.length, mine, none, renewAll, expired, soon, need: expired + soon };
+  }, [facts, rows, myTeam, today]);
+  const waitingHere = useMemo(() => [...facts.values()].filter((f) => f.flags.includes('waiting')).length, [facts]);
+  /** How many of the salons on screen arrived this week. Decides the tags. */
+  const newHere = useMemo(() => shown.filter((t) => newIds.has(t.id)).length, [shown, newIds]);
+  const tagRows = newHere > 0 && newHere <= NEW_TAGS_MAX;
+
+  /** Every filter group, with its options — the same list feeds the bar, the chips and the phone page. */
+  const filterGroups = useMemo((): FilterGroupDef[] => {
+    const marketTotals = new Map<string, number>();
+    for (const f of facts.values()) marketTotals.set(f.market, (marketTotals.get(f.market) ?? 0) + 1);
+    return [
+      {
+        key: 'term', label: 'Thời hạn', title: 'Lọc theo thời hạn', kind: 'tiles',
+        options: [
+          { value: 'expired', label: 'Hết hạn', sub: 'đã quá ngày kết thúc', icon: 'alert', tint: TERM_LOOK.expired.ink },
+          { value: 'soon', label: 'Sắp hết hạn', sub: 'trong mốc báo trước', icon: 'hourglass', tint: TERM_LOOK.soon.ink },
+          { value: 'ok', label: 'Còn hạn', sub: 'chưa tới mốc báo', icon: 'check', tint: C.good },
+          { value: 'none', label: 'Chưa có thời hạn', sub: 'chưa ghi ngày', icon: 'cal', tint: C.sub },
+        ],
+        foot: 'Mốc báo trước mặc định 14 ngày, sửa riêng ở từng tiệm.',
+      },
+      {
+        key: 'team', label: 'Nhóm', title: 'Lọc theo nhóm phụ trách', kind: 'toggles',
+        options: [
+          ...(board?.teams ?? []).filter((x) => x.team).map((x) => ({ value: x.team, label: x.label || x.team, sub: x.members.join(', ') || undefined })),
+          { value: 'none', label: 'Chưa giao' },
+        ],
+      },
+      {
+        key: 'renew', label: 'Gia hạn', title: 'Lọc theo gia hạn', kind: 'toggles',
+        options: [
+          { value: 'untold', label: 'Chưa báo', sub: 'hết hạn / sắp hết, chưa ai báo' },
+          { value: 'told', label: 'Đã báo', sub: 'chờ bộ phận gia hạn' },
+          { value: 'renewed', label: 'Đã gia hạn', sub: 'trong tháng này' },
+        ],
+      },
+      {
+        key: 'pkg', label: 'Gói', title: 'Lọc theo gói dịch vụ', kind: 'list',
+        options: [
+          ...[...packages].sort((a, b) => b.tier - a.tier || b.priceUsd - a.priceUsd).map((p) => ({
+            value: p.key, label: p.name, sub: `$${p.priceUsd}/tháng`, lead: <Dot color={TIER_DOT[p.tier] ?? TIER_DOT[1]} size={9} />,
+          })),
+          { value: 'none', label: 'Chưa có gói', lead: <Dot color="var(--c334155)" size={9} /> },
+        ],
+      },
+      {
+        key: 'stage', label: 'Trạng thái', title: 'Lọc theo trạng thái', kind: 'toggles',
+        options: STAGE_ORDER.map((k) => ({ value: k, label: STAGE_LOOK[k].label, lead: <Dot color={STAGE_LOOK[k].dot} /> })),
+      },
+      {
+        key: 'market', label: 'Thị trường', title: 'Lọc theo thị trường', kind: 'toggles',
+        options: MARKET_ORDER.filter((code) => (marketTotals.get(code) ?? 0) > 0 || filters.market.includes(code))
+          .map((code) => ({ value: code, label: MARKET_LOOK[code].name, lead: <MarketChip code={code} /> })),
+      },
+      {
+        key: 'flag', label: 'Khác', title: 'Lọc khác', kind: 'list',
+        options: [
+          { value: 'waiting', label: 'Đang chờ Lumio trả lời', sub: 'góp ý bài, tin nhắn, file gửi', icon: 'alert', tint: C.bad },
+          { value: 'new', label: 'Tiệm mới tuần này', icon: 'check', tint: C.good },
+          { value: 'locked', label: 'Đang bị khoá', sub: 'khoá đăng nhập ở Super Admin', icon: 'x', tint: C.bad },
+        ],
+      },
+    ];
+  }, [board, packages, facts, filters.market]);
+
+  const toggle = (g: GroupKey, v: string) => updateFilters((f) => toggleValue(f, g, v));
+  const clear = (g: GroupKey) => updateFilters((f) => clearGroup(f, g));
+  const clearAll = () => updateFilters(() => NO_FILTERS);
 
   const toggleChosen = (id: string) => setChosen((c) => {
     const n = new Set(c);
@@ -309,8 +380,7 @@ export default function AgencyPage() {
 
   /**
    * Move a salon onto a team. Refused by the server for anyone but the owner
-   * and full-level accounts, so the button is offered to everyone and the
-   * rule is stated once, where it is enforced.
+   * and full-level accounts, so the rule is stated once, where it is enforced.
    */
   async function setTeam(tenantId: string, team: string) {
     if (!token) return;
@@ -319,17 +389,12 @@ export default function AgencyPage() {
       await apiFetch(`/support/tenants/${encodeURIComponent(tenantId)}/team`, { method: 'POST', token, body: { team } });
       const b = await apiFetch<Board>('/support/board', { token });
       setBoard(b);
-      setEditing(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Không đổi được nhóm');
     }
   }
 
-  /**
-   * Bot on/off for one salon, from the list. A confirm first: a customer
-   * feels this one within the minute, and the chip sits next to the row's
-   * click target.
-   */
+  /** Bot on/off for one salon. A confirm first: a customer feels this one within the minute. */
   async function setBot(t: TenantRow, on: boolean) {
     if (!token) return;
     const msg = on
@@ -341,20 +406,13 @@ export default function AgencyPage() {
       await apiFetch(`/support/tenants/${encodeURIComponent(t.id)}/bot`, { method: 'POST', token, body: { on } });
       const b = await apiFetch<Board>('/support/board', { token });
       setBoard(b);
+      setRows((rs) => rs.map((r) => (r.id === t.id ? { ...r, bot: on ? 'on' : 'off' } : r)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Không đổi được trạng thái bot');
     }
   }
 
-  /**
-   * Relabel a salon's stage from the list.
-   *
-   * Optimistic: the pill changes the moment it is picked and snaps back if the
-   * server refuses. No confirm box — unlike the bot switch this changes a label
-   * nobody outside the team sees, and a dialog on every relabel is how a list
-   * stops being kept up to date.
-   */
-  /** Hand a salon to the next department. Optimistic, like the stage pill. */
+  /** Hand a salon to the next department. Optimistic: it snaps back if the server refuses. */
   async function setNext(t: TenantRow, next: WorkNext | '') {
     if (!token || next === (t.workNext ?? '')) return;
     const before = t.workNext ?? '';
@@ -368,7 +426,7 @@ export default function AgencyPage() {
     }
   }
 
-  /** Record a salon's service package. Optimistic, like the stage pill. */
+  /** Record a salon's service package. Optimistic. */
   async function setPackage(t: TenantRow, pkg: string) {
     if (!token || pkg === (t.servicePackage ?? '')) return;
     const before = t.servicePackage ?? '';
@@ -382,6 +440,7 @@ export default function AgencyPage() {
     }
   }
 
+  /** Relabel a salon's stage. A label nobody outside the team sees: no confirm, optimistic. */
   async function setStage(t: TenantRow, stage: OpsStage) {
     if (!token || stage === t.opsStage) return;
     const before = t.opsStage;
@@ -395,12 +454,46 @@ export default function AgencyPage() {
     }
   }
 
+  const putTerm = (id: string, term: ServiceTerm | null) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, serviceTerm: term } : r)));
+
+  /** Record, change or clear a salon's service term. */
+  async function saveTerm(t: TenantRow, body: Record<string, unknown>) {
+    if (!token) return;
+    setError(null);
+    try {
+      const r = await apiFetch<{ serviceTerm: ServiceTerm | null }>(`/support/tenants/${encodeURIComponent(t.id)}/term`, { method: 'POST', token, body });
+      putTerm(t.id, r.serviceTerm);
+      setNote({ text: body.clear ? `Đã xoá thời hạn của ${t.name}.` : `Đã lưu thời hạn của ${t.name}.` });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Không lưu được thời hạn');
+    }
+  }
+
   /**
-   * File everything ticked, in one call.
-   *
-   * The confirmation matters more here than on a single move: twelve salons
-   * just left the list you were looking at, and without a count you cannot
-   * tell that from a page that silently lost them.
+   * Told the renewals people / undo / renewed. "Told" is optimistic — it is
+   * the one-click action on the row — and offers an undo for a slip.
+   */
+  async function renewal(t: TenantRow, body: Record<string, unknown>) {
+    if (!token) return;
+    setError(null);
+    const before = t.serviceTerm ?? null;
+    if (body.action === 'told' && before) {
+      putTerm(t.id, { ...before, renew: { state: 'told', by: user?.email ?? null, at: new Date().toISOString(), forEnd: before.end, ...(body.note ? { note: String(body.note) } : {}) } });
+    }
+    try {
+      const r = await apiFetch<{ serviceTerm: ServiceTerm }>(`/support/tenants/${encodeURIComponent(t.id)}/renewal`, { method: 'POST', token, body });
+      putTerm(t.id, r.serviceTerm);
+      if (body.action === 'told') setNote({ text: `Đã báo gia hạn: ${t.name}.`, undo: () => { void renewal({ ...t, serviceTerm: r.serviceTerm }, { action: 'undo' }); setNote(null); } });
+      if (body.action === 'renewed') setNote({ text: `${t.name} đã gia hạn đến ${fmtDay(r.serviceTerm.end, today, true)}.` });
+    } catch (e) {
+      putTerm(t.id, before);
+      setError(e instanceof Error ? e.message : 'Không cập nhật được gia hạn');
+    }
+  }
+
+  /**
+   * File everything ticked, in one call. The count in the confirmation
+   * matters: twelve salons just left the list you were looking at.
    */
   async function assignMany(team: string) {
     if (!token || !chosen.size || assigning) return;
@@ -413,7 +506,7 @@ export default function AgencyPage() {
       setBoard(b);
       setChosen(new Set());
       setPicking(false);
-      setNote(`Đã giao ${r.count} tiệm cho ${team || '“chưa phân nhóm”'}.`);
+      setNote({ text: `Đã giao ${r.count} tiệm cho ${team || '“chưa phân nhóm”'}.` });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Không giao được nhóm');
     } finally {
@@ -439,10 +532,8 @@ export default function AgencyPage() {
       // supportSession flag drives the banner and unlocks hidden screens.
       //
       // The capability list is the employee's LEVEL, resolved by the server.
-      // It goes on the session because the menu has to draw the right shape on
-      // the first paint — but it is only a drawing instruction: the same level
-      // is inside the token, and every request is checked against that copy,
-      // so editing this one in a browser console buys nothing.
+      // It is only a drawing instruction: the same level is inside the token,
+      // and every request is checked against that copy.
       const session = {
         accessToken: r.accessToken,
         user: {
@@ -455,8 +546,6 @@ export default function AgencyPage() {
           supportSession: true,
           tenantName: r.tenant.name,
           supportLevel: r.level,
-          // Whether the level shown on the banner is the real answer or has
-          // been replaced by this employee's own ticked list.
           supportCustom: r.custom === true,
           capabilities: r.capabilities,
         },
@@ -470,17 +559,16 @@ export default function AgencyPage() {
   }
 
   /**
-   * A push or a bell row on another device said "open salon X at Y": the
-   * URL carries both, and once the salon rows are in we step in without a
-   * click. Read once, then cleared from the address bar so a reload does not
-   * step in again.
+   * A push or a bell row on another device said "open salon X at Y": once the
+   * salon rows are in we step in without a click. Read once, then cleared
+   * from the address bar so a reload does not step in again.
    */
   const autoOpened = useRef(false);
   useEffect(() => {
     if (autoOpened.current || loading || !token) return;
-    const q = new URLSearchParams(window.location.search);
-    const id = q.get('open');
-    const to = q.get('to');
+    const sp = new URLSearchParams(window.location.search);
+    const id = sp.get('open');
+    const to = sp.get('to');
     if (!id) return;
     autoOpened.current = true;
     window.history.replaceState({}, '', window.location.pathname);
@@ -497,880 +585,687 @@ export default function AgencyPage() {
     void enter(t, n.link);
   }
 
+  const closePanel = useCallback(() => setPanelId(null), []);
+  const closeSheet = useCallback(() => setSheet(false), []);
+
   if (!ready || loading) {
-    return <main style={screen}><div style={{ color: 'var(--c94a3b8)' }}>Loading…</div></main>;
+    return <main style={screen}><div style={{ color: C.sub }}>Loading…</div></main>;
   }
 
+  const panelRow = panelId ? rows.find((r) => r.id === panelId) ?? null : null;
+  const canAssign = Boolean(board?.canAssign);
+  const rowProps = (t: TenantRow) => ({
+    t,
+    today,
+    term: facts.get(t.id)!.term,
+    fresh: tagRows && newIds.has(t.id),
+    team: teamOf.get(t.id) ?? '',
+    pkg: t.servicePackage ? pkgByKey.get(t.servicePackage) ?? null : null,
+    notice: noticeBy.get(t.id) ?? null,
+    picking,
+    checked: chosen.has(t.id),
+    opening: busy === t.id,
+    onCheck: () => toggleChosen(t.id),
+    onOpen: () => setPanelId(t.id),
+    onEnter: (landing?: string) => { void enter(t, landing); },
+    onTell: () => { void renewal(t, { action: 'told' }); },
+  });
+
+  const tabs: { key: Tab; label: string; n: number; badge?: boolean }[] = [
+    { key: 'all', label: 'Tất cả', n: tabCounts.all },
+    ...(hasMine ? [{ key: 'mine' as Tab, label: phone ? 'Của tôi' : `Của tôi · ${myTeam}`, n: tabCounts.mine }] : []),
+    { key: 'renew', label: 'Gia hạn', n: tabCounts.need, badge: tabCounts.need > 0 },
+    { key: 'none', label: 'Chưa giao', n: tabCounts.none },
+  ];
+
+  const resultLine = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: C.sub, minHeight: 28 }}>
+      {filtering ? (
+        <>
+          <span><b style={{ color: C.ink }}>{shown.length}</b> / {base.length} tiệm khớp</span>
+          <button type="button" onClick={clearAll} style={linkBtn}>Xoá lọc</button>
+        </>
+      ) : <span>{shown.length} tiệm</span>}
+      <span style={{ flex: 1 }} />
+      <SortPicker value={sort} onChange={setSort} />
+    </div>
+  );
+
   return (
-    <main style={{ minHeight: '100dvh', background: 'var(--c0b1120)', color: 'var(--ce2e8f0)', padding: '28px 16px' }}>
-      <div style={{ maxWidth: 1060, margin: '0 auto', paddingBottom: 72 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-          <h1 style={{ fontSize: 22, margin: 0 }}><LumioLogo size={34} sub="Support" /></h1>
+    <main style={{ minHeight: '100dvh', background: C.bg, color: C.ink2, padding: phone ? '14px 12px' : '24px 20px' }}>
+      <style dangerouslySetInnerHTML={{ __html: cssFor }} />
+      <div style={{ maxWidth: narrow ? 1060 : 1400, margin: '0 auto', paddingBottom: 80 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <h1 style={{ fontSize: 22, margin: 0 }}><LumioLogo size={phone ? 30 : 34} sub="Support" /></h1>
           <span style={{ marginLeft: 'auto' }} />
           <TeamBell items={notices} onOpen={openNotice} busy={Boolean(busy)} />
           <button onClick={() => { logout(); router.replace('/login'); }}
-            style={{ background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer' }}>
+            style={{ background: 'transparent', border: `1px solid ${C.border}`, color: C.sub, borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer' }}>
             Sign out
           </button>
         </div>
-        <p className="ag-intro" style={{ color: 'var(--c94a3b8)', fontSize: 14, margin: '0 0 12px' }}>
-          Pick a salon to set it up. Each visit opens an 8-hour working session and is logged.
-        </p>
 
-        {/* The bench comes before the salon list: two people running thirty
-            clients answer "what now" far more often than "open which salon". */}
-        <a
-          href="/agency/reports"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',
-            border: '1px solid var(--line)', background: 'var(--c111a2c)', borderRadius: 14,
-            padding: '11px 16px', marginBottom: 10, color: 'var(--ce2e8f0)',
-          }}
-        >
-          <span style={{ fontSize: 20 }}>📊</span>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Báo cáo tháng — mọi tiệm</div>
-            <div className="ag-today-desc" style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 1 }}>
-              Tiệm nào đã chốt số, nháp chờ đọc, đã gửi; kênh nào đọc lỗi. Tiệm cần người xếp lên đầu.
-            </div>
-          </div>
-        </a>
-        <a
-          href="/agency/today"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',
-            border: '1.5px solid #6366f1', background: 'rgba(99,102,241,.10)', borderRadius: 14,
-            padding: '13px 16px', marginBottom: 14, color: 'var(--ce2e8f0)',
-          }}
-        >
-          <span style={{ fontSize: 20 }}>🛠</span>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Việc hôm nay — mọi tiệm, gộp theo loại</div>
-            <div className="ag-today-desc" style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 1 }}>
-              Đăng bài, story, ưu đãi, hồ sơ Google… của tất cả khách trong một hàng đợi. Nhận việc, thấy ai đang làm gì.
-            </div>
-          </div>
-          <span style={{ marginLeft: 'auto', color: 'var(--ink-link)', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', flex: '0 0 auto', paddingLeft: 6 }}>Mở →</span>
-        </a>
+        {/* The bench: two people running thirty clients answer "what now" more often than "open which salon". */}
+        <div className="ag-scroll" style={{ display: 'flex', gap: 8, marginBottom: 14, overflowX: 'auto' }}>
+          <a href="/agency/today" title="Đăng bài, story, ưu đãi, hồ sơ Google… của tất cả khách trong một hàng đợi"
+            style={{ ...benchLink, border: '1.5px solid #6366f1', background: 'rgba(99,102,241,.10)' }}>
+            <span>🛠</span>Việc hôm nay<span style={{ color: C.link }}>→</span>
+          </a>
+          <a href="/agency/reports" title="Tiệm nào đã chốt số, nháp chờ đọc, đã gửi; kênh nào đọc lỗi" style={benchLink}>
+            <span>📊</span>Báo cáo tháng
+          </a>
+        </div>
 
-        {error && <div style={{ background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{error}</div>}
-        {note && (
-          <div style={{ background: 'rgba(34,197,94,.12)', border: '1px solid #22c55e', color: 'var(--cbbf7d0)', padding: '10px 14px', borderRadius: 8, fontSize: 14, marginBottom: 14, display: 'flex', gap: 10 }}>
-            <span>{note}</span>
-            <button onClick={() => setNote(null)} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--ink-good)', cursor: 'pointer', fontSize: 14 }}>✕</button>
-          </div>
-        )}
-
-        {/* ---- what the shops sent, across every salon ----
-             The one list that stops a clip sent at 11pm from being found on
-             Thursday. One LINE per salon, not a card per thing: with a few
-             hundred salons the list has to stay a glance — which salons, how
-             much, how fresh — and the things themselves are handled on that
-             salon's own inbox, one tap away. Newest first; a handful shown,
-             the rest behind one tap. */}
-        <section style={{
-          border: `1.5px solid ${inbox.length ? '#f59e0b' : 'var(--c1f2937)'}`, borderRadius: 14, padding: '12px 14px', marginBottom: 18,
-          background: inbox.length ? 'rgba(245,158,11,.06)' : 'var(--c111827)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 4, marginBottom: inbox.length ? 8 : 0 }}>
-            <span style={{ fontSize: 18 }}>📥</span>
-            <div style={{ fontWeight: 700, fontSize: 15, whiteSpace: 'nowrap' }}>
-              Tiệm vừa gửi
-              {inbox.length > 0 && (
+        {/* What the shops sent, across every salon — only when there is something. One line per salon. */}
+        {inbox.length > 0 && (
+          <section style={{ border: '1.5px solid #f59e0b', borderRadius: 14, padding: '12px 14px', marginBottom: 16, background: 'rgba(245,158,11,.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 4, marginBottom: 8 }}>
+              <span style={{ fontSize: 18 }}>📥</span>
+              <div style={{ fontWeight: 700, fontSize: 15, whiteSpace: 'nowrap' }}>
+                Tiệm vừa gửi
                 <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, background: '#f59e0b', color: '#1c1917', borderRadius: 999, padding: '1px 8px' }}>{inbox.length}</span>
-              )}
+              </div>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: C.muted, textAlign: 'right' }}>
+                {`${groups.length} tiệm · ${inbox.filter((r) => !r.working).length} mới · ${inbox.filter((r) => r.working).length} đang làm`}
+              </span>
             </div>
-            <span className="ag-inbox-status" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--c64748b)', textAlign: 'right' }}>
-              {inbox.length
-                ? `${groups.length} tiệm · ${inbox.filter((r) => !r.working).length} mới · ${inbox.filter((r) => r.working).length} đang làm`
-                : 'Không có gì đang chờ — mọi thứ tiệm gửi đã được xử lý.'}
-            </span>
-          </div>
-          {inbox.length > 0 && (
-            <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 10, overflow: 'hidden', background: 'var(--c0f172a)' }}>
-              {(allSalons ? groups : groups.slice(0, 6)).map((g, i) => {
+            <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, overflow: 'hidden', background: C.soft }}>
+              {(allSalons ? groups : groups.slice(0, phone ? 4 : 6)).map((g, i) => {
                 const opening = busy === g.tenantId;
+                const go = () => { const t = rows.find((x) => x.id === g.tenantId); if (t && !opening) void enter(t, '/salon/content?tab=queue'); };
                 return (
-                  <div
-                    key={g.tenantId}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => { const t = rows.find((x) => x.id === g.tenantId); if (t && !opening) enter(t, '/salon/content?tab=queue'); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { const t = rows.find((x) => x.id === g.tenantId); if (t && !opening) enter(t, '/salon/content?tab=queue'); } }}
+                  <div key={g.tenantId} role="button" tabIndex={0} onClick={go} onKeyDown={(e) => { if (e.key === 'Enter') go(); }}
                     style={{
                       display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr) auto', gap: 10, alignItems: 'center',
-                      padding: '8px 12px', borderTop: i ? '1px solid var(--c1f2937)' : 'none', cursor: 'pointer',
-                      opacity: opening ? 0.5 : 1,
-                    }}
-                  >
-                    {/* The one glyph: a dot that says "untouched" or "someone is on it". */}
+                      padding: '8px 12px', borderTop: i ? `1px solid ${C.line}` : 'none', cursor: 'pointer', opacity: opening ? 0.5 : 1,
+                    }}>
                     <span title={g.fresh ? 'Chưa ai mở' : 'Đang có người làm'} style={{
                       width: 9, height: 9, borderRadius: 999, background: g.fresh ? '#22c55e' : '#a5b4fc',
                       boxShadow: g.fresh ? '0 0 0 3px rgba(34,197,94,.18)' : 'none',
                     }} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--cf1f5f9)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.salon}</span>
-                        <span style={{ fontSize: 12, color: 'var(--ink-warn)', fontWeight: 600, whiteSpace: 'nowrap' }}>{groupSummary(g)}</span>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{g.salon}</span>
+                        <span style={{ fontSize: 12, color: C.warn, fontWeight: 600, whiteSpace: 'nowrap' }}>{groupSummary(g)}</span>
                       </div>
-                      <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>
+                      <div style={{ fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>
                         {g.fromShop ? '📤 ' : ''}{g.headline}
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }}>
-                      <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>{ago(g.latest)}</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-warn)' }}>{opening ? '…' : 'Mở →'}</span>
+                      <span style={{ fontSize: 12, color: C.muted }}>{ago(g.latest)}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: C.warn }}>{opening ? '…' : 'Mở →'}</span>
                     </div>
                   </div>
                 );
               })}
-              {groups.length > 6 && (
-                <button
-                  onClick={() => setAllSalons((v) => !v)}
-                  style={{ width: '100%', background: 'transparent', border: 'none', borderTop: '1px solid var(--c1f2937)', color: 'var(--ink-warn)', padding: '8px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-                >
-                  {allSalons ? 'Thu gọn ↑' : `Xem thêm ${groups.length - 6} tiệm ↓`}
+              {groups.length > (phone ? 4 : 6) && (
+                <button onClick={() => setAllSalons((v) => !v)}
+                  style={{ width: '100%', background: 'transparent', border: 'none', borderTop: `1px solid ${C.line}`, color: C.warn, padding: '8px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  {allSalons ? 'Thu gọn ↑' : `Xem thêm ${groups.length - (phone ? 4 : 6)} tiệm ↓`}
                 </button>
               )}
             </div>
-          )}
-        </section>
+          </section>
+        )}
 
-        <style dangerouslySetInnerHTML={{ __html: cssFor }} />
-
-        {/* ---- the groups, and then the salons ----
-             The teams live in their own column so they can never be pushed
-             off the screen by the pile of salons nobody has claimed yet. That
-             pile IS the longest list on this page, and it was burying the two
-             lists people came here to read. On a phone the column lies down
-             into a row of chips that scrolls sideways — same idea, one line. */}
-        <div className="ag-cols">
-          <aside className="ag-side">
-            <div className="ag-group">
-            <div className="ag-side-lbl">Nhóm phụ trách</div>
-            <SideItem item={sideItems.all} active={pick === ALL} onClick={() => { setPick(ALL); setNewOnly(false); }} />
-            {sideItems.teams.map((it) => (
-              <SideItem key={it.key} item={it} active={pick === it.key} onClick={() => { setPick(it.key); setNewOnly(false); }} />
-            ))}
-            <SideItem
-              item={sideItems.unassigned}
-              tone="warn"
-              active={pick === ''}
-              onClick={() => { setPick(''); setNewOnly(false); }}
-            />
+        {/* ---- title, search ---- */}
+        {phone ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: C.ink }}>Tiệm</h2>
+              <span style={{ fontSize: 13, color: C.muted }}>{rows.length}</span>
             </div>
-            <div className="ag-group">
-            {/* Which market. Picking one jumps to all teams; picking a team afterwards narrows it ("Team 2 · Úc"). */}
-            <div className="ag-side-lbl">Thị trường</div>
-            <SideItem item={{ key: 'mkt-all', label: 'Mọi thị trường', count: rows.length, fresh: 0 }} active={!mkt} onClick={() => setMkt('')} />
-            {MARKET_ORDER.filter((code) => (marketCounts.get(code) ?? 0) > 0).map((code) => (
-              <SideItem
-                key={code}
-                item={{ key: `mkt-${code}`, label: `${MARKET_LOOK[code].name}`, count: marketCounts.get(code) ?? 0, fresh: 0 }}
-                badge={<MarketChip code={code} />}
-                active={mkt === code}
-                onClick={() => {
-                  // Picking a market shows that market across every team:
-                  // "Úc 1" must never open onto an empty Team 2 list.
-                  if (mkt === code) { setMkt(''); return; }
-                  setMkt(code); setPick(ALL); setNewOnly(false);
-                }}
-              />
-            ))}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <SearchBox value={q} onChange={setQ} phone />
+              <button type="button" onClick={() => setSheet(true)} aria-label="Bộ lọc" style={{
+                position: 'relative', height: 44, padding: '0 14px', borderRadius: 12, flexShrink: 0, cursor: 'pointer',
+                border: `1px solid ${filtering ? C.indigoLine : C.border}`, background: filtering ? C.indigoSoft : 'transparent',
+                display: 'flex', alignItems: 'center', gap: 7, fontFamily: 'inherit', fontSize: 14, fontWeight: 600, color: filtering ? C.link : C.ink2,
+              }}>
+                <Icon name="filter" size={17} color={filtering ? C.link : C.body} />Lọc
+                {filtering && <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 18, height: 18, borderRadius: 999, background: '#6366f1', color: '#ffffff', fontSize: 10.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', boxSizing: 'border-box' }}>{activeGroups(filters).length}</span>}
+              </button>
+              {canAssign && <PickButton picking={picking} onClick={() => { setPicking((v) => !v); setChosen(new Set()); }} compact />}
+            </div>
           </div>
-            {packages.length > 0 && (
-            <div className="ag-group">
-              {/* Which package. Biggest first, so the shops that pay for the most care are the first line read. */}
-              <div className="ag-side-lbl">Gói dịch vụ</div>
-              <SideItem item={{ key: 'pkg-all', label: 'Mọi gói', count: rows.length, fresh: 0 }} active={!pkgF} onClick={() => setPkgF('')} />
-              {[...packages].sort((a, b) => b.tier - a.tier || b.priceUsd - a.priceUsd).filter((p) => (pkgCounts.get(p.key) ?? 0) > 0).map((p) => (
-                <SideItem
-                  key={p.key}
-                  item={{ key: `pkg-${p.key}`, label: p.name, count: pkgCounts.get(p.key) ?? 0, fresh: 0 }}
-                  badge={<PackageDot tier={p.tier} />}
-                  active={pkgF === p.key}
-                  onClick={() => { if (pkgF === p.key) { setPkgF(''); return; } setPkgF(p.key); setPick(ALL); setNewOnly(false); }}
-                />
-              ))}
-              <SideItem
-                item={{ key: 'pkg-none', label: 'Chưa ghi gói', count: pkgCounts.get('none') ?? 0, fresh: 0 }}
-                tone="warn"
-                active={pkgF === 'none'}
-                onClick={() => { if (pkgF === 'none') { setPkgF(''); return; } setPkgF('none'); setPick(ALL); setNewOnly(false); }}
-              />
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontSize: 12.5, color: 'var(--ccbd5e1)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={bigFirst} onChange={(e) => setBigFirst(e.target.checked)} style={{ accentColor: '#6366f1' }} />
-                Gói lớn lên đầu danh sách
-              </label>
-            </div>
-            )}
-          </aside>
-
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Tìm tiệm theo tên…"
-                autoFocus
-                style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', background: 'var(--c0f172a)', border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', borderRadius: 10, padding: '11px 14px', fontSize: 15 }}
-              />
-              {board?.canAssign && (
-                <button
-                  onClick={() => { setPicking((v) => !v); setChosen(new Set()); }}
-                  style={{
-                    background: picking ? '#6366f1' : 'transparent', color: picking ? '#fff' : 'var(--c94a3b8)',
-                    border: `1px solid ${picking ? '#6366f1' : 'var(--c334155)'}`, borderRadius: 10,
-                    padding: '0 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-                  }}
-                >{picking ? '✕ Thoát' : '☑ Chọn nhiều'}</button>
-              )}
-            </div>
-
-            {/* The salons waiting on us, as one line that filters. Red so it is
-                the first thing read; gone when nobody is waiting. */}
-            {!q.trim() && waitingHere > 0 && (
-              <button
-                onClick={() => setWaitingOnly((v) => !v)}
-                style={{
-                  width: '100%', textAlign: 'left', cursor: 'pointer', marginBottom: 10,
-                  background: waitingOnly ? 'rgba(239,68,68,.16)' : 'rgba(239,68,68,.07)',
-                  border: `1px solid ${waitingOnly ? '#ef4444' : '#7f1d1d'}`, borderRadius: 10,
-                  padding: '9px 13px', color: 'var(--ce2e8f0)', fontSize: 13,
-                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-                }}
-              >
-                <span style={{ fontSize: 15 }}>🔔</span>
-                <span><b style={{ color: 'var(--ink-bad)' }}>{waitingHere} tiệm đang chờ Lumio trả lời</b> — góp ý bài, tin nhắn, file gửi</span>
-                <span style={{ marginLeft: 'auto', color: waitingOnly ? 'var(--ink-bad)' : 'var(--c94a3b8)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  {waitingOnly ? 'Bỏ lọc ✕' : 'Chỉ xem các tiệm này →'}
-                </span>
-              </button>
-            )}
-
-            {/* Too many arrivals to tag one by one: one line that filters. */}
-            {!q.trim() && newHere > NEW_TAGS_MAX && (
-              <button
-                onClick={() => setNewOnly((v) => !v)}
-                style={{
-                  width: '100%', textAlign: 'left', cursor: 'pointer', marginBottom: 10,
-                  background: newOnly ? 'rgba(34,197,94,.14)' : 'var(--c111827)',
-                  border: `1px solid ${newOnly ? '#22c55e' : 'var(--c1f2937)'}`, borderRadius: 10,
-                  padding: '9px 13px', color: 'var(--ce2e8f0)', fontSize: 13,
-                }}
-              >
-                <span style={{ color: 'var(--ink-good)', fontWeight: 700 }}>{newHere} tiệm mới</span> trong tuần này
-                <span style={{ float: 'right', color: newOnly ? 'var(--ink-good)' : 'var(--c64748b)', fontWeight: 600 }}>
-                  {newOnly ? 'Bỏ lọc ✕' : 'Chỉ xem các tiệm mới →'}
-                </span>
-              </button>
-            )}
-
-            {q.trim() && (
-              <div style={{ fontSize: 12.5, color: 'var(--c64748b)', marginBottom: 8 }}>
-                Đang tìm trong tất cả các nhóm — {listed.length} tiệm khớp.
-              </div>
-            )}
-
-            <div style={{ border: '1px solid var(--c1f2937)', borderRadius: 12, overflow: 'hidden' }}>
-              {listed.length === 0 && (
-                <div style={{ padding: 18, color: 'var(--c64748b)', fontSize: 14 }}>
-                  {q.trim()
-                    ? 'Không có tiệm nào khớp.'
-                    : mkt && (marketCounts.get(mkt) ?? 0) > 0
-                      ? <>Nhóm này chưa có tiệm {MARKET_LOOK[mkt]?.name ?? mkt}.{' '}
-                          <button type="button" onClick={() => { setPick(ALL); setNewOnly(false); }}
-                            style={{ background: 'none', border: 'none', padding: 0, color: 'var(--c60a5fa)', cursor: 'pointer', fontSize: 14, textDecoration: 'underline' }}>
-                            Xem tất cả nhóm ({marketCounts.get(mkt)})
-                          </button></>
-                      : 'Nhóm này chưa có tiệm nào.'}
-                </div>
-              )}
-              {listed.map((t) => (
-                <Row
-                  key={t.id}
-                  t={t}
-                  fresh={tagRows && newIds.has(t.id)}
-                  team={teamOf.get(t.id) ?? ''}
-                  showTeam={pick === ALL || Boolean(q.trim())}
-                  canAssign={Boolean(board?.canAssign)}
-                  teams={board?.teams ?? []}
-                  picking={picking}
-                  checked={chosen.has(t.id)}
-                  onCheck={() => toggleChosen(t.id)}
-                  busy={busy}
-                  notice={noticeBy.get(t.id) ?? null}
-                  onBot={setBot}
-                  onStage={setStage}
-                  onNext={setNext}
-                  pkg={t.servicePackage ? pkgByKey.get(t.servicePackage) ?? null : null}
-                  packages={packages}
-                  onPackage={setPackage}
-                  onEnter={enter}
-                  editing={editing}
-                  setEditing={setEditing}
-                  onTeam={setTeam}
-                />
-              ))}
-            </div>
-
-            {picking && listed.length > 0 && (
-              <button
-                onClick={() => setChosen((c) => c.size === listed.length ? new Set() : new Set(listed.map((t) => t.id)))}
-                style={{ background: 'transparent', border: 'none', color: 'var(--ink-link)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '10px 2px' }}
-              >
-                {chosen.size === listed.length ? 'Bỏ chọn tất cả' : `Chọn cả ${listed.length} tiệm đang hiện`}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ---- what happens to everything ticked ----
-             Anchored to the bottom of the window, because the list it acts on
-             is longer than the screen: a bar that scrolls away is a bar you
-             have to scroll back to before you can finish. */}
-        {picking && chosen.size > 0 && (
-          <div style={{
-            position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40,
-            background: 'var(--c111827)', borderTop: '1.5px solid #6366f1',
-            boxShadow: '0 -8px 24px rgba(0,0,0,.45)', padding: '11px 16px', paddingBottom: 'calc(11px + env(safe-area-inset-bottom, 0px))',
-          }}>
-            <div style={{ maxWidth: 1060, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, fontSize: 14 }}>Đã chọn {chosen.size} tiệm</span>
-              <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>Giao cho:</span>
-              <select
-                value=""
-                disabled={assigning}
-                onChange={(e) => { if (e.target.value) assignMany(e.target.value === '_none' ? '' : e.target.value); }}
-                style={{ background: 'var(--c0f172a)', border: '1px solid #6366f1', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '8px 10px', fontSize: 13.5, fontWeight: 600 }}
-              >
-                <option value="">— chọn nhóm —</option>
-                {(board?.teams ?? []).filter((x) => x.team).map((x) => <option key={x.team} value={x.team}>{x.team}</option>)}
-                <option value="_none">Bỏ khỏi nhóm</option>
-              </select>
-              {assigning && <span style={{ fontSize: 13, color: 'var(--ink-link)' }}>Đang giao…</span>}
-              <button
-                onClick={() => setChosen(new Set())}
-                style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 8, padding: '7px 13px', fontSize: 13, cursor: 'pointer' }}
-              >Bỏ chọn</button>
-            </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: C.ink }}>Tiệm</h2>
+            <span style={{ fontSize: 14, color: C.muted }}>{rows.length} tiệm</span>
+            <span style={{ flex: 1 }} />
+            <div style={{ width: narrow ? 300 : 340, display: 'flex' }}><SearchBox value={q} onChange={setQ} /></div>
+            {canAssign && <PickButton picking={picking} onClick={() => { setPicking((v) => !v); setChosen(new Set()); }} />}
           </div>
         )}
+
+        {/* ---- tabs ---- */}
+        <div className="ag-scroll" role="tablist" style={{
+          display: 'flex', gap: phone ? 0 : 24, borderBottom: `1px solid ${C.line}`, marginTop: phone ? 4 : 10, overflowX: 'auto',
+          ...(phone ? { margin: '4px -12px 0', padding: '0 4px' } : {}),
+        }}>
+          {tabs.map((x) => {
+            const on = activeTab === x.key && !needle;
+            return (
+              <button key={x.key} role="tab" aria-selected={on} type="button" onClick={() => { setTab(x.key); setQ(''); }}
+                style={{
+                  flex: phone ? '1 0 auto' : '0 0 auto', height: 44, padding: phone ? '0 5px' : '0 4px', border: 0, background: 'transparent',
+                  borderBottom: `2px solid ${on ? '#6366f1' : 'transparent'}`, fontFamily: 'inherit', fontSize: phone ? 13.5 : 14, fontWeight: on ? 700 : 500,
+                  color: on ? C.ink : C.sub, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}>
+                {x.label}
+                {x.badge ? (
+                  <span style={{ minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 999, background: '#ef4444', color: '#ffffff', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{x.n}</span>
+                ) : <span style={{ color: C.muted, fontWeight: 500 }}>{x.n}</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ---- filters ---- */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+          {!narrow && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.muted, marginRight: 2 }}>
+                <Icon name="filter" size={15} color={C.muted} />Lọc
+              </span>
+              <FilterBar groups={filterGroups} filters={filters} counts={counts} onToggle={toggle} onClear={clear} />
+              <span style={{ flex: 1 }} />
+              {filtering && (
+                <>
+                  <span style={{ fontSize: 13, color: C.sub }}><b style={{ color: C.ink }}>{shown.length}</b> / {base.length} tiệm</span>
+                  <button type="button" onClick={clearAll} style={linkBtn}>Xoá lọc</button>
+                  <span style={{ width: 1, height: 20, background: C.line }} />
+                </>
+              )}
+              <SortPicker value={sort} onChange={setSort} />
+            </div>
+          )}
+          {narrow && !phone && (
+            <>
+              <div className="ag-scroll" style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '0 -20px', padding: '0 20px 2px' }}>
+                <FilterBar groups={filterGroups} filters={filters} counts={counts} onToggle={toggle} onClear={clear} h={40} />
+              </div>
+              {resultLine}
+            </>
+          )}
+          {phone && (
+            <>
+              <ActiveChips groups={filterGroups} filters={filters} onOpen={() => setSheet(true)} onClear={clear} />
+              {resultLine}
+            </>
+          )}
+
+          {/* The lines that say "someone must act": renewals first, then shops waiting on us. */}
+          {!needle && tabCounts.need > 0 && activeTab !== 'renew' && (
+            <button type="button" onClick={() => setTab('renew')} style={{ ...alertLine, border: '1px solid rgba(239,68,68,.45)', background: 'var(--wash-red)' }}>
+              <Icon name="alert" size={17} color={C.bad} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                {tabCounts.expired > 0 && <b style={{ color: C.bad }}>{tabCounts.expired} hết hạn</b>}
+                {tabCounts.expired > 0 && tabCounts.soon > 0 && ' · '}
+                {tabCounts.soon > 0 && <b style={{ color: C.warn }}>{tabCounts.soon} sắp hết hạn</b>}
+                {!phone && <span style={{ color: C.sub }}> chưa báo gia hạn</span>}
+              </span>
+              <span style={{ fontWeight: 600, color: C.ink2, whiteSpace: 'nowrap' }}>Xem →</span>
+            </button>
+          )}
+          {!needle && waitingHere > 0 && (
+            <button type="button" onClick={() => toggle('flag', 'waiting')} style={{
+              ...alertLine,
+              border: `1px solid ${filters.flag.includes('waiting') ? '#ef4444' : 'rgba(239,68,68,.35)'}`,
+              background: filters.flag.includes('waiting') ? 'rgba(239,68,68,.16)' : 'rgba(239,68,68,.06)',
+            }}>
+              <span style={{ fontSize: 15 }}>🔔</span>
+              <span style={{ flex: 1, minWidth: 0 }}><b style={{ color: C.bad }}>{waitingHere} tiệm đang chờ Lumio trả lời</b>{!phone && <span style={{ color: C.sub }}> — góp ý bài, tin nhắn, file gửi</span>}</span>
+              <span style={{ fontWeight: 600, color: filters.flag.includes('waiting') ? C.bad : C.sub, whiteSpace: 'nowrap' }}>
+                {filters.flag.includes('waiting') ? 'Bỏ lọc ✕' : 'Chỉ xem →'}
+              </span>
+            </button>
+          )}
+          {!needle && newHere > NEW_TAGS_MAX && (
+            <button type="button" onClick={() => toggle('flag', 'new')} style={{
+              ...alertLine, border: `1px solid ${filters.flag.includes('new') ? '#22c55e' : C.line}`,
+              background: filters.flag.includes('new') ? 'rgba(34,197,94,.14)' : C.panel,
+            }}>
+              <span style={{ flex: 1 }}><b style={{ color: C.good }}>{newHere} tiệm mới</b> trong tuần này</span>
+              <span style={{ fontWeight: 600, color: filters.flag.includes('new') ? C.good : C.muted }}>{filters.flag.includes('new') ? 'Bỏ lọc ✕' : 'Chỉ xem →'}</span>
+            </button>
+          )}
+          {needle && (
+            <div style={{ fontSize: 12.5, color: C.muted }}>Đang tìm trong tất cả các nhóm — {shown.length} tiệm khớp.</div>
+          )}
+        </div>
+
+        {/* ---- the salons ---- */}
+        <div style={{ marginTop: 12 }}>
+          {shown.length === 0 ? (
+            <div style={{ padding: 18, color: C.muted, fontSize: 14, border: `1px solid ${C.line}`, borderRadius: 14, background: C.panel }}>
+              {needle ? 'Không có tiệm nào khớp.'
+                : filtering ? <>Không có tiệm nào khớp bộ lọc. <button type="button" onClick={clearAll} style={linkBtn}>Xoá lọc</button></>
+                : activeTab === 'renew' ? 'Không có tiệm nào hết hạn hoặc sắp hết hạn.'
+                : 'Nhóm này chưa có tiệm nào.'}
+            </div>
+          ) : !narrow ? (
+            <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, overflow: 'hidden' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: picking ? `28px ${COLS}` : COLS, columnGap: 14, alignItems: 'center', height: 40, padding: '0 14px 0 18px', background: C.soft, borderBottom: `1px solid ${C.line}` }}>
+                {picking && <span />}
+                {['Tiệm', 'Thời hạn', 'Gói', 'Nhóm', 'Trạng thái', 'Bước tiếp', 'Kênh', ''].map((h) => (
+                  <span key={h || 'act'} style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.5, color: C.muted, textTransform: 'uppercase' }}>{h}</span>
+                ))}
+              </div>
+              {sections.map((s) => s.rows.length > 0 && (
+                <div key={s.key}>
+                  {headings && <SectionHead title={s.title} dot={s.dot} n={s.rows.length} note={s.note} pad="9px 18px" boxed />}
+                  {s.rows.map((t) => <WideRow key={t.id} {...rowProps(t)} />)}
+                </div>
+              ))}
+            </div>
+          ) : (
+            sections.map((s) => s.rows.length > 0 && (
+              <div key={s.key}>
+                {headings && <SectionHead title={s.title} dot={s.dot} n={s.rows.length} note={phone ? undefined : s.note} pad={phone ? '14px 4px 8px' : '14px 6px 8px'} />}
+                <div style={{ borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.line}`, marginBottom: headings ? 0 : 10 }}>
+                  {s.rows.map((t) => (phone ? <PhoneRow key={t.id} {...rowProps(t)} /> : <TabletRow key={t.id} {...rowProps(t)} />))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {picking && shown.length > 0 && (
+          <button
+            onClick={() => setChosen((c) => c.size === shown.length ? new Set() : new Set(shown.map((t) => t.id)))}
+            style={{ ...linkBtn, padding: '10px 2px' }}
+          >
+            {chosen.size === shown.length ? 'Bỏ chọn tất cả' : `Chọn cả ${shown.length} tiệm đang hiện`}
+          </button>
+        )}
       </div>
+
+      {/* ---- what happens to everything ticked ----
+           Anchored to the bottom of the window, because the list it acts on is
+           longer than the screen. */}
+      {picking && chosen.size > 0 && (
+        <div style={{
+          position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40,
+          background: C.panel, borderTop: '1.5px solid #6366f1',
+          boxShadow: '0 -8px 24px rgba(0,0,0,.45)', padding: '11px 16px', paddingBottom: 'calc(11px + env(safe-area-inset-bottom, 0px))',
+        }}>
+          <div style={{ maxWidth: 1060, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>Đã chọn {chosen.size} tiệm</span>
+            <span style={{ fontSize: 13, color: C.sub }}>Giao cho:</span>
+            <select
+              value=""
+              disabled={assigning}
+              onChange={(e) => { if (e.target.value) void assignMany(e.target.value === '_none' ? '' : e.target.value); }}
+              style={{ background: C.soft, border: '1px solid #6366f1', color: C.ink2, borderRadius: 8, padding: '8px 10px', fontSize: phone ? 16 : 13.5, fontWeight: 600 }}
+            >
+              <option value="">— chọn nhóm —</option>
+              {(board?.teams ?? []).filter((x) => x.team).map((x) => <option key={x.team} value={x.team}>{x.team}</option>)}
+              <option value="_none">Bỏ khỏi nhóm</option>
+            </select>
+            {assigning && <span style={{ fontSize: 13, color: C.link }}>Đang giao…</span>}
+            <button
+              onClick={() => setChosen(new Set())}
+              style={{ marginLeft: 'auto', background: 'transparent', border: `1px solid ${C.border}`, color: C.sub, borderRadius: 8, padding: '7px 13px', fontSize: 13, cursor: 'pointer' }}
+            >Bỏ chọn</button>
+          </div>
+        </div>
+      )}
+
+      {panelRow && (
+        <SalonPanel
+          t={panelRow} today={today} phone={phone}
+          team={teamOf.get(panelRow.id) ?? ''} teams={board?.teams ?? []} canAssign={canAssign}
+          packages={packages} notice={noticeBy.get(panelRow.id) ?? null} busy={busy === panelRow.id}
+          onClose={closePanel}
+          onEnter={(t, landing) => { void enter(t, landing); }}
+          onNext={(t, n) => { void setNext(t, n); }}
+          onStage={(t, s) => { void setStage(t, s); }}
+          onPackage={(t, k) => { void setPackage(t, k); }}
+          onTeam={(id, team) => { void setTeam(id, team); }}
+          onBot={(t, on) => { void setBot(t, on); }}
+          onTerm={saveTerm}
+          onRenewal={renewal}
+        />
+      )}
+
+      {sheet && (
+        <FilterSheet groups={filterGroups} filters={filters} counts={counts} result={shown.length}
+          onToggle={toggle} onClearAll={clearAll} onClose={closeSheet} />
+      )}
+
+      {(error || note) && (
+        <div role="status" style={{
+          position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: picking && chosen.size ? 84 : 20, zIndex: 90,
+          width: 'max-content', maxWidth: 'min(560px, calc(100vw - 24px))', boxSizing: 'border-box',
+          display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 12, fontSize: 14,
+          background: C.panel, border: `1px solid ${error ? '#ef4444' : '#22c55e'}`, color: error ? C.bad : C.ink2,
+          boxShadow: '0 16px 40px -12px rgba(0,0,0,.6)',
+        }}>
+          <span style={{ minWidth: 0 }}>{error ?? note?.text}</span>
+          {!error && note?.undo && <button type="button" onClick={note.undo} style={linkBtn}>Hoàn tác</button>}
+          <button type="button" aria-label="Đóng" onClick={() => { setError(null); setNote(null); }} style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: 2, display: 'flex' }}>
+            <Icon name="x" size={16} color={C.sub} />
+          </button>
+        </div>
+      )}
     </main>
   );
 }
 
 const screen: React.CSSProperties = { minHeight: '100dvh', display: 'grid', placeItems: 'center', background: 'var(--c0b1120)' };
-
-/**
- * A salon that arrived this week.
- *
- * The API decides what "this week" means (see support-teams) and sends the
- * flag; the screen only draws it. One place to change the window, and search
- * results and the grouped list can never disagree about which salons are new.
- */
-type OpsStage = 'setup' | 'running' | 'paused' | 'stopped';
-
-/**
- * Where a salon is in the team's work, on every row, changeable in place.
- *
- * This is the team's own label (see api/src/support/ops-stage.ts), not the
- * account's access status: picking "Tạm ngưng" here locks nobody out. The real
- * lock, when there is one, is the separate red KHOÁ beside it.
- *
- * Weight follows who has to act: "Đang chạy" is the quietest thing on the row,
- * because most shops are in it and fifty green pills would hide the three that
- * are waiting on somebody.
- *
- * A native <select> dressed as a pill: it opens the phone's own picker, it is
- * keyboard-reachable, and it needs no menu of its own to position or dismiss.
- */
-const STAGE_LOOK: Record<OpsStage, { label: string; fg: string; bd: string; bg: string; strike?: boolean }> = {
-  setup: { label: 'Chờ setup', fg: 'var(--ink-warn)', bd: '#f59e0b', bg: 'rgba(245,158,11,.10)' },
-  running: { label: 'Đang chạy', fg: 'var(--ink-good)', bd: 'rgba(34,197,94,.35)', bg: 'transparent' },
-  paused: { label: 'Tạm ngưng', fg: 'var(--ink-sky)', bd: '#38bdf8', bg: 'rgba(56,189,248,.10)' },
-  stopped: { label: 'Ngưng hoàn toàn', fg: 'var(--c94a3b8)', bd: 'var(--c475569)', bg: 'transparent', strike: true },
+const linkBtn: React.CSSProperties = { border: 0, background: 'transparent', padding: 0, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: 'var(--ink-link)', cursor: 'pointer', whiteSpace: 'nowrap' };
+const benchLink: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 8, height: 38, padding: '0 14px', borderRadius: 10, flexShrink: 0,
+  border: '1px solid var(--c334155)', color: 'var(--ce2e8f0)', textDecoration: 'none', fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap',
 };
-const STAGE_ORDER: OpsStage[] = ['setup', 'running', 'paused', 'stopped'];
-
-/**
- * A small coloured pill that opens the phone's own picker.
- *
- * The <select> is laid over the pill, invisible, at 16px. Phones zoom the
- * whole page into any select smaller than 16px, and the global mobile rule
- * that stops that also blew every 11px pill up to 16px text at 40px tall —
- * which is what made one salon fill half the screen. Here the pill keeps its
- * size and the select underneath keeps the 16px iOS needs.
- */
-function PillSelect({ value, disabled, onChange, title, label, style, children }: {
-  value: string; disabled?: boolean; onChange: (v: string) => void; title: string;
-  label: React.ReactNode; style: React.CSSProperties; children: React.ReactNode;
-}) {
-  return (
-    <span
-      className="ag-chip ag-pillsel"
-      title={title}
-      onClick={(e) => e.stopPropagation()}
-      style={{ position: 'relative', whiteSpace: 'nowrap', flex: '0 0 auto', cursor: disabled ? 'default' : 'pointer', ...style }}
-    >
-      <span>{label}</span>
-      {!disabled && <span aria-hidden style={{ fontSize: 9, opacity: 0.7 }}>▾</span>}
-      <select
-        value={value}
-        disabled={disabled}
-        aria-label={title}
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0,
-          fontSize: 16, border: 0, margin: 0, padding: 0, appearance: 'none', WebkitAppearance: 'none',
-          cursor: disabled ? 'default' : 'pointer',
-        }}
-      >
-        {children}
-      </select>
-    </span>
-  );
-}
-
-function StagePill({ stage, disabled, onChange }: { stage: OpsStage; disabled?: boolean; onChange: (s: OpsStage) => void }) {
-  const look = STAGE_LOOK[stage] ?? STAGE_LOOK.running;
-  return (
-    <PillSelect
-      value={stage}
-      disabled={disabled}
-      onChange={(v) => onChange(v as OpsStage)}
-      title="Trạng thái công việc của tiệm — chỉ để nhóm theo dõi, không khoá tài khoản"
-      label={look.label}
-      style={{
-        fontSize: 11, fontWeight: 600,
-        color: look.fg, border: `1px solid ${look.bd}`, background: look.bg,
-        borderRadius: 999, padding: '2px 9px',
-        textDecoration: look.strike ? 'line-through' : 'none',
-      }}
-    >
-      {STAGE_ORDER.map((k) => (
-        <option key={k} value={k} style={{ color: '#0f172a', background: '#fff', textDecoration: 'none' }}>{STAGE_LOOK[k].label}</option>
-      ))}
-    </PillSelect>
-  );
-}
-
-/**
- * Who is up next on this salon — picked by hand by whoever just finished
- * their part. Nothing fills it in automatically; an unpicked salon reads
- * "— Chuyển cho —" so the empty state is an invitation, not a status.
- */
-const NEXT_LOOK: Record<WorkNext, { label: string; bg: string; ink: string }> = {
-  content: { label: '✍️ Chờ Content', bg: '#fde68a', ink: '#78350f' },
-  design: { label: '🎨 Chờ Design', bg: '#fbcfe8', ink: '#831843' },
-  review: { label: '👀 Chờ Duyệt', bg: '#c7d2fe', ink: '#312e81' },
-  schedule: { label: '🗓️ Chờ Lên lịch', bg: '#bae6fd', ink: '#0c4a6e' },
-  done: { label: '✅ Xong', bg: '#bbf7d0', ink: '#14532d' },
+const alertLine: React.CSSProperties = {
+  width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12,
+  fontFamily: 'inherit', fontSize: 13, color: 'var(--ce2e8f0)', cursor: 'pointer', textAlign: 'left',
 };
-const NEXT_ORDER: WorkNext[] = ['content', 'design', 'review', 'schedule', 'done'];
-function NextPill({ next, disabled, onChange }: { next: WorkNext | ''; disabled?: boolean; onChange: (n: WorkNext | '') => void }) {
-  const look = next ? NEXT_LOOK[next] : null;
-  return (
-    <PillSelect
-      value={next}
-      disabled={disabled}
-      onChange={(v) => onChange(v as WorkNext | '')}
-      title="Làm xong phần mình thì chọn bộ phận làm tiếp"
-      label={look ? look.label : '↪ Chuyển cho'}
-      style={{
-        fontSize: 11.5, fontWeight: 700, borderRadius: 999, padding: '3px 10px',
-        border: `1px ${look ? 'solid' : 'dashed'} ${look ? look.bg : 'var(--c334155)'}`,
-        background: look ? look.bg : 'transparent', color: look ? look.ink : 'var(--c64748b)',
-      }}
-    >
-      <option value="" style={{ color: '#0f172a', background: '#fff' }}>— Chuyển cho —</option>
-      {NEXT_ORDER.map((k) => (
-        <option key={k} value={k} style={{ color: '#0f172a', background: '#fff' }}>{NEXT_LOOK[k].label}</option>
-      ))}
-    </PillSelect>
-  );
-}
 
-/**
- * One line in the left column: a team, or one of the two views that is not a
- * team. The count is what makes it a decision — "Team 2 · 1" says more about
- * where the work is than any label could.
- */
-/**
- * The service package, on the salon's own line — the first thing read after
- * the name, so "this shop pays for Scale" is never a click away. Colour climbs
- * with the care the package buys: grey (Social Care) → blue → violet → gold.
- * An unrecorded package is a dashed "+ Gói": an invitation, not a status.
- */
-const TIER_LOOK: Record<number, { bg: string; ink: string; bd: string; mark: string }> = {
-  4: { bg: '#fde68a', ink: '#78350f', bd: '#f59e0b', mark: '💎 ' },
-  3: { bg: '#ddd6fe', ink: '#4c1d95', bd: '#8b5cf6', mark: '⭐ ' },
-  2: { bg: '#bfdbfe', ink: '#1e3a8a', bd: '#3b82f6', mark: '' },
-  1: { bg: '#e2e8f0', ink: '#334155', bd: '#94a3b8', mark: '' },
-};
-function PackagePill({ pkg, packages, disabled, onChange }: { pkg: ServicePackage | null; packages: ServicePackage[]; disabled?: boolean; onChange: (k: string) => void }) {
-  const look = pkg ? TIER_LOOK[pkg.tier] ?? TIER_LOOK[1] : null;
-  const social = packages.filter((p) => p.family === 'social');
-  const maps = packages.filter((p) => p.family === 'maps');
-  const opt = (p: ServicePackage) => <option key={p.key} value={p.key} style={{ color: '#0f172a', background: '#fff' }}>{p.name} · ${p.priceUsd}/tháng</option>;
+function SearchBox({ value, onChange, phone }: { value: string; onChange: (v: string) => void; phone?: boolean }) {
   return (
-    <PillSelect
-      value={pkg?.key ?? ''}
-      disabled={disabled}
-      onChange={onChange}
-      title={pkg ? `Gói ${pkg.name} · $${pkg.priceUsd}/tháng — bấm để đổi` : 'Chưa ghi gói dịch vụ — bấm để chọn'}
-      label={pkg ? `${look!.mark}${pkg.name} · $${pkg.priceUsd}` : '+ Gói'}
-      style={{
-        fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 9px', flexShrink: 0,
-        border: `1px ${pkg ? 'solid' : 'dashed'} ${look ? look.bd : 'var(--c334155)'}`,
-        background: look ? look.bg : 'transparent', color: look ? look.ink : 'var(--c64748b)',
-      }}
-    >
-      <option value="" style={{ color: '#0f172a', background: '#fff' }}>— Chưa có gói —</option>
-      <optgroup label="Social / thương hiệu">{social.map(opt)}</optgroup>
-      <optgroup label="Google Maps">{maps.map(opt)}</optgroup>
-    </PillSelect>
-  );
-}
-function PackageDot({ tier }: { tier: number }) {
-  const look = TIER_LOOK[tier] ?? TIER_LOOK[1];
-  return <span aria-hidden style={{ width: 10, height: 10, borderRadius: '50%', background: look.bg, border: `1.5px solid ${look.bd}`, flexShrink: 0 }} />;
-}
-
-/**
- * The salon's market, as two letters in its own colour.
- *
- * Letters, not flags: Windows has no glyph for a flag emoji and Chrome there
- * draws the raw letters anyway ("us US"). A coloured code reads the same on
- * every machine and is learnt in a day.
- */
-const MARKET_ORDER = ['US', 'CA', 'AU', 'VN'] as const;
-const MARKET_LOOK: Record<string, { name: string; fg: string; bg: string; border: string }> = {
-  US: { name: 'Mỹ', fg: 'var(--c93c5fd)', bg: 'rgba(59,130,246,.14)', border: '#3b82f6' },
-  CA: { name: 'Canada', fg: 'var(--cfca5a5)', bg: 'rgba(239,68,68,.12)', border: '#ef4444' },
-  AU: { name: 'Úc', fg: 'var(--cfcd34d)', bg: 'rgba(245,158,11,.14)', border: '#f59e0b' },
-  VN: { name: 'Việt Nam', fg: 'var(--c86efac)', bg: 'rgba(34,197,94,.13)', border: '#22c55e' },
-};
-function marketOf(t: { market?: string | null }): string {
-  const m = String(t.market ?? 'US').trim().toUpperCase();
-  return (MARKET_ORDER as readonly string[]).includes(m) ? m : 'US';
-}
-function MarketChip({ code }: { code: string }) {
-  const look = MARKET_LOOK[code] ?? MARKET_LOOK.US;
-  return (
-    <span title={`Thị trường: ${look.name}`} style={{
-      flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: 0.4, lineHeight: 1,
-      padding: '3px 6px', borderRadius: 6, color: look.fg, background: look.bg, border: `1px solid ${look.border}`,
-    }}>{code}</span>
-  );
-}
-
-function SideItem({ item, active, onClick, tone, badge }: {
-  item: { key: string; label: string; count: number; fresh: number; mine?: boolean; members?: string[] };
-  active: boolean;
-  onClick: () => void;
-  tone?: 'warn';
-  badge?: React.ReactNode;
-}) {
-  const accent = tone === 'warn' ? '#f59e0b' : '#6366f1';
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
-        background: active ? (tone === 'warn' ? 'rgba(245,158,11,.14)' : 'rgba(99,102,241,.16)') : 'var(--c111827)',
-        border: `1px solid ${active ? accent : 'var(--c1f2937)'}`,
-        borderLeft: `3px solid ${active ? accent : 'transparent'}`,
-        borderRadius: 10, padding: '8px 11px', color: 'var(--ce2e8f0)',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-        {badge}
-        <span style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap' }}>{item.label}</span>
-        {item.mine && <span style={{ fontSize: 9.5, fontWeight: 700, background: '#6366f1', color: '#fff', borderRadius: 999, padding: '1px 6px' }}>TÔI</span>}
-        <span style={{ marginLeft: 'auto', fontSize: 12.5, fontWeight: 600, color: active ? 'var(--ce2e8f0)' : 'var(--c64748b)', paddingLeft: 8 }}>{item.count}</span>
-      </div>
-      {!!item.members?.length && (
-        <div className="ag-side-members" style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {item.members.join(', ')}
-        </div>
+    <label style={{
+      flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, height: phone ? 44 : 40, padding: '0 12px',
+      borderRadius: phone ? 12 : 10, background: C.soft, border: `1px solid ${C.border}`,
+    }}>
+      <Icon name="search" size={16} color={C.muted} />
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Tìm tiệm theo tên…" aria-label="Tìm tiệm"
+        style={{ flex: 1, minWidth: 0, border: 0, outline: 'none', background: 'transparent', color: C.ink2, fontFamily: 'inherit', fontSize: phone ? 16 : 14 }} />
+      {value && (
+        <button type="button" aria-label="Xoá tìm kiếm" onClick={() => onChange('')} style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex' }}>
+          <Icon name="x" size={15} color={C.sub} />
+        </button>
       )}
+    </label>
+  );
+}
+
+function PickButton({ picking, onClick, compact }: { picking: boolean; onClick: () => void; compact?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={picking ? 'Thoát chọn nhiều' : 'Chọn nhiều'} title="Chọn nhiều tiệm để giao nhóm"
+      style={{
+        height: compact ? 44 : 40, padding: compact ? '0 11px' : '0 14px', borderRadius: compact ? 12 : 10, flexShrink: 0, cursor: 'pointer',
+        background: picking ? '#6366f1' : 'transparent', border: `1px solid ${picking ? '#6366f1' : 'var(--c334155)'}`,
+        color: picking ? '#ffffff' : 'var(--ce2e8f0)', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 7,
+      }}>
+      <Icon name={picking ? 'x' : 'checksq'} size={16} color={picking ? '#ffffff' : 'var(--ccbd5e1)'} />
+      {!compact && (picking ? 'Thoát' : 'Chọn nhiều')}
     </button>
   );
 }
 
 /**
- * One salon.
- *
- * WHAT CAME OFF THIS ROW AND WHY
- *
- * An ACTIVE badge on fifty-four of fifty-six rows is not information, it is
- * texture — so the status only appears when it is NOT active, which is the
- * only time anybody needs to read it. The purple "Vào setup" button is gone
- * too: it was the loudest thing on a screen where every row had one, and the
- * whole row does the same job. Both together take the row from about 80px to
- * about 52px, which is eighteen salons on a screen instead of ten.
- *
- * The team it belongs to is edited here rather than on a settings page: the
- * moment somebody notices a salon is in the wrong list is the moment they are
- * looking at the list, and a fix that needs a second screen does not happen.
+ * The order of the list. A native select laid over a quiet label at 16px, so
+ * a phone opens its own picker without zooming the page.
  */
-function Row({
-  t, fresh, team, showTeam, canAssign, teams, picking, checked, onCheck,
-  busy, notice, onEnter, editing, setEditing, onTeam, onBot, onStage, onNext, pkg, packages, onPackage,
-}: {
-  pkg: ServicePackage | null;
-  packages: ServicePackage[];
-  onPackage: (t: TenantRow, pkg: string) => void;
-  t: TenantRow;
-  fresh?: boolean;
-  /** What this shop wrote that nobody answered — null when nothing waits. */
-  notice?: RowNotice | null;
-  team: string;
-  showTeam: boolean;
-  canAssign: boolean;
-  teams: { team: string; label: string }[];
-  picking: boolean;
-  checked: boolean;
-  onCheck: () => void;
-  busy: string | null;
-  onEnter: (t: TenantRow, landing?: string) => void;
-  editing: string | null;
-  setEditing: (id: string | null) => void;
-  onTeam: (tenantId: string, team: string) => void;
-  onBot: (t: TenantRow, on: boolean) => void;
-  onStage: (t: TenantRow, stage: OpsStage) => void;
-  onNext: (t: TenantRow, next: WorkNext | '') => void;
-}) {
-  const isEditing = editing === t.id;
-  const suspended = t.status === 'SUSPENDED';
-  const opening = busy === t.id;
-  const waiting = Boolean(notice) || (t.heldPosts ?? 0) > 0;
-  const open = () => { if (!suspended && !opening && !picking) onEnter(t); };
+function SortPicker({ value, onChange }: { value: SortKey; onChange: (s: SortKey) => void }) {
   return (
-    <div
-      className="ag-row"
-      role="button"
-      tabIndex={suspended ? -1 : 0}
-      onClick={() => (picking ? onCheck() : open())}
-      onKeyDown={(e) => { if (e.key === 'Enter') (picking ? onCheck() : open()); }}
-      title={suspended ? 'Tiệm đang bị khoá — mở lại ở Super Admin' : 'Mở phiên setup 8 tiếng'}
-      style={{
-        padding: '9px 12px',
-        borderBottom: '1px solid var(--c1f2937)', background: waiting ? 'rgba(239,68,68,.05)' : 'var(--c111827)',
-        // The one mark that survives a squint: a red edge on the rows that
-        // are waiting on us, nothing on the rest.
-        boxShadow: waiting ? 'inset 4px 0 0 #ef4444' : 'none',
-        cursor: suspended && !picking ? 'default' : 'pointer', opacity: opening ? 0.5 : 1,
-      }}
-    >
-      {picking && (
-        <input
-          type="checkbox"
-          data-row-check=""
-          checked={checked}
-          onChange={onCheck}
-          onClick={(e) => e.stopPropagation()}
-          style={{ width: 17, height: 17, accentColor: '#6366f1', cursor: 'pointer', flex: '0 0 auto' }}
-        />
-      )}
-      <div className="ag-name" style={{ minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-          <MarketChip code={marketOf(t)} />
-          <span style={{ fontWeight: 600, fontSize: 14.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{t.name}</span>
-          {packages.length > 0 && <PackagePill pkg={pkg} packages={packages} disabled={picking} onChange={(k) => onPackage(t, k)} />}
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--c64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>/{t.slug}</div>
-        <ConnectionsLine t={t} />
-      </div>
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.body, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+      <Icon name="sort" size={14} color={C.sub} />
+      {SORTS.find((s) => s.key === value)?.label}
+      <Icon name="down" size={14} color={C.sub} />
+      <select value={value} aria-label="Sắp xếp" onChange={(e) => onChange(e.target.value as SortKey)}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, fontSize: 16, border: 0, cursor: 'pointer' }}>
+        {SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+      </select>
+    </span>
+  );
+}
 
-      <div className="ag-chips">
-      {/* The AI chat switch, only for salons that have a Page: a posting-only
-          client is filed here in one click instead of a session. Grey = off. */}
-      {!picking && t.bot && t.bot !== 'none' && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onBot(t, t.bot !== 'on'); }}
-          title={t.bot === 'on' ? 'Bot đang trả lời tin nhắn — bấm để TẮT (page chỉ đăng bài)' : 'Bot đang TẮT — page chỉ dùng để đăng bài. Bấm để BẬT'}
-          style={{
-            background: t.bot === 'on' ? 'rgba(34,197,94,.12)' : 'transparent',
-            border: `1px solid ${t.bot === 'on' ? '#22c55e' : 'var(--c334155)'}`,
-            color: t.bot === 'on' ? 'var(--ink-good)' : 'var(--c64748b)',
-            borderRadius: 999, padding: '2px 9px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 600,
-          }}
-          className="ag-chip"
-        >🤖 {t.bot === 'on' ? 'AI bật' : 'AI tắt'}</button>
-      )}
-
-      {/* The real lock, when there is one. It is the platform's (billing or
-          Super Admin), so it is shown, never edited, here. */}
-      {suspended && (
-        <span className="ag-chip" title="Tài khoản tiệm đang bị khoá đăng nhập — mở lại ở Super Admin"
-          style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ink-bad)', border: '1px solid #ef4444', borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>KHOÁ</span>
-      )}
-      {/* ---- what this shop is waiting for ----
-          One pill, red, that says WHAT is waiting (góp ý / tin / file) and
-          how long. It opens the newest item directly — the reason to look at
-          the row is the reason to open it. A grey pill beside it is the
-          other direction: posts waiting on the SHOP's yes, so somebody
-          knows to nudge. On a phone the pill takes its own line under the
-          name (see .ag-notice in the stylesheet). */}
-      {!picking && notice && (
-        <button
-          className="ag-notice ag-chip"
-          onClick={(e) => { e.stopPropagation(); onEnter(t, notice.newest.link); }}
-          title={`${notice.newest.who ? notice.newest.who + ': ' : ''}${notice.newest.preview || notice.newest.title} — bấm để mở`}
-          style={{
-            background: 'rgba(239,68,68,.14)', border: '1px solid #ef4444', color: 'var(--ink-bad)',
-            borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 700,
-            display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}
-        >
-          <span>{notice.held ? '✏️' : '🔔'}</span>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{noticeSummary(notice)}</span>
-          <span style={{ fontWeight: 600, opacity: 0.85 }}>· {agoShort(notice.newest.at)}</span>
-        </button>
-      )}
-      {!picking && !notice && (t.heldPosts ?? 0) > 0 && (
-        <button
-          className="ag-notice ag-chip"
-          onClick={(e) => { e.stopPropagation(); onEnter(t, '/salon/content?tab=queue&work=held'); }}
-          title="Tiệm yêu cầu sửa bài — bấm để mở danh sách và sửa"
-          style={{ background: 'rgba(239,68,68,.14)', border: '1px solid #ef4444', color: 'var(--ink-bad)', borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 700 }}
-        >✏️ {t.heldPosts} sửa bài</button>
-      )}
-      {!picking && (t.awaitingApproval ?? 0) > 0 && (
-        <span
-          className="ag-notice-soft ag-chip"
-          title={`${t.awaitingApproval} bài đã lên lịch, tiệm chưa bấm duyệt`}
-          style={{ border: '1px solid var(--c334155)', color: 'var(--c94a3b8)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, whiteSpace: 'nowrap', fontWeight: 600 }}
-        >⏳ {t.awaitingApproval} chờ tiệm duyệt</span>
-      )}
-      {!picking && (t.approvedPosts ?? 0) > 0 && (
-        <button
-          className="ag-notice-soft ag-chip"
-          onClick={(e) => { e.stopPropagation(); onEnter(t, '/salon/content?tab=queue&work=approved'); }}
-          title={`${t.approvedPosts} bài tiệm đã bấm duyệt, đang chờ tới giờ đăng — bấm để xem`}
-          style={{ background: 'rgba(20,184,166,.12)', border: '1px solid #14b8a6', color: 'var(--ink-good)', borderRadius: 999, padding: '3px 9px', fontSize: 11.5, whiteSpace: 'nowrap', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-        >✅ {t.approvedPosts} đã duyệt{t.lastApprovedAt ? ` · ${agoShort(t.lastApprovedAt)}` : ''}</button>
-      )}
-      <NextPill next={t.workNext ?? ''} disabled={picking} onChange={(n) => onNext(t, n)} />
-      <StagePill stage={t.opsStage ?? 'running'} disabled={picking} onChange={(st) => onStage(t, st)} />
-
-      {showTeam && !picking && (
-        <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex' }}>
-          {!canAssign ? (
-            team ? <span className="ag-chip" style={{ color: 'var(--c94a3b8)', border: '1px solid var(--c334155)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, whiteSpace: 'nowrap' }}>{team}</span> : null
-          ) : isEditing ? (
-            <select
-              autoFocus
-              defaultValue={team}
-              onChange={(e) => onTeam(t.id, e.target.value)}
-              onBlur={() => setEditing(null)}
-              style={{ background: 'var(--c0f172a)', border: '1px solid var(--c475569)', color: 'var(--ce2e8f0)', borderRadius: 8, padding: '4px 7px', fontSize: 12.5 }}
-            >
-              <option value="">— chưa phân nhóm —</option>
-              {teams.filter((x) => x.team).map((x) => <option key={x.team} value={x.team}>{x.team}</option>)}
-            </select>
-          ) : (
-            <button
-              className="ag-chip"
-              onClick={() => setEditing(t.id)}
-              title="Đổi nhóm phụ trách"
-              style={{ background: 'transparent', border: '1px dashed var(--c334155)', color: team ? 'var(--c94a3b8)' : 'var(--ink-warn)', borderRadius: 999, padding: '2px 9px', fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}
-            >{team || '+ nhóm'}</button>
-          )}
-        </span>
-      )}
-
-      </div>
-
-      {!picking && (
-        <span className="ag-go" style={{ color: suspended ? 'var(--c475569)' : 'var(--ink-link)', fontWeight: 700, fontSize: 15 }}>
-          {opening ? '…' : '→'}
-        </span>
-      )}
+function SectionHead({ title, dot, n, note, pad, boxed }: { title: string; dot: string; n: number; note?: string; pad: string; boxed?: boolean }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8, padding: pad,
+      ...(boxed ? { background: C.soft, borderBottom: `1px solid ${C.line}` } : {}),
+    }}>
+      <Dot color={dot} size={8} />
+      <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, color: C.ink2, textTransform: 'uppercase' }}>{title}</span>
+      <span style={{ fontSize: 12, color: C.muted }}>{n}</span>
+      {note && <span style={{ marginLeft: 'auto', fontSize: 12, color: C.muted }}>{note}</span>}
     </div>
   );
 }
 
+// ---- one salon ------------------------------------------------------------------
 
-/**
- * THE CHANNEL STRIP — five small squares, one line, under every salon.
- *
- * The first version printed every account's name, and a row became three
- * lines of chips that all repeated the salon's own name: nothing stood out,
- * and the salons blurred into one another. Now the strip is five fixed
- * squares in a fixed order (inbox · Instagram · Google · TikTok · mail) and a
- * count — same width on every row, so a column of rows reads like a table.
- * Colour is the whole message: GREEN = connected, GREY = not yet, AMBER =
- * connected but the account's name does not look like this salon's (the
- * thing to check first when accounts were mixed up), RED = the same account
- * sits under another salon too. The name itself is one hover away.
- */
-const CONNECTED = new Set(['connected', 'gmail', 'brevo']);
-function friendly(v: string | null): string | null {
-  if (!v) return null;
-  return v.split(', ').map((x) => (CONNECTED.has(x) ? 'Đã kết nối' : x)).join(', ');
+interface RowProps {
+  t: TenantRow;
+  today: string;
+  term: TermState;
+  fresh: boolean;
+  team: string;
+  pkg: ServicePackage | null;
+  notice: RowNotice | null;
+  picking: boolean;
+  checked: boolean;
+  opening: boolean;
+  onCheck: () => void;
+  onOpen: () => void;
+  onEnter: (landing?: string) => void;
+  onTell: () => void;
 }
-/** "glow nails & spa" vs "Glow Nails and Spa - Austin": the same shop? Loose on purpose; it flags, never decides. */
-function sameShop(account: string | null, salon: string): boolean {
-  if (!account) return true;
-  const first = account.split(', ')[0];
-  if (CONNECTED.has(first)) return true; // no name to compare
-  // Digits go too: "@5point.nails.spa" is "5 Points Nails & Spa"; a year in a handle is not a different shop.
-  const norm = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/^@/, '').replace(/[^a-z ]+/g, ' ').replace(/\b(nails?|spa|salon|and|the|llc|inc|beauty|studio|lounge|bar)\b/g, ' ').split(/\s+/).filter((w) => w.length > 1);
-  const a = norm(first); const b = norm(salon);
-  if (!a.length || !b.length) return true; // nothing distinctive to compare (e.g. "Nails & Spa")
-  const joinedA = a.join(''); const joinedB = b.join('');
-  if (joinedA.includes(joinedB) || joinedB.includes(joinedA)) return true;
-  const hit = a.filter((w) => b.some((v) => v.includes(w) || w.includes(v))).length;
-  return hit / Math.min(a.length, b.length) >= 0.5;
+
+/** The red/amber edge: the one mark that survives a squint. */
+function Edge({ term }: { term: TermState }) {
+  if (term !== 'expired' && term !== 'soon') return null;
+  return <span aria-hidden style={{ position: 'absolute', left: 0, top: 10, bottom: 10, width: 3, borderRadius: '0 3px 3px 0', background: TERM_LOOK[term].bar }} />;
 }
-function ConnectionsLine({ t }: { t: TenantRow }) {
-  const c = t.connections;
-  if (!c) return null;
-  const shared = new Set(t.sharedWith ?? []);
-  const inboxState = c.fbPage ? (t.bot === 'on' ? 'bot bật' : t.bot === 'off' ? 'chỉ đăng bài' : 'đã nối') : null;
-  const cells: { k: string; icon: string; label: string; v: string | null; mismatch: boolean; extra?: string }[] = [
-    { k: 'fb', icon: '💬', label: 'Hộp thư / Messenger', v: friendly(c.fbPage), mismatch: !sameShop(c.fbPage, t.name), extra: inboxState ?? undefined },
-    { k: 'ig', icon: '📷', label: 'Instagram', v: friendly(c.igUser), mismatch: !sameShop(c.igUser, t.name) },
-    { k: 'google', icon: 'G', label: 'Google', v: friendly(c.google), mismatch: !sameShop(c.google, t.name), extra: c.googleEmail ?? undefined },
-    { k: 'tiktok', icon: '♪', label: 'TikTok', v: friendly(c.tiktok), mismatch: !sameShop(c.tiktok, t.name) },
-    { k: 'mail', icon: '✉', label: 'Email gửi đi', v: friendly(c.mail), mismatch: false },
-  ];
-  const n = cells.filter((x) => x.v).length;
-  const worry = cells.filter((x) => x.v && (shared.has(x.k) || x.mismatch));
+
+function rowShell(p: RowProps): React.HTMLAttributes<HTMLDivElement> & { style: React.CSSProperties } {
+  const waiting = Boolean(p.notice) || (p.t.heldPosts ?? 0) > 0;
+  const act = () => (p.picking ? p.onCheck() : p.onOpen());
+  return {
+    className: 'ag-row',
+    role: 'button',
+    tabIndex: 0,
+    onClick: act,
+    onKeyDown: (e) => { if (e.key === 'Enter') act(); },
+    title: p.picking ? undefined : 'Bấm để xem chi tiết tiệm',
+    style: {
+      position: 'relative', borderBottom: `1px solid ${C.line}`, cursor: 'pointer', opacity: p.opening ? 0.5 : 1,
+      background: waiting ? 'rgba(239,68,68,.05)' : C.panel,
+    },
+  };
+}
+
+function Tags({ t, fresh }: { t: TenantRow; fresh: boolean }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
-      {cells.map((x) => {
-        const on = !!x.v;
-        const bad = shared.has(x.k);
-        const warn = on && !bad && x.mismatch;
-        const fg = bad ? 'var(--ink-bad)' : warn ? 'var(--ink-warn)' : on ? 'var(--ink-good)' : 'var(--c64748b)';
-        const bg = bad ? 'rgba(239,68,68,.14)' : warn ? 'rgba(245,158,11,.14)' : on ? 'rgba(34,197,94,.14)' : 'transparent';
-        const bd = bad ? 'var(--ink-bad)' : warn ? 'var(--ink-warn)' : on ? 'rgba(34,197,94,.5)' : 'var(--c334155)';
-        const title = !on
-          ? `${x.label}: chưa kết nối`
-          : bad ? `${x.label}: ${x.v} — TIỆM KHÁC CŨNG ĐANG DÙNG tài khoản này. Gỡ ở tiệm sai.`
-          : warn ? `${x.label}: ${x.v} — tên không giống tên tiệm, kiểm tra xem có nối nhầm không${x.extra ? ` · ${x.extra}` : ''}`
-          : `${x.label}: ${x.v}${x.extra ? ` · ${x.extra}` : ''}`;
-        return (
-          <span key={x.k} title={title} aria-label={title}
-            style={{ width: 24, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${bd}`, background: bg, color: fg, fontSize: 11, fontWeight: 800, opacity: on || bad ? 1 : 0.55, cursor: 'default', flexShrink: 0 }}>
-            {x.icon}
-          </span>
-        );
-      })}
-      <span style={{ fontSize: 11, fontWeight: 600, color: n === 5 ? 'var(--ink-good)' : 'var(--c64748b)', marginLeft: 2, whiteSpace: 'nowrap' }}>{n}/5</span>
-      {/* One short phrase when something needs a look — the only text the strip ever prints. */}
-      {worry.length > 0 && (
-        <span style={{ fontSize: 11, fontWeight: 600, color: worry.some((x) => shared.has(x.k)) ? 'var(--ink-bad)' : 'var(--ink-warn)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-          · {worry.some((x) => shared.has(x.k)) ? 'trùng tài khoản với tiệm khác' : `kiểm tra ${worry.map((x) => x.label.split(' ')[0]).join(', ')}`}
-        </span>
+    <>
+      {fresh && <span style={{ fontSize: 9.5, fontWeight: 800, color: C.good, border: '1px solid rgba(34,197,94,.6)', borderRadius: 999, padding: '1px 6px', flexShrink: 0 }}>MỚI</span>}
+      {t.status === 'SUSPENDED' && (
+        <span title="Tài khoản tiệm đang bị khoá đăng nhập — mở lại ở Super Admin"
+          style={{ fontSize: 9.5, fontWeight: 800, color: C.bad, border: '1px solid #ef4444', borderRadius: 999, padding: '1px 6px', flexShrink: 0 }}>KHOÁ</span>
       )}
+    </>
+  );
+}
+
+/** What this shop is waiting for — one red line that opens the newest item directly. */
+function WaitLine({ t, notice, onEnter, size = 12 }: { t: TenantRow; notice: RowNotice | null; onEnter: (landing?: string) => void; size?: number }) {
+  const base: React.CSSProperties = {
+    border: 0, background: 'transparent', padding: 0, fontFamily: 'inherit', fontSize: size, fontWeight: 700, color: 'var(--ink-bad)',
+    cursor: 'pointer', textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', minWidth: 0,
+  };
+  if (notice) {
+    return (
+      <button type="button" style={base} onClick={(e) => { e.stopPropagation(); onEnter(notice.newest.link); }}
+        title={`${notice.newest.who ? notice.newest.who + ': ' : ''}${notice.newest.preview || notice.newest.title} — bấm để mở`}>
+        {notice.held ? '✏️' : '🔔'} {noticeSummary(notice)} · {agoShort(notice.newest.at)}
+      </button>
+    );
+  }
+  if ((t.heldPosts ?? 0) > 0) {
+    return (
+      <button type="button" style={base} onClick={(e) => { e.stopPropagation(); onEnter('/salon/content?tab=queue&work=held'); }} title="Tiệm yêu cầu sửa bài — bấm để mở">
+        ✏️ {t.heldPosts} sửa bài
+      </button>
+    );
+  }
+  return null;
+}
+
+function Checkbox({ p }: { p: RowProps }) {
+  if (!p.picking) return null;
+  return (
+    <input type="checkbox" checked={p.checked} onChange={p.onCheck} onClick={(e) => e.stopPropagation()} aria-label={`Chọn ${p.t.name}`}
+      style={{ width: 17, height: 17, accentColor: '#6366f1', cursor: 'pointer', flex: '0 0 auto', margin: 0 }} />
+  );
+}
+
+function MoreBtn({ onOpen, size = 32 }: { onOpen: () => void; size?: number }) {
+  return (
+    <button type="button" aria-label="Chi tiết" onClick={(e) => { e.stopPropagation(); onOpen(); }}
+      style={{ width: size, height: size, borderRadius: 9, border: 0, background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+      <Icon name="dots" size={18} color={C.sub} />
+    </button>
+  );
+}
+
+const renewStateOf = (t: TenantRow) => renewStateOf0(t.serviceTerm);
+const Sep = () => <span style={{ color: 'var(--c64748b)', opacity: 0.6 }}>·</span>;
+function joinSep(parts: React.ReactNode[]) {
+  const out: React.ReactNode[] = [];
+  parts.filter(Boolean).forEach((x, i) => { if (i) out.push(<Sep key={`s${i}`} />); out.push(<span key={`p${i}`} style={{ display: 'inline-flex', flexShrink: 0 }}>{x}</span>); });
+  return out;
+}
+
+function NextText({ next, size = 13 }: { next: WorkNext | '' | undefined; size?: number }) {
+  if (!next) return null;
+  return <span style={{ color: C.link, fontSize: size, whiteSpace: 'nowrap' }}>→ {NEXT_LOOK[next].label}</span>;
+}
+
+/** Computer: one table row, fixed columns. */
+function WideRow(p: RowProps) {
+  const { t, today, term } = p;
+  const st = termStatus(t.serviceTerm, today);
+  const loud = term === 'expired' || term === 'soon';
+  const shell = rowShell(p);
+  const suspended = t.status === 'SUSPENDED';
+  return (
+    <div {...shell} style={{
+      ...shell.style, display: 'grid', gridTemplateColumns: p.picking ? `28px ${COLS}` : COLS, columnGap: 14, alignItems: 'center',
+      minHeight: 60, padding: '8px 14px 8px 18px',
+    }}>
+      <Edge term={term} />
+      {p.picking && <Checkbox p={p} />}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{t.name}</span>
+          <MarketChip code={marketOf(t)} />
+          <Tags t={t} fresh={p.fresh} />
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, fontSize: 12, color: C.muted, whiteSpace: 'nowrap' }}>
+          <WaitLine t={t} notice={p.notice} onEnter={p.onEnter} />
+          {!p.notice && !(t.heldPosts ?? 0) && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>/{t.slug}</span>}
+          {(t.awaitingApproval ?? 0) > 0 && <span style={{ color: C.sub }}>· ⏳ {t.awaitingApproval} chờ duyệt</span>}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <TermText term={t.serviceTerm} today={today} />
+        {loud && st.end && <span style={{ fontSize: 11.5, color: C.muted }}>{fmtDay(st.end, today)}</span>}
+      </div>
+      <div style={{ minWidth: 0, overflow: 'hidden' }}><PackageText pkg={p.pkg} /></div>
+      <div style={{ fontSize: 13, color: p.team ? C.body : C.warn, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.team || 'Chưa giao'}</div>
+      <div style={{ minWidth: 0 }}><StageText stage={t.opsStage ?? 'running'} /></div>
+      <div style={{ minWidth: 0 }}>{t.workNext ? <NextText next={t.workNext} /> : <span style={{ color: C.muted }}>—</span>}</div>
+      <div style={{ minWidth: 0 }}><ChannelSquares t={t} size={16} /></div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+        {!p.picking && <RenewAction term={t.serviceTerm} today={today} onTell={p.onTell} />}
+        {!p.picking && (
+          <>
+            <MoreBtn onOpen={p.onOpen} />
+            <button type="button" disabled={suspended} title={suspended ? 'Tiệm đang bị khoá — mở lại ở Super Admin' : 'Vào tiệm — mở phiên setup 8 tiếng'}
+              onClick={(e) => { e.stopPropagation(); p.onEnter(); }}
+              style={{ border: 0, background: 'transparent', padding: '6px 2px 6px 4px', color: suspended ? C.muted : C.link, fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: suspended ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+              {p.opening ? '…' : 'Vào →'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Tablet: two lines on the left, channels in the middle, the term on the right. */
+function TabletRow(p: RowProps) {
+  const { t, today, term } = p;
+  const shell = rowShell(p);
+  const waitLine = <WaitLine t={t} notice={p.notice} onEnter={p.onEnter} size={12.5} />;
+  return (
+    <div {...shell} style={{ ...shell.style, display: 'flex', alignItems: 'center', gap: 14, padding: '12px 6px 12px 18px' }}>
+      <Edge term={term} />
+      <Checkbox p={p} />
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{t.name}</span>
+          <MarketChip code={marketOf(t)} />
+          <Tags t={t} fresh={p.fresh} />
+        </span>
+        {(p.notice || (t.heldPosts ?? 0) > 0) && waitLine}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0 }}>
+          {joinSep([
+            <PackageText key="p" pkg={p.pkg} size={12.5} />,
+            <span key="t" style={{ color: p.team ? C.sub : C.warn }}>{p.team || 'Chưa giao'}</span>,
+            <StageText key="s" stage={t.opsStage ?? 'running'} size={12.5} />,
+            t.workNext ? <NextText key="n" next={t.workNext} size={12.5} /> : null,
+            (t.awaitingApproval ?? 0) > 0 ? <span key="a">{t.awaitingApproval} chờ duyệt</span> : null,
+          ])}
+        </span>
+      </div>
+      <div style={{ width: 118, flexShrink: 0 }}><ChannelSquares t={t} size={16} /></div>
+      <div style={{ width: 140, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+        <TermText term={t.serviceTerm} today={today} />
+        {!p.picking && <RenewAction term={t.serviceTerm} today={today} onTell={p.onTell} size={11.5} />}
+      </div>
+      {!p.picking && <MoreBtn onOpen={p.onOpen} size={36} />}
+    </div>
+  );
+}
+
+/** Phone: three quiet lines — name and term; market · package · team; stage · next · channels. */
+function PhoneRow(p: RowProps) {
+  const { t, today, term } = p;
+  const shell = rowShell(p);
+  // The renewal action takes the end of line 3; what it pushes out is one tap away in the panel.
+  const busyLine = !p.picking && (term === 'expired' || term === 'soon' || renewStateOf(t) === 'told');
+  return (
+    <div {...shell} style={{ ...shell.style, display: 'flex', alignItems: 'flex-start', gap: 8, padding: '12px 4px 12px 14px' }}>
+      <Edge term={term} />
+      {p.picking && <span style={{ paddingTop: 2 }}><Checkbox p={p} /></span>}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{t.name}</span>
+            <Tags t={t} fresh={p.fresh} />
+          </span>
+          {term !== 'none' && <TermText term={t.serviceTerm} today={today} />}
+        </span>
+        {(p.notice || (t.heldPosts ?? 0) > 0) && <WaitLine t={t} notice={p.notice} onEnter={p.onEnter} size={12.5} />}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0 }}>
+          {joinSep([
+            <span key="m" style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, color: C.muted }}>{marketOf(t)}</span>,
+            <PackageText key="p" pkg={p.pkg} size={12.5} />,
+            <span key="t" style={{ color: p.team ? C.body : C.warn }}>{p.team || 'Chưa giao nhóm'}</span>,
+          ])}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.sub, minWidth: 0 }}>
+          <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', overflow: 'hidden', WebkitMaskImage: 'linear-gradient(90deg, #000 88%, transparent)', maskImage: 'linear-gradient(90deg, #000 88%, transparent)' }}>
+            {joinSep([
+              <StageText key="s" stage={t.opsStage ?? 'running'} size={12} />,
+              t.workNext ? <NextText key="n" next={t.workNext} size={12} /> : null,
+              ...(busyLine ? [] : [
+                <ChannelWords key="c" t={t} />,
+                (t.awaitingApproval ?? 0) > 0 ? <span key="a" style={{ color: C.warn }}>{t.awaitingApproval} chờ duyệt</span> : null,
+              ]),
+            ])}
+          </span>
+          {!p.picking && <RenewAction term={t.serviceTerm} today={today} onTell={p.onTell} size={12} />}
+        </span>
+      </div>
+      {!p.picking && <MoreBtn onOpen={p.onOpen} size={36} />}
     </div>
   );
 }

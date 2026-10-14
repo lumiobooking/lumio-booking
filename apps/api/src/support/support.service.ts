@@ -14,6 +14,7 @@ import { SHOP } from '../content/client-view';
 import { cleanTeam, groupSalons, teamSummaries, isNewSalon } from './support-teams';
 import { OPS_STAGE_KEY, isOpsStage, opsStageOf } from './ops-stage';
 import { SERVICE_PACKAGE_KEY, SERVICE_PACKAGES, servicePackageOf, setServicePackage } from './service-package';
+import { SERVICE_TERM_KEY, serviceTermOf, setServiceTerm, markRenewal } from './service-term';
 import { kindOf, linkFor, titleFor, type NoticeKind } from './team-notices';
 import { connectionsByTenant, sharedConnections } from './connections-audit';
 
@@ -86,12 +87,13 @@ export class SupportService {
     // list. A failure here must not empty the list: every salon then simply
     // shows the label its access status implies. See ./ops-stage.
     const stored = await this.prisma.setting.findMany({
-      where: { key: { in: [OPS_STAGE_KEY, WORK_NEXT_KEY, SERVICE_PACKAGE_KEY] }, tenantId: { in: rows.map((r) => r.id) } },
+      where: { key: { in: [OPS_STAGE_KEY, WORK_NEXT_KEY, SERVICE_PACKAGE_KEY, SERVICE_TERM_KEY] }, tenantId: { in: rows.map((r) => r.id) } },
       select: { tenantId: true, key: true, value: true },
     }).catch(() => [] as { tenantId: string; key: string; value: unknown }[]);
     const byTenant = new Map(stored.filter((x) => x.key === OPS_STAGE_KEY).map((x) => [x.tenantId, x.value]));
     const nextBy = new Map(stored.filter((x) => x.key === WORK_NEXT_KEY).map((x) => [x.tenantId, x.value]));
     const pkgBy = new Map(stored.filter((x) => x.key === SERVICE_PACKAGE_KEY).map((x) => [x.tenantId, x.value]));
+    const termBy = new Map(stored.filter((x) => x.key === SERVICE_TERM_KEY).map((x) => [x.tenantId, x.value]));
     // Posts a salon has asked to change and nobody has answered: the one
     // number that says "this shop is waiting on us". Grouped in one query.
     const held = await (this.prisma as unknown as Record<string, { groupBy: (a: unknown) => Promise<{ tenantId: string; _count: { _all: number } }[]> }>).scheduledPost
@@ -128,6 +130,8 @@ export class SupportService {
       opsStage: opsStageOf(byTenant.get(r.id), r.status),
       workNext: workNextOf(nextBy.get(r.id)),
       servicePackage: servicePackageOf(pkgBy.get(r.id)),
+      // How long Lumio's service runs, and the renewal mark of this cycle. A label: it locks nothing.
+      serviceTerm: serviceTermOf(termBy.get(r.id)),
       heldPosts: heldBy.get(r.id) ?? 0,
       awaitingApproval: pendingBy.get(r.id) ?? 0,
       approvedPosts: approvedBy.get(r.id)?.n ?? 0,
@@ -179,6 +183,19 @@ export class SupportService {
    */
   async setTenantPackage(user: AuthenticatedUser, tenantId: string, pkg: unknown) {
     return setServicePackage(this.prisma as never, user, tenantId, pkg);
+  }
+
+  /**
+   * A salon's service term (start / end / months / alert days), or {clear: true}.
+   * Any support account, like the package. Audited. See ./service-term.
+   */
+  async setTenantTerm(user: AuthenticatedUser, tenantId: string, dto: Record<string, unknown> | null | undefined) {
+    return setServiceTerm(this.prisma as never, user, tenantId, dto);
+  }
+
+  /** Told the renewals people / undo / renewed by N months. Audited. See ./service-term. */
+  async setTenantRenewal(user: AuthenticatedUser, tenantId: string, dto: Record<string, unknown> | null | undefined) {
+    return markRenewal(this.prisma as never, user, tenantId, dto);
   }
 
   async setTenantStage(user: AuthenticatedUser, tenantId: string, stage: unknown) {

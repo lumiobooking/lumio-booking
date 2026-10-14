@@ -99,6 +99,33 @@ export class SupportController {
     return this.svc.setTenantPackage(user, tenantId, dto?.package);
   }
 
+  /**
+   * How long Lumio's service runs for a salon: {start?, end?, months?, alertDays?}
+   * or {clear: true}. A label for the team — it locks nothing. See ./service-term.
+   */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Post('tenants/:tenantId/term')
+  @HttpCode(200)
+  setTenantTerm(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Body() dto: { start?: string; end?: string; months?: number; alertDays?: number; clear?: boolean },
+  ) {
+    return this.svc.setTenantTerm(user, tenantId, dto);
+  }
+
+  /** The renewal of the current term: {action: told | undo | renewed, note?, months?, end?}. Audited. */
+  @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
+  @Post('tenants/:tenantId/renewal')
+  @HttpCode(200)
+  setTenantRenewal(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('tenantId') tenantId: string,
+    @Body() dto: { action?: string; note?: string; months?: number; end?: string },
+  ) {
+    return this.svc.setTenantRenewal(user, tenantId, dto);
+  }
+
   /** Hand a salon to the next department (Content/Design/Duyệt/Lên lịch/Xong). Any support account. See ./work-next. */
   @Roles(SUPPORT_ROLE, UserRole.SUPER_ADMIN)
   @Post('tenants/:tenantId/next')

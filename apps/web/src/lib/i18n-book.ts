@@ -380,6 +380,11 @@ export function setBookLang(lang: BookLang): void {
   currentLang = lang;
 }
 
+/** The page's language, for helpers that carry their own vi/en text (lib/cart-art.ts). */
+export function bookLang(): BookLang {
+  return currentLang;
+}
+
 /**
  * The salon's line of business, for the same reason: one salon per page. A
  * dental clinic's patients read "Choose your dentist", not "Choose your nail

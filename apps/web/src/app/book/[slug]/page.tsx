@@ -27,7 +27,10 @@ import { InstallAppButton } from '../../../components/InstallAppButton';
 import { uiLocale } from '../../../lib/datetime';
 import { todayInZone } from '../../../lib/salon-clock';
 import { planOpeningBar } from '../../../lib/opening-bar';
-import { bookLangForCountry, setBookLang, setBookIndustry, bt, btf, bookLocale } from '../../../lib/i18n-book';
+import { bookLangForCountry, setBookLang, setBookIndustry, bt, btf, bookLocale, bookLang } from '../../../lib/i18n-book';
+import { cartCopy } from '../../../lib/cart-art';
+import { CartArt } from '../../../components/CartArt';
+import { industryText, isIndustryKey, type IndustryKey } from '../../../lib/ui-industry';
 import { afterPct, anyDealPct, dayKey, lineDeal, nextDeal, promoDeal, windowEnded, type Promos } from '../../../lib/booking-promos';
 import { gbpAttribution, gbpSearch, isGbpPath } from '../../../lib/gbp-source';
 import { adsConfigFrom, conversionRoute, loadAdsTag, sendAdsConversion, type AdsConfig, type TagDocument, type TagWindow } from '../../../lib/ads-tag';
@@ -126,7 +129,7 @@ interface DateDiscounts { enabled: boolean; rules: DateRule[] }
 interface DepositPolicy { enabled: boolean; type: 'percent' | 'fixed'; percent: number; fixedCents: number; scope: 'all' | 'new' | 'repeat_noshow'; noShowThreshold: number }
 interface Salon {
   name: string; slug: string; businessType?: string; timezone: string; address?: string | null; contactPhone?: string | null;
-  branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string }; booking?: BookingRules;
+  branding?: { accentColor: string; logoUrl: string; logoScale?: number; seasonalTheme?: string; cartArt?: string; cartTitle?: string; cartHint?: string }; booking?: BookingRules;
   weekdayDiscounts?: WeekdayDiscounts; dateDiscounts?: DateDiscounts; deposit?: DepositPolicy; cardFee?: { enabled: boolean; percent: number };
   partyDeposit?: { enabled: boolean; fromParty: number; perPersonCents: number };
   firstVisit?: { enabled: boolean; percent: number; message: string; rules?: { visit: number; percent: number }[] } & PromoWindow;
@@ -1537,20 +1540,20 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
 /** An empty cart used to be a tall white nothing. Now it explains what happens
  *  next and why booking here is safe — the space works for the salon. */
 function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
-  const perks: [string, string, string][] = [
-    ['🕐', bt("Book any time"), bt("Open 24/7 online \u2014 even when the shop is closed.")],
-    ['✅', bt("Instant confirmation"), bt("You get a text the moment your spot is held.")],
-    ['💇', bt("Pick your tech"), bt("Choose the person you always go to, or let us match you.")],
-    ['💳', bt("Pay how you like"), bt("Online now, or at the shop when you arrive.")],
-  ];
+  // The salon's template for its trade (lib/cart-art.ts) and its own words, if any.
+  const trade = String(salon?.industry ?? '').toUpperCase();
+  const industry: IndustryKey = isIndustryKey(trade) ? trade : 'NAIL';
+  const copy = cartCopy({ key: salon?.branding?.cartArt, industry, lang: bookLang(), title: salon?.branding?.cartTitle, hint: salon?.branding?.cartHint });
+  const words = (s: string) => (industry === 'NAIL' ? s : industryText(s, industry, salon?.name ? [salon.name] : []));
+  const perks: [string, string, string][] = copy.perks.map((p) => [p.icon, words(p.title), words(p.sub)]);
   return (
     <div style={{ padding: '16px 2px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
-        <div style={{ width: 54, height: 54, borderRadius: '50%', background: tint(accent, 0.10), color: accent, display: 'grid', placeItems: 'center', fontSize: 24, margin: '0 auto 10px' }}>🛍️</div>
-        <div style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>{bt("Pick a service to start")}</div>
-        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4, lineHeight: 1.5 }}>
-          Tap <b style={{ color: accent }}>＋</b> on any service. You can add more than one.
+        <div style={{ width: 58, height: 58, borderRadius: '50%', background: tint(accent, 0.10), color: accent, display: 'grid', placeItems: 'center', margin: '0 auto 10px' }}>
+          <CartArt kind={copy.art} color={accent} size={32} />
         </div>
+        <div style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>{copy.title}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4, lineHeight: 1.5 }}>{copy.hint}</div>
       </div>
       <div style={{ display: 'grid', gap: 10, marginTop: 4 }}>
         {perks.map(([icon, title, sub]) => (

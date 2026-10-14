@@ -10,6 +10,7 @@ import {
   IsString,
   Max,
   MaxLength,
+  Matches,
   Min,
 } from 'class-validator';
 
@@ -86,6 +87,10 @@ export class UpdateBrandingDto {
   @IsOptional() @IsIn(['auto', 'manual', 'off']) ratingMode?: string;
   @IsOptional() @IsNumber() @Min(0) @Max(5) ratingValue?: number;
   @IsOptional() @IsInt() @Min(0) @Max(1000000) ratingCount?: number;
+  // Empty-cart template of the booking page (a short key) and the salon's own words for it.
+  @IsOptional() @IsString() @MaxLength(40) @Matches(/^[a-z0-9-]+$/) cartArt?: string;
+  @IsOptional() @IsString() @MaxLength(80) cartTitle?: string;
+  @IsOptional() @IsString() @MaxLength(140) cartHint?: string;
 }
 
 /**

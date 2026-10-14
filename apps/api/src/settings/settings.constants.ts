@@ -706,6 +706,11 @@ export interface Branding {
    */
   priceListImageUrl: string;
   storefrontImageUrl: string;
+  /** Empty cart on the booking page (web lib/cart-art.ts): a template key, 'auto' = the first of the salon's trade. */
+  cartArt: string;
+  /** The salon's own headline / line for it; blank = the template's. */
+  cartTitle: string;
+  cartHint: string;
 }
 
 export const DEFAULT_BRANDING: Branding = {
@@ -719,6 +724,9 @@ export const DEFAULT_BRANDING: Branding = {
   welcomeImageUrl: '',
   priceListImageUrl: '',
   storefrontImageUrl: '',
+  cartArt: 'auto',
+  cartTitle: '',
+  cartHint: '',
 };
 
 // ===========================================================================

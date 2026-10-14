@@ -16,6 +16,7 @@ import { NoShowPolicyCard } from '../../../components/NoShowPolicyCard';
 import { PartyDepositCard } from '../../../components/PartyDepositCard';
 import type { ReceiptDesign } from '../../../lib/receipt';
 import { ind } from '../../../lib/ui-industry';
+import { CartTemplatePicker } from '../../../components/CartTemplatePicker';
 
 interface DayHours { closed: boolean; openMinutes: number; closeMinutes: number; intervals?: { open: number; close: number }[] }
 interface Booking {
@@ -43,7 +44,7 @@ interface SettingsData {
   market?: string;
   company: { name: string; slug: string; contactEmail: string | null; contactPhone: string | null; timezone: string; address: string; website: string; country?: string };
   booking: Booking;
-  branding: { accentColor: string; logoUrl: string; logoScale?: number; welcomeImageUrl?: string; priceListImageUrl?: string; storefrontImageUrl?: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number };
+  branding: { accentColor: string; logoUrl: string; logoScale?: number; welcomeImageUrl?: string; priceListImageUrl?: string; storefrontImageUrl?: string; seasonalTheme?: string; ratingMode?: string; ratingValue?: number; ratingCount?: number; cartArt?: string; cartTitle?: string; cartHint?: string };
   rebooking?: { enabled: boolean; daysAfter: number; email: boolean; sms: boolean };
   gateways: Record<string, GatewayView>;
   notifications: {
@@ -1640,6 +1641,14 @@ function BrandingSection({ data, onSave }: { data: SettingsData; onSave: SaveFn 
             <option value="fall">{lang === 'vi' ? 'Mùa thu' : 'Fall'}</option>
             <option value="winter">{lang === 'vi' ? 'Mùa đông' : 'Winter'}</option>
           </select>
+        </Field>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <Field label={ind(lang === 'vi' ? 'Ô giỏ hàng trống trên trang đặt lịch — chọn mẫu theo ngành' : 'Empty cart on the booking page — pick a template for your trade')}>
+          <CartTemplatePicker vi={lang === 'vi'} industry={uiIndustry()} accent={prevAccent}
+            value={f.cartArt ?? 'auto'} title={f.cartTitle ?? ''} hint={f.cartHint ?? ''}
+            onChange={(patch) => setF((prev) => ({ ...prev, ...patch }))} />
         </Field>
       </div>
 

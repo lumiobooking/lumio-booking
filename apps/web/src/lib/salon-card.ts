@@ -48,6 +48,29 @@ export function openStatus(args: { day: DayLike | null | undefined; isDayOff?: b
   return { kind: 'closedNow' };
 }
 
+/**
+ * The next day the shop opens, counting from tomorrow, on the salon's calendar.
+ * "Closed now" alone reads as "you can't book here"; "Opens tomorrow at 9:00"
+ * tells the visitor the truth and keeps them booking. Days off are skipped.
+ * `today` is the salon's date at local midnight (lib/salon-clock todayInZone).
+ */
+export function nextOpening(args: {
+  week: (DayLike | null | undefined)[];
+  daysOff?: string[];
+  today: Date;
+  maxDays?: number;
+}): { inDays: number; at: number; date: Date } | null {
+  const off = new Set(args.daysOff ?? []);
+  const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  for (let i = 1; i <= (args.maxDays ?? 14); i++) {
+    const d = new Date(args.today.getFullYear(), args.today.getMonth(), args.today.getDate() + i);
+    if (off.has(key(d))) continue;
+    const w = windowsForDisplay(args.week[d.getDay()]);
+    if (w.length) return { inDays: i, at: w[0].open, date: d };
+  }
+  return null;
+}
+
 /** tel: link from whatever the owner typed ("(403) 991-5868", "+1 403…"). Empty when there are no digits. */
 export function telHref(phone: string | null | undefined): string {
   const raw = String(phone ?? '').trim();

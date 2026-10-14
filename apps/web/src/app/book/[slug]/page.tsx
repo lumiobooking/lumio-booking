@@ -961,6 +961,8 @@ export default function PublicBookingPage() {
     day: rules.businessHours[salonToday.getDay()],
     isDayOff: rules.daysOff.includes(ymd(salonToday)),
     mode: (rules as unknown as { soonestBar?: string }).soonestBar,
+    week: rules.businessHours,
+    daysOff: rules.daysOff,
   };
 
   const summary = (
@@ -1368,7 +1370,7 @@ function AnimatedMoney({ cents, fmt, style }: { cents: number; fmt: (c: number) 
 function CartPanel({ today, salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill, grand, party, activeGuest, onPickGuest, onRemoveFor }: {
   salon: Salon | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; fullCents: number; anyDiscount: boolean;
   /** Today's hours for the salon card's open/closed line. */
-  today?: { day: DayHours | undefined; isDayOff: boolean; mode?: unknown };
+  today?: { day: DayHours | undefined; isDayOff: boolean; mode?: unknown; week?: DayHours[]; daysOff?: string[] };
   totalDuration: number; employee: Staff | null; slot: Slot | null; selectedDate: Date | null;
   onRemove: (id: string) => void; canContinue: boolean; ctaLabel: string; onContinue: () => void; step: Step; accent: string; fill?: boolean;
   /** Multi-visit cart or group booking: the number the customer pays in total. */

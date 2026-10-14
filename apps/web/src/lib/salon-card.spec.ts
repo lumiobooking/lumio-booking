@@ -1,4 +1,4 @@
-import { initialsOf, mapsHref, minutesInZone, openStatus, telHref } from './salon-card';
+import { initialsOf, mapsHref, minutesInZone, nextOpening, openStatus, telHref } from './salon-card';
 
 describe('salon card facts', () => {
   const day = { openMinutes: 600, closeMinutes: 1200 }; // 10:00 – 20:00
@@ -32,6 +32,17 @@ describe('salon card facts', () => {
     const instant = new Date('2026-10-14T18:30:00Z');
     expect(minutesInZone('America/Edmonton', instant)).toBe(12 * 60 + 30);
     expect(minutesInZone('Asia/Ho_Chi_Minh', instant)).toBe(1 * 60 + 30);
+  });
+
+  it('after closing, points to the next day the shop opens (skipping closed days and days off)', () => {
+    const open = { openMinutes: 540, closeMinutes: 1170 };
+    const week = [{ closed: true }, open, open, open, open, open, { closed: true }]; // Sun + Sat closed
+    const fri = new Date(2026, 9, 16); // Friday
+    expect(nextOpening({ week, today: fri })).toMatchObject({ inDays: 3, at: 540 }); // Monday
+    const wed = new Date(2026, 9, 14);
+    expect(nextOpening({ week, today: wed })).toMatchObject({ inDays: 1, at: 540 });
+    expect(nextOpening({ week, today: wed, daysOff: ['2026-10-15'] })).toMatchObject({ inDays: 2 });
+    expect(nextOpening({ week: Array(7).fill({ closed: true }), today: wed })).toBeNull();
   });
 
   it('builds call and map links from what the owner typed', () => {

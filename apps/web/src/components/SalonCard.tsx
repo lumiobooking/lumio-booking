@@ -21,7 +21,8 @@
  */
 import { useEffect, useState, type CSSProperties } from 'react';
 import { bt, btf, bookLocale } from '../lib/i18n-book';
-import { initialsOf, mapsHref, minutesInZone, openStatus, telHref, type OpenStatus } from '../lib/salon-card';
+import { initialsOf, mapsHref, minutesInZone, nextOpening, openStatus, telHref, type OpenStatus } from '../lib/salon-card';
+import { todayInZone } from '../lib/salon-clock';
 import type { DayLike } from '../lib/opening-bar';
 
 const INK = '#0f2a52';
@@ -59,16 +60,35 @@ function Icon({ name, color, size = 16 }: { name: keyof typeof ICONS; color: str
   );
 }
 
-function StatusLine({ status }: { status: OpenStatus | null }) {
+type Next = { inDays: number; at: number; date: Date } | null;
+
+/**
+ * The status line. Outside opening hours it never says just "Closed": on a
+ * booking page that reads as "you can't book", which is false — the visitor
+ * can book right now for a later time. So it says when the shop opens next and
+ * adds a small "Book online 24/7" next to it.
+ */
+function StatusLine({ status, next }: { status: OpenStatus | null; next: Next }) {
   if (!status) return null;
-  const tone = status.kind === 'open' ? { c: '#15803d', dot: '#22c55e' } : status.kind === 'later' ? { c: '#b45309', dot: '#f59e0b' } : { c: '#64748b', dot: '#94a3b8' };
+  const closed = status.kind === 'closedNow' || status.kind === 'closedToday';
+  const tone = status.kind === 'open' ? { c: '#15803d', dot: '#22c55e' } : status.kind === 'later' ? { c: '#b45309', dot: '#f59e0b' } : { c: '#475569', dot: '#94a3b8' };
   const text = status.kind === 'open' ? btf('Open · until {time}', { time: clock(status.until) })
     : status.kind === 'later' ? btf('Opens today {from} – {to}', { from: clock(status.at), to: clock(status.until) })
+    : next ? (next.inDays === 1
+        ? btf('Opens tomorrow at {time}', { time: clock(next.at) })
+        : btf('Opens {day} at {time}', { day: next.date.toLocaleDateString(bookLocale(), { weekday: 'long' }), time: clock(next.at) }))
     : status.kind === 'closedNow' ? bt('Closed now') : bt('Closed today');
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: tone.c, fontWeight: 700, whiteSpace: 'nowrap' }}>
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: tone.dot }} />{text}
-    </span>
+    <>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: tone.c, fontWeight: 700, whiteSpace: 'nowrap' }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: tone.dot }} />{text}
+      </span>
+      {(closed || status.kind === 'later') && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#15803d', fontWeight: 600, whiteSpace: 'nowrap' }}>
+          <Icon name="check" color="#15803d" size={13} />{bt('Book online 24/7')}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -81,8 +101,9 @@ export interface SalonCardProps {
   rating?: { value: number; count: number } | null;
   accent: string;
   timezone?: string | null;
-  /** Today's row of business hours, whether today is a day off, and the opening-line mode. */
-  today?: { day: DayLike | null | undefined; isDayOff: boolean; mode?: unknown };
+  /** Today's row of business hours, whether today is a day off, and the opening-line mode.
+   *  `week` + `daysOff` let a closed shop say when it opens next. */
+  today?: { day: DayLike | null | undefined; isDayOff: boolean; mode?: unknown; week?: (DayLike | null | undefined)[]; daysOff?: string[] };
   compact?: boolean;
 }
 
@@ -99,6 +120,9 @@ export function SalonCard({ name, address, phone, logoUrl, logoScale, rating, ac
   const [copied, setCopied] = useState(false);
 
   const status = now === null || !today ? null : openStatus({ day: today.day, isDayOff: today.isDayOff, nowMinutes: now, mode: today.mode });
+  const next: Next = status && (status.kind === 'closedNow' || status.kind === 'closedToday') && today?.week
+    ? nextOpening({ week: today.week, daysOff: today.daysOff, today: todayInZone(timezone) })
+    : null;
   const dark = shade(accent, 0.45);
   const ring = tint(accent, 0.45);
   const tel = telHref(phone);
@@ -126,7 +150,7 @@ export function SalonCard({ name, address, phone, logoUrl, logoScale, rating, ac
 
   const meta = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12.5, color: MUTED, fontWeight: 500 }}>
-      <StatusLine status={status} />
+      <StatusLine status={status} next={next} />
       {rating && rating.count > 0 && (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }} title={`${rating.value} / 5 · ${rating.count}`}>
           <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" fill="#f59e0b" /></svg>

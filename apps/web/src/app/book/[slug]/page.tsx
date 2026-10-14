@@ -30,6 +30,7 @@ import { planOpeningBar } from '../../../lib/opening-bar';
 import { bookLangForCountry, setBookLang, setBookIndustry, bt, btf, bookLocale, bookLang } from '../../../lib/i18n-book';
 import { cartCopy } from '../../../lib/cart-art';
 import { CartArt } from '../../../components/CartArt';
+import { SalonCard } from '../../../components/SalonCard';
 import { industryText, isIndustryKey, type IndustryKey } from '../../../lib/ui-industry';
 import { afterPct, anyDealPct, dayKey, lineDeal, nextDeal, promoDeal, windowEnded, type Promos } from '../../../lib/booking-promos';
 import { gbpAttribution, gbpSearch, isGbpPath } from '../../../lib/gbp-source';
@@ -954,8 +955,17 @@ export default function PublicBookingPage() {
     step === 2 ? bt('Select Professional') :
     step === 3 ? bt('Select Time') : bt('Confirm Booking');
 
+  // Today's row of hours for the salon card (option B), read on the SALON's calendar.
+  const salonToday = todayInZone(salon?.timezone);
+  const cardToday = {
+    day: rules.businessHours[salonToday.getDay()],
+    isDayOff: rules.daysOff.includes(ymd(salonToday)),
+    mode: (rules as unknown as { soonestBar?: string }).soonestBar,
+  };
+
   const summary = (
     <CartPanel
+      today={cardToday}
       fill={!isMobile && !embedded}
       salon={salon} lines={allLines} fmt={fmt} totalCents={totalCents} fullCents={fullCents}
       anyDiscount={anyDiscount} totalDuration={totalDuration} employee={employee} slot={slot} selectedDate={selectedDate}
@@ -1068,6 +1078,10 @@ export default function PublicBookingPage() {
                   ))}
                   <span style={{ alignSelf: 'center', fontSize: 12, color: '#8fa0bb', fontWeight: 600 }}>+ this visit ↓</span>
                 </div>
+              )}
+              {isMobile && step === 1 && salon && (
+                <SalonCard compact name={salon.name} address={salon.address} phone={salon.contactPhone}
+                  rating={salon.rating} accent={accent} timezone={salon.timezone} today={cardToday} />
               )}
               <Progress step={step} accent={accent} allowStaff={chooseStaff} />
               <h1 key={step} className="lumio-step" style={{ fontSize: isMobile ? 22 : 27, fontWeight: 700, color: INK, margin: '10px 0 4px' }}>{stepTitle}</h1>
@@ -1338,8 +1352,10 @@ function AnimatedMoney({ cents, fmt, style }: { cents: number; fmt: (c: number) 
   return <span style={style}>{fmt(disp)}</span>;
 }
 
-function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill, grand, party, activeGuest, onPickGuest, onRemoveFor }: {
+function CartPanel({ today, salon, lines, fmt, totalCents, fullCents, anyDiscount, totalDuration, employee, slot, selectedDate, onRemove, canContinue, ctaLabel, onContinue, step, accent, fill, grand, party, activeGuest, onPickGuest, onRemoveFor }: {
   salon: Salon | null; lines: Line[]; fmt: (c: number) => string; totalCents: number; fullCents: number; anyDiscount: boolean;
+  /** Today's hours for the salon card's open/closed line. */
+  today?: { day: DayHours | undefined; isDayOff: boolean; mode?: unknown };
   totalDuration: number; employee: Staff | null; slot: Slot | null; selectedDate: Date | null;
   onRemove: (id: string) => void; canContinue: boolean; ctaLabel: string; onContinue: () => void; step: Step; accent: string; fill?: boolean;
   /** Multi-visit cart or group booking: the number the customer pays in total. */
@@ -1367,14 +1383,11 @@ function CartPanel({ salon, lines, fmt, totalCents, fullCents, anyDiscount, tota
       boxShadow: `0 30px 60px -34px rgba(15,42,82,.45), 0 0 0 1px ${tint(accent, 0.10)}`,
       height: fill ? '100%' : 'auto', maxHeight: fill ? '100%' : '88vh', width: '100%',
       display: 'flex', flexDirection: 'column' }}>
-      <div style={{ background: `linear-gradient(120deg, ${accent} 0%, ${shade(accent, 0.18)} 55%, ${shade(accent, 0.42)} 100%)`, color: '#fff', padding: '16px 18px', display: 'flex', gap: 13, alignItems: 'center', flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22)' }}>
-        <Logo url={salon?.branding?.logoUrl} scale={salon?.branding?.logoScale} size={46} />
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ fontWeight: 700, fontSize: 16, letterSpacing: -0.2, lineHeight: 1.2 }}>{salon?.name}</div>
-          {salon?.address && <div style={{ fontSize: 11.5, opacity: 0.78, lineHeight: 1.45 }}>{salon.address}</div>}
-          {salon?.contactPhone && <div style={{ fontSize: 11.5, opacity: 0.78, letterSpacing: 0.2 }}>{salon.contactPhone}</div>}
-        </div>
-      </div>
+      {/* The salon card (option B): white, a thin bar in the salon's colour, open
+          status, rating, address and real Call / Directions / Share buttons. */}
+      <SalonCard name={salon?.name ?? ''} address={salon?.address} phone={salon?.contactPhone}
+        logoUrl={okImageUrl(String(salon?.branding?.logoUrl ?? '').trim()) ? salon?.branding?.logoUrl : null} logoScale={salon?.branding?.logoScale}
+        rating={salon?.rating} accent={accent} timezone={salon?.timezone} today={today} />
       {/* boarding-pass tear line: this is the "ticket stub" cue that sets the cart apart */}
       <div className="lumio-perf" style={{ flexShrink: 0 }}><span className="lumio-tear" /></div>
 
@@ -1548,12 +1561,14 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
   const perks: [string, string, string][] = copy.perks.map((p) => [p.icon, words(p.title), words(p.sub)]);
   return (
     <div style={{ padding: '16px 2px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
-        <div style={{ width: 58, height: 58, borderRadius: '50%', background: tint(accent, 0.10), color: accent, display: 'grid', placeItems: 'center', margin: '0 auto 10px' }}>
-          <CartArt kind={copy.art} color={accent} size={32} />
+      {/* Picture beside the words: a bigger, drawn picture in less height than
+          the old small circle stacked over centred text. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '6px 0 12px' }}>
+        <CartArt kind={copy.art} color={accent} size={64} tile />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: INK, lineHeight: 1.3 }}>{copy.title}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4, lineHeight: 1.5 }}>{copy.hint}</div>
         </div>
-        <div style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>{copy.title}</div>
-        <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', marginTop: 4, lineHeight: 1.5 }}>{copy.hint}</div>
       </div>
       <div style={{ display: 'grid', gap: 10, marginTop: 4 }}>
         {perks.map(([icon, title, sub]) => (
@@ -1566,12 +1581,6 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
           </div>
         ))}
       </div>
-      {salon?.contactPhone && (
-        <a href={`tel:${salon.contactPhone.replace(/[^0-9+]/g, '')}`}
-          style={{ marginTop: 12, display: 'block', textAlign: 'center', padding: '11px 12px', borderRadius: 12, border: `1px solid ${tint(accent, 0.35)}`, color: accent, fontWeight: 600, fontSize: 13, textDecoration: 'none' }}>
-          📞 Rather talk to us? {salon.contactPhone}
-        </a>
-      )}
     </div>
   );
 }

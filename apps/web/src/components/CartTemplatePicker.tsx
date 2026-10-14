@@ -32,20 +32,20 @@ export function CartTemplatePicker({ vi, industry, accent, value, title, hint, o
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(118px, 1fr))', gap: 8 }}>
+      {/* Compact chips: picture beside the name, so 13 templates take two or
+          three short rows instead of a wall of tall tiles. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
         {list.map((t) => {
           const on = t.key === current;
           return (
             <button key={t.key} type="button" onClick={() => onChange({ cartArt: t.key })} aria-pressed={on}
               title={vi ? t.title.vi : t.title.en}
               style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '10px 6px', borderRadius: 10, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px 6px 6px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
                 background: on ? tint(accent, 0.14) : 'var(--c0f172a)', border: `1.5px solid ${on ? accent : 'var(--c334155)'}`,
               }}>
-              <span style={{ width: 44, height: 44, borderRadius: '50%', background: tint(accent, 0.12), display: 'grid', placeItems: 'center' }}>
-                <CartArt kind={t.art} color={accent} size={26} />
-              </span>
-              <span style={{ fontSize: 11.5, color: on ? 'var(--ce2e8f0)' : 'var(--c94a3b8)', fontWeight: on ? 700 : 500, textAlign: 'center', lineHeight: 1.3 }}>
+              <CartArt kind={t.art} color={accent} size={36} tile />
+              <span style={{ fontSize: 12.5, color: on ? 'var(--ce2e8f0)' : 'var(--c94a3b8)', fontWeight: on ? 700 : 500, lineHeight: 1.3, minWidth: 0 }}>
                 {vi ? t.name.vi : t.name.en}
               </span>
             </button>
@@ -68,12 +68,12 @@ export function CartTemplatePicker({ vi, industry, accent, value, title, hint, o
 
       <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--c64748b)' }}>{vi ? 'Xem trước trên trang đặt lịch:' : 'Preview on the booking page:'}</div>
       <div style={{ marginTop: 6, maxWidth: 360, borderRadius: 12, background: '#ffffff', padding: '18px 14px', border: '1px solid var(--c334155)' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 58, height: 58, borderRadius: '50%', background: tint(accent, 0.10), display: 'grid', placeItems: 'center', margin: '0 auto 10px' }}>
-            <CartArt kind={preview.art} color={accent} size={32} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <CartArt kind={preview.art} color={accent} size={64} tile />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 700, color: INK, lineHeight: 1.3 }}>{preview.title}</div>
+            <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>{preview.hint}</div>
           </div>
-          <div style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>{preview.title}</div>
-          <div style={{ fontSize: 12.5, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>{preview.hint}</div>
         </div>
         <div style={{ display: 'grid', gap: 6, marginTop: 12 }}>
           {preview.perks.slice(0, 2).map((p) => (

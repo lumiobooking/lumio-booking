@@ -5,7 +5,13 @@
  * shopping bag and "Pick your tech" for a nail salon, a dental clinic and a
  * café. Each salon now picks a ready-made template for its line of business
  * (picture, headline, the line under it, four reasons to book), and may type
- * its own headline and line on top. 'auto' = the first template of its trade.
+ * its own headline and line on top.
+ *
+ * 'auto' (no pick yet, or a pick that no longer exists) = the CALENDAR
+ * template, for every trade and on every device (the side cart on a computer
+ * and the bottom bar on a phone). The owner asked for it as the default: it
+ * says "book an appointment" in any line of business. A salon that picked a
+ * template keeps it; the trade's own templates are listed right after it.
  *
  * Pure data + resolver; the pictures live in components/CartArt.tsx.
  */
@@ -24,7 +30,8 @@ export interface CartTemplate {
   name: Txt;
   title: Txt;
   hint: Txt;
-  perks: 'beauty' | 'health' | 'food' | 'property' | 'service';
+  /** 'trade' = the four reasons of the salon's own line of business. */
+  perks: 'beauty' | 'health' | 'food' | 'property' | 'service' | 'trade';
 }
 
 const BEAUTY: IndustryKey[] = ['NAIL', 'LASH', 'HAIR', 'SPA', 'MASSAGE'];
@@ -75,7 +82,7 @@ export const CART_TEMPLATES: CartTemplate[] = [
     name: { vi: 'Dụng cụ', en: 'Tools' },
     title: { vi: 'Bạn cần chúng tôi làm gì?', en: 'What do you need done?' },
     hint: { vi: 'Bấm + ở dịch vụ bất kỳ — chọn được nhiều dịch vụ.', en: 'Tap + on any service — pick as many as you need.' } },
-  { key: 'calendar', industries: [], art: 'calendar', perks: 'service',
+  { key: 'calendar', industries: [], art: 'calendar', perks: 'trade',
     name: { vi: 'Lịch hẹn', en: 'Calendar' },
     title: { vi: 'Chọn dịch vụ để đặt lịch', en: 'Pick a service to book' },
     hint: { vi: 'Bấm + ở dịch vụ bất kỳ. Có thể chọn nhiều dịch vụ.', en: 'Tap + on any service. You can add more than one.' } },
@@ -85,7 +92,17 @@ export const CART_TEMPLATES: CartTemplate[] = [
     hint: { vi: 'Bấm + ở dịch vụ bất kỳ. Có thể chọn nhiều dịch vụ.', en: 'Tap + on any service. You can add more than one.' } },
 ];
 
-const PERKS: Record<CartTemplate['perks'], Perk[]> = {
+/** The default template's reasons to book follow the trade ("Pick your tech" for a nail salon). */
+export const DEFAULT_TEMPLATE_KEY = 'calendar';
+function tradePerks(industry: IndustryKey): Exclude<CartTemplate['perks'], 'trade'> {
+  if (BEAUTY.includes(industry)) return 'beauty';
+  if (FOOD.includes(industry)) return 'food';
+  if (industry === 'DENTAL') return 'health';
+  if (industry === 'REAL_ESTATE') return 'property';
+  return 'service';
+}
+
+const PERKS: Record<Exclude<CartTemplate['perks'], 'trade'>, Perk[]> = {
   beauty: [
     { icon: '🕐', title: { vi: 'Đặt lịch bất cứ lúc nào', en: 'Book any time' }, sub: { vi: 'Đặt online 24/7 — kể cả khi tiệm đã đóng cửa.', en: 'Open 24/7 online — even when the shop is closed.' } },
     { icon: '✅', title: { vi: 'Xác nhận ngay', en: 'Instant confirmation' }, sub: { vi: 'Có tin nhắn ngay khi chỗ của bạn được giữ.', en: 'You get a text the moment your spot is held.' } },
@@ -118,19 +135,20 @@ const PERKS: Record<CartTemplate['perks'], Perk[]> = {
   ],
 };
 
-/** Templates for a trade, its own first, then the ones that fit any trade. */
+/** Templates for a trade: the default (calendar) first, then its own, its neighbours', the rest that fit any trade. */
 export function templatesFor(industry: IndustryKey): CartTemplate[] {
+  const def = CART_TEMPLATES.filter((t) => t.key === DEFAULT_TEMPLATE_KEY);
   const own = CART_TEMPLATES.filter((t) => t.industries.includes(industry));
-  const any = CART_TEMPLATES.filter((t) => t.industries.length === 0);
+  const any = CART_TEMPLATES.filter((t) => t.industries.length === 0 && t.key !== DEFAULT_TEMPLATE_KEY);
   const near = BEAUTY.includes(industry)
     ? CART_TEMPLATES.filter((t) => !own.includes(t) && t.industries.some((i) => BEAUTY.includes(i)))
     : FOOD.includes(industry)
       ? CART_TEMPLATES.filter((t) => !own.includes(t) && t.industries.some((i) => FOOD.includes(i)))
       : [];
-  return [...own, ...near, ...any];
+  return [...def, ...own, ...near, ...any];
 }
 
-/** The template a salon shows: its pick when known, else the first of its trade. */
+/** The template a salon shows: its pick when known, else the default (calendar). */
 export function resolveTemplate(key: string | null | undefined, industry: IndustryKey): CartTemplate {
   const picked = key && key !== 'auto' ? CART_TEMPLATES.find((t) => t.key === key) : undefined;
   return picked ?? templatesFor(industry)[0] ?? CART_TEMPLATES[CART_TEMPLATES.length - 1];
@@ -146,6 +164,6 @@ export function cartCopy(opts: { key?: string | null; industry: IndustryKey; lan
     art: t.art,
     title: (opts.title ?? '').trim().slice(0, 80) || L(t.title),
     hint: (opts.hint ?? '').trim().slice(0, 140) || L(t.hint),
-    perks: PERKS[t.perks].map((p) => ({ icon: p.icon, title: L(p.title), sub: L(p.sub) })),
+    perks: PERKS[t.perks === 'trade' ? tradePerks(opts.industry) : t.perks].map((p) => ({ icon: p.icon, title: L(p.title), sub: L(p.sub) })),
   };
 }

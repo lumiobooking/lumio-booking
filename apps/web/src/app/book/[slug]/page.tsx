@@ -28,7 +28,7 @@ import { uiLocale } from '../../../lib/datetime';
 import { todayInZone } from '../../../lib/salon-clock';
 import { planOpeningBar } from '../../../lib/opening-bar';
 import { bookLangForCountry, setBookLang, setBookIndustry, bt, btf, bookLocale, bookLang } from '../../../lib/i18n-book';
-import { cartCopy } from '../../../lib/cart-art';
+import { cartCopy, type ArtKind } from '../../../lib/cart-art';
 import { CartArt } from '../../../components/CartArt';
 import { SalonCard } from '../../../components/SalonCard';
 import { industryText, isIndustryKey, type IndustryKey } from '../../../lib/ui-industry';
@@ -1313,6 +1313,7 @@ export default function PublicBookingPage() {
             embedded={!asPage} count={cartLines.length} totalCents={grand ? grand.cents : totalCents} fmt={fmt}
             grandLabel={grand ? (grand.kind === 'visits' ? btf('{n} visits', { n: grand.count }) : btf('group of {n}', { n: grand.count })) : undefined}
             durationMinutes={totalDuration} canContinue={canContinue} label={ctaLabel} onContinue={goNext} accent={accent}
+            art={cartArtOf(salon)}
           />
         )}
 
@@ -1564,6 +1565,13 @@ function Launcher({ salon, accent, onOpen, rules, services }: {
 
 /** An empty cart used to be a tall white nothing. Now it explains what happens
  *  next and why booking here is safe — the space works for the salon. */
+/** The salon's cart picture: its chosen template, else its trade's first one. */
+function cartArtOf(salon: Salon | null): ArtKind {
+  const trade = String(salon?.industry ?? '').toUpperCase();
+  const industry: IndustryKey = isIndustryKey(trade) ? trade : 'NAIL';
+  return cartCopy({ key: salon?.branding?.cartArt, industry, lang: bookLang() }).art;
+}
+
 function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
   // The salon's template for its trade (lib/cart-art.ts) and its own words, if any.
   const trade = String(salon?.industry ?? '').toUpperCase();
@@ -1598,11 +1606,13 @@ function EmptyCart({ accent, salon }: { accent: string; salon: Salon | null }) {
 }
 
 /** Mobile: floating action bar. Always on screen, never behind the content. */
-function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canContinue, label, onContinue, accent, pinRef, grandLabel }: {
+function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canContinue, label, onContinue, accent, pinRef, grandLabel, art }: {
   embedded: boolean; count: number; totalCents: number; fmt: (c: number) => string; durationMinutes: number;
   canContinue: boolean; label: string; onContinue: () => void; accent: string;
   /** When set, totalCents is the ALL-visits/group figure and this names it ("3 visits"). */
   grandLabel?: string;
+  /** The salon's empty-cart picture (lib/cart-art.ts), so the phone bar matches the desktop cart. */
+  art?: ArtKind;
   /** Embed only: keeps the bar floating above the fold while the form is on screen. */
   pinRef?: React.MutableRefObject<HTMLDivElement | null>;
 }) {
@@ -1647,17 +1657,18 @@ function MobileBar({ embedded, count, totalCents, fmt, durationMinutes, canConti
             ['--accent-glow' as string]: tint(accent, 0.55),
           }),
     } as React.CSSProperties}>
-      <span style={{ position: 'relative', width: 42, height: 42, borderRadius: 13, background: tint(accent, 0.10), display: 'grid', placeItems: 'center', fontSize: 18, flexShrink: 0 }}>
-        🛍️
+      {/* Same drawn picture as the cart on a computer — not a stock emoji bag. */}
+      <span style={{ position: 'relative', width: 44, height: 44, flexShrink: 0 }}>
+        <CartArt kind={art ?? 'bag'} color={accent} size={44} tile />
         {count > 0 && (
           <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 19, height: 19, padding: '0 5px', borderRadius: 999,
             background: accent, color: '#fff', fontSize: 11, fontWeight: 700, display: 'grid', placeItems: 'center',
-            boxShadow: `0 4px 10px -4px ${tint(accent, 0.95)}` }}>{count}</span>
+            boxShadow: `0 0 0 2px #ffffff, 0 4px 10px -4px ${tint(accent, 0.95)}` }}>{count}</span>
         )}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, color: '#8fa0bb', fontWeight: 600 }}>
-          {count === 0 ? bt('No service yet') : btf(count === 1 ? '{n} service' : '{n} services', { n: count })}{durationMinutes > 0 && <> · 🕐 {fmtDur(durationMinutes)}</>}{grandLabel && <> · <b style={{ color: INK }}>{btf('total for {label}', { label: grandLabel })}</b></>}
+          {count === 0 ? bt('No service yet') : btf(count === 1 ? '{n} service' : '{n} services', { n: count })}{durationMinutes > 0 && <> · {fmtDur(durationMinutes)}</>}{grandLabel && <> · <b style={{ color: INK }}>{btf('total for {label}', { label: grandLabel })}</b></>}
         </div>
         <div style={{ fontSize: 18, fontWeight: 700, color: INK, letterSpacing: -0.3 }}>{fmt(totalCents)}</div>
       </div>

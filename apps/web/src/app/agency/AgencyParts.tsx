@@ -758,7 +758,7 @@ export function SalonPanel({
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <SelectField title="Chuyển cho" phone={phone} value={t.workNext ?? ''} onChange={(v) => onNext(t, v as WorkNext | '')}>
                 <option value="">— Chưa chọn —</option>
-                {NEXT_ORDER.map((k) => <option key={k} value={k}>{NEXT_LOOK[k].label}</option>)}
+                {NEXT_ORDER.map((k) => <option key={k} value={k}>{NEXT_LOOK[k].icon} {NEXT_LOOK[k].label}</option>)}
               </SelectField>
               <SelectField title="Trạng thái" phone={phone} value={t.opsStage ?? 'running'} onChange={(v) => onStage(t, v as OpsStage)}>
                 {STAGE_ORDER.map((k) => <option key={k} value={k}>{STAGE_LOOK[k].label}</option>)}
@@ -830,6 +830,42 @@ export function SalonPanel({
         </div>
       </aside>
     </>
+  );
+}
+
+/**
+ * "Bước tiếp" on the row itself: a coloured pill that IS the picker. The
+ * person who just finished their part hands the shop on without opening it.
+ * A native <select> lies over the pill at 16px, so a phone opens its own
+ * picker without zooming, and the click never reaches the row behind it.
+ */
+export function NextPicker({ next, onChange, size = 'md', disabled }: {
+  next: WorkNext | '' | undefined; onChange: (n: WorkNext | '') => void; size?: 'sm' | 'md'; disabled?: boolean;
+}) {
+  const look = next ? NEXT_LOOK[next] : null;
+  const sm = size === 'sm';
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  return (
+    <span onClick={stop} onMouseDown={stop} onKeyDown={stop}
+      title={look ? `${look.label} — bấm để chuyển bộ phận` : 'Chưa chọn bộ phận làm tiếp — bấm để chọn'}
+      className="ag-next"
+      style={{
+        position: 'relative', display: 'inline-flex', alignItems: 'center', gap: sm ? 4 : 5, flexShrink: 0, maxWidth: '100%',
+        height: sm ? 24 : 30, padding: sm ? '0 8px' : '0 10px', borderRadius: 999, whiteSpace: 'nowrap', boxSizing: 'border-box',
+        fontSize: sm ? 11.5 : 12.5, fontWeight: 700, cursor: disabled ? 'default' : 'pointer',
+        color: look ? look.fg : C.muted, background: look ? look.bg : 'transparent',
+        border: `1px ${look ? 'solid' : 'dashed'} ${look ? look.bd : C.border}`,
+      }}>
+      <span aria-hidden style={{ fontSize: sm ? 11 : 12 }}>{look ? look.icon : '↪'}</span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{look ? look.label : 'Chuyển cho'}</span>
+      {!disabled && <Icon name="down" size={sm ? 12 : 13} color={look ? look.fg : C.muted} sw={2.4} />}
+      <select value={next ?? ''} disabled={disabled} aria-label="Bước tiếp — bộ phận làm tiếp theo"
+        onChange={(e) => onChange(e.target.value as WorkNext | '')}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, fontSize: 16, border: 0, margin: 0, padding: 0, cursor: disabled ? 'default' : 'pointer', appearance: 'none', WebkitAppearance: 'none' }}>
+        <option value="">— Chưa chọn —</option>
+        {NEXT_ORDER.map((k) => <option key={k} value={k}>{NEXT_LOOK[k].icon} {NEXT_LOOK[k].label}</option>)}
+      </select>
+    </span>
   );
 }
 

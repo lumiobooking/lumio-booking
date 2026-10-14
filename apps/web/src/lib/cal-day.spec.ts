@@ -1,6 +1,6 @@
 import {
   activeFilterCount, applyFilters, attentionOf, capacityMinutes, facetCounts, isClosedDay, listKey, loadLevel, loadOf,
-  monthGrid, nextMonday, NO_FILTERS, periodOf, stripDays, summarize, toggle, type DayBooking,
+  monthGrid, nextMonday, NO_FILTERS, periodOf, stripDays, suggestStart, summarize, toggle, type DayBooking,
 } from './cal-day';
 
 const NOW = new Date('2026-10-14T13:45:00').getTime();
@@ -104,5 +104,21 @@ describe('calendar day model', () => {
     expect(loadOf(570, 1140)).toBe(0.5);
     expect(loadOf(10, 0)).toBeNull();
     expect([loadLevel(0.5), loadLevel(0.7), loadLevel(0.95)]).toEqual(['light', 'busy', 'full']);
+  });
+
+  it('"Đặt lịch" opens on a time the salon is open', () => {
+    const week = Array.from({ length: 7 }, (_, d) => (d === 0 ? { closed: true } : { openMinutes: 600, closeMinutes: 1080 }));
+    const wed = new Date(2026, 9, 14);
+    const at = (r: { date: Date; minutes: number }) => `${r.date.getDate()} ${Math.floor(r.minutes / 60)}:${String(r.minutes % 60).padStart(2, '0')}`;
+    expect(at(suggestStart({ date: wed, today: wed, nowMin: 4 * 60 + 20, week }))).toBe('14 10:00'); // 4:20 AM → opening
+    expect(at(suggestStart({ date: wed, today: wed, nowMin: 13 * 60 + 45, week }))).toBe('14 14:00');
+    expect(at(suggestStart({ date: wed, today: wed, nowMin: 18 * 60 + 5, week }))).toBe('15 10:00'); // closed → tomorrow
+    const sat = new Date(2026, 9, 17);
+    expect(at(suggestStart({ date: sat, today: sat, nowMin: 19 * 60, week }))).toBe('19 10:00'); // Sunday closed → Monday
+    expect(at(suggestStart({ date: wed, today: wed, nowMin: 9 * 60, week, daysOff: ['2026-10-14'] }))).toBe('15 10:00');
+    expect(at(suggestStart({ date: new Date(2026, 9, 20), today: wed, nowMin: 15 * 60, week }))).toBe('20 10:00');
+    expect(at(suggestStart({ date: wed, today: wed, nowMin: 4 * 60 + 20, week: null }))).toBe('14 4:30'); // no hours: as before
+    const split = Array.from({ length: 7 }, () => ({ intervals: [{ open: 540, close: 720 }, { open: 780, close: 1140 }] }));
+    expect(at(suggestStart({ date: wed, today: wed, nowMin: 12 * 60 + 10, week: split }))).toBe('14 13:00'); // lunch break
   });
 });

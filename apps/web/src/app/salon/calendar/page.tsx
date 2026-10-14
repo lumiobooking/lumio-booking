@@ -22,7 +22,7 @@ import { ind } from '../../../lib/ui-industry';
 import { withHoursOverride } from '../../../lib/desk-hours';
 import { ListView, type ShiftStaffFull } from './ListView';
 import { C, Seg, IconBtn, Icon, btn, onIndigo, Popover, Sheet, DayStrip, MonthPicker, FilterBody, FilterFooter, ActiveChips, type DayInfo } from './CalParts';
-import { applyFilters, facetCounts, activeFilterCount, NO_FILTERS, stripDays, isClosedDay, capacityMinutes, loadOf, bookedMinutes, addDays, type CalFilters, type HoursDay } from '../../../lib/cal-day';
+import { applyFilters, facetCounts, activeFilterCount, NO_FILTERS, stripDays, suggestStart, isClosedDay, capacityMinutes, loadOf, bookedMinutes, addDays, type CalFilters, type HoursDay } from '../../../lib/cal-day';
 import { minutesInZone } from '../../../lib/salon-card';
 import { NewBookingModal, type NewBookingPrefill } from '../../../components/NewBookingModal';
 
@@ -416,15 +416,12 @@ function Inner() {
   const L = (a: string, b: string) => ind(vi ? a : b);
   const nF = activeFilterCount(filters);
   const pad2 = (n: number) => String(n).padStart(2, '0');
+  // Never outside opening hours: at 4:30 in the morning this used to offer
+  // 4:30 AM. See suggestStart (lib/cal-day) for the rule.
   const newHref = (() => {
-    let m = 600;
-    if (dayDate.getTime() === today.getTime()) m = Math.min(23 * 60 + 45, Math.ceil((minutesInZone(tz) + 1) / 15) * 15);
-    else {
-      const h = hours.week?.[dayDate.getDay()];
-      const o = Number(h?.intervals?.[0]?.open ?? h?.openMinutes);
-      if (Number.isFinite(o) && o > 0) m = o;
-    }
-    return `/salon/bookings?new=1&at=${encodeURIComponent(`${cellKey(dayDate)}T${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`)}`;
+    const sug = suggestStart({ date: dayDate, today, nowMin: minutesInZone(tz), week: hours.week, daysOff: hours.daysOff });
+    const m = sug.minutes;
+    return `/salon/bookings?new=1&at=${encodeURIComponent(`${cellKey(sug.date)}T${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`)}`;
   })();
   /**
    * "Đặt lịch" opens as a pop-up over the calendar instead of a page change.

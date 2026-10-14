@@ -296,3 +296,46 @@ export function nextMonday(d: Date): Date {
   const back = (d.getDay() + 6) % 7;
   return addDays(d, 7 - back);
 }
+
+/** A day's open stretches, in minutes after midnight. Empty = closed (or a day off). */
+export function openIntervals(day: HoursDay | null | undefined): { open: number; close: number }[] {
+  if (!day || day.closed) return [];
+  const ivs = Array.isArray(day.intervals) ? day.intervals.filter((iv) => Number.isFinite(iv?.open) && Number.isFinite(iv?.close) && iv.close > iv.open) : [];
+  if (ivs.length) return [...ivs].sort((a, b) => a.open - b.open);
+  const o = Number(day.openMinutes); const c = Number(day.closeMinutes);
+  return Number.isFinite(o) && Number.isFinite(c) && c > o ? [{ open: o, close: c }] : [];
+}
+
+/**
+ * The time "Đặt lịch" opens the form on.
+ *
+ * Today: the next quarter hour — but never outside opening hours. Before the
+ * salon opens it is the opening time; after it closes (or on a closed day /
+ * day off) it is the next day the salon is open, at opening time. Another
+ * day: that day's opening time, or the next open day when that one is closed.
+ * With no hours recorded it falls back to the old rule (next quarter hour
+ * today, 10:00 on other days), so nothing changes for a salon that never set
+ * its hours.
+ */
+export function suggestStart(args: {
+  date: Date; today: Date; nowMin: number;
+  week?: (HoursDay | null | undefined)[] | null; daysOff?: string[] | null; maxAhead?: number;
+}): { date: Date; minutes: number } {
+  const isToday = args.date.getTime() === args.today.getTime();
+  const nextQuarter = Math.min(23 * 60 + 45, Math.ceil((args.nowMin + 1) / 15) * 15);
+  if (!args.week || !args.week.length) return { date: args.date, minutes: isToday ? nextQuarter : 600 };
+  const off = new Set(args.daysOff ?? []);
+  // A day in the past is still allowed to be looked at; start from today then.
+  let d = args.date.getTime() < args.today.getTime() ? args.today : args.date;
+  for (let i = 0; i <= (args.maxAhead ?? 14); i++, d = addDays(d, 1)) {
+    if (off.has(dateKey(d))) continue;
+    const ivs = openIntervals(args.week[d.getDay()]);
+    if (!ivs.length) continue;
+    if (d.getTime() !== args.today.getTime()) return { date: d, minutes: ivs[0].open };
+    for (const iv of ivs) {
+      if (nextQuarter < iv.open) return { date: d, minutes: iv.open };
+      if (nextQuarter < iv.close) return { date: d, minutes: nextQuarter };
+    }
+  }
+  return { date: args.date, minutes: isToday ? nextQuarter : 600 };
+}

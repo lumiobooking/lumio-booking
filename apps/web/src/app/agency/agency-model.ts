@@ -56,12 +56,16 @@ export const STAGE_LOOK: Record<OpsStage, { label: string; dot: string; ink: str
 export const STAGE_ORDER: OpsStage[] = ['setup', 'running', 'paused', 'stopped'];
 
 /** Who is up next on this salon — picked by hand by whoever just finished their part. */
-export const NEXT_LOOK: Record<WorkNext, { label: string }> = {
-  content: { label: 'Chờ Content' },
-  design: { label: 'Chờ Design' },
-  review: { label: 'Chờ Duyệt' },
-  schedule: { label: 'Chờ Lên lịch' },
-  done: { label: 'Xong' },
+/**
+ * Each department has its own colour, so a column of these reads at a glance:
+ * which shops sit with Design, which wait for review, which are done.
+ */
+export const NEXT_LOOK: Record<WorkNext, { label: string; icon: string; fg: string; bg: string; bd: string }> = {
+  content: { label: 'Chờ Content', icon: '✍️', fg: 'var(--ink-warn)', bg: 'rgba(245,158,11,.14)', bd: 'rgba(245,158,11,.55)' },
+  design: { label: 'Chờ Design', icon: '🎨', fg: '#ec4899', bg: 'rgba(236,72,153,.13)', bd: 'rgba(236,72,153,.55)' },
+  review: { label: 'Chờ Duyệt', icon: '👀', fg: 'var(--ink-link)', bg: 'rgba(99,102,241,.15)', bd: 'rgba(99,102,241,.6)' },
+  schedule: { label: 'Chờ Lên lịch', icon: '🗓️', fg: 'var(--ink-sky)', bg: 'rgba(56,189,248,.13)', bd: 'rgba(56,189,248,.55)' },
+  done: { label: 'Xong', icon: '✅', fg: 'var(--ink-good)', bg: 'rgba(34,197,94,.13)', bd: 'rgba(34,197,94,.55)' },
 };
 export const NEXT_ORDER: WorkNext[] = ['content', 'design', 'review', 'schedule', 'done'];
 

@@ -50,7 +50,7 @@ import {
   type Board, type OpsStage, type ServicePackage, type TenantRow, type WorkNext,
 } from './agency-model';
 import {
-  ActiveChips, C, ChannelSquares, ChannelWords, Dot, FilterBar, FilterSheet, Icon, MarketChip, PackageText, RenewAction,
+  ActiveChips, C, ChannelSquares, ChannelWords, Dot, FilterBar, FilterSheet, Icon, MarketChip, NextPicker, PackageText, RenewAction,
   SalonPanel, StageText, TERM_LOOK, TermText, type FilterGroupDef,
 } from './AgencyParts';
 
@@ -83,10 +83,12 @@ const RENEW_SECTIONS: { key: RenewState; title: string; dot: string; note?: stri
 ];
 
 /** The table's columns on a wide screen. */
-const COLS = 'minmax(200px, 1.6fr) 136px 150px 92px 112px 118px 128px 172px';
+const COLS = 'minmax(190px, 1.6fr) 132px 146px 90px 108px 150px 126px 172px';
 
 const cssFor = `
 .ag-row:hover { background: var(--c162032) !important; }
+.ag-next:hover { filter: brightness(1.12); }
+.ag-next:focus-within { outline: 2px solid #6366f1; outline-offset: 1px; }
 .ag-row:focus-visible { outline: 2px solid #6366f1; outline-offset: -2px; }
 .ag-scroll { scrollbar-width: none; }
 .ag-scroll::-webkit-scrollbar { display: none; }
@@ -420,6 +422,11 @@ export default function AgencyPage() {
     setRows((rs) => rs.map((r) => (r.id === t.id ? { ...r, workNext: next } : r)));
     try {
       await apiFetch(`/support/tenants/${encodeURIComponent(t.id)}/next`, { method: 'POST', token, body: { next } });
+      // Changed straight from the row, so a slip of the finger gets an undo.
+      setNote({
+        text: `${t.name} → ${next ? NEXT_LOOK[next].label : 'chưa chọn bộ phận'}`,
+        undo: () => { setNote(null); void setNext({ ...t, workNext: next }, before); },
+      });
     } catch (e) {
       setRows((rs) => rs.map((r) => (r.id === t.id ? { ...r, workNext: before } : r)));
       setError(e instanceof Error ? e.message : 'Không đổi được bộ phận tiếp theo');
@@ -609,6 +616,7 @@ export default function AgencyPage() {
     onOpen: () => setPanelId(t.id),
     onEnter: (landing?: string) => { void enter(t, landing); },
     onTell: () => { void renewal(t, { action: 'told' }); },
+    onNext: (n: WorkNext | '') => { void setNext(t, n); },
   });
 
   const tabs: { key: Tab; label: string; n: number; badge?: boolean }[] = [
@@ -1046,6 +1054,8 @@ interface RowProps {
   onOpen: () => void;
   onEnter: (landing?: string) => void;
   onTell: () => void;
+  /** Hand the shop to the next department, right from the row. */
+  onNext: (n: WorkNext | '') => void;
 }
 
 /** The red/amber edge: the one mark that survives a squint. */
@@ -1132,11 +1142,6 @@ function joinSep(parts: React.ReactNode[]) {
   return out;
 }
 
-function NextText({ next, size = 13 }: { next: WorkNext | '' | undefined; size?: number }) {
-  if (!next) return null;
-  return <span style={{ color: C.link, fontSize: size, whiteSpace: 'nowrap' }}>→ {NEXT_LOOK[next].label}</span>;
-}
-
 /** Computer: one table row, fixed columns. */
 function WideRow(p: RowProps) {
   const { t, today, term } = p;
@@ -1170,7 +1175,7 @@ function WideRow(p: RowProps) {
       <div style={{ minWidth: 0, overflow: 'hidden' }}><PackageText pkg={p.pkg} /></div>
       <div style={{ fontSize: 13, color: p.team ? C.body : C.warn, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.team || 'Chưa giao'}</div>
       <div style={{ minWidth: 0 }}><StageText stage={t.opsStage ?? 'running'} /></div>
-      <div style={{ minWidth: 0 }}>{t.workNext ? <NextText next={t.workNext} /> : <span style={{ color: C.muted }}>—</span>}</div>
+      <div style={{ minWidth: 0, display: 'flex' }}><NextPicker next={t.workNext} onChange={p.onNext} disabled={p.picking} /></div>
       <div style={{ minWidth: 0 }}><ChannelSquares t={t} size={16} /></div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
         {!p.picking && <RenewAction term={t.serviceTerm} today={today} onTell={p.onTell} />}
@@ -1207,10 +1212,10 @@ function TabletRow(p: RowProps) {
         {(p.notice || (t.heldPosts ?? 0) > 0) && waitLine}
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0 }}>
           {joinSep([
+            <NextPicker key="n" next={t.workNext} onChange={p.onNext} size="sm" disabled={p.picking} />,
             <PackageText key="p" pkg={p.pkg} size={12.5} />,
             <span key="t" style={{ color: p.team ? C.sub : C.warn }}>{p.team || 'Chưa giao'}</span>,
             <StageText key="s" stage={t.opsStage ?? 'running'} size={12.5} />,
-            t.workNext ? <NextText key="n" next={t.workNext} size={12.5} /> : null,
             (t.awaitingApproval ?? 0) > 0 ? <span key="a">{t.awaitingApproval} chờ duyệt</span> : null,
           ])}
         </span>
@@ -1254,8 +1259,9 @@ function PhoneRow(p: RowProps) {
         <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.sub, minWidth: 0 }}>
           <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', overflow: 'hidden', WebkitMaskImage: 'linear-gradient(90deg, #000 88%, transparent)', maskImage: 'linear-gradient(90deg, #000 88%, transparent)' }}>
             {joinSep([
+              // The department picker leads: it is the thing people change most.
+              <NextPicker key="n" next={t.workNext} onChange={p.onNext} size="sm" disabled={p.picking} />,
               <StageText key="s" stage={t.opsStage ?? 'running'} size={12} />,
-              t.workNext ? <NextText key="n" next={t.workNext} size={12} /> : null,
               ...(busyLine ? [] : [
                 <ChannelWords key="c" t={t} />,
                 (t.awaitingApproval ?? 0) > 0 ? <span key="a" style={{ color: C.warn }}>{t.awaitingApproval} chờ duyệt</span> : null,

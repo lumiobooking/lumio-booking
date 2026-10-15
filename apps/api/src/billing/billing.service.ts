@@ -402,7 +402,8 @@ export class BillingService {
    * the rows. Best-effort per row; the new subscription is never touched.
    */
   private async retireOtherSubscriptions(tenantId: string, keepRef: string): Promise<void> {
-    const rows = await this.prisma.subscription.findMany({ where: { tenantId }, select: { id: true, provider: true, status: true, externalReference: true } }).catch(() => []);
+    const rows = await this.prisma.subscription.findMany({ where: { tenantId }, select: { id: true, provider: true, status: true, externalReference: true } })
+      .catch(() => [] as { id: string; provider: string | null; status: SubscriptionStatus; externalReference: string | null }[]);
     for (const r of subscriptionsToRetire(rows, keepRef)) {
       try {
         const g = gatewayOf(r.provider);
@@ -433,7 +434,7 @@ export class BillingService {
     const invoices = await this.prisma.invoice.findMany({
       where: { tenantId, periodStart: { in: starts } },
       select: { number: true, type: true, status: true, totalCents: true, currency: true, periodStart: true, paidAt: true, provider: true, token: true, dueDate: true },
-    }).catch(() => []);
+    }).catch(() => [] as { number: string; type: string; status: string; totalCents: number; currency: string; periodStart: Date | null; paidAt: Date | null; provider: string | null; token: string; dueDate: Date | null }[]);
     const rows = [];
     for (const start of starts) {
       const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
@@ -477,7 +478,7 @@ export class BillingService {
       orderBy: { createdAt: 'desc' },
       take: 300,
       select: { id: true, recipient: true, status: true, provider: true, error: true, body: true, createdAt: true, sentAt: true, deliveredAt: true, relatedType: true, relatedId: true },
-    }).catch(() => []);
+    }).catch(() => [] as { id: string; recipient: string; status: NotificationStatus; provider: string; error: string | null; body: string; createdAt: Date; sentAt: Date | null; deliveredAt: Date | null; relatedType: string | null; relatedId: string | null }[]);
     const counts = { sent: 0, delivered: 0, failed: 0, pending: 0 };
     for (const r of rows) {
       if (r.status === NotificationStatus.FAILED) counts.failed++;

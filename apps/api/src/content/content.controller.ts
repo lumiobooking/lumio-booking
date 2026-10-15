@@ -363,6 +363,25 @@ export class ContentController {
     return this.publisher.list(user, sweepWas);
   }
 
+  /** The first comments under every post: templates, timing, each one filled for this shop. */
+  @Get('auto-comments')
+  autoComments(@CurrentUser() user: AuthenticatedUser) {
+    return this.publisher.autoCommentsView(user);
+  }
+
+  @Caps('marketing')
+  @Post('auto-comments')
+  saveAutoComments(@CurrentUser() user: AuthenticatedUser, @Body() dto: Record<string, unknown>) {
+    return this.publisher.saveAutoComments(user, dto);
+  }
+
+  /** Re-queue a post's failed comments (after the Page was reconnected with comment rights). */
+  @Caps('marketing')
+  @Post('posts/:id/comments/retry')
+  retryComments(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.publisher.retryComments(user, id);
+  }
+
   /** The text every new post opens with, for this shop. Empty = back to the built block. */
   @Caps('marketing')
   @Post('post-footer')

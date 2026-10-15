@@ -56,6 +56,7 @@ import type { TrendCard } from '../../../components/TrendsTab';
 import { fitForSocial, videoPosterDataUrl } from '../../../lib/image';
 import { PromoStrategyCard, type StrategyView } from '../../../components/PromoStrategyCard';
 import { ind } from '../../../lib/ui-industry';
+import { AutoCommentsSettings, CommentOutcome, PostCommentsPicker, type AutoCommentsView, type CommentJob, type PostCommentOverride } from '../../../components/AutoCommentsBox';
 
 interface Idea {
   id: string;
@@ -341,6 +342,9 @@ interface QueuedPost {
   tiktok?: TikTokOpts | null;
   /** The Google post's button, when the post goes there. */
   google?: GbpOpts | null;
+  /** The first comments: this post's own say (null = shop templates) and what became of them. */
+  comments?: PostCommentOverride | null;
+  commentLog?: CommentJob[];
   /** The saved error is about a permission the connection now has. */
   errorIsStale: boolean;
   /** Due, not sent, no error: why, in words. Null otherwise. */
@@ -489,6 +493,8 @@ interface QueuePayload {
   /** The TikTok account, when connected: name and what it may post. */
   tiktok?: { displayName: string | null; username?: string | null; avatarUrl?: string | null; needsReconnect: boolean; creator: TikTokCreator | null } | null;
   posts: QueuedPost[];
+  /** The shop's first-comment templates, filled for today (components/AutoCommentsBox). */
+  autoComments?: AutoCommentsView | null;
   /** Advice, never a refusal: where a month of posts fights itself. */
   crowding: { id: string; minutesApart: number; message: string }[];
   /** Lumio support session: may delete published rows too. */
@@ -772,6 +778,8 @@ function Inner() {
     stage?: 'writing' | 'design' | 'ready'; writerName?: string; designerName?: string; teamNote?: string;
     tiktok?: TikTokOpts;
     google?: GbpOpts;
+    /** The first comments for this post: null = the shop's templates. */
+    comments?: PostCommentOverride | null;
     /** The plan-sheet day this post came from — linked back once saved. */
     planDay?: string;
   } | null>(null);
@@ -818,6 +826,9 @@ function Inner() {
   }, [postDraft, composerOpen]);
   /** The footer editor under the caption: null = closed, else the text being edited. */
   const [footerDraft, setFooterDraft] = useState<string | null>(null);
+  /** The shop's auto-comment templates editor, open under the caption. */
+  const [commentsPanel, setCommentsPanel] = useState(false);
+  const [commentRetryBusy, setCommentRetryBusy] = useState<string | null>(null);
   const [footerBusy, setFooterBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   /** "3/5" while a batch of photos is going up, so the wait has a shape. */
@@ -1237,6 +1248,9 @@ function Inner() {
           teamNote: postDraft.teamNote ?? '',
           ...(postDraft.channels.includes('tiktok') && postDraft.tiktok ? { tiktok: postDraft.tiktok } : {}),
           ...(postDraft.channels.includes('google') && postDraft.google ? { google: postDraft.google } : {}),
+          // The first comments: null = the shop's templates (the server keeps
+          // a row's value only when the key is absent, so it is always sent).
+          comments: postDraft.comments ?? null,
           // The picker gives a wall-clock string that means SALON time; the
           // server stores an instant. The conversion has to say whose wall the
           // digits belong to — an owner reading from Vietnam still schedules
@@ -1540,7 +1554,20 @@ function Inner() {
       stage: p.stage ?? 'ready', writerName: p.writerName ?? '', designerName: p.designerName ?? '', teamNote: p.teamNote ?? '',
       tiktok: p.tiktok ?? undefined,
       google: p.google ?? undefined,
+      comments: p.comments ?? null,
     });
+  }
+
+  /** Re-queue a posted row's failed comments (after reconnecting the Page). */
+  async function retryComments(postId: string) {
+    if (!token) return;
+    setCommentRetryBusy(postId);
+    try {
+      await apiFetch(`/content/posts/${postId}/comments/retry`, { method: 'POST', token });
+      notify('success', vi ? 'Đã xếp lại — bình luận sẽ gửi trong vòng một phút.' : 'Re-queued — the comments go out within a minute.');
+      await loadQueue();
+    } catch (e) { notify('error', e instanceof Error ? e.message : 'error'); }
+    finally { setCommentRetryBusy(null); }
   }
 
   /** Start or end the TikTok connection. Connecting leaves for TikTok's consent screen. */
@@ -3904,6 +3931,30 @@ function Inner() {
                     </div>
                   )}
 
+                  {/* ---- the first comments under this post ----
+                       Booking link, today's offer, phone — written by the Page
+                       a few minutes after publishing, the way the team used to
+                       type them by hand. The shop's templates by default; this
+                       post may say none, or its own. Only for Meta channels. */}
+                  {(postDraft.channels.includes('facebook') || postDraft.channels.includes('instagram')) && queue?.autoComments !== undefined && (
+                    <PostCommentsPicker
+                      view={queue?.autoComments}
+                      value={postDraft.comments}
+                      onChange={(comments) => setPostDraft({ ...postDraft, comments })}
+                      vi={vi}
+                      onOpenSettings={() => setCommentsPanel(!commentsPanel)}
+                    />
+                  )}
+                  {commentsPanel && token && (
+                    <AutoCommentsSettings
+                      token={token}
+                      vi={vi}
+                      initial={queue?.autoComments ?? null}
+                      onSaved={(v) => { setQueue((q) => (q ? { ...q, autoComments: v } : q)); notify('success', vi ? 'Đã lưu mẫu bình luận cho tiệm.' : 'Comment templates saved.'); }}
+                      onClose={() => setCommentsPanel(false)}
+                    />
+                  )}
+
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 11 }}>
                     {(['facebook', 'instagram', 'google', 'tiktok'] as const).map((c) => {
                       const on = postDraft.channels.includes(c);
@@ -5465,6 +5516,9 @@ function Inner() {
                       </a>
                     ))}
 
+                    {p.status === 'posted' && (
+                      <CommentOutcome log={p.commentLog} vi={vi} busy={commentRetryBusy === p.id} onRetry={() => retryComments(p.id)} />
+                    )}
                     {p.status === 'posted' && (
                       <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginTop: 8, lineHeight: 1.5 }}>
                         {T('Giữ lại làm sổ ghi — bài đã đăng không xoá được ở đây.',

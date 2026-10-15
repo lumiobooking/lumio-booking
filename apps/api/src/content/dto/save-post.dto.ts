@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsISO8601, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsISO8601, IsObject, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /** One photo or video in the post, in display order. */
@@ -133,6 +133,14 @@ export class SavePostDto {
   /** Team-only note. Never shown to the client. */
   @IsOptional() @IsString() @MaxLength(2000)
   teamNote?: string;
+
+  /**
+   * The first comments under this post: {off: true} | {items: [{text,
+   * channels}]} | null for the shop's templates. Cleaned in the service
+   * (content/auto-comments.ts); omitted = keep what the row has.
+   */
+  @IsOptional() @IsObject()
+  comments?: Record<string, unknown> | null;
 }
 
 /** Move a post between stages from the calendar, without re-sending the body. */

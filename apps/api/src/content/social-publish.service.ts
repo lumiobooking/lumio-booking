@@ -27,6 +27,12 @@ import { checkGbpPost, gbpImageHeaderProblem, gbpSummary, unacceptedRisks, type 
 import { gbpScreenPrompt, parseScreenVerdict, postAckCode, screenAckCode, screenHardRefusal, screenRefusal, type ScreenVerdict } from './gbp-screen';
 import { createHash } from 'crypto';
 import {
+  cleanAutoComments, cleanPostComments, commentRetryable, commentSummary, dueComments, explainCommentError, fillComment, planComments, promoLine,
+  type AutoCommentSettings, type CommentFacts, type CommentJob, type PostCommentOverride,
+} from './auto-comments';
+import { SettingsService } from '../settings/settings.service';
+import { salonYmd } from '../settings/promo-window';
+import {
   cleanStage, statusFor, keepDriveLinks, unarchived, postFolderName, mediaFileName, type Stage, type MediaRef,
 } from './post-workflow';
 
@@ -138,7 +144,162 @@ export class SocialPublishService {
     // and the salon's Messenger screen learn about it the same minute instead
     // of when someone reads the calendar. Optional like the rest.
     @Optional() private readonly messenger?: MessengerService,
+    // The shop's promotions, for the %promo% placeholder of the first
+    // comments. Optional like the rest; without it the promo line is empty
+    // and a template that needs it is skipped.
+    @Optional() private readonly settings?: SettingsService,
   ) {}
+
+  // ---- first comments under a published post ---------------------------------
+
+  private static readonly AUTO_COMMENTS_KEY = 'auto_comments';
+
+  private async viFor(tenantId: string): Promise<boolean> {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } }).catch(() => null);
+    return (t as { market?: string } | null)?.market === 'VN';
+  }
+
+  /** The shop's comment settings (templates, timing). Off until turned on. */
+  async autoCommentsFor(tenantId: string): Promise<AutoCommentSettings> {
+    const [row, vi] = await Promise.all([
+      this.prisma.setting.findFirst({ where: { tenantId, key: SocialPublishService.AUTO_COMMENTS_KEY }, select: { value: true } }).catch(() => null),
+      this.viFor(tenantId),
+    ]);
+    return cleanAutoComments(row?.value ?? null, vi);
+  }
+
+  /** What each placeholder prints for this shop today. */
+  async commentFactsFor(tenantId: string): Promise<CommentFacts> {
+    const conn = await this.pageFor(tenantId);
+    const { shop } = await this.postKitFor(tenantId, conn?.page.igUsername ?? null);
+    const vi = await this.viFor(tenantId);
+    let promo: string | null = null;
+    if (this.settings) {
+      try {
+        const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }).catch(() => null))?.timezone ?? 'UTC';
+        const today = salonYmd(new Date(), tz);
+        const weekday = new Date(`${today}T12:00:00Z`).getUTCDay();
+        const [dates, weekdays, firstVisit, group] = await Promise.all([
+          this.settings.getDateDiscounts(tenantId), this.settings.getWeekdayDiscounts(tenantId),
+          this.settings.getFirstVisitDiscount(tenantId), this.settings.getGroupDiscount(tenantId),
+        ]);
+        promo = promoLine({ today, weekday, dates, weekdays: weekdays as never, firstVisit, group }, vi);
+      } catch { promo = null; }
+    }
+    return { salon: shop.name, bookingUrl: shop.bookingUrl ?? null, phone: shop.phone ?? null, address: shop.address ?? null, website: shop.website ?? null, promo };
+  }
+
+  /** Settings + facts + each template filled — what the settings screen and the composer show. */
+  async autoCommentsView(user: AuthenticatedUser) {
+    const tenantId = this.tenantId(user);
+    const [settings, facts] = await Promise.all([this.autoCommentsFor(tenantId), this.commentFactsFor(tenantId)]);
+    const conn = await this.pageFor(tenantId);
+    return {
+      settings,
+      facts,
+      preview: settings.templates.map((t) => ({ id: t.id, on: t.on, channels: t.channels, text: fillComment(t.text, facts) })),
+      /** Which channels can be commented on at all. */
+      channels: { facebook: !!conn, instagram: !!conn?.page.igId },
+    };
+  }
+
+  async saveAutoComments(user: AuthenticatedUser, dto: unknown) {
+    const tenantId = this.tenantId(user);
+    const vi = await this.viFor(tenantId);
+    const next = cleanAutoComments(dto, vi);
+    const value = { ...next, updatedAt: new Date().toISOString(), updatedBy: user.email ?? null };
+    const row = await this.prisma.setting.findFirst({ where: { tenantId, key: SocialPublishService.AUTO_COMMENTS_KEY }, select: { id: true } }).catch(() => null);
+    if (row?.id) await this.prisma.setting.update({ where: { id: row.id }, data: { value: value as never } });
+    else await this.prisma.setting.create({ data: { tenantId, key: SocialPublishService.AUTO_COMMENTS_KEY, value: value as never } as never });
+    await this.prisma.auditLog.create({
+      data: { tenantId, userId: user.userId ?? null, action: 'content.auto_comments_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { enabled: next.enabled, templates: next.templates.length, delayMin: next.delayMin, gapMin: next.gapMin, max: next.max } as never } as never,
+    }).catch(() => undefined);
+    return this.autoCommentsView(user);
+  }
+
+  private commentLogOf(r: unknown): CommentJob[] {
+    const v = (r as { commentLog?: unknown } | null)?.commentLog;
+    return Array.isArray(v) ? (v as CommentJob[]) : [];
+  }
+
+  /** Right after a post went live: decide the comments and queue them on the row. */
+  private async queueComments(row: PostRow, fresh: PublishResult[], postedAt: Date): Promise<void> {
+    try {
+      const targets = fresh
+        .filter((r): r is PublishResult & { id: string } => !!r && !r.error && !!r.id && (r.channel === 'facebook' || r.channel === 'instagram'))
+        .map((r) => ({ channel: r.channel as 'facebook' | 'instagram', id: r.id }));
+      if (!targets.length) return;
+      const override = cleanPostComments((row as { comments?: unknown }).comments);
+      const settings = await this.autoCommentsFor(row.tenantId);
+      if (!override?.items && !settings.enabled) return;
+      const facts = await this.commentFactsFor(row.tenantId);
+      const jobs = planComments({ settings, override, facts, targets, postedAt });
+      if (!jobs.length) return;
+      await this.posts?.update({ where: { id: row.id }, data: { commentLog: jobs as never } }).catch(() => undefined);
+      this.log.log(`Post ${row.id}: ${jobs.length} comment(s) queued (first at ${jobs[0].dueAt})`);
+    } catch (e) {
+      this.log.warn(`comments for ${row.id}: ${(e as Error).message}`);
+    }
+  }
+
+  /** One Graph call: the Page comments under its own post / Instagram media. */
+  private async postComment(token: string, job: CommentJob): Promise<{ id: string } | { error: string }> {
+    const r = await this.post(`${GRAPH}/${encodeURIComponent(job.targetId)}/comments`, new URLSearchParams({ message: job.text, access_token: token }), 20_000);
+    if (r.ok && r.json?.id) return { id: r.json.id };
+    return { error: this.graphError(r, job.channel === 'instagram' ? 'Instagram' : 'Facebook') };
+  }
+
+  /**
+   * The minute sweep for comments: every recently posted row with a pending
+   * comment that is due gets it written, one Graph call each, outcome kept
+   * on the row. A permission error stops that row's remaining comments —
+   * the same token will refuse them all — with the fix spelled out.
+   */
+  async runDueComments(now = new Date()): Promise<{ posted: number; failed: number }> {
+    const since = new Date(now.getTime() - 3 * 24 * 3600_000);
+    const rows = await this.posts?.findMany({
+      where: { status: 'posted', postedAt: { gte: since } },
+      select: { id: true, tenantId: true, commentLog: true },
+      take: 300,
+    }).catch(() => []) as { id: string; tenantId: string; commentLog: unknown }[];
+    let posted = 0; let failed = 0;
+    const tokens = new Map<string, string | null>();
+    for (const r of rows ?? []) {
+      const log = Array.isArray(r.commentLog) ? (r.commentLog as CommentJob[]) : [];
+      const due = dueComments(log, now);
+      if (!due.length) continue;
+      if (!tokens.has(r.tenantId)) tokens.set(r.tenantId, (await this.pageFor(r.tenantId))?.token ?? null);
+      const token = tokens.get(r.tenantId);
+      const at = now.toISOString();
+      let stopAll: string | null = null;
+      for (const job of due) {
+        if (stopAll) { Object.assign(job, { status: 'failed', error: stopAll, at }); failed++; continue; }
+        if (!token) { Object.assign(job, { status: 'failed', error: 'Chưa kết nối Trang.', at }); failed++; continue; }
+        const out = await this.postComment(token, job);
+        job.attempts = (job.attempts ?? 0) + 1;
+        if ('id' in out) { Object.assign(job, { status: 'posted', id: out.id, error: null, at }); posted++; continue; }
+        const retry = commentRetryable(out.error) && job.attempts < 3;
+        Object.assign(job, { status: retry ? 'pending' : 'failed', error: out.error, at, ...(retry ? { dueAt: new Date(now.getTime() + 10 * 60_000).toISOString() } : {}) });
+        if (!retry) { failed++; if (!commentRetryable(out.error)) stopAll = out.error; }
+      }
+      if (stopAll) for (const j of log) if (j.status === 'pending') Object.assign(j, { status: 'failed', error: stopAll, at });
+      await this.posts?.update({ where: { id: r.id }, data: { commentLog: log as never } }).catch(() => undefined);
+    }
+    if (posted || failed) this.log.log(`Post comments: ${posted} written, ${failed} failed`);
+    return { posted, failed };
+  }
+
+  /** The team re-tries a post's failed comments (after reconnecting the Page). */
+  async retryComments(user: AuthenticatedUser, postId: string) {
+    const tenantId = this.tenantId(user);
+    const row = await this.posts?.findFirst({ where: { id: postId, tenantId }, select: { id: true, commentLog: true } }).catch(() => null) as { id: string; commentLog: unknown } | null;
+    if (!row) throw new NotFoundException('Không tìm thấy bài này.');
+    const log = Array.isArray(row.commentLog) ? (row.commentLog as CommentJob[]) : [];
+    const now = new Date().toISOString();
+    for (const j of log) if (j.status === 'failed') Object.assign(j, { status: 'pending', attempts: 0, dueAt: now, error: null });
+    await this.posts?.update({ where: { id: row.id }, data: { commentLog: log as never } });
+    return { ok: true, comments: commentSummary(log) };
+  }
 
   /**
    * A scheduledAt from the client as an instant. A full ISO instant (with Z or
@@ -581,6 +742,10 @@ export class SocialPublishService {
         driveFolderUrl: r.driveFolderUrl ?? null,
         tiktok: this.tiktokOf(r),
         google: this.googleOf(r),
+        // The first comments: the post's own say, the queue and its outcomes.
+        comments: cleanPostComments((r as { comments?: unknown }).comments),
+        commentLog: this.commentLogOf(r).map((j) => ({ ...j, fix: j.status === 'failed' ? explainCommentError(j.error) : null })),
+        commentSummary: commentSummary(this.commentLogOf(r)),
         // The files are gone from storage; the post itself is untouched on
         // Facebook. The screen draws a placeholder instead of a broken image.
         mediaPurged: Boolean(r.mediaPurgedAt),
@@ -650,6 +815,8 @@ export class SocialPublishService {
       /** The TikTok account, when connected: who it is and what it may post. */
       tiktok: tt ? { displayName: tt.displayName, username: tt.username, avatarUrl: tt.avatarUrl, needsReconnect: tt.needsReconnect, creator: tt.creator } : null,
       posts,
+      /** The shop's first-comment templates, filled, for the composer's preview. */
+      autoComments: await this.autoCommentsView(user).catch(() => null),
       /** When this process last swept the queue — null right after a restart. */
       sweep: { lastAt: sweepWas, stale: !sweepWas || now.getTime() - sweepWas.getTime() > SWEEP_STALE_MS },
       /** True for a Lumio support session: may delete published rows too. */
@@ -666,6 +833,7 @@ export class SocialPublishService {
     stage?: string; writerName?: string; designerName?: string; teamNote?: string;
     tiktok?: unknown;
     google?: unknown;
+    comments?: unknown;
   }) {
     const tenantId = this.tenantId(user);
     const channels = (body.channels ?? ['facebook']).filter((c) => (CHANNELS as unknown[]).includes(c));
@@ -697,6 +865,9 @@ export class SocialPublishService {
     const googleOpts: GbpPostOptions | null = body.google !== undefined
       ? cleanGbpOptions(body.google)
       : (prevRow ? cleanGbpOptions((prevRow as { google?: unknown }).google) : null);
+    // The first comments: same rule — a save that does not mention them keeps
+    // what the row had; an explicit null puts the shop's templates back.
+    const commentOpts: PostCommentOverride | null | undefined = body.comments !== undefined ? cleanPostComments(body.comments) : undefined;
     const workflow = {
       stage,
       writerName: typeof body.writerName === 'string' ? body.writerName.trim().slice(0, 80) || null : prevRow?.writerName ?? null,
@@ -733,6 +904,7 @@ export class SocialPublishService {
       channels, message, media, imageUrl: null, scheduledAt: when, status, ...workflow,
       ...(tiktokVal ? { tiktok: tiktokVal as never } : {}),
       ...(googleOpts ? { google: googleOpts as never } : {}),
+      ...(commentOpts !== undefined ? { comments: commentOpts as never } : {}),
     };
     if (body.id) {
       const owned = prevRow;
@@ -1198,6 +1370,7 @@ export class SocialPublishService {
       data: { status: 'posted', postedAt, results: results as never, lastError: null },
     }).catch(() => undefined);
     await this.recordSocialPosts(row, fresh, postedAt, media);
+    await this.queueComments(row, fresh, postedAt);
     return { ok: true, error: null, results };
   }
 

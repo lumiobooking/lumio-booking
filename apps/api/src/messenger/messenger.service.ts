@@ -548,6 +548,7 @@ export class MessengerService implements OnModuleInit {
     // Forgiving on purpose: "True", " true" or "yes" typed into Render mean on.
     const insightsOn = ['1', 'true', 'yes', 'on'].includes(String(process.env.FB_SCOPE_INSIGHTS ?? '').trim().toLowerCase());
     const readInsightsOn = ['1', 'true', 'yes', 'on'].includes(String(process.env.FB_SCOPE_READ_INSIGHTS ?? '').trim().toLowerCase());
+    const engageOn = ['1', 'true', 'yes', 'on'].includes(String(process.env.FB_SCOPE_ENGAGE ?? '').trim().toLowerCase());
     const scope = [
       'pages_show_list', 'pages_messaging', 'pages_manage_metadata',
       ...(readEng ? ['pages_read_engagement'] : []),
@@ -557,6 +558,12 @@ export class MessengerService implements OnModuleInit {
       // Instagram publishing rides on the Page connection, so it is only worth
       // asking for when the Instagram scopes are on at all.
       ...(igOn && publishOn ? ['instagram_content_publish'] : []),
+      // First comments under a published post (content/auto-comments.ts).
+      // Standard Access is enough for Pages connected by an account with a
+      // role on the app; FB_SCOPE_ENGAGE=1 once the permissions are added to
+      // the app's use case (an unknown scope kills the whole dialog).
+      ...(engageOn ? ['pages_manage_engagement'] : []),
+      ...(engageOn && igOn ? ['instagram_manage_comments'] : []),
       // Monthly marketing report: Instagram reach/views/new follows (account
       // and per post) need instagram_manage_insights. Without it those cells
       // stay blank. Opt-in with FB_SCOPE_INSIGHTS=1, for the same reason as the switches

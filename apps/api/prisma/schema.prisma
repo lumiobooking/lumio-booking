@@ -3396,6 +3396,13 @@ model ScheduledPost {
   /// 'learn'|'none', url}. Absent means the default: Book, on the shop's own
   /// booking page. The link is resolved at send time (content/gbp-cta.ts).
   google       Json?
+  /// The first comments under this post (content/auto-comments.ts): null =
+  /// the shop's templates; {off: true} = none; {items: [...]} = this list.
+  comments     Json?
+  /// The planned comments and what became of each: [{channel, targetId,
+  /// text, dueAt, status, id?, error?, at?, attempts?}]. Written when the post
+  /// goes live, updated by the minute sweep.
+  commentLog   Json    @default("[]")
 
   createdByName String?
   createdAt DateTime @default(now())

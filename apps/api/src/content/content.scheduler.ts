@@ -104,6 +104,8 @@ export class ContentScheduler implements OnModuleInit, OnModuleDestroy {
     this.postRunning = true;
     try {
       await this.publisher.runDue();
+      // The first comments under posts that went live a few minutes ago.
+      await this.publisher.runDueComments().catch((e) => this.logger.warn(`comment sweep failed: ${String(e).slice(0, 160)}`));
     } catch (e) {
       this.logger.warn(`post sweep failed: ${String(e).slice(0, 160)}`);
     } finally {

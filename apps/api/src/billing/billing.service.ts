@@ -336,6 +336,7 @@ export class BillingService {
   async paymentMethod(tenantId: string): Promise<{
     provider: 'stripe' | 'paypal' | null; status: SubscriptionStatus | null; interval: 'month' | 'year' | null;
     nextChargeAt: string | null; autoPlan: boolean; autoUsage: boolean; billingExempt: boolean;
+    manageUrl: string | null; gateways: { stripe: boolean; paypal: boolean };
   }> {
     const [tenant, sub] = await Promise.all([
       this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { billingExempt: true } }).catch(() => null),
@@ -402,8 +403,9 @@ export class BillingService {
    * the rows. Best-effort per row; the new subscription is never touched.
    */
   private async retireOtherSubscriptions(tenantId: string, keepRef: string): Promise<void> {
-    const rows = await this.prisma.subscription.findMany({ where: { tenantId }, select: { id: true, provider: true, status: true, externalReference: true } })
-      .catch(() => [] as { id: string; provider: string | null; status: SubscriptionStatus; externalReference: string | null }[]);
+    type Row = { id: string; provider: string | null; status: SubscriptionStatus; externalReference: string | null };
+    const rows: Row[] = await this.prisma.subscription.findMany({ where: { tenantId }, select: { id: true, provider: true, status: true, externalReference: true } })
+      .then((r) => r as unknown as Row[], () => [] as Row[]);
     for (const r of subscriptionsToRetire(rows, keepRef)) {
       try {
         const g = gatewayOf(r.provider);

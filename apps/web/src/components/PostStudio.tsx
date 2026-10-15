@@ -250,6 +250,8 @@ export function MonthCalendar({
   const [over, setOver] = useState<string | null>(null);
   /** A day whose overflow the reader has opened. Busy days stay short by default. */
   const [openDay, setOpenDay] = useState<string | null>(null);
+  /** Which failure reason's full fix is unfolded in the strip above the grid. */
+  const [fixOpen, setFixOpen] = useState<string | null>(null);
   /**
    * The right-click menu, and its long-press twin.
    *
@@ -503,41 +505,84 @@ export function MonthCalendar({
    * one thing it must not do is wait quietly for somebody to hover it.
    */
   const failures = useMemo(() => posts.filter((p) => postTone(p) === 'failed'), [posts]);
+  /**
+   * One reason, once. Four posts refused by the same restriction used to
+   * print the same four-line fix four times and push the month off the
+   * screen. Now the posts are grouped by their reason: a one-line headline,
+   * the times as chips (each opens its post), and the full fix behind one
+   * "Cách gỡ" toggle per reason.
+   */
+  const failureGroups = useMemo(() => {
+    const m = new Map<string, { text: string; posts: StudioPost[] }>();
+    for (const p of failures) {
+      const text = p.fix || p.lastError || '';
+      const g = m.get(text) ?? { text, posts: [] };
+      g.posts.push(p);
+      m.set(text, g);
+    }
+    return [...m.values()];
+  }, [failures]);
+  const headlineOf = (text: string) => {
+    if (!text) return T('Chưa rõ lý do — bấm để mở bài.', 'No reason recorded — open the post.');
+    const first = text.split(/(?<=[.!?])\s+/)[0] ?? text;
+    return first.length > 140 ? `${first.slice(0, 137).trimEnd()}…` : first;
+  };
   const failedBanner = failures.length > 0 ? (
     <div style={{
       background: 'var(--c450a0a)', border: '1px solid #f87171', borderRadius: 12,
-      padding: '10px 12px', marginBottom: 10,
+      padding: '9px 12px', marginBottom: 10,
     }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--cfecaca)', marginBottom: failures.length ? 6 : 0 }}>
-        ⚠ {T(`${failures.length} bài không đăng được`, `${failures.length} post${failures.length > 1 ? 's' : ''} did not go out`)}
-      </div>
       <div style={{ display: 'grid', gap: 6 }}>
-        {failures.slice(0, 6).map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => onPick(p.id)}
-            style={{
-              display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 8, alignItems: 'baseline',
-              textAlign: 'left', width: '100%', background: 'none', border: 'none',
-              padding: 0, cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--cfecaca)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-              {fmtInTz(new Date(p.scheduledAt), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-            </span>
-            <span style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--cfecaca)', minWidth: 0 }}>
-              {/* The sentence that says what to do, when the server could work
-                  one out; otherwise the platform's own words, which are at
-                  least precise enough to search for. */}
-              {p.fix || p.lastError || T('Chưa rõ lý do — bấm để mở bài.', 'No reason recorded — open the post.')}
-              <span style={{ color: 'var(--c94a3b8)', fontWeight: 600 }}> · {T('bấm để mở', 'open')} →</span>
-            </span>
-          </button>
-        ))}
-        {failures.length > 6 && (
+        {failureGroups.slice(0, 4).map((g, gi) => {
+          const key = `${gi}:${g.text.slice(0, 40)}`;
+          const open = fixOpen === key;
+          const hasMore = g.text.length > headlineOf(g.text).length;
+          return (
+            <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--cfecaca)', whiteSpace: 'nowrap' }}>
+                  ⚠ {g.posts.length} {T(g.posts.length > 1 ? 'bài không đăng được' : 'bài không đăng được', g.posts.length > 1 ? 'posts did not go out' : 'post did not go out')}
+                </span>
+                <span style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--cfecaca)', minWidth: 0, flex: '1 1 320px' }}>
+                  {headlineOf(g.text)}
+                  {hasMore && (
+                    <button
+                      type="button"
+                      onClick={() => setFixOpen(open ? null : key)}
+                      style={{ background: 'none', border: 'none', padding: '0 0 0 6px', font: 'inherit', fontSize: 12, fontWeight: 700, color: 'var(--cfecaca)', cursor: 'pointer', textDecoration: 'underline' }}
+                    >{open ? T('Thu gọn ▴', 'Less ▴') : T('Cách gỡ ▾', 'How to fix ▾')}</button>
+                  )}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                {g.posts.slice(0, 12).map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => onPick(p.id)}
+                    title={T('Mở bài', 'Open the post')}
+                    style={{
+                      height: 24, padding: '0 9px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit',
+                      border: '1px solid #f87171', background: 'transparent', color: 'var(--cfecaca)',
+                      fontSize: 11.5, fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {fmtInTz(new Date(p.scheduledAt), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} →
+                  </button>
+                ))}
+                {g.posts.length > 12 && <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>+{g.posts.length - 12}</span>}
+              </div>
+              {open && (
+                <div style={{ fontSize: 12, lineHeight: 1.55, color: 'var(--cfecaca)', padding: '6px 10px', borderRadius: 8, background: 'rgba(0,0,0,.12)', whiteSpace: 'pre-line' }}>
+                  {g.text}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {failureGroups.length > 4 && (
           <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>
-            {T(`…và ${failures.length - 6} bài nữa`, `…and ${failures.length - 6} more`)}
+            {T(`…và ${failureGroups.length - 4} lý do khác`, `…and ${failureGroups.length - 4} more reasons`)}
           </div>
         )}
       </div>

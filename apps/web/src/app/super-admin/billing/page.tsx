@@ -9,7 +9,7 @@ import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 
 interface Status {
-  stripe: { hasKey: boolean; hasWebhook: boolean; live: boolean };
+  stripe: { hasKey: boolean; hasWebhook: boolean; hasPublishable?: boolean; live: boolean };
   paypal: { hasClient: boolean; hasWebhook: boolean; env: string };
   email?: { hasKey: boolean; senderEmail: string; senderName: string; replyTo?: string };
   inbound?: { domain: string; forwardTo: string; webhookUrl: string; ready: boolean };
@@ -37,6 +37,7 @@ export default function GatewaysPage() {
   // Stripe inputs
   const [stripeKey, setStripeKey] = useState('');
   const [stripeHook, setStripeHook] = useState('');
+  const [stripePub, setStripePub] = useState('');
   // PayPal inputs
   const [ppId, setPpId] = useState('');
   const [ppSecret, setPpSecret] = useState('');
@@ -167,7 +168,9 @@ export default function GatewaysPage() {
         <input style={inp} type="password" value={stripeKey} onChange={(e) => setStripeKey(e.target.value)} placeholder={st?.stripe.hasKey ? '•••••••• (leave blank to keep)' : 'sk_live_… or sk_test_…'} />
         <label style={lbl}>Webhook signing secret {st?.stripe.hasWebhook && <span style={savedTag}>saved</span>}</label>
         <input style={inp} type="password" value={stripeHook} onChange={(e) => setStripeHook(e.target.value)} placeholder={st?.stripe.hasWebhook ? '•••••••• (leave blank to keep)' : 'whsec_…'} />
-        <button onClick={() => save({ stripeSecretKey: stripeKey, stripeWebhookSecret: stripeHook })} disabled={busy} style={primaryBtn}>Save Stripe</button>
+        <label style={lbl}>Publishable key {st?.stripe.hasPublishable && <span style={savedTag}>saved</span>} <span style={{ color: 'var(--c64748b)', fontWeight: 400 }}>— for the in-page card form (pk_…, not secret)</span></label>
+        <input style={inp} value={stripePub} onChange={(e) => setStripePub(e.target.value)} placeholder={st?.stripe.hasPublishable ? '•••• (leave blank to keep)' : 'pk_live_… or pk_test_…'} />
+        <button onClick={() => save({ stripeSecretKey: stripeKey, stripeWebhookSecret: stripeHook, stripePublishableKey: stripePub })} disabled={busy} style={primaryBtn}>Save Stripe</button>
 
         <div style={hintBox}>
           <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>Add this webhook URL in Stripe (events: checkout.session.completed, customer.subscription.updated/deleted, invoice.payment_failed):</div>
@@ -197,6 +200,11 @@ export default function GatewaysPage() {
         </div>
         <button onClick={() => save({ paypalClientId: ppId, paypalSecret: ppSecret, paypalWebhookId: ppHook, paypalEnv: ppEnv })} disabled={busy} style={{ ...primaryBtn, marginTop: 12 }}>Save PayPal</button>
 
+        <div style={{ ...hintBox, marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.6 }}>
+            <b style={{ color: 'var(--ce2e8f0)' }}>In-page card form (salons type the card in Lumio, no PayPal account):</b> in developer.paypal.com open this REST app → Features → tick <b>Advanced Credit and Debit Card Payments</b> and <b>Vault</b> (Save payment methods). PayPal may review the account for a few days; until then the form says the gateway is not ready and the PayPal checkout page is used instead.
+          </div>
+        </div>
         <div style={hintBox}>
           <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginBottom: 4 }}>Add this webhook URL in PayPal (subscription + payment events):</div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

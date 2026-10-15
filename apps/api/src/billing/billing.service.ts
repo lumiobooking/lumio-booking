@@ -13,6 +13,8 @@ import { PlatformConfigService } from './platform-config.service';
 import { VoiceService } from '../voice/voice.service';
 import { cleanPlatformRates, resolveRate, usageLine } from './usage-rates';
 import { canAutoCharge, gatewayOf, manageCardUrl, pickGateway, subscriptionsToRetire, type Gateway } from './gateway-choice';
+import { CardOnFileService } from './card-on-file.service';
+import { cardLabel, prorateCents } from './card-on-file';
 import {
   cleanChatPlan, tiersFor, tierIdOf, marginOf, apiCostPerReply, billFor, ChatPlan,
   CHAT_TIERS_BY_MARKET,
@@ -43,6 +45,9 @@ export class BillingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    // The salon's card saved in Lumio's own page. Charged before any gateway
+    // subscription, because it is the arrangement the salon chose last.
+    private readonly card: CardOnFileService,
     private readonly config: ConfigService,
     private readonly stripe: StripeService,
     private readonly paypal: PaypalService,
@@ -52,6 +57,7 @@ export class BillingService {
 
   /** Super Admin: gateway connection status + webhook URLs for the UI. */
   async gatewayStatus() {
+    const stripePub = await this.platform.get('stripe_publishable_key');
     const [stripeKey, stripeHook, ppId, ppSecret, ppHook, ppEnv, brevoKey, brevoSender, brevoName, replyTo, inDomain, inToken, inFwd] = await Promise.all([
       this.platform.get('stripe_secret_key'), this.platform.get('stripe_webhook_secret'),
       this.platform.get('paypal_client_id'), this.platform.get('paypal_secret'),
@@ -68,7 +74,7 @@ export class BillingService {
     ]);
     const apiBase = (this.config.get<string>('RENDER_EXTERNAL_URL') ?? this.config.get<string>('KEEPALIVE_SELF_URL') ?? '').replace(/\/$/, '');
     return {
-      stripe: { hasKey: !!stripeKey, hasWebhook: !!stripeHook, live: (stripeKey ?? '').startsWith('sk_live') },
+      stripe: { hasKey: !!stripeKey, hasWebhook: !!stripeHook, hasPublishable: !!stripePub, live: (stripeKey ?? '').startsWith('sk_live') },
       paypal: { hasClient: !!(ppId && ppSecret), hasWebhook: !!ppHook, env: ppEnv ?? 'live' },
       email: { hasKey: !!(brevoKey && brevoSender), senderEmail: brevoSender ?? '', senderName: brevoName ?? '', replyTo: replyTo ?? '' },
       inbound: {
@@ -337,6 +343,8 @@ export class BillingService {
     provider: 'stripe' | 'paypal' | null; status: SubscriptionStatus | null; interval: 'month' | 'year' | null;
     nextChargeAt: string | null; autoPlan: boolean; autoUsage: boolean; billingExempt: boolean;
     manageUrl: string | null; gateways: { stripe: boolean; paypal: boolean };
+    /** The card saved in Lumio's own page, when there is one (card-on-file.service). */
+    card: { provider: Gateway | null; label: string; brand: string | null; last4: string | null; expMonth: number | null; expYear: number | null; status: string; lastError: string | null } | null;
   }> {
     const [tenant, sub] = await Promise.all([
       this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { billingExempt: true } }).catch(() => null),
@@ -346,9 +354,26 @@ export class BillingService {
         select: { provider: true, status: true, interval: true, currentPeriodEnd: true, externalReference: true },
       }).catch(() => null),
     ]);
+    const card = await this.card.current(tenantId);
+    if (card && card.status !== 'removed') {
+      const g = gatewayOf(card.provider);
+      return {
+        provider: g,
+        status: card.status === 'failed' ? SubscriptionStatus.PAST_DUE : SubscriptionStatus.ACTIVE,
+        interval: 'month',
+        nextChargeAt: (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { accessUntil: true } }).catch(() => null) as { accessUntil?: Date | null } | null)?.accessUntil?.toISOString() ?? null,
+        autoPlan: true,
+        autoUsage: true,
+        billingExempt: tenant?.billingExempt ?? false,
+        manageUrl: null,
+        gateways: await this.gatewaysEnabled(),
+        card: { provider: g, label: cardLabel(card), brand: card.brand, last4: card.last4, expMonth: card.expMonth, expYear: card.expYear, status: card.status, lastError: card.lastError },
+      };
+    }
     const provider = gatewayOf(sub?.provider);
     const live = !!sub && sub.status !== SubscriptionStatus.PAST_DUE;
     return {
+      card: null,
       provider,
       status: sub?.status ?? null,
       interval: sub ? (sub.interval === BillingInterval.YEARLY ? 'year' : 'month') : null,
@@ -378,6 +403,9 @@ export class BillingService {
    * branch here, nothing elsewhere.
    */
   async chargeOnFile(tenantId: string, params: { amountCents: number; currency: string; description: string; invoiceId: string }): Promise<{ provider: Gateway; ref: string } | { provider: null; reason: 'no_method' | 'not_enabled' }> {
+    // The card the salon saved here wins over any gateway subscription.
+    const viaCard = await this.card.charge(tenantId, params);
+    if (viaCard) return viaCard;
     const sub = await this.prisma.subscription.findFirst({
       where: { tenantId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] } },
       orderBy: { createdAt: 'desc' },
@@ -601,6 +629,7 @@ export class BillingService {
     await this.platform.setMany({
       stripe_secret_key: dto.stripeSecretKey,
       stripe_webhook_secret: dto.stripeWebhookSecret,
+      stripe_publishable_key: dto.stripePublishableKey,
       paypal_client_id: dto.paypalClientId,
       paypal_secret: dto.paypalSecret,
       paypal_webhook_id: dto.paypalWebhookId,
@@ -769,6 +798,12 @@ export class BillingService {
     const success = `${this.appUrl()}/salon/billing?upgraded=1`;
     const cancel = `${this.appUrl()}/salon/billing`;
     const meta = { tenantId, planId: plan.id, interval };
+    // A salon with a card saved here changes plan in place: no checkout page,
+    // the difference for the rest of the month goes on the card (upgrade) or
+    // the new price starts at the next renewal (downgrade).
+    const card = await this.card.current(tenantId);
+    if (card && card.status !== 'removed') return this.changePlanOnCard(user, tenantId, plan.id, amountCents, isYearly);
+
     const provider = pickGateway(await this.gatewaysEnabled(), dto.provider ?? null);
     if (!provider) throw new BadRequestException('No payment gateway is configured yet. Contact Lumio.');
 
@@ -790,6 +825,49 @@ export class BillingService {
       trialDays: 0, customerEmail: email, successUrl: success, cancelUrl: cancel, metadata: meta,
     });
     return { checkoutUrl: url };
+  }
+
+  /**
+   * Plan change for a salon billed on its saved card. Upgrade: the pro-rated
+   * difference is charged now and the plan switches at once. Downgrade: noted,
+   * applied by the renewal sweep at the next charge (invoices.scheduler), so
+   * the month already paid for is not cut short.
+   */
+  private async changePlanOnCard(user: AuthenticatedUser, tenantId: string, planId: string, newMonthlyCents: number, isYearly: boolean): Promise<{ checkoutUrl: string }> {
+    if (isYearly) throw new BadRequestException('Thẻ lưu trong hệ thống tính theo tháng. Chọn "Hằng tháng".');
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { planId: true, accessUntil: true, plan: { select: { name: true, currency: true, priceMonthlyCents: true, priceCents: true } } } }) as unknown as
+      { planId: string | null; accessUntil: Date | null; plan: { name: string; currency: string; priceMonthlyCents: number | null; priceCents: number } | null } | null;
+    const newPlan = await this.prisma.plan.findUnique({ where: { id: planId }, select: { name: true, currency: true } });
+    if (!t || !newPlan) throw new BadRequestException('Plan not found');
+    if (t.planId === planId) return { checkoutUrl: `${this.appUrl()}/salon/billing` };
+    const oldMonthly = (t.plan?.priceMonthlyCents || t.plan?.priceCents) ?? 0;
+    const now = new Date();
+    const back = `${this.appUrl()}/salon/billing?changed=1`;
+    if (newMonthlyCents > oldMonthly) {
+      const due = prorateCents(oldMonthly, newMonthlyCents, t.accessUntil, now);
+      if (due > 0) {
+        const inv = await (this.prisma as unknown as { invoice: { create: (a: unknown) => Promise<{ id: string; number: string }>; update: (a: unknown) => Promise<unknown> } }).invoice.create({
+          data: {
+            tenantId, number: `INV-${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}-U${Date.now().toString(36).toUpperCase()}`,
+            type: 'RENEWAL', currency: newPlan.currency ?? 'USD', periodStart: now, periodEnd: t.accessUntil ?? now,
+            lineItems: [{ label: `Upgrade to ${newPlan.name} — rest of the current period`, amountCents: due }], subtotalCents: due, totalCents: due, dueDate: now,
+          },
+        });
+        const r = await this.card.charge(tenantId, { amountCents: due, currency: newPlan.currency ?? 'USD', description: `Lumio ${inv.number} — upgrade to ${newPlan.name}`, invoiceId: inv.id });
+        if (!r) throw new BadRequestException('Không tìm thấy thẻ đã lưu.');
+        await (this.prisma as unknown as { invoice: { update: (a: unknown) => Promise<unknown> } }).invoice.update({ where: { id: inv.id }, data: { status: 'PAID', paidAt: new Date(), provider: r.provider, externalRef: r.ref } });
+      }
+      await this.prisma.tenant.update({ where: { id: tenantId }, data: { planId } });
+      await this.audit.log({ tenantId, userId: user.userId, action: 'billing.plan_changed', resourceType: 'tenant', resourceId: tenantId, metadata: { to: planId, prorateCents: due, via: 'card' } });
+      return { checkoutUrl: back };
+    }
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: 'plan_change_next' } },
+      create: { tenantId, key: 'plan_change_next', value: { planId, by: user.email ?? null, at: now.toISOString() } as never },
+      update: { value: { planId, by: user.email ?? null, at: now.toISOString() } as never },
+    });
+    await this.audit.log({ tenantId, userId: user.userId, action: 'billing.plan_change_scheduled', resourceType: 'tenant', resourceId: tenantId, metadata: { to: planId, via: 'card' } });
+    return { checkoutUrl: `${this.appUrl()}/salon/billing?changed=next` };
   }
 
   /** Stripe Billing Portal link so a salon can upgrade/downgrade/cancel/update card. */

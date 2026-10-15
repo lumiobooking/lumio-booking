@@ -13,6 +13,7 @@ export class PlatformConfigService {
   static readonly ENV_FALLBACK: Record<string, string> = {
     stripe_secret_key: 'STRIPE_SECRET_KEY',
     stripe_webhook_secret: 'STRIPE_WEBHOOK_SECRET',
+    stripe_publishable_key: 'STRIPE_PUBLISHABLE_KEY',
     paypal_client_id: 'PAYPAL_CLIENT_ID',
     paypal_secret: 'PAYPAL_SECRET',
     paypal_webhook_id: 'PAYPAL_WEBHOOK_ID',

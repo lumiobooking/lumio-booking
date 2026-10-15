@@ -8,11 +8,12 @@ import { BillingService } from './billing.service';
 import { StripeService } from './stripe.service';
 import { PaypalService } from './paypal.service';
 import { PlatformConfigService } from './platform-config.service';
+import { CardOnFileService } from './card-on-file.service';
 
 @Module({
   imports: [ConfigModule, PrismaModule, AuditModule, VoiceModule],
   controllers: [BillingController],
-  providers: [BillingService, StripeService, PaypalService, PlatformConfigService],
-  exports: [BillingService, StripeService, PaypalService, PlatformConfigService],
+  providers: [BillingService, StripeService, PaypalService, PlatformConfigService, CardOnFileService],
+  exports: [BillingService, StripeService, PaypalService, PlatformConfigService, CardOnFileService],
 })
 export class BillingModule {}

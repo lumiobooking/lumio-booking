@@ -66,8 +66,13 @@ export class InvoicesScheduler implements OnModuleInit, OnModuleDestroy {
               select: { id: true },
             });
             if (!hasSub) {
+              // A plan change asked for mid-month lands here, before the price is read.
+              await this.invoices.applyPendingPlanChange(t.id).catch(() => undefined);
               const period = new Date(t.accessUntil.getFullYear(), t.accessUntil.getMonth(), 1);
               const inv = await this.invoices.buildRenewalInvoice(t.id, period);
+              // Charged to the card saved in Lumio when there is one (a no-op
+              // otherwise); the email then reads "paid" rather than "please pay".
+              if (inv) await this.invoices.autoCharge(inv.id);
               if (inv && (await this.invoices.sendInvoiceEmail(inv.id))) renewal++;
             }
           }

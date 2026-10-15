@@ -341,6 +341,7 @@ model Tenant {
   socialPostMetrics    SocialPostMetric[]
   socialSyncJobs       SocialSyncJob[]
   invoices             Invoice[]
+  paymentMethods       PaymentMethod[]
 
   tables             RestaurantTable[]
   menuItems          MenuItem[]
@@ -2082,6 +2083,34 @@ model Invoice {
   @@index([tenantId, createdAt])
   @@index([status])
   @@map("invoices")
+}
+
+/// A card the salon saved for automatic billing — held by the gateway, never
+/// here: `token` is PayPal's vault id or Stripe's payment-method id, and the
+/// only card facts kept are what a receipt prints (brand, last 4, expiry).
+/// One default per tenant; replacing a card retires the old row.
+/// billing/card-on-file.service.ts.
+model PaymentMethod {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  provider           String // 'paypal' | 'stripe'
+  token              String // paypal vault id / stripe pm_…
+  externalCustomerId String? // stripe cus_… / paypal customer id
+  brand              String?
+  last4              String?
+  expMonth           Int?
+  expYear            Int?
+  /// active | removed | failed (the last charge was declined)
+  status       String    @default("active")
+  lastChargeAt DateTime?
+  lastError    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([tenantId, status])
+  @@map("payment_methods")
 }
 
 // ===========================================================================

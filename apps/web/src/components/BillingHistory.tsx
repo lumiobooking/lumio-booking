@@ -20,6 +20,8 @@ export interface PaymentInfo {
   /** Where the card is managed when it is not a Stripe portal link (PayPal's autopay page). */
   manageUrl?: string | null;
   gateways?: { stripe: boolean; paypal: boolean };
+  /** The card saved in Lumio's own page, when there is one. */
+  card?: { provider: 'stripe' | 'paypal' | null; label: string; status: string; lastError: string | null } | null;
 }
 interface MonthInvoice { number: string; type: string; status: string; totalCents: number; currency: string; paidAt: string | null; provider: string | null; token: string; dueDate: string | null }
 interface MonthRow { month: string; current: boolean; smsSent: number; smsFailed: number; aiMinutes: number; aiCalls: number; chatReplies: number; invoices: MonthInvoice[] }
@@ -33,6 +35,8 @@ const T = {
   payNone: { en: 'No payment method on file — your plan is billed by invoice email. To have charges taken automatically, subscribe under the Plan tab.', vi: 'Chưa có phương thức thanh toán — gói được gửi hoá đơn qua email. Để hệ thống tự trừ tiền, đăng ký gói ở tab Gói dịch vụ.' },
   payExempt: { en: 'This salon is not billed (arranged with Lumio).', vi: 'Tiệm này không bị tính phí (theo thoả thuận với Lumio).' },
   payPaypal: { en: 'PayPal subscription', vi: 'Đăng ký qua PayPal' },
+  payCard: { en: 'Saved card', vi: 'Thẻ đã lưu' },
+  manageCard: { en: 'Change or remove the card under Plan & payment.', vi: 'Đổi hoặc xoá thẻ ở tab Gói & thanh toán.' },
   payStripe: { en: 'Card on file (Stripe)', vi: 'Thẻ đã lưu (Stripe)' },
   planAuto: { en: 'Plan fee: charged automatically', vi: 'Phí gói: tự động trừ' },
   usageAuto: { en: 'Usage charges: added at month end and charged automatically to the same PayPal subscription — no link to click.', vi: 'Phí phát sinh: chốt cuối tháng và tự trừ qua đúng đăng ký PayPal này — không cần bấm link.' },
@@ -99,7 +103,7 @@ export function PaymentMethodCard({ pay, lang, onPortal }: { pay: PaymentInfo | 
     body = (
       <>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{pay.provider === 'paypal' ? t('payPaypal') : t('payStripe')}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{pay.card ? `${t('payCard')} · ${pay.card.label}` : pay.provider === 'paypal' ? t('payPaypal') : t('payStripe')}</span>
           <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: past ? 'rgba(239,68,68,.14)' : 'rgba(34,197,94,.14)', color: past ? 'var(--cfca5a5)' : 'var(--c4ade80)', border: `1px solid ${past ? 'rgba(239,68,68,.4)' : 'rgba(34,197,94,.35)'}` }}>
             {past ? 'PAST DUE' : pay.status === 'TRIALING' ? 'TRIAL' : 'ACTIVE'}
           </span>
@@ -108,7 +112,9 @@ export function PaymentMethodCard({ pay, lang, onPortal }: { pay: PaymentInfo | 
         <div style={line}>{pay.autoUsage ? '✓ ' : '· '}{pay.autoUsage ? (pay.provider === 'paypal' ? t('usageAuto') : t('usageAutoStripe')) : t('usageManual')}</div>
         {past && <div style={{ ...line, color: 'var(--cfca5a5)' }}>⚠ {t('pastDue')}</div>}
         <div style={{ ...line, color: 'var(--c64748b)', fontSize: 12.5 }}>{pay.provider === 'paypal' ? t('cardNote') : t('cardNoteStripe')}</div>
-        {pay.manageUrl ? (
+        {pay.card ? (
+          <div style={{ ...line, color: 'var(--c64748b)', fontSize: 12.5 }}>{t('manageCard')}</div>
+        ) : pay.manageUrl ? (
           <a href={pay.manageUrl} target="_blank" rel="noreferrer" style={manageBtn}>{t('manage')} ↗</a>
         ) : onPortal ? (
           <button type="button" onClick={onPortal} style={manageBtn}>{t('manage')}</button>

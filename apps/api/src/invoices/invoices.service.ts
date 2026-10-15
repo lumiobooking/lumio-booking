@@ -6,6 +6,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { StripeService } from '../billing/stripe.service';
 import { BillingService } from '../billing/billing.service';
 import { canAutoCharge, gatewayOf } from '../billing/gateway-choice';
+import { CardOnFileService } from '../billing/card-on-file.service';
+import { onBillingEvent } from '../billing/billing-events';
+import { nextPeriod, renewalDue } from '../billing/card-on-file';
 import { PlatformConfigService } from '../billing/platform-config.service';
 import { publicWebBase } from '../common/public-url.util';
 import { formatMoney } from '../common/money';
@@ -37,7 +40,57 @@ export class InvoicesService {
     // The chatbot line is priced by the billing service (same code as the
     // Usage screen). Optional for the bare isolation specs; absent = no line.
     @Optional() private readonly billing?: BillingService,
-  ) {}
+    // The card saved in Lumio's own page: when one exists, the plan renewal is
+    // charged to it instead of emailed as a request.
+    @Optional() private readonly card?: CardOnFileService,
+  ) {
+    // A card just saved: charge what is already due (an expired or expiring
+    // trial, an open usage bill) so the salon sees the result at once.
+    onBillingEvent('card_added', (tenantId) => { void this.afterCardAdded(tenantId).catch((e) => this.logger.warn(`after card added ${tenantId}: ${(e as Error).message}`)); });
+  }
+
+  /** Does this salon pay by a card saved here (as opposed to a gateway subscription or by hand)? */
+  private async hasCard(tenantId: string): Promise<boolean> {
+    if (!this.card) return false;
+    const c = await this.card.current(tenantId).catch(() => null);
+    return !!c && c.status !== 'removed';
+  }
+
+  /**
+   * A plan change the salon asked for while already paid up for the month —
+   * applied at the next renewal, right before the invoice is built.
+   */
+  async applyPendingPlanChange(tenantId: string): Promise<void> {
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'plan_change_next' } }, select: { value: true } }).catch(() => null);
+    const planId = (row?.value as { planId?: string } | null)?.planId;
+    if (!planId) return;
+    const plan = await this.prisma.plan.findFirst({ where: { id: planId, isActive: true }, select: { id: true } });
+    if (plan) await this.prisma.tenant.update({ where: { id: tenantId }, data: { planId } });
+    await this.prisma.setting.deleteMany({ where: { tenantId, key: 'plan_change_next' } }).catch(() => undefined);
+    this.logger.log(`Plan change applied at renewal for ${tenantId}: → ${planId}`);
+  }
+
+  /**
+   * Right after a card is saved: an open usage bill is charged, and the plan
+   * is renewed now when access has ended or is about to — otherwise the
+   * renewal sweep charges it three days before the current period ends.
+   */
+  async afterCardAdded(tenantId: string): Promise<void> {
+    const open = await this.prisma.invoice.findMany({ where: { tenantId, status: InvoiceStatus.OPEN, type: InvoiceType.OVERAGE }, select: { id: true }, take: 12 }).catch(() => [] as { id: string }[]);
+    for (const inv of open) await this.autoCharge(inv.id);
+    const hasSub = await this.prisma.subscription.findFirst({ where: { tenantId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] } }, select: { id: true } });
+    if (hasSub) return; // the gateway subscription still carries the plan fee
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { accessUntil: true, planId: true, billingExempt: true } }) as unknown as { accessUntil: Date | null; planId: string | null; billingExempt?: boolean } | null;
+    if (!t?.planId || t.billingExempt) return;
+    const now = new Date();
+    if (!renewalDue(t.accessUntil, now)) return;
+    const period = nextPeriod(t.accessUntil, now);
+    const inv = await this.buildRenewalInvoice(tenantId, period.start);
+    if (!inv) return;
+    const r = await this.autoCharge(inv.id);
+    await this.sendInvoiceEmail(inv.id);
+    this.logger.log(`First renewal on the new card for ${tenantId}: ${r}`);
+  }
 
   /**
    * Take an OPEN usage invoice from whatever gateway holds the salon's card
@@ -50,7 +103,9 @@ export class InvoicesService {
     if (!this.billing) return 'skipped';
     const inv = await this.prisma.invoice.findUnique({ where: { id: invoiceId }, select: { id: true, tenantId: true, number: true, status: true, totalCents: true, currency: true, type: true } });
     if (!inv || inv.status !== InvoiceStatus.OPEN || inv.totalCents <= 0) return 'skipped';
-    if (inv.type !== InvoiceType.OVERAGE) return 'skipped'; // renewals are the subscription's own cycle
+    // A renewal is the gateway subscription's own cycle — unless the salon
+    // pays by a card saved here, in which case the renewal IS this charge.
+    if (inv.type !== InvoiceType.OVERAGE && !(await this.hasCard(inv.tenantId))) return 'skipped';
     try {
       const r = await this.billing.chargeOnFile(inv.tenantId, { amountCents: inv.totalCents, currency: inv.currency, description: `Lumio ${inv.number} — usage charges`, invoiceId: inv.id });
       if (!r.provider) return r.reason === 'no_method' ? 'no_method' : 'skipped';

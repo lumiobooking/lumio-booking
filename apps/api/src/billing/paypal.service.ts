@@ -135,6 +135,65 @@ export class PaypalService {
     return { captureId: j.id, status: j.status ?? 'COMPLETED' };
   }
 
+  // ---- cards saved in Lumio's own page (Vault v3 + Advanced Card Payments) ----
+
+  /** A setup token the browser's Card Fields fill in. Nothing sensitive here. */
+  async createSetupToken(): Promise<{ id: string }> {
+    const { access, base } = await this.token();
+    const res = await fetch(`${base}/v3/vault/setup-tokens`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json', 'PayPal-Request-Id': `setup-${Date.now()}-${Math.random().toString(36).slice(2)}` },
+      body: JSON.stringify({ payment_source: { card: {} } }),
+    });
+    const j = (await res.json().catch(() => ({}))) as { id?: string; message?: string; details?: { description?: string }[] };
+    if (!res.ok || !j.id) throw new BadRequestException(`PayPal setup token failed: ${j.details?.[0]?.description ?? j.message ?? res.status}`);
+    return { id: j.id };
+  }
+
+  /** The approved setup token becomes a permanent payment token (the vault id we charge). */
+  async createPaymentToken(setupTokenId: string): Promise<{ id: string; customerId: string | null; raw: unknown }> {
+    const { access, base } = await this.token();
+    const res = await fetch(`${base}/v3/vault/payment-tokens`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json', 'PayPal-Request-Id': `pt-${setupTokenId}` },
+      body: JSON.stringify({ payment_source: { token: { id: setupTokenId, type: 'SETUP_TOKEN' } } }),
+    });
+    const j = (await res.json().catch(() => ({}))) as { id?: string; customer?: { id?: string }; message?: string; details?: { description?: string }[] };
+    if (!res.ok || !j.id) throw new BadRequestException(`PayPal could not save the card: ${j.details?.[0]?.description ?? j.message ?? res.status}`);
+    return { id: j.id, customerId: j.customer?.id ?? null, raw: j };
+  }
+
+  /** Charge a saved card: an order paid with the vault id, captured at once. Merchant-initiated. */
+  async chargeVault(p: { vaultId: string; amountCents: number; currency: string; description: string; invoiceId: string }): Promise<{ captureId: string; orderId: string }> {
+    const { access, base } = await this.token();
+    const currency = (p.currency || 'USD').toUpperCase();
+    const res = await fetch(`${base}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json', 'PayPal-Request-Id': `inv-${p.invoiceId}-${p.amountCents}` },
+      body: JSON.stringify({
+        intent: 'CAPTURE',
+        purchase_units: [{ amount: { currency_code: currency, value: (p.amountCents / 100).toFixed(2) }, description: p.description.slice(0, 127), custom_id: p.invoiceId, invoice_id: p.invoiceId }],
+        payment_source: { card: { vault_id: p.vaultId, stored_credential: { payment_initiator: 'MERCHANT', payment_type: 'UNSCHEDULED', usage: 'SUBSEQUENT' } } },
+      }),
+    });
+    const j = (await res.json().catch(() => ({}))) as {
+      id?: string; status?: string; message?: string; details?: { description?: string; issue?: string }[];
+      purchase_units?: { payments?: { captures?: { id: string; status: string; processor_response?: { response_code?: string } }[] } }[];
+    };
+    const cap = j.purchase_units?.[0]?.payments?.captures?.[0];
+    if (!res.ok || j.status !== 'COMPLETED' || !cap?.id || cap.status !== 'COMPLETED') {
+      throw new BadRequestException(j.details?.[0]?.description ?? j.details?.[0]?.issue ?? j.message ?? `PayPal ${j.status ?? res.status}`);
+    }
+    return { captureId: cap.id, orderId: j.id ?? '' };
+  }
+
+  /** Forget a saved card at PayPal. 404 = already gone. */
+  async deletePaymentToken(id: string): Promise<void> {
+    const { access, base } = await this.token();
+    const res = await fetch(`${base}/v3/vault/payment-tokens/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${access}` } });
+    if (!res.ok && res.status !== 404) throw new BadRequestException(`PayPal could not remove the card (${res.status})`);
+  }
+
   /** Cancel a subscription at PayPal (a salon moved to another gateway). */
   async cancelSubscription(id: string, reason = 'Replaced by a new subscription'): Promise<void> {
     const { access, base } = await this.token();

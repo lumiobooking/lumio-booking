@@ -130,6 +130,53 @@ export class StripeService {
     return { paymentIntentId: pi.id, status: pi.status };
   }
 
+  // ---- cards saved in Lumio's own page (SetupIntent + Payment Element) ----
+
+  /** A Stripe customer for the salon, so the card has somewhere to live. */
+  async ensureCustomer(p: { email?: string; name?: string; tenantId: string }): Promise<string> {
+    const stripe = await this.client();
+    const c = await stripe.customers.create({ email: p.email, name: p.name, metadata: { tenantId: p.tenantId } });
+    return c.id;
+  }
+
+  /** What the browser's Payment Element needs to collect a card for later charges. */
+  async createSetupIntent(customerId: string): Promise<{ id: string; clientSecret: string }> {
+    const stripe = await this.client();
+    const si = await stripe.setupIntents.create({ customer: customerId, usage: 'off_session', payment_method_types: ['card'] });
+    if (!si.client_secret) throw new BadRequestException('Stripe did not return a client secret');
+    return { id: si.id, clientSecret: si.client_secret };
+  }
+
+  /** After the browser confirmed the SetupIntent: the card, made the customer's default. */
+  async confirmSetupIntent(id: string): Promise<{ paymentMethodId: string; customerId: string; paymentMethod: unknown }> {
+    const stripe = await this.client();
+    const si = await stripe.setupIntents.retrieve(id);
+    if (si.status !== 'succeeded' || !si.payment_method) throw new BadRequestException(`Stripe setup ${si.status}`);
+    const pmId = typeof si.payment_method === 'string' ? si.payment_method : si.payment_method.id;
+    const customerId = typeof si.customer === 'string' ? si.customer : si.customer?.id;
+    if (!customerId) throw new BadRequestException('Stripe setup has no customer');
+    await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: pmId } });
+    const pm = await stripe.paymentMethods.retrieve(pmId);
+    return { paymentMethodId: pmId, customerId, paymentMethod: pm };
+  }
+
+  /** Charge a saved card off-session. */
+  async chargePaymentMethod(p: { customerId: string; paymentMethodId: string; amountCents: number; currency: string; description: string; metadata: Record<string, string> }): Promise<{ paymentIntentId: string }> {
+    const stripe = await this.client();
+    const pi = await stripe.paymentIntents.create({
+      amount: p.amountCents, currency: (p.currency || 'USD').toLowerCase(),
+      customer: p.customerId, payment_method: p.paymentMethodId, off_session: true, confirm: true,
+      description: p.description, metadata: p.metadata,
+    }, { idempotencyKey: `inv-${p.metadata.invoiceId ?? p.description}-${p.amountCents}` });
+    if (pi.status !== 'succeeded') throw new BadRequestException(`Stripe payment ${pi.status}`);
+    return { paymentIntentId: pi.id };
+  }
+
+  async detachPaymentMethod(id: string): Promise<void> {
+    const stripe = await this.client();
+    await stripe.paymentMethods.detach(id).catch(() => undefined);
+  }
+
   /** Cancel a subscription at Stripe (a salon moved to another gateway). */
   async cancelSubscription(id: string): Promise<void> {
     const stripe = await this.client();

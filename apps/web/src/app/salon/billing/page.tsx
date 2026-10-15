@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { fmtInTz } from '../../../lib/datetime';
 import { SalonShell } from '../../../components/SalonShell';
 import { UsageCostsPanel } from '../../../components/UsageCostsPanel';
+import { CardOnFile, type CardView } from '../../../components/CardOnFile';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { ui } from '../../../lib/ui';
@@ -42,6 +43,8 @@ function Inner() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [tab, setTab] = useState<BillTab>('plan');
+  /** The card saved in Lumio's own page (components/CardOnFile). */
+  const [cardView, setCardView] = useState<CardView | null>(null);
   const [native, setNative] = useState(false);
   useEffect(() => { setNative(isNativeApp()); }, []);
 
@@ -70,6 +73,9 @@ function Inner() {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('upgraded')) {
       setMsg(t('bl.upgraded'));
     }
+    const changed = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('changed') : null;
+    if (changed === '1') setMsg(lang === 'vi' ? 'Đã đổi gói — phần chênh lệch cho những ngày còn lại đã trừ vào thẻ.' : 'Plan changed — the difference for the rest of the period was charged to your card.');
+    if (changed === 'next') setMsg(lang === 'vi' ? 'Đã ghi nhận — gói mới áp dụng từ kỳ thanh toán tới.' : 'Noted — the new plan applies from your next billing date.');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -98,7 +104,8 @@ function Inner() {
   const currentName = (current?.planName ?? '').toLowerCase();
   /** A gateway subscription that is alive — the card is on file somewhere. Without one, the
    *  salon is on a plan Lumio assigned by hand (trial or invoice) and has nowhere to add a card. */
-  const hasCard = !!sum?.subscription && ['ACTIVE', 'TRIALING', 'PAST_DUE'].includes(sum.subscription.status);
+  const savedCard = !!cardView?.card && cardView.card.status !== 'removed';
+  const hasCard = savedCard || (!!sum?.subscription && ['ACTIVE', 'TRIALING', 'PAST_DUE'].includes(sum.subscription.status));
   // Upgrade vs downgrade (by price tier) + proration from the current period.
   const currentPlan = plans.find((p) => p.name.toLowerCase() === currentName) ?? null;
   const currentTier = currentPlan ? currentPlan.priceMonthlyCents : -1;
@@ -158,9 +165,13 @@ function Inner() {
           {/* The card lives at whichever gateway holds the subscription:
               Stripe mints a portal link; PayPal's automatic payments are
               managed in the payer's own PayPal account. */}
-          {!hasCard ? (
+          {savedCard ? (
+            <span style={{ fontSize: 12.5, color: 'var(--c4ade80)', maxWidth: 260, lineHeight: 1.5 }}>
+              ✓ {lang === 'vi' ? 'Tự động thanh toán bằng thẻ đã lưu' : 'Paying automatically with the saved card'}{cardView?.label ? ` · ${cardView.label}` : ''}
+            </span>
+          ) : !hasCard ? (
             <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', maxWidth: 260, lineHeight: 1.5 }}>
-              {lang === 'vi' ? 'Chưa có thẻ — bấm "Thêm thẻ" ở gói bên dưới để tự động thanh toán.' : 'No card on file — press "Add a card" on your plan below to pay automatically.'}
+              {lang === 'vi' ? 'Chưa có thẻ — thêm thẻ ở khung "Thẻ thanh toán" bên dưới.' : 'No card on file — add one in the "Payment card" box below.'}
             </span>
           ) : sum?.subscription?.provider === 'paypal' ? (
             <a href="https://www.paypal.com/myaccount/autopay/" target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)', textDecoration: 'none', display: 'inline-block' }}>
@@ -192,6 +203,11 @@ function Inner() {
           )}
         </div>
       </div>
+
+      {/* The card, entered here — the gateway's own fields inside this page.
+          With one saved, plan buttons switch plans in place and month-end
+          charges go on it; without one, the buttons open the gateway's page. */}
+      {token && <div style={{ marginBottom: 18 }}><CardOnFile token={token} lang={lang === 'vi' ? 'vi' : 'en'} onChanged={(v) => { setCardView(v); void load(); }} /></div>}
 
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
         <div style={{ display: 'inline-flex', background: 'var(--c1e293b)', border: '1px solid var(--c334155)', borderRadius: 999, padding: 4 }}>
@@ -228,15 +244,19 @@ function Inner() {
                   ))}
                 </ul>
                 {isCurrent && !hasCard && canPay ? (
-                  // The plan Lumio put them on, with no card behind it yet: the
-                  // button adds the card (a subscription at the gateway) for THIS
-                  // plan — the one thing the old disabled "Current plan" could not do.
+                  // The plan Lumio put them on, with no card behind it yet. The
+                  // in-page card box above is the way in when a gateway offers
+                  // it; otherwise this button opens the gateway's own page.
                   <>
-                    <button onClick={() => choose(p.id, provider)} disabled={busy} style={{ ...ui.primaryBtn, width: '100%' }}>
+                    <button
+                      onClick={() => (cardView?.formGateway ? document.querySelector('#cof-box')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) : choose(p.id, provider))}
+                      disabled={busy} style={{ ...ui.primaryBtn, width: '100%' }}>
                       {busy ? t('bl.opening') : (lang === 'vi' ? '💳 Thêm thẻ — tự động thanh toán' : '💳 Add a card — pay automatically')}
                     </button>
                     <p style={{ fontSize: 11.5, color: 'var(--c94a3b8)', margin: '8px 0 0', lineHeight: 1.5, textAlign: 'center' }}>
-                      {lang === 'vi' ? `Gói hiện tại của bạn. ${provider === 'stripe' ? 'Nhập thẻ (Stripe)' : 'Qua PayPal — thẻ hoặc tài khoản PayPal'}, tự trừ hàng tháng; phí phát sinh trừ cùng chỗ.` : `Your current plan. ${provider === 'stripe' ? 'Enter a card (Stripe)' : 'Via PayPal — card or PayPal account'}, charged monthly; usage charges are taken the same way.`}
+                      {cardView?.formGateway
+                        ? (lang === 'vi' ? 'Gói hiện tại của bạn. Nhập thẻ ngay trong trang, tự trừ hàng tháng; phí phát sinh trừ cùng thẻ.' : 'Your current plan. Enter the card right here; charged monthly, usage charges on the same card.')
+                        : (lang === 'vi' ? `Gói hiện tại của bạn. ${provider === 'stripe' ? 'Nhập thẻ (Stripe)' : 'Qua PayPal — thẻ hoặc tài khoản PayPal'}, tự trừ hàng tháng; phí phát sinh trừ cùng chỗ.` : `Your current plan. ${provider === 'stripe' ? 'Enter a card (Stripe)' : 'Via PayPal — card or PayPal account'}, charged monthly; usage charges are taken the same way.`)}
                     </p>
                   </>
                 ) : isCurrent ? (
@@ -254,10 +274,12 @@ function Inner() {
                         Nothing here knows which gateways exist: the server says. */}
                     {canPay && (
                       <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 6, textAlign: 'center', lineHeight: 1.5 }}>
-                        {provider === 'stripe'
-                          ? (lang === 'vi' ? 'Nhập thẻ, tự trừ hàng tháng (Stripe)' : 'Enter a card, charged monthly (Stripe)')
-                          : (lang === 'vi' ? 'Qua PayPal — thẻ hoặc tài khoản PayPal, tự trừ hàng tháng' : 'Via PayPal — card or PayPal account, charged monthly')}
-                        {p.providers.stripe && p.providers.paypal && (
+                        {savedCard
+                          ? (lang === 'vi' ? 'Đổi gói ngay, trừ vào thẻ đã lưu — không cần nhập lại thẻ' : 'Switch in place, charged to the saved card — no checkout')
+                          : provider === 'stripe'
+                            ? (lang === 'vi' ? 'Nhập thẻ, tự trừ hàng tháng (Stripe)' : 'Enter a card, charged monthly (Stripe)')
+                            : (lang === 'vi' ? 'Qua PayPal — thẻ hoặc tài khoản PayPal, tự trừ hàng tháng' : 'Via PayPal — card or PayPal account, charged monthly')}
+                        {!savedCard && p.providers.stripe && p.providers.paypal && (
                           <>
                             {' · '}
                             <button type="button" onClick={() => choose(p.id, 'paypal')} disabled={busy} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--c818cf8)', cursor: 'pointer', font: 'inherit', textDecoration: 'underline' }}>

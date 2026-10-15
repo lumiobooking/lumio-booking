@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Headers, Param, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Post, Query, Req } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { UserRole } from '@prisma/client';
@@ -10,6 +10,7 @@ import { AuthenticatedUser } from '../common/tenant/tenant-context';
 import { BillingService } from './billing.service';
 import { RateLimit } from '../common/security/rate-limit.guard';
 import { verifyCaptcha } from '../common/security/turnstile';
+import { CardOnFileService } from './card-on-file.service';
 
 class SignupDto {
   @IsString() salonName!: string;
@@ -43,7 +44,37 @@ class ChatPlanDto {
 
 @Controller()
 export class BillingController {
-  constructor(private readonly billing: BillingService) {}
+  constructor(private readonly billing: BillingService, private readonly card: CardOnFileService) {}
+
+  // ---- the salon's card, saved in Lumio's own page ----
+
+  /** Salon admin: the saved card (label only) and which in-page form can open. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('billing/card')
+  cardView(@CurrentUser() user: AuthenticatedUser) {
+    return this.card.view(user);
+  }
+
+  /** Salon admin: open a card form — PayPal setup token or Stripe SetupIntent secret. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('billing/card/start')
+  cardStart(@CurrentUser() user: AuthenticatedUser, @Body() dto: { provider?: string }) {
+    return this.card.start(user, dto?.provider ?? null);
+  }
+
+  /** Salon admin: the browser is back with the gateway's token — save the card. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('billing/card/confirm')
+  cardConfirm(@CurrentUser() user: AuthenticatedUser, @Body() dto: { provider?: string; setupToken?: string; setupIntentId?: string }) {
+    return this.card.confirm(user, dto ?? {});
+  }
+
+  /** Salon admin: remove the saved card. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Delete('billing/card')
+  cardRemove(@CurrentUser() user: AuthenticatedUser) {
+    return this.card.remove(user);
+  }
 
   /** Public pricing page data. */
   @Public()

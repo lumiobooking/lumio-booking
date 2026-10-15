@@ -17,6 +17,7 @@ import { RecordAlertByPhone } from './RecordAlert';
 import { deskHoursCheck, hoursMessage, wallLabel, type HoursRules } from '../lib/desk-hours';
 import { ind, uiIndustry } from '../lib/ui-industry';
 import { SlotPicker } from './SlotPicker';
+import { hasHours } from '../lib/slot-picker';
 
 export interface BookingFormService { id: string; name: string; durationMinutes: number }
 export interface BookingFormStaff { id: string; firstName: string; lastName: string | null; isActive: boolean }
@@ -357,8 +358,9 @@ export function CreateBookingForm({
                 staff={staff}
                 staffId={form.staffId}
               />
-              {/* Read back in words — "11:40 (tối)" makes an AM/PM slip obvious. */}
-              {form.startLocal && (
+              {/* The picker reads the choice back; only a problem is repeated here
+                  (an owner's out-of-hours time, or a salon with no hours set). */}
+              {form.startLocal && (outside || !hasHours(hours)) && (
                 <span style={{ display: 'block', marginTop: 5, fontSize: 12, fontWeight: 600, color: outside ? 'var(--ink-bad)' : 'var(--c94a3b8)' }}>
                   {outside ? `⚠ ${hoursMessage(form.startLocal, hoursCheck, vi)}` : `🕒 ${wallLabel(form.startLocal, vi)}${ind(vi ? ' — giờ của tiệm' : ' — salon time')}`}
                 </span>
@@ -394,7 +396,7 @@ export function CreateBookingForm({
           </div>
           {/* Capacity, shown the moment a time is picked. Amber when the party
               outgrows the free chairs — a warning, never a block. */}
-          {freeStaff !== null && (
+          {freeStaff !== null && (staffShort || !hasHours(hours)) && (
             <div
               style={{
                 marginTop: 10, fontSize: 12.5, lineHeight: 1.5, display: 'inline-flex', alignItems: 'center', gap: 6,

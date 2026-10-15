@@ -1,4 +1,4 @@
-import { dayOptions, firstOpenDay, slotsForDay, wallOf } from './slot-picker';
+import { dayIsOpen, dayOptions, firstOpenDay, monthCells, periodOf, slotsForDay, wallOf } from './slot-picker';
 
 const week = Array.from({ length: 7 }, (_, d) => (d === 0 ? { closed: true } : { openMinutes: 600, closeMinutes: 1080 }));
 const rules = { businessHours: week, daysOff: ['2026-10-20'] };
@@ -37,5 +37,19 @@ describe('booking time picker', () => {
     expect(firstOpenDay('2026-10-15', rules, '2026-10-15T18:10')).toBe('2026-10-16');
     expect(firstOpenDay('2026-10-17', rules, '2026-10-17T19:00')).toBe('2026-10-19'); // Sunday shut
     expect(wallOf('2026-10-16', 570)).toBe('2026-10-16T09:30');
+  });
+
+  it('a month grid: Monday first, padded, past and closed days marked', () => {
+    const cells = monthCells(2026, 10, '2026-10-15', rules);
+    expect(cells).toHaveLength(42);
+    expect(cells[0].ymd).toBe('2026-09-28'); // Oct 1 2026 is a Thursday → 3 lead days
+    expect(cells[0].inMonth).toBe(false);
+    const oct = cells.filter((c) => c.inMonth);
+    expect(oct.find((c) => c.d === 14)?.past).toBe(true);
+    expect(oct.find((c) => c.d === 15)).toMatchObject({ past: false, today: true, open: true });
+    expect(oct.find((c) => c.d === 18)?.open).toBe(false); // Sunday
+    expect(oct.find((c) => c.d === 20)?.open).toBe(false); // day off
+    expect(dayIsOpen('2026-10-16', rules)).toBe(true);
+    expect([periodOf(9 * 60), periodOf(12 * 60), periodOf(17 * 60)]).toEqual(['morning', 'afternoon', 'evening']);
   });
 });

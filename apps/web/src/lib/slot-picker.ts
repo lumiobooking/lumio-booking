@@ -79,3 +79,36 @@ export function firstOpenDay(todayYmd: string, rules: HoursRules | null | undefi
 }
 
 export const wallOf = (ymd: string, min: number) => `${ymd}T${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
+
+/** Is this calendar day one the salon takes bookings on? (hours set, not closed, not a day off) */
+export function dayIsOpen(ymd: string, rules: HoursRules | null | undefined): boolean {
+  if ((rules?.daysOff ?? []).includes(ymd)) return false;
+  if (!hasHours(rules)) return true;
+  const p = wallParts(`${ymd}T00:00`);
+  return Boolean(p) && windowsForDay(rules!.businessHours![p!.weekday]).length > 0;
+}
+
+export interface MonthCell { ymd: string; d: number; inMonth: boolean; past: boolean; open: boolean; today: boolean }
+
+/**
+ * A month as 6 rows of 7, Monday first, padded with the neighbouring months'
+ * days (greyed). `past` = before today; `open` = a day the salon takes
+ * bookings on (today counts as open only while times are left: the caller
+ * decides that with slotsForDay).
+ */
+export function monthCells(year: number, month: number, todayYmd: string, rules: HoursRules | null | undefined): MonthCell[] {
+  const first = new Date(Date.UTC(year, month - 1, 1));
+  const lead = (first.getUTCDay() + 6) % 7; // Monday = 0
+  const out: MonthCell[] = [];
+  for (let i = 0; i < 42; i++) {
+    const t = new Date(Date.UTC(year, month - 1, 1 + i - lead));
+    const ymd = `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
+    out.push({ ymd, d: t.getUTCDate(), inMonth: t.getUTCMonth() === month - 1, past: ymd < todayYmd, open: dayIsOpen(ymd, rules), today: ymd === todayYmd });
+  }
+  return out;
+}
+
+export type Period = 'morning' | 'afternoon' | 'evening';
+export function periodOf(min: number): Period {
+  return min < 12 * 60 ? 'morning' : min < 17 * 60 ? 'afternoon' : 'evening';
+}

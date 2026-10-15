@@ -81,7 +81,7 @@ function ChannelDots({ list, size = 18 }: { list: string[]; size?: number }) {
  */
 function standing(post: ReviewPost | null, vi: boolean, fmtTime: (iso: string) => string): { text: string; color: string; tone: 'wait' | 'fix' | 'done' | 'sched' | 'plan' | 'held' } {
   const T = (v: string, e: string) => ind(vi ? v : e);
-  if (!post) return { text: T('Dự kiến', 'Planned'), color: 'var(--c64748b)', tone: 'plan' };
+  if (!post) return { text: '', color: 'var(--c64748b)', tone: 'plan' };
   switch (post.clientStatus) {
     case 'posted': return { text: `✓ ${T('Đã đăng', 'Posted')}`, color: 'var(--ink-good)', tone: 'done' };
     case 'approved': return { text: `⏰ ${fmtTime(post.scheduledAt)} · ${T('đã duyệt, tự đăng', 'approved, posts itself')}`, color: 'var(--ca5b4fc)', tone: 'sched' };
@@ -115,16 +115,19 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
   /** A planned day with no real post yet: its words, in a small sheet. */
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [sendOpen, setSendOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  /** One slice of the old tabs, opened beside the calendar. */
+  const [panel, setPanel] = useState<null | 'work' | 'money' | 'holidays'>(null);
+  const [holidays, setHolidays] = useState<{ key: string; name: string; daysAway: number }[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const sendRef = useRef<(() => void) | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
-    const [f, w, s] = await Promise.all([
+    const [f, w, s, h] = await Promise.all([
       api.feed().then((r) => { setFeedErr(null); return r; }).catch((e: unknown) => { setFeedErr(e instanceof Error ? e.message : 'error'); return null; }),
       apiFetch<MyWeek>(fresh(`/content/my-week?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
       apiFetch<SuggFeed>(fresh('/content/suggestions'), { token }).catch(() => null),
+      apiFetch<{ ideas: { key: string; name: string; daysAway: number }[] }>(fresh(`/content/my-holidays?lang=${vi ? 'vi' : 'en'}`), { token }).catch(() => null),
     ]);
     if (f) { setFeed(f); onWaiting?.(f.waiting ?? 0); }
     if (w) {
@@ -133,6 +136,7 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
       setPlan((prev) => (prev && w.planSheet && prev.month !== w.planSheet.month ? prev : (w.planSheet ?? prev)));
     }
     if (s) setSugg(s);
+    if (h) setHolidays(h.ideas ?? []);
     setLoaded(true);
   }, [token, vi, api, onWaiting]);
   useEffect(() => { load(); }, [load]);
@@ -220,7 +224,9 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
   const pillarChip = (id: string) => {
     const p = pillarOf(id);
     if (!p) return null;
-    return <span style={{ display: 'inline-flex', alignItems: 'center', height: 20, padding: '0 7px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: p.bg, color: p.ink }}>{vi ? p.vi : p.en}</span>;
+    // A dot and a word. Six bright chips across a month read as noise; a
+    // dot still says which pillar at a glance and the legend names them.
+    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--c94a3b8)' }}><i style={{ width: 8, height: 8, borderRadius: 999, background: p.bg, border: `1px solid ${p.ink}`, display: 'inline-block', boxSizing: 'border-box' }} />{vi ? p.vi : p.en}</span>;
   };
   const formatName = (id: string) => { const f = formatOf(id); return f ? (vi ? f.vi : f.en) : ''; };
   const topicOf = (c: DayCell) => c.entry?.topic || (c.post ? (c.post.message.split('\n').find((l) => l.trim()) ?? '') : '');
@@ -262,7 +268,7 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ color: 'var(--ca5b4fc)', fontWeight: 700 }}>⏰</span>{T('Đã duyệt, tự đăng đúng giờ', 'Approved, posts itself')}</span>
       {!isMobile && (
         <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-          {pillars.filter((p) => !p.hidden).map((p) => <span key={p.id} style={{ height: 20, padding: '0 7px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: p.bg, color: p.ink, display: 'inline-flex', alignItems: 'center' }}>{vi ? p.vi : p.en}</span>)}
+          {pillars.filter((p) => !p.hidden).map((p) => <span key={p.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--c94a3b8)', marginRight: 6 }}><i style={{ width: 9, height: 9, borderRadius: 999, background: p.bg, border: `1px solid ${p.ink}`, display: 'inline-block', boxSizing: 'border-box' }} />{vi ? p.vi : p.en}</span>)}
         </span>
       )}
     </div>
@@ -287,28 +293,36 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
             onKeyDown={(e) => { if (has && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openCell(c); } }}
             style={{
               background: cellBg(st.tone, outside), boxShadow: cellRing(st.tone, key),
-              minHeight: 148, padding: '10px 10px 12px', boxSizing: 'border-box',
-              display: 'flex', flexDirection: 'column', gap: 6, cursor: has ? 'pointer' : 'default', opacity: outside && !has ? 0.55 : 1,
+              minHeight: 136, padding: '8px 10px 10px', boxSizing: 'border-box',
+              display: 'flex', flexDirection: 'column', gap: 5, cursor: has ? 'pointer' : 'default',
+              // Yesterday and before, and the other months' days, step back; the
+              // weeks ahead are what she is here to read.
+              opacity: outside && !has ? 0.5 : key < today && st.tone !== 'wait' && st.tone !== 'fix' ? 0.72 : 1,
             }}
           >
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, height: 24, fontSize: 14, fontWeight: 700, color: outside ? 'var(--c64748b)' : 'var(--ce2e8f0)' }}>
+            {/* ONE voice per cell: a small day number, the title as the only
+                strong text, then one quiet line of pillar · kind, and at the
+                foot the standing with the networks. Nothing bold but the title. */}
+            <span style={{ display: 'flex', alignItems: 'center', height: 22, fontSize: 12.5, fontWeight: 600, color: outside ? 'var(--c64748b)' : key === today ? '#fff' : 'var(--c94a3b8)' }}>
               {key === today
-                ? <span style={{ width: 26, height: 26, borderRadius: 999, background: '#6366f1', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{dayN}</span>
+                ? <span style={{ width: 22, height: 22, borderRadius: 999, background: '#6366f1', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>{dayN}</span>
                 : dayN}
-              <span style={{ marginLeft: 'auto' }}><ChannelDots list={channelsOf(c)} /></span>
             </span>
             {has && (
               <>
-                <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4, color: st.tone === 'done' ? 'var(--ink-good)' : 'var(--ce2e8f0)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.35, color: st.tone === 'done' ? 'var(--c94a3b8)' : 'var(--ce2e8f0)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
                   {topicOf(c) || T('(bài chỉ có ảnh)', '(media only)')}
                 </span>
                 {(c.entry?.pillar || c.entry?.format) && (
-                  <span style={{ fontSize: 12, color: 'var(--c94a3b8)', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11.5, color: 'var(--c94a3b8)', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', lineHeight: 1.3 }}>
                     {c.entry?.pillar ? pillarChip(c.entry.pillar) : null}
                     {c.entry?.format ? <span>{c.entry.pillar ? '· ' : ''}{formatName(c.entry.format)}</span> : null}
                   </span>
                 )}
-                <span style={{ marginTop: 'auto', fontSize: 12.5, fontWeight: st.tone === 'plan' ? 500 : 700, color: st.color }}>{st.text}</span>
+                <span style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 6, minHeight: 16 }}>
+                  {st.text && <span style={{ fontSize: 12, fontWeight: st.tone === 'done' ? 600 : 700, color: st.color, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{st.text}</span>}
+                  <span style={{ marginLeft: 'auto' }}><ChannelDots list={channelsOf(c)} size={14} /></span>
+                </span>
               </>
             )}
           </div>
@@ -351,13 +365,13 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
                 <span style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1, color: c.key === today ? 'var(--ca5b4fc)' : 'var(--ce2e8f0)' }}>{Number(c.key.slice(8, 10))}</span>
               </div>
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.35, color: 'var(--ce2e8f0)' }}>{topicOf(c) || T('(bài chỉ có ảnh)', '(media only)')}</span>
+                <span style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.35, color: st.tone === 'done' ? 'var(--c94a3b8)' : 'var(--ce2e8f0)' }}>{topicOf(c) || T('(bài chỉ có ảnh)', '(media only)')}</span>
                 <span style={{ fontSize: 12, color: 'var(--c94a3b8)', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                   {c.entry?.pillar ? pillarChip(c.entry.pillar) : null}
                   {c.entry?.format ? <span>· {formatName(c.entry.format)}</span> : null}
-                  <ChannelDots list={channelsOf(c)} size={16} />
+                  <ChannelDots list={channelsOf(c)} size={14} />
                 </span>
-                <span style={{ fontSize: 12.5, fontWeight: st.tone === 'plan' ? 500 : 700, color: st.color, marginTop: 2 }}>{st.text}</span>
+                {st.text && <span style={{ fontSize: 12.5, fontWeight: 700, color: st.color, marginTop: 2 }}>{st.text}</span>}
               </div>
             </div>
           );
@@ -366,46 +380,89 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
     );
   })();
 
+  /** Lumio's side of the month, in three numbers the owner can check. */
+  const lumioNow = useMemo(() => {
+    const posts = (feed?.posts ?? []).filter((p) => dayKeyOf(p.scheduledAt).startsWith(month));
+    return {
+      queued: posts.filter((p) => p.clientStatus === 'approved').length,
+      written: posts.filter((p) => p.clientStatus === 'wait' || p.clientStatus === 'held').length,
+      posted: posts.filter((p) => p.clientStatus === 'posted').length,
+    };
+  }, [feed, month, dayKeyOf]);
+
+  const shopTodo = [
+    ...toFilm.map((t) => ({ icon: '🎬', text: t.title, send: true })),
+    ...(ask ? [{ icon: '📷', text: ask.what, send: true }] : []),
+    ...shopJobs.filter((j) => !ask?.jobIds?.includes(j.id ?? '')).map((j) => ({ icon: '▢', text: j.text, send: false })),
+  ];
+  const deltaText = (d: number | null) => (d === null || d === 0 ? '' : d > 0 ? `▲ ${d}` : `▼ ${Math.abs(d)}`);
+  const cardHead = (icon: string, title: string, action: string, onClick: () => void) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 16 }}>{icon}</span>
+      <b style={{ fontSize: 13.5, color: 'var(--ce2e8f0)' }}>{title}</b>
+      <button onClick={onClick} style={{ ...linkBtn, marginLeft: 'auto' }}>{action}</button>
+    </div>
+  );
+
   const below = (
-    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-      {/* what the shop has to go and do */}
-      <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 12, ...(toFilm.length || ask ? { borderColor: '#f59e0b', background: 'var(--c451a03)' } : {}) }}>
-        <span style={{ fontSize: 22 }}>📷</span>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <b style={{ fontSize: 14, color: toFilm.length || ask ? 'var(--cfde68a)' : 'var(--ce2e8f0)' }}>
-            {toFilm.length
-              ? `${T('Lumio nhờ tiệm quay/chụp', 'Lumio asks you to film')} · ${toFilm.length}`
-              : ask ? T('Tuần này tiệm làm 1 việc', 'One thing from you this week')
-                : T('Tuần này tiệm không phải làm gì thêm', 'Nothing needed from you this week')}
-          </b>
-          <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {toFilm[0]?.title ?? ask?.what ?? (shopJobs[0]?.text ?? T('Quay/chụp được gì cứ gửi, bên em dựng bài.', 'Anything you shoot, send it — we make the post.'))}
-          </span>
-        </div>
-        <button onClick={() => setMoreOpen(true)} style={navBtn}>{toFilm.length || ask ? T('Xem', 'Open') : T('Chi tiết', 'Details')}</button>
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+      {/* 1. what the shop has to go and do */}
+      <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 10, ...(shopTodo.length ? { borderColor: '#f59e0b' } : {}) }}>
+        {cardHead('📷', `${T('Việc của tiệm', 'Your part')}${shopTodo.length ? ` · ${shopTodo.length}` : ''}`, T('Chi tiết ›', 'Details ›'), () => setPanel('work'))}
+        {shopTodo.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.55 }}>{T('Tuần này không cần tiệm làm gì thêm. Quay/chụp được gì cứ gửi, bên em dựng bài.', 'Nothing needed from you this week. Anything you shoot, send it — we make the post.')}</div>
+        ) : shopTodo.slice(0, 3).map((it, i) => (
+          <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, lineHeight: 1.45, color: 'var(--ce2e8f0)' }}>
+            <span style={{ flexShrink: 0 }}>{it.icon}</span>
+            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{it.text}</span>
+          </div>
+        ))}
+        {shopTodo.length > 3 && <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>+{shopTodo.length - 3} {T('việc nữa', 'more')}</span>}
+        <button onClick={() => { setSendOpen(true); setTimeout(() => sendRef.current?.(), 150); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ ...navBtn, alignSelf: 'flex-start', marginTop: 'auto', background: '#6366f1', borderColor: '#6366f1', color: '#fff' }}>
+          📷 {T('Gửi ảnh/clip đã quay', 'Send what you shot')}
+        </button>
       </div>
-      {/* what the shop got */}
-      <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+
+      {/* 2. what the shop got */}
+      <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {cardHead('📈', T('Tuần trước tiệm nhận được', 'Last week you got'), T('Quảng cáo & ngân sách ›', 'Ads & budget ›'), () => setPanel('money'))}
         {lastWeek ? (
-          <>
-            {[
-              [lastWeek.posted, T('bài đã đăng', 'posts')],
-              [lastWeek.reviews, T('đánh giá mới', 'new reviews')],
-              [lastWeek.newCustomers, T('khách mới', 'new customers')],
-              [lastWeek.bookings, T('lượt đặt lịch', 'bookings')],
-            ].map(([n, label]) => (
-              <span key={String(label)} style={{ display: 'flex', flexDirection: 'column' }}>
-                <b style={{ fontSize: 19, color: 'var(--ce2e8f0)', letterSpacing: -0.3 }}>{n}</b>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px' }}>
+            {([
+              [lastWeek.posted, T('bài đã đăng', 'posts published'), null],
+              [lastWeek.reviews, T('đánh giá mới', 'new reviews'), lastWeek.delta.reviews],
+              [lastWeek.newCustomers, T('khách mới', 'new customers'), lastWeek.delta.newCustomers],
+              [lastWeek.bookings, T('lượt đặt lịch', 'bookings'), lastWeek.delta.bookings],
+            ] as [number, string, number | null][]).map(([n, label, d]) => (
+              <span key={label} style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <b style={{ fontSize: 22, color: 'var(--ce2e8f0)', letterSpacing: -0.4, lineHeight: 1.1 }}>{n}</b>
+                  {deltaText(d) && <span style={{ fontSize: 11.5, fontWeight: 700, color: (d ?? 0) > 0 ? 'var(--ink-good)' : 'var(--ink-bad)' }}>{deltaText(d)}</span>}
+                </span>
                 <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{label}</span>
               </span>
             ))}
-            <span style={{ flex: 1, textAlign: 'right', fontSize: 12.5, color: 'var(--c94a3b8)' }}>
-              {T('Tuần trước', 'Last week')} · <button onClick={() => setMoreOpen(true)} style={linkBtn}>{T('Kết quả & quảng cáo ›', 'Results & ads ›')}</button>
-            </span>
-          </>
+          </div>
         ) : (
-          <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{T('Số liệu tuần trước sẽ hiện ở đây.', 'Last week’s numbers will show here.')} <button onClick={() => setMoreOpen(true)} style={linkBtn}>{T('Chi tiết ›', 'Details ›')}</button></span>
+          <div style={{ fontSize: 13, color: 'var(--c94a3b8)', lineHeight: 1.55 }}>{T('Số liệu tuần trước sẽ hiện ở đây khi có bài đăng đầu tiên.', 'Last week’s numbers show here after the first posts go out.')}</div>
         )}
+        {lastWeek && <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{lastWeek.label}</span>}
+      </div>
+
+      {/* 3. what Lumio is doing */}
+      <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {cardHead('✨', T('Lumio đang làm', 'Lumio is on it'), holidays.length ? `🎉 ${T('Ngày lễ', 'Holidays')} (${holidays.length}) ›` : T('Chi tiết ›', 'Details ›'), () => setPanel(holidays.length ? 'holidays' : 'work'))}
+        {([
+          [`${counts.planned}/${daysInMonth}`, T('ngày đã lên kế hoạch tháng này', 'days planned this month')],
+          [lumioNow.written, T('bài đã viết, chờ chị duyệt', 'posts written, waiting for your OK')],
+          [lumioNow.queued, T('bài đã duyệt, sẽ tự đăng', 'approved, will post by themselves')],
+          [lumioNow.posted, T('bài đã đăng tháng này', 'posted this month')],
+        ] as [number | string, string][]).map(([n, label]) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, color: 'var(--c94a3b8)' }}>
+            <b style={{ fontSize: 15, color: 'var(--ce2e8f0)', minWidth: 42, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n}</b>
+            <span>{label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -426,18 +483,31 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
       {loaded && legend}
       {loaded && below}
 
-      {/* everything the old tabs held, folded under one toggle */}
-      <div>
-        <button onClick={() => setMoreOpen((v) => !v)} style={{ ...navBtn, width: '100%', justifyContent: 'flex-start', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ display: 'inline-block', transform: moreOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s', fontSize: 11 }}>▶</span>
-          {T('Chi tiết: việc của tiệm · Lumio đang làm gì · kết quả & quảng cáo · ngày lễ', 'Details: your jobs · what Lumio is doing · results & ads · holidays')}
-        </button>
-        {moreOpen && (
-          <div style={{ marginTop: 12 }}>
-            <SalonWorkspace token={token} vi={vi} hidePlan hideSend onSend={() => { setSendOpen(true); setTimeout(() => sendRef.current?.(), 150); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
+      {/* One slice of the old tabs at a time, beside the calendar: the
+          details of the shop's jobs, or the money, or the holidays — never
+          all three stacked under the month again. */}
+      {panel && (
+        <>
+          <div onClick={() => setPanel(null)} style={{ position: 'fixed', inset: 0, zIndex: 199, background: 'rgba(2,6,23,.45)' }} />
+          <div role="dialog" style={{
+            position: 'fixed', top: 0, right: 0, bottom: 0, width: isMobile ? '100vw' : 'min(680px, 100vw)', zIndex: 200,
+            background: 'var(--c0f172a)', borderLeft: '1px solid var(--c334155)', boxShadow: '-24px 0 60px rgba(0,0,0,.45)',
+            display: 'flex', flexDirection: 'column',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--c334155)', flexShrink: 0 }}>
+              <b style={{ fontSize: 15, color: 'var(--ce2e8f0)' }}>
+                {panel === 'work' ? `📷 ${T('Việc của tiệm & Lumio đang làm', 'Your part & what Lumio is doing')}`
+                  : panel === 'money' ? `📈 ${T('Kết quả, quảng cáo & ngân sách', 'Results, ads & budget')}`
+                    : `🎉 ${T('Ngày lễ sắp tới & chương trình gợi ý', 'Holidays ahead & suggested programmes')}`}
+              </b>
+              <button onClick={() => setPanel(null)} style={{ ...navBtn, marginLeft: 'auto' }}>✕ {T('Đóng', 'Close')}</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+              <SalonWorkspace token={token} vi={vi} hidePlan hideSend only={panel} onSend={() => { setPanel(null); setSendOpen(true); setTimeout(() => sendRef.current?.(), 150); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
+            </div>
           </div>
-        )}
-      </div>
+        </>
+      )}
 
       {/* the phone's thumb bar */}
       {isMobile && loaded && (

@@ -170,10 +170,16 @@ function dayLabelsFrom(jobs: ShopJob[]): string[] {
   return Array.from({ length: out.length }, (_, i) => out[i] ?? '');
 }
 
-export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsPlan, monthBrief, planSheet, onPickMonth, onSend, onChanged, onError, hidePlan }: {
+export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsPlan, monthBrief, planSheet, onPickMonth, onSend, onChanged, onError, hidePlan, only }: {
   token: string | null; vi: boolean; week: ShopWeekData; weekKey: string | null; unread?: number;
   /** The calendar is drawn by the screen around this (ClientPlan); do not draw it again here. */
   hidePlan?: boolean;
+  /**
+   * One slice of the week, for the calendar screen's panels: 'work' = the
+   * month's brief, the ask, the shop's part and the thread; 'money' = last
+   * week's numbers, the ad receipt and the budget. Unset = everything.
+   */
+  only?: 'work' | 'money';
   /** What this month is for, written by the team for the shop. Null until written. */
   monthBrief?: MonthBriefData | null;
   /** The month's plan, read-only — the calendar even while the team is still filling it. */
@@ -216,13 +222,14 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
   const counterIds = new Set(week.counterIds ?? []);
   const askJobs = week.jobs.filter((j) => j.id && askIds.has(j.id));
   const counterJobs = week.jobs.filter((j) => j.id && counterIds.has(j.id));
+  const show = (k: 'work' | 'money') => !only || only === k;
 
   return (
     <section style={{ marginBottom: 18 }}>
       {/* ---- 0. the month, in the owner's words ----
              First, before any number: what this month is for and what is
              asked of the shop. Written by the team on the plan screen. */}
-      {monthBrief && <MonthBriefView brief={monthBrief} vi={vi} />}
+      {show('work') && monthBrief && <MonthBriefView brief={monthBrief} vi={vi} />}
       {/* ---- 0b. the 30 days, as the team planned them ----
              The same cards the team works on, with no inputs: what is coming,
              which network, what kind of post, and whether it is on the
@@ -263,7 +270,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
              First, because it is the question the owner opened the app to ask.
              Every figure is her own row count; nothing here claims a booking
              came from a post. */}
-      {lastWeek && (
+      {show('money') && lastWeek && (
         <div style={{ ...card, marginBottom: 12, background: 'var(--c0f172a)', borderColor: 'var(--c334155)' }}>
           <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 9 }}>
             {T(`TUẦN RỒI TIỆM NHẬN ĐƯỢC · ${lastWeek.label}`, `WHAT YOU GOT LAST WEEK · ${lastWeek.label}`)}
@@ -282,7 +289,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
              the owner the arithmetic: what went out, what came back, and the
              line under which it makes sense. Shown only in a month that
              actually had spend — an empty receipt reads as a bad result. */}
-      {ads && (
+      {show('money') && ads && (
         <div style={{
           ...card, marginBottom: 12,
           borderColor: ads.verdict === 'over' ? '#ef4444' : ads.verdict === 'tight' ? '#f59e0b' : ads.verdict === 'good' ? '#22c55e' : 'var(--c334155)',
@@ -313,7 +320,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
              Same slot as the receipt and never beside it: money going out is
              a receipt, money not going out yet is a question. A screen that
              shows both argues with itself. */}
-      {!ads && adsPlan && (
+      {show('money') && !ads && adsPlan && (
         <div style={{
           ...card, marginBottom: 12,
           // A starter plan IS a proposal and is framed as one. It used to be
@@ -509,7 +516,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
              One ask, one deadline, one button. The shot list is folded away
              and called a tip, not a step: a shop that cannot shoot well is
              not failing its plan, it is the reason it hired us. */}
-      {week.ask && askJobs.length > 0 && (
+      {show('work') && week.ask && askJobs.length > 0 && (
         <div style={{
           ...card, marginTop: 14, borderColor: '#22c55e',
           background: 'linear-gradient(135deg, rgba(34,197,94,.14), rgba(34,197,94,.04))',
@@ -577,7 +584,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
           have always been rather than vanishing from the screen. */}
       {!week.ask && (askJobs.length > 0 || counterJobs.length > 0) && null}
 
-      {!!week.prep.length && (
+      {show('work') && !!week.prep.length && (
         <div style={{ ...card, background: 'var(--c0f172a)', marginTop: 10 }}>
           <div style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: '.6px', color: 'var(--c64748b)', marginBottom: 7 }}>
             {/* The heading said "what we have ready for you" over a list of
@@ -601,7 +608,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
       {/* The thread under the week. Same address the team's board uses
           (week:KEY), so a remark made here is read there, and the week in
           October still carries what was said about it in October. */}
-      {weekKey && (
+      {show('work') && weekKey && (
         <ItemComments
           token={token} subject={`week:${weekKey}`} unread={unread ?? 0} vi={vi}
           labelVi={vi ? 'Trao đổi với Lumio về tuần này' : 'Discuss this week with Lumio'}

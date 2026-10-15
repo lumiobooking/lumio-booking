@@ -95,7 +95,7 @@ function WorkSkeleton() {
   );
 }
 
-export function SalonWorkspace({ token, vi, onCount, hidePlan, hideSend, onSend }: {
+export function SalonWorkspace({ token, vi, onCount, hidePlan, hideSend, onSend, only }: {
   token: string | null;
   vi: boolean;
   /** How many suggestions are still waiting on the shop, for the tab badge. */
@@ -105,6 +105,12 @@ export function SalonWorkspace({ token, vi, onCount, hidePlan, hideSend, onSend 
   hideSend?: boolean;
   /** With hideSend: where "send it" buttons go instead (the screen's own send box). */
   onSend?: () => void;
+  /**
+   * One slice, for a panel on the calendar screen: 'work' = Lumio's asks, the
+   * week's ask and the shop's part, what was sent; 'money' = numbers, ads,
+   * budget; 'holidays' = the holiday programmes. Unset = the whole tab.
+   */
+  only?: 'work' | 'money' | 'holidays';
 }) {
   const T = (v: string, e: string) => ind(vi ? v : e);
   const [sugg, setSugg] = useState<SuggestionFeed | null>(null);
@@ -208,7 +214,7 @@ export function SalonWorkspace({ token, vi, onCount, hidePlan, hideSend, onSend 
           which is why the page does not jump when the answer lands. */}
       {!loaded && <WorkSkeleton />}
 
-      {nothing && (
+      {nothing && (!only || only === 'work') && (
         <div style={{
           padding: '28px 18px', textAlign: 'center',
           background: 'var(--c151f38)', border: '1px solid var(--c334155)', borderRadius: 14,
@@ -221,7 +227,7 @@ export function SalonWorkspace({ token, vi, onCount, hidePlan, hideSend, onSend 
       )}
 
       {/* ---- 1. what Lumio asked for ---- */}
-      {!!sugg?.open.length && (
+      {(!only || only === 'work') && !!sugg?.open.length && (
         <section style={{ marginBottom: 18 }}>
           <h2 style={h2}>
             {T('Lumio đề xuất', 'From Lumio')}
@@ -242,20 +248,20 @@ export function SalonWorkspace({ token, vi, onCount, hidePlan, hideSend, onSend 
       {/* ---- 2. the week, as a thing the shop works on ----
              The whole plan, editable in place, with the thread under it —
              see ShopWeek. Then the holidays ahead with a programme each. */}
-      {(!!week?.jobs.length || !!planSheet || !!monthBrief) && (
+      {only !== 'holidays' && (!!week?.jobs.length || !!planSheet || !!monthBrief || !!lastWeek || !!adsPlan) && (
         <ShopWeek
           token={token} vi={vi} week={week ?? EMPTY_WEEK} weekKey={weekKey} unread={weekUnread}
           lastWeek={lastWeek} ads={ads} adsPlan={adsPlan} onSend={() => (askSend.current ?? onSend)?.()}
           monthBrief={monthBrief} planSheet={planSheet} onPickMonth={pickMonth}
-          onChanged={load} onError={setErr} hidePlan={hidePlan}
+          onChanged={load} onError={setErr} hidePlan={hidePlan} only={only === 'work' || only === 'money' ? only : undefined}
         />
       )}
-      {!!holidays.length && (
+      {(!only || only === 'holidays') && !!holidays.length && (
         <HolidayOffers token={token} vi={vi} ideas={holidays} onError={setErr} />
       )}
 
       {/* ---- what the shop already sent ---- */}
-      {!!sugg?.past.length && (
+      {(!only || only === 'work') && !!sugg?.past.length && (
         <details style={{ marginBottom: 18 }}>
           <summary style={{
             cursor: 'pointer', fontSize: 13, color: 'var(--c94a3b8)', padding: '9px 2px',

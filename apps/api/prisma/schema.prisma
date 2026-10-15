@@ -341,7 +341,7 @@ model Tenant {
   socialPostMetrics    SocialPostMetric[]
   socialSyncJobs       SocialSyncJob[]
   invoices             Invoice[]
-  paymentMethods       PaymentMethod[]
+  billingCards         BillingCard[]
 
   tables             RestaurantTable[]
   menuItems          MenuItem[]
@@ -2089,8 +2089,9 @@ model Invoice {
 /// here: `token` is PayPal's vault id or Stripe's payment-method id, and the
 /// only card facts kept are what a receipt prints (brand, last 4, expiry).
 /// One default per tenant; replacing a card retires the old row.
-/// billing/card-on-file.service.ts.
-model PaymentMethod {
+/// billing/card-on-file.service.ts. (Named BillingCard: `PaymentMethod` is
+/// already the POS tender enum.)
+model BillingCard {
   id       String @id @default(uuid())
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

@@ -40,12 +40,12 @@ export class CardOnFileService {
   ) {}
 
   private get pm() {
-    return (this.prisma as unknown as { paymentMethod: {
+    return (this.prisma as unknown as { billingCard: {
       findFirst: (a: unknown) => Promise<PmRow | null>;
       create: (a: unknown) => Promise<PmRow>;
       update: (a: unknown) => Promise<PmRow>;
       updateMany: (a: unknown) => Promise<{ count: number }>;
-    } }).paymentMethod;
+    } }).billingCard;
   }
 
   /** The salon's active card, if any. */

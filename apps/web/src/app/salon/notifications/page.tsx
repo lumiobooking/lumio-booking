@@ -51,12 +51,15 @@ const PLACEHOLDERS = [
   '%customer_name%', '%salon_name%', '%service_name%', '%staff_name%',
   '%appointment_date%', '%appointment_time%', '%duration%', '%total_price%',
   '%add_ons%', '%salon_contact%', '%booking_id%',
+  // A move: where the appointment was before.
+  '%old_date%', '%old_time%',
 ];
 
 const SAMPLE: Record<string, string> = {
   customer_name: 'Jane Smith', salon_name: 'Salon A — Demo Nails', service_name: 'Gel Manicure',
   staff_name: 'Tina', appointment_date: 'Mon, Jun 22, 2026', appointment_time: '5:30 PM',
   duration: '45 min', total_price: '$45.00', add_ons: 'Nail Art', salon_contact: '(587) 435-0838', booking_id: 'BK-1042',
+  old_date: 'Sat, Jun 20, 2026', old_time: '3:00 PM',
 };
 function fillPct(s: string) { return s.replace(/%(\w+)%/g, (_m, k) => SAMPLE[k] ?? `%${k}%`); }
 

@@ -3,36 +3,24 @@
 /**
  * The salon's own screen — the only one a client account really lives in.
  *
- * TWO TABS, BECAUSE IT WAS ONE LONG SCROLL
+ * ONE SCREEN: THE MONTH
  *
- * Three things arrived here in turn: what Lumio suggested, what the shop has to
- * film this week, and what is waiting for a yes. Stacked, that is a page a shop
- * owner scrolls past the middle of on a phone and never reaches the end of — and
- * the end was the part with the buttons. So it splits where the WORK splits:
- * one tab is "things I have to go and do", the other is "things I have to look
- * at and say yes to". Nobody has to decide which section they are in.
- *
- * The tab that opens first is the one with something waiting, decided once when
- * the counts arrive and never again — a bar that re-picks a tab while somebody
- * is reading it is worse than picking the wrong one.
- *
- * Auth and fetch plumbing only. Everything drawn lives in SalonWorkspace and
- * PostReview, the second of which is shared with the group-chat link so the two
- * doors cannot drift apart.
+ * It used to be two tabs ("your jobs", "approve posts") over a long scroll
+ * of boxes; see ClientPlan for what that cost and what replaced it. This
+ * file is auth and fetch plumbing only: the review feed's fetchers (shared
+ * with the group-chat link, so the two doors cannot drift apart), the push
+ * prompt, the team chat window, and the calendar screen itself.
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import { SalonShell } from '../../../components/SalonShell';
-import { PostReview, type ReviewApi, type ReviewFeed, type ReviewMsg } from '../../../components/PostReview';
+import { type ReviewApi, type ReviewFeed, type ReviewMsg } from '../../../components/PostReview';
 import { TeamChatWindow } from '../../../components/ContentChat';
-import { SalonWorkspace } from '../../../components/SalonWorkspace';
+import { ClientPlan } from '../../../components/ClientPlan';
 import { PushEnable } from '../../../components/PushEnable';
 import { useAuth } from '../../../lib/auth';
 import { apiFetch } from '../../../lib/api';
 import { useLang } from '../../../lib/i18n';
-import { ind } from '../../../lib/ui-industry';
-
-type Tab = 'work' | 'approve';
 
 export default function ApprovePostsPage() {
   return (
@@ -46,16 +34,8 @@ function Inner() {
   const { token } = useAuth();
   const { lang } = useLang();
   const vi = lang === 'vi';
-  const T = (v: string, e: string) => ind(vi ? v : e);
 
-  const [tab, setTab] = useState<Tab>('work');
-  const [picked, setPicked] = useState(false);
-  const [toDo, setToDo] = useState<number | null>(null);
-  const [toApprove, setToApprove] = useState<number | null>(null);
   // The shop's way of reaching the team without a post to hang the question on.
-  // The thread already existed — both sides write to subject "general" — but
-  // only the agency's screen had a door to it, so the shop could answer a
-  // comment and never start one.
   const [chatUnread, setChatUnread] = useState(0);
 
   useEffect(() => {
@@ -66,15 +46,6 @@ function Inner() {
       .catch(() => { /* the button still opens; only the badge is missing */ });
     return () => { off = true; };
   }, [token]);
-
-  // Open on whatever is waiting, once. Both counts have to be in before the
-  // choice is made, or the tab jumps under the reader's thumb when the second
-  // request lands.
-  useEffect(() => {
-    if (picked || toDo === null || toApprove === null) return;
-    setTab(toApprove > 0 && toDo === 0 ? 'approve' : 'work');
-    setPicked(true);
-  }, [picked, toDo, toApprove]);
 
   const api = useMemo<ReviewApi>(() => ({
     needsName: false, // the account IS the name
@@ -87,70 +58,16 @@ function Inner() {
     comment: (postId, body) => apiFetch('/content/chat', { method: 'POST', token, body: { subject: `post:${postId}`, body } }),
   }), [token]);
 
-  /**
-   * Written as a function that returns JSX, not as a component declared inside
-   * this one. A component defined in a render body is a NEW type on every
-   * render, so React unmounts and remounts it — which throws away focus, and is
-   * a bug waiting for the first person who puts an input inside it.
-   */
-  const tabButton = ({ id, icon, label, count }: { id: Tab; icon: string; label: string; count: number | null }) => {
-    const on = tab === id;
-    return (
-      <button
-        key={id}
-        onClick={() => { setTab(id); setPicked(true); }}
-        style={{
-          // 48px and equal halves: a thumb at the top of a phone, and no
-          // guessing which of two similarly-worded tabs is wider.
-          flex: '1 1 0', minHeight: 48, padding: '10px 12px', borderRadius: 12,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          cursor: 'pointer', fontSize: 14.5, fontWeight: on ? 700 : 600,
-          border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`,
-          background: on ? '#6366f1' : 'transparent',
-          color: on ? '#fff' : 'var(--c94a3b8)',
-        }}
-      >
-        <span aria-hidden style={{ fontSize: 16 }}>{icon}</span>
-        <span>{label}</span>
-        {!!count && (
-          <span style={{
-            minWidth: 21, height: 21, borderRadius: 20, padding: '0 6px',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 11.5, fontWeight: 700,
-            background: on ? 'rgba(255,255,255,.22)' : '#ef4444',
-            color: '#fff',
-          }}>{count}</span>
-        )}
-      </button>
-    );
-  };
-
-  // The shop's screen fills the window. It was a 760px reading column,
-  // which left a third of a laptop screen empty on each side and squeezed
-  // the month calendar (seven days across) into 95px cells.
+  // The calendar wants every pixel a laptop gives it: seven readable days.
   return (
-    <div style={{ maxWidth: 1440, margin: '0 auto' }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {tabButton({ id: 'work', icon: '🎬', label: T('Việc của tiệm', 'Your jobs'), count: toDo })}
-        {tabButton({ id: 'approve', icon: '✅', label: T('Duyệt bài', 'Approve posts'), count: toApprove })}
-      </div>
-
+    <div style={{ maxWidth: 1480, margin: '0 auto' }}>
       {/* The one place an owner opens on purpose, so the one place to ask for
           push: "the team fixed your post" then reaches their phone. Renders
           nothing once enabled or where push is unavailable. */}
       <PushEnable about="posts" />
 
-      {/* Both stay mounted: switching tabs must not refetch and must not lose a
-          half-finished upload or a comment somebody is in the middle of. */}
-      <div style={{ display: tab === 'work' ? 'block' : 'none' }}>
-        <SalonWorkspace token={token} vi={vi} onCount={setToDo} />
-      </div>
-      <div style={{ display: tab === 'approve' ? 'block' : 'none' }}>
-        <PostReview api={api} vi={vi} onCount={setToApprove} />
-      </div>
+      <ClientPlan token={token} vi={vi} api={api} />
 
-      {/* Outside both tabs on purpose: a thread that disappears when the owner
-          switches to "Duyệt bài" is a thread she loses mid-sentence. */}
       <TeamChatWindow token={token} unread={chatUnread} vi={vi} />
     </div>
   );

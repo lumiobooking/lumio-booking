@@ -338,6 +338,8 @@ function Row({ p, onOpen, fmtTime, T }: { p: ReviewPost; onOpen: () => void; fmt
 /* ---------------------------------------------------------------------------
  * The detail sheet: full-screen on the phone, the approve bar under the thumb.
  * ------------------------------------------------------------------------- */
+/** The same sheet, for the calendar screen (ClientPlan) to open on its own feed. */
+export const PostReviewDetail = Detail;
 function Detail(props: {
   p: ReviewPost;
   feedMeta: { pageName: string; igUsername: string | null; salonName: string };
@@ -347,8 +349,15 @@ function Detail(props: {
   fmtTime: (iso: string) => string;
   onClose: () => void;
   onChanged: () => void;
+  /**
+   * 'sheet' (default): the whole screen, the phone's way. 'drawer': a panel
+   * on the right over the calendar, so a laptop keeps the month in view while
+   * one post is read and approved (ClientPlan).
+   */
+  variant?: 'sheet' | 'drawer';
 }) {
   const { p, feedMeta, api, vi, fmtDay, fmtTime, onClose, onChanged } = props;
+  const drawer = props.variant === 'drawer';
   const T = (v: string, e: string) => ind(vi ? v : e);
   const hasIg = p.channels.includes('instagram');
   const hasFb = p.channels.includes('facebook');
@@ -420,11 +429,13 @@ function Detail(props: {
   const lines = p.message.split('\n');
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+    <div style={drawer
+      ? { position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(520px, 100vw)', zIndex: 200, background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--c334155)', boxShadow: '-24px 0 60px rgba(0,0,0,.45)' }
+      : { position: 'fixed', inset: 0, zIndex: 200, background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
         <button onClick={onClose} style={{ font: 'inherit', fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 10px 8px 4px', minHeight: 44 }}>
-          ‹ {T('Quay lại', 'Back')}
+          {drawer ? `✕ ${T('Đóng', 'Close')}` : `‹ ${T('Quay lại', 'Back')}`}
         </button>
         <span style={{ marginLeft: 'auto', fontSize: 11.5, fontWeight: 600, background: st.bg, border: `1px solid ${st.bd}`, color: st.fg, padding: '3px 10px', borderRadius: 20 }}>
           {st.dot} {T(st.vi, st.en)}

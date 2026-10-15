@@ -95,11 +95,16 @@ function WorkSkeleton() {
   );
 }
 
-export function SalonWorkspace({ token, vi, onCount }: {
+export function SalonWorkspace({ token, vi, onCount, hidePlan, hideSend, onSend }: {
   token: string | null;
   vi: boolean;
   /** How many suggestions are still waiting on the shop, for the tab badge. */
   onCount?: (waiting: number) => void;
+  /** Under the calendar screen (ClientPlan): the month grid and the send box are already on it. */
+  hidePlan?: boolean;
+  hideSend?: boolean;
+  /** With hideSend: where "send it" buttons go instead (the screen's own send box). */
+  onSend?: () => void;
 }) {
   const T = (v: string, e: string) => ind(vi ? v : e);
   const [sugg, setSugg] = useState<SuggestionFeed | null>(null);
@@ -195,7 +200,7 @@ export function SalonWorkspace({ token, vi, onCount }: {
       {/* ---- 0. the open door, first and loud ----
              The thing a shop does most often is send what it just made. That
              is the top of the tab, one tap, no card to wait for. */}
-      <SendAnything token={token} vi={vi} onDone={load} onError={setErr} openRef={askSend} />
+      {!hideSend && <SendAnything token={token} vi={vi} onDone={load} onError={setErr} openRef={askSend} />}
 
       {/* The wait, shown as the shape of what is coming. The send box above
           needs no data and is already usable, so only the part that depends on
@@ -240,9 +245,9 @@ export function SalonWorkspace({ token, vi, onCount }: {
       {(!!week?.jobs.length || !!planSheet || !!monthBrief) && (
         <ShopWeek
           token={token} vi={vi} week={week ?? EMPTY_WEEK} weekKey={weekKey} unread={weekUnread}
-          lastWeek={lastWeek} ads={ads} adsPlan={adsPlan} onSend={() => askSend.current?.()}
+          lastWeek={lastWeek} ads={ads} adsPlan={adsPlan} onSend={() => (askSend.current ?? onSend)?.()}
           monthBrief={monthBrief} planSheet={planSheet} onPickMonth={pickMonth}
-          onChanged={load} onError={setErr}
+          onChanged={load} onError={setErr} hidePlan={hidePlan}
         />
       )}
       {!!holidays.length && (
@@ -546,7 +551,7 @@ function OutboxBar({ vi, pending, running, online, pct }: {
  * asked for, and must not compete with them for the thumb. Once open it
  * is the same send as a card — same shrink, same two-at-a-time, same bar.
  */
-function SendAnything({ token, vi, onDone, onError, openRef }: {
+export function SendAnything({ token, vi, onDone, onError, openRef }: {
   token: string | null; vi: boolean; onDone: () => void; onError: (m: string | null) => void;
   /** Handed up so the week's one ask can open this picker with its own button. */
   openRef?: React.MutableRefObject<(() => void) | null>;

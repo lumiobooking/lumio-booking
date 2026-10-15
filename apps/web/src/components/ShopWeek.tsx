@@ -170,8 +170,10 @@ function dayLabelsFrom(jobs: ShopJob[]): string[] {
   return Array.from({ length: out.length }, (_, i) => out[i] ?? '');
 }
 
-export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsPlan, monthBrief, planSheet, onPickMonth, onSend, onChanged, onError }: {
+export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsPlan, monthBrief, planSheet, onPickMonth, onSend, onChanged, onError, hidePlan }: {
   token: string | null; vi: boolean; week: ShopWeekData; weekKey: string | null; unread?: number;
+  /** The calendar is drawn by the screen around this (ClientPlan); do not draw it again here. */
+  hidePlan?: boolean;
   /** What this month is for, written by the team for the shop. Null until written. */
   monthBrief?: MonthBriefData | null;
   /** The month's plan, read-only — the calendar even while the team is still filling it. */
@@ -225,7 +227,7 @@ export function ShopWeek({ token, vi, week, weekKey, unread, lastWeek, ads, adsP
              The same cards the team works on, with no inputs: what is coming,
              which network, what kind of post, and whether it is on the
              calendar yet. Tap a day to read the caption. */}
-      {planSheet && (
+      {planSheet && !hidePlan && (
         <div style={{ ...card, marginBottom: 12, background: 'var(--c0f172a)', borderColor: 'var(--c334155)' }}>
           {Object.keys(planSheet.entries).length === 0 && (
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', marginBottom: 10, borderRadius: 10, background: 'rgba(99,102,241,.10)', border: '1px solid rgba(99,102,241,.35)' }}>

@@ -44,4 +44,18 @@ describe('what the client is allowed to see a post as', () => {
   it('a hold outranks an old approval — the comment is newer information', () => {
     expect(clientStatusOf({ status: 'scheduled', approvedAt: new Date(), heldAt: new Date() })).toBe('held');
   });
+
+  it('never asks for approval on a day that has passed', () => {
+    const now = new Date('2026-10-15T12:00:00Z');
+    const h = 60 * 60 * 1000;
+    // Still within the queue's grace: it may yet go out, so it is still hers to approve.
+    expect(clientStatusOf({ status: 'scheduled', scheduledAt: new Date(now.getTime() - 2 * h) }, now)).toBe('wait');
+    // Hours past: the queue has given up; the owner is not asked. Held or approved, same.
+    expect(clientStatusOf({ status: 'scheduled', scheduledAt: new Date(now.getTime() - 7 * h) }, now)).toBeNull();
+    expect(clientStatusOf({ status: 'scheduled', scheduledAt: new Date(now.getTime() - 48 * h), approvedAt: now }, now)).toBeNull();
+    expect(clientStatusOf({ status: 'scheduled', scheduledAt: new Date(now.getTime() - 48 * h), heldAt: now }, now)).toBeNull();
+    // Mid-publish or already out: shown as what it is.
+    expect(clientStatusOf({ status: 'publishing', scheduledAt: new Date(now.getTime() - 7 * h) }, now)).toBe('wait');
+    expect(clientStatusOf({ status: 'posted', scheduledAt: new Date(now.getTime() - 48 * h) }, now)).toBe('posted');
+  });
 });

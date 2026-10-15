@@ -163,17 +163,28 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
   const pillarOf = (id: string) => pillars.find((p) => p.id === id) ?? null;
   const formatOf = (id: string) => formats.find((p) => p.id === id) ?? null;
 
+  /**
+   * A post still "scheduled" hours after its time is one the queue gave up on
+   * (unfinished, or failed every attempt). The API already drops it from the
+   * feed; this is the same rule for a browser that got the new page against
+   * yesterday's server. The day keeps the plan's words and asks for nothing.
+   */
+  const livePosts = useMemo(() => {
+    const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+    return (feed?.posts ?? []).filter((p) => p.clientStatus === 'posted' || new Date(p.scheduledAt).getTime() >= cutoff);
+  }, [feed]);
+
   /** Posts by salon day; a day may carry more than one, the cell shows the first that needs her. */
   const postsByDay = useMemo(() => {
     const m = new Map<string, ReviewPost[]>();
-    for (const p of feed?.posts ?? []) {
+    for (const p of livePosts) {
       const k = dayKeyOf(p.scheduledAt);
       m.set(k, [...(m.get(k) ?? []), p]);
     }
     const rank: Record<ReviewPost['clientStatus'], number> = { wait: 0, held: 1, approved: 2, posted: 3 };
     for (const [k, list] of m) m.set(k, [...list].sort((a, b) => rank[a.clientStatus] - rank[b.clientStatus]));
     return m;
-  }, [feed, dayKeyOf]);
+  }, [livePosts, dayKeyOf]);
 
   const cellOf = useCallback((key: string): DayCell => {
     const entry = plan?.entries?.[key] ?? null;
@@ -194,15 +205,15 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
     return Array.from({ length: rows * 7 }, (_, i) => addDays(start, i)).map((k) => ({ key: k, outside: k < first || k > end }));
   }, [month]);
 
-  const waiting = useMemo(() => (feed?.posts ?? []).filter((p) => p.clientStatus === 'wait' || (p.clientStatus === 'held' && p.reviewRequestedAt)), [feed]);
+  const waiting = useMemo(() => livePosts.filter((p) => p.clientStatus === 'wait' || (p.clientStatus === 'held' && p.reviewRequestedAt)), [livePosts]);
   const counts = useMemo(() => {
     const inMonth = Object.entries(plan?.entries ?? {}).filter(([k, e]) => k.startsWith(month) && (e.topic || e.pillar));
-    const posted = (feed?.posts ?? []).filter((p) => p.clientStatus === 'posted' && dayKeyOf(p.scheduledAt).startsWith(month)).length;
+    const posted = livePosts.filter((p) => p.clientStatus === 'posted' && dayKeyOf(p.scheduledAt).startsWith(month)).length;
     return { planned: inMonth.length, posted };
-  }, [plan, feed, month, dayKeyOf]);
+  }, [plan, livePosts, month, dayKeyOf]);
   const daysInMonth = useMemo(() => { const [y, m] = month.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).getUTCDate(); }, [month]);
 
-  const openPost = feed?.posts.find((p) => p.id === openId) ?? null;
+  const openPost = livePosts.find((p) => p.id === openId) ?? null;
   const openEntry = openDay ? cellOf(openDay) : null;
   const toFilm = (sugg?.open ?? []).filter((s) => !s.fromShop && s.status === 'sent');
   const shopJobs = (week?.jobs ?? []).filter((j) => j.by === 'shop');
@@ -382,13 +393,13 @@ export function ClientPlan({ token, vi, api, onWaiting }: {
 
   /** Lumio's side of the month, in three numbers the owner can check. */
   const lumioNow = useMemo(() => {
-    const posts = (feed?.posts ?? []).filter((p) => dayKeyOf(p.scheduledAt).startsWith(month));
+    const posts = livePosts.filter((p) => dayKeyOf(p.scheduledAt).startsWith(month));
     return {
       queued: posts.filter((p) => p.clientStatus === 'approved').length,
       written: posts.filter((p) => p.clientStatus === 'wait' || p.clientStatus === 'held').length,
       posted: posts.filter((p) => p.clientStatus === 'posted').length,
     };
-  }, [feed, month, dayKeyOf]);
+  }, [livePosts, month, dayKeyOf]);
 
   const shopTodo = [
     ...toFilm.map((t) => ({ icon: '🎬', text: t.title, send: true })),

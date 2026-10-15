@@ -91,7 +91,7 @@ export class PostReviewService {
 
     const posts: ClientPost[] = [];
     for (const r of rows ?? []) {
-      const status = clientStatusOf(r as { status: string; heldAt?: Date | null; approvedAt?: Date | null });
+      const status = clientStatusOf(r as { status: string; heldAt?: Date | null; approvedAt?: Date | null; scheduledAt?: Date | null });
       if (!status) continue;
       const media = Array.isArray(r.media)
         ? (r.media as { url?: string; kind?: string }[])

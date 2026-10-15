@@ -49,9 +49,21 @@ export function tokenFresh(createdAt: Date | string | null | undefined, now = ne
  */
 export type ClientStatus = 'held' | 'wait' | 'approved' | 'posted';
 
-export function clientStatusOf(p: { status: string; heldAt?: Date | null; approvedAt?: Date | null }): ClientStatus | null {
+/** Past this, the queue will never send the post (social-publish.ts LATE_GRACE_MS). */
+const MISSED_AFTER_MS = 6 * 60 * 60 * 1000;
+
+export function clientStatusOf(
+  p: { status: string; heldAt?: Date | null; approvedAt?: Date | null; scheduledAt?: Date | null },
+  now: Date = new Date(),
+): ClientStatus | null {
   if (p.status === 'posted') return 'posted';
   if (p.status !== 'scheduled' && p.status !== 'publishing') return null; // not the client's to see
+  // Still "scheduled" hours after its time — the queue has given up on it (a
+  // post the team never finished, or one that failed every attempt). Asking
+  // the owner to approve a post for a day that has passed is the one thing
+  // the calendar must never do; the team reschedules it, and until then the
+  // day shows only what was planned.
+  if (p.status === 'scheduled' && p.scheduledAt && now.getTime() - p.scheduledAt.getTime() > MISSED_AFTER_MS) return null;
   if (p.heldAt) return 'held';
   if (p.approvedAt) return 'approved';
   return 'wait';

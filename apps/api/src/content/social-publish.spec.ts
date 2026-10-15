@@ -1,5 +1,5 @@
 import {
-  planPublish, dueNow, usableMediaUrl, sharePageProblem, guessKind, shapeOf, crowding, igGrid, explainMetaError,
+  planPublish, dueNow, usableMediaUrl, sharePageProblem, guessKind, shapeOf, crowding, igGrid, explainMetaError, metaErrorText,
   releasesHold, gbpLanguage, priorSuccesses, stillDue, retryable, whyWaiting, SWEEP_STALE_MS,
   IG_CAPTION_MAX, IG_HASHTAG_MAX, IG_CAROUSEL_MAX, GBP_SUMMARY_MAX, MAX_ATTEMPTS, LATE_GRACE_MS, CROWDING_MS,
   type ConnectedPage, type PostDraft, type QueuedPost, type MediaItem, type Channel, type GoogleLocation,
@@ -437,6 +437,21 @@ describe('Meta’s error becomes the one thing the salon can do about it', () =>
 
   it('names the Instagram permission separately', () => {
     expect(explainMetaError('(#10) instagram_content_publish permission is required')).toMatch(/Instagram/);
+  });
+
+  it('a restricted account is told where the restriction is lifted — not to reconnect', () => {
+    // Meta's whole answer for the An Sen posts: no code in the stored text.
+    const fix = explainMetaError('instagram: User access is restricted')!;
+    expect(fix).toMatch(/HẠN CHẾ/);
+    expect(fix).toMatch(/instagram\.com/);
+    expect(fix).toMatch(/đăng tay/);
+    expect(fix).toMatch(/bỏ Instagram/);
+    expect(fix).toMatch(/kết nối lại không giúp/i);
+    // With the code kept, the digits alone are enough.
+    expect(explainMetaError('Something changed (#368/2207050)')).toMatch(/HẠN CHẾ/);
+    expect(metaErrorText({ message: 'User access is restricted', code: 368, error_subcode: 2207050 }, 'x')).toBe('User access is restricted (#368/2207050)');
+    expect(metaErrorText({ message: 'Bad', code: 100 }, 'x')).toBe('Bad (#100)');
+    expect(metaErrorText(undefined, 'Instagram 500')).toBe('Instagram 500');
   });
 
   it('separates an expired connection from a missing permission', () => {

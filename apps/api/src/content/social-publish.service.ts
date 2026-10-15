@@ -8,6 +8,7 @@ import { gbpPhotoOf,
   planPublish, dueNow, crowding, shapeOf, explainMetaError, explainGbpError, gbpLanguage, MAX_ATTEMPTS, CHANNELS,
   priorSuccesses, stillDue, retryable, whyWaiting, SWEEP_STALE_MS,
   type Channel, type ConnectedPage, type PublishPlan, type MediaItem, type GoogleLocation,
+  metaErrorText,
 } from './social-publish';
 import { planPurge, storagePathOf, DEFAULT_RETENTION_DAYS, type RetentionPost } from './media-retention';
 import { MEDIA_STORE, type MediaStore } from './media-store';
@@ -1165,12 +1166,24 @@ export class SocialPublishService {
   }
 
   /** Send one now. Also the call that satisfies Meta's API-test requirement. */
-  async publishNow(user: AuthenticatedUser, id: string) {
+  async publishNow(user: AuthenticatedUser, id: string, opts: { without?: string[] } = {}) {
     const tenantId = this.tenantId(user);
-    const row = await this.posts?.findFirst({ where: { id, tenantId } }).catch(() => null) as PostRow | null;
+    let row = await this.posts?.findFirst({ where: { id, tenantId } }).catch(() => null) as PostRow | null;
     if (!row) throw new NotFoundException('Không tìm thấy bài này.');
     if (row.status === 'posted') throw new BadRequestException('Bài này đã đăng rồi.');
     if (row.status === 'publishing') throw new BadRequestException('Bài này đang được đăng, chờ một chút.');
+
+    // "Post again, without Instagram": the one channel Meta is refusing is
+    // dropped from THIS post so the rest goes out on time. The channel list is
+    // changed for real (it shows that way afterwards), never silently skipped.
+    const without = (opts.without ?? []).map((c) => String(c).toLowerCase());
+    if (without.length) {
+      const keep = this.channelsOf(row).filter((c) => !without.includes(c));
+      if (!keep.length) throw new BadRequestException('Bài phải còn ít nhất một kênh để đăng.');
+      await this.posts?.update({ where: { id: row.id }, data: { channels: keep as never } }).catch(() => undefined);
+      row = { ...row, channels: keep } as PostRow;
+      this.log.log(`Post ${row.id}: ${without.join(',')} dropped by ${user.userId}, now ${keep.join(',')}`);
+    }
 
     // A press of "Post now" clears the wreckage of earlier attempts.
     //
@@ -1716,7 +1729,7 @@ export class SocialPublishService {
   /** The error to record for a Graph reply — or for the absence of one. */
   private graphError(r: { status: number; json: { error?: { message?: string } } | null; timedOut?: boolean; netError?: string }, network: string): string {
     if (r.timedOut) return `${network} không trả lời kịp — bài CÓ THỂ đã lên trang. Mở trang kiểm tra trước khi bấm "Đăng ngay"; hệ thống sẽ chỉ gửi lại mạng chưa có bài.`;
-    return r.json?.error?.message ?? (r.status ? `${network} ${r.status}` : `${network}: ${r.netError ?? 'lỗi mạng'}`);
+    return metaErrorText(r.json?.error, r.status ? `${network} ${r.status}` : `${network}: ${r.netError ?? 'lỗi mạng'}`);
   }
 
   private async toFacebook(pageId: string, token: string, message: string, media: MediaItem[]): Promise<PublishResult> {
@@ -1837,7 +1850,7 @@ export class SocialPublishService {
 
       if (media.length === 1) {
         const c = await this.igContainer(igId, token, media[0], caption, false);
-        if (!c.ok || !c.json?.id) return fail(c.json?.error?.message ?? `Instagram ${c.status}`);
+        if (!c.ok || !c.json?.id) return fail(metaErrorText(c.json?.error, `Instagram ${c.status}`));
         creationId = c.json.id;
       } else {
         // Children first, each waited on: a carousel whose third video is still
@@ -1845,7 +1858,7 @@ export class SocialPublishService {
         const children: string[] = [];
         for (const m of media) {
           const c = await this.igContainer(igId, token, m, null, true);
-          if (!c.ok || !c.json?.id) return fail(c.json?.error?.message ?? `Instagram ${c.status}`);
+          if (!c.ok || !c.json?.id) return fail(metaErrorText(c.json?.error, `Instagram ${c.status}`));
           if (m.kind === 'video') {
             const err = await this.awaitContainer(c.json.id, token);
             if (err) return fail(err);
@@ -1855,7 +1868,7 @@ export class SocialPublishService {
         const parent = await this.post(`${GRAPH}/${igId}/media`, new URLSearchParams({
           media_type: 'CAROUSEL', children: children.join(','), caption, access_token: token,
         }), 60_000);
-        if (!parent.ok || !parent.json?.id) return fail(parent.json?.error?.message ?? `Instagram ${parent.status}`);
+        if (!parent.ok || !parent.json?.id) return fail(metaErrorText(parent.json?.error, `Instagram ${parent.status}`));
         creationId = parent.json.id;
       }
 

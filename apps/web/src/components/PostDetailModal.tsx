@@ -76,7 +76,7 @@ const fmtWall = (w: string, vi: boolean) => {
 };
 
 export function PostDetailModal({
-  post, vi, salonTz, onClose, onEdit, onPublish, onCancel, busy,
+  post, vi, salonTz, onClose, onEdit, onPublish, onPublishWithout, onCancel, busy,
 }: {
   post: DetailPost;
   vi: boolean;
@@ -84,11 +84,23 @@ export function PostDetailModal({
   onClose: () => void;
   onEdit: () => void;
   onPublish?: (() => void) | null;
+  /** Post again with the failing channel dropped from this post (see failedChannel). */
+  onPublishWithout?: ((channel: string) => void) | null;
   onCancel?: (() => void) | null;
   busy?: boolean;
 }) {
   const T = (a: string, b: string) => ind(vi ? a : b);
   const mobile = useIsMobile(760);
+  // "instagram: User access is restricted · facebook: …" — the error names the
+  // channel that failed. When only ONE channel is failing and the post has
+  // others, the honest fast fix is to send it without that channel.
+  const failedChannel = (() => {
+    if (post.status !== 'failed' || post.channels.length < 2) return null;
+    const names = [...(post.lastError ?? '').matchAll(/(^|·)\s*(facebook|instagram|google|tiktok):/gi)].map((m) => m[2].toLowerCase());
+    const set = Array.from(new Set(names)).filter((c) => post.channels.includes(c));
+    return set.length === 1 ? set[0] : null;
+  })();
+  const CH_NAME: Record<string, string> = { facebook: 'Facebook', instagram: 'Instagram', google: 'Google', tiktok: 'TikTok' };
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', k);
@@ -262,6 +274,17 @@ export function PostDetailModal({
             {!live && (
               <button type="button" onClick={onEdit} disabled={busy} style={{ minHeight: 38, padding: '0 16px', borderRadius: 9, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                 ✏️ {T('Sửa bài', 'Edit')}
+              </button>
+            )}
+            {onPublishWithout && failedChannel && !live && (
+              <button
+                type="button"
+                onClick={() => onPublishWithout(failedChannel)}
+                disabled={busy}
+                title={T(`Bỏ ${CH_NAME[failedChannel]} khỏi bài này và đăng lên các kênh còn lại ngay`, `Drop ${CH_NAME[failedChannel]} from this post and publish to the rest now`)}
+                style={{ minHeight: 38, padding: '0 14px', borderRadius: 9, border: '1px solid #f59e0b', background: 'rgba(245,158,11,.14)', color: 'var(--ink-warn)', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                🚀 {T(`Đăng lại, bỏ ${CH_NAME[failedChannel]}`, `Post again without ${CH_NAME[failedChannel]}`)}
               </button>
             )}
             {onPublish && !live && post.status !== 'cancelled' && (

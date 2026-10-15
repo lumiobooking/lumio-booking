@@ -1608,11 +1608,11 @@ function Inner() {
     finally { setTtCreatorBusy(false); }
   }
 
-  async function postAction(id: string, action: 'publish' | 'cancel') {
+  async function postAction(id: string, action: 'publish' | 'cancel', without?: string[]) {
     if (queueBusy) return;
     setQueueBusy(true); setPostErr(null);
     try {
-      if (action === 'publish') await apiFetch(`/content/posts/${id}/publish`, { method: 'POST', token });
+      if (action === 'publish') await apiFetch(`/content/posts/${id}/publish`, { method: 'POST', token, body: without?.length ? { without } : undefined });
       else await apiFetch(`/content/posts/${id}`, { method: 'DELETE', token });
       await loadQueue();
     } catch (e) { setPostErr(e instanceof Error ? e.message : 'error'); }
@@ -2050,6 +2050,7 @@ function Inner() {
             onClose={() => setDetailId(null)}
             onEdit={() => { setDetailId(null); editPost(p.id); }}
             onPublish={() => { setDetailId(null); void postAction(p.id, 'publish'); }}
+            onPublishWithout={(ch) => { setDetailId(null); void postAction(p.id, 'publish', [ch]); }}
             onCancel={() => { setDetailId(null); void postAction(p.id, 'cancel'); }}
           />
         );

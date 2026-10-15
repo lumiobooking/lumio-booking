@@ -459,8 +459,8 @@ export class ContentController {
   /** Send one right now, instead of waiting for its slot. */
   @Caps('marketing')
   @Post('posts/:id/publish')
-  publishPost(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.publisher.publishNow(user, id);
+  publishPost(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body?: { without?: string[] }) {
+    return this.publisher.publishNow(user, id, { without: Array.isArray(body?.without) ? body!.without.filter((c) => typeof c === 'string').slice(0, 4) : [] });
   }
 
   @Get('today')

@@ -343,10 +343,38 @@ export function gbpLanguage(text: string): 'vi' | 'en' {
  * conversation possible, and paraphrasing away the only precise string in the
  * system is how a support queue fills up with "it says an error".
  */
+/**
+ * Meta's error, with its code kept. "User access is restricted" on its own is
+ * unsearchable; "(#368/2207050)" is the string support can look up — and the
+ * digits are what explainMetaError matches on when the words change.
+ */
+export function metaErrorText(err: { message?: string; code?: number | string; error_subcode?: number | string } | null | undefined, fallback: string): string {
+  if (!err?.message) return fallback;
+  const code = err.code != null && err.code !== '' ? `#${err.code}` : '';
+  const sub = err.error_subcode != null && err.error_subcode !== '' ? `/${err.error_subcode}` : '';
+  return code ? `${err.message} (${code}${sub})` : err.message;
+}
+
 export function explainMetaError(raw: string | null | undefined): string | null {
   const e = (raw ?? '').toLowerCase();
   if (!e) return null;
 
+  // "User access is restricted" (Instagram subcode 2207050, sometimes #368):
+  // Meta has flagged the Instagram PROFESSIONAL account as inactive,
+  // checkpointed or restricted for apps — the person can still post by hand
+  // in the Instagram app, which is exactly what makes this one confusing.
+  // The checkpoint is cleared by signing in on instagram.com (the website —
+  // the app does not trigger it) and answering whatever Instagram asks
+  // (birth date, phone, terms). An automated flag for "too much, too fast"
+  // lifts by itself in a day or two. Not a token, not a scope: reconnecting
+  // the Page changes nothing, and retrying only keeps the flag warm.
+  if (e.includes('access is restricted') || e.includes('access restricted') || e.includes('#368') || e.includes('2207050') || e.includes('deemed abusive')) {
+    return 'Instagram đang HẠN CHẾ tài khoản này đăng qua ứng dụng (đăng tay trong app vẫn được — đó là lý do dễ nhầm). Không phải lỗi kết nối: kết nối lại không giúp. '
+      + 'Cách gỡ: (1) đăng nhập tài khoản Instagram của tiệm trên TRÌNH DUYỆT tại instagram.com (không phải app) và làm hết những gì Instagram hỏi — ngày sinh (trên 18), xác nhận SĐT/email, đồng ý điều khoản; '
+      + '(2) vào business.facebook.com → Cài đặt → tài khoản Instagram → Quản lý, đăng nhập lại nếu được hỏi; '
+      + '(3) nếu vừa đăng/tương tác dồn dập, chờ 24–48 giờ cho cờ tự gỡ. Rồi bấm "Đăng ngay" — chỉ Instagram được gửi lại. '
+      + 'Trong lúc chờ: bấm "Đăng lại, bỏ Instagram" để bài vẫn lên Facebook đúng hẹn.';
+  }
   // "The user must be an administrator, editor, or moderator of the page in
   // order to impersonate it. If the page business requires Two Factor
   // Authentication…" — the account that pressed Connect lost its Page role,

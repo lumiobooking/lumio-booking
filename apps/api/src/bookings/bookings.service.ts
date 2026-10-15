@@ -23,7 +23,7 @@ import { buildClientCard, CardVisit } from './client-card';
 import { capabilitiesFor } from '../auth/capabilities';
 import { canSelfReschedule } from './self-reschedule';
 import { canSelfCancel } from './self-cancel';
-import { changeNoticeTargets, changePushText } from './change-notices';
+import { changeNoticeTargets, changePushText, ownerNoticeText } from './change-notices';
 import { AppointmentStatus, NotificationChannel, OrderStatus, PaymentStatus, Prisma, RejectionType, UserRole, WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -2955,12 +2955,21 @@ export class BookingsService {
     const custTpl = templates[kind === 'cancelled' ? 'customer_booking_cancelled' : 'customer_booking_rescheduled'];
     const staffTpl = templates['staff_booking_cancelled'];
     const staffEmail = appt.assignedStaff ? (appt.assignedStaff.email || appt.assignedStaff.user?.email || null) : null;
+    // The salon's own alert goes where its new-booking alert goes, under the
+    // same two switches — the owner who asked to be emailed about bookings is
+    // emailed about their cancellation too.
+    const adminTo = n.adminEmail || n.senderEmail || n.gmail.senderEmail || '';
     const targets = changeNoticeTargets({
       kind, market: n.market ?? 'US',
       customer: { email: appt.customer?.email ?? null, phone: appt.customer?.phone ?? null },
       customerTpl: custTpl ? { enabled: custTpl.enabled, email: custTpl.email, sms: custTpl.sms } : null,
       staff: appt.assignedStaff ? { email: staffEmail, phone: appt.assignedStaff.phone ?? null } : null,
       staffTpl: staffTpl ? { enabled: staffTpl.enabled, email: staffTpl.email, sms: staffTpl.sms } : null,
+      owner: { email: adminTo || null, phone: n.adminPhone || null, emailOn: !!n.emailAdminOnBooking, smsOn: !!n.smsAdminOnBooking },
+    });
+    const ownerText = ownerNoticeText({
+      kind, vi, salon, customer: custFull || pct.customer_name, phone: pct.customer_phone, service: pct.service_name,
+      staff: pct.staff_name, when: fmtShort(appt.startTime), from: ctx.from ? fmtShort(ctx.from) : undefined, by: ctx.by ?? null, byName: ctx.byName ?? null,
     });
 
     const smtp = n.smtp.user && n.smtp.pass
@@ -2979,6 +2988,20 @@ export class BookingsService {
 
     const jobs: Promise<unknown>[] = [];
     for (const t of targets) {
+      if (t.to === 'owner') {
+        if (t.channel === 'email') {
+          const bodyHtml = ownerText.body.split('\n').map((l) => (l ? `<p style="margin:0 0 6px">${l}</p>` : '<br>')).join('');
+          jobs.push(this.notifications.send({
+            tenantId, channel: NotificationChannel.EMAIL, recipient: t.recipient,
+            subject: ownerText.subject, body: ownerText.body,
+            html: renderTemplatedEmailHtml({ salon, accent, contact: pct.salon_contact, bodyText: bodyHtml }),
+            smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related,
+          }));
+        } else {
+          jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: t.recipient, body: ownerText.sms, twilio: n.twilio, ...related }));
+        }
+        continue;
+      }
       const tpl = t.to === 'customer' ? custTpl! : staffTpl!;
       if (t.channel === 'email') {
         const bodyFilled = fillPct(tpl.body, pct) + (t.to === 'customer' && kind === 'rescheduled'
@@ -3175,6 +3198,11 @@ export class BookingsService {
     // Reopening clears the finished stamp so reports stop counting it.
     if (wasCompleted && !willComplete) data.completedAt = null;
     await this.prisma.appointment.updateMany({ where: { id, tenantId }, data });
+    // The dropdown is the common way a cancellation happens from the calendar
+    // (the "Bước tiếp" column): it must tell the same people the Cancel button does.
+    if (status === AppointmentStatus.CANCELLED && a.status !== AppointmentStatus.CANCELLED) {
+      this.sendChangeNotice(tenantId, id, 'cancelled', { by: 'staff', byName: (data as { cancelledByName?: string | null }).cancelledByName ?? null }).catch(() => undefined);
+    }
     await this.audit.log({
       tenantId, userId: user.userId, action: 'booking.status_set',
       resourceType: 'appointment', resourceId: id, metadata: { from: a.status, to: status },

@@ -96,6 +96,9 @@ function Inner() {
   }
 
   const currentName = (current?.planName ?? '').toLowerCase();
+  /** A gateway subscription that is alive — the card is on file somewhere. Without one, the
+   *  salon is on a plan Lumio assigned by hand (trial or invoice) and has nowhere to add a card. */
+  const hasCard = !!sum?.subscription && ['ACTIVE', 'TRIALING', 'PAST_DUE'].includes(sum.subscription.status);
   // Upgrade vs downgrade (by price tier) + proration from the current period.
   const currentPlan = plans.find((p) => p.name.toLowerCase() === currentName) ?? null;
   const currentTier = currentPlan ? currentPlan.priceMonthlyCents : -1;
@@ -155,7 +158,11 @@ function Inner() {
           {/* The card lives at whichever gateway holds the subscription:
               Stripe mints a portal link; PayPal's automatic payments are
               managed in the payer's own PayPal account. */}
-          {sum?.subscription?.provider === 'paypal' ? (
+          {!hasCard ? (
+            <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)', maxWidth: 260, lineHeight: 1.5 }}>
+              {lang === 'vi' ? 'Chưa có thẻ — bấm "Thêm thẻ" ở gói bên dưới để tự động thanh toán.' : 'No card on file — press "Add a card" on your plan below to pay automatically.'}
+            </span>
+          ) : sum?.subscription?.provider === 'paypal' ? (
             <a href="https://www.paypal.com/myaccount/autopay/" target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)', textDecoration: 'none', display: 'inline-block' }}>
               {lang === 'vi' ? 'Quản lý thẻ ở PayPal ↗' : 'Manage card at PayPal ↗'}
             </a>
@@ -220,7 +227,19 @@ function Inner() {
                     <li key={f} style={{ fontSize: 13, color: 'var(--ccbd5e1)', display: 'flex', gap: 8 }}><span style={{ color: 'var(--ink-good)' }}>✓</span>{f}</li>
                   ))}
                 </ul>
-                {isCurrent ? (
+                {isCurrent && !hasCard && canPay ? (
+                  // The plan Lumio put them on, with no card behind it yet: the
+                  // button adds the card (a subscription at the gateway) for THIS
+                  // plan — the one thing the old disabled "Current plan" could not do.
+                  <>
+                    <button onClick={() => choose(p.id, provider)} disabled={busy} style={{ ...ui.primaryBtn, width: '100%' }}>
+                      {busy ? t('bl.opening') : (lang === 'vi' ? '💳 Thêm thẻ — tự động thanh toán' : '💳 Add a card — pay automatically')}
+                    </button>
+                    <p style={{ fontSize: 11.5, color: 'var(--c94a3b8)', margin: '8px 0 0', lineHeight: 1.5, textAlign: 'center' }}>
+                      {lang === 'vi' ? `Gói hiện tại của bạn. ${provider === 'stripe' ? 'Nhập thẻ (Stripe)' : 'Qua PayPal — thẻ hoặc tài khoản PayPal'}, tự trừ hàng tháng; phí phát sinh trừ cùng chỗ.` : `Your current plan. ${provider === 'stripe' ? 'Enter a card (Stripe)' : 'Via PayPal — card or PayPal account'}, charged monthly; usage charges are taken the same way.`}
+                    </p>
+                  </>
+                ) : isCurrent ? (
                   <button disabled style={{ ...ui.primaryBtn, width: '100%', background: 'var(--c334155)', color: 'var(--ce2e8f0)', cursor: 'default' }}>{t('bl.currentPlan')}</button>
                 ) : (
                   <>

@@ -25,9 +25,16 @@ export interface ChangeNoticeInput {
   customerTpl: TemplateSwitch | null | undefined;
   staff: { email: string | null; phone: string | null } | null;
   staffTpl: TemplateSwitch | null | undefined;
+  /**
+   * The salon itself — the same mailbox and phone, and the same two switches,
+   * that get the "new booking" alert (Settings → Notifications → "Email the
+   * salon", "SMS the salon"). A salon that wants to hear about a booking wants
+   * to hear about its cancellation; one that turned the alert off is left alone.
+   */
+  owner?: { email: string | null; phone: string | null; emailOn: boolean; smsOn: boolean } | null;
 }
 
-export interface ChangeNoticeTarget { to: 'customer' | 'staff'; channel: 'email' | 'sms'; recipient: string }
+export interface ChangeNoticeTarget { to: 'customer' | 'staff' | 'owner'; channel: 'email' | 'sms'; recipient: string }
 
 export function changeNoticeTargets(i: ChangeNoticeInput): ChangeNoticeTarget[] {
   const out: ChangeNoticeTarget[] = [];
@@ -44,7 +51,64 @@ export function changeNoticeTargets(i: ChangeNoticeInput): ChangeNoticeTarget[] 
     if (s.email && i.staff.email) out.push({ to: 'staff', channel: 'email', recipient: i.staff.email });
     if (s.sms && i.staff.phone && !vn) out.push({ to: 'staff', channel: 'sms', recipient: i.staff.phone });
   }
+  const o = i.owner;
+  if (o) {
+    if (o.emailOn && o.email) out.push({ to: 'owner', channel: 'email', recipient: o.email });
+    if (o.smsOn && o.phone && !vn) out.push({ to: 'owner', channel: 'sms', recipient: o.phone });
+  }
   return out;
+}
+
+/**
+ * The owner's written copy — a work note, not a courtesy: who, what, when,
+ * by whom, and (for a move) from where. Built here, not from a template,
+ * because the salon has no template for its own alerts and the new-booking
+ * alert is built the same way.
+ */
+export function ownerNoticeText(i: {
+  kind: 'cancelled' | 'rescheduled';
+  vi: boolean;
+  salon: string;
+  customer: string;
+  phone: string;
+  service: string;
+  staff: string;
+  when: string;
+  from?: string;
+  by?: 'staff' | 'customer' | 'ai' | null;
+  byName?: string | null;
+}): { subject: string; body: string; sms: string } {
+  const push = changePushText({ kind: i.kind, vi: i.vi, customer: i.customer, service: i.service, when: i.when, from: i.from, by: i.by, byName: i.byName });
+  const lines = i.vi
+    ? [
+      i.kind === 'cancelled' ? 'Một lịch hẹn vừa bị huỷ:' : 'Một lịch hẹn vừa được dời:',
+      '',
+      `Khách: ${i.customer}${i.phone ? ` · ${i.phone}` : ''}`,
+      `Dịch vụ: ${i.service}`,
+      `Thợ: ${i.staff}`,
+      i.kind === 'rescheduled' && i.from ? `Giờ cũ: ${i.from}` : null,
+      `${i.kind === 'rescheduled' ? 'Giờ mới' : 'Giờ hẹn'}: ${i.when}`,
+      `Ai thực hiện: ${push.body.split(' • ').pop() ?? ''}`,
+      '',
+      i.salon,
+    ]
+    : [
+      i.kind === 'cancelled' ? 'An appointment was just cancelled:' : 'An appointment was just moved:',
+      '',
+      `Client: ${i.customer}${i.phone ? ` · ${i.phone}` : ''}`,
+      `Service: ${i.service}`,
+      `Technician: ${i.staff}`,
+      i.kind === 'rescheduled' && i.from ? `Was: ${i.from}` : null,
+      `${i.kind === 'rescheduled' ? 'Now' : 'Time'}: ${i.when}`,
+      `By: ${push.body.split(' • ').pop() ?? ''}`,
+      '',
+      i.salon,
+    ];
+  return {
+    subject: `${push.title.replace(/ [✕↔]$/, '')} — ${i.customer} · ${i.when}`,
+    body: lines.filter((l) => l !== null).join('\n'),
+    sms: `${i.salon}: ${push.body}`,
+  };
 }
 
 /** The owner's push: who did it, which visit, when. */

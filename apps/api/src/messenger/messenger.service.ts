@@ -562,7 +562,10 @@ export class MessengerService implements OnModuleInit {
       // Standard Access is enough for Pages connected by an account with a
       // role on the app; FB_SCOPE_ENGAGE=1 once the permissions are added to
       // the app's use case (an unknown scope kills the whole dialog).
-      ...(engageOn ? ['pages_manage_engagement'] : []),
+      // Meta expands pages_manage_engagement to its dependency
+      // pages_read_user_content and validates THAT too — asked for explicitly
+      // so the dialog never trips on a scope we did not name.
+      ...(engageOn ? ['pages_manage_engagement', 'pages_read_user_content'] : []),
       ...(engageOn && igOn ? ['instagram_manage_comments'] : []),
       // Monthly marketing report: Instagram reach/views/new follows (account
       // and per post) need instagram_manage_insights. Without it those cells

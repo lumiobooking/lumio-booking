@@ -1209,7 +1209,11 @@ export class SocialPublishService {
     if (this.sweeping) return was;
     if (was && now.getTime() - was.getTime() < SWEEP_STALE_MS) return was;
     this.sweeping = true;
-    this.runDue(now).catch(() => undefined).finally(() => { this.sweeping = false; });
+    // Comments ride the same wake-up: a host that slept through the minute
+    // timer writes the overdue ones when somebody opens the queue.
+    this.runDue(now).catch(() => undefined)
+      .then(() => this.runDueComments(now).catch(() => undefined))
+      .finally(() => { this.sweeping = false; });
     return was;
   }
 

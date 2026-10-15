@@ -640,19 +640,28 @@ export class MessengerService implements OnModuleInit {
       // Without this, a token missing pages_manage_posts looks the same
       // whether the person unticked it or Meta never offered it, and the
       // queue screen tells both of them to reconnect.
-      try {
-        const permRes = await fetch(
-          `https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(tok.access_token)}`,
-          { signal: AbortSignal.timeout(8000) },
-        );
-        const perms = (await permRes.json().catch(() => ({}))) as { data?: { permission: string; status: string }[] };
-        const grant = publishGrantFrom(perms.data, this.publishScopesRequested());
-        await this.settings.setMessengerPublishGrant(tenantId, grant).catch(() => undefined);
-        trace.push(`publish scopes: ${Object.entries(grant.scopes).map(([k, v]) => `${k}=${v}`).join(', ')}`);
-      } catch (e) {
-        trace.push(`publish scopes: could not read — ${String(e).slice(0, 80)}`);
-      }
-      const walked = await this.fetchAllFbPages(tok.access_token, trace);
+      // The scope check and the page walk do not depend on each other: run
+      // them side by side. Each Graph round trip is ~1 s from Render, and a
+      // connect that waited for one after the other was a long "Đang hoàn
+      // tất kết nối…" screen for nothing.
+      const userToken = tok.access_token;
+      const [walked] = await Promise.all([
+        this.fetchAllFbPages(userToken, trace),
+        (async () => {
+          try {
+            const permRes = await fetch(
+              `https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(userToken)}`,
+              { signal: AbortSignal.timeout(8000) },
+            );
+            const perms = (await permRes.json().catch(() => ({}))) as { data?: { permission: string; status: string }[] };
+            const grant = publishGrantFrom(perms.data, this.publishScopesRequested());
+            await this.settings.setMessengerPublishGrant(tenantId, grant).catch(() => undefined);
+            trace.push(`publish scopes: ${Object.entries(grant.scopes).map(([k, v]) => `${k}=${v}`).join(', ')}`);
+          } catch (e) {
+            trace.push(`publish scopes: could not read — ${String(e).slice(0, 80)}`);
+          }
+        })(),
+      ]);
       if (walked.error) {
         // Meta told us exactly what is wrong — passing that through beats a
         // guessed "no pages" every time.
@@ -906,8 +915,13 @@ export class MessengerService implements OnModuleInit {
     await this.setupMessengerProfile(page.access_token, greeting);
     await this.audit(tenantId, 'messenger.connected');
     // The Page's existing conversations appear in the inbox right away — not
-    // on the next customer message, and not after a button press.
-    void this.syncConversations(tenantId, { limit: 50, reply: false }).catch((e) => this.logger.warn(`sync after connect failed: ${String(e).slice(0, 160)}`));
+    // on the next customer message, and not after a button press. Started a
+    // few seconds AFTER the connect answers: fifty threads of history on a
+    // small host made the connect screen, and everything else, crawl.
+    const later = setTimeout(() => {
+      void this.syncConversations(tenantId, { limit: 25, reply: false }).catch((e) => this.logger.warn(`sync after connect failed: ${String(e).slice(0, 160)}`));
+    }, 8000);
+    later.unref?.();
     // A fresh Page token is, by definition, alive: clear a "lost" mark so the
     // agency list and the salon's banner go quiet the minute they reconnect.
     await this.settings.setMessengerHealth(tenantId, classifyPageError(null)).catch(() => undefined);

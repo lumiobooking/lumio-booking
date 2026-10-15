@@ -119,9 +119,18 @@ describe('the door itself', () => {
     // review screen saves its own rules. A page you can open and cannot save
     // is worse than one you cannot open.
     expect(supportMayCall('content', 'PATCH', '/settings/business-profile')).toBe(true);
+    // Promotions ride with marketing: a content employee switches them on,
+    // while the rest of /settings stays read-only for them.
+    for (const p of ['/settings/date-discounts', '/settings/weekday-discounts', '/settings/first-visit-discount', '/settings/group-discount']) {
+      expect(supportMayCall('content', 'PATCH', p)).toBe(true);
+      expect(supportMayCall('setup', 'PATCH', p, ['marketing'])).toBe(true);
+      expect(supportMayCall('setup', 'PATCH', p, ['reviews'])).toBe(false);
+    }
+    expect(supportMayCall('setup', 'PATCH', '/settings/booking', ['marketing'])).toBe(false);
     expect(supportMayCall('content', 'PATCH', '/settings/review')).toBe(true);
     // …and still not the salon's own configuration.
-    expect(supportMayCall('content', 'PATCH', '/settings/weekday-discounts')).toBe(false);
+    expect(supportMayCall('content', 'PATCH', '/settings/booking')).toBe(false);
+    expect(supportMayCall('content', 'PATCH', '/settings/company')).toBe(false);
   });
 
   it('lets a content account do the marketing it exists to do', () => {

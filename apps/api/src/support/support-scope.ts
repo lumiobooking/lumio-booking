@@ -162,7 +162,7 @@ export const CAP_CATALOG: { id: Capability; label: string; private: boolean }[] 
   { id: 'services', label: 'Bảng dịch vụ & giá', private: false },
   { id: 'products', label: 'Sản phẩm bán lẻ', private: false },
   { id: 'staff', label: 'Thợ & ca làm', private: false },
-  { id: 'marketing', label: 'Marketing, hộp thư, đăng bài', private: false },
+  { id: 'marketing', label: 'Marketing, hộp thư, đăng bài, khuyến mãi', private: false },
   { id: 'reviews', label: 'Đánh giá Google', private: false },
   { id: 'notifications', label: 'Nhắc hẹn & thông báo', private: false },
   { id: 'integrations', label: 'Kết nối kênh', private: false },
@@ -280,6 +280,13 @@ const PATH_CAPS: [string, Capability][] = [
   // give a content account a page it can open and cannot save.
   ['settings/business-profile', 'marketing'],
   ['settings/review', 'reviews'],
+  // Promotions are marketing work, not salon configuration: the content
+  // employee writes "Halloween −10%" on the calendar AND switches it on in
+  // the booking page. A promo they can announce but not run is half a job.
+  ['settings/weekday-discounts', 'marketing'],
+  ['settings/first-visit-discount', 'marketing'],
+  ['settings/group-discount', 'marketing'],
+  ['settings/date-discounts', 'marketing'],
   ['settings', 'settings'],
   ['tenants', 'settings'],
   ['trash', 'settings'],

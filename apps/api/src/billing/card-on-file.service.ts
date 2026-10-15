@@ -101,7 +101,18 @@ export class CardOnFileService {
     const provider = gatewayForNewCard(gw, asked === 'stripe' || asked === 'paypal' ? asked : null);
     if (!provider) throw new BadRequestException('Chưa có cổng thanh toán nào nhận thẻ. Liên hệ Lumio.');
     if (provider === 'paypal') {
-      const setup = await this.paypal.createSetupToken();
+      let setup: { id: string };
+      try {
+        setup = await this.paypal.createSetupToken();
+      } catch (e) {
+        const m = (e as Error).message ?? '';
+        // "Authorization failed due to insufficient permissions" = the REST app
+        // has no Vault / Advanced Card features yet. Said in the owner's words.
+        if (/insufficient permissions|NOT_AUTHORIZED|PERMISSION_DENIED/i.test(m)) {
+          throw new BadRequestException('PayPal chưa cho phép lưu thẻ trong trang: app PayPal cần bật "Advanced Credit and Debit Card Payments" và "Vault" (developer.paypal.com → app → Features). Trong lúc chờ, dùng nút gói bên dưới để thanh toán qua trang PayPal.');
+        }
+        throw e;
+      }
       return { provider, paypal: { clientId: await this.platform.get('paypal_client_id'), env: (await this.platform.get('paypal_env')) ?? 'live', setupToken: setup.id } };
     }
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, contactEmail: true } });

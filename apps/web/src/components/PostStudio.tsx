@@ -221,9 +221,15 @@ const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d
  * with holes in the corners is harder to read than one with grey edges.
  */
 export function MonthCalendar({
-  posts, month, onMonth, onPick, onDrop, onDelete, vi, compact = false, canDeletePosted = false,
+  posts, month, onMonth, onPick, onDrop, onDelete, onNew, vi, compact = false, canDeletePosted = false,
 }: {
   posts: StudioPost[];
+  /**
+   * Start a post on this day (YYYY-MM-DD, salon calendar). Given, every day
+   * from today on carries a quiet "+" — the calendar is where somebody decides
+   * WHEN, so the door to the composer belongs on the day, not only in the header.
+   */
+  onNew?: (dayKey: string) => void;
   month: Date;
   onMonth: (d: Date) => void;
   onPick: (id: string) => void;
@@ -769,6 +775,17 @@ export function MonthCalendar({
                     color: 'var(--c94a3b8)', fontSize: 9.5, fontFamily: 'inherit',
                   }}
                 >{T('Thu gọn', 'Collapse')}</button>
+              )}
+              {onNew && !outside && k >= today && (
+                <button
+                  onClick={() => onNew(k)}
+                  title={T('Bài mới ngày này', 'New post on this day')}
+                  style={{
+                    marginTop: 3, width: '100%', padding: '2px 4px', borderRadius: 5, cursor: 'pointer',
+                    border: '1px dashed var(--c334155)', background: 'transparent',
+                    color: 'var(--ca5b4fc)', fontSize: 10, fontFamily: 'inherit', opacity: mine.length ? 0.55 : 0.8,
+                  }}
+                >+ {T('Bài mới', 'New post')}</button>
               )}
             </div>
           );

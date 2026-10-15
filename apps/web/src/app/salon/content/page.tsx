@@ -699,7 +699,7 @@ function Inner() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabId>('today');
+  const [tab, setTab] = useState<TabId>('queue');
   // A notification that says "your post failed" has to LAND on the queue. Read
   // once on mount, not on every render: after that the tabs are the user's.
   useEffect(() => {
@@ -787,6 +787,11 @@ function Inner() {
   /** The composer folded down to its title bar. A month plan is the thing
       being worked ON; an open editor covering it is the thing in the way. */
   const [composerOpen, setComposerOpen] = useState(true);
+  // The screen's three folds: the tools menu in the header, the connection
+  // details under the one-line strip, and the composer's "advanced" section.
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [connOpen, setConnOpen] = useState(false);
+  const [advOpen, setAdvOpen] = useState(false);
   const [ttBusy, setTtBusy] = useState(false);
   /** Re-reading what the TikTok account allows, on demand. */
   const [ttCreatorBusy, setTtCreatorBusy] = useState(false);
@@ -1941,6 +1946,42 @@ function Inner() {
    * `map` and `queue` both carried 🚀, which is how two unrelated tabs came to
    * look like the same tab twice.
    */
+  /**
+   * The one door to the composer, from the header and from an empty day on
+   * the calendar. The post opens already carrying this salon's contact block
+   * and hashtags — nobody types an address, so nobody types the wrong
+   * salon's address.
+   */
+  function newPost(at?: string) {
+    setContactOverride(false);
+    setAdvOpen(false);
+    setComposerOpen(true);
+    if (tab !== 'queue') setTab('queue');
+    setPostDraft({ channels: ['facebook'], message: queue?.postKit?.starter ?? '', media: [], at: at ?? wallTomorrowAt('10:00') });
+  }
+
+  /** One line under the title: how the month stands. */
+  const queueSummary = queue ? (() => {
+    const n = (f: (p: QueuedPost) => boolean) => queue.posts.filter(f).length;
+    const posted = n((p) => p.status === 'posted');
+    const waiting = n((p) => p.status === 'scheduled' || p.status === 'publishing');
+    const drafts = n((p) => p.status === 'draft');
+    const broken = n((p) => p.status === 'failed' || p.status === 'expired');
+    return [
+      `${posted} ${T('đã đăng', 'posted')}`,
+      `${waiting} ${T('đang chờ', 'waiting')}`,
+      drafts ? `${drafts} ${T('nháp', drafts === 1 ? 'draft' : 'drafts')}` : null,
+      broken ? `${broken} ${T('lỗi', 'failed')}` : null,
+    ].filter(Boolean).join(' · ');
+  })() : null;
+
+  /**
+   * Healthy connections fold to one line; anything that needs a hand (missing
+   * publish permission, no Page, TikTok expired) keeps the full card open.
+   */
+  const connScopes = queue?.connected?.missingScopes;
+  const connHealthy = Boolean(queue?.connected) && (connScopes == null || connScopes.length === 0) && !queue?.tiktok?.needsReconnect;
+
   const TABS: { id: TabId; label: string; icon: string; group: 'content' | 'growth' }[] = [
     { id: 'today', label: T('Hôm nay', 'Today'), icon: '✍️', group: 'content' },
     { id: 'week', label: 'Plan', icon: '🗓️', group: 'content' },
@@ -2020,28 +2061,106 @@ function Inner() {
         justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 12,
       }}>
         <div style={{ minWidth: 0 }}>
-          {/* "Nội dung hôm nay" named ONE of seven tabs. The date belongs with
-              it — on the Today tab — not in a heading that also covers the week
-              plan, the ads budget and the publishing queue. */}
+          {/* The schedule IS the page now; every other screen is a tool reached
+              from the menu beside the one button that matters, and the heading
+              names whichever one is open. */}
           <h1 style={{ fontSize: isMobile ? 20 : 23, margin: '0 0 3px', color: 'var(--ce2e8f0)' }}>
-            {T('Kế hoạch & bài đăng', 'Marketing plan & posts')}
+            {tab === 'queue' ? T('Lịch đăng bài', 'Post schedule') : (TABS.find((t) => t.id === tab)?.label ?? T('Kế hoạch & bài đăng', 'Marketing plan & posts'))}
           </h1>
           <p style={{ color: 'var(--c94a3b8)', margin: 0, fontSize: 13 }}>
-            {tab === 'today' && data?.forDate
+            {tab === 'queue' && queueSummary
+              ? queueSummary
+              : tab === 'today' && data?.forDate
               ? `${new Date(`${data.forDate}T00:00:00`).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' })}${plan?.region?.known ? ` · ${plan.region.label}` : ''}`
               : plan?.region?.known ? plan.region.label : ''}
           </p>
         </div>
-        <button
-          onClick={refreshIdeas}
-          disabled={refreshing}
-          style={{
-            ...ui.primaryBtn, padding: '10px 16px', fontSize: 13.5,
-            opacity: refreshing ? 0.6 : 1, cursor: refreshing ? 'wait' : 'pointer',
-          }}
-        >
-          {refreshing ? T('Đang tạo lại…', 'Drafting…') : `↻ ${T('Cập nhật ngay', 'Refresh now')}`}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', position: 'relative' }}>
+          {tab === 'today' && (
+            <button
+              onClick={refreshIdeas}
+              disabled={refreshing}
+              style={{
+                minHeight: 40, padding: '0 14px', borderRadius: 9, cursor: refreshing ? 'wait' : 'pointer', fontFamily: 'inherit',
+                border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13.5, fontWeight: 600,
+                opacity: refreshing ? 0.6 : 1,
+              }}
+            >
+              {refreshing ? T('Đang tạo lại…', 'Drafting…') : `↻ ${T('Cập nhật ngay', 'Refresh now')}`}
+            </button>
+          )}
+          <button
+            onClick={() => setToolsOpen((v) => !v)}
+            aria-expanded={toolsOpen}
+            style={{
+              minHeight: 40, padding: '0 14px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
+              border: `1px solid ${toolsOpen ? '#6366f1' : 'var(--c475569)'}`, background: toolsOpen ? 'var(--c0f172a)' : 'transparent',
+              color: 'var(--ce2e8f0)', fontSize: 13.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 7,
+            }}
+          >
+            ☰ {T('Công cụ', 'Tools')}
+            {/* The red count follows the person to whichever tool they are in:
+                a broken post finds them instead of waiting to be found. */}
+            {tab !== 'queue' && (postAlerts + readyFiles) > 0 && (
+              <span style={{
+                minWidth: 19, height: 19, padding: '0 5px', borderRadius: 20,
+                background: postAlerts > 0 ? '#ef4444' : '#22c55e', color: postAlerts > 0 ? '#fff' : '#052e16',
+                fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              }}>{(postAlerts + readyFiles) > 9 ? '9+' : (postAlerts + readyFiles)}</span>
+            )}
+          </button>
+          <button
+            onClick={() => newPost()}
+            style={{ ...ui.primaryBtn, minHeight: 40, padding: '0 16px', fontSize: 13.5, fontWeight: 600 }}
+          >
+            + {T('Bài mới', 'New post')}
+          </button>
+          {toolsOpen && (<>
+            <div onClick={() => setToolsOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+            <div style={{
+              ...ui.card, padding: 8, position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 41,
+              width: 330, maxWidth: 'calc(100vw - 32px)', boxShadow: '0 18px 40px rgba(0,0,0,.4)',
+            }}>
+              {[{ id: 'queue' as TabId, label: T('Lịch đăng bài', 'Post schedule'), icon: '🚀' }].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => { setTab(t.id); setToolsOpen(false); }}
+                  style={{
+                    width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'inherit', cursor: 'pointer',
+                    padding: '9px 10px', borderRadius: 9, border: 'none', fontSize: 13.5, fontWeight: tab === t.id ? 700 : 500,
+                    background: tab === t.id ? 'var(--c0f172a)' : 'transparent', color: tab === t.id ? 'var(--ce2e8f0)' : 'var(--c94a3b8)',
+                  }}
+                ><span>{t.icon}</span>{t.label}</button>
+              ))}
+              {TAB_GROUPS.map((g) => (
+                <div key={g.id}>
+                  <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)', padding: '10px 10px 4px' }}>
+                    {g.label}
+                  </div>
+                  {TABS.filter((t) => t.group === g.id && t.id !== 'queue').map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => { setTab(t.id); setToolsOpen(false); }}
+                      style={{
+                        width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'inherit', cursor: 'pointer',
+                        padding: '9px 10px', borderRadius: 9, border: 'none', fontSize: 13.5, fontWeight: tab === t.id ? 700 : 500,
+                        background: tab === t.id ? 'var(--c0f172a)' : 'transparent', color: tab === t.id ? 'var(--ce2e8f0)' : 'var(--c94a3b8)',
+                      }}
+                    ><span>{t.icon}</span>{t.label}</button>
+                  ))}
+                </div>
+              ))}
+              <div style={{ borderTop: '1px solid var(--c334155)', margin: '8px 0 4px' }} />
+              <a
+                href="/salon/channels"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 9,
+                  fontSize: 13.5, color: 'var(--c94a3b8)', textDecoration: 'none',
+                }}
+              ><span>🔌</span>{T('Kết nối kênh (Facebook · Instagram · Google · TikTok)', 'Channel connections (Facebook · Instagram · Google · TikTok)')}</a>
+            </div>
+          </>)}
+        </div>
       </div>
 
       {refreshMsg && (
@@ -2054,86 +2173,22 @@ function Inner() {
 
       {isMobile && regionCard}
 
-      {/* This screen outgrew a single scroll, then it outgrew a single row of
-          tabs. Nine of them side by side ran off the edge of a phone and off
-          the edge of most laptops, so the four that decide where this shop
-          stands in six months were the four nobody scrolled to.
-
-          Two named groups instead. The name is the point: a tab bar can only
-          say what each tab is called, and these people needed to be told what
-          each half is FOR.
-
-          Not sticky, deliberately. The shell already pins its own header at
-          top:0, so a second sticky bar would need that header's exact height —
-          a number nothing here can read, and a wrong guess leaves the tabs
-          sliced in half behind it on somebody else's screen size. */}
-      <div style={{ paddingBottom: 10, marginBottom: 12, borderBottom: '1px solid var(--line)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {TAB_GROUPS.map((g) => (
-            <div key={g.id} style={{
-              display: 'flex', gap: 8, alignItems: 'center',
-              flexWrap: isMobile ? 'wrap' : 'nowrap',
-            }}>
-              <div style={{
-                flexShrink: 0, width: isMobile ? '100%' : 104,
-                paddingRight: 6, lineHeight: 1.25,
-              }}>
-                <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)' }}>
-                  {g.label}
-                </div>
-                {/* --ink-faint, not --c475569: that token is a BORDER colour and
-                    flips to #aab8cb in light mode — 2.01:1 on white, an invisible
-                    hint. See theme.ts. */}
-                {!isMobile && (
-                  <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 1 }}>{g.hint}</div>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
-                {TABS.filter((t) => t.group === g.id).map((t) => {
-                  const on = tab === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      onClick={() => setTab(t.id)}
-                      style={{
-                        flex: isMobile ? '1 1 auto' : '0 0 auto',
-                        padding: isMobile ? '8px 11px' : '8px 14px',
-                        borderRadius: 9, cursor: 'pointer', whiteSpace: 'nowrap',
-                        fontFamily: 'inherit',
-                        fontSize: 13.5, fontWeight: on ? 700 : 500,
-                        border: `1px solid ${on ? '#6366f1' : 'var(--c334155)'}`,
-                        background: on ? '#6366f1' : 'var(--c1e293b)',
-                        color: on ? '#fff' : 'var(--c94a3b8)',
-                        boxShadow: on ? '0 2px 10px rgba(99,102,241,.35)' : 'none',
-                        transition: 'background .15s, color .15s',
-                      }}
-                    >
-                      <span style={{ marginRight: 5 }}>{t.icon}</span>{t.label}
-                      {/* The red count is the whole reason the queue can stay a
-                          tab rather than a menu item: a broken post finds the
-                          person instead of waiting to be found. */}
-                      {t.id === 'queue' && (postAlerts + readyFiles) > 0 && (
-                        <span style={{
-                          marginLeft: 6, minWidth: 19, height: 19, padding: '0 5px',
-                          borderRadius: 20,
-                          // Green when the only thing waiting is footage the
-                          // shop sent: that is work arriving, not a fault. Red
-                          // stays red — a failed post is not good news wearing
-                          // the same colour as a delivery.
-                          background: postAlerts > 0 ? '#ef4444' : '#22c55e',
-                          color: postAlerts > 0 ? '#fff' : '#052e16',
-                          fontSize: 11, fontWeight: 700, display: 'inline-flex',
-                          alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle',
-                        }}>{(postAlerts + readyFiles) > 9 ? '9+' : (postAlerts + readyFiles)}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+      {/* Inside a tool, one way back — and the count of broken posts, so the
+          schedule's problems do not wait for somebody to finish planning. */}
+      {tab !== 'queue' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setTab('queue')}
+            style={{
+              minHeight: 32, padding: '0 11px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
+              border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600,
+            }}
+          >← {T('Lịch đăng bài', 'Post schedule')}</button>
+          <span style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>
+            {TAB_GROUPS.find((g) => g.id === TABS.find((t) => t.id === tab)?.group)?.label}
+          </span>
         </div>
-      </div>
+      )}
 
       {loading && <p style={{ color: 'var(--c94a3b8)', fontSize: 14 }}>{T('Đang tải…', 'Loading…')}</p>}
 
@@ -3425,6 +3480,7 @@ function Inner() {
                   { k: 'approved', icon: '✅', label: T('Khách đã duyệt', 'Client approved'), n: counts.approved, color: '#14b8a6' },
                   { k: 'today', icon: '⏰', label: T('Đăng hôm nay', 'Going out today'), n: counts.today, color: 'var(--ca5b4fc)' },
                 ];
+                if (!chips.some((c) => c.n > 0) && workFilter === 'all') return null;
                 return (
                   <div style={{ ...ui.card, marginBottom: 14, padding: '12px 14px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -3500,10 +3556,43 @@ function Inner() {
               })()}
 
               <div style={{ ...ui.card, marginBottom: 14, padding: 16 }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>
-                    🚀 {T('Lịch đăng bài tự động', 'Scheduled posts')}
-                  </div>
+                {/* ---- one line: where posts go ----
+                     Four pills, a tick or a "connect" each. The explanations,
+                     the permission check and the TikTok buttons live under
+                     "Chi tiết" — and come out by themselves when something
+                     is wrong, because that is the only time they are read. */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12.5, color: 'var(--c64748b)', fontWeight: 600 }}>{T('Đăng lên', 'Publishing to')}</span>
+                  {([
+                    { icon: '📘', label: queue?.connected?.pageName ?? 'Facebook', ok: Boolean(queue?.connected) && (connScopes == null || connScopes.length === 0), href: '/salon/messenger' },
+                    { icon: '📸', label: queue?.connected?.hasInstagram ? `@${queue?.connected?.igUsername}` : 'Instagram', ok: Boolean(queue?.connected?.hasInstagram), href: '/salon/messenger' },
+                    { icon: '📍', label: queue?.google?.title ?? 'Google Business', ok: Boolean(queue?.google), href: '/salon/reviews-replies' },
+                    { icon: '🎵', label: queue?.tiktok?.displayName ?? 'TikTok', ok: Boolean(queue?.tiktok) && !queue?.tiktok?.needsReconnect, href: null },
+                  ] as { icon: string; label: string; ok: boolean; href: string | null }[]).map((c) => (
+                    <span
+                      key={c.icon}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5, height: 28, padding: '0 10px', borderRadius: 20,
+                        fontSize: 12.5, fontWeight: 600, maxWidth: 220, whiteSpace: 'nowrap',
+                        border: `1px ${c.ok ? 'solid' : 'dashed'} var(--c334155)`,
+                        color: c.ok ? 'var(--ce2e8f0)' : 'var(--c64748b)', background: c.ok ? 'var(--c0f172a)' : 'transparent',
+                      }}
+                    >
+                      {c.icon}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.label}</span>
+                      {c.ok
+                        ? <span style={{ color: 'var(--ink-good)' }}>✓</span>
+                        : c.href
+                          ? <a href={c.href} style={{ color: 'var(--ca5b4fc)', textDecoration: 'none' }}>{T('Kết nối', 'Connect')}</a>
+                          : <button onClick={() => setConnOpen(true)} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{T('Kết nối', 'Connect')}</button>}
+                    </span>
+                  ))}
+                  {queue?.autoComments !== undefined && (
+                    <span style={{ fontSize: 12, color: 'var(--c64748b)' }}>
+                      💬 {T('Bình luận tự động', 'Auto-comments')}: <b style={{ color: queue?.autoComments?.settings.enabled ? 'var(--ink-good)' : 'var(--c94a3b8)' }}>{queue?.autoComments?.settings.enabled ? T('Bật', 'On') : T('Tắt', 'Off')}</b>
+                    </span>
+                  )}
+                  <span style={{ flex: 1 }} />
                   {/* Team only: the link the client's group chat gets. One tap
                       copies it; the server reuses a fresh link or mints one. */}
                   {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
@@ -3517,34 +3606,28 @@ function Inner() {
                         } catch { btn.textContent = T('Không tạo được link', 'Could not make the link'); }
                       }}
                       style={{
-                        marginLeft: 'auto', minHeight: 38, padding: '8px 14px', borderRadius: 9,
-                        border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                        minHeight: 30, padding: '0 11px', borderRadius: 8, fontFamily: 'inherit',
+                        border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
                       }}
                     >
                       🔗 {T('Link duyệt bài cho khách', 'Client review link')}
                     </button>
                   )}
                   <button
-                    onClick={() => {
-                      const local = wallTomorrowAt('10:00');
-                      // The post opens already carrying this salon's contact
-                      // block and hashtags. Nobody types an address, so nobody
-                      // types the wrong salon's address — which is how the
-                      // Kerrville shop's post came to give a Huntington Beach
-                      // phone number.
-                      setContactOverride(false);
-                      setComposerOpen(true);
-    setPostDraft({ channels: ['facebook'], message: queue?.postKit?.starter ?? '', media: [], at: local });
-                    }}
+                    onClick={() => setConnOpen(!(connOpen || !connHealthy))}
+                    disabled={!connHealthy}
+                    title={connHealthy ? undefined : T('Có việc cần xử lý — chi tiết luôn mở', 'Something needs a hand — details stay open')}
                     style={{
-                      marginLeft: (Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') ? undefined : 'auto', minHeight: 38, padding: '8px 14px', borderRadius: 9,
-                      border: 'none', background: '#6366f1', color: '#fff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
+                      minHeight: 30, padding: '0 11px', borderRadius: 8, fontFamily: 'inherit',
+                      border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, cursor: connHealthy ? 'pointer' : 'default',
+                      opacity: connHealthy ? 1 : 0.6,
                     }}
                   >
-                    + {T('Bài mới', 'New post')}
+                    {(connOpen || !connHealthy) ? `▾ ${T('Thu gọn', 'Less')}` : `▸ ${T('Chi tiết', 'Details')}`}
                   </button>
                 </div>
 
+                {(connOpen || !connHealthy) && (<div style={{ marginTop: 10 }}>
                 {queue?.connected ? (
                   <>
                     <div style={{ fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55 }}>
@@ -3685,9 +3768,10 @@ function Inner() {
                        'How: press "Connect TikTok" on the account OWNER’s device (or send them this screen) → sign in to TikTok → Allow. Staff never need the client’s TikTok password.')}
                   </div>
                 )}
+                </div>)}
               </div>
 
-              {postErr && (
+              {postErr && !(postDraft && composerOpen) && (
                 <div style={{
                   ...ui.card, marginBottom: 14, padding: '11px 14px', borderColor: '#ef4444',
                   fontSize: 13, color: 'var(--cfca5a5)', lineHeight: 1.55,
@@ -3773,7 +3857,31 @@ function Inner() {
               const ttGate = tiktokGate(postDraft, queue?.tiktok ?? null, ttClip && ttClip.url === postDraft.media.find((m) => m.kind === 'video')?.url ? ttClip.sec : null, vi);
               const blocked = (check.findings.length > 0 && !contactOverride) || ttGate.length > 0;
               return (
-                <div style={{ ...ui.card, marginBottom: 14, padding: 16, borderColor: '#6366f1' }}>
+                /* A POPUP over the calendar, not a card above it. The person
+                   picked a day on the calendar and wants the calendar back when
+                   they are done; a card pushed the calendar below a very tall
+                   form. "Thu gọn" docks it bottom-right with the draft intact,
+                   so nothing is lost by going to look at the month. On a phone
+                   it is the whole screen. Above the shell's bars (≤60), below
+                   its drawer (70). */
+                <div
+                  style={composerOpen ? {
+                    position: 'fixed', inset: 0, zIndex: 65, background: 'rgba(2,6,23,.62)',
+                    display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'center',
+                    padding: isMobile ? 0 : 24,
+                  } : {
+                    position: 'fixed', right: 16, bottom: isMobile ? 72 : 16, zIndex: 65, width: isMobile ? 'calc(100vw - 32px)' : 420,
+                  }}
+                  onMouseDown={(e) => { if (composerOpen && e.target === e.currentTarget) setComposerOpen(false); }}
+                >
+                <div style={{
+                  ...ui.card, padding: 16, borderColor: '#6366f1', position: 'relative',
+                  width: composerOpen ? 'min(1040px, 100%)' : '100%',
+                  maxHeight: composerOpen ? (isMobile ? '100%' : 'calc(100vh - 48px)') : '60vh',
+                  height: composerOpen && isMobile ? '100%' : undefined,
+                  overflowY: 'auto', borderRadius: composerOpen && isMobile ? 0 : 14,
+                  boxShadow: '0 30px 80px rgba(0,0,0,.45)',
+                }}>
                   {/* Which salon this post is for, in that salon's own colour.
                       The line used to be small grey text among other small grey
                       text, which is nothing to somebody with eight tabs open —
@@ -3785,10 +3893,10 @@ function Inner() {
                       calendar wants the calendar back, not a trip to the bottom
                       of a form to find the button that gives it back. */}
                   <div style={{
-                    display: 'flex', alignItems: 'center', gap: 8, marginBottom: composerOpen ? 12 : 0,
-                    padding: '9px 12px', borderRadius: 10,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '11px 16px', borderRadius: composerOpen ? '12px 12px 0 0' : '10px 10px 0 0',
                     background: 'var(--c0f172a)', border: '1px solid #6366f1', borderLeft: '4px solid #6366f1',
-                    position: 'sticky', top: 4, zIndex: 5,
+                    position: 'sticky', top: -16, zIndex: 5, margin: composerOpen ? '-16px -16px 12px' : '-16px -16px 0',
                   }}>
                     <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)', minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {postDraft.id ? T('Sửa bài · ', 'Edit post · ') : T('Bài mới · ', 'New post · ')}
@@ -3823,6 +3931,13 @@ function Inner() {
 
                   {/* Folded: one line saying what is still open, so nobody
                       forgets a half-written post sitting under the calendar. */}
+                  {postErr && composerOpen && (
+                    <div style={{
+                      marginBottom: 12, padding: '10px 12px', borderRadius: 9, border: '1px solid #ef4444',
+                      background: 'var(--c0f172a)', fontSize: 13, color: 'var(--cfca5a5)', lineHeight: 1.55,
+                    }}>{postErr}</div>
+                  )}
+
                   {!composerOpen && (
                     <div
                       onClick={() => setComposerOpen(true)}
@@ -3842,6 +3957,37 @@ function Inner() {
                   )}
 
                   {composerOpen && (<>
+                  {/* Two columns: the post itself on the left, where and when it goes
+                      on the right. Everything channel-specific or team-only folds under
+                      "Nâng cao" unless that channel is picked or the post already exists. */}
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 340px', gap: isMobile ? 14 : 22, alignItems: 'start' }}>
+                  <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 2 }}>{T('Đăng lên', 'Publish to')}</div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4, marginBottom: 12 }}>
+                    {(['facebook', 'instagram', 'google', 'tiktok'] as const).map((c) => {
+                      const on = postDraft.channels.includes(c);
+                      const absent = c === 'google' ? !queue?.google : c === 'tiktok' ? !queue?.tiktok : c === 'instagram' ? queue?.connected ? !queue.connected.hasInstagram : false : false;
+                      return (
+                        <button
+                          key={c}
+                          onClick={() => setPostDraft({
+                            ...postDraft,
+                            channels: on ? postDraft.channels.filter((x) => x !== c) : [...postDraft.channels, c],
+                          })}
+                          title={absent ? T('Chưa kết nối', 'Not connected') : undefined}
+                          style={{
+                            minHeight: 40, padding: '9px 15px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5, fontWeight: 600,
+                            border: `1px ${absent && !on ? 'dashed' : 'solid'} ${on ? '#6366f1' : 'var(--c334155)'}`,
+                            background: on ? '#6366f1' : 'transparent',
+                            color: on ? '#fff' : absent ? 'var(--c64748b)' : 'var(--c94a3b8)',
+                          }}
+                        >
+                          {c === 'google' ? '📍 ' : c === 'tiktok' ? '🎵 ' : ''}{CHANNEL_NAME[c]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 6 }}>{T('Nội dung', 'Caption')}</div>
                   <textarea
                     ref={captionRef}
                     value={postDraft.message}
@@ -3931,6 +4077,285 @@ function Inner() {
                     </div>
                   )}
 
+                  {/* ---- media, in the order they will appear ----
+                       Order is the whole feature for a carousel: item one is
+                       the thumbnail in the feed AND the square on the profile
+                       grid, and it is the only one most people ever see. */}
+                  <div style={{ marginTop: 13 }}>
+                    <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 5 }}>
+                      {T('Ảnh & video (link https công khai)', 'Photos & video (public https links)')}
+                      {postDraft.channels.includes('instagram') && ` — ${T('Instagram bắt buộc có ít nhất 1', 'Instagram needs at least one')}`}
+                      {postDraft.channels.includes('google') && ` — ${T('Google Business: Google không cho gắn video vào bài qua hệ thống — bài lên kèm chữ + ảnh bìa cắt từ video, còn video được thêm vào mục Ảnh & video của hồ sơ', 'Google Business: Google does not let apps attach a video to a post — the post goes out with the text and a cover frame from the video, and the video is added to the profile\u2019s Photos & videos')}`}
+                      {postDraft.channels.includes('tiktok') && ` — ${T('TikTok cần 1 video .mp4', 'TikTok needs one .mp4 video')}`}
+                    </div>
+
+                    <MediaList
+                      media={postDraft.media}
+                      onChange={(m) => setPostDraft({ ...postDraft, media: m })}
+                      vi={vi}
+                    />
+
+                    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: postDraft.media.length ? 4 : 0 }}>
+                      <input
+                        value={mediaInput}
+                        onChange={(e) => setMediaInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter') return;
+                          e.preventDefault();
+                          addMedia();
+                        }}
+                        placeholder="https://…"
+                        style={{
+                          flex: '1 1 200px', minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5,
+                          border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                        }}
+                      />
+                      <button
+                        onClick={addMedia}
+                        disabled={postDraft.media.length >= 10 || driveJob !== null}
+                        style={{
+                          minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
+                          cursor: postDraft.media.length >= 10 ? 'not-allowed' : 'pointer', border: '1px solid var(--c475569)',
+                          background: 'transparent', color: postDraft.media.length >= 10 ? 'var(--c64748b)' : 'var(--ca5b4fc)',
+                        }}
+                      >
+                        {driveJob
+                          ? (driveJob.pct !== null ? T(`Đang lấy từ Drive ${driveJob.pct}%…`, `Fetching from Drive ${driveJob.pct}%…`) : T(`Đang lấy từ Drive… ${driveJob.loadedMb} MB`, `Fetching from Drive… ${driveJob.loadedMb} MB`))
+                          : `+ ${T('Thêm link', 'Add link')}`}
+                      </button>
+                      {/* The way out of the link problem entirely.
+                          Asking a salon for a "public https link to the file"
+                          is asking them to understand hosting; the answer they
+                          reach for is a Google Drive share link, which is a web
+                          page and can never work. Uploading is the path that
+                          does not require them to know any of that. */}
+                      <label style={{
+                        minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
+                        display: 'inline-flex', alignItems: 'center', cursor: uploading ? 'wait' : 'pointer',
+                        border: 'none', background: '#6366f1', color: '#fff',
+                      }}>
+                        {uploading
+                          ? (uploadStep && uploadStep.total > 1
+                            ? T(`Đang tải ${Math.min(uploadStep.done + 1, uploadStep.total)}/${uploadStep.total}…`, `Uploading ${Math.min(uploadStep.done + 1, uploadStep.total)}/${uploadStep.total}…`)
+                            : T('Đang tải…', 'Uploading…'))
+                          : `📷 ${T('Tải ảnh lên', 'Upload photos')}`}
+                        {/* `multiple`: a carousel is picked in one go, not ten
+                            trips through the file dialog. */}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          disabled={uploading || postDraft.media.length >= 10}
+                          onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; if (fs.length) uploadMedia(fs); }}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                      {/* The clip. One file, multipart, with a number on it —
+                          the photo path's data-URL trick would make a 60 MB
+                          clip 80 MB and time out. */}
+                      <label style={{
+                        minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
+                        display: 'inline-flex', alignItems: 'center', cursor: videoPct !== null ? 'wait' : 'pointer',
+                        border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)',
+                      }}>
+                        {videoPct !== null ? T(`Đang tải video ${videoPct}%…`, `Uploading video ${videoPct}%…`) : `🎬 ${T('Tải video lên', 'Upload a video')}`}
+                        <input
+                          type="file"
+                          accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm"
+                          disabled={videoPct !== null || uploading || postDraft.media.length >= 10}
+                          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadVideo(f); }}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                    </div>
+                    {fitNote && (
+                      <div style={{
+                        marginTop: 7, padding: '8px 11px', borderRadius: 8,
+                        background: 'var(--c1e293b)', border: '1px solid var(--c475569)',
+                        fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55,
+                      }}>
+                        ✂︎ {fitNote}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 4, lineHeight: 1.5 }}>
+                      {postDraft.media.length >= 2
+                        ? T(`Bài nhiều ảnh (${postDraft.media.length}/10) — vuốt ngang trên Instagram.`, `Carousel (${postDraft.media.length}/10) — swipeable on Instagram.`)
+                        : postDraft.media.some((m) => m.kind === 'video')
+                          ? T('Video — Instagram đăng dạng Reels, Facebook đăng video thường.', 'Video — published as a Reel on Instagram, a video post on Facebook.')
+                          : T('Ảnh: bấm "Tải ảnh lên" — chọn được nhiều ảnh một lần (giữ Ctrl/Shift), thứ tự chọn là thứ tự trong bài. Video: bấm "Tải video lên" (MP4/MOV, tối đa 120 MB) — Facebook đăng video, Instagram đăng Reels, TikTok đăng bài. Video nặng hơn (tới 1 GB): tải lên Google Drive, chia sẻ "Bất kỳ ai có đường liên kết", dán link vào ô trên rồi bấm "Thêm link" — hệ thống tự kéo file về máy chủ.',
+                              'Photos: use Upload — pick several at once (hold Ctrl/Shift); the order you pick is the order in the post. Video: press "Upload a video" (MP4/MOV, 120 MB max) — a video post on Facebook, a Reel on Instagram, the post itself on TikTok. Bigger clips (up to 1 GB): put it on Google Drive, share as "Anyone with the link", paste the link above and press "Add link" — the server fetches it.')}
+                    </div>
+                  </div>
+
+                  {/* Hidden once it has published: the server refuses the save,
+                      and a button whose only outcome is an error message is a
+                      button that should not be there. */}
+                  {/* ---- what in this draft is not this salon's ----
+                      One writer, eight salons, eight tabs. Last week's post
+                      from another shop gets copied, the caption rewritten, and
+                      the contact block left behind — so the post goes out on
+                      this Page telling these customers to ring a shop two
+                      hundred miles away. This is the gate that catches it.
+
+                      It blocks rather than warns. A yellow banner that lets the
+                      button work is read for two weeks and then never again,
+                      and this is a public, permanent mistake. The override
+                      exists because a shop really can name a partner's number —
+                      but somebody has to say so on purpose. */}
+                  {kit && check.findings.length > 0 && (
+                    <div style={{
+                      marginTop: 12, padding: '12px 13px', borderRadius: 10,
+                      background: 'rgba(239,68,68,.10)', border: '1px solid #ef4444',
+                    }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink-bad)' }}>
+                        ⚠ {check.findings.length} {T('thông tin không thuộc về', 'details that do not belong to')} {kit.shop.name}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 8 }}>
+                        {check.findings.map((f, i) => (
+                          <div key={i} style={{
+                            display: 'flex', gap: 9, alignItems: 'flex-start', padding: '7px 0',
+                            borderTop: i ? '1px solid rgba(239,68,68,.25)' : 'none',
+                          }}>
+                            <code style={{
+                              fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12,
+                              background: 'rgba(239,68,68,.16)', color: 'var(--cfecaca)',
+                              borderRadius: 5, padding: '1px 6px', flexShrink: 0, maxWidth: 220,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>{f.found}</code>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
+                              {f.expected
+                                ? <>{T('nên là', 'should be')} <b style={{ color: 'var(--ink-bad)' }}>{f.expected}</b></>
+                                : T('không khớp hồ sơ tiệm này', 'does not match this salon')}
+                            </span>
+                            {f.expected && (
+                              <button
+                                onClick={() => setPostDraft({ ...postDraft, message: applyFix(postDraft.message, f) })}
+                                style={{
+                                  background: 'transparent', border: '1px solid #ef4444', color: 'var(--ink-bad)',
+                                  borderRadius: 7, padding: '3px 9px', fontSize: 11.5, cursor: 'pointer',
+                                  whiteSpace: 'nowrap', fontFamily: 'inherit',
+                                }}
+                              >{T('Sửa', 'Fix')}</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {!contactOverride && (
+                        <div style={{ marginTop: 10, display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button
+                            onClick={() => setContactOverride(true)}
+                            style={{
+                              background: 'transparent', border: '1px solid #f59e0b', color: 'var(--cfcd34d)',
+                              borderRadius: 7, padding: '4px 10px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit',
+                            }}
+                          >{T('Tôi biết, vẫn đăng', 'I know — post anyway')}</button>
+                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
+                            {T('bài sẽ ghi tên người mở khoá', 'the post records who unlocked it')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* A check that cannot run must say so. Silence here reads
+                      exactly like "nothing wrong", and that is how a salon with
+                      no phone number on file publishes a rival's for a year. */}
+                  {kit && kit.missing.length > 0 && (
+                    <div style={{
+                      marginTop: 10, padding: '10px 12px', borderRadius: 10,
+                      background: 'rgba(245,158,11,.08)', border: '1px solid #f59e0b',
+                      fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6,
+                    }}>
+                      {T('Chưa đối chiếu được', 'Cannot check')}: <b style={{ color: 'var(--cfcd34d)' }}>{kit.missing.map((m) => MISSING_LABEL[m]).join(', ')}</b>
+                      {' — '}{T('hồ sơ tiệm còn trống mục này, nên phần đó không được kiểm.',
+                                'the salon profile is blank there, so that part is not checked.')}
+                    </div>
+                  )}
+
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                  {/* ---- now, or on the calendar ----
+                       Scheduling used to be the only way in: write it, pick a
+                       date, save, find the row, press Post now. Five steps for
+                       the commonest thing a salon does — something happened in
+                       the shop and they want it up. */}
+                  <div style={{ marginTop: 13 }}>
+                    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 9 }}>
+                      {([
+                        ['now', `🚀 ${T('Đăng ngay', 'Post now')}`],
+                        ['later', `🗓️ ${T('Hẹn giờ', 'Schedule')}`],
+                      ] as const).map(([k, label]) => (
+                        <button
+                          key={k}
+                          onClick={() => setPostWhen(k)}
+                          style={{
+                            minHeight: 40, padding: '0 16px', borderRadius: 9, cursor: 'pointer',
+                            fontSize: 13.5, fontWeight: postWhen === k ? 700 : 500,
+                            border: `1px solid ${postWhen === k ? '#6366f1' : 'var(--c334155)'}`,
+                            background: postWhen === k ? '#6366f1' : 'transparent',
+                            color: postWhen === k ? '#fff' : 'var(--c94a3b8)',
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {postWhen === 'later' ? (() => {
+                      /* THE ZONE THE DIGITS BELONG TO, SAID OUT LOUD.
+                         The picker used to be a bare datetime box whose digits
+                         silently meant salon time. A writer in Vietnam typing
+                         "20:00" for a Texas shop had no way to see whether that
+                         was Texas 20:00 or Vietnam 20:00 — the difference is a
+                         post at 8 in the morning. So the zone is a control next
+                         to the digits, salon time by default, and the same
+                         instant is echoed in the other zone underneath. */
+                      const shopTz = salonTz();
+                      const mine = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : '';
+                      const options = Array.from(new Set([
+                        shopTz, mine, 'America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York', 'America/Phoenix', 'Pacific/Honolulu', 'Asia/Ho_Chi_Minh',
+                      ].filter(Boolean)));
+                      const zoneName = (z: string) => z === shopTz && z ? `${T('Giờ tiệm', 'Salon time')} · ${z}` : z === mine ? `${T('Giờ máy anh', 'Your time')} · ${z}` : z;
+                      const instant = postDraft.at && postDraft.at.length >= 16 ? wallToInstantISO(postDraft.at, postTz || undefined) : null;
+                      const echo = instant && shopTz && postTz !== shopTz ? `${instantToWall(instant, shopTz).replace('T', ' ')} ${T('giờ tiệm', 'salon time')}` : instant && mine && postTz !== mine ? `${instantToWall(instant, mine).replace('T', ' ')} ${T('giờ máy anh', 'your time')}` : null;
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <input
+                              id="post-at"
+                              type="datetime-local"
+                              min={instantToWall(new Date(), postTz || undefined).slice(0, 16)}
+                              value={postDraft.at}
+                              onChange={(e) => setPostDraft({ ...postDraft, at: e.target.value })}
+                              style={{
+                                minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5, fontFamily: 'inherit',
+                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                              }}
+                            />
+                            <select
+                              id="post-tz"
+                              value={postTz}
+                              onChange={(e) => setPostTz(e.target.value)}
+                              title={T('Múi giờ mà giờ bên trái được hiểu theo', 'The zone the time on the left is read in')}
+                              style={{
+                                minHeight: 42, padding: '0 10px', borderRadius: 9, fontSize: 13, fontFamily: 'inherit', maxWidth: '100%',
+                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                              }}
+                            >
+                              {options.map((z) => <option key={z} value={z}>{zoneName(z)}</option>)}
+                            </select>
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
+                            {echo ? <>= <b style={{ color: 'var(--ccbd5e1)', fontVariantNumeric: 'tabular-nums' }}>{echo}</b></> : T('Giờ đăng tính theo múi giờ đã chọn.', 'Posts at that time in the chosen zone.')}
+                          </div>
+                        </div>
+                      );
+                    })() : (
+                      <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.55 }}>
+                        {T('Bài sẽ lên trang ngay khi bấm. Vẫn được lưu vào lịch để xem lại sau.',
+                           'Goes up the moment you press. Still recorded on the calendar afterwards.')}
+                      </div>
+                    )}
+                  </div>
                   {/* ---- the first comments under this post ----
                        Booking link, today's offer, phone — written by the Page
                        a few minutes after publishing, the way the team used to
@@ -3955,30 +4380,245 @@ function Inner() {
                     />
                   )}
 
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 11 }}>
-                    {(['facebook', 'instagram', 'google', 'tiktok'] as const).map((c) => {
-                      const on = postDraft.channels.includes(c);
-                      const absent = c === 'google' ? !queue?.google : c === 'tiktok' ? !queue?.tiktok : c === 'instagram' ? queue?.connected ? !queue.connected.hasInstagram : false : false;
-                      return (
+
+                  {/* ---- an existing post: its state, and what can be done to it ----
+                       "Post now" and "Cancel" used to live ONLY in the list view,
+                       so opening a post from the calendar or the grid gave you a
+                       composer with no way to send it. The composer is the one
+                       place every view leads to, so the actions belong here. */}
+                  {(() => {
+                    const live = postDraft.id ? queue?.posts.find((x) => x.id === postDraft.id) : null;
+                    if (!live) return null;
+                    const S: Record<string, { fg: string; text: string }> = {
+                      draft: { fg: 'var(--c94a3b8)', text: T('Nháp', 'Draft') },
+                      scheduled: { fg: '#6366f1', text: T('Đã đặt lịch', 'Scheduled') },
+                      publishing: { fg: '#f59e0b', text: T('Đang đăng', 'Publishing') },
+                      posted: { fg: '#22c55e', text: T('Đã đăng', 'Posted') },
+                      failed: { fg: '#ef4444', text: T('Lỗi', 'Failed') },
+                      expired: { fg: '#f59e0b', text: T('Quá hạn', 'Missed') },
+                      cancelled: { fg: 'var(--c64748b)', text: T('Đã huỷ', 'Cancelled') },
+                    };
+                    const st = live.held
+                      ? { fg: '#ef4444', text: T('Khách yêu cầu sửa', 'Change requested') }
+                      : S[live.status] ?? S.draft;
+                    return (
+                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--c334155)' }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{T('Trạng thái', 'Status')}</span>
+                          <span style={{ fontSize: 11.5, padding: '2px 9px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg, fontWeight: 600 }}>
+                            {live.held ? '🔴 ' : ''}{st.text}
+                          </span>
+                          {live.attempts > 0 && (
+                            <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
+                              {T('đã thử', 'tried')} {live.attempts}×
+                            </span>
+                          )}
+                        </div>
+
+                        {/* What the client actually asked for, sitting next to
+                            the box where the fix gets typed. Saving the post
+                            clears the red on its own — an edit IS the answer —
+                            so the button below is for the requests that were
+                            handled somewhere else: a phone call, a new photo,
+                            or a question that turned out to need no change. */}
+                        {live.held && (
+                          <div style={{ padding: '10px 12px', borderRadius: 8, marginBottom: 9, background: 'var(--c450a0a)', border: '1px solid #ef4444' }}>
+                            <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', marginBottom: 3 }}>
+                              {live.held.by ? `${live.held.by} · ` : ''}
+                              {T('bài này đang dừng, không tự đăng', 'this post is stopped and will not publish')}
+                            </div>
+                            {live.held.note && (
+                              <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                                “{live.held.note}”
+                              </div>
+                            )}
+                            {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
+                              <button
+                                onClick={() => clearHold(live.id)}
+                                disabled={queueBusy}
+                                style={{
+                                  marginTop: 8, minHeight: 34, padding: '7px 12px', borderRadius: 8,
+                                  cursor: queueBusy ? 'not-allowed' : 'pointer', border: 'none',
+                                  background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 600,
+                                }}
+                              >
+                                ✓ {T('Đã xử lý xong — cho bài chạy lại', 'Handled — let it publish')}
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* The reason, verbatim from Meta. Paraphrasing it would
+                            hide the one string that says what to fix. */}
+                        {!!live.blockers.length && (
+                          <div style={{ padding: '9px 11px', borderRadius: 8, marginBottom: 9, background: 'var(--c451a03)', border: '1px solid #f59e0b' }}>
+                            {live.blockers.map((b) => (
+                              <div key={b} style={{ fontSize: 12.5, color: 'var(--cfde68a)', lineHeight: 1.55 }}>⚠︎ {b}</div>
+                            ))}
+                          </div>
+                        )}
+                        {live.lastError && !live.blockers.length && (
+                          <div style={{
+                            padding: '10px 12px', borderRadius: 8, marginBottom: 9,
+                            background: live.errorIsStale ? 'var(--c1e293b)' : 'var(--c450a0a)',
+                            border: `1px solid ${live.errorIsStale ? 'var(--c334155)' : 'var(--c991b1b)'}`,
+                          }}>
+                            {/* The permission has since been granted, so this is
+                                history rather than an instruction. Telling
+                                somebody to reconnect a Page they just
+                                reconnected is how a fix message stops being
+                                believed. */}
+                            {live.errorIsStale && (
+                              <div style={{ fontSize: 13, color: 'var(--ink-good)', fontWeight: 600, lineHeight: 1.55, marginBottom: 6 }}>
+                                ✓ {T('Quyền đã được cấp rồi — lỗi bên dưới là của lần thử trước. Bấm "Đăng ngay" để thử lại.',
+                                     'The permission is granted now — the error below is from the earlier attempt. Press “Post now” to try again.')}
+                              </div>
+                            )}
+                            {live.fix && (
+                              <div style={{ fontSize: 13, color: 'var(--cfecaca)', fontWeight: 600, lineHeight: 1.55, marginBottom: 6 }}>
+                                → {live.fix}
+                              </div>
+                            )}
+                            {/* Meta's own words, kept whole. It is the only
+                                precise string anybody can search for later. */}
+                            <details>
+                              <summary style={{ fontSize: 11.5, color: 'var(--cfca5a5)', cursor: 'pointer' }}>
+                                {T('Nguyên văn lỗi từ Facebook', 'Facebook’s exact error')}
+                              </summary>
+                              <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', lineHeight: 1.5, marginTop: 5, wordBreak: 'break-word' }}>
+                                {live.lastError}
+                              </div>
+                            </details>
+                          </div>
+                        )}
+
+                        {/* Every channel the post ASKED for, with what became of
+                            it — not only the ones that worked. A list of
+                            successes reads as a complete list, which is how a
+                            Facebook-only post gets mistaken for one that also
+                            reached Instagram. */}
+                        {live.status === 'posted' && (
+                          <div style={{ marginBottom: 9 }}>
+                            {(['facebook', 'instagram', 'google', 'tiktok'] as const).map((c) => {
+                              const asked = live.channels.includes(c);
+                              const r = live.results.find((x) => x.channel === c);
+                              const name = CHANNEL_NAME[c];
+                              const connected = c === 'facebook' ? Boolean(queue?.connected) : c === 'instagram' ? queue?.connected?.hasInstagram : c === 'google' ? Boolean(queue?.google) : Boolean(queue?.tiktok);
+                              if (!asked && !connected) return null;
+                              return (
+                                <div key={c} style={{ fontSize: 12.5, lineHeight: 1.7 }}>
+                                  {!asked
+                                    ? <span style={{ color: 'var(--c64748b)' }}>○ {name} — {T('không chọn đăng', 'not selected')}</span>
+                                    : r?.url
+                                      ? <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c60a5fa)' }}>
+                                        ✓ {name} — {r.urlKind === 'profile'
+                                          ? T('bài riêng tư, mở trang tài khoản', 'private post — open the profile')
+                                          : T('xem bài', 'view the post')}
+                                      </a>
+                                      : <span style={{ color: 'var(--ink-good)' }}>✓ {name}</span>}
+                                  {asked && r?.note && <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.45 }}>ⓘ {r.note}</div>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {live.status !== 'posted' && live.results.filter((r) => r.url).map((r) => (
+                          <a
+                            key={r.channel} href={r.url!} target="_blank" rel="noopener noreferrer"
+                            style={{ display: 'inline-block', marginRight: 12, marginBottom: 8, fontSize: 12.5, color: 'var(--c60a5fa)' }}
+                          >
+                            🔗 {T('Xem trên', 'View on')} {CHANNEL_NAME[r.channel as Channel] ?? r.channel}
+                          </a>
+                        ))}
+
+                        {/* A published row is the record of what really went up:
+                            it carries the publish time and the links, and the
+                            weekly results count it. It is not deletable, so no
+                            button pretends otherwise. */}
+                        {live.status === 'posted' ? (
+                          <div>
+                            <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.6 }}>
+                              {T('Bài đã đăng được giữ lại làm sổ ghi. Muốn gỡ bài thì xoá trực tiếp trên Facebook/Instagram; muốn lịch gọn hơn thì bỏ tick "Hiện bài đã đăng".',
+                                 'Published posts are kept as the record. To take one down, delete it on Facebook/Instagram; to tidy the calendar, untick “Show published posts”.')}
+                            </div>
+                            {queue?.canDeletePosted && (
+                              <button
+                                onClick={() => removePost(live.id)}
+                                disabled={queueBusy}
+                                style={{
+                                  marginTop: 9, minHeight: 38, padding: '0 14px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5,
+                                  border: '1px solid #ef4444', background: 'transparent', color: 'var(--ink-bad)', fontWeight: 600,
+                                }}
+                              >
+                                🗑 {T('Xoá khỏi lịch (Lumio)', 'Remove from calendar (Lumio)')}
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button
+                              onClick={() => removePost(live.id)}
+                              disabled={queueBusy}
+                              style={{
+                                minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
+                                border: '1px solid #ef4444', background: 'transparent', color: 'var(--ink-bad)', fontWeight: 600,
+                              }}
+                            >
+                              🗑 {T('Xoá bài', 'Delete')}
+                            </button>
+                          </div>
+                        )}
+                        {live.status !== 'posted' && (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                            <button
+                              onClick={() => postAction(live.id, 'publish')}
+                              disabled={queueBusy || live.blockers.length > 0}
+                              style={{
+                                minHeight: 42, padding: '0 18px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
+                                cursor: live.blockers.length ? 'not-allowed' : 'pointer', border: 'none',
+                                background: live.blockers.length ? 'var(--c334155)' : '#6366f1',
+                                color: live.blockers.length ? 'var(--c64748b)' : '#fff',
+                              }}
+                            >
+                              🚀 {queueBusy ? T('Đang đăng…', 'Publishing…') : T('Đăng ngay', 'Post now')}
+                            </button>
+                            <button
+                              onClick={() => { postAction(live.id, 'cancel'); setPostDraft(null); }}
+                              disabled={queueBusy}
+                              title={T('Giữ lại bài nhưng không đăng nữa', 'Keeps the post but stops it going out')}
+                              style={{
+                                minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
+                                border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)',
+                              }}
+                            >
+                              {T('Tạm dừng', 'Pause it')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {/* ---- advanced: Google's extras, TikTok's decisions, the team's hand-off ----
+                       Folded for a plain new post. Open by itself when a channel that needs
+                       decisions is picked, or when the post already exists (its stage matters). */}
+                  {(() => {
+                    const advAuto = postDraft.channels.includes('google') || postDraft.channels.includes('tiktok') || Boolean(postDraft.id);
+                    const advShow = advOpen || advAuto;
+                    return (
+                      <div style={{ marginTop: 13 }}>
                         <button
-                          key={c}
-                          onClick={() => setPostDraft({
-                            ...postDraft,
-                            channels: on ? postDraft.channels.filter((x) => x !== c) : [...postDraft.channels, c],
-                          })}
-                          title={absent ? T('Chưa kết nối', 'Not connected') : undefined}
+                          onClick={() => setAdvOpen(!advShow)}
                           style={{
-                            minHeight: 40, padding: '9px 15px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5, fontWeight: 600,
-                            border: `1px ${absent && !on ? 'dashed' : 'solid'} ${on ? '#6366f1' : 'var(--c334155)'}`,
-                            background: on ? '#6366f1' : 'transparent',
-                            color: on ? '#fff' : absent ? 'var(--c64748b)' : 'var(--c94a3b8)',
+                            width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'inherit', cursor: 'pointer',
+                            padding: '9px 11px', borderRadius: 9, border: '1px solid var(--c334155)', background: 'var(--c0f172a)',
+                            color: 'var(--ce2e8f0)', fontSize: 13, fontWeight: 600,
                           }}
                         >
-                          {c === 'google' ? '📍 ' : c === 'tiktok' ? '🎵 ' : ''}{CHANNEL_NAME[c]}
+                          <span style={{ display: 'inline-block', transform: advShow ? 'rotate(90deg)' : 'none', transition: 'transform .15s', fontSize: 11 }}>▶</span>
+                          {T('Nâng cao', 'Advanced')}
+                          <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--c64748b)' }}>· {T('Google · TikTok · nhóm & duyệt', 'Google · TikTok · team & approval')}</span>
                         </button>
-                      );
-                    })}
-                  </div>
+                        {advShow && (<>
                   {postDraft.channels.includes('google') && (() => {
                     const pxProblem = gbpPx && (gbpPx.w < 250 || gbpPx.h < 250)
                       ? T(`Ảnh ${gbpPx.w}×${gbpPx.h} px — Google yêu cầu ít nhất 250×250 px (nên 720×720 trở lên).`, `Photo is ${gbpPx.w}×${gbpPx.h} px — Google needs at least 250×250 (720×720 or more is best).`)
@@ -4431,359 +5071,6 @@ function Inner() {
                     );
                   })()}
 
-                  {/* ---- media, in the order they will appear ----
-                       Order is the whole feature for a carousel: item one is
-                       the thumbnail in the feed AND the square on the profile
-                       grid, and it is the only one most people ever see. */}
-                  <div style={{ marginTop: 13 }}>
-                    <div style={{ fontSize: 11.5, color: 'var(--c64748b)', marginBottom: 5 }}>
-                      {T('Ảnh & video (link https công khai)', 'Photos & video (public https links)')}
-                      {postDraft.channels.includes('instagram') && ` — ${T('Instagram bắt buộc có ít nhất 1', 'Instagram needs at least one')}`}
-                      {postDraft.channels.includes('google') && ` — ${T('Google Business: Google không cho gắn video vào bài qua hệ thống — bài lên kèm chữ + ảnh bìa cắt từ video, còn video được thêm vào mục Ảnh & video của hồ sơ', 'Google Business: Google does not let apps attach a video to a post — the post goes out with the text and a cover frame from the video, and the video is added to the profile\u2019s Photos & videos')}`}
-                      {postDraft.channels.includes('tiktok') && ` — ${T('TikTok cần 1 video .mp4', 'TikTok needs one .mp4 video')}`}
-                    </div>
-
-                    <MediaList
-                      media={postDraft.media}
-                      onChange={(m) => setPostDraft({ ...postDraft, media: m })}
-                      vi={vi}
-                    />
-
-                    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: postDraft.media.length ? 4 : 0 }}>
-                      <input
-                        value={mediaInput}
-                        onChange={(e) => setMediaInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key !== 'Enter') return;
-                          e.preventDefault();
-                          addMedia();
-                        }}
-                        placeholder="https://…"
-                        style={{
-                          flex: '1 1 200px', minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5,
-                          border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
-                        }}
-                      />
-                      <button
-                        onClick={addMedia}
-                        disabled={postDraft.media.length >= 10 || driveJob !== null}
-                        style={{
-                          minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
-                          cursor: postDraft.media.length >= 10 ? 'not-allowed' : 'pointer', border: '1px solid var(--c475569)',
-                          background: 'transparent', color: postDraft.media.length >= 10 ? 'var(--c64748b)' : 'var(--ca5b4fc)',
-                        }}
-                      >
-                        {driveJob
-                          ? (driveJob.pct !== null ? T(`Đang lấy từ Drive ${driveJob.pct}%…`, `Fetching from Drive ${driveJob.pct}%…`) : T(`Đang lấy từ Drive… ${driveJob.loadedMb} MB`, `Fetching from Drive… ${driveJob.loadedMb} MB`))
-                          : `+ ${T('Thêm link', 'Add link')}`}
-                      </button>
-                      {/* The way out of the link problem entirely.
-                          Asking a salon for a "public https link to the file"
-                          is asking them to understand hosting; the answer they
-                          reach for is a Google Drive share link, which is a web
-                          page and can never work. Uploading is the path that
-                          does not require them to know any of that. */}
-                      <label style={{
-                        minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
-                        display: 'inline-flex', alignItems: 'center', cursor: uploading ? 'wait' : 'pointer',
-                        border: 'none', background: '#6366f1', color: '#fff',
-                      }}>
-                        {uploading
-                          ? (uploadStep && uploadStep.total > 1
-                            ? T(`Đang tải ${Math.min(uploadStep.done + 1, uploadStep.total)}/${uploadStep.total}…`, `Uploading ${Math.min(uploadStep.done + 1, uploadStep.total)}/${uploadStep.total}…`)
-                            : T('Đang tải…', 'Uploading…'))
-                          : `📷 ${T('Tải ảnh lên', 'Upload photos')}`}
-                        {/* `multiple`: a carousel is picked in one go, not ten
-                            trips through the file dialog. */}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          disabled={uploading || postDraft.media.length >= 10}
-                          onChange={(e) => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; if (fs.length) uploadMedia(fs); }}
-                          style={{ display: 'none' }}
-                        />
-                      </label>
-                      {/* The clip. One file, multipart, with a number on it —
-                          the photo path's data-URL trick would make a 60 MB
-                          clip 80 MB and time out. */}
-                      <label style={{
-                        minHeight: 42, padding: '0 16px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
-                        display: 'inline-flex', alignItems: 'center', cursor: videoPct !== null ? 'wait' : 'pointer',
-                        border: '1px solid #6366f1', background: 'transparent', color: 'var(--ca5b4fc)',
-                      }}>
-                        {videoPct !== null ? T(`Đang tải video ${videoPct}%…`, `Uploading video ${videoPct}%…`) : `🎬 ${T('Tải video lên', 'Upload a video')}`}
-                        <input
-                          type="file"
-                          accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm"
-                          disabled={videoPct !== null || uploading || postDraft.media.length >= 10}
-                          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadVideo(f); }}
-                          style={{ display: 'none' }}
-                        />
-                      </label>
-                    </div>
-                    {fitNote && (
-                      <div style={{
-                        marginTop: 7, padding: '8px 11px', borderRadius: 8,
-                        background: 'var(--c1e293b)', border: '1px solid var(--c475569)',
-                        fontSize: 12, color: 'var(--c94a3b8)', lineHeight: 1.55,
-                      }}>
-                        ✂︎ {fitNote}
-                      </div>
-                    )}
-                    <div style={{ fontSize: 11, color: 'var(--c64748b)', marginTop: 4, lineHeight: 1.5 }}>
-                      {postDraft.media.length >= 2
-                        ? T(`Bài nhiều ảnh (${postDraft.media.length}/10) — vuốt ngang trên Instagram.`, `Carousel (${postDraft.media.length}/10) — swipeable on Instagram.`)
-                        : postDraft.media.some((m) => m.kind === 'video')
-                          ? T('Video — Instagram đăng dạng Reels, Facebook đăng video thường.', 'Video — published as a Reel on Instagram, a video post on Facebook.')
-                          : T('Ảnh: bấm "Tải ảnh lên" — chọn được nhiều ảnh một lần (giữ Ctrl/Shift), thứ tự chọn là thứ tự trong bài. Video: bấm "Tải video lên" (MP4/MOV, tối đa 120 MB) — Facebook đăng video, Instagram đăng Reels, TikTok đăng bài. Video nặng hơn (tới 1 GB): tải lên Google Drive, chia sẻ "Bất kỳ ai có đường liên kết", dán link vào ô trên rồi bấm "Thêm link" — hệ thống tự kéo file về máy chủ.',
-                              'Photos: use Upload — pick several at once (hold Ctrl/Shift); the order you pick is the order in the post. Video: press "Upload a video" (MP4/MOV, 120 MB max) — a video post on Facebook, a Reel on Instagram, the post itself on TikTok. Bigger clips (up to 1 GB): put it on Google Drive, share as "Anyone with the link", paste the link above and press "Add link" — the server fetches it.')}
-                    </div>
-                  </div>
-
-                  {/* ---- what the follower will actually meet ---- */}
-                  {(postDraft.message.trim() || postDraft.media.length > 0) && (
-                    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 14 }}>
-                      {postDraft.channels.map((c) => (
-                        <div key={c}>
-                          <div style={{ fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 5 }}>
-                            {T('Xem trước', 'Preview')} · {CHANNEL_NAME[c]}
-                          </div>
-                          <PostPreview
-                            channel={c}
-                            message={c === 'google' && gbp ? gbp.summary : postDraft.message}
-                            media={postDraft.media}
-                            pageName={c === 'google' ? (queue?.google?.title ?? kit?.shop.name ?? null) : c === 'tiktok' ? (queue?.tiktok?.displayName ?? null) : (queue?.connected?.pageName ?? null)}
-                            igUsername={queue?.connected?.igUsername ?? null}
-                            vi={vi}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* ---- what this post will and will NOT do ----
-                       The channel buttons show their own state, but a salon that
-                       meant to reach Instagram and left it untoggled published to
-                       Facebook believing otherwise, and nothing on the screen
-                       contradicted them until afterwards. The absence has to be
-                       stated, not merely not-stated. */}
-                  {(() => {
-                    const on = postDraft.channels;
-                    const igReady = queue?.connected?.hasInstagram;
-                    const missingIg = igReady && !on.includes('instagram');
-                    const missingFb = !on.includes('facebook');
-                    const missingGg = Boolean(queue?.google) && !on.includes('google');
-                    if (!missingIg && !missingFb && !missingGg) return null;
-                    return (
-                      <div style={{
-                        marginTop: 9, padding: '9px 11px', borderRadius: 8,
-                        background: 'var(--c1e293b)', border: '1px dashed var(--c475569)',
-                        fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55,
-                      }}>
-                        {on.length === 0
-                          ? T('Chưa chọn nơi đăng — bài này sẽ không đi đâu cả.', 'No channel picked — this post goes nowhere.')
-                          : <>
-                            {T('Chỉ đăng lên', 'Publishing to')} <b style={{ color: 'var(--ce2e8f0)' }}>{on.map((c) => CHANNEL_NAME[c]).join(' + ')}</b>.{' '}
-                            {missingIg && (
-                              <>
-                                {T('KHÔNG lên Instagram', 'NOT to Instagram')} (@{queue?.connected?.igUsername}).{' '}
-                                <button
-                                  onClick={() => setPostDraft({ ...postDraft, channels: [...on, 'instagram'] })}
-                                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, textDecoration: 'underline' }}
-                                >
-                                  {T('Thêm Instagram', 'Add Instagram')}
-                                </button>
-                                {postDraft.media.length === 0 && (
-                                  <span> — {T('nhớ thêm ảnh, Instagram không nhận bài chỉ có chữ.', 'you will need a photo; Instagram takes no text-only post.')}</span>
-                                )}
-                              </>
-                            )}
-                            {missingFb && !missingIg && T('KHÔNG lên Facebook.', 'NOT to Facebook.')}
-                            {missingGg && (
-                              <>
-                                {' '}{T('KHÔNG lên Google Business.', 'NOT to Google Business.')}{' '}
-                                <button
-                                  onClick={() => setPostDraft({ ...postDraft, channels: [...on, 'google'] })}
-                                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, textDecoration: 'underline' }}
-                                >
-                                  {T('Thêm Google Business', 'Add Google Business')}
-                                </button>
-                              </>
-                            )}
-                          </>}
-                      </div>
-                    );
-                  })()}
-
-                  {/* ---- now, or on the calendar ----
-                       Scheduling used to be the only way in: write it, pick a
-                       date, save, find the row, press Post now. Five steps for
-                       the commonest thing a salon does — something happened in
-                       the shop and they want it up. */}
-                  <div style={{ marginTop: 13 }}>
-                    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 9 }}>
-                      {([
-                        ['now', `🚀 ${T('Đăng ngay', 'Post now')}`],
-                        ['later', `🗓️ ${T('Hẹn giờ', 'Schedule')}`],
-                      ] as const).map(([k, label]) => (
-                        <button
-                          key={k}
-                          onClick={() => setPostWhen(k)}
-                          style={{
-                            minHeight: 40, padding: '0 16px', borderRadius: 9, cursor: 'pointer',
-                            fontSize: 13.5, fontWeight: postWhen === k ? 700 : 500,
-                            border: `1px solid ${postWhen === k ? '#6366f1' : 'var(--c334155)'}`,
-                            background: postWhen === k ? '#6366f1' : 'transparent',
-                            color: postWhen === k ? '#fff' : 'var(--c94a3b8)',
-                          }}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    {postWhen === 'later' ? (() => {
-                      /* THE ZONE THE DIGITS BELONG TO, SAID OUT LOUD.
-                         The picker used to be a bare datetime box whose digits
-                         silently meant salon time. A writer in Vietnam typing
-                         "20:00" for a Texas shop had no way to see whether that
-                         was Texas 20:00 or Vietnam 20:00 — the difference is a
-                         post at 8 in the morning. So the zone is a control next
-                         to the digits, salon time by default, and the same
-                         instant is echoed in the other zone underneath. */
-                      const shopTz = salonTz();
-                      const mine = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : '';
-                      const options = Array.from(new Set([
-                        shopTz, mine, 'America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York', 'America/Phoenix', 'Pacific/Honolulu', 'Asia/Ho_Chi_Minh',
-                      ].filter(Boolean)));
-                      const zoneName = (z: string) => z === shopTz && z ? `${T('Giờ tiệm', 'Salon time')} · ${z}` : z === mine ? `${T('Giờ máy anh', 'Your time')} · ${z}` : z;
-                      const instant = postDraft.at && postDraft.at.length >= 16 ? wallToInstantISO(postDraft.at, postTz || undefined) : null;
-                      const echo = instant && shopTz && postTz !== shopTz ? `${instantToWall(instant, shopTz).replace('T', ' ')} ${T('giờ tiệm', 'salon time')}` : instant && mine && postTz !== mine ? `${instantToWall(instant, mine).replace('T', ' ')} ${T('giờ máy anh', 'your time')}` : null;
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <input
-                              id="post-at"
-                              type="datetime-local"
-                              min={instantToWall(new Date(), postTz || undefined).slice(0, 16)}
-                              value={postDraft.at}
-                              onChange={(e) => setPostDraft({ ...postDraft, at: e.target.value })}
-                              style={{
-                                minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5, fontFamily: 'inherit',
-                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
-                              }}
-                            />
-                            <select
-                              id="post-tz"
-                              value={postTz}
-                              onChange={(e) => setPostTz(e.target.value)}
-                              title={T('Múi giờ mà giờ bên trái được hiểu theo', 'The zone the time on the left is read in')}
-                              style={{
-                                minHeight: 42, padding: '0 10px', borderRadius: 9, fontSize: 13, fontFamily: 'inherit', maxWidth: '100%',
-                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
-                              }}
-                            >
-                              {options.map((z) => <option key={z} value={z}>{zoneName(z)}</option>)}
-                            </select>
-                          </div>
-                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
-                            {echo ? <>= <b style={{ color: 'var(--ccbd5e1)', fontVariantNumeric: 'tabular-nums' }}>{echo}</b></> : T('Giờ đăng tính theo múi giờ đã chọn.', 'Posts at that time in the chosen zone.')}
-                          </div>
-                        </div>
-                      );
-                    })() : (
-                      <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.55 }}>
-                        {T('Bài sẽ lên trang ngay khi bấm. Vẫn được lưu vào lịch để xem lại sau.',
-                           'Goes up the moment you press. Still recorded on the calendar afterwards.')}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Hidden once it has published: the server refuses the save,
-                      and a button whose only outcome is an error message is a
-                      button that should not be there. */}
-                  {/* ---- what in this draft is not this salon's ----
-                      One writer, eight salons, eight tabs. Last week's post
-                      from another shop gets copied, the caption rewritten, and
-                      the contact block left behind — so the post goes out on
-                      this Page telling these customers to ring a shop two
-                      hundred miles away. This is the gate that catches it.
-
-                      It blocks rather than warns. A yellow banner that lets the
-                      button work is read for two weeks and then never again,
-                      and this is a public, permanent mistake. The override
-                      exists because a shop really can name a partner's number —
-                      but somebody has to say so on purpose. */}
-                  {kit && check.findings.length > 0 && (
-                    <div style={{
-                      marginTop: 12, padding: '12px 13px', borderRadius: 10,
-                      background: 'rgba(239,68,68,.10)', border: '1px solid #ef4444',
-                    }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink-bad)' }}>
-                        ⚠ {check.findings.length} {T('thông tin không thuộc về', 'details that do not belong to')} {kit.shop.name}
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginTop: 8 }}>
-                        {check.findings.map((f, i) => (
-                          <div key={i} style={{
-                            display: 'flex', gap: 9, alignItems: 'flex-start', padding: '7px 0',
-                            borderTop: i ? '1px solid rgba(239,68,68,.25)' : 'none',
-                          }}>
-                            <code style={{
-                              fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12,
-                              background: 'rgba(239,68,68,.16)', color: 'var(--cfecaca)',
-                              borderRadius: 5, padding: '1px 6px', flexShrink: 0, maxWidth: 220,
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            }}>{f.found}</code>
-                            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.5 }}>
-                              {f.expected
-                                ? <>{T('nên là', 'should be')} <b style={{ color: 'var(--ink-bad)' }}>{f.expected}</b></>
-                                : T('không khớp hồ sơ tiệm này', 'does not match this salon')}
-                            </span>
-                            {f.expected && (
-                              <button
-                                onClick={() => setPostDraft({ ...postDraft, message: applyFix(postDraft.message, f) })}
-                                style={{
-                                  background: 'transparent', border: '1px solid #ef4444', color: 'var(--ink-bad)',
-                                  borderRadius: 7, padding: '3px 9px', fontSize: 11.5, cursor: 'pointer',
-                                  whiteSpace: 'nowrap', fontFamily: 'inherit',
-                                }}
-                              >{T('Sửa', 'Fix')}</button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      {!contactOverride && (
-                        <div style={{ marginTop: 10, display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
-                          <button
-                            onClick={() => setContactOverride(true)}
-                            style={{
-                              background: 'transparent', border: '1px solid #f59e0b', color: 'var(--cfcd34d)',
-                              borderRadius: 7, padding: '4px 10px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit',
-                            }}
-                          >{T('Tôi biết, vẫn đăng', 'I know — post anyway')}</button>
-                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
-                            {T('bài sẽ ghi tên người mở khoá', 'the post records who unlocked it')}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* A check that cannot run must say so. Silence here reads
-                      exactly like "nothing wrong", and that is how a salon with
-                      no phone number on file publishes a rival's for a year. */}
-                  {kit && kit.missing.length > 0 && (
-                    <div style={{
-                      marginTop: 10, padding: '10px 12px', borderRadius: 10,
-                      background: 'rgba(245,158,11,.08)', border: '1px solid #f59e0b',
-                      fontSize: 12.5, color: 'var(--ccbd5e1)', lineHeight: 1.6,
-                    }}>
-                      {T('Chưa đối chiếu được', 'Cannot check')}: <b style={{ color: 'var(--cfcd34d)' }}>{kit.missing.map((m) => MISSING_LABEL[m]).join(', ')}</b>
-                      {' — '}{T('hồ sơ tiệm còn trống mục này, nên phần đó không được kiểm.',
-                                'the salon profile is blank there, so that part is not checked.')}
-                    </div>
-                  )}
-
                   {/* ---- the team's path: who writes, who designs, where it stands ----
                        Three people touch a post and Meta's scheduler knows
                        nothing about it. This is the hand-off: the writer saves
@@ -4914,9 +5201,93 @@ function Inner() {
                     );
                   })()}
 
+                        </>)}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ---- what the follower will actually meet ---- */}
+                  {(postDraft.message.trim() || postDraft.media.length > 0) && (
+                    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 14 }}>
+                      {postDraft.channels.map((c) => (
+                        <div key={c}>
+                          <div style={{ fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 5 }}>
+                            {T('Xem trước', 'Preview')} · {CHANNEL_NAME[c]}
+                          </div>
+                          <PostPreview
+                            channel={c}
+                            message={c === 'google' && gbp ? gbp.summary : postDraft.message}
+                            media={postDraft.media}
+                            pageName={c === 'google' ? (queue?.google?.title ?? kit?.shop.name ?? null) : c === 'tiktok' ? (queue?.tiktok?.displayName ?? null) : (queue?.connected?.pageName ?? null)}
+                            igUsername={queue?.connected?.igUsername ?? null}
+                            vi={vi}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ---- what this post will and will NOT do ----
+                       The channel buttons show their own state, but a salon that
+                       meant to reach Instagram and left it untoggled published to
+                       Facebook believing otherwise, and nothing on the screen
+                       contradicted them until afterwards. The absence has to be
+                       stated, not merely not-stated. */}
+                  {(() => {
+                    const on = postDraft.channels;
+                    const igReady = queue?.connected?.hasInstagram;
+                    const missingIg = igReady && !on.includes('instagram');
+                    const missingFb = !on.includes('facebook');
+                    const missingGg = Boolean(queue?.google) && !on.includes('google');
+                    if (!missingIg && !missingFb && !missingGg) return null;
+                    return (
+                      <div style={{
+                        marginTop: 9, padding: '9px 11px', borderRadius: 8,
+                        background: 'var(--c1e293b)', border: '1px dashed var(--c475569)',
+                        fontSize: 12.5, color: 'var(--c94a3b8)', lineHeight: 1.55,
+                      }}>
+                        {on.length === 0
+                          ? T('Chưa chọn nơi đăng — bài này sẽ không đi đâu cả.', 'No channel picked — this post goes nowhere.')
+                          : <>
+                            {T('Chỉ đăng lên', 'Publishing to')} <b style={{ color: 'var(--ce2e8f0)' }}>{on.map((c) => CHANNEL_NAME[c]).join(' + ')}</b>.{' '}
+                            {missingIg && (
+                              <>
+                                {T('KHÔNG lên Instagram', 'NOT to Instagram')} (@{queue?.connected?.igUsername}).{' '}
+                                <button
+                                  onClick={() => setPostDraft({ ...postDraft, channels: [...on, 'instagram'] })}
+                                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, textDecoration: 'underline' }}
+                                >
+                                  {T('Thêm Instagram', 'Add Instagram')}
+                                </button>
+                                {postDraft.media.length === 0 && (
+                                  <span> — {T('nhớ thêm ảnh, Instagram không nhận bài chỉ có chữ.', 'you will need a photo; Instagram takes no text-only post.')}</span>
+                                )}
+                              </>
+                            )}
+                            {missingFb && !missingIg && T('KHÔNG lên Facebook.', 'NOT to Facebook.')}
+                            {missingGg && (
+                              <>
+                                {' '}{T('KHÔNG lên Google Business.', 'NOT to Google Business.')}{' '}
+                                <button
+                                  onClick={() => setPostDraft({ ...postDraft, channels: [...on, 'google'] })}
+                                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--ca5b4fc)', fontSize: 12.5, fontWeight: 600, textDecoration: 'underline' }}
+                                >
+                                  {T('Thêm Google Business', 'Add Google Business')}
+                                </button>
+                              </>
+                            )}
+                          </>}
+                      </div>
+                    );
+                  })()}
+
+                  </div>
+                  </div>
                   <div style={{
                     display: postDraft.id && queue?.posts.find((x) => x.id === postDraft.id)?.status === 'posted' ? 'none' : 'flex',
-                    gap: 9, flexWrap: 'wrap', marginTop: 14,
+                    gap: 9, flexWrap: 'wrap',
+                    position: 'sticky', bottom: -16, zIndex: 4, margin: '14px -16px -16px', padding: '12px 16px 16px',
+                    background: 'var(--c1e293b)', borderTop: '1px solid var(--c334155)',
                   }}>
                     <button
                       onClick={() => savePost('scheduled', postWhen === 'now')}
@@ -4954,225 +5325,8 @@ function Inner() {
                       {T('Đóng', 'Close')}
                     </button>
                   </div>
-
-                  {/* ---- an existing post: its state, and what can be done to it ----
-                       "Post now" and "Cancel" used to live ONLY in the list view,
-                       so opening a post from the calendar or the grid gave you a
-                       composer with no way to send it. The composer is the one
-                       place every view leads to, so the actions belong here. */}
-                  {(() => {
-                    const live = postDraft.id ? queue?.posts.find((x) => x.id === postDraft.id) : null;
-                    if (!live) return null;
-                    const S: Record<string, { fg: string; text: string }> = {
-                      draft: { fg: 'var(--c94a3b8)', text: T('Nháp', 'Draft') },
-                      scheduled: { fg: '#6366f1', text: T('Đã đặt lịch', 'Scheduled') },
-                      publishing: { fg: '#f59e0b', text: T('Đang đăng', 'Publishing') },
-                      posted: { fg: '#22c55e', text: T('Đã đăng', 'Posted') },
-                      failed: { fg: '#ef4444', text: T('Lỗi', 'Failed') },
-                      expired: { fg: '#f59e0b', text: T('Quá hạn', 'Missed') },
-                      cancelled: { fg: 'var(--c64748b)', text: T('Đã huỷ', 'Cancelled') },
-                    };
-                    const st = live.held
-                      ? { fg: '#ef4444', text: T('Khách yêu cầu sửa', 'Change requested') }
-                      : S[live.status] ?? S.draft;
-                    return (
-                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--c334155)' }}>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{T('Trạng thái', 'Status')}</span>
-                          <span style={{ fontSize: 11.5, padding: '2px 9px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg, fontWeight: 600 }}>
-                            {live.held ? '🔴 ' : ''}{st.text}
-                          </span>
-                          {live.attempts > 0 && (
-                            <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
-                              {T('đã thử', 'tried')} {live.attempts}×
-                            </span>
-                          )}
-                        </div>
-
-                        {/* What the client actually asked for, sitting next to
-                            the box where the fix gets typed. Saving the post
-                            clears the red on its own — an edit IS the answer —
-                            so the button below is for the requests that were
-                            handled somewhere else: a phone call, a new photo,
-                            or a question that turned out to need no change. */}
-                        {live.held && (
-                          <div style={{ padding: '10px 12px', borderRadius: 8, marginBottom: 9, background: 'var(--c450a0a)', border: '1px solid #ef4444' }}>
-                            <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', marginBottom: 3 }}>
-                              {live.held.by ? `${live.held.by} · ` : ''}
-                              {T('bài này đang dừng, không tự đăng', 'this post is stopped and will not publish')}
-                            </div>
-                            {live.held.note && (
-                              <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                                “{live.held.note}”
-                              </div>
-                            )}
-                            {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
-                              <button
-                                onClick={() => clearHold(live.id)}
-                                disabled={queueBusy}
-                                style={{
-                                  marginTop: 8, minHeight: 34, padding: '7px 12px', borderRadius: 8,
-                                  cursor: queueBusy ? 'not-allowed' : 'pointer', border: 'none',
-                                  background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 600,
-                                }}
-                              >
-                                ✓ {T('Đã xử lý xong — cho bài chạy lại', 'Handled — let it publish')}
-                              </button>
-                            )}
-                          </div>
-                        )}
-
-                        {/* The reason, verbatim from Meta. Paraphrasing it would
-                            hide the one string that says what to fix. */}
-                        {!!live.blockers.length && (
-                          <div style={{ padding: '9px 11px', borderRadius: 8, marginBottom: 9, background: 'var(--c451a03)', border: '1px solid #f59e0b' }}>
-                            {live.blockers.map((b) => (
-                              <div key={b} style={{ fontSize: 12.5, color: 'var(--cfde68a)', lineHeight: 1.55 }}>⚠︎ {b}</div>
-                            ))}
-                          </div>
-                        )}
-                        {live.lastError && !live.blockers.length && (
-                          <div style={{
-                            padding: '10px 12px', borderRadius: 8, marginBottom: 9,
-                            background: live.errorIsStale ? 'var(--c1e293b)' : 'var(--c450a0a)',
-                            border: `1px solid ${live.errorIsStale ? 'var(--c334155)' : 'var(--c991b1b)'}`,
-                          }}>
-                            {/* The permission has since been granted, so this is
-                                history rather than an instruction. Telling
-                                somebody to reconnect a Page they just
-                                reconnected is how a fix message stops being
-                                believed. */}
-                            {live.errorIsStale && (
-                              <div style={{ fontSize: 13, color: 'var(--ink-good)', fontWeight: 600, lineHeight: 1.55, marginBottom: 6 }}>
-                                ✓ {T('Quyền đã được cấp rồi — lỗi bên dưới là của lần thử trước. Bấm "Đăng ngay" để thử lại.',
-                                     'The permission is granted now — the error below is from the earlier attempt. Press “Post now” to try again.')}
-                              </div>
-                            )}
-                            {live.fix && (
-                              <div style={{ fontSize: 13, color: 'var(--cfecaca)', fontWeight: 600, lineHeight: 1.55, marginBottom: 6 }}>
-                                → {live.fix}
-                              </div>
-                            )}
-                            {/* Meta's own words, kept whole. It is the only
-                                precise string anybody can search for later. */}
-                            <details>
-                              <summary style={{ fontSize: 11.5, color: 'var(--cfca5a5)', cursor: 'pointer' }}>
-                                {T('Nguyên văn lỗi từ Facebook', 'Facebook’s exact error')}
-                              </summary>
-                              <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', lineHeight: 1.5, marginTop: 5, wordBreak: 'break-word' }}>
-                                {live.lastError}
-                              </div>
-                            </details>
-                          </div>
-                        )}
-
-                        {/* Every channel the post ASKED for, with what became of
-                            it — not only the ones that worked. A list of
-                            successes reads as a complete list, which is how a
-                            Facebook-only post gets mistaken for one that also
-                            reached Instagram. */}
-                        {live.status === 'posted' && (
-                          <div style={{ marginBottom: 9 }}>
-                            {(['facebook', 'instagram', 'google', 'tiktok'] as const).map((c) => {
-                              const asked = live.channels.includes(c);
-                              const r = live.results.find((x) => x.channel === c);
-                              const name = CHANNEL_NAME[c];
-                              const connected = c === 'facebook' ? Boolean(queue?.connected) : c === 'instagram' ? queue?.connected?.hasInstagram : c === 'google' ? Boolean(queue?.google) : Boolean(queue?.tiktok);
-                              if (!asked && !connected) return null;
-                              return (
-                                <div key={c} style={{ fontSize: 12.5, lineHeight: 1.7 }}>
-                                  {!asked
-                                    ? <span style={{ color: 'var(--c64748b)' }}>○ {name} — {T('không chọn đăng', 'not selected')}</span>
-                                    : r?.url
-                                      ? <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c60a5fa)' }}>
-                                        ✓ {name} — {r.urlKind === 'profile'
-                                          ? T('bài riêng tư, mở trang tài khoản', 'private post — open the profile')
-                                          : T('xem bài', 'view the post')}
-                                      </a>
-                                      : <span style={{ color: 'var(--ink-good)' }}>✓ {name}</span>}
-                                  {asked && r?.note && <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.45 }}>ⓘ {r.note}</div>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {live.status !== 'posted' && live.results.filter((r) => r.url).map((r) => (
-                          <a
-                            key={r.channel} href={r.url!} target="_blank" rel="noopener noreferrer"
-                            style={{ display: 'inline-block', marginRight: 12, marginBottom: 8, fontSize: 12.5, color: 'var(--c60a5fa)' }}
-                          >
-                            🔗 {T('Xem trên', 'View on')} {CHANNEL_NAME[r.channel as Channel] ?? r.channel}
-                          </a>
-                        ))}
-
-                        {/* A published row is the record of what really went up:
-                            it carries the publish time and the links, and the
-                            weekly results count it. It is not deletable, so no
-                            button pretends otherwise. */}
-                        {live.status === 'posted' ? (
-                          <div>
-                            <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.6 }}>
-                              {T('Bài đã đăng được giữ lại làm sổ ghi. Muốn gỡ bài thì xoá trực tiếp trên Facebook/Instagram; muốn lịch gọn hơn thì bỏ tick "Hiện bài đã đăng".',
-                                 'Published posts are kept as the record. To take one down, delete it on Facebook/Instagram; to tidy the calendar, untick “Show published posts”.')}
-                            </div>
-                            {queue?.canDeletePosted && (
-                              <button
-                                onClick={() => removePost(live.id)}
-                                disabled={queueBusy}
-                                style={{
-                                  marginTop: 9, minHeight: 38, padding: '0 14px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5,
-                                  border: '1px solid #ef4444', background: 'transparent', color: 'var(--ink-bad)', fontWeight: 600,
-                                }}
-                              >
-                                🗑 {T('Xoá khỏi lịch (Lumio)', 'Remove from calendar (Lumio)')}
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <button
-                              onClick={() => removePost(live.id)}
-                              disabled={queueBusy}
-                              style={{
-                                minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
-                                border: '1px solid #ef4444', background: 'transparent', color: 'var(--ink-bad)', fontWeight: 600,
-                              }}
-                            >
-                              🗑 {T('Xoá bài', 'Delete')}
-                            </button>
-                          </div>
-                        )}
-                        {live.status !== 'posted' && (
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-                            <button
-                              onClick={() => postAction(live.id, 'publish')}
-                              disabled={queueBusy || live.blockers.length > 0}
-                              style={{
-                                minHeight: 42, padding: '0 18px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
-                                cursor: live.blockers.length ? 'not-allowed' : 'pointer', border: 'none',
-                                background: live.blockers.length ? 'var(--c334155)' : '#6366f1',
-                                color: live.blockers.length ? 'var(--c64748b)' : '#fff',
-                              }}
-                            >
-                              🚀 {queueBusy ? T('Đang đăng…', 'Publishing…') : T('Đăng ngay', 'Post now')}
-                            </button>
-                            <button
-                              onClick={() => { postAction(live.id, 'cancel'); setPostDraft(null); }}
-                              disabled={queueBusy}
-                              title={T('Giữ lại bài nhưng không đăng nữa', 'Keeps the post but stops it going out')}
-                              style={{
-                                minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
-                                border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)',
-                              }}
-                            >
-                              {T('Tạm dừng', 'Pause it')}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
                   </>)}
+                </div>
                 </div>
               );
               })()}
@@ -5233,6 +5387,7 @@ function Inner() {
                         onPick={(id) => setDetailId(id)}
                         onDrop={movePost}
                         onDelete={removePost}
+                        onNew={(k) => newPost(`${k}T10:00`)}
                         vi={vi}
                         compact={isMobile}
                         canDeletePosted={Boolean(queue.canDeletePosted)}

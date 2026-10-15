@@ -16,6 +16,7 @@ import { NoShowWarning } from './NoShowWarning';
 import { RecordAlertByPhone } from './RecordAlert';
 import { deskHoursCheck, hoursMessage, wallLabel, type HoursRules } from '../lib/desk-hours';
 import { ind, uiIndustry } from '../lib/ui-industry';
+import { SlotPicker } from './SlotPicker';
 
 export interface BookingFormService { id: string; name: string; durationMinutes: number }
 export interface BookingFormStaff { id: string; firstName: string; lastName: string | null; isActive: boolean }
@@ -107,6 +108,8 @@ export function CreateBookingForm({
     : services;
 
   const partyN = Math.max(1, Math.min(10, parseInt(form.partySize, 10) || 1));
+  // The party holds its chairs until the slowest member is done.
+  const longestMin = Math.max(0, ...people.map((p) => p.serviceIds.reduce((sum, id) => sum + (services.find((s) => s.id === id)?.durationMinutes ?? 0), 0)));
 
   // Grow or shrink the party to match the People box. A new guest starts with
   // the booker's services because that is the common case on a phone call;
@@ -189,6 +192,19 @@ export function CreateBookingForm({
   // Opening hours, checked the moment a time is picked (the server checks too).
   const hoursCheck = form.startLocal ? deskHoursCheck(form.startLocal, hours, vi) : ({ ok: true } as const);
   const outside = !hoursCheck.ok && overrideAt !== form.startLocal;
+  // Minutes since the chosen time, on the salon's clock. The desk may record a
+  // customer already in the chair (up to 12 hours back — the server agrees);
+  // older than that is a wrong day or an AM/PM slip.
+  const pastMin = (() => {
+    if (!form.startLocal) return 0;
+    const at = Date.parse(wallToInstantISO(form.startLocal, salonTz || undefined));
+    return Number.isFinite(at) ? Math.floor((Date.now() - at) / 60_000) : 0;
+  })();
+  const tooOld = pastMin > 12 * 60;
+  const pastText = tooOld
+    ? (vi ? 'Giờ này đã qua hơn 12 tiếng — kiểm tra lại ngày và sáng/chiều (AM/PM).' : 'That time is more than 12 hours ago — check the date and AM/PM.')
+    : (vi ? `Giờ này đã qua ${pastMin < 60 ? `${pastMin} phút` : `${Math.floor(pastMin / 60)} giờ ${pastMin % 60} phút`} — vẫn ghi được (khách đã đến / ghi bù).`
+      : `That time was ${pastMin < 60 ? `${pastMin} min` : `${Math.floor(pastMin / 60)} h ${pastMin % 60} min`} ago — it can still be recorded (customer already here).`);
   // '' = let the system pick by turn; '__none' = leave it for later on purpose.
   const autoPick = form.staffId !== '__none';
   const chosenStaff = form.staffId && form.staffId !== '__none' ? form.staffId : '';
@@ -197,6 +213,7 @@ export function CreateBookingForm({
     e.preventDefault();
     setError(null);
     if (serviceIds.length === 0) { setError(t('bk.pickAtLeastOne')); return; }
+    if (!form.startLocal) { setError(vi ? 'Chọn giờ hẹn.' : 'Pick a time.'); return; }
     // A guest with no service would silently be booked on the booker's, which
     // is how a pedicure turns into a gel set at the till.
     const empty = people
@@ -205,6 +222,7 @@ export function CreateBookingForm({
       .map(({ p, i }) => (i === 0 ? (form.customerFirstName.trim() || t('bk.you')) : (p.name.trim() || `${t('bk.guestLabel')} ${i + 1}`)));
     if (empty.length > 0) { setError(t('bk.missingSvc').replace('{who}', empty.join(', '))); return; }
     if (outside) { setError(hoursMessage(form.startLocal, hoursCheck, vi)); return; }
+    if (tooOld) { setError(pastText); return; }
     setSubmitting(true);
     // form.startLocal is the SALON's wall clock — the receptionist typed the
     // customer's hour, not their own browser's. The salon's zone is passed in
@@ -289,6 +307,7 @@ export function CreateBookingForm({
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Create failed';
       // The server's own hours check, in the reader's language.
+      if (/in the past/i.test(msg)) { setError(vi ? 'Giờ này đã qua quá xa — kiểm tra lại ngày và sáng/chiều (AM/PM), hoặc chọn giờ muộn hơn.' : 'That time is too far in the past — check the date and AM/PM, or pick a later time.'); return; }
       setError(/^OUTSIDE_HOURS/.test(msg) ? (hoursMessage(form.startLocal, deskHoursCheck(form.startLocal, hours, vi), vi) || msg.replace(/^OUTSIDE_HOURS:\s*/, '')) : msg);
     } finally {
       setSubmitting(false);
@@ -322,19 +341,31 @@ export function CreateBookingForm({
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 18, ...(bare ? { flex: 1 } : {}) }}>
         <FormSection title={t('bk.secWhen')}>
           <div style={fieldGrid}>
-            <label>
+            <div style={{ gridColumn: '1 / -1' }}>
               <FieldLabel raw={t('bk.dateTime')} required optionalWord={t('bk.optional')} />
-              <input
-                style={ui.input}
-                type="datetime-local"
+              {/* Only open days and opening hours, never a time already gone —
+                  with how many technicians are free at each. See SlotPicker. */}
+              <SlotPicker
                 value={form.startLocal}
-                onChange={(e) => up('startLocal', e.target.value)}
-                required
+                onChange={(v) => up('startLocal', v)}
+                rules={hours}
+                salonTz={salonTz}
+                vi={vi}
+                isOwner={isOwner}
+                minutes={longestMin}
+                bookings={bookings}
+                staff={staff}
+                staffId={form.staffId}
               />
               {/* Read back in words — "11:40 (tối)" makes an AM/PM slip obvious. */}
               {form.startLocal && (
                 <span style={{ display: 'block', marginTop: 5, fontSize: 12, fontWeight: 600, color: outside ? 'var(--ink-bad)' : 'var(--c94a3b8)' }}>
                   {outside ? `⚠ ${hoursMessage(form.startLocal, hoursCheck, vi)}` : `🕒 ${wallLabel(form.startLocal, vi)}${ind(vi ? ' — giờ của tiệm' : ' — salon time')}`}
+                </span>
+              )}
+              {form.startLocal && pastMin > 2 && (
+                <span style={{ display: 'block', marginTop: 4, fontSize: 12, fontWeight: 600, color: tooOld ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>
+                  {tooOld ? '⚠ ' : '⏱ '}{pastText}
                 </span>
               )}
               {outside && isOwner && (
@@ -343,7 +374,7 @@ export function CreateBookingForm({
                   {ind(vi ? 'Vẫn đặt ngoài giờ (chủ tiệm)' : 'Book outside hours anyway (owner)')}
                 </button>
               )}
-            </label>
+            </div>
             <label>
               <FieldLabel raw={t('bk.partySize')} optionalWord={t('bk.optional')} hint={`👥 ${t('bk.partyHint')}`} />
               <input

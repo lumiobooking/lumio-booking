@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
+import { pastStartProblem } from './past-start';
 import { createHmac } from 'crypto';
 import { signingSecret } from '../common/secret.util';
 import { publicWebBase } from '../common/public-url.util';
@@ -585,9 +586,10 @@ export class BookingsService {
     }
 
     const start = parseStartTime(dto.startTime);
-    if (start.getTime() < Date.now()) {
-      throw new BadRequestException('startTime is in the past');
-    }
+    // Staff at the desk may record a customer already in the chair (up to 12 h
+    // back); online / chat / hotline bookings must start in the future.
+    const pastProblem = pastStartProblem(start, Date.now(), !isPublicBooking);
+    if (pastProblem) throw new BadRequestException(pastProblem);
 
     // ---- Pricing ----
     const addonPrice = addons.reduce((s, a) => s + a.priceCents, 0);

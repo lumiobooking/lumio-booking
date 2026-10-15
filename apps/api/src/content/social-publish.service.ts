@@ -1730,7 +1730,18 @@ export class SocialPublishService {
           file_url: vid.url, description: message, access_token: token,
         }), 60_000);
         if (!r.ok) return fail(this.graphError(r, 'Facebook'), r.timedOut);
-        return done(r.json?.id ?? null);
+        // /videos answers with the VIDEO id, which is not a post URL:
+        // facebook.com/<video id> is "content isn't available". Ask Graph for
+        // the permalink; failing that, the watch URL opens the video.
+        const vidId = r.json?.id ?? null;
+        if (!vidId) return done(null);
+        let url = `https://www.facebook.com/watch/?v=${vidId}`;
+        try {
+          const pr = await fetch(`${GRAPH}/${vidId}?fields=permalink_url&access_token=${encodeURIComponent(token)}`, { signal: AbortSignal.timeout(10_000) });
+          const pj = (await pr.json().catch(() => null)) as { permalink_url?: string } | null;
+          if (pj?.permalink_url) url = pj.permalink_url.startsWith('http') ? pj.permalink_url : `https://www.facebook.com${pj.permalink_url}`;
+        } catch { /* the watch URL stands */ }
+        return { channel: 'facebook', id: vidId, url, error: null };
       }
 
       if (media.length === 0) {

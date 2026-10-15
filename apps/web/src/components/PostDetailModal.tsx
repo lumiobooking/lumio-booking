@@ -44,6 +44,8 @@ export interface DetailPost {
   teamNote?: string | null;
   createdByName?: string | null;
   held?: { at: string; by: string | null; note: string | null } | null;
+  /** The first comments under the post and what became of each (content/auto-comments). */
+  commentLog?: { channel: string; text: string; dueAt: string; status: 'pending' | 'posted' | 'failed'; error?: string | null; fix?: string | null }[];
   mediaPurged?: boolean;
   google?: { button: string; url: string | null } | null;
 }
@@ -221,6 +223,22 @@ export function PostDetailModal({
                     }
                     return <span key={c} style={{ color: 'var(--c64748b)' }}>{name} — {T('chưa có kết quả', 'no result recorded')}</span>;
                   })}
+                </span>
+              } />
+            )}
+            {post.status === 'posted' && (post.commentLog?.length ?? 0) > 0 && (
+              <Row k={T('Bình luận', 'Comments')} v={
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {post.commentLog!.map((j, i) => (
+                    <span key={i} style={{ display: 'flex', gap: 6, alignItems: 'baseline', fontSize: 12.5 }}>
+                      <span style={{ flexShrink: 0, color: j.status === 'posted' ? 'var(--ink-good)' : j.status === 'failed' ? 'var(--ink-bad)' : 'var(--ink-warn)' }}>
+                        {j.status === 'posted' ? '✓' : j.status === 'failed' ? '✕' : '◷'} {j.channel === 'facebook' ? 'f' : '◎'}
+                      </span>
+                      <span style={{ color: 'var(--ccbd5e1)' }}>{j.text}</span>
+                      {j.status === 'pending' && <span style={{ color: 'var(--c64748b)', flexShrink: 0 }}>{new Date(j.dueAt).toLocaleTimeString(vi ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</span>}
+                      {j.status === 'failed' && (j.fix || j.error) && <span style={{ color: 'var(--ink-bad)' }}>— {j.fix ?? j.error}</span>}
+                    </span>
+                  ))}
                 </span>
               } />
             )}

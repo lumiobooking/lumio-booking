@@ -615,6 +615,7 @@ export class MessengerService implements OnModuleInit {
     try {
       const tokRes = await fetch(
         `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${this.appId()}&client_secret=${this.appSecret()}&redirect_uri=${encodeURIComponent(this.oauthRedirect())}&code=${encodeURIComponent(code)}`,
+        { signal: AbortSignal.timeout(15000) },
       );
       const tok = (await tokRes.json()) as { access_token?: string; error?: { message?: string } };
       if (!tok.access_token) { trace.push(`token: FAILED — ${tok.error?.message || 'no_token'}`); return finish(`fb=error&msg=${encodeURIComponent(tok.error?.message || 'no_token')}`); }
@@ -669,6 +670,7 @@ export class MessengerService implements OnModuleInit {
         try {
           const dbgRes = await fetch(
             `https://graph.facebook.com/v21.0/debug_token?input_token=${encodeURIComponent(tok.access_token)}&access_token=${encodeURIComponent(`${this.appId()}|${this.appSecret()}`)}`,
+            { signal: AbortSignal.timeout(15000) },
           );
           const dbg = (await dbgRes.json()) as { data?: { granular_scopes?: { scope: string; target_ids?: string[] }[] } };
           const gs = dbg.data?.granular_scopes || [];
@@ -687,6 +689,7 @@ export class MessengerService implements OnModuleInit {
           for (const id of ids.slice(0, FALLBACK_MAX)) {
             const pr = await fetch(
               `https://graph.facebook.com/v21.0/${id}?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(tok.access_token)}`,
+              { signal: AbortSignal.timeout(15000) },
             );
             const pd = (await pr.json()) as { id?: string; name?: string; access_token?: string; instagram_business_account?: { id?: string }; error?: { message?: string } };
             if (pd.error) { this.logger.warn(`fb oauth fallback page ${id}: ${pd.error.message || 'error'}`); trace.push(`page ${id}: ERROR — ${pd.error.message || 'error'}`); continue; }
@@ -702,7 +705,7 @@ export class MessengerService implements OnModuleInit {
       if (!pages.length) {
         // Still empty: tell apart "nothing ticked" from "permission declined".
         try {
-          const permRes = await fetch(`https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(tok.access_token)}`);
+          const permRes = await fetch(`https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(tok.access_token)}`, { signal: AbortSignal.timeout(15000) });
           const perms = (await permRes.json()) as { data?: { permission: string; status: string }[] };
           const showList = perms.data?.find((pp) => pp.permission === 'pages_show_list');
           trace.push(`permissions: ${(perms.data || []).map((pp) => `${pp.permission}=${pp.status}`).join(', ') || 'none returned'}`);

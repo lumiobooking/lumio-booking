@@ -31,6 +31,8 @@ interface MConf {
   connectTrace?: { at: string; steps: string[] } | null;
   /** What the last connect did with the publishing scopes. */
   publishGrant?: { at: string; scopes: Record<string, string> } | null;
+  /** Is the Page token still alive — and if not, why (api: messenger/page-health.ts). */
+  health?: { state: string; at: string; raw: string | null; lost: boolean; text: string } | null;
 }
 interface SalesLead {
   id: string; threadId: string | null; name: string; phone: string; salonName: string | null; city: string | null;
@@ -646,6 +648,29 @@ function Inner() {
             </button>
           )}
           <button onClick={() => setFbResult(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
+        </div>
+      )}
+      {/* ---- is the Page token still alive? ----
+           Meta's own sentence ("…must be an administrator, editor, or
+           moderator of the page in order to impersonate it…") says nothing a
+           salon can act on. The server classifies it; this says what to do,
+           with the reconnect button right here. */}
+      {c?.connected && c.health?.lost && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: 'var(--c7f1d1d)', color: 'var(--cfecaca)', border: '1px solid #ef4444', borderRadius: 10, padding: '11px 14px', fontSize: 13.5, lineHeight: 1.55, marginBottom: 14 }}>
+          <span style={{ flex: 1 }}>
+            <b>{lang === 'vi' ? '⚠️ Facebook đã mất kết nối' : '⚠️ Facebook connection lost'}</b>
+            <span style={{ fontWeight: 400, opacity: 0.8, marginLeft: 8, fontSize: 12 }}>{fmtInTz(c.health.at, { dateStyle: 'short', timeStyle: 'short' })}</span>
+            <div style={{ marginTop: 3 }}>
+              {lang === 'vi' ? c.health.text
+                : c.health.state === 'two_factor' ? 'The Page\'s Business requires two-factor authentication and the Facebook account that connected it has none. Turn on 2FA for that account, then reconnect.'
+                : c.health.state === 'role_lost' ? 'The Facebook account that connected this Page no longer has a role (Admin/Editor/Moderator) on it. Ask the Page owner to add it back, then reconnect.'
+                : 'The connection has expired or was revoked by Facebook. Reconnect the Page.'}
+            </div>
+            {c.health.raw && <div style={{ marginTop: 4, fontSize: 11.5, opacity: 0.7 }}>Meta: {c.health.raw}</div>}
+          </span>
+          <button onClick={connectFacebook} style={{ background: '#fff', border: 'none', color: 'var(--c7f1d1d)', borderRadius: 8, padding: '5px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            {lang === 'vi' ? '↻ Kết nối lại' : '↻ Reconnect'}
+          </button>
         </div>
       )}
       {/* ---- did the last connect get PUBLISHING rights? ----

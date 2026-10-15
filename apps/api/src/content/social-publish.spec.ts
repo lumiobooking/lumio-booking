@@ -421,6 +421,16 @@ describe('Meta’s error becomes the one thing the salon can do about it', () =>
     expect(fix).toMatch(/thêm quyền ở Meta không sửa được kết nối cũ/i);
   });
 
+  it('names the lost Page role / Business 2FA behind Meta\'s "impersonate" sentence', () => {
+    const IMPERSONATE = 'The user must be an administrator, editor, or moderator of the page in order to impersonate it. If the page business requires Two Factor Authentication, the user also needs to enable Two Factor Authentication.';
+    const fix = explainMetaError(IMPERSONATE)!;
+    expect(fix).toMatch(/xác thực 2 lớp/);
+    expect(fix).toMatch(/Kết nối lại/);
+    expect(fix).not.toMatch(/impersonate/i);
+    // Without the 2FA half it is the role that went.
+    expect(explainMetaError('(#190) The user must be an administrator, editor, or moderator of the page in order to impersonate it.')).toMatch(/vai trò/);
+  });
+
   it('never mentions groups, which is the half of Meta’s text that misleads', () => {
     expect(explainMetaError(REAL_200)).not.toMatch(/group|nhóm/i);
   });

@@ -49,6 +49,7 @@ import { CreateBookingDto } from '../bookings/dto/create-booking.dto';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 import { mergeBurst, alreadySaid, BURST_MS } from './burst';
 import { publishGrantFrom } from './publish-grant';
+import { classifyPageError, pageHealthText, shouldAlert as shouldAlertPage, type PageHealth } from './page-health';
 import { AiUsageService } from '../common/ai-usage.service';
 import { readWebsite, readFacebookPage, SiteReadError } from '../common/site-reader';
 import { carouselTitles, packageFromPayload, packagePayload, tapAsCustomerLine } from './package-cards';
@@ -177,6 +178,20 @@ export class MessengerService implements OnModuleInit {
       first.unref?.();
       this.syncTimer = setInterval(() => void this.syncAllConversations().catch(() => undefined), Math.max(20, everySec) * 1000);
       this.syncTimer.unref?.();
+    }
+    // Page-token health: one cheap Graph call per connected Page, every
+    // PAGE_HEALTH_HOURS (default 24, 0 = off), first pass 3 minutes after boot.
+    // This is what turns "the post failed on Friday" into "the connection died
+    // on Monday, and the team was told on Monday" (page-health.ts).
+    const healthHours = Number(process.env.PAGE_HEALTH_HOURS ?? '24');
+    if (Number.isFinite(healthHours) && healthHours > 0) {
+      const run = () => void this.checkAllPageHealth()
+        .then((r) => this.logger.log(`page health: ${r.checked} checked, ${r.lost} lost`))
+        .catch((e) => this.logger.warn(`page health sweep failed: ${String(e).slice(0, 120)}`));
+      const first = setTimeout(run, 3 * 60 * 1000);
+      first.unref?.();
+      const every = setInterval(run, Math.max(1, healthHours) * 3600 * 1000);
+      every.unref?.();
     }
   }
 
@@ -433,7 +448,63 @@ export class MessengerService implements OnModuleInit {
       // here, where the person is standing after they reconnect, so they do
       // not have to walk back to the posting queue to learn whether it worked.
       publishGrant: await this.settings.getMessengerPublishGrant(tenantId),
+      // Whether the Page token still works — checked daily and on every failed
+      // post — with the sentence that says what to do. See ./page-health.
+      health: await this.healthFor(tenantId),
     };
+  }
+
+  /** The stored health plus its sentence, for screens. */
+  async healthFor(tenantId: string): Promise<(PageHealth & { text: string }) | null> {
+    const h = await this.settings.getMessengerHealth(tenantId).catch(() => null);
+    if (!h) return null;
+    const state = h.state as PageHealth['state'];
+    return { state, at: h.at, raw: h.raw, lost: h.lost, text: pageHealthText(state) };
+  }
+
+  /**
+   * Record what Graph said about a Page token — from the daily check, or from
+   * a post that just failed — and tell the team ONCE when a connection is
+   * newly lost. Nothing here reads or changes another salon's rows.
+   */
+  async recordPageHealth(tenantId: string, err: { message?: string; code?: number; error_subcode?: number } | null, pageName?: string | null): Promise<PageHealth> {
+    const prev = await this.settings.getMessengerHealth(tenantId).catch(() => null);
+    const next = classifyPageError(err);
+    // A transient answer must not erase a known-lost state, nor create one.
+    if (next.state === 'unknown' && prev) return { state: prev.state as PageHealth['state'], at: prev.at, raw: prev.raw, lost: prev.lost };
+    await this.settings.setMessengerHealth(tenantId, next).catch(() => undefined);
+    if (shouldAlertPage(prev ? { ...prev, state: prev.state as PageHealth['state'] } : null, next)) {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }).catch(() => null);
+      const who = `${tenant?.name ?? tenantId}${pageName ? ` · ${pageName}` : ''}`;
+      this.logger.warn(`Facebook connection lost for ${who}: ${next.state} — ${next.raw ?? ''}`);
+      this.push.sendToTeam({ title: 'Mất kết nối Facebook ⚠', body: `${who} — ${pageHealthText(next.state)}`, url: `/agency?open=${encodeURIComponent(tenantId)}&to=${encodeURIComponent('/salon/messenger')}`, tag: `fb-lost-${tenantId}` }).catch(() => undefined);
+      this.push.sendToTenant(tenantId, { title: 'Mất kết nối Facebook ⚠', body: pageHealthText(next.state), url: '/salon/messenger' }).catch(() => undefined);
+    }
+    return next;
+  }
+
+  /**
+   * Ask Graph, with each enabled Page's own token, whether that token still
+   * speaks for the Page. One cheap call per Page, once a day — so a connection
+   * that died on Monday is on the agency list Monday, not on the calendar as
+   * a red post on Friday.
+   */
+  async checkAllPageHealth(): Promise<{ checked: number; lost: number }> {
+    const pages = await this.prisma.messengerPage.findMany({
+      where: { enabled: true }, select: { tenantId: true, pageId: true, pageName: true, pageToken: true }, take: 2000,
+    }).catch(() => [] as { tenantId: string; pageId: string; pageName: string | null; pageToken: string }[]);
+    let lost = 0;
+    for (const p of pages) {
+      try {
+        const res = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(p.pageId)}?fields=id&access_token=${encodeURIComponent(p.pageToken)}`, { signal: AbortSignal.timeout(10_000) });
+        const j = (await res.json().catch(() => ({}))) as { id?: string; error?: { message?: string; code?: number; error_subcode?: number } };
+        const h = await this.recordPageHealth(p.tenantId, j.error ?? (res.ok ? null : { message: `HTTP ${res.status}` }), p.pageName);
+        if (h.lost) lost++;
+      } catch {
+        // Network trouble on our side says nothing about the token.
+      }
+    }
+    return { checked: pages.length, lost };
   }
 
   // ---- One-click OAuth (Facebook Login for Business) -----------------------
@@ -538,6 +609,21 @@ export class MessengerService implements OnModuleInit {
       const tok = (await tokRes.json()) as { access_token?: string; error?: { message?: string } };
       if (!tok.access_token) { trace.push(`token: FAILED — ${tok.error?.message || 'no_token'}`); return finish(`fb=error&msg=${encodeURIComponent(tok.error?.message || 'no_token')}`); }
       trace.push('token: ok');
+      // A Page token minted from a SHORT-lived user token is short-lived too;
+      // one minted from a long-lived user token does not expire. Swap first,
+      // so the Page keeps posting after the person who connected it logs out.
+      // Best-effort: if Meta refuses the swap the short token still connects.
+      try {
+        const llRes = await fetch(
+          `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${this.appId()}&client_secret=${this.appSecret()}&fb_exchange_token=${encodeURIComponent(tok.access_token)}`,
+          { signal: AbortSignal.timeout(8000) },
+        );
+        const ll = (await llRes.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; error?: { message?: string } };
+        if (ll.access_token) { tok.access_token = ll.access_token; trace.push(`long-lived token: ok${ll.expires_in ? ` (${Math.round(ll.expires_in / 86400)}d)` : ''}`); }
+        else trace.push(`long-lived token: not granted — ${ll.error?.message || 'no_token'} (continuing with the short one)`);
+      } catch (e) {
+        trace.push(`long-lived token: skipped — ${String(e).slice(0, 80)}`);
+      }
       // What Facebook did with the PUBLISHING scopes, recorded now while we
       // hold the user token — the only moment the question can be answered.
       // Without this, a token missing pages_manage_posts looks the same
@@ -809,6 +895,9 @@ export class MessengerService implements OnModuleInit {
     // The Page's existing conversations appear in the inbox right away — not
     // on the next customer message, and not after a button press.
     void this.syncConversations(tenantId, { limit: 50, reply: false }).catch((e) => this.logger.warn(`sync after connect failed: ${String(e).slice(0, 160)}`));
+    // A fresh Page token is, by definition, alive: clear a "lost" mark so the
+    // agency list and the salon's banner go quiet the minute they reconnect.
+    await this.settings.setMessengerHealth(tenantId, classifyPageError(null)).catch(() => undefined);
     return 'ok';
   }
 

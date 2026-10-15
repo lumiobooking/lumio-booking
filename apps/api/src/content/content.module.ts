@@ -19,11 +19,12 @@ import { PinterestController } from './trends/pinterest.controller';
 import { SuggestionsService } from './suggestions.service';
 import { PlacesService } from './places.service';
 import { PushModule } from '../push/push.module';
+import { MessengerModule } from '../messenger/messenger.module';
 
 @Module({
   // GoogleReviewsModule: the calendar posts to the Business Profile through
   // the same grant the reviews screen holds.
-  imports: [SettingsModule, UploadsModule, GoogleReviewsModule, TikTokModule, PushModule],
+  imports: [SettingsModule, UploadsModule, GoogleReviewsModule, TikTokModule, PushModule, MessengerModule],
   controllers: [ContentController, ContentAdminController, PublicReviewController, PinterestController],
   providers: [
     ContentService, ContentAdminService, ContentChatService, SocialPublishService, ContentScheduler, TrendFeedService, PinterestConnectService, PostReviewService,

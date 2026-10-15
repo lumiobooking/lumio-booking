@@ -104,6 +104,51 @@ export class PaypalService {
     return res.json();
   }
 
+  /**
+   * Charge an extra amount to an ACTIVE subscription — the month-end usage
+   * overage — without ever holding a card: the amount is written to the
+   * subscription's outstanding balance, then captured from the subscriber's
+   * PayPal funding source. Plans are created with auto_bill_outstanding, so a
+   * capture PayPal declines today is still collected with the next cycle.
+   *
+   * Returns the capture id on success; throws with PayPal's own words otherwise.
+   */
+  async chargeOutstanding(params: { subscriptionId: string; amountCents: number; currency: string; note: string }): Promise<{ captureId: string; status: string }> {
+    const { access, base } = await this.token();
+    const currency = (params.currency || 'USD').toUpperCase();
+    const value = (params.amountCents / 100).toFixed(2);
+    const h = { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' };
+    const patch = await fetch(`${base}/v1/billing/subscriptions/${encodeURIComponent(params.subscriptionId)}`, {
+      method: 'PATCH', headers: h,
+      body: JSON.stringify([{ op: 'replace', path: '/billing_info/outstanding_balance', value: { currency_code: currency, value } }]),
+    });
+    if (!patch.ok) {
+      const j = (await patch.json().catch(() => ({}))) as { message?: string; details?: { description?: string }[] };
+      throw new BadRequestException(`PayPal balance update failed: ${j.details?.[0]?.description ?? j.message ?? patch.status}`);
+    }
+    const cap = await fetch(`${base}/v1/billing/subscriptions/${encodeURIComponent(params.subscriptionId)}/capture`, {
+      method: 'POST', headers: { ...h, 'PayPal-Request-Id': `cap-${params.subscriptionId}-${params.amountCents}-${Date.now()}` },
+      body: JSON.stringify({ note: params.note.slice(0, 127), capture_type: 'OUTSTANDING_BALANCE', amount: { currency_code: currency, value } }),
+    });
+    const j = (await cap.json().catch(() => ({}))) as { id?: string; status?: string; message?: string; details?: { description?: string }[] };
+    if (!cap.ok || !j.id) throw new BadRequestException(`PayPal capture failed: ${j.details?.[0]?.description ?? j.message ?? cap.status}`);
+    return { captureId: j.id, status: j.status ?? 'COMPLETED' };
+  }
+
+  /** Cancel a subscription at PayPal (a salon moved to another gateway). */
+  async cancelSubscription(id: string, reason = 'Replaced by a new subscription'): Promise<void> {
+    const { access, base } = await this.token();
+    const res = await fetch(`${base}/v1/billing/subscriptions/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST', headers: { Authorization: `Bearer ${access}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: reason.slice(0, 127) }),
+    });
+    // 204 = cancelled; 422 UNPROCESSABLE on one already cancelled/expired is fine too.
+    if (!res.ok && res.status !== 422) {
+      const j = (await res.json().catch(() => ({}))) as { message?: string };
+      throw new BadRequestException(`PayPal cancel failed: ${j.message ?? res.status}`);
+    }
+  }
+
   /** Verify a webhook signature via PayPal's verification endpoint. */
   async verifyWebhook(headers: Record<string, string | undefined>, body: unknown): Promise<boolean> {
     const webhookId = await this.platform.get('paypal_webhook_id');

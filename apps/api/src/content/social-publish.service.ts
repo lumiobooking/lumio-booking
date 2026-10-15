@@ -14,6 +14,8 @@ import { MEDIA_STORE, type MediaStore } from './media-store';
 import { buildPostKit, applyFooter, cleanFooter, POST_FOOTER_KEY, type ShopFacts } from './post-kit';
 import { publicWebBase } from '../common/public-url.util';
 import { explainPublishGap, type GapCause, type PublishGrant } from '../messenger/publish-grant';
+import { classifyPageError } from '../messenger/page-health';
+import { MessengerService } from '../messenger/messenger.service';
 import { GoogleDriveService } from '../uploads/google-drive.service';
 import { GoogleReviewsService } from '../google-reviews/google-reviews.service';
 import { TikTokService } from '../tiktok/tiktok.service';
@@ -132,6 +134,10 @@ export class SocialPublishService {
     // The salon owner's phone, for "your post is ready to approve". Optional
     // like the rest; without it the screen badge is still there.
     @Optional() private readonly push?: PushService,
+    // Where a failed Meta post reports a dead Page token, so the agency list
+    // and the salon's Messenger screen learn about it the same minute instead
+    // of when someone reads the calendar. Optional like the rest.
+    @Optional() private readonly messenger?: MessengerService,
   ) {}
 
   /**
@@ -1177,6 +1183,7 @@ export class SocialPublishService {
     const results = [...prior, ...fresh];
 
     const bad = fresh.filter((r) => r.error);
+    this.notePageHealth(row.tenantId, fresh, conn?.page.pageName ?? null);
     if (bad.length) {
       // Partial delivery is recorded exactly as it happened. Rewriting it as a
       // clean failure would hide a post that really is live on Facebook.
@@ -1222,6 +1229,24 @@ export class SocialPublishService {
       }
     } catch (e) {
       this.log.warn(`social_posts bookkeeping for ${row.id}: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * A Meta error that means "this Page token is dead" (role lost, Business
+   * 2FA, expired, revoked) is recorded as the Page's health; a Meta post that
+   * went through clears a stale "lost". Fire-and-forget — bookkeeping never
+   * decides the post's fate — and scoped to this row's tenant only.
+   */
+  private notePageHealth(tenantId: string, fresh: PublishResult[], pageName: string | null): void {
+    if (!this.messenger) return;
+    const meta = fresh.filter((r) => r.channel === 'facebook' || r.channel === 'instagram');
+    if (!meta.length) return;
+    const dead = meta.find((r) => r.error && classifyPageError({ message: r.error }).lost);
+    if (dead) {
+      this.messenger.recordPageHealth(tenantId, { message: dead.error ?? '' }, pageName).catch(() => undefined);
+    } else if (meta.some((r) => !r.error && !r.unsure)) {
+      this.messenger.recordPageHealth(tenantId, null, pageName).catch(() => undefined);
     }
   }
 

@@ -6,9 +6,16 @@ import { useAuth } from '../lib/auth';
 import { apiFetch } from '../lib/api';
 import { useLang } from '../lib/i18n';
 import { uiLocale } from '../lib/datetime';
+import { monthName, PaymentMethodCard, SmsLogCard, UsageHistoryCard, type PaymentInfo } from './BillingHistory';
 
 interface Summary {
   periodStart: string;
+  /** The billing month, "YYYY-MM" (UTC months). Absent on an older server. */
+  period?: string;
+  /** When the numbers were read. Absent on an older server. */
+  asOf?: string;
+  /** How the salon pays. Absent on an older server. */
+  payment?: PaymentInfo | null;
   currency: string;
   daysElapsed: number;
   daysInMonth: number;
@@ -19,7 +26,7 @@ interface Summary {
     overageCentsPerMin: number; overageCents: number; aiCalls: number;
   };
   /** `wording` tells the screen WHICH sentence to print — see api billing/usage-rates.ts. */
-  sms: { included: number; used: number; overage: number; overageCentsPer: number; overageCents: number; wording?: 'priced' | 'free' | 'unset' | 'unlimited' };
+  sms: { included: number; used: number; overage: number; overageCentsPer: number; overageCents: number; wording?: 'priced' | 'free' | 'unset' | 'unlimited'; failed?: number };
   /** The AI chatbot, once the salon is on a chat plan. Absent on an older server. */
   chat?: {
     enabled: boolean; included: number; used: number; overage: number;
@@ -120,6 +127,12 @@ const T = {
     en: 'Usage charges add up through the month and are billed together with your plan fee at month end — we email you an invoice with a payment link.',
     vi: 'Phí phát sinh được cộng dồn trong tháng và chốt cùng phí gói vào cuối tháng — chúng tôi gởi email hoá đơn kèm link thanh toán.',
   },
+  howBillAuto: {
+    en: 'Usage charges add up through the month and are charged automatically to your PayPal subscription at month end — you get a receipt by email, nothing to click.',
+    vi: 'Phí phát sinh được cộng dồn trong tháng và tự trừ qua đăng ký PayPal của tiệm vào cuối tháng — bạn nhận biên nhận qua email, không cần bấm gì.',
+  },
+  asOf: { en: 'As of', vi: 'Số liệu lúc' },
+  failed: { en: 'failed, not billed', vi: 'thất bại, không tính' },
   chat: { en: 'AI Chatbot replies', vi: 'Tin chatbot AI trả lời' },
   tierBasic: { en: 'Basic', vi: 'Cơ bản' },
   tierStandard: { en: 'Standard', vi: 'Tiêu chuẩn' },
@@ -146,6 +159,7 @@ export function UsageCostsPanel() {
   const g = (lang === 'vi' ? 'vi' : 'en') as Lg;
   const t = (k: keyof typeof T) => T[k][g];
   const [sum, setSum] = useState<Summary | null | undefined>(undefined);
+  const [logMonth, setLogMonth] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -158,10 +172,12 @@ export function UsageCostsPanel() {
   if (!sum || !sum.plan) return <p style={{ color: 'var(--c94a3b8)', maxWidth: 620 }}>{t('none')}</p>;
 
   const cur = sum.currency || 'USD';
-  const month = (() => {
-    try { return fmtInTz(sum.periodStart, { month: 'long', year: 'numeric' }); }
-    catch { return ''; }
-  })();
+  // Billing months are UTC months. Naming one through the salon's timezone
+  // turned "1 Oct 00:00 UTC" into 30 September in Texas, so an October bill
+  // was headed "September 2026".
+  const period = sum.period ?? sum.periodStart.slice(0, 7);
+  const month = monthName(period);
+  const asOf = sum.asOf ? fmtInTz(sum.asOf, { dateStyle: 'medium', timeStyle: 'short' }) : '';
   const daysLeft = Math.max(0, sum.daysInMonth - sum.daysElapsed);
 
   // A rate of zero and a rate nobody has set are DIFFERENT, and only the
@@ -222,13 +238,15 @@ export function UsageCostsPanel() {
           {t('soFar')}: <strong style={{ color: 'var(--ce2e8f0)' }} className="heavy">{money(sum.totals.grandTotalCents, cur)}</strong>
           {' · '}{daysLeft} {t('daysLeft')} ({month})
         </div>
+        {asOf && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 4 }} className="muted">{t('asOf')} {asOf}</div>}
         <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 8 }} className="muted">{t('estNote')}</div>
       </div>
 
       {/* ITEMIZED STATEMENT */}
       <div className="card" style={card}>
         <div style={{ fontSize: 13, color: 'var(--c94a3b8)', marginBottom: 2 }} className="muted">{t('billFor')}</div>
-        <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 14 }}>{month}</div>
+        <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 2 }}>{month}</div>
+        {asOf && <div style={{ fontSize: 12, color: 'var(--c64748b)', marginBottom: 14 }} className="muted">{t('asOf')} {asOf}</div>}
 
         <div style={sectionHead}>{t('fixed')}</div>
         <Row label={`${t('plan')}${sum.plan.name ? ` — ${sum.plan.name}` : ''}`} amount={`${money(sum.plan.monthlyCents, cur)}${t('perMo')}`} />
@@ -244,7 +262,7 @@ export function UsageCostsPanel() {
 
         <UsageRow
           label={t('sms')}
-          detail={`${sum.sms.used} ${t('used')} / ${smsIncLabel} ${t('included')}`}
+          detail={`${sum.sms.used} ${t('used')} / ${smsIncLabel} ${t('included')}${sum.sms.failed ? ` · ${sum.sms.failed} ${t('failed')}` : ''}`}
           over={sum.sms.overage}
           overText={`${sum.sms.overage} ${t('over')} × ${smsRate}`}
           amount={money(sum.sms.overageCents, cur)}
@@ -301,8 +319,17 @@ export function UsageCostsPanel() {
           <li>{fill(t(smsWording === 'free' ? 'howSmsFree' : smsWording === 'unset' ? 'howSmsUnset' : 'howSms'), { sms: smsIncLabel, rate: smsRate })}</li>
           {sum.hotline.enabled && <li>{fill(t('howMin'), { min: minIncLabel, rate: minRate })}</li>}
           {sum.chat?.enabled && <li>{fill(t('howChat'), { chat: chatIncLabel, rate: chatRate })}</li>}
-          <li>{t('howBill')}</li>
+          <li>{t(sum.payment?.autoUsage && sum.payment.provider === 'paypal' ? 'howBillAuto' : 'howBill')}</li>
         </ul>
+      </div>
+
+      {/* HOW THE SALON PAYS · THE LAST MONTHS · EVERY SMS AND ITS FATE */}
+      <div className="noprint">
+        <PaymentMethodCard pay={sum.payment} lang={g} onPortal={async () => {
+          try { const r = await apiFetch<{ url: string }>('/billing/portal', { method: 'POST', token }); window.location.href = r.url; } catch { /* no Stripe customer: the button is only shown for Stripe */ }
+        }} />
+        <UsageHistoryCard token={token ?? ''} lang={g} onPickMonth={setLogMonth} />
+        <SmsLogCard token={token ?? ''} lang={g} month={logMonth ?? period} />
       </div>
     </section>
   );

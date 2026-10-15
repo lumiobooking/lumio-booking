@@ -156,6 +156,7 @@ export function ChannelSquares({ t, size = 18 }: { t: TenantRow; size?: number }
       {ch.cells.map((x) => {
         const tone = TONE[x.tone];
         const title = x.tone === 'off' ? `${x.label}: chưa kết nối`
+          : x.why ? `${x.label}: ${x.v ?? ''} — ${x.why}. Vào Cài đặt → Messenger của tiệm bấm Kết nối lại.`
           : x.tone === 'bad' ? `${x.label}: ${x.v ?? ''} — TIỆM KHÁC CŨNG ĐANG DÙNG tài khoản này`
           : x.tone === 'warn' ? `${x.label}: ${x.v} — tên không giống tên tiệm, kiểm tra xem có nối nhầm không`
           : `${x.label}: ${x.v}${x.extra ? ` · ${x.extra}` : ''}`;

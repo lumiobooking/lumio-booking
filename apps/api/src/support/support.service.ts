@@ -119,7 +119,7 @@ export class SupportService {
     const ids = rows.map((r) => r.id);
     const [pages, conn] = await Promise.all([
       this.prisma.messengerPage.findMany({ where: { tenantId: { in: ids } }, select: { tenantId: true, pageName: true, pageId: true, igUsername: true } }).catch(() => []),
-      this.prisma.setting.findMany({ where: { tenantId: { in: ids }, key: { in: ['googleReviews', 'tiktok', 'notifications'] } }, select: { tenantId: true, key: true, value: true } }).catch(() => []),
+      this.prisma.setting.findMany({ where: { tenantId: { in: ids }, key: { in: ['googleReviews', 'tiktok', 'notifications', 'messenger_health'] } }, select: { tenantId: true, key: true, value: true } }).catch(() => []),
     ]);
     const connections = connectionsByTenant({ pages, settings: conn });
     const shared = sharedConnections(connections);

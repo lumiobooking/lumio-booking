@@ -106,6 +106,36 @@ export class StripeService {
     return stripe.subscriptions.retrieve(id);
   }
 
+  /**
+   * Charge the card a customer saved with their subscription — the month-end
+   * usage overage — without the customer present. Uses the subscription's
+   * default payment method, else the customer's. Stripe may decline or ask
+   * for authentication; either throws with Stripe's own words and the
+   * caller leaves the invoice open (the hosted page still takes a card).
+   */
+  async chargeCustomer(params: { customerId: string; amountCents: number; currency: string; description: string; metadata: Record<string, string> }): Promise<{ paymentIntentId: string; status: string }> {
+    const stripe = await this.client();
+    const customer = await stripe.customers.retrieve(params.customerId, { expand: ['subscriptions'] }) as Stripe.Customer | Stripe.DeletedCustomer;
+    if ((customer as Stripe.DeletedCustomer).deleted) throw new BadRequestException('Stripe customer no longer exists');
+    const c = customer as Stripe.Customer;
+    const live = c.subscriptions?.data.find((x) => x.status === 'active' || x.status === 'trialing');
+    const pm = (live?.default_payment_method as string | null) ?? (c.invoice_settings?.default_payment_method as string | null) ?? null;
+    if (!pm) throw new BadRequestException('No card on file for this customer');
+    const pi = await stripe.paymentIntents.create({
+      amount: params.amountCents, currency: (params.currency || 'USD').toLowerCase(),
+      customer: params.customerId, payment_method: pm, off_session: true, confirm: true,
+      description: params.description, metadata: params.metadata,
+    }, { idempotencyKey: `inv-${params.metadata.invoiceId ?? params.description}-${params.amountCents}` });
+    if (pi.status !== 'succeeded') throw new BadRequestException(`Stripe payment ${pi.status}`);
+    return { paymentIntentId: pi.id, status: pi.status };
+  }
+
+  /** Cancel a subscription at Stripe (a salon moved to another gateway). */
+  async cancelSubscription(id: string): Promise<void> {
+    const stripe = await this.client();
+    await stripe.subscriptions.cancel(id);
+  }
+
   /** Customer-facing billing portal link (upgrade/downgrade/cancel/update card). */
   async billingPortalUrl(customerId: string, returnUrl: string): Promise<string> {
     const stripe = await this.client();

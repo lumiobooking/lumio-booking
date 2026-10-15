@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { BillingInterval, SubscriptionStatus, TenantStatus } from '@prisma/client';
+import { BillingInterval, NotificationChannel, NotificationStatus, SubscriptionStatus, TenantStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -12,6 +12,7 @@ import { PaypalService } from './paypal.service';
 import { PlatformConfigService } from './platform-config.service';
 import { VoiceService } from '../voice/voice.service';
 import { cleanPlatformRates, resolveRate, usageLine } from './usage-rates';
+import { canAutoCharge, gatewayOf, manageCardUrl, pickGateway, subscriptionsToRetire, type Gateway } from './gateway-choice';
 import {
   cleanChatPlan, tiersFor, tierIdOf, marginOf, apiCostPerReply, billFor, ChatPlan,
   CHAT_TIERS_BY_MARKET,
@@ -158,9 +159,8 @@ export class BillingService {
    * gets large. An invoice may never depend on a number that is allowed to be
    * approximate.
    */
-  private async chatRepliesThisMonth(tenantId: string): Promise<number> {
-    const now = new Date();
-    const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  private async chatRepliesThisMonth(tenantId: string, at = new Date()): Promise<number> {
+    const month = `${at.getUTCFullYear()}-${String(at.getUTCMonth() + 1).padStart(2, '0')}`;
     const rows = await this.prisma.setting
       .findMany({ where: { tenantId, key: { startsWith: `${CHAT_COUNT_KEY}:${month}` } }, select: { value: true } })
       .catch(() => [] as { value: unknown }[]);
@@ -191,6 +191,13 @@ export class BillingService {
       this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_PLAN_KEY }, select: { value: true } }).catch(() => null),
       this.chatRepliesThisMonth(tenantId).catch(() => 0),
     ]);
+    // Texts that never reached anyone this month. Not billed, but the owner
+    // asked "which of my SMS actually went out" — the answer belongs next to
+    // the count that is billed.
+    const smsFailed = await this.prisma.notification.count({
+      where: { tenantId, channel: NotificationChannel.SMS, status: NotificationStatus.FAILED, createdAt: { gte: new Date(u.periodStart) } },
+    }).catch(() => 0);
+    const payment = await this.paymentMethod(tenantId);
     const plan = tenant?.plan ?? null;
     const currency = plan?.currency ?? 'USD';
     const baseCents = (plan?.priceMonthlyCents || plan?.priceCents) ?? 0;
@@ -242,6 +249,13 @@ export class BillingService {
 
     return {
       periodStart: u.periodStart,
+      /** The billing month as "YYYY-MM" (UTC months, the platform convention).
+       *  The screen used to name the month from periodStart in the SALON's
+       *  timezone — 1 Oct 00:00 UTC is 30 Sep in Texas, so an October bill
+       *  was headed "September". */
+      period: u.periodStart.slice(0, 7),
+      /** When these numbers were read. */
+      asOf: now.toISOString(),
       currency,
       daysElapsed: dayOfMonth,
       daysInMonth,
@@ -264,7 +278,11 @@ export class BillingService {
         overageCents: smsLine.overageCents,
         /** Which sentence the screen prints. Never let it improvise one. */
         wording: smsLine.wording,
+        /** Texts the carrier refused or the provider could not send — not billed. */
+        failed: smsFailed,
       },
+      /** How this salon pays, and whether month-end charges are taken by themselves. */
+      payment,
       chat: {
         enabled: chatPlan.active,
         monthlyCents: chatMonthlyCents,
@@ -282,6 +300,199 @@ export class BillingService {
         remaining: chatPlan.includedReplies > 0 ? Math.max(0, chatPlan.includedReplies - chatLine.used) : null,
       },
       totals: { fixedCents, overageCents, grandTotalCents, projectedGrandTotalCents },
+    };
+  }
+
+  /**
+   * The chatbot's overage for ONE month, priced exactly as the Usage screen
+   * prices it — so the invoice built from this and the screen the owner read
+   * all month agree to the cent. Used by invoices.service at month end.
+   */
+  async chatOverageForMonth(tenantId: string, monthStart: Date): Promise<{ used: number; included: number; over: number; centsPer: number; overageCents: number; currency: string; tierId: string | null }> {
+    const [tenant, rates, chatPlanRow, used] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { market: true } }).catch(() => null),
+      this.platformRates(),
+      this.prisma.setting.findFirst({ where: { tenantId, key: CHAT_PLAN_KEY }, select: { value: true } }).catch(() => null),
+      this.chatRepliesThisMonth(tenantId, monthStart).catch(() => 0),
+    ]);
+    const currency = marketOf((tenant as { market?: string } | null)?.market).currency;
+    const plan = cleanChatPlan(chatPlanRow?.value, currency);
+    const rate = resolveRate(plan.active && plan.overageCentsPerReply > 0 ? plan.overageCentsPerReply : null, rates.chatReplyCents);
+    const line = usageLine('chat', used, plan.includedReplies, plan.hardCap ? { ...rate, billable: false } : rate);
+    return {
+      used: line.used, included: line.included, over: line.over, centsPer: line.rate.centsPerUnit,
+      overageCents: plan.active ? line.overageCents : 0, currency,
+      tierId: plan.active ? tierIdOf(plan, (tenant as { market?: string } | null)?.market) : null,
+    };
+  }
+
+  /**
+   * The salon's payment arrangement, in one object the screen can print:
+   * which gateway, whether it is alive, when the next plan charge falls, and
+   * whether month-end usage charges are taken automatically. With PayPal the
+   * card lives at PayPal (never here); usage charges are added to the
+   * subscription's outstanding balance and captured (invoices.service).
+   */
+  async paymentMethod(tenantId: string): Promise<{
+    provider: 'stripe' | 'paypal' | null; status: SubscriptionStatus | null; interval: 'month' | 'year' | null;
+    nextChargeAt: string | null; autoPlan: boolean; autoUsage: boolean; billingExempt: boolean;
+  }> {
+    const [tenant, sub] = await Promise.all([
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { billingExempt: true } }).catch(() => null),
+      this.prisma.subscription.findFirst({
+        where: { tenantId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING, SubscriptionStatus.PAST_DUE] } },
+        orderBy: { createdAt: 'desc' },
+        select: { provider: true, status: true, interval: true, currentPeriodEnd: true, externalReference: true },
+      }).catch(() => null),
+    ]);
+    const provider = gatewayOf(sub?.provider);
+    const live = !!sub && sub.status !== SubscriptionStatus.PAST_DUE;
+    return {
+      provider,
+      status: sub?.status ?? null,
+      interval: sub ? (sub.interval === BillingInterval.YEARLY ? 'year' : 'month') : null,
+      nextChargeAt: sub?.currentPeriodEnd?.toISOString() ?? null,
+      autoPlan: live && !!provider,
+      // One rule for every gateway — gateway-choice.ts.
+      autoUsage: canAutoCharge(sub ? { provider: (sub as { provider?: string | null }).provider ?? null, status: sub.status, externalReference: sub.externalReference, externalCustomerId: (sub as { externalCustomerId?: string | null }).externalCustomerId ?? null } : null),
+      billingExempt: tenant?.billingExempt ?? false,
+      // Where the salon changes its card: PayPal's own autopay page, or a
+      // Stripe portal link the screen asks for (POST billing/portal).
+      manageUrl: manageCardUrl(provider),
+      // Which gateways a NEW subscription could go to, so the Plan tab can
+      // say "card (Stripe)" or "PayPal" before the salon clicks.
+      gateways: await this.gatewaysEnabled(),
+    };
+  }
+
+  /** Which gateways are configured on the platform right now. */
+  async gatewaysEnabled(): Promise<{ stripe: boolean; paypal: boolean }> {
+    const [stripe, paypal] = await Promise.all([this.stripe.isEnabled().catch(() => false), this.paypal.isEnabled().catch(() => false)]);
+    return { stripe, paypal };
+  }
+
+  /**
+   * Take an amount from whatever gateway holds this salon's card. The one
+   * entry point the month-end invoice uses; adding a gateway means adding a
+   * branch here, nothing elsewhere.
+   */
+  async chargeOnFile(tenantId: string, params: { amountCents: number; currency: string; description: string; invoiceId: string }): Promise<{ provider: Gateway; ref: string } | { provider: null; reason: 'no_method' | 'not_enabled' }> {
+    const sub = await this.prisma.subscription.findFirst({
+      where: { tenantId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] } },
+      orderBy: { createdAt: 'desc' },
+      select: { provider: true, status: true, externalReference: true, externalCustomerId: true },
+    });
+    const facts = sub ? { provider: (sub as { provider?: string | null }).provider ?? null, status: sub.status, externalReference: sub.externalReference, externalCustomerId: (sub as { externalCustomerId?: string | null }).externalCustomerId ?? null } : null;
+    if (!canAutoCharge(facts)) return { provider: null, reason: 'no_method' };
+    const g = gatewayOf(facts!.provider)!;
+    const enabled = await this.gatewaysEnabled();
+    if (!enabled[g]) return { provider: null, reason: 'not_enabled' };
+    if (g === 'paypal') {
+      const r = await this.paypal.chargeOutstanding({ subscriptionId: facts!.externalReference!, amountCents: params.amountCents, currency: params.currency, note: params.description });
+      return { provider: 'paypal', ref: r.captureId };
+    }
+    const r = await this.stripe.chargeCustomer({ customerId: facts!.externalCustomerId!, amountCents: params.amountCents, currency: params.currency, description: params.description, metadata: { invoiceId: params.invoiceId, tenantId } });
+    return { provider: 'stripe', ref: r.paymentIntentId };
+  }
+
+  /**
+   * A salon whose NEW subscription just went live must not keep paying an
+   * old one at another gateway (PayPal → Stripe, or the reverse). Cancels
+   * every other live subscription of the same salon at its gateway and marks
+   * the rows. Best-effort per row; the new subscription is never touched.
+   */
+  private async retireOtherSubscriptions(tenantId: string, keepRef: string): Promise<void> {
+    const rows = await this.prisma.subscription.findMany({ where: { tenantId }, select: { id: true, provider: true, status: true, externalReference: true } }).catch(() => []);
+    for (const r of subscriptionsToRetire(rows, keepRef)) {
+      try {
+        const g = gatewayOf(r.provider);
+        if (g === 'paypal') await this.paypal.cancelSubscription(r.externalReference!);
+        else if (g === 'stripe') await this.stripe.cancelSubscription(r.externalReference!);
+        await this.prisma.subscription.update({ where: { id: r.id }, data: { status: SubscriptionStatus.CANCELLED, cancelledAt: new Date() } });
+        await this.audit.log({ tenantId, userId: null, action: 'subscription.retired', resourceType: 'subscription', resourceId: r.externalReference!, metadata: { provider: r.provider, replacedBy: keepRef } });
+        this.logger.log(`Retired ${r.provider} subscription ${r.externalReference} of ${tenantId} — replaced by ${keepRef}`);
+      } catch (e) {
+        this.logger.warn(`Could not retire ${r.provider} subscription ${r.externalReference} of ${tenantId}: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  /**
+   * The last six completed months plus this one, one row each: what was
+   * used, what was sent and what failed, and the invoice that month produced
+   * (or none, when usage stayed inside the plan). Read from the same rows the
+   * invoices are built from, so this table and the invoice never disagree.
+   */
+  async usageHistory(user: AuthenticatedUser, months = 6) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) return null;
+    const now = new Date();
+    const n = Math.min(24, Math.max(1, Math.floor(months)));
+    const starts: Date[] = [];
+    for (let i = 0; i <= n; i++) starts.push(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1)));
+    const invoices = await this.prisma.invoice.findMany({
+      where: { tenantId, periodStart: { in: starts } },
+      select: { number: true, type: true, status: true, totalCents: true, currency: true, periodStart: true, paidAt: true, provider: true, token: true, dueDate: true },
+    }).catch(() => []);
+    const rows = [];
+    for (const start of starts) {
+      const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+      const window = { gte: start, lt: end };
+      const [u, failed, chat] = await Promise.all([
+        this.voice.usageForMonth(tenantId, start),
+        this.prisma.notification.count({ where: { tenantId, channel: NotificationChannel.SMS, status: NotificationStatus.FAILED, createdAt: window } }).catch(() => 0),
+        this.chatRepliesThisMonth(tenantId, start).catch(() => 0),
+      ]);
+      const month = start.toISOString().slice(0, 7);
+      rows.push({
+        month,
+        current: start.getTime() === starts[0].getTime(),
+        smsSent: u.smsSent,
+        smsFailed: failed,
+        aiMinutes: u.aiMinutes,
+        aiCalls: u.aiCalls,
+        chatReplies: chat,
+        invoices: invoices
+          .filter((i) => i.periodStart && i.periodStart.getTime() === start.getTime())
+          .map((i) => ({ number: i.number, type: i.type, status: i.status, totalCents: i.totalCents, currency: i.currency, paidAt: i.paidAt?.toISOString() ?? null, provider: i.provider, token: i.token, dueDate: i.dueDate?.toISOString() ?? null })),
+      });
+    }
+    return { asOf: now.toISOString(), months: rows };
+  }
+
+  /**
+   * Every SMS of one month, newest first, with what became of it — so "the
+   * customer says she never got the text" has a row to look at. The salon's
+   * own rows only (tenantId in the where), capped at 300.
+   */
+  async smsLog(user: AuthenticatedUser, month?: string) {
+    const tenantId = resolveTenantScope(user);
+    if (!tenantId) return null;
+    const m = /^\d{4}-(0[1-9]|1[0-2])$/.test(month ?? '') ? month! : new Date().toISOString().slice(0, 7);
+    const [y, mo] = m.split('-').map(Number);
+    const start = new Date(Date.UTC(y, mo - 1, 1));
+    const end = new Date(Date.UTC(y, mo, 1));
+    const rows = await this.prisma.notification.findMany({
+      where: { tenantId, channel: NotificationChannel.SMS, createdAt: { gte: start, lt: end } },
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+      select: { id: true, recipient: true, status: true, provider: true, error: true, body: true, createdAt: true, sentAt: true, deliveredAt: true, relatedType: true, relatedId: true },
+    }).catch(() => []);
+    const counts = { sent: 0, delivered: 0, failed: 0, pending: 0 };
+    for (const r of rows) {
+      if (r.status === NotificationStatus.FAILED) counts.failed++;
+      else if (r.status === NotificationStatus.PENDING) counts.pending++;
+      else { counts.sent++; if (r.deliveredAt) counts.delivered++; }
+    }
+    return {
+      month: m,
+      counts,
+      rows: rows.map((r) => ({
+        id: r.id, to: r.recipient, status: r.status, provider: r.provider, error: r.error,
+        preview: (r.body ?? '').replace(/\s+/g, ' ').slice(0, 90),
+        at: r.createdAt.toISOString(), sentAt: r.sentAt?.toISOString() ?? null, deliveredAt: r.deliveredAt?.toISOString() ?? null,
+        relatedType: r.relatedType, relatedId: r.relatedId,
+      })),
     };
   }
 
@@ -555,7 +766,8 @@ export class BillingService {
     const success = `${this.appUrl()}/salon/billing?upgraded=1`;
     const cancel = `${this.appUrl()}/salon/billing`;
     const meta = { tenantId, planId: plan.id, interval };
-    const provider = dto.provider ?? 'stripe';
+    const provider = pickGateway(await this.gatewaysEnabled(), dto.provider ?? null);
+    if (!provider) throw new BadRequestException('No payment gateway is configured yet. Contact Lumio.');
 
     if (provider === 'paypal') {
       if (!(await this.paypal.isEnabled())) throw new BadRequestException('PayPal is not configured');
@@ -647,6 +859,9 @@ export class BillingService {
       },
     });
     await this.audit.log({ tenantId: params.tenantId, userId: null, action: 'subscription.synced', resourceType: 'subscription', resourceId: params.externalReference, metadata: { provider: params.provider, status: params.status } });
+    if (params.status === SubscriptionStatus.ACTIVE || params.status === SubscriptionStatus.TRIALING) {
+      await this.retireOtherSubscriptions(params.tenantId, params.externalReference);
+    }
   }
 
   // --------------------------- Stripe webhook ---------------------------

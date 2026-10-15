@@ -52,6 +52,9 @@ export class InvoicesScheduler implements OnModuleInit, OnModuleDestroy {
         // --- OVERAGE for last month (only run in the first days of the month) ---
         if (day <= 3) {
           const inv = await this.invoices.buildOverageInvoice(t.id, prevMonth);
+          // Charged from the salon's PayPal subscription BEFORE the email, so
+          // the owner reads "paid" rather than "please pay" where it worked.
+          if (inv) await this.invoices.autoCharge(inv.id);
           if (inv && (await this.invoices.sendInvoiceEmail(inv.id))) overage++;
         }
         // --- RENEWAL when access is expiring and there is no active subscription ---

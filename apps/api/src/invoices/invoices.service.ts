@@ -1,9 +1,11 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InvoiceStatus, InvoiceType, NotificationChannel, TenantStatus, UserRole } from '@prisma/client';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { InvoiceStatus, InvoiceType, NotificationChannel, SubscriptionStatus, TenantStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { VoiceService } from '../voice/voice.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StripeService } from '../billing/stripe.service';
+import { BillingService } from '../billing/billing.service';
+import { canAutoCharge, gatewayOf } from '../billing/gateway-choice';
 import { PlatformConfigService } from '../billing/platform-config.service';
 import { publicWebBase } from '../common/public-url.util';
 import { formatMoney } from '../common/money';
@@ -32,7 +34,37 @@ export class InvoicesService {
     private readonly notifications: NotificationsService,
     private readonly stripe: StripeService,
     private readonly platform: PlatformConfigService,
+    // The chatbot line is priced by the billing service (same code as the
+    // Usage screen). Optional for the bare isolation specs; absent = no line.
+    @Optional() private readonly billing?: BillingService,
   ) {}
+
+  /**
+   * Take an OPEN usage invoice from whatever gateway holds the salon's card
+   * (PayPal subscription balance, or the Stripe card on file), the way the
+   * plan fee is taken: no link to click. Returns how it went so the scheduler
+   * can log it; never throws. Only this invoice's tenant is read, and only
+   * ITS live subscription is charged (billing.service chargeOnFile).
+   */
+  async autoCharge(invoiceId: string): Promise<'paid' | 'no_method' | 'skipped' | 'failed'> {
+    if (!this.billing) return 'skipped';
+    const inv = await this.prisma.invoice.findUnique({ where: { id: invoiceId }, select: { id: true, tenantId: true, number: true, status: true, totalCents: true, currency: true, type: true } });
+    if (!inv || inv.status !== InvoiceStatus.OPEN || inv.totalCents <= 0) return 'skipped';
+    if (inv.type !== InvoiceType.OVERAGE) return 'skipped'; // renewals are the subscription's own cycle
+    try {
+      const r = await this.billing.chargeOnFile(inv.tenantId, { amountCents: inv.totalCents, currency: inv.currency, description: `Lumio ${inv.number} — usage charges`, invoiceId: inv.id });
+      if (!r.provider) return r.reason === 'no_method' ? 'no_method' : 'skipped';
+      await this.markPaid(inv.id, r.provider, r.ref);
+      this.logger.log(`Invoice ${inv.number}: ${money(inv.totalCents, inv.currency)} charged via ${r.provider} (${r.ref})`);
+      return 'paid';
+    } catch (e) {
+      // Left OPEN: the email with the hosted page still goes out. PayPal's
+      // auto_bill_outstanding collects the balance with the next plan cycle;
+      // a Stripe salon can pay on the hosted page with its card.
+      this.logger.warn(`Invoice ${inv.number}: automatic charge failed — ${(e as Error).message}`);
+      return 'failed';
+    }
+  }
 
   // -------------------------------------------------------------- helpers
   /** Lumio's own sending email (set in Super Admin → Payment gateways → Invoice
@@ -81,12 +113,24 @@ export class InvoicesService {
     const smsOver = smsIncluded > 0 ? Math.max(0, u.smsSent - smsIncluded) : 0;
     const smsCents = smsOver * u.overageCentsPerSms;
     const minCents = u.overageMinutes * u.overageCentsPerMin;
-    const total = smsCents + minCents;
+    // AI chatbot replies over the plan. Shown on the Usage screen since the
+    // chat plans existed, but never billed until now. The chat line is priced
+    // in the salon's MARKET currency; an invoice has one currency, so a line
+    // in another currency is left off and logged rather than added as if the
+    // numbers were the same.
+    const chat = this.billing ? await this.billing.chatOverageForMonth(tenantId, monthStart).catch(() => null) : null;
+    let chatCents = 0;
+    if (chat && chat.overageCents > 0) {
+      if (chat.currency.toUpperCase() === cur.toUpperCase()) chatCents = chat.overageCents;
+      else this.logger.warn(`Overage ${tenantId} ${monthStart.toISOString().slice(0, 7)}: chatbot overage ${chat.overageCents} ${chat.currency} not billed — invoice is in ${cur}`);
+    }
+    const total = smsCents + minCents + chatCents;
     if (total <= 0) return null;
 
     const lineItems: LineItem[] = [];
     if (minCents > 0) lineItems.push({ label: `AI Hotline minutes over plan — ${u.overageMinutes} × ${money(u.overageCentsPerMin, cur)}`, amountCents: minCents });
     if (smsCents > 0) lineItems.push({ label: `SMS over plan — ${smsOver} × ${money(u.overageCentsPerSms, cur)}`, amountCents: smsCents });
+    if (chatCents > 0 && chat) lineItems.push({ label: `AI Chatbot replies over plan — ${chat.over} × ${money(chat.centsPer, cur)} (${chat.used} sent / ${chat.included} included)`, amountCents: chatCents });
 
     const periodEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0));
     const due = new Date(); due.setDate(due.getDate() + 14);
@@ -145,10 +189,20 @@ export class InvoicesService {
     const items = (inv.lineItems as unknown as LineItem[]) || [];
     const rows = items.map((li) => `<tr><td style="padding:6px 0;color:#334155">${li.label}</td><td align="right" style="padding:6px 0;color:#0f172a;font-weight:600">${money(li.amountCents, cur)}</td></tr>`).join('');
     const isRenewal = inv.type === InvoiceType.RENEWAL;
-    const title = isRenewal ? 'Plan renewal' : 'Usage charges';
+    // Already taken from the salon's PayPal subscription: the email is a
+    // receipt, not a request — "View & pay" on a paid bill reads as a second charge.
+    const paid = inv.status === InvoiceStatus.PAID;
+    const title = isRenewal ? 'Plan renewal' : paid ? 'Usage charges — paid' : 'Usage charges';
     const subject = isRenewal
       ? `Lumio — renew your plan (${money(inv.totalCents, cur)})`
-      : `Lumio invoice ${inv.number} — ${money(inv.totalCents, cur)}`;
+      : paid
+        ? `Lumio receipt ${inv.number} — ${money(inv.totalCents, cur)} charged to your ${inv.provider === 'paypal' ? 'PayPal' : 'card'}`
+        : `Lumio invoice ${inv.number} — ${money(inv.totalCents, cur)}`;
+    const totalLabel = paid ? 'Total paid' : 'Total due';
+    const button = paid ? 'View receipt →' : 'View &amp; pay invoice →';
+    const paidNote = paid
+      ? `<div style="color:#166534;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:14px">✓ Paid — charged automatically to the ${inv.provider === 'paypal' ? 'PayPal subscription' : 'card'} on file. Nothing to do.</div>`
+      : '';
 
     const html = `
       <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
@@ -156,16 +210,17 @@ export class InvoicesService {
         <h2 style="font-size:18px;margin:14px 0 2px">${title} · ${inv.tenant?.name ?? ''}</h2>
         <div style="color:#64748b;font-size:13px;margin-bottom:14px">Invoice ${inv.number}</div>
         <table style="width:100%;border-collapse:collapse;font-size:14px">${rows}
-          <tr><td style="padding:10px 0 0;border-top:1px solid #e2e8f0;font-weight:800">Total due</td>
+          <tr><td style="padding:10px 0 0;border-top:1px solid #e2e8f0;font-weight:800">${totalLabel}</td>
               <td align="right" style="padding:10px 0 0;border-top:1px solid #e2e8f0;font-weight:800;font-size:16px">${money(inv.totalCents, cur)}</td></tr>
         </table>
+        ${paidNote}
         <div style="margin:22px 0">
-          <a href="${link}" style="background:#4f46e5;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700;display:inline-block">View &amp; pay invoice →</a>
+          <a href="${link}" style="background:#4f46e5;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700;display:inline-block">${button}</a>
         </div>
         <div style="color:#94a3b8;font-size:12px">Or open: ${link}</div>
         <div style="color:#94a3b8;font-size:12px;margin-top:14px">Questions about this bill? Just reply to this email.</div>
       </div>`;
-    const body = `Lumio ${title} — ${inv.tenant?.name ?? ''}\nInvoice ${inv.number}\nTotal due: ${money(inv.totalCents, cur)}\nView & pay: ${link}`;
+    const body = `Lumio ${title} — ${inv.tenant?.name ?? ''}\nInvoice ${inv.number}\n${totalLabel}: ${money(inv.totalCents, cur)}\n${paid ? 'Receipt' : 'View & pay'}: ${link}`;
 
     await this.notifications.send({
       tenantId: inv.tenantId, channel: NotificationChannel.EMAIL, recipient: email,
@@ -192,7 +247,19 @@ export class InvoicesService {
       periodStart: inv.periodStart, periodEnd: inv.periodEnd, dueDate: inv.dueDate,
       createdAt: inv.createdAt, paidAt: inv.paidAt, salonName: inv.tenant?.name ?? null,
       canPay: inv.status === InvoiceStatus.OPEN && (await this.stripe.isEnabled()),
+      /** The gateway that takes this bill by itself ('paypal' | 'stripe'), or null when the salon must pay it. */
+      autoPay: inv.status === InvoiceStatus.OPEN && inv.type === InvoiceType.OVERAGE ? await this.autoPayGateway(inv.tenantId) : null,
     };
+  }
+
+  /** The gateway that will take this salon's open usage bill by itself, if any. */
+  private async autoPayGateway(tenantId: string): Promise<'paypal' | 'stripe' | null> {
+    const sub = await this.prisma.subscription.findFirst({
+      where: { tenantId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING] } },
+      orderBy: { createdAt: 'desc' }, select: { provider: true, status: true, externalReference: true, externalCustomerId: true },
+    }).catch(() => null);
+    const facts = sub ? { provider: (sub as { provider?: string | null }).provider ?? null, status: sub.status, externalReference: sub.externalReference, externalCustomerId: (sub as { externalCustomerId?: string | null }).externalCustomerId ?? null } : null;
+    return canAutoCharge(facts) ? gatewayOf(facts!.provider) : null;
   }
 
   async startCheckout(token: string): Promise<{ url: string }> {

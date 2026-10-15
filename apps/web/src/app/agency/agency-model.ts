@@ -28,7 +28,7 @@ export interface TenantRow {
   /** How long Lumio's service runs, and this cycle's renewal mark. A label: it locks nothing. */
   serviceTerm?: ServiceTerm | null;
   /** The accounts this salon holds — Page, Instagram, Google location, TikTok, mailbox — by name. */
-  connections?: { fbPage: string | null; igUser: string | null; google: string | null; googleEmail: string | null; tiktok: string | null; mail: string | null } | null;
+  connections?: { fbPage: string | null; igUser: string | null; google: string | null; googleEmail: string | null; tiktok: string | null; mail: string | null; fbLost?: { state: string; at: string } | null } | null;
   /** Kinds of account this salon shares with ANOTHER salon: google | tiktok | mail. Always a mistake. */
   sharedWith?: string[];
 }
@@ -122,7 +122,18 @@ export function sameShop(account: string | null, salon: string): boolean {
   return hit / Math.min(a.length, b.length) >= 0.5;
 }
 
-export interface ChannelCell { k: string; icon: string; label: string; v: string | null; extra?: string; tone: 'on' | 'off' | 'warn' | 'bad' }
+export interface ChannelCell { k: string; icon: string; label: string; v: string | null; extra?: string; tone: 'on' | 'off' | 'warn' | 'bad'; /** Why the cell is red/amber, when it is not the shared-account case. */ why?: string }
+
+/** The Page token is dead — one short reason per state (api: messenger/page-health.ts). */
+export const FB_LOST_LABEL: Record<string, string> = {
+  role_lost: 'tài khoản kết nối mất vai trò trên Trang',
+  two_factor: 'Business yêu cầu xác thực 2 lớp',
+  expired: 'kết nối hết hạn',
+  revoked: 'Facebook thu hồi kết nối',
+};
+export function fbLostLabel(state: string | null | undefined): string {
+  return (state && FB_LOST_LABEL[state]) || 'mất kết nối';
+}
 
 /**
  * Five accounts in a fixed order (inbox · Instagram · Google · TikTok · mail).
@@ -134,21 +145,24 @@ export function channelCells(t: TenantRow): { cells: ChannelCell[]; n: number; w
   const c = t.connections;
   if (!c) return null;
   const shared = new Set(t.sharedWith ?? []);
-  const inboxState = c.fbPage ? (t.bot === 'on' ? 'bot bật' : t.bot === 'off' ? 'chỉ đăng bài' : 'đã nối') : undefined;
+  // A dead Page token takes Instagram down with it: both ride the same connection.
+  const lost = c.fbPage && c.fbLost ? `MẤT KẾT NỐI — ${fbLostLabel(c.fbLost.state)}` : null;
+  const inboxState = lost ?? (c.fbPage ? (t.bot === 'on' ? 'bot bật' : t.bot === 'off' ? 'chỉ đăng bài' : 'đã nối') : undefined);
   const raw = [
-    { k: 'fb', icon: '💬', label: 'Messenger', v: friendly(c.fbPage), mismatch: !sameShop(c.fbPage, t.name), extra: inboxState },
-    { k: 'ig', icon: '📷', label: 'Instagram', v: friendly(c.igUser), mismatch: !sameShop(c.igUser, t.name) },
+    { k: 'fb', icon: '💬', label: 'Messenger', v: friendly(c.fbPage), mismatch: !sameShop(c.fbPage, t.name), extra: inboxState, why: lost ?? undefined },
+    { k: 'ig', icon: '📷', label: 'Instagram', v: friendly(c.igUser), mismatch: !sameShop(c.igUser, t.name), why: c.igUser && lost ? lost : undefined },
     { k: 'google', icon: 'G', label: 'Google', v: friendly(c.google), mismatch: !sameShop(c.google, t.name), extra: c.googleEmail ?? undefined },
     { k: 'tiktok', icon: '♪', label: 'TikTok', v: friendly(c.tiktok), mismatch: !sameShop(c.tiktok, t.name) },
     { k: 'mail', icon: '✉', label: 'Email gửi đi', v: friendly(c.mail), mismatch: false },
   ];
   const cells: ChannelCell[] = raw.map((x) => ({
-    k: x.k, icon: x.icon, label: x.label, v: x.v, extra: x.extra,
-    tone: shared.has(x.k) ? 'bad' : !x.v ? 'off' : x.mismatch ? 'warn' : 'on',
+    k: x.k, icon: x.icon, label: x.label, v: x.v, extra: x.extra, why: 'why' in x ? x.why : undefined,
+    tone: shared.has(x.k) ? 'bad' : !x.v ? 'off' : ('why' in x && x.why) ? 'bad' : x.mismatch ? 'warn' : 'on',
   }));
   const n = cells.filter((x) => x.v).length;
   const bad = cells.filter((x) => x.tone === 'bad');
   const warn = cells.filter((x) => x.tone === 'warn');
-  const worry = bad.length ? 'trùng tài khoản với tiệm khác' : warn.length ? `kiểm tra ${warn.map((x) => x.label).join(', ')}` : null;
+  const worry = lost ? 'mất kết nối Facebook — cần kết nối lại Trang'
+    : bad.length ? 'trùng tài khoản với tiệm khác' : warn.length ? `kiểm tra ${warn.map((x) => x.label).join(', ')}` : null;
   return { cells, n, worry };
 }

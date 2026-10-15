@@ -152,7 +152,16 @@ function Inner() {
             <div style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{t('bl.currentPlan')}</div>
             <div style={{ fontSize: 22, fontWeight: 600 }}>{current?.planName ?? sum?.planName ?? '—'}</div>
           </div>
-          <button onClick={portal} disabled={busy} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>{t('bl.manageCard')}</button>
+          {/* The card lives at whichever gateway holds the subscription:
+              Stripe mints a portal link; PayPal's automatic payments are
+              managed in the payer's own PayPal account. */}
+          {sum?.subscription?.provider === 'paypal' ? (
+            <a href="https://www.paypal.com/myaccount/autopay/" target="_blank" rel="noreferrer" style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)', textDecoration: 'none', display: 'inline-block' }}>
+              {lang === 'vi' ? 'Quản lý thẻ ở PayPal ↗' : 'Manage card at PayPal ↗'}
+            </a>
+          ) : (
+            <button onClick={portal} disabled={busy} style={{ ...ui.primaryBtn, background: 'transparent', color: 'var(--ce2e8f0)', border: '1px solid var(--c475569)' }}>{t('bl.manageCard')}</button>
+          )}
         </div>
 
         <div style={{ borderTop: '1px solid var(--c334155)', marginTop: 14, paddingTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
@@ -221,6 +230,24 @@ function Inner() {
                         : isDowngrade ? (lang === 'vi' ? `Chuyển xuống ${p.name}` : `Downgrade to ${p.name}`)
                         : (lang === 'vi' ? `Nâng cấp lên ${p.name}` : `Upgrade to ${p.name}`)}
                     </button>
+                    {/* Which gateway the card goes to — and the other one, when
+                        both are on, so a salon that prefers PayPal can take it.
+                        Nothing here knows which gateways exist: the server says. */}
+                    {canPay && (
+                      <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', marginTop: 6, textAlign: 'center', lineHeight: 1.5 }}>
+                        {provider === 'stripe'
+                          ? (lang === 'vi' ? 'Nhập thẻ, tự trừ hàng tháng (Stripe)' : 'Enter a card, charged monthly (Stripe)')
+                          : (lang === 'vi' ? 'Qua PayPal — thẻ hoặc tài khoản PayPal, tự trừ hàng tháng' : 'Via PayPal — card or PayPal account, charged monthly')}
+                        {p.providers.stripe && p.providers.paypal && (
+                          <>
+                            {' · '}
+                            <button type="button" onClick={() => choose(p.id, 'paypal')} disabled={busy} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--c818cf8)', cursor: 'pointer', font: 'inherit', textDecoration: 'underline' }}>
+                              {lang === 'vi' ? 'hoặc dùng PayPal' : 'or use PayPal'}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
                     {(isUpgrade || isDowngrade) && (
                       <p style={{ fontSize: 11.5, color: 'var(--c94a3b8)', margin: '8px 0 0', lineHeight: 1.5, textAlign: 'center' }}>
                         {isUpgrade

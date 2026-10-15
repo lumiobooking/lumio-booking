@@ -13,6 +13,6 @@ import { PlatformConfigService } from './platform-config.service';
   imports: [ConfigModule, PrismaModule, AuditModule, VoiceModule],
   controllers: [BillingController],
   providers: [BillingService, StripeService, PaypalService, PlatformConfigService],
-  exports: [BillingService, StripeService, PlatformConfigService],
+  exports: [BillingService, StripeService, PaypalService, PlatformConfigService],
 })
 export class BillingModule {}

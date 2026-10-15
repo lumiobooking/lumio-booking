@@ -14,15 +14,22 @@ describe('which salon holds which account', () => {
       { tenantId: 'glow', key: 'notifications', value: { mailService: 'gmail', gmail: { senderEmail: 'hello@glow.com', refreshToken: 'x' } } },
       { tenantId: 'lily', key: 'notifications', value: { mailService: 'auto', smtp: { user: 'lily@mail.com', fromEmail: '' } } },
       { tenantId: 'rose', key: 'tiktok', value: { connected: false } },
+      { tenantId: 'lily', key: 'messenger_health', value: { state: 'two_factor', at: '2026-10-15T01:00:00Z', raw: 'The user must be an administrator…', lost: true } },
+      { tenantId: 'glow', key: 'messenger_health', value: { state: 'ok', at: '2026-10-15T01:00:00Z', raw: null, lost: false } },
     ],
   });
 
   it('names every connection a salon holds, and lists two pages under one salon as the smell it is', () => {
-    expect(rows.get('glow')).toEqual({ fbPage: 'Glow Nails', igUser: '@glownails', google: 'Glow Nails & Spa', googleEmail: 'owner@glow.com', tiktok: '@glow.nails', mail: 'hello@glow.com' });
+    expect(rows.get('glow')).toEqual({ fbPage: 'Glow Nails', igUser: '@glownails', google: 'Glow Nails & Spa', googleEmail: 'owner@glow.com', tiktok: '@glow.nails', mail: 'hello@glow.com', fbLost: null });
     // A page with no name says "connected", never its raw id.
     expect(rows.get('lily')?.fbPage).toBe('connected, Lily Spa');
     expect(rows.get('lily')?.mail).toBe('lily@mail.com');
     expect(rows.get('rose')?.tiktok).toBeNull();
+  });
+
+  it('a dead Page token is on the row, with its cause — a healthy one is simply null', () => {
+    expect(rows.get('lily')?.fbLost).toEqual({ state: 'two_factor', at: '2026-10-15T01:00:00Z' });
+    expect(rows.get('glow')?.fbLost).toBeNull();
   });
 
   it('a location with no title is "connected", never its raw id', () => {

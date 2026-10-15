@@ -227,6 +227,7 @@ export default function AgencyPage() {
       if (noticeBy.has(r.id) || (r.heldPosts ?? 0) > 0) flags.push('waiting');
       if (newIds.has(r.id)) flags.push('new');
       if (r.status === 'SUSPENDED') flags.push('locked');
+      if (r.connections?.fbPage && r.connections.fbLost) flags.push('fblost');
       m.set(r.id, {
         id: r.id,
         term: termStatus(r.serviceTerm, today).state,
@@ -363,6 +364,7 @@ export default function AgencyPage() {
         key: 'flag', label: 'Khác', title: 'Lọc khác', kind: 'list',
         options: [
           { value: 'waiting', label: 'Đang chờ Lumio trả lời', sub: 'góp ý bài, tin nhắn, file gửi', icon: 'alert', tint: C.bad },
+          { value: 'fblost', label: 'Mất kết nối Facebook', sub: 'bài không đăng được, bot không trả lời — cần kết nối lại Trang', icon: 'x', tint: C.bad },
           { value: 'new', label: 'Tiệm mới tuần này', icon: 'check', tint: C.good },
           { value: 'locked', label: 'Đang bị khoá', sub: 'khoá đăng nhập ở Super Admin', icon: 'x', tint: C.bad },
         ],

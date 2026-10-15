@@ -24,6 +24,12 @@ export interface ConnectionsRow {
    * "connected" for both, so the name alone could not catch it.
    */
   googleLocation?: string | null;
+  /**
+   * The Page token is dead (messenger/page-health.ts): the account that
+   * connected the Page lost its role, the Business demands 2FA, or Meta
+   * expired/revoked it. Null while the connection works. `at` = when found.
+   */
+  fbLost?: { state: string; at: string } | null;
 }
 
 export interface ConnectionSources {
@@ -65,6 +71,8 @@ export function connectionsByTenant(src: ConnectionSources): Map<string, Connect
       const c = obj(v.creator);
       const u = str(v.username) ?? str(c.username);
       r.tiktok = u ? `@${u}` : (str(v.displayName) ?? str(c.displayName) ?? 'connected');
+    } else if (s.key === 'messenger_health') {
+      r.fbLost = v.lost === true && str(v.state) ? { state: str(v.state)!, at: str(v.at) ?? '' } : null;
     } else if (s.key === 'notifications') {
       const g = obj(v.gmail); const smtp = obj(v.smtp); const brevo = obj(v.brevo);
       const svc = str(v.mailService);

@@ -593,6 +593,17 @@ export class SettingsService {
     return { at: raw.at, scopes: raw.scopes };
   }
 
+  /** Whether the Page token still works, and why not. See messenger/page-health. */
+  async setMessengerHealth(tenantId: string, health: { state: string; at: string; raw: string | null; lost: boolean }): Promise<void> {
+    await this.writeKey(tenantId, 'messenger_health', health);
+  }
+
+  async getMessengerHealth(tenantId: string): Promise<{ state: string; at: string; raw: string | null; lost: boolean } | null> {
+    const raw = await this.readKey<{ state?: string; at?: string; raw?: string | null; lost?: boolean }>(tenantId, 'messenger_health', {});
+    if (!raw?.at || !raw.state) return null;
+    return { state: raw.state, at: raw.at, raw: raw.raw ?? null, lost: raw.lost === true };
+  }
+
   async getMessengerConnectTrace(tenantId: string): Promise<{ at: string; steps: string[] } | null> {
     const raw = await this.readKey<{ at?: string; steps?: string[] }>(tenantId, 'messenger_connect_trace', {});
     if (!raw?.at || !Array.isArray(raw.steps)) return null;

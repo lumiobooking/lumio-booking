@@ -12,6 +12,8 @@ interface Invoice {
   lineItems: LineItem[]; periodStart: string | null; periodEnd: string | null;
   dueDate: string | null; createdAt: string; paidAt: string | null;
   salonName: string | null; canPay: boolean;
+  /** 'paypal' when the amount is taken from the salon's PayPal subscription by itself. */
+  autoPay?: 'paypal' | 'stripe' | null;
 }
 
 const money = (c: number, cur = 'USD') => new Intl.NumberFormat(uiLocale(), { style: 'currency', currency: cur }).format((c || 0) / 100);
@@ -114,6 +116,18 @@ export default function InvoicePage() {
         <button onClick={pay} disabled={busy} style={payBtn}>
           {busy ? 'Opening secure checkout…' : `Pay ${money(inv.totalCents, inv.currency)} · Thanh toán ngay →`}
         </button>
+      ) : inv.autoPay === 'stripe' ? (
+        <div style={{ marginTop: 22, color: 'var(--c64748b)', fontSize: 14, lineHeight: 1.6 }}>
+          This amount is charged automatically to the card on file — nothing to do.
+          {inv.canPay ? ' If that charge did not go through, you can pay above.' : ''}
+          <br />Số tiền này được trừ tự động vào thẻ đã lưu — không cần làm gì thêm.
+        </div>
+      ) : inv.autoPay === 'paypal' ? (
+        <div style={{ marginTop: 22, color: 'var(--c64748b)', fontSize: 14, lineHeight: 1.6 }}>
+          This amount is charged automatically to your PayPal subscription — nothing to do.
+          If PayPal could not take it today, it is collected with your next plan payment.
+          <br />Số tiền này được trừ tự động qua đăng ký PayPal của tiệm — không cần làm gì thêm.
+        </div>
       ) : (
         <div style={{ marginTop: 22, color: 'var(--c64748b)', fontSize: 14 }}>
           To pay this invoice, please contact Lumio or reply to your invoice email.

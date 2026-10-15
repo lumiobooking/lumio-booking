@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Headers, Param, Post, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, Post, Query, Req } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { UserRole } from '@prisma/client';
@@ -132,6 +132,20 @@ export class BillingController {
   @Get('billing/usage-summary')
   usageSummary(@CurrentUser() user: AuthenticatedUser) {
     return this.billing.usageSummary(user);
+  }
+
+  /** Salon admin: the last months side by side — usage, SMS sent/failed, invoices. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('billing/usage-history')
+  usageHistory(@CurrentUser() user: AuthenticatedUser, @Query('months') months?: string) {
+    return this.billing.usageHistory(user, months ? Number(months) : 6);
+  }
+
+  /** Salon admin: every SMS of one month and what became of it. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('billing/sms-log')
+  smsLog(@CurrentUser() user: AuthenticatedUser, @Query('month') month?: string) {
+    return this.billing.smsLog(user, month);
   }
 
   /** Salon admin: subscribe to / upgrade to a plan (checkout for this salon). */

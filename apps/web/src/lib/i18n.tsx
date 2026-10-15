@@ -473,7 +473,7 @@ const DICT: Record<string, { en: string; vi: string }> = {
   'bk.delete': { en: 'Delete', vi: 'Xoá' },
   'bk.deleteHint': { en: 'Permanently delete this booking', vi: 'Xoá vĩnh viễn lịch này' },
   'bk.confirmNoShow': { en: 'Mark as NO-SHOW? Any deposit already paid is kept as revenue.', vi: 'Đánh dấu VẮNG? Tiền cọc đã trả sẽ giữ làm doanh thu.' },
-  'bk.confirmCancel': { en: 'Cancel this booking? Any payment will be refunded and removed from revenue.', vi: 'Huỷ lịch này? Mọi khoản đã thu sẽ hoàn lại và trừ khỏi doanh thu.' },
+  'bk.confirmCancel': { en: 'Cancel this booking? The customer and the technician will be notified. A payment already taken is marked refunded here but NOT sent back by itself — refund it under Payments.', vi: 'Huỷ lịch này? Khách và thợ sẽ được báo. Khoản đã thu chỉ được đánh dấu hoàn và trừ khỏi doanh thu, tiền KHÔNG tự trả về — hoàn ở mục Thanh toán.' },
   'bk.assignTo': { en: 'Assign to…', vi: 'Giao cho…' },
   'bk.assign': { en: 'Assign', vi: 'Giao' },
   'bk.fService': { en: 'Service', vi: 'Dịch vụ' },

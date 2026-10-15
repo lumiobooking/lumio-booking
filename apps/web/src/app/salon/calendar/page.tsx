@@ -376,6 +376,20 @@ function Inner() {
   const name = (c: { firstName: string; lastName?: string | null } | null) => (c ? c.firstName : '');
 
   async function action(id: string, path: string, body?: unknown) {
+    // Cancelling asks once, and says what the cancellation triggers: the
+    // customer and the technician are told, and money already taken is not
+    // sent back by itself — that is a deliberate step at Thanh toán.
+    if (path === 'cancel') {
+      const b = bookings.find((x) => x.id === id);
+      const paid = (b?.payments ?? []).filter((p) => p.status === 'PAID').reduce((sum, p) => sum + p.amountCents, 0);
+      const vi = lang === 'vi';
+      const lines = [
+        vi ? `Huỷ lịch của ${b ? name(b.customer) : 'khách'}?` : `Cancel ${b ? name(b.customer) : 'this customer'}'s booking?`,
+        vi ? 'Khách và thợ sẽ được báo theo mẫu thông báo của tiệm.' : 'The customer and the technician are notified with the salon\'s templates.',
+        ...(paid > 0 ? [vi ? `Lịch này đã thanh toán ${formatPrice(paid, b?.currency)}. Tiền KHÔNG tự hoàn — hoàn ở mục Thanh toán sau khi huỷ.` : `${formatPrice(paid, b?.currency)} was paid on it. It is NOT refunded by itself — refund it under Payments after cancelling.`] : []),
+      ];
+      if (!window.confirm(lines.join('\n'))) return;
+    }
     try {
       // A move outside opening hours: the owner is asked once and may go ahead.
       const timed = path === 'reschedule' || path === 'move';

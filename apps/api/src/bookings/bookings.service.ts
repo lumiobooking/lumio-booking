@@ -23,6 +23,7 @@ import { buildClientCard, CardVisit } from './client-card';
 import { capabilitiesFor } from '../auth/capabilities';
 import { canSelfReschedule } from './self-reschedule';
 import { canSelfCancel } from './self-cancel';
+import { changeNoticeTargets, changePushText } from './change-notices';
 import { AppointmentStatus, NotificationChannel, OrderStatus, PaymentStatus, Prisma, RejectionType, UserRole, WalkInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -1033,10 +1034,10 @@ export class BookingsService {
       });
       this.logger.log(`self-reschedule OK (${by}) ${appt.id}: ${appt.startTime.toISOString()} -> ${newStart.toISOString()}`);
 
-      // The confirmation now describes a different day. Sending it again is the
-      // point: the customer's written record of the appointment must match the
-      // calendar, and the technician's day just changed.
-      if (updated) this.sendBookingConfirmation(tenantId, updated as never).catch(() => undefined);
+      // The customer's written record must match the calendar, and the
+      // technician's day just changed — the "rescheduled" template says so;
+      // a second "confirmed" read as a second booking.
+      if (updated) this.sendChangeNotice(tenantId, appt.id, 'rescheduled', { by: 'customer', from: appt.startTime }).catch(() => undefined);
 
       return { ok: true, code: 'ok', say: '', appointment: updated, startTime: newStart };
     } catch (e) {
@@ -2714,6 +2715,9 @@ export class BookingsService {
       resourceId: id,
       metadata: { from: booking.startTime.toISOString(), to: newStart.toISOString() },
     });
+    // The customer's written record must match the calendar; the technician's
+    // day just changed. The "rescheduled" template, not the confirmation.
+    this.sendChangeNotice(tenantId, id, 'rescheduled', { by: 'staff', from: booking.startTime }).catch(() => undefined);
 
     return updated;
   }
@@ -2855,6 +2859,8 @@ export class BookingsService {
 
   /** Cancel + settle money, scoped to a tenant (admin or token-based customer cancel). */
   async cancelForTenant(tenantId: string, id: string, actorUserId: string | null, by: 'staff' | 'customer' | 'ai' = 'customer', byName: string | null = null) {
+    // Cancelling twice must not tell everyone twice.
+    const before = await this.prisma.appointment.findFirst({ where: { id, tenantId }, select: { status: true } }).catch(() => null);
     await this.prisma.$transaction(async (tx) => {
       await tx.appointment.updateMany({
         where: { id, tenantId },
@@ -2870,7 +2876,136 @@ export class BookingsService {
       });
     });
     await this.audit.log({ tenantId, userId: actorUserId, action: 'booking.cancelled', resourceType: 'appointment', resourceId: id });
+    if (before && before.status !== AppointmentStatus.CANCELLED) {
+      this.sendChangeNotice(tenantId, id, 'cancelled', { by, byName }).catch(() => undefined);
+    }
     return this.prisma.appointment.findFirst({ where: { id, tenantId }, include: BOOKING_INCLUDE });
+  }
+
+  /**
+   * Tell the people a cancellation or a move concerns: the customer (their
+   * written record must match the calendar), the technician (a cancellation
+   * frees their chair; a move changes their day) and the owner's phone. Which
+   * template and channel is decided in ./change-notices; the templates are
+   * the salon's own, from Settings → Notifications. Fire-and-forget.
+   */
+  private async sendChangeNotice(
+    tenantId: string,
+    appointmentId: string,
+    kind: 'cancelled' | 'rescheduled',
+    ctx: { by?: 'staff' | 'customer' | 'ai' | null; byName?: string | null; from?: Date | null } = {},
+  ) {
+    const appt = await this.prisma.appointment.findFirst({
+      where: { id: appointmentId, tenantId },
+      select: {
+        id: true, startTime: true, endTime: true, priceCents: true, currency: true, addons: true, notes: true, source: true,
+        customer: { select: { firstName: true, lastName: true, email: true, phone: true } },
+        service: { select: { name: true } },
+        assignedStaff: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, userId: true, user: { select: { email: true } } } },
+      } as never,
+    }).catch(() => null) as unknown as {
+      id: string; startTime: Date; endTime: Date; priceCents: number; currency: string; addons: unknown; notes: string | null; source: string | null;
+      customer: { firstName: string; lastName: string | null; email: string | null; phone: string | null } | null;
+      service: { name: string } | null;
+      assignedStaff: { id: string; firstName: string; lastName: string | null; email: string | null; phone: string | null; userId: string | null; user: { email: string | null } | null } | null;
+    } | null;
+    if (!appt) return;
+
+    const [n, tenant, templates] = await Promise.all([
+      this.settings.getNotificationSettings(tenantId),
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, contactEmail: true, contactPhone: true, branding: true, timezone: true } }),
+      this.settings.getNotificationTemplates(tenantId),
+    ]);
+    const tz = tenant?.timezone || 'America/New_York';
+    const loc = await this.customerLocale(tenantId, tenant?.timezone);
+    const vi = loc.toLowerCase().startsWith('vi');
+    const fmtT = (dd: Date) => dd.toLocaleTimeString(loc, { hour: 'numeric', minute: '2-digit', timeZone: tz });
+    const fmtD = (dd: Date) => dd.toLocaleDateString(loc, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric', timeZone: tz });
+    const fmtShort = (dd: Date) => `${dd.toLocaleDateString(loc, { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: tz })} ${fmtT(dd)}`;
+    const salon = tenant?.name ?? 'Our salon';
+    const staffName = appt.assignedStaff ? `${appt.assignedStaff.firstName} ${appt.assignedStaff.lastName ?? ''}`.trim() : '';
+    const custFull = `${appt.customer?.firstName ?? ''} ${appt.customer?.lastName ?? ''}`.trim();
+    const lineItems: Array<Record<string, unknown>> = Array.isArray(appt.addons) ? (appt.addons as Array<Record<string, unknown>>).filter(Boolean) : [];
+    const extra = await this.settings.getCompanyExtra(tenantId).catch(() => ({ address: '' } as { address?: string }));
+    const pct: Record<string, string> = {
+      salon_name: salon,
+      customer_name: appt.customer?.firstName ?? (vi ? 'bạn' : 'there'),
+      customer_full_name: custFull || (vi ? 'Khách' : 'A customer'),
+      customer_phone: appt.customer?.phone ?? '',
+      customer_email: appt.customer?.email ?? '',
+      service_name: appt.service?.name ?? (vi ? 'lịch hẹn' : 'your appointment'),
+      staff_name: staffName || (vi ? 'Tiệm sẽ sắp xếp' : 'To be assigned'),
+      appointment_date: fmtD(appt.startTime),
+      appointment_time: `${fmtT(appt.startTime)} – ${fmtT(appt.endTime)}`,
+      old_date: ctx.from ? fmtD(ctx.from) : '',
+      old_time: ctx.from ? fmtT(ctx.from) : '',
+      duration: `${Math.round((appt.endTime.getTime() - appt.startTime.getTime()) / 60_000)} ${vi ? 'phút' : 'min'}`,
+      total_price: formatMoney(appt.priceCents, appt.currency, loc),
+      add_ons: lineItems.map((a) => a.name).filter(Boolean).join(', '),
+      add_ons_only: lineItems.filter((l) => l.kind !== 'service').map((a) => a.name).filter(Boolean).join(', '),
+      service_lineup: '',
+      salon_contact: tenant?.contactEmail ?? tenant?.contactPhone ?? '',
+      salon_address: (extra?.address ?? '').trim(),
+      booking_id: appt.id,
+      booking_ref: appt.id.slice(-6).toUpperCase(),
+      booking_notes: (appt.notes ?? '').trim().slice(0, 400),
+      booking_source: '',
+      manage_url: kind === 'rescheduled' ? this.buildApptManageUrl(appt.id) : '',
+    };
+    const custTpl = templates[kind === 'cancelled' ? 'customer_booking_cancelled' : 'customer_booking_rescheduled'];
+    const staffTpl = templates['staff_booking_cancelled'];
+    const staffEmail = appt.assignedStaff ? (appt.assignedStaff.email || appt.assignedStaff.user?.email || null) : null;
+    const targets = changeNoticeTargets({
+      kind, market: n.market ?? 'US',
+      customer: { email: appt.customer?.email ?? null, phone: appt.customer?.phone ?? null },
+      customerTpl: custTpl ? { enabled: custTpl.enabled, email: custTpl.email, sms: custTpl.sms } : null,
+      staff: appt.assignedStaff ? { email: staffEmail, phone: appt.assignedStaff.phone ?? null } : null,
+      staffTpl: staffTpl ? { enabled: staffTpl.enabled, email: staffTpl.email, sms: staffTpl.sms } : null,
+    });
+
+    const smtp = n.smtp.user && n.smtp.pass
+      ? { host: n.smtp.host, port: n.smtp.port, user: n.smtp.user, pass: n.smtp.pass, secure: n.smtp.secure, replyTo: n.replyTo || undefined, from: `${n.senderName || salon} <${n.senderEmail || n.smtp.user}>` }
+      : undefined;
+    const brevo = n.brevo.apiKey && n.senderEmail
+      ? { apiKey: n.brevo.apiKey, senderEmail: n.senderEmail, replyTo: n.replyTo || undefined, senderName: n.brevo.senderName || n.senderName || salon }
+      : undefined;
+    const senderName = n.senderName || salon;
+    const replyTo = n.replyTo || n.senderEmail || undefined;
+    const gmail = n.gmail.clientId && n.gmail.clientSecret && n.gmail.refreshToken && n.gmail.senderEmail
+      ? { clientId: n.gmail.clientId, clientSecret: n.gmail.clientSecret, refreshToken: n.gmail.refreshToken, senderEmail: n.gmail.senderEmail, senderName, replyTo }
+      : undefined;
+    const accent = this.settings.brandingFrom(tenant?.branding).accentColor;
+    const related = { relatedType: 'appointment', relatedId: appt.id };
+
+    const jobs: Promise<unknown>[] = [];
+    for (const t of targets) {
+      const tpl = t.to === 'customer' ? custTpl! : staffTpl!;
+      if (t.channel === 'email') {
+        const bodyFilled = fillPct(tpl.body, pct) + (t.to === 'customer' && kind === 'rescheduled'
+          ? `<p style="margin:16px 0 0"><a href="${pct.manage_url}" style="color:${accent};font-weight:600">${vi ? 'Xem hoặc đổi lịch hẹn →' : 'View or change your appointment →'}</a></p>` : '');
+        jobs.push(this.notifications.send({
+          tenantId, channel: NotificationChannel.EMAIL, recipient: t.recipient,
+          subject: fillPct(tpl.subject, pct),
+          body: htmlToText(bodyFilled),
+          html: renderTemplatedEmailHtml({ salon, accent, contact: pct.salon_contact, bodyText: bodyFilled }),
+          smtp, brevo, gmail, mailService: n.mailService, senderName, replyTo, ...related,
+        }));
+      } else {
+        jobs.push(this.notifications.send({ tenantId, channel: NotificationChannel.SMS, recipient: t.recipient, body: fillPct(tpl.smsBody, pct), twilio: n.twilio, ...related }));
+      }
+    }
+
+    // The owner's phone, and the technician's: a cancellation frees a chair, a
+    // move changes a day. Both best-effort; no-ops unless push is set up.
+    const push = changePushText({
+      kind, vi, customer: custFull || pct.customer_name, service: pct.service_name,
+      when: fmtShort(appt.startTime), from: ctx.from ? fmtShort(ctx.from) : undefined, by: ctx.by ?? null, byName: ctx.byName ?? null,
+    });
+    this.push.sendToTenant(tenantId, { ...push, url: '/salon/calendar' }).catch(() => undefined);
+    if (appt.assignedStaff?.userId) {
+      this.push.sendToUser(tenantId, appt.assignedStaff.userId, { ...push, url: '/staff/today' }).catch(() => undefined);
+    }
+    await Promise.allSettled(jobs);
   }
 
   // ---- Customer self-service via signed reminder links (no login) ----------

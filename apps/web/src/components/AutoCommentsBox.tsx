@@ -162,19 +162,25 @@ export function PostCommentsPicker({ view, value, onChange, vi, onOpenSettings }
   const live = view.preview.filter((p) => p.on && p.text);
   const facts = view.facts;
   const radio = (m: typeof mode, label: string) => (
-    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: mode === m ? 'var(--ce2e8f0)' : 'var(--c94a3b8)', cursor: 'pointer' }}>
+    <label style={{
+      display: 'inline-flex', alignItems: 'center', gap: 7, minHeight: 34, padding: '0 12px 0 9px', borderRadius: 20, cursor: 'pointer',
+      fontSize: 13, fontWeight: 600, border: `1px solid ${mode === m ? '#6366f1' : 'var(--c334155)'}`,
+      background: mode === m ? 'var(--c1e1b4b)' : 'transparent', color: mode === m ? 'var(--ce2e8f0)' : 'var(--c94a3b8)',
+    }}>
       <input type="radio" name="post-comments" checked={mode === m} onChange={() => onChange(m === 'default' ? null : m === 'off' ? { off: true } : { items: live.map((p) => ({ text: p.text!, channels: p.channels })) })} />
       {label}
     </label>
   );
   return (
-    <div style={{ ...box, marginTop: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>💬 {T('Bình luận tự động sau khi đăng', 'First comments after publishing')}</span>
+    <div style={{ ...box, marginTop: 10, padding: 14 }}>
+      {/* The whole width of the composer's left column, so each comment is a
+          row a person can read and type in — not a 180px box beside the date. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 2 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ce2e8f0)', marginRight: 4 }}>💬 {T('Bình luận sau khi đăng', 'Comments after publishing')}</span>
         {radio('default', view.settings.enabled ? `${T('Theo mẫu tiệm', 'Shop templates')} (${live.length})` : T('Theo mẫu tiệm (đang tắt)', 'Shop templates (off)'))}
         {radio('off', T('Không, bài này', 'None for this post'))}
         {radio('custom', T('Tự soạn cho bài này', 'Write for this post'))}
-        {onOpenSettings && <button type="button" onClick={onOpenSettings} style={{ ...btn, marginLeft: 'auto', minHeight: 26, padding: '0 9px', fontSize: 11.5 }}>⚙ {T('Mẫu của tiệm', 'Shop templates')}</button>}
+        {onOpenSettings && <button type="button" onClick={onOpenSettings} style={{ ...btn, marginLeft: 'auto', minHeight: 30, padding: '0 10px', fontSize: 12 }}>⚙ {T('Mẫu của tiệm', 'Shop templates')}</button>}
       </div>
       {mode === 'default' && (
         <div style={{ marginTop: 6 }}>
@@ -197,14 +203,22 @@ export function PostCommentsPicker({ view, value, onChange, vi, onOpenSettings }
         </div>
       )}
       {mode === 'custom' && value?.items && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
           {value.items.map((it, i) => (
-            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-              <textarea value={it.text} rows={2} onChange={(e) => onChange({ items: value.items!.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })} style={{ ...ta, flex: 1 }} placeholder={T('Nội dung bình luận…', 'Comment text…')} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <ChannelChips value={it.channels} onChange={(channels) => onChange({ items: value.items!.map((x, j) => (j === i ? { ...x, channels } : x)) })} avail={view.channels} vi={vi} />
-                <button type="button" onClick={() => onChange({ items: value.items!.filter((_, j) => j !== i) })} style={{ ...btn, minHeight: 24, padding: '0 8px', fontSize: 11, color: 'var(--cf87171)' }}>✕</button>
-              </div>
+            <div key={i} style={{
+              display: 'grid', gridTemplateColumns: '28px minmax(0, 1fr) auto 32px', gap: 10, alignItems: 'center',
+              padding: '8px 10px', borderRadius: 10, border: '1px solid var(--c334155)', background: 'var(--c111827)',
+            }}>
+              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--c1e1b4b)', color: 'var(--ca5b4fc)', fontWeight: 700, fontSize: 12.5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
+              <textarea
+                value={it.text}
+                rows={Math.min(4, Math.max(1, Math.ceil((it.text.length || 1) / 70)))}
+                onChange={(e) => onChange({ items: value.items!.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
+                style={{ ...ta, fontSize: 13.5, padding: '9px 11px', resize: 'none' }}
+                placeholder={T('Nội dung bình luận…', 'Comment text…')}
+              />
+              <ChannelChips value={it.channels} onChange={(channels) => onChange({ items: value.items!.map((x, j) => (j === i ? { ...x, channels } : x)) })} avail={view.channels} vi={vi} />
+              <button type="button" aria-label={T('Xoá bình luận', 'Remove comment')} onClick={() => onChange({ items: value.items!.filter((_, j) => j !== i) })} style={{ ...btn, minHeight: 32, width: 32, padding: 0, fontSize: 13, color: 'var(--c64748b)' }}>✕</button>
             </div>
           ))}
           {value.items.length < 8 && (

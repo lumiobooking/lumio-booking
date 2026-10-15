@@ -3876,7 +3876,7 @@ function Inner() {
                 >
                 <div style={{
                   ...ui.card, padding: 16, borderColor: '#6366f1', position: 'relative',
-                  width: composerOpen ? 'min(1040px, 100%)' : '100%',
+                  width: composerOpen ? 'min(1180px, 100%)' : '100%',
                   maxHeight: composerOpen ? (isMobile ? '100%' : 'calc(100vh - 48px)') : '60vh',
                   height: composerOpen && isMobile ? '100%' : undefined,
                   overflowY: 'auto', borderRadius: composerOpen && isMobile ? 0 : 14,
@@ -3960,7 +3960,7 @@ function Inner() {
                   {/* Two columns: the post itself on the left, where and when it goes
                       on the right. Everything channel-specific or team-only folds under
                       "Nâng cao" unless that channel is picked or the post already exists. */}
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 340px', gap: isMobile ? 14 : 22, alignItems: 'start' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 360px', gap: isMobile ? 14 : 24, alignItems: 'start' }}>
                   <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 2 }}>{T('Đăng lên', 'Publish to')}</div>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4, marginBottom: 12 }}>
@@ -4182,8 +4182,16 @@ function Inner() {
                         ? T(`Bài nhiều ảnh (${postDraft.media.length}/10) — vuốt ngang trên Instagram.`, `Carousel (${postDraft.media.length}/10) — swipeable on Instagram.`)
                         : postDraft.media.some((m) => m.kind === 'video')
                           ? T('Video — Instagram đăng dạng Reels, Facebook đăng video thường.', 'Video — published as a Reel on Instagram, a video post on Facebook.')
-                          : T('Ảnh: bấm "Tải ảnh lên" — chọn được nhiều ảnh một lần (giữ Ctrl/Shift), thứ tự chọn là thứ tự trong bài. Video: bấm "Tải video lên" (MP4/MOV, tối đa 120 MB) — Facebook đăng video, Instagram đăng Reels, TikTok đăng bài. Video nặng hơn (tới 1 GB): tải lên Google Drive, chia sẻ "Bất kỳ ai có đường liên kết", dán link vào ô trên rồi bấm "Thêm link" — hệ thống tự kéo file về máy chủ.',
-                              'Photos: use Upload — pick several at once (hold Ctrl/Shift); the order you pick is the order in the post. Video: press "Upload a video" (MP4/MOV, 120 MB max) — a video post on Facebook, a Reel on Instagram, the post itself on TikTok. Bigger clips (up to 1 GB): put it on Google Drive, share as "Anyone with the link", paste the link above and press "Add link" — the server fetches it.')}
+                          : (
+                            <>
+                              {T('Ảnh đầu là ảnh bìa · kéo thả để đổi thứ tự · video .mp4/.mov tới 120 MB, nặng hơn thì dán link Google Drive.', 'First photo is the cover · drag to reorder · video .mp4/.mov up to 120 MB, bigger clips by Google Drive link.')}{' '}
+                              <details style={{ display: 'inline' }}>
+                                <summary style={{ display: 'inline', cursor: 'pointer', color: 'var(--ca5b4fc)', fontWeight: 600 }}>{T('Hướng dẫn ›', 'How-to ›')}</summary>
+                                <div style={{ marginTop: 4 }}>{T('Ảnh: bấm "Tải ảnh lên" — chọn được nhiều ảnh một lần (giữ Ctrl/Shift), thứ tự chọn là thứ tự trong bài. Video: bấm "Tải video lên" (MP4/MOV, tối đa 120 MB) — Facebook đăng video, Instagram đăng Reels, TikTok đăng bài. Video nặng hơn (tới 1 GB): tải lên Google Drive, chia sẻ "Bất kỳ ai có đường liên kết", dán link vào ô trên rồi bấm "Thêm link" — hệ thống tự kéo file về máy chủ.',
+                                  'Photos: use Upload — pick several at once (hold Ctrl/Shift); the order you pick is the order in the post. Video: press "Upload a video" (MP4/MOV, 120 MB max) — a video post on Facebook, a Reel on Instagram, the post itself on TikTok. Bigger clips (up to 1 GB): put it on Google Drive, share as "Anyone with the link", paste the link above and press "Add link" — the server fetches it.')}</div>
+                              </details>
+                            </>
+                          )}
                     </div>
                   </div>
 
@@ -4272,90 +4280,6 @@ function Inner() {
                     </div>
                   )}
 
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                  {/* ---- now, or on the calendar ----
-                       Scheduling used to be the only way in: write it, pick a
-                       date, save, find the row, press Post now. Five steps for
-                       the commonest thing a salon does — something happened in
-                       the shop and they want it up. */}
-                  <div style={{ marginTop: 13 }}>
-                    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 9 }}>
-                      {([
-                        ['now', `🚀 ${T('Đăng ngay', 'Post now')}`],
-                        ['later', `🗓️ ${T('Hẹn giờ', 'Schedule')}`],
-                      ] as const).map(([k, label]) => (
-                        <button
-                          key={k}
-                          onClick={() => setPostWhen(k)}
-                          style={{
-                            minHeight: 40, padding: '0 16px', borderRadius: 9, cursor: 'pointer',
-                            fontSize: 13.5, fontWeight: postWhen === k ? 700 : 500,
-                            border: `1px solid ${postWhen === k ? '#6366f1' : 'var(--c334155)'}`,
-                            background: postWhen === k ? '#6366f1' : 'transparent',
-                            color: postWhen === k ? '#fff' : 'var(--c94a3b8)',
-                          }}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    {postWhen === 'later' ? (() => {
-                      /* THE ZONE THE DIGITS BELONG TO, SAID OUT LOUD.
-                         The picker used to be a bare datetime box whose digits
-                         silently meant salon time. A writer in Vietnam typing
-                         "20:00" for a Texas shop had no way to see whether that
-                         was Texas 20:00 or Vietnam 20:00 — the difference is a
-                         post at 8 in the morning. So the zone is a control next
-                         to the digits, salon time by default, and the same
-                         instant is echoed in the other zone underneath. */
-                      const shopTz = salonTz();
-                      const mine = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : '';
-                      const options = Array.from(new Set([
-                        shopTz, mine, 'America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York', 'America/Phoenix', 'Pacific/Honolulu', 'Asia/Ho_Chi_Minh',
-                      ].filter(Boolean)));
-                      const zoneName = (z: string) => z === shopTz && z ? `${T('Giờ tiệm', 'Salon time')} · ${z}` : z === mine ? `${T('Giờ máy anh', 'Your time')} · ${z}` : z;
-                      const instant = postDraft.at && postDraft.at.length >= 16 ? wallToInstantISO(postDraft.at, postTz || undefined) : null;
-                      const echo = instant && shopTz && postTz !== shopTz ? `${instantToWall(instant, shopTz).replace('T', ' ')} ${T('giờ tiệm', 'salon time')}` : instant && mine && postTz !== mine ? `${instantToWall(instant, mine).replace('T', ' ')} ${T('giờ máy anh', 'your time')}` : null;
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <input
-                              id="post-at"
-                              type="datetime-local"
-                              min={instantToWall(new Date(), postTz || undefined).slice(0, 16)}
-                              value={postDraft.at}
-                              onChange={(e) => setPostDraft({ ...postDraft, at: e.target.value })}
-                              style={{
-                                minHeight: 42, padding: '10px 12px', borderRadius: 9, fontSize: 13.5, fontFamily: 'inherit',
-                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
-                              }}
-                            />
-                            <select
-                              id="post-tz"
-                              value={postTz}
-                              onChange={(e) => setPostTz(e.target.value)}
-                              title={T('Múi giờ mà giờ bên trái được hiểu theo', 'The zone the time on the left is read in')}
-                              style={{
-                                minHeight: 42, padding: '0 10px', borderRadius: 9, fontSize: 13, fontFamily: 'inherit', maxWidth: '100%',
-                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
-                              }}
-                            >
-                              {options.map((z) => <option key={z} value={z}>{zoneName(z)}</option>)}
-                            </select>
-                          </div>
-                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
-                            {echo ? <>= <b style={{ color: 'var(--ccbd5e1)', fontVariantNumeric: 'tabular-nums' }}>{echo}</b></> : T('Giờ đăng tính theo múi giờ đã chọn.', 'Posts at that time in the chosen zone.')}
-                          </div>
-                        </div>
-                      );
-                    })() : (
-                      <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.55 }}>
-                        {T('Bài sẽ lên trang ngay khi bấm. Vẫn được lưu vào lịch để xem lại sau.',
-                           'Goes up the moment you press. Still recorded on the calendar afterwards.')}
-                      </div>
-                    )}
-                  </div>
                   {/* ---- the first comments under this post ----
                        Booking link, today's offer, phone — written by the Page
                        a few minutes after publishing, the way the team used to
@@ -4381,223 +4305,6 @@ function Inner() {
                   )}
 
 
-                  {/* ---- an existing post: its state, and what can be done to it ----
-                       "Post now" and "Cancel" used to live ONLY in the list view,
-                       so opening a post from the calendar or the grid gave you a
-                       composer with no way to send it. The composer is the one
-                       place every view leads to, so the actions belong here. */}
-                  {(() => {
-                    const live = postDraft.id ? queue?.posts.find((x) => x.id === postDraft.id) : null;
-                    if (!live) return null;
-                    const S: Record<string, { fg: string; text: string }> = {
-                      draft: { fg: 'var(--c94a3b8)', text: T('Nháp', 'Draft') },
-                      scheduled: { fg: '#6366f1', text: T('Đã đặt lịch', 'Scheduled') },
-                      publishing: { fg: '#f59e0b', text: T('Đang đăng', 'Publishing') },
-                      posted: { fg: '#22c55e', text: T('Đã đăng', 'Posted') },
-                      failed: { fg: '#ef4444', text: T('Lỗi', 'Failed') },
-                      expired: { fg: '#f59e0b', text: T('Quá hạn', 'Missed') },
-                      cancelled: { fg: 'var(--c64748b)', text: T('Đã huỷ', 'Cancelled') },
-                    };
-                    const st = live.held
-                      ? { fg: '#ef4444', text: T('Khách yêu cầu sửa', 'Change requested') }
-                      : S[live.status] ?? S.draft;
-                    return (
-                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--c334155)' }}>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{T('Trạng thái', 'Status')}</span>
-                          <span style={{ fontSize: 11.5, padding: '2px 9px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg, fontWeight: 600 }}>
-                            {live.held ? '🔴 ' : ''}{st.text}
-                          </span>
-                          {live.attempts > 0 && (
-                            <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
-                              {T('đã thử', 'tried')} {live.attempts}×
-                            </span>
-                          )}
-                        </div>
-
-                        {/* What the client actually asked for, sitting next to
-                            the box where the fix gets typed. Saving the post
-                            clears the red on its own — an edit IS the answer —
-                            so the button below is for the requests that were
-                            handled somewhere else: a phone call, a new photo,
-                            or a question that turned out to need no change. */}
-                        {live.held && (
-                          <div style={{ padding: '10px 12px', borderRadius: 8, marginBottom: 9, background: 'var(--c450a0a)', border: '1px solid #ef4444' }}>
-                            <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', marginBottom: 3 }}>
-                              {live.held.by ? `${live.held.by} · ` : ''}
-                              {T('bài này đang dừng, không tự đăng', 'this post is stopped and will not publish')}
-                            </div>
-                            {live.held.note && (
-                              <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                                “{live.held.note}”
-                              </div>
-                            )}
-                            {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
-                              <button
-                                onClick={() => clearHold(live.id)}
-                                disabled={queueBusy}
-                                style={{
-                                  marginTop: 8, minHeight: 34, padding: '7px 12px', borderRadius: 8,
-                                  cursor: queueBusy ? 'not-allowed' : 'pointer', border: 'none',
-                                  background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 600,
-                                }}
-                              >
-                                ✓ {T('Đã xử lý xong — cho bài chạy lại', 'Handled — let it publish')}
-                              </button>
-                            )}
-                          </div>
-                        )}
-
-                        {/* The reason, verbatim from Meta. Paraphrasing it would
-                            hide the one string that says what to fix. */}
-                        {!!live.blockers.length && (
-                          <div style={{ padding: '9px 11px', borderRadius: 8, marginBottom: 9, background: 'var(--c451a03)', border: '1px solid #f59e0b' }}>
-                            {live.blockers.map((b) => (
-                              <div key={b} style={{ fontSize: 12.5, color: 'var(--cfde68a)', lineHeight: 1.55 }}>⚠︎ {b}</div>
-                            ))}
-                          </div>
-                        )}
-                        {live.lastError && !live.blockers.length && (
-                          <div style={{
-                            padding: '10px 12px', borderRadius: 8, marginBottom: 9,
-                            background: live.errorIsStale ? 'var(--c1e293b)' : 'var(--c450a0a)',
-                            border: `1px solid ${live.errorIsStale ? 'var(--c334155)' : 'var(--c991b1b)'}`,
-                          }}>
-                            {/* The permission has since been granted, so this is
-                                history rather than an instruction. Telling
-                                somebody to reconnect a Page they just
-                                reconnected is how a fix message stops being
-                                believed. */}
-                            {live.errorIsStale && (
-                              <div style={{ fontSize: 13, color: 'var(--ink-good)', fontWeight: 600, lineHeight: 1.55, marginBottom: 6 }}>
-                                ✓ {T('Quyền đã được cấp rồi — lỗi bên dưới là của lần thử trước. Bấm "Đăng ngay" để thử lại.',
-                                     'The permission is granted now — the error below is from the earlier attempt. Press “Post now” to try again.')}
-                              </div>
-                            )}
-                            {live.fix && (
-                              <div style={{ fontSize: 13, color: 'var(--cfecaca)', fontWeight: 600, lineHeight: 1.55, marginBottom: 6 }}>
-                                → {live.fix}
-                              </div>
-                            )}
-                            {/* Meta's own words, kept whole. It is the only
-                                precise string anybody can search for later. */}
-                            <details>
-                              <summary style={{ fontSize: 11.5, color: 'var(--cfca5a5)', cursor: 'pointer' }}>
-                                {T('Nguyên văn lỗi từ Facebook', 'Facebook’s exact error')}
-                              </summary>
-                              <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', lineHeight: 1.5, marginTop: 5, wordBreak: 'break-word' }}>
-                                {live.lastError}
-                              </div>
-                            </details>
-                          </div>
-                        )}
-
-                        {/* Every channel the post ASKED for, with what became of
-                            it — not only the ones that worked. A list of
-                            successes reads as a complete list, which is how a
-                            Facebook-only post gets mistaken for one that also
-                            reached Instagram. */}
-                        {live.status === 'posted' && (
-                          <div style={{ marginBottom: 9 }}>
-                            {(['facebook', 'instagram', 'google', 'tiktok'] as const).map((c) => {
-                              const asked = live.channels.includes(c);
-                              const r = live.results.find((x) => x.channel === c);
-                              const name = CHANNEL_NAME[c];
-                              const connected = c === 'facebook' ? Boolean(queue?.connected) : c === 'instagram' ? queue?.connected?.hasInstagram : c === 'google' ? Boolean(queue?.google) : Boolean(queue?.tiktok);
-                              if (!asked && !connected) return null;
-                              return (
-                                <div key={c} style={{ fontSize: 12.5, lineHeight: 1.7 }}>
-                                  {!asked
-                                    ? <span style={{ color: 'var(--c64748b)' }}>○ {name} — {T('không chọn đăng', 'not selected')}</span>
-                                    : r?.url
-                                      ? <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c60a5fa)' }}>
-                                        ✓ {name} — {r.urlKind === 'profile'
-                                          ? T('bài riêng tư, mở trang tài khoản', 'private post — open the profile')
-                                          : T('xem bài', 'view the post')}
-                                      </a>
-                                      : <span style={{ color: 'var(--ink-good)' }}>✓ {name}</span>}
-                                  {asked && r?.note && <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.45 }}>ⓘ {r.note}</div>}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {live.status !== 'posted' && live.results.filter((r) => r.url).map((r) => (
-                          <a
-                            key={r.channel} href={r.url!} target="_blank" rel="noopener noreferrer"
-                            style={{ display: 'inline-block', marginRight: 12, marginBottom: 8, fontSize: 12.5, color: 'var(--c60a5fa)' }}
-                          >
-                            🔗 {T('Xem trên', 'View on')} {CHANNEL_NAME[r.channel as Channel] ?? r.channel}
-                          </a>
-                        ))}
-
-                        {/* A published row is the record of what really went up:
-                            it carries the publish time and the links, and the
-                            weekly results count it. It is not deletable, so no
-                            button pretends otherwise. */}
-                        {live.status === 'posted' ? (
-                          <div>
-                            <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.6 }}>
-                              {T('Bài đã đăng được giữ lại làm sổ ghi. Muốn gỡ bài thì xoá trực tiếp trên Facebook/Instagram; muốn lịch gọn hơn thì bỏ tick "Hiện bài đã đăng".',
-                                 'Published posts are kept as the record. To take one down, delete it on Facebook/Instagram; to tidy the calendar, untick “Show published posts”.')}
-                            </div>
-                            {queue?.canDeletePosted && (
-                              <button
-                                onClick={() => removePost(live.id)}
-                                disabled={queueBusy}
-                                style={{
-                                  marginTop: 9, minHeight: 38, padding: '0 14px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5,
-                                  border: '1px solid #ef4444', background: 'transparent', color: 'var(--ink-bad)', fontWeight: 600,
-                                }}
-                              >
-                                🗑 {T('Xoá khỏi lịch (Lumio)', 'Remove from calendar (Lumio)')}
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <button
-                              onClick={() => removePost(live.id)}
-                              disabled={queueBusy}
-                              style={{
-                                minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
-                                border: '1px solid #ef4444', background: 'transparent', color: 'var(--ink-bad)', fontWeight: 600,
-                              }}
-                            >
-                              🗑 {T('Xoá bài', 'Delete')}
-                            </button>
-                          </div>
-                        )}
-                        {live.status !== 'posted' && (
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-                            <button
-                              onClick={() => postAction(live.id, 'publish')}
-                              disabled={queueBusy || live.blockers.length > 0}
-                              style={{
-                                minHeight: 42, padding: '0 18px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
-                                cursor: live.blockers.length ? 'not-allowed' : 'pointer', border: 'none',
-                                background: live.blockers.length ? 'var(--c334155)' : '#6366f1',
-                                color: live.blockers.length ? 'var(--c64748b)' : '#fff',
-                              }}
-                            >
-                              🚀 {queueBusy ? T('Đang đăng…', 'Publishing…') : T('Đăng ngay', 'Post now')}
-                            </button>
-                            <button
-                              onClick={() => { postAction(live.id, 'cancel'); setPostDraft(null); }}
-                              disabled={queueBusy}
-                              title={T('Giữ lại bài nhưng không đăng nữa', 'Keeps the post but stops it going out')}
-                              style={{
-                                minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
-                                border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)',
-                              }}
-                            >
-                              {T('Tạm dừng', 'Pause it')}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
                   {/* ---- advanced: Google's extras, TikTok's decisions, the team's hand-off ----
                        Folded for a plain new post. Open by itself when a channel that needs
                        decisions is picked, or when the post already exists (its stage matters). */}
@@ -5206,6 +4913,326 @@ function Inner() {
                     );
                   })()}
 
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                  {/* ---- now, or on the calendar ----
+                       Scheduling used to be the only way in: write it, pick a
+                       date, save, find the row, press Post now. Five steps for
+                       the commonest thing a salon does — something happened in
+                       the shop and they want it up. */}
+                  <div style={{ marginTop: isMobile ? 13 : 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c64748b)', marginBottom: 8 }}>{T('Khi nào đăng', 'When')}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 9 }}>
+                      {([
+                        ['now', `🚀 ${T('Đăng ngay', 'Post now')}`],
+                        ['later', `🗓️ ${T('Hẹn giờ', 'Schedule')}`],
+                      ] as const).map(([k, label]) => (
+                        <button
+                          key={k}
+                          onClick={() => setPostWhen(k)}
+                          style={{
+                            minHeight: 42, padding: '0 12px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
+                            fontSize: 13.5, fontWeight: postWhen === k ? 700 : 500,
+                            border: `1px solid ${postWhen === k ? '#6366f1' : 'var(--c334155)'}`,
+                            background: postWhen === k ? '#6366f1' : 'transparent',
+                            color: postWhen === k ? '#fff' : 'var(--c94a3b8)',
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {postWhen === 'later' ? (() => {
+                      /* THE ZONE THE DIGITS BELONG TO, SAID OUT LOUD.
+                         The picker used to be a bare datetime box whose digits
+                         silently meant salon time. A writer in Vietnam typing
+                         "20:00" for a Texas shop had no way to see whether that
+                         was Texas 20:00 or Vietnam 20:00 — the difference is a
+                         post at 8 in the morning. So the zone is a control next
+                         to the digits, salon time by default, and the same
+                         instant is echoed in the other zone underneath. */
+                      const shopTz = salonTz();
+                      const mine = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : '';
+                      const options = Array.from(new Set([
+                        shopTz, mine, 'America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York', 'America/Phoenix', 'Pacific/Honolulu', 'Asia/Ho_Chi_Minh',
+                      ].filter(Boolean)));
+                      const zoneName = (z: string) => z === shopTz && z ? `${T('Giờ tiệm', 'Salon time')} · ${z}` : z === mine ? `${T('Giờ máy anh', 'Your time')} · ${z}` : z;
+                      const instant = postDraft.at && postDraft.at.length >= 16 ? wallToInstantISO(postDraft.at, postTz || undefined) : null;
+                      const echo = instant && shopTz && postTz !== shopTz ? `${instantToWall(instant, shopTz).replace('T', ' ')} ${T('giờ tiệm', 'salon time')}` : instant && mine && postTz !== mine ? `${instantToWall(instant, mine).replace('T', ' ')} ${T('giờ máy anh', 'your time')}` : null;
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {/* Date and time are two boxes, because a single
+                              datetime-local box is the browser's narrowest
+                              control and the one people mistype most. Both
+                              write the same wall string. */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 108px', gap: 8 }}>
+                            <input
+                              id="post-at"
+                              type="date"
+                              min={instantToWall(new Date(), postTz || undefined).slice(0, 10)}
+                              value={postDraft.at.slice(0, 10)}
+                              onChange={(e) => setPostDraft({ ...postDraft, at: `${e.target.value}T${postDraft.at.slice(11, 16) || '10:00'}` })}
+                              style={{
+                                minHeight: 44, padding: '10px 12px', borderRadius: 9, fontSize: 14, fontFamily: 'inherit', minWidth: 0,
+                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                              }}
+                            />
+                            <input
+                              id="post-at-time"
+                              type="time"
+                              value={postDraft.at.slice(11, 16)}
+                              onChange={(e) => setPostDraft({ ...postDraft, at: `${postDraft.at.slice(0, 10)}T${e.target.value || '10:00'}` })}
+                              style={{
+                                minHeight: 44, padding: '10px 10px', borderRadius: 9, fontSize: 14, fontFamily: 'inherit', minWidth: 0,
+                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                              }}
+                            />
+                          </div>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--c94a3b8)' }}>
+                            <span style={{ flexShrink: 0 }}>{T('Tính theo', 'Read in')}</span>
+                            <select
+                              id="post-tz"
+                              value={postTz}
+                              onChange={(e) => setPostTz(e.target.value)}
+                              title={T('Múi giờ mà giờ ở trên được hiểu theo', 'The zone the time above is read in')}
+                              style={{
+                                minHeight: 32, padding: '0 8px', borderRadius: 8, fontSize: 12.5, fontFamily: 'inherit', minWidth: 0, flex: 1,
+                                border: '1px solid var(--c334155)', background: 'var(--c0f172a)', color: 'var(--ce2e8f0)',
+                              }}
+                            >
+                              {options.map((z) => <option key={z} value={z}>{zoneName(z)}</option>)}
+                            </select>
+                          </label>
+                          <div style={{ fontSize: 12, color: 'var(--c94a3b8)', padding: '7px 10px', borderRadius: 8, background: 'var(--c0f172a)' }}>
+                            {echo ? <>= <b style={{ color: 'var(--ccbd5e1)', fontVariantNumeric: 'tabular-nums' }}>{echo}</b></> : T('Giờ đăng tính theo múi giờ đã chọn.', 'Posts at that time in the chosen zone.')}
+                          </div>
+                        </div>
+                      );
+                    })() : (
+                      <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.55 }}>
+                        {T('Bài sẽ lên trang ngay khi bấm. Vẫn được lưu vào lịch để xem lại sau.',
+                           'Goes up the moment you press. Still recorded on the calendar afterwards.')}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ---- an existing post: its state, and what can be done to it ----
+                       "Post now" and "Cancel" used to live ONLY in the list view,
+                       so opening a post from the calendar or the grid gave you a
+                       composer with no way to send it. The composer is the one
+                       place every view leads to, so the actions belong here. */}
+                  {(() => {
+                    const live = postDraft.id ? queue?.posts.find((x) => x.id === postDraft.id) : null;
+                    if (!live) return null;
+                    const S: Record<string, { fg: string; text: string }> = {
+                      draft: { fg: 'var(--c94a3b8)', text: T('Nháp', 'Draft') },
+                      scheduled: { fg: '#6366f1', text: T('Đã đặt lịch', 'Scheduled') },
+                      publishing: { fg: '#f59e0b', text: T('Đang đăng', 'Publishing') },
+                      posted: { fg: '#22c55e', text: T('Đã đăng', 'Posted') },
+                      failed: { fg: '#ef4444', text: T('Lỗi', 'Failed') },
+                      expired: { fg: '#f59e0b', text: T('Quá hạn', 'Missed') },
+                      cancelled: { fg: 'var(--c64748b)', text: T('Đã huỷ', 'Cancelled') },
+                    };
+                    const st = live.held
+                      ? { fg: '#ef4444', text: T('Khách yêu cầu sửa', 'Change requested') }
+                      : S[live.status] ?? S.draft;
+                    return (
+                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--c334155)' }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{T('Trạng thái', 'Status')}</span>
+                          <span style={{ fontSize: 11.5, padding: '2px 9px', borderRadius: 20, border: `1px solid ${st.fg}`, color: st.fg, fontWeight: 600 }}>
+                            {live.held ? '🔴 ' : ''}{st.text}
+                          </span>
+                          {live.attempts > 0 && (
+                            <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>
+                              {T('đã thử', 'tried')} {live.attempts}×
+                            </span>
+                          )}
+                        </div>
+
+                        {/* What the client actually asked for, sitting next to
+                            the box where the fix gets typed. Saving the post
+                            clears the red on its own — an edit IS the answer —
+                            so the button below is for the requests that were
+                            handled somewhere else: a phone call, a new photo,
+                            or a question that turned out to need no change. */}
+                        {live.held && (
+                          <div style={{ padding: '10px 12px', borderRadius: 8, marginBottom: 9, background: 'var(--c450a0a)', border: '1px solid #ef4444' }}>
+                            <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', marginBottom: 3 }}>
+                              {live.held.by ? `${live.held.by} · ` : ''}
+                              {T('bài này đang dừng, không tự đăng', 'this post is stopped and will not publish')}
+                            </div>
+                            {live.held.note && (
+                              <div style={{ fontSize: 13, color: 'var(--ce2e8f0)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                                “{live.held.note}”
+                              </div>
+                            )}
+                            {(Boolean(user?.supportSession) || user?.role === 'SUPER_ADMIN') && (
+                              <button
+                                onClick={() => clearHold(live.id)}
+                                disabled={queueBusy}
+                                style={{
+                                  marginTop: 8, minHeight: 34, padding: '7px 12px', borderRadius: 8,
+                                  cursor: queueBusy ? 'not-allowed' : 'pointer', border: 'none',
+                                  background: '#22c55e', color: '#052e16', fontSize: 12.5, fontWeight: 600,
+                                }}
+                              >
+                                ✓ {T('Đã xử lý xong — cho bài chạy lại', 'Handled — let it publish')}
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* The reason, verbatim from Meta. Paraphrasing it would
+                            hide the one string that says what to fix. */}
+                        {!!live.blockers.length && (
+                          <div style={{ padding: '9px 11px', borderRadius: 8, marginBottom: 9, background: 'var(--c451a03)', border: '1px solid #f59e0b' }}>
+                            {live.blockers.map((b) => (
+                              <div key={b} style={{ fontSize: 12.5, color: 'var(--cfde68a)', lineHeight: 1.55 }}>⚠︎ {b}</div>
+                            ))}
+                          </div>
+                        )}
+                        {live.lastError && !live.blockers.length && (
+                          <div style={{
+                            padding: '10px 12px', borderRadius: 8, marginBottom: 9,
+                            background: live.errorIsStale ? 'var(--c1e293b)' : 'var(--c450a0a)',
+                            border: `1px solid ${live.errorIsStale ? 'var(--c334155)' : 'var(--c991b1b)'}`,
+                          }}>
+                            {/* The permission has since been granted, so this is
+                                history rather than an instruction. Telling
+                                somebody to reconnect a Page they just
+                                reconnected is how a fix message stops being
+                                believed. */}
+                            {live.errorIsStale && (
+                              <div style={{ fontSize: 13, color: 'var(--ink-good)', fontWeight: 600, lineHeight: 1.55, marginBottom: 6 }}>
+                                ✓ {T('Quyền đã được cấp rồi — lỗi bên dưới là của lần thử trước. Bấm "Đăng ngay" để thử lại.',
+                                     'The permission is granted now — the error below is from the earlier attempt. Press “Post now” to try again.')}
+                              </div>
+                            )}
+                            {live.fix && (
+                              <div style={{ fontSize: 13, color: 'var(--cfecaca)', fontWeight: 600, lineHeight: 1.55, marginBottom: 6 }}>
+                                → {live.fix}
+                              </div>
+                            )}
+                            {/* Meta's own words, kept whole. It is the only
+                                precise string anybody can search for later. */}
+                            <details>
+                              <summary style={{ fontSize: 11.5, color: 'var(--cfca5a5)', cursor: 'pointer' }}>
+                                {T('Nguyên văn lỗi từ Facebook', 'Facebook’s exact error')}
+                              </summary>
+                              <div style={{ fontSize: 11.5, color: 'var(--cfca5a5)', lineHeight: 1.5, marginTop: 5, wordBreak: 'break-word' }}>
+                                {live.lastError}
+                              </div>
+                            </details>
+                          </div>
+                        )}
+
+                        {/* Every channel the post ASKED for, with what became of
+                            it — not only the ones that worked. A list of
+                            successes reads as a complete list, which is how a
+                            Facebook-only post gets mistaken for one that also
+                            reached Instagram. */}
+                        {live.status === 'posted' && (
+                          <div style={{ marginBottom: 9 }}>
+                            {(['facebook', 'instagram', 'google', 'tiktok'] as const).map((c) => {
+                              const asked = live.channels.includes(c);
+                              const r = live.results.find((x) => x.channel === c);
+                              const name = CHANNEL_NAME[c];
+                              const connected = c === 'facebook' ? Boolean(queue?.connected) : c === 'instagram' ? queue?.connected?.hasInstagram : c === 'google' ? Boolean(queue?.google) : Boolean(queue?.tiktok);
+                              if (!asked && !connected) return null;
+                              return (
+                                <div key={c} style={{ fontSize: 12.5, lineHeight: 1.7 }}>
+                                  {!asked
+                                    ? <span style={{ color: 'var(--c64748b)' }}>○ {name} — {T('không chọn đăng', 'not selected')}</span>
+                                    : r?.url
+                                      ? <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--c60a5fa)' }}>
+                                        ✓ {name} — {r.urlKind === 'profile'
+                                          ? T('bài riêng tư, mở trang tài khoản', 'private post — open the profile')
+                                          : T('xem bài', 'view the post')}
+                                      </a>
+                                      : <span style={{ color: 'var(--ink-good)' }}>✓ {name}</span>}
+                                  {asked && r?.note && <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)', lineHeight: 1.45 }}>ⓘ {r.note}</div>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {live.status !== 'posted' && live.results.filter((r) => r.url).map((r) => (
+                          <a
+                            key={r.channel} href={r.url!} target="_blank" rel="noopener noreferrer"
+                            style={{ display: 'inline-block', marginRight: 12, marginBottom: 8, fontSize: 12.5, color: 'var(--c60a5fa)' }}
+                          >
+                            🔗 {T('Xem trên', 'View on')} {CHANNEL_NAME[r.channel as Channel] ?? r.channel}
+                          </a>
+                        ))}
+
+                        {/* A published row is the record of what really went up:
+                            it carries the publish time and the links, and the
+                            weekly results count it. It is not deletable, so no
+                            button pretends otherwise. */}
+                        {live.status === 'posted' ? (
+                          <div>
+                            <div style={{ fontSize: 12, color: 'var(--c64748b)', lineHeight: 1.6 }}>
+                              {T('Bài đã đăng được giữ lại làm sổ ghi. Muốn gỡ bài thì xoá trực tiếp trên Facebook/Instagram; muốn lịch gọn hơn thì bỏ tick "Hiện bài đã đăng".',
+                                 'Published posts are kept as the record. To take one down, delete it on Facebook/Instagram; to tidy the calendar, untick “Show published posts”.')}
+                            </div>
+                            {queue?.canDeletePosted && (
+                              <button
+                                onClick={() => removePost(live.id)}
+                                disabled={queueBusy}
+                                style={{
+                                  marginTop: 9, minHeight: 38, padding: '0 14px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5,
+                                  border: '1px solid #ef4444', background: 'transparent', color: 'var(--ink-bad)', fontWeight: 600,
+                                }}
+                              >
+                                🗑 {T('Xoá khỏi lịch (Lumio)', 'Remove from calendar (Lumio)')}
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button
+                              onClick={() => removePost(live.id)}
+                              disabled={queueBusy}
+                              style={{
+                                minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
+                                border: '1px solid #ef4444', background: 'transparent', color: 'var(--ink-bad)', fontWeight: 600,
+                              }}
+                            >
+                              🗑 {T('Xoá bài', 'Delete')}
+                            </button>
+                          </div>
+                        )}
+                        {live.status !== 'posted' && (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                            <button
+                              onClick={() => postAction(live.id, 'publish')}
+                              disabled={queueBusy || live.blockers.length > 0}
+                              style={{
+                                minHeight: 42, padding: '0 18px', borderRadius: 9, fontSize: 13.5, fontWeight: 600,
+                                cursor: live.blockers.length ? 'not-allowed' : 'pointer', border: 'none',
+                                background: live.blockers.length ? 'var(--c334155)' : '#6366f1',
+                                color: live.blockers.length ? 'var(--c64748b)' : '#fff',
+                              }}
+                            >
+                              🚀 {queueBusy ? T('Đang đăng…', 'Publishing…') : T('Đăng ngay', 'Post now')}
+                            </button>
+                            <button
+                              onClick={() => { postAction(live.id, 'cancel'); setPostDraft(null); }}
+                              disabled={queueBusy}
+                              title={T('Giữ lại bài nhưng không đăng nữa', 'Keeps the post but stops it going out')}
+                              style={{
+                                minHeight: 42, padding: '0 16px', borderRadius: 9, cursor: 'pointer', fontSize: 13.5,
+                                border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)',
+                              }}
+                            >
+                              {T('Tạm dừng', 'Pause it')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {/* ---- what the follower will actually meet ---- */}
                   {(postDraft.message.trim() || postDraft.media.length > 0) && (
                     <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 14 }}>
@@ -5293,7 +5320,11 @@ function Inner() {
                       onClick={() => savePost('scheduled', postWhen === 'now')}
                       disabled={queueBusy || blocked || (!postDraft.message.trim() && !postDraft.media.length)}
                       style={{
-                        flex: '1 1 160px', minHeight: 44, borderRadius: 9, border: 'none', cursor: 'pointer',
+                        // Draft on the left, Close and the one green button on the
+                        // right — the button names what it does and when, and no
+                        // longer stretches across the whole popup.
+                        order: 3, flex: isMobile ? '1 1 160px' : '0 0 auto', padding: '0 22px',
+                        minHeight: 44, borderRadius: 9, border: 'none', cursor: 'pointer',
                         background: blocked ? 'var(--c334155)' : (postDraft.message.trim() || postDraft.media.length) ? '#22c55e' : 'var(--c334155)',
                         color: blocked ? 'var(--c64748b)' : (postDraft.message.trim() || postDraft.media.length) ? '#052e16' : 'var(--c64748b)',
                         fontSize: 14, fontWeight: 600,
@@ -5302,13 +5333,15 @@ function Inner() {
                       {queueBusy
                         ? (postWhen === 'now' ? T('Đang đăng…', 'Publishing…') : T('Đang lưu…', 'Saving…'))
                         : blocked ? T('Đang bị chặn — xem cảnh báo ở trên', 'Blocked — see the warnings above')
-                          : postWhen === 'now' ? T('🚀 Đăng lên ngay', '🚀 Publish now') : T('✓ Chốt lịch đăng', '✓ Lock & schedule')}
+                          : postWhen === 'now' ? T('🚀 Đăng lên ngay', '🚀 Publish now')
+                            : `✓ ${T('Chốt lịch', 'Lock & schedule')}${/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(postDraft.at) ? ` · ${new Date(postDraft.at).toLocaleDateString(vi ? 'vi-VN' : 'en-US', { weekday: 'short' })} ${postDraft.at.slice(11, 16)}` : ''}`}
                     </button>
                     <button
                       onClick={() => savePost('draft')}
                       disabled={queueBusy}
                       title={T('Lưu ở bước hiện tại (viết / thiết kế) — chưa tự đăng', 'Save at the current step (writing / design) — will not publish')}
                       style={{
+                        order: 1, marginRight: 'auto',
                         minHeight: 44, padding: '0 16px', borderRadius: 9, cursor: 'pointer',
                         border: '1px solid var(--c475569)', background: 'transparent', color: 'var(--c94a3b8)', fontSize: 13.5,
                       }}
@@ -5318,6 +5351,7 @@ function Inner() {
                     <button
                       onClick={() => { setPostDraft(null); setPostErr(null); setContactOverride(false); }}
                       style={{
+                        order: 2,
                         minHeight: 44, padding: '0 16px', borderRadius: 9, cursor: 'pointer',
                         border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--c64748b)', fontSize: 13.5,
                       }}

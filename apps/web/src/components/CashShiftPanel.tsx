@@ -5,6 +5,7 @@ import { apiFetch } from '../lib/api';
 import { fmtInTz } from '../lib/datetime';
 import { fromMinorUnits, toMinorUnits, ui } from '../lib/ui';
 import { ind } from '../lib/ui-industry';
+import { DayCheckCard } from './DayCheckCard';
 
 /**
  * The cashier shift ("ca thu ngân") on the till.
@@ -194,6 +195,11 @@ export function CashShiftPanel({ token, vi, currency, fmt, salonName, cashierNam
             <button type="button" disabled={busy || !mvAmount || !mvReason.trim()} onClick={() => void addMove()} style={{ ...ui.primaryBtn, height: 40, opacity: !mvAmount || !mvReason.trim() ? 0.5 : 1 }}>{L('Ghi', 'Log')}</button>
           </div>
         </div>
+
+        {/* Before the drawer is counted: what today still owes the books.
+            Served-not-paid, paid-not-credited, bookings left open — each with
+            its fix. Closing is never blocked; it is the moment somebody looks. */}
+        <DayCheckCard token={token} vi={vi} currency={currency} />
 
         <div style={{ padding: 12, borderRadius: 12, border: '1px solid var(--line)', background: 'var(--c0f172a)', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={secLabel}>{L('CHỐT CA & BÀN GIAO', 'CLOSE & HAND OVER')}</div>

@@ -1719,9 +1719,52 @@ function Register() {
     </div>
   );
 
+  // Service lines nobody is credited with. Said once, at the payment step,
+  // with the picker right there — and never a wall: the money is the salon's
+  // either way, only the commission has no name on it. The owner can still
+  // credit it later (Lương → "chưa gán thợ").
+  const noTech = step === 'pay' && staff.length > 0 ? cart.filter((l) => l.kind === 'SERVICE' && !l.staffMemberId) : [];
+  const noTechNotice = noTech.length > 0 && (
+    <div style={{ ...noticeBox, background: 'rgba(245,158,11,.12)', color: 'var(--ink-warn)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span>
+        ⚠ {L(`${noTech.length} dòng chưa gán thợ — vẫn thanh toán được, nhưng thợ không được tính doanh thu/hoa hồng cho dòng đó.`,
+             `${noTech.length} line${noTech.length > 1 ? 's' : ''} without a technician — you can still charge, but nobody gets the sales/commission for ${noTech.length > 1 ? 'them' : 'it'}.`)}
+      </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {noTech.slice(0, 6).map((l) => (
+          <label key={l.uid} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5, fontWeight: 500, color: 'var(--cf1f5f9)' }}>
+            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</span>
+            <select
+              value=""
+              onChange={(e) => updateLine(l.uid, { staffMemberId: e.target.value })}
+              style={{ height: 36, minWidth: 160, padding: '0 10px', borderRadius: 9, border: '1px solid rgba(245,158,11,.5)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 14, fontFamily: 'inherit' }}
+            >
+              <option value="">{L('Chọn thợ…', 'Pick a technician…')}</option>
+              {staff.filter((s2) => s2.isActive !== false).map((s2) => <option key={s2.id} value={s2.id}>{s2.firstName} {s2.lastName ?? ''}</option>)}
+            </select>
+          </label>
+        ))}
+        {noTech.length > 1 && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--c94a3b8)' }}>
+            <span style={{ flex: 1 }}>{L('Tất cả cho một thợ', 'All lines to one technician')}</span>
+            <select
+              value=""
+              onChange={(e) => { const id = e.target.value; if (!id) return; for (const l of noTech) updateLine(l.uid, { staffMemberId: id }); }}
+              style={{ height: 32, minWidth: 160, padding: '0 10px', borderRadius: 9, border: '1px solid var(--line)', background: 'var(--c0f172a)', color: 'var(--cf1f5f9)', fontSize: 13, fontFamily: 'inherit' }}
+            >
+              <option value="">{L('Chọn thợ…', 'Pick…')}</option>
+              {staff.filter((s2) => s2.isActive !== false).map((s2) => <option key={s2.id} value={s2.id}>{s2.firstName} {s2.lastName ?? ''}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+    </div>
+  );
+
   const notices = (
     <>
       {error && <div style={{ ...noticeBox, background: 'rgba(239,68,68,.10)', color: 'var(--ink-bad)' }}>{error}</div>}
+      {noTechNotice}
       {okMsg && !done && <div style={{ ...noticeBox, background: 'var(--c052e16)', color: 'var(--ink-good)' }}>{okMsg}</div>}
       {!online && (layout !== 'wide' || tightTop) && <div style={{ ...noticeBox, background: 'rgba(245,158,11,.12)', color: 'var(--ink-warn)' }}>{t('po.offlineMode')}</div>}
       {pendingSync > 0 && (

@@ -20,6 +20,7 @@ import { PartyChip, type PartyInfo } from '../../../components/PartyChip';
 import { RecordAlertChip, useRecordAlerts } from '../../../components/RecordAlert';
 import { arrivalState, clockIn, minutesText, salonDayLabel } from '../../../lib/desk-time';
 import { hiddenHrefsFor, ind, uiIndustry } from '../../../lib/ui-industry';
+import { DayCheckCard } from '../../../components/DayCheckCard';
 
 interface Ticket {
   id: string;
@@ -210,6 +211,11 @@ function FrontDesk() {
       </div>
 
       {err && <div style={ui.banner}>{err}</div>}
+
+      {/* The end-of-day checklist, all day: what has been served and not rung
+          up, paid and not credited, booked and left open. One line while it is
+          clean; the lists open when there is something to fix. */}
+      {may('pos') && <DayCheckCard token={token} vi={vi} compact />}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
         {actions.map((a) => (

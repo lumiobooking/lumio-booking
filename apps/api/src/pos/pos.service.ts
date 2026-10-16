@@ -30,6 +30,7 @@ const ORDER_INCLUDE = {
 
 import { loadLedger } from '../payroll/ledger-loader';
 import { UNASSIGNED } from '../payroll/sales-ledger';
+import { settledWalkIns } from '../walkins/unpaid-sweep';
 import { commissionOnly, sanitizeSettings } from '../payroll/pay-calc';
 import { PAYROLL_SETTINGS_KEY } from '../payroll/payroll.service';
 
@@ -547,6 +548,160 @@ export class PosService {
   }
 
   /** Void an order: no revenue. Refunds the mirrored payment and restocks. */
+  /**
+   * WHO GETS THE CREDIT, FIXED AFTER THE FACT.
+   *
+   * A line rung up with no technician (or the wrong one) used to be
+   * uncorrectable: the only way out was voiding the bill and ringing it again,
+   * which loses the tender, the receipt number and the client's loyalty
+   * points — so nobody did it, and payroll quietly paid the wrong person or
+   * no one. This changes ONLY the credited technician on chosen lines; money,
+   * tax, tips and tenders are untouched. Refused once the bill's day is in a
+   * finalised payroll, logged every time.
+   */
+  async setLineStaff(user: AuthenticatedUser, id: string, items: { itemId: string; staffMemberId: string | null }[]) {
+    const tenantId = this.tenantId(user);
+    const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status === OrderStatus.VOID) throw new BadRequestException('Bill này đã huỷ.');
+    await this.assertOpenPayroll(tenantId, order);
+    const wanted = (items ?? []).filter((x) => x && typeof x.itemId === 'string').slice(0, 50);
+    if (!wanted.length) throw new BadRequestException('Chưa chọn dòng nào.');
+    const staffIds = Array.from(new Set(wanted.map((x) => x.staffMemberId).filter((x): x is string => typeof x === 'string' && x.length > 0)));
+    const staff = staffIds.length
+      ? await this.prisma.staffMember.findMany({ where: { tenantId, id: { in: staffIds } }, select: { id: true } })
+      : [];
+    const known = new Set(staff.map((x) => x.id));
+    const changes: { itemId: string; from: string | null; to: string | null }[] = [];
+    for (const w of wanted) {
+      const line = order.items.find((it) => it.id === w.itemId);
+      if (!line) throw new NotFoundException('Dòng không thuộc bill này.');
+      const to = w.staffMemberId || null;
+      if (to && !known.has(to)) throw new BadRequestException('Thợ không thuộc tiệm này.');
+      if ((line.staffMemberId ?? null) === to) continue;
+      changes.push({ itemId: line.id, from: line.staffMemberId ?? null, to });
+    }
+    if (changes.length) {
+      await this.prisma.$transaction(changes.map((c) =>
+        this.prisma.orderItem.updateMany({ where: { id: c.itemId, orderId: order.id }, data: { staffMemberId: c.to } }),
+      ));
+      await this.audit.log({ tenantId, userId: user.userId, action: 'pos.order_staff_changed', resourceType: 'order', resourceId: order.id, metadata: { orderNumber: order.orderNumber, changes } });
+    }
+    return this.getOrder(user, id);
+  }
+
+  /**
+   * Paid service lines with no technician, newest first — the payroll screen's
+   * fix-it list. Limited to a window so the query stays small; the ledger's
+   * "unassigned" total is the number that says whether to look.
+   */
+  async unassignedLines(user: AuthenticatedUser, from?: string, to?: string) {
+    const tenantId = this.tenantId(user);
+    const tz = await this.tzOf(tenantId);
+    const dayKey = (d: Date) => dayKeyTz(d, tz);
+    const since = from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? new Date(`${from}T00:00:00Z`).getTime() - 86_400_000 : Date.now() - 45 * 86_400_000;
+    const orders = await this.prisma.order.findMany({
+      where: { tenantId, status: OrderStatus.PAID, paidAt: { gte: new Date(since) }, items: { some: { kind: 'SERVICE', staffMemberId: null } } },
+      include: ORDER_INCLUDE,
+      orderBy: { paidAt: 'desc' },
+      take: 200,
+    });
+    type Row = { o: (typeof orders)[number]; day: string };
+    const rows: Row[] = orders
+      .map((o): Row => ({ o, day: dayKey(o.paidAt ?? o.createdAt) }))
+      .filter((r: Row) => (!from || r.day >= from) && (!to || r.day <= to));
+    const custIds: string[] = Array.from(new Set(rows.map((r: Row) => r.o.customerId as string | null).filter((x): x is string => Boolean(x))));
+    const customers = custIds.length
+      ? await this.prisma.customer.findMany({ where: { tenantId, id: { in: custIds } }, select: { id: true, firstName: true, lastName: true } }).catch(() => [])
+      : [];
+    const cname = new Map(customers.map((c) => [c.id, [c.firstName, c.lastName].filter(Boolean).join(' ')]));
+    return {
+      orders: rows.map(({ o, day }: Row) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        day,
+        paidAt: (o.paidAt ?? o.createdAt).toISOString(),
+        customerName: o.customerId ? (cname.get(o.customerId) ?? null) : null,
+        items: o.items
+          .filter((it) => it.kind === 'SERVICE' && !it.staffMemberId)
+          .map((it) => ({ id: it.id, name: it.name, lineTotalCents: it.lineTotalCents })),
+      })),
+    };
+  }
+
+  /**
+   * THE END-OF-DAY CHECK — what today still owes the books.
+   *
+   * Three things leak revenue, and each one leaks silently: a walk-in that
+   * was served and never rung up (closed at midnight with no sale), a paid
+   * line nobody is credited with (no commission), and a booking that was
+   * completed by hand instead of at the till (counts at list price only). The
+   * till's "chốt ca" step reads this and shows the three lists with their
+   * one-tap fixes. Nothing here blocks closing: it is a checklist, not a gate.
+   */
+  async dayCheck(user: AuthenticatedUser, dayStr?: string, now: Date = new Date()) {
+    const tenantId = this.tenantId(user);
+    const tz = await this.tzOf(tenantId);
+    const day = dayStr && /^\d{4}-\d{2}-\d{2}$/.test(dayStr) ? dayStr : dayKeyTz(now, tz);
+    const from = startOfDayTz(day, tz);
+    const to = startOfDayTz(addDaysToKey(day, 1), tz);
+    const dayOf = (d: Date) => dayKeyTz(d, tz);
+
+    const [walkIns, orders, appts] = await Promise.all([
+      // Served, waiting to be paid: still in the chair-queue (SERVING) or
+      // finished today (DONE) — either way no sale has closed the ticket.
+      this.prisma.walkIn.findMany({
+        where: { tenantId, awaitingPayment: true, OR: [{ status: WalkInStatus.SERVING }, { status: WalkInStatus.DONE, doneAt: { gte: from, lt: to } }] },
+        select: { id: true, customerName: true, status: true, createdAt: true, assignedAt: true, doneAt: true, items: true, assignedStaffId: true },
+        orderBy: { createdAt: 'asc' }, take: 100,
+      }),
+      this.prisma.order.findMany({
+        where: { tenantId, status: OrderStatus.PAID, paidAt: { gte: from, lt: to } },
+        select: { id: true, orderNumber: true, paidAt: true, walkInId: true, walkInIds: true, appointmentId: true, appointmentIds: true, items: { select: { id: true, kind: true, name: true, lineTotalCents: true, staffMemberId: true, walkInId: true } } },
+        take: 500,
+      }),
+      this.prisma.appointment.findMany({
+        where: { tenantId, startTime: { gte: from, lt: to }, status: { in: [AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED, AppointmentStatus.ARRIVED, AppointmentStatus.COMPLETED] } },
+        select: { id: true, startTime: true, status: true, completedAt: true, priceCents: true, customer: { select: { firstName: true, lastName: true } } },
+        orderBy: { startTime: 'asc' }, take: 300,
+      }),
+    ]);
+
+    const settled = settledWalkIns(orders);
+    const unpaid = walkIns
+      .filter((w) => !settled.has(w.id))
+      .map((w) => ({
+        id: w.id, customerName: w.customerName ?? null, status: w.status,
+        at: (w.doneAt ?? w.assignedAt ?? w.createdAt).toISOString(),
+        services: (Array.isArray(w.items) ? (w.items as { name?: string }[]) : []).map((i) => i?.name).filter((n): n is string => typeof n === 'string').slice(0, 4),
+      }));
+
+    const unassigned = orders
+      .map((o) => ({ orderId: o.id, orderNumber: o.orderNumber, items: o.items.filter((it) => it.kind === 'SERVICE' && !it.staffMemberId).map((it) => ({ id: it.id, name: it.name, lineTotalCents: it.lineTotalCents })) }))
+      .filter((o) => o.items.length > 0);
+
+    const paidAppt = new Set<string>();
+    for (const o of orders) { if (o.appointmentId) paidAppt.add(o.appointmentId); for (const x of o.appointmentIds ?? []) paidAppt.add(x); }
+    const name = (a: { customer?: { firstName?: string | null; lastName?: string | null } | null }) => [a.customer?.firstName, a.customer?.lastName].filter(Boolean).join(' ') || null;
+    // Bookings whose time has come and gone with nothing recorded: no sale,
+    // not completed, not cancelled. Tomorrow they are simply forgotten.
+    const openBookings = appts
+      .filter((a) => a.status !== AppointmentStatus.COMPLETED && !paidAppt.has(a.id) && a.startTime.getTime() < now.getTime())
+      .map((a) => ({ id: a.id, customerName: name(a), startTime: a.startTime.toISOString(), status: a.status }));
+    // Completed by hand, never rung up: counted at list price only (no
+    // discount, tip, tax or payment method) — "ước tính" in every report.
+    const estimated = appts
+      .filter((a) => a.status === AppointmentStatus.COMPLETED && !paidAppt.has(a.id))
+      .filter((a) => !a.completedAt || dayOf(a.completedAt) === day || dayOf(a.startTime) === day)
+      .map((a) => ({ id: a.id, customerName: name(a), startTime: a.startTime.toISOString(), priceCents: a.priceCents }));
+
+    return {
+      day, tz,
+      unpaid, unassigned, openBookings, estimated,
+      counts: { unpaid: unpaid.length, unassigned: unassigned.reduce((n, o) => n + o.items.length, 0), openBookings: openBookings.length, estimated: estimated.length },
+    };
+  }
+
   async voidOrder(user: AuthenticatedUser, id: string) {
     const tenantId = this.tenantId(user);
     const order = await this.prisma.order.findFirst({ where: { id, tenantId }, include: ORDER_INCLUDE });

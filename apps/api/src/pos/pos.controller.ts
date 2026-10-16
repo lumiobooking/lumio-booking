@@ -132,6 +132,26 @@ export class PosController {
     return this.pos.createOrder(user, dto);
   }
 
+  /** What today still owes the books: served-not-paid, paid-not-credited, bookings left open or completed by hand. */
+  @Get('day-check')
+  dayCheck(@CurrentUser() user: AuthenticatedUser, @Query('day') day?: string) {
+    return this.pos.dayCheck(user, day);
+  }
+
+  /** Paid service lines nobody was credited with — the owner's fix-it list (see setLineStaff). */
+  @Roles(UserRole.SALON_ADMIN)
+  @Get('orders-unassigned')
+  unassignedLines(@CurrentUser() user: AuthenticatedUser, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.pos.unassignedLines(user, from, to);
+  }
+
+  /** Change which technician a paid line is credited to. Money untouched; refused inside a finalised payroll. */
+  @Roles(UserRole.SALON_ADMIN)
+  @Patch('orders/:id/staff')
+  setLineStaff(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: { items?: { itemId: string; staffMemberId: string | null }[] }) {
+    return this.pos.setLineStaff(user, id, Array.isArray(body?.items) ? body.items : []);
+  }
+
   // Voiding or deleting a paid ticket moves money backwards: the owner decides who may.
   @Caps('pos.void')
   @Post('orders/:id/void')

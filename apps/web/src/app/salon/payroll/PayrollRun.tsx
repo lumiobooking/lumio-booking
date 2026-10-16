@@ -225,11 +225,17 @@ export function PayrollRun({ vi }: { vi: boolean }) {
       </div>
 
       {data.unassigned && (data.unassigned.serviceCents + data.unassigned.productCents) > 0 && (
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(245,158,11,.4)', background: 'rgba(245,158,11,.10)', fontSize: 13.5, color: 'var(--ink-warn)' }}>
-          <b>⚠</b>
-          <span style={{ flex: 1 }}>{L(`${money(data.unassigned.serviceCents + data.unassigned.productCents)} doanh thu chưa gán thợ (${data.unassigned.visits} lượt) — không ai được tính lương cho phần này.`, `${money(data.unassigned.serviceCents + data.unassigned.productCents)} of sales has no technician (${data.unassigned.visits} visits) — no one is paid on it.`)}</span>
-          <a href="/salon/orders" style={{ color: 'var(--ink-link)', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}>{L('Xem đơn →', 'Open orders →')}</a>
-        </div>
+        <UnassignedFix
+          vi={vi}
+          token={token}
+          from={data.period.from}
+          to={data.period.to}
+          frozen={Boolean(data.frozen)}
+          summary={L(`${money(data.unassigned.serviceCents + data.unassigned.productCents)} doanh thu chưa gán thợ (${data.unassigned.visits} lượt) — không ai được tính hoa hồng cho phần này.`,
+                     `${money(data.unassigned.serviceCents + data.unassigned.productCents)} of sales with no technician (${data.unassigned.visits} visits) — nobody is paid commission on it.`)}
+          money={money}
+          onChanged={() => load(range)}
+        />
       )}
 
       {/* People */}
@@ -555,3 +561,85 @@ const td: CSSProperties = { padding: '12px 12px', color: 'var(--ce2e8f0)', verti
 const tdR: CSSProperties = { ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
 const detailHead: CSSProperties = { fontSize: 12, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--c94a3b8)', marginBottom: 6 };
 const detailLabel: CSSProperties = { fontSize: 12.5, fontWeight: 600, color: 'var(--ccbd5e1)' };
+
+
+/**
+ * The lines behind the "unassigned" number, each with a picker — so the owner
+ * credits the right technician here, on the screen that shows the gap,
+ * instead of voiding and re-ringing the bill (which is what nobody did). The
+ * server refuses once the period is finalised; the list is read-only then.
+ */
+function UnassignedFix({ vi, token, from, to, frozen, summary, money, onChanged }: {
+  vi: boolean; token: string | null; from: string; to: string; frozen: boolean; summary: string;
+  money: (c: number) => string; onChanged: () => void;
+}) {
+  const L = (v: string, e: string) => ind(vi ? v : e);
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<{ id: string; orderNumber: number; day: string; customerName: string | null; items: { id: string; name: string; lineTotalCents: number }[] }[] | null>(null);
+  const [staff, setStaff] = useState<{ id: string; firstName: string; lastName: string | null }[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!token) return;
+    try {
+      const [r, s] = await Promise.all([
+        apiFetch<{ orders: typeof rows }>(`/pos/orders-unassigned?from=${from}&to=${to}`, { token }),
+        apiFetch<{ id: string; firstName: string; lastName: string | null; isActive?: boolean }[]>('/staff', { token }).catch(() => []),
+      ]);
+      setRows(r?.orders ?? []);
+      setStaff((Array.isArray(s) ? s : []).filter((x) => x.isActive !== false));
+    } catch (e) { setErr(e instanceof Error ? e.message : 'error'); }
+  }, [token, from, to]);
+  useEffect(() => { if (open) void load(); }, [open, load]);
+
+  const assign = async (orderId: string, itemId: string, staffMemberId: string) => {
+    if (!staffMemberId || !token) return;
+    setBusy(itemId); setErr(null);
+    try {
+      await apiFetch(`/pos/orders/${orderId}/staff`, { method: 'PATCH', token, body: { items: [{ itemId, staffMemberId }] } });
+      setRows((rs) => (rs ?? []).map((o) => (o.id === orderId ? { ...o, items: o.items.filter((i) => i.id !== itemId) } : o)).filter((o) => o.items.length > 0));
+      onChanged();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'error'); }
+    finally { setBusy(null); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(245,158,11,.4)', background: 'rgba(245,158,11,.10)', fontSize: 13.5, color: 'var(--ink-warn)' }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <b>⚠</b>
+        <span style={{ flex: 1 }}>{summary}</span>
+        <button type="button" onClick={() => setOpen((v) => !v)} style={{ background: 'none', border: '1px solid rgba(245,158,11,.5)', borderRadius: 8, padding: '5px 10px', color: 'var(--ink-warn)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+          {open ? L('Thu gọn', 'Hide') : frozen ? L('Xem các dòng', 'Show lines') : L('Gán thợ ngay', 'Credit a technician')}
+        </button>
+      </div>
+      {open && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {err && <div style={{ color: 'var(--ink-bad)', fontSize: 12.5 }}>{err}</div>}
+          {rows === null && <div style={{ color: 'var(--c94a3b8)', fontSize: 12.5 }}>{L('Đang tải…', 'Loading…')}</div>}
+          {rows?.length === 0 && <div style={{ color: 'var(--c94a3b8)', fontSize: 12.5 }}>{L('Không còn dòng nào chưa gán trong kỳ này.', 'Nothing left unassigned in this period.')}</div>}
+          {rows?.map((o) => o.items.map((it) => (
+            <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', borderRadius: 8, background: 'var(--c0f172a)', border: '1px solid var(--line)', color: 'var(--ce2e8f0)', fontSize: 13 }}>
+              <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{o.day.slice(5)} · #{o.orderNumber}</span>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}{o.customerName ? <span style={{ color: 'var(--c94a3b8)' }}> · {o.customerName}</span> : null}</span>
+              <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{money(it.lineTotalCents)}</span>
+              {frozen ? (
+                <span style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>{L('kỳ đã chốt', 'period closed')}</span>
+              ) : (
+                <select
+                  value=""
+                  disabled={busy === it.id}
+                  onChange={(e) => void assign(o.id, it.id, e.target.value)}
+                  style={{ height: 32, minWidth: 150, padding: '0 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--c111827)', color: 'var(--ce2e8f0)', fontSize: 13, fontFamily: 'inherit' }}
+                >
+                  <option value="">{busy === it.id ? L('Đang lưu…', 'Saving…') : L('Gán cho…', 'Credit to…')}</option>
+                  {staff.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName ?? ''}</option>)}
+                </select>
+              )}
+            </div>
+          )))}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -4,7 +4,7 @@
  * held back — and never a salon that is not on the list.
  */
 import { buildActionFeed, buildEntityFeed, buildServicesFeed, buildUpload, bookingUrl, descriptor, feedFileNames, priceMicros, type FeedTenant } from './feed';
-import { isAllCaps, lintService, lintTenant, titleCase } from './feed-lint';
+import { cleanForFeed, isAllCaps, lintService, lintTenant, titleCase } from './feed-lint';
 
 const WEB = 'https://lumiobooking.com';
 const salon = (o: Partial<FeedTenant> = {}): FeedTenant => ({
@@ -108,5 +108,36 @@ describe('lint — what Google would refuse', () => {
     expect(noPolicy.status).toBe('ready');
     expect(noPolicy.issues.map((i) => i.level)).toEqual(['warn', 'warn']);
     expect(lintTenant(salon(), { googleLinked: true, enabled: false }).status).toBe('off');
+  });
+
+  it('one bad service never holds a salon back: shouted names are rewritten, contact-laden descriptions dropped, priced names left out', () => {
+    const t = salon({ services: [
+      { id: 'a', name: 'GEL MANICURE', priceCents: 3500, durationMinutes: 30 },
+      { id: 'b', name: 'Spa Pedicure', description: 'Call 512-886-8189 to book', priceCents: 4500, durationMinutes: 50 },
+      { id: 'c', name: 'Full Set $45', priceCents: 4500, durationMinutes: 60 },
+    ] });
+    const lint = lintTenant(t, { googleLinked: true, enabled: true });
+    expect(lint.status).toBe('ready');
+    expect(lint.feedable).toBe(2);
+    expect(lint.issues.every((i) => i.level === 'warn')).toBe(true);
+    const { tenant } = cleanForFeed(t);
+    expect(tenant.services.map((s) => [s.id, s.name, s.description ?? null])).toEqual([['a', 'Gel Manicure', null], ['b', 'Spa Pedicure', null]]);
+    const feed = buildServicesFeed([tenant], WEB) as { data: { service_id: string; localized_service_name: { value: string } }[] };
+    expect(feed.data.map((d) => d.localized_service_name.value)).toEqual(['Gel Manicure', 'Spa Pedicure']);
+    // Every service bad → still held back.
+    const allBad = lintTenant(salon({ services: [{ id: 'c', name: 'Full Set $45', priceCents: 4500, durationMinutes: 60 }] }), { googleLinked: true, enabled: true });
+    expect(allBad.status).toBe('fix');
+    expect(allBad.issues.map((i) => i.code)).toContain('no_clean_services');
+  });
+
+  it('the Maps listing name is what Google matches; restaurants and real estate are not appointments; promo in the name is refused', () => {
+    const viaListing = lintTenant(salon({ name: 'MT. HAWTHORN NAIL SPA', listingName: 'Mt Hawthorn Nail Spa' }), { googleLinked: true, enabled: true });
+    expect(viaListing.status).toBe('ready');
+    const entity = buildEntityFeed([salon({ name: 'MT. HAWTHORN NAIL SPA', listingName: 'Mt Hawthorn Nail Spa' })], WEB) as { data: { name: string }[] };
+    expect(entity.data[0].name).toBe('Mt Hawthorn Nail Spa');
+    expect(lintTenant(salon(), { googleLinked: true, enabled: true, notAppointments: true }).status).toBe('off');
+    expect(lintTenant(salon({ name: 'Foot Massage &Head Spa 35%off' }), { googleLinked: true, enabled: true }).issues.map((i) => i.code)).toContain('name_extra');
+    expect(titleCase('ZEN SHIATSU HEALING CENTER LLC')).toBe('Zen Shiatsu Healing Center LLC');
+    expect(titleCase('NAILS FOR US')).toBe('Nails For Us');
   });
 });

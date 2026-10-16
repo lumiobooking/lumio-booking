@@ -31,7 +31,7 @@ const URL_RE = /(https?:\/\/|www\.|\.(com|net|org|ca|au|vn)\b)/i;
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
 const PHONE_RE = /(\+?\d[\d\s().-]{7,}\d)/;
 const PRICE_RE = /(\$|₫|€|£)\s?\d|\d\s?(\$|₫|đ\b|usd|cad|aud)/i;
-const PROMO_RE = /\b(free|miễn phí|giảm giá|sale|discount|% off|khuyến mãi|best|#1|number one|cheapest)\b/i;
+const PROMO_RE = /\b(free|miễn phí|giảm giá|sale|discount|khuyến mãi|best|#1|number one|cheapest)\b|\d+\s?%\s?off\b|%\s?off\b/i;
 
 /** "GEL MANICURE" is shouting; "SNS Dip" or "V.I.P" is not. */
 export function isAllCaps(s: string): boolean {
@@ -40,11 +40,16 @@ export function isAllCaps(s: string): boolean {
   return letters === letters.toUpperCase() && letters !== letters.toLowerCase();
 }
 
-/** Title Case for a shouted name — a suggestion the agency may still edit ("Sns" → "SNS"). */
+/** Words that stay in capitals when a shouted name is rewritten ("ZEN SHIATSU CENTER LLC" → "Zen Shiatsu Center LLC"). */
+const KEEP_UPPER = new Set(['LLC', 'INC', 'LTD', 'SNS', 'OPI', 'CND', 'DND', 'UV', 'LED', 'VIP', 'CBD', 'II', 'III', 'IV', 'USA', 'UK', 'NYC', 'YYC', 'YVR', 'YYZ', 'BC', 'TX', 'CA', 'AU', 'NZ', 'VN', 'DIY', 'ASAP']);
+
+/** Title Case for a shouted name — a suggestion the agency may still edit. */
 export function titleCase(s: string): string {
   return s.trim().replace(/\s+/g, ' ').split(' ').map((w) => {
+    const bare = w.replace(/[^A-Za-z]/g, '');
+    if (bare && KEEP_UPPER.has(bare.toUpperCase()) && w === w.toUpperCase()) return w;
     const low = w.toLocaleLowerCase();
-    return low.replace(/^([a-zà-ỹ])/u, (m) => m.toLocaleUpperCase());
+    return low.replace(/^([^a-zà-ỹ]*)([a-zà-ỹ])/u, (_m, pre: string, c: string) => pre + c.toLocaleUpperCase());
   }).join(' ');
 }
 
@@ -70,6 +75,45 @@ export function lintService(s: FeedService): LintIssue[] {
   return out;
 }
 
+/** Problems in a service NAME that keep the service out of the feed (the rest of the salon still goes). */
+const DROP_CODES = new Set(['svc_no_name', 'svc_emoji', 'svc_price_in_name', 'svc_contact_in_name']);
+/** Problems in a DESCRIPTION: the feed sends the service without its description. */
+const NO_DESC_CODES = new Set(['svc_desc_emoji', 'svc_desc_contact']);
+
+/**
+ * The salon as the feed will send it: a shouted service name goes in Title
+ * Case, a description with a link / phone / emoji is left out, and a service
+ * whose name carries a price, contact or emoji is left out — so one bad
+ * service never keeps a whole salon off Google. The salon's own data is not
+ * changed; `notes` says what the feed did, for the agency screen.
+ */
+export function cleanForFeed(t: FeedTenant): { tenant: FeedTenant; notes: LintIssue[] } {
+  const notes: LintIssue[] = [];
+  const kept: FeedService[] = [];
+  for (const s of feedableServices(t)) {
+    const found = lintService(s);
+    const tag = { serviceId: s.id, serviceName: s.name };
+    const name = s.name.trim();
+    if (found.some((i) => DROP_CODES.has(i.code))) {
+      const why = found.filter((i) => DROP_CODES.has(i.code)).map((i) => i.message).join(' · ');
+      notes.push({ code: 'svc_dropped', level: 'warn', message: `Không gửi “${name}” lên Google: ${why}`, ...tag });
+      continue;
+    }
+    let next: FeedService = s;
+    if (found.some((i) => i.code === 'svc_caps')) {
+      next = { ...next, name: titleCase(name) };
+      notes.push({ code: 'svc_caps_fixed', level: 'warn', message: `Feed gửi tên “${titleCase(name)}” thay cho “${name}” (Google không nhận chữ HOA toàn bộ)`, ...tag });
+    }
+    if (found.some((i) => NO_DESC_CODES.has(i.code))) {
+      next = { ...next, description: null };
+      notes.push({ code: 'svc_desc_skipped', level: 'warn', message: `Feed không gửi mô tả của “${name}” (có link / số điện thoại / emoji)`, ...tag });
+    }
+    for (const i of found) if (i.level === 'warn') notes.push(i);
+    kept.push(next);
+  }
+  return { tenant: { ...t, services: kept }, notes };
+}
+
 export interface TenantLint {
   tenantId: string;
   /** ready = goes in the feed; fix = held back until the errors are fixed; off = not eligible at all. */
@@ -79,10 +123,11 @@ export interface TenantLint {
   feedable: number;
 }
 
-export function lintTenant(t: FeedTenant, opts: { googleLinked: boolean; googleMismatch?: boolean; enabled: boolean } ): TenantLint {
+export function lintTenant(t: FeedTenant, opts: { googleLinked: boolean; googleMismatch?: boolean; enabled: boolean; notAppointments?: boolean } ): TenantLint {
   const issues: LintIssue[] = [];
   if (!opts.enabled) return { tenantId: t.id, status: 'off', issues: [{ code: 'disabled', level: 'warn', message: 'Nút Google đang tắt cho tiệm này' }], feedable: 0 };
-  const name = t.name.trim();
+  if (opts.notAppointments) return { tenantId: t.id, status: 'off', issues: [{ code: 'not_appointments', level: 'warn', message: 'Nhà hàng / bất động sản — không thuộc nhóm đặt hẹn (Appointments) của Google' }], feedable: 0 };
+  const name = (t.listingName || t.name).trim();
   if (!name) issues.push({ code: 'name_missing', level: 'error', message: 'Tiệm chưa có tên' });
   if (isAllCaps(name)) issues.push({ code: 'name_caps', level: 'error', message: `Tên tiệm viết HOA toàn bộ: “${name}” → “${titleCase(name)}” (Google yêu cầu tên pháp lý, viết thường/hoa đầu chữ)` });
   if (EMOJI.test(name) || PROMO_RE.test(name) || URL_RE.test(name)) issues.push({ code: 'name_extra', level: 'error', message: `Tên tiệm có emoji / từ quảng cáo / link: “${name}”` });
@@ -93,9 +138,12 @@ export function lintTenant(t: FeedTenant, opts: { googleLinked: boolean; googleM
   else if (!t.address) issues.push({ code: 'address_unstructured', level: 'warn', message: 'Địa chỉ chưa có cấu trúc (quốc gia, thành phố, mã bưu điện) — lấy từ hồ sơ Google khi nối' });
   if (typeof t.lat !== 'number' || typeof t.lng !== 'number') issues.push({ code: 'geo_missing', level: 'warn', message: 'Chưa có toạ độ — lấy từ hồ sơ Google khi nối' });
   if (!t.cancelNoticeHours) issues.push({ code: 'policy_missing', level: 'warn', message: 'Chưa có chính sách huỷ (giờ báo trước) — nên có' });
-  const feedable = feedableServices(t);
-  if (!feedable.length) issues.push({ code: 'no_services', level: 'error', message: 'Không có dịch vụ nào đặt online được (cần giá > 0, thời lượng > 0, không phải chỉ walk-in)' });
-  for (const s of feedable) issues.push(...lintService(s));
+  const raw = feedableServices(t);
+  const { tenant: clean, notes } = cleanForFeed(t);
+  const feedable = clean.services;
+  if (!raw.length) issues.push({ code: 'no_services', level: 'error', message: 'Không có dịch vụ nào đặt online được (cần giá > 0, thời lượng > 0, không phải chỉ walk-in)' });
+  else if (!feedable.length) issues.push({ code: 'no_clean_services', level: 'error', message: 'Mọi dịch vụ đều có giá / link / số điện thoại / emoji trong tên — sửa ít nhất một dịch vụ' });
+  issues.push(...notes);
   const status = issues.some((i) => i.level === 'error') ? 'fix' : 'ready';
   return { tenantId: t.id, status, issues, feedable: feedable.length };
 }

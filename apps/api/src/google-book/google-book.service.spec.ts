@@ -13,6 +13,7 @@ type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-exp
 const TENANTS: Row[] = [
   { id: 't-good', name: 'Lux Nail Spa', slug: 'lux-nail-spa', status: 'ACTIVE', contactPhone: '+15125551234', timezone: 'America/Chicago', market: 'US', deletedAt: null },
   { id: 't-caps', name: 'MT. HAWTHORN NAIL SPA', slug: 'mt-hawthorn', status: 'ACTIVE', contactPhone: null, timezone: 'Australia/Perth', market: 'AU', deletedAt: null },
+  { id: 't-pho', name: 'Pho Express', slug: 'pho', status: 'ACTIVE', contactPhone: null, timezone: 'America/Chicago', market: 'US', deletedAt: null, businessType: 'RESTAURANT' },
   { id: 't-gone', name: 'Closed Salon', slug: 'closed', status: 'SUSPENDED', contactPhone: null, timezone: 'UTC', market: 'US', deletedAt: null },
 ];
 const SERVICES: Record<string, Row[]> = {
@@ -37,7 +38,7 @@ function build() {
   };
   const google = {
     getSettings: async (tenantId: string) => ({ connected: tenantId !== 't-gone', locationId: 'locations/1', locationTitle: tenantId === 't-good' ? 'Lux Nail Spa' : 'Mt Hawthorn Nail Spa' }),
-    fetchProfile: async () => ({ title: 'Lux Nail Spa', website: 'https://lux.example', phone: '+15125551234', lat: 30.2, lng: -97.7, address: { country: 'US', locality: 'Austin', region: 'TX', postalCode: '78701', street: '1 Main St' }, placeId: 'p', mapsUri: null, fetchedAt: new Date().toISOString() }),
+    fetchProfile: async (tenantId: string) => ({ title: tenantId === 't-caps' ? 'MT. HAWTHORN NAIL SPA' : 'Lux Nail Spa', website: 'https://lux.example', phone: '+15125551234', lat: 30.2, lng: -97.7, address: { country: 'US', locality: 'Austin', region: 'TX', postalCode: '78701', street: '1 Main St' }, placeId: 'p', mapsUri: null, fetchedAt: new Date().toISOString() }),
   };
   const audits: Row[] = [];
   const svc = new GoogleBookService(prisma as never, settings as never, google as never, { log: async (a: Row) => { audits.push(a); } } as never);
@@ -48,11 +49,11 @@ describe('the Google feed, salon by salon', () => {
   it('lists live salons only, reads each under its own id, and holds back the one the lint refuses', async () => {
     const { svc, seen } = build();
     const board = await svc.readiness();
-    expect(board.map((r) => `${r.id}:${r.status}`)).toEqual(['t-good:ready', 't-caps:fix']);
-    expect(board[1].issues.map((i) => i.code)).toEqual(expect.arrayContaining(['name_caps', 'svc_caps']));
+    expect(board.map((r) => `${r.id}:${r.status}`)).toEqual(['t-good:ready', 't-caps:fix', 't-pho:off']);
+    expect(board[1].issues.map((i) => i.code)).toEqual(expect.arrayContaining(['name_caps', 'svc_caps_fixed']));
     // Every service read carried the salon's own tenantId; the suspended salon was never read.
     const svcReads = seen.filter((x) => x.table === 'service');
-    expect(svcReads.map((x) => x.where.tenantId).sort()).toEqual(['t-caps', 't-good']);
+    expect(svcReads.map((x) => x.where.tenantId).sort()).toEqual(['t-caps', 't-good', 't-pho']);
     const { files, ready, held } = await svc.buildFeeds(new Date('2026-10-16T03:10:00Z'));
     expect(ready).toEqual(['t-good']);
     expect(held).toEqual(['t-caps']);

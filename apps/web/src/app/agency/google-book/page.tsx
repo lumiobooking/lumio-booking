@@ -198,7 +198,7 @@ export default function AgencyGoogleBookPage() {
                         <span style={{ color: i.level === 'error' ? C.bad : C.warn, fontWeight: 800, flexShrink: 0 }}>{i.level === 'error' ? '✕' : '!'}</span>
                         <span style={{ flex: 1, color: C.body }}>{i.message}</span>
                         {(i.code === 'name_caps') && <button type="button" onClick={() => act(`fix-${r.id}`, `/support/google-book/tenants/${r.id}/fix-name`)} style={ghost}>{busy === `fix-${r.id}` ? '…' : 'Sửa tên'}</button>}
-                        {(i.code === 'svc_caps' && i.serviceId) && <button type="button" onClick={() => act(`fix-${i.serviceId}`, `/support/google-book/tenants/${r.id}/services/${i.serviceId}/fix-name`)} style={ghost}>{busy === `fix-${i.serviceId}` ? '…' : 'Sửa tên'}</button>}
+                        {((i.code === 'svc_caps' || i.code === 'svc_caps_fixed') && i.serviceId) && <button type="button" onClick={() => act(`fix-${i.serviceId}`, `/support/google-book/tenants/${r.id}/services/${i.serviceId}/fix-name`)} style={ghost}>{busy === `fix-${i.serviceId}` ? '…' : 'Sửa tên'}</button>}
                         {(i.code === 'google_not_linked' || i.code === 'google_mismatch') && <span style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap' }}>Vào tiệm → Google Reviews</span>}
                       </div>
                     ))}

@@ -7,7 +7,7 @@ import { AuditService } from '../audit/audit.service';
 import { toE164, dialCodeFor } from '../common/phone';
 import { namesMatch } from '../google-reviews/location-match';
 import { buildUpload, type FeedTenant } from './feed';
-import { lintTenant, titleCase, type TenantLint } from './feed-lint';
+import { cleanForFeed, isAllCaps, lintTenant, titleCase, type TenantLint } from './feed-lint';
 
 /**
  * GOOGLE "BOOK ONLINE" FOR EVERY SALON — the daily feed to Actions Center.
@@ -82,7 +82,7 @@ export class GoogleBookService {
 
   /** One salon as the feed sees it, plus what the lint says. Only this salon's rows are read. */
   async inspect(tenantId: string, opts: { refreshProfile?: boolean } = {}): Promise<{ tenant: FeedTenant; lint: TenantLint; profile: GbpProfile | null }> {
-    const t = await this.prisma.tenant.findFirst({ where: { id: tenantId, deletedAt: null }, select: { id: true, name: true, slug: true, status: true, contactPhone: true, timezone: true, market: true } as never }) as unknown as { id: string; name: string; slug: string; status: string; contactPhone: string | null; timezone: string; market?: string | null } | null;
+    const t = await this.prisma.tenant.findFirst({ where: { id: tenantId, deletedAt: null }, select: { id: true, name: true, slug: true, status: true, contactPhone: true, timezone: true, market: true, businessType: true } as never }) as unknown as { id: string; name: string; slug: string; status: string; contactPhone: string | null; timezone: string; market?: string | null; businessType?: string | null } | null;
     if (!t) throw new Error('Salon not found');
     const [setting, extra, rules, deposit, gbr, profile, services] = await Promise.all([
       this.getSetting(tenantId),
@@ -105,6 +105,7 @@ export class GoogleBookService {
       id: t.id,
       slug: t.slug,
       name: t.name,
+      listingName: profile?.title?.trim() || null,
       phone,
       website: profile?.website || extra.website || null,
       address: profile?.address ?? null,
@@ -122,7 +123,8 @@ export class GoogleBookService {
     };
     const googleLinked = Boolean(gbr.connected && gbr.locationId);
     const googleMismatch = googleLinked && Boolean(gbr.locationTitle) && !namesMatch(gbr.locationTitle, t.name);
-    const lint = lintTenant(feedTenant, { googleLinked, googleMismatch, enabled: setting.enabled && t.status === TenantStatus.ACTIVE });
+    const notAppointments = t.businessType === 'RESTAURANT' || t.businessType === 'REAL_ESTATE';
+    const lint = lintTenant(feedTenant, { googleLinked, googleMismatch, notAppointments, enabled: setting.enabled && t.status === TenantStatus.ACTIVE });
     return { tenant: feedTenant, lint, profile };
   }
 
@@ -149,7 +151,7 @@ export class GoogleBookService {
     for (const row of board) {
       if (row.status !== 'ready') { if (row.status === 'fix') held.push(row.id); continue; }
       const { tenant } = await this.inspect(row.id);
-      ready.push(tenant);
+      ready.push(cleanForFeed(tenant).tenant);
     }
     return { files: buildUpload(ready, this.webUrl(), now), ready: ready.map((t) => t.id), held };
   }
@@ -201,7 +203,9 @@ export class GoogleBookService {
   async fixName(tenantId: string, userId: string): Promise<{ name: string }> {
     const t = await this.prisma.tenant.findFirst({ where: { id: tenantId, deletedAt: null }, select: { id: true, name: true } });
     if (!t) throw new Error('Salon not found');
-    const name = titleCase(t.name);
+    // The Maps listing's own spelling wins when it is the same business and not shouted itself.
+    const listing = (await this.profile(tenantId).catch(() => null))?.title?.trim() || '';
+    const name = listing && namesMatch(listing, t.name) && !isAllCaps(listing) ? listing : titleCase(t.name);
     if (name !== t.name) {
       await this.prisma.tenant.update({ where: { id: tenantId }, data: { name } });
       await this.audit.log({ tenantId, userId, action: 'google_book.name_fixed', resourceType: 'tenant', resourceId: tenantId, metadata: { from: t.name, to: name } });

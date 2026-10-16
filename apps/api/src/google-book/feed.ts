@@ -38,6 +38,8 @@ export interface FeedTenant {
   id: string;
   slug: string;
   name: string;
+  /** The name on the salon's Google Maps listing, when linked — what the Entity feed sends, so Google matches it. */
+  listingName?: string | null;
   phone?: string | null;
   website?: string | null;
   address?: FeedAddress | null;
@@ -106,7 +108,7 @@ export function buildEntityFeed(tenants: FeedTenant[], webUrl: string) {
       } else if (t.unstructuredAddress) location.unstructured_address = t.unstructuredAddress;
       return {
         entity_id: t.id,
-        name: t.name,
+        name: (t.listingName || t.name).trim(),
         ...(t.phone ? { telephone: t.phone } : {}),
         url: t.website || bookingUrl(webUrl, t.slug).replace(/\/gbp$/, ''),
         location,

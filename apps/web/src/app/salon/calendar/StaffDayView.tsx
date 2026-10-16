@@ -85,8 +85,10 @@ function srcMeta(s: string | null | undefined, t: (k: string) => string): { icon
 // or down to change the time, sideways to change the tech (one POST /move, so a
 // clash leaves the booking where it was; "Hoàn tác" puts it back). Hours
 // outside a tech's shift, and breaks between split shifts, are hatched.
-export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChanged }: {
+export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChanged, onBook }: {
   date: Date; items: Booking[]; tz?: string; isMobile: boolean; onOpen: (b: Booking) => void; today: Date; onChanged?: () => void;
+  /** An empty slot was clicked: open the booking form in place (staffId null = unassigned column). Without it the page changes. */
+  onBook?: (staffId: string | null, startLocal: string) => void;
 }) {
   const { token, user } = useAuth();
   const { lang } = useLang();
@@ -279,6 +281,9 @@ export function StaffDayView({ date, items, tz, isMobile, onOpen, today, onChang
     } finally { setBusy(false); }
   };
   const bookAt = (colId: string, m: number) => {
+    // In the calendar the form opens as a pop-up over the day — no page change,
+    // the day being looked at stays put. The URL route is the fallback.
+    if (onBook) { onBook(colId === '__un' ? null : colId, wall(m)); return; }
     const q = new URLSearchParams({ new: '1', at: wall(m) });
     if (colId !== '__un') q.set('staff', colId);
     window.location.href = `/salon/bookings?${q.toString()}`;

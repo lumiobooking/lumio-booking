@@ -42,7 +42,8 @@ export function ServicePicker({ services, selected, onToggle, onSet, history, cu
   const usable = useMemo(() => services.filter((s) => s.isActive !== false && !(hideWalkInOnly && s.walkInOnly)), [services, hideWalkInOnly]);
   const cats = useMemo(() => {
     const seen: string[] = [];
-    for (const s of usable) { const n = s.category?.name?.trim(); if (n && !seen.includes(n)) seen.push(n); }
+    // A salon's own group literally named "All" / "Tất cả" would double the catch-all tab: fold it in.
+    for (const s of usable) { const n = s.category?.name?.trim(); if (n && !seen.includes(n) && !/^(all|tất cả|tat ca)$/i.test(n)) seen.push(n); }
     return seen;
   }, [usable]);
   const fav = useMemo(() => (history?.topServices ?? []).map((t) => byId.get(t.id)).filter((s): s is PickerService => Boolean(s && s.isActive !== false)), [history, byId]);

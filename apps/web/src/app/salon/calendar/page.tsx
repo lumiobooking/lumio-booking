@@ -647,7 +647,7 @@ function Inner() {
         isRestaurant ? (
           <TableDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} />
         ) : (
-          <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} />
+          <StaffDayView date={dayDate} items={byDay.get(cellKey(dayDate)) ?? []} tz={tz} isMobile={isMobile} onOpen={setSelected} today={today} onChanged={load} onBook={(staffId, at) => setNewBook({ staffId: staffId ?? undefined, startLocal: at })} />
         )
       ) : mode === 'day' ? (
         <ListView

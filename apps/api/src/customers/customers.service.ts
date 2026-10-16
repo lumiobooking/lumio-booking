@@ -300,6 +300,7 @@ export class CustomersService {
    * query carries this salon's tenantId. See ./customer-history.
    */
   async lookup(user: AuthenticatedUser, q: string) {
+    type WalkRow = { customerId: string | null; doneAt: Date | null; createdAt: Date; items: unknown; service: { id: string; name: string } | null; assignedStaff: { id: string; firstName: string; lastName: string | null } | null };
     const tenantId = this.tenantId(user);
     const base = await this.search(user, q);
     if (!base.length) return [];
@@ -312,13 +313,13 @@ export class CustomersService {
         orderBy: { startTime: 'desc' },
         take: 60 * ids.length,
       }).catch(() => []),
-      (this.prisma as unknown as { walkIn: { findMany: (a: unknown) => Promise<{ customerId: string | null; doneAt: Date | null; createdAt: Date; items: unknown; service: { id: string; name: string } | null; assignedStaff: { id: string; firstName: string; lastName: string | null } | null }[]> } }).walkIn.findMany({
+      (this.prisma as unknown as { walkIn: { findMany: (a: unknown) => Promise<WalkRow[]> } }).walkIn.findMany({
         where: { tenantId, customerId: { in: ids }, status: 'DONE' },
         select: { customerId: true, doneAt: true, createdAt: true, items: true, service: { select: { id: true, name: true } }, assignedStaff: { select: { id: true, firstName: true, lastName: true } } },
         orderBy: { createdAt: 'desc' },
         take: 60 * ids.length,
-      }).catch(() => []),
-      this.prisma.customer.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, notes: true, birthDate: true, createdAt: true } }).catch(() => []),
+      }).catch((): WalkRow[] => []),
+      this.prisma.customer.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, notes: true, birthDate: true, createdAt: true } }).catch((): { id: string; notes: string | null; birthDate: Date | null; createdAt: Date }[] => []),
     ]);
     const nameOf = (s: { firstName: string; lastName: string | null } | null) => (s ? `${s.firstName}${s.lastName ? ` ${s.lastName}` : ''}` : null);
     const rows: VisitRow[] = [

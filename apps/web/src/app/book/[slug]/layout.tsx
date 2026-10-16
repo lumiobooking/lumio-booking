@@ -139,9 +139,10 @@ export async function generateMetadata({ params }: { params: { slug: string } })
  * link where the customer cannot complete the action", and the "Book online"
  * button never shows. So the salon's menu is rendered here, on the server, as
  * plain HTML: name, address, hours, every bookable service with length and
- * price, and a button into the form. A visitor sees it for the moment before
- * the app mounts; the app then removes it (page.tsx) and shows the real thing.
- * Same facts for everyone — nothing is served to crawlers only.
+ * price, and a button into the form — inside <noscript>, so a visitor whose
+ * browser runs the app never sees it (no flash of a second page), while a
+ * crawler without JavaScript reads the full menu. Same facts for everyone —
+ * nothing is served to crawlers only.
  */
 function StaticMenu({ s }: { s: Seo }) {
   const menu = s.menu ?? [];
@@ -262,7 +263,11 @@ export default async function BookSlugLayout({ children, params }: { children: R
         // eslint-disable-next-line react/no-danger
         <script dangerouslySetInnerHTML={{ __html: adsSnippet }} />
       )}
-      {s && <StaticMenu s={s} />}
+      {/* Inside <noscript>: a browser running the app never shows it (no flash,
+          nothing to remove), a crawler that runs no JavaScript gets the whole
+          menu; one that does run JavaScript sees the real page. Same facts
+          either way. */}
+      {s && <noscript><StaticMenu s={s} /></noscript>}
       <div id="book">{children}</div>
     </>
   );

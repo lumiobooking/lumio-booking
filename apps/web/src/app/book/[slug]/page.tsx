@@ -349,13 +349,6 @@ export default function PublicBookingPage() {
     if (next) window.history.replaceState(null, '', window.location.pathname + next + window.location.hash);
   }, []);
 
-  // The server-rendered menu (layout.tsx: StaticMenu) is for the first paint
-  // and for crawlers; once the real page has its data, it goes.
-  useEffect(() => {
-    if (typeof document === 'undefined' || (!salon && !loadError && !embedded)) return;
-    document.getElementById('lumio-ssr-menu')?.remove();
-  }, [salon, loadError, embedded]);
-
   // Reserve with Google referral: keep the token 30 days (see lib/rwg.ts).
   useEffect(() => {
     if (typeof window === 'undefined' || !slug) return;

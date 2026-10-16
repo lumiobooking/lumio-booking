@@ -54,7 +54,7 @@ describe('agency service term', () => {
 
 describe('agency filters', () => {
   const row = (id: string, o: Partial<FilterFacts>): FilterFacts => ({
-    id, term: 'ok', renew: null, team: 'Team 1', pkg: 'scale', stage: 'running', market: 'US', flags: [], ...o,
+    id, term: 'ok', renew: null, team: 'Team 1', pkg: 'scale', stage: 'running', market: 'US', growth: 'flat', ads: 'none', flags: [], ...o,
   });
   const ROWS = [
     row('a', { term: 'expired', renew: 'untold' }),
@@ -62,7 +62,7 @@ describe('agency filters', () => {
     row('c', { term: 'soon', renew: 'untold', pkg: '' }),
     row('d', { term: 'soon', renew: 'told', team: 'Team 2', flags: ['waiting'] }),
     row('e', { term: 'ok', team: '', flags: ['new'] }),
-    row('f', { term: 'none', stage: 'setup', market: 'VN' }),
+    row('f', { term: 'none', stage: 'setup', market: 'VN', growth: 'down', ads: 'warn' }),
   ];
 
   it('OR inside a group, AND across groups', () => {
@@ -74,6 +74,10 @@ describe('agency filters', () => {
     expect(applyFilters(ROWS, { ...NO_FILTERS, pkg: ['none'] }).map((r) => r.id)).toEqual(['c']);
     expect(applyFilters(ROWS, { ...NO_FILTERS, renew: ['told'] }).map((r) => r.id)).toEqual(['b', 'd']);
     expect(applyFilters(ROWS, { ...NO_FILTERS, flag: ['waiting', 'new'] }).map((r) => r.id)).toEqual(['d', 'e']);
+    // The pulse groups: the one salon falling, and the one spending on ads with nothing back.
+    expect(applyFilters(ROWS, { ...NO_FILTERS, growth: ['down'] }).map((r) => r.id)).toEqual(['f']);
+    expect(applyFilters(ROWS, { ...NO_FILTERS, ads: ['warn', 'on'] }).map((r) => r.id)).toEqual(['f']);
+    expect(applyFilters(ROWS, { ...NO_FILTERS, growth: ['down'], ads: ['none'] })).toHaveLength(0);
   });
 
   it('each count is what ticking that option would leave', () => {

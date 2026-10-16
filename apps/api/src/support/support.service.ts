@@ -17,6 +17,8 @@ import { SERVICE_PACKAGE_KEY, SERVICE_PACKAGES, servicePackageOf, setServicePack
 import { SERVICE_TERM_KEY, serviceTermOf, setServiceTerm, markRenewal } from './service-term';
 import { kindOf, linkFor, titleFor, type NoticeKind } from './team-notices';
 import { connectionsByTenant, sharedConnections } from './connections-audit';
+import { PAID_CHANNELS, monthWindows, salonPulse, type SalonPulse } from './salon-pulse';
+import { PLATFORM_OF, bookingChannel } from '../common/booking-channel';
 
 /** One row of the team's bell. `link` is relative to the salon session. */
 export interface TeamNotice {
@@ -125,8 +127,12 @@ export class SupportService {
     const shared = sharedConnections(connections);
     const sharedBy = new Map<string, string[]>();
     for (const sh of shared) for (const id of sh.tenantIds) sharedBy.set(id, [...(sharedBy.get(id) ?? []), sh.kind]);
+    // Bookings this month, the growth verdict and the ads status — for the
+    // whole list in a handful of tenant-grouped queries. See ./salon-pulse.
+    const pulseBy = await this.pulseByTenant(rows.map((r) => ({ id: r.id, createdAt: r.createdAt })));
     return rows.map((r) => ({
       ...r,
+      pulse: pulseBy.get(r.id) ?? null,
       opsStage: opsStageOf(byTenant.get(r.id), r.status),
       workNext: workNextOf(nextBy.get(r.id)),
       servicePackage: servicePackageOf(pkgBy.get(r.id)),
@@ -141,6 +147,67 @@ export class SupportService {
       // Kinds of account this salon shares with another salon (google | tiktok | mail).
       sharedWith: sharedBy.get(r.id) ?? [],
     }));
+  }
+
+  /**
+   * The pulse of every salon on the list, read in tenant-grouped queries so
+   * three hundred salons cost the same as one. Every query is bounded to the
+   * ids passed in; a salon outside that set contributes nothing, and a
+   * failing query leaves the pulse null rather than emptying the list.
+   */
+  private async pulseByTenant(tenants: { id: string; createdAt: Date }[], now = new Date()): Promise<Map<string, SalonPulse>> {
+    const out = new Map<string, SalonPulse>();
+    if (!tenants.length) return out;
+    const ids = tenants.map((t) => t.id);
+    const w = monthWindows(now);
+    type Grouped = { tenantId: string; _count: { _all: number } }[];
+    const appt = (this.prisma as unknown as { appointment: { groupBy: (a: unknown) => Promise<Grouped>; findMany: (a: unknown) => Promise<unknown[]> } }).appointment;
+    const live = { notIn: ['CANCELLED', 'NO_SHOW'] };
+    const count = (start: Date, end: Date) => appt
+      .groupBy({ by: ['tenantId'], where: { tenantId: { in: ids }, status: live, startTime: { gte: start, lt: end } }, _count: { _all: true } })
+      .then((g) => new Map(g.map((x) => [x.tenantId, x._count._all])))
+      .catch(() => new Map<string, number>());
+    const spend = (this.prisma as unknown as { marketingSpend: { findMany: (a: unknown) => Promise<{ tenantId: string; amountCents: number }[]>; groupBy: (a: unknown) => Promise<{ tenantId: string; _max: { periodMonth: string | null } }[]> } }).marketingSpend;
+    const [sameSpan, series, thisSpend, lastSpend, adsRows] = await Promise.all([
+      count(w.lastStart, w.lastSameEnd),
+      Promise.all(w.series.map((m) => count(m.start, m.end))),
+      // Paid spend recorded for this month, per salon.
+      spend.findMany({ where: { tenantId: { in: ids }, periodMonth: w.key, channel: { in: PAID_CHANNELS }, amountCents: { gt: 0 } }, select: { tenantId: true, amountCents: true } })
+        .catch(() => [] as { tenantId: string; amountCents: number }[]),
+      // The most recent month that had paid spend at all — "chạy ads đến T8".
+      spend.groupBy({ by: ['tenantId'], where: { tenantId: { in: ids }, channel: { in: PAID_CHANNELS }, amountCents: { gt: 0 } }, _max: { periodMonth: true } })
+        .catch(() => [] as { tenantId: string; _max: { periodMonth: string | null } }[]),
+      // This month's bookings with their attribution, to count the ones that
+      // came through a channel an ad can buy. Bounded; a salon with more than
+      // this many bookings a month is doing fine without the figure.
+      appt.findMany({
+        where: { tenantId: { in: ids }, status: live, startTime: { gte: w.thisStart, lt: w.now } },
+        select: { tenantId: true, source: true, utmSource: true, attrReferrer: true, attrLandingUrl: true },
+        take: 50000,
+      }).catch(() => [] as unknown[]) as Promise<{ tenantId: string; source?: string | null; utmSource?: string | null; attrReferrer?: string | null; attrLandingUrl?: string | null }[]>,
+    ]);
+    const spendBy = new Map<string, number>();
+    for (const r of thisSpend) spendBy.set(r.tenantId, (spendBy.get(r.tenantId) ?? 0) + (r.amountCents ?? 0));
+    const lastSpendBy = new Map(lastSpend.map((r) => [r.tenantId, r._max?.periodMonth ?? null]));
+    const adsBy = new Map<string, number>();
+    for (const a of adsRows) {
+      const p = PLATFORM_OF[bookingChannel(a)];
+      if (p === 'google' || p === 'meta' || p === 'zalo') adsBy.set(a.tenantId, (adsBy.get(a.tenantId) ?? 0) + 1);
+    }
+    const thisMonth = series[series.length - 1] ?? new Map<string, number>();
+    for (const t of tenants) {
+      out.set(t.id, salonPulse({
+        month: thisMonth.get(t.id) ?? 0,
+        lastSameSpan: sameSpan.get(t.id) ?? 0,
+        series: series.map((m) => m.get(t.id) ?? 0),
+        createdAt: t.createdAt,
+        now,
+        spendCents: spendBy.get(t.id) ?? 0,
+        adsBookings: adsBy.get(t.id) ?? 0,
+        lastSpendMonth: lastSpendBy.get(t.id) ?? null,
+      }));
+    }
+    return out;
   }
 
   /**

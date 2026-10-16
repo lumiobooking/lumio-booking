@@ -46,12 +46,12 @@ import {
   type RenewState, type ServiceTerm, type TermState,
 } from '../../lib/agency-term';
 import {
-  ago, MARKET_LOOK, MARKET_ORDER, marketOf, NEXT_LOOK, STAGE_LOOK, STAGE_ORDER, TIER_DOT,
+  ago, ADS_LOOK, ADS_ORDER, GROWTH_LOOK, GROWTH_ORDER, MARKET_LOOK, MARKET_ORDER, marketOf, NEXT_LOOK, STAGE_LOOK, STAGE_ORDER, TIER_DOT,
   type Board, type OpsStage, type ServicePackage, type TenantRow, type WorkNext,
 } from './agency-model';
 import {
-  ActiveChips, C, ChannelSquares, ChannelWords, Dot, FilterBar, FilterSheet, Icon, MarketChip, NextPicker, PackageText, RenewAction,
-  SalonPanel, StageText, TERM_LOOK, TermText, type FilterGroupDef,
+  ActiveChips, AdsText, BookingsCell, C, ChannelSquares, ChannelWords, Dot, FilterBar, FilterSheet, GrowthText, Icon, MarketChip, NextPicker, PackageText,
+  PulseTiles, PulseWords, RenewAction, SalonPanel, StageText, TERM_LOOK, TermText, type FilterGroupDef,
 } from './AgencyParts';
 
 /**
@@ -61,10 +61,12 @@ import {
  */
 const NEW_TAGS_MAX = 8;
 
-type Tab = 'all' | 'mine' | 'renew' | 'none';
-type SortKey = 'work' | 'pkg' | 'end' | 'name';
+type Tab = 'all' | 'mine' | 'renew' | 'down' | 'adswarn' | 'none';
+type SortKey = 'work' | 'growth' | 'bookings' | 'pkg' | 'end' | 'name';
 const SORTS: { key: SortKey; label: string }[] = [
   { key: 'work', label: 'Cần làm trước' },
+  { key: 'growth', label: 'Giảm nhiều nhất' },
+  { key: 'bookings', label: 'Nhiều booking nhất' },
   { key: 'end', label: 'Ngày hết hạn' },
   { key: 'pkg', label: 'Gói lớn trước' },
   { key: 'name', label: 'Tên A–Z' },
@@ -82,8 +84,14 @@ const RENEW_SECTIONS: { key: RenewState; title: string; dot: string; note?: stri
   { key: 'renewed', title: 'Đã gia hạn tháng này', dot: '#22c55e' },
 ];
 
-/** The table's columns on a wide screen. */
-const COLS = 'minmax(190px, 1.6fr) 132px 146px 90px 108px 150px 126px 172px';
+/**
+ * The table's columns on a wide screen:
+ * Tiệm · Thời hạn · Booking tháng này · Hiệu quả · Ads · Gói · Nhóm · Trạng thái · Bước tiếp · (gia hạn, chi tiết, vào).
+ * The channel squares moved onto the salon's second line to make room.
+ */
+const COLS = 'minmax(220px, 1.5fr) 118px 136px 168px 186px 122px 90px 104px 150px 128px';
+/** Below this the fixed columns do not fit and the table scrolls sideways. */
+const TABLE_MIN = 1460;
 
 const cssFor = `
 .ag-row:hover { background: var(--c162032) !important; }
@@ -101,7 +109,7 @@ export default function AgencyPage() {
   const router = useRouter();
   /** Phone: cards and a filter page. Tablet (up to 1279): two-line rows. Wider: the table. */
   const phone = useIsMobile(699);
-  const narrow = useIsMobile(1279);
+  const narrow = useIsMobile(1379);
   const [rows, setRows] = useState<TenantRow[]>([]);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
   /** Everything a shop wrote that nobody answered — the bell, and a line per row. */
@@ -236,6 +244,8 @@ export default function AgencyPage() {
         pkg: r.servicePackage || '',
         stage: r.opsStage ?? 'running',
         market: marketOf(r),
+        growth: r.pulse?.growth.kind ?? 'thin',
+        ads: r.pulse?.ads.kind ?? 'none',
         flags,
       });
     }
@@ -255,6 +265,8 @@ export default function AgencyPage() {
     if (activeTab === 'mine') return f.team === myTeam;
     if (activeTab === 'none') return f.team === '';
     if (activeTab === 'renew') return f.renew !== null;
+    if (activeTab === 'down') return f.growth === 'down';
+    if (activeTab === 'adswarn') return f.ads === 'warn';
     return true;
   }), [rows, facts, needle, activeTab, myTeam]);
   const baseFacts = useMemo(() => base.map((r) => facts.get(r.id)!), [base, facts]);
@@ -273,8 +285,12 @@ export default function AgencyPage() {
     };
     const tierOf = (t: TenantRow) => (t.servicePackage ? pkgByKey.get(t.servicePackage)?.tier ?? 0 : 0);
     const work = (a: TenantRow, b: TenantRow) => waitAt(b) - waitAt(a) || (newIds.has(b.id) ? 1 : 0) - (newIds.has(a.id) ? 1 : 0);
+    // Steepest fall first; a salon without a verdict sorts after every one that has one.
+    const pctOf = (t: TenantRow) => (t.pulse && t.pulse.growth.kind !== 'thin' && t.pulse.bookings.pct != null ? t.pulse.bookings.pct : Number.POSITIVE_INFINITY);
     const cmp = (a: TenantRow, b: TenantRow) => {
       if (sort === 'name') return a.name.localeCompare(b.name);
+      if (sort === 'growth') return pctOf(a) - pctOf(b) || a.name.localeCompare(b.name);
+      if (sort === 'bookings') return (b.pulse?.bookings.month ?? 0) - (a.pulse?.bookings.month ?? 0) || a.name.localeCompare(b.name);
       if (sort === 'pkg') return tierOf(b) - tierOf(a) || work(a, b) || a.name.localeCompare(b.name);
       if (sort === 'end') {
         const ea = a.serviceTerm?.end ?? '9999-99-99'; const eb = b.serviceTerm?.end ?? '9999-99-99';
@@ -295,17 +311,19 @@ export default function AgencyPage() {
 
   /** The numbers on the tabs, and on the renewal line. */
   const tabCounts = useMemo(() => {
-    let mine = 0; let none = 0; let renewAll = 0; let expired = 0; let soon = 0;
+    let mine = 0; let none = 0; let renewAll = 0; let expired = 0; let soon = 0; let down = 0; let adswarn = 0;
     for (const f of facts.values()) {
       if (myTeam && f.team === myTeam) mine++;
       if (f.team === '') none++;
       if (f.renew !== null) renewAll++;
+      if (f.growth === 'down') down++;
+      if (f.ads === 'warn') adswarn++;
     }
     for (const r of rows) {
       if (!needsRenewal(r.serviceTerm, today)) continue;
       if (termStatus(r.serviceTerm, today).state === 'expired') expired++; else soon++;
     }
-    return { all: rows.length, mine, none, renewAll, expired, soon, need: expired + soon };
+    return { all: rows.length, mine, none, renewAll, expired, soon, need: expired + soon, down, adswarn };
   }, [facts, rows, myTeam, today]);
   const waitingHere = useMemo(() => [...facts.values()].filter((f) => f.flags.includes('waiting')).length, [facts]);
   /** How many of the salons on screen arrived this week. Decides the tags. */
@@ -354,6 +372,16 @@ export default function AgencyPage() {
       {
         key: 'stage', label: 'Trạng thái', title: 'Lọc theo trạng thái', kind: 'toggles',
         options: STAGE_ORDER.map((k) => ({ value: k, label: STAGE_LOOK[k].label, lead: <Dot color={STAGE_LOOK[k].dot} /> })),
+      },
+      {
+        key: 'growth', label: 'Hiệu quả', title: 'Lọc theo booking tháng này so với cùng kỳ tháng trước', kind: 'toggles',
+        options: GROWTH_ORDER.map((k) => ({ value: k, label: GROWTH_LOOK[k].label, lead: <Dot color={GROWTH_LOOK[k].dot} /> })),
+        foot: 'So số booking từ đầu tháng tới hôm nay với cùng số ngày của tháng trước. Lệch dưới 10% tính là ổn định.',
+      },
+      {
+        key: 'ads', label: 'Ads', title: 'Lọc theo quảng cáo tháng này', kind: 'toggles',
+        options: ADS_ORDER.map((k) => ({ value: k, label: ADS_LOOK[k].label, lead: <Dot color={ADS_LOOK[k].dot} /> })),
+        foot: 'Đọc từ chi phí ads đã ghi trong tháng và các booking đến qua Google, Facebook/Instagram, Zalo.',
       },
       {
         key: 'market', label: 'Thị trường', title: 'Lọc theo thị trường', kind: 'toggles',
@@ -625,6 +653,8 @@ export default function AgencyPage() {
     { key: 'all', label: 'Tất cả', n: tabCounts.all },
     ...(hasMine ? [{ key: 'mine' as Tab, label: phone ? 'Của tôi' : `Của tôi · ${myTeam}`, n: tabCounts.mine }] : []),
     { key: 'renew', label: 'Gia hạn', n: tabCounts.need, badge: tabCounts.need > 0 },
+    { key: 'down', label: 'Đang giảm', n: tabCounts.down, badge: tabCounts.down > 0 },
+    ...(tabCounts.adswarn > 0 ? [{ key: 'adswarn' as Tab, label: phone ? 'Ads chưa hiệu quả' : 'Ads chưa ra booking', n: tabCounts.adswarn, badge: true }] : []),
     { key: 'none', label: 'Chưa giao', n: tabCounts.none },
   ];
 
@@ -644,7 +674,7 @@ export default function AgencyPage() {
   return (
     <main style={{ minHeight: '100dvh', background: C.bg, color: C.ink2, padding: phone ? '14px 12px' : '24px 20px' }}>
       <style dangerouslySetInnerHTML={{ __html: cssFor }} />
-      <div style={{ maxWidth: narrow ? 1060 : 1400, margin: '0 auto', paddingBottom: 80 }}>
+      <div style={{ maxWidth: narrow ? 1060 : 1720, margin: '0 auto', paddingBottom: 80 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
           <h1 style={{ fontSize: 22, margin: 0 }}><LumioLogo size={phone ? 30 : 34} sub="Support" /></h1>
           <span style={{ marginLeft: 'auto' }} />
@@ -772,6 +802,11 @@ export default function AgencyPage() {
           })}
         </div>
 
+        {/* ---- the month, across the salons on this tab. Each tile filters. ---- */}
+        {!needle && activeTab !== 'renew' && (
+          <PulseTiles rows={base} compact={phone} onPick={(g, v) => updateFilters((f) => toggleValue(f, g, v))} />
+        )}
+
         {/* ---- filters ---- */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
           {!narrow && (
@@ -853,14 +888,17 @@ export default function AgencyPage() {
               {needle ? 'Không có tiệm nào khớp.'
                 : filtering ? <>Không có tiệm nào khớp bộ lọc. <button type="button" onClick={clearAll} style={linkBtn}>Xoá lọc</button></>
                 : activeTab === 'renew' ? 'Không có tiệm nào hết hạn hoặc sắp hết hạn.'
+                : activeTab === 'down' ? 'Không có tiệm nào đang giảm booking so với cùng kỳ tháng trước.'
+                : activeTab === 'adswarn' ? 'Không có tiệm nào chạy ads mà chưa ra booking.'
                 : 'Nhóm này chưa có tiệm nào.'}
             </div>
           ) : !narrow ? (
-            <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, overflow: 'hidden' }}>
+            <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, overflowX: 'auto' }}>
+              <div style={{ minWidth: TABLE_MIN }}>
               <div style={{ display: 'grid', gridTemplateColumns: picking ? `28px ${COLS}` : COLS, columnGap: 14, alignItems: 'center', height: 40, padding: '0 14px 0 18px', background: C.soft, borderBottom: `1px solid ${C.line}` }}>
                 {picking && <span />}
-                {['Tiệm', 'Thời hạn', 'Gói', 'Nhóm', 'Trạng thái', 'Bước tiếp', 'Kênh', ''].map((h) => (
-                  <span key={h || 'act'} style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.5, color: C.muted, textTransform: 'uppercase' }}>{h}</span>
+                {['Tiệm', 'Thời hạn', 'Booking tháng này', 'Hiệu quả', 'Ads', 'Gói', 'Nhóm', 'Trạng thái', 'Bước tiếp', ''].map((h) => (
+                  <span key={h || 'act'} style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 0.5, color: C.muted, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</span>
                 ))}
               </div>
               {sections.map((s) => s.rows.length > 0 && (
@@ -869,6 +907,7 @@ export default function AgencyPage() {
                   {s.rows.map((t) => <WideRow key={t.id} {...rowProps(t)} />)}
                 </div>
               ))}
+              </div>
             </div>
           ) : (
             sections.map((s) => s.rows.length > 0 && (
@@ -1168,17 +1207,21 @@ function WideRow(p: RowProps) {
           <WaitLine t={t} notice={p.notice} onEnter={p.onEnter} />
           {!p.notice && !(t.heldPosts ?? 0) && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>/{t.slug}</span>}
           {(t.awaitingApproval ?? 0) > 0 && <span style={{ color: C.sub }}>· ⏳ {t.awaitingApproval} chờ duyệt</span>}
+          {/* The channel squares, where the column used to be. */}
+          <span style={{ marginLeft: 2, display: 'inline-flex' }}><ChannelSquares t={t} size={12} /></span>
         </span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <TermText term={t.serviceTerm} today={today} />
         {loud && st.end && <span style={{ fontSize: 11.5, color: C.muted }}>{fmtDay(st.end, today)}</span>}
       </div>
+      <div style={{ minWidth: 0 }}><BookingsCell pulse={t.pulse} /></div>
+      <div style={{ minWidth: 0, overflow: 'hidden' }}><GrowthText pulse={t.pulse} /></div>
+      <div style={{ minWidth: 0, overflow: 'hidden' }}><AdsText pulse={t.pulse} /></div>
       <div style={{ minWidth: 0, overflow: 'hidden' }}><PackageText pkg={p.pkg} /></div>
       <div style={{ fontSize: 13, color: p.team ? C.body : C.warn, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.team || 'Chưa giao'}</div>
       <div style={{ minWidth: 0 }}><StageText stage={t.opsStage ?? 'running'} /></div>
       <div style={{ minWidth: 0, display: 'flex' }}><NextPicker next={t.workNext} onChange={p.onNext} disabled={p.picking} /></div>
-      <div style={{ minWidth: 0 }}><ChannelSquares t={t} size={16} /></div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
         {!p.picking && <RenewAction term={t.serviceTerm} today={today} onTell={p.onTell} />}
         {!p.picking && (
@@ -1212,6 +1255,7 @@ function TabletRow(p: RowProps) {
           <Tags t={t} fresh={p.fresh} />
         </span>
         {(p.notice || (t.heldPosts ?? 0) > 0) && waitLine}
+        <PulseWords pulse={t.pulse} />
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0 }}>
           {joinSep([
             <NextPicker key="n" next={t.workNext} onChange={p.onNext} size="sm" disabled={p.picking} />,
@@ -1251,6 +1295,7 @@ function PhoneRow(p: RowProps) {
           {term !== 'none' && <TermText term={t.serviceTerm} today={today} />}
         </span>
         {(p.notice || (t.heldPosts ?? 0) > 0) && <WaitLine t={t} notice={p.notice} onEnter={p.onEnter} size={12.5} />}
+        <span style={{ display: 'flex', minWidth: 0, overflow: 'hidden' }}><PulseWords pulse={t.pulse} size={12} /></span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0 }}>
           {joinSep([
             <span key="m" style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, color: C.muted }}>{marketOf(t)}</span>,

@@ -15,8 +15,8 @@ import {
 } from '../../lib/agency-term';
 import { noticeSummary, ago as agoShort, type RowNotice } from '../../components/TeamBell';
 import {
-  ago, channelCells, MARKET_LOOK, marketOf, NEXT_LOOK, NEXT_ORDER, STAGE_LOOK, STAGE_ORDER, TIER_DOT,
-  type Board, type OpsStage, type ServicePackage, type TenantRow, type WorkNext,
+  ago, ADS_LOOK, channelCells, GROWTH_LOOK, MARKET_LOOK, marketOf, monthLabel, NEXT_LOOK, NEXT_ORDER, STAGE_LOOK, STAGE_ORDER, TIER_DOT, usd,
+  type Board, type OpsStage, type SalonPulse, type ServicePackage, type TenantRow, type WorkNext,
 } from './agency-model';
 
 /** Theme tokens: every one flips with light mode. */
@@ -888,5 +888,121 @@ export function StageText({ stage, size = 13 }: { stage: OpsStage; size?: number
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: size, whiteSpace: 'nowrap', color: look.ink, textDecoration: stage === 'stopped' ? 'line-through' : 'none' }}>
       <Dot color={look.dot} size={6} />{look.label}
     </span>
+  );
+}
+
+// ---- the pulse: bookings this month, growth, ads ------------------------------
+
+/**
+ * Bookings so far this month, with last month entire under it for scale.
+ * The number is the column; the arrow lives in the next one.
+ */
+export function BookingsCell({ pulse, size = 14, align = 'left' }: { pulse: SalonPulse | null | undefined; size?: number; align?: 'left' | 'right' }) {
+  if (!pulse) return <span style={{ color: C.muted, fontSize: size - 1 }}>—</span>;
+  const b = pulse.bookings;
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: align === 'right' ? 'flex-end' : 'flex-start', gap: 1, minWidth: 0 }}>
+      <span style={{ fontSize: size, fontWeight: 700, color: C.ink, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+        {b.month}<span style={{ fontSize: size - 3, fontWeight: 500, color: C.muted }}> booking</span>
+      </span>
+      <span style={{ fontSize: size - 3, color: C.muted, whiteSpace: 'nowrap' }}>tháng trước {b.lastMonth}</span>
+    </span>
+  );
+}
+
+/** The verdict: ▲ +23% in green, ▼ −18% in red, "+3%" quietly, or "chưa đủ dữ liệu". */
+export function GrowthText({ pulse, size = 13, reason = true }: { pulse: SalonPulse | null | undefined; size?: number; reason?: boolean }) {
+  if (!pulse) return <span style={{ color: C.muted, fontSize: size }}>—</span>;
+  const g = pulse.growth;
+  const look = GROWTH_LOOK[g.kind];
+  return (
+    <span title={g.reason} style={{ display: 'inline-flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: size, fontWeight: g.kind === 'thin' ? 500 : 700, color: look.ink, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+        <Dot color={look.dot} size={6} />{g.kind === 'thin' ? look.label : `${g.label} · ${look.label}`}
+      </span>
+      {reason && <span style={{ fontSize: size - 2.5, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{g.reason}</span>}
+    </span>
+  );
+}
+
+/** Ads this month: spend and what it bought, a warning when it bought nothing, or when it last ran. */
+export function AdsText({ pulse, size = 13, detail = true }: { pulse: SalonPulse | null | undefined; size?: number; detail?: boolean }) {
+  if (!pulse) return <span style={{ color: C.muted, fontSize: size }}>—</span>;
+  const a = pulse.ads;
+  const look = ADS_LOOK[a.kind];
+  const line2 = a.kind === 'on'
+    ? `${usd(a.spendCents)} · ${a.bookings} booking${a.perBookingCents != null ? ` · ${usd(a.perBookingCents)}/booking` : ''}`
+    : a.kind === 'warn' ? `${usd(a.spendCents)} · 0 booking từ kênh ads`
+    : a.kind === 'off' ? `chạy đến ${monthLabel(a.lastMonth)}`
+    : 'chưa ghi chi phí ads';
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: size, fontWeight: a.kind === 'warn' ? 700 : 600, color: look.ink, whiteSpace: 'nowrap' }}>
+        <Dot color={look.dot} size={6} />{look.label}
+      </span>
+      {detail && <span style={{ fontSize: size - 2.5, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{line2}</span>}
+    </span>
+  );
+}
+
+/** One line for the tablet and phone rows: "138 booking · ▲ +23% · Ads $400". */
+export function PulseWords({ pulse, size = 12.5 }: { pulse: SalonPulse | null | undefined; size?: number }) {
+  if (!pulse) return null;
+  const g = pulse.growth; const a = pulse.ads;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: size, whiteSpace: 'nowrap' }}>
+      <span style={{ color: C.ink2, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{pulse.bookings.month} booking</span>
+      <span style={{ color: GROWTH_LOOK[g.kind].ink, fontWeight: g.kind === 'thin' ? 500 : 700 }}>{g.kind === 'thin' ? GROWTH_LOOK.thin.label : g.label}</span>
+      {a.kind !== 'none' && (
+        <span style={{ color: ADS_LOOK[a.kind].ink }}>
+          {a.kind === 'on' ? `Ads ${usd(a.spendCents)} · ${a.bookings} bk` : a.kind === 'warn' ? `Ads ${usd(a.spendCents)} · 0 bk` : `Ads dừng ${monthLabel(a.lastMonth)}`}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The strip above the table: the month across every salon on screen. Each
+ * tile is a filter — tapping "giảm" is the same as ticking it under Hiệu quả.
+ */
+export function PulseTiles({ rows, onPick, compact = false }: {
+  rows: TenantRow[];
+  onPick: (group: 'growth' | 'ads', value: string) => void;
+  compact?: boolean;
+}) {
+  const withPulse = rows.map((r) => r.pulse).filter((p): p is SalonPulse => Boolean(p));
+  if (!withPulse.length) return null;
+  const month = withPulse.reduce((n, p) => n + p.bookings.month, 0);
+  const same = withPulse.reduce((n, p) => n + p.bookings.lastSameSpan, 0);
+  const pct = same > 0 ? Math.round(((month - same) / same) * 100) : null;
+  const up = withPulse.filter((p) => p.growth.kind === 'up').length;
+  const down = withPulse.filter((p) => p.growth.kind === 'down').length;
+  const thin = withPulse.filter((p) => p.growth.kind === 'thin').length;
+  const adsOn = withPulse.filter((p) => p.ads.kind === 'on' || p.ads.kind === 'warn');
+  const adsWarn = withPulse.filter((p) => p.ads.kind === 'warn').length;
+  const spend = adsOn.reduce((n, p) => n + p.ads.spendCents, 0);
+  const adsBookings = adsOn.reduce((n, p) => n + p.ads.bookings, 0);
+  const tile = (key: string, head: React.ReactNode, sub: string, ink: string, pick?: () => void) => (
+    <button key={key} type="button" onClick={pick} disabled={!pick} style={{
+      display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start', textAlign: 'left',
+      padding: compact ? '9px 12px' : '11px 14px', borderRadius: 12, border: `1px solid ${C.line}`, background: C.panel,
+      fontFamily: 'inherit', cursor: pick ? 'pointer' : 'default', minWidth: 0, flex: '1 1 150px',
+    }}>
+      <span style={{ fontSize: compact ? 17 : 20, fontWeight: 800, color: ink, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{head}</span>
+      <span style={{ fontSize: compact ? 11.5 : 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{sub}</span>
+    </button>
+  );
+  return (
+    <div className="ag-scroll" style={{ display: 'flex', gap: 8, overflowX: 'auto', marginTop: 12 }}>
+      {tile('total', <>{month.toLocaleString('en-US')}{pct != null && <span style={{ fontSize: compact ? 12 : 13, fontWeight: 700, marginLeft: 6, color: pct >= 10 ? C.good : pct <= -10 ? C.bad : C.sub }}>{pct > 0 ? '▲ +' : pct < 0 ? '▼ ' : ''}{pct}%</span>}</>,
+        'booking tháng này · so cùng kỳ tháng trước', C.ink)}
+      {tile('up', up, 'tiệm đang tăng', up ? C.good : C.sub, up ? () => onPick('growth', 'up') : undefined)}
+      {tile('down', down, 'tiệm đang giảm', down ? C.bad : C.sub, down ? () => onPick('growth', 'down') : undefined)}
+      {tile('ads', <>{adsOn.length}<span style={{ fontSize: compact ? 12 : 13, fontWeight: 600, marginLeft: 6, color: C.sub }}>{usd(spend)}</span></>,
+        `tiệm đang chạy ads · ${adsBookings} booking từ kênh ads`, adsOn.length ? C.ink : C.sub, adsOn.length ? () => onPick('ads', 'on') : undefined)}
+      {adsWarn > 0 && tile('warn', adsWarn, 'chạy ads, chưa ra booking', C.warn, () => onPick('ads', 'warn'))}
+      {thin > 0 && !compact && tile('thin', thin, 'chưa đủ dữ liệu để so', C.sub, () => onPick('growth', 'thin'))}
+    </div>
   );
 }

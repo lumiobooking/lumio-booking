@@ -31,6 +31,44 @@ export interface TenantRow {
   connections?: { fbPage: string | null; igUser: string | null; google: string | null; googleEmail: string | null; tiktok: string | null; mail: string | null; fbLost?: { state: string; at: string } | null } | null;
   /** Kinds of account this salon shares with ANOTHER salon: google | tiktok | mail. Always a mistake. */
   sharedWith?: string[];
+  /** Bookings this month, the growth verdict and the ads status (GET /support/tenants → salon-pulse). */
+  pulse?: SalonPulse | null;
+}
+
+/** One salon's pulse, as the API computes it (apps/api/src/support/salon-pulse.ts). */
+export interface SalonPulse {
+  bookings: { month: number; lastSameSpan: number; lastMonth: number; series: number[]; pct: number | null };
+  growth: { kind: GrowthKind; label: string; reason: string };
+  ads: { kind: AdsKind; spendCents: number; bookings: number; perBookingCents: number | null; lastMonth: string | null };
+}
+export type GrowthKind = 'up' | 'flat' | 'down' | 'thin';
+export type AdsKind = 'on' | 'warn' | 'off' | 'none';
+
+export const GROWTH_LOOK: Record<GrowthKind, { label: string; ink: string; dot: string }> = {
+  up: { label: 'Tăng', ink: 'var(--ink-good)', dot: '#22c55e' },
+  flat: { label: 'Ổn định', ink: 'var(--ccbd5e1)', dot: '#64748b' },
+  down: { label: 'Giảm', ink: 'var(--ink-bad)', dot: '#ef4444' },
+  thin: { label: 'Chưa đủ dữ liệu', ink: 'var(--c94a3b8)', dot: '#475569' },
+};
+export const GROWTH_ORDER: GrowthKind[] = ['down', 'flat', 'up', 'thin'];
+export const ADS_LOOK: Record<AdsKind, { label: string; ink: string; dot: string }> = {
+  on: { label: 'Đang chạy', ink: 'var(--ink-good)', dot: '#22c55e' },
+  warn: { label: 'Chạy, chưa ra booking', ink: 'var(--ink-warn)', dot: '#f59e0b' },
+  off: { label: 'Đã dừng', ink: 'var(--c94a3b8)', dot: '#64748b' },
+  none: { label: 'Chưa chạy', ink: 'var(--c94a3b8)', dot: '#475569' },
+};
+export const ADS_ORDER: AdsKind[] = ['warn', 'on', 'off', 'none'];
+
+/** '2026-08' → 'T8/2026'. */
+export function monthLabel(key: string | null | undefined): string {
+  if (!key) return '';
+  const [y, m] = key.split('-');
+  return `T${Number(m)}/${y}`;
+}
+/** Whole dollars, the way the team talks about ad money: 40000 → '$400'. */
+export function usd(cents: number): string {
+  const d = Math.round(cents / 100);
+  return `$${d.toLocaleString('en-US')}`;
 }
 
 /** One Lumio service package (GET /support/packages). tier 4 = the most care. */

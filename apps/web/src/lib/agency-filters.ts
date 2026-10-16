@@ -10,11 +10,11 @@ import type { RenewState, TermState } from './agency-term';
  * none can be shown dimmed instead of being a trap.
  */
 
-export type GroupKey = 'term' | 'team' | 'renew' | 'pkg' | 'stage' | 'market' | 'flag';
-export const GROUPS: GroupKey[] = ['term', 'team', 'renew', 'pkg', 'stage', 'market', 'flag'];
+export type GroupKey = 'term' | 'team' | 'renew' | 'pkg' | 'stage' | 'market' | 'growth' | 'ads' | 'flag';
+export const GROUPS: GroupKey[] = ['term', 'team', 'renew', 'pkg', 'stage', 'market', 'growth', 'ads', 'flag'];
 export type AgencyFilters = Record<GroupKey, string[]>;
 
-export const NO_FILTERS: AgencyFilters = { term: [], team: [], renew: [], pkg: [], stage: [], market: [], flag: [] };
+export const NO_FILTERS: AgencyFilters = { term: [], team: [], renew: [], pkg: [], stage: [], market: [], growth: [], ads: [], flag: [] };
 
 /** The facts about one salon that the filters read. */
 export interface FilterFacts {
@@ -28,6 +28,10 @@ export interface FilterFacts {
   pkg: string;
   stage: string;
   market: string;
+  /** up | flat | down | thin — this month's bookings against the same span of last month. */
+  growth: string;
+  /** on | warn | off | none — paid ad spend this month, and whether anything came of it. */
+  ads: string;
   /** waiting | new | locked */
   flags: string[];
 }
@@ -40,6 +44,8 @@ function valuesOf(row: FilterFacts, g: GroupKey): string[] {
     case 'pkg': return [row.pkg || 'none'];
     case 'stage': return [row.stage];
     case 'market': return [row.market];
+    case 'growth': return [row.growth];
+    case 'ads': return [row.ads];
     case 'flag': return row.flags;
   }
 }

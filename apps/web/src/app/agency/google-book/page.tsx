@@ -16,7 +16,7 @@ import { apiFetch } from '../../../lib/api';
 import { C } from '../AgencyParts';
 
 interface Issue { code: string; level: 'error' | 'warn'; message: string; serviceId?: string; serviceName?: string }
-interface Row { id: string; name: string; slug: string; status: 'ready' | 'fix' | 'off'; feedable: number; issues: Issue[]; profileTitle: string | null; profileAt: string | null }
+interface Row { id: string; name: string; slug: string; status: 'ready' | 'fix' | 'off'; feedable: number; issues: Issue[]; profileTitle: string | null; profileAt: string | null; mapsUrl: string | null }
 interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string }
 interface Board { rows: Row[]; lastRun: RunReport | null; sftpConfigured: boolean; partnerId: string | null }
 
@@ -75,6 +75,20 @@ export default function AgencyGoogleBookPage() {
     finally { setBusy(null); }
   };
 
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = (key: string, text: string) => {
+    navigator.clipboard?.writeText(text).then(() => { setCopied(key); setTimeout(() => setCopied(null), 1500); }).catch(() => undefined);
+  };
+  // What Google's partner interest form asks for, read off the board: the salons that would go live
+  // at launch (status 'ready') and five of their Maps listings.
+  const form = useMemo(() => {
+    const all = board?.rows ?? [];
+    const live = all.filter((r) => r.status === 'ready');
+    const withMaps = live.filter((r) => r.mapsUrl);
+    const five = withMaps.slice(0, 5);
+    return { live: live.length, total: all.length, withMaps: withMaps.length, five, links: five.map((r) => r.mapsUrl as string).join(', ') };
+  }, [board]);
+
   const counts = useMemo(() => {
     const c = { all: 0, ready: 0, fix: 0, off: 0 };
     for (const r of board?.rows ?? []) { c.all++; c[r.status]++; }
@@ -107,6 +121,39 @@ export default function AgencyGoogleBookPage() {
           <Tile label="Conversion partner id" value={board.partnerId ? board.partnerId : 'chưa có'} sub={board.partnerId ? 'NEXT_PUBLIC_RWG_PARTNER_ID — trang đặt lịch gửi rwg_token khi khách đặt xong' : 'Google cấp sau khi nhận đối tác; đặt NEXT_PUBLIC_RWG_PARTNER_ID rồi deploy'} tone={board.partnerId ? 'ok' : 'warn'} />
         </div>
 
+        <section style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: C.ink }}>Điền form đăng ký đối tác Google</div>
+            <div style={{ fontSize: 12, color: C.muted }}>số liệu lấy thẳng từ bảng bên dưới — chỉ tính tiệm “Sẵn sàng”</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(0, 2.2fr) auto', gap: '8px 14px', alignItems: 'center', marginTop: 10, fontSize: 13 }}>
+            <div style={{ color: C.sub }}>Estimated count of merchant locations</div>
+            <div style={{ color: C.ink, fontWeight: 800, fontSize: 18 }}>{form.live} <span style={{ fontSize: 12, fontWeight: 500, color: C.muted }}>tiệm sẵn sàng / {form.total} đang hoạt động</span></div>
+            <button type="button" style={ghost} onClick={() => copy('n', String(form.live))}>{copied === 'n' ? '✓ đã chép' : 'Chép'}</button>
+
+            <div style={{ color: C.sub }}>Links to 5 merchants’ Google Business Profiles</div>
+            <div style={{ minWidth: 0 }}>
+              {form.five.length === 0 && <div style={{ color: C.warn, fontSize: 12.5 }}>Chưa tiệm nào có link Maps — tiệm phải “Sẵn sàng” và đã nối Google (bấm “đọc lại” để tải hồ sơ Google của tiệm).</div>}
+              {form.five.map((r) => (
+                <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
+                  <span style={{ color: C.ink2, fontWeight: 600, whiteSpace: 'nowrap' }}>{r.name}</span>
+                  <a href={r.mapsUrl as string} target="_blank" rel="noreferrer" style={{ color: C.link, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.mapsUrl}</a>
+                </div>
+              ))}
+              {form.five.length > 0 && form.five.length < 5 && <div style={{ color: C.warn, fontSize: 12 }}>Google hỏi 5 link — mới có {form.withMaps} tiệm sẵn sàng có link Maps.</div>}
+            </div>
+            <button type="button" style={ghost} disabled={!form.links} onClick={() => copy('l', form.links)}>{copied === 'l' ? '✓ đã chép' : 'Chép 5 link (phẩy)'}</button>
+
+            <div style={{ color: C.sub }}>Primary service offered</div>
+            <div style={{ color: C.ink, fontWeight: 700 }}>Beauty &amp; Wellness (salons, cosmetics store, etc) <span style={{ fontWeight: 500, color: C.muted }}>— nếu danh sách là loại hình thì chọn Appointments</span></div>
+            <span />
+
+            <div style={{ color: C.sub }}>Additional type of services</div>
+            <div style={{ color: C.ink, fontWeight: 700 }}>☑ None / Not applicable nếu có, nếu không thì chỉ ☑ Beauty &amp; Wellness <span style={{ fontWeight: 500, color: C.muted }}>— không tích ngành Lumio không phục vụ</span></div>
+            <span />
+          </div>
+        </section>
+
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
           {(['all', 'fix', 'ready', 'off'] as const).map((k) => (
             <button key={k} type="button" onClick={() => setFilter(k)} style={{ ...chip, ...(filter === k ? chipOn : {}) }}>
@@ -130,7 +177,7 @@ export default function AgencyGoogleBookPage() {
                   style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1.4fr) 120px minmax(0, 2fr) 110px', gap: 14, alignItems: 'center', padding: '11px 16px', cursor: 'pointer' }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
-                    <div style={{ fontSize: 12, color: C.muted }}>/{r.slug}{r.profileTitle ? ` · Google: ${r.profileTitle}` : ''}</div>
+                    <div style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>/{r.slug}{r.profileTitle ? ` · Google: ${r.profileTitle}` : ''}{r.mapsUrl && <> · <a href={r.mapsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: C.link }}>Maps ↗</a></>}</div>
                   </div>
                   <span style={{ display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 9px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: look.bg, color: look.ink, whiteSpace: 'nowrap', justifySelf: 'start' }}>{look.label}</span>
                   <div style={{ fontSize: 12.5, color: C.sub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

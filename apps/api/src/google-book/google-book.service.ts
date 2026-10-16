@@ -34,6 +34,14 @@ const DEFAULT: GoogleBookSetting = { enabled: true };
 
 export interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string }
 
+/** The salon's Google Maps listing — what Google's partner form asks for ("5 of your merchants' Business Profiles"). */
+function mapsUrlOf(p: { mapsUri?: string | null; placeId?: string | null } | null | undefined): string | null {
+  if (!p) return null;
+  if (p.mapsUri) return p.mapsUri;
+  if (p.placeId) return `https://www.google.com/maps/place/?q=place_id:${p.placeId}`;
+  return null;
+}
+
 @Injectable()
 export class GoogleBookService {
   private readonly logger = new Logger('GoogleBook');
@@ -119,13 +127,13 @@ export class GoogleBookService {
   }
 
   /** Every live salon, inspected. The agency's readiness board. */
-  async readiness(): Promise<{ id: string; name: string; slug: string; status: TenantLint['status']; feedable: number; issues: TenantLint['issues']; profileTitle: string | null; profileAt: string | null }[]> {
+  async readiness(): Promise<{ id: string; name: string; slug: string; status: TenantLint['status']; feedable: number; issues: TenantLint['issues']; profileTitle: string | null; profileAt: string | null; mapsUrl: string | null }[]> {
     const rows = await this.prisma.tenant.findMany({ where: { deletedAt: null, status: TenantStatus.ACTIVE }, select: { id: true }, orderBy: { name: 'asc' }, take: 2000 });
     const out: Awaited<ReturnType<GoogleBookService['readiness']>> = [];
     for (const r of rows) {
       try {
         const { tenant, lint, profile } = await this.inspect(r.id);
-        out.push({ id: tenant.id, name: tenant.name, slug: tenant.slug, status: lint.status, feedable: lint.feedable, issues: lint.issues, profileTitle: profile?.title ?? null, profileAt: profile?.fetchedAt ?? null });
+        out.push({ id: tenant.id, name: tenant.name, slug: tenant.slug, status: lint.status, feedable: lint.feedable, issues: lint.issues, profileTitle: profile?.title ?? null, profileAt: profile?.fetchedAt ?? null, mapsUrl: mapsUrlOf(profile) });
       } catch (e) {
         this.logger.warn(`readiness: ${r.id}: ${String(e).slice(0, 120)}`);
       }

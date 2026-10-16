@@ -16,6 +16,8 @@ import { clockIn } from '../../../lib/desk-time';
 import { salonTz, uiLocale } from '../../../lib/datetime';
 import { ind } from '../../../lib/ui-industry';
 import { TurnDrawer } from '../../../components/TurnDrawer';
+import { CustomerPicker, type CustomerHistoryView, type CustomerLookupRow, type PickedCustomer } from '../../../components/CustomerPicker';
+import { ServicePicker } from '../../../components/ServicePicker';
 
 interface WalkInItem { lineId: string; serviceId: string; name: string; priceCents: number; durationMinutes?: number; staffId: string | null; legId?: string }
 /** One part of a visit done by one technician (hands, feet, …) — see walkin-legs.ts in the API. */
@@ -114,6 +116,7 @@ function Inner() {
   // board stays in view behind it, instead of being pushed down the page.
   const wide = !useIsMobile(1023);
   const t = (k: string) => tr(k, lang);
+  const vi = lang === 'vi';
   const [board, setBoard] = useState<Board | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,6 +125,17 @@ function Inner() {
   const [form, setForm] = useState(BLANK_FORM);
   // A walk-in rarely wants exactly one thing; the picker adds to this list.
   const [pickedIds, setPickedIds] = useState<string[]>([]);
+  // The customer on file (null = new or a passer-by) and what the records say about her.
+  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [hist, setHist] = useState<CustomerHistoryView | null>(null);
+  const onCustomer = (v: PickedCustomer, row: CustomerLookupRow | null) => {
+    setCustomerId(v.id);
+    setForm((f) => ({ ...f, customerName: v.firstName, lastName: v.lastName, phone: v.phone, email: v.email, birthDate: v.birthDate }));
+    setHist(row?.history ?? null);
+    // Her last services when nothing is picked yet — one tap clears them.
+    const lastIds = (row?.history.last?.services ?? []).map((x) => x.id).filter((id) => services.some((sv) => sv.id === id));
+    if (row && lastIds.length) setPickedIds((cur) => (cur.length ? cur : lastIds));
+  };
   // The people who came in with her — one ticket each, linked as one party.
   const [guests, setGuests] = useState<GuestDraft[]>([]);
   // The form is a drawer, not a permanent header: reception looks at the board
@@ -435,6 +449,8 @@ function Inner() {
     e?.preventDefault(); setError(null);
     try {
       const body: Record<string, unknown> = {
+        // Picked from the records: linked by id, no retyping (the API checks the salon).
+        customerId: customerId ?? undefined,
         customerName: form.customerName.trim() || undefined,
         lastName: form.lastName.trim() || undefined,
         phone: form.phone.trim() || undefined,
@@ -461,7 +477,7 @@ function Inner() {
       await apiFetch('/walkins', { method: 'POST', token, body });
       pushToScreen('thanks');
       setQrOn(false);
-      setForm(BLANK_FORM); setPickedIds([]); setGuests([]); setFormOpen(false);
+      setForm(BLANK_FORM); setPickedIds([]); setGuests([]); setCustomerId(null); setHist(null); setFormOpen(false);
       // Leave the thank-you up for a moment, then reset the customer screen.
       setTimeout(() => pushToScreen('idle'), 6000);
       await load();
@@ -527,40 +543,27 @@ function Inner() {
       <form onSubmit={add} style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <SecHead label={t('wi.secWho')} />
-            <div style={wiGrid}>
-              <label><WiLabel text={t('wi.customer')} opt={t('wi.optional')} /><input style={ui.input} value={form.customerName} placeholder={t('wi.namePh')} onChange={(e) => setForm({ ...form, customerName: e.target.value })} /></label>
-              <label><WiLabel text={t('wi.lastName')} opt={t('wi.optional')} /><input style={ui.input} value={form.lastName} placeholder="Nguyen" onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></label>
-              <label><WiLabel text={t('wi.phone')} opt={t('wi.optional')} /><input style={ui.input} value={form.phone} inputMode="tel" placeholder="+1 512 886 8189" onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
-              <label><WiLabel text={t('wi.email')} opt={t('wi.optional')} /><input style={ui.input} type="email" value={form.email} placeholder="anna@email.com" onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
-              <label><WiLabel text={t('wi.birth')} opt={t('wi.optional')} /><input style={ui.input} type="date" max={new Date().toISOString().slice(0, 10)} value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} /></label>
-            </div>
+            <SecHead label={t('wi.secWho')} extra={vi ? 'gõ tên hoặc SĐT — khách cũ tự điền' : 'name or phone — a returning customer fills itself in'} />
+            <CustomerPicker
+              token={token!} vi={vi} allowAnonymous autoFocus
+              value={{ id: customerId, firstName: form.customerName, lastName: form.lastName, phone: form.phone, email: form.email, birthDate: form.birthDate }}
+              onChange={onCustomer}
+            />
           </div>
 
           <div>
             <SecHead label={t('wi.secWhat')} extra={pickedIds.length ? `${pickedIds.length} ${t('wi.picked')}` : undefined} />
-            {pickedIds.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                {pickedIds.map((id) => {
-                  const sv = services.find((x) => x.id === id);
-                  return (
-                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--c1e3a8a)', color: 'var(--cdbeafe)', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
-                      {sv?.name ?? id}
-                      <button type="button" onClick={() => setPickedIds((v) => v.filter((x) => x !== id))} style={{ background: 'none', border: 'none', color: 'var(--c93c5fd)', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-            <div style={wiGrid}>
-              <label style={{ gridColumn: 'span 2', minWidth: 0 }}>
-                <WiLabel text={t('wi.service')} opt={t('wi.optional')} />
-                <ServiceSearchSelect
-                  services={services} value=""
-                  onChange={(id) => { if (id) setPickedIds((v) => (v.includes(id) ? v : [...v, id])); }}
-                  placeholder={t('wi.serviceSearch')}
-                />
-              </label>
+            <ServicePicker
+              services={services.map((sv) => ({ ...sv, durationMinutes: sv.durationMinutes ?? 0 }))}
+              selected={pickedIds}
+              onToggle={(id) => setPickedIds((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id]))}
+              onSet={setPickedIds}
+              history={hist}
+              currency={currency}
+              vi={vi}
+              maxHeight={230}
+            />
+            <div style={{ ...wiGrid, marginTop: 10 }}>
               <label>
                 <WiLabel text={t('wi.extraTime')} opt={t('wi.optional')} hint={t('wi.extraTimeHint')} />
                 <input style={ui.input} type="number" min={0} max={600} step={5} value={form.extraMinutes} placeholder="0" onChange={(e) => setForm({ ...form, extraMinutes: e.target.value })} />
@@ -624,7 +627,7 @@ function Inner() {
               <label style={{ gridColumn: 'span 2', minWidth: 0 }}><WiLabel text={ind(lang === 'vi' ? 'Thợ' : 'Technician')} />
                 <select style={ui.input} value={form.staffChoice} onChange={(e) => setForm({ ...form, staffChoice: e.target.value })}>
                   <option value="auto">{ind(lang === 'vi' ? 'Tự động — thợ tới lượt' : 'Auto — up next')}</option>
-                  {(board?.staff ?? []).map((sm) => <option key={sm.id} value={sm.id}>{sm.name}{sm.busy ? (lang === 'vi' ? ' · đang bận' : ' · busy') : ''}</option>)}
+                  {(board?.staff ?? []).map((sm) => <option key={sm.id} value={sm.id}>{sm.name}{hist?.favoriteStaff?.id === sm.id ? (vi ? ' ★ thợ quen' : ' ★ her usual') : ''}{sm.busy ? (lang === 'vi' ? ' · đang bận' : ' · busy') : ''}</option>)}
                   <option value="wait">{lang === 'vi' ? 'Chỉ thêm vào hàng chờ' : 'Add to waiting'}</option>
                 </select>
               </label>

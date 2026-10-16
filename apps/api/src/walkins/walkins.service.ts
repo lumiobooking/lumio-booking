@@ -43,6 +43,8 @@ export function serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
 const TICKET_LEG = '_ticket';
 
 export interface AddWalkInDto {
+  /** A customer the desk picked from this salon's records — linked without retyping her phone. */
+  customerId?: string;
   customerName?: string;
   lastName?: string;
   phone?: string;
@@ -481,7 +483,12 @@ export class WalkinsService {
     const items = attachLines([], lines);
     // Find-or-create a CRM customer by phone/email so the walk-in earns loyalty
     // and is remarketable, with the birthday for the birthday campaign.
-    const linked = (dto.phone?.trim() || dto.email?.trim())
+    // A customer picked from the records links by id — only one of THIS
+    // salon's; an id from elsewhere is ignored and the contact path runs.
+    const onFile = dto.customerId
+      ? await this.prisma.customer.findFirst({ where: { id: dto.customerId, tenantId }, select: { id: true, firstName: true, phone: true } }).catch(() => null)
+      : null;
+    const linked = onFile ?? ((dto.phone?.trim() || dto.email?.trim())
       ? await this.customers.findOrCreateByContact(tenantId, {
           firstName: dto.customerName,
           lastName: dto.lastName,
@@ -489,21 +496,21 @@ export class WalkinsService {
           email: dto.email,
           birthDate: dto.birthDate,
         })
-      : null;
+      : null);
     // A PARTY is one ticket per person, linked by a groupId: each guest has
     // their own services, their own technician and their own line at the
     // till, and the board shows them side by side as one group.
     const guests = (Array.isArray(dto.guests) ? dto.guests : []).slice(0, 9);
     const groupId = guests.length ? `wk-${randomUUID()}` : null;
     const partySize = Math.max(1, Math.min(20, Math.round(Math.max(dto.partySize ?? 1, guests.length + 1))));
-    const leaderName = dto.customerName?.trim().slice(0, 80) || null;
+    const leaderName = dto.customerName?.trim().slice(0, 80) || onFile?.firstName || null;
     const created = await this.prisma.walkIn.create({
       data: {
         tenantId,
         serviceId,
         customerId: linked?.id ?? null,
         customerName: leaderName,
-        phone: dto.phone?.trim().slice(0, 40) || null,
+        phone: dto.phone?.trim().slice(0, 40) || onFile?.phone || null,
         note: dto.note?.trim().slice(0, 300) || null,
         partySize,
         extraMinutes: dto.extraMinutes ? Math.max(0, Math.min(600, Math.round(dto.extraMinutes))) : null,

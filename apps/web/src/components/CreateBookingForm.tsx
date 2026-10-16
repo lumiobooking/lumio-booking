@@ -18,8 +18,15 @@ import { deskHoursCheck, hoursMessage, wallLabel, type HoursRules } from '../lib
 import { ind, uiIndustry } from '../lib/ui-industry';
 import { SlotPicker } from './SlotPicker';
 import { hasHours } from '../lib/slot-picker';
+import { CustomerPicker, type CustomerHistoryView, type CustomerLookupRow, type PickedCustomer } from './CustomerPicker';
+import { ServicePicker } from './ServicePicker';
+import { formatPrice } from '../lib/money';
 
-export interface BookingFormService { id: string; name: string; durationMinutes: number }
+export interface BookingFormService {
+  id: string; name: string; durationMinutes: number;
+  /** Price and menu group, when the caller has them: the picker shows a quote and group tabs. */
+  priceCents?: number; isActive?: boolean; walkInOnly?: boolean; category?: { id: string; name: string } | null;
+}
 export interface BookingFormStaff { id: string; firstName: string; lastName: string | null; isActive: boolean }
 /** What the form reads of existing bookings: who is busy when. */
 export interface BookingFormBooking { status: string; startTime: string; endTime: string; assignedStaff: { id: string } | null }
@@ -39,6 +46,7 @@ export function CreateBookingForm({
   onCreated,
   bare,
   onCancel,
+  currency,
 }: {
   token: string;
   services: Service[];
@@ -54,6 +62,8 @@ export function CreateBookingForm({
   bare?: boolean;
   /** Shows a close button in the header. */
   onCancel?: () => void;
+  /** For the price on each service card and the total. */
+  currency?: string;
 }) {
   const { lang } = useLang();
   const t = (k: string) => tr(k, lang);
@@ -70,10 +80,13 @@ export function CreateBookingForm({
   // form.staffId (the field above), the guests' here.
   const [people, setPeople] = useState<{ name: string; serviceIds: string[]; staffId: string }[]>([{ name: '', serviceIds: [], staffId: '' }]);
   const [who, setWho] = useState(0); // whose services the picker below is editing
-  const [svcQ, setSvcQ] = useState(''); // type-to-filter: many salons have 50+ services
   const serviceIds = people[who]?.serviceIds ?? [];
   const setServiceIds = (fn: (ids: string[]) => string[]) =>
     setPeople((ps) => ps.map((p, i) => (i === who ? { ...p, serviceIds: fn(p.serviceIds) } : p)));
+  // The customer on file this booking is for (null = new), and what the
+  // records say about her — the "same as last time" bar and her usual tech.
+  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [hist, setHist] = useState<CustomerHistoryView | null>(null);
   const [form, setForm] = useState({
     startLocal: initial?.startLocal ?? '',
     staffId: initial?.staffId ?? '',
@@ -96,6 +109,22 @@ export function CreateBookingForm({
   const toggleSvc = (id: string) =>
     setServiceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   const totalMinutes = serviceIds.reduce((sum, id) => sum + (services.find((s) => s.id === id)?.durationMinutes ?? 0), 0);
+  const hasPrices = services.some((s) => typeof s.priceCents === 'number');
+  const totalCents = people.reduce((sum, p) => sum + p.serviceIds.reduce((n, id) => n + (services.find((s) => s.id === id)?.priceCents ?? 0), 0), 0);
+  const custValue: PickedCustomer = { id: customerId, firstName: form.customerFirstName, lastName: form.customerLastName, phone: form.customerPhone, email: form.customerEmail, birthDate: form.customerBirthDate };
+  /** The picker chose someone (or started a new one): fill the fields, remember her history, suggest her usual tech and her last services. */
+  const onCustomer = (v: PickedCustomer, row: CustomerLookupRow | null) => {
+    setCustomerId(v.id);
+    setForm((f) => ({ ...f, customerFirstName: v.firstName, customerLastName: v.lastName, customerPhone: v.phone, customerEmail: v.email, customerBirthDate: v.birthDate }));
+    const h = row?.history ?? null;
+    setHist(h);
+    if (!row) return;
+    const fav = h?.favoriteStaff && staff.find((s) => s.id === h.favoriteStaff!.id && s.isActive) ? h.favoriteStaff.id : null;
+    if (fav && !form.staffId) up('staffId', fav);
+    // Her last services, when nothing is picked yet — one tap undoes it.
+    const lastIds = (h?.last?.services ?? []).map((x) => x.id).filter((id) => services.some((s) => s.id === id && s.isActive !== false));
+    if (lastIds.length && people[0].serviceIds.length === 0) setPeople((ps) => ps.map((p, i) => (i === 0 ? { ...p, serviceIds: lastIds } : p)));
+  };
   // Expected finish time, so staff can see the slot the booking will occupy.
   const endsAt = (() => {
     if (!form.startLocal || totalMinutes <= 0) return '';
@@ -104,10 +133,6 @@ export function CreateBookingForm({
     d.setMinutes(d.getMinutes() + totalMinutes);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   })();
-  const svcShown = svcQ.trim()
-    ? services.filter((s) => s.name.toLowerCase().includes(svcQ.trim().toLowerCase()))
-    : services;
-
   const partyN = Math.max(1, Math.min(10, parseInt(form.partySize, 10) || 1));
   // The party holds its chairs until the slowest member is done.
   const longestMin = Math.max(0, ...people.map((p) => p.serviceIds.reduce((sum, id) => sum + (services.find((s) => s.id === id)?.durationMinutes ?? 0), 0)));
@@ -183,7 +208,7 @@ export function CreateBookingForm({
         const takenBy = Array.from({ length: partyN }, (_, j) => j).filter((j) => j !== i && staffOf(j) === s.id).map(nameOf);
         return (
           <option key={s.id} value={s.id}>
-            {s.firstName} {s.lastName ?? ''}{busyThen ? (vi ? ' · đang có lịch giờ này' : ' · booked then') : ''}{takenBy.length ? (vi ? ` · đã giao cho ${takenBy.join(', ')}` : ` · given to ${takenBy.join(', ')}`) : ''}
+            {s.firstName} {s.lastName ?? ''}{hist?.favoriteStaff?.id === s.id ? (vi ? ' ★ thợ quen' : ' ★ her usual') : ''}{busyThen ? (vi ? ' · đang có lịch giờ này' : ' · booked then') : ''}{takenBy.length ? (vi ? ` · đã giao cho ${takenBy.join(', ')}` : ` · given to ${takenBy.join(', ')}`) : ''}
           </option>
         );
       })}
@@ -214,6 +239,7 @@ export function CreateBookingForm({
     e.preventDefault();
     setError(null);
     if (serviceIds.length === 0) { setError(t('bk.pickAtLeastOne')); return; }
+    if (!form.customerFirstName.trim() && !customerId) { setError(vi ? 'Chọn khách cũ hoặc nhập tên khách mới.' : 'Pick a customer or type a new name.'); return; }
     if (!form.startLocal) { setError(vi ? 'Chọn giờ hẹn.' : 'Pick a time.'); return; }
     // A guest with no service would silently be booked on the booker's, which
     // is how a pedicure turns into a gel set at the till.
@@ -251,6 +277,8 @@ export function CreateBookingForm({
           // No technician picked: the system chooses one by turn and skill.
           autoAssign: chosenStaff ? undefined : autoPick,
           ...(outsideOk ? { outsideHours: true } : {}),
+          // A customer picked from the records books onto her own card.
+          customerId: customerId ?? undefined,
           customerFirstName: form.customerFirstName,
           customerLastName: form.customerLastName || undefined,
           // Birthday is opt-in and only used for birthday campaigns.
@@ -328,9 +356,10 @@ export function CreateBookingForm({
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ce2e8f0)' }}>{t('bk.createBooking')}</div>
           <div style={{ fontSize: 12, color: 'var(--c94a3b8)' }}>
+            {form.startLocal ? `${wallLabel(form.startLocal, vi)}${serviceIds.length ? ' · ' : ''}` : ''}
             {serviceIds.length === 0
               ? t('bk.pickSvcFirst')
-              : `${serviceIds.length} ${t('bk.servicesPicked')} · ${t('bk.totalDuration')} ${totalMinutes} min${endsAt ? ` · ${t('bk.endsAt')} ${endsAt}` : ''}`}
+              : `${serviceIds.length} ${t('bk.servicesPicked')} · ${totalMinutes} min${endsAt ? ` · ${t('bk.endsAt')} ${endsAt}` : ''}${hasPrices && totalCents > 0 ? ` · ${formatPrice(totalCents, currency)}` : ''}`}
           </div>
         </div>
         {onCancel && (
@@ -340,7 +369,88 @@ export function CreateBookingForm({
       </div>
 
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 18, ...(bare ? { flex: 1 } : {}) }}>
-        <FormSection title={t('bk.secWhen')}>
+        <FormSection title={t('bk.secWho')} step={1} hint={vi ? 'gõ tên hoặc SĐT — khách cũ tự điền hết' : 'type a name or phone — a returning customer fills itself in'}>
+          <CustomerPicker token={token} vi={vi} value={custValue} onChange={onCustomer} autoFocus={!initial?.firstName} />
+          {form.customerPhone && !customerId && (
+            <div style={{ marginTop: 6 }}>
+              <NoShowWarning token={token} phone={form.customerPhone} vi={lang === 'vi'} />
+              <RecordAlertByPhone token={token} phone={form.customerPhone} vi={lang === 'vi'} />
+            </div>
+          )}
+          {askLocation && (
+            <label style={{ display: 'block', marginTop: 12 }}>
+              <FieldLabel raw={uiIndustry() === 'REAL_ESTATE' ? (vi ? 'Địa chỉ bất động sản cần xem (tuỳ chọn)' : 'Property to view (optional)') : (vi ? 'Địa chỉ làm dịch vụ (tuỳ chọn)' : 'Service address (optional)')} optionalWord={t('bk.optional')} />
+              <input style={ui.input} value={form.location} maxLength={300} onChange={(e) => up('location', e.target.value)} placeholder={vi ? 'Số nhà, đường, quận…' : '123 Main St, City'} />
+            </label>
+          )}
+        </FormSection>
+        <FormSection title={partyN > 1 ? t('bk.secWhatGroup') : t('bk.secWhat')} step={2} hint={serviceIds.length ? `${serviceIds.length} ${t('bk.servicesPicked')} · ${totalMinutes}′${hasPrices ? ` · ${formatPrice(totalCents, currency)}` : ''}` : undefined}>
+        {partyN > 1 && (
+          <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)', padding: 12, marginBottom: 14 }}>
+            <span style={{ ...ui.label, display: 'block', marginBottom: 8 }}>{t('bk.perPersonHint')}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {people.map((p, i) => {
+                const label = i === 0
+                  ? (form.customerFirstName.trim() || t('bk.you'))
+                  : (p.name.trim() || `${t('bk.guestLabel')} ${i + 1}`);
+                const n = p.serviceIds.length;
+                const on = i === who;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setWho(i)}
+                    style={{
+                      border: `1px solid ${on ? '#6366f1' : n === 0 ? 'var(--c78350f)' : 'var(--c334155)'}`,
+                      background: on ? 'var(--c312e81)' : 'var(--c0f172a)',
+                      color: on ? 'var(--ce0e7ff)' : n === 0 ? 'var(--ink-warn)' : 'var(--ccbd5e1)',
+                      borderRadius: 999, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    {label} · {n === 0 ? t('bk.noSvcYet') : t('bk.svcCount').replace('{n}', String(n))}
+                    {' · '}{staffOf(i) === '' ? (vi ? '⚡ tự chọn thợ' : '⚡ auto tech') : staffOf(i) === '__none' ? (vi ? 'chưa giao' : 'unassigned') : `💅 ${staffName(staffOf(i))}`}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginTop: 10, maxWidth: 680 }}>
+              {who > 0 && (
+                <label style={{ display: 'block' }}>
+                  <FieldLabel raw={t('bk.guestName')} optionalWord={t('bk.optional')} />
+                  <input
+                    style={ui.input}
+                    value={people[who]?.name ?? ''}
+                    onChange={(e) => setPeople((ps) => ps.map((p, i) => (i === who ? { ...p, name: e.target.value } : p)))}
+                    placeholder="Mai"
+                  />
+                </label>
+              )}
+              <label style={{ display: 'block' }}>
+                <FieldLabel raw={vi ? `Thợ cho ${nameOf(who)}` : `Tech for ${nameOf(who)}`} optionalWord={t('bk.optional')} />
+                {staffSelect(who)}
+              </label>
+            </div>
+            {doubleBooked.length > 0 && (
+              <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--ink-warn)' }}>
+                ⚠️ {doubleBooked.map((d) => (vi ? `${d.name} đang được giao cho ${d.who.join(' và ')} cùng một giờ` : `${d.name} is given to ${d.who.join(' and ')} at the same time`)).join(' · ')}
+                {vi ? ' — thợ không làm song song được thì chọn thợ khác hoặc để "Tự chọn".' : ' — pick another tech or "automatic" unless they can work both chairs.'}
+              </div>
+            )}
+          </div>
+        )}
+        <ServicePicker
+          services={services}
+          selected={serviceIds}
+          onToggle={toggleSvc}
+          onSet={(ids) => setServiceIds(() => ids)}
+          history={who === 0 ? hist : null}
+          currency={currency}
+          vi={vi}
+          hideWalkInOnly
+          label={partyN > 1 ? nameOf(who) : undefined}
+        />
+        </FormSection>
+        <FormSection title={vi ? 'Giờ & thợ' : 'Time & technician'} step={3} hint={hist?.favoriteStaff && form.staffId === hist.favoriteStaff.id ? (vi ? `thợ quen ${hist.favoriteStaff.name} đã được chọn sẵn` : `${hist.favoriteStaff.name}, her usual tech, is preselected`) : undefined}>
           <div style={fieldGrid}>
             <div style={{ gridColumn: '1 / -1' }}>
               <FieldLabel raw={t('bk.dateTime')} required optionalWord={t('bk.optional')} />
@@ -413,146 +523,16 @@ export function CreateBookingForm({
           )}
         </FormSection>
 
-        <FormSection title={t('bk.secWho')}>
-          {/* Short labels: the section heading already says these are the
-              customer's, so "Customer first name" only repeats itself. Five
-              fields fit one line on a laptop; birthday feeds the birthday
-              campaign and is never required. */}
-          <div style={custGrid}>
-            <label>
-              <FieldLabel raw={t('bk.fFirst')} required optionalWord={t('bk.optional')} />
-              <input style={ui.input} value={form.customerFirstName} onChange={(e) => up('customerFirstName', e.target.value)} placeholder="Anna" required />
-            </label>
-            <label>
-              <FieldLabel raw={t('bk.fLast')} optionalWord={t('bk.optional')} />
-              <input style={ui.input} value={form.customerLastName} onChange={(e) => up('customerLastName', e.target.value)} placeholder="Nguyen" />
-            </label>
-            <label>
-              <FieldLabel raw={t('bk.fPhone')} optionalWord={t('bk.optional')} />
-              <input style={ui.input} value={form.customerPhone} onChange={(e) => up('customerPhone', e.target.value)} placeholder="+1 512 886 8189" />
-              <NoShowWarning token={token} phone={form.customerPhone} vi={lang === 'vi'} />
-              <RecordAlertByPhone token={token} phone={form.customerPhone} vi={lang === 'vi'} />
-            </label>
-            {askLocation && (
-              <label style={{ gridColumn: '1 / -1' }}>
-                <FieldLabel raw={uiIndustry() === 'REAL_ESTATE' ? (vi ? 'Địa chỉ bất động sản cần xem (tuỳ chọn)' : 'Property to view (optional)') : (vi ? 'Địa chỉ làm dịch vụ (tuỳ chọn)' : 'Service address (optional)')} optionalWord={t('bk.optional')} />
-                <input style={ui.input} value={form.location} maxLength={300} onChange={(e) => up('location', e.target.value)} placeholder={vi ? 'Số nhà, đường, quận…' : '123 Main St, City'} />
-              </label>
-            )}
-            <label>
-              <FieldLabel raw={t('bk.fEmail')} optionalWord={t('bk.optional')} />
-              <input style={ui.input} type="email" value={form.customerEmail} onChange={(e) => up('customerEmail', e.target.value)} placeholder="anna@email.com" />
-            </label>
-            <label>
-              <FieldLabel raw={t('bk.fBirth')} optionalWord={t('bk.optional')} hint={`🎂 ${t('bk.birthWhy')}`} />
-              <input
-                style={ui.input} type="date" max={new Date().toISOString().slice(0, 10)}
-                value={form.customerBirthDate} onChange={(e) => up('customerBirthDate', e.target.value)}
-              />
-            </label>
-          </div>
-        </FormSection>
-        <FormSection title={partyN > 1 ? t('bk.secWhatGroup') : t('bk.secWhat')}>
-        {partyN > 1 && (
-          <div style={{ border: '1px solid var(--c334155)', borderRadius: 10, background: 'var(--c0f172a)', padding: 12, marginBottom: 14 }}>
-            <span style={{ ...ui.label, display: 'block', marginBottom: 8 }}>{t('bk.perPersonHint')}</span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {people.map((p, i) => {
-                const label = i === 0
-                  ? (form.customerFirstName.trim() || t('bk.you'))
-                  : (p.name.trim() || `${t('bk.guestLabel')} ${i + 1}`);
-                const n = p.serviceIds.length;
-                const on = i === who;
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setWho(i)}
-                    style={{
-                      border: `1px solid ${on ? '#6366f1' : n === 0 ? 'var(--c78350f)' : 'var(--c334155)'}`,
-                      background: on ? 'var(--c312e81)' : 'var(--c0f172a)',
-                      color: on ? 'var(--ce0e7ff)' : n === 0 ? 'var(--ink-warn)' : 'var(--ccbd5e1)',
-                      borderRadius: 999, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-                    }}
-                  >
-                    {label} · {n === 0 ? t('bk.noSvcYet') : t('bk.svcCount').replace('{n}', String(n))}
-                    {' · '}{staffOf(i) === '' ? (vi ? '⚡ tự chọn thợ' : '⚡ auto tech') : staffOf(i) === '__none' ? (vi ? 'chưa giao' : 'unassigned') : `💅 ${staffName(staffOf(i))}`}
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginTop: 10, maxWidth: 680 }}>
-              {who > 0 && (
-                <label style={{ display: 'block' }}>
-                  <FieldLabel raw={t('bk.guestName')} optionalWord={t('bk.optional')} />
-                  <input
-                    style={ui.input}
-                    value={people[who]?.name ?? ''}
-                    onChange={(e) => setPeople((ps) => ps.map((p, i) => (i === who ? { ...p, name: e.target.value } : p)))}
-                    placeholder="Mai"
-                  />
-                </label>
-              )}
-              <label style={{ display: 'block' }}>
-                <FieldLabel raw={vi ? `Thợ cho ${nameOf(who)}` : `Tech for ${nameOf(who)}`} optionalWord={t('bk.optional')} />
-                {staffSelect(who)}
-              </label>
-            </div>
-            {doubleBooked.length > 0 && (
-              <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--ink-warn)' }}>
-                ⚠️ {doubleBooked.map((d) => (vi ? `${d.name} đang được giao cho ${d.who.join(' và ')} cùng một giờ` : `${d.name} is given to ${d.who.join(' and ')} at the same time`)).join(' · ')}
-                {vi ? ' — thợ không làm song song được thì chọn thợ khác hoặc để "Tự chọn".' : ' — pick another tech or "automatic" unless they can work both chairs.'}
-              </div>
-            )}
-          </div>
-        )}
-        <div>
-          <span style={ui.label}>
-            {partyN > 1
-              ? (who === 0 ? (form.customerFirstName.trim() || t('bk.you')) : (people[who]?.name?.trim() || `${t('bk.guestLabel')} ${who + 1}`))
-              : t('bk.fService')}
-            {serviceIds.length > 0 && (
-              <span style={{ color: 'var(--c94a3b8)', fontWeight: 400 }}> · {totalMinutes} min{endsAt ? ` · ${t('bk.endsAt')} ${endsAt}` : ''}</span>
-            )}
-          </span>
-          {/* Picked services stay visible as chips while staff searches for the next one. */}
-          {serviceIds.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-              {serviceIds.map((id) => {
-                const s = services.find((x) => x.id === id);
-                if (!s) return null;
-                return (
-                  <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--c1e3a8a)', color: 'var(--cdbeafe)', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600 }}>
-                    {s.name}
-                    <button type="button" onClick={() => toggleSvc(id)} style={{ background: 'none', border: 'none', color: 'var(--c93c5fd)', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
-                  </span>
-                );
-              })}
-            </div>
-          )}
-          <input
-            value={svcQ}
-            onChange={(e) => setSvcQ(e.target.value)}
-            placeholder={t('bk.searchService')}
-            style={{ ...ui.input, marginBottom: 8 }}
-          />
-          <div style={{ border: '1px solid var(--c334155)', borderRadius: 8, background: 'var(--c0f172a)', maxHeight: 210, overflowY: 'auto', padding: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 2 }}>
-            {svcShown.length === 0 && <span style={{ color: 'var(--c94a3b8)', fontSize: 13, padding: '6px 8px' }}>{t('bk.noSvcMatch')}</span>}
-            {svcShown.map((s) => (
-              <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', background: serviceIds.includes(s.id) ? 'var(--c1e293b)' : 'transparent', fontSize: 13, color: serviceIds.includes(s.id) ? 'var(--ce2e8f0)' : 'var(--ccbd5e1)' }}>
-                <input type="checkbox" checked={serviceIds.includes(s.id)} onChange={() => toggleSvc(s.id)} style={{ flexShrink: 0 }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name} ({s.durationMinutes} min)</span>
-              </label>
-            ))}
-          </div>
-        </div>
-        </FormSection>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '13px 20px', borderTop: '1px solid var(--c334155)', background: 'var(--c0f172a)', ...(bare ? { position: 'sticky', bottom: 0, zIndex: 2, paddingBottom: 'calc(13px + env(safe-area-inset-bottom, 0px))' } : {}) }}>
         {error
           ? <span style={{ color: 'var(--cf87171)', fontSize: 13, flex: 1, minWidth: 160 }}>{error}</span>
-          : <span style={{ color: 'var(--c64748b)', fontSize: 12.5, flex: 1, minWidth: 160 }}>{t('bk.custFirstName')} + {t('bk.dateTime').toLowerCase()} {lang === 'vi' ? 'là bắt buộc' : 'are required'}</span>}
+          : <span style={{ color: 'var(--c64748b)', fontSize: 12.5, flex: 1, minWidth: 160 }}>
+              {serviceIds.length === 0 ? (vi ? 'Chọn dịch vụ để tiếp tục.' : 'Pick a service to continue.')
+                : !form.startLocal ? (vi ? 'Chọn giờ hẹn.' : 'Pick a time.')
+                : `${form.customerFirstName.trim() || (vi ? 'Khách' : 'Customer')} · ${people.reduce((n, p) => n + p.serviceIds.length, 0)} ${t('bk.servicesPicked')} · ${longestMin}′${hasPrices && totalCents > 0 ? ` · ${formatPrice(totalCents, currency)}` : ''}${endsAt ? ` · ${wallLabel(form.startLocal, vi)} → ${endsAt}` : ''}`}
+            </span>}
         <button
           type="submit"
           disabled={submitting || people.some((p) => p.serviceIds.length === 0)}
@@ -567,11 +547,13 @@ export function CreateBookingForm({
 
 // Section heading: a small caps label with a hairline running to the edge, so
 // a long form reads as two short ones instead of a wall of inputs.
-function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
+function FormSection({ title, step, hint, children }: { title: string; step?: number; hint?: string; children: React.ReactNode }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 11 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--c94a3b8)', textTransform: 'uppercase' }}>{title}</span>
+        {step !== undefined && <span style={{ width: 24, height: 24, borderRadius: 999, background: '#6366f1', color: '#fff', fontSize: 12.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{step}</span>}
+        <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)' }}>{title}</span>
+        {hint && <span style={{ fontSize: 12, color: 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>· {hint}</span>}
         <span style={{ flex: 1, height: 1, background: 'var(--c334155)' }} />
       </div>
       {children}
@@ -596,5 +578,3 @@ function FieldLabel({ raw, required, optionalWord, hint }: { raw: string; requir
 }
 
 const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 };
-// Five customer fields; birthday is the narrowest so it gets a smaller floor.
-const custGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 };

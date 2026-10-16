@@ -13,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { TrashService } from '../maintenance/trash.service';
 import { dialCodeFor, toE164 } from '../common/phone';
+import { appointmentServices, historiesOf, walkInServices, type CustomerHistory, type VisitRow } from './customer-history';
 import { AuthenticatedUser, resolveTenantScope } from '../common/tenant/tenant-context';
 
 @Injectable()
@@ -289,6 +290,64 @@ export class CustomersService {
         || (!!want && toE164(r.phone, dial) === want));
     }
     return keep.slice(0, 8);
+  }
+
+  /**
+   * The booking form's customer search: the same matches as `search`, each
+   * with the facts that make a returning customer one tap — visits, last
+   * visit (services + technician), favourite technician, top services,
+   * no-shows, notes. Bounded: at most 8 customers, 60 rows each, and every
+   * query carries this salon's tenantId. See ./customer-history.
+   */
+  async lookup(user: AuthenticatedUser, q: string) {
+    const tenantId = this.tenantId(user);
+    const base = await this.search(user, q);
+    if (!base.length) return [];
+    const ids = base.map((c) => c.id);
+    const now = new Date();
+    const [appts, walkIns, notes] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where: { tenantId, customerId: { in: ids }, status: { not: 'CANCELLED' } },
+        select: { customerId: true, startTime: true, status: true, assignedStaffId: true, addons: true, service: { select: { id: true, name: true } }, assignedStaff: { select: { id: true, firstName: true, lastName: true } } },
+        orderBy: { startTime: 'desc' },
+        take: 60 * ids.length,
+      }).catch(() => []),
+      (this.prisma as unknown as { walkIn: { findMany: (a: unknown) => Promise<{ customerId: string | null; doneAt: Date | null; createdAt: Date; items: unknown; service: { id: string; name: string } | null; assignedStaff: { id: string; firstName: string; lastName: string | null } | null }[]> } }).walkIn.findMany({
+        where: { tenantId, customerId: { in: ids }, status: 'DONE' },
+        select: { customerId: true, doneAt: true, createdAt: true, items: true, service: { select: { id: true, name: true } }, assignedStaff: { select: { id: true, firstName: true, lastName: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 60 * ids.length,
+      }).catch(() => []),
+      this.prisma.customer.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, notes: true, birthDate: true, createdAt: true } }).catch(() => []),
+    ]);
+    const nameOf = (s: { firstName: string; lastName: string | null } | null) => (s ? `${s.firstName}${s.lastName ? ` ${s.lastName}` : ''}` : null);
+    const rows: VisitRow[] = [
+      ...appts.map((a) => ({
+        customerId: a.customerId, at: a.startTime, status: String(a.status), staffId: a.assignedStaffId ?? null,
+        staffName: nameOf(a.assignedStaff), services: appointmentServices(a),
+      })),
+      ...walkIns.filter((w) => w.customerId).map((w) => ({
+        customerId: w.customerId as string, at: w.doneAt ?? w.createdAt, status: 'DONE', staffId: w.assignedStaff?.id ?? null,
+        staffName: nameOf(w.assignedStaff), services: walkInServices(w),
+      })),
+    ];
+    const hist = historiesOf(ids, rows, now);
+    const noteBy = new Map(notes.map((n) => [n.id, n]));
+    return base.map((c) => {
+      const h = hist.get(c.id) as CustomerHistory;
+      const n = noteBy.get(c.id);
+      return {
+        ...c,
+        notes: n?.notes ?? null,
+        birthDate: n?.birthDate ?? null,
+        since: n?.createdAt ?? null,
+        history: {
+          visits: h.visits, noShows: h.noShows, upcomingAt: h.upcomingAt,
+          last: h.last ? { at: h.last.at, services: h.last.services, staff: h.last.staffId ? { id: h.last.staffId, name: h.last.staffName ?? '' } : null } : null,
+          favoriteStaff: h.favoriteStaff, topServices: h.topServices,
+        },
+      };
+    });
   }
 
   /** The salon's calling code: its country, else its timezone. */

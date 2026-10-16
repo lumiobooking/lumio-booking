@@ -35,6 +35,7 @@ export function NewBookingModal({ initial, bookings, onClose, onCreated }: {
   const [staff, setStaff] = useState<BookingFormStaff[]>([]);
   const [tz, setTz] = useState('');
   const [hours, setHours] = useState<HoursRules | null>(null);
+  const [currency, setCurrency] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,6 +51,7 @@ export function NewBookingModal({ initial, bookings, onClose, onCreated }: {
       setStaff(st);
       setTz(settings?.company?.timezone ?? '');
       setHours(settings?.booking ?? null);
+      setCurrency((settings?.booking as { currency?: string } | undefined)?.currency);
     }).catch((e) => { if (alive) setError(e instanceof Error ? e.message : 'Could not load'); });
     return () => { alive = false; };
   }, [token]);
@@ -65,7 +67,7 @@ export function NewBookingModal({ initial, bookings, onClose, onCreated }: {
 
   const box: React.CSSProperties = phone
     ? { position: 'fixed', inset: 0, borderRadius: 0 }
-    : { position: 'relative', width: 'min(880px, calc(100vw - 48px))', maxHeight: 'calc(100dvh - 48px)', borderRadius: 16, border: '1px solid var(--c334155)', boxShadow: '0 32px 64px -16px rgba(0,0,0,.6)' };
+    : { position: 'relative', width: 'min(960px, calc(100vw - 48px))', maxHeight: 'calc(100dvh - 48px)', borderRadius: 16, border: '1px solid var(--c334155)', boxShadow: '0 32px 64px -16px rgba(0,0,0,.6)' };
 
   return (
     <div role="dialog" aria-modal="true" aria-label={vi ? 'Đặt lịch' : 'New booking'}
@@ -90,6 +92,7 @@ export function NewBookingModal({ initial, bookings, onClose, onCreated }: {
             salonTz={tz}
             hours={hours}
             isOwner={isOwner}
+            currency={currency}
             onCreated={onCreated}
           />
         )}

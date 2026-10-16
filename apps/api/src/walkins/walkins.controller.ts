@@ -19,6 +19,7 @@ class CompanionDto {
 }
 
 class AddWalkInDto {
+  @IsOptional() @IsString() customerId?: string;
   @IsOptional() @IsString() @MaxLength(80) customerName?: string;
   @IsOptional() @IsString() @MaxLength(80) lastName?: string;
   @IsOptional() @IsString() @MaxLength(40) phone?: string;

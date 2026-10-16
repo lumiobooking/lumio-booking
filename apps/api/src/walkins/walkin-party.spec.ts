@@ -58,6 +58,7 @@ function floor(o: { appts?: Row[]; staff?: Row[] } = {}) {
     service: table(MENU),
     station: table([]),
     appointment: table(o.appts ?? []),
+    customer: table([{ id: 'c-anna', tenantId: T1, firstName: 'Anna', phone: '+15125551234' }, { id: 'c-other', tenantId: 't2', firstName: 'Other', phone: '+15125559999' }]),
     order: table([]),
     tipLog: table([]),
   };
@@ -88,6 +89,14 @@ describe('a party walks in', () => {
     const w: Row = await f.svc.add(admin, { customerName: 'Mai', serviceIds: ['mani'] });
     expect(w.guestIds).toBeUndefined();
     expect(f.prisma.walkIn.rows[0].groupId).toBeNull();
+  });
+
+  it('a customer picked from the records links by id — name and phone filled from her card; another salon’s id is ignored', async () => {
+    const f = floor();
+    await f.svc.add(admin, { customerId: 'c-anna', serviceIds: ['mani'] });
+    expect(f.prisma.walkIn.rows[0]).toMatchObject({ customerId: 'c-anna', customerName: 'Anna', phone: '+15125551234' });
+    await f.svc.add(admin, { customerId: 'c-other', customerName: 'Walk-in', serviceIds: ['mani'] });
+    expect(f.prisma.walkIn.rows[1]).toMatchObject({ customerId: null, customerName: 'Walk-in' });
   });
 });
 

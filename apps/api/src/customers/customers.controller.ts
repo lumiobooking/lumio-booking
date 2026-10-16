@@ -96,6 +96,12 @@ export class CustomersController {
     return this.customers.importCustomers(user, dto);
   }
 
+  /** The booking form's search: matches plus each customer's history (visits, last visit, favourite tech). */
+  @Get('lookup')
+  lookup(@CurrentUser() user: AuthenticatedUser, @Query('q') q: string) {
+    return this.customers.lookup(user, q ?? '');
+  }
+
   @Get('search')
   search(@CurrentUser() user: AuthenticatedUser, @Query('q') q: string) {
     return this.customers.search(user, q ?? '');

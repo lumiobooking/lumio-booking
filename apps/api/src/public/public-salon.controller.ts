@@ -250,13 +250,23 @@ export class PublicSalonController {
     });
     if (!tenant || !this.isOpen(tenant)) throw new NotFoundException('Salon not found');
 
-    const [extra, booking, services, agg, analytics] = await Promise.all([
+    const [extra, booking, services, agg, analytics, categories] = await Promise.all([
       this.settings.getCompanyExtra(tenant.id),
       this.settings.getBookingRules(tenant.id),
-      this.bookings.publicServices(tenant.id).catch(() => [] as Array<{ priceCents?: number }>),
+      this.bookings.publicServices(tenant.id).catch(() => [] as Array<{ id?: string; name?: string; priceCents?: number; priceFrom?: boolean; durationMinutes?: number; categoryId?: string | null }>),
       this.prisma.feedback.aggregate({ where: { tenantId: tenant.id }, _avg: { rating: true }, _count: { _all: true } }).catch(() => null),
       this.settings.getAnalyticsSettings(tenant.id),
+      this.bookings.publicCategories(tenant.id).catch(() => [] as { id: string; name: string }[]),
     ]);
+    // The menu, server-rendered on the booking page so a crawler that runs no
+    // JavaScript (Google's business-link check, the Actions Center review) still
+    // sees a page where a customer can pick a service. Names, lengths and prices
+    // only — no pictures, no add-ons; the interactive page takes over on load.
+    const catName = new Map((categories ?? []).map((c) => [c.id, c.name]));
+    const menu = (services ?? []).slice(0, 80).map((sv) => ({
+      id: sv.id, name: sv.name, priceCents: sv.priceCents ?? 0, priceFrom: Boolean(sv.priceFrom), durationMinutes: sv.durationMinutes ?? 0,
+      category: sv.categoryId ? (catName.get(sv.categoryId) ?? null) : null,
+    }));
 
     const prices = (services ?? []).map((s) => s.priceCents ?? 0).filter((n) => n > 0);
     const priceFromCents = prices.length ? Math.min(...prices) : null;
@@ -282,6 +292,7 @@ export class PublicSalonController {
       hours,
       rating: ratingCount > 0 ? { value: Math.round(ratingValue * 10) / 10, count: ratingCount } : null,
       analytics,
+      menu,
     };
   }
 

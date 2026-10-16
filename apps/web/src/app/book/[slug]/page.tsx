@@ -34,6 +34,7 @@ import { SalonCard } from '../../../components/SalonCard';
 import { industryText, isIndustryKey, type IndustryKey } from '../../../lib/ui-industry';
 import { afterPct, anyDealPct, dayKey, lineDeal, nextDeal, promoDeal, windowEnded, type Promos } from '../../../lib/booking-promos';
 import { gbpAttribution, gbpSearch, isGbpPath } from '../../../lib/gbp-source';
+import { readCookie, RWG_COOKIE, rwgConversion, rwgCookies, rwgRequest, rwgTokenFrom } from '../../../lib/rwg';
 import { adsConfigFrom, conversionRoute, loadAdsTag, sendAdsConversion, type AdsConfig, type TagDocument, type TagWindow } from '../../../lib/ads-tag';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api';
@@ -254,6 +255,13 @@ function fireConversion(data: { id: string; valueCents: number; currency: string
     try {
       sendAdsConversion(adsBySlug.get(data.slug), { transaction_id: payload.transaction_id, value: payload.value, currency: payload.currency }, window as unknown as TagWindow);
     } catch { /* ignore */ }
+    // Reserve with Google: the visit came from Google's own "Book online"
+    // button (rwg_token cookie) → tell Google the booking happened. Partner id
+    // is a public identifier set at build time; no token, no ping.
+    try {
+      const body = rwgConversion(document.cookie, process.env.NEXT_PUBLIC_RWG_PARTNER_ID, data.slug);
+      if (body) { const r = rwgRequest(body, process.env.NEXT_PUBLIC_RWG_SANDBOX === '1'); void fetch(r.url, r.init).catch(() => undefined); }
+    } catch { /* ignore */ }
   }
   // Embedded only: hand the conversion to the PARENT site — to a verified
   // origin, never '*'. The plugin passes its own origin in ?po=; if absent we
@@ -340,6 +348,35 @@ export default function PublicBookingPage() {
     const next = gbpSearch(window.location.search);
     if (next) window.history.replaceState(null, '', window.location.pathname + next + window.location.hash);
   }, []);
+
+  // The server-rendered menu (layout.tsx: StaticMenu) is for the first paint
+  // and for crawlers; once the real page has its data, it goes.
+  useEffect(() => {
+    if (typeof document === 'undefined' || (!salon && !loadError && !embedded)) return;
+    document.getElementById('lumio-ssr-menu')?.remove();
+  }, [salon, loadError, embedded]);
+
+  // Reserve with Google referral: keep the token 30 days (see lib/rwg.ts).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !slug) return;
+    const token = rwgTokenFrom(window.location.search);
+    if (!token) return;
+    try { for (const c of rwgCookies(token, slug, window.location.hostname)) document.cookie = c; } catch { /* ignore */ }
+  }, [slug]);
+
+  // A link that names the service (Google's service-level button, the
+  // server-rendered menu, a salon's own deep link): ?service=<id> or
+  // ?services=a,b pre-selects it once, the moment the menu is known.
+  const preselected = useRef(false);
+  useEffect(() => {
+    if (preselected.current || typeof window === 'undefined' || !services.length) return;
+    preselected.current = true;
+    const q = new URLSearchParams(window.location.search);
+    const ids = [q.get('service') ?? '', ...(q.get('services') ?? '').split(',')].map((x) => x.trim()).filter(Boolean);
+    const valid = [...new Set(ids)].filter((id) => services.some((sv) => sv.id === id));
+    if (!valid.length) return;
+    setServiceId(valid[0]); setExtraServiceIds(valid.slice(1)); setAddonIds([]);
+  }, [services]);
 
   const [offerCode] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
@@ -728,7 +765,10 @@ export default function PublicBookingPage() {
               // can, and was.
               ...gbpAttribution(window.location.pathname, {
                 utmSource: g('utm_source'), utmMedium: g('utm_medium'),
-                utmCampaign: g('utm_campaign'), utmContent: g('utm_content'),
+                utmCampaign: g('utm_campaign'),
+                // Google's own "Book online" button (Reserve with Google) leaves a
+                // token cookie; the booking says so, apart from a pasted link.
+                utmContent: g('utm_content') || (readCookie(document.cookie, RWG_COOKIE) ? 'rwg_button' : undefined),
               }),
               utmTerm: g('utm_term'), gclid: g('gclid'), gbraid: g('gbraid'), wbraid: g('wbraid'),
               attrLandingUrl: (g('lumio_lu') || window.location.href).slice(0, 900),

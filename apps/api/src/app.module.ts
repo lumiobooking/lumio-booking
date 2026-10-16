@@ -46,6 +46,7 @@ import { PrintModule } from './print/print.module';
 import { GiftCardsModule } from './gift-cards/gift-cards.module';
 import { DisplayModule } from './display/display.module';
 import { GoogleReviewsModule } from './google-reviews/google-reviews.module';
+import { GoogleBookModule } from './google-book/google-book.module';
 import { TikTokModule } from './tiktok/tiktok.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { MessengerModule } from './messenger/messenger.module';
@@ -129,6 +130,7 @@ import { AiUsageModule } from './common/ai-usage.module';
     // Google review auto-reply: draft replies to positive reviews for one-tap
     // approval; hold negative/neutral ones and email the manager (tenant-scoped).
     GoogleReviewsModule,
+    GoogleBookModule,
     TikTokModule,
     IntegrationsModule,
     // Messenger booking bot: AI receptionist on the salon's Facebook Page that

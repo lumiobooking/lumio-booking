@@ -31,6 +31,8 @@ interface Seo {
   hours: { day: number; closed: boolean; open: string; close: string; intervals?: { open: string; close: string }[] }[];
   rating: { value: number; count: number } | null;
   analytics?: { ga4Id?: string; gtmId?: string; mode?: string; adsId?: string } | null;
+  /** The bookable menu, for the server-rendered first paint (see StaticMenu). */
+  menu?: { id: string; name: string; priceCents: number; priceFrom: boolean; durationMinutes: number; category: string | null }[];
 }
 
 async function getSeo(slug: string): Promise<Seo | null> {
@@ -98,6 +100,14 @@ function buildJsonLd(s: Seo): Record<string, unknown> {
     ...(isRestaurant ? { acceptsReservations: true } : {}),
     ...(openingHoursSpecification.length ? { openingHoursSpecification } : {}),
     potentialAction: { '@type': 'ReserveAction', name: isRestaurant ? 'Reserve a table' : 'Book an appointment', target: url },
+    ...((s.menu ?? []).length && !isRestaurant ? {
+      hasOfferCatalog: {
+        '@type': 'OfferCatalog', name: 'Services',
+        itemListElement: (s.menu ?? []).slice(0, 40).map((m) => ({
+          '@type': 'Offer', itemOffered: { '@type': 'Service', name: m.name }, price: money(m.priceCents, s.currency).replace(/[^0-9.,]/g, ''), priceCurrency: s.currency || 'USD',
+        })),
+      },
+    } : {}),
     ...(s.rating ? { aggregateRating: { '@type': 'AggregateRating', ratingValue: s.rating.value, reviewCount: s.rating.count } } : {}),
   };
 }
@@ -118,6 +128,53 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     twitter: { card: 'summary', title, description },
     robots: { index: true, follow: true },
   };
+}
+
+/**
+ * THE PAGE A CRAWLER SEES.
+ *
+ * The booking page is a client app: until its script runs, the HTML held only
+ * the <head>. Google's business-link check and the Actions Center review open
+ * the link with a crawler and judge what is in the HTML — an empty page is "a
+ * link where the customer cannot complete the action", and the "Book online"
+ * button never shows. So the salon's menu is rendered here, on the server, as
+ * plain HTML: name, address, hours, every bookable service with length and
+ * price, and a button into the form. A visitor sees it for the moment before
+ * the app mounts; the app then removes it (page.tsx) and shows the real thing.
+ * Same facts for everyone — nothing is served to crawlers only.
+ */
+function StaticMenu({ s }: { s: Seo }) {
+  const menu = s.menu ?? [];
+  if (!menu.length) return null;
+  const accent = /^#[0-9a-f]{6}$/i.test(s.accentColor || '') ? s.accentColor : '#6366f1';
+  const groups = new Map<string, typeof menu>();
+  for (const m of menu) { const k = m.category ?? ''; groups.set(k, [...(groups.get(k) ?? []), m]); }
+  const open = (s.hours ?? []).filter((h) => !h.closed);
+  return (
+    <section id="lumio-ssr-menu" aria-label={`${s.name} services`} style={{ maxWidth: 760, margin: '0 auto', padding: '20px 16px 32px', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", color: '#0f172a' }}>
+      <h1 style={{ fontSize: 24, margin: '0 0 4px' }}>{s.name}</h1>
+      <p style={{ margin: '0 0 12px', color: '#475569', fontSize: 14 }}>
+        {s.address ? <span>{s.address}</span> : null}
+        {s.contactPhone ? <span> · <a href={`tel:${s.contactPhone}`} style={{ color: accent }}>{s.contactPhone}</a></span> : null}
+        {open.length ? <span> · Open {open.length} days a week</span> : null}
+      </p>
+      <a href="#book" style={{ display: 'inline-block', background: accent, color: '#fff', borderRadius: 10, padding: '10px 18px', fontWeight: 700, textDecoration: 'none', fontSize: 15 }}>Book an appointment</a>
+      <h2 style={{ fontSize: 17, margin: '20px 0 8px' }}>Services &amp; prices</h2>
+      {[...groups.entries()].map(([cat, items]) => (
+        <div key={cat || '_'} style={{ marginBottom: 12 }}>
+          {cat ? <h3 style={{ fontSize: 14, margin: '8px 0 4px', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{cat}</h3> : null}
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {items.map((m) => (
+              <li key={m.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderBottom: '1px solid #e5e7eb', fontSize: 14 }}>
+                <a href={`?service=${encodeURIComponent(m.id)}#book`} style={{ color: '#0f172a', textDecoration: 'none', flex: 1 }}>{m.name}{m.durationMinutes ? <span style={{ color: '#64748b' }}> · {m.durationMinutes} min</span> : null}</a>
+                <b>{m.priceFrom ? 'from ' : ''}{money(m.priceCents, s.currency)}</b>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </section>
+  );
 }
 
 export default async function BookSlugLayout({ children, params }: { children: ReactNode; params: { slug: string } }) {
@@ -205,7 +262,8 @@ export default async function BookSlugLayout({ children, params }: { children: R
         // eslint-disable-next-line react/no-danger
         <script dangerouslySetInnerHTML={{ __html: adsSnippet }} />
       )}
-      {children}
+      {s && <StaticMenu s={s} />}
+      <div id="book">{children}</div>
     </>
   );
 }

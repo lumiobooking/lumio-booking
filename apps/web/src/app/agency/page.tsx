@@ -694,6 +694,9 @@ export default function AgencyPage() {
           <a href="/agency/reports" title="Tiệm nào đã chốt số, nháp chờ đọc, đã gửi; kênh nào đọc lỗi" style={benchLink}>
             <span>📊</span>Báo cáo tháng
           </a>
+          <a href="/agency/google-book" title="Nút “Book online” trên Google cho mọi tiệm: tiệm nào vào feed, tiệm nào cần sửa dữ liệu" style={benchLink}>
+            <span>📍</span>Nút Google
+          </a>
         </div>
 
         {/* What the shops sent, across every salon — only when there is something. One line per salon. */}

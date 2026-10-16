@@ -19,6 +19,13 @@ const GBR_KEY = 'googleReviews';
 const SCOPE = 'https://www.googleapis.com/auth/business.manage';
 const STAR_MAP: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 
+/** The salon's listing as Google Business Information returns it (see fetchProfile). */
+export interface GbpProfile {
+  title: string; website: string | null; phone: string | null; lat: number | null; lng: number | null;
+  address: { country: string; locality: string; region: string | null; postalCode: string; street: string } | null;
+  placeId: string | null; mapsUri: string | null; fetchedAt: string;
+}
+
 export interface GbrSettings {
   enabled: boolean; // master switch for auto-processing
   connected: boolean; // OAuth granted
@@ -597,6 +604,47 @@ export class GoogleReviewsService {
     }
     await this.writeSettings(tenantId, { accountId, locationId: res.pick.name, locationTitle: res.pick.title });
     await this.learnReviewLink(tenantId, token);
+  }
+
+  /**
+   * The listing as Google has it — name, address, coordinates, phone, website,
+   * place id — for the salon's own linked location. Read on demand by the
+   * Google "Book online" feed (google-book), which must hand Google exactly
+   * the facts that match the Maps listing. Null when not linked or unreachable.
+   */
+  async fetchProfile(tenantId: string): Promise<GbpProfile | null> {
+    try {
+      const s = await this.getSettings(tenantId);
+      if (!s.connected || !s.locationId) return null;
+      const tok = await this.accessToken(s);
+      const r = await fetch(`https://mybusinessbusinessinformation.googleapis.com/v1/${bareLocationId(s.locationId)}?readMask=name,title,storefrontAddress,latlng,phoneNumbers,websiteUri,metadata`, {
+        headers: { authorization: `Bearer ${tok}` }, signal: AbortSignal.timeout(15_000),
+      });
+      if (!r.ok) return null;
+      const loc = (await r.json().catch(() => ({}))) as {
+        title?: string; websiteUri?: string; latlng?: { latitude?: number; longitude?: number };
+        phoneNumbers?: { primaryPhone?: string };
+        storefrontAddress?: { regionCode?: string; locality?: string; administrativeArea?: string; postalCode?: string; addressLines?: string[] };
+        metadata?: { placeId?: string; mapsUri?: string };
+      };
+      const a = loc.storefrontAddress;
+      return {
+        title: (loc.title ?? '').trim(),
+        website: (loc.websiteUri ?? '').trim() || null,
+        phone: (loc.phoneNumbers?.primaryPhone ?? '').trim() || null,
+        lat: typeof loc.latlng?.latitude === 'number' ? loc.latlng.latitude : null,
+        lng: typeof loc.latlng?.longitude === 'number' ? loc.latlng.longitude : null,
+        address: a && a.regionCode && a.locality && a.postalCode && (a.addressLines ?? []).length
+          ? { country: a.regionCode, locality: a.locality, region: a.administrativeArea ?? null, postalCode: a.postalCode, street: (a.addressLines ?? []).join(', ') }
+          : null,
+        placeId: (loc.metadata?.placeId ?? '').trim() || null,
+        mapsUri: (loc.metadata?.mapsUri ?? '').trim() || null,
+        fetchedAt: new Date().toISOString(),
+      };
+    } catch (e) {
+      this.logger.warn(`Could not read the Google profile for tenant ${tenantId}: ${String(e).slice(0, 120)}`);
+      return null;
+    }
   }
 
   /**

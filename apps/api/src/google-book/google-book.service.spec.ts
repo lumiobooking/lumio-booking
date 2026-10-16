@@ -6,7 +6,7 @@ jest.mock('@prisma/client', () => {
   const actual = jest.requireActual('@prisma/client');
   return { ...actual, TenantStatus: actual.TenantStatus ?? { ACTIVE: 'ACTIVE', SUSPENDED: 'SUSPENDED', CANCELLED: 'CANCELLED' } };
 });
-import { GoogleBookService } from './google-book.service';
+import { GoogleBookService, listingNameOf, sameBusinessName } from './google-book.service';
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -38,7 +38,7 @@ function build() {
   };
   const google = {
     getSettings: async (tenantId: string) => ({ connected: tenantId !== 't-gone', locationId: 'locations/1', locationTitle: tenantId === 't-good' ? 'Lux Nail Spa' : 'Mt Hawthorn Nail Spa' }),
-    fetchProfile: async (tenantId: string) => ({ title: tenantId === 't-caps' ? 'MT. HAWTHORN NAIL SPA' : 'Lux Nail Spa', website: 'https://lux.example', phone: '+15125551234', lat: 30.2, lng: -97.7, address: { country: 'US', locality: 'Austin', region: 'TX', postalCode: '78701', street: '1 Main St' }, placeId: 'p', mapsUri: null, fetchedAt: new Date().toISOString() }),
+    fetchProfile: async (tenantId: string) => ({ title: tenantId === 't-caps' ? null : 'Lux Nail Spa', website: 'https://lux.example', phone: '+15125551234', lat: 30.2, lng: -97.7, address: { country: 'US', locality: 'Austin', region: 'TX', postalCode: '78701', street: '1 Main St' }, placeId: 'p', mapsUri: null, fetchedAt: new Date().toISOString() }),
   };
   const audits: Row[] = [];
   const svc = new GoogleBookService(prisma as never, settings as never, google as never, { log: async (a: Row) => { audits.push(a); } } as never);
@@ -63,6 +63,19 @@ describe('the Google feed, salon by salon', () => {
     const services = JSON.parse(files.find((f) => f.name.startsWith('service_') && !f.name.includes('filesetdesc'))!.body);
     expect(services.data).toHaveLength(1);
     expect(services.data[0].action_link[0].url).toMatch(/\/lux-nail-spa\/gbp\?service=s1$/);
+  });
+
+  it('a listing shouted on Maps is sent in Title Case', () => {
+    expect(listingNameOf('MT. HAWTHORN NAIL SPA')).toBe('Mt. Hawthorn Nail Spa');
+    expect(listingNameOf('Lux Nail Spa')).toBe('Lux Nail Spa');
+    expect(listingNameOf(null)).toBeNull();
+  });
+
+  it('same business by name: identical short names match, a listing of another salon does not', () => {
+    expect(sameBusinessName('T U Nails', 'T U Nails')).toBe(true);
+    expect(sameBusinessName('QNAILSPA 1', 'Q Nail Spa 1')).toBe(true);
+    expect(sameBusinessName('QNAILSPA 1', "Brandon's Nails")).toBe(false);
+    expect(sameBusinessName('Nail & Spa at Alamo Ranch - Nail Salon San Antonio Tx', 'Alamo Ranch - Nail Salon')).toBe(true);
   });
 
   it('without SFTP credentials the run builds and reports, never throws', async () => {

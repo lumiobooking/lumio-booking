@@ -34,6 +34,18 @@ const DEFAULT: GoogleBookSetting = { enabled: true };
 
 export interface RunReport { at: string; tenants: number; ready: number; held: number; files: string[]; uploaded: boolean; error?: string }
 
+/** Same business by name: a shared distinctive word, or the very same name once case and punctuation go ("T U Nails"). */
+export function sameBusinessName(a: string, b: string): boolean {
+  const fold = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return (fold(a) !== '' && fold(a) === fold(b)) || namesMatch(a, b);
+}
+
+export function listingNameOf(title: string | null | undefined): string | null {
+  const t = (title ?? '').trim();
+  if (!t) return null;
+  return isAllCaps(t) ? titleCase(t) : t;
+}
+
 /** The salon's Google Maps listing — what Google's partner form asks for ("5 of your merchants' Business Profiles"). */
 function mapsUrlOf(p: { mapsUri?: string | null; placeId?: string | null } | null | undefined): string | null {
   if (!p) return null;
@@ -105,7 +117,8 @@ export class GoogleBookService {
       id: t.id,
       slug: t.slug,
       name: t.name,
-      listingName: profile?.title?.trim() || null,
+      // A listing shouted on Maps itself goes in Title Case — Google matches names without case, and refuses ALL CAPS.
+      listingName: listingNameOf(profile?.title),
       phone,
       website: profile?.website || extra.website || null,
       address: profile?.address ?? null,
@@ -122,7 +135,9 @@ export class GoogleBookService {
       })),
     };
     const googleLinked = Boolean(gbr.connected && gbr.locationId);
-    const googleMismatch = googleLinked && Boolean(gbr.locationTitle) && !namesMatch(gbr.locationTitle, t.name);
+    // Judge by the listing as Google shows it today (the cached profile), falling back to the title saved at link time.
+    const listedAs = profile?.title || gbr.locationTitle || '';
+    const googleMismatch = googleLinked && Boolean(listedAs) && !sameBusinessName(listedAs, t.name);
     const notAppointments = t.businessType === 'RESTAURANT' || t.businessType === 'REAL_ESTATE';
     const lint = lintTenant(feedTenant, { googleLinked, googleMismatch, notAppointments, enabled: setting.enabled && t.status === TenantStatus.ACTIVE });
     return { tenant: feedTenant, lint, profile };

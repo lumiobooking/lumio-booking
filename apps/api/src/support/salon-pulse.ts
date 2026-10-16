@@ -29,7 +29,7 @@ export type GrowthKind = 'up' | 'flat' | 'down' | 'thin';
 export type AdsKind = 'on' | 'warn' | 'off' | 'none';
 
 export interface PulseBookings {
-  /** Bookings so far this month (not cancelled, not no-show). */
+  /** Bookings so far this month — every booking made, cancelled ones excluded (the calendar's own count). */
   month: number;
   /** Bookings over the same number of days at the start of last month. */
   lastSameSpan: number;

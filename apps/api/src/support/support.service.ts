@@ -162,7 +162,12 @@ export class SupportService {
     const w = monthWindows(now);
     type Grouped = { tenantId: string; _count: { _all: number } }[];
     const appt = (this.prisma as unknown as { appointment: { groupBy: (a: unknown) => Promise<Grouped>; findMany: (a: unknown) => Promise<unknown[]> } }).appointment;
-    const live = { notIn: ['CANCELLED', 'NO_SHOW'] };
+    // The same rule as the salon's own calendar ("8 hẹn trong tháng"): every
+    // booking that was made counts, cancelled ones do not. A no-show is still
+    // a booking the marketing produced — the shop lost it, the demand was real
+    // — and the list must show the number the calendar shows, or nobody
+    // trusts either.
+    const live = { not: 'CANCELLED' };
     const count = (start: Date, end: Date) => appt
       .groupBy({ by: ['tenantId'], where: { tenantId: { in: ids }, status: live, startTime: { gte: start, lt: end } }, _count: { _all: true } })
       .then((g) => new Map(g.map((x) => [x.tenantId, x._count._all])))

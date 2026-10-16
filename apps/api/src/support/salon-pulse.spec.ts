@@ -128,6 +128,8 @@ describe('the list reads every salon in grouped queries, bounded to the listed s
       expect(b.growth.kind).toBe('thin');
       expect(b.ads.kind).toBe('none');
       for (const w of seen) expect(w.tenantId.in).toEqual(['a', 'b']);
+      // The calendar's rule: only a cancelled booking is left out; a no-show still counts.
+      for (const w of seen.filter((x) => x.status)) expect(w.status).toEqual({ not: 'CANCELLED' });
     } finally { jest.useRealTimers(); }
   });
 });

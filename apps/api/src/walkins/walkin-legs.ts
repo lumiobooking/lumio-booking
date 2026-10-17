@@ -439,6 +439,14 @@ export interface DispatchOptions extends PickOptions {
    * Omitted = every service is checked against skills.
    */
   restricted?: Set<string>;
+  /**
+   * Walk-in 2.0 "giữ thợ cho khách có hẹn" (off unless the salon turns it on):
+   * each technician's next booking (epoch ms). A leg is not handed to a
+   * technician who would still be on it when that booking starts (+ buffer).
+   */
+  bookingAt?: Map<string, number>;
+  bookingBufferMin?: number;
+  now?: number;
 }
 
 /**
@@ -496,7 +504,12 @@ export function planDispatch(tickets: TicketLike[], techs: TechInfo[], turns: Ma
       } else {
         const need = needFor(leg, techs, opts);
         // Never back to someone who passed this leg on.
-        const able = free.filter((f) => !leg.skippedBy.includes(f.id));
+        const nowMs = opts.now ?? Date.now();
+        const fits = (id: string) => {
+          const at = opts.bookingAt?.get(id);
+          return at == null || nowMs + ((leg.minutes > 0 ? leg.minutes : 30) + Math.max(0, opts.bookingBufferMin ?? 0)) * 60000 <= at;
+        };
+        const able = free.filter((f) => !leg.skippedBy.includes(f.id) && fits(f.id));
         tech = pickTech(able.filter((f) => !reserved.has(f.id)), need, turns, opts) ?? pickTech(able, need, turns, opts);
       }
       if (!tech) continue;

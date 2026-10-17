@@ -228,8 +228,14 @@ export class DisplayService {
     // The desk's board is polling; this makes it fetch now, while the
     // customer is still looking up from their phone.
     liveEvents.emit(tenantId, 'walkins', walkIn.id);
+    // Walk-in 2.0: "about how long?" — a range, shown on the thank-you screen.
+    let estimate: { min: number; max: number } | null = null;
+    if (!staffId && typeof this.walkins?.etaFor === 'function') {
+      try { estimate = await this.walkins.etaFor(tenantId, walkIn.id); } catch { estimate = null; }
+    }
     return {
       ok: true, id: walkIn.id, queued: !staffId, seated: !!staffId,
+      ...(estimate ? { estimate } : {}),
       ...(guestIds.length ? { guestIds, guestsSeated } : {}),
     };
   }

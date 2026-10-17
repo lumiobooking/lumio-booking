@@ -17,6 +17,7 @@ import { clockIn } from '../../../lib/desk-time';
 import { salonTz, uiLocale } from '../../../lib/datetime';
 import { ind } from '../../../lib/ui-industry';
 import { TurnDrawer } from '../../../components/TurnDrawer';
+import { DeskPolicyPanel } from '../../../components/DeskPolicyPanel';
 import { CustomerPicker, type CustomerHistoryView, type CustomerLookupRow, type PickedCustomer } from '../../../components/CustomerPicker';
 import { ServicePicker } from '../../../components/ServicePicker';
 
@@ -49,7 +50,26 @@ interface WalkIn {
   /** When the customer actually came in — a booking's check-in, not its booked time. */
   arrivedAt?: string | null;
   bookedAt?: string | null;
+  /** Walk-in 2.0: the technician the salon's rules would give this waiting customer now. */
+  suggestedStaffId?: string | null;
+  /** Step 3: about how long (a range in minutes; 0–0 = now), and when the desk called her. */
+  eta?: { min: number; max: number } | null;
+  calledAt?: string | null;
 }
+/** Walk-in 2.0, step 2: the salon's optional desk rules (all off by default). */
+interface DeskPolicy {
+  requireService: boolean; overrideReason: boolean; protectBooking: boolean; bookingBufferMin: number;
+  waitTargetMin: number; payNudge: boolean; payNudgeMin: number;
+  notifyAhead?: number; noShowMin?: number;
+}
+const OVERRIDE_REASONS: { key: string; vi: string; en: string }[] = [
+  { key: 'customer_request', vi: 'Khách yêu cầu', en: 'Customer asked' },
+  { key: 'specialist', vi: 'Thợ chuyên dịch vụ này', en: 'Specialist for it' },
+  { key: 'tech_yielded', vi: 'Thợ gợi ý nhường lượt', en: 'Suggested tech passed' },
+  { key: 'other', vi: 'Khác', en: 'Other' },
+];
+/** "NO_SERVICE: Chọn dịch vụ…" → the sentence, without the code the screens match on. */
+const plainError = (m: string) => m.replace(/^[A-Z_]{4,}:\s*/, '');
 /** "vào 10:02" / "in 10:02 AM" — salon clock. */
 function cameInText(w: WalkIn): string {
   const vi = uiLocale().startsWith('vi');
@@ -75,6 +95,7 @@ interface Board {
   waiting: WalkIn[]; serving: WalkIn[]; done?: WalkIn[]; staff: StaffTurn[]; nextUpStaffId: string | null; restricted?: string[];
   today?: { count: number; serviceCents: number };
   frequent?: Record<string, string[]>;
+  policy?: DeskPolicy;
 }
 
 /** Turns can be halves (a small add-on is worth ½): 1.5 → "1½". */
@@ -119,6 +140,7 @@ function Inner() {
   // A technician signed in on the floor is excluded on purpose — see the API.
   const canDelete = user?.role === 'SALON_ADMIN' || user?.role === 'SUPER_ADMIN' || Boolean(user?.supportSession);
   const [turnsOpen, setTurnsOpen] = useState(false);
+  const [policyOpen, setPolicyOpen] = useState(false);
   const { lang } = useLang();
   const isMobile = useIsMobile();
   // iPad landscape and up: the intake form slides in from the right and the
@@ -166,6 +188,9 @@ function Inner() {
   const [pick, setPick] = useState<Record<string, string>>({});
   // Which waiting row is showing its full ticket (one at a time — a list, not a wall).
   const [openWait, setOpenWait] = useState<string | null>(null);
+  // Walk-in 2.0 desk: one search over every column; "done today" folds under the till.
+  const [q, setQ] = useState('');
+  const [showDone, setShowDone] = useState(false);
   const [currency, setCurrency] = useState('USD');
   const [salonName, setSalonName] = useState('');
   const [salonLogo, setSalonLogo] = useState('');
@@ -497,7 +522,14 @@ function Inner() {
   async function act(path: string, body?: unknown) {
     setError(null);
     try { await apiFetch(`/walkins/${path}`, { method: 'PATCH', token, body }); await load(); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); }
+    catch (e) { setError(e instanceof Error ? plainError(e.message) : 'Action failed'); }
+  }
+
+  /** Walk-in 2.0, step 3: call a waiting customer / mark her a no-show. */
+  async function postAction(path: string) {
+    setError(null);
+    try { await apiFetch(`/walkins/${path}`, { method: 'POST', token }); await load(); }
+    catch (e) { setError(e instanceof Error ? plainError(e.message) : 'Action failed'); }
   }
 
   /**
@@ -659,47 +691,47 @@ function Inner() {
 
   return (
     <section>
-      <h2 style={{ fontSize: 18, margin: isMobile ? '0 0 10px' : '0 0 2px' }}>{t('wi.title')}</h2>
-      {!isMobile && <p style={{ color: 'var(--c94a3b8)', margin: '0 0 16px', fontSize: 14 }}>{t('wi.subtitle')}</p>}
-
-      {error && <div style={ui.banner}>{error}</div>}
-
-      {/* Reception looks at the board all day; the form only appears when
-          someone actually walks in. The customer monitor stays connected. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-        <button
-          onClick={() => { if (formOpen) { setFormOpen(false); pushToScreen('idle'); } else startNew(); }}
-          style={{ ...ui.primaryBtn, padding: '11px 20px', fontSize: 14.5 }}
-        >{formOpen ? t('wi.closeForm') : t('wi.newWalkin')}</button>
-        <button
-          onClick={openCustomerScreen}
-          title={t('wi.custScreenHint')}
-          style={{
-            border: `1px solid ${screenOn ? '#4f46e5' : 'var(--c334155)'}`, background: 'transparent',
-            color: screenOn ? 'var(--cc7d2fe)' : 'var(--ccbd5e1)', borderRadius: 8, padding: '10px 14px',
-            fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
-          }}
-        >
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: screenOn ? '#22c55e' : 'var(--c475569)' }} />
-          🖥️ {screenOn ? t('wi.custScreenOn') : t('wi.custScreen')}
-        </button>
+      {/* WALK-IN 2.0 — the desk header from the mockup: the day and the time,
+          one search over every column, the two views and the desk actions. */}
+      <header style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: -0.4, color: 'var(--ce2e8f0)' }}>{vi ? 'Khách vãng lai' : 'Walk-ins'}</h2>
+          <span style={{ fontSize: 13, color: 'var(--c64748b)' }}>{deskDay(vi)}</span>
+        </div>
+        <label style={{ flex: isMobile ? '1 1 100%' : '1 1 240px', maxWidth: isMobile ? 'none' : 380, order: isMobile ? 9 : 0, display: 'flex', alignItems: 'center', gap: 8, height: 40, border: '1px solid var(--line-strong)', borderRadius: 11, background: 'var(--raised)', padding: '0 12px', marginLeft: isMobile ? 0 : 8, boxSizing: 'border-box' }}>
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ color: 'var(--c64748b)', flexShrink: 0 }}><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>
+          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label={vi ? 'Tìm khách' : 'Find a customer'} placeholder={vi ? 'Tìm tên hoặc SĐT…' : 'Name or phone…'}
+            style={{ border: 0, outline: 0, fontFamily: 'inherit', fontSize: 14, width: '100%', minWidth: 0, background: 'transparent', color: 'var(--ce2e8f0)' }} />
+          {q && <button type="button" onClick={() => setQ('')} aria-label={vi ? 'Xoá tìm kiếm' : 'Clear search'} style={{ border: 0, background: 'transparent', color: 'var(--c64748b)', cursor: 'pointer', fontSize: 14, padding: 0 }}>✕</button>}
+        </label>
         <span style={{ flex: 1 }} />
+        <div role="group" aria-label={vi ? 'Cách xem' : 'View'} style={{ display: 'inline-flex', padding: 3, gap: 2, borderRadius: 12, background: 'var(--c1e293b)' }}>
+          {(['list', 'tech'] as const).map((v) => (
+            <button key={v} type="button" onClick={() => setView(v)} aria-pressed={view === v}
+              style={{ border: 'none', borderRadius: 9, height: 34, padding: '0 13px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit',
+                background: view === v ? 'var(--raised)' : 'transparent', color: view === v ? 'var(--ce2e8f0)' : 'var(--c94a3b8)', boxShadow: view === v ? '0 1px 2px rgba(15,23,42,0.08)' : 'none' }}>
+              {v === 'list' ? (vi ? 'Bảng' : 'Board') : (vi ? 'Theo thợ' : 'By tech')}
+            </button>
+          ))}
+        </div>
         <KioskInline
           t={t}
           qrOn={qrOn}
           canShow={!!checkinUrl}
           onToggleQr={() => { const next = !qrOn; setQrOn(next); if (next) { setFormOpen(false); pushToScreen('qr'); } else pushToScreen('idle'); }}
         />
-        <div role="group" aria-label={lang === 'vi' ? 'Cách xem' : 'View'} style={{ display: 'inline-flex', padding: 3, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--c0f172a)' }}>
-          {(['list', 'tech'] as const).map((v) => (
-            <button key={v} type="button" onClick={() => setView(v)} aria-pressed={view === v}
-              style={{ border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                background: view === v ? '#4f46e5' : 'transparent', color: view === v ? '#ffffff' : 'var(--c94a3b8)' }}>
-              {v === 'list' ? (lang === 'vi' ? '☰ Danh sách' : '☰ List') : (lang === 'vi' ? '▥ Theo thợ' : '▥ By tech')}
-            </button>
-          ))}
-        </div>
-      </div>
+        <button type="button" onClick={openCustomerScreen} title={t('wi.custScreenHint')}
+          style={{ ...deskBtn, ...(screenOn ? { border: '1px solid #4f46e5' } : null) }}>
+          <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: screenOn ? '#22c55e' : 'var(--c94a3b8)' }} />
+          {screenOn ? t('wi.custScreenOn') : t('wi.custScreen')}
+        </button>
+        <button type="button"
+          onClick={() => { if (formOpen) { setFormOpen(false); pushToScreen('idle'); } else startNew(); }}
+          style={{ ...ui.primaryBtn, background: '#4f46e5', height: 40, padding: '0 16px', borderRadius: 11, fontSize: 14, fontWeight: 700 }}
+        >{formOpen ? t('wi.closeForm') : t('wi.newWalkin')}</button>
+      </header>
+
+      {error && <div style={ui.banner}>{error}</div>}
 
       {board && (
         <FloorStats board={board} vi={lang === 'vi'} currency={currency} isMobile={isMobile}
@@ -727,36 +759,6 @@ function Inner() {
           once), and where they sit. */}
       {formOpen && !wide && formEl}
 
-      {(board?.done ?? []).length > 0 && (
-        <div style={{ marginBottom: 16 }}>
-          {/* Marked Done too early, or done before the customer paid — the ticket
-              has to stay reachable, not vanish off the board. */}
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', margin: '4px 0 8px' }}>{t('wi.doneToday')}</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {(board?.done ?? []).map((d) => {
-              const total = (d.items ?? []).reduce((sum, it) => sum + (it.priceCents || 0), 0);
-              const href = `/salon/pos?walkInId=${d.id}&serviceId=${d.service?.id ?? ''}&staffId=${d.assignedStaff?.id ?? ''}&customerId=${d.customerId ?? ''}&customer=${encodeURIComponent(d.customerName || '')}`;
-              return (
-                <div key={d.id} style={{ ...ui.card, padding: '9px 11px', display: 'flex', alignItems: 'center', gap: 10, opacity: 0.9 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 150 }}>{d.customerName || 'Walk-in'}</div>
-                    <div style={{ fontSize: 11, color: 'var(--c94a3b8)' }}>{fullName(d.assignedStaff) || '—'} · {formatPrice(total, currency)}</div>
-                  </div>
-                  <button onClick={() => act(`${d.id}/reactivate`)} style={{ border: '1px solid var(--c334155)', background: 'transparent', color: 'var(--ccbd5e1)', borderRadius: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>{t('wi.reopen')}</button>
-                  <a href={href} style={{ ...ui.primaryBtn, padding: '6px 12px', fontSize: 12, textDecoration: 'none', whiteSpace: 'nowrap' }}>{t('wi.checkout')}</a>
-                  {/* Last, and quiet. Checkout is what this card is for; delete
-                      is the rare correction, so it does not compete for the eye. */}
-                  {canDelete && (
-                    <button onClick={() => deleteWalkIn(d.id)} title={t('wi.delete')} aria-label={t('wi.delete')}
-                      style={{ background: 'none', border: 'none', color: 'var(--c64748b)', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 2px' }}>🗑</button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {view === 'tech' && board ? (
         <TechBoard
           board={board} vi={lang === 'vi'} currency={currency} isMobile={isMobile} focusId={focusId}
@@ -765,151 +767,127 @@ function Inner() {
           onCancel={(id) => act(`${id}/cancel`)}
         />
       ) : (<>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 8px' }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)' }}>{t('wi.turnsToday')}</span>
-        <button type="button" onClick={() => setTurnsOpen(true)} style={{ background: 'transparent', border: '1px solid var(--line-strong)', borderRadius: 8, color: 'var(--ink-link)', fontSize: 12, fontWeight: 700, padding: '3px 10px', cursor: 'pointer' }}>
-          {lang === 'vi' ? 'Chi tiết tua · quy tắc' : 'Turn details · rules'}
-        </button>
-      </div>
       {turnsOpen && <TurnDrawer vi={lang === 'vi'} isOwner={canDelete} onClose={() => setTurnsOpen(false)} />}
-      {staff.length === 0 ? (
-        <div style={{ ...ui.card, color: 'var(--c94a3b8)' }}>{t('wi.noStaff')}</div>
-      ) : (
-        // On a phone the board is a strip that scrolls sideways, not a grid.
-        // Six technicians as 2×3 tiles of 130px each is three screens of
-        // zeros before the waiting list — the part reception actually acts
-        // on. One row of small tiles keeps every name visible in a swipe and
-        // puts the queue directly under the thumb.
-        <div className={isMobile ? 'wi-strip' : undefined} style={isMobile
-          ? { display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16, paddingBottom: 4, marginBottom: 14, scrollbarWidth: 'none' }
-          // Desktop: small tiles in a wrapping row. Seven 160px cards with a
-          // 34px zero each were a third of the screen saying "nobody has done
-          // anything yet" — the queue, which reception acts on, sat below the
-          // fold. Same information at a third of the height.
-          : { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-          {turnLine(staff).map((s) => {
-            // Walk-in 2.0: the line in the salon's own turn order, each with
-            // what she is doing and a booking coming up — display only.
-            const st = techState(s);
-            const isNext = st.kind === 'next';
-            const border = isNext ? '#22c55e' : s.busy ? '#f59e0b' : 'var(--c334155)';
-            const status = isNext ? t('wi.nextUp') : s.busy ? (s.busyFor != null ? `${isMobile ? '○' : t('wi.serving') + ' ·'} ${t('wi.freeIn').replace('{m}', String(s.busyFor))}` : t('wi.serving')) : s.onBreak ? `☕ ${t('wi.onBreak')}` : st.kind === 'request' ? (vi ? 'Chỉ khách request' : 'Requests only') : t('wi.free');
-            const soon = st.bookingSoon ? clockIn(st.bookingSoon, salonTz() || null, vi) : '';
-            return (
-              <div key={s.id} style={{ position: 'relative', background: isNext ? 'rgba(34,197,94,0.10)' : 'var(--c1e293b)', border: `1.5px solid ${border}`, borderRadius: 12, opacity: s.onBreak && !s.busy ? 0.6 : 1, padding: isMobile ? '10px 8px' : '8px 12px', textAlign: 'center', ...(isMobile ? { flex: '0 0 104px' } : { flex: '0 0 auto', minWidth: 118 }) }}>
-                {s.rank != null && <span aria-label={vi ? `thứ ${s.rank} trong hàng tua` : `#${s.rank} in the turn line`} style={{ position: 'absolute', top: 5, left: 7, fontSize: 10.5, fontWeight: 800, color: isNext ? 'var(--ink-good)' : 'var(--c64748b)' }}>{s.rank}</span>}
-                <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
-                <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--cf8fafc)', lineHeight: 1.1, margin: '3px 0 2px' }}>
-                  {fmtTurns(s.turns)}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--c94a3b8)', marginLeft: 4 }}>{t('wi.turns')}</span>
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: isNext ? 'var(--ink-good)' : s.busy ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
-                  {status}
-                </div>
-                {soon && <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ink-link)', marginTop: 1 }}>{vi ? `Có hẹn ${soon}` : `Booking ${soon}`}</div>}
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {policyOpen && <DeskPolicyPanel vi={vi} canEdit={canDelete} onClose={() => setPolicyOpen(false)} onSaved={() => { void load(); }} />}
 
-      <style>{`.wi-serving{transition:border-color .12s ease, transform .06s ease}.wi-serving:hover{border-color: #6366f1}.wi-serving:active{transform:scale(.99)}.wi-strip::-webkit-scrollbar{display:none}`}</style>
-
-      {/* THE BOARD AT SCALE.
-          Cards were fine for three customers and a mess at twelve: every
-          waiting ticket printed its whole service table, so the queue grew
-          into a wall the desk had to scroll and hunt through. A queue is a
-          LIST — one row per customer, in arrival order, with the three
-          things reception needs at a glance: who, what (one line), how long
-          they have waited — and one button to seat them with the up-next
-          tech already chosen. A row opens to its full ticket on tap. Twenty
-          customers fit on one screen; the phone stacks the two lists. */}
-      <div style={isMobile ? undefined : { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: 18, alignItems: 'start' }}>
-      <div>
-      <div style={listHead}>
-        <span>{t('wi.waiting')}</span>
-        <span style={countPill(board?.waiting.length ?? 0)}>{board?.waiting.length ?? 0}</span>
-      </div>
-      {(!board || board.waiting.length === 0) ? (
-        <div style={{ ...ui.card, color: 'var(--c64748b)', marginBottom: 20, padding: '16px 18px', fontSize: 13.5 }}>{t('wi.noWaiting')}</div>
-      ) : (
-        <div style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-          {board.waiting.map((w, i) => (
-            <WaitingRow
-              key={w.id} w={w} pos={i + 1} staff={staff} currency={currency} t={t} isMobile={isMobile}
-              sel={pick[w.id] ?? nextUp ?? ''} onPick={(v) => setPick({ ...pick, [w.id]: v })}
-              open={openWait === w.id} onToggle={() => setOpenWait(openWait === w.id ? null : w.id)}
-              onAssign={(staffId) => act(`${w.id}/assign`, { staffId })}
-              onCancel={() => act(`${w.id}/cancel`)}
-              onManage={() => setOpenId(w.id)}
-            />
-          ))}
+      {/* WALK-IN 2.0 — the turn line as one card: the salon's own order, who is
+          next, what each one is doing, a booking coming up. Display only. */}
+      <section aria-label={vi ? 'Hàng tua' : 'Turn line'} style={{ background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 16, padding: isMobile ? 12 : '14px 16px', marginBottom: 16, display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px 14px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{vi ? 'Hàng tua' : 'Turn line'}</span>
+          {!isMobile && <span style={{ fontSize: 13, color: 'var(--c94a3b8)' }}>{vi ? 'theo quy tắc tua của tiệm · số 1 tới lượt' : "the salon's turn rules · #1 is up next"}</span>}
+          <span style={{ flex: 1 }} />
+          <button type="button" onClick={() => setTurnsOpen(true)} style={railLink}>{vi ? 'Chi tiết tua' : 'Turn details'}</button>
+          <button type="button" onClick={() => setPolicyOpen(true)} style={railLink}>{vi ? 'Quy tắc quầy' : 'Desk rules'}</button>
+          <a href="/salon/walkins/day" style={railLink}>{vi ? 'Đối soát cuối ngày' : 'End of day'}</a>
+          <a href="/queue-tv" target="_blank" rel="noreferrer" style={railLink}>{vi ? 'TV hàng chờ' : 'Queue TV'}</a>
         </div>
-      )}
-      </div>
-      <div>
-      {(() => {
-        // Walk-in 2.0: one ticket, one column. "Đang làm" is only who is in a
-        // chair (or between two parts); waiting to pay has its own column.
-        const inChair = (board?.serving ?? []).filter((w) => !w.awaitingPayment && w.phase !== 'BETWEEN');
-        const between = (board?.serving ?? []).filter((w) => !w.awaitingPayment && w.phase === 'BETWEEN');
-        const n = inChair.length + between.length;
-        return (<>
-          <div style={listHead}>
-            <span>{t('wi.inService')}</span>
-            <span style={countPill(n)}>{n}</span>
+        {staff.length === 0 ? (
+          <div style={{ color: 'var(--c94a3b8)', fontSize: 13.5 }}>{t('wi.noStaff')}</div>
+        ) : (
+          <div className={isMobile ? 'wi-strip' : undefined} style={isMobile
+            ? { display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2, scrollbarWidth: 'none' }
+            : { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(184px, 1fr))', gap: 10 }}>
+            {turnLine(staff).map((s) => <TurnTile key={s.id} s={s} vi={vi} t={t} isMobile={isMobile} />)}
           </div>
-          {n === 0 ? (
-            <div style={{ ...ui.card, color: 'var(--c64748b)', marginBottom: 20, padding: '16px 18px', fontSize: 13.5 }}>{t('wi.noInService')}</div>
-          ) : (
-            <div style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-              {inChair.map((w) => (
-                <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} />
-              ))}
-              {between.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: 'var(--wash-amber-2)', borderBottom: '1px solid var(--line)', fontSize: 12, fontWeight: 600, color: 'var(--ink-warn)' }}>
-                  <span>⏸ {t('wi.between')}</span>
-                  <span style={{ marginLeft: 'auto' }}>{between.length}</span>
-                </div>
-              )}
-              {between.map((w) => (
-                <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} />
-              ))}
-            </div>
-          )}
-        </>);
-      })()}
-      </div>
-      <div id="wi-topay" style={{ scrollMarginTop: 80 }}>
+        )}
+      </section>
+
+      <style>{`.wi-serving{transition:border-color .12s ease, transform .06s ease}.wi-serving:hover{border-color: #6366f1}.wi-serving:active{transform:scale(.995)}.wi-strip::-webkit-scrollbar{display:none}`}</style>
+
+      {/* THE BOARD: one ticket = one card in one column — waiting, in a chair,
+          waiting to pay. The search box above narrows all three at once. */}
       {(() => {
-        const toPay = (board?.serving ?? []).filter((w) => w.awaitingPayment);
+        const match = (w: WalkIn) => matchesQuery(w, q);
+        const allWaiting = board?.waiting ?? [];
+        const waiting = allWaiting.filter(match);
+        const inChair = (board?.serving ?? []).filter((w) => !w.awaitingPayment && w.phase !== 'BETWEEN').filter(match).sort((a, b) => minutesLeft(a) - minutesLeft(b));
+        const between = (board?.serving ?? []).filter((w) => !w.awaitingPayment && w.phase === 'BETWEEN').filter(match);
+        const toPay = (board?.serving ?? []).filter((w) => w.awaitingPayment).filter(match);
         // Missing a service first: those are the ones that cannot be rung up.
         const ordered = [...toPay.filter((w) => (w.items ?? []).length === 0), ...toPay.filter((w) => (w.items ?? []).length > 0)];
-        return (<>
-          <div style={listHead}>
-            <span>{vi ? 'Chờ tính tiền' : 'Waiting to pay'}</span>
-            <span style={{ ...countPill(toPay.length), ...(toPay.length ? { background: '#f59e0b', color: '#111827' } : null) }}>{toPay.length}</span>
-            <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 500, color: 'var(--c64748b)' }}>{vi ? 'thợ đã rảnh' : 'tech is free'}</span>
-          </div>
-          {toPay.length === 0 ? (
-            <div style={{ ...ui.card, color: 'var(--c64748b)', marginBottom: 20, padding: '16px 18px', fontSize: 13.5 }}>{vi ? 'Không có khách chờ tính tiền.' : 'Nobody waiting to pay.'}</div>
-          ) : (
-            <div style={{ ...ui.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-              {ordered.map((w) => {
+        const done = (board?.done ?? []).filter(match);
+        const none = (text: string) => <div style={emptyCol}>{q ? (vi ? 'Không có ai khớp tìm kiếm.' : 'Nobody matches the search.') : text}</div>;
+        return (
+          <div style={isMobile ? { display: 'grid', gap: 18 } : { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, alignItems: 'start' }}>
+            <div style={deskCol}>
+              <ColHead title={t('wi.waiting')} n={waiting.length} hint={vi ? 'theo giờ đến' : 'by arrival'} />
+              {waiting.length === 0 ? none(t('wi.noWaiting')) : waiting.map((w) => (
+                <WaitingRow
+                  key={w.id} w={w} pos={allWaiting.indexOf(w) + 1} staff={staff} currency={currency} t={t} isMobile={isMobile}
+                  sel={pick[w.id] ?? w.suggestedStaffId ?? nextUp ?? ''} onPick={(v) => setPick({ ...pick, [w.id]: v })}
+                  suggested={w.suggestedStaffId ?? null} requireReason={Boolean(board?.policy?.overrideReason)} waitTarget={board?.policy?.waitTargetMin ?? 10}
+                  open={openWait === w.id} onToggle={() => setOpenWait(openWait === w.id ? null : w.id)}
+                  onAssign={(staffId, reason) => act(`${w.id}/assign`, { staffId, ...(reason ? { reason } : {}) })}
+                  onCall={() => postAction(`${w.id}/call`)}
+                  onNoShow={() => { if (window.confirm(vi ? 'Khách không có mặt — đưa ra khỏi hàng chờ?' : 'Not here — take her off the queue?')) void postAction(`${w.id}/no-show`); }}
+                  onCancel={() => act(`${w.id}/cancel`)}
+                  onManage={() => setOpenId(w.id)}
+                />
+              ))}
+            </div>
+
+            <div style={deskCol}>
+              <ColHead title={t('wi.inService')} n={inChair.length + between.length} hint={vi ? 'sắp xong trước' : 'finishing first'} />
+              {inChair.length + between.length === 0 ? none(t('wi.noInService')) : (<>
+                {inChair.map((w) => (
+                  <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} onPay={() => act(`${w.id}/wait-payment`)} />
+                ))}
+                {between.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 10, background: 'var(--wash-amber-2)', fontSize: 12.5, fontWeight: 700, color: 'var(--ink-warn)' }}>
+                    <span>⏸ {t('wi.between')}</span>
+                    <span style={{ marginLeft: 'auto' }}>{between.length}</span>
+                  </div>
+                )}
+                {between.map((w) => (
+                  <ServingRow key={w.id} w={w} staff={staff} currency={currency} t={t} isMobile={isMobile} onOpen={() => setOpenId(w.id)} onPay={() => act(`${w.id}/wait-payment`)} />
+                ))}
+              </>)}
+            </div>
+
+            <div id="wi-topay" style={{ ...deskCol, scrollMarginTop: 80 }}>
+              <ColHead title={vi ? 'Chờ tính tiền' : 'Waiting to pay'} n={toPay.length} tone="warn">
+                {(board?.done ?? []).length > 0 && (
+                  <button type="button" onClick={() => setShowDone(!showDone)} aria-expanded={showDone} style={railLink}>
+                    {t('wi.doneToday')} · {(board?.done ?? []).length} {showDone ? '▴' : '▾'}
+                  </button>
+                )}
+              </ColHead>
+              {ordered.length === 0 ? none(vi ? 'Không có khách chờ tính tiền.' : 'Nobody waiting to pay.') : ordered.map((w) => {
                 const techId = ticketTech(w);
                 return (
                   <ToPayRow key={w.id} w={w} staff={staff} services={services} currency={currency} vi={vi}
+                    nudgeMin={board?.policy?.payNudge ? board.policy.payNudgeMin : null}
                     usual={(board?.frequent?.[techId ?? ''] ?? [])}
                     onAdd={(serviceId) => addServiceLine(w.id, serviceId, techId ?? '')}
                     onOpen={() => setOpenId(w.id)}
                     onCloseUnpaid={(reason) => closeUnpaid(w.id, reason)} />
                 );
               })}
+              {showDone && done.map((d) => {
+                // Marked Done too early, or done before the customer paid — the
+                // ticket stays reachable here instead of vanishing off the board.
+                const total = (d.items ?? []).reduce((sum, it) => sum + (it.priceCents || 0), 0);
+                const href = `/salon/pos?walkInId=${d.id}&serviceId=${d.service?.id ?? ''}&staffId=${d.assignedStaff?.id ?? ''}&customerId=${d.customerId ?? ''}&customer=${encodeURIComponent(d.customerName || '')}`;
+                return (
+                  <div key={d.id} style={{ ...deskCard, flexDirection: 'row', alignItems: 'center', padding: '9px 12px', opacity: 0.92 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ce2e8f0)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.customerName || 'Walk-in'}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--c94a3b8)' }}>{fullName(d.assignedStaff) || '—'} · {formatPrice(total, currency)}</div>
+                    </div>
+                    <button type="button" onClick={() => act(`${d.id}/reactivate`)} style={{ ...deskBtn, height: 32, padding: '0 10px', fontSize: 12.5 }}>{t('wi.reopen')}</button>
+                    <a href={href} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, textDecoration: 'none' }}>{t('wi.checkout')}</a>
+                    {canDelete && (
+                      <button type="button" onClick={() => deleteWalkIn(d.id)} title={t('wi.delete')} aria-label={t('wi.delete')}
+                        style={{ background: 'none', border: 'none', color: 'var(--c64748b)', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: '0 2px' }}>🗑</button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          )}
-        </>);
+          </div>
+        );
       })()}
-      </div>
-      </div>
       </>)}
 
       {openId && board && (() => {
@@ -919,6 +897,7 @@ function Inner() {
           <WalkInTicketSheet
             w={w} staff={staff} services={services} t={t} currency={currency}
             restricted={new Set(board.restricted ?? [])}
+            requireService={Boolean(board.policy?.requireService)}
             onLeg={(legId, staffId, start) => act(`${w.id}/legs/${legId}`, { staffId, start })}
             onLegDone={(legId) => act(`${w.id}/legs/${legId}/done`)}
             onAdd={addServiceLine} onUpdateLine={updateServiceLine} onRemove={removeServiceLine} onStation={setStationFor}
@@ -980,75 +959,132 @@ const svcOpt = (active: boolean): CSSProperties => ({
  *  a quick Checkout, and a Details button that opens the full ticket sheet. Kept
  *  small on purpose so the whole floor fits on one screen when it's busy. */
 /** One line for one customer in the queue: number, who, what, how long, seat. */
-function WaitingRow({ w, pos, staff, currency, t, isMobile, sel, onPick, open, onToggle, onAssign, onCancel, onManage }: {
+function WaitingRow({ w, pos, staff, currency, t, isMobile, sel, onPick, suggested, requireReason, waitTarget, open, onToggle, onAssign, onCancel, onManage, onCall, onNoShow }: {
   w: WalkIn; pos: number; staff: StaffTurn[]; currency: string; t: (k: string) => string; isMobile: boolean;
-  sel: string; onPick: (v: string) => void; open: boolean; onToggle: () => void;
-  onAssign: (staffId: string) => void; onCancel: () => void; onManage: () => void;
+  sel: string; onPick: (v: string) => void;
+  /** Walk-in 2.0: the rules' suggestion; choosing another asks why (required when the salon says so). */
+  suggested: string | null; requireReason: boolean; waitTarget: number;
+  open: boolean; onToggle: () => void;
+  onAssign: (staffId: string, reason?: string) => void; onCancel: () => void; onManage: () => void;
+  onCall: () => void; onNoShow: () => void;
 }) {
+  const [reason, setReason] = useState('');
+  const [other, setOther] = useState(false);
+  const vi = uiLocale().startsWith('vi');
+  const overriding = Boolean(sel && suggested && sel !== suggested);
+  const blocked = overriding && requireReason && !reason;
   const legs = (w.legs ?? []).filter((l) => !l.legacy || l.lineIds.length > 0);
   const items = w.items ?? [];
   const total = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
   const mins = items.reduce((sum, it) => sum + (it.durationMinutes || 0), 0);
-  const names = items.length ? items.map((it) => it.name).join(' · ') : (w.service?.name ?? t('wi.noService'));
   const waited = waitedMins(w.arrivedAt ?? w.createdAt);
-  // A wait that is getting long turns amber, then red — the row asks for
+  // A wait that is getting long turns amber, then red — the card asks for
   // attention before the customer does.
-  const waitColor = waited >= 40 ? 'var(--ink-bad)' : waited >= 20 ? 'var(--ink-warn)' : 'var(--c94a3b8)';
+  const late = waited >= waitTarget * 2;
+  const waitColor = waited >= waitTarget * 4 ? 'var(--ink-bad)' : late ? 'var(--ink-warn)' : 'var(--ce2e8f0)';
   const picked = staff.find((s) => s.id === sel);
+  const sug = staff.find((s) => s.id === suggested) ?? staff.find((s) => s.nextUp) ?? null;
+  const sugWhy = !sug ? '' : sug.onBreak ? (vi ? 'đang nghỉ' : 'on a break')
+    : sug.busy ? (sug.busyFor != null ? (vi ? `rảnh sau ~${sug.busyFor}′` : `free in ~${sug.busyFor}′`) : (vi ? 'đang làm' : 'busy'))
+    : (vi ? 'rảnh ngay · tới lượt' : 'free now · up next');
+  const showPicker = other || overriding;
   return (
-    <div style={{ borderBottom: '1px solid var(--line)', background: open ? 'var(--c0f172a)' : 'transparent' }}>
-      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '10px 12px' : '9px 14px', cursor: 'pointer', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
-        <span style={{ width: 24, height: 24, borderRadius: 8, background: 'var(--c1e293b)', color: 'var(--c94a3b8)', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{pos}</span>
-        <div style={{ minWidth: 0, flex: isMobile ? '1 1 140px' : '0 0 128px' }}>
-          <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {w.customerName || 'Walk-in'}{!w.group && w.partySize > 1 ? <span style={{ color: 'var(--c94a3b8)', fontWeight: 500 }}> · {w.partySize} {t('wi.people')}</span> : null}
+    <article style={{ ...deskCard, ...(late ? { border: '1px solid #f59e0b' } : null) }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <span style={ticketNo}>#{pos}</span>
+        <button type="button" onClick={onToggle} aria-expanded={open} style={{ border: 0, background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer', minWidth: 0, flex: 1, fontFamily: 'inherit' }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ce2e8f0)', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {w.customerName || 'Walk-in'}{!w.group && w.partySize > 1 ? <span style={{ fontWeight: 600, color: 'var(--c94a3b8)' }}> · {w.partySize} {t('wi.people')}</span> : null}
           </div>
-          {w.group && <PartyChip group={w.group} />}
-          {w.phone && <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.phone}</div>}
-        </div>
-        <div style={{ minWidth: 0, flex: '1 1 160px', order: isMobile ? 5 : 0, ...(isMobile ? { flexBasis: '100%' } : null) }}>
-          {legs.length > 1 || legs.some((l) => l.pinned && l.staffId)
-            ? <LegChips legs={legs} staff={staff} t={t} />
-            : <div style={{ color: 'var(--ccbd5e1)', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{names}</div>}
-          <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>
-            <span style={{ color: 'var(--ink-good)', fontWeight: 600 }}>{formatPrice(total, currency)}</span>{mins > 0 ? ` · ${mins} ${t('wi.mins')}` : ''}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 3, fontSize: 12.5, color: 'var(--c94a3b8)' }}>
+            {w.group && <PartyChip group={w.group} />}
+            <span>{cameInText(w)}{w.phone ? ` · ${w.phone}` : ''}</span>
           </div>
-        </div>
-        <span title={t('wi.waited')} style={{ color: waitColor, fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: isMobile ? 'auto' : 0 }}>⏱ {waited}′</span>
-        <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, ...(isMobile ? { flexBasis: '100%', order: 6 } : null) }}>
-          {/* Seat with the up-next tech in ONE press; the picker is there for the exception. */}
-          <select value={sel} onChange={(e) => onPick(e.target.value)} aria-label={t('wi.pickStaff')}
-            style={{ ...ui.input, width: 'auto', minWidth: 0, maxWidth: isMobile ? 'none' : 118, padding: '6px 24px 6px 9px', fontSize: 12.5, marginBottom: 0, ...(isMobile ? { flex: 1 } : null) }}>
-            <option value="">{t('wi.pickStaff')}</option>
-            {staff.map((s) => <option key={s.id} value={s.id}>{s.name}{s.nextUp ? ' ★' : s.busy ? ' ·' : ''}</option>)}
-          </select>
-          <button disabled={!sel} onClick={() => sel && onAssign(sel)} style={{ ...ui.primaryBtn, opacity: sel ? 1 : 0.5, padding: '7px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}>
-            {t('wi.assign')}{picked && isMobile ? ` → ${picked.name}` : ''}
-          </button>
-          <button onClick={onCancel} aria-label={t('wi.cancel')} title={t('wi.cancel')} style={{ ...ui.dangerBtn, padding: '7px 9px', fontSize: 12.5, lineHeight: 1 }}>✕</button>
+        </button>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <b title={t('wi.waited')} style={{ display: 'block', fontSize: 17, fontWeight: 800, color: waitColor, fontVariantNumeric: 'tabular-nums' }}>{waited}′</b>
+          <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{vi ? 'đã chờ' : 'waited'}</span>
         </div>
       </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {legs.length > 1 || legs.some((l) => l.pinned && l.staffId)
+          ? <LegChips legs={legs} staff={staff} t={t} />
+          : items.length
+            ? items.map((it) => <span key={it.lineId} style={svcPill}>{it.name}</span>)
+            : w.service ? <span style={svcPill}>{w.service.name}</span> : <span style={missPill}>{t('wi.noService')}</span>}
+        {items.length > 0 && <span style={{ fontSize: 12.5, color: 'var(--c94a3b8)' }}>{formatPrice(total, currency)}{mins > 0 ? ` · ~${mins}′` : ''}</span>}
+      </div>
+
+      {(w.calledAt || sug || w.eta) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--ccbd5e1)', background: 'var(--c1e293b)', borderRadius: 10, padding: '7px 10px' }}>
+          {w.calledAt
+            ? <span style={{ fontWeight: 700, color: 'var(--ink-link)' }}>{vi ? `Đã gọi ${waitedMins(w.calledAt)}′ trước` : `Called ${waitedMins(w.calledAt)}′ ago`}</span>
+            : sug ? <span>{vi ? 'Gợi ý' : 'Suggested'}: <b style={{ color: 'var(--ce2e8f0)' }}>{sug.name}</b> — {sugWhy}</span> : null}
+          {w.eta && !w.calledAt && (
+            <span title={vi ? 'Thời gian chờ dự kiến' : 'Estimated wait'} style={{ marginLeft: 'auto', color: 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>
+              {w.eta.max === 0 ? (vi ? 'vào ngay' : 'now') : (vi ? `dự kiến ${w.eta.min}–${w.eta.max}′` : `est. ${w.eta.min}–${w.eta.max}′`)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {showPicker && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <select value={sel} onChange={(e) => onPick(e.target.value)} aria-label={t('wi.pickStaff')}
+            style={{ ...ui.input, width: 'auto', flex: '1 1 140px', minWidth: 0, marginBottom: 0, padding: '7px 10px', fontSize: 13 }}>
+            <option value="">{t('wi.pickStaff')}</option>
+            {staff.map((s) => <option key={s.id} value={s.id}>{s.name}{(suggested ? s.id === suggested : s.nextUp) ? ' ★' : s.busy ? (vi ? ' · đang làm' : ' · busy') : s.onBreak ? (vi ? ' · nghỉ' : ' · break') : ''}</option>)}
+          </select>
+          {overriding && (
+            <select value={reason} onChange={(e) => setReason(e.target.value)} aria-label={vi ? 'Lý do chọn thợ khác' : 'Why another technician'}
+              style={{ ...ui.input, width: 'auto', flex: '1 1 150px', minWidth: 0, marginBottom: 0, padding: '7px 10px', fontSize: 13, borderColor: blocked ? '#f59e0b' : undefined }}>
+              <option value="">{vi ? (requireReason ? 'Lý do? (bắt buộc)' : 'Lý do?') : (requireReason ? 'Why? (required)' : 'Why?')}</option>
+              {OVERRIDE_REASONS.map((r) => <option key={r.key} value={r.key}>{vi ? r.vi : r.en}</option>)}
+            </select>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {/* Seat with the suggested tech in ONE press; another tech is the exception. */}
+        <button type="button" disabled={!sel || blocked} onClick={() => sel && !blocked && onAssign(sel, overriding ? reason || undefined : undefined)}
+          title={blocked ? (vi ? 'Chọn lý do vì không phải thợ được gợi ý' : 'Pick a reason: not the suggested technician') : undefined}
+          style={{ ...ui.primaryBtn, background: '#4f46e5', height: 34, padding: '0 13px', borderRadius: 10, fontSize: 13, fontWeight: 700, opacity: sel && !blocked ? 1 : 0.5 }}>
+          {picked ? (vi ? `Giao cho ${picked.name}` : `Seat with ${picked.name}`) : t('wi.assign')}
+        </button>
+        {!showPicker && <button type="button" onClick={() => setOther(true)} style={deskBtnSm}>{vi ? 'Chọn thợ khác' : 'Another tech'}</button>}
+        {!w.calledAt
+          ? <button type="button" onClick={onCall} title={w.phone ? (vi ? 'Gọi khách (nhắn tin “Tới lượt bạn”)' : 'Call (texts “It’s your turn”)') : (vi ? 'Đánh dấu đã gọi' : 'Mark as called')}
+              style={{ ...deskBtnSm, color: 'var(--ink-link)' }}>{vi ? 'Gọi' : 'Call'}</button>
+          : <button type="button" onClick={onNoShow} title={vi ? 'Khách không có mặt' : 'Not here'}
+              style={{ ...deskBtnSm, border: '1px solid #f59e0b', color: 'var(--ink-warn)' }}>{vi ? 'Vắng mặt' : 'No-show'}</button>}
+        <span style={{ flex: 1 }} />
+        <button type="button" onClick={onManage} style={{ ...deskBtnSm, border: 0, background: 'transparent', color: 'var(--ink-link)' }}>{vi ? 'Chi tiết' : 'Details'}</button>
+        <button type="button" onClick={onCancel} aria-label={t('wi.cancel')} title={t('wi.cancel')} style={{ ...ui.dangerBtn, height: 34, padding: '0 10px', borderRadius: 10, fontSize: 12.5, lineHeight: 1 }}>✕</button>
+      </div>
+
       {open && items.length > 0 && (
-        <div style={{ padding: '0 14px 12px 48px' }}>
-          <div style={{ border: '1px solid var(--c263041)', borderRadius: 8, overflow: 'hidden', maxWidth: 460 }}>
+        <div>
+          <div style={{ border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
             {items.map((it) => (
-              <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', borderBottom: '1px solid var(--line)' }}>
+              <div key={it.lineId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid var(--line)' }}>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: 'var(--ccbd5e1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>
                 {it.durationMinutes ? <span style={{ fontSize: 11, color: 'var(--c64748b)', flexShrink: 0 }}>{it.durationMinutes}′</span> : null}
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ce2e8f0)', flexShrink: 0 }}>{formatPrice(it.priceCents || 0, currency)}</span>
               </div>
             ))}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', background: 'var(--c0f172a)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px' }}>
               <span style={{ flex: 1, fontSize: 11.5, fontWeight: 600, color: 'var(--c94a3b8)' }}>{t('wi.subtotal')}</span>
               {mins > 0 && <span style={{ fontSize: 11.5, color: 'var(--c64748b)' }}>{mins} {t('wi.mins')}</span>}
               <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink-good)' }}>{formatPrice(total, currency)}</span>
             </div>
           </div>
           {w.note && <div style={{ fontSize: 12, color: 'var(--c94a3b8)', marginTop: 6 }}>📝 {w.note}</div>}
-          <button onClick={onManage} style={{ marginTop: 8, padding: '6px 10px', background: 'transparent', border: '1px solid var(--c334155)', borderRadius: 8, color: 'var(--ccbd5e1)', cursor: 'pointer', fontSize: 12 }}>{t('wi.splitTechs')}</button>
+          <button type="button" onClick={onManage} style={{ ...deskBtnSm, marginTop: 8 }}>{t('wi.splitTechs')}</button>
         </div>
       )}
-    </div>
+    </article>
   );
 }
 
@@ -1067,10 +1103,13 @@ function OverdueBadge({ minutes, t }: { minutes: number | null | undefined; t: (
   );
 }
 
-/** One line for one customer in a chair: who, with whom, what, for how long, checkout. */
-function ServingRow({ w, staff, currency, t, isMobile, onOpen }: {
+/** One card for one customer in a chair: who, with whom, how far along, what, checkout. */
+function ServingRow({ w, staff, currency, t, isMobile, onOpen, onPay }: {
   w: WalkIn; staff: StaffTurn[]; currency: string; t: (k: string) => string; isMobile: boolean; onOpen: () => void;
+  /** "Xong → chờ tính tiền": the chair is free, the bill waits at the till. */
+  onPay: () => void;
 }) {
+  const vi = uiLocale().startsWith('vi');
   const items = w.items ?? [];
   const legs = (w.legs ?? []).filter((l) => !l.legacy || l.lineIds.length > 0);
   const between = w.phase === 'BETWEEN';
@@ -1078,36 +1117,62 @@ function ServingRow({ w, staff, currency, t, isMobile, onOpen }: {
   const nameOf = (id: string | null) => staff.find((s) => s.id === id)?.name ?? (w.assignedStaff?.id === id ? fullName(w.assignedStaff) : '');
   const onNow = [...new Set(legs.filter((l) => l.status === 'SERVING' && l.staffId).map((l) => nameOf(l.staffId)).filter(Boolean))];
   const techText = onNow.length ? onNow.join(' + ') : between ? t('wi.waitingTech') : (fullName(w.assignedStaff) || '—');
+  const techId = ticketTech(w);
   const subtotal = items.reduce((sum, it) => sum + (it.priceCents || 0), 0);
-  const names = items.length ? items.map((it) => it.name).join(' · ') : t('wi.noService');
+  const mins = items.reduce((sum, it) => sum + (it.durationMinutes || 0), 0) + (w.extraMinutes || 0);
   const since = waitedMins(w.assignedAt ?? w.createdAt);
+  const left = mins > 0 ? mins - since : null;
+  const pct = mins > 0 ? Math.min(100, Math.round((since / mins) * 100)) : 0;
+  const startAt = w.assignedAt ? clockIn(w.assignedAt, salonTz() || null, vi) : '';
+  // Sending her to pay closes every part, so not while another part is still to do.
+  const openParts = legs.filter((l) => !l.legacy && l.status !== 'DONE').length;
+  const canPay = !between && openParts <= 1;
   const checkoutHref = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
   return (
-    <div className="wi-serving" onClick={onOpen} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '10px 12px' : '9px 14px', borderBottom: '1px solid var(--line)', cursor: 'pointer', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
-      <span style={{ width: 8, height: 8, borderRadius: '50%', background: w.awaitingPayment ? '#ef4444' : between ? '#f59e0b' : '#22c55e', flexShrink: 0 }} />
-      <div style={{ minWidth: 0, flex: isMobile ? '1 1 120px' : '0 0 140px' }}>
-        <div style={{ fontWeight: 600, color: 'var(--ce2e8f0)', fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
-        <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>{w.awaitingPayment ? '' : `${since}′ · `}{cameInText(w)}{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}</div>
+    <article className="wi-serving" onClick={onOpen} style={{ ...deskCard, cursor: 'pointer', ...(between ? { border: '1px solid #f59e0b' } : null) }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <Avatar id={techId ?? w.id} name={onNow[0] ?? (between ? '…' : techText)} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ce2e8f0)', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
+          <div style={{ fontSize: 12.5, color: between ? 'var(--ink-warn)' : 'var(--c94a3b8)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {between ? `⏸ ${techText}` : techText}{w.station ? ` · ${t('wi.stationShort')} ${w.station}` : ''}{startAt ? ` · ${vi ? 'từ' : 'since'} ${startAt}` : ''}
+          </div>
+          {(w.group || (w.overdueMinutes ?? 0) >= 15) && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+              {w.group && <PartyChip group={w.group} />}
+              <OverdueBadge minutes={w.overdueMinutes} t={t} />
+            </div>
+          )}
+        </div>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <b style={{ display: 'block', fontSize: 17, fontWeight: 800, color: 'var(--ce2e8f0)', fontVariantNumeric: 'tabular-nums' }}>{mins > 0 ? `${since}/${mins}′` : `${since}′`}</b>
+          <span style={{ fontSize: 11.5, color: left != null && left < 0 ? 'var(--ink-warn)' : 'var(--c64748b)' }}>
+            {left == null ? (vi ? 'trên ghế' : 'in the chair') : left > 0 ? (vi ? `còn ~${left}′` : `~${left}′ left`) : (vi ? 'quá giờ' : 'over time')}
+          </span>
+        </div>
       </div>
-      {w.group && <PartyChip group={w.group} />}
-      <OverdueBadge minutes={w.overdueMinutes} t={t} />
-      {legs.length > 1
-        // Several parts: one chip per part, each with its technician.
-        ? <div style={{ flexShrink: 0 }}><LegChips legs={legs} staff={staff} t={t} /></div>
-        : <span style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, color: 'var(--ink-warn)', background: 'var(--wash-amber-2)', borderRadius: 999, padding: '2px 9px', maxWidth: isMobile ? 'none' : 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.awaitingPayment ? '💳' : between ? '⏸' : '✂'} {techText}</span>}
-      <div style={{ minWidth: 0, flex: '1 1 140px', ...(isMobile ? { flexBasis: '100%', order: 5 } : null) }}>
-        {(legs.length <= 1 || isMobile) && <div style={{ color: 'var(--ccbd5e1)', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{names}</div>}
+      {mins > 0 && (
+        <div aria-hidden="true" style={{ height: 6, borderRadius: 999, background: 'var(--c1e293b)', overflow: 'hidden' }}>
+          <i style={{ display: 'block', height: '100%', width: `${pct}%`, borderRadius: 999, background: pct >= 85 ? '#f59e0b' : '#6366f1' }} />
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {legs.length > 1
+          // Several parts: one chip per part, each with its technician.
+          ? <LegChips legs={legs} staff={staff} t={t} />
+          : items.length
+            ? items.map((it) => <span key={it.lineId} style={svcPill}>{it.name}</span>)
+            : <span style={missPill}>⚠ {t('wi.noService')}</span>}
+        <span style={{ flex: 1 }} />
+        {items.length > 0 && <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--ink-good)', fontVariantNumeric: 'tabular-nums' }}>{formatPrice(subtotal, currency)}</span>}
       </div>
-      {/* No service yet (a friend checked in with the party, nothing picked): "$0.00"
-          read as a free visit. Say what it is and send the desk to fill it in. */}
-      {items.length === 0
-        ? <span style={{ color: 'var(--ink-warn)', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: isMobile ? 'auto' : 0 }}>⚠ {t('wi.noService')}</span>
-        : <span style={{ color: 'var(--ink-good)', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: isMobile ? 'auto' : 0 }}>{formatPrice(subtotal, currency)}</span>}
-      <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexShrink: 0, ...(isMobile ? { flexBasis: '100%', order: 6 } : null) }}>
-        <a href={checkoutHref} style={{ ...ui.primaryBtn, padding: '7px 12px', fontSize: 12.5, textDecoration: 'none', whiteSpace: 'nowrap', ...(isMobile ? { flex: 1, textAlign: 'center' as const } : null) }}>{t('wi.checkout')}</a>
-        <button onClick={onOpen} style={{ padding: '7px 10px', background: 'transparent', border: '1px solid var(--c334155)', borderRadius: 8, color: 'var(--ccbd5e1)', cursor: 'pointer', fontSize: 12.5, whiteSpace: 'nowrap' }}>{t('wi.manage')} ›</button>
+      <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button type="button" onClick={onOpen} style={deskBtnSm}>+ {vi ? 'Dịch vụ' : 'Service'}</button>
+        {canPay && <button type="button" onClick={onPay} title={vi ? 'Thợ rảnh, khách ra quầy trả tiền' : 'The tech is free; the bill waits at the till'} style={deskBtnSm}>{vi ? 'Xong → chờ tính tiền' : 'Done → to the till'}</button>}
+        <span style={{ flex: 1 }} />
+        <a href={checkoutHref} style={{ ...ui.primaryBtn, background: '#4f46e5', height: 34, padding: '0 13px', borderRadius: 10, fontSize: 13, fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', ...(isMobile ? { flex: 1, justifyContent: 'center' } : null) }}>{t('wi.checkout')}</a>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -1124,8 +1189,10 @@ const CLOSE_REASONS: { key: string; vi: string; en: string }[] = [
  * be rung up, so it says so and offers what this technician usually does, one
  * tap each; "Đóng không thu" closes it without a receipt, with a reason.
  */
-function ToPayRow({ w, staff, services, currency, vi, usual, onAdd, onOpen, onCloseUnpaid }: {
+function ToPayRow({ w, staff, services, currency, vi, nudgeMin, usual, onAdd, onOpen, onCloseUnpaid }: {
   w: WalkIn; staff: StaffTurn[]; services: Service[]; currency: string; vi: boolean;
+  /** Minutes after which the salon wants this nudged (its rule), or null when the rule is off. */
+  nudgeMin: number | null;
   usual: string[];
   onAdd: (serviceId: string) => Promise<void> | void;
   onOpen: () => void;
@@ -1140,16 +1207,20 @@ function ToPayRow({ w, staff, services, currency, vi, usual, onAdd, onOpen, onCl
   const techId = ticketTech(w);
   const techName = staff.find((s) => s.id === techId)?.name ?? fullName(w.assignedStaff) ?? '';
   const doneAt = (w.legs ?? []).map((l) => l.doneAt).filter(Boolean).sort().pop() ?? null;
+  const waitingFor = waitedMins(doneAt ?? w.assignedAt ?? w.createdAt);
+  const tooLong = nudgeMin != null && waitingFor >= nudgeMin;
   const usualSvcs = usual.map((id) => services.find((x) => x.id === id)).filter((x): x is Service => !!x).slice(0, 4);
   const checkoutHref = `/salon/pos?walkInId=${w.id}&serviceId=${w.service?.id ?? ''}&staffId=${w.assignedStaff?.id ?? ''}&customerId=${w.customerId ?? ''}&customer=${encodeURIComponent(w.customerName || '')}`;
   const run = async (key: string, fn: () => Promise<void> | void) => { if (busy) return; setBusy(key); try { await fn(); } finally { setBusy(null); } };
   return (
-    <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--line)', display: 'grid', gap: 8, background: missing ? 'var(--wash-amber)' : undefined }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+    <article style={{ ...deskCard, gap: 8, ...(missing || tooLong ? { background: 'var(--wash-amber)', border: '1px solid #f59e0b' } : null) }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+        <Avatar id={techId ?? w.id} name={techName || '?'} />
         <button type="button" onClick={onOpen} style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left', minWidth: 0, flex: 1 }}>
           <div style={{ fontWeight: 700, color: 'var(--ce2e8f0)', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.customerName || 'Walk-in'}</div>
           <div style={{ color: 'var(--c64748b)', fontSize: 11.5, whiteSpace: 'nowrap' }}>
             {techName ? `${techName} · ` : ''}{doneAt ? `${vi ? 'xong' : 'done'} ${clockIn(doneAt, salonTz() || null, vi)}` : cameInText(w)}
+            <span style={{ color: tooLong ? 'var(--ink-warn)' : undefined, fontWeight: tooLong ? 700 : undefined }}> · {vi ? 'chờ' : 'waiting'} {waitingFor}′</span>
           </div>
         </button>
         {w.group && <PartyChip group={w.group} />}
@@ -1188,7 +1259,7 @@ function ToPayRow({ w, staff, services, currency, vi, usual, onAdd, onOpen, onCl
           <button type="button" onClick={() => setClosing(false)} style={{ border: 0, background: 'transparent', color: 'var(--c94a3b8)', fontSize: 12.5, cursor: 'pointer' }}>{vi ? 'Thôi' : 'Cancel'}</button>
         </div>
       )}
-    </div>
+    </article>
   );
 }
 
@@ -1221,19 +1292,96 @@ function TicketTimeline({ w, staff, vi }: { w: WalkIn; staff: StaffTurn[]; vi: b
   );
 }
 
-const listHead: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--ccbd5e1)', margin: '0 0 8px' };
-const countPill = (n: number): CSSProperties => ({
-  minWidth: 22, height: 22, padding: '0 7px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  fontSize: 12, fontWeight: 700, background: n > 0 ? '#4f46e5' : 'var(--c1e293b)', color: n > 0 ? '#fff' : 'var(--c64748b)',
-});
+/* ─── Walk-in 2.0 desk pieces ─────────────────────────────────────────── */
+
+const deskCard: CSSProperties = { background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 14, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, boxSizing: 'border-box' };
+const deskCol: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 };
+const emptyCol: CSSProperties = { border: '1px dashed var(--line-strong)', borderRadius: 14, padding: '16px 18px', fontSize: 13.5, color: 'var(--c64748b)' };
+const deskBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 40, padding: '0 14px', borderRadius: 11, border: '1px solid var(--line-strong)', background: 'var(--raised)', color: 'var(--ce2e8f0)', fontSize: 14, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit', textDecoration: 'none' };
+const deskBtnSm: CSSProperties = { ...deskBtn, height: 34, padding: '0 12px', fontSize: 13, borderRadius: 10 };
+const railLink: CSSProperties = { border: 0, background: 'transparent', padding: '4px 2px', fontSize: 13, fontWeight: 700, color: 'var(--ink-link)', textDecoration: 'none', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' };
+const svcPill: CSSProperties = { display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 9px', borderRadius: 999, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', background: 'var(--c1e293b)', color: 'var(--ce2e8f0)' };
+const missPill: CSSProperties = { ...svcPill, background: 'var(--wash-amber-3)', color: 'var(--ink-warn)' };
+const ticketNo: CSSProperties = { fontSize: 11.5, fontWeight: 800, borderRadius: 7, padding: '3px 7px', flexShrink: 0, fontVariantNumeric: 'tabular-nums', background: 'var(--wash-blue)', color: 'var(--ink-link)' };
+
+/** "Thứ Bảy, 17/10 · 3:12 PM" — the salon's day and clock for the header. */
+function deskDay(vi: boolean): string {
+  const tz = salonTz() || undefined;
+  const now = new Date();
+  let day = '';
+  try { day = new Intl.DateTimeFormat(vi ? 'vi-VN' : 'en-US', { weekday: 'long', day: '2-digit', month: '2-digit', timeZone: tz }).format(now); } catch { day = ''; }
+  const at = clockIn(now.toISOString(), tz ?? null, vi);
+  return [day, at].filter(Boolean).join(' · ');
+}
+
+/** The search box: part of the name, or 3+ digits of the phone. */
+function matchesQuery(w: WalkIn, q: string): boolean {
+  const s = q.trim().toLowerCase();
+  if (!s) return true;
+  if ((w.customerName ?? '').toLowerCase().includes(s)) return true;
+  const digits = s.replace(/\D/g, '');
+  return digits.length >= 3 && (w.phone ?? '').replace(/\D/g, '').includes(digits);
+}
+
+/** Minutes until a chair is expected free (unknown length sorts last). */
+function minutesLeft(w: WalkIn): number {
+  const mins = (w.items ?? []).reduce((sum, it) => sum + (it.durationMinutes || 0), 0) + (w.extraMinutes || 0);
+  if (!mins) return 1e9;
+  return mins - waitedMins(w.assignedAt ?? w.createdAt);
+}
+
+function ColHead({ title, n, hint, tone, children }: { title: string; n: number; hint?: string; tone?: 'warn'; children?: React.ReactNode }) {
+  const hot = tone === 'warn' && n > 0;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 28, padding: '0 2px' }}>
+      <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--ce2e8f0)' }}>{title}</span>
+      <span style={{ minWidth: 24, height: 24, padding: '0 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800, background: hot ? 'var(--wash-amber-3)' : 'var(--line)', color: hot ? 'var(--ink-warn)' : 'var(--ccbd5e1)' }}>{n}</span>
+      <span style={{ flex: 1 }} />
+      {hint && <span style={{ fontSize: 12.5, color: 'var(--c64748b)' }}>{hint}</span>}
+      {children}
+    </div>
+  );
+}
+
+/** One technician in the turn line: place, face, what she is doing, turns today. */
+function TurnTile({ s, vi, t, isMobile }: { s: StaffTurn; vi: boolean; t: (k: string) => string; isMobile: boolean }) {
+  const st = techState(s);
+  const isNext = st.kind === 'next';
+  const dim = Boolean(s.onBreak && !s.busy);
+  const soon = st.bookingSoon ? clockIn(st.bookingSoon, salonTz() || null, vi) : '';
+  const status = isNext ? (vi ? 'Tới lượt · rảnh' : 'Up next · free')
+    : s.busy ? (s.busyFor != null ? (vi ? `Đang làm · còn ~${s.busyFor}′` : `Busy · ~${s.busyFor}′ left`) : t('wi.serving'))
+    : s.onBreak ? t('wi.onBreak') : st.kind === 'request' ? (vi ? 'Chỉ khách request' : 'Requests only') : t('wi.free');
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px 9px 9px', borderRadius: 14, minWidth: 0, boxSizing: 'border-box',
+      border: `1px solid ${isNext ? '#22c55e' : 'var(--line)'}`, background: isNext ? 'rgba(34,197,94,0.10)' : dim ? 'var(--line)' : 'var(--raised)',
+      boxShadow: isNext ? '0 0 0 3px rgba(34,197,94,0.12)' : 'none', ...(isMobile ? { flex: '0 0 178px' } : null) }}>
+      <span aria-label={s.rank != null ? (vi ? `thứ ${s.rank} trong hàng tua` : `#${s.rank} in the turn line`) : undefined}
+        style={{ fontSize: 12, fontWeight: 800, width: 16, textAlign: 'center', flexShrink: 0, color: isNext ? 'var(--ink-good)' : 'var(--c64748b)' }}>{s.rank ?? '–'}</span>
+      <Avatar id={s.id} name={s.name} dim={dim} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: dim ? 'var(--c94a3b8)' : 'var(--ce2e8f0)' }}>{s.name}</div>
+        <div style={{ fontSize: 12, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: isNext ? 800 : 500, color: isNext ? 'var(--ink-good)' : s.busy ? 'var(--ink-warn)' : 'var(--c94a3b8)' }}>{status}</div>
+        {soon && <div style={{ fontSize: 11.5, fontWeight: 700, marginTop: 1, whiteSpace: 'nowrap', color: 'var(--ink-link)' }}>{vi ? `Có hẹn ${soon}` : `Booking ${soon}`}</div>}
+      </div>
+      <div style={{ textAlign: 'right', flexShrink: 0, lineHeight: 1 }}>
+        <b style={{ fontSize: 17, fontWeight: 800, color: 'var(--ce2e8f0)', fontVariantNumeric: 'tabular-nums' }}>{fmtTurns(s.turns)}</b>
+        <small style={{ display: 'block', fontSize: 10.5, fontWeight: 600, marginTop: 2, color: 'var(--c64748b)' }}>{t('wi.turns')}</small>
+      </div>
+    </div>
+  );
+}
+
 
 
 /** Full ticket editor for one in-service walk-in, in a focused overlay: service
  *  lines (each with its tech), add a service, edit station, checkout, done. Opened
  *  from a compact card so the board itself stays a clean overview. Portaled to body. */
-function WalkInTicketSheet({ w, staff, services, t, currency, restricted, onLeg, onLegDone, onAdd, onUpdateLine, onRemove, onStation, onDone, onDelete, onClose }: {
+function WalkInTicketSheet({ w, staff, services, t, currency, restricted, requireService, onLeg, onLegDone, onAdd, onUpdateLine, onRemove, onStation, onDone, onDelete, onClose }: {
   w: WalkIn; staff: StaffTurn[]; services: Service[]; t: (k: string) => string; currency: string;
   restricted: Set<string>;
+  /** Walk-in 2.0: the salon asks for a service before a visit is finished. */
+  requireService?: boolean;
   onLeg: (legId: string, staffId: string | null, start?: boolean) => Promise<void> | void;
   onLegDone: (legId: string) => Promise<void> | void;
   onAdd: (id: string, serviceId: string, staffId: string, extraMinutes?: number) => Promise<void> | void;
@@ -1336,9 +1484,15 @@ function WalkInTicketSheet({ w, staff, services, t, currency, restricted, onLeg,
           <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
             <a href={checkoutHref}
               style={{ ...ui.primaryBtn, flex: '1 1 140px', textAlign: 'center', padding: '12px 16px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{t('wi.checkout')} · {formatPrice(subtotal, currency)}</a>
-            {w.status !== 'WAITING' && (
-              <button onClick={onDone} title={legs.length > 1 ? t('wi.doneAllHint') : undefined} style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)', padding: '12px 14px', whiteSpace: 'nowrap' }}>{legs.length > 1 ? t('wi.doneAll') : t('wi.done')}</button>
-            )}
+            {w.status !== 'WAITING' && (() => {
+              const locked = Boolean(requireService) && items.length === 0;
+              const vi = uiLocale().startsWith('vi');
+              return (
+                <button onClick={locked ? undefined : onDone} disabled={locked}
+                  title={locked ? (vi ? 'Tiệm yêu cầu chọn dịch vụ trước khi bấm Xong' : 'This salon asks for a service before finishing') : legs.length > 1 ? t('wi.doneAllHint') : undefined}
+                  style={{ ...ui.primaryBtn, background: 'var(--c334155)', color: 'var(--ce2e8f0)', padding: '12px 14px', whiteSpace: 'nowrap', opacity: locked ? 0.45 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}>{legs.length > 1 ? t('wi.doneAll') : t('wi.done')}</button>
+              );
+            })()}
             {/* An in-service row is the one that gets stuck: it is not filtered
                 by date, so a test ticket left here sits on the board tomorrow
                 and keeps its technician marked busy for good. */}
@@ -1620,13 +1774,14 @@ function KioskInline({ t, qrOn, canShow, onToggleQr }: {
       <button
         onClick={() => setOpen((v) => !v)}
         style={{
-          background: qrOn ? 'rgba(79,70,229,0.14)' : 'none',
-          border: `1px solid ${qrOn ? '#4f46e5' : 'var(--c334155)'}`, borderRadius: 8,
-          color: qrOn ? 'var(--cc7d2fe)' : 'var(--c94a3b8)', fontSize: 12.5, cursor: 'pointer',
-          padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 7,
+          background: qrOn ? 'rgba(79,70,229,0.14)' : 'var(--raised)',
+          border: `1px solid ${qrOn ? '#4f46e5' : 'var(--line-strong)'}`, borderRadius: 11, height: 40, boxSizing: 'border-box',
+          color: qrOn ? 'var(--ink-link)' : 'var(--ce2e8f0)', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+          padding: '0 14px', display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
         }}
       >
-        📲 {t('wi.kiosk')}
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h3v3h-3z M20 14v6h-3" /></svg>
+        {t('wi.kiosk')}
         {qrOn && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600 }}>
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />{t('wi.qrLive')}
         </span>}
@@ -1728,4 +1883,26 @@ function printQr(url: string, title: string, labels: { hint: string; print: stri
   const go = () => { try { w.focus(); w.print(); } catch { /* user cancelled */ } };
   w.onload = () => setTimeout(go, 200);
   setTimeout(go, 900);
+}
+
+
+/* A face for a technician: initials on a colour of her own (stable per id). */
+const AV_COLORS = ['#4f46e5', '#7c3aed', '#0e7490', '#be185d', '#047857', '#b45309', '#2563eb', '#9333ea'];
+
+function initialsOf(name: string): string {
+  const p = name.trim().split(/\s+/).filter(Boolean);
+  if (!p.length) return '?';
+  return (p.length > 1 ? p[0][0] + p[p.length - 1][0] : p[0].slice(0, 2)).toUpperCase();
+}
+
+function Avatar({ id, name, dim }: { id: string; name: string; dim?: boolean }) {
+  let h = 0;
+  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  const ground = dim ? '#94a3b8' : AV_COLORS[h % AV_COLORS.length];
+  return (
+    <span aria-hidden="true"
+      style={{ width: 34, height: 34, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800, flexShrink: 0, background: ground, color: '#ffffff' }}>
+      {initialsOf(name)}
+    </span>
+  );
 }

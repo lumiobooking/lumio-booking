@@ -95,6 +95,8 @@ export default function CheckInKiosk() {
   const [pairInput, setPairInput] = useState('');
   const [pairErr, setPairErr] = useState<string | null>(null);
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  // Walk-in 2.0: "about how long?" from the floor, shown on the thank-you screen.
+  const [eta, setEta] = useState<{ min: number; max: number } | null>(null);
   const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', email: '', birthDate: '', partySize: 1, note: '' });
   const [picked, setPicked] = useState<string[]>([]);
   // Everyone after the person holding the phone, each with their own services.
@@ -136,7 +138,7 @@ export default function CheckInKiosk() {
 
   const reset = useCallback(() => {
     setForm({ firstName: '', lastName: '', phone: '', email: '', birthDate: '', partySize: 1, note: '' });
-    setPicked([]); setGuests([]); setWho(0); setCat(null); setErr(null); setStep(1);
+    setPicked([]); setGuests([]); setWho(0); setCat(null); setErr(null); setStep(1); setEta(null);
   }, []);
 
   // Someone walks away mid-form; the next customer should meet a clean screen.
@@ -218,7 +220,7 @@ export default function CheckInKiosk() {
     if (!token || busy) return;
     setBusy(true); setErr(null);
     try {
-      await apiFetch(`/display/checkin/${token}`, {
+      const res = await apiFetch<{ estimate?: { min: number; max: number } | null }>(`/display/checkin/${token}`, {
         method: 'POST',
         body: {
           firstName: form.firstName.trim(),
@@ -233,6 +235,7 @@ export default function CheckInKiosk() {
           ...(group ? { guests: guests.slice(0, party - 1).map((g, i) => ({ firstName: g.name.trim() || `Guest ${i + 2}`, serviceIds: g.picked })) } : {}),
         },
       });
+      setEta(res?.estimate ?? null);
       setStep(4);
       window.setTimeout(reset, 7000); // thank-you screen, then ready for the next person
     } catch (e) {
@@ -289,6 +292,11 @@ export default function CheckInKiosk() {
           <p style={{ color: C.ink2, fontSize: 'clamp(17px, 4.6vw, 20px)', lineHeight: 1.55, margin: 0 }}>
             {group ? `Please have a seat — we’ll be with all ${party} of you shortly.` : <>Please have a seat — we&rsquo;ll be with you shortly.</>}
           </p>
+          {eta && eta.max > 0 && (
+            <p style={{ color: C.ink2, fontSize: 'clamp(17px, 4.6vw, 20px)', fontWeight: 700, margin: '14px 0 0' }}>
+              Estimated wait: about {eta.min}–{eta.max} minutes
+            </p>
+          )}
           <button onClick={reset} style={{ ...ghostBtn, marginTop: 32 }}>Check in someone else</button>
         </div>
       </main>

@@ -6,10 +6,12 @@ import { WalkinsScheduler } from './walkins.scheduler';
 import { CustomersModule } from '../customers/customers.module';
 import { SettingsModule } from '../settings/settings.module';
 import { PushModule } from '../push/push.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   // Push: a technician's phone buzzes when the dispatcher hands her a customer.
-  imports: [CustomersModule, SettingsModule, PushModule],
+  // Notifications: Walk-in 2.0 texts ("your turn is coming", "it's your turn").
+  imports: [CustomersModule, SettingsModule, PushModule, NotificationsModule],
   controllers: [WalkinsController, MyChairController],
   providers: [WalkinsService, WalkinsScheduler],
   // The display module seats a phone check-in through the same turn rotation.

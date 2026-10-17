@@ -35,8 +35,8 @@ export function FloorStats({ board, vi, currency, isMobile, onLongest, onToPay }
   const s = floorSummary(board);
   // Walk-in 2.0: five numbers that always agree with the columns below.
   const tile = (n: ReactNode, label: string, sub: string, tone?: 'warn') => (
-    <div style={{ ...ui.card, margin: 0, padding: isMobile ? '10px 12px' : '12px 16px', display: 'grid', gap: 2, minWidth: 0,
-      ...(tone === 'warn' ? { borderColor: '#f59e0b', background: 'var(--wash-amber-2)' } : null) }}>
+    <div style={{ background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: 16, margin: 0, padding: isMobile ? '10px 12px' : '14px 16px', display: 'grid', gap: 3, minWidth: 0,
+      ...(tone === 'warn' ? { border: '1px solid #f59e0b', background: 'var(--wash-amber-2)' } : null) }}>
       <span style={{ fontSize: 12.5, fontWeight: 600, color: tone === 'warn' ? 'var(--ink-warn)' : 'var(--c94a3b8)', whiteSpace: 'nowrap' }}>{label}</span>
       <span style={{ fontSize: isMobile ? 22 : 26, fontWeight: 800, lineHeight: 1.1, color: tone === 'warn' ? 'var(--ink-warn)' : 'var(--cf8fafc)', fontVariantNumeric: 'tabular-nums' }}>{n}</span>
       <span style={{ fontSize: 11.5, color: tone === 'warn' ? 'var(--ink-warn)' : 'var(--c94a3b8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span>

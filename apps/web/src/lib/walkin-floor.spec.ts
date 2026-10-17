@@ -107,3 +107,13 @@ describe('a ticket\'s story', () => {
     expect(ev.map((e) => `${e.kind}:${e.staffId ?? '-'}`)).toEqual(['in:-', 'start:kim', 'start:tina', 'done:kim', 'done:tina', 'pay:-']);
   });
 });
+
+describe('names on the customer TV', () => {
+  it('first name and the initial of the last, nothing more', async () => {
+    const { shortName } = await import('./walkin-floor');
+    expect(shortName('Linda Pham', true)).toBe('Linda P.');
+    expect(shortName('Ngọc Anh Trần', false)).toBe('Ngọc T.');
+    expect(shortName('Kim', false)).toBe('Kim');
+    expect(shortName('  ', true)).toBe('Khách');
+  });
+});

@@ -52,6 +52,27 @@ class SeatAppointmentDto {
 
 class AssignDto {
   @IsString() staffId!: string;
+  // Walk-in 2.0: why the desk chose someone other than the suggested technician.
+  @IsOptional() @IsIn(['customer_request', 'specialist', 'tech_yielded', 'other']) reason?: string;
+}
+
+/** Walk-in 2.0, step 2: the desk's optional rules (all off by default). */
+class DeskPolicyDto {
+  @IsOptional() @IsBoolean() requireService?: boolean;
+  @IsOptional() @IsBoolean() overrideReason?: boolean;
+  @IsOptional() @IsBoolean() protectBooking?: boolean;
+  @IsOptional() @IsInt() @Min(0) @Max(60) bookingBufferMin?: number;
+  @IsOptional() @IsInt() @Min(3) @Max(120) waitTargetMin?: number;
+  @IsOptional() @IsBoolean() payNudge?: boolean;
+  @IsOptional() @IsInt() @Min(3) @Max(240) payNudgeMin?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(5) notifyAhead?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(60) noShowMin?: number;
+}
+
+/** Walk-in 2.0, step 3: signing a day off. */
+class CloseDayDto {
+  @IsString() @MaxLength(10) day!: string;
+  @IsOptional() @IsString() @MaxLength(300) note?: string;
 }
 
 class LegDto {
@@ -187,6 +208,29 @@ export class WalkinsController {
     return this.nudge(user, null, this.walkins.updateTurnRules(user, dto));
   }
 
+  @Get('desk-policy')
+  deskPolicy(@CurrentUser() user: AuthenticatedUser) {
+    return this.walkins.getDeskPolicy(user);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Patch('desk-policy')
+  updateDeskPolicy(@CurrentUser() user: AuthenticatedUser, @Body() dto: DeskPolicyDto) {
+    return this.nudge(user, null, this.walkins.setDeskPolicy(user, dto));
+  }
+
+  // Walk-in 2.0, step 3: end-of-day review (desk reads; the owner signs the day off).
+  @Get('day-review')
+  dayReview(@CurrentUser() user: AuthenticatedUser, @Query('day') day?: string) {
+    return this.walkins.dayReview(user, day);
+  }
+
+  @Roles(UserRole.SALON_ADMIN)
+  @Post('day-review/close')
+  closeDay(@CurrentUser() user: AuthenticatedUser, @Body() dto: CloseDayDto) {
+    return this.walkins.closeDay(user, dto.day, dto.note);
+  }
+
   @Get('my')
   myChair(@CurrentUser() user: AuthenticatedUser) {
     return this.walkins.myChair(user);
@@ -204,7 +248,7 @@ export class WalkinsController {
 
   @Patch(':id/assign')
   assign(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AssignDto) {
-    return this.nudge(user, id, this.walkins.assign(user, id, dto.staffId));
+    return this.nudge(user, id, this.walkins.assign(user, id, dto.staffId, dto.reason));
   }
 
   /** Move one leg of a ticket (hands / feet …) to a technician, or back to the queue. */
@@ -286,6 +330,17 @@ export class WalkinsController {
   @Patch(':id/close-unpaid')
   closeUnpaid(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() body: CloseUnpaidDto) {
     return this.nudge(user, id, this.walkins.closeUnpaid(user, id, body?.reason, body?.note));
+  }
+
+  // Walk-in 2.0, step 3: call a waiting customer (text if there is a phone); not here → no-show.
+  @Post(':id/call')
+  callCustomer(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.nudge(user, id, this.walkins.callCustomer(user, id));
+  }
+
+  @Post(':id/no-show')
+  noShow(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.nudge(user, id, this.walkins.noShow(user, id));
   }
 
   @Patch(':id/cancel')

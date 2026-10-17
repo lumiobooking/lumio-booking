@@ -1,4 +1,9 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { CALLED_KEY, NOTIFIED_KEY, calledTooLong, pruneCalled, turnSoonSms, upcomingToNotify, yourTurnSms } from './desk-policy';
+import { queueEstimates } from './wait-estimate';
+import { dayReview, type ClosedUnpaid, type Override, type ReviewTicket } from './day-review';
+import { NotificationsService } from '../notifications/notifications.service';
+import { DESK_POLICY_KEY, NO_SERVICE_ERROR, OVERRIDE_REASON_ERROR, PAY_WARNED_KEY, cleanDeskPolicy, cleanOverrideReason, hasService, newlyUnpaidTooLong, payNudgeAlert, suggestFor, type DeskPolicy, type NamedTicket as PayTicket } from './desk-policy';
 import { cleanCloseReason, frequentServices, nextBookingByStaff, todayTotals, turnOrder } from './desk-board';
 import { AppointmentStatus, OrderStatus, Prisma, UserRole, WalkInStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -91,6 +96,7 @@ export class WalkinsService {
     private readonly settings: SettingsService,
     @Optional() private readonly push?: PushService,
     @Optional() private readonly audit?: AuditService,
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   /** The salon's turn rules (turn-rules.ts); the defaults are the floor's old behaviour. */
@@ -355,6 +361,8 @@ export class WalkinsService {
   /** Run the dispatcher after a change, never failing the change itself. */
   private async settle(tenantId: string) {
     await this.seatWaitingQueue(tenantId).catch(() => []);
+    // Walk-in 2.0: "your turn is coming" texts, when the salon turned them on. Never blocks the floor.
+    await this.notifyUpcoming(tenantId).catch(() => 0);
   }
 
   /**
@@ -937,7 +945,9 @@ export class WalkinsService {
         tickets.push({ ...w, items: raw });
       }
     }
-    const plan = planDispatch(tickets as unknown as TicketLike[], f.techs.filter((t) => !f.onBreak.has(t.id)), f.turns, { restricted: f.restricted, ...f.pick });
+    const policy = await this.deskPolicy(tenantId);
+    const protect = policy.protectBooking ? { bookingAt: await this.bookingAt(tenantId), bookingBufferMin: policy.bookingBufferMin, now: Date.now() } : {};
+    const plan = planDispatch(tickets as unknown as TicketLike[], f.techs.filter((t) => !f.onBreak.has(t.id)), f.turns, { restricted: f.restricted, ...f.pick, ...protect });
     const now = new Date();
     const seated: string[] = [];
     for (const t of tickets) {
@@ -1011,7 +1021,18 @@ export class WalkinsService {
       };
     };
     // Waiting-to-pay: the technician is finished, so she is free.
-    const waiting = f.open.filter((w) => w.status === WalkInStatus.WAITING).map((w) => tagged(w));
+    const policy = await this.deskPolicy(tenantId);
+    const protect = policy.protectBooking ? { bookingAt: await this.bookingAt(tenantId), bookingBufferMin: policy.bookingBufferMin, now: now.getTime() } : {};
+    const freeNow = f.techs.filter((t) => !busy.has(t.id) && !f.onBreak.has(t.id));
+    // Walk-in 2.0: who the rules would give each waiting customer right now.
+    const etas = this.queueEtas(f, busy, now);
+    const called = await this.calledMap(tenantId);
+    const waiting = f.open.filter((w) => w.status === WalkInStatus.WAITING).map((w) => ({
+      ...tagged(w),
+      suggestedStaffId: suggestFor(w as unknown as TicketLike, freeNow, f.techs, f.turns, { restricted: f.restricted, ...f.pick, ...protect }),
+      eta: etas.get(w.id) ?? null,
+      calledAt: called[w.id]?.at ?? null,
+    }));
     const serving = f.open.filter((w) => w.status === WalkInStatus.SERVING).sort((a, b) => +(a.assignedAt ?? a.createdAt) - +(b.assignedAt ?? b.createdAt)).map((w) => tagged(w));
 
     // Today's online bookings not yet arrived — shown in the floor's "Booked today"
@@ -1077,7 +1098,7 @@ export class WalkinsService {
     const unpaid = await this.unpaidEarlier(tenantId, f.today).catch(() => []);
     // The salon's timezone: every clock on the desk is read in it, never in
     // the browser's (a manager in Vietnam saw 10:00 AM bookings as 0:00).
-    return { waiting, serving, booked, done, unpaid, staff, nextUpStaffId, restricted: [...f.restricted], timezone: tenantRow?.timezone ?? null, today: totals, frequent };
+    return { waiting, serving, booked, done, unpaid, staff, nextUpStaffId, restricted: [...f.restricted], timezone: tenantRow?.timezone ?? null, today: totals, frequent, policy };
   }
 
   /**
@@ -1304,6 +1325,7 @@ export class WalkinsService {
   /** Move the customer off the chair to wait to pay (bill stays open; chair + tech free). */
   async waitPayment(user: AuthenticatedUser, id: string) {
     const w = await this.mine(user, id);
+    await this.assertService(w);
     await this.prisma.walkIn.updateMany({ where: { id: w.id, tenantId: w.tenantId }, data: { awaitingPayment: true, stationId: null } });
     // Her technician is free now: someone waiting can have her.
     await this.settle(w.tenantId);
@@ -1531,6 +1553,7 @@ export class WalkinsService {
    */
   async doneLeg(user: AuthenticatedUser, id: string, legId: string) {
     const w = await this.mine(user, id);
+    await this.assertService(w);
     await serial(w.tenantId, async () => {
       const fresh = await this.mine(user, id);
       const t = fresh as unknown as TicketLike;
@@ -1790,10 +1813,25 @@ export class WalkinsService {
    * reserved for her, else the first in order); the ticket's other legs stay
    * with the dispatcher.
    */
-  async assign(user: AuthenticatedUser, id: string, staffId: string) {
+  async assign(user: AuthenticatedUser, id: string, staffId: string, reason?: unknown) {
     const w = await this.mine(user, id);
     const tech = await this.techOf(w.tenantId, staffId);
     const t = w as unknown as TicketLike;
+    // Walk-in 2.0: seating a waiting customer with someone other than the
+    // technician the rules suggest is allowed — and remembered (suggestion,
+    // choice, reason). With the salon's "overrideReason" rule the reason is required.
+    if (w.status === WalkInStatus.WAITING) {
+      const policy = await this.deskPolicy(w.tenantId);
+      const f = await this.floor(w.tenantId);
+      const busy = busyTechs(f.open as unknown as TicketLike[]);
+      const protect = policy.protectBooking ? { bookingAt: await this.bookingAt(w.tenantId), bookingBufferMin: policy.bookingBufferMin, now: Date.now() } : {};
+      const suggested = suggestFor(t, f.techs.filter((x) => !busy.has(x.id) && !f.onBreak.has(x.id)), f.techs, f.turns, { restricted: f.restricted, ...f.pick, ...protect });
+      if (suggested && suggested !== tech) {
+        const why = cleanOverrideReason(reason);
+        if (policy.overrideReason && !why) throw new BadRequestException(OVERRIDE_REASON_ERROR);
+        await this.audit?.log({ tenantId: w.tenantId, userId: user.userId, action: 'turn.override', resourceType: 'walk_in', resourceId: w.id, metadata: { suggested, chosen: tech, reason: why } });
+      }
+    }
     const legs = legsOf(t);
     const running = legs.filter((l) => l.status === 'SERVING').map((l) => l.zone);
     const startable = legs.filter((l) => l.status === 'WAITING' && running.every((z) => canRunTogether(z, l.zone)));
@@ -1807,8 +1845,10 @@ export class WalkinsService {
   }
 
   /** Mark the whole visit finished (every leg), then fill the chairs it freed. */
-  async done(user: AuthenticatedUser, id: string) {
+  async done(user: AuthenticatedUser, id: string, force = false) {
     const w = await this.mine(user, id);
+    // "Đóng không thu" (force) closes a visit whatever it carries; everything else follows the salon's rule.
+    if (!force) await this.assertService(w);
     await serial(w.tenantId, async () => {
       const fresh = await this.mine(user, id);
       const t = fresh as unknown as TicketLike;
@@ -1831,6 +1871,272 @@ export class WalkinsService {
     return this.row(w.tenantId, w.id);
   }
 
+  // ---------------------------------------------------------------- Walk-in 2.0, step 3
+
+  /** Each waiting customer's wait, as a range (wait-estimate.ts), from this floor. */
+  private queueEtas(f: Awaited<ReturnType<WalkinsService['floor']>>, busy: Set<string>, now: Date): Map<string, { min: number; max: number } | null> {
+    const open = f.open as unknown as TicketLike[];
+    const techFreeIn = f.techs
+      .filter((t) => !f.onBreak.has(t.id) && !f.manualOnly.has(t.id))
+      .map((t) => (busy.has(t.id) ? (minutesLeft(open, t.id, now) ?? 15) : 0));
+    const queue = (f.open as unknown as TicketLike[]).filter((w) => w.status === WalkInStatus.WAITING);
+    const minutes = queue.map((w) => {
+      const legs = legsOf(w).filter((l) => l.status === 'WAITING');
+      return legs.length ? Math.max(...legs.map((l) => l.minutes || 30)) : 30;
+    });
+    const est = queueEstimates(techFreeIn, minutes);
+    return new Map(queue.map((w, i) => [w.id, est[i]]));
+  }
+
+  /** "About how long?" for one waiting customer (the self check-in thank-you screen). */
+  async etaFor(tenantId: string, id: string): Promise<{ min: number; max: number } | null> {
+    const f = await this.floor(tenantId);
+    return this.queueEtas(f, busyTechs(f.open as unknown as TicketLike[]), new Date()).get(id) ?? null;
+  }
+
+  private async calledMap(tenantId: string): Promise<Record<string, { at: string; by?: string | null }>> {
+    try {
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: CALLED_KEY } } });
+      return ((row?.value && typeof row.value === 'object') ? row.value : {}) as Record<string, { at: string; by?: string | null }>;
+    } catch { return {}; }
+  }
+
+  private async saveSetting(tenantId: string, key: string, value: unknown) {
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key } },
+      update: { value: value as never }, create: { tenantId, key, value: value as never },
+    });
+  }
+
+  /** The salon's name and language for a text. */
+  private async smsVoice(tenantId: string): Promise<{ salon: string; vi: boolean }> {
+    const t = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, market: true, timezone: true } as never }).catch(() => null) as { name?: string; market?: string | null; timezone?: string | null } | null;
+    const vi = String(t?.market ?? '').toUpperCase() === 'VN' || String(t?.timezone ?? '').startsWith('Asia/Ho_Chi_Minh');
+    return { salon: (t?.name ?? '').trim() || 'Salon', vi };
+  }
+
+  /** One transactional text about this visit. Best effort: a failed text never fails the desk. */
+  private async textCustomer(tenantId: string, phone: string | null, body: string, walkInId: string): Promise<boolean> {
+    if (!phone || !this.notifications) return false;
+    try {
+      const r = await this.notifications.send({ tenantId, channel: 'SMS' as never, recipient: phone, body, relatedType: 'walk_in', relatedId: walkInId }) as unknown as { status?: string } | null;
+      return !r || r.status !== 'FAILED';
+    } catch { return false; }
+  }
+
+  /** "Gọi khách": the desk calls a waiting customer (a text when there is a phone), and the board shows since when. */
+  async callCustomer(user: AuthenticatedUser, id: string) {
+    const w = await this.mine(user, id);
+    if (w.status !== WalkInStatus.WAITING) throw new BadRequestException('Khách không còn trong hàng chờ · Not waiting any more');
+    const at = new Date().toISOString();
+    const waitingIds = (await this.prisma.walkIn.findMany({ where: { tenantId: w.tenantId, status: WalkInStatus.WAITING }, select: { id: true } })).map((r) => r.id);
+    const called = pruneCalled(await this.calledMap(w.tenantId), waitingIds);
+    called[w.id] = { at, by: user.userId };
+    await this.saveSetting(w.tenantId, CALLED_KEY, called);
+    const v = await this.smsVoice(w.tenantId);
+    const sms = await this.textCustomer(w.tenantId, w.phone, yourTurnSms(v.salon, v.vi), w.id);
+    await this.audit?.log({ tenantId: w.tenantId, userId: user.userId, action: 'walkin.called', resourceType: 'walk_in', resourceId: w.id, metadata: { sms } });
+    return { id: w.id, calledAt: at, sms };
+  }
+
+  /** "Vắng mặt": the called customer is not here — the ticket leaves the queue, kept as a no-show. */
+  async noShow(user: AuthenticatedUser, id: string) {
+    const w = await this.mine(user, id);
+    if (w.status !== WalkInStatus.WAITING) throw new BadRequestException('Khách không còn trong hàng chờ · Not waiting any more');
+    await this.prisma.walkIn.updateMany({ where: { id: w.id, tenantId: w.tenantId, status: WalkInStatus.WAITING }, data: { status: WalkInStatus.CANCELLED } });
+    await this.audit?.log({ tenantId: w.tenantId, userId: user.userId, action: 'walkin.no_show', resourceType: 'walk_in', resourceId: w.id, metadata: { auto: false } });
+    return this.row(w.tenantId, w.id);
+  }
+
+  /** "Sắp tới lượt": one text to each customer with N or fewer people ahead (rule off unless notifyAhead > 0). */
+  async notifyUpcoming(tenantId: string): Promise<number> {
+    const policy = await this.deskPolicy(tenantId);
+    if (!(policy.notifyAhead > 0) || !this.notifications) return 0;
+    const queue = await this.prisma.walkIn.findMany({
+      where: { tenantId, status: WalkInStatus.WAITING }, select: { id: true, phone: true }, orderBy: { createdAt: 'asc' }, take: 50,
+    });
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: NOTIFIED_KEY } } }).catch(() => null);
+    const notified = (((row?.value as { ids?: unknown } | null)?.ids ?? []) as string[]).filter((x) => typeof x === 'string');
+    const ids = upcomingToNotify(queue, policy.notifyAhead, notified);
+    if (!ids.length) return 0;
+    await this.saveSetting(tenantId, NOTIFIED_KEY, { ids: rememberWarned(notified, ids) });
+    const v = await this.smsVoice(tenantId);
+    for (const id of ids) await this.textCustomer(tenantId, queue.find((q) => q.id === id)?.phone ?? null, turnSoonSms(v.salon, v.vi), id);
+    return ids.length;
+  }
+
+  /** Called and still not here after the salon's minutes: a no-show (rule off unless noShowMin > 0). */
+  async autoNoShow(tenantId: string, now = new Date()): Promise<number> {
+    const policy = await this.deskPolicy(tenantId);
+    if (!(policy.noShowMin > 0)) return 0;
+    const waitingIds = (await this.prisma.walkIn.findMany({ where: { tenantId, status: WalkInStatus.WAITING }, select: { id: true } })).map((r) => r.id);
+    const gone = calledTooLong(await this.calledMap(tenantId), waitingIds, now, policy.noShowMin);
+    for (const id of gone) {
+      await this.prisma.walkIn.updateMany({ where: { id, tenantId, status: WalkInStatus.WAITING }, data: { status: WalkInStatus.CANCELLED } });
+      await this.audit?.log({ tenantId, action: 'walkin.no_show', resourceType: 'walk_in', resourceId: id, metadata: { auto: true, minutes: policy.noShowMin } });
+    }
+    return gone.length;
+  }
+
+  /** Every salon with someone waiting; one salon's error never stops the next. */
+  async autoNoShowEverywhere(now = new Date()): Promise<number> {
+    const rows = await this.prisma.walkIn.findMany({ where: { status: WalkInStatus.WAITING }, select: { tenantId: true }, distinct: ['tenantId'] });
+    let n = 0;
+    for (const r of rows) { try { n += await this.autoNoShow(r.tenantId, now); } catch { /* next salon */ } }
+    return n;
+  }
+
+  /** ĐỐI SOÁT CUỐI NGÀY (day-review.ts): one salon, one salon day. */
+  async dayReview(user: AuthenticatedUser, day?: string) {
+    const tenantId = this.tenantId(user);
+    const key = typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : await this.todayKey(tenantId);
+    const tz = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { timezone: true } }))?.timezone || 'UTC';
+    let fmt: Intl.DateTimeFormat;
+    try { fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }); }
+    catch { fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }); }
+    const lo = new Date(Date.parse(`${key}T00:00:00Z`) - 86400000);
+    const hi = new Date(Date.parse(`${key}T00:00:00Z`) + 2 * 86400000);
+    const inDay = (d: Date | string | null | undefined) => !!d && fmt.format(new Date(d)) === key;
+    const rows = (await this.prisma.walkIn.findMany({
+      where: { tenantId, createdAt: { gte: lo, lt: hi } },
+      select: { id: true, status: true, customerName: true, awaitingPayment: true, createdAt: true, assignedAt: true, doneAt: true, assignedStaffId: true, serviceId: true, items: true },
+      orderBy: { createdAt: 'asc' }, take: 1000,
+    })).filter((r) => inDay(r.createdAt)) as unknown as ReviewTicket[];
+    const ids = rows.map((r) => r.id);
+    const orders = ids.length ? await this.prisma.order.findMany({
+      where: { tenantId, OR: [{ walkInId: { in: ids } }, { walkInIds: { hasSome: ids } }, { items: { some: { walkInId: { in: ids } } } }] } as never,
+      select: { walkInId: true, walkInIds: true, items: { select: { walkInId: true } } } as never,
+    }).catch(() => []) as unknown as { walkInId: string | null; walkInIds?: string[]; items?: { walkInId: string | null }[] }[] : [];
+    const audits = ((this.db.auditLog?.findMany({
+      where: { tenantId, action: { in: ['walkin.closed_unpaid', 'turn.override', 'walkin.no_show'] }, createdAt: { gte: lo, lt: hi } },
+      select: { action: true, resourceId: true, metadata: true, createdAt: true, userId: true }, orderBy: { createdAt: 'asc' }, take: 2000,
+    }).catch(() => [])) ?? Promise.resolve([])) as Promise<{ action: string; resourceId: string | null; metadata: unknown; createdAt: Date; userId: string | null }[]>;
+    const logs = (await audits).filter((a) => inDay(a.createdAt));
+    const meta = (a: { metadata: unknown }) => ((a.metadata && typeof a.metadata === 'object') ? a.metadata : {}) as Record<string, unknown>;
+    const closedUnpaid: ClosedUnpaid[] = logs.filter((a) => a.action === 'walkin.closed_unpaid' && a.resourceId && ids.includes(a.resourceId)).map((a) => ({
+      walkInId: a.resourceId!, reason: (meta(a).reason as string) ?? null, note: (meta(a).note as string) ?? null, at: a.createdAt, userId: a.userId,
+    }));
+    const overrides: Override[] = logs.filter((a) => a.action === 'turn.override').map((a) => ({
+      walkInId: a.resourceId ?? '', suggested: (meta(a).suggested as string) ?? null, chosen: (meta(a).chosen as string) ?? null, reason: (meta(a).reason as string) ?? null, at: a.createdAt, userId: a.userId,
+    }));
+    const noShowIds = new Set(logs.filter((a) => a.action === 'walkin.no_show' && a.resourceId).map((a) => a.resourceId!));
+    const review = dayReview({ tickets: rows, settledIds: settledWalkIns(orders), closedUnpaid, overrides, noShowIds });
+    const report = await this.turnReport(user, key, key);
+    const staff = await this.prisma.staffMember.findMany({ where: { tenantId }, select: { id: true, firstName: true, lastName: true } });
+    const userIds = [...new Set([...closedUnpaid, ...overrides].map((x) => x.userId).filter((x): x is string => !!x))];
+    // Ids come from this salon's own audit rows (a support session's user has no tenant).
+    const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, firstName: true, lastName: true, email: true } }).catch(() => []) : [];
+    const closedRow = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'walkin_day_closed' } } }).catch(() => null);
+    const closed = ((closedRow?.value ?? {}) as Record<string, { at: string; by: string | null; note: string | null }>)[key] ?? null;
+    const overrideCount = new Map<string, number>();
+    for (const o of overrides) if (o.chosen) overrideCount.set(o.chosen, (overrideCount.get(o.chosen) ?? 0) + 1);
+    return {
+      day: key, timezone: tz, closed,
+      ...review,
+      staff: staff.map((s) => ({ id: s.id, name: `${s.firstName}${s.lastName ? ' ' + s.lastName : ''}`.trim() })),
+      users: users.map((u) => ({ id: u.id, name: ([u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || '').trim() })),
+      techs: report.techs.map((t) => ({ ...t, overrides: overrideCount.get(t.staffId) ?? 0 })),
+    };
+  }
+
+  /** "Chốt ngày": the owner signs the day off (with an optional note), audited. Re-closing overwrites the note. */
+  async closeDay(user: AuthenticatedUser, day: string, note?: string) {
+    const tenantId = this.tenantId(user);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day))) throw new BadRequestException('day must be YYYY-MM-DD');
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: 'walkin_day_closed' } } }).catch(() => null);
+    const all = { ...((row?.value ?? {}) as Record<string, unknown>) };
+    const entry = { at: new Date().toISOString(), by: user.userId, note: String(note ?? '').slice(0, 300) || null };
+    all[day] = entry;
+    // Keep the last 120 days.
+    const keys = Object.keys(all).sort();
+    for (const k of keys.slice(0, Math.max(0, keys.length - 120))) delete all[k];
+    await this.saveSetting(tenantId, 'walkin_day_closed', all);
+    await this.audit?.log({ tenantId, userId: user.userId, action: 'walkin.day_closed', resourceType: 'tenant', resourceId: tenantId, metadata: { day, note: entry.note } });
+    return { day, closed: entry };
+  }
+
+  // ---------------------------------------------------------------- desk policy (Walk-in 2.0, step 2)
+
+  /** The salon's optional desk rules; all off unless the owner turned them on. */
+  async deskPolicy(tenantId: string): Promise<DeskPolicy> {
+    try {
+      const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: DESK_POLICY_KEY } } });
+      return cleanDeskPolicy(row?.value ?? null);
+    } catch { return cleanDeskPolicy(null); }
+  }
+
+  async getDeskPolicy(user: AuthenticatedUser): Promise<DeskPolicy> {
+    return this.deskPolicy(this.tenantId(user));
+  }
+
+  async setDeskPolicy(user: AuthenticatedUser, body: unknown): Promise<DeskPolicy> {
+    const tenantId = this.tenantId(user);
+    const next = cleanDeskPolicy({ ...(await this.deskPolicy(tenantId)), ...((body && typeof body === 'object') ? body as object : {}) });
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: DESK_POLICY_KEY } },
+      update: { value: next as never }, create: { tenantId, key: DESK_POLICY_KEY, value: next as never },
+    });
+    await this.audit?.log({ tenantId, userId: user.userId, action: 'settings.desk_policy_updated', resourceType: 'tenant', resourceId: tenantId, metadata: { ...next } });
+    return next;
+  }
+
+  /** "Phải có dịch vụ": refuse to finish / send to the till a visit with no service, when the salon asks for it. */
+  private async assertService(w: { tenantId: string; items: unknown; serviceId?: string | null }): Promise<void> {
+    if (hasService(w.items) || w.serviceId) return;
+    const policy = await this.deskPolicy(w.tenantId);
+    if (policy.requireService) throw new BadRequestException(NO_SERVICE_ERROR);
+  }
+
+  /** Each technician's next booking today that has not started (epoch ms) — this salon's only. */
+  private async bookingAt(tenantId: string): Promise<Map<string, number>> {
+    const now = new Date();
+    const today = await this.startOfToday(tenantId);
+    const rows = await this.prisma.appointment.findMany({
+      where: { tenantId, startTime: { gte: now, lt: new Date(today.getTime() + 86_400_000) }, assignedStaffId: { not: null },
+        status: { in: [AppointmentStatus.PENDING, AppointmentStatus.ASSIGNED, AppointmentStatus.ACCEPTED, AppointmentStatus.CONFIRMED] } },
+      select: { assignedStaffId: true, startTime: true }, orderBy: { startTime: 'asc' }, take: 200,
+    }).catch(() => [] as { assignedStaffId: string | null; startTime: Date }[]);
+    const out = new Map<string, number>();
+    for (const r of rows) if (r.assignedStaffId && !out.has(r.assignedStaffId)) out.set(r.assignedStaffId, new Date(r.startTime).getTime());
+    return out;
+  }
+
+  /** "Báo quầy khi chờ tính tiền quá lâu": one push per visit, to the people running the floor. */
+  async nudgeUnpaid(tenantId: string, now = new Date()): Promise<number> {
+    if (!this.push) return 0;
+    const policy = await this.deskPolicy(tenantId);
+    if (!policy.payNudge) return 0;
+    const open = await this.prisma.walkIn.findMany({
+      where: { tenantId, status: WalkInStatus.SERVING, awaitingPayment: true },
+      select: { id: true, status: true, createdAt: true, assignedAt: true, doneAt: true, awaitingPayment: true, items: true, customerName: true, assignedStaffId: true },
+    });
+    if (!open.length) return 0;
+    const row = await this.prisma.setting.findUnique({ where: { tenantId_key: { tenantId, key: PAY_WARNED_KEY } } }).catch(() => null);
+    const warned = ((row?.value as { ids?: unknown } | null)?.ids ?? []) as string[];
+    const late = newlyUnpaidTooLong(open as unknown as PayTicket[], now, policy.payNudgeMin, Array.isArray(warned) ? warned : []);
+    const msg = payNudgeAlert(late);
+    if (!msg) return 0;
+    const ids = rememberWarned(warned, late.map((x) => x.id));
+    await this.prisma.setting.upsert({
+      where: { tenantId_key: { tenantId, key: PAY_WARNED_KEY } },
+      update: { value: { ids } as never }, create: { tenantId, key: PAY_WARNED_KEY, value: { ids } as never },
+    });
+    const [admins, staff] = await Promise.all([
+      this.prisma.user.findMany({ where: { tenantId, role: UserRole.SALON_ADMIN, isActive: true }, select: { id: true } }),
+      this.prisma.staffMember.findMany({ where: { tenantId, userId: { not: null } }, select: { userId: true, staffRole: true, permissions: true } as never }) as unknown as Promise<{ userId: string | null; staffRole: string | null; permissions?: unknown }[]>,
+    ]);
+    await this.push.sendToTenant(tenantId, msg, { onlyUserIds: deskUserIds(admins, staff) }).catch(() => undefined);
+    return late.length;
+  }
+
+  /** Every salon with someone waiting to pay; one salon's error never stops the next. */
+  async nudgeUnpaidEverywhere(now = new Date()): Promise<number> {
+    const rows = await this.prisma.walkIn.findMany({ where: { status: WalkInStatus.SERVING, awaitingPayment: true }, select: { tenantId: true }, distinct: ['tenantId'] });
+    let n = 0;
+    for (const r of rows) { try { n += await this.nudgeUnpaid(r.tenantId, now); } catch { /* next salon */ } }
+    return n;
+  }
+
   /**
    * ĐÓNG KHÔNG THU TIỀN. The visit happened but no receipt will be rung up in
    * Lumio (paid on another machine, pays later, a free redo, a mistake): every
@@ -1842,7 +2148,7 @@ export class WalkinsService {
     const why = cleanCloseReason(reason);
     const w = await this.mine(user, id);
     if (w.status === WalkInStatus.CANCELLED) throw new BadRequestException('This visit was cancelled');
-    if (w.status !== WalkInStatus.DONE) await this.done(user, id);
+    if (w.status !== WalkInStatus.DONE) await this.done(user, id, true);
     await this.prisma.walkIn.updateMany({
       where: { id: w.id, tenantId: w.tenantId },
       data: { status: WalkInStatus.DONE, awaitingPayment: false, ...(w.doneAt ? {} : { doneAt: new Date() }) },

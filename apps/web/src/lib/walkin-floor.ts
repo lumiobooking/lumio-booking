@@ -129,3 +129,11 @@ export function ticketTimeline(w: TimelineTicket): TimelineEvent[] {
   }
   return ev.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || (a.kind === 'pay' ? 1 : b.kind === 'pay' ? -1 : 0));
 }
+
+/** For screens customers see: "Linda Pham" → "Linda P."; nothing → "Khách" / "Guest". */
+export function shortName(full: string | null | undefined, vi: boolean): string {
+  const parts = String(full ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return vi ? 'Khách' : 'Guest';
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
+}

@@ -39,6 +39,20 @@ export class WalkinsScheduler implements OnModuleInit, OnModuleDestroy {
     } catch (e) {
       this.logger.warn(`Stale-visit sweep failed: ${(e as Error).message}`);
     }
+    // Walk-in 2.0: "báo quầy khi chờ tính tiền quá lâu" — only salons that turned it on.
+    try {
+      const n = await this.walkins.nudgeUnpaidEverywhere();
+      if (n) this.logger.log(`Nudged the desk about ${n} visit(s) waiting to pay.`);
+    } catch (e) {
+      this.logger.warn(`Waiting-to-pay nudge failed: ${(e as Error).message}`);
+    }
+    // Walk-in 2.0, step 3: called and not here after the salon's minutes → no-show (rule off by default).
+    try {
+      const n = await this.walkins.autoNoShowEverywhere();
+      if (n) this.logger.log(`Marked ${n} called customer(s) as no-show.`);
+    } catch (e) {
+      this.logger.warn(`No-show sweep failed: ${(e as Error).message}`);
+    }
     // A new salon day starts with an empty "waiting to pay" (walkins/unpaid-sweep.ts).
     try {
       const r = await this.walkins.closeUnpaidEverywhere();

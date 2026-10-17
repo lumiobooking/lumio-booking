@@ -166,7 +166,8 @@ function Inner() {
   async function call(path: string, method: 'POST' | 'PATCH', body?: Record<string, unknown>) {
     setBusy(true); setError(null);
     try { await apiFetch(path, { method, token, body }); await load(); return true; }
-    catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); return false; }
+    // "NO_SERVICE: Chọn dịch vụ…" (the salon requires a service before Xong): show the sentence, not the code.
+    catch (e) { setError(e instanceof Error ? e.message.replace(/^[A-Z_]{4,}:\s*/, '') : 'Action failed'); return false; }
     finally { setBusy(false); }
   }
 

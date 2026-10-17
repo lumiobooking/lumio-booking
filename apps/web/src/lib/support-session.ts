@@ -77,3 +77,47 @@ export function clearAllSessions(): void {
   try { window.sessionStorage.removeItem(SUPPORT_SESSION_KEY); } catch { /* ignore */ }
   try { window.localStorage.removeItem(AUTH_KEY); window.localStorage.removeItem(LEGACY_HOME_KEY); } catch { /* ignore */ }
 }
+
+/**
+ * THE SERVER REFUSED THIS TAB'S SESSION (401). What now?
+ *
+ * Every 401 used to sign the employee out EVERYWHERE: a salon tab whose
+ * 8-hour setup session had run out — a tab left open since yesterday, still
+ * polling its inbox — wiped the agency login every tab shares, so the next
+ * salon the employee entered in another tab was thrown out to /login, again
+ * and again, while that old tab kept polling. "Every time I enter a salon I
+ * get logged out."
+ *
+ * Now a refused SALON session only ever touches its own tab: it is renewed in
+ * place with the agency login (the employee is still allowed in — the server
+ * decides that again), or, failing that, the tab goes back to the agency list.
+ * Only a refused AGENCY login (or a salon owner's own) signs everyone out.
+ */
+export type RefusalPlan =
+  | { kind: 'renew'; tenantId: string; agencyToken: string; session: StoredSession }
+  | { kind: 'back-to-agency' }
+  | { kind: 'logout' };
+
+const RENEWED_KEY = 'lumio_support_renewed_at';
+
+export function planForRefusal(now = Date.now()): RefusalPlan {
+  if (typeof window === 'undefined') return { kind: 'logout' };
+  let own: StoredSession | null = null;
+  let home: StoredSession | null = null;
+  try { own = parse(window.sessionStorage.getItem(SUPPORT_SESSION_KEY)); } catch { own = null; }
+  try { home = parse(window.localStorage.getItem(AUTH_KEY)); } catch { home = null; }
+  if (!own?.user?.supportSession) return { kind: 'logout' };
+  const tenantId = typeof own.user.tenantId === 'string' ? own.user.tenantId : '';
+  if (!tenantId || !home || home.user?.supportSession) return { kind: 'back-to-agency' };
+  // Renewed a moment ago and refused again: something else is wrong — do not loop.
+  let last = 0;
+  try { last = Number(window.sessionStorage.getItem(RENEWED_KEY) || 0); } catch { last = 0; }
+  if (last && now - last < 60_000) return { kind: 'back-to-agency' };
+  return { kind: 'renew', tenantId, agencyToken: home.accessToken, session: own };
+}
+
+/** Swap this tab's salon session for a freshly issued one (same salon), remembering when. */
+export function renewSupportSession(session: StoredSession, now = Date.now()): void {
+  enterSupportSession(session);
+  try { window.sessionStorage.setItem(RENEWED_KEY, String(now)); } catch { /* ignore */ }
+}

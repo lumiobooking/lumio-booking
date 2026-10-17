@@ -131,9 +131,9 @@ export function discountRules(promoLines: string[], saleNames: string[]): string
   }
   if (saleNames.length) out.push(`ON-SALE SERVICES: ${saleNames.join(', ')} (the sale price is already in the menu above).`);
   if (promoLines.length || saleNames.length) {
-    out.push('DISCOUNTS — the promotions and sale prices above are the ONLY discounts you may quote, with their exact percent and dates. If the salon\'s notes or facts mention a different discount or percent (an older "special", another number), they are out of date: do NOT quote it and never use it in a price or a total. If the customer asks about it, say the salon will confirm any other offer at the visit.');
+    out.push('DISCOUNTS — the promotions and sale prices above are the ONLY discounts you may quote, with their exact percent and dates. Any other discount or percent — from the salon\'s notes or facts, from customer memory, from an earlier message in this chat, or from an ad or post the customer mentions (an older "special", another number) — is out of date: do NOT quote it and never use it in a price or a total. If the customer asks about it, say the salon will confirm any other offer at the visit.');
   } else {
-    out.push('No promotion is set in the salon\'s system and no service is on sale. Do not invent a discount — only mention an offer if the salon\'s own notes above state one, and only within its dates; never work it into a total, because the booking will not apply it.');
+    out.push('No promotion is set in the salon\'s system and no service is on sale. Do not invent a discount, and do not repeat one from customer memory, an earlier message or an ad — only mention an offer if the salon\'s own notes above state one, and only within its dates; never work it into a total, because the booking will not apply it.');
   }
   return out;
 }

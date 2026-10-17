@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { apiFetch, setUnauthorizedHandler, setSessionTenant } from './api';
-import { readSession, clearAllSessions, AUTH_KEY } from './support-session';
+import { readSession, clearAllSessions, AUTH_KEY, leaveSupportSession, planForRefusal, renewSupportSession } from './support-session';
 
 export type UserRole = 'SUPER_ADMIN' | 'SALON_ADMIN' | 'STAFF' | 'SUPPORT';
 
@@ -68,7 +68,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // stored session and bounce to the login page instead of showing a raw
   // "Unauthorized" error.
   useEffect(() => {
+    // A refused SALON session (Lumio Support, per tab) never signs the
+    // employee out of everything — see planForRefusal in support-session.ts.
+    let handling = false;
     setUnauthorizedHandler(() => {
+      if (handling) return;
+      handling = true;
+      const plan = planForRefusal();
+      if (plan.kind === 'renew') {
+        void apiFetch<{ accessToken: string; tenant: { id: string; name: string }; level?: string; custom?: boolean; capabilities?: string[] }>(
+          `/support/enter/${plan.tenantId}`, { method: 'POST', token: plan.agencyToken, body: {} },
+        ).then((r) => {
+          renewSupportSession({
+            accessToken: r.accessToken,
+            user: { ...plan.session.user, tenantId: r.tenant.id, tenantName: r.tenant.name, supportLevel: r.level, supportCustom: r.custom === true, capabilities: r.capabilities },
+          });
+          window.location.reload();
+        }).catch(() => {
+          leaveSupportSession();
+          window.location.assign('/agency');
+        });
+        return;
+      }
+      if (plan.kind === 'back-to-agency') {
+        leaveSupportSession();
+        window.location.assign('/agency');
+        return;
+      }
       clearAllSessions();
       if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
         window.location.assign('/login');

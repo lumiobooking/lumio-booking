@@ -4,7 +4,7 @@
  * in the latter: entering salon B in one tab must never turn a tab opened
  * for salon A into B when it reloads (which every Connect round trip does).
  */
-import { readSession, enterSupportSession, leaveSupportSession, clearAllSessions, AUTH_KEY, SUPPORT_SESSION_KEY } from './support-session';
+import { readSession, enterSupportSession, leaveSupportSession, clearAllSessions, planForRefusal, renewSupportSession, AUTH_KEY, SUPPORT_SESSION_KEY } from './support-session';
 
 type Store = Map<string, string>;
 const storage = (m: Store) => ({ getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, v); }, removeItem: (k: string) => { m.delete(k); } });
@@ -59,5 +59,32 @@ describe('a salon session belongs to the tab that opened it', () => {
     clearAllSessions();
     expect(readSession()).toBeNull();
     expect(t.size).toBe(0); expect(shared.has(AUTH_KEY)).toBe(false);
+  });
+});
+
+describe('a refused salon session (8 hours over) stays in its own tab', () => {
+  it('is renewed with the agency login, which is never cleared', () => {
+    const a: Store = new Map(); tab(a); enterSupportSession(salon('A'));
+    const plan = planForRefusal(1_000_000);
+    expect(plan).toEqual(expect.objectContaining({ kind: 'renew', tenantId: 'A', agencyToken: 'agency-token' }));
+    expect(shared.get(AUTH_KEY)).toBe(JSON.stringify(agency));
+  });
+
+  it('does not loop: refused again right after a renewal, the tab goes back to the agency list', () => {
+    const a: Store = new Map(); tab(a); enterSupportSession(salon('A'));
+    renewSupportSession(salon('A'), 1_000_000);
+    expect(planForRefusal(1_030_000).kind).toBe('back-to-agency');
+    expect(planForRefusal(1_200_000).kind).toBe('renew');
+  });
+
+  it('the agency login itself refused, or a salon owner\'s own login refused, signs out', () => {
+    const t: Store = new Map(); tab(t);
+    expect(planForRefusal().kind).toBe('logout');
+  });
+
+  it('a salon tab with no agency login left goes back to the agency list (which then asks to sign in)', () => {
+    const a: Store = new Map(); tab(a); enterSupportSession(salon('A'));
+    shared.delete(AUTH_KEY);
+    expect(planForRefusal().kind).toBe('back-to-agency');
   });
 });
